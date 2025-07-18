@@ -26,7 +26,7 @@ format:
 # Run ruff linting and mypy type checking
 lint:
 	uv run ruff check --fix
-	uv run mypy --ignore-missing-imports --install-types --non-interactive --package python_repo_template
+	uv run mypy --ignore-missing-imports --install-types --non-interactive --package warghame_rl
 
 # Run tests using pytest
 test:

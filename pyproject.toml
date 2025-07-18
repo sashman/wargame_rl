@@ -1,10 +1,10 @@
 [project]
-name = "python-repo-template"
+name = "warghame-rl"
 version = "0.0.1"
-description = "A template for Python projects"
+description = ""
 readme = "README.md"
 license = { text = "MIT" }
-authors = [ { name = "Giovanni Giacometti", email = "giovanni.giacometti5@gmail.com" } ]
+authors = [ { name = "sash", email = "sashman90@gmail.com" } ]
 requires-python = ">=3.12"
 dependencies = [
     "loguru>=0.7.3",

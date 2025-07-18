@@ -16,7 +16,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --frozen --no-install-project --no-dev --no-editable --all-extras
 
-ADD python_repo_template /app/python_repo_template
+ADD warghame_rl /app/warghame_rlghame_rl /app/warghame_rl
 ADD main.py /app/main.py
 ADD pyproject.toml /app/pyproject.toml
 
