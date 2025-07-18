@@ -37,7 +37,7 @@ validate: format lint test
 
 # Build docker image
 dockerize:
-	docker build -t python-repo-template .
+	docker build -t warghame-rl .
 
 # Use it like: just run 10
 run number:

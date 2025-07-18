@@ -1,4 +1,4 @@
-# Python Repository Template
+# Wargame RL
 
 The ultimate 2025 Python repository template. Simple, fast, customizable, and ready to use.
 
