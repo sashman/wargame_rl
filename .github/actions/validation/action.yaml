@@ -1,0 +1,24 @@
+name: Validation
+description: format, lint, test code
+runs:
+  using: "composite"
+  steps:
+
+    - name: 📦 Install uv
+      uses: astral-sh/setup-uv@v6
+
+    - name: 🐍 Set up Python ${{ env.PY_VERSION }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PY_VERSION }}
+
+    - name: 🚀 Install just
+      uses: extractions/setup-just@v2
+
+    - name: 🦾 Install dependencies
+      run: just dev-sync
+      shell: bash
+
+    - name: 💅 🧪 Validate!
+      run: just validate
+      shell: bash
