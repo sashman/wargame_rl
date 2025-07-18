@@ -1,7 +1,8 @@
 import argparse
 import sys
-from wargame_rl.func import random_sum
 import loguru
+
+from wargame_rl.rl.gym.wargame.model.dqn.agent import Agent
 
 if __name__ == "__main__":
     logger = loguru.logger
@@ -13,11 +14,15 @@ if __name__ == "__main__":
     )
 
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument("--number", type=int, help="Input number")
+    arg_parser.add_argument("--train", type=bool, default=True, help="Run training if True, otherwise run inference.")
+    arg_parser.add_argument("--render", type=bool, default=False, help="Render the environment if True.")
     args = arg_parser.parse_args()
-    number = args.number
 
-    logger.info("-" * 50)
-    logger.info(f"Input number: {number}")
-    logger.info(f"Output number: {random_sum(number)}")
-    logger.info("-" * 50)
+    agent = Agent(
+        hyperparameter_set="wargame",
+    )
+    logger.info(f"Starting {'training' if args.train else 'inference'} with rendering set to {args.render}.")
+    agent.run(
+        is_training=args.train,
+        render=args.render
+    )
