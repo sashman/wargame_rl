@@ -7,6 +7,11 @@ set quiet
 default:
   just --list --unsorted
 
+setup:
+	uv venv --python 3.13
+	uv sync --all-extras --cache-dir .uv_cache
+	uv run pre-commit install
+
 # Sync dev dependencies
 dev-sync:
     uv sync --all-extras --cache-dir .uv_cache
