@@ -77,11 +77,10 @@ just validate
 
 ### Executing
 
-The code is a simple hello world example, which just requires a number as input. It will output the sum of the provided number with a random number.
-You can run the code with:
+#### Training
 
 ```bash
-just run 5
+just run training
 ```
 
 ### Docker

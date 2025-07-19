@@ -77,10 +77,7 @@ class WargameEnv(gym.Env):
         super().reset(seed=seed)
 
         # Choose the agent's location uniformly at random
-        # self._agent_location = self.np_random.integers(0, self.size, size=2, dtype=int)
-        # set agent location to a fixed position in the middle of the grid, top left corner
-        self._agent_location = np.array([0, 0], dtype=int)
-        
+        self._agent_location = self.np_random.integers(0, self.size, size=2, dtype=int)
 
         # We will sample the target's location randomly until it does not
         # coincide with the agent's location
