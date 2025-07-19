@@ -27,8 +27,12 @@ I wrote a blog post about this template! Check it out [here](https://giovannigia
 
 The template is based on [UV](https://docs.astral.sh/) as package manager and [Just](https://github.com/casey/just) as command runner. You need to have both installed in your system to use this template.
 
-Once you have those, you can just run
+To get started, install `just`, you can run `brew install just`, then just run
+```bash
+just setup
+```
 
+Here are other useful `just` command setup for this repository...
 ```bash
 just dev-sync
 ```
