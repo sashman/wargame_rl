@@ -81,14 +81,17 @@ class WargameEnv(gym.Env):
 
         # We will sample the target's location randomly until it does not
         # coincide with the agent's location
-        # self._target_location = self._agent_location
-        # while np.array_equal(self._target_location, self._agent_location):
-        #     self._target_location = self.np_random.integers(
-        #         0, self.size, size=2, dtype=int
-        #     )
-        
-        # set target location to a fixed position in the middle of the grid
-        self._target_location = np.array([self.size // 2, self.size // 2], dtype=int)
+        self._target_location = self._agent_location
+        while np.linalg.norm(self._target_location - self._agent_location, ord=1) < 1:
+            self._target_location = self.np_random.integers(
+                0, self.size, size=2, dtype=int
+            )
+        # # set target location to a fixed position in the middle of the grid
+        # self._target_location = np.array([self.size // 2, self.size // 2], dtype=int)
+
+        self._initial_distance = np.linalg.norm(
+            self._agent_location - self._target_location, ord=1
+        )
 
         observation = self._get_obs()
         info = self._get_info()
@@ -103,11 +106,13 @@ class WargameEnv(gym.Env):
     def _calculate_reward(self):
         """Calculate the reward based on the agent's and target's locations."""
         
-        # reward is the inverse of the distance to the target
-        # We use `np.linalg.norm` to compute the distance in L1-norm
-        return -np.linalg.norm(
-            self._agent_location - self._target_location, ord=1
+        current_distance = np.linalg.norm(
+            self._agent_location - self._target_location, ord=2
         )
+        
+        normalized_distance = current_distance / (np.sqrt(2)*self.size)
+        assert normalized_distance >= 0 and normalized_distance <= 1
+        return -normalized_distance
     
     def step(self, action):
         # Map the action (element of {0,1,2,3}) to the direction we walk in
