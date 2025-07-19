@@ -1,7 +1,7 @@
 import logging
 from logging import getLogger
-from wargame_rl.rl.gym.wargame.model.dqn.dqn import DQN
-from wargame_rl.rl.gym.wargame.model.dqn.experience_replay import ReplayMemory
+from wargame_rl.wargame.model.dqn.dqn import DQN
+from wargame_rl.wargame.model.dqn.experience_replay import ReplayMemory
 import gymnasium as gym
 import numpy as np
 

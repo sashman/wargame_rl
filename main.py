@@ -2,7 +2,7 @@ import argparse
 import sys
 import loguru
 
-from wargame_rl.rl.gym.wargame.model.dqn.agent import Agent
+from wargame_rl.wargame.model.dqn.agent import Agent
 
 if __name__ == "__main__":
     logger = loguru.logger
