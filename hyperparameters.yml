@@ -10,4 +10,3 @@ wargame:
   discount_factor_g: 0.9
   stop_on_reward: 1000
   hidden_dim: 256
-  enable_double_dqn: True

@@ -289,3 +289,4 @@ pip-selfcheck.json
 uv.lock
 
 runs/
+logs/
