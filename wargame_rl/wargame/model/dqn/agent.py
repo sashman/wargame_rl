@@ -289,6 +289,8 @@ import numpy as np
 from typing import Tuple
 import gymnasium as gym
 
+from wargame_rl.wargame.model.dqn.state import state_to_tensor
+
 
 class Agent:
     def __init__(self, env: gym.Env, replay_buffer: ReplayBuffer) -> None:
@@ -302,11 +304,13 @@ class Agent:
         self.env = env
         self.replay_buffer = replay_buffer
         self.reset()
-        self.state = self.env.reset()
+        self.state, _ = (
+            self.env.reset()
+        )  # this is a hack for now. TODO: define properly the state
 
     def reset(self) -> None:
         """Resents the environment and updates the state."""
-        self.state = self.env.reset()
+        self.state, _ = self.env.reset()  # this is a hack for now
 
     def get_action(self, net: RL_Network, epsilon: float) -> int:
         """Using the given network, decide what action to carry out using an epsilon-greedy policy.
@@ -323,8 +327,7 @@ class Agent:
         if np.random.random() < epsilon:
             action = self.env.action_space.sample()
         else:
-            state = net.state_to_tensor(self.state, net.device)
-
+            state = state_to_tensor(self.state, net.device)
             q_values = net(state)
             _, action = torch.max(q_values, dim=1)
             action = int(action.item())
