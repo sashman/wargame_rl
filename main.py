@@ -7,8 +7,8 @@ from wargame_rl.wargame.model.dqn.agent import Agent
 def environment_test():
     from wargame_rl.wargame.envs.env_test import EnvTest
 
-    # Initialize the environment with a grid size of 10 and human rendering mode
-    env_test = EnvTest(size=10, render_mode="human")
+    # Initialize the environment with a grid size of 50 and human rendering mode
+    env_test = EnvTest(size=50, render_mode="human")
 
     # Run 100 random actions in the environment
     env_test.run_actions(num_actions=100)

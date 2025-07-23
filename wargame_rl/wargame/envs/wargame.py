@@ -4,6 +4,7 @@ import gymnasium as gym
 from gymnasium import spaces
 import pygame
 import numpy as np
+from wargame_rl.wargame.envs.env_types import WargameEnvAction, WargameEnvConfig, WargameEnvInfo, WargameEnvObjectiveObservation, WargameEnvObservation, WargameModelObservation
 
 
 class MovementPhaseActions(Enum):
@@ -58,23 +59,23 @@ class WargameObjectiveSpace:
 class WargameEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 5}
 
-    def __init__(self, render_mode=None, number_of_wargame_models=3, size=50):
-        self.size = size  # The size of the square grid
+    def __init__(self, config: WargameEnvConfig):
+        self.size = config.size  # The size of the square grid
         self.window_size = 1024  # The size of the PyGame window
         
         self.observation_space = spaces.Dict(
             {
                 "current_turn": spaces.Discrete(1),
                 "wargame_models": spaces.Tuple(
-                    [WargameModelSpace.to_space(size=size) for _ in range(number_of_wargame_models)]
+                    [WargameModelSpace.to_space(size=self.size) for _ in range(config.number_of_wargame_models)]
                 ),
-                "objectives": spaces.Sequence(WargameObjectiveSpace.to_space(size=size)),
+                "objectives": spaces.Sequence(WargameObjectiveSpace.to_space(size=self.size)),
             }
         )
 
         # We have 4 actions, corresponding to "right", "up", "left", "down", "right" for each wargame model
         self.action_space = spaces.Tuple(
-            [spaces.Discrete(4) for _ in range(number_of_wargame_models)]
+            [spaces.Discrete(4) for _ in range(config.number_of_wargame_models)]
         )
 
         """
@@ -89,8 +90,8 @@ class WargameEnv(gym.Env):
             MovementPhaseActions.down.value: np.array([0, -1]),
         }
 
-        assert render_mode is None or render_mode in self.metadata["render_modes"]
-        self.render_mode = render_mode
+        assert config.render_mode is None or config.render_mode in self.metadata["render_modes"]
+        self.render_mode = config.render_mode
 
         """
         If human-rendering is used, `self.window` will be a reference
@@ -108,50 +109,44 @@ class WargameEnv(gym.Env):
         # List to hold wargame models for each number_of_wargame_models
         self.wargame_models = [
             WargameModel(location=np.zeros(2, dtype=int), stats={"max_wounds": 100, "current_wounds": 100})
-            for _ in range(number_of_wargame_models)
+            for _ in range(config.number_of_wargame_models)
         ]
 
         # List to hold objectives
         self.objectives = [
             WargameObjective(location=np.zeros(2, dtype=int))
-            for _ in range(number_of_wargame_models)
+            for _ in range(config.number_of_wargame_models)
         ]
 
         # Set the deployment zone for the agent, area left third of the grid
         self.deployment_zone = np.array([0, 0, self.size // 3, self.size], dtype=int)
 
-    def _get_obs(self):
+    def _get_obs(self) -> WargameEnvObservation:
         """Get the observation for the current state of the environment."""
         # Get the locations of the wargame models and objectives
-        wargame_model_locations = [model.location for model in self.wargame_models]
-        objective_locations = [objective.location for objective in self.objectives]
+        wargame_models = [WargameModelObservation(location=model.location) for model in self.wargame_models]
+        objectives = [WargameEnvObjectiveObservation(location=objective.location) for objective in self.objectives]
         # Create the observation dictionary
-        observation = {
-            "wargame_models": wargame_model_locations,
-            "objectives": objective_locations
-        }
-        return {
-            "current_turn": self.current_turn,
-            "wargame_models": observation["wargame_models"],
-            "objectives": observation["objectives"]
-        }
-
+        return WargameEnvObservation(
+            current_turn=self.current_turn,
+            wargame_models=wargame_models,
+            objectives=objectives
+        )
+        
     def _get_info(self):
         # for each wargame model, we will return its location and stats
         
-        wargame_model_info = [{
-            "location": model.location,
-            "stats": model.stats
-        } for model in self.wargame_models]
+        wargame_models = [WargameModelObservation(location=model.location) for model in self.wargame_models]
+        objectives = [WargameEnvObjectiveObservation(location=objective.location) for objective in self.objectives]
+        # Create the observation dictionary
+        return WargameEnvInfo(
+            current_turn=self.current_turn,
+            wargame_models=wargame_models,
+            objectives=objectives,
+            deployment_zone=self.deployment_zone.tolist()
+        )
 
-        return {
-            "wargame_models": wargame_model_info,
-            "objectives": [objective.location for objective in self.objectives],
-            "current_turn": self.current_turn,
-            "max_turns": self.max_turns,
-        }
-
-    def reset(self, seed=None, options=None):
+    def reset(self, seed=None, options=None) -> tuple[WargameEnvObservation, WargameEnvInfo]:
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
@@ -192,7 +187,7 @@ class WargameEnv(gym.Env):
         return -average_distance
     
 
-    def step(self, action):
+    def step(self, action: WargameEnvAction) -> tuple[WargameEnvObservation, float, bool, bool, WargameEnvInfo]:
 
         terminated = [False] * len(self.wargame_models)
 
