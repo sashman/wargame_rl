@@ -38,7 +38,7 @@ class RLDataset(IterableDataset):
 
     """
 
-    def __init__(self, buffer: ReplayBuffer, sample_size: int = 128) -> None:
+    def __init__(self, buffer: ReplayBuffer, sample_size: int = 1024) -> None:
         self.buffer = buffer
         self.sample_size = sample_size
 

@@ -28,7 +28,7 @@ class DQNLightning(LightningModule):
         eps_last_frame: int = 1000,
         eps_start: float = 1.0,
         eps_end: float = 0.01,
-        episode_length: int = 200,
+        episode_length: int = 1024,
         warm_start_steps: int = 1000,
     ) -> None:
         """Basic DQN Model.
