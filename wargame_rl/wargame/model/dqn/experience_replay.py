@@ -10,9 +10,11 @@ from wargame_rl.wargame.types import Experience, ExperienceBatch
 
 
 def experience_list_to_batch(experiences: list[Experience]) -> ExperienceBatch:
-    states, actions, rewards, dones, next_states = zip(*experiences)
-    states_list = [state[0] for state in states]
-    next_states_list = [state[0] for state in next_states]
+    states_list = [experience.state for experience in experiences]
+    next_states_list = [experience.new_state for experience in experiences]
+    actions = [experience.action for experience in experiences]
+    rewards = [experience.reward for experience in experiences]
+    dones = [experience.done for experience in experiences]
     tensor_states = state_to_tensor_batch(states_list)
     tensor_next_states = state_to_tensor_batch(next_states_list)
     return ExperienceBatch(
