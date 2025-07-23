@@ -2,6 +2,7 @@ from typing import Iterator, Tuple
 from torch.utils.data.dataset import IterableDataset
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 import os
+from wargame_rl.wargame.types import ExperienceBatch
 
 PATH_DATASETS = os.environ.get("PATH_DATASETS", "./datasets")
 
@@ -19,9 +20,5 @@ class RLDataset(IterableDataset):
         self.buffer = buffer
         self.sample_size = sample_size
 
-    def __iter__(self) -> Iterator[Tuple]:
-        states, actions, rewards, dones, new_states = self.buffer.sample(
-            self.sample_size
-        )
-        for i in range(len(dones)):
-            yield states[i], actions[i], rewards[i], dones[i], new_states[i]
+    def __iter__(self) -> Iterator[ExperienceBatch]:
+        return iter(self.buffer.sample(self.sample_size))

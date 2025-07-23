@@ -14,6 +14,7 @@ from wargame_rl.wargame.model.dqn.dqn import RL_Network
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.dataset import RLDataset
+from wargame_rl.wargame.types import ExperienceBatch
 
 
 class DQNLightning(LightningModule):
@@ -89,7 +90,7 @@ class DQNLightning(LightningModule):
         output = self.net(x)
         return output
 
-    def dqn_mse_loss(self, batch: Tuple[Tensor, Tensor]) -> Tensor:
+    def dqn_mse_loss(self, batch: ExperienceBatch) -> Tensor:
         """Calculates the mse loss using a mini batch from the replay buffer.
 
         Args:
@@ -99,18 +100,26 @@ class DQNLightning(LightningModule):
             loss
 
         """
-        states, actions, rewards, dones, next_states = batch
+        batch_states = batch.states
+        batch_actions = batch.actions
+        batch_rewards = batch.rewards
+        batch_dones = batch.dones
+        batch_next_states = batch.new_states
 
         state_action_values = (
-            self.net(states).gather(1, actions.long().unsqueeze(-1)).squeeze(-1)
+            self.net(batch_states)
+            .gather(1, batch_actions.long().unsqueeze(-1))
+            .squeeze(-1)
         )
 
         with torch.no_grad():
-            next_state_values = self.target_net(next_states).max(1)[0]
-            next_state_values[dones] = 0.0
+            next_state_values = self.target_net(batch_next_states).max(1)[0]
+            next_state_values[batch_dones] = 0.0
             next_state_values = next_state_values.detach()
 
-        expected_state_action_values = next_state_values * self.hparams.gamma + rewards
+        expected_state_action_values = (
+            next_state_values * self.hparams.gamma + batch_rewards
+        )
 
         return self.loss_fn(state_action_values, expected_state_action_values)
 
@@ -119,7 +128,7 @@ class DQNLightning(LightningModule):
             return end
         return start - (self.global_step / frames) * (start - end)
 
-    def training_step(self, batch: Tuple[Tensor, Tensor], nb_batch) -> OrderedDict:
+    def training_step(self, batch: ExperienceBatch, nb_batch) -> Tensor:
         """Carries out a single step through the environment to update the replay buffer. Then calculates loss based on
         the minibatch received.
 
@@ -131,14 +140,13 @@ class DQNLightning(LightningModule):
             Training loss and log metrics
 
         """
-        device = self.get_device(batch)
         epsilon = self.get_epsilon(
             self.hparams.eps_start, self.hparams.eps_end, self.hparams.eps_last_frame
         )
         self.log("epsilon", epsilon)
 
         # step through environment with agent
-        reward, done = self.agent.play_step(self.net, epsilon, device)
+        reward, done = self.agent.play_step(self.net, epsilon)
         self.episode_reward += reward
         self.log("episode reward", self.episode_reward)
 

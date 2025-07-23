@@ -290,3 +290,5 @@ uv.lock
 
 runs/
 logs/
+lightning_logs/
+# test_train.ipynb
