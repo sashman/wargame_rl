@@ -23,7 +23,7 @@ class DQNLightning(LightningModule):
         env: Env,
         net: RL_Network,
         batch_size: int = 16,
-        lr: float = 1e-2,
+        lr: float = 1e-4,
         gamma: float = 0.99,
         sync_rate: int = 10,
         replay_size: int = 1000,
