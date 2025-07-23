@@ -1,19 +1,16 @@
-import os
-from collections import OrderedDict, deque, namedtuple
-from typing import Iterator, List, Tuple
-
 from copy import deepcopy
 
-from gymnasium import Env
 import torch
+from gymnasium import Env
 from pytorch_lightning import LightningModule
 from torch import Tensor, nn
 from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
-from wargame_rl.wargame.model.dqn.dqn import RL_Network
-from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
+
 from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.dataset import RLDataset
+from wargame_rl.wargame.model.dqn.dqn import RL_Network
+from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.types import ExperienceBatch
 
 
@@ -172,7 +169,7 @@ class DQNLightning(LightningModule):
 
         return loss
 
-    def configure_optimizers(self) -> List[Optimizer]:
+    def configure_optimizers(self) -> Optimizer:
         """Initialize Adam optimizer."""
         optimizer = Adam(self.net.parameters(), lr=self.hparams.lr)
         return optimizer

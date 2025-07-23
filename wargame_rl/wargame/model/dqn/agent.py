@@ -280,15 +280,14 @@
 #         return loss.item()  # Return the loss value for logging or monitoring
 
 
-from wargame_rl.wargame.model.dqn.device import Device
-from wargame_rl.wargame.model.dqn.dqn import RL_Network
-from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer, Experience
-from torch import nn
-import torch
-import numpy as np
 from typing import Tuple
-import gymnasium as gym
 
+import gymnasium as gym
+import numpy as np
+import torch
+
+from wargame_rl.wargame.model.dqn.dqn import RL_Network
+from wargame_rl.wargame.model.dqn.experience_replay import Experience, ReplayBuffer
 from wargame_rl.wargame.model.dqn.state import state_to_tensor
 
 
@@ -325,12 +324,11 @@ class Agent:
 
         """
         if np.random.random() < epsilon:
-            action = self.env.action_space.sample()
+            action = int(self.env.action_space.sample())
         else:
             state = state_to_tensor(self.state, net.device)
             q_values = net(state)
             _, action = torch.max(q_values, dim=1)
-            action = int(action.item())
 
         return action
 

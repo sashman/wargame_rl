@@ -1,17 +1,14 @@
-import pytest
-import gymnasium as gym
-from gymnasium.spaces.utils import flatten_space
+import torch
 from pytorch_lightning import Trainer
+
 from wargame_rl.wargame.model.dqn.dqn import DQN
 from wargame_rl.wargame.model.dqn.experience_replay import (
     ReplayBuffer,
     experience_list_to_batch,
 )
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
-from wargame_rl.wargame.types import Experience, State
-from wargame_rl.wargame.model.dqn.state import state_to_tensor_batch, state_to_tensor
-from functools import lru_cache
-import torch
+from wargame_rl.wargame.model.dqn.state import state_to_tensor, state_to_tensor_batch
+from wargame_rl.wargame.types import Experience
 
 
 def test_state_to_tensor(experiences):
@@ -71,17 +68,14 @@ def test_dqn_loss(env, dqn_net: DQN, replay_buffer: ReplayBuffer):
     assert loss_training_final < loss_training
 
 
-# def test_dqn_training(env, dqn_net: DQN, replay_buffer: ReplayBuffer):
+def test_dqn_training(env, dqn_net: DQN, replay_buffer: ReplayBuffer):
+    model = DQNLightning(env=env, net=dqn_net)
 
+    trainer = Trainer(
+        accelerator="auto",
+        max_epochs=2,
+        val_check_interval=50,
+        logger=None,
+    )
 
-#     model = DQNLightning(env=env, net=dqn_net)
-
-
-#     trainer = Trainer(
-#         accelerator="auto",
-#         max_epochs=2,
-#         val_check_interval=50,
-#         logger=None,
-#     )
-
-#     trainer.fit(model)
+    trainer.fit(model)
