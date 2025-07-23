@@ -37,7 +37,7 @@ class WargameEnvInfo(TypedDict):
     current_turn: int
     wargame_models: list[WargameModelObservation]
     objectives: list[WargameEnvObjectiveObservation]
-    deployment_zone: tuple[int, int, int, int]  # Deployment zone coordinates
+    deployment_zone: tuple[int, int, int, int]
 
 class WargameEnvAction(TypedDict):
     """
