@@ -1,4 +1,5 @@
 from typing import NamedTuple, TypedDict
+
 import numpy as np
 import torch
 
@@ -11,11 +12,11 @@ class State(TypedDict):
 class Experience(NamedTuple):
     """Experience tuple with typed fields."""
 
-    state: torch.Tensor
+    state: State
     action: int
     reward: float
     done: bool
-    new_state: torch.Tensor
+    new_state: State
 
 
 class ExperienceBatch(NamedTuple):

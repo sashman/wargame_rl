@@ -1,11 +1,9 @@
 import torch
 from pytorch_lightning import Trainer
 
+from wargame_rl.wargame.model.dqn.dataset import experience_list_to_batch
 from wargame_rl.wargame.model.dqn.dqn import DQN
-from wargame_rl.wargame.model.dqn.experience_replay import (
-    ReplayBuffer,
-    experience_list_to_batch,
-)
+from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
 from wargame_rl.wargame.model.dqn.state import state_to_tensor, state_to_tensor_batch
 from wargame_rl.wargame.types import Experience
@@ -18,18 +16,6 @@ def test_state_to_tensor(experiences):
     assert torch.allclose(state_batch, state_batch_2)
 
 
-def test_replay_buffer(
-    experiences: list[Experience], replay_buffer: ReplayBuffer, n_steps: int
-):
-    assert len(replay_buffer) == n_steps == len(experiences)
-    batch = replay_buffer.sample(2)
-    assert batch.states.shape == (2, 4)
-    assert batch.actions.shape == (2,)
-    assert batch.rewards.shape == (2,)
-    assert batch.dones.shape == (2,)
-    assert batch.new_states.shape == (2, 4)
-
-
 def test_dqn_forward(env, experiences: list[Experience], dqn_net: DQN, n_steps: int):
     batch = experience_list_to_batch(experiences)
     n_actions = env.action_space.n
@@ -40,7 +26,7 @@ def test_dqn_forward(env, experiences: list[Experience], dqn_net: DQN, n_steps: 
 
 def test_dqn_loss(env, dqn_net: DQN, replay_buffer: ReplayBuffer):
     model = DQNLightning(env=env, net=dqn_net)
-    batch = replay_buffer.sample(3)
+    batch = experience_list_to_batch(replay_buffer.sample(3))
     loss_initial = model.dqn_mse_loss(batch)
     assert loss_initial.shape == ()
     assert loss_initial.dtype == torch.float32
@@ -66,6 +52,18 @@ def test_dqn_loss(env, dqn_net: DQN, replay_buffer: ReplayBuffer):
     assert loss_training_final.shape == ()
     assert loss_training_final.dtype == torch.float32
     assert loss_training_final < loss_training
+
+
+def test_dataloaders(env, dqn_net: DQN):
+    model = DQNLightning(env=env, net=dqn_net, batch_size=5)
+    dataloader = model.train_dataloader()
+    assert len(dataloader) == len(model.buffer) // 5
+    batch = next(iter(dataloader))
+    assert batch.states.shape == (5, 4)
+    assert batch.actions.shape == (5,)
+    assert batch.rewards.shape == (5,)
+    assert batch.dones.shape == (5,)
+    assert batch.new_states.shape == (5, 4)
 
 
 def test_dqn_training(env, dqn_net: DQN, replay_buffer: ReplayBuffer):

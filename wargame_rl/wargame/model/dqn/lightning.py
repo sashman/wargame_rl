@@ -8,7 +8,7 @@ from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
 
 from wargame_rl.wargame.model.dqn.agent import Agent
-from wargame_rl.wargame.model.dqn.dataset import RLDataset
+from wargame_rl.wargame.model.dqn.dataset import RLDataset, experience_list_to_batch
 from wargame_rl.wargame.model.dqn.dqn import RL_Network
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.types import ExperienceBatch
@@ -180,6 +180,7 @@ class DQNLightning(LightningModule):
         dataloader = DataLoader(
             dataset=dataset,
             batch_size=self.hparams.batch_size,
+            collate_fn=experience_list_to_batch,
         )
         return dataloader
 

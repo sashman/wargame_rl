@@ -20,4 +20,5 @@ def state_to_tensor(state: State, device: Device = None) -> torch.Tensor:
 
 
 def state_to_tensor_batch(states: list[State], device: Device = None) -> torch.Tensor:
+    device = get_device(device)
     return torch.cat([state_to_tensor(state, device) for state in states], dim=0)

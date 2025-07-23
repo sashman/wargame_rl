@@ -324,13 +324,13 @@ class Agent:
 
         """
         if np.random.random() < epsilon:
-            action = int(self.env.action_space.sample())
+            action = self.env.action_space.sample()
         else:
             state = state_to_tensor(self.state, net.device)
             q_values = net(state)
             _, action = torch.max(q_values, dim=1)
 
-        return action
+        return action.item()
 
     @torch.no_grad()
     def play_step(

@@ -1,10 +1,32 @@
-from typing import Iterator, Tuple
-from torch.utils.data.dataset import IterableDataset
-from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 import os
-from wargame_rl.wargame.types import ExperienceBatch
+from typing import Iterator
+
+import torch
+from torch.utils.data.dataset import IterableDataset
+
+from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
+from wargame_rl.wargame.model.dqn.state import state_to_tensor_batch
+from wargame_rl.wargame.types import Experience, ExperienceBatch
 
 PATH_DATASETS = os.environ.get("PATH_DATASETS", "./datasets")
+
+
+def experience_list_to_batch(experiences: list[Experience]) -> ExperienceBatch:
+    states_list = [experience.state for experience in experiences]
+    next_states_list = [experience.new_state for experience in experiences]
+    actions = [experience.action for experience in experiences]
+    rewards = [experience.reward for experience in experiences]
+    dones = [experience.done for experience in experiences]
+    tensor_states = state_to_tensor_batch(states_list)
+    tensor_next_states = state_to_tensor_batch(next_states_list)
+
+    return ExperienceBatch(
+        states=tensor_states,
+        actions=torch.tensor(actions, dtype=torch.int32, device=tensor_states.device),
+        rewards=torch.tensor(rewards, dtype=torch.float32, device=tensor_states.device),
+        dones=torch.tensor(dones, dtype=torch.bool, device=tensor_states.device),
+        new_states=tensor_next_states,
+    )
 
 
 class RLDataset(IterableDataset):
@@ -20,5 +42,10 @@ class RLDataset(IterableDataset):
         self.buffer = buffer
         self.sample_size = sample_size
 
-    def __iter__(self) -> Iterator[ExperienceBatch]:
-        return iter(self.buffer.sample(self.sample_size))
+    def __iter__(self) -> Iterator[Experience]:
+        experience_batch: list[Experience] = self.buffer.sample(self.sample_size)
+        for experience in experience_batch:
+            yield experience
+
+    def __len__(self) -> int:
+        return self.sample_size

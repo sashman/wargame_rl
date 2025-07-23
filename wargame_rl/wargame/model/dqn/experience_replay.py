@@ -5,25 +5,7 @@ from typing import Self
 import torch
 
 from wargame_rl.wargame.model.dqn.device import Device, get_device
-from wargame_rl.wargame.model.dqn.state import state_to_tensor_batch
-from wargame_rl.wargame.types import Experience, ExperienceBatch
-
-
-def experience_list_to_batch(experiences: list[Experience]) -> ExperienceBatch:
-    states_list = [experience.state for experience in experiences]
-    next_states_list = [experience.new_state for experience in experiences]
-    actions = [experience.action for experience in experiences]
-    rewards = [experience.reward for experience in experiences]
-    dones = [experience.done for experience in experiences]
-    tensor_states = state_to_tensor_batch(states_list)
-    tensor_next_states = state_to_tensor_batch(next_states_list)
-    return ExperienceBatch(
-        states=tensor_states,
-        actions=torch.tensor(actions, dtype=torch.int32, device=tensor_states.device),
-        rewards=torch.tensor(rewards, dtype=torch.float32, device=tensor_states.device),
-        dones=torch.tensor(dones, dtype=torch.bool, device=tensor_states.device),
-        new_states=tensor_next_states,
-    )
+from wargame_rl.wargame.types import Experience
 
 
 class ReplayBuffer:
@@ -54,7 +36,6 @@ class ReplayBuffer:
         """
         self.buffer.append(experience)
 
-    def sample(self, batch_size: int) -> ExperienceBatch:
+    def sample(self, batch_size: int) -> list[Experience]:
         indices = torch.randint(0, len(self.buffer), (batch_size,))
-        experiences = [self.buffer[idx] for idx in indices]
-        return experience_list_to_batch(experiences)
+        return [self.buffer[idx] for idx in indices]
