@@ -51,3 +51,6 @@ run-training:
 # Run the model in inference mode, rendering the environment
 run-inference:
 	uv run main.py --render
+
+run-env-test:
+	uv run main.py --env_test
