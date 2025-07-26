@@ -5,8 +5,9 @@ from pytorch_lightning.loggers import WandbLogger
 
 import wandb
 
-PROJECT_NAME = "wargame-rl"
+PROJECT_NAME = "wargame_rl"
 DEFAULT_NAME = "policy-dqn-env-v2"
+ENTITY = "wargame_rl"
 
 
 @contextmanager
@@ -22,7 +23,7 @@ def init_wandb(config: dict | None = None, name: str | None = None):
         wandb.finish()  # type: ignore
 
     try:
-        run = wandb.init(project=PROJECT_NAME, config=config, name=name)  # type: ignore
+        run = wandb.init(project=PROJECT_NAME, config=config, name=name, entity=ENTITY)  # type: ignore
 
         if run is None:
             raise RuntimeError("Failed to initialize wandb run")
