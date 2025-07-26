@@ -25,8 +25,8 @@ def test_dqn_forward(env, experiences: list[Experience], dqn_net: DQN, n_steps: 
 
 
 def test_dqn_loss(env, dqn_net: DQN, replay_buffer: ReplayBuffer):
-    model = DQNLightning(env=env, net=dqn_net)
-    batch = experience_list_to_batch(replay_buffer.sample(3))
+    model = DQNLightning(env=env, policy_net=dqn_net)
+    batch = experience_list_to_batch(replay_buffer.sample_batch(3))
     loss_initial = model.dqn_mse_loss(batch)
     assert loss_initial.shape == ()
     assert loss_initial.dtype == torch.float32
@@ -55,9 +55,11 @@ def test_dqn_loss(env, dqn_net: DQN, replay_buffer: ReplayBuffer):
 
 
 def test_dataloaders(env, dqn_net: DQN):
-    model = DQNLightning(env=env, net=dqn_net, batch_size=5)
+    model = DQNLightning(
+        env=env, policy_net=dqn_net, batch_size=5, n_samples_per_epoch=35
+    )
     dataloader = model.train_dataloader()
-    assert len(dataloader) == len(model.buffer) // 5
+    assert len(dataloader) == 35 // 5
     batch = next(iter(dataloader))
     assert batch.states.shape == (5, 4)
     assert batch.actions.shape == (5,)
@@ -67,7 +69,7 @@ def test_dataloaders(env, dqn_net: DQN):
 
 
 def test_dqn_training(env, dqn_net: DQN, replay_buffer: ReplayBuffer):
-    model = DQNLightning(env=env, net=dqn_net, log=False)
+    model = DQNLightning(env=env, policy_net=dqn_net, log=False)
 
     trainer = Trainer(
         accelerator="auto",

@@ -58,3 +58,13 @@ clean-wandb:
 	rm -rf wandb/
 
 clean: clean-checkpoints clean-wandb
+# Initiate RL model training
+run-training:
+	uv run main.py --train
+
+# Run the model in inference mode, rendering the environment
+run-inference:
+	uv run main.py --render
+
+run-env-test:
+	uv run main.py --env_test

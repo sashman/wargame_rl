@@ -1,11 +1,13 @@
-import pytest
-import gymnasium as gym
 from functools import lru_cache
-from wargame_rl.wargame.types import Experience
-from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
-from wargame_rl.wargame.model.dqn.dqn import DQN
+
+import pytest
 import torch
-from gymnasium.spaces.utils import flatten_space
+
+from wargame_rl.wargame.model.dqn.config import WargameConfig
+from wargame_rl.wargame.model.dqn.dqn import DQN
+from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
+from wargame_rl.wargame.model.dqn.factory import create_environment
+from wargame_rl.wargame.types import Experience
 
 
 @pytest.fixture
@@ -16,7 +18,8 @@ def n_steps() -> int:
 @pytest.fixture
 @lru_cache(maxsize=1)
 def env():
-    return gym.make("gymnasium_env/Wargame-v0", render_mode=None)
+    config = WargameConfig()
+    return create_environment(config, render_mode=None)
 
 
 @pytest.fixture
@@ -45,8 +48,5 @@ def replay_buffer(n_steps: int, experiences: list[Experience]) -> ReplayBuffer:
 @pytest.fixture
 @lru_cache(maxsize=1)
 def dqn_net(env) -> torch.nn.Module:
-    # Build the network
-    obs_size = flatten_space(env.observation_space).shape[0]
-    n_actions = env.action_space.n
-    net = DQN(obs_size, n_actions)
-    return net
+    dqn_net = DQN.from_env(env)
+    return dqn_net
