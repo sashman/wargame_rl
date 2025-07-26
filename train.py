@@ -1,24 +1,26 @@
+from dataclasses import asdict
+
 from pytorch_lightning import Trainer
 
+from wargame_rl.wargame.envs.env_types import WargameEnvConfig
 from wargame_rl.wargame.model.dqn.callback import get_checkpoint_callback
-from wargame_rl.wargame.model.dqn.config import DQNConfig, TrainingConfig, WargameConfig
+from wargame_rl.wargame.model.dqn.config import DQNConfig, TrainingConfig
 from wargame_rl.wargame.model.dqn.dqn import DQN
 from wargame_rl.wargame.model.dqn.factory import create_environment
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
 from wargame_rl.wargame.model.dqn.wandb import get_logger, init_wandb
 
 if __name__ == "__main__":
-    wargame_config = WargameConfig()
     dqn_config = DQNConfig()
     training_config = TrainingConfig()
 
-    env = create_environment(wargame_config, render_mode=None)
+    env = create_environment(render_mode=None)
 
     net = DQN.from_env(env)
     model = DQNLightning(env=env, policy_net=net, **dqn_config.model_dump())
 
     config = {
-        "wargame": wargame_config.model_dump(),
+        "wargame": asdict(WargameEnvConfig()),
         "dqn": dqn_config.model_dump(),
         "training": training_config.model_dump(),
     }

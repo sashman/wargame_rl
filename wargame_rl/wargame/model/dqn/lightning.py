@@ -3,14 +3,13 @@ from copy import deepcopy
 import numpy as np
 import torch
 from gymnasium import Env
-from matplotlib import pyplot as plt
 from pytorch_lightning import LightningModule
 from torch import Tensor, nn
 from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
 
-import wandb
-from wargame_rl.plotting.training import compute_policy_on_grid, plot_policy_on_grid
+# import wandb
+# from wargame_rl.plotting.training import compute_policy_on_grid, plot_policy_on_grid
 from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.dataset import RLDataset, experience_list_to_batch
 from wargame_rl.wargame.model.dqn.dqn import RL_Network
@@ -219,11 +218,11 @@ class DQNLightning(LightningModule):
     def on_train_epoch_end(self) -> None:
         if self.hparams.log:
             self.run_episodes(self.hparams.n_episodes)
-            box_agent = self.env.observation_space["agent"]
-            values_function, target_state = compute_policy_on_grid(
-                box_agent, self.policy_net
-            )
-            fig = plot_policy_on_grid(values_function, target_state)
-            wandb.log({"Value function": fig})  # type: ignore
-            plt.close(fig)
+            # box_agent = self.env.observation_space["agent"]
+            # values_function, target_state = compute_policy_on_grid(
+            #     box_agent, self.policy_net
+            # )
+            # fig = plot_policy_on_grid(values_function, target_state)
+            # wandb.log({"Value function": fig})  # type: ignore
+            # plt.close(fig)
         return super().on_train_epoch_end()

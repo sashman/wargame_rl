@@ -5,8 +5,8 @@ import numpy as np
 import torch
 
 from wargame_rl.wargame.model.dqn.dqn import RL_Network
-from wargame_rl.wargame.model.dqn.experience_replay import ExperienceV1, ReplayBuffer
-from wargame_rl.wargame.model.dqn.state import state_to_tensor_v1
+from wargame_rl.wargame.model.dqn.experience_replay import Experience, ReplayBuffer
+from wargame_rl.wargame.model.dqn.observation import observation_to_tensor
 
 
 class Agent:
@@ -21,12 +21,12 @@ class Agent:
         self.env = env
         self.replay_buffer = replay_buffer
         self.reset()
-        self.state, info = self.env.reset()
+        self.observation, info = self.env.reset()
         self.max_turns = info["max_turns"]
 
     def reset(self) -> None:
         """Resents the environment and updates the state."""
-        self.state, _ = self.env.reset()  # this is a hack for now
+        self.observation, _ = self.env.reset()  # this is a hack for now
 
     def get_action(self, policy_net: RL_Network, epsilon: float) -> int:
         """Using the given network, decide what action to carry out.
@@ -46,7 +46,7 @@ class Agent:
             action = self.env.action_space.sample()
         else:
             with torch.no_grad():
-                state = state_to_tensor_v1(self.state, policy_net.device)
+                state = observation_to_tensor(self.observation, policy_net.device)
                 q_values = policy_net(state)
                 _, action = torch.max(q_values, dim=1)
 
@@ -83,9 +83,9 @@ class Agent:
         new_state, reward, done, _, _ = self.env.step(action)
 
         if self.replay_buffer is not None and save_step:
-            exp = ExperienceV1(self.state, action, reward, done, new_state)
+            exp = Experience(self.observation, action, reward, done, new_state)
             self.replay_buffer.append(exp)
-        self.state = new_state
+        self.observation = new_state
         return reward, done
 
     def run_episode(

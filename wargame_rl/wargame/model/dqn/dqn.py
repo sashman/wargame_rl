@@ -3,7 +3,6 @@ from typing import Self
 
 import gymnasium as gym
 import torch
-from gymnasium.spaces.utils import flatten_space
 from torch import nn
 
 from wargame_rl.wargame.model.dqn.device import Device, get_device
@@ -39,7 +38,8 @@ class DQN(RL_Network):
 
     @classmethod
     def from_env(cls, env: gym.Env) -> "DQN":
-        obs_size = flatten_space(env.observation_space).shape[0]
+        observation, _ = env.reset()
+        obs_size = observation.size
         n_actions = env.action_space.n
         return cls(obs_size, n_actions)
 
