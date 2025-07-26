@@ -14,7 +14,7 @@ class DQNConfig(BaseModel):
     epsilon_max: float = 1.0
     epsilon_min: float = 0.05
     epsilon_decay: float = 0.9999
-    sync_rate: int = 32
+    sync_rate: int = 5
     n_samples_per_epoch: int = 64 * 1024
     weight_decay: float = 1e-4
     n_episodes: int = 25  # just for metrics

@@ -69,6 +69,7 @@ class DQNLightning(LightningModule):
         self.populate()
         self.loss_fn = nn.MSELoss()
         self.epsilon = epsilon_max
+        self.current_step
 
     def populate(self) -> None:
         """Carries out several random steps through the environment to initially fill up the replay buffer with
@@ -153,6 +154,7 @@ class DQNLightning(LightningModule):
             Training loss and log metrics
 
         """
+        self.current_step += 1
         # run one episode
         epsilon = self.get_epsilon(self.global_step)
         reward, steps = self.agent.run_episode(
@@ -164,7 +166,7 @@ class DQNLightning(LightningModule):
         self.log("epsilon", epsilon, prog_bar=False)
         self.log("train_loss", loss, prog_bar=True)
         self.log("steps", self.global_step, logger=False, prog_bar=True)
-        if self.global_step % self.hparams.sync_rate == 0:
+        if self.current_step % self.hparams.sync_rate == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
             self.target_net.eval()
 
