@@ -15,7 +15,7 @@ if __name__ == "__main__":
     env = create_environment(wargame_config, render_mode=None)
 
     net = DQN.from_env(env)
-    model = DQNLightning(env=env, net=net, **dqn_config.model_dump())
+    model = DQNLightning(env=env, policy_net=net, **dqn_config.model_dump())
 
     config = {
         "wargame": wargame_config.model_dump(),

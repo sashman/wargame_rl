@@ -7,16 +7,17 @@ class WargameConfig(BaseModel):
 
 
 class DQNConfig(BaseModel):
-    batch_size: int = 4
+    batch_size: int = 64
     lr: float = 1e-4
     gamma: float = 0.99
-    replay_size: int = 10000
-    eps_last_epoch: int = 20
-    eps_start: float = 1.0
-    eps_end: float = 0.05
-    n_samples_per_epoch: int = 1024
+    replay_size: int = 1000
+    epsilon_max: float = 1.0
+    epsilon_min: float = 0.05
+    epsilon_decay: float = 0.9999
+    sync_rate: int = 32
+    n_samples_per_epoch: int = 64 * 1024
     weight_decay: float = 1e-4
-    n_episodes: int = 10
+    n_episodes: int = 25  # just for metrics
 
 
 class TrainingConfig(BaseModel):

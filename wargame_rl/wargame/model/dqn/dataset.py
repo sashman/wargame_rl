@@ -43,9 +43,9 @@ class RLDataset(IterableDataset):
         self.sample_size = sample_size
 
     def __iter__(self) -> Iterator[Experience]:
-        experience_batch: list[Experience] = self.buffer.sample(self.sample_size)
-        for experience in experience_batch:
-            yield experience
+        if len(self.buffer) > 0:
+            while True:
+                yield self.buffer.sample()
 
     def __len__(self) -> int:
         return self.sample_size

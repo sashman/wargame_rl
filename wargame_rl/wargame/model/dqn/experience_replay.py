@@ -36,6 +36,16 @@ class ReplayBuffer:
         """
         self.buffer.append(experience)
 
-    def sample(self, batch_size: int) -> list[Experience]:
-        indices = torch.randint(0, len(self.buffer), (batch_size,))
+    def sample_batch(self, batch_size: int) -> list[Experience]:
+        # Sample without replacement using random permutation
+        buffer_size = len(self.buffer)
+        if batch_size > buffer_size:
+            # If batch_size exceeds buffer size, return all experiences
+            indices = torch.arange(buffer_size)
+        else:
+            # Sample without replacement
+            indices = torch.randperm(buffer_size)[:batch_size]
         return [self.buffer[idx] for idx in indices]
+
+    def sample(self) -> Experience:
+        return self.buffer[torch.randint(0, len(self.buffer), (1,))]

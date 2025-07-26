@@ -38,14 +38,16 @@ def simulate(checkpoint_path: str, num_episodes: int = 10, render: bool = True):
     agent = Agent(env)
     logging.info(f"Agent created: {agent}")
 
-    net = DQN.from_checkpoint(env, checkpoint_path)
+    policy_net = DQN.from_checkpoint(env, checkpoint_path)
     logging.info(f"Loaded model from checkpoint: {checkpoint_path}")
 
     episode_rewards = []
     episode_steps = []
 
     for episode in range(num_episodes):
-        reward, steps = agent.run_episode(net, epsilon=0.0, render=render)
+        reward, steps = agent.run_episode(
+            policy_net, epsilon=0.0, render=render, save_steps=False
+        )
         episode_rewards.append(reward)
         episode_steps.append(steps)
 

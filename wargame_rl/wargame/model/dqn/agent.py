@@ -21,15 +21,14 @@ class Agent:
         self.env = env
         self.replay_buffer = replay_buffer
         self.reset()
-        self.state, _ = (
-            self.env.reset()
-        )  # this is a hack for now. TODO: define properly the state
+        self.state, info = self.env.reset()
+        self.max_turns = info["max_turns"]
 
     def reset(self) -> None:
         """Resents the environment and updates the state."""
         self.state, _ = self.env.reset()  # this is a hack for now
 
-    def get_action(self, net: RL_Network, epsilon: float) -> int:
+    def get_action(self, policy_net: RL_Network, epsilon: float) -> int:
         """Using the given network, decide what action to carry out.
 
         Uses an epsilon-greedy policy.
@@ -46,9 +45,10 @@ class Agent:
         if np.random.random() < epsilon:
             action = self.env.action_space.sample()
         else:
-            state = state_to_tensor(self.state, net.device)
-            q_values = net(state)
-            _, action = torch.max(q_values, dim=1)
+            with torch.no_grad():
+                state = state_to_tensor(self.state, policy_net.device)
+                q_values = policy_net(state)
+                _, action = torch.max(q_values, dim=1)
 
         return action.item()
 
@@ -57,6 +57,7 @@ class Agent:
         self,
         net: RL_Network,
         epsilon: float = 0.0,
+        save_step: bool = True,
     ) -> Tuple[float, bool]:
         """Carries out a single interaction step.
 
@@ -81,15 +82,18 @@ class Agent:
         #     obs, reward, terminated, truncated, info = env.step(action)
         new_state, reward, done, _, _ = self.env.step(action)
 
-        exp = Experience(self.state, action, reward, done, new_state)
-
-        if self.replay_buffer is not None:
+        if self.replay_buffer is not None and save_step:
+            exp = Experience(self.state, action, reward, done, new_state)
             self.replay_buffer.append(exp)
         self.state = new_state
         return reward, done
 
     def run_episode(
-        self, net: RL_Network, epsilon: float = 0.0, render: bool = False
+        self,
+        net: RL_Network,
+        epsilon: float = 0.0,
+        render: bool = False,
+        save_steps: bool = True,
     ) -> tuple[float, int]:
         """Run a single episode with the trained agent.
 
@@ -97,6 +101,7 @@ class Agent:
             net: DQN model
             epsilon: value to determine likelihood of taking a random action
             render: Whether to render the environment
+            save_steps: Whether to save the steps to the replay buffer
 
         Returns:
             Total reward and number of steps taken
@@ -108,7 +113,7 @@ class Agent:
         done = False
 
         while not done:
-            reward, done = self.play_step(net, epsilon)
+            reward, done = self.play_step(net, epsilon, save_step=save_steps)
             total_reward += reward
             steps += 1
 
