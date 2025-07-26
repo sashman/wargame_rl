@@ -1,5 +1,6 @@
 from copy import deepcopy
 
+import numpy as np
 import torch
 from gymnasium import Env
 from pytorch_lightning import LightningModule
@@ -25,15 +26,13 @@ class DQNLightning(LightningModule):
         batch_size: int = 16,
         lr: float = 1e-4,
         gamma: float = 0.99,
-        sync_rate: int = 10,
-        replay_size: int = 1000,
-        warm_start_size: int = 1000,
-        eps_last_frame: int = 10000,
+        replay_size: int = 10000,
+        eps_last_epoch: int = 20,
         eps_start: float = 1.0,
         eps_end: float = 0.1,
-        episode_length: int = 1024,
-        warm_start_steps: int = 1000,
+        n_samples_per_epoch: int = 1024,
         weight_decay: float = 1e-4,
+        n_episodes: int = 10,
     ) -> None:
         """Basic DQN Model.
 
@@ -45,11 +44,10 @@ class DQNLightning(LightningModule):
             sync_rate: how many frames do we update the target network
             replay_size: capacity of the replay buffer
             warm_start_size: how many samples do we use to fill our buffer at the start of training
-            eps_last_frame: what frame should epsilon stop decaying
+            eps_last_epoch: what frame should epsilon stop decaying
             eps_start: starting value of epsilon
             eps_end: final value of epsilon
-            episode_length: max length of an episode
-            warm_start_steps: max episode reward in the environment
+            n_samples_per_epoch: number of samples per epoch
 
         """
         super().__init__()
@@ -64,10 +62,10 @@ class DQNLightning(LightningModule):
         self.agent = Agent(self.env, self.buffer)
         self.total_reward = 0
         self.episode_reward = 0
-        self.populate(self.hparams.warm_start_steps)
+        self.populate()
         self.loss_fn = nn.MSELoss()
 
-    def populate(self, steps: int = 1000) -> None:
+    def populate(self) -> None:
         """Carries out several random steps through the environment to initially fill up the replay buffer with
         experiences.
 
@@ -75,8 +73,7 @@ class DQNLightning(LightningModule):
             steps: number of random steps to populate the buffer with
 
         """
-        for _ in range(steps):
-            self.agent.play_step(self.net, epsilon=1.0)
+        self.run_episodes(self.hparams.n_episodes, epsilon=1.0)
 
     def forward(self, x: Tensor) -> Tensor:
         """Passes in a state x through the network and gets the q_values of each action as an output.
@@ -124,10 +121,10 @@ class DQNLightning(LightningModule):
 
         return self.loss_fn(state_action_values, expected_state_action_values)
 
-    def get_epsilon(self, start: int, end: int, frames: int) -> float:
-        if self.global_step > frames:
-            return end
-        return start - (self.global_step / frames) * (start - end)
+    def get_epsilon(self, epoch: int) -> float:
+        return self.hparams.eps_start - (epoch / self.hparams.eps_last_epoch) * (
+            self.hparams.eps_start - self.hparams.eps_end
+        )
 
     def training_step(self, batch: ExperienceBatch, nb_batch) -> Tensor:
         """Carries out a single step through the environment to update the replay buffer. Then calculates loss based on
@@ -141,34 +138,11 @@ class DQNLightning(LightningModule):
             Training loss and log metrics
 
         """
-        epsilon = self.get_epsilon(
-            self.hparams.eps_start, self.hparams.eps_end, self.hparams.eps_last_frame
-        )
-        self.log("epsilon", epsilon)
-
-        # step through environment with agent
-        reward, done = self.agent.play_step(self.net, epsilon)
-        self.episode_reward += reward
-        self.log("episode reward", self.episode_reward)
 
         # calculates training loss
         loss = self.dqn_mse_loss(batch)
 
-        if done:
-            self.total_reward = self.episode_reward
-            self.episode_reward = 0
-
-        # Soft update of target network
-        if self.global_step % self.hparams.sync_rate == 0:
-            self.target_net.load_state_dict(self.net.state_dict())
-
-        self.log_dict(
-            {
-                "reward": reward,
-                "train_loss": loss,
-            }
-        )
-        self.log("total_reward", self.total_reward, prog_bar=True)
+        self.log("train_loss", loss, prog_bar=True)
         self.log("steps", self.global_step, logger=False, prog_bar=True)
 
         return loss
@@ -184,7 +158,7 @@ class DQNLightning(LightningModule):
 
     def __dataloader(self) -> DataLoader:
         """Initialize the Replay Buffer dataset used for retrieving experiences."""
-        dataset = RLDataset(self.buffer, self.hparams.episode_length)
+        dataset = RLDataset(self.buffer, self.hparams.n_samples_per_epoch)
         dataloader = DataLoader(
             dataset=dataset,
             batch_size=self.hparams.batch_size,
@@ -196,7 +170,30 @@ class DQNLightning(LightningModule):
         """Get train loader."""
         return self.__dataloader()
 
+    def run_episodes(self, n_episodes: int, epsilon: float | None = None) -> None:
+        if epsilon is None:
+            epsilon = self.get_epsilon(self.current_epoch)
+            self.log("epsilon", epsilon, prog_bar=False)
+        self.target_net.load_state_dict(self.net.state_dict())
+
+        steps_s = []
+        episode_rewards = []
+        for _ in range(n_episodes):
+            reward, steps = self.agent.run_episode(
+                self.net, epsilon=epsilon, render=False
+            )
+            episode_rewards.append(reward)
+            steps_s.append(steps)
+        self.mean_episode_reward = sum(episode_rewards) / len(episode_rewards)
+        self.log("mean_episode_reward", self.mean_episode_reward, prog_bar=True)
+        self.log("mean_episode_steps", sum(steps_s) / len(steps_s), prog_bar=False)
+        self.log("max_episode_reward", max(episode_rewards), prog_bar=False)
+        self.log("min_episode_reward", min(episode_rewards), prog_bar=False)
+        success_rate = np.array(steps_s) < 40
+        self.log("success_rate %", success_rate.mean() * 100, prog_bar=True)
+
     def on_train_epoch_end(self) -> None:
+        self.run_episodes(self.hparams.n_episodes)
         box_agent = self.env.observation_space["agent"]
         values_function, target_state = compute_policy_on_grid(box_agent, self.net)
         fig = plot_policy_on_grid(values_function, target_state)

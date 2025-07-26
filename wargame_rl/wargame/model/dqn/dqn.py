@@ -19,7 +19,7 @@ class RL_Network(nn.Module, ABC):
 
 class DQN(RL_Network):
     def __init__(
-        self, state_dim, action_dim, hidden_dim=256, num_layers=2, device: Device = None
+        self, state_dim, action_dim, hidden_dim=128, num_layers=2, device: Device = None
     ):
         super(DQN, self).__init__()
 

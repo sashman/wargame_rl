@@ -9,69 +9,14 @@ Usage:
 
 import logging
 
-import gymnasium as gym
-import torch
 import typer
 
+from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.config import WargameConfig
-from wargame_rl.wargame.model.dqn.dqn import DQN, RL_Network
-from wargame_rl.wargame.model.dqn.state import state_to_tensor
+from wargame_rl.wargame.model.dqn.dqn import DQN
+from wargame_rl.wargame.model.dqn.factory import create_environment
 
 app = typer.Typer(pretty_exceptions_enable=False)
-
-
-def create_environment(render_mode: str | None = "human"):
-    """Create the Wargame environment.
-
-    Args:
-        render_mode: Rendering mode ("human" for visual, None for no rendering)
-
-    Returns:
-        Configured gymnasium environment
-    """
-    wargame_config = WargameConfig()
-    env = gym.make(
-        id=wargame_config.env_id,
-        render_mode=render_mode,
-        **wargame_config.env_make_params,
-    )
-    return env
-
-
-def run_episode(net: RL_Network, env, render: bool = True) -> tuple[float, int]:
-    """Run a single episode with the trained agent.
-
-    Args:
-        model: Trained DQN model
-        env: Environment instance
-        render: Whether to render the environment
-
-    Returns:
-        Total reward and number of steps taken
-    """
-    state, _ = env.reset()
-    total_reward = 0.0
-    steps = 0
-    done = False
-
-    while not done:
-        # Convert state to tensor for the network
-        state_tensor = state_to_tensor(state, net.device)
-
-        # Get action from the trained network (no exploration)
-        with torch.no_grad():
-            q_values = net(state_tensor)
-            action = torch.argmax(q_values, dim=1).item()
-
-        # Take action in environment
-        state, reward, done, _, info = env.step(action)
-        total_reward += reward
-        steps += 1
-
-        if render:
-            env.render()
-
-    return total_reward, steps
 
 
 def simulate(checkpoint_path: str, num_episodes: int = 10, render: bool = True):
@@ -82,12 +27,16 @@ def simulate(checkpoint_path: str, num_episodes: int = 10, render: bool = True):
         num_episodes: Number of episodes to run
         render: Whether to render the environment
     """
+    wargame_config = WargameConfig()
 
-    env = create_environment(render_mode="human" if render else None)
+    env = create_environment(wargame_config, render_mode="human" if render else None)
     logging.info(f"Environment: {env.spec.id}")
     logging.info(f"Action space: {env.action_space}")
     logging.info(f"Observation space: {env.observation_space}")
     logging.info(f"Running {num_episodes} episodes...")
+
+    agent = Agent(env)
+    logging.info(f"Agent created: {agent}")
 
     net = DQN.from_checkpoint(env, checkpoint_path)
     logging.info(f"Loaded model from checkpoint: {checkpoint_path}")
@@ -96,7 +45,7 @@ def simulate(checkpoint_path: str, num_episodes: int = 10, render: bool = True):
     episode_steps = []
 
     for episode in range(num_episodes):
-        reward, steps = run_episode(net, env, render=render)
+        reward, steps = agent.run_episode(net, epsilon=0.0, render=render)
         episode_rewards.append(reward)
         episode_steps.append(steps)
 
@@ -108,7 +57,7 @@ def simulate(checkpoint_path: str, num_episodes: int = 10, render: bool = True):
         if render:
             import time
 
-            time.sleep(1)
+            time.sleep(0.3)
 
     # Calculate and display statistics
     avg_reward = sum(episode_rewards) / len(episode_rewards)

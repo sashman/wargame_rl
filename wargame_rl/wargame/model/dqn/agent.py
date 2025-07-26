@@ -10,7 +10,7 @@ from wargame_rl.wargame.model.dqn.state import state_to_tensor
 
 
 class Agent:
-    def __init__(self, env: gym.Env, replay_buffer: ReplayBuffer) -> None:
+    def __init__(self, env: gym.Env, replay_buffer: ReplayBuffer | None = None) -> None:
         """Base Agent class handling the interaction with the environment.
 
         Args:
@@ -83,9 +83,36 @@ class Agent:
 
         exp = Experience(self.state, action, reward, done, new_state)
 
-        self.replay_buffer.append(exp)
-
+        if self.replay_buffer is not None:
+            self.replay_buffer.append(exp)
         self.state = new_state
-        if done:
-            self.reset()
         return reward, done
+
+    def run_episode(
+        self, net: RL_Network, epsilon: float = 0.0, render: bool = False
+    ) -> tuple[float, int]:
+        """Run a single episode with the trained agent.
+
+        Args:
+            net: DQN model
+            epsilon: value to determine likelihood of taking a random action
+            render: Whether to render the environment
+
+        Returns:
+            Total reward and number of steps taken
+        """
+
+        self.reset()
+        total_reward = 0.0
+        steps = 0
+        done = False
+
+        while not done:
+            reward, done = self.play_step(net, epsilon)
+            total_reward += reward
+            steps += 1
+
+            if render:
+                self.env.render()
+
+        return total_reward, steps

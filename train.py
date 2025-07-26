@@ -1,9 +1,9 @@
-import gymnasium as gym
 from pytorch_lightning import Trainer
 
 from wargame_rl.wargame.model.dqn.callback import get_checkpoint_callback
 from wargame_rl.wargame.model.dqn.config import DQNConfig, TrainingConfig, WargameConfig
 from wargame_rl.wargame.model.dqn.dqn import DQN
+from wargame_rl.wargame.model.dqn.factory import create_environment
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
 from wargame_rl.wargame.model.dqn.wandb import get_logger, init_wandb
 
@@ -12,10 +12,7 @@ if __name__ == "__main__":
     dqn_config = DQNConfig()
     training_config = TrainingConfig()
 
-    assert wargame_config.env_id == "gymnasium_env/Wargame-v0"
-    env = gym.make(
-        id=wargame_config.env_id, render_mode=None, **wargame_config.env_make_params
-    )
+    env = create_environment(wargame_config, render_mode=None)
 
     net = DQN.from_env(env)
     model = DQNLightning(env=env, net=net, **dqn_config.model_dump())
