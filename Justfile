@@ -50,3 +50,11 @@ train:
 
 simulate checkpoint:
 	uv run simulate.py --checkpoint-path {{checkpoint}}
+
+clean-checkpoints:
+	rm -rf checkpoints/
+
+clean-wandb:
+	rm -rf wandb/
+
+clean: clean-checkpoints clean-wandb

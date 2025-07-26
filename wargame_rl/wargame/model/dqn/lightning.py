@@ -130,13 +130,7 @@ class DQNLightning(LightningModule):
 
         return self.loss_fn(state_action_values, expected_state_action_values)
 
-    def get_epsilon(self, step: int) -> float:
-        #     return max(
-        #         self.hparams.eps_start
-        #         - (step / self.hparams.eps_last_frame)
-        #         * (self.hparams.eps_start - self.hparams.eps_end),
-        #         self.hparams.eps_end,
-        #     )
+    def get_epsilon(self) -> float:
         self.epsilon = max(
             self.epsilon * self.hparams.epsilon_decay, self.hparams.epsilon_min
         )
@@ -156,7 +150,7 @@ class DQNLightning(LightningModule):
         """
         self.optimization_steps += 1
         # run one episode
-        epsilon = self.get_epsilon(self.global_step)
+        epsilon = self.get_epsilon()
         reward, n_steps = self.agent.run_episode(
             self.policy_net, epsilon=epsilon, render=False, save_steps=True
         )
@@ -194,6 +188,7 @@ class DQNLightning(LightningModule):
             dataset=dataset,
             batch_size=self.hparams.batch_size,
             collate_fn=experience_list_to_batch,
+            num_workers=0,
         )
         return dataloader
 
@@ -218,7 +213,7 @@ class DQNLightning(LightningModule):
         self.log("max_episode_reward", max(episode_rewards), prog_bar=False)
         self.log("min_episode_reward", min(episode_rewards), prog_bar=False)
         success_rate = np.array(steps_s) < self.agent.max_turns
-        self.log("success_rate %", success_rate.mean() * 100, prog_bar=False)
+        self.log("success_rate", success_rate.mean() * 100, prog_bar=False)
         self.policy_net.train()
 
     def on_train_epoch_end(self) -> None:

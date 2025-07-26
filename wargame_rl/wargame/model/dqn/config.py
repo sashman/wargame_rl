@@ -8,7 +8,7 @@ class WargameConfig(BaseModel):
 
 class DQNConfig(BaseModel):
     batch_size: int = 64
-    lr: float = 1e-2
+    lr: float = 2e-3
     gamma: float = 0.99
     replay_size: int = 1000
     epsilon_max: float = 1.0
