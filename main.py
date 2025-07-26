@@ -3,8 +3,6 @@ import sys
 
 import loguru
 
-from wargame_rl.wargame.model.dqn.agent import Agent
-
 
 def environment_test():
     from wargame_rl.wargame.envs.env_test import EnvTest
@@ -50,14 +48,6 @@ def main():
         logger.info("Running environment test...")
         environment_test()
         return
-
-    agent = Agent(
-        hyperparameter_set="wargame",
-    )
-    logger.info(
-        f"Starting {'training' if args.train else 'inference'} with rendering set to {args.render}."
-    )
-    agent.run(is_training=args.train, render=args.render)
 
 
 if __name__ == "__main__":

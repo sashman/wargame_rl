@@ -5,18 +5,10 @@ from wargame_rl.wargame.model.dqn.dataset import experience_list_to_batch
 from wargame_rl.wargame.model.dqn.dqn import DQN
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
-from wargame_rl.wargame.model.dqn.state import state_to_tensor, state_to_tensor_batch
-from wargame_rl.wargame.types import Experience
+from wargame_rl.wargame.types import ExperienceV1
 
 
-def test_state_to_tensor(experiences):
-    states = [experience.state for experience in experiences]
-    state_batch = state_to_tensor_batch(states)
-    state_batch_2 = torch.cat([state_to_tensor(state) for state in states], dim=0)
-    assert torch.allclose(state_batch, state_batch_2)
-
-
-def test_dqn_forward(env, experiences: list[Experience], dqn_net: DQN, n_steps: int):
+def test_dqn_forward(env, experiences: list[ExperienceV1], dqn_net: DQN, n_steps: int):
     batch = experience_list_to_batch(experiences)
     n_actions = env.action_space.n
     next_q_values = dqn_net.forward(batch.states)

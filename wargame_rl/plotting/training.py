@@ -5,8 +5,8 @@ import torch
 from gymnasium import spaces
 from torch import nn
 
-from wargame_rl.wargame.model.dqn.state import state_to_tensor
-from wargame_rl.wargame.types import State
+from wargame_rl.wargame.model.dqn.state import state_to_tensor_v1
+from wargame_rl.wargame.types import StateV1
 
 # 'Agg': used to generate plots as images and save them to a file instead of rendering to screen
 matplotlib.use("Agg")
@@ -28,8 +28,8 @@ def compute_policy_on_grid(
         for x in range(x_min, x_max + 1):
             for y in range(y_min, y_max + 1):
                 agent_state = np.array([x, y])
-                state = State(agent=agent_state, target=target_state)
-                tensor_state = state_to_tensor(state)
+                state = StateV1(agent=agent_state, target=target_state)
+                tensor_state = state_to_tensor_v1(state)
                 values_function[x, y] = policy_dqn(tensor_state).max()
 
     return values_function, target_state

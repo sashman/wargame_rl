@@ -5,8 +5,8 @@ import numpy as np
 import torch
 
 from wargame_rl.wargame.model.dqn.dqn import RL_Network
-from wargame_rl.wargame.model.dqn.experience_replay import Experience, ReplayBuffer
-from wargame_rl.wargame.model.dqn.state import state_to_tensor
+from wargame_rl.wargame.model.dqn.experience_replay import ExperienceV1, ReplayBuffer
+from wargame_rl.wargame.model.dqn.state import state_to_tensor_v1
 
 
 class Agent:
@@ -46,7 +46,7 @@ class Agent:
             action = self.env.action_space.sample()
         else:
             with torch.no_grad():
-                state = state_to_tensor(self.state, policy_net.device)
+                state = state_to_tensor_v1(self.state, policy_net.device)
                 q_values = policy_net(state)
                 _, action = torch.max(q_values, dim=1)
 
@@ -83,7 +83,7 @@ class Agent:
         new_state, reward, done, _, _ = self.env.step(action)
 
         if self.replay_buffer is not None and save_step:
-            exp = Experience(self.state, action, reward, done, new_state)
+            exp = ExperienceV1(self.state, action, reward, done, new_state)
             self.replay_buffer.append(exp)
         self.state = new_state
         return reward, done

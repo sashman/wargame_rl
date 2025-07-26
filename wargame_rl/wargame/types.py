@@ -3,20 +3,30 @@ from typing import NamedTuple, TypedDict
 import numpy as np
 import torch
 
+from wargame_rl.wargame.envs.env_types import WargameEnvObservation
 
-class State(TypedDict):
+
+class StateV1(TypedDict):
     agent: np.ndarray
     target: np.ndarray
 
 
-class Experience(NamedTuple):
+class ExperienceV1(NamedTuple):
     """Experience tuple with typed fields."""
 
-    state: State
+    state: StateV1
     action: int
     reward: float
     done: bool
-    new_state: State
+    new_state: StateV1
+
+
+class ExperienceV2(NamedTuple):
+    state: WargameEnvObservation
+    action: int
+    reward: float
+    done: bool
+    new_state: WargameEnvObservation
 
 
 class ExperienceBatch(NamedTuple):

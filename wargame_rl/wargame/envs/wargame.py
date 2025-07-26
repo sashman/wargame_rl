@@ -1,4 +1,3 @@
-from abc import abstractmethod
 from enum import Enum
 
 import gymnasium as gym
@@ -34,7 +33,6 @@ class WargameModel:
 
 
 class WargameModelSpace:
-    @abstractmethod
     @staticmethod
     def to_space(size: int):
         location_space = spaces.Box(0, size - 1, shape=(2,), dtype=int)
@@ -62,7 +60,6 @@ class WargameObjective:
 
 
 class WargameObjectiveSpace:
-    @abstractmethod
     @staticmethod
     def to_space(size: int):
         return spaces.Dict({"location": spaces.Box(0, size - 1, shape=(2,), dtype=int)})

@@ -1,11 +1,10 @@
 import gymnasium as gym
 
-from wargame_rl.wargame.model.dqn.config import WargameConfig
+from wargame_rl.wargame.envs.env_types import WargameEnvConfig
+from wargame_rl.wargame.envs.wargame import WargameEnv
 
 
-def create_environment(
-    wargame_config: WargameConfig, render_mode: str | None = "human"
-) -> gym.Env:
+def create_environment(render_mode: str | None = "human") -> gym.Env:
     """Create the Wargame environment.
 
     Args:
@@ -14,9 +13,8 @@ def create_environment(
     Returns:
         Configured gymnasium environment
     """
-    env = gym.make(
-        id=wargame_config.env_id,
-        render_mode=render_mode,
-        **wargame_config.env_make_params,
-    )
+    wargame_config = WargameEnvConfig(render_mode=render_mode)
+    env = WargameEnv(wargame_config)
+    env.reset()
+
     return env

@@ -1,11 +1,6 @@
 from pydantic import BaseModel
 
 
-class WargameConfig(BaseModel):
-    env_id: str = "gymnasium_env/Wargame-v0"
-    env_make_params: dict = {"size": 50}
-
-
 class DQNConfig(BaseModel):
     batch_size: int = 64
     lr: float = 2e-3

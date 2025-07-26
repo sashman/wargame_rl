@@ -6,7 +6,7 @@ from pytorch_lightning.loggers import WandbLogger
 import wandb
 
 PROJECT_NAME = "wargame-rl"
-DEFAULT_NAME = "policy-dqn"
+DEFAULT_NAME = "policy-dqn-env-v2"
 
 
 @contextmanager

@@ -1,14 +1,15 @@
-from typing import NamedTuple, TypedDict
+from dataclasses import dataclass
 
 import numpy as np
 
 
-class WargameEnvConfig(NamedTuple):
+@dataclass
+class WargameEnvConfig:
     """
     Configuration for the Wargame environment.
     """
 
-    number_of_wargame_models: int = 20  # Number of wargame models in the environment
+    number_of_wargame_models: int = 3  # Number of wargame models in the environment
     size: int = 50  # Size of the square grid
     render_mode: str | None = "human"  # Rendering mode for the environment
     deployment_zone: tuple[int, int, int, int] = (
@@ -19,23 +20,34 @@ class WargameEnvConfig(NamedTuple):
     )  # Deployment zone coordinates
 
 
-class WargameModelObservation(TypedDict):
+@dataclass
+class WargameModelObservation:
     """
     Observation structure for a Wargame model.
     """
 
     location: np.ndarray  # Location of the wargame model in the grid
 
+    @property
+    def size(self) -> int:
+        return self.location.size
 
-class WargameEnvObjectiveObservation(TypedDict):
+
+@dataclass
+class WargameEnvObjectiveObservation:
     """
     Observation structure for a Wargame objective.
     """
 
     location: np.ndarray  # Location of the objective in the grid
 
+    @property
+    def size(self) -> int:
+        return self.location.size
 
-class WargameEnvObservation(TypedDict):
+
+@dataclass
+class WargameEnvObservation:
     """
     Observation structure for the Wargame environment.
     """
@@ -44,8 +56,16 @@ class WargameEnvObservation(TypedDict):
     wargame_models: list[WargameModelObservation]
     objectives: list[WargameEnvObjectiveObservation]
 
+    @property
+    def size(self) -> int:
+        size_wargame_models = sum(model.size for model in self.wargame_models)
+        size_objectives = sum(objective.size for objective in self.objectives)
+        total_size = size_wargame_models + size_objectives + 1
+        return total_size
 
-class WargameEnvInfo(TypedDict):
+
+@dataclass
+class WargameEnvInfo:
     """
     Info structure for the Wargame environment.
     """
@@ -56,7 +76,8 @@ class WargameEnvInfo(TypedDict):
     deployment_zone: tuple[int, int, int, int]
 
 
-class WargameEnvAction(TypedDict):
+@dataclass
+class WargameEnvAction:
     """
     Action structure for the Wargame environment.
 

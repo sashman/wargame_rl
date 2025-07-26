@@ -5,7 +5,7 @@ from typing import Self
 import torch
 
 from wargame_rl.wargame.model.dqn.device import Device, get_device
-from wargame_rl.wargame.types import Experience
+from wargame_rl.wargame.types import ExperienceV1
 
 
 class ReplayBuffer:
@@ -17,7 +17,7 @@ class ReplayBuffer:
     """
 
     def __init__(self, capacity: int, device: Device = None) -> None:
-        self.buffer: deque[Experience] = deque(maxlen=capacity)
+        self.buffer: deque[ExperienceV1] = deque(maxlen=capacity)
         self.device = get_device(device)
 
     def to(self, device: Device) -> Self:
@@ -27,7 +27,7 @@ class ReplayBuffer:
     def __len__(self) -> int:
         return len(self.buffer)
 
-    def append(self, experience: Experience) -> None:
+    def append(self, experience: ExperienceV1) -> None:
         """Add experience to the buffer.
 
         Args:
@@ -36,7 +36,7 @@ class ReplayBuffer:
         """
         self.buffer.append(experience)
 
-    def sample_batch(self, batch_size: int) -> list[Experience]:
+    def sample_batch(self, batch_size: int) -> list[ExperienceV1]:
         # Sample without replacement using random permutation
         buffer_size = len(self.buffer)
         if batch_size > buffer_size:
@@ -47,5 +47,5 @@ class ReplayBuffer:
             indices = torch.randperm(buffer_size)[:batch_size]
         return [self.buffer[idx] for idx in indices]
 
-    def sample(self) -> Experience:
+    def sample(self) -> ExperienceV1:
         return self.buffer[torch.randint(0, len(self.buffer), (1,))]
