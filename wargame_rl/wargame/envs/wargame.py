@@ -1,10 +1,18 @@
-from abc import abstractmethod
 from enum import Enum
+
 import gymnasium as gym
-from gymnasium import spaces
-import pygame
 import numpy as np
-from wargame_rl.wargame.envs.env_types import WargameEnvAction, WargameEnvConfig, WargameEnvInfo, WargameEnvObjectiveObservation, WargameEnvObservation, WargameModelObservation
+import pygame
+from gymnasium import spaces
+
+from wargame_rl.wargame.envs.env_types import (
+    WargameEnvAction,
+    WargameEnvConfig,
+    WargameEnvInfo,
+    WargameEnvObjectiveObservation,
+    WargameEnvObservation,
+    WargameModelObservation,
+)
 
 
 class MovementPhaseActions(Enum):
@@ -13,18 +21,21 @@ class MovementPhaseActions(Enum):
     left = 2
     down = 3
 
+
 class WargameModel:
     def __init__(self, location, stats):
         self.location = location  # Should be a numpy array of shape (2,)
-        self.stats = stats  # Should be a dictionary with keys 'max_wounds' and 'current_wounds'
+        self.stats = (
+            stats  # Should be a dictionary with keys 'max_wounds' and 'current_wounds'
+        )
 
     def __repr__(self):
         return f"WargameModel(location={self.location}, stats={self.stats})"
 
+
 class WargameModelSpace:
-    
-    @abstractmethod
-    def to_space(size):
+    @staticmethod
+    def to_space(size: int):
         location_space = spaces.Box(0, size - 1, shape=(2,), dtype=int)
         stats_space = spaces.Dict(
             {
@@ -32,14 +43,15 @@ class WargameModelSpace:
                 "current_wounds": spaces.Box(0, 100, shape=(1,), dtype=int),
             }
         )
-        
+
         return spaces.Dict(
             {
                 "location": location_space,
                 "stats": stats_space,
             }
         )
-        
+
+
 class WargameObjective:
     def __init__(self, location):
         self.location = location  # Should be a numpy array of shape (2,)
@@ -47,14 +59,12 @@ class WargameObjective:
     def __repr__(self):
         return f"WargameObjective(location={self.location})"
 
+
 class WargameObjectiveSpace:
-    @abstractmethod
-    def to_space(size):
-        return spaces.Dict(
-            {
-                "location": spaces.Box(0, size - 1, shape=(2,), dtype=int)
-            }
-        )
+    @staticmethod
+    def to_space(size: int):
+        return spaces.Dict({"location": spaces.Box(0, size - 1, shape=(2,), dtype=int)})
+
 
 class WargameEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 5}
@@ -62,14 +72,19 @@ class WargameEnv(gym.Env):
     def __init__(self, config: WargameEnvConfig):
         self.size = config.size  # The size of the square grid
         self.window_size = 1024  # The size of the PyGame window
-        
+
         self.observation_space = spaces.Dict(
             {
                 "current_turn": spaces.Discrete(1),
                 "wargame_models": spaces.Tuple(
-                    [WargameModelSpace.to_space(size=self.size) for _ in range(config.number_of_wargame_models)]
+                    [
+                        WargameModelSpace.to_space(size=self.size)
+                        for _ in range(config.number_of_wargame_models)
+                    ]
                 ),
-                "objectives": spaces.Sequence(WargameObjectiveSpace.to_space(size=self.size)),
+                "objectives": spaces.Sequence(
+                    WargameObjectiveSpace.to_space(size=self.size)
+                ),
             }
         )
 
@@ -79,7 +94,7 @@ class WargameEnv(gym.Env):
         )
 
         """
-        The following dictionary maps abstract actions from `self.action_space` to 
+        The following dictionary maps abstract actions from `self.action_space` to
         the direction we will walk in if that action is taken.
         i.e. 0 corresponds to "right", 1 to "up" etc.
         """
@@ -90,7 +105,10 @@ class WargameEnv(gym.Env):
             MovementPhaseActions.down.value: np.array([0, -1]),
         }
 
-        assert config.render_mode is None or config.render_mode in self.metadata["render_modes"]
+        assert (
+            config.render_mode is None
+            or config.render_mode in self.metadata["render_modes"]  # type: ignore
+        )
         self.render_mode = config.render_mode
 
         """
@@ -102,13 +120,17 @@ class WargameEnv(gym.Env):
         """
         self.window = None
         self.clock = None
-        
+
         self.current_turn = 0  # Initialize the current turn to 0
-        self.max_turns = 100  # Set the maximum number of turns
-        
+
+        self.max_turns = self.size * 2  # Set the maximum number of turns
+
         # List to hold wargame models for each number_of_wargame_models
         self.wargame_models = [
-            WargameModel(location=np.zeros(2, dtype=int), stats={"max_wounds": 100, "current_wounds": 100})
+            WargameModel(
+                location=np.zeros(2, dtype=int),
+                stats={"max_wounds": 100, "current_wounds": 100},
+            )
             for _ in range(config.number_of_wargame_models)
         ]
 
@@ -124,29 +146,43 @@ class WargameEnv(gym.Env):
     def _get_obs(self) -> WargameEnvObservation:
         """Get the observation for the current state of the environment."""
         # Get the locations of the wargame models and objectives
-        wargame_models = [WargameModelObservation(location=model.location) for model in self.wargame_models]
-        objectives = [WargameEnvObjectiveObservation(location=objective.location) for objective in self.objectives]
+        wargame_models = [
+            WargameModelObservation(location=model.location)
+            for model in self.wargame_models
+        ]
+        objectives = [
+            WargameEnvObjectiveObservation(location=objective.location)
+            for objective in self.objectives
+        ]
         # Create the observation dictionary
         return WargameEnvObservation(
             current_turn=self.current_turn,
             wargame_models=wargame_models,
-            objectives=objectives
+            objectives=objectives,
         )
-        
+
     def _get_info(self):
         # for each wargame model, we will return its location and stats
-        
-        wargame_models = [WargameModelObservation(location=model.location) for model in self.wargame_models]
-        objectives = [WargameEnvObjectiveObservation(location=objective.location) for objective in self.objectives]
+
+        wargame_models = [
+            WargameModelObservation(location=model.location)
+            for model in self.wargame_models
+        ]
+        objectives = [
+            WargameEnvObjectiveObservation(location=objective.location)
+            for objective in self.objectives
+        ]
         # Create the observation dictionary
         return WargameEnvInfo(
             current_turn=self.current_turn,
             wargame_models=wargame_models,
             objectives=objectives,
-            deployment_zone=self.deployment_zone.tolist()
+            deployment_zone=self.deployment_zone.tolist(),
         )
 
-    def reset(self, seed=None, options=None) -> tuple[WargameEnvObservation, WargameEnvInfo]:
+    def reset(
+        self, seed=None, options=None
+    ) -> tuple[WargameEnvObservation, WargameEnvInfo]:
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
@@ -159,7 +195,7 @@ class WargameEnv(gym.Env):
                 self.deployment_zone[0], self.deployment_zone[2], size=2, dtype=int
             )
             model.stats["current_wounds"] = model.stats["max_wounds"]
-            
+
         # For each objective, we will randomly choose a location outside the deployment zone
         for objective in self.objectives:
             objective.location = self.np_random.integers(
@@ -171,51 +207,58 @@ class WargameEnv(gym.Env):
 
         if self.render_mode == "human":
             self._render_frame()
-            
+
         return observation, info
-    
+
     def _calculate_reward(self):
         """Calculate the reward based on the average negative normalized distance of all wargame models to the closest objectives."""
         total_distance = 0
         for model in self.wargame_models:
-            closest_objective = min(self.objectives, key=lambda obj: np.linalg.norm(model.location - obj.location, ord=2))
-            distance = np.linalg.norm(model.location - closest_objective.location, ord=2)
+            closest_objective = min(
+                self.objectives,
+                key=lambda obj: np.linalg.norm(model.location - obj.location, ord=2),
+            )
+            distance = np.linalg.norm(
+                model.location - closest_objective.location, ord=2
+            )
             normalized_distance = distance / (np.sqrt(2) * self.size)
             total_distance += normalized_distance
 
         average_distance = total_distance / len(self.wargame_models)
         return -average_distance
-    
 
-    def step(self, action: WargameEnvAction) -> tuple[WargameEnvObservation, float, bool, bool, WargameEnvInfo]:
-
+    def step(
+        self, action: WargameEnvAction
+    ) -> tuple[WargameEnvObservation, float, bool, bool, WargameEnvInfo]:
         terminated = [False] * len(self.wargame_models)
 
         # for each element in the action tuple, we will move the corresponding wargame model
-        for i, act in enumerate(action):
+        for i, act in enumerate(action.actions):
             # Ensure the action is within the action space
             if not self.action_space[i].contains(act):
-                raise ValueError(f"Action {act} for wargame model {i} is out of bounds.")
-            
+                raise ValueError(
+                    f"Action {act} for wargame model {i} is out of bounds."
+                )
+
             # Get the wargame model to move
             model = self.wargame_models[i]
             # Map the action (element of {0,1,2,3}) to the direction we walk in
             direction = self._action_to_direction[act]
             # We use `np.clip` to make sure we don't leave the grid
-            model.location = np.clip(
-                model.location + direction, 0, self.size - 1
-            )
-            
+            model.location = np.clip(model.location + direction, 0, self.size - 1)
+
         # After moving all wargame models, we can check if any of them has reached its objective
         for i, model in enumerate(self.wargame_models):
             # Check if the model has reached its objective
             if np.array_equal(model.location, self.objectives[i].location):
                 terminated[i] = True
-                
-        terminated = all(terminated)  # If all models are terminated, the episode is done
-        
+
+        is_terminated = all(
+            terminated
+        )  # If all models are terminated, the episode is done
+
         reward = self._calculate_reward()
-        
+
         # reward = 1 if terminated else 0  # Binary sparse rewards
         observation = self._get_obs()
         info = self._get_info()
@@ -225,9 +268,9 @@ class WargameEnv(gym.Env):
 
         self.current_turn += 1  # Increment the current turn
         if self.current_turn >= self.max_turns:
-            terminated = True
-            
-        return observation, reward, terminated, False, info
+            is_terminated = True
+
+        return observation, reward, is_terminated, False, info
 
     def render(self):
         if self.render_mode == "rgb_array":
@@ -249,7 +292,7 @@ class WargameEnv(gym.Env):
 
         # First we draw the target
         self._draw_target(canvas, pix_square_size)
-        
+
         # Now we draw the agent
         self._draw_agent(canvas, pix_square_size)
 

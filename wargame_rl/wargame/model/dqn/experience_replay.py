@@ -1,19 +1,51 @@
 # Define memory for Experience Replay
 from collections import deque
-import random
-class ReplayMemory():
-    def __init__(self, maxlen, seed=None):
-        self.memory = deque([], maxlen=maxlen)
+from typing import Self
 
-        # Optional seed for reproducibility
-        if seed is not None:
-            random.seed(seed)
+import torch
 
-    def append(self, transition):
-        self.memory.append(transition)
+from wargame_rl.wargame.model.dqn.device import Device, get_device
+from wargame_rl.wargame.types import Experience
 
-    def sample(self, sample_size):
-        return random.sample(self.memory, sample_size)
 
-    def __len__(self):
-        return len(self.memory)
+class ReplayBuffer:
+    """Replay Buffer for storing past experiences allowing the agent to learn from them.
+
+    Args:
+        capacity: size of the buffer
+
+    """
+
+    def __init__(self, capacity: int, device: Device = None) -> None:
+        self.buffer: deque[Experience] = deque(maxlen=capacity)
+        self.device = get_device(device)
+
+    def to(self, device: Device) -> Self:
+        self.device = get_device(device)
+        return self
+
+    def __len__(self) -> int:
+        return len(self.buffer)
+
+    def append(self, experience: Experience) -> None:
+        """Add experience to the buffer.
+
+        Args:
+            experience: tuple (state, action, reward, done, new_state)
+
+        """
+        self.buffer.append(experience)
+
+    def sample_batch(self, batch_size: int) -> list[Experience]:
+        # Sample without replacement using random permutation
+        buffer_size = len(self.buffer)
+        if batch_size > buffer_size:
+            # If batch_size exceeds buffer size, return all experiences
+            indices = torch.arange(buffer_size)
+        else:
+            # Sample without replacement
+            indices = torch.randperm(buffer_size)[:batch_size]
+        return [self.buffer[idx] for idx in indices]
+
+    def sample(self) -> Experience:
+        return self.buffer[torch.randint(0, len(self.buffer), (1,))]

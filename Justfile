@@ -44,13 +44,20 @@ validate: format lint test
 dockerize:
 	docker build -t warghame-rl .
 
-# Initiate RL model training
-run-training:
-	uv run main.py --train
+# Use it like: just run 10
+train:
+	uv run train.py
 
-# Run the model in inference mode, rendering the environment
-run-inference:
-	uv run main.py --render
+simulate checkpoint:
+	uv run simulate.py --checkpoint-path {{checkpoint}}
 
-run-env-test:
+clean-checkpoints:
+	rm -rf checkpoints/
+
+clean-wandb:
+	rm -rf wandb/
+
+clean: clean-checkpoints clean-wandb
+
+test-env:
 	uv run main.py --env_test

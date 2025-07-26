@@ -289,3 +289,10 @@ pip-selfcheck.json
 uv.lock
 
 runs/
+logs/
+lightning_logs/
+checkpoints/
+wandb/
+
+# Nate's notebook
+train.ipynb

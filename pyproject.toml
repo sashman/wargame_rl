@@ -15,7 +15,11 @@ dependencies = [
     "tqdm",
     "plotly==5.24.1",
     "pandas",
-    "matplotlib"
+    "matplotlib",
+    "jupyter>=1.1.1",
+    "wandb>=0.21.0",
+    "pytorch-lightning>=2.5.2",
+    "typer>=0.16.0",
 ]
 
 [dependency-groups]

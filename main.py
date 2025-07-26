@@ -1,8 +1,8 @@
 import argparse
 import sys
+
 import loguru
 
-from wargame_rl.wargame.model.dqn.agent import Agent
 
 def environment_test():
     from wargame_rl.wargame.envs.env_test import EnvTest
@@ -12,6 +12,7 @@ def environment_test():
 
     # Run 100 random actions in the environment
     env_test.run_actions(num_actions=100)
+
 
 def main():
     logger = loguru.logger
@@ -23,24 +24,31 @@ def main():
     )
 
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument("--train", type=bool, action=argparse.BooleanOptionalAction, help="Run training if True, otherwise run inference.")
-    arg_parser.add_argument("--render", type=bool, action=argparse.BooleanOptionalAction, help="Render the environment if True.")
-    arg_parser.add_argument("--env_test", type=bool, action=argparse.BooleanOptionalAction, help="Run a test environment if True.")
+    arg_parser.add_argument(
+        "--train",
+        type=bool,
+        action=argparse.BooleanOptionalAction,
+        help="Run training if True, otherwise run inference.",
+    )
+    arg_parser.add_argument(
+        "--render",
+        type=bool,
+        action=argparse.BooleanOptionalAction,
+        help="Render the environment if True.",
+    )
+    arg_parser.add_argument(
+        "--env_test",
+        type=bool,
+        action=argparse.BooleanOptionalAction,
+        help="Run a test environment if True.",
+    )
     args = arg_parser.parse_args()
-    
+
     if args.env_test:
         logger.info("Running environment test...")
         environment_test()
         return
 
-    agent = Agent(
-        hyperparameter_set="wargame",
-    )
-    logger.info(f"Starting {'training' if args.train else 'inference'} with rendering set to {args.render}.")
-    agent.run(
-        is_training=args.train,
-        render=args.render
-    )
 
 if __name__ == "__main__":
     main()
