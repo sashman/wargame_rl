@@ -69,7 +69,7 @@ class DQNLightning(LightningModule):
         self.populate()
         self.loss_fn = nn.MSELoss()
         self.epsilon = epsilon_max
-        self.current_step
+        self.optimization_steps = 0
 
     def populate(self) -> None:
         """Carries out several random steps through the environment to initially fill up the replay buffer with
@@ -154,19 +154,25 @@ class DQNLightning(LightningModule):
             Training loss and log metrics
 
         """
-        self.current_step += 1
+        self.optimization_steps += 1
         # run one episode
         epsilon = self.get_epsilon(self.global_step)
-        reward, steps = self.agent.run_episode(
+        reward, n_steps = self.agent.run_episode(
             self.policy_net, epsilon=epsilon, render=False, save_steps=True
         )
-        self.log("reward", reward, prog_bar=True)
+        mean_reward = reward / n_steps
         # calculates training loss
         loss = self.dqn_mse_loss(batch)
+        self.log(
+            "optimization_step", self.optimization_steps, logger=False, prog_bar=True
+        )
+        self.log("n_steps", n_steps, prog_bar=False)
+        self.log("reward", reward, prog_bar=False)
+        self.log("mean_reward", mean_reward, prog_bar=True)
         self.log("epsilon", epsilon, prog_bar=False)
         self.log("train_loss", loss, prog_bar=True)
-        self.log("steps", self.global_step, logger=False, prog_bar=True)
-        if self.current_step % self.hparams.sync_rate == 0:
+        self.log("env_steps", self.global_step, logger=False, prog_bar=True)
+        if self.optimization_steps % self.hparams.sync_rate == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
             self.target_net.eval()
 
@@ -207,18 +213,18 @@ class DQNLightning(LightningModule):
                 episode_rewards.append(reward)
                 steps_s.append(steps)
         self.mean_episode_reward = sum(episode_rewards) / len(episode_rewards)
-        self.log("mean_episode_reward", self.mean_episode_reward, prog_bar=True)
+        self.log("mean_episode_reward", self.mean_episode_reward, prog_bar=False)
         self.log("mean_episode_steps", sum(steps_s) / len(steps_s), prog_bar=False)
         self.log("max_episode_reward", max(episode_rewards), prog_bar=False)
         self.log("min_episode_reward", min(episode_rewards), prog_bar=False)
         success_rate = np.array(steps_s) < self.agent.max_turns
-        self.log("success_rate %", success_rate.mean() * 100, prog_bar=True)
+        self.log("success_rate %", success_rate.mean() * 100, prog_bar=False)
         self.policy_net.train()
 
     def on_train_epoch_end(self) -> None:
-        # self.run_episodes(self.hparams.n_episodes)
-        box_agent = self.env.observation_space["agent"]
         if self.hparams.log:
+            self.run_episodes(self.hparams.n_episodes)
+            box_agent = self.env.observation_space["agent"]
             values_function, target_state = compute_policy_on_grid(
                 box_agent, self.policy_net
             )

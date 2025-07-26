@@ -3,21 +3,21 @@ from pydantic import BaseModel
 
 class WargameConfig(BaseModel):
     env_id: str = "gymnasium_env/Wargame-v0"
-    env_make_params: dict = {"size": 20}
+    env_make_params: dict = {"size": 50}
 
 
 class DQNConfig(BaseModel):
     batch_size: int = 64
-    lr: float = 1e-4
+    lr: float = 1e-2
     gamma: float = 0.99
     replay_size: int = 1000
     epsilon_max: float = 1.0
     epsilon_min: float = 0.05
-    epsilon_decay: float = 0.9999
+    epsilon_decay: float = 0.999
     sync_rate: int = 5
-    n_samples_per_epoch: int = 64 * 1024
-    weight_decay: float = 1e-4
-    n_episodes: int = 25  # just for metrics
+    n_samples_per_epoch: int = 8 * 1024
+    weight_decay: float = 1e-5
+    n_episodes: int = 20  # just for metrics
 
 
 class TrainingConfig(BaseModel):
