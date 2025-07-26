@@ -122,8 +122,11 @@ class DQNLightning(LightningModule):
         return self.loss_fn(state_action_values, expected_state_action_values)
 
     def get_epsilon(self, epoch: int) -> float:
-        return self.hparams.eps_start - (epoch / self.hparams.eps_last_epoch) * (
-            self.hparams.eps_start - self.hparams.eps_end
+        return max(
+            self.hparams.eps_start
+            - (epoch / self.hparams.eps_last_epoch)
+            * (self.hparams.eps_start - self.hparams.eps_end),
+            self.hparams.eps_end,
         )
 
     def training_step(self, batch: ExperienceBatch, nb_batch) -> Tensor:
@@ -141,7 +144,7 @@ class DQNLightning(LightningModule):
 
         # calculates training loss
         loss = self.dqn_mse_loss(batch)
-
+        self.log("epsilon", self.get_epsilon(self.current_epoch), prog_bar=False)
         self.log("train_loss", loss, prog_bar=True)
         self.log("steps", self.global_step, logger=False, prog_bar=True)
 
@@ -173,7 +176,7 @@ class DQNLightning(LightningModule):
     def run_episodes(self, n_episodes: int, epsilon: float | None = None) -> None:
         if epsilon is None:
             epsilon = self.get_epsilon(self.current_epoch)
-            self.log("epsilon", epsilon, prog_bar=False)
+        self.log("epsilon", epsilon, prog_bar=False)
         self.target_net.load_state_dict(self.net.state_dict())
 
         steps_s = []
