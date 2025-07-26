@@ -1,5 +1,4 @@
 import gymnasium as gym
-from gymnasium.spaces.utils import flatten_space
 from pytorch_lightning import Trainer
 
 from wargame_rl.wargame.model.dqn.callback import get_checkpoint_callback
@@ -17,11 +16,8 @@ if __name__ == "__main__":
     env = gym.make(
         id=wargame_config.env_id, render_mode=None, **wargame_config.env_make_params
     )
-    print(env.observation_space)
-    obs_size = flatten_space(env.observation_space).shape[0]
-    n_actions = env.action_space.n
-    net = DQN(obs_size, n_actions)
 
+    net = DQN.from_env(env)
     model = DQNLightning(env=env, net=net, **dqn_config.model_dump())
 
     config = {
@@ -30,9 +26,8 @@ if __name__ == "__main__":
         "training": training_config.model_dump(),
     }
 
-    callbacks = get_checkpoint_callback()
-
     with init_wandb(config=config) as run:
+        callbacks = get_checkpoint_callback(run.name)
         logger = get_logger(run)
         trainer = Trainer(
             accelerator="auto",

@@ -47,3 +47,6 @@ dockerize:
 # Use it like: just run 10
 train:
 	uv run train.py
+
+simulate checkpoint:
+	uv run simulate.py --checkpoint-path {{checkpoint}}

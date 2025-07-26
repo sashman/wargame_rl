@@ -1,10 +1,12 @@
 from abc import ABC, abstractmethod
+from typing import Self
+
+import gymnasium as gym
 import torch
+from gymnasium.spaces.utils import flatten_space
 from torch import nn
-import torch.nn.functional as F
+
 from wargame_rl.wargame.model.dqn.device import Device, get_device
-from wargame_rl.wargame.model.dqn.state import state_to_tensor
-from wargame_rl.wargame.types import State
 
 
 class RL_Network(nn.Module, ABC):
@@ -34,3 +36,33 @@ class DQN(RL_Network):
         for layer in self.layers:
             x = self.activation(layer(x))
         return self.output(x)
+
+    @classmethod
+    def from_env(cls, env: gym.Env) -> "DQN":
+        obs_size = flatten_space(env.observation_space).shape[0]
+        n_actions = env.action_space.n
+        return cls(obs_size, n_actions)
+
+    @classmethod
+    def from_checkpoint(cls, env: gym.Env, checkpoint_path: str) -> Self:
+        load_dict = torch.load(checkpoint_path, weights_only=False)
+        if "state_dict" in load_dict:
+            state_dict = convert_state_dict(load_dict["state_dict"])
+        else:
+            state_dict = load_dict
+        return cls.from_state_dict(env, state_dict)
+
+    @classmethod
+    def from_state_dict(cls, env: gym.Env, state_dict: dict) -> Self:
+        net = cls.from_env(env)
+        net.load_state_dict(state_dict)
+        return net
+
+
+def convert_state_dict(state_dict: dict) -> dict:
+    new_state_dict = {}
+    for key, value in state_dict.items():
+        if key.startswith("net."):
+            new_key = key[4:]
+            new_state_dict[new_key] = value
+    return new_state_dict

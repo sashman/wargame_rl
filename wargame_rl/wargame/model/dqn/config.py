@@ -1,11 +1,9 @@
-from dataclasses import field
-
 from pydantic import BaseModel
 
 
 class WargameConfig(BaseModel):
     env_id: str = "gymnasium_env/Wargame-v0"
-    env_make_params: dict = field(default_factory=dict)
+    env_make_params: dict = {"size": 20}
 
 
 class DQNConfig(BaseModel):
@@ -17,7 +15,7 @@ class DQNConfig(BaseModel):
     warm_start_size: int = 1000
     eps_last_frame: int = 5000
     eps_start: float = 1.0
-    eps_end: float = 0.1
+    eps_end: float = 0.03
     episode_length: int = 1024
     warm_start_steps: int = 1000
     weight_decay: float = 1e-5
