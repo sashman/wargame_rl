@@ -6,6 +6,7 @@ import pygame
 from gymnasium import spaces
 
 from wargame_rl.wargame.envs.env_types import (
+    WargameEnvAction,
     WargameEnvConfig,
     WargameEnvInfo,
     WargameEnvObjectiveObservation,
@@ -227,12 +228,12 @@ class WargameEnv(gym.Env):
         return -average_distance
 
     def step(
-        self, action: list[int]
+        self, action: WargameEnvAction
     ) -> tuple[WargameEnvObservation, float, bool, bool, WargameEnvInfo]:
         terminated = [False] * len(self.wargame_models)
 
         # for each element in the action tuple, we will move the corresponding wargame model
-        for i, act in enumerate(action):
+        for i, act in enumerate(action.actions):
             # Ensure the action is within the action space
             if not self.action_space[i].contains(act):
                 raise ValueError(

@@ -3,6 +3,7 @@ from functools import lru_cache
 import pytest
 import torch
 
+from wargame_rl.wargame.envs.env_types import WargameEnvAction
 from wargame_rl.wargame.model.dqn.dqn import DQN
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.model.dqn.factory import create_environment
@@ -27,7 +28,7 @@ def experiences(env, n_steps: int) -> list[Experience]:
     output = []
 
     for _ in range(n_steps):
-        action = env.action_space.sample()
+        action = WargameEnvAction(actions=env.action_space.sample())
         state, reward, terminated, _, _ = env.step(action)
         output.append(Experience(previous_state, action, reward, terminated, state))
         previous_state = state

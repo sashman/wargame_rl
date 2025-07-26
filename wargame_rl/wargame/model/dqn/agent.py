@@ -4,9 +4,16 @@ import gymnasium as gym
 import numpy as np
 import torch
 
+from wargame_rl.wargame.envs.env_types import WargameEnvAction
 from wargame_rl.wargame.model.dqn.dqn import RL_Network
 from wargame_rl.wargame.model.dqn.experience_replay import Experience, ReplayBuffer
 from wargame_rl.wargame.model.dqn.observation import observation_to_tensor
+
+
+def one_hot_encode_action(action: torch.Tensor, n_actions: int) -> list[int]:
+    action_one_hot = [0] * n_actions
+    action_one_hot[action] = 1
+    return action_one_hot
 
 
 class Agent:
@@ -22,13 +29,12 @@ class Agent:
         self.replay_buffer = replay_buffer
         self.reset()
         self.observation, info = self.env.reset()
-        self.max_turns = info["max_turns"]
 
     def reset(self) -> None:
         """Resents the environment and updates the state."""
         self.observation, _ = self.env.reset()  # this is a hack for now
 
-    def get_action(self, policy_net: RL_Network, epsilon: float) -> int:
+    def get_action(self, policy_net: RL_Network, epsilon: float) -> WargameEnvAction:
         """Using the given network, decide what action to carry out.
 
         Uses an epsilon-greedy policy.
@@ -43,14 +49,17 @@ class Agent:
 
         """
         if np.random.random() < epsilon:
-            action = self.env.action_space.sample()
+            action = WargameEnvAction(self.env.action_space.sample())
         else:
             with torch.no_grad():
                 state = observation_to_tensor(self.observation, policy_net.device)
                 q_values = policy_net(state)
-                _, action = torch.max(q_values, dim=1)
+                assert q_values.shape[0] == 1
+                assert len(q_values.shape) == 3
+                _, action_indexes = q_values.max(axis=-1)
+                action = WargameEnvAction(actions=action_indexes.flatten().tolist())
 
-        return action.item()
+        return action
 
     @torch.no_grad()
     def play_step(

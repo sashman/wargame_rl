@@ -14,7 +14,7 @@ PATH_DATASETS = os.environ.get("PATH_DATASETS", "./datasets")
 def experience_list_to_batch(experiences: list[Experience]) -> ExperienceBatch:
     states_list = [experience.state for experience in experiences]
     next_states_list = [experience.new_state for experience in experiences]
-    actions = [experience.action for experience in experiences]
+    actions = [experience.action.actions for experience in experiences]
     rewards = [experience.reward for experience in experiences]
     dones = [experience.done for experience in experiences]
     tensor_states = observations_to_tensor_batch(states_list)

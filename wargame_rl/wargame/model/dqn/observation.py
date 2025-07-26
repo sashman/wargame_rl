@@ -1,6 +1,7 @@
 import torch
 
 from wargame_rl.wargame.envs.env_types import (
+    WargameEnvAction,
     WargameEnvObjectiveObservation,
     WargameEnvObservation,
     WargameModelObservation,
@@ -8,7 +9,17 @@ from wargame_rl.wargame.envs.env_types import (
 from wargame_rl.wargame.model.dqn.device import Device, get_device
 
 
-def observation_to_tensor(state: WargameEnvObservation, device: Device = None):
+def action_to_tensor(action: WargameEnvAction, device: Device = None) -> torch.Tensor:
+    device = get_device(device)
+    _, action_tensor = torch.tensor(
+        action.actions, dtype=torch.float32, device=device
+    ).max(axis=-1)
+    return action_tensor.unsqueeze(0)
+
+
+def observation_to_tensor(
+    state: WargameEnvObservation, device: Device = None
+) -> torch.Tensor:
     device = get_device(device)
     norm = 25.0
     current_turn: int = state.current_turn
@@ -24,9 +35,6 @@ def observation_to_tensor(state: WargameEnvObservation, device: Device = None):
         [objective.location for objective in objectives],
         dtype=torch.float32,
         device=device,
-    )
-    print(
-        tensor_current_turn.shape, tensor_wargame_models.shape, tensor_objectives.shape
     )
     tensor_state = torch.cat(
         [

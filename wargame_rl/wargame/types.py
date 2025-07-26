@@ -2,12 +2,12 @@ from typing import NamedTuple
 
 import torch
 
-from wargame_rl.wargame.envs.env_types import WargameEnvObservation
+from wargame_rl.wargame.envs.env_types import WargameEnvAction, WargameEnvObservation
 
 
 class Experience(NamedTuple):
     state: WargameEnvObservation
-    action: int
+    action: WargameEnvAction
     reward: float
     done: bool
     new_state: WargameEnvObservation

@@ -1,6 +1,5 @@
 from copy import deepcopy
 
-import numpy as np
 import torch
 from gymnasium import Env
 from pytorch_lightning import LightningModule
@@ -119,7 +118,7 @@ class DQNLightning(LightningModule):
         )
 
         with torch.no_grad():
-            next_state_values = self.target_net(batch_next_states).max(1)[0]
+            next_state_values = self.target_net(batch_next_states).max(-1)[0]
             next_state_values[batch_dones] = 0.0
             next_state_values = next_state_values.detach()
 
@@ -211,8 +210,8 @@ class DQNLightning(LightningModule):
         self.log("mean_episode_steps", sum(steps_s) / len(steps_s), prog_bar=False)
         self.log("max_episode_reward", max(episode_rewards), prog_bar=False)
         self.log("min_episode_reward", min(episode_rewards), prog_bar=False)
-        success_rate = np.array(steps_s) < self.agent.max_turns
-        self.log("success_rate", success_rate.mean() * 100, prog_bar=False)
+        # success_rate = np.array(steps_s) < self.agent.max_turns
+        # self.log("success_rate", success_rate.mean() * 100, prog_bar=False)
         self.policy_net.train()
 
     def on_train_epoch_end(self) -> None:
