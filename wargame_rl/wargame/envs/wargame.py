@@ -1,8 +1,9 @@
 from enum import Enum
+
 import gymnasium as gym
-from gymnasium import spaces
-import pygame
 import numpy as np
+import pygame
+from gymnasium import spaces
 
 
 class Actions(Enum):
@@ -33,7 +34,7 @@ class WargameEnv(gym.Env):
         self.action_space = spaces.Discrete(4)
 
         """
-        The following dictionary maps abstract actions from `self.action_space` to 
+        The following dictionary maps abstract actions from `self.action_space` to
         the direction we will walk in if that action is taken.
         i.e. 0 corresponds to "right", 1 to "up" etc.
         """
@@ -56,9 +57,9 @@ class WargameEnv(gym.Env):
         """
         self.window = None
         self.clock = None
-        
+
         self.current_turn = 0  # Initialize the current turn to 0
-        self.max_turns = 100  # Set the maximum number of turns
+        self.max_turns = size * 2  # Set the maximum number of turns
 
     def _get_obs(self):
         return {"agent": self._agent_location, "target": self._target_location}
@@ -98,22 +99,22 @@ class WargameEnv(gym.Env):
 
         if self.render_mode == "human":
             self._render_frame()
-            
+
         self.current_turn = 0  # Reset the current turn to 0
 
         return observation, info
-    
+
     def _calculate_reward(self):
         """Calculate the reward based on the agent's and target's locations."""
-        
+
         current_distance = np.linalg.norm(
             self._agent_location - self._target_location, ord=2
         )
-        
-        normalized_distance = current_distance / (np.sqrt(2)*self.size)
+
+        normalized_distance = current_distance / (np.sqrt(2) * self.size)
         assert normalized_distance >= 0 and normalized_distance <= 1
         return -normalized_distance
-    
+
     def step(self, action):
         # Map the action (element of {0,1,2,3}) to the direction we walk in
         direction = self._action_to_direction[action]
@@ -123,9 +124,9 @@ class WargameEnv(gym.Env):
         )
         # An episode is done iff the agent has reached the target
         terminated = np.array_equal(self._agent_location, self._target_location)
-        
+
         reward = self._calculate_reward()
-        
+
         # reward = 1 if terminated else 0  # Binary sparse rewards
         observation = self._get_obs()
         info = self._get_info()
@@ -136,7 +137,7 @@ class WargameEnv(gym.Env):
         self.current_turn += 1  # Increment the current turn
         if self.current_turn >= self.max_turns:
             terminated = True
-            
+
         return observation, reward, terminated, False, info
 
     def render(self):
