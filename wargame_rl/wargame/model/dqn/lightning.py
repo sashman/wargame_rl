@@ -7,6 +7,8 @@ from torch import Tensor, nn
 from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
 
+import wandb
+from wargame_rl.plotting.training import compute_policy_on_grid, plot_policy_on_grid
 from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.dataset import RLDataset, experience_list_to_batch
 from wargame_rl.wargame.model.dqn.dqn import RL_Network
@@ -19,17 +21,19 @@ class DQNLightning(LightningModule):
         self,
         env: Env,
         net: RL_Network,
+        log: bool = True,
         batch_size: int = 16,
         lr: float = 1e-4,
         gamma: float = 0.99,
         sync_rate: int = 10,
         replay_size: int = 1000,
         warm_start_size: int = 1000,
-        eps_last_frame: int = 1000,
+        eps_last_frame: int = 10000,
         eps_start: float = 1.0,
-        eps_end: float = 0.01,
+        eps_end: float = 0.1,
         episode_length: int = 1024,
         warm_start_steps: int = 1000,
+        weight_decay: float = 1e-4,
     ) -> None:
         """Basic DQN Model.
 
@@ -171,7 +175,11 @@ class DQNLightning(LightningModule):
 
     def configure_optimizers(self) -> Optimizer:
         """Initialize Adam optimizer."""
-        optimizer = Adam(self.net.parameters(), lr=self.hparams.lr)
+        optimizer = Adam(
+            self.net.parameters(),
+            lr=self.hparams.lr,
+            weight_decay=self.hparams.weight_decay,
+        )
         return optimizer
 
     def __dataloader(self) -> DataLoader:
@@ -187,3 +195,11 @@ class DQNLightning(LightningModule):
     def train_dataloader(self) -> DataLoader:
         """Get train loader."""
         return self.__dataloader()
+
+    def on_train_epoch_end(self) -> None:
+        box_agent = self.env.observation_space["agent"]
+        values_function, target_state = compute_policy_on_grid(box_agent, self.net)
+        fig = plot_policy_on_grid(values_function, target_state)
+        if self.hparams.log:
+            wandb.log({"Value function": fig})  # type: ignore
+        return super().on_train_epoch_end()

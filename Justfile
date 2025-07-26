@@ -45,5 +45,5 @@ dockerize:
 	docker build -t warghame-rl .
 
 # Use it like: just run 10
-run training:
-	uv run main.py --train true
+train:
+	uv run train.py

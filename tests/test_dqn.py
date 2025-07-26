@@ -67,7 +67,7 @@ def test_dataloaders(env, dqn_net: DQN):
 
 
 def test_dqn_training(env, dqn_net: DQN, replay_buffer: ReplayBuffer):
-    model = DQNLightning(env=env, net=dqn_net)
+    model = DQNLightning(env=env, net=dqn_net, log=False)
 
     trainer = Trainer(
         accelerator="auto",

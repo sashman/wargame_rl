@@ -291,4 +291,8 @@ uv.lock
 runs/
 logs/
 lightning_logs/
-# test_train.ipynb
+checkpoints/
+wandb/
+
+# Nate's notebook
+train.ipynb

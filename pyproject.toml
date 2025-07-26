@@ -17,6 +17,8 @@ dependencies = [
     "pandas",
     "matplotlib",
     "jupyter>=1.1.1",
+    "wandb>=0.21.0",
+    "pytorch-lightning>=2.5.2",
 ]
 
 [dependency-groups]
