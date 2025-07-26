@@ -123,7 +123,7 @@ class DQNLightning(LightningModule):
             next_state_values = next_state_values.detach()
 
         expected_state_action_values = (
-            next_state_values * self.hparams.gamma + batch_rewards
+            next_state_values * self.hparams.gamma + batch_rewards.unsqueeze(-1)
         )
 
         return self.loss_fn(state_action_values, expected_state_action_values)
@@ -155,9 +155,7 @@ class DQNLightning(LightningModule):
         mean_reward = reward / n_steps
         # calculates training loss
         loss = self.dqn_mse_loss(batch)
-        self.log(
-            "optimization_step", self.optimization_steps, logger=False, prog_bar=True
-        )
+        self.log("optimization_step", self.optimization_steps, prog_bar=False)
         self.log("n_steps", n_steps, prog_bar=False)
         self.log("reward", reward, prog_bar=False)
         self.log("mean_reward", mean_reward, prog_bar=True)
