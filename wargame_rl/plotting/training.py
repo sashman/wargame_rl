@@ -1,43 +1,89 @@
-# import matplotlib
-# import matplotlib.pyplot as plt
-# import numpy as np
-# import torch
-# from gymnasium import spaces
-# from torch import nn
+import math
 
-# from wargame_rl.wargame.model.dqn.observation import state_to_tensor_v1
-# from wargame_rl.wargame.types import StateV1
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+from torch import nn
 
-# # 'Agg': used to generate plots as images and save them to a file instead of rendering to screen
-# matplotlib.use("Agg")
+from wargame_rl.wargame.envs.env_types import (
+    WargameEnvObservation,
+    WargameModelObservation,
+)
+from wargame_rl.wargame.model.dqn.device import Device
+from wargame_rl.wargame.model.dqn.observation import observation_to_tensor
 
-
-# def compute_policy_on_grid(
-#     box_agent: spaces.Box,
-#     policy_dqn: nn.Module,
-#     target_state: tuple[int, int] | None = None,
-# ) -> tuple[np.ndarray, np.ndarray]:
-#     x_min, y_min = box_agent.low
-#     x_max, y_max = box_agent.high
-
-#     if target_state is None:
-#         target_state = (x_min + x_max) // 2, (y_min + y_max) // 2
-
-#     values_function = np.empty([x_max - x_min + 1, y_max - y_min + 1])
-#     with torch.no_grad():
-#         for x in range(x_min, x_max + 1):
-#             for y in range(y_min, y_max + 1):
-#                 agent_state = np.array([x, y])
-#                 state = StateV1(agent=agent_state, target=target_state)
-#                 tensor_state = state_to_tensor_v1(state)
-#                 values_function[x, y] = policy_dqn(tensor_state).max()
-
-#     return values_function, target_state
+# 'Agg': used to generate plots as images and save them to a file instead of rendering to screen
+matplotlib.use("Agg")
 
 
-# def plot_policy_on_grid(values_function, target_state) -> plt.Figure:
-#     fig = plt.figure()
-#     plt.imshow(values_function.T, origin="upper")
-#     plt.plot(target_state[0], target_state[1], "or")
-#     plt.colorbar()
-#     return fig
+def build_batch_tensor(
+    observation: WargameEnvObservation, size: int, device: Device = None
+) -> torch.Tensor:
+    n_models = len(observation.wargame_models)
+
+    x_min, y_min = 0, 0
+    x_max, y_max = size, size
+    batch_list = []
+    for x in range(x_min, x_max):
+        for y in range(y_min, y_max):
+            location = np.array([x, y])
+            testing_state = WargameEnvObservation(
+                current_turn=observation.current_turn,
+                wargame_models=[
+                    WargameModelObservation(location=location) for _ in range(n_models)
+                ],
+                objectives=observation.objectives,
+            )
+            tensor_state = observation_to_tensor(testing_state, device=device)
+            batch_list.append(tensor_state)
+    batch_tensor = torch.cat(batch_list)
+    return batch_tensor
+
+
+def compute_values_function(
+    observation: WargameEnvObservation, size: int, policy_net: nn.Module
+) -> torch.Tensor:
+    batch_tensor = build_batch_tensor(observation, size, policy_net.device)
+    n_models = len(observation.wargame_models)
+
+    with torch.no_grad():
+        output: torch.Tensor = policy_net(batch_tensor)
+        values_function = (
+            output.max(-1)[0].transpose(0, 1).reshape(n_models, size, size)
+        )
+    return values_function
+
+
+def plot_policy_on_grid(
+    values_function: torch.Tensor, observation: WargameEnvObservation
+) -> plt.Figure:
+    n_models, nx, ny = values_function.shape
+    p = max(math.ceil(math.sqrt(n_models)), 2)
+    ratio = nx / ny
+    fig, axs = plt.subplots(p, p, figsize=(10 * ratio, 10))
+
+    # convert to numpy
+    values_function_np = values_function.detach().cpu().numpy()
+    vmin, vmax = values_function_np.min(), values_function_np.max()
+
+    # Flatten axs to handle cases where p*p > n_models
+    axs = axs.flatten()
+
+    # Store the first image handle to use for the colorbar
+    im = None
+    for i in range(n_models):
+        ax = axs[i]
+        im = ax.imshow(values_function_np[i].T, origin="upper", vmin=vmin, vmax=vmax)
+        for objective in observation.objectives:
+            ax.plot(objective.location[0], objective.location[1], "or")
+
+    # Hide unused subplots
+    for j in range(n_models, len(axs)):
+        axs[j].axis("off")
+
+    # Add shared colorbar
+    if im is not None:
+        fig.colorbar(im, ax=axs.tolist(), shrink=0.6, orientation="vertical")
+
+    return fig
