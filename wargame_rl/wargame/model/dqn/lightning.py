@@ -2,13 +2,14 @@ from copy import deepcopy
 
 import torch
 from gymnasium import Env
+from matplotlib import pyplot as plt
 from pytorch_lightning import LightningModule
 from torch import Tensor, nn
 from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
 
-# import wandb
-# from wargame_rl.plotting.training import compute_policy_on_grid, plot_policy_on_grid
+import wandb
+from wargame_rl.plotting.training import compute_values_function, plot_policy_on_grid
 from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.dataset import RLDataset, experience_list_to_batch
 from wargame_rl.wargame.model.dqn.dqn import RL_Network
@@ -115,15 +116,17 @@ class DQNLightning(LightningModule):
             self.policy_net(batch_states)
             .gather(1, batch_actions.long().unsqueeze(-1))
             .squeeze(-1)
+            .sum(-1)
         )
 
         with torch.no_grad():
-            next_state_values = self.target_net(batch_next_states).max(-1)[0]
-            next_state_values[batch_dones] = 0.0
-            next_state_values = next_state_values.detach()
+            next_state_partial_values = self.target_net(batch_next_states).max(-1)[0]
+            next_state_partial_values[batch_dones] = 0.0
+            next_state_partial_values = next_state_partial_values.detach()
 
+        # we need to sum over the partial state values to get the total rewards
         expected_state_action_values = (
-            next_state_values * self.hparams.gamma + batch_rewards.unsqueeze(-1)
+            next_state_partial_values.sum(-1) * self.hparams.gamma + batch_rewards
         )
 
         return self.loss_fn(state_action_values, expected_state_action_values)
@@ -215,11 +218,11 @@ class DQNLightning(LightningModule):
     def on_train_epoch_end(self) -> None:
         if self.hparams.log:
             self.run_episodes(self.hparams.n_episodes)
-            # box_agent = self.env.observation_space["agent"]
-            # values_function, target_state = compute_policy_on_grid(
-            #     box_agent, self.policy_net
-            # )
-            # fig = plot_policy_on_grid(values_function, target_state)
-            # wandb.log({"Value function": fig})  # type: ignore
-            # plt.close(fig)
+            observation, _ = self.env.reset()
+            values_function = compute_values_function(
+                observation, self.env.size, self.policy_net
+            )
+            fig = plot_policy_on_grid(values_function, observation)
+            wandb.log({"Value function": fig})  # type: ignore
+            plt.close(fig)
         return super().on_train_epoch_end()
