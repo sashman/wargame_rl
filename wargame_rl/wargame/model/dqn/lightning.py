@@ -1,7 +1,7 @@
 from copy import deepcopy
 
+import numpy as np
 import torch
-from gymnasium import Env
 from matplotlib import pyplot as plt
 from pytorch_lightning import LightningModule
 from torch import Tensor, nn
@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 
 import wandb
 from wargame_rl.plotting.training import compute_values_function, plot_policy_on_grid
+from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.dataset import RLDataset, experience_list_to_batch
 from wargame_rl.wargame.model.dqn.dqn import RL_Network
@@ -20,7 +21,7 @@ from wargame_rl.wargame.types import ExperienceBatch
 class DQNLightning(LightningModule):
     def __init__(
         self,
-        env: Env,
+        env: WargameEnv,
         policy_net: RL_Network,
         log: bool = True,
         batch_size: int = 16,
@@ -212,8 +213,8 @@ class DQNLightning(LightningModule):
         self.log("mean_episode_steps", sum(steps_s) / len(steps_s), prog_bar=False)
         self.log("max_episode_reward", max(episode_rewards), prog_bar=False)
         self.log("min_episode_reward", min(episode_rewards), prog_bar=False)
-        # success_rate = np.array(steps_s) < self.agent.max_turns
-        # self.log("success_rate", success_rate.mean() * 100, prog_bar=False)
+        success_rate = np.array(steps_s) < self.env.max_turns
+        self.log("success_rate", success_rate.mean() * 100, prog_bar=False)
         self.policy_net.train()
 
     def on_train_epoch_end(self) -> None:
