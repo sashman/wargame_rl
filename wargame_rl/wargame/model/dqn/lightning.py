@@ -113,14 +113,22 @@ class DQNLightning(LightningModule):
         batch_dones = batch.dones
         batch_next_states = batch.new_states
 
-        # we need to sum over the partial state values to get the total rewards
+        batch_size, n_model = batch_actions.shape
+        observation_size = batch_states.shape[1]
+        assert batch_rewards.shape == (batch_size,)
+        assert batch_dones.shape == (batch_size,)
+        assert batch_next_states.shape == (batch_size, observation_size)
 
-        state_action_values = (
-            self.policy_net(batch_states)
-            .gather(1, batch_actions.long().unsqueeze(-1))
-            .squeeze(-1)
-            .sum(-1)
-        )
+        # we need to sum over the partial state values to get the total rewards
+        index = batch_actions.long().unsqueeze(-1)  # [batch_size, n_model, 1]
+        net_output = self.policy_net(batch_states)  # [batch_size, n_model, 4]
+        assert net_output.shape == (batch_size, n_model, 4)
+        selected_output = net_output.gather(
+            -1, index
+        )  # we gather along the last dimension, which is the action dimension
+        assert selected_output.shape == (batch_size, n_model, 1)
+        state_action_values = selected_output.squeeze(-1).sum(-1)
+        assert state_action_values.shape == (batch_size,)
 
         with torch.no_grad():
             next_state_values = self.target_net(batch_next_states).max(-1)[0].sum(-1)

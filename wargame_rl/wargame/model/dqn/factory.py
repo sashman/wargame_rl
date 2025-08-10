@@ -1,10 +1,8 @@
-import gymnasium as gym
-
 from wargame_rl.wargame.envs.env_types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
 
-def create_environment(render_mode: str | None = "human") -> gym.Env:
+def create_environment(render_mode: str | None = "human") -> WargameEnv:
     """Create the Wargame environment.
 
     Args:

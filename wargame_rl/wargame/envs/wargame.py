@@ -225,6 +225,8 @@ class WargameEnv(gym.Env):
             total_distance += normalized_distance
 
         average_distance = total_distance / len(self.wargame_models)
+        assert average_distance >= 0.0
+        assert average_distance <= 1.0
         return -average_distance
 
     def step(
