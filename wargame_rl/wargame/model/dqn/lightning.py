@@ -112,6 +112,8 @@ class DQNLightning(LightningModule):
         batch_dones = batch.dones
         batch_next_states = batch.new_states
 
+        # we need to sum over the partial state values to get the total rewards
+
         state_action_values = (
             self.policy_net(batch_states)
             .gather(1, batch_actions.long().unsqueeze(-1))
@@ -120,13 +122,12 @@ class DQNLightning(LightningModule):
         )
 
         with torch.no_grad():
-            next_state_partial_values = self.target_net(batch_next_states).max(-1)[0]
-            next_state_partial_values[batch_dones] = 0.0
-            next_state_partial_values = next_state_partial_values.detach()
+            next_state_values = self.target_net(batch_next_states).max(-1)[0].sum(-1)
+            next_state_values[batch_dones] = 0.0
+            next_state_values = next_state_values.detach()
 
-        # we need to sum over the partial state values to get the total rewards
         expected_state_action_values = (
-            next_state_partial_values.sum(-1) * self.hparams.gamma + batch_rewards
+            next_state_values * self.hparams.gamma + batch_rewards
         )
 
         return self.loss_fn(state_action_values, expected_state_action_values)
