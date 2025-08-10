@@ -22,12 +22,13 @@ def observation_to_tensor(
 ) -> torch.Tensor:
     device = get_device(device)
     norm = 25.0
-    current_turn: int = state.current_turn
+    # current_turn: int = state.current_turn
     wargame_models: list[WargameModelObservation] = state.wargame_models
     objectives: list[WargameEnvObjectiveObservation] = state.objectives
-    tensor_current_turn = torch.tensor(
-        [current_turn], dtype=torch.float32, device=device
-    )
+    # tensor_current_turn = torch.tensor(
+    #     [current_turn], dtype=torch.float32, device=device
+    # )
+    tensor_current_turn = torch.tensor([0], dtype=torch.float32, device=device)
     tensor_wargame_models = torch.tensor(
         [model.location for model in wargame_models], dtype=torch.float32, device=device
     )
@@ -45,6 +46,8 @@ def observation_to_tensor(
         dim=0,
     )
     tensor_state = (tensor_state - norm) / norm
+    assert tensor_state.max() <= 1.0
+    assert tensor_state.min() >= -1.0
     return tensor_state.unsqueeze(0)
 
 

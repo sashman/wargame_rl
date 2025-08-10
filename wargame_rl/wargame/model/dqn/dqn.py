@@ -23,8 +23,8 @@ class DQN(RL_Network):
         state_dim,
         action_dim,
         n_wargame_models,
-        hidden_dim=256,
-        num_layers=3,
+        hidden_dim=128,
+        num_layers=2,
         device: Device = None,
     ):
         super(DQN, self).__init__()
