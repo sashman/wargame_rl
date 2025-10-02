@@ -80,9 +80,10 @@ class DQNLightning(LightningModule):
 
         """
         # Just run one episode to start populating the buffer
-        self.agent.run_episode(
-            self.policy_net, epsilon=1.0, render=False, save_steps=True
-        )
+        for _ in range(200):
+            self.agent.run_episode(
+                self.policy_net, epsilon=1.0, render=False, save_steps=True
+            )
 
     def forward(self, x: Tensor) -> Tensor:
         """Passes in a state x through the network and gets the q_values of each action as an output.
@@ -172,7 +173,7 @@ class DQNLightning(LightningModule):
         self.log("n_steps", n_steps, prog_bar=False)
         self.log("reward", reward, prog_bar=False)
         self.log("mean_reward", mean_reward, prog_bar=True)
-        self.log("epsilon", epsilon, prog_bar=False)
+        self.log("epsilon", epsilon, prog_bar=True)
         self.log("train_loss", loss, prog_bar=True)
         self.log("env_steps", self.global_step, logger=False, prog_bar=True)
         if self.optimization_steps % self.hparams.sync_rate == 0:
