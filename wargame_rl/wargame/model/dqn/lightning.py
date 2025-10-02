@@ -1,14 +1,16 @@
 from copy import deepcopy
 
+import numpy as np
 import torch
-from gymnasium import Env
+from matplotlib import pyplot as plt
 from pytorch_lightning import LightningModule
 from torch import Tensor, nn
 from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
 
-# import wandb
-# from wargame_rl.plotting.training import compute_policy_on_grid, plot_policy_on_grid
+import wandb
+from wargame_rl.plotting.training import compute_values_function, plot_policy_on_grid
+from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.dataset import RLDataset, experience_list_to_batch
 from wargame_rl.wargame.model.dqn.dqn import RL_Network
@@ -19,7 +21,7 @@ from wargame_rl.wargame.types import ExperienceBatch
 class DQNLightning(LightningModule):
     def __init__(
         self,
-        env: Env,
+        env: WargameEnv,
         policy_net: RL_Network,
         log: bool = True,
         batch_size: int = 16,
@@ -78,9 +80,10 @@ class DQNLightning(LightningModule):
 
         """
         # Just run one episode to start populating the buffer
-        self.agent.run_episode(
-            self.policy_net, epsilon=1.0, render=False, save_steps=True
-        )
+        for _ in range(200):
+            self.agent.run_episode(
+                self.policy_net, epsilon=1.0, render=False, save_steps=True
+            )
 
     def forward(self, x: Tensor) -> Tensor:
         """Passes in a state x through the network and gets the q_values of each action as an output.
@@ -111,19 +114,30 @@ class DQNLightning(LightningModule):
         batch_dones = batch.dones
         batch_next_states = batch.new_states
 
-        state_action_values = (
-            self.policy_net(batch_states)
-            .gather(1, batch_actions.long().unsqueeze(-1))
-            .squeeze(-1)
-        )
+        batch_size, n_model = batch_actions.shape
+        observation_size = batch_states.shape[1]
+        assert batch_rewards.shape == (batch_size,)
+        assert batch_dones.shape == (batch_size,)
+        assert batch_next_states.shape == (batch_size, observation_size)
+
+        # we need to sum over the partial state values to get the total rewards
+        index = batch_actions.long().unsqueeze(-1)  # [batch_size, n_model, 1]
+        net_output = self.policy_net(batch_states)  # [batch_size, n_model, 4]
+        assert net_output.shape == (batch_size, n_model, 4)
+        selected_output = net_output.gather(
+            -1, index
+        )  # we gather along the last dimension, which is the action dimension
+        assert selected_output.shape == (batch_size, n_model, 1)
+        state_action_values = selected_output.squeeze(-1).sum(-1)
+        assert state_action_values.shape == (batch_size,)
 
         with torch.no_grad():
-            next_state_values = self.target_net(batch_next_states).max(-1)[0]
+            next_state_values = self.target_net(batch_next_states).max(-1)[0].sum(-1)
             next_state_values[batch_dones] = 0.0
             next_state_values = next_state_values.detach()
 
         expected_state_action_values = (
-            next_state_values * self.hparams.gamma + batch_rewards.unsqueeze(-1)
+            next_state_values * self.hparams.gamma + batch_rewards
         )
 
         return self.loss_fn(state_action_values, expected_state_action_values)
@@ -159,7 +173,7 @@ class DQNLightning(LightningModule):
         self.log("n_steps", n_steps, prog_bar=False)
         self.log("reward", reward, prog_bar=False)
         self.log("mean_reward", mean_reward, prog_bar=True)
-        self.log("epsilon", epsilon, prog_bar=False)
+        self.log("epsilon", epsilon, prog_bar=True)
         self.log("train_loss", loss, prog_bar=True)
         self.log("env_steps", self.global_step, logger=False, prog_bar=True)
         if self.optimization_steps % self.hparams.sync_rate == 0:
@@ -208,18 +222,18 @@ class DQNLightning(LightningModule):
         self.log("mean_episode_steps", sum(steps_s) / len(steps_s), prog_bar=False)
         self.log("max_episode_reward", max(episode_rewards), prog_bar=False)
         self.log("min_episode_reward", min(episode_rewards), prog_bar=False)
-        # success_rate = np.array(steps_s) < self.agent.max_turns
-        # self.log("success_rate", success_rate.mean() * 100, prog_bar=False)
+        success_rate = np.array(steps_s) < self.env.max_turns
+        self.log("success_rate", success_rate.mean() * 100, prog_bar=False)
         self.policy_net.train()
 
     def on_train_epoch_end(self) -> None:
         if self.hparams.log:
             self.run_episodes(self.hparams.n_episodes)
-            # box_agent = self.env.observation_space["agent"]
-            # values_function, target_state = compute_policy_on_grid(
-            #     box_agent, self.policy_net
-            # )
-            # fig = plot_policy_on_grid(values_function, target_state)
-            # wandb.log({"Value function": fig})  # type: ignore
-            # plt.close(fig)
+            observation, _ = self.env.reset()
+            values_function = compute_values_function(
+                observation, self.env.size, self.policy_net
+            )
+            fig = plot_policy_on_grid(values_function, observation)
+            wandb.log({"Value function": fig})  # type: ignore
+            plt.close(fig)
         return super().on_train_epoch_end()

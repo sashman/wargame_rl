@@ -72,7 +72,7 @@ class WargameEnv(gym.Env):
     def __init__(self, config: WargameEnvConfig):
         self.size = config.size  # The size of the square grid
         self.window_size = 1024  # The size of the PyGame window
-
+        self.config = config
         self.observation_space = spaces.Dict(
             {
                 "current_turn": spaces.Discrete(1),
@@ -137,7 +137,7 @@ class WargameEnv(gym.Env):
         # List to hold objectives
         self.objectives = [
             WargameObjective(location=np.zeros(2, dtype=int))
-            for _ in range(config.number_of_wargame_models)
+            for _ in range(config.number_of_objectives)
         ]
 
         # Set the deployment zone for the agent, area left third of the grid
@@ -225,6 +225,8 @@ class WargameEnv(gym.Env):
             total_distance += normalized_distance
 
         average_distance = total_distance / len(self.wargame_models)
+        assert average_distance >= 0.0
+        assert average_distance <= 1.0
         return -average_distance
 
     def step(

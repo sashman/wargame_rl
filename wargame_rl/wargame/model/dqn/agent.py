@@ -10,12 +10,6 @@ from wargame_rl.wargame.model.dqn.experience_replay import Experience, ReplayBuf
 from wargame_rl.wargame.model.dqn.observation import observation_to_tensor
 
 
-def one_hot_encode_action(action: torch.Tensor, n_actions: int) -> list[int]:
-    action_one_hot = [0] * n_actions
-    action_one_hot[action] = 1
-    return action_one_hot
-
-
 class Agent:
     def __init__(self, env: gym.Env, replay_buffer: ReplayBuffer | None = None) -> None:
         """Base Agent class handling the interaction with the environment.

@@ -5,7 +5,7 @@ class DQNConfig(BaseModel):
     batch_size: int = 64
     lr: float = 2e-3
     gamma: float = 0.99
-    replay_size: int = 1000
+    replay_size: int = 5000
     epsilon_max: float = 1.0
     epsilon_min: float = 0.05
     epsilon_decay: float = 0.999
