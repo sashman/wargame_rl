@@ -123,7 +123,7 @@ class DQNLightning(LightningModule):
         # we need to sum over the partial state values to get the total rewards
         index = batch_actions.long().unsqueeze(-1)  # [batch_size, n_model, 1]
         net_output = self.policy_net(batch_states)  # [batch_size, n_model, 4]
-        assert net_output.shape == (batch_size, n_model, 4)
+        assert net_output.shape == (batch_size, n_model, 5)
         selected_output = net_output.gather(
             -1, index
         )  # we gather along the last dimension, which is the action dimension
