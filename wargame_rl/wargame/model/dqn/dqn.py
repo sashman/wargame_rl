@@ -23,8 +23,8 @@ class DQN(RL_Network):
         state_dim,
         action_dim,
         n_wargame_models,
-        hidden_dim=128,
-        num_layers=2,
+        hidden_dim=16,
+        num_layers=1,
         device: Device = None,
     ):
         super(DQN, self).__init__()
@@ -34,7 +34,8 @@ class DQN(RL_Network):
         for _ in range(num_layers - 1):
             self.layers.append(nn.Linear(hidden_dim, hidden_dim))
         self.output = nn.Linear(hidden_dim, action_dim * n_wargame_models)
-        self.activation = nn.GELU()
+        self.populate_perfect_weights()
+        self.activation = nn.ReLU()
         self.device = get_device(device)
         self.to(self.device)
         self.n_wargame_models = n_wargame_models
@@ -68,8 +69,49 @@ class DQN(RL_Network):
     @classmethod
     def from_state_dict(cls, env: gym.Env, state_dict: dict) -> Self:
         net = cls.from_env(env)
-        net.load_state_dict(state_dict)
+        # don't load checkpoint because we're constructing the perfect weights
+        # net.load_state_dict(state_dict)
         return net
+
+    def populate_perfect_weights(self):
+        # create a network which computes the l1 distance between the agent and the target
+        # the l1 distance is the sum of the absolute differences in x and y coordinates (a - t).abs().sum()
+        # abs can be represented with a relu function |a - t| = relu(a - t) + relu(t - a)
+        abs_difference_weight = torch.as_tensor(
+            [
+                [0, 1, 0, -1, 0],  # agentX - targetX
+                [0, -1, 0, 1, 0],  # targetX - agentX
+                [0, 0, 1, 0, -1],  # agentY - targetY
+                [0, 0, -1, 0, 1],  # targetY - agentY
+            ],
+            dtype=torch.float,
+        )
+        abs_difference_weight = abs_difference_weight.repeat(
+            4, 1
+        )  # repeat for each action
+
+        step_size = 2 / 50
+        # adjust the distance for each action
+        # |(a + act) - t| = relu((a + act) - t) + relu(t - (a + act)) = relu(a - t + act) + relu(t - a - act)
+        # fmt: off
+        action_bias = torch.as_tensor(
+            [
+                step_size, -step_size, 0, 0,  # right
+                0, 0, -step_size, step_size,  # up
+                -step_size, step_size, 0, 0,  # left
+                0, 0, step_size, -step_size,  # down
+            ]
+        )
+        # fmt: on
+
+        # sum up relu(a - t + act) + relu(t - a - act) and scale
+        sum_weight = -0.25 * torch.eye(4).repeat_interleave(repeats=4, dim=1)
+
+        with torch.no_grad():
+            self.layers[0].weight[:] = abs_difference_weight  # shape 16x5
+            self.layers[0].bias[:] = action_bias  # shape 16
+            self.output.weight[:] = sum_weight  # shape 4x16
+            self.output.bias.zero_()  # shape 4
 
 
 def convert_state_dict(state_dict: dict) -> dict:

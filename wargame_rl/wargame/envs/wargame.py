@@ -100,9 +100,9 @@ class WargameEnv(gym.Env):
         """
         self._action_to_direction = {
             MovementPhaseActions.right.value: np.array([1, 0]),
-            MovementPhaseActions.up.value: np.array([0, 1]),
+            MovementPhaseActions.up.value: np.array([0, -1]),
             MovementPhaseActions.left.value: np.array([-1, 0]),
-            MovementPhaseActions.down.value: np.array([0, -1]),
+            MovementPhaseActions.down.value: np.array([0, 1]),
         }
 
         assert (
@@ -216,12 +216,12 @@ class WargameEnv(gym.Env):
         for model in self.wargame_models:
             closest_objective = min(
                 self.objectives,
-                key=lambda obj: np.linalg.norm(model.location - obj.location, ord=2),
+                key=lambda obj: np.linalg.norm(model.location - obj.location, ord=1),
             )
             distance = np.linalg.norm(
-                model.location - closest_objective.location, ord=2
+                model.location - closest_objective.location, ord=1
             )
-            normalized_distance = distance / (np.sqrt(2) * self.size)
+            normalized_distance = distance / (2 * self.size)
             total_distance += normalized_distance
 
         average_distance = total_distance / len(self.wargame_models)
