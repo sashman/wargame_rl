@@ -20,6 +20,7 @@ class MovementPhaseActions(Enum):
     up = 1
     left = 2
     down = 3
+    none = 4
 
 
 class WargameModel:
@@ -90,7 +91,7 @@ class WargameEnv(gym.Env):
 
         # We have 4 actions, corresponding to "right", "up", "left", "down", "right" for each wargame model
         self.action_space = spaces.Tuple(
-            [spaces.Discrete(4) for _ in range(config.number_of_wargame_models)]
+            [spaces.Discrete(5) for _ in range(config.number_of_wargame_models)]
         )
 
         """
@@ -103,6 +104,7 @@ class WargameEnv(gym.Env):
             MovementPhaseActions.up.value: np.array([0, 1]),
             MovementPhaseActions.left.value: np.array([-1, 0]),
             MovementPhaseActions.down.value: np.array([0, -1]),
+            MovementPhaseActions.none.value: np.array([0, 0]),
         }
 
         assert (
@@ -252,8 +254,10 @@ class WargameEnv(gym.Env):
         # After moving all wargame models, we can check if any of them has reached its objective
         for i, model in enumerate(self.wargame_models):
             # Check if the model has reached its objective
-            if np.array_equal(model.location, self.objectives[i].location):
-                terminated[i] = True
+            for objective in self.objectives:
+                if np.array_equal(model.location, objective.location):
+                    terminated[i] = True
+                    break
 
         is_terminated = all(
             terminated
