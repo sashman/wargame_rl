@@ -89,9 +89,12 @@ class WargameEnv(gym.Env):
             }
         )
 
-        # We have 4 actions, corresponding to "right", "up", "left", "down", "right" for each wargame model
+        action_count = len(MovementPhaseActions)
         self.action_space = spaces.Tuple(
-            [spaces.Discrete(5) for _ in range(config.number_of_wargame_models)]
+            [
+                spaces.Discrete(action_count)
+                for _ in range(config.number_of_wargame_models)
+            ]
         )
 
         """
