@@ -84,7 +84,15 @@ just validate
 #### Training
 
 ```bash
-just run training
+just train
+```
+
+#### Testing Env
+
+You can run the environment in isolation while random actions are fed to the agent.
+
+```bash
+just test-env
 ```
 
 ### Docker
