@@ -13,14 +13,15 @@ from wargame_rl.wargame.model.dqn.wandb import get_logger, init_wandb
 if __name__ == "__main__":
     dqn_config = DQNConfig()
     training_config = TrainingConfig()
+    env_config = WargameEnvConfig(render_mode=None)
 
-    env = create_environment(render_mode=None)
+    env = create_environment(env_config=env_config)
 
     net = DQN.from_env(env)
     model = DQNLightning(env=env, policy_net=net, **dqn_config.model_dump())
 
     config = {
-        "wargame": asdict(WargameEnvConfig()),
+        "wargame": asdict(env_config),
         "dqn": dqn_config.model_dump(),
         "training": training_config.model_dump(),
     }
