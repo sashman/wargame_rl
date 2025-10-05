@@ -59,5 +59,6 @@ clean-wandb:
 
 clean: clean-checkpoints clean-wandb
 
+# Run a test env in isolation with random action
 test-env:
 	uv run main.py --env_test
