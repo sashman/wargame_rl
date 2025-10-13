@@ -22,6 +22,7 @@ class EnvTest:
             observation, reward, terminated, truncated, info = self.env.step(
                 WargameEnvAction(actions=action)
             )
+            self.env.render()
 
             print(
                 f"Action: {action}, Observation: {observation}, Reward: {reward}, Terminated: {terminated}, Info: {info}"
