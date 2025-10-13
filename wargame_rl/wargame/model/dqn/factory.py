@@ -12,6 +12,5 @@ def create_environment(
         Configured gymnasium environment
     """
     env = WargameEnv(env_config, renderer)
-    # env.reset()
 
     return env
