@@ -1,4 +1,5 @@
 from wargame_rl.wargame.envs.env_types import WargameEnvAction, WargameEnvConfig
+from wargame_rl.wargame.envs.renders.human import HumanRender
 
 
 class EnvTest:
@@ -10,7 +11,8 @@ class EnvTest:
         self.env = WargameEnv(
             WargameEnvConfig(
                 size=size, render_mode=render_mode, number_of_wargame_models=3
-            )
+            ),
+            renderer=HumanRender(),
         )
         self.env.reset()
 

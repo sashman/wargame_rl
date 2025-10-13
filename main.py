@@ -8,7 +8,7 @@ def environment_test():
     from wargame_rl.wargame.envs.env_test import EnvTest
 
     # Initialize the environment with a grid size of 50 and human rendering mode
-    env_test = EnvTest(size=50, render_mode="human")
+    env_test = EnvTest(size=50)
 
     # Run 100 random actions in the environment
     env_test.run_actions(num_actions=100)

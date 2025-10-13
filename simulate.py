@@ -12,6 +12,7 @@ import logging
 import typer
 
 from wargame_rl.wargame.envs.env_types import WargameEnvConfig
+from wargame_rl.wargame.envs.renders.human import HumanRender
 from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.dqn import DQN
 from wargame_rl.wargame.model.dqn.factory import create_environment
@@ -28,7 +29,8 @@ def simulate(checkpoint_path: str, num_episodes: int = 10, render: bool = True):
         render: Whether to render the environment
     """
     env_config = WargameEnvConfig(render_mode="human" if render else None)
-    env = create_environment(env_config=env_config)
+    renderer = HumanRender()
+    env = create_environment(env_config=env_config, renderer=renderer)
     logging.info(f"Action space: {env.action_space}")
     logging.info(f"Observation space: {env.observation_space}")
     logging.info(f"Running {num_episodes} episodes...")
