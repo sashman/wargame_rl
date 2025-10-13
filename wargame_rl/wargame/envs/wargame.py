@@ -28,20 +28,24 @@ class MovementPhaseActions(Enum):
 
 
 class WargameModel:
-    def __init__(self, location, stats):
+    def __init__(self, location, stats, distances_to_objectives):
         self.location = location  # Should be a numpy array of shape (2,)
         self.stats = (
             stats  # Should be a dictionary with keys 'max_wounds' and 'current_wounds'
         )
+        self.distances_to_objectives = distances_to_objectives  # Should be a numpy array of shape (number_of_objectives,)
 
     def __repr__(self):
-        return f"WargameModel(location={self.location}, stats={self.stats})"
+        return f"WargameModel(location={self.location}, distances_to_objectives={self.distances_to_objectives}, stats={self.stats})"
 
 
 class WargameModelSpace:
     @staticmethod
-    def to_space(size: int):
+    def to_space(size: int, number_of_objectives: int):
         location_space = spaces.Box(0, size - 1, shape=(2,), dtype=int)
+        distances_to_objectives_space = spaces.Box(
+            0, size - 1, shape=(number_of_objectives,), dtype=int
+        )
         stats_space = spaces.Dict(
             {
                 "max_wounds": spaces.Box(0, 100, shape=(1,), dtype=int),
@@ -52,6 +56,7 @@ class WargameModelSpace:
         return spaces.Dict(
             {
                 "location": location_space,
+                "distances_to_objectives": distances_to_objectives_space,
                 "stats": stats_space,
             }
         )
@@ -85,7 +90,10 @@ class WargameEnv(gym.Env):
                 "current_turn": spaces.Discrete(1),
                 "wargame_models": spaces.Tuple(
                     [
-                        WargameModelSpace.to_space(size=self.size)
+                        WargameModelSpace.to_space(
+                            size=self.size,
+                            number_of_objectives=config.number_of_objectives,
+                        )
                         for _ in range(config.number_of_wargame_models)
                     ]
                 ),
@@ -137,6 +145,9 @@ class WargameEnv(gym.Env):
             WargameModel(
                 location=np.zeros(2, dtype=int),
                 stats={"max_wounds": 100, "current_wounds": 100},
+                distances_to_objectives=np.zeros(
+                    config.number_of_objectives, dtype=int
+                ),
             )
             for _ in range(config.number_of_wargame_models)
         ]
@@ -153,8 +164,21 @@ class WargameEnv(gym.Env):
     def _get_obs(self) -> WargameEnvObservation:
         """Get the observation for the current state of the environment."""
         # Get the locations of the wargame models and objectives
+
+        for model in self.wargame_models:
+            model.distances_to_objectives = np.array(
+                [
+                    np.linalg.norm(model.location - objective.location, ord=2)
+                    for objective in self.objectives
+                ],
+                dtype=int,
+            )
+
         wargame_models = [
-            WargameModelObservation(location=model.location)
+            WargameModelObservation(
+                location=model.location,
+                distances_to_objectives=model.distances_to_objectives,
+            )
             for model in self.wargame_models
         ]
         objectives = [
@@ -172,7 +196,10 @@ class WargameEnv(gym.Env):
         # for each wargame model, we will return its location and stats
 
         wargame_models = [
-            WargameModelObservation(location=model.location)
+            WargameModelObservation(
+                location=model.location,
+                distances_to_objectives=model.distances_to_objectives,
+            )
             for model in self.wargame_models
         ]
         objectives = [
@@ -275,11 +302,12 @@ class WargameEnv(gym.Env):
         observation = self._get_obs()
         info = self._get_info()
 
-        if self.renderer is not None:
-            self.renderer.render(self)
-
         self.current_turn += 1  # Increment the current turn
         if self.current_turn >= self.max_turns:
             is_terminated = True
 
         return observation, reward, is_terminated, False, info
+
+    def render(self):
+        if self.renderer is not None:
+            self.renderer.render(self)
