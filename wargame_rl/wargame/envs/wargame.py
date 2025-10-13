@@ -116,12 +116,6 @@ class WargameEnv(gym.Env):
             MovementPhaseActions.none.value: np.array([0, 0]),
         }
 
-        # assert (
-        #     config.render_mode is None
-        #     or config.render_mode in self.metadata["render_modes"]  # type: ignore
-        # )
-        # self.render_mode = config.render_mode
-
         self.renderer = renderer
 
         """
@@ -218,8 +212,6 @@ class WargameEnv(gym.Env):
         observation = self._get_obs()
         info = self._get_info()
 
-        # if self.render_mode == "human":
-        #     self._render_frame()
         if self.renderer is not None:
             self.renderer.setup(self)
             self.renderer.render(self)
@@ -283,8 +275,6 @@ class WargameEnv(gym.Env):
         observation = self._get_obs()
         info = self._get_info()
 
-        # if self.render_mode == "human":
-        #     self._render_frame()
         if self.renderer is not None:
             self.renderer.render(self)
 
@@ -293,93 +283,3 @@ class WargameEnv(gym.Env):
             is_terminated = True
 
         return observation, reward, is_terminated, False, info
-
-    def render(self):
-        pass
-        # if self.render_mode == "rgb_array":
-        #     return self._render_frame()
-
-    # def _render_frame(self):
-    #     if self.window is None and self.render_mode == "human":
-    #         pygame.init()
-    #         pygame.display.init()
-    #         self.window = pygame.display.set_mode((self.window_size, self.window_size))
-    #     if self.clock is None and self.render_mode == "human":
-    #         self.clock = pygame.time.Clock()
-
-    #     canvas = pygame.Surface((self.window_size, self.window_size))
-    #     canvas.fill((255, 255, 255))
-    #     pix_square_size = (
-    #         self.window_size / self.size
-    #     )  # The size of a single grid square in pixels
-
-    #     # First we draw the target
-    #     self._draw_target(canvas, pix_square_size)
-
-    #     # Now we draw the agent
-    #     self._draw_agent(canvas, pix_square_size)
-
-    #     # Finally, add some gridlines
-    #     self._draw_gridlines(canvas, pix_square_size)
-
-    #     if self.render_mode == "human":
-    #         # The following line copies our drawings from `canvas` to the visible window
-    #         self.window.blit(canvas, canvas.get_rect())
-    #         pygame.event.pump()
-    #         pygame.display.update()
-
-    #         # We need to ensure that human-rendering occurs at the predefined framerate.
-    #         # The following line will automatically add a delay to
-    #         # keep the framerate stable.
-    #         self.clock.tick(self.metadata["render_fps"])
-    #     else:  # rgb_array
-    #         return np.transpose(
-    #             np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
-    #         )
-
-    # def _draw_target(self, canvas, pix_square_size):
-    #     """Draw objectives on the canvas."""
-    #     for objective in self.objectives:
-    #         pygame.draw.rect(
-    #             canvas,
-    #             (255, 0, 0),
-    #             pygame.Rect(
-    #                 pix_square_size * objective.location,
-    #                 (pix_square_size, pix_square_size),
-    #             ),
-    #         )
-
-    # def _draw_agent(self, canvas, pix_square_size):
-    #     """Draw wargame models (agents) on the canvas."""
-    #     for model in self.wargame_models:
-    #         pygame.draw.circle(
-    #             canvas,
-    #             (0, 0, 255),
-    #             (model.location + 0.5) * pix_square_size,
-    #             pix_square_size / 3,
-    #         )
-
-    # def _draw_gridlines(self, canvas, pix_square_size):
-    #     """Draw gridlines on the canvas."""
-    #     for x in range(self.size + 1):
-    #         # Draw horizontal lines
-    #         pygame.draw.line(
-    #             canvas,
-    #             0,
-    #             (0, pix_square_size * x),
-    #             (self.window_size, pix_square_size * x),
-    #             width=3,
-    #         )
-    #         # Draw vertical lines
-    #         pygame.draw.line(
-    #             canvas,
-    #             0,
-    #             (pix_square_size * x, 0),
-    #             (pix_square_size * x, self.window_size),
-    #             width=3,
-    # )
-
-    # def close(self):
-    #     if self.window is not None:
-    #         pygame.display.quit()
-    #         pygame.quit()
