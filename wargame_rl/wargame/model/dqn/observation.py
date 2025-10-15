@@ -1,4 +1,5 @@
 import torch
+from wandb.util import np
 
 from wargame_rl.wargame.envs.env_types import (
     WargameEnvAction,
@@ -17,11 +18,23 @@ def action_to_tensor(action: WargameEnvAction, device: Device = None) -> torch.T
     return action_tensor.unsqueeze(0)
 
 
+def normalize_location(location: np.ndarray) -> np.ndarray:
+    half_grid_size = 25
+    return (location - half_grid_size) / half_grid_size
+
+
+def normalize_distances(distances: np.ndarray) -> np.ndarray:
+    # Maximum possible distance in a 50x50 grid is diagonal distance
+    # sqrt(50^2 + 50^2) = sqrt(5000) ≈ 70.7
+    half_max_distance = (np.sqrt(2) * 50) / 2  # diagonal distance
+    return (distances - half_max_distance) / half_max_distance
+
+
 def observation_to_tensor(
     state: WargameEnvObservation, device: Device = None
 ) -> torch.Tensor:
     device = get_device(device)
-    norm = 25.0
+
     # current_turn: int = state.current_turn
     wargame_models: list[WargameModelObservation] = state.wargame_models
     objectives: list[WargameEnvObjectiveObservation] = state.objectives
@@ -30,10 +43,18 @@ def observation_to_tensor(
     # )
     tensor_current_turn = torch.tensor([0], dtype=torch.float32, device=device)
     tensor_wargame_models = torch.tensor(
-        [model.location for model in wargame_models], dtype=torch.float32, device=device
+        [
+            [
+                normalize_location(model.location),
+                normalize_distances(model.distances_to_objectives),
+            ]
+            for model in wargame_models
+        ],
+        dtype=torch.float32,
+        device=device,
     )
     tensor_objectives = torch.tensor(
-        [objective.location for objective in objectives],
+        [normalize_location(objective.location) for objective in objectives],
         dtype=torch.float32,
         device=device,
     )
@@ -45,9 +66,7 @@ def observation_to_tensor(
         ],
         dim=0,
     )
-    tensor_state = (tensor_state - norm) / norm
-    assert tensor_state.max() <= 1.0
-    assert tensor_state.min() >= -1.0
+
     return tensor_state.unsqueeze(0)
 
 
