@@ -54,6 +54,10 @@ class DQN(RL_Network):
         obs_size = observation.size
         n_wargame_models = observation.n_wargame_models
         n_actions = len(MovementPhaseActions)
+
+        print(
+            f"obs_size: {obs_size}, n_wargame_models: {n_wargame_models}, n_actions: {n_actions}"
+        )
         return cls(obs_size, n_actions, n_wargame_models)
 
     @classmethod

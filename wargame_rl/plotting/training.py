@@ -31,7 +31,10 @@ def build_batch_tensor(
             testing_state = WargameEnvObservation(
                 current_turn=observation.current_turn,
                 wargame_models=[
-                    WargameModelObservation(location=location) for _ in range(n_models)
+                    WargameModelObservation(
+                        location=location, distances_to_objectives=np.zeros(n_models)
+                    )
+                    for _ in range(n_models)
                 ],
                 objectives=observation.objectives,
             )
