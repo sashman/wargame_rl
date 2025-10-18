@@ -7,8 +7,8 @@ class DQNConfig(BaseModel):
     gamma: float = 0.99
     replay_size: int = 5000
     epsilon_max: float = 1.0
-    epsilon_min: float = 0.1
-    epsilon_decay: float = 0.997
+    epsilon_min: float = 0.2
+    epsilon_decay: float = 0.999
     sync_rate: int = 5
     n_samples_per_epoch: int = 8 * 1024
     weight_decay: float = 1e-5

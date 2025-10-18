@@ -260,22 +260,27 @@ class WargameEnv(gym.Env):
             )
             normalized_distance = distance / (np.sqrt(2) * self.size)
             total_distance += normalized_distance
-            if self.previous_distance[i] is not None:
-                distance_improvement = self.previous_distance[i] - distance
-                if distance_improvement > 0:
-                    total_distance_improvement += 0.5
-                elif distance_improvement < 0:
-                    total_distance_improvement -= 0.5
+            if distance == 0:
+                model_reward = 1
+            else:
+                if self.previous_distance[i] is not None:
+                    distance_improvement = distance - self.previous_distance[i]
+                    if distance_improvement > 0:
+                        model_reward = 0.05
+                    elif distance_improvement < 0:
+                        model_reward = -0.1
+                    else:
+                        model_reward = -0.05
                 else:
-                    total_distance_improvement -= 0.1
+                    model_reward = 0
+            total_distance_improvement += model_reward
             self.previous_distance[i] = distance
-            bonus = (distance == 0) * 1
 
         # average_distance = total_distance / len(self.wargame_models)
         # assert average_distance >= 0.0
         # assert average_distance <= 1.0
         # return -average_distance + total_distance_improvement / len(self.wargame_models)
-        reward = (total_distance_improvement + bonus) / len(self.wargame_models)
+        reward = total_distance_improvement / len(self.wargame_models)
         assert reward >= -1.0
         assert reward <= 1.0
         return reward
