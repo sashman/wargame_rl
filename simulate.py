@@ -8,6 +8,7 @@ Usage:
 """
 
 import logging
+import os
 
 import typer
 
@@ -28,6 +29,12 @@ def simulate(checkpoint_path: str, num_episodes: int = 10, render: bool = True):
         num_episodes: Number of episodes to run
         render: Whether to render the environment
     """
+
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
+
+    logging.info(f"Loading model from checkpoint: {checkpoint_path}")
+
     env_config = WargameEnvConfig(render_mode="human" if render else None)
     renderer = HumanRender()
     env = create_environment(env_config=env_config, renderer=renderer)
@@ -38,8 +45,28 @@ def simulate(checkpoint_path: str, num_episodes: int = 10, render: bool = True):
     agent = Agent(env)
     logging.info(f"Agent created: {agent}")
 
-    policy_net = DQN.from_checkpoint(env, checkpoint_path)
-    logging.info(f"Loaded model from checkpoint: {checkpoint_path}")
+    try:
+        policy_net = DQN.from_checkpoint(env, checkpoint_path)
+        logging.info(f"Loaded model from checkpoint: {checkpoint_path} successfully!")
+    except RuntimeError as e:
+        if "size mismatch" in str(e):
+            logging.error(f"Model size mismatch error: {e}")
+            logging.error(
+                "This checkpoint was trained with a different environment configuration."
+            )
+            logging.error("The current environment has:")
+            obs, _ = env.reset()
+            logging.error(f"  - Observation size: {obs.size}")
+            logging.error(f"  - Number of wargame models: {obs.n_wargame_models}")
+            from wargame_rl.wargame.envs.wargame import MovementPhaseActions
+
+            logging.error(f"  - Number of actions: {len(MovementPhaseActions)}")
+            logging.error(
+                "Please train a new model with the current environment configuration or use a compatible checkpoint."
+            )
+            raise
+        else:
+            raise
 
     episode_rewards = []
     episode_steps = []
@@ -81,10 +108,34 @@ def simulate(checkpoint_path: str, num_episodes: int = 10, render: bool = True):
     env.close()
 
 
+def get_latest_checkpoint():
+    if not os.path.exists("checkpoints"):
+        raise FileNotFoundError(
+            "Checkpoints directory not found, please run `just train` first to create it."
+        )
+
+    # Recursively find all .ckpt files in subdirectories
+    checkpoint_files = []
+    for root, dirs, files in os.walk("checkpoints"):
+        for file in files:
+            if file.startswith("dqn-") and file.endswith(".ckpt"):
+                full_path = os.path.join(root, file)
+                checkpoint_files.append(full_path)
+
+    if len(checkpoint_files) == 0:
+        raise FileNotFoundError("No checkpoint files found in checkpoints directory.")
+
+    # Sort by modification time and return the latest
+    latest_checkpoint = sorted(checkpoint_files, key=lambda x: os.path.getmtime(x))[-1]
+
+    return latest_checkpoint
+
+
 @app.command()
 def main(
     checkpoint_path: str = typer.Option(
-        ..., help="Path to the trained model checkpoint"
+        get_latest_checkpoint(),
+        help="Path to the trained model checkpoint, defaults to the latest checkpoint.",
     ),
     num_episodes: int = typer.Option(10, help="Number of episodes to run"),
     render: bool = typer.Option(True, help="Whether to render the environment"),
