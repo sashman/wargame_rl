@@ -45,8 +45,8 @@ def observation_to_tensor(
     tensor_wargame_models = torch.tensor(
         [
             [
-                normalize_location(model.location),
-                normalize_distances(model.distances_to_objectives),
+                *normalize_location(model.location),
+                *normalize_distances(model.distances_to_objectives),
             ]
             for model in wargame_models
         ],
