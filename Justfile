@@ -48,6 +48,9 @@ dockerize:
 train:
 	uv run train.py
 
+simulate-latest:
+	uv run simulate.py
+
 simulate checkpoint:
 	uv run simulate.py --checkpoint-path {{checkpoint}}
 
