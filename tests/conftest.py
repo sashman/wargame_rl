@@ -3,7 +3,7 @@ from functools import lru_cache
 import pytest
 import torch
 
-from wargame_rl.wargame.envs.env_types import WargameEnvAction
+from wargame_rl.wargame.envs.env_types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.model.dqn.dqn import DQN
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.model.dqn.factory import create_environment
@@ -18,7 +18,7 @@ def n_steps() -> int:
 @pytest.fixture
 @lru_cache(maxsize=1)
 def env():
-    return create_environment(render_mode=None)
+    return create_environment(WargameEnvConfig(render_mode=None))
 
 
 @pytest.fixture

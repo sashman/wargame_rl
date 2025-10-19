@@ -2,6 +2,7 @@ import torch
 from pytorch_lightning import Trainer
 
 from wargame_rl.wargame.envs.env_types import WargameEnvConfig
+from wargame_rl.wargame.envs.wargame import MovementPhaseActions
 from wargame_rl.wargame.model.dqn.dataset import experience_list_to_batch
 from wargame_rl.wargame.model.dqn.dqn import DQN
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
@@ -12,7 +13,7 @@ from wargame_rl.wargame.types import Experience
 def test_dqn_forward(env, experiences: list[Experience], dqn_net: DQN, n_steps: int):
     wargame_config = WargameEnvConfig()
     n_wargame_models = wargame_config.number_of_wargame_models
-    n_actions = 4
+    n_actions = len(MovementPhaseActions)
     batch = experience_list_to_batch(experiences)
     next_q_values = dqn_net.forward(batch.states)
     assert next_q_values.shape == (n_steps, n_wargame_models, n_actions)
