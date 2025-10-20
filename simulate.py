@@ -29,7 +29,8 @@ def get_env_config(env_config_path: str | None, render: bool) -> WargameEnvConfi
     if not os.path.exists(env_config_path):
         raise FileNotFoundError(f"Environment config file not found: {env_config_path}")
 
-    env_config = parse_yaml_raw_as(WargameEnvConfig, open(env_config_path).read())  # pyright: ignore[reportUndefinedVariable]
+    with open(env_config_path) as f:
+        env_config = parse_yaml_raw_as(WargameEnvConfig, f.read())  # pyright: ignore[reportUndefinedVariable]
 
     if env_config.render_mode is None:
         env_config.render_mode = "human" if render else None
