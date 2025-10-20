@@ -1,7 +1,7 @@
 import torch
 from pytorch_lightning import Trainer
 
-from wargame_rl.wargame.envs.env_types import WargameEnvConfig
+from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import MovementPhaseActions
 from wargame_rl.wargame.model.dqn.dataset import experience_list_to_batch
 from wargame_rl.wargame.model.dqn.dqn import DQN

@@ -4,7 +4,7 @@ import gymnasium as gym
 import numpy as np
 import torch
 
-from wargame_rl.wargame.envs.env_types import WargameEnvAction
+from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.model.dqn.dqn import RL_Network
 from wargame_rl.wargame.model.dqn.experience_replay import Experience, ReplayBuffer
 from wargame_rl.wargame.model.dqn.observation import observation_to_tensor

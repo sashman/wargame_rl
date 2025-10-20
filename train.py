@@ -2,7 +2,7 @@ from dataclasses import asdict
 
 from pytorch_lightning import Trainer
 
-from wargame_rl.wargame.envs.env_types import WargameEnvConfig
+from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.dqn.callback import get_checkpoint_callback
 from wargame_rl.wargame.model.dqn.config import DQNConfig, TrainingConfig
 from wargame_rl.wargame.model.dqn.dqn import DQN

@@ -12,8 +12,8 @@ import os
 
 import typer
 
-from wargame_rl.wargame.envs.env_types import WargameEnvConfig
 from wargame_rl.wargame.envs.renders.human import HumanRender
+from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.dqn import DQN
 from wargame_rl.wargame.model.dqn.factory import create_environment
