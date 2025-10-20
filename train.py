@@ -1,5 +1,3 @@
-from dataclasses import asdict
-
 from pytorch_lightning import Trainer
 
 from wargame_rl.wargame.envs.types import WargameEnvConfig
@@ -21,7 +19,7 @@ if __name__ == "__main__":
     model = DQNLightning(env=env, policy_net=net, **dqn_config.model_dump())
 
     config = {
-        "wargame": asdict(env_config),
+        "wargame": env_config.model_dump(),
         "dqn": dqn_config.model_dump(),
         "training": training_config.model_dump(),
     }
