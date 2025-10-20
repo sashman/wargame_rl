@@ -161,8 +161,11 @@ def main(
     ),
     num_episodes: int = typer.Option(10, help="Number of episodes to run"),
     render: bool = typer.Option(True, help="Whether to render the environment"),
+    env_config_path: str = typer.Option(
+        None, help="Path to the environment config file"
+    ),
 ):
-    simulate(checkpoint_path, num_episodes, render)
+    simulate(checkpoint_path, num_episodes, render, env_config_path)
 
 
 if __name__ == "__main__":
