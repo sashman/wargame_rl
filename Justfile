@@ -45,8 +45,8 @@ dockerize:
 	docker build -t warghame-rl .
 
 # Use it like: just run 10
-train:
-	uv run train.py
+train env_config_path:
+	uv run train.py --env-config-path {{env_config_path}}
 
 simulate-latest:
 	uv run simulate.py
