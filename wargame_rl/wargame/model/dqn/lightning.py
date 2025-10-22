@@ -67,7 +67,7 @@ class DQNLightning(LightningModule):
         self.total_reward = 0
         self.episode_reward = 0
         self.populate()
-        self.loss_fn = nn.MSELoss()
+        self.loss_fn = nn.MSELoss(reduction="mean")
         self.epsilon = epsilon_max
         self.optimization_steps = 0
 
