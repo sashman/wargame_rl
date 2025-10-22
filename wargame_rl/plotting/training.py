@@ -25,11 +25,18 @@ def build_batch_tensor(
     for x in range(x_min, x_max):
         for y in range(y_min, y_max):
             location = np.array([x, y])
+            distances_to_objectives = np.array(
+                [
+                    np.linalg.norm(location - objective.location, ord=2)
+                    for objective in observation.objectives
+                ]
+            )
             testing_state = WargameEnvObservation(
                 current_turn=observation.current_turn,
                 wargame_models=[
                     WargameModelObservation(
-                        location=location, distances_to_objectives=np.zeros(n_models)
+                        location=location,
+                        distances_to_objectives=distances_to_objectives,
                     )
                     for _ in range(n_models)
                 ],

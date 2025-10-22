@@ -151,7 +151,7 @@ class WargameEnv(gym.Env):
             )
             for _ in range(config.number_of_wargame_models)
         ]
-
+        self.previous_distance = [None] * config.number_of_wargame_models
         # List to hold objectives
         self.objectives = [
             WargameObjective(location=np.zeros(2, dtype=int))
@@ -224,11 +224,12 @@ class WargameEnv(gym.Env):
         self.current_turn = 0
 
         # For each wargame model, we will randomly choose a location within the deployment zone
-        for model in self.wargame_models:
+        for i, model in enumerate(self.wargame_models):
             model.location = self.np_random.integers(
                 self.deployment_zone[0], self.deployment_zone[2], size=2, dtype=int
             )
             model.stats["current_wounds"] = model.stats["max_wounds"]
+            self.previous_distance[i] = None
 
         # For each objective, we will randomly choose a location outside the deployment zone
         for objective in self.objectives:
@@ -248,7 +249,8 @@ class WargameEnv(gym.Env):
     def _calculate_reward(self):
         """Calculate the reward based on the average negative normalized distance of all wargame models to the closest objectives."""
         total_distance = 0
-        for model in self.wargame_models:
+        total_distance_improvement = 0
+        for i, model in enumerate(self.wargame_models):
             closest_objective = min(
                 self.objectives,
                 key=lambda obj: np.linalg.norm(model.location - obj.location, ord=2),
@@ -258,11 +260,30 @@ class WargameEnv(gym.Env):
             )
             normalized_distance = distance / (np.sqrt(2) * self.size)
             total_distance += normalized_distance
+            if distance == 0:
+                model_reward = 1
+            else:
+                if self.previous_distance[i] is not None:
+                    distance_improvement = distance - self.previous_distance[i]
+                    if distance_improvement < 0:
+                        model_reward = 0.05
+                    elif distance_improvement > 0:
+                        model_reward = -0.1
+                    else:
+                        model_reward = -0.05
+                else:
+                    model_reward = 0
+            total_distance_improvement += model_reward
+            self.previous_distance[i] = distance
 
-        average_distance = total_distance / len(self.wargame_models)
-        assert average_distance >= 0.0
-        assert average_distance <= 1.0
-        return -average_distance
+        # average_distance = total_distance / len(self.wargame_models)
+        # assert average_distance >= 0.0
+        # assert average_distance <= 1.0
+        # return -average_distance + total_distance_improvement / len(self.wargame_models)
+        reward = total_distance_improvement / len(self.wargame_models)
+        assert reward >= -1.0
+        assert reward <= 1.0
+        return reward
 
     def step(
         self, action: WargameEnvAction
