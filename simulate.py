@@ -32,8 +32,8 @@ def get_env_config(env_config_path: str | None, render: bool) -> WargameEnvConfi
     with open(env_config_path) as f:
         env_config = parse_yaml_raw_as(WargameEnvConfig, f.read())  # pyright: ignore[reportUndefinedVariable]
 
-    if env_config.render_mode is None:
-        env_config.render_mode = "human" if render else None
+    # Override render_mode with CLI argument
+    env_config.render_mode = "human" if render else None
 
     return env_config
 

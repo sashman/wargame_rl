@@ -25,7 +25,12 @@ def get_env_config(
         raise FileNotFoundError(f"Environment config file not found: {env_config_path}")
 
     with open(env_config_path) as f:
-        return parse_yaml_raw_as(WargameEnvConfig, f.read())  # pyright: ignore[reportUndefinedVariable]
+        env_config = parse_yaml_raw_as(WargameEnvConfig, f.read())  # pyright: ignore[reportUndefinedVariable]
+
+    # Override render_mode with CLI argument (including None)
+    env_config.render_mode = render_mode
+
+    return env_config
 
 
 @app.command()
