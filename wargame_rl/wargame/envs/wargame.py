@@ -265,9 +265,9 @@ class WargameEnv(gym.Env):
             else:
                 if self.previous_distance[i] is not None:
                     distance_improvement = distance - self.previous_distance[i]
-                    if distance_improvement > 0:
+                    if distance_improvement < 0:
                         model_reward = 0.05
-                    elif distance_improvement < 0:
+                    elif distance_improvement > 0:
                         model_reward = -0.1
                     else:
                         model_reward = -0.05

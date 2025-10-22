@@ -4,7 +4,7 @@ from pydantic import BaseModel
 class DQNConfig(BaseModel):
     batch_size: int = 64
     lr: float = 2e-3
-    gamma: float = 0.99
+    gamma: float = 0
     replay_size: int = 5000
     epsilon_max: float = 1.0
     epsilon_min: float = 0.2
