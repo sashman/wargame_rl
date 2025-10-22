@@ -151,7 +151,9 @@ class WargameEnv(gym.Env):
             )
             for _ in range(config.number_of_wargame_models)
         ]
-        self.previous_distance = [None] * config.number_of_wargame_models
+        self.previous_distance: list[None | np.ndarray] = [
+            None
+        ] * config.number_of_wargame_models
         # List to hold objectives
         self.objectives = [
             WargameObjective(location=np.zeros(2, dtype=int))
@@ -167,10 +169,7 @@ class WargameEnv(gym.Env):
 
         for model in self.wargame_models:
             model.distances_to_objectives = np.array(
-                [
-                    np.linalg.norm(model.location - objective.location, ord=2)
-                    for objective in self.objectives
-                ],
+                [model.location - objective.location for objective in self.objectives],
                 dtype=int,
             )
 
@@ -266,9 +265,9 @@ class WargameEnv(gym.Env):
                 if self.previous_distance[i] is not None:
                     distance_improvement = distance - self.previous_distance[i]
                     if distance_improvement < 0:
-                        model_reward = 0.05
+                        model_reward = 0.5
                     elif distance_improvement > 0:
-                        model_reward = -0.1
+                        model_reward = -0.5
                     else:
                         model_reward = -0.05
                 else:
