@@ -1,5 +1,5 @@
-from wargame_rl.wargame.envs.env_types import WargameEnvConfig
 from wargame_rl.wargame.envs.renders import renderer
+from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
 

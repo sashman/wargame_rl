@@ -11,9 +11,10 @@ import logging
 import os
 
 import typer
+from pydantic_yaml import parse_yaml_raw_as
 
-from wargame_rl.wargame.envs.env_types import WargameEnvConfig
 from wargame_rl.wargame.envs.renders.human import HumanRender
+from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.dqn import DQN
 from wargame_rl.wargame.model.dqn.factory import create_environment
@@ -21,7 +22,28 @@ from wargame_rl.wargame.model.dqn.factory import create_environment
 app = typer.Typer(pretty_exceptions_enable=False)
 
 
-def simulate(checkpoint_path: str, num_episodes: int = 10, render: bool = True):
+def get_env_config(env_config_path: str | None, render: bool) -> WargameEnvConfig:
+    if env_config_path is None:
+        return WargameEnvConfig(render_mode="human" if render else None)
+
+    if not os.path.exists(env_config_path):
+        raise FileNotFoundError(f"Environment config file not found: {env_config_path}")
+
+    with open(env_config_path) as f:
+        env_config = parse_yaml_raw_as(WargameEnvConfig, f.read())  # pyright: ignore[reportUndefinedVariable]
+
+    # Override render_mode with CLI argument
+    env_config.render_mode = "human" if render else None
+
+    return env_config
+
+
+def simulate(
+    checkpoint_path: str,
+    num_episodes: int = 10,
+    render: bool = True,
+    env_config_path: str | None = None,
+):
     """Run simulation with trained agent.
 
     Args:
@@ -35,7 +57,7 @@ def simulate(checkpoint_path: str, num_episodes: int = 10, render: bool = True):
 
     logging.info(f"Loading model from checkpoint: {checkpoint_path}")
 
-    env_config = WargameEnvConfig(render_mode="human" if render else None)
+    env_config = get_env_config(env_config_path, render)
     renderer = HumanRender()
     env = create_environment(env_config=env_config, renderer=renderer)
     logging.info(f"Action space: {env.action_space}")
@@ -139,8 +161,11 @@ def main(
     ),
     num_episodes: int = typer.Option(10, help="Number of episodes to run"),
     render: bool = typer.Option(True, help="Whether to render the environment"),
+    env_config_path: str = typer.Option(
+        None, help="Path to the environment config file"
+    ),
 ):
-    simulate(checkpoint_path, num_episodes, render)
+    simulate(checkpoint_path, num_episodes, render, env_config_path)
 
 
 if __name__ == "__main__":

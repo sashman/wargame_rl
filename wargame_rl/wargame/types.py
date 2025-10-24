@@ -2,7 +2,7 @@ from typing import NamedTuple
 
 import torch
 
-from wargame_rl.wargame.envs.env_types import WargameEnvAction, WargameEnvObservation
+from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvObservation
 
 
 class Experience(NamedTuple):

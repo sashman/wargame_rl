@@ -1,7 +1,7 @@
 import torch
 from wandb.util import np
 
-from wargame_rl.wargame.envs.env_types import (
+from wargame_rl.wargame.envs.types import (
     WargameEnvAction,
     WargameEnvObjectiveObservation,
     WargameEnvObservation,

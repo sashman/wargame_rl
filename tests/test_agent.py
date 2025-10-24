@@ -2,7 +2,7 @@ import gymnasium as gym
 import numpy as np
 import pytest
 
-from wargame_rl.wargame.envs.env_types import WargameEnvAction, WargameEnvConfig
+from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.dqn import DQN
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
