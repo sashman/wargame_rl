@@ -46,7 +46,7 @@ def observation_to_tensor(
         [
             [
                 *normalize_location(model.location),
-                *normalize_distances(model.distances_to_objectives),
+                *normalize_location(model.distances_to_objectives.flatten()),
             ]
             for model in wargame_models
         ],

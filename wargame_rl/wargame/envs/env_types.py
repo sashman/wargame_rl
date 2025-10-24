@@ -9,8 +9,8 @@ class WargameEnvConfig:
     Configuration for the Wargame environment.
     """
 
-    number_of_wargame_models: int = 1  # Number of wargame models in the environment
-    number_of_objectives: int = 1  # Number of objectives in the environment
+    number_of_wargame_models: int = 2  # Number of wargame models in the environment
+    number_of_objectives: int = 2  # Number of objectives in the environment
     # Right now, this has to remain fixed. If changed, the model needs to be retrained.
     size: int = 50  # Size of the square grid
     render_mode: str | None = "human"  # Rendering mode for the environment
@@ -28,8 +28,10 @@ class WargameModelObservation:
     Observation structure for a Wargame model.
     """
 
-    location: np.ndarray  # Location of the wargame model in the grid
-    distances_to_objectives: np.ndarray  # Distances to all objectives
+    location: np.ndarray  # Location of the wargame model in the grid [2]
+    distances_to_objectives: (
+        np.ndarray
+    )  # Distances to all objectives [number of objectives, 2]
 
     @property
     def size(self) -> int:
