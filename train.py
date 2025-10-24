@@ -36,8 +36,10 @@ def get_env_config(
 
 @app.command()
 def train(
-    render_mode: str = typer.Option(None, help="Render mode for the environment"),
-    env_config_path: str = typer.Option(
+    render_mode: str | None = typer.Option(
+        None, help="Render mode for the environment"
+    ),
+    env_config_path: str | None = typer.Option(
         None, help="Path to the environment config file"
     ),
 ):
