@@ -25,8 +25,15 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "mypy>=1.15.0",
+    "mypy>=1.18.2",
     "pre-commit>=4.1.0",
     "pytest>=8.3.4",
     "ruff>=0.9.5",
 ]
+
+[tool.mypy]
+disallow_untyped_defs = true
+show_error_codes = true
+no_implicit_optional = true
+warn_return_any = true
+warn_unused_ignores = true

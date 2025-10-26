@@ -1,7 +1,7 @@
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 
-def get_checkpoint_callback(name: str):
+def get_checkpoint_callback(name: str) -> list[ModelCheckpoint]:
     # Create checkpoint callback
     checkpoint_callback = ModelCheckpoint(
         dirpath=f"./checkpoints/{name}",

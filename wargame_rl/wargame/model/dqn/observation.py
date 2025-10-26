@@ -1,5 +1,6 @@
 import torch
-from wandb.util import np
+from torch import Tensor
+import numpy as np
 
 from wargame_rl.wargame.envs.types import (
     WargameEnvAction,
@@ -10,11 +11,11 @@ from wargame_rl.wargame.envs.types import (
 from wargame_rl.wargame.model.dqn.device import Device, get_device
 
 
-def action_to_tensor(action: WargameEnvAction, device: Device = None) -> torch.Tensor:
+def action_to_tensor(action: WargameEnvAction, device: Device | None = None) -> Tensor:
     device = get_device(device)
     _, action_tensor = torch.tensor(
         action.actions, dtype=torch.float32, device=device
-    ).max(axis=-1)
+    ).max(dim=-1)
     return action_tensor.unsqueeze(0)
 
 
@@ -27,11 +28,11 @@ def normalize_distances(distances: np.ndarray) -> np.ndarray:
     # Maximum possible distance in a 50x50 grid is diagonal distance
     # sqrt(50^2 + 50^2) = sqrt(5000) ≈ 70.7
     half_max_distance = (np.sqrt(2) * 50) / 2  # diagonal distance
-    return (distances - half_max_distance) / half_max_distance
+    return np.array((distances - half_max_distance) / half_max_distance)
 
 
 def observation_to_tensor(
-    state: WargameEnvObservation, device: Device = None
+    state: WargameEnvObservation, device: Device | None = None
 ) -> torch.Tensor:
     device = get_device(device)
 
@@ -41,8 +42,8 @@ def observation_to_tensor(
     # tensor_current_turn = torch.tensor(
     #     [current_turn], dtype=torch.float32, device=device
     # )
-    tensor_current_turn = torch.tensor([0], dtype=torch.float32, device=device)
-    tensor_wargame_models = torch.tensor(
+    tensor_current_turn: Tensor = torch.tensor([0], dtype=torch.float32, device=device)
+    tensor_wargame_models: Tensor = torch.tensor(
         [
             [
                 *normalize_location(model.location),
@@ -53,7 +54,7 @@ def observation_to_tensor(
         dtype=torch.float32,
         device=device,
     )
-    tensor_objectives = torch.tensor(
+    tensor_objectives: Tensor = torch.tensor(
         [normalize_location(objective.location) for objective in objectives],
         dtype=torch.float32,
         device=device,

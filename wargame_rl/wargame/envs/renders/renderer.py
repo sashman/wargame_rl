@@ -7,13 +7,13 @@ from wargame_rl.wargame.envs import wargame
 
 class Renderer(ABC):
     @abstractmethod
-    def setup(self, env: wargame.WargameEnv):
+    def setup(self, env: wargame.WargameEnv) -> None:
         pass
 
     @abstractmethod
-    def render(self, env: wargame.WargameEnv):
+    def render(self, env: wargame.WargameEnv) -> None:
         pass
 
     @abstractmethod
-    def close(self):
+    def close(self) -> None:
         pass

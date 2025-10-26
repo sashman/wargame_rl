@@ -48,7 +48,9 @@ def build_batch_tensor(
 def compute_values_function(
     observation: WargameEnvObservation, size: int, policy_net: nn.Module
 ) -> torch.Tensor:
-    batch_tensor = build_batch_tensor(observation, size, policy_net.device)
+    # Get the device from the policy_net parameters instead of assuming a device attribute
+    device = next(policy_net.parameters()).device
+    batch_tensor = build_batch_tensor(observation, size, device=device)
     n_models = len(observation.wargame_models)
 
     with torch.no_grad():

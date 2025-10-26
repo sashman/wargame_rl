@@ -31,7 +31,7 @@ format:
 # Run ruff linting and mypy type checking
 lint:
 	uv run ruff check --fix
-	uv run mypy --ignore-missing-imports --install-types --non-interactive --package warghame_rl
+	uv run mypy --ignore-missing-imports --install-types --non-interactive wargame_rl/ tests/
 
 # Run tests using pytest
 test:
