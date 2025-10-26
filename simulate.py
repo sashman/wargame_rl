@@ -166,16 +166,23 @@ def get_env_config_path_for_checkpoint(checkpoint_path: str) -> str:
 @app.command()
 def main(
     checkpoint_path: str = typer.Option(
-        get_latest_checkpoint(),
+        None,
         help="Path to the trained model checkpoint, defaults to the latest checkpoint.",
     ),
     num_episodes: int = typer.Option(10, help="Number of episodes to run"),
     render: bool = typer.Option(True, help="Whether to render the environment"),
     env_config_path: str = typer.Option(
-        get_env_config_path_for_checkpoint(get_latest_checkpoint()),
-        help="Path to the environment config file",
+        None,
+        help="Path to the environment config file, defaults to env_config.yaml from checkpoint directory.",
     ),
 ) -> None:
+    # Handle dynamic defaults inside the function
+    if checkpoint_path is None:
+        checkpoint_path = get_latest_checkpoint()
+
+    if env_config_path is None:
+        env_config_path = get_env_config_path_for_checkpoint(checkpoint_path)
+
     simulate(checkpoint_path, num_episodes, render, env_config_path)
 
 
