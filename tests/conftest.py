@@ -6,8 +6,8 @@ import torch
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.model.dqn.dqn import DQN
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
-from wargame_rl.wargame.model.dqn.factory import create_environment
 from wargame_rl.wargame.types import Experience
+from wargame_rl.wargame.envs.wargame import WargameEnv
 
 
 @pytest.fixture
@@ -17,13 +17,13 @@ def n_steps() -> int:
 
 @pytest.fixture
 @lru_cache(maxsize=1)
-def env():
-    return create_environment(WargameEnvConfig(render_mode=None))
+def env() -> WargameEnv:
+    return WargameEnv(config=WargameEnvConfig(render_mode=None))
 
 
 @pytest.fixture
 @lru_cache(maxsize=1)
-def experiences(env, n_steps: int) -> list[Experience]:
+def experiences(env: WargameEnv, n_steps: int) -> list[Experience]:
     previous_state, _ = env.reset()
     output = []
 
@@ -46,6 +46,5 @@ def replay_buffer(n_steps: int, experiences: list[Experience]) -> ReplayBuffer:
 
 @pytest.fixture
 @lru_cache(maxsize=1)
-def dqn_net(env) -> torch.nn.Module:
-    dqn_net = DQN.from_env(env)
-    return dqn_net
+def dqn_net(env: WargameEnv) -> DQN:
+    return DQN.from_env(env=env)
