@@ -2,13 +2,13 @@ from copy import deepcopy
 
 import numpy as np
 import torch
+import wandb
 from matplotlib import pyplot as plt
 from pytorch_lightning import LightningModule
 from torch import Tensor, nn
 from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
 
-import wandb
 from wargame_rl.plotting.training import compute_values_function, plot_policy_on_grid
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.dqn.agent import Agent
@@ -62,7 +62,7 @@ class DQNLightning(LightningModule):
         self.target_net = deepcopy(policy_net)
         self.target_net.eval()
 
-        self.buffer = ReplayBuffer(capacity=self.hparams.replay_size) # type: ignore
+        self.buffer = ReplayBuffer(capacity=self.hparams.replay_size)  # type: ignore
         self.agent = Agent(self.env, self.buffer)
         self.total_reward = 0
         self.episode_reward = 0
@@ -137,7 +137,7 @@ class DQNLightning(LightningModule):
             next_state_values = next_state_values.detach()
 
         expected_state_action_values = (
-            next_state_values * self.hparams.gamma + batch_rewards # type: ignore
+            next_state_values * self.hparams.gamma + batch_rewards  # type: ignore
         )
 
         loss: Tensor = self.loss_fn(state_action_values, expected_state_action_values)
@@ -145,7 +145,8 @@ class DQNLightning(LightningModule):
 
     def get_epsilon(self) -> float:
         self.epsilon = max(
-            self.epsilon * self.hparams.epsilon_decay, self.hparams.epsilon_min # type: ignore
+            self.epsilon * self.hparams.epsilon_decay,  # type: ignore
+            self.hparams.epsilon_min,  # type: ignore
         )
         return self.epsilon
 
@@ -177,7 +178,7 @@ class DQNLightning(LightningModule):
         self.log("epsilon", epsilon, prog_bar=True)
         self.log("train_loss", loss, prog_bar=True)
         self.log("env_steps", self.global_step, logger=False, prog_bar=True)
-        if self.optimization_steps % self.hparams.sync_rate == 0:
+        if self.optimization_steps % self.hparams.sync_rate == 0:  # type: ignore
             self.target_net.load_state_dict(self.policy_net.state_dict())
             self.target_net.eval()
 
@@ -187,17 +188,17 @@ class DQNLightning(LightningModule):
         """Initialize Adam optimizer."""
         optimizer = Adam(
             self.policy_net.parameters(),
-            lr=self.hparams.lr, # type: ignore
-            weight_decay=self.hparams.weight_decay, # type: ignore
+            lr=self.hparams.lr,  # type: ignore
+            weight_decay=self.hparams.weight_decay,  # type: ignore
         )
         return optimizer
 
     def __dataloader(self) -> DataLoader:
         """Initialize the Replay Buffer dataset used for retrieving experiences."""
-        dataset = RLDataset(self.buffer, self.hparams.n_samples_per_epoch) # type: ignore
+        dataset = RLDataset(self.buffer, self.hparams.n_samples_per_epoch)  # type: ignore
         dataloader = DataLoader(
             dataset=dataset,
-            batch_size=self.hparams.batch_size, # type: ignore
+            batch_size=self.hparams.batch_size,  # type: ignore
             collate_fn=experience_list_to_batch,
             num_workers=0,
         )
@@ -228,13 +229,13 @@ class DQNLightning(LightningModule):
         self.policy_net.train()
 
     def on_train_epoch_end(self) -> None:
-        if self.hparams.log: # type: ignore
-            self.run_episodes(self.hparams.n_episodes) # type: ignore
+        if self.hparams.log:  # type: ignore
+            self.run_episodes(self.hparams.n_episodes)  # type: ignore
             observation, _ = self.env.reset()
             values_function = compute_values_function(
                 observation, self.env.size, self.policy_net
             )
             fig = plot_policy_on_grid(values_function, observation)
-            wandb.log({"Value function": fig})  # type: ignore
+            wandb.log({"Value function": fig})
             plt.close(fig)
         return super().on_train_epoch_end()
