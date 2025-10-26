@@ -62,13 +62,13 @@ class DQNLightning(LightningModule):
         self.target_net = deepcopy(policy_net)
         self.target_net.eval()
 
-        self.buffer = ReplayBuffer(self.hparams.replay_size)
+        self.buffer = ReplayBuffer(capacity=self.hparams.replay_size) # type: ignore
         self.agent = Agent(self.env, self.buffer)
         self.total_reward = 0
         self.episode_reward = 0
         self.populate()
-        self.loss_fn = nn.MSELoss(reduction="mean")
-        self.epsilon = epsilon_max
+        self.loss_fn: nn.Module = nn.MSELoss(reduction="mean")
+        self.epsilon: float = epsilon_max
         self.optimization_steps = 0
 
     def populate(self) -> None:
@@ -95,7 +95,7 @@ class DQNLightning(LightningModule):
             q values
 
         """
-        output = self.policy_net(x)
+        output: Tensor = self.policy_net(x)
         return output
 
     def dqn_mse_loss(self, batch: ExperienceBatch) -> Tensor:
@@ -137,18 +137,19 @@ class DQNLightning(LightningModule):
             next_state_values = next_state_values.detach()
 
         expected_state_action_values = (
-            next_state_values * self.hparams.gamma + batch_rewards
+            next_state_values * self.hparams.gamma + batch_rewards # type: ignore
         )
 
-        return self.loss_fn(state_action_values, expected_state_action_values)
+        loss: Tensor = self.loss_fn(state_action_values, expected_state_action_values)
+        return loss
 
     def get_epsilon(self) -> float:
         self.epsilon = max(
-            self.epsilon * self.hparams.epsilon_decay, self.hparams.epsilon_min
+            self.epsilon * self.hparams.epsilon_decay, self.hparams.epsilon_min # type: ignore
         )
         return self.epsilon
 
-    def training_step(self, batch: ExperienceBatch, nb_batch) -> Tensor:
+    def training_step(self, batch: ExperienceBatch, nb_batch: int) -> Tensor:
         """Carries out a single step through the environment to update the replay buffer. Then calculates loss based on
         the minibatch received.
 
@@ -186,17 +187,17 @@ class DQNLightning(LightningModule):
         """Initialize Adam optimizer."""
         optimizer = Adam(
             self.policy_net.parameters(),
-            lr=self.hparams.lr,
-            weight_decay=self.hparams.weight_decay,
+            lr=self.hparams.lr, # type: ignore
+            weight_decay=self.hparams.weight_decay, # type: ignore
         )
         return optimizer
 
     def __dataloader(self) -> DataLoader:
         """Initialize the Replay Buffer dataset used for retrieving experiences."""
-        dataset = RLDataset(self.buffer, self.hparams.n_samples_per_epoch)
+        dataset = RLDataset(self.buffer, self.hparams.n_samples_per_epoch) # type: ignore
         dataloader = DataLoader(
             dataset=dataset,
-            batch_size=self.hparams.batch_size,
+            batch_size=self.hparams.batch_size, # type: ignore
             collate_fn=experience_list_to_batch,
             num_workers=0,
         )
@@ -227,8 +228,8 @@ class DQNLightning(LightningModule):
         self.policy_net.train()
 
     def on_train_epoch_end(self) -> None:
-        if self.hparams.log:
-            self.run_episodes(self.hparams.n_episodes)
+        if self.hparams.log: # type: ignore
+            self.run_episodes(self.hparams.n_episodes) # type: ignore
             observation, _ = self.env.reset()
             values_function = compute_values_function(
                 observation, self.env.size, self.policy_net
