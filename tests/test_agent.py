@@ -13,7 +13,7 @@ def agent(env: gym.Env, replay_buffer: ReplayBuffer) -> Agent:
     return Agent(env, replay_buffer)
 
 
-def test_agent(agent, dqn_net: DQN):
+def test_agent(agent: Agent, dqn_net: DQN) -> None:
     wargame_config = WargameEnvConfig()
     n_wargame_models = wargame_config.number_of_wargame_models
     agent.reset()
