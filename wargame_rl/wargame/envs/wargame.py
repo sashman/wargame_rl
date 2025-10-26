@@ -315,7 +315,7 @@ class WargameEnv(gym.Env):
         # for each element in the action tuple, we will move the corresponding wargame model
         for i, act in enumerate(action.actions):
             # Ensure the action is within the action space
-            if not self.action_space[i].contains(act):
+            if not self.action_space[i].contains(act):  # type: ignore
                 raise ValueError(
                     f"Action {act} for wargame model {i} is out of bounds."
                 )

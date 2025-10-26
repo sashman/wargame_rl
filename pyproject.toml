@@ -36,4 +36,3 @@ disallow_untyped_defs = true
 show_error_codes = true
 no_implicit_optional = true
 warn_return_any = true
-warn_unused_ignores = true
