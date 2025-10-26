@@ -8,6 +8,7 @@ class WargameEnvConfig(BaseModel):
 
     number_of_wargame_models: int = 2  # Number of wargame models in the environment
     number_of_objectives: int = 2  # Number of objectives in the environment
+    objective_radius_size: int = 5  # Radius of the objective in the environment
     # Right now, this has to remain fixed. If changed, the model needs to be retrained.
     size: int = 50  # Size of the square grid
     render_mode: str | None = "human"  # Rendering mode for the environment
