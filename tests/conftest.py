@@ -1,7 +1,6 @@
 from functools import lru_cache
 
 import pytest
-import torch
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.model.dqn.dqn import DQN
