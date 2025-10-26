@@ -95,9 +95,9 @@ just train examples/env_config/example.yaml
 
 #### Running a simulation
 
-Latest checkpoint:
+Latest checkpoint, will find the last checkpoint file and its related env config:
 ```bash
-just simulate-latest checkpoints/policy-dqn-env-v2-2025-10-24-22-50-54/env_config.yaml
+just simulate-latest
 ```
 
 
