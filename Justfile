@@ -48,8 +48,8 @@ dockerize:
 train env_config_path:
 	uv run train.py --env-config-path {{env_config_path}}
 
-simulate-latest env_config_path:
-	uv run simulate.py --env-config-path {{env_config_path}}
+simulate-latest:
+	uv run simulate.py
 
 simulate checkpoint env_config_path:
 	uv run simulate.py --checkpoint-path {{checkpoint}} --env-config-path {{env_config_path}}

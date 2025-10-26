@@ -30,7 +30,7 @@ def get_env_config(env_config_path: str | None, render: bool) -> WargameEnvConfi
         raise FileNotFoundError(f"Environment config file not found: {env_config_path}")
 
     with open(env_config_path) as f:
-        env_config = parse_yaml_raw_as(WargameEnvConfig, f.read())  # pyright: ignore[reportUndefinedVariable]
+        env_config: WargameEnvConfig = parse_yaml_raw_as(WargameEnvConfig, f.read())  # pyright: ignore[reportUndefinedVariable]
 
     # Override render_mode with CLI argument
     env_config.render_mode = "human" if render else None
@@ -43,7 +43,7 @@ def simulate(
     num_episodes: int = 10,
     render: bool = True,
     env_config_path: str | None = None,
-):
+) -> None:
     """Run simulation with trained agent.
 
     Args:
@@ -130,7 +130,7 @@ def simulate(
     env.close()
 
 
-def get_latest_checkpoint():
+def get_latest_checkpoint() -> str:
     if not os.path.exists("checkpoints"):
         raise FileNotFoundError(
             "Checkpoints directory not found, please run `just train` first to create it."
@@ -153,6 +153,16 @@ def get_latest_checkpoint():
     return latest_checkpoint
 
 
+def get_env_config_path_for_checkpoint(checkpoint_path: str) -> str:
+    """Get the basepath of the checkpoint and return the env config from the checkpoint directory."""
+    basepath = os.path.dirname(checkpoint_path)
+    env_config_path = os.path.join(basepath, "env_config.yaml")
+    if not os.path.exists(env_config_path):
+        raise FileNotFoundError(f"Environment config file not found: {env_config_path}")
+
+    return env_config_path
+
+
 @app.command()
 def main(
     checkpoint_path: str = typer.Option(
@@ -162,9 +172,10 @@ def main(
     num_episodes: int = typer.Option(10, help="Number of episodes to run"),
     render: bool = typer.Option(True, help="Whether to render the environment"),
     env_config_path: str = typer.Option(
-        None, help="Path to the environment config file"
+        get_env_config_path_for_checkpoint(get_latest_checkpoint()),
+        help="Path to the environment config file",
     ),
-):
+) -> None:
     simulate(checkpoint_path, num_episodes, render, env_config_path)
 
 
