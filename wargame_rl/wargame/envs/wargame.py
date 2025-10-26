@@ -6,7 +6,8 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-from wargame_rl.wargame.envs.env_types import (
+from wargame_rl.wargame.envs.renders import renderer
+from wargame_rl.wargame.envs.types import (
     WargameEnvAction,
     WargameEnvConfig,
     WargameEnvInfo,
@@ -14,7 +15,6 @@ from wargame_rl.wargame.envs.env_types import (
     WargameEnvObservation,
     WargameModelObservation,
 )
-from wargame_rl.wargame.envs.renders import renderer
 
 # from wargame_rl.wargame.envs.renders.renderer import Renderer
 

@@ -6,10 +6,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from wargame_rl.wargame.envs.env_types import (
-    WargameEnvObservation,
-    WargameModelObservation,
-)
+from wargame_rl.wargame.envs.types import WargameEnvObservation, WargameModelObservation
 from wargame_rl.wargame.model.dqn.device import Device
 from wargame_rl.wargame.model.dqn.observation import observation_to_tensor
 

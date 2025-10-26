@@ -1,0 +1,4 @@
+number_of_wargame_models: 2
+number_of_objectives: 2
+size: 50
+deployment_zone: [0, 0, 50, 50]
