@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 
 import gymnasium as gym
 import numpy as np
@@ -28,28 +29,30 @@ class MovementPhaseActions(Enum):
 
 
 class WargameModel:
-    def __init__(self, location, stats, distances_to_objectives):
+    def __init__(
+        self, location: np.ndarray, stats: dict, distances_to_objectives: np.ndarray
+    ):
         self.location = location  # Should be a numpy array of shape (2,)
         self.stats = (
             stats  # Should be a dictionary with keys 'max_wounds' and 'current_wounds'
         )
         self.distances_to_objectives = distances_to_objectives  # Should be a numpy array of shape (number_of_objectives, 2)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"WargameModel(location={self.location}, distances_to_objectives={self.distances_to_objectives}, stats={self.stats})"
 
 
 class WargameModelSpace:
     @staticmethod
-    def to_space(size: int, number_of_objectives: int):
-        location_space = spaces.Box(0, size - 1, shape=(2,), dtype=int)
+    def to_space(size: int, number_of_objectives: int) -> spaces.Dict:
+        location_space = spaces.Box(0, size - 1, shape=(2,), dtype=np.int32)
         distances_to_objectives_space = spaces.Box(
-            0, size - 1, shape=(number_of_objectives, 2), dtype=int
+            0, size - 1, shape=(number_of_objectives, 2), dtype=np.int32
         )
         stats_space = spaces.Dict(
             {
-                "max_wounds": spaces.Box(0, 100, shape=(1,), dtype=int),
-                "current_wounds": spaces.Box(0, 100, shape=(1,), dtype=int),
+                "max_wounds": spaces.Box(0, 100, shape=(1,), dtype=np.int32),
+                "current_wounds": spaces.Box(0, 100, shape=(1,), dtype=np.int32),
             }
         )
 
@@ -63,17 +66,19 @@ class WargameModelSpace:
 
 
 class WargameObjective:
-    def __init__(self, location):
+    def __init__(self, location: np.ndarray):
         self.location = location  # Should be a numpy array of shape (2,)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"WargameObjective(location={self.location})"
 
 
 class WargameObjectiveSpace:
     @staticmethod
-    def to_space(size: int):
-        return spaces.Dict({"location": spaces.Box(0, size - 1, shape=(2,), dtype=int)})
+    def to_space(size: int) -> spaces.Dict:
+        return spaces.Dict(
+            {"location": spaces.Box(0, size - 1, shape=(2,), dtype=np.int32)}
+        )
 
 
 class WargameEnv(gym.Env):
@@ -191,7 +196,7 @@ class WargameEnv(gym.Env):
             objectives=objectives,
         )
 
-    def _get_info(self):
+    def _get_info(self) -> WargameEnvInfo:
         # for each wargame model, we will return its location and stats
 
         wargame_models = [
@@ -214,8 +219,8 @@ class WargameEnv(gym.Env):
         )
 
     def reset(
-        self, seed=None, options=None
-    ) -> tuple[WargameEnvObservation, WargameEnvInfo]:
+        self, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[WargameEnvObservation, dict[str, Any]]:
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
@@ -225,7 +230,7 @@ class WargameEnv(gym.Env):
         # For each wargame model, we will randomly choose a location within the deployment zone
         for i, model in enumerate(self.wargame_models):
             model.location = self.np_random.integers(
-                self.deployment_zone[0], self.deployment_zone[2], size=2, dtype=int
+                self.deployment_zone[0], self.deployment_zone[2], size=2, dtype=np.int32
             )
             model.stats["current_wounds"] = model.stats["max_wounds"]
             self.previous_distance[i] = None
@@ -233,66 +238,84 @@ class WargameEnv(gym.Env):
         # For each objective, we will randomly choose a location outside the deployment zone
         for objective in self.objectives:
             objective.location = self.np_random.integers(
-                self.deployment_zone[2], self.size, size=2, dtype=int
+                self.deployment_zone[2], self.size, size=2, dtype=np.int32
             )
 
         observation = self._get_obs()
-        info = self._get_info()
+        info: WargameEnvInfo = self._get_info()
 
         if self.renderer is not None:
             self.renderer.setup(self)
             self.renderer.render(self)
 
-        return observation, info
+        return observation, info.model_dump()
 
-    def _calculate_reward(self):
+    def _get_model_reward(
+        self, previous_model_distance: float, distance_to_closest_objective: float
+    ) -> float:
+        # Wargame model has reached the objective, large positive reward
+        if distance_to_closest_objective == 0:
+            return float(1)
+
+        distance_improvement = float(
+            distance_to_closest_objective - previous_model_distance
+        )
+
+        # Wargame model has not moved closer to the objective, tiny negative reward
+        if distance_improvement == 0:
+            return float(-0.05)
+
+        # Wargame model has moved closer to the objective, small positive reward
+        if distance_improvement < 0:
+            return float(0.5)
+
+        # Wargame model has moved away from the objective, small negative reward
+        if distance_improvement > 0:
+            return float(-0.5)
+
+        return float(0)
+
+    def _calculate_reward(self) -> float:
         """Calculate the reward based on the average negative normalized distance of all wargame models to the closest objectives."""
         total_distance = 0
-        total_distance_improvement = 0
+        total_distance_improvement = float(0)
         for i, model in enumerate(self.wargame_models):
             closest_objective = min(
                 self.objectives,
-                key=lambda obj: np.linalg.norm(model.location - obj.location, ord=2),
+                key=lambda obj: float(
+                    np.linalg.norm(model.location - obj.location, ord=2)
+                ),
             )
-            distance = np.linalg.norm(
-                model.location - closest_objective.location, ord=2
+            distance = float(
+                np.linalg.norm(model.location - closest_objective.location, ord=2)
             )
             normalized_distance = distance / (np.sqrt(2) * self.size)
             total_distance += normalized_distance
-            if distance == 0:
-                model_reward = 1
+            if self.previous_distance[i] is None:
+                model_reward = float(0)
             else:
-                if self.previous_distance[i] is not None:
-                    distance_improvement = distance - self.previous_distance[i]
-                    if distance_improvement < 0:
-                        model_reward = 0.5
-                    elif distance_improvement > 0:
-                        model_reward = -0.5
-                    else:
-                        model_reward = -0.05
-                else:
-                    model_reward = 0
-            total_distance_improvement += model_reward
-            self.previous_distance[i] = distance
+                previous_distance = float(self.previous_distance[i])  # type: ignore
+                model_reward = self._get_model_reward(
+                    previous_distance, normalized_distance
+                )
 
-        # average_distance = total_distance / len(self.wargame_models)
-        # assert average_distance >= 0.0
-        # assert average_distance <= 1.0
-        # return -average_distance + total_distance_improvement / len(self.wargame_models)
-        reward = total_distance_improvement / len(self.wargame_models)
+            total_distance_improvement += model_reward
+            self.previous_distance[i] = normalized_distance
+
+        reward = float(total_distance_improvement / len(self.wargame_models))
         assert reward >= -1.0
         assert reward <= 1.0
         return reward
 
     def step(
         self, action: WargameEnvAction
-    ) -> tuple[WargameEnvObservation, float, bool, bool, WargameEnvInfo]:
+    ) -> tuple[WargameEnvObservation, float, bool, bool, dict[str, Any]]:
         terminated = [False] * len(self.wargame_models)
 
         # for each element in the action tuple, we will move the corresponding wargame model
         for i, act in enumerate(action.actions):
             # Ensure the action is within the action space
-            if not self.action_space[i].contains(act):
+            if not self.action_space[i].contains(act):  # type: ignore
                 raise ValueError(
                     f"Action {act} for wargame model {i} is out of bounds."
                 )
@@ -326,8 +349,10 @@ class WargameEnv(gym.Env):
         if self.current_turn >= self.max_turns:
             is_terminated = True
 
-        return observation, reward, is_terminated, False, info
+        return observation, reward, is_terminated, False, info.model_dump()
 
-    def render(self):
+    def render(self) -> None:
         if self.renderer is not None:
             self.renderer.render(self)
+
+        return None

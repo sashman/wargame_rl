@@ -1,16 +1,21 @@
-from dataclasses import dataclass
+from pydantic import BaseModel, Field
 
 from .model_observation import WargameModelObservation
 from .objective_observation import WargameEnvObjectiveObservation
 
 
-@dataclass
-class WargameEnvInfo:
+class WargameEnvInfo(BaseModel):
     """
     Info structure for the Wargame environment.
     """
 
-    current_turn: int
-    wargame_models: list[WargameModelObservation]
-    objectives: list[WargameEnvObjectiveObservation]
-    deployment_zone: tuple[int, int, int, int]
+    current_turn: int = Field(description="The current turn number.")
+    wargame_models: list[WargameModelObservation] = Field(
+        description="The list of wargame models."
+    )
+    objectives: list[WargameEnvObjectiveObservation] = Field(
+        description="The list of objectives."
+    )
+    deployment_zone: tuple[int, int, int, int] = Field(
+        description="The deployment zone coordinates."
+    )
