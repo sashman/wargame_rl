@@ -86,10 +86,10 @@ class Agent:
         new_state, reward, done, _, _ = self.env.step(action)
 
         if self.replay_buffer is not None and save_step:
-            exp = Experience(self.observation, action, reward, done, new_state)
+            exp = Experience(state=self.observation, action=action, reward=float(reward), done=bool(done), new_state=new_state)
             self.replay_buffer.append(exp)
         self.observation = new_state
-        return reward, done
+        return float(reward), bool(done)
 
     def run_episode(
         self,
