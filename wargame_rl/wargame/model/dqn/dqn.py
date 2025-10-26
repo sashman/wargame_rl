@@ -20,14 +20,14 @@ class RL_Network(nn.Module, ABC):
 class DQN(RL_Network):
     def __init__(
         self,
-        state_dim,
-        action_dim,
-        n_wargame_models,
-        hidden_dim=128,
-        num_layers=2,
-        device: Device = None,
-    ):
-        super(DQN, self).__init__()
+        state_dim: int,
+        action_dim: int,
+        n_wargame_models: int,
+        hidden_dim: int = 128,
+        num_layers: int = 2,
+        device: Device | None = None,
+    ) -> None:
+        super().__init__()
 
         self.layers = nn.ModuleList()
         self.layers.append(nn.Linear(state_dim, hidden_dim))
@@ -40,7 +40,7 @@ class DQN(RL_Network):
         self.n_wargame_models = n_wargame_models
         self.action_dim = action_dim
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         assert len(x.shape) == 2
         batch_size = x.shape[0]
         for layer in self.layers:
@@ -49,11 +49,11 @@ class DQN(RL_Network):
         return x.reshape(batch_size, self.n_wargame_models, self.action_dim)
 
     @classmethod
-    def from_env(cls, env: gym.Env) -> "DQN":
+    def from_env(cls, env: gym.Env) -> Self:
         observation, _ = env.reset()
-        obs_size = observation.size
-        n_wargame_models = observation.n_wargame_models
-        n_actions = len(MovementPhaseActions)
+        obs_size: int = observation.size
+        n_wargame_models: int = observation.n_wargame_models
+        n_actions: int = len(MovementPhaseActions)
 
         print(
             f"obs_size: {obs_size}, n_wargame_models: {n_wargame_models}, n_actions: {n_actions}"
