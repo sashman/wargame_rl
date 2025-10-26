@@ -13,4 +13,4 @@ class WargameEnvObjectiveObservation:
 
     @property
     def size(self) -> int:
-        return self.location.size
+        return int(self.location.size)

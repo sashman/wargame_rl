@@ -14,5 +14,4 @@ class WargameModelObservation:
 
     @property
     def size(self) -> int:
-        return self.location.size + self.distances_to_objectives.size
-        # return self.location.size
+        return int(self.location.size + self.distances_to_objectives.size)
