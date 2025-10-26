@@ -90,7 +90,20 @@ just validate
 #### Training
 
 ```bash
-just train
+just train examples/env_config/example.yaml
+```
+
+#### Running a simulation
+
+Latest checkpoint:
+```bash
+just simulate-latest checkpoints/policy-dqn-env-v2-2025-10-24-22-50-54/env_config.yaml
+```
+
+
+Specific checkpoint:
+```bash
+just simulate checkpoints/policy-dqn-env-v2-2025-10-24-22-50-54/last.ckpt checkpoints/policy-dqn-env-v2-2025-10-24-22-50-54/env_config.yaml
 ```
 
 #### Testing Env
