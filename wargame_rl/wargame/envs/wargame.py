@@ -291,7 +291,12 @@ class WargameEnv(gym.Env):
                 ),
             )
             distance = float(
-                np.linalg.norm(model.location - closest_objective.location, ord=2)
+                np.linalg.norm(
+                    model.location
+                    - closest_objective.location
+                    + closest_objective.radius_size / 2,
+                    ord=2,
+                )
             )
             normalized_distance = distance / (np.sqrt(2) * self.size)
             total_distance += normalized_distance
@@ -335,7 +340,13 @@ class WargameEnv(gym.Env):
         for i, model in enumerate(self.wargame_models):
             # Check if the model has reached its objective
             for objective in self.objectives:
-                if np.array_equal(model.location, objective.location):
+                if (
+                    np.linalg.norm(
+                        model.location - objective.location + objective.radius_size / 2,
+                        ord=2,
+                    )
+                    <= objective.radius_size
+                ):
                     terminated[i] = True
                     break
 
