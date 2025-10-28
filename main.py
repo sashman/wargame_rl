@@ -4,7 +4,7 @@ import sys
 import loguru
 
 
-def environment_test():
+def environment_test() -> None:
     from wargame_rl.wargame.envs.env_test import EnvTest
 
     # Initialize the environment with a grid size of 50 and human rendering mode
@@ -14,7 +14,7 @@ def environment_test():
     env_test.run_actions(num_actions=100)
 
 
-def main():
+def main() -> None:
     logger = loguru.logger
     logger.remove()
     logger.add(
