@@ -348,7 +348,6 @@ class WargameEnv(gym.Env):
                     <= objective.radius_size
                 ):
                     terminated[i] = True
-                    break
 
         is_terminated = all(
             terminated
