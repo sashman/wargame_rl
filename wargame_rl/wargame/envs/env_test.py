@@ -12,6 +12,7 @@ class EnvTest:
             WargameEnvConfig(
                 size=size,
                 render_mode=render_mode,
+                objective_radius_size=2,
                 number_of_wargame_models=3,
                 number_of_objectives=2,
                 deployment_zone=(0, 0, size // 3, size),
