@@ -121,6 +121,16 @@ class HumanRender(Renderer):
     ) -> None:
         """Draw objectives on the canvas."""
         for objective in objectives:
+            pygame.draw.circle(
+                canvas,
+                (255, 100, 100),
+                (
+                    float(objective.location[0] + 0.5) * self.pix_square_size,
+                    float(objective.location[1] + 0.5) * self.pix_square_size,
+                ),
+                float(objective.radius_size * self.pix_square_size),
+            )
+
             pygame.draw.rect(
                 canvas,
                 (255, 0, 0),

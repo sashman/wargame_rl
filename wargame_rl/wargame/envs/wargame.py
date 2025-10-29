@@ -66,11 +66,12 @@ class WargameModelSpace:
 
 
 class WargameObjective:
-    def __init__(self, location: np.ndarray):
+    def __init__(self, location: np.ndarray, radius_size: int):
         self.location = location  # Should be a numpy array of shape (2,)
+        self.radius_size = radius_size  # Radius of the objective in the environment
 
     def __repr__(self) -> str:
-        return f"WargameObjective(location={self.location})"
+        return f"WargameObjective(location={self.location}, radius_size={self.radius_size})"
 
 
 class WargameObjectiveSpace:
@@ -161,7 +162,10 @@ class WargameEnv(gym.Env):
         ] * config.number_of_wargame_models
         # List to hold objectives
         self.objectives = [
-            WargameObjective(location=np.zeros(2, dtype=int))
+            WargameObjective(
+                location=np.zeros(2, dtype=int),
+                radius_size=config.objective_radius_size,
+            )
             for _ in range(config.number_of_objectives)
         ]
 
@@ -287,7 +291,12 @@ class WargameEnv(gym.Env):
                 ),
             )
             distance = float(
-                np.linalg.norm(model.location - closest_objective.location, ord=2)
+                np.linalg.norm(
+                    model.location
+                    - closest_objective.location
+                    + closest_objective.radius_size / 2,
+                    ord=2,
+                )
             )
             normalized_distance = distance / (np.sqrt(2) * self.size)
             total_distance += normalized_distance
@@ -331,9 +340,14 @@ class WargameEnv(gym.Env):
         for i, model in enumerate(self.wargame_models):
             # Check if the model has reached its objective
             for objective in self.objectives:
-                if np.array_equal(model.location, objective.location):
+                if (
+                    np.linalg.norm(
+                        model.location - objective.location + objective.radius_size / 2,
+                        ord=2,
+                    )
+                    <= objective.radius_size
+                ):
                     terminated[i] = True
-                    break
 
         is_terminated = all(
             terminated
