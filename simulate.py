@@ -16,7 +16,7 @@ from pydantic_yaml import parse_yaml_raw_as
 from wargame_rl.wargame.envs.renders.human import HumanRender
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.dqn.agent import Agent
-from wargame_rl.wargame.model.dqn.dqn import DQN
+from wargame_rl.wargame.model.dqn.dqn import DQN_MLP
 from wargame_rl.wargame.model.dqn.factory import create_environment
 
 app = typer.Typer(pretty_exceptions_enable=False)
@@ -68,7 +68,7 @@ def simulate(
     logging.info(f"Agent created: {agent}")
 
     try:
-        policy_net = DQN.from_checkpoint(env, checkpoint_path)
+        policy_net = DQN_MLP.from_checkpoint(env, checkpoint_path)
         logging.info(f"Loaded model from checkpoint: {checkpoint_path} successfully!")
     except RuntimeError as e:
         if "size mismatch" in str(e):

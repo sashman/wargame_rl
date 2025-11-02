@@ -1,6 +1,6 @@
+import numpy as np
 import torch
 from torch import Tensor
-import numpy as np
 
 from wargame_rl.wargame.envs.types import (
     WargameEnvAction,
@@ -33,7 +33,22 @@ def normalize_distances(distances: np.ndarray) -> np.ndarray:
 
 def observation_to_tensor(
     state: WargameEnvObservation, device: Device | None = None
-) -> torch.Tensor:
+) -> list[torch.Tensor]:
+    """Convert observation to tensors.
+
+    Order of tensors
+    ----------------
+
+    The tensors are returned in the following order:
+        1. tensor_current_turn: Tensor containing the current turn as a float32
+        tensor of shape (1,).
+        2. tensor_objectives: Tensor of all objectives; shape (num_objectives, location_dims),
+        values normalized to [-1, 1].
+        3. tensor_wargame_models: Tensor of all wargame models; shape (num_models, model_features),
+        where model_features includes normalized location and distances to objectives,
+        all normalized to [-1, 1].
+    """
+
     device = get_device(device)
 
     # current_turn: int = state.current_turn
@@ -59,21 +74,27 @@ def observation_to_tensor(
         dtype=torch.float32,
         device=device,
     )
-    tensor_state = torch.cat(
-        [
-            tensor_current_turn,
-            tensor_wargame_models.flatten(),
-            tensor_objectives.flatten(),
-        ],
-        dim=0,
-    )
-
-    return tensor_state.unsqueeze(0)
+    return [
+        tensor_current_turn,
+        tensor_objectives,
+        tensor_wargame_models,
+    ]
 
 
 def observations_to_tensor_batch(
     states: list[WargameEnvObservation], device: Device = None
-) -> torch.Tensor:
+) -> list[torch.Tensor]:
+    assert len(states) > 0, "No states to convert to tensor"
     device = get_device(device)
 
-    return torch.cat([observation_to_tensor(state, device) for state in states], dim=0)
+    tensors = [observation_to_tensor(state, device) for state in states]
+
+    tensor_current_turn = torch.cat(
+        [tensor[0].unsqueeze(0) for tensor in tensors], dim=0
+    )
+    tensor_objectives = torch.cat([tensor[1].unsqueeze(0) for tensor in tensors], dim=0)
+    tensor_wargame_models = torch.cat(
+        [tensor[2].unsqueeze(0) for tensor in tensors], dim=0
+    )
+
+    return [tensor_current_turn, tensor_objectives, tensor_wargame_models]

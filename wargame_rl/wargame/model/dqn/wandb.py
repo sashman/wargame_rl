@@ -1,9 +1,12 @@
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Generator
+
 from pytorch_lightning.loggers import WandbLogger
 
 import wandb
+
+# mypy: disable-error-code="attr-defined,name-defined"
 
 PROJECT_NAME = "wargame_rl"
 DEFAULT_NAME = "policy-dqn-env-v2"
@@ -11,7 +14,9 @@ ENTITY = "wargame_rl"
 
 
 @contextmanager
-def init_wandb(config: dict | None = None, name: str | None = None) -> Generator[wandb.Run, None, None]:
+def init_wandb(
+    config: dict | None = None, name: str | None = None
+) -> Generator[wandb.Run, None, None]:
     if config is None:
         config = {}
     if name is None:

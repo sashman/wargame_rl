@@ -7,7 +7,7 @@ from pytorch_lightning import Trainer
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.dqn.checkpoint_callback import get_checkpoint_callback
 from wargame_rl.wargame.model.dqn.config import DQNConfig, TrainingConfig
-from wargame_rl.wargame.model.dqn.dqn import DQN
+from wargame_rl.wargame.model.dqn.dqn import DQN_MLP
 from wargame_rl.wargame.model.dqn.env_config_callback import EnvConfigCallback
 from wargame_rl.wargame.model.dqn.factory import create_environment
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
@@ -31,7 +31,7 @@ def get_env_config(
     # Override render_mode with CLI argument (including None)
     env_config.render_mode = render_mode
 
-    return env_config
+    return WargameEnvConfig(**env_config.model_dump())
 
 
 @app.command()
@@ -42,7 +42,7 @@ def train(
     env_config_path: str | None = typer.Option(
         None, help="Path to the environment config file"
     ),
-):
+) -> None:
     """Train the DQN agent."""
 
     dqn_config = DQNConfig()
@@ -52,7 +52,7 @@ def train(
 
     env = create_environment(env_config=env_config)
 
-    net = DQN.from_env(env)
+    net = DQN_MLP.from_env(env)
     model = DQNLightning(env=env, policy_net=net, **dqn_config.model_dump())
 
     config = {
