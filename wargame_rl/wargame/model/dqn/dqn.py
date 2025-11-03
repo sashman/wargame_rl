@@ -1,3 +1,4 @@
+import math
 from abc import ABC, abstractmethod
 from typing import Self
 
@@ -7,10 +8,17 @@ from torch import nn
 
 from wargame_rl.wargame.envs.wargame import MovementPhaseActions
 from wargame_rl.wargame.model.dqn.device import Device, get_device
+from wargame_rl.wargame.model.dqn.layers import Block, LayerNorm, TransformerConfig
 
 
 class RL_Network(nn.Module, ABC):
     device: torch.device
+
+    def is_batched(self, xs: list[torch.Tensor]) -> bool:
+        """Check if the input is batched."""
+        game_state_tensor = xs[0]
+        # Check if the game state tensor is batched
+        return len(game_state_tensor.shape) > 1
 
     @abstractmethod
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -60,9 +68,6 @@ class DQN_MLP(RL_Network):
         self.n_wargame_models = n_wargame_models
         self.action_dim = action_dim
 
-    def is_batched(self, xs: list[torch.Tensor]) -> bool:
-        return len(xs[0].shape) > 1
-
     def forward(self, xs: list[torch.Tensor]) -> torch.Tensor:
         # 1 Concatenate all tensors in xs
         if self.is_batched(xs):
@@ -92,140 +97,224 @@ class DQN_MLP(RL_Network):
         return cls(obs_size, n_actions, n_wargame_models)
 
 
-# class DQN_Transformer(RL_Network):
+class DQN_Transformer(RL_Network):
+    # Transformer adapted from the NanoGPT implementation:
+    # https://github.com/karpathy/nanoGPT
+    def __init__(
+        self,
+        game_size: int,
+        objective_size: int,
+        wargame_model_size: int,
+        n_actions: int,
+        transformer_config: TransformerConfig,
+        device: Device | None = None,
+    ) -> None:
+        self.game_size = game_size
+        self.objective_size = objective_size
+        self.wargame_model_size = wargame_model_size
+        self.n_actions = n_actions
 
-#     def __init__(self,
-#         obs_size,
-#         n_actions,
-#         block_config: BlockConfig,
-#         device: Device | None = None,
-#     ) -> None:
+        super().__init__()
 
-#         self.obs_size = obs_size
-#         self.n_actions = n_actions
+        self.config = transformer_config
+        self.embedding_size = transformer_config.embedding_size
 
-#         super().__init__()
-#         assert config.vocab_size is not None
-#         assert config.block_size is not None
-#         self.config = config
+        self.game_embedding = nn.Linear(
+            self.game_size, self.config.embedding_size, bias=False
+        )
+        self.objective_embedding = nn.Linear(
+            self.objective_size, self.config.embedding_size, bias=False
+        )
+        self.wargame_model_embedding = nn.Linear(
+            self.wargame_model_size, self.config.embedding_size, bias=False
+        )
 
-#         self.transformer = nn.ModuleDict(dict(
-#             wte = nn.Embedding(config.vocab_size, config.n_embd),
-#             wpe = nn.Embedding(config.block_size, config.n_embd),
-#             drop = nn.Dropout(config.dropout),
-#             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-#             ln_f = LayerNorm(config.n_embd, bias=config.bias),
-#         ))
-#         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-#         # with weight tying when using torch.compile() some warnings get generated:
-#         # "UserWarning: functional_call was passed multiple values for tied weights.
-#         # This behavior is deprecated and will be an error in future versions"
-#         # not 100% sure what this is, so far seems to be harmless. TODO investigate
-#         self.transformer.wte.weight = self.lm_head.weight # https://paperswithcode.com/method/weight-tying
+        self.transformer = nn.ModuleDict(
+            dict(
+                drop=nn.Dropout(self.config.dropout),
+                h=nn.ModuleList(
+                    [Block(self.config) for _ in range(self.config.n_layers)]
+                ),
+                ln_f=LayerNorm(self.config.embedding_size, bias=self.config.bias),
+            )
+        )
 
-#         # init all weights
-#         self.apply(self._init_weights)
-#         # apply special scaled init to the residual projections, per GPT-2 paper
-#         for pn, p in self.named_parameters():
-#             if pn.endswith('c_proj.weight'):
-#                 torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * config.n_layer))
+        self.action_head = nn.Linear(
+            self.config.embedding_size, self.n_actions, bias=False
+        )
 
-#         # report number of parameters
-#         print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
+        # init all weights
+        self.apply(self._init_weights)
+        # apply special scaled init to the residual projections, per GPT-2 paper
+        for pn, p in self.named_parameters():
+            if pn.endswith("c_proj.weight"):
+                torch.nn.init.normal_(
+                    p, mean=0.0, std=0.02 / math.sqrt(2 * self.config.n_layers)
+                )
 
-#         self.device = get_device(device)
-#         self.to(self.device)
+        # report number of parameters
+        print("number of parameters: %.2fM" % (self.get_num_params() / 1e6,))
 
-#     def get_num_params(self, non_embedding=True):
-#         """
-#         Return the number of parameters in the model.
-#         For non-embedding count (default), the position embeddings get subtracted.
-#         The token embeddings would too, except due to the parameter sharing these
-#         params are actually used as weights in the final layer, so we include them.
-#         """
-#         n_params = sum(p.numel() for p in self.parameters())
-#         if non_embedding:
-#             n_params -= self.transformer.wpe.weight.numel()
-#         return n_params
+        self.device = get_device(device)
+        self.to(self.device)
 
-#     def _init_weights(self, module):
-#         if isinstance(module, nn.Linear):
-#             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-#             if module.bias is not None:
-#                 torch.nn.init.zeros_(module.bias)
-#         elif isinstance(module, nn.Embedding):
-#             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+    def get_num_params(self) -> int:
+        """
+        Return the number of parameters in the model.
+        """
+        n_params = sum(p.numel() for p in self.parameters())
+        return int(n_params)
 
-#     def forward(self, idx, targets=None):
-#         device = idx.device
-#         b, t = idx.size()
-#         assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
-#         pos = torch.arange(0, t, dtype=torch.long, device=device) # shape (t)
+    def _init_weights(self, module: nn.Module) -> None:
+        """Initialize the weights of the module.
 
-#         # forward the GPT model itself
-#         tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
-#         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
-#         x = self.transformer.drop(tok_emb + pos_emb)
-#         for block in self.transformer.h:
-#             x = block(x)
-#         x = self.transformer.ln_f(x)
+        This is taken from the original GPT implementation, but I believe we should change it.
+        """
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
 
-#         if targets is not None:
-#             # if we are given some desired targets also calculate the loss
-#             logits = self.lm_head(x)
-#             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-#         else:
-#             # inference-time mini-optimization: only forward the lm_head on the very last position
-#             logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
-#             loss = None
+    def embed_game_state(
+        self, game_tensor: torch.Tensor, is_batched: bool = False
+    ) -> torch.Tensor:
+        """Embed the game state.
 
-#         return logits, loss
+        Args:
+            game_tensor: Tensor of shape (batch_size, game_size)
+            is_batched: Whether the game tensor is batched
 
+        Returns:
+            Tensor of shape (batch_size, 1, embedding_size)
+        """
+        if not is_batched:
+            game_tensor = game_tensor.unsqueeze(0)
+        assert game_tensor.ndim == 2
+        return self.game_embedding(game_tensor).unsqueeze(
+            1
+        )  # shape (batch_size, 1, embedding_size)
 
-#     # def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
-#     #     # start with all of the candidate parameters
-#     #     param_dict = {pn: p for pn, p in self.named_parameters()}
-#     #     # filter out those that do not require grad
-#     #     param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
-#     #     # create optim groups. Any parameters that is 2D will be weight decayed, otherwise no.
-#     #     # i.e. all weight tensors in matmuls + embeddings decay, all biases and layernorms don't.
-#     #     decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
-#     #     nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
-#     #     optim_groups = [
-#     #         {'params': decay_params, 'weight_decay': weight_decay},
-#     #         {'params': nodecay_params, 'weight_decay': 0.0}
-#     #     ]
-#     #     num_decay_params = sum(p.numel() for p in decay_params)
-#     #     num_nodecay_params = sum(p.numel() for p in nodecay_params)
-#     #     print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
-#     #     print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
-#     #     # Create AdamW optimizer and use the fused version if it is available
-#     #     fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
-#     #     use_fused = fused_available and device_type == 'cuda'
-#     #     extra_args = dict(fused=True) if use_fused else dict()
-#     #     optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=betas, **extra_args)
-#     #     print(f"using fused AdamW: {use_fused}")
+    def embed_objective_state(
+        self, objective_tensor: torch.Tensor, is_batched: bool = False
+    ) -> torch.Tensor:
+        """Embed the objective state.
 
-#     #     return optimizer
+        Args:
+            objective_tensor: Tensor of shape (batch_size, num_objectives, objective_size)
+            is_batched: Whether the objective tensor is batched
 
+        Returns:
+            Tensor of shape (batch_size, num_objectives, embedding_size)
+        """
+        if not is_batched:
+            objective_tensor = objective_tensor.unsqueeze(0)
+        assert objective_tensor.ndim == 3
+        return self.objective_embedding(
+            objective_tensor
+        )  # shape (batch_size, num_objectives, embedding_size)
 
-#     @classmethod
-#     def from_env(cls, env: gym.Env) -> Self:
-#         observation, _ = env.reset()
-#         obs_size: int = observation.size
-#         # n_wargame_models: int = observation.n_wargame_models
-#         n_actions: int = len(MovementPhaseActions)
-#         block_config = BlockConfig(block_size=obs_size,
-#                     n_layer=6,
-#                     n_head=8,
-#                     n_embd=128,
-#                     dropout=0.0,
-#                     bias=True)
+    def embed_wargame_model_state(
+        self, wargame_model_tensor: torch.Tensor, is_batched: bool = False
+    ) -> torch.Tensor:
+        """Embed the wargame model state.
 
-#         print(
-#             f"obs_size: {obs_size}, block_config: {block_config}, n_actions: {n_actions}"
-#         )
-#         return cls(obs_size, n_actions, block_config)
+        Args:
+            wargame_model_tensor: Tensor of shape (batch_size, num_models, wargame_model_size)
+            is_batched: Whether the wargame model tensor is batched
+
+        Returns:
+            Tensor of shape (batch_size, num_models, embedding_size)
+        """
+        if not is_batched:
+            wargame_model_tensor = wargame_model_tensor.unsqueeze(0)
+        assert wargame_model_tensor.ndim == 3
+        return self.wargame_model_embedding(
+            wargame_model_tensor
+        )  # shape (batch_size, num_models, embedding_size)
+
+    def forward(self, xs: list[torch.Tensor]) -> torch.Tensor:
+        game_tensor, objective_tensor, wargame_model_tensor = xs
+        assert (
+            game_tensor.device
+            == objective_tensor.device
+            == wargame_model_tensor.device
+            == self.device
+        ), (
+            f"Devices do not match: {game_tensor.device} != {objective_tensor.device} != {wargame_model_tensor.device} != {self.device}"
+        )
+
+        # we compbute embeddings for each of the tensors in xs
+        game_embedding = self.embed_game_state(game_tensor, self.is_batched(xs))
+        objective_embedding = self.embed_objective_state(
+            objective_tensor, self.is_batched(xs)
+        )
+        wargame_model_embedding = self.embed_wargame_model_state(
+            wargame_model_tensor, self.is_batched(xs)
+        )
+        n_wargame_models = wargame_model_tensor.shape[1]
+        # we concatenate the embeddings in a sequence for the transformer.
+        # Note that the transformer does not know it is a sequence as there is no positional encoding.
+        x = torch.cat(
+            [game_embedding, objective_embedding, wargame_model_embedding], dim=1
+        )
+        # the shape of x is now (batch_size, ..., embedding_size)
+
+        # we forward through the transformer
+        for block in self.transformer.h:
+            x = block(x)
+        x = self.transformer.ln_f(x)
+
+        # we select the output for the wargame models
+        wargame_model_output = x[:, -n_wargame_models:, :]
+        logits = self.action_head(wargame_model_output)
+
+        return logits
+
+    # def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+    #     # start with all of the candidate parameters
+    #     param_dict = {pn: p for pn, p in self.named_parameters()}
+    #     # filter out those that do not require grad
+    #     param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
+    #     # create optim groups. Any parameters that is 2D will be weight decayed, otherwise no.
+    #     # i.e. all weight tensors in matmuls + embeddings decay, all biases and layernorms don't.
+    #     decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
+    #     nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
+    #     optim_groups = [
+    #         {'params': decay_params, 'weight_decay': weight_decay},
+    #         {'params': nodecay_params, 'weight_decay': 0.0}
+    #     ]
+    #     num_decay_params = sum(p.numel() for p in decay_params)
+    #     num_nodecay_params = sum(p.numel() for p in nodecay_params)
+    #     print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
+    #     print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
+    #     # Create AdamW optimizer and use the fused version if it is available
+    #     fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
+    #     use_fused = fused_available and device_type == 'cuda'
+    #     extra_args = dict(fused=True) if use_fused else dict()
+    #     optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=betas, **extra_args)
+    #     print(f"using fused AdamW: {use_fused}")
+
+    #     return optimizer
+
+    @classmethod
+    def from_env(cls, env: gym.Env) -> Self:
+        observation, _ = env.reset()
+        objective_size: int = observation.objective_size
+        wargame_model_size: int = observation.wargame_model_size
+        game_size: int = observation.game_observation_size
+        n_actions: int = len(MovementPhaseActions)
+        transformer_config = TransformerConfig()
+
+        print(
+            f"game_size: {game_size}, objective_size: {objective_size}, wargame_model_size: {wargame_model_size}, transformer_config: {transformer_config}, n_actions: {n_actions}"
+        )
+        return cls(
+            game_size=game_size,
+            objective_size=objective_size,
+            wargame_model_size=wargame_model_size,
+            n_actions=n_actions,
+            transformer_config=transformer_config,
+        )
 
 
 def convert_state_dict(state_dict: dict) -> dict:

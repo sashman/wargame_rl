@@ -23,7 +23,7 @@ class WargameEnvObservation:
         return [objective.size for objective in self.objectives]
 
     @property
-    def size_current_turn(self) -> int:
+    def size_game_observation(self) -> int:
         return 1
 
     @property
@@ -31,7 +31,7 @@ class WargameEnvObservation:
         total_size = (
             sum(self.size_wargame_models)
             + sum(self.size_objectives)
-            + self.size_current_turn
+            + self.size_game_observation
         )
         return total_size
 

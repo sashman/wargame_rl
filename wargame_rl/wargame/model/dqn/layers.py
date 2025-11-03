@@ -1,3 +1,6 @@
+# This file is adopted from the NanoGPT implementation:
+# https://github.com/karpathy/nanoGPT
+
 """
 Full definition of a GPT Language Model, all of it in this single file.
 References:
@@ -8,22 +11,12 @@ https://github.com/huggingface/transformers/blob/main/src/transformers/models/gp
 """
 
 import math
-from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-
-@dataclass
-class BlockConfig:
-    block_size: int
-    n_layer: int
-    n_head: int
-    n_embd: int
-    dropout: float
-    bias: bool  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
-    causal: bool = False  # We don't want causal attention for the WarTransformer
+from wargame_rl.wargame.model.dqn.config import TransformerConfig
 
 
 class LayerNorm(nn.Module):
@@ -39,18 +32,22 @@ class LayerNorm(nn.Module):
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, config: BlockConfig):
+    def __init__(self, config: TransformerConfig):
         super().__init__()
-        assert config.n_embd % config.n_head == 0
+        assert config.embedding_size % config.n_heads == 0
         # key, query, value projections for all heads, but in a batch
-        self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
+        self.c_attn = nn.Linear(
+            config.embedding_size, 3 * config.embedding_size, bias=config.bias
+        )
         # output projection
-        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+        self.c_proj = nn.Linear(
+            config.embedding_size, config.embedding_size, bias=config.bias
+        )
         # regularization
         self.attn_dropout = nn.Dropout(config.dropout)
         self.resid_dropout = nn.Dropout(config.dropout)
-        self.n_head = config.n_head
-        self.n_embd = config.n_embd
+        self.n_head = config.n_heads
+        self.n_embd = config.embedding_size
         self.dropout = config.dropout
         self.is_causal = config.causal
         # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
@@ -113,11 +110,15 @@ class SelfAttention(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, config: BlockConfig):
+    def __init__(self, config: TransformerConfig):
         super().__init__()
-        self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
+        self.c_fc = nn.Linear(
+            config.embedding_size, 4 * config.embedding_size, bias=config.bias
+        )
         self.gelu = nn.GELU()
-        self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
+        self.c_proj = nn.Linear(
+            4 * config.embedding_size, config.embedding_size, bias=config.bias
+        )
         self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -129,11 +130,11 @@ class MLP(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, config: BlockConfig):
+    def __init__(self, config: TransformerConfig):
         super().__init__()
-        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
+        self.ln_1 = LayerNorm(config.embedding_size, bias=config.bias)
         self.attn = SelfAttention(config)
-        self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
+        self.ln_2 = LayerNorm(config.embedding_size, bias=config.bias)
         self.mlp = MLP(config)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
