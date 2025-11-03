@@ -4,7 +4,7 @@ import pytest
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.dqn.dqn import DQN_MLP, DQN_Transformer
+from wargame_rl.wargame.model.dqn.dqn import DQN_MLP, DQN_Transformer, RL_Network
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.types import Experience
 
@@ -43,33 +43,34 @@ def replay_buffer(n_steps: int, experiences: list[Experience]) -> ReplayBuffer:
     return buffer
 
 
-@pytest.fixture
-@lru_cache(maxsize=1)
-def dqn_net(env: WargameEnv) -> DQN_MLP:
-    return DQN_Transformer.from_env(env=env)
-
-
 # @pytest.fixture
 # @lru_cache(maxsize=1)
-# def dqn_mlp_net(env: WargameEnv) -> DQN_MLP:
-#     return DQN_MLP.from_env(env=env)
-
-
-# @pytest.fixture
-# @lru_cache(maxsize=1)
-# def dqn_transformer_net(env: WargameEnv) -> DQN_Transformer:
+# def dqn_net(env: WargameEnv) -> DQN_MLP:
 #     return DQN_Transformer.from_env(env=env)
 
 
-# @pytest.fixture(
-#     params=[
-#         pytest.param("dqn_mlp_net", id="mlp"),
-#         pytest.param("dqn_transformer_net", id="transformer"),
-#     ]
-# )
-# def dqn_net(request, env: WargameEnv):
-#     """Parametrized fixture for both dqn_mlp_net and dqn_transformer_net."""
-#     if request.param == "dqn_mlp_net":
-#         return DQN_MLP.from_env(env=env)
-#     elif request.param == "dqn_transformer_net":
-#         return DQN_Transformer.from_env(env=env)
+@pytest.fixture
+@lru_cache(maxsize=1)
+def dqn_mlp_net(env: WargameEnv) -> DQN_MLP:
+    return DQN_MLP.from_env(env=env)
+
+
+@pytest.fixture
+@lru_cache(maxsize=1)
+def dqn_transformer_net(env: WargameEnv) -> DQN_Transformer:
+    return DQN_Transformer.from_env(env=env)
+
+
+@pytest.fixture(
+    params=[
+        pytest.param("dqn_mlp_net", id="mlp"),
+        pytest.param("dqn_transformer_net", id="transformer"),
+    ]
+)
+def dqn_net(request: pytest.FixtureRequest, env: WargameEnv) -> RL_Network:
+    """Parametrized fixture for both dqn_mlp_net and dqn_transformer_net."""
+    if request.param == "dqn_mlp_net":
+        return DQN_MLP.from_env(env=env)
+    else:
+        assert request.param == "dqn_transformer_net"
+        return DQN_Transformer.from_env(env=env)
