@@ -4,14 +4,17 @@ from pytorch_lightning import Trainer
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import MovementPhaseActions, WargameEnv
 from wargame_rl.wargame.model.dqn.dataset import experience_list_to_batch
-from wargame_rl.wargame.model.dqn.dqn import DQN_MLP
+from wargame_rl.wargame.model.dqn.dqn import RL_Network
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
 from wargame_rl.wargame.types import Experience
 
 
 def test_dqn_forward(
-    env: WargameEnv, experiences: list[Experience], dqn_net: DQN_MLP, n_steps: int
+    env: WargameEnv,
+    experiences: list[Experience],
+    dqn_net: RL_Network,
+    n_steps: int,
 ) -> None:
     wargame_config = WargameEnvConfig()
     n_wargame_models = wargame_config.number_of_wargame_models
@@ -23,7 +26,7 @@ def test_dqn_forward(
 
 
 def test_dqn_loss(
-    env: WargameEnv, dqn_net: DQN_MLP, replay_buffer: ReplayBuffer
+    env: WargameEnv, dqn_net: RL_Network, replay_buffer: ReplayBuffer
 ) -> None:
     model = DQNLightning(env=env, policy_net=dqn_net)
     batch = experience_list_to_batch(replay_buffer.sample_batch(3))
@@ -54,7 +57,7 @@ def test_dqn_loss(
     assert loss_training_final < loss_training
 
 
-def test_dataloaders(env: WargameEnv, dqn_net: DQN_MLP) -> None:
+def test_dataloaders(env: WargameEnv, dqn_net: RL_Network) -> None:
     batch_size = 5
     observation, _ = env.reset()
     observation.size
@@ -87,7 +90,7 @@ def test_dataloaders(env: WargameEnv, dqn_net: DQN_MLP) -> None:
     assert new_state_wargame_models.shape == (batch_size, n_wargame_models, dim_model)
 
 
-def test_dqn_training(env: WargameEnv, dqn_net: DQN_MLP) -> None:
+def test_dqn_training(env: WargameEnv, dqn_net: RL_Network) -> None:
     model = DQNLightning(env=env, policy_net=dqn_net, log=False)
 
     trainer = Trainer(

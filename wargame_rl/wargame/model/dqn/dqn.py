@@ -6,7 +6,8 @@ import gymnasium as gym
 import torch
 from torch import nn
 
-from wargame_rl.wargame.envs.wargame import MovementPhaseActions
+from wargame_rl.wargame.envs.types import WargameEnvObservation
+from wargame_rl.wargame.envs.wargame import MovementPhaseActions, WargameEnv
 from wargame_rl.wargame.model.dqn.device import Device, get_device
 from wargame_rl.wargame.model.dqn.layers import Block, LayerNorm, TransformerConfig
 
@@ -21,12 +22,12 @@ class RL_Network(nn.Module, ABC):
         return len(game_state_tensor.shape) > 1
 
     @abstractmethod
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, xs: list[torch.Tensor]) -> torch.Tensor:
         pass
 
     @classmethod
     @abstractmethod
-    def from_env(cls, env: gym.Env) -> Self:
+    def from_env(cls, env: WargameEnv) -> Self:
         pass
 
     @classmethod
@@ -39,7 +40,7 @@ class RL_Network(nn.Module, ABC):
         return cls.from_state_dict(env, state_dict)
 
     @classmethod
-    def from_state_dict(cls, env: gym.Env, state_dict: dict) -> Self:
+    def from_state_dict(cls, env: WargameEnv, state_dict: dict) -> Self:
         net = cls.from_env(env)
         net.load_state_dict(state_dict)
         return net
@@ -85,7 +86,8 @@ class DQN_MLP(RL_Network):
         return x.reshape(batch_size, self.n_wargame_models, self.action_dim)
 
     @classmethod
-    def from_env(cls, env: gym.Env) -> Self:
+    def from_env(cls, env: WargameEnv) -> Self:
+        observation: WargameEnvObservation
         observation, _ = env.reset()
         obs_size: int = observation.size
         n_wargame_models: int = observation.n_wargame_models
@@ -234,14 +236,6 @@ class DQN_Transformer(RL_Network):
 
     def forward(self, xs: list[torch.Tensor]) -> torch.Tensor:
         game_tensor, objective_tensor, wargame_model_tensor = xs
-        assert (
-            game_tensor.device
-            == objective_tensor.device
-            == wargame_model_tensor.device
-            == self.device
-        ), (
-            f"Devices do not match: {game_tensor.device} != {objective_tensor.device} != {wargame_model_tensor.device} != {self.device}"
-        )
 
         # we compbute embeddings for each of the tensors in xs
         game_embedding = self.embed_game_state(game_tensor, self.is_batched(xs))
@@ -297,11 +291,12 @@ class DQN_Transformer(RL_Network):
     #     return optimizer
 
     @classmethod
-    def from_env(cls, env: gym.Env) -> Self:
+    def from_env(cls, env: WargameEnv) -> Self:
+        observation: WargameEnvObservation
         observation, _ = env.reset()
-        objective_size: int = observation.objective_size
-        wargame_model_size: int = observation.wargame_model_size
-        game_size: int = observation.game_observation_size
+        objective_size: int = observation.size_objectives[0]
+        wargame_model_size: int = observation.size_wargame_models[0]
+        game_size: int = observation.size_game_observation
         n_actions: int = len(MovementPhaseActions)
         transformer_config = TransformerConfig()
 

@@ -47,3 +47,29 @@ def replay_buffer(n_steps: int, experiences: list[Experience]) -> ReplayBuffer:
 @lru_cache(maxsize=1)
 def dqn_net(env: WargameEnv) -> DQN_MLP:
     return DQN_MLP.from_env(env=env)
+
+
+# @pytest.fixture
+# @lru_cache(maxsize=1)
+# def dqn_mlp_net(env: WargameEnv) -> DQN_MLP:
+#     return DQN_MLP.from_env(env=env)
+
+
+# @pytest.fixture
+# @lru_cache(maxsize=1)
+# def dqn_transformer_net(env: WargameEnv) -> DQN_Transformer:
+#     return DQN_Transformer.from_env(env=env)
+
+
+# @pytest.fixture(
+#     params=[
+#         pytest.param("dqn_mlp_net", id="mlp"),
+#         pytest.param("dqn_transformer_net", id="transformer"),
+#     ]
+# )
+# def dqn_net(request, env: WargameEnv):
+#     """Parametrized fixture for both dqn_mlp_net and dqn_transformer_net."""
+#     if request.param == "dqn_mlp_net":
+#         return DQN_MLP.from_env(env=env)
+#     elif request.param == "dqn_transformer_net":
+#         return DQN_Transformer.from_env(env=env)
