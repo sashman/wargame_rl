@@ -7,7 +7,7 @@ from wandb.wandb_run import Run
 
 import wandb
 
-# mypy: disable-error-code="attr-defined,name-defined"
+# mypy: disable-error-code=attr-defined
 
 PROJECT_NAME = "wargame_rl"
 DEFAULT_NAME = "policy-dqn-env-v2"
