@@ -1,4 +1,11 @@
+from enum import StrEnum
+
 from pydantic import BaseModel
+
+
+class NetworkType(StrEnum):
+    TRANSFORMER = "transformer"
+    MLP = "mlp"
 
 
 class DQNConfig(BaseModel):

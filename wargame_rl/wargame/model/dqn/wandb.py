@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Generator
 
 from pytorch_lightning.loggers import WandbLogger
+from wandb.wandb_run import Run
 
 import wandb
 
@@ -16,7 +17,7 @@ ENTITY = "wargame_rl"
 @contextmanager
 def init_wandb(
     config: dict | None = None, name: str | None = None
-) -> Generator[wandb.Run, None, None]:
+) -> Generator[Run, None, None]:
     if config is None:
         config = {}
     if name is None:
@@ -43,7 +44,7 @@ def init_wandb(
             wandb.finish()
 
 
-def get_logger(run: wandb.Run) -> WandbLogger:
+def get_logger(run: Run) -> WandbLogger:
     # log_model=True -> log the model at the end of the training
     wandb_logger = WandbLogger(log_model=True, run=run)
     return wandb_logger
