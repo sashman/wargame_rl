@@ -4,7 +4,7 @@ import pytest
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.dqn.dqn import DQN_MLP
+from wargame_rl.wargame.model.dqn.dqn import DQN_MLP, DQN_Transformer
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.types import Experience
 
@@ -46,7 +46,7 @@ def replay_buffer(n_steps: int, experiences: list[Experience]) -> ReplayBuffer:
 @pytest.fixture
 @lru_cache(maxsize=1)
 def dqn_net(env: WargameEnv) -> DQN_MLP:
-    return DQN_MLP.from_env(env=env)
+    return DQN_Transformer.from_env(env=env)
 
 
 # @pytest.fixture

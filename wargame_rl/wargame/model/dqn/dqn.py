@@ -245,7 +245,7 @@ class DQN_Transformer(RL_Network):
         wargame_model_embedding = self.embed_wargame_model_state(
             wargame_model_tensor, self.is_batched(xs)
         )
-        n_wargame_models = wargame_model_tensor.shape[1]
+        n_wargame_models = wargame_model_embedding.shape[1]
         # we concatenate the embeddings in a sequence for the transformer.
         # Note that the transformer does not know it is a sequence as there is no positional encoding.
         x = torch.cat(
