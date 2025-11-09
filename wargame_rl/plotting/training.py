@@ -16,12 +16,14 @@ matplotlib.use("Agg")
 
 def build_batch_tensor(
     observation: WargameEnvObservation, size: int, device: Device = None
-) -> torch.Tensor:
+) -> list[torch.Tensor]:
     n_models = len(observation.wargame_models)
 
     x_min, y_min = 0, 0
     x_max, y_max = size, size
-    batch_list = []
+    batch_list_game = []
+    batch_list_objective = []
+    batch_list_wargame_model = []
     for x in range(x_min, x_max):
         for y in range(y_min, y_max):
             location = np.array([x, y])
@@ -39,10 +41,17 @@ def build_batch_tensor(
                 ],
                 objectives=observation.objectives,
             )
-            tensor_state = observation_to_tensor(testing_state, device=device)
-            batch_list.append(tensor_state)
-    batch_tensor = torch.cat(batch_list)
-    return batch_tensor
+            game_tensor, objective_tensor, wargame_model_tensor = observation_to_tensor(
+                testing_state, device=device
+            )
+            batch_list_game.append(game_tensor.unsqueeze(0))
+            batch_list_objective.append(objective_tensor.unsqueeze(0))
+            batch_list_wargame_model.append(wargame_model_tensor.unsqueeze(0))
+
+    batch_tensor_game = torch.cat(batch_list_game)
+    batch_tensor_objective = torch.cat(batch_list_objective)
+    batch_tensor_wargame_model = torch.cat(batch_list_wargame_model)
+    return [batch_tensor_game, batch_tensor_objective, batch_tensor_wargame_model]
 
 
 def compute_values_function(

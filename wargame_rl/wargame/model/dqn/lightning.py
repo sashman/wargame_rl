@@ -2,13 +2,13 @@ from copy import deepcopy
 
 import numpy as np
 import torch
-import wandb
 from matplotlib import pyplot as plt
 from pytorch_lightning import LightningModule
 from torch import Tensor, nn
 from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
 
+import wandb
 from wargame_rl.plotting.training import compute_values_function, plot_policy_on_grid
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.dqn.agent import Agent
@@ -108,17 +108,15 @@ class DQNLightning(LightningModule):
             loss
 
         """
-        batch_states = batch.states
+        batch_states = batch.state_tensors
         batch_actions = batch.actions
         batch_rewards = batch.rewards
         batch_dones = batch.dones
-        batch_next_states = batch.new_states
+        batch_next_states = batch.new_state_tensors
 
         batch_size, n_model = batch_actions.shape
-        observation_size = batch_states.shape[1]
         assert batch_rewards.shape == (batch_size,)
         assert batch_dones.shape == (batch_size,)
-        assert batch_next_states.shape == (batch_size, observation_size)
 
         # we need to sum over the partial state values to get the total rewards
         index = batch_actions.long().unsqueeze(-1)  # [batch_size, n_model, 1]
@@ -236,6 +234,6 @@ class DQNLightning(LightningModule):
                 observation, self.env.size, self.policy_net
             )
             fig = plot_policy_on_grid(values_function, observation)
-            wandb.log({"Value function": fig})
+            wandb.log({"Value function": fig})  # type: ignore
             plt.close(fig)
-        return super().on_train_epoch_end()
+        super().on_train_epoch_end()

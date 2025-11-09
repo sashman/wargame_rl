@@ -15,12 +15,30 @@ class WargameEnvObservation:
     objectives: list[WargameEnvObjectiveObservation]
 
     @property
+    def size_wargame_models(self) -> list[int]:
+        return [model.size for model in self.wargame_models]
+
+    @property
+    def size_objectives(self) -> list[int]:
+        return [objective.size for objective in self.objectives]
+
+    @property
+    def size_game_observation(self) -> int:
+        return 1
+
+    @property
     def size(self) -> int:
-        size_wargame_models = sum(model.size for model in self.wargame_models)
-        size_objectives = sum(objective.size for objective in self.objectives)
-        total_size = size_wargame_models + size_objectives + 1
+        total_size = (
+            sum(self.size_wargame_models)
+            + sum(self.size_objectives)
+            + self.size_game_observation
+        )
         return total_size
 
     @property
     def n_wargame_models(self) -> int:
         return len(self.wargame_models)
+
+    @property
+    def n_objectives(self) -> int:
+        return len(self.objectives)
