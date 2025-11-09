@@ -2,7 +2,8 @@ import numpy as np
 import pygame
 
 from wargame_rl.wargame.envs.renders.renderer import Renderer
-from wargame_rl.wargame.envs.wargame import WargameEnv, WargameModel, WargameObjective
+from wargame_rl.wargame.envs.wargame import WargameEnv, WargameObjective
+from wargame_rl.wargame.envs.wargame_model import WargameModel
 
 
 class HumanRender(Renderer):
