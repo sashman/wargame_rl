@@ -2,16 +2,17 @@ import torch
 from pytorch_lightning import Trainer
 
 from wargame_rl.wargame.envs.types import WargameEnvConfig
-from wargame_rl.wargame.envs.wargame import MovementPhaseActions
+from wargame_rl.wargame.envs.wargame import MovementPhaseActions, WargameEnv
 from wargame_rl.wargame.model.dqn.dataset import experience_list_to_batch
 from wargame_rl.wargame.model.dqn.dqn import DQN
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
 from wargame_rl.wargame.types import Experience
-from wargame_rl.wargame.envs.wargame import WargameEnv
 
 
-def test_dqn_forward(env: WargameEnv, experiences: list[Experience], dqn_net: DQN, n_steps: int) -> None:
+def test_dqn_forward(
+    env: WargameEnv, experiences: list[Experience], dqn_net: DQN, n_steps: int
+) -> None:
     wargame_config = WargameEnvConfig()
     n_wargame_models = wargame_config.number_of_wargame_models
     n_actions = len(MovementPhaseActions)

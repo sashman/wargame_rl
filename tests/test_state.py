@@ -10,7 +10,9 @@ from wargame_rl.wargame.types import Experience
 
 
 def test_observation_to_tensor(experiences: list[Experience]) -> None:
-    states: list[WargameEnvObservation] = [experience.state for experience in experiences]
+    states: list[WargameEnvObservation] = [
+        experience.state for experience in experiences
+    ]
     state_size = states[0].size
     batch_size = len(states)
     state_batch = observations_to_tensor_batch(states)
