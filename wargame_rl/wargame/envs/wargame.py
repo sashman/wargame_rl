@@ -97,6 +97,7 @@ class WargameEnv(gym.Env):
             WargameModel(
                 location=np.zeros(2, dtype=int),
                 stats={"max_wounds": 100, "current_wounds": 100},
+                group_id=1,
                 distances_to_objectives=np.zeros(
                     [config.number_of_objectives, 2], dtype=int
                 ),
