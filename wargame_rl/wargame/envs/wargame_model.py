@@ -48,7 +48,7 @@ class WargameModel:
             }
         )
 
-        group_id_space = spaces.Discrete(1)
+        group_id_space: spaces.Discrete = spaces.Discrete(1)
 
         return spaces.Dict(
             {
