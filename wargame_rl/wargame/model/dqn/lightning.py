@@ -238,4 +238,4 @@ class DQNLightning(LightningModule):
             fig = plot_policy_on_grid(values_function, observation)
             wandb.log({"Value function": fig})
             plt.close(fig)
-        return super().on_train_epoch_end()
+        return super().on_train_epoch_end()  # type: ignore
