@@ -122,13 +122,13 @@ class DQN_Transformer(RL_Network):
         self.embedding_size = transformer_config.embedding_size
 
         self.game_embedding = nn.Linear(
-            self.game_size, self.config.embedding_size, bias=False
+            self.game_size, self.config.embedding_size, bias=True
         )
         self.objective_embedding = nn.Linear(
-            self.objective_size, self.config.embedding_size, bias=False
+            self.objective_size, self.config.embedding_size, bias=True
         )
         self.wargame_model_embedding = nn.Linear(
-            self.wargame_model_size, self.config.embedding_size, bias=False
+            self.wargame_model_size, self.config.embedding_size, bias=True
         )
 
         self.transformer = nn.ModuleDict(
