@@ -16,7 +16,8 @@ from pydantic_yaml import parse_yaml_raw_as
 from wargame_rl.wargame.envs.renders.human import HumanRender
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.dqn.agent import Agent
-from wargame_rl.wargame.model.dqn.dqn import DQN_MLP
+from wargame_rl.wargame.model.dqn.config import NetworkType
+from wargame_rl.wargame.model.dqn.dqn import DQN_MLP, DQN_Transformer
 from wargame_rl.wargame.model.dqn.factory import create_environment
 
 app = typer.Typer(pretty_exceptions_enable=False)
@@ -43,6 +44,7 @@ def simulate(
     num_episodes: int = 10,
     render: bool = True,
     env_config_path: str | None = None,
+    network_type: NetworkType = NetworkType.TRANSFORMER,
 ) -> None:
     """Run simulation with trained agent.
 
@@ -68,7 +70,10 @@ def simulate(
     logging.info(f"Agent created: {agent}")
 
     try:
-        policy_net = DQN_MLP.from_checkpoint(env, checkpoint_path)
+        if network_type == NetworkType.TRANSFORMER:
+            policy_net = DQN_Transformer.from_checkpoint(env, checkpoint_path)
+        else:
+            policy_net = DQN_MLP.from_checkpoint(env, checkpoint_path)
         logging.info(f"Loaded model from checkpoint: {checkpoint_path} successfully!")
     except RuntimeError as e:
         if "size mismatch" in str(e):
@@ -175,6 +180,9 @@ def main(
         None,
         help="Path to the environment config file, defaults to env_config.yaml from checkpoint directory.",
     ),
+    network_type: NetworkType = typer.Option(
+        NetworkType.TRANSFORMER, help="Network type to use"
+    ),
 ) -> None:
     # Handle dynamic defaults inside the function
     if checkpoint_path is None:
@@ -183,7 +191,7 @@ def main(
     if env_config_path is None:
         env_config_path = get_env_config_path_for_checkpoint(checkpoint_path)
 
-    simulate(checkpoint_path, num_episodes, render, env_config_path)
+    simulate(checkpoint_path, num_episodes, render, env_config_path, network_type)
 
 
 if __name__ == "__main__":
