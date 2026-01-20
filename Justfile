@@ -44,9 +44,14 @@ validate: format lint test
 dockerize:
 	docker build -t warghame-rl .
 
-# Use it like: just run 10
-train env_config_path:
-	uv run train.py --env-config-path {{env_config_path}}
+# Use it like: just train path/to/config.yaml
+# Or with network type: just train path/to/config.yaml mlp
+train env_config_path model='':
+	@if [ -z "{{model}}" ]; then \
+		uv run train.py --env-config-path {{env_config_path}}; \
+	else \
+		uv run train.py --env-config-path {{env_config_path}} --network-type {{model}}; \
+	fi
 
 simulate-latest:
 	uv run simulate.py
