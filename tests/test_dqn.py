@@ -11,10 +11,7 @@ from wargame_rl.wargame.types import Experience
 
 
 def test_dqn_forward(
-    env: WargameEnv,
-    experiences: list[Experience],
-    dqn_net: RL_Network,
-    n_steps: int,
+    env: WargameEnv, experiences: list[Experience], dqn_net: RL_Network, n_steps: int
 ) -> None:
     wargame_config = WargameEnvConfig()
     n_wargame_models = wargame_config.number_of_wargame_models

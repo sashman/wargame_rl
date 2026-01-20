@@ -16,8 +16,8 @@ from wargame_rl.wargame.envs.types import (
     WargameEnvObservation,
     WargameModelObservation,
 )
-
-# from wargame_rl.wargame.envs.renders.renderer import Renderer
+from wargame_rl.wargame.envs.wargame_model import WargameModel
+from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
 
 class MovementPhaseActions(Enum):
@@ -26,60 +26,6 @@ class MovementPhaseActions(Enum):
     left = 2
     down = 3
     none = 4
-
-
-class WargameModel:
-    def __init__(
-        self, location: np.ndarray, stats: dict, distances_to_objectives: np.ndarray
-    ):
-        self.location = location  # Should be a numpy array of shape (2,)
-        self.stats = (
-            stats  # Should be a dictionary with keys 'max_wounds' and 'current_wounds'
-        )
-        self.distances_to_objectives = distances_to_objectives  # Should be a numpy array of shape (number_of_objectives, 2)
-
-    def __repr__(self) -> str:
-        return f"WargameModel(location={self.location}, distances_to_objectives={self.distances_to_objectives}, stats={self.stats})"
-
-
-class WargameModelSpace:
-    @staticmethod
-    def to_space(size: int, number_of_objectives: int) -> spaces.Dict:
-        location_space = spaces.Box(0, size - 1, shape=(2,), dtype=np.int32)
-        distances_to_objectives_space = spaces.Box(
-            0, size - 1, shape=(number_of_objectives, 2), dtype=np.int32
-        )
-        stats_space = spaces.Dict(
-            {
-                "max_wounds": spaces.Box(0, 100, shape=(1,), dtype=np.int32),
-                "current_wounds": spaces.Box(0, 100, shape=(1,), dtype=np.int32),
-            }
-        )
-
-        return spaces.Dict(
-            {
-                "location": location_space,
-                "distances_to_objectives": distances_to_objectives_space,
-                "stats": stats_space,
-            }
-        )
-
-
-class WargameObjective:
-    def __init__(self, location: np.ndarray, radius_size: int):
-        self.location = location  # Should be a numpy array of shape (2,)
-        self.radius_size = radius_size  # Radius of the objective in the environment
-
-    def __repr__(self) -> str:
-        return f"WargameObjective(location={self.location}, radius_size={self.radius_size})"
-
-
-class WargameObjectiveSpace:
-    @staticmethod
-    def to_space(size: int) -> spaces.Dict:
-        return spaces.Dict(
-            {"location": spaces.Box(0, size - 1, shape=(2,), dtype=np.int32)}
-        )
 
 
 class WargameEnv(gym.Env):
@@ -96,7 +42,7 @@ class WargameEnv(gym.Env):
                 "current_turn": spaces.Discrete(1),
                 "wargame_models": spaces.Tuple(
                     [
-                        WargameModelSpace.to_space(
+                        WargameModel.to_space(
                             size=self.size,
                             number_of_objectives=config.number_of_objectives * 2,
                         )
@@ -104,7 +50,7 @@ class WargameEnv(gym.Env):
                     ]
                 ),
                 "objectives": spaces.Sequence(
-                    WargameObjectiveSpace.to_space(size=self.size)
+                    WargameObjective.to_space(size=self.size)
                 ),
             }
         )
@@ -151,6 +97,7 @@ class WargameEnv(gym.Env):
             WargameModel(
                 location=np.zeros(2, dtype=int),
                 stats={"max_wounds": 100, "current_wounds": 100},
+                group_id=1,
                 distances_to_objectives=np.zeros(
                     [config.number_of_objectives, 2], dtype=int
                 ),
