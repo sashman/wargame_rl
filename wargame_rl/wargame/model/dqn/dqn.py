@@ -2,7 +2,6 @@ import math
 from abc import ABC, abstractmethod
 from typing import Self
 
-import gymnasium as gym
 import torch
 from torch import nn
 
@@ -31,7 +30,7 @@ class RL_Network(nn.Module, ABC):
         pass
 
     @classmethod
-    def from_checkpoint(cls, env: gym.Env, checkpoint_path: str) -> Self:
+    def from_checkpoint(cls, env: WargameEnv, checkpoint_path: str) -> Self:
         load_dict = torch.load(checkpoint_path, weights_only=False)
         if "state_dict" in load_dict:
             state_dict = convert_state_dict(load_dict["state_dict"])
@@ -83,7 +82,10 @@ class DQN_MLP(RL_Network):
         for layer in self.layers:
             x = self.activation(layer(x))
         x = self.output(x)
-        return x.reshape(batch_size, self.n_wargame_models, self.action_dim)
+        result: torch.Tensor = x.reshape(
+            batch_size, self.n_wargame_models, self.action_dim
+        )
+        return result
 
     @classmethod
     def from_env(cls, env: WargameEnv) -> Self:
@@ -192,9 +194,10 @@ class DQN_Transformer(RL_Network):
         if not is_batched:
             game_tensor = game_tensor.unsqueeze(0)
         assert game_tensor.ndim == 2
-        return self.game_embedding(game_tensor).unsqueeze(
+        result: torch.Tensor = self.game_embedding(game_tensor).unsqueeze(
             1
         )  # shape (batch_size, 1, embedding_size)
+        return result
 
     def embed_objective_state(
         self, objective_tensor: torch.Tensor, is_batched: bool = False
@@ -211,9 +214,10 @@ class DQN_Transformer(RL_Network):
         if not is_batched:
             objective_tensor = objective_tensor.unsqueeze(0)
         assert objective_tensor.ndim == 3
-        return self.objective_embedding(
+        result: torch.Tensor = self.objective_embedding(
             objective_tensor
         )  # shape (batch_size, num_objectives, embedding_size)
+        return result
 
     def embed_wargame_model_state(
         self, wargame_model_tensor: torch.Tensor, is_batched: bool = False
@@ -230,9 +234,10 @@ class DQN_Transformer(RL_Network):
         if not is_batched:
             wargame_model_tensor = wargame_model_tensor.unsqueeze(0)
         assert wargame_model_tensor.ndim == 3
-        return self.wargame_model_embedding(
+        result: torch.Tensor = self.wargame_model_embedding(
             wargame_model_tensor
         )  # shape (batch_size, num_models, embedding_size)
+        return result
 
     def forward(self, xs: list[torch.Tensor]) -> torch.Tensor:
         game_tensor, objective_tensor, wargame_model_tensor = xs
@@ -254,13 +259,13 @@ class DQN_Transformer(RL_Network):
         # the shape of x is now (batch_size, ..., embedding_size)
 
         # we forward through the transformer
-        for block in self.transformer.h:
+        for block in self.transformer.h:  # type: ignore
             x = block(x)
-        x = self.transformer.ln_f(x)
+        x = self.transformer.ln_f(x)  # type: ignore
 
         # we select the output for the wargame models
         wargame_model_output = x[:, -n_wargame_models:, :]
-        logits = self.action_head(wargame_model_output)
+        logits: torch.Tensor = self.action_head(wargame_model_output)
 
         return logits
 

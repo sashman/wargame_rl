@@ -32,6 +32,8 @@ class LayerNorm(nn.Module):
 
 
 class SelfAttention(nn.Module):
+    bias: torch.Tensor  # type annotation for mypy
+
     def __init__(self, config: TransformerConfig):
         super().__init__()
         assert config.embedding_size % config.n_heads == 0
@@ -105,8 +107,8 @@ class SelfAttention(nn.Module):
         )  # re-assemble all head outputs side by side
 
         # output projection
-        y = self.resid_dropout(self.c_proj(y))
-        return y
+        output: torch.Tensor = self.resid_dropout(self.c_proj(y))
+        return output
 
 
 class MLP(nn.Module):

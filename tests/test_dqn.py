@@ -32,7 +32,7 @@ def test_dqn_loss(
     assert loss_initial.dtype == torch.float32
 
     optimizer = model.configure_optimizers()
-    for _ in range(3):
+    for _ in range(5):
         optimizer.zero_grad()
         model.dqn_mse_loss(batch).backward()
         optimizer.step()
