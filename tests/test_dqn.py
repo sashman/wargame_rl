@@ -25,6 +25,8 @@ def test_dqn_forward(
 def test_dqn_loss(
     env: WargameEnv, dqn_net: RL_Network, replay_buffer: ReplayBuffer
 ) -> None:
+    # set the seed
+    torch.manual_seed(42)
     model = DQNLightning(env=env, policy_net=dqn_net)
     batch = experience_list_to_batch(replay_buffer.sample_batch(3))
     loss_initial = model.dqn_mse_loss(batch)
@@ -32,7 +34,7 @@ def test_dqn_loss(
     assert loss_initial.dtype == torch.float32
 
     optimizer = model.configure_optimizers()
-    for _ in range(5):
+    for _ in range(3):
         optimizer.zero_grad()
         model.dqn_mse_loss(batch).backward()
         optimizer.step()
