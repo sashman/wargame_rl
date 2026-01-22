@@ -44,15 +44,28 @@ validate: format lint test
 dockerize:
 	docker build -t warghame-rl .
 
-# Use it like: just run 10
-train env_config_path:
-	uv run train.py --env-config-path {{env_config_path}}
+# Use it like: just train path/to/config.yaml
+# Or with network type: just train path/to/config.yaml mlp
+train env_config_path model='':
+	@if [ -z "{{model}}" ]; then \
+		uv run train.py --env-config-path {{env_config_path}}; \
+	else \
+		uv run train.py --env-config-path {{env_config_path}} --network-type {{model}}; \
+	fi
 
-simulate-latest:
-	uv run simulate.py
+simulate-latest network_type='':
+	@if [ -z "{{network_type}}" ]; then \
+		uv run simulate.py; \
+	else \
+		uv run simulate.py --network-type {{network_type}}; \
+	fi
 
-simulate checkpoint env_config_path:
-	uv run simulate.py --checkpoint-path {{checkpoint}} --env-config-path {{env_config_path}}
+simulate checkpoint env_config_path network_type='':
+	@if [ -z "{{network_type}}" ]; then \
+		uv run simulate.py --checkpoint-path {{checkpoint}} --env-config-path {{env_config_path}}; \
+	else \
+		uv run simulate.py --checkpoint-path {{checkpoint}} --env-config-path {{env_config_path}} --network-type {{network_type}}; \
+	fi
 
 clean-checkpoints:
 	rm -rf checkpoints/

@@ -17,15 +17,18 @@ def experience_list_to_batch(experiences: list[Experience]) -> ExperienceBatch:
     actions = [experience.action.actions for experience in experiences]
     rewards = [experience.reward for experience in experiences]
     dones = [experience.done for experience in experiences]
-    tensor_states = observations_to_tensor_batch(states_list)
-    tensor_next_states = observations_to_tensor_batch(next_states_list)
+    tensor_states: list[torch.Tensor] = observations_to_tensor_batch(states_list)
+    tensor_next_states: list[torch.Tensor] = observations_to_tensor_batch(
+        next_states_list
+    )
+    device = tensor_states[0].device
 
     return ExperienceBatch(
-        states=tensor_states,
-        actions=torch.tensor(actions, dtype=torch.int32, device=tensor_states.device),
-        rewards=torch.tensor(rewards, dtype=torch.float32, device=tensor_states.device),
-        dones=torch.tensor(dones, dtype=torch.bool, device=tensor_states.device),
-        new_states=tensor_next_states,
+        state_tensors=tensor_states,
+        actions=torch.tensor(actions, dtype=torch.int32, device=device),
+        rewards=torch.tensor(rewards, dtype=torch.float32, device=device),
+        dones=torch.tensor(dones, dtype=torch.bool, device=device),
+        new_state_tensors=tensor_next_states,
     )
 
 

@@ -4,7 +4,7 @@ import pytest
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.model.dqn.agent import Agent
-from wargame_rl.wargame.model.dqn.dqn import DQN
+from wargame_rl.wargame.model.dqn.dqn import DQN_MLP
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 
 
@@ -13,7 +13,7 @@ def agent(env: gym.Env, replay_buffer: ReplayBuffer) -> Agent:
     return Agent(env, replay_buffer)
 
 
-def test_agent(agent: Agent, dqn_net: DQN) -> None:
+def test_agent(agent: Agent, dqn_net: DQN_MLP) -> None:
     wargame_config = WargameEnvConfig()
     n_wargame_models = wargame_config.number_of_wargame_models
     agent.reset()

@@ -16,8 +16,8 @@ class Experience(NamedTuple):
 class ExperienceBatch(NamedTuple):
     """Experience batch with typed fields."""
 
-    states: torch.Tensor
+    state_tensors: list[torch.Tensor]
     actions: torch.Tensor
     rewards: torch.Tensor
     dones: torch.Tensor
-    new_states: torch.Tensor
+    new_state_tensors: list[torch.Tensor]
