@@ -226,11 +226,42 @@ class WargameEnv(gym.Env):
 
         return float(0)
 
+    def _is_within_group_distance(self, model: WargameModel) -> bool:
+        """True if this model is within group_max_distance of at least one other model with the same group_id."""
+        same_group = [
+            other
+            for other in self.wargame_models
+            if other is not model and other.group_id == model.group_id
+        ]
+        if not same_group:
+            return True  # No group constraint when alone in group
+        min_dist = min(
+            float(np.linalg.norm(model.location - other.location, ord=2))
+            for other in same_group
+        )
+        return min_dist <= self.config.group_max_distance
+
     def _calculate_reward(self) -> float:
-        """Calculate the reward based on the average negative normalized distance of all wargame models to the closest objectives."""
-        total_distance = 0
+        """Calculate the reward based on the average negative normalized distance of all wargame models to the closest objectives.
+        Models that break group cohesion (same group_id, beyond group_max_distance from all peers) receive a huge negative reward.
+        """
         total_distance_improvement = float(0)
         for i, model in enumerate(self.wargame_models):
+            if not self._is_within_group_distance(model):
+                total_distance_improvement += self.config.group_violation_penalty
+                self.previous_distance[i] = float(
+                    np.linalg.norm(
+                        model.location
+                        - min(
+                            self.objectives,
+                            key=lambda obj: float(
+                                np.linalg.norm(model.location - obj.location, ord=2)
+                            ),
+                        ).location,
+                        ord=2,
+                    )
+                ) / (np.sqrt(2) * self.size)
+                continue
             closest_objective = min(
                 self.objectives,
                 key=lambda obj: float(
@@ -246,7 +277,6 @@ class WargameEnv(gym.Env):
                 )
             )
             normalized_distance = distance / (np.sqrt(2) * self.size)
-            total_distance += normalized_distance
             if self.previous_distance[i] is None:
                 model_reward = float(0)
             else:
@@ -254,12 +284,10 @@ class WargameEnv(gym.Env):
                 model_reward = self._get_model_reward(
                     previous_distance, normalized_distance
                 )
-
             total_distance_improvement += model_reward
             self.previous_distance[i] = normalized_distance
 
         reward = float(total_distance_improvement / len(self.wargame_models))
-        assert reward >= -1.0
         assert reward <= 1.0
         return reward
 

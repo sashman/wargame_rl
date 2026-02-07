@@ -18,3 +18,12 @@ class WargameEnvConfig(BaseModel):
     deployment_zone: tuple[int, int, int, int] = Field(
         default=(0, 0, 50, 50), description="Deployment zone coordinates"
     )
+    group_max_distance: float = Field(
+        gt=0,
+        default=10.0,
+        description="Max distance (L2) models in the same group may be from at least one other model in that group; violation yields group_violation_penalty.",
+    )
+    group_violation_penalty: float = Field(
+        default=-10.0,
+        description="Reward applied per model when it is farther than group_max_distance from every other model in its group.",
+    )

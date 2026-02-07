@@ -3,3 +3,5 @@ number_of_objectives: 2
 objective_radius_size: 3
 size: 50
 deployment_zone: [0, 0, 50, 50]
+group_max_distance: 10.0
+group_violation_penalty: -10.0
