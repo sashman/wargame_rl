@@ -31,6 +31,12 @@ def normalize_distances(distances: np.ndarray) -> np.ndarray:
     return np.array((distances - half_max_distance) / half_max_distance)
 
 
+def group_id_to_one_hot(group_id: int, max_groups: int) -> list[float]:
+    """Encode positive group_id as one-hot vector of length max_groups. Clamps to valid index."""
+    index = min(max(0, group_id - 1), max_groups - 1)
+    return [1.0 if i == index else 0.0 for i in range(max_groups)]
+
+
 def observation_to_tensor(
     state: WargameEnvObservation, device: Device | None = None
 ) -> list[torch.Tensor]:
@@ -45,8 +51,8 @@ def observation_to_tensor(
         2. tensor_objectives: Tensor of all objectives; shape (num_objectives, location_dims),
         values normalized to [-1, 1].
         3. tensor_wargame_models: Tensor of all wargame models; shape (num_models, model_features),
-        where model_features includes normalized location and distances to objectives,
-        all normalized to [-1, 1].
+        where model_features includes normalized location, distances to objectives (normalized to [-1, 1]),
+        and group_id as one-hot of length max_groups.
     """
 
     device = get_device(device)
@@ -58,11 +64,13 @@ def observation_to_tensor(
     #     [current_turn], dtype=torch.float32, device=device
     # )
     tensor_current_turn: Tensor = torch.tensor([0], dtype=torch.float32, device=device)
+    max_groups: int = state.wargame_models[0].max_groups
     tensor_wargame_models: Tensor = torch.tensor(
         [
             [
                 *normalize_location(model.location),
                 *normalize_location(model.distances_to_objectives.flatten()),
+                *group_id_to_one_hot(model.group_id, max_groups),
             ]
             for model in wargame_models
         ],

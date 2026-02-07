@@ -21,7 +21,8 @@ def test_observation_to_tensor(experiences: list[Experience]) -> None:
 
     dim_location = 2
     dim_distances = dim_location * n_objectives
-    dim_model = dim_location + dim_distances
+    max_groups = state.wargame_models[0].max_groups
+    dim_model = dim_location + dim_distances + max_groups  # group_id one-hot
 
     # Test batch conversion
     state_batch = observations_to_tensor_batch(states)
@@ -57,7 +58,8 @@ def test_experience_to_batch(experiences: list[Experience]) -> None:
 
     dim_location = 2
     dim_distances = dim_location * n_objectives
-    dim_model = dim_location + dim_distances
+    max_groups = state.wargame_models[0].max_groups
+    dim_model = dim_location + dim_distances + max_groups  # group_id one-hot
 
     n_wargame_models = state.n_wargame_models
     size_objectives = state.size_objectives

@@ -27,3 +27,8 @@ class WargameEnvConfig(BaseModel):
         default=-10.0,
         description="Reward applied per model when it is farther than group_max_distance from every other model in its group.",
     )
+    max_groups: int = Field(
+        gt=0,
+        default=100,
+        description="Maximum number of groups in the game; group_id is one-hot encoded over this size for neural network input.",
+    )

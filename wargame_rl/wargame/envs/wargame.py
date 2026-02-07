@@ -133,6 +133,8 @@ class WargameEnv(gym.Env):
             WargameModelObservation(
                 location=model.location,
                 distances_to_objectives=model.distances_to_objectives,
+                group_id=model.group_id,
+                max_groups=self.config.max_groups,
             )
             for model in self.wargame_models
         ]
@@ -154,6 +156,8 @@ class WargameEnv(gym.Env):
             WargameModelObservation(
                 location=model.location,
                 distances_to_objectives=model.distances_to_objectives,
+                group_id=model.group_id,
+                max_groups=self.config.max_groups,
             )
             for model in self.wargame_models
         ]
