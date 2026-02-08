@@ -104,7 +104,7 @@ class WargameEnv(gym.Env):
             )
             for _ in range(config.number_of_wargame_models)
         ]
-        self.previous_distance: list[None | np.ndarray] = [
+        self.previous_closest_objective_reward: list[None | float] = [
             None
         ] * config.number_of_wargame_models
         # List to hold objectives
@@ -188,7 +188,7 @@ class WargameEnv(gym.Env):
                 self.deployment_zone[0], self.deployment_zone[2], size=2, dtype=np.int32
             )
             model.stats["current_wounds"] = model.stats["max_wounds"]
-            self.previous_distance[i] = None
+            self.previous_closest_objective_reward[i] = None
 
         # For each objective, we will randomly choose a location outside the deployment zone
         for objective in self.objectives:
@@ -205,7 +205,7 @@ class WargameEnv(gym.Env):
 
         return observation, info.model_dump()
 
-    def _get_model_reward(
+    def _get_closest_objective_reward(
         self, previous_model_distance: float, distance_to_closest_objective: float
     ) -> float:
         # Wargame model has reached the objective, large positive reward
@@ -230,6 +230,35 @@ class WargameEnv(gym.Env):
 
         return float(0)
 
+    def _get_model_closest_objective_reward(
+        self, model: WargameModel, previous_closest_objective_reward: float | None
+    ) -> tuple[float, float]:
+        closest_objective = min(
+            self.objectives,
+            key=lambda obj: float(np.linalg.norm(model.location - obj.location, ord=2)),
+        )
+
+        distance_to_closest_objective = float(
+            np.linalg.norm(
+                model.location
+                - closest_objective.location
+                + closest_objective.radius_size / 2,
+                ord=2,
+            )
+        )
+
+        normalized_distance = distance_to_closest_objective / (np.sqrt(2) * self.size)
+
+        if previous_closest_objective_reward is None:
+            return float(0), normalized_distance
+
+        previous_closest_objective_reward = float(previous_closest_objective_reward)  # type: ignore
+        closest_objective_reward = self._get_closest_objective_reward(
+            previous_closest_objective_reward, normalized_distance
+        )
+
+        return closest_objective_reward, normalized_distance
+
     def _is_within_group_distance(self, model: WargameModel) -> bool:
         """True if this model is within group_max_distance of at least one other model with the same group_id."""
         same_group = [
@@ -246,52 +275,20 @@ class WargameEnv(gym.Env):
         return min_dist <= self.config.group_max_distance
 
     def _calculate_reward(self) -> float:
-        """Calculate the reward based on the average negative normalized distance of all wargame models to the closest objectives.
-        Models that break group cohesion (same group_id, beyond group_max_distance from all peers) receive a huge negative reward.
-        """
-        total_distance_improvement = float(0)
+        """Calculate the reward based on the average negative normalized distance of all wargame models to the closest objectives."""
+        total_reward = float(0)
         for i, model in enumerate(self.wargame_models):
-            if not self._is_within_group_distance(model):
-                total_distance_improvement += self.config.group_violation_penalty
-                self.previous_distance[i] = float(
-                    np.linalg.norm(
-                        model.location
-                        - min(
-                            self.objectives,
-                            key=lambda obj: float(
-                                np.linalg.norm(model.location - obj.location, ord=2)
-                            ),
-                        ).location,
-                        ord=2,
-                    )
-                ) / (np.sqrt(2) * self.size)
-                continue
-            closest_objective = min(
-                self.objectives,
-                key=lambda obj: float(
-                    np.linalg.norm(model.location - obj.location, ord=2)
-                ),
-            )
-            distance = float(
-                np.linalg.norm(
-                    model.location
-                    - closest_objective.location
-                    + closest_objective.radius_size / 2,
-                    ord=2,
+            closest_objective_reward, normalized_distance = (
+                self._get_model_closest_objective_reward(
+                    model, self.previous_closest_objective_reward[i]
                 )
             )
-            normalized_distance = distance / (np.sqrt(2) * self.size)
-            if self.previous_distance[i] is None:
-                model_reward = float(0)
-            else:
-                previous_distance = float(self.previous_distance[i])  # type: ignore
-                model_reward = self._get_model_reward(
-                    previous_distance, normalized_distance
-                )
-            total_distance_improvement += model_reward
-            self.previous_distance[i] = normalized_distance
+            self.previous_closest_objective_reward[i] = normalized_distance
 
-        reward = float(total_distance_improvement / len(self.wargame_models))
+            total_reward += closest_objective_reward
+
+        reward = float(total_reward / len(self.wargame_models))
+        assert reward >= -1.0
         assert reward <= 1.0
         return reward
 

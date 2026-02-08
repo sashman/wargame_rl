@@ -18,10 +18,14 @@ class WargameEnvConfig(BaseModel):
     deployment_zone: tuple[int, int, int, int] = Field(
         default=(0, 0, 50, 50), description="Deployment zone coordinates"
     )
+    group_cohesion_enabled: bool = Field(
+        default=True,
+        description="When True, models that break group cohesion receive group_violation_penalty; when False, no group cohesion reward is applied.",
+    )
     group_max_distance: float = Field(
         gt=0,
         default=10.0,
-        description="Max distance (L2) models in the same group may be from at least one other model in that group; violation yields group_violation_penalty.",
+        description="Max distance (L2) models in the same group may be from at least one other model in that group; violation yields group_violation_penalty (if group_cohesion_enabled).",
     )
     group_violation_penalty: float = Field(
         default=-10.0,
