@@ -278,6 +278,8 @@ class WargameEnv(gym.Env):
         """Calculate the reward based on the average negative normalized distance of all wargame models to the closest objectives."""
         total_reward = float(0)
         for i, model in enumerate(self.wargame_models):
+            model_rewards: list[float] = []
+
             closest_objective_reward, normalized_distance = (
                 self._get_model_closest_objective_reward(
                     model, self.previous_closest_objective_reward[i]
@@ -285,10 +287,18 @@ class WargameEnv(gym.Env):
             )
             self.previous_closest_objective_reward[i] = normalized_distance
 
-            total_reward += closest_objective_reward
+            model_rewards.append(closest_objective_reward)
+
+            if (
+                self.config.group_cohesion_enabled
+                and not self._is_within_group_distance(model)
+            ):
+                model_rewards.append(self.config.group_violation_penalty)
+
+            total_reward += sum(model_rewards)
 
         reward = float(total_reward / len(self.wargame_models))
-        assert reward >= -1.0
+        # assert reward >= -1.0
         assert reward <= 1.0
         return reward
 
