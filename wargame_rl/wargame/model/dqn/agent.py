@@ -83,7 +83,7 @@ class Agent:
         # In the latest version of gym, the step() function returns back an
         # additional variable which is truncated.
         #     obs, reward, terminated, truncated, info = env.step(action)
-        new_state, reward, done, _, _ = self.env.step(action)
+        new_state, reward, done, _, _info = self.env.step(action)
 
         if self.replay_buffer is not None and save_step:
             exp = Experience(

@@ -72,7 +72,8 @@ def test_dataloaders(env: WargameEnv, dqn_net: RL_Network) -> None:
     n_objectives = observation.n_objectives
     dim_location = 2
     dim_distances = dim_location * n_objectives
-    dim_model = dim_location + dim_distances
+    max_groups = observation.wargame_models[0].max_groups
+    dim_model = dim_location + dim_distances + max_groups  # group_id one-hot
 
     assert batch.actions.shape == (batch_size, n_wargame_models)
     assert batch.rewards.shape == (batch_size,)
