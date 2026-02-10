@@ -173,6 +173,15 @@ class WargameEnv(gym.Env):
             deployment_zone=self.deployment_zone.tolist(),
         )
 
+    def is_within_deployment_zone(self, location: np.ndarray) -> bool:
+        """True if this location is within the deployment zone."""
+        return bool(
+            location[0] >= self.deployment_zone[0]
+            and location[0] <= self.deployment_zone[2]
+            and location[1] >= self.deployment_zone[1]
+            and location[1] <= self.deployment_zone[3]
+        )
+
     def reset(
         self, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[WargameEnvObservation, dict[str, Any]]:
@@ -182,19 +191,28 @@ class WargameEnv(gym.Env):
         # Reset the current turn to 0
         self.current_turn = 0
 
-        # For each wargame model, we will randomly choose a location within the deployment zone
         for i, model in enumerate(self.wargame_models):
-            model.location = self.np_random.integers(
-                self.deployment_zone[0], self.deployment_zone[2], size=2, dtype=np.int32
+            # Set model.location to a random location within the deployment zone
+            model_x = self.np_random.integers(
+                self.deployment_zone[0], self.deployment_zone[2], dtype=np.int32
             )
+            model_y = self.np_random.integers(
+                self.deployment_zone[1], self.deployment_zone[3], dtype=np.int32
+            )
+            model.location = np.array([model_x, model_y], dtype=np.int32)
+
             model.stats["current_wounds"] = model.stats["max_wounds"]
             self.previous_closest_objective_reward[i] = None
 
         # For each objective, we will randomly choose a location outside the deployment zone
         for objective in self.objectives:
-            objective.location = self.np_random.integers(
-                self.deployment_zone[2], self.size, size=2, dtype=np.int32
+            objective_x = self.np_random.integers(
+                self.deployment_zone[2], self.size, dtype=np.int32
             )
+            objective_y = self.np_random.integers(
+                self.deployment_zone[1], self.size, dtype=np.int32
+            )
+            objective.location = np.array([objective_x, objective_y], dtype=np.int32)
 
         observation = self._get_obs()
         info: WargameEnvInfo = self._get_info()
