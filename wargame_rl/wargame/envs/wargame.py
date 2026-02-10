@@ -174,12 +174,12 @@ class WargameEnv(gym.Env):
         )
 
     def is_within_deployment_zone(self, location: np.ndarray) -> bool:
-        """True if this location is within the deployment zone."""
+        """True if this location is within the deployment zone (bounds [x0, x2), [y0, y3))."""
         return bool(
             location[0] >= self.deployment_zone[0]
-            and location[0] <= self.deployment_zone[2]
+            and location[0] < self.deployment_zone[2]
             and location[1] >= self.deployment_zone[1]
-            and location[1] <= self.deployment_zone[3]
+            and location[1] < self.deployment_zone[3]
         )
 
     def reset(
