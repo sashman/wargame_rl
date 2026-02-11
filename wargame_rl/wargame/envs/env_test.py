@@ -15,7 +15,6 @@ class EnvTest:
                 objective_radius_size=2,
                 number_of_wargame_models=3,
                 number_of_objectives=2,
-                deployment_zone=(0, 0, size // 3, size),
             ),
             renderer=HumanRender(),
         )
@@ -35,3 +34,6 @@ class EnvTest:
 
             if terminated or truncated:
                 self.env.reset()
+
+    def reset(self) -> None:
+        self.env.reset()
