@@ -13,7 +13,7 @@ import os
 import typer
 from pydantic_yaml import parse_yaml_raw_as
 
-from wargame_rl.wargame.envs.renders.human import HumanRender
+from wargame_rl.wargame.envs.renders.human import HumanRender, QuitRequested
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.config import NetworkType
@@ -99,9 +99,13 @@ def simulate(
     episode_steps = []
 
     for episode in range(num_episodes):
-        reward, steps = agent.run_episode(
-            policy_net, epsilon=0.0, render=render, save_steps=False
-        )
+        try:
+            reward, steps = agent.run_episode(
+                policy_net, epsilon=0.0, render=render, save_steps=False
+            )
+        except QuitRequested:
+            logging.info("Application stopped by user (Esc)")
+            break
         episode_rewards.append(reward)
         episode_steps.append(steps)
 
@@ -116,6 +120,10 @@ def simulate(
             time.sleep(0.3)
 
     # Calculate and display statistics
+    if not episode_rewards:
+        logging.info("No episodes completed.")
+        env.close()
+        return
     avg_reward = sum(episode_rewards) / len(episode_rewards)
     avg_steps = sum(episode_steps) / len(episode_steps)
     max_reward = max(episode_rewards)
