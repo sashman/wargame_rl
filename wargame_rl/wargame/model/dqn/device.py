@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import TypeAlias
-import torch
 
+import torch
 
 Device: TypeAlias = str | None | torch.device
 

@@ -11,6 +11,7 @@ from wargame_rl.wargame.model.dqn.dqn import DQN_MLP, DQN_Transformer
 from wargame_rl.wargame.model.dqn.env_config_callback import EnvConfigCallback
 from wargame_rl.wargame.model.dqn.factory import create_environment
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
+from wargame_rl.wargame.model.dqn.record_episode_callback import RecordEpisodeCallback
 from wargame_rl.wargame.model.dqn.wandb import get_logger, init_wandb
 
 app = typer.Typer(pretty_exceptions_enable=False)
@@ -45,11 +46,22 @@ def train(
     network_type: NetworkType = typer.Option(
         NetworkType.TRANSFORMER, help="Network type to use"
     ),
+    record_during_training: bool = typer.Option(
+        False,
+        help="Record a single episode as MP4 when new checkpoints are saved (async, human render)",
+    ),
+    record_after_epoch: int = typer.Option(
+        10,
+        help="Start recording only after this many epochs (when record_during_training is enabled)",
+    ),
 ) -> None:
     """Train the DQN agent."""
 
     dqn_config = DQNConfig()
-    training_config = TrainingConfig()
+    training_config = TrainingConfig(
+        record_during_training=record_during_training,
+        record_after_epoch=record_after_epoch,
+    )
 
     env_config = get_env_config(env_config_path, render_mode)
 
@@ -68,7 +80,16 @@ def train(
 
     with init_wandb(config=config, name=env_config.config_name) as run:
         env_config_callback = EnvConfigCallback(run.name, env_config)
-        callbacks = [env_config_callback] + get_checkpoint_callback(run.name)
+        callbacks: list = [env_config_callback] + get_checkpoint_callback(run.name)
+        if training_config.record_during_training:
+            callbacks.append(
+                RecordEpisodeCallback(
+                    run.name,
+                    env_config,
+                    training_config.record_during_training,
+                    training_config.record_after_epoch,
+                )
+            )
         logger = get_logger(run)
         trainer = Trainer(
             accelerator="auto",

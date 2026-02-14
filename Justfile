@@ -48,9 +48,9 @@ dockerize:
 # Or with network type: just train path/to/config.yaml mlp
 train env_config_path model='':
 	@if [ -z "{{model}}" ]; then \
-		uv run train.py --env-config-path {{env_config_path}}; \
+		uv run train.py --record-during-training --env-config-path {{env_config_path}}; \
 	else \
-		uv run train.py --env-config-path {{env_config_path}} --network-type {{model}}; \
+		uv run train.py --record-during-training --env-config-path {{env_config_path}} --network-type {{model}}; \
 	fi
 
 simulate-latest network_type='':

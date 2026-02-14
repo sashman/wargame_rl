@@ -106,6 +106,16 @@ class HumanRender(Renderer):
         # keep the framerate stable.
         self.clock.tick(metadata["render_fps"])
 
+    def get_frame_array(self) -> np.ndarray:
+        """Return the current window as RGB array (height, width, 3) for video recording."""
+        if self.window is None:
+            raise ValueError("Window is not initialized")
+        # pygame.surfarray.array3d returns (width, height, 3); we need (height, width, 3)
+        return np.asarray(
+            np.transpose(pygame.surfarray.array3d(self.window), (1, 0, 2)),
+            dtype=np.uint8,
+        )
+
     def _draw_north_panel(self, env: WargameEnv) -> None:
         """Draw the north panel with hot key menu."""
         if self.window is None:
