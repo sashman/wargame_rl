@@ -12,21 +12,25 @@ class QuitRequested(Exception):
 
 class HumanRender(Renderer):
     PANEL_HEIGHT = 36
+    GRID_SIZE = 1024  # Width and height of the game grid in pixels
 
     def __init__(self) -> None:
         self.window: pygame.Surface | None = None
         self.clock: pygame.time.Clock | None = None
-        self.window_size = 1024
+        self.window_size = self.GRID_SIZE
         self.canvas: pygame.Surface | None = None
         self.paused = False
         self.should_quit = False
+        # Total window height: north panel + grid + south panel
+        self._total_window_height = self.GRID_SIZE + 2 * self.PANEL_HEIGHT
 
     def setup(self, env: WargameEnv) -> None:
         if self.window is None:
             pygame.init()
             pygame.display.init()
-            total_height = self.window_size + 2 * self.PANEL_HEIGHT
-            self.window = pygame.display.set_mode((self.window_size, total_height))
+            size = (self.window_size, self._total_window_height)
+            self.window = pygame.display.set_mode(size)
+            pygame.display.set_caption("Wargame")
 
         if self.clock is None:
             self.clock = pygame.time.Clock()
