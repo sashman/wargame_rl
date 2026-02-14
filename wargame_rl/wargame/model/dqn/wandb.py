@@ -16,8 +16,11 @@ ENTITY = "wargame_rl"
 def init_wandb(config: dict | None = None, name: str | None = None):  # type: ignore
     if config is None:
         config = {}
+
     if name is None:
         name = DEFAULT_NAME + "-" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    else:
+        name = name + "-" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 
     # Check if wandb is already initialized
     if wandb.run is not None:

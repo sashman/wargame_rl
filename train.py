@@ -66,7 +66,7 @@ def train(
         "training": training_config.model_dump(),
     }
 
-    with init_wandb(config=config) as run:
+    with init_wandb(config=config, name=env_config.config_name) as run:
         env_config_callback = EnvConfigCallback(run.name, env_config)
         callbacks = [env_config_callback] + get_checkpoint_callback(run.name)
         logger = get_logger(run)
