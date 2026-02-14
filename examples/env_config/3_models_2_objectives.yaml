@@ -1,3 +1,4 @@
+config_name: 3_models_2_objectives
 number_of_wargame_models: 3
 number_of_objectives: 2
 objective_radius_size: 3

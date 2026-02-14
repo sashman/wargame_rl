@@ -6,6 +6,9 @@ class WargameEnvConfig(BaseModel):
     Configuration for the Wargame environment.
     """
 
+    config_name: str | None = Field(
+        default=None, description="Name of the environment config"
+    )
     number_of_wargame_models: int = 2  # Number of wargame models in the environment
     number_of_objectives: int = 2  # Number of objectives in the environment
     objective_radius_size: int = Field(
