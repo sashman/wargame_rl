@@ -36,7 +36,7 @@ class Reward:
     def _get_model_closest_objective_reward(
         self,
         model: WargameModel,
-        previous_closest_objective_reward: float | None,
+        previous_closest_objective_distance: float | None,
         env: wargame.WargameEnv,
     ) -> tuple[float, float]:
         closest_objective = min(
@@ -55,12 +55,12 @@ class Reward:
 
         normalized_distance = distance_to_closest_objective / (np.sqrt(2) * env.size)
 
-        if previous_closest_objective_reward is None:
+        if previous_closest_objective_distance is None:
             return float(0), normalized_distance
 
-        previous_closest_objective_reward = float(previous_closest_objective_reward)  # type: ignore
+        previous_closest_objective_distance = float(previous_closest_objective_distance)  # type: ignore
         closest_objective_reward = self._get_closest_objective_reward(
-            previous_closest_objective_reward, normalized_distance
+            previous_closest_objective_distance, normalized_distance
         )
 
         return closest_objective_reward, normalized_distance
@@ -87,11 +87,11 @@ class Reward:
     ) -> ModelRewards:
         closest_objective_reward, normalized_distance = (
             self._get_model_closest_objective_reward(
-                model, model.previous_closest_objective_reward, env
+                model, model.previous_closest_objective_distance, env
             )
         )
 
-        model.previous_closest_objective_reward = normalized_distance
+        model.set_previous_closest_objective_distance(normalized_distance)
 
         group_distance_violation_penalty = 0.0
         if env.config.group_cohesion_enabled and not self._is_within_group_distance(
@@ -99,10 +99,12 @@ class Reward:
         ):
             group_distance_violation_penalty = env.config.group_violation_penalty
 
-        return ModelRewards(
+        model_rewards = ModelRewards(
             closest_objective_reward=closest_objective_reward,
             group_distance_violation_penalty=group_distance_violation_penalty,
         )
+        model.model_rewards_history.append(model_rewards)
+        return model_rewards
 
     def calculate_reward(self, env: wargame.WargameEnv) -> float:
         total_reward = float(0)

@@ -199,6 +199,7 @@ class WargameEnv(gym.Env):
 
             model.stats["current_wounds"] = model.stats["max_wounds"]
             self.previous_closest_objective_reward[i] = None
+            model.model_rewards_history.clear()
 
         # For each objective, we will randomly choose a location outside the deployment zone
         for objective in self.objectives:

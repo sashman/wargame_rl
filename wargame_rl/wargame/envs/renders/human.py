@@ -21,6 +21,8 @@ class HumanRender(Renderer):
         self.canvas: pygame.Surface | None = None
         self.paused = False
         self.should_quit = False
+        # Model index for tooltip pinned by click; None = show only on hover
+        self._pinned_model_index: int | None = None
         # Total window height: north panel + grid + south panel
         self._total_window_height = self.GRID_SIZE + 2 * self.PANEL_HEIGHT
 
@@ -42,12 +44,12 @@ class HumanRender(Renderer):
         )  # The size of a single grid square in pixels
 
     def render(self, env: WargameEnv) -> None:
-        self._process_events()
+        self._process_events(env)
         if self.should_quit:
             raise QuitRequested()
         self._render_frame(env)
         while self.paused:
-            self._process_events()
+            self._process_events(env)
             if self.should_quit:
                 raise QuitRequested()
             self._render_frame(env)
@@ -88,6 +90,14 @@ class HumanRender(Renderer):
         self.window.blit(self.canvas, (0, self.PANEL_HEIGHT))
         self._draw_north_panel(env)
         self._draw_south_panel(env)
+        # Show tooltip for pinned model (follows model) or hovered model
+        tooltip_index = (
+            self._pinned_model_index
+            if self._pinned_model_index is not None
+            else self._get_hovered_model_index(env)
+        )
+        if tooltip_index is not None:
+            self._draw_model_tooltip(env, tooltip_index)
         pygame.event.pump()
         pygame.display.update()
 
@@ -152,8 +162,83 @@ class HumanRender(Renderer):
         self.window.blit(steps_surface, steps_rect)
         self.window.blit(reward_surface, reward_rect)
 
-    def _process_events(self) -> None:
-        """Process pygame events for pause (Space) and quit (Esc)."""
+    def _get_model_index_at(self, env: WargameEnv, mx: int, my: int) -> int | None:
+        """Return the index of the wargame model at window position (mx, my), or None."""
+        if not (
+            0 <= mx < self.window_size
+            and self.PANEL_HEIGHT <= my < self.PANEL_HEIGHT + self.window_size
+        ):
+            return None
+        canvas_x = float(mx)
+        canvas_y = float(my - self.PANEL_HEIGHT)
+        hit_radius = max(self.pix_square_size / 2, 12.0)
+        for i, model in enumerate(env.wargame_models):
+            center_x = (model.location[0] + 0.5) * self.pix_square_size
+            center_y = (model.location[1] + 0.5) * self.pix_square_size
+            dist_sq = (canvas_x - center_x) ** 2 + (canvas_y - center_y) ** 2
+            if dist_sq <= hit_radius**2:
+                return i
+        return None
+
+    def _get_hovered_model_index(self, env: WargameEnv) -> int | None:
+        """Return the index of the wargame model under the mouse, or None."""
+        mx, my = pygame.mouse.get_pos()
+        return self._get_model_index_at(env, mx, my)
+
+    def _draw_model_tooltip(self, env: WargameEnv, model_index: int) -> None:
+        """Draw a popup overlay with model info near the hovered model."""
+        if self.window is None:
+            return
+        model = env.wargame_models[model_index]
+        # Model center in window coords
+        center_x = (model.location[0] + 0.5) * self.pix_square_size
+        center_y = self.PANEL_HEIGHT + (model.location[1] + 0.5) * self.pix_square_size
+        latest = (
+            model.model_rewards_history[-1] if model.model_rewards_history else None
+        )
+        if latest is not None:
+            lines = [
+                f"Location: ({model.location[0]}, {model.location[1]})",
+                f"Group ID: {model.group_id}",
+                f"Closest objective reward: {latest.closest_objective_reward:.3f}",
+                f"Group distance violation penalty: {latest.group_distance_violation_penalty:.3f}",
+                f"Total reward: {latest.total_reward:.3f}",
+            ]
+        else:
+            lines = [
+                f"Location: ({model.location[0]}, {model.location[1]})",
+                f"Group ID: {model.group_id}",
+                "Closest objective reward: —",
+            ]
+        font = pygame.font.Font(None, 22)
+        padding = 6
+        line_height = font.get_height()
+        text_color = (220, 220, 220)
+        bg_color = (45, 45, 48)
+        border_color = (80, 80, 84)
+        max_w = 0
+        surfaces = []
+        for line in lines:
+            s = font.render(line, True, text_color)
+            surfaces.append(s)
+            max_w = max(max_w, s.get_width())
+        box_w = max_w + 2 * padding
+        box_h = len(lines) * line_height + 2 * padding
+        # Position above and slightly right of model, keep on screen
+        tooltip_x = center_x + 14
+        tooltip_y = center_y - box_h - 10
+        tooltip_x = max(4, min(tooltip_x, self.window_size - box_w - 4))
+        tooltip_y = max(
+            self.PANEL_HEIGHT + 4, min(tooltip_y, self._total_window_height - box_h - 4)
+        )
+        rect = pygame.Rect(tooltip_x, tooltip_y, box_w, box_h)
+        pygame.draw.rect(self.window, border_color, rect.inflate(2, 2))
+        pygame.draw.rect(self.window, bg_color, rect)
+        for j, s in enumerate(surfaces):
+            self.window.blit(s, (rect.x + padding, rect.y + padding + j * line_height))
+
+    def _process_events(self, env: WargameEnv) -> None:
+        """Process pygame events for pause (Space), quit (Esc), and click-to-pin tooltip."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.should_quit = True
@@ -162,6 +247,12 @@ class HumanRender(Renderer):
                     self.paused = not self.paused
                 elif event.key == pygame.K_ESCAPE:
                     self.should_quit = True
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:  # left click
+                    model_index = self._get_model_index_at(
+                        env, event.pos[0], event.pos[1]
+                    )
+                    self._pinned_model_index = model_index
 
     def _draw_deployment_zone(
         self, canvas: pygame.Surface, deployment_zone: np.ndarray
