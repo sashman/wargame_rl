@@ -44,6 +44,7 @@ def _run_recording(
     renderer = HumanRender()
     env = create_environment(env_config=env_config, renderer=renderer)
     renderer.setup(env)
+    renderer.epoch = epoch
 
     # Load snapshot from file (avoids pickling tensors across processes)
     policy_state_dict = torch.load(
