@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 from gymnasium import spaces
+
+if TYPE_CHECKING:
+    from wargame_rl.wargame.envs.reward.types.model_rewards import ModelRewards
 
 
 class WargameModel:
@@ -26,11 +31,18 @@ class WargameModel:
         stats: dict[str, int],
         distances_to_objectives: np.ndarray,
         group_id: int,
+        previous_closest_objective_reward: float | None = None,
     ):
         self.location = location
         self.stats = stats
         self.distances_to_objectives = distances_to_objectives
         self.group_id = group_id
+
+        self.previous_closest_objective_distance = previous_closest_objective_reward
+        self.model_rewards_history: list["ModelRewards"] = []
+
+    def set_previous_closest_objective_distance(self, distance: float) -> None:
+        self.previous_closest_objective_distance = distance
 
     def __repr__(self) -> str:
         return f"WargameModel(location={self.location}, distances_to_objectives={self.distances_to_objectives}, group_id={self.group_id})"
