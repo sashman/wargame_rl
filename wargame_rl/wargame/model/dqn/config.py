@@ -25,6 +25,8 @@ class DQNConfig(BaseModel):
 class TrainingConfig(BaseModel):
     max_epochs: int = 150
     val_check_interval: int = 1
+    record_during_training: bool = False
+    record_after_epoch: int = 20
 
 
 class TransformerConfig(BaseModel):
