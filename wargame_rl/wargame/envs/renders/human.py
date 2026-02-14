@@ -6,18 +6,27 @@ from wargame_rl.wargame.envs.wargame import WargameEnv, WargameObjective
 from wargame_rl.wargame.envs.wargame_model import WargameModel
 
 
+class QuitRequested(Exception):
+    """Raised when the user presses Esc to stop the application."""
+
+
 class HumanRender(Renderer):
+    PANEL_HEIGHT = 36
+
     def __init__(self) -> None:
         self.window: pygame.Surface | None = None
         self.clock: pygame.time.Clock | None = None
         self.window_size = 1024
         self.canvas: pygame.Surface | None = None
+        self.paused = False
+        self.should_quit = False
 
     def setup(self, env: WargameEnv) -> None:
         if self.window is None:
             pygame.init()
             pygame.display.init()
-            self.window = pygame.display.set_mode((self.window_size, self.window_size))
+            total_height = self.window_size + 2 * self.PANEL_HEIGHT
+            self.window = pygame.display.set_mode((self.window_size, total_height))
 
         if self.clock is None:
             self.clock = pygame.time.Clock()
@@ -29,7 +38,17 @@ class HumanRender(Renderer):
         )  # The size of a single grid square in pixels
 
     def render(self, env: WargameEnv) -> None:
+        self._process_events()
+        if self.should_quit:
+            raise QuitRequested()
         self._render_frame(env)
+        while self.paused:
+            self._process_events()
+            if self.should_quit:
+                raise QuitRequested()
+            self._render_frame(env)
+            if self.clock is not None:
+                self.clock.tick(env.metadata["render_fps"])
 
     def _render_frame(self, env: WargameEnv) -> None:
         if self.canvas is None:
@@ -61,8 +80,10 @@ class HumanRender(Renderer):
         # Finally, add some gridlines
         self._draw_gridlines(self.canvas, size)
 
-        # The following line copies our drawings from `canvas` to the visible window
-        self.window.blit(self.canvas, self.canvas.get_rect())
+        # Copy game canvas to window between north and south panels
+        self.window.blit(self.canvas, (0, self.PANEL_HEIGHT))
+        self._draw_north_panel(env)
+        self._draw_south_panel(env)
         pygame.event.pump()
         pygame.display.update()
 
@@ -70,6 +91,73 @@ class HumanRender(Renderer):
         # The following line will automatically add a delay to
         # keep the framerate stable.
         self.clock.tick(metadata["render_fps"])
+
+    def _draw_north_panel(self, env: WargameEnv) -> None:
+        """Draw the north panel with hot key menu."""
+        if self.window is None:
+            return
+        panel_rect = pygame.Rect(0, 0, self.window_size, self.PANEL_HEIGHT)
+        pygame.draw.rect(self.window, (45, 45, 48), panel_rect)
+        pygame.draw.line(
+            self.window,
+            (80, 80, 84),
+            (0, self.PANEL_HEIGHT),
+            (self.window_size, self.PANEL_HEIGHT),
+            width=1,
+        )
+        font = pygame.font.Font(None, 24)
+        menu_text = "Space: Pause | Esc: Quit"
+        if self.paused:
+            menu_text = "PAUSED - Space: Resume | Esc: Quit"
+        text_surface = font.render(menu_text, True, (220, 220, 220))
+        text_rect = text_surface.get_rect(
+            center=(self.window_size // 2, self.PANEL_HEIGHT // 2)
+        )
+        self.window.blit(text_surface, text_rect)
+
+    def _draw_south_panel(self, env: WargameEnv) -> None:
+        """Draw the south panel with environment information."""
+        if self.window is None:
+            return
+        panel_y = self.PANEL_HEIGHT + self.window_size
+        panel_rect = pygame.Rect(0, panel_y, self.window_size, self.PANEL_HEIGHT)
+        pygame.draw.rect(self.window, (45, 45, 48), panel_rect)
+        pygame.draw.line(
+            self.window,
+            (80, 80, 84),
+            (0, panel_y),
+            (self.window_size, panel_y),
+            width=1,
+        )
+        font = pygame.font.Font(None, 24)
+        text_color = (220, 220, 220)
+        reward_str = f"{env.last_reward:.3f}" if env.last_reward is not None else "—"
+        turn_text = f"Turn: {env.current_turn} / {env.max_turns}"
+        steps_text = f"Steps: {env.current_turn}"
+        reward_text = f"Reward: {reward_str}"
+        turn_surface = font.render(turn_text, True, text_color)
+        steps_surface = font.render(steps_text, True, text_color)
+        reward_surface = font.render(reward_text, True, text_color)
+        center_y = panel_y + self.PANEL_HEIGHT // 2
+        turn_rect = turn_surface.get_rect(center=(self.window_size // 6, center_y))
+        steps_rect = steps_surface.get_rect(center=(self.window_size // 2, center_y))
+        reward_rect = reward_surface.get_rect(
+            center=(5 * self.window_size // 6, center_y)
+        )
+        self.window.blit(turn_surface, turn_rect)
+        self.window.blit(steps_surface, steps_rect)
+        self.window.blit(reward_surface, reward_rect)
+
+    def _process_events(self) -> None:
+        """Process pygame events for pause (Space) and quit (Esc)."""
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.should_quit = True
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    self.paused = not self.paused
+                elif event.key == pygame.K_ESCAPE:
+                    self.should_quit = True
 
     def _draw_deployment_zone(
         self, canvas: pygame.Surface, deployment_zone: np.ndarray

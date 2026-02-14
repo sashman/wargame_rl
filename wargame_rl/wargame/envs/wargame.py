@@ -119,6 +119,9 @@ class WargameEnv(gym.Env):
         # Set the deployment zone for the agent, area left third of the grid
         self.deployment_zone = np.array([0, 0, self.size // 3, self.size], dtype=int)
 
+        # Last reward from step(); None until first step after reset
+        self.last_reward: float | None = None
+
     def _get_obs(self) -> WargameEnvObservation:
         """Get the observation for the current state of the environment."""
         # Get the locations of the wargame models and objectives
@@ -181,6 +184,7 @@ class WargameEnv(gym.Env):
 
         # Reset the current turn to 0
         self.current_turn = 0
+        self.last_reward = None
 
         for i, model in enumerate(self.wargame_models):
             # Set model.location to a random location within the deployment zone
@@ -358,6 +362,7 @@ class WargameEnv(gym.Env):
         if self.current_turn >= self.max_turns:
             is_terminated = True
 
+        self.last_reward = reward
         return observation, reward, is_terminated, False, info.model_dump()
 
     def render(self) -> None:
