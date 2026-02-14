@@ -26,11 +26,14 @@ class WargameModel:
         stats: dict[str, int],
         distances_to_objectives: np.ndarray,
         group_id: int,
+        previous_closest_objective_reward: float | None = None,
     ):
         self.location = location
         self.stats = stats
         self.distances_to_objectives = distances_to_objectives
         self.group_id = group_id
+
+        self.previous_closest_objective_reward = previous_closest_objective_reward
 
     def __repr__(self) -> str:
         return f"WargameModel(location={self.location}, distances_to_objectives={self.distances_to_objectives}, group_id={self.group_id})"

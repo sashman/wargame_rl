@@ -8,6 +8,7 @@ import numpy as np
 from gymnasium import spaces
 
 from wargame_rl.wargame.envs.renders import renderer
+from wargame_rl.wargame.envs.reward.reward import Reward
 from wargame_rl.wargame.envs.types import (
     WargameEnvAction,
     WargameEnvConfig,
@@ -218,103 +219,6 @@ class WargameEnv(gym.Env):
 
         return observation, info.model_dump()
 
-    def _get_closest_objective_reward(
-        self, previous_model_distance: float, distance_to_closest_objective: float
-    ) -> float:
-        # Wargame model has reached the objective, large positive reward
-        if distance_to_closest_objective == 0:
-            return float(1)
-
-        distance_improvement = float(
-            distance_to_closest_objective - previous_model_distance
-        )
-
-        # Wargame model has not moved closer to the objective, tiny negative reward
-        if distance_improvement == 0:
-            return float(-0.05)
-
-        # Wargame model has moved closer to the objective, small positive reward
-        if distance_improvement < 0:
-            return float(0.5)
-
-        # Wargame model has moved away from the objective, small negative reward
-        if distance_improvement > 0:
-            return float(-0.5)
-
-        return float(0)
-
-    def _get_model_closest_objective_reward(
-        self, model: WargameModel, previous_closest_objective_reward: float | None
-    ) -> tuple[float, float]:
-        closest_objective = min(
-            self.objectives,
-            key=lambda obj: float(np.linalg.norm(model.location - obj.location, ord=2)),
-        )
-
-        distance_to_closest_objective = float(
-            np.linalg.norm(
-                model.location
-                - closest_objective.location
-                + closest_objective.radius_size / 2,
-                ord=2,
-            )
-        )
-
-        normalized_distance = distance_to_closest_objective / (np.sqrt(2) * self.size)
-
-        if previous_closest_objective_reward is None:
-            return float(0), normalized_distance
-
-        previous_closest_objective_reward = float(previous_closest_objective_reward)  # type: ignore
-        closest_objective_reward = self._get_closest_objective_reward(
-            previous_closest_objective_reward, normalized_distance
-        )
-
-        return closest_objective_reward, normalized_distance
-
-    def _is_within_group_distance(self, model: WargameModel) -> bool:
-        """True if this model is within group_max_distance of at least one other model with the same group_id."""
-        same_group = [
-            other
-            for other in self.wargame_models
-            if other is not model and other.group_id == model.group_id
-        ]
-        if not same_group:
-            return True  # No group constraint when alone in group
-        min_dist = min(
-            float(np.linalg.norm(model.location - other.location, ord=2))
-            for other in same_group
-        )
-        return min_dist <= self.config.group_max_distance
-
-    def _calculate_reward(self) -> float:
-        """Calculate the reward based on the average negative normalized distance of all wargame models to the closest objectives."""
-        total_reward = float(0)
-        for i, model in enumerate(self.wargame_models):
-            model_rewards: list[float] = []
-
-            closest_objective_reward, normalized_distance = (
-                self._get_model_closest_objective_reward(
-                    model, self.previous_closest_objective_reward[i]
-                )
-            )
-            self.previous_closest_objective_reward[i] = normalized_distance
-
-            model_rewards.append(closest_objective_reward)
-
-            if (
-                self.config.group_cohesion_enabled
-                and not self._is_within_group_distance(model)
-            ):
-                model_rewards.append(self.config.group_violation_penalty)
-
-            total_reward += sum(model_rewards)
-
-        reward = float(total_reward / len(self.wargame_models))
-        # assert reward >= -1.0
-        assert reward <= 1.0
-        return reward
-
     def step(
         self, action: WargameEnvAction
     ) -> tuple[WargameEnvObservation, float, bool, bool, dict[str, Any]]:
@@ -352,7 +256,7 @@ class WargameEnv(gym.Env):
             terminated
         )  # If all models are terminated, the episode is done
 
-        reward = self._calculate_reward()
+        reward = Reward().calculate_reward(self)
 
         # reward = 1 if terminated else 0  # Binary sparse rewards
         observation = self._get_obs()
