@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import pygame
 
@@ -12,36 +14,90 @@ class QuitRequested(Exception):
 
 class HumanRender(Renderer):
     PANEL_HEIGHT = 36
-    GRID_SIZE = 1024  # Width and height of the game grid in pixels
+    GRID_SIZE = 1024  # Max width or height of the game grid in pixels
 
     def __init__(self) -> None:
         self.window: pygame.Surface | None = None
         self.clock: pygame.time.Clock | None = None
-        self.window_size = self.GRID_SIZE
+        self.canvas_width = self.GRID_SIZE
+        self.canvas_height = self.GRID_SIZE
         self.canvas: pygame.Surface | None = None
         self.paused = False
         self.should_quit = False
         # Model index for tooltip pinned by click; None = show only on hover
         self._pinned_model_index: int | None = None
-        # Total window height: north panel + grid + south panel
         self._total_window_height = self.GRID_SIZE + 2 * self.PANEL_HEIGHT
+        # Board dimensions (set in setup) for recomputing scale on window resize
+        self._board_width: int = 50
+        self._board_height: int = 50
+        # Offset of canvas within window (for centered grid when resized)
+        self._canvas_offset_x: int = 0
+        self._canvas_offset_y: int = self.PANEL_HEIGHT
+        # Last window size we used for layout (to detect resize even without VIDEORESIZE)
+        self._last_window_w: int = 0
+        self._last_window_h: int = 0
+
+    def _compute_scale_and_canvas(
+        self, available_width: int, available_height: int
+    ) -> None:
+        """Set scale and canvas size to fit board in available area; keep square cells."""
+        if available_width <= 0 or available_height <= 0:
+            return
+        scale = min(
+            available_width / self._board_width,
+            available_height / self._board_height,
+        )
+        self.pix_square_size = scale
+        self.canvas_width = math.ceil(scale * self._board_width)
+        self.canvas_height = math.ceil(scale * self._board_height)
+        self.canvas = pygame.Surface((self.canvas_width, self.canvas_height))
 
     def setup(self, env: WargameEnv) -> None:
+        # Scale so board fits within GRID_SIZE on the longer side; keep square cells
+        board_w = env.config.board_width
+        board_h = env.config.board_height
+        self._board_width = board_w
+        self._board_height = board_h
+
+        scale = min(
+            self.GRID_SIZE / board_w,
+            self.GRID_SIZE / board_h,
+        )
+        # Use ceil so the full grid fits (no clipping of last row/column)
+        self.canvas_width = math.ceil(scale * board_w)
+        self.canvas_height = math.ceil(scale * board_h)
+        self.pix_square_size = scale
+        self._total_window_height = self.canvas_height + 2 * self.PANEL_HEIGHT
+        self._canvas_offset_x = 0
+        self._canvas_offset_y = self.PANEL_HEIGHT
+
         if self.window is None:
             pygame.init()
             pygame.display.init()
-            size = (self.window_size, self._total_window_height)
-            self.window = pygame.display.set_mode(size)
+            size = (self.canvas_width, self._total_window_height)
+            self.window = pygame.display.set_mode(size, pygame.RESIZABLE)
             pygame.display.set_caption("Wargame")
+            self._last_window_w, self._last_window_h = size
+        else:
+            current = self.window.get_size()
+            if current != (self.canvas_width, self._total_window_height):
+                self.window = pygame.display.set_mode(
+                    (self.canvas_width, self._total_window_height),
+                    pygame.RESIZABLE,
+                )
+                self._last_window_w, self._last_window_h = self.window.get_size()
 
         if self.clock is None:
             self.clock = pygame.time.Clock()
 
-        self.canvas = pygame.Surface((self.window_size, self.window_size))
+        if self.canvas is None or self.canvas.get_size() != (
+            self.canvas_width,
+            self.canvas_height,
+        ):
+            self.canvas = pygame.Surface((self.canvas_width, self.canvas_height))
         self.canvas.fill((255, 255, 255))
-        self.pix_square_size = (
-            self.window_size / env.config.size
-        )  # The size of a single grid square in pixels
+        if self.window is not None:
+            self._last_window_w, self._last_window_h = self.window.get_size()
 
     def render(self, env: WargameEnv) -> None:
         self._process_events(env)
@@ -64,13 +120,29 @@ class HumanRender(Renderer):
         if self.clock is None:
             raise ValueError("Clock is not initialized")
 
-        size = env.config.size
+        # When window size changes (expand/shrink), scale grid to fill the new size.
+        # This handles both VIDEORESIZE and platforms where resize is detected via get_size().
+        current_w, current_h = self.window.get_size()
+        if (current_w, current_h) != (self._last_window_w, self._last_window_h):
+            self._last_window_w, self._last_window_h = current_w, current_h
+            self._total_window_height = current_h
+            available_w = current_w
+            available_h = max(1, current_h - 2 * self.PANEL_HEIGHT)
+            self._compute_scale_and_canvas(available_w, available_h)
+            self._canvas_offset_x = (current_w - self.canvas_width) // 2
+            self._canvas_offset_y = (
+                self.PANEL_HEIGHT + (available_h - self.canvas_height) // 2
+            )
+
+        board_width = env.config.board_width
+        board_height = env.config.board_height
         objectives = env.objectives
         wargame_models = env.wargame_models
         metadata = env.metadata
         deployment_zone = env.deployment_zone
 
-        # Clear the canvas
+        # Clear window and canvas (window fill clears letterboxing after resize)
+        self.window.fill((45, 45, 48))
         self.canvas.fill((255, 255, 255))
 
         self._draw_deployment_zone(self.canvas, deployment_zone)
@@ -84,10 +156,13 @@ class HumanRender(Renderer):
         self._draw_agent(self.canvas, wargame_models)
 
         # Finally, add some gridlines
-        self._draw_gridlines(self.canvas, size)
+        self._draw_gridlines(self.canvas, board_width, board_height)
 
-        # Copy game canvas to window between north and south panels
-        self.window.blit(self.canvas, (0, self.PANEL_HEIGHT))
+        # Copy game canvas to window (centered in grid area when resized)
+        self.window.blit(
+            self.canvas,
+            (self._canvas_offset_x, self._canvas_offset_y),
+        )
         self._draw_north_panel(env)
         self._draw_south_panel(env)
         # Show tooltip for pinned model (follows model) or hovered model
@@ -120,13 +195,14 @@ class HumanRender(Renderer):
         """Draw the north panel with hot key menu."""
         if self.window is None:
             return
-        panel_rect = pygame.Rect(0, 0, self.window_size, self.PANEL_HEIGHT)
+        window_w = self.window.get_width()
+        panel_rect = pygame.Rect(0, 0, window_w, self.PANEL_HEIGHT)
         pygame.draw.rect(self.window, (45, 45, 48), panel_rect)
         pygame.draw.line(
             self.window,
             (80, 80, 84),
             (0, self.PANEL_HEIGHT),
-            (self.window_size, self.PANEL_HEIGHT),
+            (window_w, self.PANEL_HEIGHT),
             width=1,
         )
         font = pygame.font.Font(None, 24)
@@ -135,7 +211,7 @@ class HumanRender(Renderer):
             menu_text = "PAUSED - Space: Resume | Esc: Quit"
         text_surface = font.render(menu_text, True, (220, 220, 220))
         text_rect = text_surface.get_rect(
-            center=(self.window_size // 2, self.PANEL_HEIGHT // 2)
+            center=(window_w // 2, self.PANEL_HEIGHT // 2)
         )
         self.window.blit(text_surface, text_rect)
 
@@ -143,14 +219,16 @@ class HumanRender(Renderer):
         """Draw the south panel with environment information."""
         if self.window is None:
             return
-        panel_y = self.PANEL_HEIGHT + self.window_size
-        panel_rect = pygame.Rect(0, panel_y, self.window_size, self.PANEL_HEIGHT)
+        window_w = self.window.get_width()
+        window_h = self.window.get_height()
+        panel_y = window_h - self.PANEL_HEIGHT
+        panel_rect = pygame.Rect(0, panel_y, window_w, self.PANEL_HEIGHT)
         pygame.draw.rect(self.window, (45, 45, 48), panel_rect)
         pygame.draw.line(
             self.window,
             (80, 80, 84),
             (0, panel_y),
-            (self.window_size, panel_y),
+            (window_w, panel_y),
             width=1,
         )
         font = pygame.font.Font(None, 24)
@@ -163,11 +241,9 @@ class HumanRender(Renderer):
         steps_surface = font.render(steps_text, True, text_color)
         reward_surface = font.render(reward_text, True, text_color)
         center_y = panel_y + self.PANEL_HEIGHT // 2
-        turn_rect = turn_surface.get_rect(center=(self.window_size // 6, center_y))
-        steps_rect = steps_surface.get_rect(center=(self.window_size // 2, center_y))
-        reward_rect = reward_surface.get_rect(
-            center=(5 * self.window_size // 6, center_y)
-        )
+        turn_rect = turn_surface.get_rect(center=(window_w // 6, center_y))
+        steps_rect = steps_surface.get_rect(center=(window_w // 2, center_y))
+        reward_rect = reward_surface.get_rect(center=(5 * window_w // 6, center_y))
         self.window.blit(turn_surface, turn_rect)
         self.window.blit(steps_surface, steps_rect)
         self.window.blit(reward_surface, reward_rect)
@@ -175,12 +251,12 @@ class HumanRender(Renderer):
     def _get_model_index_at(self, env: WargameEnv, mx: int, my: int) -> int | None:
         """Return the index of the wargame model at window position (mx, my), or None."""
         if not (
-            0 <= mx < self.window_size
-            and self.PANEL_HEIGHT <= my < self.PANEL_HEIGHT + self.window_size
+            self._canvas_offset_x <= mx < self._canvas_offset_x + self.canvas_width
+            and self._canvas_offset_y <= my < self._canvas_offset_y + self.canvas_height
         ):
             return None
-        canvas_x = float(mx)
-        canvas_y = float(my - self.PANEL_HEIGHT)
+        canvas_x = float(mx - self._canvas_offset_x)
+        canvas_y = float(my - self._canvas_offset_y)
         hit_radius = max(self.pix_square_size / 2, 12.0)
         for i, model in enumerate(env.wargame_models):
             center_x = (model.location[0] + 0.5) * self.pix_square_size
@@ -200,9 +276,13 @@ class HumanRender(Renderer):
         if self.window is None:
             return
         model = env.wargame_models[model_index]
-        # Model center in window coords
-        center_x = (model.location[0] + 0.5) * self.pix_square_size
-        center_y = self.PANEL_HEIGHT + (model.location[1] + 0.5) * self.pix_square_size
+        # Model center in window coords (canvas may be offset when window is resized)
+        center_x = (
+            self._canvas_offset_x + (model.location[0] + 0.5) * self.pix_square_size
+        )
+        center_y = (
+            self._canvas_offset_y + (model.location[1] + 0.5) * self.pix_square_size
+        )
         latest = (
             model.model_rewards_history[-1] if model.model_rewards_history else None
         )
@@ -235,12 +315,12 @@ class HumanRender(Renderer):
         box_w = max_w + 2 * padding
         box_h = len(lines) * line_height + 2 * padding
         # Position above and slightly right of model, keep on screen
+        window_w = self.window.get_width()
+        window_h = self.window.get_height()
         tooltip_x = center_x + 14
         tooltip_y = center_y - box_h - 10
-        tooltip_x = max(4, min(tooltip_x, self.window_size - box_w - 4))
-        tooltip_y = max(
-            self.PANEL_HEIGHT + 4, min(tooltip_y, self._total_window_height - box_h - 4)
-        )
+        tooltip_x = max(4, min(tooltip_x, window_w - box_w - 4))
+        tooltip_y = max(4, min(tooltip_y, window_h - box_h - 4))
         rect = pygame.Rect(tooltip_x, tooltip_y, box_w, box_h)
         pygame.draw.rect(self.window, border_color, rect.inflate(2, 2))
         pygame.draw.rect(self.window, bg_color, rect)
@@ -248,10 +328,36 @@ class HumanRender(Renderer):
             self.window.blit(s, (rect.x + padding, rect.y + padding + j * line_height))
 
     def _process_events(self, env: WargameEnv) -> None:
-        """Process pygame events for pause (Space), quit (Esc), and click-to-pin tooltip."""
+        """Process pygame events for pause (Space), quit (Esc), resize, and click-to-pin tooltip."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.should_quit = True
+            elif event.type == pygame.VIDEORESIZE:
+                if self.window is None:
+                    continue
+                new_w = max(1, event.w)
+                new_h = max(
+                    2 * self.PANEL_HEIGHT + 1,
+                    event.h,
+                )
+                # Only resize when size actually changed to avoid feedback loop
+                # (set_mode can trigger another VIDEORESIZE on some systems)
+                current_w, current_h = self.window.get_size()
+                if (new_w, new_h) == (current_w, current_h):
+                    continue
+                self.window = pygame.display.set_mode(
+                    (new_w, new_h),
+                    pygame.RESIZABLE,
+                )
+                self._last_window_w, self._last_window_h = new_w, new_h
+                self._total_window_height = new_h
+                available_w = new_w
+                available_h = new_h - 2 * self.PANEL_HEIGHT
+                self._compute_scale_and_canvas(available_w, available_h)
+                self._canvas_offset_x = (new_w - self.canvas_width) // 2
+                self._canvas_offset_y = (
+                    self.PANEL_HEIGHT + (available_h - self.canvas_height) // 2
+                )
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
                     self.paused = not self.paused
@@ -351,23 +457,31 @@ class HumanRender(Renderer):
                 self.pix_square_size / 3,
             )
 
-    def _draw_gridlines(self, canvas: pygame.Surface, size: int) -> None:
-        """Draw gridlines on the canvas."""
-        for x in range(size + 1):
-            # Draw horizontal lines
+    def _draw_gridlines(
+        self,
+        canvas: pygame.Surface,
+        board_width: int,
+        board_height: int,
+    ) -> None:
+        """Draw gridlines on the canvas. Endpoints clamped to canvas bounds."""
+        max_x = float(self.canvas_width - 1)
+        max_y = float(self.canvas_height - 1)
+        for y in range(board_height + 1):
+            py = min(self.pix_square_size * y, max_y)
             pygame.draw.line(
                 canvas,
                 0,
-                (0, self.pix_square_size * x),
-                (self.window_size, self.pix_square_size * x),
+                (0, py),
+                (max_x, py),
                 width=3,
             )
-            # Draw vertical lines
+        for x in range(board_width + 1):
+            px = min(self.pix_square_size * x, max_x)
             pygame.draw.line(
                 canvas,
                 0,
-                (self.pix_square_size * x, 0),
-                (self.pix_square_size * x, self.window_size),
+                (px, 0),
+                (px, max_y),
                 width=3,
             )
 

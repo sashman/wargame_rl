@@ -53,7 +53,8 @@ class Reward:
             )
         )
 
-        normalized_distance = distance_to_closest_objective / (np.sqrt(2) * env.size)
+        max_diagonal = np.sqrt(env.board_width**2 + env.board_height**2)
+        normalized_distance = distance_to_closest_objective / max_diagonal
 
         if previous_closest_objective_distance is None:
             return float(0), normalized_distance

@@ -7,8 +7,8 @@ import loguru
 def environment_test() -> None:
     from wargame_rl.wargame.envs.env_test import EnvTest
 
-    # Initialize the environment with a grid size of 50 and human rendering mode
-    env_test = EnvTest(size=50)
+    # Initialize the environment with a 50x50 grid and human rendering mode
+    env_test = EnvTest(board_width=100, board_height=74)
 
     # Run 100 random actions in the environment
     env_test.run_actions(num_actions=100)

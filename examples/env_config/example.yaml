@@ -1,8 +1,8 @@
 number_of_wargame_models: 2
 number_of_objectives: 2
 objective_radius_size: 5
-size: 50
-deployment_zone: [0, 0, 50, 50]
+board_width: 100
+board_height: 74
 group_cohesion_enabled: true
 group_max_distance: 10.0
 group_violation_penalty: -10.0

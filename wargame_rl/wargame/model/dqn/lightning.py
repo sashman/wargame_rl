@@ -231,7 +231,10 @@ class DQNLightning(LightningModule):
             self.run_episodes(self.hparams.n_episodes)  # type: ignore
             observation, _ = self.env.reset()
             values_function = compute_values_function(
-                observation, self.env.size, self.policy_net
+                observation,
+                self.env.board_width,
+                self.env.board_height,
+                self.policy_net,
             )
             fig = plot_policy_on_grid(values_function, observation)
             wandb.log({"Value function": fig})  # type: ignore
