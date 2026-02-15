@@ -26,6 +26,9 @@ class HumanRender(Renderer):
         self.should_quit = False
         # Model index for tooltip pinned by click; None = show only on hover
         self._pinned_model_index: int | None = None
+        # Optional epoch number to show in south panel (e.g. when recording)
+        self.epoch: int | None = None
+        # Total window height: north panel + grid + south panel
         self._total_window_height = self.GRID_SIZE + 2 * self.PANEL_HEIGHT
         # Board dimensions (set in setup) for recomputing scale on window resize
         self._board_width: int = 50
@@ -237,13 +240,25 @@ class HumanRender(Renderer):
         turn_text = f"Turn: {env.current_turn} / {env.max_turns}"
         steps_text = f"Steps: {env.current_turn}"
         reward_text = f"Reward: {reward_str}"
-        turn_surface = font.render(turn_text, True, text_color)
-        steps_surface = font.render(steps_text, True, text_color)
-        reward_surface = font.render(reward_text, True, text_color)
         center_y = panel_y + self.PANEL_HEIGHT // 2
-        turn_rect = turn_surface.get_rect(center=(window_w // 6, center_y))
-        steps_rect = steps_surface.get_rect(center=(window_w // 2, center_y))
-        reward_rect = reward_surface.get_rect(center=(5 * window_w // 6, center_y))
+        if self.epoch is not None:
+            epoch_text = f"Epoch: {self.epoch}"
+            epoch_surface = font.render(epoch_text, True, text_color)
+            turn_surface = font.render(turn_text, True, text_color)
+            steps_surface = font.render(steps_text, True, text_color)
+            reward_surface = font.render(reward_text, True, text_color)
+            epoch_rect = epoch_surface.get_rect(center=(window_w // 8, center_y))
+            turn_rect = turn_surface.get_rect(center=(3 * window_w // 8, center_y))
+            steps_rect = steps_surface.get_rect(center=(5 * window_w // 8, center_y))
+            reward_rect = reward_surface.get_rect(center=(7 * window_w // 8, center_y))
+            self.window.blit(epoch_surface, epoch_rect)
+        else:
+            turn_surface = font.render(turn_text, True, text_color)
+            steps_surface = font.render(steps_text, True, text_color)
+            reward_surface = font.render(reward_text, True, text_color)
+            turn_rect = turn_surface.get_rect(center=(window_w // 6, center_y))
+            steps_rect = steps_surface.get_rect(center=(window_w // 2, center_y))
+            reward_rect = reward_surface.get_rect(center=(5 * window_w // 6, center_y))
         self.window.blit(turn_surface, turn_rect)
         self.window.blit(steps_surface, steps_rect)
         self.window.blit(reward_surface, reward_rect)
