@@ -48,10 +48,23 @@ class WargameModel:
         return f"WargameModel(location={self.location}, distances_to_objectives={self.distances_to_objectives}, group_id={self.group_id})"
 
     @staticmethod
-    def to_space(size: int, number_of_objectives: int) -> spaces.Dict:
-        location_space = spaces.Box(0, size - 1, shape=(2,), dtype=np.int32)
+    def to_space(
+        board_width: int,
+        board_height: int,
+        number_of_objectives: int,
+    ) -> spaces.Dict:
+        location_space = spaces.Box(
+            low=np.array([0, 0], dtype=np.int32),
+            high=np.array([board_width - 1, board_height - 1], dtype=np.int32),
+            shape=(2,),
+            dtype=np.int32,
+        )
+        max_dx = max(board_width, board_height) - 1
         distances_to_objectives_space = spaces.Box(
-            0, size - 1, shape=(number_of_objectives, 2), dtype=np.int32
+            low=-max_dx,
+            high=max_dx,
+            shape=(number_of_objectives, 2),
+            dtype=np.int32,
         )
         stats_space = spaces.Dict(
             {

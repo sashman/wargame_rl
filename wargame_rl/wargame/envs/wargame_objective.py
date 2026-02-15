@@ -13,7 +13,14 @@ class WargameObjective:
         return f"WargameObjective(location={self.location}, radius_size={self.radius_size})"
 
     @staticmethod
-    def to_space(size: int) -> spaces.Dict:
+    def to_space(board_width: int, board_height: int) -> spaces.Dict:
         return spaces.Dict(
-            {"location": spaces.Box(0, size - 1, shape=(2,), dtype=np.int32)}
+            {
+                "location": spaces.Box(
+                    low=np.array([0, 0], dtype=np.int32),
+                    high=np.array([board_width - 1, board_height - 1], dtype=np.int32),
+                    shape=(2,),
+                    dtype=np.int32,
+                )
+            }
         )

@@ -1,5 +1,5 @@
 number_of_wargame_models: 1
 number_of_objectives: 1
 objective_radius_size: 3
-size: 50
-deployment_zone: [0, 0, 50, 50]
+board_width: 50
+board_height: 50

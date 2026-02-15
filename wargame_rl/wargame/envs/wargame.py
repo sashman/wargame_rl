@@ -35,7 +35,8 @@ class WargameEnv(gym.Env):
     def __init__(
         self, config: WargameEnvConfig, renderer: renderer.Renderer | None = None
     ):
-        self.size = config.size  # The size of the square grid
+        self.board_width = config.board_width
+        self.board_height = config.board_height
         self.window_size = 1024  # The size of the PyGame window
         self.config = config
         self.observation_space = spaces.Dict(
@@ -44,14 +45,17 @@ class WargameEnv(gym.Env):
                 "wargame_models": spaces.Tuple(
                     [
                         WargameModel.to_space(
-                            size=self.size,
+                            board_width=self.board_width,
+                            board_height=self.board_height,
                             number_of_objectives=config.number_of_objectives * 2,
                         )
                         for _ in range(config.number_of_wargame_models)
                     ]
                 ),
                 "objectives": spaces.Sequence(
-                    WargameObjective.to_space(size=self.size)
+                    WargameObjective.to_space(
+                        board_width=self.board_width, board_height=self.board_height
+                    )
                 ),
             }
         )
@@ -91,7 +95,9 @@ class WargameEnv(gym.Env):
 
         self.current_turn = 0  # Initialize the current turn to 0
 
-        self.max_turns = self.size * 2  # Set the maximum number of turns
+        self.max_turns = (
+            self.board_width + self.board_height
+        ) * 2  # Set the maximum number of turns
 
         # List to hold wargame models for each number_of_wargame_models
         self.wargame_models = [
@@ -118,7 +124,12 @@ class WargameEnv(gym.Env):
         ]
 
         # Set the deployment zone for the agent, area left third of the grid
-        self.deployment_zone = np.array([0, 0, self.size // 3, self.size], dtype=int)
+        if config.deployment_zone is not None:
+            self.deployment_zone = np.array(config.deployment_zone, dtype=int)
+        else:
+            self.deployment_zone = np.array(
+                [0, 0, self.board_width // 3, self.board_height], dtype=int
+            )
 
         # Last reward from step(); None until first step after reset
         self.last_reward: float | None = None
@@ -204,10 +215,10 @@ class WargameEnv(gym.Env):
         # For each objective, we will randomly choose a location outside the deployment zone
         for objective in self.objectives:
             objective_x = self.np_random.integers(
-                self.deployment_zone[2], self.size, dtype=np.int32
+                self.deployment_zone[2], self.board_width, dtype=np.int32
             )
             objective_y = self.np_random.integers(
-                self.deployment_zone[1], self.size, dtype=np.int32
+                self.deployment_zone[1], self.board_height, dtype=np.int32
             )
             objective.location = np.array([objective_x, objective_y], dtype=np.int32)
 
@@ -238,7 +249,11 @@ class WargameEnv(gym.Env):
             # Map the action (element of {0,1,2,3}) to the direction we walk in
             direction = self._action_to_direction[act]
             # We use `np.clip` to make sure we don't leave the grid
-            model.location = np.clip(model.location + direction, 0, self.size - 1)
+            model.location = np.clip(
+                model.location + direction,
+                [0, 0],
+                [self.board_width - 1, self.board_height - 1],
+            )
 
         # After moving all wargame models, we can check if any of them has reached its objective
         for i, model in enumerate(self.wargame_models):

@@ -15,12 +15,15 @@ matplotlib.use("Agg")
 
 
 def build_batch_tensor(
-    observation: WargameEnvObservation, size: int, device: Device = None
+    observation: WargameEnvObservation,
+    board_width: int,
+    board_height: int,
+    device: Device = None,
 ) -> list[torch.Tensor]:
     n_models = len(observation.wargame_models)
 
     x_min, y_min = 0, 0
-    x_max, y_max = size, size
+    x_max, y_max = board_width, board_height
     batch_list_game = []
     batch_list_objective = []
     batch_list_wargame_model = []
@@ -58,17 +61,24 @@ def build_batch_tensor(
 
 
 def compute_values_function(
-    observation: WargameEnvObservation, size: int, policy_net: nn.Module
+    observation: WargameEnvObservation,
+    board_width: int,
+    board_height: int,
+    policy_net: nn.Module,
 ) -> torch.Tensor:
     # Get the device from the policy_net parameters instead of assuming a device attribute
     device = next(policy_net.parameters()).device
-    batch_tensor = build_batch_tensor(observation, size, device=device)
+    batch_tensor = build_batch_tensor(
+        observation, board_width, board_height, device=device
+    )
     n_models = len(observation.wargame_models)
 
     with torch.no_grad():
         output: torch.Tensor = policy_net(batch_tensor)
         values_function = (
-            output.max(-1)[0].transpose(0, 1).reshape(n_models, size, size)
+            output.max(-1)[0]
+            .transpose(0, 1)
+            .reshape(n_models, board_width, board_height)
         )
     return values_function
 

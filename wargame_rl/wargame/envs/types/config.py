@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class WargameEnvConfig(BaseModel):
@@ -14,12 +14,18 @@ class WargameEnvConfig(BaseModel):
     objective_radius_size: int = Field(
         gt=0, default=0, description="Radius of the objective in the environment"
     )
-    size: int = Field(gt=0, default=50, description="Size of the square grid")
+    board_width: int = Field(
+        gt=0, default=50, description="Width of the grid (x dimension)"
+    )
+    board_height: int = Field(
+        gt=0, default=50, description="Height of the grid (y dimension)"
+    )
     render_mode: str | None = Field(
         default=None, description="Rendering mode for the environment"
     )
-    deployment_zone: tuple[int, int, int, int] = Field(
-        default=(0, 0, 50, 50), description="Deployment zone coordinates"
+    deployment_zone: tuple[int, int, int, int] | None = Field(
+        default=None,
+        description="Deployment zone (x_min, y_min, x_max, y_max). If None, defaults to (0, 0, board_width//3, board_height).",
     )
     group_cohesion_enabled: bool = Field(
         default=True,
@@ -39,3 +45,18 @@ class WargameEnvConfig(BaseModel):
         default=100,
         description="Maximum number of groups in the game; group_id is one-hot encoded over this size for neural network input.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def size_to_width_height(cls, data: object) -> object:
+        """Backward compatibility: accept 'size' or 'width'/'height' in YAML/dict."""
+        if not isinstance(data, dict):
+            return data
+        if "size" in data and "board_width" not in data and "board_height" not in data:
+            s = data["size"]
+            data = {**data, "board_width": s, "board_height": s}
+        if "width" in data and "board_width" not in data:
+            data = {**data, "board_width": data["width"]}
+        if "height" in data and "board_height" not in data:
+            data = {**data, "board_height": data["height"]}
+        return data
