@@ -1,32 +1,34 @@
 from __future__ import annotations
 
-from enum import Enum
 from typing import Any
 
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
+from wargame_rl.wargame.envs.env_components import (
+    ActionHandler,
+    MovementPhaseActions,
+    build_info,
+    build_observation,
+    get_termination,
+    objective_placement,
+    update_distances_to_objectives,
+    wargame_model_placement,
+)
 from wargame_rl.wargame.envs.renders import renderer
 from wargame_rl.wargame.envs.reward.reward import Reward
 from wargame_rl.wargame.envs.types import (
     WargameEnvAction,
     WargameEnvConfig,
     WargameEnvInfo,
-    WargameEnvObjectiveObservation,
     WargameEnvObservation,
-    WargameModelObservation,
 )
 from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
-
-class MovementPhaseActions(Enum):
-    right = 0
-    up = 1
-    left = 2
-    down = 3
-    none = 4
+# Re-export for backward compatibility (tests, dqn import from here)
+__all__ = ["WargameEnv", "MovementPhaseActions", "WargameObjective"]
 
 
 class WargameEnv(gym.Env):
@@ -60,26 +62,8 @@ class WargameEnv(gym.Env):
             }
         )
 
-        action_count = len(MovementPhaseActions)
-        self.action_space = spaces.Tuple(
-            [
-                spaces.Discrete(action_count)
-                for _ in range(config.number_of_wargame_models)
-            ]
-        )
-
-        """
-        The following dictionary maps abstract actions from `self.action_space` to
-        the direction we will walk in if that action is taken.
-        i.e. 0 corresponds to "right", 1 to "up" etc.
-        """
-        self._action_to_direction = {
-            MovementPhaseActions.right.value: np.array([1, 0]),
-            MovementPhaseActions.up.value: np.array([0, 1]),
-            MovementPhaseActions.left.value: np.array([-1, 0]),
-            MovementPhaseActions.down.value: np.array([0, -1]),
-            MovementPhaseActions.none.value: np.array([0, 0]),
-        }
+        self._action_handler = ActionHandler(config)
+        self.action_space = self._action_handler.action_space
 
         self.renderer = renderer
 
@@ -99,29 +83,8 @@ class WargameEnv(gym.Env):
             self.board_width + self.board_height
         ) * 2  # Set the maximum number of turns
 
-        # List to hold wargame models for each number_of_wargame_models
-        self.wargame_models = [
-            WargameModel(
-                location=np.zeros(2, dtype=int),
-                stats={"max_wounds": 100, "current_wounds": 100},
-                group_id=1,
-                distances_to_objectives=np.zeros(
-                    [config.number_of_objectives, 2], dtype=int
-                ),
-            )
-            for _ in range(config.number_of_wargame_models)
-        ]
-        self.previous_closest_objective_reward: list[None | float] = [
-            None
-        ] * config.number_of_wargame_models
-        # List to hold objectives
-        self.objectives = [
-            WargameObjective(
-                location=np.zeros(2, dtype=int),
-                radius_size=config.objective_radius_size,
-            )
-            for _ in range(config.number_of_objectives)
-        ]
+        self.wargame_models = self.create_wargame_models(config)
+        self.objectives = self.create_objectives(config)
 
         # Set the deployment zone for the agent, area left third of the grid
         if config.deployment_zone is not None:
@@ -134,58 +97,54 @@ class WargameEnv(gym.Env):
         # Last reward from step(); None until first step after reset
         self.last_reward: float | None = None
 
+    @staticmethod
+    def create_wargame_models(config: WargameEnvConfig) -> list[WargameModel]:
+        """Build the list of wargame models from config (initial locations/state)."""
+        return [
+            WargameModel(
+                location=np.zeros(2, dtype=int),
+                stats={"max_wounds": 100, "current_wounds": 100},
+                group_id=1,
+                distances_to_objectives=np.zeros(
+                    [config.number_of_objectives, 2], dtype=int
+                ),
+            )
+            for _ in range(config.number_of_wargame_models)
+        ]
+
+    @staticmethod
+    def create_objectives(config: WargameEnvConfig) -> list[WargameObjective]:
+        """Build the list of objectives from config (initial locations/radius)."""
+        return [
+            WargameObjective(
+                location=np.zeros(2, dtype=int),
+                radius_size=config.objective_radius_size,
+            )
+            for _ in range(config.number_of_objectives)
+        ]
+
     def _get_obs(self) -> WargameEnvObservation:
         """Get the observation for the current state of the environment."""
-        # Get the locations of the wargame models and objectives
-
-        for model in self.wargame_models:
-            model.distances_to_objectives = np.array(
-                [model.location - objective.location for objective in self.objectives],
-                dtype=int,
-            )
-
-        wargame_models = [
-            WargameModelObservation(
-                location=model.location,
-                distances_to_objectives=model.distances_to_objectives,
-                group_id=model.group_id,
-                max_groups=self.config.max_groups,
-            )
-            for model in self.wargame_models
-        ]
-        objectives = [
-            WargameEnvObjectiveObservation(location=objective.location)
-            for objective in self.objectives
-        ]
-        # Create the observation dictionary
-        return WargameEnvObservation(
-            current_turn=self.current_turn,
-            wargame_models=wargame_models,
-            objectives=objectives,
+        update_distances_to_objectives(self.wargame_models, self.objectives)
+        return build_observation(
+            self.current_turn,
+            self.wargame_models,
+            self.objectives,
+            self.config.max_groups,
         )
 
     def _get_info(self) -> WargameEnvInfo:
-        # for each wargame model, we will return its location and stats
-
-        wargame_models = [
-            WargameModelObservation(
-                location=model.location,
-                distances_to_objectives=model.distances_to_objectives,
-                group_id=model.group_id,
-                max_groups=self.config.max_groups,
-            )
-            for model in self.wargame_models
-        ]
-        objectives = [
-            WargameEnvObjectiveObservation(location=objective.location)
-            for objective in self.objectives
-        ]
-        # Create the observation dictionary
-        return WargameEnvInfo(
-            current_turn=self.current_turn,
-            wargame_models=wargame_models,
-            objectives=objectives,
-            deployment_zone=self.deployment_zone.tolist(),
+        return build_info(
+            self.current_turn,
+            self.wargame_models,
+            self.objectives,
+            (
+                int(self.deployment_zone[0]),
+                int(self.deployment_zone[1]),
+                int(self.deployment_zone[2]),
+                int(self.deployment_zone[3]),
+            ),
+            self.config.max_groups,
         )
 
     def reset(
@@ -194,33 +153,21 @@ class WargameEnv(gym.Env):
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
-        # Reset the current turn to 0
         self.current_turn = 0
         self.last_reward = None
 
-        for i, model in enumerate(self.wargame_models):
-            # Set model.location to a random location within the deployment zone
-            model_x = self.np_random.integers(
-                self.deployment_zone[0], self.deployment_zone[2], dtype=np.int32
-            )
-            model_y = self.np_random.integers(
-                self.deployment_zone[1], self.deployment_zone[3], dtype=np.int32
-            )
-            model.location = np.array([model_x, model_y], dtype=np.int32)
-
-            model.stats["current_wounds"] = model.stats["max_wounds"]
-            self.previous_closest_objective_reward[i] = None
-            model.model_rewards_history.clear()
-
-        # For each objective, we will randomly choose a location outside the deployment zone
-        for objective in self.objectives:
-            objective_x = self.np_random.integers(
-                self.deployment_zone[2], self.board_width, dtype=np.int32
-            )
-            objective_y = self.np_random.integers(
-                self.deployment_zone[1], self.board_height, dtype=np.int32
-            )
-            objective.location = np.array([objective_x, objective_y], dtype=np.int32)
+        wargame_model_placement(
+            self.wargame_models,
+            self.deployment_zone,
+            self.np_random,
+        )
+        objective_placement(
+            self.objectives,
+            self.deployment_zone,
+            self.board_width,
+            self.board_height,
+            self.np_random,
+        )
 
         observation = self._get_obs()
         info: WargameEnvInfo = self._get_info()
@@ -234,53 +181,24 @@ class WargameEnv(gym.Env):
     def step(
         self, action: WargameEnvAction
     ) -> tuple[WargameEnvObservation, float, bool, bool, dict[str, Any]]:
-        terminated = [False] * len(self.wargame_models)
+        self._action_handler.apply(
+            action,
+            self.wargame_models,
+            self.board_width,
+            self.board_height,
+            self._action_handler.action_space,
+        )
 
-        # for each element in the action tuple, we will move the corresponding wargame model
-        for i, act in enumerate(action.actions):
-            # Ensure the action is within the action space
-            if not self.action_space[i].contains(act):  # type: ignore
-                raise ValueError(
-                    f"Action {act} for wargame model {i} is out of bounds."
-                )
+        self.current_turn += 1
 
-            # Get the wargame model to move
-            model = self.wargame_models[i]
-            # Map the action (element of {0,1,2,3}) to the direction we walk in
-            direction = self._action_to_direction[act]
-            # We use `np.clip` to make sure we don't leave the grid
-            model.location = np.clip(
-                model.location + direction,
-                [0, 0],
-                [self.board_width - 1, self.board_height - 1],
-            )
-
-        # After moving all wargame models, we can check if any of them has reached its objective
-        for i, model in enumerate(self.wargame_models):
-            # Check if the model has reached its objective
-            for objective in self.objectives:
-                if (
-                    np.linalg.norm(
-                        model.location - objective.location + objective.radius_size / 2,
-                        ord=2,
-                    )
-                    <= objective.radius_size
-                ):
-                    terminated[i] = True
-
-        is_terminated = all(
-            terminated
-        )  # If all models are terminated, the episode is done
+        is_terminated = get_termination(
+            self.wargame_models, self.objectives, self.current_turn, self.max_turns
+        )
 
         reward = Reward().calculate_reward(self)
 
-        # reward = 1 if terminated else 0  # Binary sparse rewards
         observation = self._get_obs()
         info = self._get_info()
-
-        self.current_turn += 1  # Increment the current turn
-        if self.current_turn >= self.max_turns:
-            is_terminated = True
 
         self.last_reward = reward
         return observation, reward, is_terminated, False, info.model_dump()
