@@ -1,0 +1,10 @@
+config_name: 4_m_2_o_60x44
+number_of_wargame_models: 4
+number_of_objectives: 2
+objective_radius_size: 3
+board_width: 60
+board_height: 44
+group_cohesion_enabled: true
+group_max_distance: 5.0
+group_violation_penalty: -1.0
+max_groups: 2

@@ -66,22 +66,23 @@ class Reward:
 
         return closest_objective_reward, normalized_distance
 
-    def _is_within_group_distance(
-        self, model: WargameModel, env: wargame.WargameEnv
-    ) -> bool:
-        """True if this model is within group_max_distance of at least one other model with the same group_id."""
+    def _get_group_reward(self, model: WargameModel, env: wargame.WargameEnv) -> float:
+        """Negative reward proportional to distance to closest same-group model when beyond group_max_distance; 0 when within range or alone in group."""
         same_group = [
             other
             for other in env.wargame_models
             if other is not model and other.group_id == model.group_id
         ]
         if not same_group:
-            return True  # No group constraint when alone in group
+            return 0.0  # No group constraint when alone in group
         min_dist = min(
             float(np.linalg.norm(model.location - other.location, ord=2))
             for other in same_group
         )
-        return min_dist <= env.config.group_max_distance
+        if min_dist <= env.config.group_max_distance:
+            return 0.0
+        excess = min_dist - env.config.group_max_distance
+        return env.config.group_violation_penalty * excess
 
     def calculate_model_reward(
         self, model: WargameModel, env: wargame.WargameEnv
@@ -95,10 +96,8 @@ class Reward:
         model.set_previous_closest_objective_distance(normalized_distance)
 
         group_distance_violation_penalty = 0.0
-        if env.config.group_cohesion_enabled and not self._is_within_group_distance(
-            model, env
-        ):
-            group_distance_violation_penalty = env.config.group_violation_penalty
+        if env.config.group_cohesion_enabled:
+            group_distance_violation_penalty = self._get_group_reward(model, env)
 
         model_rewards = ModelRewards(
             closest_objective_reward=closest_objective_reward,

@@ -100,16 +100,18 @@ class WargameEnv(gym.Env):
     @staticmethod
     def create_wargame_models(config: WargameEnvConfig) -> list[WargameModel]:
         """Build the list of wargame models from config (initial locations/state)."""
+        # We split the models into groups, each group has a different group_id
+        increment = config.number_of_wargame_models // config.max_groups
         return [
             WargameModel(
                 location=np.zeros(2, dtype=int),
                 stats={"max_wounds": 100, "current_wounds": 100},
-                group_id=1,
+                group_id=i // increment,
                 distances_to_objectives=np.zeros(
                     [config.number_of_objectives, 2], dtype=int
                 ),
             )
-            for _ in range(config.number_of_wargame_models)
+            for i in range(config.number_of_wargame_models)
         ]
 
     @staticmethod
