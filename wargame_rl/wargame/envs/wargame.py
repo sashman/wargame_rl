@@ -138,7 +138,12 @@ class WargameEnv(gym.Env):
             self.current_turn,
             self.wargame_models,
             self.objectives,
-            self.deployment_zone.tolist(),
+            (
+                int(self.deployment_zone[0]),
+                int(self.deployment_zone[1]),
+                int(self.deployment_zone[2]),
+                int(self.deployment_zone[3]),
+            ),
             self.config.max_groups,
         )
 

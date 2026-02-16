@@ -63,7 +63,7 @@ def build_info(
     current_turn: int,
     wargame_models: list[WargameModel],
     objectives: list[WargameObjective],
-    deployment_zone: list[int],
+    deployment_zone: tuple[int, int, int, int],
     max_groups: int,
 ) -> WargameEnvInfo:
     """Build the info dict from current state."""
