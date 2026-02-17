@@ -471,7 +471,7 @@ class HumanRender(Renderer):
 
     def _color_for_group(self, group_id: int) -> tuple[int, int, int]:
         """Return a distinct color for the given group_id (1-based). Cycles through palette if needed."""
-        index = max(0, group_id - 1) % len(self._GROUP_COLORS)
+        index = group_id % len(self._GROUP_COLORS)
         return self._GROUP_COLORS[index]
 
     def _draw_agent(
