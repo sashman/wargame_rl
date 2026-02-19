@@ -8,9 +8,11 @@ from gymnasium import spaces
 
 from wargame_rl.wargame.envs.env_components import (
     ActionHandler,
+    DistanceCache,
     MovementPhaseActions,
     build_info,
     build_observation,
+    compute_distances,
     get_termination,
     objective_placement,
     update_distances_to_objectives,
@@ -81,7 +83,7 @@ class WargameEnv(gym.Env):
 
         self.max_turns = (
             self.board_width + self.board_height
-        ) * 2  # Set the maximum number of turns
+        )  # Set the maximum number of turns
 
         self.wargame_models = self.create_wargame_models(config)
         self.objectives = self.create_objectives(config)
@@ -123,9 +125,13 @@ class WargameEnv(gym.Env):
             for _ in range(config.number_of_objectives)
         ]
 
-    def _get_obs(self) -> WargameEnvObservation:
+    def _get_obs(
+        self, distance_cache: DistanceCache | None = None
+    ) -> WargameEnvObservation:
         """Get the observation for the current state of the environment."""
-        update_distances_to_objectives(self.wargame_models, self.objectives)
+        update_distances_to_objectives(
+            self.wargame_models, self.objectives, distance_cache
+        )
         return build_observation(
             self.current_turn,
             self.wargame_models,
@@ -169,7 +175,8 @@ class WargameEnv(gym.Env):
             self.np_random,
         )
 
-        observation = self._get_obs()
+        cache = compute_distances(self.wargame_models, self.objectives)
+        observation = self._get_obs(cache)
         info: WargameEnvInfo = self._get_info()
 
         if self.renderer is not None:
@@ -191,13 +198,17 @@ class WargameEnv(gym.Env):
 
         self.current_turn += 1
 
-        is_terminated = get_termination(
-            self.wargame_models, self.objectives, self.current_turn, self.max_turns
+        cache = compute_distances(
+            self.wargame_models,
+            self.objectives,
+            compute_model_model=self.config.group_cohesion_enabled,
         )
 
-        reward = Reward().calculate_reward(self)
+        is_terminated = get_termination(self.current_turn, self.max_turns, cache)
 
-        observation = self._get_obs()
+        reward = Reward().calculate_reward(self, cache)
+
+        observation = self._get_obs(cache)
         info = self._get_info()
 
         self.last_reward = reward
