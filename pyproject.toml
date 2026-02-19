@@ -22,6 +22,7 @@ dependencies = [
     "typer>=0.16.0",
     "pydantic-yaml>=1.6.0",
     "imageio[ffmpeg]>=2.34.0",
+    "pyinstrument>=5.1.2",
 ]
 
 [dependency-groups]

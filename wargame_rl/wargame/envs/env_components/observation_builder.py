@@ -17,6 +17,7 @@ from wargame_rl.wargame.envs.types import (
 )
 
 if TYPE_CHECKING:
+    from wargame_rl.wargame.envs.env_components.distance_cache import DistanceCache
     from wargame_rl.wargame.envs.wargame_model import WargameModel
     from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
@@ -24,8 +25,15 @@ if TYPE_CHECKING:
 def update_distances_to_objectives(
     wargame_models: list[WargameModel],
     objectives: list[WargameObjective],
+    distance_cache: DistanceCache | None = None,
 ) -> None:
     """Update each model's distances_to_objectives from current locations. Mutates models."""
+    if distance_cache is not None:
+        deltas = distance_cache.model_obj_deltas.astype(int)
+        for i, model in enumerate(wargame_models):
+            model.distances_to_objectives = deltas[i]
+        return
+
     for model in wargame_models:
         model.distances_to_objectives = np.array(
             [model.location - obj.location for obj in objectives],
