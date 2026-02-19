@@ -296,3 +296,6 @@ wandb/
 
 # Nate's notebook
 train.ipynb
+
+# Profiling output
+profile.html
