@@ -2,13 +2,10 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from wargame_rl.wargame.envs.types import (
-    WargameEnvAction,
-    WargameEnvObjectiveObservation,
-    WargameEnvObservation,
-    WargameModelObservation,
-)
+from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvObservation
 from wargame_rl.wargame.model.dqn.device import Device, get_device
+
+HALF_GRID_SIZE = 25.0
 
 
 def action_to_tensor(action: WargameEnvAction, device: Device | None = None) -> Tensor:
@@ -19,22 +16,45 @@ def action_to_tensor(action: WargameEnvAction, device: Device | None = None) -> 
     return action_tensor.unsqueeze(0)
 
 
-def normalize_location(location: np.ndarray) -> np.ndarray:
-    half_grid_size = 25
-    return (location - half_grid_size) / half_grid_size
+def _normalize(arr: np.ndarray) -> np.ndarray:
+    return (arr - HALF_GRID_SIZE) / HALF_GRID_SIZE
 
 
-def normalize_distances(distances: np.ndarray) -> np.ndarray:
-    # Maximum possible distance in a 50x50 grid is diagonal distance
-    # sqrt(50^2 + 50^2) = sqrt(5000) ≈ 70.7
-    half_max_distance = (np.sqrt(2) * 50) / 2  # diagonal distance
-    return np.array((distances - half_max_distance) / half_max_distance)
+def _group_ids_to_one_hot(group_ids: np.ndarray, max_groups: int) -> np.ndarray:
+    """Vectorized one-hot encoding for an array of group IDs."""
+    indices = np.clip(group_ids - 1, 0, max_groups - 1)
+    one_hot = np.zeros((len(indices), max_groups), dtype=np.float32)
+    one_hot[np.arange(len(indices)), indices] = 1.0
+    return one_hot
 
 
-def group_id_to_one_hot(group_id: int, max_groups: int) -> list[float]:
-    """Encode positive group_id as one-hot vector of length max_groups. Clamps to valid index."""
-    index = min(max(0, group_id - 1), max_groups - 1)
-    return [1.0 if i == index else 0.0 for i in range(max_groups)]
+def _observation_to_numpy(
+    state: WargameEnvObservation,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Convert a single observation to three NumPy arrays (current_turn, objectives, models)."""
+    models = state.wargame_models
+    max_groups = models[0].max_groups
+
+    locs = np.array([m.location for m in models], dtype=np.float32)
+    dists = np.array(
+        [m.distances_to_objectives.flatten() for m in models], dtype=np.float32
+    )
+    group_ids = np.array([m.group_id for m in models], dtype=np.int32)
+
+    model_features = np.hstack(
+        [
+            _normalize(locs),
+            _normalize(dists),
+            _group_ids_to_one_hot(group_ids, max_groups),
+        ]
+    )
+
+    obj_locs = np.array([o.location for o in state.objectives], dtype=np.float32)
+    obj_features = _normalize(obj_locs)
+
+    current_turn = np.array([0], dtype=np.float32)
+
+    return current_turn, obj_features, model_features
 
 
 def observation_to_tensor(
@@ -54,55 +74,31 @@ def observation_to_tensor(
         where model_features includes normalized location, distances to objectives (normalized to [-1, 1]),
         and group_id as one-hot of length max_groups.
     """
-
     device = get_device(device)
+    current_turn, obj_features, model_features = _observation_to_numpy(state)
 
-    # current_turn: int = state.current_turn
-    wargame_models: list[WargameModelObservation] = state.wargame_models
-    objectives: list[WargameEnvObjectiveObservation] = state.objectives
-    # tensor_current_turn = torch.tensor(
-    #     [current_turn], dtype=torch.float32, device=device
-    # )
-    tensor_current_turn: Tensor = torch.tensor([0], dtype=torch.float32, device=device)
-    max_groups: int = state.wargame_models[0].max_groups
-    tensor_wargame_models: Tensor = torch.tensor(
-        [
-            [
-                *normalize_location(model.location),
-                *normalize_location(model.distances_to_objectives.flatten()),
-                *group_id_to_one_hot(model.group_id, max_groups),
-            ]
-            for model in wargame_models
-        ],
-        dtype=torch.float32,
-        device=device,
-    )
-    tensor_objectives: Tensor = torch.tensor(
-        [normalize_location(objective.location) for objective in objectives],
-        dtype=torch.float32,
-        device=device,
-    )
     return [
-        tensor_current_turn,
-        tensor_objectives,
-        tensor_wargame_models,
+        torch.from_numpy(current_turn).to(device),
+        torch.from_numpy(obj_features).to(device),
+        torch.from_numpy(model_features).to(device),
     ]
 
 
 def observations_to_tensor_batch(
     states: list[WargameEnvObservation], device: Device = None
 ) -> list[torch.Tensor]:
+    """Batch-convert multiple observations to tensors without per-state tensor allocation."""
     assert len(states) > 0, "No states to convert to tensor"
     device = get_device(device)
 
-    tensors = [observation_to_tensor(state, device) for state in states]
+    np_results = [_observation_to_numpy(s) for s in states]
 
-    tensor_current_turn = torch.cat(
-        [tensor[0].unsqueeze(0) for tensor in tensors], dim=0
-    )
-    tensor_objectives = torch.cat([tensor[1].unsqueeze(0) for tensor in tensors], dim=0)
-    tensor_wargame_models = torch.cat(
-        [tensor[2].unsqueeze(0) for tensor in tensors], dim=0
-    )
+    batch_turn = np.stack([r[0] for r in np_results])
+    batch_obj = np.stack([r[1] for r in np_results])
+    batch_models = np.stack([r[2] for r in np_results])
 
-    return [tensor_current_turn, tensor_objectives, tensor_wargame_models]
+    return [
+        torch.from_numpy(batch_turn).to(device),
+        torch.from_numpy(batch_obj).to(device),
+        torch.from_numpy(batch_models).to(device),
+    ]
