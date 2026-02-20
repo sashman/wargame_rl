@@ -11,6 +11,7 @@ from typing import cast
 import torch
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import Callback
+from torch import nn
 
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
@@ -154,9 +155,10 @@ class RecordEpisodeCallback(Callback):
             suffix=".pt", delete=False, prefix="record_policy_"
         ) as f:
             policy_state_dict_path = f.name
-        torch.save(model.policy_net.state_dict(), policy_state_dict_path)
+        orig_net: nn.Module = getattr(model.policy_net, "_orig_mod", model.policy_net)
+        torch.save(orig_net.state_dict(), policy_state_dict_path)
 
-        policy_net_class_name = type(model.policy_net).__name__
+        policy_net_class_name = type(orig_net).__name__
         run_name = self.run_name
         env_config = self.env_config
         checkpoint_dir = self._checkpoint_dir
