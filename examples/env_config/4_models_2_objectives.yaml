@@ -6,5 +6,5 @@ board_width: 60
 board_height: 44
 group_cohesion_enabled: true
 group_max_distance: 5.0
-group_violation_penalty: -0.01
+group_violation_penalty: -0.1
 max_groups: 2
