@@ -13,6 +13,8 @@ class WargameEnvObservation:
     current_turn: int
     wargame_models: list[WargameModelObservation]
     objectives: list[WargameEnvObjectiveObservation]
+    board_width: int = 50
+    board_height: int = 50
 
     @property
     def size_wargame_models(self) -> list[int]:

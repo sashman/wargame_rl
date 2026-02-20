@@ -139,6 +139,8 @@ class WargameEnv(gym.Env):
             self.wargame_models,
             self.objectives,
             self.config.max_groups,
+            self.board_width,
+            self.board_height,
         )
 
     def _get_info(self) -> WargameEnvInfo:
