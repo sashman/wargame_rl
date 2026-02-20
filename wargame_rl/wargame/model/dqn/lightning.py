@@ -56,10 +56,10 @@ class DQNLightning(LightningModule):
         self.save_hyperparameters()
 
         self.env = env
-        self.policy_net = policy_net
+        self.policy_net = torch.compile(policy_net)
         self.policy_net.train()
         self.to(policy_net.device)
-        self.target_net = deepcopy(policy_net)
+        self.target_net = torch.compile(deepcopy(policy_net))
         self.target_net.eval()
 
         self.buffer = ReplayBuffer(capacity=self.hparams.replay_size)  # type: ignore
