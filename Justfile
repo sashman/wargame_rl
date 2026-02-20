@@ -75,6 +75,16 @@ clean-wandb:
 
 clean: clean-checkpoints clean-wandb
 
+# Profile training with pyinstrument (HTML output, no recording)
+# Use it like: just profile path/to/config.yaml
+# Or with network type: just profile path/to/config.yaml mlp
+# Or with max epochs: just profile path/to/config.yaml '' 10
+profile env_config_path model='' max_epochs='':
+	uv run pyinstrument -r html -o profile.html train.py \
+		--env-config-path {{env_config_path}} \
+		{{ if model != "" { "--network-type " + model } else { "" } }} \
+		{{ if max_epochs != "" { "--max-epochs " + max_epochs } else { "" } }}
+
 # Run a test env in isolation with random action
 test-env:
 	uv run main.py --env_test

@@ -54,6 +54,10 @@ def train(
         10,
         help="Start recording only after this many epochs (when record_during_training is enabled)",
     ),
+    max_epochs: int | None = typer.Option(
+        None,
+        help="Override max training epochs (defaults to TrainingConfig value)",
+    ),
 ) -> None:
     """Train the DQN agent."""
 
@@ -62,6 +66,8 @@ def train(
         record_during_training=record_during_training,
         record_after_epoch=record_after_epoch,
     )
+    if max_epochs is not None:
+        training_config.max_epochs = max_epochs
 
     env_config = get_env_config(env_config_path, render_mode)
 
