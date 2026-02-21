@@ -168,6 +168,7 @@ class WargameEnv(gym.Env):
         wargame_model_placement(
             self.wargame_models,
             self.deployment_zone,
+            self.config.group_max_distance,
             self.np_random,
         )
         objective_placement(
