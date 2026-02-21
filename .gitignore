@@ -299,3 +299,6 @@ train.ipynb
 
 # Profiling output
 profile.html
+
+# Video recordings
+*.mp4
