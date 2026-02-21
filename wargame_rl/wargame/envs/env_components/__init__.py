@@ -1,9 +1,6 @@
 """Modular components for the wargame environment (actions, termination, placement, observation)."""
 
-from wargame_rl.wargame.envs.env_components.actions import (
-    ActionHandler,
-    MovementPhaseActions,
-)
+from wargame_rl.wargame.envs.env_components.actions import ActionHandler
 from wargame_rl.wargame.envs.env_components.distance_cache import (
     DistanceCache,
     compute_distances,
@@ -25,7 +22,6 @@ from wargame_rl.wargame.envs.env_components.termination import (
 __all__ = [
     "ActionHandler",
     "DistanceCache",
-    "MovementPhaseActions",
     "build_info",
     "build_observation",
     "compute_distances",

@@ -9,7 +9,6 @@ from gymnasium import spaces
 from wargame_rl.wargame.envs.env_components import (
     ActionHandler,
     DistanceCache,
-    MovementPhaseActions,
     build_info,
     build_observation,
     compute_distances,
@@ -30,7 +29,7 @@ from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
 # Re-export for backward compatibility (tests, dqn import from here)
-__all__ = ["WargameEnv", "MovementPhaseActions", "WargameObjective"]
+__all__ = ["WargameEnv", "WargameObjective"]
 
 
 class WargameEnv(gym.Env):

@@ -167,6 +167,9 @@ class HumanRender(Renderer):
         # We draw the target
         self._draw_target(self.canvas, objectives)
 
+        # Draw movement arrows (previous → current location)
+        self._draw_movement_arrows(self.canvas, wargame_models)
+
         # Now we draw the agent
         self._draw_agent(self.canvas, wargame_models)
 
@@ -490,6 +493,55 @@ class HumanRender(Renderer):
                 self.pix_square_size / 3,
             )
 
+    def _draw_movement_arrows(
+        self, canvas: pygame.Surface, wargame_models: list[WargameModel]
+    ) -> None:
+        """Draw a small arrow from each model's previous location to its current location."""
+        for model in wargame_models:
+            if model.previous_location is None:
+                continue
+            prev = model.previous_location
+            curr = model.location
+            if (prev == curr).all():
+                continue
+
+            color = self._color_for_group(model.group_id)
+            # Fade the arrow color toward white so it's lighter than the model dot
+            faded = tuple(c + (255 - c) // 2 for c in color)
+
+            prev_px = (
+                float(prev[0] + 0.5) * self.pix_square_size,
+                float(prev[1] + 0.5) * self.pix_square_size,
+            )
+            curr_px = (
+                float(curr[0] + 0.5) * self.pix_square_size,
+                float(curr[1] + 0.5) * self.pix_square_size,
+            )
+
+            # Shaft
+            line_width = max(3, int(self.pix_square_size / 4))
+            pygame.draw.line(canvas, faded, prev_px, curr_px, width=line_width)
+
+            # Arrowhead
+            dx = curr_px[0] - prev_px[0]
+            dy = curr_px[1] - prev_px[1]
+            length = math.hypot(dx, dy)
+            if length < 1e-6:
+                continue
+            ux, uy = dx / length, dy / length
+            head_len = min(self.pix_square_size * 0.45, length * 0.4)
+            head_w = head_len * 0.5
+            tip = curr_px
+            left = (
+                tip[0] - ux * head_len - uy * head_w,
+                tip[1] - uy * head_len + ux * head_w,
+            )
+            right = (
+                tip[0] - ux * head_len + uy * head_w,
+                tip[1] - uy * head_len - ux * head_w,
+            )
+            pygame.draw.polygon(canvas, faded, [tip, left, right])
+
     def _draw_gridlines(
         self,
         canvas: pygame.Surface,
@@ -499,23 +551,24 @@ class HumanRender(Renderer):
         """Draw gridlines on the canvas. Endpoints clamped to canvas bounds."""
         max_x = float(self.canvas_width - 1)
         max_y = float(self.canvas_height - 1)
+        grid_color = (210, 210, 210)
         for y in range(board_height + 1):
             py = min(self.pix_square_size * y, max_y)
             pygame.draw.line(
                 canvas,
-                0,
+                grid_color,
                 (0, py),
                 (max_x, py),
-                width=3,
+                width=1,
             )
         for x in range(board_width + 1):
             px = min(self.pix_square_size * x, max_x)
             pygame.draw.line(
                 canvas,
-                0,
+                grid_color,
                 (px, 0),
                 (px, max_y),
-                width=3,
+                width=1,
             )
 
     def close(self) -> None:
