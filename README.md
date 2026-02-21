@@ -2,6 +2,10 @@
 
 Reinforcement learning model for playing table top wargames.
 
+## Documentation
+
+- [Movement System](docs/movement.md) — How polar coordinate movement works (action encoding, direction, speed, configuration)
+
 ## How to add a feature to the environement?
 1. Update types, states and space
 2. Update the state_to_tensor
