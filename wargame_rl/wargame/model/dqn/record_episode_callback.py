@@ -1,18 +1,23 @@
 """Lightning callback to record a single episode as MP4 during training (async)."""
 
+# mypy: disable-error-code=attr-defined
+
 from __future__ import annotations
 
 import multiprocessing
 import os
 import tempfile
+from multiprocessing.process import BaseProcess
 from pathlib import Path
 from typing import cast
 
 import torch
+from loguru import logger
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import Callback
 from torch import nn
 
+import wandb
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
 from wargame_rl.wargame.model.dqn.observation import observation_to_tensor
@@ -127,8 +132,35 @@ class RecordEpisodeCallback(Callback):
         self.record_after_epoch = record_after_epoch
         self._checkpoint_dir = f"./checkpoints/{run_name}"
         self._last_ckpt_filenames: set[str] | None = None
+        self._pending_proc: BaseProcess | None = None
+        self._pending_filepath: Path | None = None
+        self._logged_videos: set[str] = set()
+
+    def _try_log_pending_video(self) -> None:
+        """If a previous recording process finished, log its MP4 to wandb."""
+        if self._pending_proc is None:
+            return
+        if self._pending_proc.is_alive():
+            return
+
+        filepath = self._pending_filepath
+        self._pending_proc = None
+        self._pending_filepath = None
+
+        if filepath is None or not filepath.exists():
+            return
+        video_key = filepath.name
+        if video_key in self._logged_videos:
+            return
+
+        if wandb.run is not None:
+            logger.info("Logging recorded episode to wandb: {}", filepath.name)
+            wandb.log({"episode_recording": wandb.Video(str(filepath), format="mp4")})
+            self._logged_videos.add(video_key)
 
     def on_train_epoch_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        self._try_log_pending_video()
+
         if not self.record_during_training:
             return
         if trainer.current_epoch < self.record_after_epoch:
@@ -146,6 +178,11 @@ class RecordEpisodeCallback(Callback):
             self._last_ckpt_filenames = current_filenames
             return
         self._last_ckpt_filenames = current_filenames
+
+        # If a previous recording is still running, skip this one to avoid piling up.
+        if self._pending_proc is not None and self._pending_proc.is_alive():
+            logger.debug("Skipping recording — previous recording still in progress")
+            return
 
         model = cast(DQNLightning, pl_module)
 
@@ -165,6 +202,8 @@ class RecordEpisodeCallback(Callback):
         epoch = trainer.current_epoch
         render_fps = cast(int, model.env.metadata["render_fps"])
 
+        filepath = Path(checkpoint_dir) / f"dqn-epoch-{epoch:03d}-recording.mp4"
+
         # Run in a separate process so SDL_VIDEODRIVER=dummy is set before any pygame/CUDA
         # init; same process (or thread) hits EGL_BAD_ACCESS when PyTorch already has a context.
         proc = multiprocessing.get_context("spawn").Process(
@@ -181,3 +220,11 @@ class RecordEpisodeCallback(Callback):
             daemon=True,
         )
         proc.start()
+        self._pending_proc = proc
+        self._pending_filepath = filepath
+
+    def on_train_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        """Flush any remaining recording before the wandb run closes."""
+        if self._pending_proc is not None:
+            self._pending_proc.join(timeout=60)
+        self._try_log_pending_video()
