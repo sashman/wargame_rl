@@ -56,12 +56,13 @@ def test_reset_with_seed_is_reproducible(env: WargameEnv) -> None:
 
 
 def test_reset_info_contains_expected_keys(env: WargameEnv) -> None:
-    """info dict contains current_turn, wargame_models, objectives, deployment_zone."""
+    """info dict contains current_turn, wargame_models, objectives, deployment zones."""
     _, info = env.reset(seed=42)
     assert "current_turn" in info
     assert "wargame_models" in info
     assert "objectives" in info
     assert "deployment_zone" in info
+    assert "opponent_deployment_zone" in info
 
 
 def test_reset_sets_internal_state(env: WargameEnv) -> None:
