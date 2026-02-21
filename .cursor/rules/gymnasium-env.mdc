@@ -1,0 +1,39 @@
+---
+description: Gymnasium environment patterns for the wargame RL environment
+globs: "wargame_rl/wargame/envs/**/*.py"
+alwaysApply: false
+---
+
+# Gymnasium Environment Patterns
+
+## WargameEnv Structure
+
+`WargameEnv` extends `gymnasium.Env` with typed observation and action spaces.
+
+- **Observation**: `WargameEnvObservation` (Pydantic model) returned from `_get_obs()`
+- **Action**: `WargameEnvAction` wrapping the multi-discrete action space
+- **Info**: `WargameEnvInfo` (Pydantic model) returned from `_get_info()`
+- **Config**: `WargameEnvConfig` (pydantic-yaml) loaded from YAML files in `examples/env_config/`
+
+## Key Conventions
+
+- Actions use polar coordinates: discrete (angle, speed) pairs per model
+- `ActionHandler` encapsulates action space creation and application
+- `DistanceCache` pre-computes distances between models and objectives each step
+- Reward is computed by the `Reward` class in `reward/reward.py`
+- Termination logic is in `env_components/termination.py`
+- Placement logic randomizes starting positions within deployment zones
+
+## Rendering
+
+- Two render modes: `"human"` (Pygame window) and `"rgb_array"` (for video recording)
+- Renderer is injected via constructor, not created internally
+
+## Adding New Features
+
+When modifying the environment:
+1. Update `WargameEnvConfig` in `types/` if new config is needed
+2. Add logic to the appropriate `env_components/` module
+3. Update observation builder if the observation space changes
+4. Update reward calculation if reward signals change
+5. Add tests in `tests/test_env.py`

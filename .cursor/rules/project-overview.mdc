@@ -1,0 +1,51 @@
+---
+description: Project overview and tooling for wargame_rl
+alwaysApply: true
+---
+
+# wargame_rl — Project Overview
+
+Reinforcement learning project that trains DQN agents to play tabletop wargames on a discrete grid. Agents control multiple models (units) to capture objectives.
+
+## Tech Stack
+
+- **Python 3.12+** (UV package manager, `uv.lock`)
+- **Gymnasium 1.x** — RL environment (`WargameEnv`)
+- **PyTorch + PyTorch Lightning** — DQN training
+- **Wandb** — experiment tracking
+- **Pydantic + pydantic-yaml** — config & type models
+- **Typer** — CLI (`train.py`, `simulate.py`)
+- **Loguru** — logging
+- **Pygame** — human rendering
+
+## Development Tooling
+
+- **Just** — command runner (see `Justfile`)
+- **Ruff** — linter & formatter (line length 88, double quotes)
+- **Mypy** — strict type checking (`disallow_untyped_defs`, `no_implicit_optional`)
+- **isort** — import sorting (Black profile)
+- **autoflake** — removes unused imports
+- **Pytest** — testing
+- **Pre-commit** — hooks for all of the above
+
+## Key Commands
+
+| Task | Command |
+|------|---------|
+| Setup | `just setup` |
+| Sync deps | `just dev-sync` |
+| Format | `just format` |
+| Lint | `just lint` |
+| Test | `just test` |
+| Full validation | `just validate` |
+| Train | `just train <config.yaml> [mlp\|transformer]` |
+| Simulate | `just simulate-latest` |
+
+## Project Layout
+
+- `wargame_rl/wargame/envs/` — Gymnasium environment, reward, rendering, types
+- `wargame_rl/wargame/model/dqn/` — DQN networks (MLP & Transformer), Lightning module, training infra
+- `wargame_rl/wargame/types.py` — `Experience` / `ExperienceBatch`
+- `examples/env_config/` — YAML environment configurations
+- `tests/` — Pytest suite with shared fixtures in `conftest.py`
+- `train.py` / `simulate.py` / `main.py` — entry points

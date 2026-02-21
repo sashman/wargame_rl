@@ -1,0 +1,35 @@
+---
+description: PyTorch and DQN model patterns
+globs: "wargame_rl/wargame/model/**/*.py"
+alwaysApply: false
+---
+
+# PyTorch / DQN Patterns
+
+## Architecture
+
+Two network variants implementing `RL_Network` protocol:
+- `DQN_MLP` — standard feed-forward network
+- `DQN_Transformer` — self-attention based architecture (custom layers in `layers.py`)
+
+Both expose a `from_env(env)` class method to construct from a `WargameEnv` instance.
+
+## Training Stack
+
+- `DQNLightning` (PyTorch Lightning module) handles training loop, epsilon-greedy exploration, target network sync, and experience replay
+- `DQNConfig` / `TrainingConfig` / `TransformerConfig` — Pydantic config models in `config.py`
+- `ReplayBuffer` — experience replay with `Experience` named tuples
+- `RLDataset` — PyTorch `IterableDataset` wrapping the replay buffer
+
+## Callbacks
+
+- `CheckpointCallback` — saves model checkpoints
+- `RecordEpisodeCallback` — records MP4 episodes during training
+- `EnvConfigCallback` — persists env YAML config alongside checkpoints
+
+## Conventions
+
+- Use `torch.Tensor` for all neural network operations
+- Observation tensors built by `observation.py` from `WargameEnvObservation`
+- Device management via `device.py` utility
+- Wandb integration in `wandb.py` — all logging goes through Lightning logger
