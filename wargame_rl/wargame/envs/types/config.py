@@ -47,8 +47,8 @@ class WargameEnvConfig(BaseModel):
     )
     n_movement_angles: int = Field(
         gt=0,
-        default=8,
-        description="Number of angular bins for polar movement (e.g. 8 = N/NE/E/SE/S/SW/W/NW).",
+        default=16,
+        description="Number of angular bins for polar movement (e.g. 16 = 22.5° increments).",
     )
     n_speed_bins: int = Field(
         gt=0,
