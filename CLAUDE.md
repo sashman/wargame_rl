@@ -16,7 +16,7 @@ When generating or modifying Python code, follow these principles strictly.
 Bad:
 ```python
 return [f(x) for x in items if x and not isinstance(x, (int, float))]
-````
+```
 
 Better:
 
@@ -305,7 +305,7 @@ python train.py --env-config-path examples/env_config/example.yaml --max-epochs 
 ```
 
 ### Simulation
-For now, you cannot really see what happens. So simulating is mostly to see if the codes runs.
+For now, you cannot really see what happens. So simulating is mostly to see if the code runs.
 
 ## Key Features
 1. Configurable wargame environments with different board sizes
