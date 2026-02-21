@@ -37,3 +37,10 @@ When modifying the environment:
 3. Update observation builder if the observation space changes
 4. Update reward calculation if reward signals change
 5. Add tests in `tests/test_env.py`
+
+## Design Principles
+
+- Never hardcode action counts — derive `n_actions` from config via `ActionHandler.n_actions`
+- Keep model locations as integers unless the grid itself becomes continuous; rounding makes float locations equivalent to discrete with extra complexity
+- Pre-compute expensive operations (e.g. trig displacement tables) at `__init__` time using numpy vectorized operations, not per-step
+- When adding features that need rendering (e.g. movement arrows), track required state (e.g. `previous_location`) in the same change to avoid retrofitting later
