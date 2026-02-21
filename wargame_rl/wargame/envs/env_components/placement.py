@@ -136,11 +136,23 @@ def objective_placement(
     board_width: int,
     board_height: int,
     rng: Generator,
+    opponent_deployment_zone: np.ndarray | None = None,
 ) -> None:
-    """Place each objective at a random cell outside the deployment zone. Mutates objectives."""
+    """Place each objective at a random cell outside both deployment zones.
+
+    When an opponent zone is provided, objectives are placed in the strip
+    between the two zones. Otherwise, they are placed to the right of the
+    player deployment zone (legacy behaviour).
+    """
+    x_min = int(deployment_zone[2])
+    x_max = (
+        int(opponent_deployment_zone[0])
+        if opponent_deployment_zone is not None
+        else board_width
+    )
     for objective in objectives:
-        objective_x = rng.integers(deployment_zone[2], board_width, dtype=np.int32)
-        objective_y = rng.integers(deployment_zone[1], board_height, dtype=np.int32)
+        objective_x = rng.integers(x_min, x_max, dtype=np.int32)
+        objective_y = rng.integers(0, board_height, dtype=np.int32)
         objective.location = np.array([objective_x, objective_y], dtype=np.int32)
 
 

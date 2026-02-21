@@ -89,12 +89,26 @@ class WargameEnv(gym.Env):
         self.wargame_models = self.create_wargame_models(config)
         self.objectives = self.create_objectives(config)
 
-        # Set the deployment zone for the agent, area left third of the grid
         if config.deployment_zone is not None:
             self.deployment_zone = np.array(config.deployment_zone, dtype=int)
         else:
             self.deployment_zone = np.array(
                 [0, 0, self.board_width // 3, self.board_height], dtype=int
+            )
+
+        if config.opponent_deployment_zone is not None:
+            self.opponent_deployment_zone = np.array(
+                config.opponent_deployment_zone, dtype=int
+            )
+        else:
+            self.opponent_deployment_zone = np.array(
+                [
+                    self.board_width * 2 // 3,
+                    0,
+                    self.board_width,
+                    self.board_height,
+                ],
+                dtype=int,
             )
 
         # Last reward from step(); None until first step after reset
@@ -183,6 +197,12 @@ class WargameEnv(gym.Env):
                 int(self.deployment_zone[2]),
                 int(self.deployment_zone[3]),
             ),
+            (
+                int(self.opponent_deployment_zone[0]),
+                int(self.opponent_deployment_zone[1]),
+                int(self.opponent_deployment_zone[2]),
+                int(self.opponent_deployment_zone[3]),
+            ),
             self.config.max_groups,
         )
 
@@ -220,6 +240,7 @@ class WargameEnv(gym.Env):
                 self.board_width,
                 self.board_height,
                 self.np_random,
+                self.opponent_deployment_zone,
             )
 
         cache = compute_distances(self.wargame_models, self.objectives)

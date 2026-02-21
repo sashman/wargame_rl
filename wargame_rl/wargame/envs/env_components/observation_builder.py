@@ -76,6 +76,7 @@ def build_info(
     wargame_models: list[WargameModel],
     objectives: list[WargameObjective],
     deployment_zone: tuple[int, int, int, int],
+    opponent_deployment_zone: tuple[int, int, int, int],
     max_groups: int,
 ) -> WargameEnvInfo:
     """Build the info dict from current state."""
@@ -96,4 +97,5 @@ def build_info(
         wargame_models=wargame_obs,
         objectives=objectives_obs,
         deployment_zone=deployment_zone,
+        opponent_deployment_zone=opponent_deployment_zone,
     )
