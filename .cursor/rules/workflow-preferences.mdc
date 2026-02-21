@@ -1,0 +1,21 @@
+---
+description: User workflow preferences and lessons learned
+alwaysApply: true
+---
+
+# Workflow Preferences
+
+## Task Runner
+
+- Always use `just` to run tasks (train, test, lint, etc.) — never invoke `uv run` directly
+- Default network type is transformer; do not default to MLP unless explicitly asked
+
+## Naming & Design
+
+- Prefer general, future-proof names over narrow ones (e.g. `models` not `model_placements`, `ModelConfig` not `ModelPlacement`)
+- When adding per-entity configuration, make positional fields optional so attributes (stats, group, etc.) can be specified independently of placement
+- Avoid hardcoded magic numbers in factory methods — push defaults into Pydantic models with `Field(default=...)`
+
+## CUDA Environment
+
+- The dev machine may have a broken CUDA setup; set `CUDA_VISIBLE_DEVICES=""` to force CPU when training fails with CUDA errors
