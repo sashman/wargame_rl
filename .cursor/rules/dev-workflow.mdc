@@ -1,0 +1,40 @@
+---
+description: Development workflow — git, validation, dependencies, training
+alwaysApply: true
+---
+
+# Development Workflow
+
+## Git Branching & Commits
+
+- Branch naming: `feature/<topic>`, `fix/<topic>`, `refactor/<topic>`
+- Commit messages: imperative mood, concise summary line (e.g. "Add reward shaping for distance")
+- Always verify current branch before committing — especially after a PR merge which may leave you on `main`
+- Never commit directly to `main`; always use feature branches
+
+## Validation Before Pushing
+
+- Run `just validate` (format + lint + test) before pushing
+- If pre-commit hooks reject a commit, fix the issues and create a new commit (don't `--amend` or `--no-verify`)
+
+## Dependency Management
+
+- Use `uv add <package>` / `uv add --dev <package>` for new dependencies
+- Run `just dev-sync` after pulling changes that modify `uv.lock`
+- Never manually edit `uv.lock`
+
+## Training Runs
+
+- Start training: `just train <env_config.yaml> [mlp|transformer]` (defaults to transformer)
+- Env configs live in `examples/env_config/` — copy an existing one to create new scenarios
+- Training logs to Wandb automatically; checkpoints saved to `checkpoints/`
+- Key CLI options: `--record-during-training`, `--max-epochs`, `--render-mode`
+- Hyperparameters live in `DQNConfig` and `TrainingConfig` (`wargame_rl/wargame/model/dqn/config.py`) — change defaults there, not via CLI flags
+- Profile a run: `just profile <config.yaml> [model] [max_epochs]` generates `profile.html`
+- Simulate latest checkpoint: `just simulate-latest [mlp|transformer]`
+- Clean up: `just clean` removes `checkpoints/` and `wandb/`
+
+## Common Dev Tasks
+
+- Quick iteration: `just format && just lint` to catch issues before the full test suite
+- Test env in isolation: `just test-env`
