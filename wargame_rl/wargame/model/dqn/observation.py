@@ -16,7 +16,8 @@ def action_to_tensor(action: WargameEnvAction, device: Device | None = None) -> 
 
 def _normalize(arr: np.ndarray, half_board: np.ndarray) -> np.ndarray:
     """Normalize values to [-1, 1] using per-axis board half-sizes."""
-    return (arr - half_board) / half_board
+    result: np.ndarray = (arr - half_board) / half_board
+    return result
 
 
 def _group_ids_to_one_hot(group_ids: np.ndarray, max_groups: int) -> np.ndarray:
