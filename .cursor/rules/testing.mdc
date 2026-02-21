@@ -1,0 +1,27 @@
+---
+description: Pytest conventions and test patterns
+globs: "tests/**/*.py"
+alwaysApply: false
+---
+
+# Testing Conventions
+
+## Framework
+
+- Pytest with shared fixtures in `conftest.py`
+- Run with `just test` (or `uv run pytest --verbose --color=yes tests`)
+
+## Fixtures
+
+- `env` — cached `WargameEnv` instance (no rendering)
+- `experiences` — list of `Experience` tuples from random actions
+- `replay_buffer` — pre-populated `ReplayBuffer`
+- `dqn_net` — parametrized fixture testing both `DQN_MLP` and `DQN_Transformer`
+- `dqn_mlp_net` / `dqn_transformer_net` — individual network fixtures
+
+## Patterns
+
+- Use `@lru_cache(maxsize=1)` on expensive fixtures to avoid recomputation
+- Parametrize over network types via the `dqn_net` fixture (runs tests for MLP and Transformer)
+- Test files: `test_env.py` (environment), `test_dqn.py` (model), `test_agent.py` (agent), `test_state.py` (state)
+- Type-annotate fixtures and test functions
