@@ -25,7 +25,11 @@ class WargameEnvConfig(BaseModel):
     )
     deployment_zone: tuple[int, int, int, int] | None = Field(
         default=None,
-        description="Deployment zone (x_min, y_min, x_max, y_max). If None, defaults to (0, 0, board_width//3, board_height).",
+        description="Player deployment zone (x_min, y_min, x_max, y_max). If None, defaults to (0, 0, board_width//3, board_height).",
+    )
+    opponent_deployment_zone: tuple[int, int, int, int] | None = Field(
+        default=None,
+        description="Opponent deployment zone (x_min, y_min, x_max, y_max). If None, defaults to (board_width*2//3, 0, board_width, board_height).",
     )
     group_cohesion_enabled: bool = Field(
         default=True,

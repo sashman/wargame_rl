@@ -19,5 +19,8 @@ class WargameEnvInfo(BaseModel):
         description="The list of objectives."
     )
     deployment_zone: tuple[int, int, int, int] = Field(
-        description="The deployment zone coordinates."
+        description="The player deployment zone coordinates."
+    )
+    opponent_deployment_zone: tuple[int, int, int, int] = Field(
+        description="The opponent deployment zone coordinates."
     )

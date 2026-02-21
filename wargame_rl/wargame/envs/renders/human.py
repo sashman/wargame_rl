@@ -155,14 +155,21 @@ class HumanRender(Renderer):
         wargame_models = env.wargame_models
         metadata = env.metadata
         deployment_zone = env.deployment_zone
+        opponent_deployment_zone = env.opponent_deployment_zone
 
         # Clear window and canvas (window fill clears letterboxing after resize)
         self.window.fill((45, 45, 48))
         self.canvas.fill((255, 255, 255))
 
         self._draw_deployment_zone(self.canvas, deployment_zone)
+        self._draw_deployment_zone_text(self.canvas, deployment_zone, "Deployment Zone")
 
-        self._draw_deployment_zone_text(self.canvas, deployment_zone)
+        self._draw_deployment_zone(
+            self.canvas, opponent_deployment_zone, color=(220, 200, 200)
+        )
+        self._draw_deployment_zone_text(
+            self.canvas, opponent_deployment_zone, "Opponent Zone"
+        )
 
         # We draw the target
         self._draw_target(self.canvas, objectives)
@@ -401,7 +408,10 @@ class HumanRender(Renderer):
                     self._pinned_model_index = model_index
 
     def _draw_deployment_zone(
-        self, canvas: pygame.Surface, deployment_zone: np.ndarray
+        self,
+        canvas: pygame.Surface,
+        deployment_zone: np.ndarray,
+        color: tuple[int, int, int] = (200, 200, 200),
     ) -> None:
         """Draw deployment zone on the canvas."""
 
@@ -412,19 +422,16 @@ class HumanRender(Renderer):
 
         pygame.draw.rect(
             canvas,
-            (200, 200, 200),
+            color,
             pygame.Rect(x, y, width, height),
         )
 
     def _draw_deployment_zone_text(
-        self, canvas: pygame.Surface, deployment_zone: np.ndarray
+        self, canvas: pygame.Surface, deployment_zone: np.ndarray, label: str = ""
     ) -> None:
-        """
-        Draw the text "Deployment Zone" in the deployment zone.
-
-        """
+        """Draw a label centred inside the deployment zone."""
         font = pygame.font.Font(None, 48)
-        text = font.render("Deployment Zone", True, (240, 240, 240))
+        text = font.render(label or "Deployment Zone", True, (240, 240, 240))
         text_width, text_height = text.get_size()
 
         # Calculate the center position
