@@ -1,6 +1,6 @@
 # Wargame RL
 
-The ultimate 2025 Python repository template. Simple, fast, customizable, and ready to use.
+Reinforcement learning model for playing table top wargames.
 
 ## How to add a feature to the environement?
 1. Update types, states and space
@@ -8,8 +8,7 @@ The ultimate 2025 Python repository template. Simple, fast, customizable, and re
 3. Update the reward
 4. Be sure that pytest is working
 
----
-I wrote a blog post about this template! Check it out [here](https://giovannigiacometti.github.io/posts/python-template/)
+# Development
 
 ## 🎯 Core Features
 
