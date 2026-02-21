@@ -26,6 +26,7 @@ def wargame_model_placement(
         model_x = rng.integers(deployment_zone[0], deployment_zone[2], dtype=np.int32)
         model_y = rng.integers(deployment_zone[1], deployment_zone[3], dtype=np.int32)
         model.location = np.array([model_x, model_y], dtype=np.int32)
+        model.previous_location = None
         model.stats["current_wounds"] = model.stats["max_wounds"]
         model.model_rewards_history.clear()
 

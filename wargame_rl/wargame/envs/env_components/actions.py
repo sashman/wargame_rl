@@ -96,6 +96,7 @@ class ActionHandler:
                     f"Action {act} for wargame model {i} is out of bounds."
                 )
             model = wargame_models[i]
+            model.previous_location = model.location.copy()
             displacement = self._decode_action(act)
             model.location = np.clip(
                 model.location + displacement,
