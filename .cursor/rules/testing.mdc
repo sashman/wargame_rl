@@ -25,3 +25,7 @@ alwaysApply: false
 - Parametrize over network types via the `dqn_net` fixture (runs tests for MLP and Transformer)
 - Test files: `test_env.py` (environment), `test_dqn.py` (model), `test_agent.py` (agent), `test_state.py` (state)
 - Type-annotate fixtures and test functions
+
+## Validation
+
+- Run `just validate` (format + lint + test), not just `just test`, before pushing — mypy and ruff catch issues that pytest alone misses

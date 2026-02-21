@@ -48,4 +48,10 @@ Reinforcement learning project that trains DQN agents to play tabletop wargames 
 - `wargame_rl/wargame/types.py` — `Experience` / `ExperienceBatch`
 - `examples/env_config/` — YAML environment configurations
 - `tests/` — Pytest suite with shared fixtures in `conftest.py`
+- `docs/` — design documentation (e.g. `movement.md`)
 - `train.py` / `simulate.py` / `main.py` — entry points
+
+## Git Workflow
+
+- Always verify the current branch before committing (especially after a PR merge, which may leave you on `main`)
+- Create feature branches for all changes; avoid committing directly to `main`
