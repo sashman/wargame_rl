@@ -1,4 +1,5 @@
 import os
+from enum import Enum
 
 import typer
 from pydantic_yaml import parse_yaml_raw_as
@@ -13,8 +14,18 @@ from wargame_rl.wargame.model.dqn.factory import create_environment
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
 from wargame_rl.wargame.model.dqn.record_episode_callback import RecordEpisodeCallback
 from wargame_rl.wargame.model.dqn.wandb import get_logger, init_wandb
+from wargame_rl.wargame.model.ppo.config import PPOConfig
+from wargame_rl.wargame.model.ppo.lightning import PPOLightning
+from wargame_rl.wargame.model.ppo.ppo import PPO_MLP, PPO_Transformer
 
 app = typer.Typer(pretty_exceptions_enable=False)
+
+
+class AlgorithmType(str, Enum):
+    """Type of algorithm to train."""
+
+    DQN = "dqn"
+    PPO = "ppo"
 
 
 def get_env_config(
@@ -43,6 +54,9 @@ def train(
     env_config_path: str | None = typer.Option(
         None, help="Path to the environment config file"
     ),
+    algorithm: AlgorithmType = typer.Option(
+        AlgorithmType.DQN, help="Algorithm to use for training"
+    ),
     network_type: NetworkType = typer.Option(
         NetworkType.TRANSFORMER, help="Network type to use"
     ),
@@ -59,53 +73,101 @@ def train(
         help="Override max training epochs (defaults to TrainingConfig value)",
     ),
 ) -> None:
-    """Train the DQN agent."""
-
-    dqn_config = DQNConfig()
-    training_config = TrainingConfig(
-        record_during_training=record_during_training,
-        record_after_epoch=record_after_epoch,
-    )
-    if max_epochs is not None:
-        training_config.max_epochs = max_epochs
+    """Train the agent."""
 
     env_config = get_env_config(env_config_path, render_mode)
 
     env = create_environment(env_config=env_config)
-    if network_type == NetworkType.TRANSFORMER:
-        net = DQN_Transformer.from_env(env)
-    else:
-        net = DQN_MLP.from_env(env)
-    model = DQNLightning(env=env, policy_net=net, **dqn_config.model_dump())
 
-    config = {
-        "wargame": env_config.model_dump(),
-        "dqn": dqn_config.model_dump(),
-        "training": training_config.model_dump(),
-    }
-
-    with init_wandb(config=config, name=env_config.config_name) as run:
-        env_config_callback = EnvConfigCallback(run.name, env_config)
-        callbacks: list = [env_config_callback] + get_checkpoint_callback(run.name)
-        if training_config.record_during_training:
-            callbacks.append(
-                RecordEpisodeCallback(
-                    run.name,
-                    env_config,
-                    training_config.record_during_training,
-                    training_config.record_after_epoch,
-                )
-            )
-        logger = get_logger(run)
-        trainer = Trainer(
-            accelerator="auto",
-            max_epochs=training_config.max_epochs,
-            val_check_interval=training_config.val_check_interval,
-            logger=logger,
-            callbacks=callbacks,
+    if algorithm == AlgorithmType.DQN:
+        dqn_config = DQNConfig()
+        training_config = TrainingConfig(
+            record_during_training=record_during_training,
+            record_after_epoch=record_after_epoch,
         )
+        if max_epochs is not None:
+            training_config.max_epochs = max_epochs
 
-        trainer.fit(model)
+        if network_type == NetworkType.TRANSFORMER:
+            net = DQN_Transformer.from_env(env)
+        else:
+            net = DQN_MLP.from_env(env)
+        model = DQNLightning(env=env, policy_net=net, **dqn_config.model_dump())
+
+        config = {
+            "wargame": env_config.model_dump(),
+            "dqn": dqn_config.model_dump(),
+            "training": training_config.model_dump(),
+        }
+
+        with init_wandb(config=config, name=env_config.config_name) as run:
+            env_config_callback = EnvConfigCallback(run.name, env_config)
+            dqn_callbacks: list = [env_config_callback] + get_checkpoint_callback(
+                run.name
+            )
+            if training_config.record_during_training:
+                dqn_callbacks.append(
+                    RecordEpisodeCallback(
+                        run.name,
+                        env_config,
+                        training_config.record_during_training,
+                        training_config.record_after_epoch,
+                    )
+                )
+            logger = get_logger(run)
+            trainer = Trainer(
+                accelerator="auto",
+                max_epochs=training_config.max_epochs,
+                val_check_interval=training_config.val_check_interval,
+                logger=logger,
+                callbacks=dqn_callbacks,
+            )
+
+            trainer.fit(model)
+
+    elif algorithm == AlgorithmType.PPO:
+        ppo_config = PPOConfig()
+        training_config = TrainingConfig(
+            record_during_training=record_during_training,
+            record_after_epoch=record_after_epoch,
+        )
+        if max_epochs is not None:
+            training_config.max_epochs = max_epochs
+
+        if network_type == NetworkType.TRANSFORMER:
+            net = PPO_Transformer.from_env(env)
+        else:
+            net = PPO_MLP.from_env(env)
+        model = PPOLightning(env=env, policy_net=net, **ppo_config.model_dump())
+
+        config = {
+            "wargame": env_config.model_dump(),
+            "ppo": ppo_config.model_dump(),
+            "training": training_config.model_dump(),
+        }
+
+        with init_wandb(config=config, name=env_config.config_name) as run:
+            env_config_callback = EnvConfigCallback(run.name, env_config)
+            ppo_callbacks = [env_config_callback] + get_checkpoint_callback(run.name)
+            if training_config.record_during_training:
+                ppo_callbacks.append(
+                    RecordEpisodeCallback(
+                        run.name,
+                        env_config,
+                        training_config.record_during_training,
+                        training_config.record_after_epoch,
+                    )
+                )
+            logger = get_logger(run)
+            trainer = Trainer(
+                accelerator="auto",
+                max_epochs=training_config.max_epochs,
+                val_check_interval=training_config.val_check_interval,
+                logger=logger,
+                callbacks=ppo_callbacks,
+            )
+
+            trainer.fit(model)
 
 
 if __name__ == "__main__":
