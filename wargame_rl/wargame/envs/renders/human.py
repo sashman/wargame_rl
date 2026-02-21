@@ -16,6 +16,18 @@ class HumanRender(Renderer):
     PANEL_HEIGHT = 36
     GRID_SIZE = 1024  # Max width or height of the game grid in pixels
 
+    # Distinct colors per group (cycles if group_id exceeds palette size)
+    _GROUP_COLORS: list[tuple[int, int, int]] = [
+        (0, 0, 255),  # blue – group 1
+        (60, 180, 80),  # green – group 2
+        (255, 180, 0),  # orange – group 3
+        (180, 80, 220),  # purple – group 4
+        (0, 200, 200),  # cyan – group 5
+        (200, 100, 0),  # brown – group 6
+        (220, 100, 180),  # pink – group 7
+        (220, 80, 60),  # red – group 8
+    ]
+
     def __init__(self) -> None:
         self.window: pygame.Surface | None = None
         self.clock: pygame.time.Clock | None = None
@@ -457,14 +469,20 @@ class HumanRender(Renderer):
                 ),
             )
 
+    def _color_for_group(self, group_id: int) -> tuple[int, int, int]:
+        """Return a distinct color for the given group_id (1-based). Cycles through palette if needed."""
+        index = group_id % len(self._GROUP_COLORS)
+        return self._GROUP_COLORS[index]
+
     def _draw_agent(
         self, canvas: pygame.Surface, wargame_models: list[WargameModel]
     ) -> None:
-        """Draw wargame models (agents) on the canvas."""
+        """Draw wargame models (agents) on the canvas. Color is determined by model group_id."""
         for model in wargame_models:
+            color = self._color_for_group(model.group_id)
             pygame.draw.circle(
                 canvas,
-                (0, 0, 255),
+                color,
                 (
                     float(model.location[0] + 0.5) * self.pix_square_size,
                     float(model.location[1] + 0.5) * self.pix_square_size,

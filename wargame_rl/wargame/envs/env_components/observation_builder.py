@@ -46,6 +46,8 @@ def build_observation(
     wargame_models: list[WargameModel],
     objectives: list[WargameObjective],
     max_groups: int,
+    board_width: int,
+    board_height: int,
 ) -> WargameEnvObservation:
     """Build the observation dict from current state."""
     wargame_obs = [
@@ -64,6 +66,8 @@ def build_observation(
         current_turn=current_turn,
         wargame_models=wargame_obs,
         objectives=objectives_obs,
+        board_width=board_width,
+        board_height=board_height,
     )
 
 

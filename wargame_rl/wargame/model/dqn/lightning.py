@@ -2,14 +2,11 @@ from copy import deepcopy
 
 import numpy as np
 import torch
-from matplotlib import pyplot as plt
 from pytorch_lightning import LightningModule
 from torch import Tensor, nn
 from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
 
-import wandb
-from wargame_rl.plotting.training import compute_values_function, plot_policy_on_grid
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.dataset import RLDataset, experience_list_to_batch
@@ -229,14 +226,16 @@ class DQNLightning(LightningModule):
     def on_train_epoch_end(self) -> None:
         if self.hparams.log:  # type: ignore
             self.run_episodes(self.hparams.n_episodes)  # type: ignore
-            observation, _ = self.env.reset()
-            values_function = compute_values_function(
-                observation,
-                self.env.board_width,
-                self.env.board_height,
-                self.policy_net,
-            )
-            fig = plot_policy_on_grid(values_function, observation)
-            wandb.log({"Value function": fig})  # type: ignore
-            plt.close(fig)
+            # Nate: This plot does not make a lot of sense as of now. It needs
+            # to be adapted, but to what???
+            # observation, _ = self.env.reset()
+            # values_function = compute_values_function(
+            #     observation,
+            #     self.env.board_width,
+            #     self.env.board_height,
+            #     self.policy_net,
+            # )
+            # fig = plot_policy_on_grid(values_function, observation)
+            # wandb.log({"Value function": fig})  # type: ignore
+            # plt.close(fig)
         return super().on_train_epoch_end()  # type: ignore

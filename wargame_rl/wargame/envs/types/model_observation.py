@@ -16,7 +16,7 @@ class WargameModelObservation:
 
     @property
     def size(self) -> int:
-        """Location + distances_to_objectives + one-hot group_id (length max_groups)."""
+        """Location + distances_to_objectives + one-hot group_id (length max_groups) + same-group closest distance (1)."""
         return int(
-            self.location.size + self.distances_to_objectives.size + self.max_groups
+            self.location.size + self.distances_to_objectives.size + self.max_groups + 1
         )

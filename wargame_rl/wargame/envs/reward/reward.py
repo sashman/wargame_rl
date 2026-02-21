@@ -54,16 +54,16 @@ class Reward:
 
         return closest_objective_reward, normalized_distance
 
-    def _is_within_group_distance_cached(
+    def _get_group_reward_cached(
         self,
         model_idx: int,
         model: WargameModel,
         env: wargame.WargameEnv,
         cache: DistanceCache,
-    ) -> bool:
-        """True if this model is within group_max_distance of at least one other model with the same group_id."""
+    ) -> float:
+        """Negative reward proportional to distance to closest same-group model when beyond group_max_distance; 0 when within range or alone in group."""
         if cache.model_model_norms is None:
-            return True
+            return 0.0
         same_group_mask = np.array(
             [
                 i != model_idx and m.group_id == model.group_id
@@ -71,9 +71,12 @@ class Reward:
             ]
         )
         if not same_group_mask.any():
-            return True
+            return 0.0
         min_dist = float(cache.model_model_norms[model_idx, same_group_mask].min())
-        return min_dist <= env.config.group_max_distance
+        if min_dist <= env.config.group_max_distance:
+            return 0.0
+        excess = min_dist - env.config.group_max_distance
+        return env.config.group_violation_penalty * excess
 
     def calculate_model_reward(
         self,
@@ -96,11 +99,10 @@ class Reward:
         model.set_previous_closest_objective_distance(normalized_distance)
 
         group_distance_violation_penalty = 0.0
-        if (
-            env.config.group_cohesion_enabled
-            and not self._is_within_group_distance_cached(model_idx, model, env, cache)
-        ):
-            group_distance_violation_penalty = env.config.group_violation_penalty
+        if env.config.group_cohesion_enabled:
+            group_distance_violation_penalty = self._get_group_reward_cached(
+                model_idx, model, env, cache
+            )
 
         model_rewards = ModelRewards(
             closest_objective_reward=closest_objective_reward,

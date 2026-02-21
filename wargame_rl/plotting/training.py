@@ -46,6 +46,8 @@ def build_batch_tensor(
                     for _ in range(n_models)
                 ],
                 objectives=observation.objectives,
+                board_width=board_width,
+                board_height=board_height,
             )
             game_tensor, objective_tensor, wargame_model_tensor = observation_to_tensor(
                 testing_state, device=device
