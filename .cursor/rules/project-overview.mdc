@@ -55,3 +55,4 @@ Reinforcement learning project that trains DQN agents to play tabletop wargames 
 
 - Always verify the current branch before committing (especially after a PR merge, which may leave you on `main`)
 - Create feature branches for all changes; avoid committing directly to `main`
+- After pushing a new feature branch, always create a PR using `gh pr create`
