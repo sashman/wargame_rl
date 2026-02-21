@@ -6,7 +6,7 @@ import torch
 from torch import nn
 
 from wargame_rl.wargame.envs.types import WargameEnvObservation
-from wargame_rl.wargame.envs.wargame import MovementPhaseActions, WargameEnv
+from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.dqn.device import Device, get_device
 from wargame_rl.wargame.model.dqn.layers import Block, LayerNorm, TransformerConfig
 
@@ -93,7 +93,7 @@ class DQN_MLP(RL_Network):
         observation, _ = env.reset()
         obs_size: int = observation.size
         n_wargame_models: int = observation.n_wargame_models
-        n_actions: int = len(MovementPhaseActions)
+        n_actions: int = env._action_handler.n_actions
 
         print(
             f"obs_size: {obs_size}, n_wargame_models: {n_wargame_models}, n_actions: {n_actions}"
@@ -302,7 +302,7 @@ class DQN_Transformer(RL_Network):
         objective_size: int = observation.size_objectives[0]
         wargame_model_size: int = observation.size_wargame_models[0]
         game_size: int = observation.size_game_observation
-        n_actions: int = len(MovementPhaseActions)
+        n_actions: int = env._action_handler.n_actions
         transformer_config = TransformerConfig()
 
         print(

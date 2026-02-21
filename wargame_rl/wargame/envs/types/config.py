@@ -45,6 +45,21 @@ class WargameEnvConfig(BaseModel):
         default=100,
         description="Maximum number of groups in the game; group_id is one-hot encoded over this size for neural network input.",
     )
+    n_movement_angles: int = Field(
+        gt=0,
+        default=8,
+        description="Number of angular bins for polar movement (e.g. 8 = N/NE/E/SE/S/SW/W/NW).",
+    )
+    n_speed_bins: int = Field(
+        gt=0,
+        default=6,
+        description="Number of discrete speed levels from 1 to max_move_speed.",
+    )
+    max_move_speed: float = Field(
+        gt=0,
+        default=6.0,
+        description="Maximum distance a model can move in a single step.",
+    )
 
     @model_validator(mode="before")
     @classmethod

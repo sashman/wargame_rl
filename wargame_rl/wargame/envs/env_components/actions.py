@@ -1,12 +1,12 @@
 """Action space and application for the wargame environment.
 
-Extracted so movement schemes (e.g. 4-direction, 8-direction) can be swapped
-without changing the core env.
+Polar coordinate movement: each model picks an (angle, speed) pair or stays
+still.  The continuous displacement is rounded to the nearest integer cell so
+that locations remain on the discrete grid.
 """
 
 from __future__ import annotations
 
-from enum import Enum
 from typing import Any
 
 import numpy as np
@@ -14,37 +14,72 @@ from gymnasium import spaces
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 
-
-class MovementPhaseActions(Enum):
-    right = 0
-    up = 1
-    left = 2
-    down = 3
-    none = 4
+STAY_ACTION = 0
 
 
 class ActionHandler:
-    """Builds action space and applies movement actions to models."""
+    """Builds action space and applies polar movement actions to models.
+
+    Actions are encoded as a single integer per model:
+        0           -> stay (no movement)
+        1 .. N*S    -> move, where the index encodes (angle_bin, speed_bin):
+            angle_idx  = (action - 1) // n_speed_bins
+            speed_idx  = (action - 1) %  n_speed_bins
+
+    angle_idx selects from *n_movement_angles* evenly-spaced directions
+    starting at 0 rad (east / +x) and going counter-clockwise.
+
+    speed_idx selects a speed linearly spaced from
+    max_move_speed / n_speed_bins  up to  max_move_speed.
+    """
 
     def __init__(self, config: WargameEnvConfig) -> None:
         self._config = config
-        self._action_to_direction = {
-            MovementPhaseActions.right.value: np.array([1, 0]),
-            MovementPhaseActions.up.value: np.array([0, 1]),
-            MovementPhaseActions.left.value: np.array([-1, 0]),
-            MovementPhaseActions.down.value: np.array([0, -1]),
-            MovementPhaseActions.none.value: np.array([0, 0]),
-        }
+        n_angles = config.n_movement_angles
+        n_speeds = config.n_speed_bins
+        max_speed = config.max_move_speed
+
+        angles = np.linspace(0, 2 * np.pi, n_angles, endpoint=False)
+        speeds = np.linspace(max_speed / n_speeds, max_speed, n_speeds)
+
+        self._unit_directions = np.column_stack(
+            [np.cos(angles), np.sin(angles)]
+        )  # (n_angles, 2)
+        self._speeds = speeds  # (n_speeds,)
+
+        # Pre-compute the integer displacement for every (angle, speed) pair.
+        # _displacements[angle_idx, speed_idx] -> (dx, dy) as int
+        raw = (
+            self._unit_directions[:, np.newaxis, :]
+            * self._speeds[np.newaxis, :, np.newaxis]
+        )  # (n_angles, n_speeds, 2)
+        self._displacements: np.ndarray = np.rint(raw).astype(int)
+
+        self._n_move_actions = n_angles * n_speeds
+        self._n_speed_bins = n_speeds
+
+    @property
+    def n_actions(self) -> int:
+        """Total number of discrete actions (stay + all angle*speed combos)."""
+        return 1 + self._n_move_actions
 
     @property
     def action_space(self) -> spaces.Tuple:
-        action_count = len(MovementPhaseActions)
         return spaces.Tuple(
             [
-                spaces.Discrete(action_count)
+                spaces.Discrete(self.n_actions)
                 for _ in range(self._config.number_of_wargame_models)
             ]
         )
+
+    def _decode_action(self, action: int) -> np.ndarray:
+        """Return the integer (dx, dy) displacement for *action*."""
+        if action == STAY_ACTION:
+            return np.array([0, 0], dtype=int)
+        move_idx = action - 1
+        angle_idx = move_idx // self._n_speed_bins
+        speed_idx = move_idx % self._n_speed_bins
+        return self._displacements[angle_idx, speed_idx]
 
     def apply(
         self,
@@ -61,9 +96,9 @@ class ActionHandler:
                     f"Action {act} for wargame model {i} is out of bounds."
                 )
             model = wargame_models[i]
-            direction = self._action_to_direction[act]
+            displacement = self._decode_action(act)
             model.location = np.clip(
-                model.location + direction,
+                model.location + displacement,
                 [0, 0],
                 [board_width - 1, board_height - 1],
             )

@@ -85,9 +85,7 @@ def simulate(
             obs, _ = env.reset()
             logging.error(f"  - Observation size: {obs.size}")
             logging.error(f"  - Number of wargame models: {obs.n_wargame_models}")
-            from wargame_rl.wargame.envs.wargame import MovementPhaseActions
-
-            logging.error(f"  - Number of actions: {len(MovementPhaseActions)}")
+            logging.error(f"  - Number of actions: {env._action_handler.n_actions}")
             logging.error(
                 "Please train a new model with the current environment configuration or use a compatible checkpoint."
             )
