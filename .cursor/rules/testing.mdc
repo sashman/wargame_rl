@@ -23,7 +23,7 @@ alwaysApply: false
 
 - Use `@lru_cache(maxsize=1)` on expensive fixtures to avoid recomputation
 - Parametrize over network types via the `dqn_net` fixture (runs tests for MLP and Transformer)
-- Test files: `test_env.py` (environment), `test_dqn.py` (model), `test_agent.py` (agent), `test_state.py` (state)
+- Test files: `test_env.py` (environment), `test_fixed_placement.py` (entity config & placement), `test_dqn.py` (model), `test_agent.py` (agent), `test_state.py` (state)
 - Type-annotate fixtures and test functions
 
 ## Validation

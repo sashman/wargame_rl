@@ -11,6 +11,8 @@ from wargame_rl.wargame.envs.env_components.observation_builder import (
     update_distances_to_objectives,
 )
 from wargame_rl.wargame.envs.env_components.placement import (
+    fixed_objective_placement,
+    fixed_wargame_model_placement,
     objective_placement,
     wargame_model_placement,
 )
@@ -28,6 +30,8 @@ __all__ = [
     "update_distances_to_objectives",
     "wargame_model_placement",
     "objective_placement",
+    "fixed_wargame_model_placement",
+    "fixed_objective_placement",
     "get_termination",
     "check_max_turns_reached",
 ]

@@ -22,7 +22,11 @@ alwaysApply: false
 - `DistanceCache` pre-computes distances between models and objectives each step
 - Reward is computed by the `Reward` class in `reward/reward.py`
 - Termination logic is in `env_components/termination.py`
-- Placement logic randomizes starting positions within deployment zones
+- Placement supports three modes via `ModelConfig`/`ObjectiveConfig` in env_config YAML:
+  - No `models`/`objectives` key → fully automatic (random placement, default attributes)
+  - `models`/`objectives` without x/y → random placement with config-driven attributes (group_id, max_wounds, radius_size)
+  - `models`/`objectives` with x/y → fixed placement at exact coordinates with config-driven attributes
+- `WargameEnvConfig.has_fixed_model_positions` / `has_fixed_objective_positions` properties control dispatch
 
 ## Rendering
 

@@ -12,6 +12,8 @@ from wargame_rl.wargame.envs.env_components import (
     build_info,
     build_observation,
     compute_distances,
+    fixed_objective_placement,
+    fixed_wargame_model_placement,
     get_termination,
     objective_placement,
     update_distances_to_objectives,
@@ -100,31 +102,59 @@ class WargameEnv(gym.Env):
 
     @staticmethod
     def create_wargame_models(config: WargameEnvConfig) -> list[WargameModel]:
-        """Build the list of wargame models from config (initial locations/state)."""
-        # We split the models into groups, each group has a different group_id
+        """Build the list of wargame models from config.
+
+        When ``models`` are provided, group_id and max_wounds are taken from
+        each entry.  Otherwise the models are split into groups automatically.
+        """
+        result: list[WargameModel] = []
         increment = max(1, config.number_of_wargame_models // config.max_groups)
-        return [
-            WargameModel(
-                location=np.zeros(2, dtype=int),
-                stats={"max_wounds": 100, "current_wounds": 100},
-                group_id=i // increment,
-                distances_to_objectives=np.zeros(
-                    [config.number_of_objectives, 2], dtype=int
-                ),
+
+        for i in range(config.number_of_wargame_models):
+            if config.models is not None:
+                mc = config.models[i]
+                group_id = mc.group_id
+                max_wounds = mc.max_wounds
+            else:
+                group_id = i // increment
+                max_wounds = 100
+
+            result.append(
+                WargameModel(
+                    location=np.zeros(2, dtype=int),
+                    stats={"max_wounds": max_wounds, "current_wounds": max_wounds},
+                    group_id=group_id,
+                    distances_to_objectives=np.zeros(
+                        [config.number_of_objectives, 2], dtype=int
+                    ),
+                )
             )
-            for i in range(config.number_of_wargame_models)
-        ]
+        return result
 
     @staticmethod
     def create_objectives(config: WargameEnvConfig) -> list[WargameObjective]:
-        """Build the list of objectives from config (initial locations/radius)."""
-        return [
-            WargameObjective(
-                location=np.zeros(2, dtype=int),
-                radius_size=config.objective_radius_size,
+        """Build the list of objectives from config.
+
+        When ``objectives`` are provided, per-objective radius_size overrides
+        the global value if set.
+        """
+        result: list[WargameObjective] = []
+        for i in range(config.number_of_objectives):
+            if (
+                config.objectives is not None
+                and config.objectives[i].radius_size is not None
+            ):
+                radius = config.objectives[i].radius_size
+            else:
+                radius = config.objective_radius_size
+
+            result.append(
+                WargameObjective(
+                    location=np.zeros(2, dtype=int),
+                    radius_size=radius,  # type: ignore[arg-type]
+                )
             )
-            for _ in range(config.number_of_objectives)
-        ]
+        return result
 
     def _get_obs(
         self, distance_cache: DistanceCache | None = None
@@ -165,19 +195,32 @@ class WargameEnv(gym.Env):
         self.current_turn = 0
         self.last_reward = None
 
-        wargame_model_placement(
-            self.wargame_models,
-            self.deployment_zone,
-            self.config.group_max_distance,
-            self.np_random,
-        )
-        objective_placement(
-            self.objectives,
-            self.deployment_zone,
-            self.board_width,
-            self.board_height,
-            self.np_random,
-        )
+        if self.config.has_fixed_model_positions:
+            fixed_wargame_model_placement(
+                self.wargame_models,
+                self.config.models,  # type: ignore[arg-type]
+            )
+        else:
+            wargame_model_placement(
+                self.wargame_models,
+                self.deployment_zone,
+                self.config.group_max_distance,
+                self.np_random,
+            )
+
+        if self.config.has_fixed_objective_positions:
+            fixed_objective_placement(
+                self.objectives,
+                self.config.objectives,  # type: ignore[arg-type]
+            )
+        else:
+            objective_placement(
+                self.objectives,
+                self.deployment_zone,
+                self.board_width,
+                self.board_height,
+                self.np_random,
+            )
 
         cache = compute_distances(self.wargame_models, self.objectives)
         observation = self._get_obs(cache)
