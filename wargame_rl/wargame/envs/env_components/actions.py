@@ -79,7 +79,8 @@ class ActionHandler:
         move_idx = action - 1
         angle_idx = move_idx // self._n_speed_bins
         speed_idx = move_idx % self._n_speed_bins
-        return self._displacements[angle_idx, speed_idx]
+        result: np.ndarray = self._displacements[angle_idx, speed_idx]
+        return result
 
     def apply(
         self,

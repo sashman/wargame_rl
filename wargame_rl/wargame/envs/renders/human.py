@@ -519,7 +519,7 @@ class HumanRender(Renderer):
             )
 
             # Shaft
-            line_width = max(2, int(self.pix_square_size / 6))
+            line_width = max(3, int(self.pix_square_size / 4))
             pygame.draw.line(canvas, faded, prev_px, curr_px, width=line_width)
 
             # Arrowhead
@@ -551,23 +551,24 @@ class HumanRender(Renderer):
         """Draw gridlines on the canvas. Endpoints clamped to canvas bounds."""
         max_x = float(self.canvas_width - 1)
         max_y = float(self.canvas_height - 1)
+        grid_color = (210, 210, 210)
         for y in range(board_height + 1):
             py = min(self.pix_square_size * y, max_y)
             pygame.draw.line(
                 canvas,
-                0,
+                grid_color,
                 (0, py),
                 (max_x, py),
-                width=3,
+                width=1,
             )
         for x in range(board_width + 1):
             px = min(self.pix_square_size * x, max_x)
             pygame.draw.line(
                 canvas,
-                0,
+                grid_color,
                 (px, 0),
                 (px, max_y),
-                width=3,
+                width=1,
             )
 
     def close(self) -> None:
