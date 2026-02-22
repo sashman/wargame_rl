@@ -5,8 +5,8 @@ import pytest
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.dqn.dqn import DQN_MLP, DQN_Transformer, RL_Network
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
+from wargame_rl.wargame.model.net import MLPNetwork, RL_Network, TransformerNetwork
 from wargame_rl.wargame.model.ppo.ppo import PPO_MLP, PPO_Transformer
 from wargame_rl.wargame.types import Experience
 
@@ -53,14 +53,14 @@ def replay_buffer(n_steps: int, experiences: list[Experience]) -> ReplayBuffer:
 
 @pytest.fixture
 @lru_cache(maxsize=1)
-def dqn_mlp_net(env: WargameEnv) -> DQN_MLP:
-    return DQN_MLP.from_env(env=env)
+def dqn_mlp_net(env: WargameEnv) -> MLPNetwork:
+    return MLPNetwork.policy_from_env(env=env)
 
 
 @pytest.fixture
 @lru_cache(maxsize=1)
-def dqn_transformer_net(env: WargameEnv) -> DQN_Transformer:
-    return DQN_Transformer.from_env(env=env)
+def dqn_transformer_net(env: WargameEnv) -> TransformerNetwork:
+    return TransformerNetwork.policy_from_env(env=env)
 
 
 @pytest.fixture(
@@ -69,13 +69,13 @@ def dqn_transformer_net(env: WargameEnv) -> DQN_Transformer:
         pytest.param("dqn_transformer_net", id="transformer"),
     ]
 )
-def dqn_net(request: pytest.FixtureRequest, env: WargameEnv) -> RL_Network:
+def policy_net(request: pytest.FixtureRequest, env: WargameEnv) -> RL_Network:
     """Parametrized fixture for both dqn_mlp_net and dqn_transformer_net."""
     if request.param == "dqn_mlp_net":
-        return DQN_MLP.from_env(env=env)
+        return MLPNetwork.policy_from_env(env=env)
     else:
         assert request.param == "dqn_transformer_net"
-        return DQN_Transformer.from_env(env=env)
+        return TransformerNetwork.policy_from_env(env=env)
 
 
 @pytest.fixture

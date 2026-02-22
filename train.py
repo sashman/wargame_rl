@@ -13,10 +13,10 @@ from wargame_rl.wargame.model.common import (
     init_wandb,
 )
 from wargame_rl.wargame.model.dqn.config import DQNConfig, NetworkType, TrainingConfig
-from wargame_rl.wargame.model.dqn.dqn import DQN_MLP, DQN_Transformer
 from wargame_rl.wargame.model.dqn.factory import create_environment
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
 from wargame_rl.wargame.model.dqn.record_episode_callback import RecordEpisodeCallback
+from wargame_rl.wargame.model.net import MLPNetwork, TransformerNetwork
 from wargame_rl.wargame.model.ppo.config import PPOConfig
 from wargame_rl.wargame.model.ppo.lightning import PPOLightning
 from wargame_rl.wargame.model.ppo.ppo import PPO_MLP, PPO_Transformer
@@ -92,9 +92,9 @@ def train(
             training_config.max_epochs = max_epochs
 
         if network_type == NetworkType.TRANSFORMER:
-            net = DQN_Transformer.from_env(env)
+            net = TransformerNetwork.policy_from_env(env)
         else:
-            net = DQN_MLP.from_env(env)
+            net = MLPNetwork.policy_from_env(env)
         model = DQNLightning(env=env, policy_net=net, **dqn_config.model_dump())
 
         config = {

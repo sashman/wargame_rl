@@ -12,12 +12,12 @@ from pathlib import Path
 from typing import cast
 
 import torch
+import wandb
 from loguru import logger
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import Callback
 from torch import nn
 
-import wandb
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
 from wargame_rl.wargame.model.dqn.observation import observation_to_tensor
@@ -43,8 +43,8 @@ def _run_recording(
 
     from wargame_rl.wargame.envs.renders.human import HumanRender
     from wargame_rl.wargame.envs.types import WargameEnvAction
-    from wargame_rl.wargame.model.dqn.dqn import DQN_MLP, DQN_Transformer, RL_Network
     from wargame_rl.wargame.model.dqn.factory import create_environment
+    from wargame_rl.wargame.model.net import MLPNetwork, RL_Network, TransformerNetwork
 
     # Build env with human renderer (same config as training)
     renderer = HumanRender()
@@ -58,9 +58,9 @@ def _run_recording(
     )
     try:
         if policy_net_class_name == "DQN_Transformer":
-            policy_net: RL_Network = DQN_Transformer.from_env(env)
+            policy_net: RL_Network = TransformerNetwork.policy_from_env(env)
         else:
-            policy_net = DQN_MLP.from_env(env)
+            policy_net = MLPNetwork.policy_from_env(env)
         policy_net.load_state_dict(policy_state_dict)
         policy_net.eval()
     finally:

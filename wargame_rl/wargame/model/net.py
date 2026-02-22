@@ -26,8 +26,16 @@ class RL_Network(nn.Module, ABC):
 
     @classmethod
     @abstractmethod
-    def from_env(cls, env: WargameEnv) -> Self:
+    def from_env(cls, env: WargameEnv, is_policy: bool) -> Self:
         pass
+
+    @classmethod
+    def policy_from_env(cls, env: WargameEnv) -> Self:
+        return cls.from_env(env, is_policy=True)
+
+    @classmethod
+    def value_from_env(cls, env: WargameEnv) -> Self:
+        return cls.from_env(env, is_policy=False)
 
     @classmethod
     def from_checkpoint(cls, env: WargameEnv, checkpoint_path: str) -> Self:
@@ -39,13 +47,15 @@ class RL_Network(nn.Module, ABC):
         return cls.from_state_dict(env, state_dict)
 
     @classmethod
-    def from_state_dict(cls, env: WargameEnv, state_dict: dict) -> Self:
-        net = cls.from_env(env)
+    def from_state_dict(
+        cls, env: WargameEnv, state_dict: dict, is_policy: bool = True
+    ) -> Self:
+        net = cls.from_env(env, is_policy=is_policy)
         net.load_state_dict(state_dict)
         return net
 
 
-class DQN_MLP(RL_Network):
+class MLPNetwork(RL_Network):
     def __init__(
         self,
         state_dim: int,
@@ -54,19 +64,26 @@ class DQN_MLP(RL_Network):
         device: Device | None = None,
         hidden_dim: int = 128,
         num_layers: int = 2,
+        is_policy: bool = True,
     ) -> None:
         super().__init__()
 
+        self.is_policy = is_policy
         self.layers = nn.ModuleList()
         self.layers.append(nn.Linear(state_dim, hidden_dim))
+        self.action_dim = action_dim
         for _ in range(num_layers - 1):
             self.layers.append(nn.Linear(hidden_dim, hidden_dim))
-        self.output = nn.Linear(hidden_dim, action_dim * n_wargame_models)
+        if self.is_policy:
+            self.output_dim = n_wargame_models * action_dim
+        else:
+            self.output_dim = 1
+
+        self.output = nn.Linear(hidden_dim, self.output_dim)
         self.activation = nn.GELU()
         self.device = get_device(device)
         self.to(self.device)
         self.n_wargame_models = n_wargame_models
-        self.action_dim = action_dim
 
     def forward(self, xs: list[torch.Tensor]) -> torch.Tensor:
         # 1 Concatenate all tensors in xs
@@ -82,26 +99,24 @@ class DQN_MLP(RL_Network):
         for layer in self.layers:
             x = self.activation(layer(x))
         x = self.output(x)
-        result: torch.Tensor = x.reshape(
-            batch_size, self.n_wargame_models, self.action_dim
-        )
-        return result
+        if self.is_policy:
+            x = x.reshape(batch_size, self.n_wargame_models, self.action_dim)
+        return x
 
     @classmethod
-    def from_env(cls, env: WargameEnv) -> Self:
+    def from_env(cls, env: WargameEnv, is_policy: bool) -> Self:
         observation: WargameEnvObservation
         observation, _ = env.reset()
         obs_size: int = observation.size
         n_wargame_models: int = observation.n_wargame_models
         n_actions: int = env._action_handler.n_actions
-
         print(
-            f"obs_size: {obs_size}, n_wargame_models: {n_wargame_models}, n_actions: {n_actions}"
+            f"Creating MLP network with obs_size: {obs_size}, n_wargame_models: {n_wargame_models}, n_actions: {n_actions}, is_policy: {is_policy}"
         )
-        return cls(obs_size, n_actions, n_wargame_models)
+        return MLPNetwork(obs_size, n_actions, n_wargame_models, is_policy=is_policy)
 
 
-class DQN_Transformer(RL_Network):
+class TransformerNetwork(RL_Network):
     # Transformer adapted from the NanoGPT implementation:
     # https://github.com/karpathy/nanoGPT
     def __init__(
@@ -110,6 +125,7 @@ class DQN_Transformer(RL_Network):
         objective_size: int,
         wargame_model_size: int,
         n_actions: int,
+        is_policy: bool,
         transformer_config: TransformerConfig,
         device: Device | None = None,
     ) -> None:
@@ -117,6 +133,7 @@ class DQN_Transformer(RL_Network):
         self.objective_size = objective_size
         self.wargame_model_size = wargame_model_size
         self.n_actions = n_actions
+        self.is_policy = is_policy
 
         super().__init__()
 
@@ -142,10 +159,12 @@ class DQN_Transformer(RL_Network):
                 ln_f=LayerNorm(self.config.embedding_size, bias=self.config.bias),
             )
         )
-
-        self.action_head = nn.Linear(
-            self.config.embedding_size, self.n_actions, bias=False
-        )
+        if self.is_policy:
+            self.action_head = nn.Linear(
+                self.config.embedding_size, self.n_actions, bias=False
+            )
+        else:
+            self.action_head = nn.Linear(self.config.embedding_size, 1, bias=False)
 
         # init all weights
         self.apply(self._init_weights)
@@ -263,11 +282,14 @@ class DQN_Transformer(RL_Network):
             x = block(x)
         x = self.transformer.ln_f(x)  # type: ignore
 
-        # we select the output for the wargame models
-        wargame_model_output = x[:, -n_wargame_models:, :]
-        logits: torch.Tensor = self.action_head(wargame_model_output)
-
-        return logits
+        if self.is_policy:
+            # we select the output for the wargame models
+            wargame_model_output = x[:, -n_wargame_models:, :]
+            logits: torch.Tensor = self.action_head(wargame_model_output)
+            return logits
+        else:
+            value: torch.Tensor = self.action_head(x)
+            return value.mean(dim=[1, 2])
 
     # def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
     #     # start with all of the candidate parameters
@@ -296,7 +318,7 @@ class DQN_Transformer(RL_Network):
     #     return optimizer
 
     @classmethod
-    def from_env(cls, env: WargameEnv) -> Self:
+    def from_env(cls, env: WargameEnv, is_policy: bool) -> Self:
         observation: WargameEnvObservation
         observation, _ = env.reset()
         objective_size: int = observation.size_objectives[0]
@@ -314,6 +336,7 @@ class DQN_Transformer(RL_Network):
             wargame_model_size=wargame_model_size,
             n_actions=n_actions,
             transformer_config=transformer_config,
+            is_policy=is_policy,
         )
 
 

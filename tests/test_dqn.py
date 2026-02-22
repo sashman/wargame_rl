@@ -4,29 +4,29 @@ from pytorch_lightning import Trainer
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.dqn.dataset import experience_list_to_batch
-from wargame_rl.wargame.model.dqn.dqn import RL_Network
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
+from wargame_rl.wargame.model.net import RL_Network
 from wargame_rl.wargame.types import Experience
 
 
 def test_dqn_forward(
-    env: WargameEnv, experiences: list[Experience], dqn_net: RL_Network, n_steps: int
+    env: WargameEnv, experiences: list[Experience], policy_net: RL_Network, n_steps: int
 ) -> None:
     n_wargame_models = env.config.number_of_wargame_models
     n_actions = env._action_handler.n_actions
     batch = experience_list_to_batch(experiences)
-    next_q_values = dqn_net.forward(batch.state_tensors)
+    next_q_values = policy_net.forward(batch.state_tensors)
     assert next_q_values.shape == (n_steps, n_wargame_models, n_actions)
     assert next_q_values.dtype == torch.float32
 
 
 def test_dqn_loss(
-    env: WargameEnv, dqn_net: RL_Network, replay_buffer: ReplayBuffer
+    env: WargameEnv, policy_net: RL_Network, replay_buffer: ReplayBuffer
 ) -> None:
     # set the seed
     torch.manual_seed(42)
-    model = DQNLightning(env=env, policy_net=dqn_net)
+    model = DQNLightning(env=env, policy_net=policy_net)
     batch = experience_list_to_batch(replay_buffer.sample_batch(3))
     loss_initial = model.dqn_mse_loss(batch)
     assert loss_initial.shape == ()
@@ -55,13 +55,13 @@ def test_dqn_loss(
     assert loss_training_final < loss_training
 
 
-def test_dataloaders(env: WargameEnv, dqn_net: RL_Network) -> None:
+def test_dataloaders(env: WargameEnv, policy_net: RL_Network) -> None:
     batch_size = 5
     observation, _ = env.reset()
     observation.size
 
     model = DQNLightning(
-        env=env, policy_net=dqn_net, batch_size=batch_size, n_samples_per_epoch=35
+        env=env, policy_net=policy_net, batch_size=batch_size, n_samples_per_epoch=35
     )
     dataloader = model.train_dataloader()
     assert len(dataloader) == 35 // 5
@@ -91,8 +91,8 @@ def test_dataloaders(env: WargameEnv, dqn_net: RL_Network) -> None:
     assert new_state_wargame_models.shape == (batch_size, n_wargame_models, dim_model)
 
 
-def test_dqn_training(env: WargameEnv, dqn_net: RL_Network) -> None:
-    model = DQNLightning(env=env, policy_net=dqn_net, log=False)
+def test_dqn_training(env: WargameEnv, policy_net: RL_Network) -> None:
+    model = DQNLightning(env=env, policy_net=policy_net, log=False)
 
     trainer = Trainer(
         accelerator="auto",

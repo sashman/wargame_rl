@@ -10,8 +10,8 @@ from torch.utils.data import DataLoader
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.dataset import RLDataset, experience_list_to_batch
-from wargame_rl.wargame.model.dqn.dqn import RL_Network
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
+from wargame_rl.wargame.model.net import RL_Network
 from wargame_rl.wargame.types import ExperienceBatch
 
 
