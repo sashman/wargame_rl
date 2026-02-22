@@ -6,14 +6,17 @@ from pydantic_yaml import parse_yaml_raw_as
 from pytorch_lightning import Trainer
 
 from wargame_rl.wargame.envs.types import WargameEnvConfig
-from wargame_rl.wargame.model.dqn.checkpoint_callback import get_checkpoint_callback
+from wargame_rl.wargame.model.common import (
+    EnvConfigCallback,
+    get_checkpoint_callback,
+    get_logger,
+    init_wandb,
+)
 from wargame_rl.wargame.model.dqn.config import DQNConfig, NetworkType, TrainingConfig
 from wargame_rl.wargame.model.dqn.dqn import DQN_MLP, DQN_Transformer
-from wargame_rl.wargame.model.dqn.env_config_callback import EnvConfigCallback
 from wargame_rl.wargame.model.dqn.factory import create_environment
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
 from wargame_rl.wargame.model.dqn.record_episode_callback import RecordEpisodeCallback
-from wargame_rl.wargame.model.dqn.wandb import get_logger, init_wandb
 from wargame_rl.wargame.model.ppo.config import PPOConfig
 from wargame_rl.wargame.model.ppo.lightning import PPOLightning
 from wargame_rl.wargame.model.ppo.ppo import PPO_MLP, PPO_Transformer
@@ -103,7 +106,7 @@ def train(
         with init_wandb(config=config, name=env_config.config_name) as run:
             env_config_callback = EnvConfigCallback(run.name, env_config)
             dqn_callbacks: list = [env_config_callback] + get_checkpoint_callback(
-                run.name
+                run.name, filename_prefix="dqn"
             )
             if training_config.record_during_training:
                 dqn_callbacks.append(
@@ -148,7 +151,9 @@ def train(
 
         with init_wandb(config=config, name=env_config.config_name) as run:
             env_config_callback = EnvConfigCallback(run.name, env_config)
-            ppo_callbacks = [env_config_callback] + get_checkpoint_callback(run.name)
+            ppo_callbacks = [env_config_callback] + get_checkpoint_callback(
+                run.name, filename_prefix="ppo"
+            )
             if training_config.record_during_training:
                 ppo_callbacks.append(
                     RecordEpisodeCallback(

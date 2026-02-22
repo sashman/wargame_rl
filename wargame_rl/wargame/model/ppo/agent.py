@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import torch
 from torch import Tensor
 
-from wargame_rl.wargame.envs.types import WargameEnvAction
+from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvObservation
 from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.model.dqn.observation import observation_to_flat_tensor
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.model.ppo.ppo import PPOModel
@@ -55,41 +55,51 @@ class Agent:
             (total_reward, steps, experiences) with experiences empty when save_steps is False
         """
         # Reset the environment
-        state, _ = self.env.reset()
+        observation: WargameEnvObservation
+        observation, _ = self.env.reset()
         done = False
         total_reward = 0.0
         steps = 0
         experiences = []
 
-        # Convert state to tensor
-        state_tensor = torch.tensor(state, dtype=torch.float32)
+        # Convert observation to flat tensor (same layout as observation.size)
+        state_tensor = observation_to_flat_tensor(observation, policy_net.device)
+        if state_tensor.dim() == 1:
+            state_tensor = state_tensor.unsqueeze(0)
 
         while not done:
-            # Get action from policy
+            # Get action from policy (single int); env expects one action per model
             action, log_prob = policy_net.get_action(
                 state_tensor, deterministic=epsilon == 0.0
             )
+            n_models = observation.n_wargame_models
+            env_action = WargameEnvAction(actions=[action] * n_models)
 
-            # Take action in environment (env expects one action per model; PPO outputs one int)
-            env_action = WargameEnvAction(actions=[action])
-            next_state, reward, done, _, _ = self.env.step(env_action)
+            next_observation, reward, done, _, _ = self.env.step(env_action)
             total_reward += reward
             steps += 1
 
-            # Save experience
+            log_prob_scalar = (
+                log_prob.squeeze(0)
+                if log_prob.dim() > 0 and log_prob.numel() > 1
+                else log_prob
+            )
+
             if save_steps:
                 experiences.append(
                     Experience(
-                        state=state_tensor,
+                        state=state_tensor.squeeze(0),
                         action=action,
                         reward=reward,
                         done=done,
-                        log_prob=log_prob,
+                        log_prob=log_prob_scalar,
                     )
                 )
 
-            # Update state
-            state_tensor = torch.tensor(next_state, dtype=torch.float32)
+            observation = next_observation
+            state_tensor = observation_to_flat_tensor(observation, policy_net.device)
+            if state_tensor.dim() == 1:
+                state_tensor = state_tensor.unsqueeze(0)
 
             # Render if requested
             if render:

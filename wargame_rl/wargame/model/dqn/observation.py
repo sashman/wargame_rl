@@ -3,7 +3,7 @@ import torch
 from torch import Tensor
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvObservation
-from wargame_rl.wargame.model.dqn.device import Device, get_device
+from wargame_rl.wargame.model.common import Device, get_device
 
 
 def action_to_tensor(action: WargameEnvAction, device: Device | None = None) -> Tensor:
@@ -117,6 +117,27 @@ def observation_to_tensor(
         torch.from_numpy(obj_features).to(device),
         torch.from_numpy(model_features).to(device),
     ]
+
+
+def observation_to_flat_tensor(
+    state: WargameEnvObservation, device: Device | None = None
+) -> Tensor:
+    """Convert a single observation to a 1D tensor of shape (state.size,).
+
+    Uses the same feature layout as _observation_to_numpy so the result
+    matches observation.size. Used by PPO and other models that expect
+    a flat state vector.
+    """
+    device = get_device(device)
+    current_turn, obj_features, model_features = _observation_to_numpy(state)
+    flat = np.concatenate(
+        [
+            current_turn.ravel(),
+            obj_features.ravel(),
+            model_features.ravel(),
+        ]
+    ).astype(np.float32)
+    return torch.from_numpy(flat).to(device)
 
 
 def observations_to_tensor_batch(

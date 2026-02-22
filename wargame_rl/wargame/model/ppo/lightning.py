@@ -7,13 +7,23 @@ import torch.nn as nn
 from pytorch_lightning import LightningModule
 from torch import Tensor, optim
 from torch.distributions import Categorical
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.ppo.agent import Agent
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.model.ppo.ppo import PPOModel
+
+
+class _PPODummyDataset(Dataset[Tensor]):
+    """Single-item dataset so Lightning calls training_step once per epoch."""
+
+    def __len__(self) -> int:
+        return 1
+
+    def __getitem__(self, index: int) -> Tensor:
+        return torch.tensor(0.0)
 
 
 class PPOLightning(LightningModule):
@@ -93,6 +103,7 @@ class PPOLightning(LightningModule):
         Returns:
             Action probabilities
         """
+        action_probs: Tensor
         action_probs, _ = self.policy_net(x)
         return action_probs
 
@@ -137,11 +148,13 @@ class PPOLightning(LightningModule):
         """
         # Compute advantages using GAE
         advantages = torch.zeros_like(rewards)
-        gae = 0
+        gae = torch.tensor(0.0, device=rewards.device, dtype=rewards.dtype)
 
         for t in reversed(range(len(rewards))):
             if t == len(rewards) - 1:
-                next_value = 0
+                next_value = torch.tensor(
+                    0.0, device=rewards.device, dtype=rewards.dtype
+                )
             else:
                 next_value = values[t + 1]
 
@@ -163,40 +176,56 @@ class PPOLightning(LightningModule):
         Returns:
             Training loss
         """
-        # Collect experiences
-        _reward, _steps, experiences = self.agent.run_episode(
-            self.policy_net,
-            epsilon=0.0,  # No exploration for PPO
-            render=False,
-            save_steps=True,
-        )
+        # Collect experiences (run episodes until we have at least one step)
+        experiences: list = []
+        while len(experiences) == 0:
+            _reward, _steps, experiences = self.agent.run_episode(
+                self.policy_net,
+                epsilon=0.0,  # No exploration for PPO
+                render=False,
+                save_steps=True,
+            )
 
         # Convert experiences to tensors
         states = torch.stack([exp.state for exp in experiences])
-        actions = torch.tensor([exp.action for exp in experiences], dtype=torch.long)
-        rewards = torch.tensor([exp.reward for exp in experiences], dtype=torch.float32)
-        dones = torch.tensor([exp.done for exp in experiences], dtype=torch.bool)
+        actions = torch.tensor(
+            [exp.action for exp in experiences],
+            dtype=torch.long,
+            device=states.device,
+        )
+        rewards = torch.tensor(
+            [exp.reward for exp in experiences],
+            dtype=torch.float32,
+            device=states.device,
+        )
+        dones = torch.tensor(
+            [exp.done for exp in experiences],
+            dtype=torch.float32,
+            device=states.device,
+        )
 
         # Compute values and log probs
         action_probs, state_values = self.policy_net(states)
         _, log_probs, _ = self.evaluate_actions(states, actions)
 
-        # Compute returns and advantages
-        returns = self.compute_returns(rewards, dones, state_values)
-        advantages = returns - state_values
+        # Compute returns and advantages (detach so we don't double-backward)
+        returns = self.compute_returns(rewards, dones, state_values).detach()
+        advantages = (returns - state_values).detach()
+        log_probs = log_probs.detach()
+        states = states.detach()
 
         # Normalize advantages
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         # PPO update
-        total_loss = 0
+        total_loss_float = 0.0
         for _ in range(self.n_epochs):
-            # Compute new action probabilities
-            new_action_probs, _ = self.policy_net(states)
+            # Compute new action probabilities and value estimates
+            new_action_probs, new_state_values = self.policy_net(states)
             new_action_dist = Categorical(new_action_probs)
             new_log_probs = new_action_dist.log_prob(actions)
 
-            # Compute ratio
+            # Compute ratio (old log_probs are detached)
             ratio = torch.exp(new_log_probs - log_probs)
 
             # Compute surrogate loss
@@ -206,8 +235,8 @@ class PPOLightning(LightningModule):
             )
             policy_loss = -torch.min(surr1, surr2).mean()
 
-            # Compute value loss
-            value_loss = self.value_loss_fn(state_values, returns) * self.vf_coef
+            # Compute value loss (use current value estimate)
+            value_loss = self.value_loss_fn(new_state_values, returns) * self.vf_coef
 
             # Compute entropy bonus
             entropy = new_action_dist.entropy().mean()
@@ -227,32 +256,30 @@ class PPOLightning(LightningModule):
 
             self.optimizer.step()
 
-            total_loss += loss.item()
+            total_loss_float += loss.item()
 
         # Log metrics
         if self.do_log:
-            self.log("train_loss", total_loss / self.n_epochs, prog_bar=True)
+            self.log("train_loss", total_loss_float / self.n_epochs, prog_bar=True)
             self.log("policy_loss", policy_loss.item(), prog_bar=False)
             self.log("value_loss", value_loss.item(), prog_bar=False)
             self.log("entropy_loss", entropy_loss.item(), prog_bar=False)
             self.log("env_steps", self.global_step, logger=False, prog_bar=True)
 
-        return total_loss / self.n_epochs
+        mean_loss = total_loss_float / self.n_epochs
+        return torch.tensor(mean_loss, device=states.device, dtype=torch.float32)
 
     def configure_optimizers(self) -> optim.Optimizer:
         """Initialize optimizer."""
         return self.optimizer
 
-    def __dataloader(self) -> DataLoader:
-        """Initialize the dataset used for retrieving experiences."""
-        # For PPO, we don't use a traditional dataset since we collect experiences on-the-fly
-        # This is just a placeholder - PPO doesn't use a DataLoader in the traditional sense
-
-    def train_dataloader(self) -> DataLoader:
-        """Get train loader."""
-        # PPO uses on-the-fly experience collection, so we return a dummy loader
-        # This is needed by Lightning but won't be used
-        return None
+    def train_dataloader(self) -> DataLoader[Tensor]:
+        """Return a single-batch loader so Lightning calls training_step once per epoch."""
+        return DataLoader(
+            dataset=_PPODummyDataset(),
+            batch_size=1,
+            num_workers=0,
+        )
 
     def run_episodes(self, n_episodes: int, epsilon: float = 0.0) -> None:
         """Run episodes for evaluation.

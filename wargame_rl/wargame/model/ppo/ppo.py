@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.ppo.config import PPOConfig
@@ -46,11 +46,12 @@ class PPO_MLP(PPOModel):
             device=env.device if hasattr(env, "device") else None,
         )
 
-        return cls(
+        net = cls(
             policy_network=policy_network,
             value_network=value_network,
             device=env.device if hasattr(env, "device") else None,
         )
+        return cast(PPO_MLP, net.to(net.device))
 
 
 class PPO_Transformer(PPOModel):
@@ -92,8 +93,9 @@ class PPO_Transformer(PPOModel):
             device=env.device if hasattr(env, "device") else None,
         )
 
-        return cls(
+        net = cls(
             policy_network=policy_network,
             value_network=value_network,
             device=env.device if hasattr(env, "device") else None,
         )
+        return cast(PPO_Transformer, net.to(net.device))

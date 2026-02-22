@@ -8,7 +8,9 @@ from wargame_rl.wargame.envs.types import WargameEnvConfig
 
 
 class EnvConfigCallback(Callback):
-    def __init__(self, name: str, env_config: WargameEnvConfig):
+    """Saves the environment config to YAML at training start."""
+
+    def __init__(self, name: str, env_config: WargameEnvConfig) -> None:
         self.env_config = env_config
         self.name = name
 

@@ -7,14 +7,13 @@ import torch.nn as nn
 from torch import Tensor
 from torch.distributions import Categorical
 
-from wargame_rl.wargame.model.dqn.device import Device, get_device
-from wargame_rl.wargame.model.dqn.dqn import RL_Network
+from wargame_rl.wargame.model.common import Device, get_device
 
 if TYPE_CHECKING:
     pass
 
 
-class PPOPolicyNetwork(RL_Network):
+class PPOPolicyNetwork(nn.Module):
     """PPO Policy Network that outputs action probabilities."""
 
     def __init__(
@@ -26,9 +25,9 @@ class PPOPolicyNetwork(RL_Network):
         device: Device = None,
     ) -> None:
         super().__init__()
-        self.device = get_device(device)
+        self._device = get_device(device)
 
-        layers = []
+        layers: list[nn.Module] = []
         prev_size = input_size
 
         # Create hidden layers
@@ -43,6 +42,10 @@ class PPOPolicyNetwork(RL_Network):
 
         self.network = nn.Sequential(*layers)
 
+    @property
+    def device(self) -> torch.device:
+        return self._device
+
     def forward(self, x: Tensor) -> Tensor:
         """Forward pass through the policy network.
 
@@ -52,10 +55,11 @@ class PPOPolicyNetwork(RL_Network):
         Returns:
             Action probabilities
         """
-        return self.network(x)
+        out: Tensor = self.network(x)
+        return out
 
 
-class PPOValueNetwork(RL_Network):
+class PPOValueNetwork(nn.Module):
     """PPO Value Network that estimates state values."""
 
     def __init__(
@@ -66,21 +70,25 @@ class PPOValueNetwork(RL_Network):
         device: Device = None,
     ) -> None:
         super().__init__()
-        self.device = get_device(device)
+        self._device = get_device(device)
 
-        layers = []
+        layers_val: list[nn.Module] = []
         prev_size = input_size
 
         # Create hidden layers
         for _ in range(num_layers - 1):
-            layers.append(nn.Linear(prev_size, hidden_size))
-            layers.append(nn.ReLU())
+            layers_val.append(nn.Linear(prev_size, hidden_size))
+            layers_val.append(nn.ReLU())
             prev_size = hidden_size
 
         # Output layer
-        layers.append(nn.Linear(prev_size, 1))
+        layers_val.append(nn.Linear(prev_size, 1))
 
-        self.network = nn.Sequential(*layers)
+        self.network = nn.Sequential(*layers_val)
+
+    @property
+    def device(self) -> torch.device:
+        return self._device
 
     def forward(self, x: Tensor) -> Tensor:
         """Forward pass through the value network.
@@ -91,7 +99,8 @@ class PPOValueNetwork(RL_Network):
         Returns:
             State values
         """
-        return self.network(x).squeeze(-1)
+        out: Tensor = self.network(x).squeeze(-1)
+        return out
 
 
 class PPOModel(nn.Module):
@@ -106,11 +115,15 @@ class PPOModel(nn.Module):
         super().__init__()
         self.policy_network = policy_network
         self.value_network = value_network
-        self.device = get_device(device)
+        self._device = get_device(device)
 
-    def to(self, device: Device) -> PPOModel:
+    @property
+    def device(self) -> torch.device:
+        return self._device
+
+    def to(self, device: Device) -> PPOModel:  # type: ignore[override]
         """Move the model to the specified device."""
-        self.device = get_device(device)
+        self._device = get_device(device)
         self.policy_network = self.policy_network.to(device)
         self.value_network = self.value_network.to(device)
         return self
@@ -141,14 +154,14 @@ class PPOModel(nn.Module):
             (action, log_prob)
         """
         action_probs, _ = self.forward(state)
+        action_dist = Categorical(action_probs)
         if deterministic:
             action = torch.argmax(action_probs, dim=-1)
         else:
-            action_dist = Categorical(action_probs)
             action = action_dist.sample()
 
         log_prob = action_dist.log_prob(action)
-        return action.item(), log_prob
+        return int(action.item()), log_prob
 
     def evaluate_actions(
         self, state: Tensor, actions: Tensor

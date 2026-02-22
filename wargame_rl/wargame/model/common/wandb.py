@@ -1,9 +1,9 @@
 from contextlib import contextmanager
 from datetime import datetime
-
-from pytorch_lightning.loggers import WandbLogger
+from typing import Any
 
 import wandb
+from pytorch_lightning.loggers import WandbLogger
 
 # mypy: disable-error-code=attr-defined
 
@@ -43,7 +43,7 @@ def init_wandb(config: dict | None = None, name: str | None = None):  # type: ig
             wandb.finish()
 
 
-def get_logger(run) -> WandbLogger:  # type: ignore
+def get_logger(run: Any) -> WandbLogger:  # type: ignore
     # log_model=True -> log the model at the end of the training
     wandb_logger = WandbLogger(log_model=True, run=run)
     return wandb_logger
