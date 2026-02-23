@@ -12,10 +12,12 @@ from wargame_rl.wargame.model.common import (
     get_logger,
     init_wandb,
 )
+from wargame_rl.wargame.model.common.factory import create_environment
+from wargame_rl.wargame.model.common.record_episode_callback import (
+    RecordEpisodeCallback,
+)
 from wargame_rl.wargame.model.dqn.config import DQNConfig, NetworkType, TrainingConfig
-from wargame_rl.wargame.model.dqn.factory import create_environment
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
-from wargame_rl.wargame.model.dqn.record_episode_callback import RecordEpisodeCallback
 from wargame_rl.wargame.model.net import MLPNetwork, TransformerNetwork
 from wargame_rl.wargame.model.ppo.config import PPOConfig
 from wargame_rl.wargame.model.ppo.lightning import PPOLightning

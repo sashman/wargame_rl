@@ -5,8 +5,8 @@ import numpy as np
 import torch
 
 from wargame_rl.wargame.envs.types import WargameEnvAction
+from wargame_rl.wargame.model.common.observation import observation_to_tensor
 from wargame_rl.wargame.model.dqn.experience_replay import Experience, ReplayBuffer
-from wargame_rl.wargame.model.dqn.observation import observation_to_tensor
 from wargame_rl.wargame.model.net import RL_Network
 
 

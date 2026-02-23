@@ -1,7 +1,7 @@
 import torch
 
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.dqn.observation import observation_to_flat_tensor
+from wargame_rl.wargame.model.common.observation import observation_to_flat_tensor
 from wargame_rl.wargame.model.ppo.agent import Agent
 from wargame_rl.wargame.model.ppo.config import PPOConfig
 from wargame_rl.wargame.model.ppo.lightning import PPOLightning

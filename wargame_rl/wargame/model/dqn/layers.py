@@ -16,7 +16,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-from wargame_rl.wargame.model.dqn.config import TransformerConfig
+from wargame_rl.wargame.model.common.config import TransformerConfig
 
 
 class LayerNorm(nn.Module):

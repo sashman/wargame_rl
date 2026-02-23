@@ -4,8 +4,8 @@ from typing import Iterator
 import torch
 from torch.utils.data.dataset import IterableDataset
 
+from wargame_rl.wargame.model.common.observation import observations_to_tensor_batch
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
-from wargame_rl.wargame.model.dqn.observation import observations_to_tensor_batch
 from wargame_rl.wargame.types import Experience, ExperienceBatch
 
 PATH_DATASETS = os.environ.get("PATH_DATASETS", "./datasets")

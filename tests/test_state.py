@@ -2,11 +2,11 @@ import numpy as np
 import torch
 
 from wargame_rl.wargame.envs.types import WargameEnvConfig, WargameEnvObservation
-from wargame_rl.wargame.model.dqn.dataset import experience_list_to_batch
-from wargame_rl.wargame.model.dqn.observation import (
+from wargame_rl.wargame.model.common.observation import (
     observation_to_tensor,
     observations_to_tensor_batch,
 )
+from wargame_rl.wargame.model.dqn.dataset import experience_list_to_batch
 from wargame_rl.wargame.types import Experience
 
 

@@ -6,7 +6,7 @@ from torch import Tensor
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvObservation
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.dqn.observation import observation_to_flat_tensor
+from wargame_rl.wargame.model.common.observation import observation_to_flat_tensor
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.model.ppo.ppo import PPOModel
