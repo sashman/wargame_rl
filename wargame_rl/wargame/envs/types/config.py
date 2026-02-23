@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 from pydantic import BaseModel, Field, model_validator
+
+from wargame_rl.wargame.envs.reward.phase import RewardPhaseConfig
 
 
 class ModelConfig(BaseModel):
@@ -128,6 +132,11 @@ class WargameEnvConfig(BaseModel):
         gt=0,
         default=6.0,
         description="Maximum distance a model can move in a single step.",
+    )
+    reward_phases: list[RewardPhaseConfig] | None = Field(
+        default=None,
+        description="Ordered reward phases for curriculum learning. "
+        "When None, uses the legacy Reward class and existing config fields.",
     )
 
     @model_validator(mode="before")
