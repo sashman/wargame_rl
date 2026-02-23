@@ -203,9 +203,14 @@ class DQNLightning(LightningModule):
         """Get train loader."""
         return self.__dataloader()
 
-    def run_episodes(self, n_episodes: int, epsilon: float = 0.0) -> None:
+    def run_episodes(self, n_episodes: int, epsilon: float = 0.0) -> float:
+        """Run evaluation episodes and log metrics.
+
+        Returns the success rate as a fraction in [0, 1].
+        """
         steps_s = []
         episode_rewards = []
+        episode_successes = []
         self.policy_net.eval()
         with torch.no_grad():
             for _ in range(n_episodes):
@@ -214,28 +219,47 @@ class DQNLightning(LightningModule):
                 )
                 episode_rewards.append(reward)
                 steps_s.append(steps)
+
+                if (
+                    self.env.phase_manager is not None
+                    and self.env.last_step_context is not None
+                ):
+                    success = self.env.phase_manager.check_success(
+                        self.env, self.env.last_step_context
+                    )
+                    episode_successes.append(success)
+
         self.mean_episode_reward = sum(episode_rewards) / len(episode_rewards)
         self.log("mean_episode_reward", self.mean_episode_reward, prog_bar=False)
         self.log("mean_episode_steps", sum(steps_s) / len(steps_s), prog_bar=False)
         self.log("max_episode_reward", max(episode_rewards), prog_bar=False)
         self.log("min_episode_reward", min(episode_rewards), prog_bar=False)
-        success_rate = np.array(steps_s) < self.env.max_turns
-        self.log("success_rate", success_rate.mean() * 100, prog_bar=False)
+
+        if self.env.phase_manager is not None and episode_successes:
+            sr = np.array(episode_successes, dtype=float).mean()
+        else:
+            sr = float((np.array(steps_s) < self.env.max_turns).mean())
+
+        self.log("success_rate", sr * 100, prog_bar=False)
         self.policy_net.train()
+        return float(sr)
 
     def on_train_epoch_end(self) -> None:
         if self.hparams.log:  # type: ignore
-            self.run_episodes(self.hparams.n_episodes)  # type: ignore
-            # Nate: This plot does not make a lot of sense as of now. It needs
-            # to be adapted, but to what???
-            # observation, _ = self.env.reset()
-            # values_function = compute_values_function(
-            #     observation,
-            #     self.env.board_width,
-            #     self.env.board_height,
-            #     self.policy_net,
-            # )
-            # fig = plot_policy_on_grid(values_function, observation)
-            # wandb.log({"Value function": fig})  # type: ignore
-            # plt.close(fig)
+            sr = self.run_episodes(self.hparams.n_episodes)  # type: ignore
+
+            if self.env.phase_manager is not None:
+                advanced = self.env.phase_manager.try_advance(sr, self.current_epoch)
+                self.log(
+                    "reward_phase",
+                    float(self.env.phase_manager.current_phase_index),
+                    prog_bar=False,
+                )
+                if advanced:
+                    self.log(
+                        "phase_advanced_at_epoch",
+                        float(self.current_epoch),
+                        prog_bar=False,
+                    )
+
         return super().on_train_epoch_end()  # type: ignore
