@@ -8,99 +8,10 @@ from torch import Tensor
 from torch.distributions import Categorical
 
 from wargame_rl.wargame.model.common import Device, get_device
+from wargame_rl.wargame.model.net import RL_Network
 
 if TYPE_CHECKING:
     pass
-
-
-class PPOPolicyNetwork(nn.Module):
-    """PPO Policy Network that outputs action probabilities."""
-
-    def __init__(
-        self,
-        input_size: int,
-        output_size: int,
-        hidden_size: int = 128,
-        num_layers: int = 2,
-        device: Device = None,
-    ) -> None:
-        super().__init__()
-        self._device = get_device(device)
-
-        layers: list[nn.Module] = []
-        prev_size = input_size
-
-        # Create hidden layers
-        for _ in range(num_layers - 1):
-            layers.append(nn.Linear(prev_size, hidden_size))
-            layers.append(nn.ReLU())
-            prev_size = hidden_size
-
-        # Output layer
-        layers.append(nn.Linear(prev_size, output_size))
-        layers.append(nn.Softmax(dim=-1))
-
-        self.network = nn.Sequential(*layers)
-
-    @property
-    def device(self) -> torch.device:
-        return self._device
-
-    def forward(self, x: Tensor) -> Tensor:
-        """Forward pass through the policy network.
-
-        Args:
-            x: Input tensor
-
-        Returns:
-            Action probabilities
-        """
-        out: Tensor = self.network(x)
-        return out
-
-
-class PPOValueNetwork(nn.Module):
-    """PPO Value Network that estimates state values."""
-
-    def __init__(
-        self,
-        input_size: int,
-        hidden_size: int = 128,
-        num_layers: int = 2,
-        device: Device = None,
-    ) -> None:
-        super().__init__()
-        self._device = get_device(device)
-
-        layers_val: list[nn.Module] = []
-        prev_size = input_size
-
-        # Create hidden layers
-        for _ in range(num_layers - 1):
-            layers_val.append(nn.Linear(prev_size, hidden_size))
-            layers_val.append(nn.ReLU())
-            prev_size = hidden_size
-
-        # Output layer
-        layers_val.append(nn.Linear(prev_size, 1))
-
-        self.network = nn.Sequential(*layers_val)
-
-    @property
-    def device(self) -> torch.device:
-        return self._device
-
-    def forward(self, x: Tensor) -> Tensor:
-        """Forward pass through the value network.
-
-        Args:
-            x: Input tensor
-
-        Returns:
-            State values
-        """
-        out: Tensor = self.network(x).squeeze(-1)
-        return out
 
 
 class PPOModel(nn.Module):
@@ -108,11 +19,13 @@ class PPOModel(nn.Module):
 
     def __init__(
         self,
-        policy_network: PPOPolicyNetwork,
-        value_network: PPOValueNetwork,
+        policy_network: RL_Network,
+        value_network: RL_Network,
         device: Device = None,
     ) -> None:
         super().__init__()
+        if not policy_network.is_policy or value_network.is_policy:
+            raise ValueError("Wront network type.")
         self.policy_network = policy_network
         self.value_network = value_network
         self._device = get_device(device)

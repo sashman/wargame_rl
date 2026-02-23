@@ -21,7 +21,7 @@ from wargame_rl.wargame.model.dqn.lightning import DQNLightning
 from wargame_rl.wargame.model.net import MLPNetwork, TransformerNetwork
 from wargame_rl.wargame.model.ppo.config import PPOConfig
 from wargame_rl.wargame.model.ppo.lightning import PPOLightning
-from wargame_rl.wargame.model.ppo.ppo import PPO_MLP, PPO_Transformer
+from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
@@ -142,7 +142,7 @@ def train(
         if network_type == NetworkType.TRANSFORMER:
             net = PPO_Transformer.from_env(env)
         else:
-            net = PPO_MLP.from_env(env)
+            raise NotImplementedError("We will probably never do this.")
         model = PPOLightning(env=env, policy_net=net, **ppo_config.model_dump())
 
         config = {

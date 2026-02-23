@@ -2,7 +2,7 @@
 """Test script to verify PPO implementation."""
 
 from wargame_rl.wargame.model.ppo.config import PPOConfig
-from wargame_rl.wargame.model.ppo.ppo import PPO_MLP, PPO_Transformer
+from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
 
 
 def test_ppo_imports() -> None:
@@ -10,7 +10,7 @@ def test_ppo_imports() -> None:
     print("Testing PPO imports...")
 
     # Test that classes can be imported
-    assert PPO_MLP is not None
+
     assert PPO_Transformer is not None
     assert PPOConfig is not None
 

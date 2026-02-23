@@ -7,7 +7,7 @@ from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.model.net import MLPNetwork, RL_Network, TransformerNetwork
-from wargame_rl.wargame.model.ppo.ppo import PPO_MLP, PPO_Transformer
+from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
 from wargame_rl.wargame.types import Experience
 
 
@@ -79,12 +79,6 @@ def policy_net(request: pytest.FixtureRequest, env: WargameEnv) -> RL_Network:
 
 
 @pytest.fixture
-def ppo_mlp_net(env: WargameEnv) -> PPO_MLP:
-    net = PPO_MLP.from_env(env=env)
-    return cast(PPO_MLP, net.to("cpu"))
-
-
-@pytest.fixture
 def ppo_transformer_net(env: WargameEnv) -> PPO_Transformer:
     net = PPO_Transformer.from_env(env=env)
     return cast(PPO_Transformer, net.to("cpu"))
@@ -92,15 +86,10 @@ def ppo_transformer_net(env: WargameEnv) -> PPO_Transformer:
 
 @pytest.fixture(
     params=[
-        pytest.param("ppo_mlp_net", id="ppo_mlp"),
         pytest.param("ppo_transformer_net", id="ppo_transformer"),
     ]
 )
-def ppo_net(
-    request: pytest.FixtureRequest, env: WargameEnv
-) -> PPO_MLP | PPO_Transformer:
-    """Parametrized fixture for PPO_MLP and PPO_Transformer."""
-    if request.param == "ppo_mlp_net":
-        return cast(PPO_MLP, PPO_MLP.from_env(env=env).to("cpu"))
+def ppo_net(request: pytest.FixtureRequest, env: WargameEnv) -> PPO_Transformer:
+    """Parametrized fixture for PPO_Transformer."""
     assert request.param == "ppo_transformer_net"
     return cast(PPO_Transformer, PPO_Transformer.from_env(env=env).to("cpu"))

@@ -13,6 +13,7 @@ from wargame_rl.wargame.model.dqn.layers import Block, LayerNorm, TransformerCon
 
 class RL_Network(nn.Module, ABC):
     device: torch.device
+    is_policy: bool
 
     def is_batched(self, xs: list[torch.Tensor]) -> bool:
         """Check if the input is batched."""

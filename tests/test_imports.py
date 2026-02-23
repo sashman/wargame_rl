@@ -14,10 +14,9 @@ def test_imports() -> bool:
         from wargame_rl.wargame.model.ppo.agent import Agent
         from wargame_rl.wargame.model.ppo.config import PPOConfig
         from wargame_rl.wargame.model.ppo.lightning import PPOLightning
-        from wargame_rl.wargame.model.ppo.ppo import PPO_MLP, PPO_Transformer
+        from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
 
         print("All PPO modules imported successfully!")
-        print("PPO_MLP:", PPO_MLP)
         print("PPO_Transformer:", PPO_Transformer)
         print("PPOConfig:", PPOConfig)
         print("PPOLightning:", PPOLightning)
