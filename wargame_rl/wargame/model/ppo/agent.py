@@ -2,32 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from torch import Tensor
-
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvObservation
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.common.observation import observation_to_flat_tensor
+from wargame_rl.wargame.model.common.observation import observation_to_tensor
+from wargame_rl.wargame.types import Experience
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.model.ppo.ppo import PPOModel
-
-
-class Experience:
-    """Experience class to store state, action, reward, done, and log probability."""
-
-    def __init__(
-        self,
-        state: Tensor,
-        action: int,
-        reward: float,
-        done: bool,
-        log_prob: Tensor,
-    ) -> None:
-        self.state = state
-        self.action = action
-        self.reward = reward
-        self.done = done
-        self.log_prob = log_prob
 
 
 class Agent:
@@ -62,15 +43,13 @@ class Agent:
         steps = 0
         experiences = []
 
-        # Convert observation to flat tensor (same layout as observation.size)
-        state_tensor = observation_to_flat_tensor(observation, policy_net.device)
-        if state_tensor.dim() == 1:
-            state_tensor = state_tensor.unsqueeze(0)
+        # Convert observation to a list of tensor
+        state_tensors = observation_to_tensor(observation, policy_net.device)
 
         while not done:
             # Get action from policy (single int); env expects one action per model
             action, log_prob = policy_net.get_action(
-                state_tensor, deterministic=epsilon == 0.0
+                state_tensors, deterministic=epsilon == 0.0
             )
             n_models = observation.n_wargame_models
             env_action = WargameEnvAction(actions=[action] * n_models)
@@ -88,7 +67,8 @@ class Agent:
             if save_steps:
                 experiences.append(
                     Experience(
-                        state=state_tensor.squeeze(0),
+                        state=observation,
+                        new_state=next_observation,
                         action=action,
                         reward=reward,
                         done=done,
@@ -97,9 +77,7 @@ class Agent:
                 )
 
             observation = next_observation
-            state_tensor = observation_to_flat_tensor(observation, policy_net.device)
-            if state_tensor.dim() == 1:
-                state_tensor = state_tensor.unsqueeze(0)
+            state_tensors = observation_to_tensor(observation, policy_net.device)
 
             # Render if requested
             if render:

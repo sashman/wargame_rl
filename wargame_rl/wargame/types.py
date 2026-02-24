@@ -11,6 +11,7 @@ class Experience(NamedTuple):
     reward: float
     done: bool
     new_state: WargameEnvObservation
+    log_prob: torch.Tensor | None
 
 
 class ExperienceBatch(NamedTuple):
@@ -21,3 +22,4 @@ class ExperienceBatch(NamedTuple):
     rewards: torch.Tensor
     dones: torch.Tensor
     new_state_tensors: list[torch.Tensor]
+    log_probs: torch.Tensor | None
