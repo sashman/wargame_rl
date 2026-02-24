@@ -1,4 +1,7 @@
 import os
+
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
 from enum import Enum
 
 import typer
@@ -60,7 +63,7 @@ def train(
         None, help="Path to the environment config file"
     ),
     algorithm: AlgorithmType = typer.Option(
-        AlgorithmType.DQN, help="Algorithm to use for training"
+        AlgorithmType.PPO, help="Algorithm to use for training"
     ),
     network_type: NetworkType = typer.Option(
         NetworkType.TRANSFORMER, help="Network type to use"

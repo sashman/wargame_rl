@@ -12,15 +12,15 @@ from pathlib import Path
 from typing import cast
 
 import torch
-import wandb
 from loguru import logger
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import Callback
 from torch import nn
 
+import wandb
 from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.model.common.observation import observation_to_tensor
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
-from wargame_rl.wargame.model.dqn.observation import observation_to_tensor
 
 
 def _run_recording(
