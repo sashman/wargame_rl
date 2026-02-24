@@ -8,7 +8,8 @@ from torch import nn
 from wargame_rl.wargame.envs.types import WargameEnvObservation
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common import Device, get_device
-from wargame_rl.wargame.model.dqn.layers import Block, LayerNorm, TransformerConfig
+from wargame_rl.wargame.model.common.config import TransformerConfig
+from wargame_rl.wargame.model.dqn.layers import Block, LayerNorm
 
 
 class RL_Network(nn.Module, ABC):

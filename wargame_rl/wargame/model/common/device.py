@@ -5,9 +5,13 @@ import torch
 
 Device: TypeAlias = str | None | torch.device
 
+force_cpu = True
+
 
 @lru_cache(maxsize=1)
 def auto_device() -> torch.device:
+    if force_cpu:
+        return torch.device("cpu")
     if torch.backends.mps.is_available():
         device = torch.device("mps")  # Apple Silicon (Metal backend)
     elif torch.cuda.is_available():

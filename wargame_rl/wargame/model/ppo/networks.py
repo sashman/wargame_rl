@@ -25,10 +25,11 @@ class PPOModel(nn.Module):
     ) -> None:
         super().__init__()
         if not policy_network.is_policy or value_network.is_policy:
-            raise ValueError("Wront network type.")
+            raise ValueError("Wrong network type.")
         self.policy_network = policy_network
         self.value_network = value_network
         self._device = get_device(device)
+        self.to(self.device)
 
     @property
     def device(self) -> torch.device:
