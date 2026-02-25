@@ -20,7 +20,9 @@ from wargame_rl.wargame.envs.env_components import (
     wargame_model_placement,
 )
 from wargame_rl.wargame.envs.renders import renderer
+from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
 from wargame_rl.wargame.envs.reward.reward import Reward
+from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.types import (
     WargameEnvAction,
     WargameEnvConfig,
@@ -113,6 +115,17 @@ class WargameEnv(gym.Env):
 
         # Last reward from step(); None until first step after reset
         self.last_reward: float | None = None
+
+        # Reward phases (curriculum learning) -- None uses legacy Reward path
+        if config.reward_phases is not None:
+            self.phase_manager: RewardPhaseManager | None = (
+                RewardPhaseManager.from_configs(config.reward_phases)
+            )
+        else:
+            self.phase_manager = None
+
+        # Last StepContext from step(); available for post-episode success checks
+        self.last_step_context: StepContext | None = None
 
     @staticmethod
     def create_wargame_models(config: WargameEnvConfig) -> list[WargameModel]:
@@ -214,6 +227,7 @@ class WargameEnv(gym.Env):
 
         self.current_turn = 0
         self.last_reward = None
+        self.last_step_context = None
 
         if self.config.has_fixed_model_positions:
             fixed_wargame_model_placement(
@@ -266,15 +280,30 @@ class WargameEnv(gym.Env):
 
         self.current_turn += 1
 
+        needs_mm = self.config.group_cohesion_enabled or (
+            self.phase_manager is not None
+            and self.phase_manager.needs_model_model_distances
+        )
         cache = compute_distances(
             self.wargame_models,
             self.objectives,
-            compute_model_model=self.config.group_cohesion_enabled,
+            compute_model_model=needs_mm,
         )
 
         is_terminated = get_termination(self.current_turn, self.max_turns, cache)
 
-        reward = Reward().calculate_reward(self, cache)
+        if self.phase_manager is not None:
+            ctx = StepContext(
+                distance_cache=cache,
+                current_turn=self.current_turn,
+                max_turns=self.max_turns,
+                board_width=self.board_width,
+                board_height=self.board_height,
+            )
+            self.last_step_context = ctx
+            reward = self.phase_manager.calculate_reward(self, ctx)
+        else:
+            reward = Reward().calculate_reward(self, cache)
 
         observation = self._get_obs(cache)
         info = self._get_info()

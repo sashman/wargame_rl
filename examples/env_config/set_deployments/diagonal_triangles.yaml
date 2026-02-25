@@ -1,0 +1,26 @@
+config_name: diagonal_triangles
+number_of_wargame_models: 4
+number_of_objectives: 5
+objective_radius_size: 3
+board_width: 60
+board_height: 44
+group_cohesion_enabled: true
+group_max_distance: 5.0
+group_violation_penalty: -0.1
+max_groups: 2
+
+deployment_zone: [0, 22, 30, 44]
+opponent_deployment_zone: [30, 0, 60, 22]
+
+models:
+  - { group_id: 0 }
+  - { group_id: 0 }
+  - { group_id: 1 }
+  - { group_id: 1 }
+
+objectives:
+  - { x: 20, y: 8 }
+  - { x: 46, y: 10 }
+  - { x: 30, y: 22 }
+  - { x: 14, y: 34 }
+  - { x: 40, y: 36 }

@@ -1,0 +1,31 @@
+config_name: 4_m_2_o_60x44_fixed_phased
+number_of_wargame_models: 4
+number_of_objectives: 2
+objective_radius_size: 3
+board_width: 60
+board_height: 44
+group_cohesion_enabled: false
+max_groups: 2
+
+models:
+  - { x: 5, y: 10, group_id: 0 }
+  - { x: 7, y: 12, group_id: 0 }
+  - { x: 5, y: 30, group_id: 1 }
+  - { x: 7, y: 32, group_id: 1 }
+
+objectives:
+  - { x: 45, y: 15 }
+  - { x: 50, y: 35 }
+
+reward_phases:
+  - name: move_and_group
+    reward_calculators:
+      - type: closest_objective
+        weight: 1.0
+      - type: group_cohesion
+        weight: 1.0
+        params: { group_max_distance: 5.0, violation_penalty: -0.1 }
+    success_criteria:
+      type: all_at_objectives
+    success_threshold: 0.8
+    min_epochs: 0
