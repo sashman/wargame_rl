@@ -1,4 +1,7 @@
 import os
+
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
 from enum import Enum
 
 import typer

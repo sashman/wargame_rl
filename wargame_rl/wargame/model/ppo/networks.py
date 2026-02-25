@@ -42,7 +42,7 @@ class PPOModel(nn.Module):
         self.value_network = self.value_network.to(device)
         return self
 
-    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, x: list[torch.Tensor]) -> Tuple[Tensor, Tensor]:
         """Forward pass through both networks.
 
         Args:
@@ -56,7 +56,7 @@ class PPOModel(nn.Module):
         return action_probs, state_values
 
     def get_action(
-        self, state: Tensor, deterministic: bool = False
+        self, state_tensors: list[torch.Tensor], deterministic: bool = False
     ) -> Tuple[int, Tensor]:
         """Get action from policy network.
 
@@ -67,7 +67,7 @@ class PPOModel(nn.Module):
         Returns:
             (action, log_prob)
         """
-        action_probs, _ = self.forward(state)
+        action_probs, _ = self.forward(state_tensors)
         action_dist = Categorical(action_probs)
         if deterministic:
             action = torch.argmax(action_probs, dim=-1)
@@ -78,7 +78,7 @@ class PPOModel(nn.Module):
         return int(action.item()), log_prob
 
     def evaluate_actions(
-        self, state: Tensor, actions: Tensor
+        self, state_tensors: list[torch.Tensor], actions: Tensor
     ) -> Tuple[Tensor, Tensor, Tensor]:
         """Evaluate actions under the current policy.
 
@@ -89,7 +89,7 @@ class PPOModel(nn.Module):
         Returns:
             (action_probabilities, log_probabilities, entropy)
         """
-        action_probs, _ = self.forward(state)
+        action_probs, _ = self.forward(state_tensors)
         action_dist = Categorical(action_probs)
 
         log_probs = action_dist.log_prob(actions)

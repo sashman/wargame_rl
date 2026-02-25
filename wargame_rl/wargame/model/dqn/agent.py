@@ -92,6 +92,7 @@ class Agent:
                 reward=float(reward),
                 done=bool(done),
                 new_state=new_state,
+                log_prob = None,
             )
             self.replay_buffer.append(exp)
         self.observation = new_state
