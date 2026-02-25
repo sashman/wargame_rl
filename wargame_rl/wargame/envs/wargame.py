@@ -19,11 +19,17 @@ from wargame_rl.wargame.envs.env_components import (
     update_distances_to_objectives,
     wargame_model_placement,
 )
+from wargame_rl.wargame.envs.opponent.policy import OpponentPolicy
+from wargame_rl.wargame.envs.opponent.registry import (
+    _auto_register,
+    build_opponent_policy,
+)
 from wargame_rl.wargame.envs.renders import renderer
 from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
 from wargame_rl.wargame.envs.reward.reward import Reward
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.types import (
+    TurnOrder,
     WargameEnvAction,
     WargameEnvConfig,
     WargameEnvInfo,
@@ -34,6 +40,8 @@ from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
 # Re-export for backward compatibility (tests, dqn import from here)
 __all__ = ["WargameEnv", "WargameObjective"]
+
+_auto_register()
 
 
 class WargameEnv(gym.Env):
@@ -72,21 +80,11 @@ class WargameEnv(gym.Env):
 
         self.renderer = renderer
 
-        """
-        If human-rendering is used, `self.window` will be a reference
-        to the window that we draw to. `self.clock` will be a clock that is used
-        to ensure that the environment is rendered at the correct framerate in
-        human-mode. They will remain `None` until human-mode is used for the
-        first time.
-        """
         self.window = None
         self.clock = None
 
-        self.current_turn = 0  # Initialize the current turn to 0
-
-        self.max_turns = (
-            self.board_width + self.board_height
-        )  # Set the maximum number of turns
+        self.current_turn = 0
+        self.max_turns = self.board_width + self.board_height
 
         self.wargame_models = self.create_wargame_models(config)
         self.objectives = self.create_objectives(config)
@@ -127,36 +125,72 @@ class WargameEnv(gym.Env):
         # Last StepContext from step(); available for post-episode success checks
         self.last_step_context: StepContext | None = None
 
+        # --- Opponent setup ---
+        self.opponent_models: list[WargameModel] = self._create_opponent_models(config)
+        if config.number_of_opponent_models > 0:
+            self._opponent_action_handler = ActionHandler(
+                config, n_models=config.number_of_opponent_models
+            )
+            self._opponent_policy: OpponentPolicy | None = build_opponent_policy(
+                config.opponent_policy,  # type: ignore[arg-type]
+                self,
+            )
+        else:
+            self._opponent_action_handler = ActionHandler(config, n_models=0)
+            self._opponent_policy = None
+
+    @property
+    def opponent_action_space(self) -> spaces.Tuple:
+        """Action space for opponent models (used by policies)."""
+        return self._opponent_action_handler.action_space
+
     @staticmethod
-    def create_wargame_models(config: WargameEnvConfig) -> list[WargameModel]:
-        """Build the list of wargame models from config.
-
-        When ``models`` are provided, group_id and max_wounds are taken from
-        each entry.  Otherwise the models are split into groups automatically.
-        """
+    def _build_models(
+        n: int,
+        model_configs: list[Any] | None,
+        n_objectives: int,
+        max_groups: int,
+    ) -> list[WargameModel]:
+        """Shared helper to build a list of WargameModel instances."""
         result: list[WargameModel] = []
-        increment = max(1, config.number_of_wargame_models // config.max_groups)
-
-        for i in range(config.number_of_wargame_models):
-            if config.models is not None:
-                mc = config.models[i]
+        increment = max(1, n // max_groups)
+        for i in range(n):
+            if model_configs is not None:
+                mc = model_configs[i]
                 group_id = mc.group_id
                 max_wounds = mc.max_wounds
             else:
                 group_id = i // increment
                 max_wounds = 100
-
             result.append(
                 WargameModel(
                     location=np.zeros(2, dtype=int),
                     stats={"max_wounds": max_wounds, "current_wounds": max_wounds},
                     group_id=group_id,
-                    distances_to_objectives=np.zeros(
-                        [config.number_of_objectives, 2], dtype=int
-                    ),
+                    distances_to_objectives=np.zeros([n_objectives, 2], dtype=int),
                 )
             )
         return result
+
+    @staticmethod
+    def create_wargame_models(config: WargameEnvConfig) -> list[WargameModel]:
+        """Build the list of player wargame models from config."""
+        return WargameEnv._build_models(
+            config.number_of_wargame_models,
+            config.models,
+            config.number_of_objectives,
+            config.max_groups,
+        )
+
+    @staticmethod
+    def _create_opponent_models(config: WargameEnvConfig) -> list[WargameModel]:
+        """Build the list of opponent models from config."""
+        return WargameEnv._build_models(
+            config.number_of_opponent_models,
+            config.opponent_models,
+            config.number_of_objectives,
+            config.max_groups,
+        )
 
     @staticmethod
     def create_objectives(config: WargameEnvConfig) -> list[WargameObjective]:
@@ -190,6 +224,8 @@ class WargameEnv(gym.Env):
         update_distances_to_objectives(
             self.wargame_models, self.objectives, distance_cache
         )
+        if self.opponent_models:
+            update_distances_to_objectives(self.opponent_models, self.objectives)
         return build_observation(
             self.current_turn,
             self.wargame_models,
@@ -197,6 +233,7 @@ class WargameEnv(gym.Env):
             self.config.max_groups,
             self.board_width,
             self.board_height,
+            opponent_models=self.opponent_models,
         )
 
     def _get_info(self) -> WargameEnvInfo:
@@ -217,18 +254,19 @@ class WargameEnv(gym.Env):
                 int(self.opponent_deployment_zone[3]),
             ),
             self.config.max_groups,
+            opponent_models=self.opponent_models,
         )
 
     def reset(
         self, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[WargameEnvObservation, dict[str, Any]]:
-        # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
         self.current_turn = 0
         self.last_reward = None
         self.last_step_context = None
 
+        # Place player models
         if self.config.has_fixed_model_positions:
             fixed_wargame_model_placement(
                 self.wargame_models,
@@ -242,6 +280,7 @@ class WargameEnv(gym.Env):
                 self.np_random,
             )
 
+        # Place objectives
         if self.config.has_fixed_objective_positions:
             fixed_objective_placement(
                 self.objectives,
@@ -257,6 +296,21 @@ class WargameEnv(gym.Env):
                 self.opponent_deployment_zone,
             )
 
+        # Place opponent models
+        if self.opponent_models:
+            if self.config.has_fixed_opponent_positions:
+                fixed_wargame_model_placement(
+                    self.opponent_models,
+                    self.config.opponent_models,  # type: ignore[arg-type]
+                )
+            else:
+                wargame_model_placement(
+                    self.opponent_models,
+                    self.opponent_deployment_zone,
+                    self.config.group_max_distance,
+                    self.np_random,
+                )
+
         cache = compute_distances(self.wargame_models, self.objectives)
         observation = self._get_obs(cache)
         info: WargameEnvInfo = self._get_info()
@@ -267,9 +321,7 @@ class WargameEnv(gym.Env):
 
         return observation, info.model_dump()
 
-    def step(
-        self, action: WargameEnvAction
-    ) -> tuple[WargameEnvObservation, float, bool, bool, dict[str, Any]]:
+    def _apply_player_action(self, action: WargameEnvAction) -> None:
         self._action_handler.apply(
             action,
             self.wargame_models,
@@ -277,6 +329,37 @@ class WargameEnv(gym.Env):
             self.board_height,
             self._action_handler.action_space,
         )
+
+    def _apply_opponent_action(self) -> None:
+        if self._opponent_policy is None or not self.opponent_models:
+            return
+        opp_action = self._opponent_policy.select_action(self.opponent_models, self)
+        self._opponent_action_handler.apply(
+            opp_action,
+            self.opponent_models,
+            self.board_width,
+            self.board_height,
+            self._opponent_action_handler.action_space,
+        )
+
+    def _player_moves_first(self) -> bool:
+        """Resolve turn order for this step."""
+        if self.config.turn_order == TurnOrder.player:
+            return True
+        if self.config.turn_order == TurnOrder.opponent:
+            return False
+        # TurnOrder.random
+        return bool(self.np_random.random() < 0.5)
+
+    def step(
+        self, action: WargameEnvAction
+    ) -> tuple[WargameEnvObservation, float, bool, bool, dict[str, Any]]:
+        if self._player_moves_first():
+            self._apply_player_action(action)
+            self._apply_opponent_action()
+        else:
+            self._apply_opponent_action()
+            self._apply_player_action(action)
 
         self.current_turn += 1
 

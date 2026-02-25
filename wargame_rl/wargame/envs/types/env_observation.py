@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .model_observation import WargameModelObservation
 from .objective_observation import WargameEnvObjectiveObservation
@@ -15,10 +15,15 @@ class WargameEnvObservation:
     objectives: list[WargameEnvObjectiveObservation]
     board_width: int = 50
     board_height: int = 50
+    opponent_models: list[WargameModelObservation] = field(default_factory=list)
 
     @property
     def size_wargame_models(self) -> list[int]:
         return [model.size for model in self.wargame_models]
+
+    @property
+    def size_opponent_models(self) -> list[int]:
+        return [model.size for model in self.opponent_models]
 
     @property
     def size_objectives(self) -> list[int]:
@@ -32,6 +37,7 @@ class WargameEnvObservation:
     def size(self) -> int:
         total_size = (
             sum(self.size_wargame_models)
+            + sum(self.size_opponent_models)
             + sum(self.size_objectives)
             + self.size_game_observation
         )
@@ -40,6 +46,10 @@ class WargameEnvObservation:
     @property
     def n_wargame_models(self) -> int:
         return len(self.wargame_models)
+
+    @property
+    def n_opponent_models(self) -> int:
+        return len(self.opponent_models)
 
     @property
     def n_objectives(self) -> int:
