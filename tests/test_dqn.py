@@ -3,7 +3,7 @@ from pytorch_lightning import Trainer
 
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.dqn.dataset import experience_list_to_batch
+from wargame_rl.wargame.model.common.dataset import experience_list_to_batch
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
 from wargame_rl.wargame.model.net import RL_Network
