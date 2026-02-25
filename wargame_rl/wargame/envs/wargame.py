@@ -140,6 +140,11 @@ class WargameEnv(gym.Env):
             self._opponent_policy = None
 
     @property
+    def n_actions(self) -> int:
+        """Number of discrete actions per model (including stay)."""
+        return self._action_handler.n_actions
+
+    @property
     def opponent_action_space(self) -> spaces.Tuple:
         """Action space for opponent models (used by policies)."""
         return self._opponent_action_handler.action_space

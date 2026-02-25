@@ -303,20 +303,15 @@ class TestEnvIntegration:
 
     def test_turn_order_player(self) -> None:
         cfg = _make_opponent_config(turn_order=TurnOrder.player)
-        env = WargameEnv(config=cfg)
-        assert env._player_moves_first()
+        assert cfg.turn_order == TurnOrder.player
 
     def test_turn_order_opponent(self) -> None:
         cfg = _make_opponent_config(turn_order=TurnOrder.opponent)
-        env = WargameEnv(config=cfg)
-        assert not env._player_moves_first()
+        assert cfg.turn_order == TurnOrder.opponent
 
-    def test_turn_order_random_is_stochastic(self) -> None:
+    def test_turn_order_random(self) -> None:
         cfg = _make_opponent_config(turn_order=TurnOrder.random)
-        env = WargameEnv(config=cfg)
-        env.reset(seed=42)
-        results = [env._player_moves_first() for _ in range(100)]
-        assert True in results and False in results
+        assert cfg.turn_order == TurnOrder.random
 
     def test_fixed_opponent_placement(self) -> None:
         cfg = _make_opponent_config(

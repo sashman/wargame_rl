@@ -14,7 +14,7 @@ def test_dqn_forward(
     env: WargameEnv, experiences: list[Experience], dqn_net: RL_Network, n_steps: int
 ) -> None:
     n_wargame_models = env.config.number_of_wargame_models
-    n_actions = env._action_handler.n_actions
+    n_actions = env.n_actions
     batch = experience_list_to_batch(experiences)
     next_q_values = dqn_net.forward(batch.state_tensors)
     assert next_q_values.shape == (n_steps, n_wargame_models, n_actions)
