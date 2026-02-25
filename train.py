@@ -57,10 +57,11 @@ def train(
         None, help="Render mode for the environment"
     ),
     env_config_path: str | None = typer.Option(
-        None, help="Path to the environment config file"
+        "examples/env_config/4_models_2_objectives_fixed.yaml",
+        help="Path to the environment config file",
     ),
     algorithm: AlgorithmType = typer.Option(
-        AlgorithmType.DQN, help="Algorithm to use for training"
+        AlgorithmType.PPO, help="Algorithm to use for training"
     ),
     network_type: NetworkType = typer.Option(
         NetworkType.TRANSFORMER, help="Network type to use"
@@ -76,6 +77,10 @@ def train(
     max_epochs: int | None = typer.Option(
         None,
         help="Override max training epochs (defaults to TrainingConfig value)",
+    ),
+    no_wandb: bool = typer.Option(
+        False,
+        help="Disable wandb logging (use local CSV logger instead)",
     ),
 ) -> None:
     """Train the agent."""
@@ -105,7 +110,9 @@ def train(
             "training": training_config.model_dump(),
         }
 
-        with init_wandb(config=config, name=env_config.config_name) as run:
+        with init_wandb(
+            config=config, name=env_config.config_name, disabled=no_wandb
+        ) as run:
             env_config_callback = EnvConfigCallback(run.name, env_config)
             dqn_callbacks: list = [env_config_callback] + get_checkpoint_callback(
                 run.name, filename_prefix="dqn"
@@ -119,9 +126,9 @@ def train(
                         training_config.record_after_epoch,
                     )
                 )
-            logger = get_logger(run)
+            logger = get_logger(run, disabled=no_wandb)
             trainer = Trainer(
-                accelerator="auto",
+                accelerator="cpu",
                 max_epochs=training_config.max_epochs,
                 val_check_interval=training_config.val_check_interval,
                 logger=logger,
@@ -151,7 +158,9 @@ def train(
             "training": training_config.model_dump(),
         }
 
-        with init_wandb(config=config, name=env_config.config_name) as run:
+        with init_wandb(
+            config=config, name=env_config.config_name, disabled=no_wandb
+        ) as run:
             env_config_callback = EnvConfigCallback(run.name, env_config)
             ppo_callbacks = [env_config_callback] + get_checkpoint_callback(
                 run.name, filename_prefix="ppo"
@@ -165,9 +174,9 @@ def train(
                         training_config.record_after_epoch,
                     )
                 )
-            logger = get_logger(run)
+            logger = get_logger(run, disabled=no_wandb)
             trainer = Trainer(
-                accelerator="auto",
+                accelerator="cpu",
                 max_epochs=training_config.max_epochs,
                 val_check_interval=training_config.val_check_interval,
                 logger=logger,
