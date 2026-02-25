@@ -10,6 +10,7 @@ from torch.distributions import Categorical
 from torch.utils.data import DataLoader, Dataset
 
 from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.model.common.observation import observations_to_tensor_batch
 from wargame_rl.wargame.model.ppo.agent import Agent
 
 if TYPE_CHECKING:
@@ -66,6 +67,7 @@ class PPOLightning(LightningModule):
             n_episodes: Number of episodes to run for evaluation
         """
         super().__init__()
+        self.automatic_optimization = False
         self.save_hyperparameters()
 
         self.env = env
@@ -94,46 +96,18 @@ class PPOLightning(LightningModule):
         self.gamma = gamma
         self.gae_lambda = gae_lambda
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: list[Tensor]) -> Tensor:
         """Forward pass through the policy network.
 
         Args:
-            x: Input tensor
+            x: List of input tensors (game state, objectives, models).
 
         Returns:
-            Action probabilities
+            Action logits with shape (batch, n_models, n_actions).
         """
-        action_probs: Tensor
-        action_probs, _ = self.policy_net(x)
-        return action_probs
-
-    def get_action(
-        self, state: Tensor, deterministic: bool = False
-    ) -> tuple[int, Tensor]:
-        """Get action from policy network.
-
-        Args:
-            state: Input state tensor
-            deterministic: Whether to sample or take the argmax
-
-        Returns:
-            (action, log_prob)
-        """
-        return self.policy_net.get_action(state, deterministic)
-
-    def evaluate_actions(
-        self, state: Tensor, actions: Tensor
-    ) -> tuple[Tensor, Tensor, Tensor]:
-        """Evaluate actions under the current policy.
-
-        Args:
-            state: Input state tensor
-            actions: Actions to evaluate
-
-        Returns:
-            (action_probabilities, log_probabilities, entropy)
-        """
-        return self.policy_net.evaluate_actions(state, actions)
+        action_logits: Tensor
+        action_logits, _ = self.policy_net(x)
+        return action_logits
 
     def compute_returns(self, rewards: Tensor, dones: Tensor, values: Tensor) -> Tensor:
         """Compute returns using Generalized Advantage Estimation.
@@ -166,99 +140,85 @@ class PPOLightning(LightningModule):
         returns = advantages + values
         return returns
 
-    def training_step(self, batch: Any, batch_idx: int) -> Tensor:
+    def training_step(self, batch: Any, batch_idx: int) -> None:
         """Carry out a single training step.
 
+        Uses manual optimization because PPO runs multiple gradient steps
+        per batch of collected experience.
+
+        Follows the same observation-to-tensor pattern as the DQN pipeline:
+        observations are converted via ``observations_to_tensor_batch`` and
+        actions are extracted from ``WargameEnvAction.actions``.
+
         Args:
-            batch: Current batch of data
+            batch: Current batch of data (unused -- episodes are collected inline)
             batch_idx: Batch index
-
-        Returns:
-            Training loss
         """
-        # Collect experiences (run episodes until we have at least one step)
-        experiences: list = []
-        while len(experiences) == 0:
-            _reward, _steps, experiences = self.agent.run_episode(
-                self.policy_net,
-                epsilon=0.0,  # No exploration for PPO
-                render=False,
-                save_steps=True,
-            )
+        experiences = self._collect_experiences()
 
-        # Convert experiences to tensors
-        states = torch.stack([exp.state for exp in experiences])
+        device = self.policy_net.device
+        optimizer = self.optimizers()
+
+        state_tensors = observations_to_tensor_batch(
+            [exp.state for exp in experiences], device=device
+        )
         actions = torch.tensor(
-            [exp.action for exp in experiences],
+            [exp.action.actions for exp in experiences],
             dtype=torch.long,
-            device=states.device,
+            device=device,
         )
         rewards = torch.tensor(
             [exp.reward for exp in experiences],
             dtype=torch.float32,
-            device=states.device,
+            device=device,
         )
         dones = torch.tensor(
             [exp.done for exp in experiences],
             dtype=torch.float32,
-            device=states.device,
+            device=device,
         )
+        old_log_probs = torch.stack(
+            [exp.log_prob for exp in experiences]  # type: ignore[misc]
+        ).detach()
 
-        # Compute values and log probs
-        action_probs, state_values = self.policy_net(states)
-        _, log_probs, _ = self.evaluate_actions(states, actions)
+        _, state_values = self.policy_net(state_tensors)
 
-        # Compute returns and advantages (detach so we don't double-backward)
         returns = self.compute_returns(rewards, dones, state_values).detach()
         advantages = (returns - state_values).detach()
-        log_probs = log_probs.detach()
-        states = states.detach()
 
-        # Normalize advantages
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-        # PPO update
         total_loss_float = 0.0
         for _ in range(self.n_epochs):
-            # Compute new action probabilities and value estimates
-            new_action_probs, new_state_values = self.policy_net(states)
-            new_action_dist = Categorical(new_action_probs)
-            new_log_probs = new_action_dist.log_prob(actions)
+            new_logits, new_state_values = self.policy_net(state_tensors)
+            new_dist = Categorical(logits=new_logits)
+            new_log_probs = new_dist.log_prob(actions).sum(dim=-1)
 
-            # Compute ratio (old log_probs are detached)
-            ratio = torch.exp(new_log_probs - log_probs)
+            ratio = torch.exp(new_log_probs - old_log_probs)
 
-            # Compute surrogate loss
             surr1 = ratio * advantages
             surr2 = (
                 torch.clamp(ratio, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
             )
             policy_loss = -torch.min(surr1, surr2).mean()
 
-            # Compute value loss (use current value estimate)
             value_loss = self.value_loss_fn(new_state_values, returns) * self.vf_coef
 
-            # Compute entropy bonus
-            entropy = new_action_dist.entropy().mean()
+            entropy = new_dist.entropy().sum(dim=-1).mean()
             entropy_loss = -entropy * self.ent_coef
 
-            # Total loss
             loss = policy_loss + value_loss + entropy_loss
 
-            # Backward pass
-            self.optimizer.zero_grad()
-            loss.backward()
+            optimizer.zero_grad()  # type: ignore[union-attr]
+            self.manual_backward(loss)
 
-            # Gradient clipping
             torch.nn.utils.clip_grad_norm_(
                 self.policy_net.parameters(), self.max_grad_norm
             )
-
-            self.optimizer.step()
+            optimizer.step()  # type: ignore[union-attr]
 
             total_loss_float += loss.item()
 
-        # Log metrics
         if self.do_log:
             self.log("train_loss", total_loss_float / self.n_epochs, prog_bar=True)
             self.log("policy_loss", policy_loss.item(), prog_bar=False)
@@ -266,8 +226,17 @@ class PPOLightning(LightningModule):
             self.log("entropy_loss", entropy_loss.item(), prog_bar=False)
             self.log("env_steps", self.global_step, logger=False, prog_bar=True)
 
-        mean_loss = total_loss_float / self.n_epochs
-        return torch.tensor(mean_loss, device=states.device, dtype=torch.float32)
+    def _collect_experiences(self) -> list:
+        """Run episodes until at least one step is collected."""
+        experiences: list = []
+        while len(experiences) == 0:
+            _reward, _steps, experiences = self.agent.run_episode(
+                self.policy_net,
+                epsilon=0.0,
+                render=False,
+                save_steps=True,
+            )
+        return experiences
 
     def configure_optimizers(self) -> optim.Optimizer:
         """Initialize optimizer."""

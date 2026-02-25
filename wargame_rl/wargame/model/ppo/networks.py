@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Tuple
+from typing import Tuple
 
 import torch
 import torch.nn as nn
 from torch import Tensor
 from torch.distributions import Categorical
 
+from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.model.common import Device, get_device
 from wargame_rl.wargame.model.net import RL_Network
-
-if TYPE_CHECKING:
-    pass
 
 
 class PPOModel(nn.Module):
@@ -28,54 +26,56 @@ class PPOModel(nn.Module):
             raise ValueError("Wrong network type.")
         self.policy_network = policy_network
         self.value_network = value_network
-        self._device = get_device(device)
-        self.to(self.device)
+        self.to(get_device(device))
 
     @property
-    def device(self) -> torch.device:
-        return self._device
-
-    def to(self, device: Device) -> PPOModel:  # type: ignore[override]
-        """Move the model to the specified device."""
-        self._device = get_device(device)
-        self.policy_network = self.policy_network.to(device)
-        self.value_network = self.value_network.to(device)
-        return self
+    def device(self) -> torch.device:  # type: ignore[override]
+        """Derive device from actual parameter location (stays correct after Lightning moves the model)."""
+        param = next(self.parameters(), None)
+        if param is not None:
+            return param.device
+        return torch.device("cpu")
 
     def forward(self, x: list[torch.Tensor]) -> Tuple[Tensor, Tensor]:
         """Forward pass through both networks.
 
         Args:
-            x: Input tensor
+            x: List of input tensors (game state, objectives, models).
 
         Returns:
-            (action_probabilities, state_values)
+            (action_logits, state_values) where action_logits has shape
+            (batch, n_models, n_actions) and state_values has shape (batch,).
         """
-        action_probs = self.policy_network(x)
+        action_logits = self.policy_network(x)
         state_values = self.value_network(x)
-        return action_probs, state_values
+        return action_logits, state_values
 
     def get_action(
         self, state_tensors: list[torch.Tensor], deterministic: bool = False
-    ) -> Tuple[int, Tensor]:
-        """Get action from policy network.
+    ) -> Tuple[WargameEnvAction, Tensor]:
+        """Select one action per model, mirroring how DQN selects per-model actions.
 
         Args:
-            state: Input state tensor
-            deterministic: Whether to sample or take the argmax
+            state_tensors: Observation converted to tensors (single observation, not batched).
+            deterministic: If True take argmax, otherwise sample.
 
         Returns:
-            (action, log_prob)
+            (env_action, joint_log_prob) where env_action contains a per-model
+            action list and joint_log_prob is the sum of per-model log-probs (scalar).
         """
-        action_probs, _ = self.forward(state_tensors)
-        action_dist = Categorical(action_probs)
-        if deterministic:
-            action = torch.argmax(action_probs, dim=-1)
-        else:
-            action = action_dist.sample()
+        action_logits, _ = self.forward(state_tensors)
+        action_dist = Categorical(logits=action_logits)
 
-        log_prob = action_dist.log_prob(action)
-        return int(action.item()), log_prob
+        if deterministic:
+            actions = torch.argmax(action_logits, dim=-1)
+        else:
+            actions = action_dist.sample()
+
+        per_model_log_probs = action_dist.log_prob(actions)
+        joint_log_prob = per_model_log_probs.sum(dim=-1).squeeze(0)
+
+        env_action = WargameEnvAction(actions=actions.flatten().tolist())
+        return env_action, joint_log_prob
 
     def evaluate_actions(
         self, state_tensors: list[torch.Tensor], actions: Tensor
@@ -83,16 +83,17 @@ class PPOModel(nn.Module):
         """Evaluate actions under the current policy.
 
         Args:
-            state: Input state tensor
-            actions: Actions to evaluate
+            state_tensors: Batch of observations as tensors.
+            actions: Per-model actions, shape (batch_size, n_models).
 
         Returns:
-            (action_probabilities, log_probabilities, entropy)
+            (action_logits, joint_log_probs, joint_entropy) where the joint
+            quantities are summed across models, giving shape (batch_size,).
         """
-        action_probs, _ = self.forward(state_tensors)
-        action_dist = Categorical(action_probs)
+        action_logits, _ = self.forward(state_tensors)
+        action_dist = Categorical(logits=action_logits)
 
-        log_probs = action_dist.log_prob(actions)
-        entropy = action_dist.entropy()
+        joint_log_probs = action_dist.log_prob(actions).sum(dim=-1)
+        joint_entropy = action_dist.entropy().sum(dim=-1)
 
-        return action_probs, log_probs, entropy
+        return action_logits, joint_log_probs, joint_entropy

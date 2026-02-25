@@ -13,8 +13,15 @@ from wargame_rl.wargame.model.dqn.layers import Block, LayerNorm
 
 
 class RL_Network(nn.Module, ABC):
-    device: torch.device
     is_policy: bool
+
+    @property
+    def device(self) -> torch.device:  # type: ignore[override]
+        """Derive device from actual parameter location (stays correct after Lightning moves the model)."""
+        param = next(self.parameters(), None)
+        if param is not None:
+            return param.device
+        return torch.device("cpu")
 
     def is_batched(self, xs: list[torch.Tensor]) -> bool:
         """Check if the input is batched."""
@@ -83,8 +90,7 @@ class MLPNetwork(RL_Network):
 
         self.output = nn.Linear(hidden_dim, self.output_dim)
         self.activation = nn.GELU()
-        self.device = get_device(device)
-        self.to(self.device)
+        self.to(get_device(device))
         self.n_wargame_models = n_wargame_models
 
     def forward(self, xs: list[torch.Tensor]) -> torch.Tensor:
@@ -180,8 +186,7 @@ class TransformerNetwork(RL_Network):
         # report number of parameters
         print("number of parameters: %.2fM" % (self.get_num_params() / 1e6,))
 
-        self.device = get_device(device)
-        self.to(self.device)
+        self.to(get_device(device))
 
     def get_num_params(self) -> int:
         """
