@@ -23,8 +23,9 @@ alwaysApply: false
 
 - Use `@lru_cache(maxsize=1)` on expensive fixtures to avoid recomputation
 - Parametrize over network types via the `dqn_net` fixture (runs tests for MLP and Transformer)
-- Test files: `test_env.py` (environment), `test_fixed_placement.py` (entity config & placement), `test_dqn.py` (model), `test_agent.py` (agent), `test_state.py` (state)
+- Test files: `test_env.py` (environment), `test_fixed_placement.py` (entity config & placement), `test_dqn.py` (model), `test_agent.py` (agent), `test_state.py` (state), `test_opponents.py` (opponent integration)
 - Type-annotate fixtures and test functions
+- When adding a new entity/feature, write dedicated tests covering: config validation, env integration (reset/step), observation/info contents, tensor shapes, DQN forward pass, and backward compatibility with configs that don't use the feature
 
 ## Validation
 
