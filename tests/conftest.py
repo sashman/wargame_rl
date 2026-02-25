@@ -31,7 +31,9 @@ def experiences(env: WargameEnv, n_steps: int) -> list[Experience]:
     for _ in range(n_steps):
         action = WargameEnvAction(actions=env.action_space.sample())
         state, reward, terminated, _, _ = env.step(action)
-        output.append(Experience(previous_state, action, reward, terminated, state))
+        output.append(
+            Experience(previous_state, action, reward, terminated, state, None)
+        )
         previous_state = state
 
     return output

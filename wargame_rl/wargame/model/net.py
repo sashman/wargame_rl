@@ -13,8 +13,6 @@ from wargame_rl.wargame.model.dqn.layers import Block, LayerNorm
 
 
 class RL_Network(nn.Module, ABC):
-    is_policy: bool
-
     @property
     def device(self) -> torch.device:  # type: ignore[override]
         """Derive device from actual parameter location (stays correct after Lightning moves the model)."""

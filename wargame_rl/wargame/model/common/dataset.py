@@ -23,12 +23,21 @@ def experience_list_to_batch(experiences: list[Experience]) -> ExperienceBatch:
     )
     device = tensor_states[0].device
 
+    log_probs = [experience.log_prob for experience in experiences]
+    has_log_probs = any(lp is not None for lp in log_probs)
+    log_probs_tensor: torch.Tensor | None = None
+    if has_log_probs:
+        log_probs_tensor = torch.stack(
+            [lp if lp is not None else torch.tensor(0.0) for lp in log_probs]
+        ).to(device)
+
     return ExperienceBatch(
         state_tensors=tensor_states,
         actions=torch.tensor(actions, dtype=torch.int32, device=device),
         rewards=torch.tensor(rewards, dtype=torch.float32, device=device),
         dones=torch.tensor(dones, dtype=torch.bool, device=device),
         new_state_tensors=tensor_next_states,
+        log_probs=log_probs_tensor,
     )
 
 
