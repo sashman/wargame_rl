@@ -51,10 +51,45 @@ def _same_group_closest_distance(
     return closest.astype(np.float32).reshape(n, 1)
 
 
+def _models_to_features(
+    models: list,
+    half_board: np.ndarray,
+    half_board_tiled: np.ndarray,
+    max_dist: float,
+    max_groups: int,
+    feature_dim: int,
+) -> np.ndarray:
+    """Convert a list of model observations to a feature matrix.
+
+    Returns shape (n_models, feature_dim). When n_models == 0 returns
+    a (0, feature_dim) array so the tensor always has a known width.
+    """
+    if not models:
+        return np.zeros((0, feature_dim), dtype=np.float32)
+
+    locs = np.array([m.location for m in models], dtype=np.float32)
+    dists = np.array(
+        [m.distances_to_objectives.flatten() for m in models], dtype=np.float32
+    )
+    group_ids = np.array([m.group_id for m in models], dtype=np.int32)
+
+    return np.hstack(
+        [
+            _normalize(locs, half_board),
+            _normalize(dists, half_board_tiled),
+            _group_ids_to_one_hot(group_ids, max_groups),
+            _same_group_closest_distance(locs, group_ids, max_dist),
+        ]
+    )
+
+
 def _observation_to_numpy(
     state: WargameEnvObservation,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Convert a single observation to three NumPy arrays (current_turn, objectives, models)."""
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Convert a single observation to four NumPy arrays.
+
+    Returns (current_turn, objectives, player_models, opponent_models).
+    """
     models = state.wargame_models
     max_groups = models[0].max_groups
 
@@ -65,19 +100,19 @@ def _observation_to_numpy(
     half_board_tiled = np.tile(half_board, n_objectives)
     max_dist = float(np.sqrt(state.board_width**2 + state.board_height**2))
 
-    locs = np.array([m.location for m in models], dtype=np.float32)
-    dists = np.array(
-        [m.distances_to_objectives.flatten() for m in models], dtype=np.float32
-    )
-    group_ids = np.array([m.group_id for m in models], dtype=np.int32)
+    # 2 (loc) + n_objectives*2 (dists) + max_groups (group one-hot) + 1 (closest)
+    feature_dim = 2 + n_objectives * 2 + max_groups + 1
 
-    model_features = np.hstack(
-        [
-            _normalize(locs, half_board),
-            _normalize(dists, half_board_tiled),
-            _group_ids_to_one_hot(group_ids, max_groups),
-            _same_group_closest_distance(locs, group_ids, max_dist),
-        ]
+    model_features = _models_to_features(
+        models, half_board, half_board_tiled, max_dist, max_groups, feature_dim
+    )
+    opponent_features = _models_to_features(
+        state.opponent_models,
+        half_board,
+        half_board_tiled,
+        max_dist,
+        max_groups,
+        feature_dim,
     )
 
     obj_locs = np.array([o.location for o in state.objectives], dtype=np.float32)
@@ -85,7 +120,7 @@ def _observation_to_numpy(
 
     current_turn = np.array([0], dtype=np.float32)
 
-    return current_turn, obj_features, model_features
+    return current_turn, obj_features, model_features, opponent_features
 
 
 def observation_to_tensor(
@@ -97,25 +132,25 @@ def observation_to_tensor(
     ----------------
 
     The tensors are returned in the following order:
-        1. tensor_current_turn: Tensor containing the current turn as a float32
-        tensor of shape (1,).
-        2. tensor_objectives: Tensor of all objectives; shape (num_objectives, location_dims),
-        values normalized to [-1, 1].
-        3. tensor_wargame_models: Tensor of all wargame models; shape (num_models, model_features),
-        where model_features includes normalized location, distances to objectives (normalized to [-1, 1]),
-        group_id as one-hot of length max_groups, and the normalised distance to the closest
-        model in the same group (single scalar in [0, 1]).
+        1. tensor_current_turn: shape (1,)
+        2. tensor_objectives: shape (num_objectives, 2), normalized to [-1, 1]
+        3. tensor_wargame_models: shape (num_models, model_features)
+        4. tensor_opponent_models: shape (num_opponent_models, model_features)
+           (0 rows when no opponents)
 
-    Normalization uses the board dimensions stored on the observation
-    (per-axis for coordinates/distances, board diagonal for Euclidean distances).
+    model_features includes normalized location, distances to objectives,
+    group_id one-hot, and closest same-group distance.
     """
     device = get_device(device)
-    current_turn, obj_features, model_features = _observation_to_numpy(state)
+    current_turn, obj_features, model_features, opp_features = _observation_to_numpy(
+        state
+    )
 
     return [
         torch.from_numpy(current_turn).to(device),
         torch.from_numpy(obj_features).to(device),
         torch.from_numpy(model_features).to(device),
+        torch.from_numpy(opp_features).to(device),
     ]
 
 
@@ -131,9 +166,11 @@ def observations_to_tensor_batch(
     batch_turn = np.stack([r[0] for r in np_results])
     batch_obj = np.stack([r[1] for r in np_results])
     batch_models = np.stack([r[2] for r in np_results])
+    batch_opp = np.stack([r[3] for r in np_results])
 
     return [
         torch.from_numpy(batch_turn).to(device),
         torch.from_numpy(batch_obj).to(device),
         torch.from_numpy(batch_models).to(device),
+        torch.from_numpy(batch_opp).to(device),
     ]

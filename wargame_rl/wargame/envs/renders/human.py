@@ -16,7 +16,7 @@ class HumanRender(Renderer):
     PANEL_HEIGHT = 36
     GRID_SIZE = 1024  # Max width or height of the game grid in pixels
 
-    # Distinct colors per group (cycles if group_id exceeds palette size)
+    # Distinct colors per group for player models
     _GROUP_COLORS: list[tuple[int, int, int]] = [
         (0, 0, 255),  # blue – group 1
         (60, 180, 80),  # green – group 2
@@ -26,6 +26,18 @@ class HumanRender(Renderer):
         (200, 100, 0),  # brown – group 6
         (220, 100, 180),  # pink – group 7
         (220, 80, 60),  # red – group 8
+    ]
+
+    # Warm/red palette for opponent models
+    _OPPONENT_COLORS: list[tuple[int, int, int]] = [
+        (200, 40, 40),  # dark red
+        (220, 100, 30),  # burnt orange
+        (180, 30, 80),  # crimson
+        (160, 60, 140),  # magenta
+        (200, 80, 80),  # rose
+        (180, 100, 20),  # amber
+        (140, 30, 50),  # maroon
+        (210, 60, 100),  # hot pink
     ]
 
     def __init__(self) -> None:
@@ -174,10 +186,15 @@ class HumanRender(Renderer):
         # We draw the target
         self._draw_target(self.canvas, objectives)
 
-        # Draw movement arrows (previous → current location)
+        # Draw movement arrows (previous -> current location)
         self._draw_movement_arrows(self.canvas, wargame_models)
 
-        # Now we draw the agent
+        # Draw opponent movement arrows and models
+        if env.opponent_models:
+            self._draw_opponent_movement_arrows(self.canvas, env.opponent_models)
+            self._draw_opponent_models(self.canvas, env.opponent_models)
+
+        # Now we draw the player agent models
         self._draw_agent(self.canvas, wargame_models)
 
         # Finally, add some gridlines
@@ -484,6 +501,11 @@ class HumanRender(Renderer):
         index = group_id % len(self._GROUP_COLORS)
         return self._GROUP_COLORS[index]
 
+    def _opponent_color_for_group(self, group_id: int) -> tuple[int, int, int]:
+        """Return a distinct opponent color for the given group_id."""
+        index = group_id % len(self._OPPONENT_COLORS)
+        return self._OPPONENT_COLORS[index]
+
     def _draw_agent(
         self, canvas: pygame.Surface, wargame_models: list[WargameModel]
     ) -> None:
@@ -499,6 +521,21 @@ class HumanRender(Renderer):
                 ),
                 self.pix_square_size / 3,
             )
+
+    def _draw_opponent_models(
+        self, canvas: pygame.Surface, opponent_models: list[WargameModel]
+    ) -> None:
+        """Draw opponent models as downward-pointing triangles."""
+        for model in opponent_models:
+            color = self._opponent_color_for_group(model.group_id)
+            cx = float(model.location[0] + 0.5) * self.pix_square_size
+            cy = float(model.location[1] + 0.5) * self.pix_square_size
+            r = self.pix_square_size / 3
+            # Equilateral triangle pointing down
+            top_left = (cx - r, cy - r * 0.6)
+            top_right = (cx + r, cy - r * 0.6)
+            bottom = (cx, cy + r * 0.8)
+            pygame.draw.polygon(canvas, color, [top_left, top_right, bottom])
 
     def _draw_movement_arrows(
         self, canvas: pygame.Surface, wargame_models: list[WargameModel]
@@ -530,6 +567,52 @@ class HumanRender(Renderer):
             pygame.draw.line(canvas, faded, prev_px, curr_px, width=line_width)
 
             # Arrowhead
+            dx = curr_px[0] - prev_px[0]
+            dy = curr_px[1] - prev_px[1]
+            length = math.hypot(dx, dy)
+            if length < 1e-6:
+                continue
+            ux, uy = dx / length, dy / length
+            head_len = min(self.pix_square_size * 0.45, length * 0.4)
+            head_w = head_len * 0.5
+            tip = curr_px
+            left = (
+                tip[0] - ux * head_len - uy * head_w,
+                tip[1] - uy * head_len + ux * head_w,
+            )
+            right = (
+                tip[0] - ux * head_len + uy * head_w,
+                tip[1] - uy * head_len - ux * head_w,
+            )
+            pygame.draw.polygon(canvas, faded, [tip, left, right])
+
+    def _draw_opponent_movement_arrows(
+        self, canvas: pygame.Surface, opponent_models: list[WargameModel]
+    ) -> None:
+        """Draw movement arrows for opponent models using opponent colors."""
+        for model in opponent_models:
+            if model.previous_location is None:
+                continue
+            prev = model.previous_location
+            curr = model.location
+            if (prev == curr).all():
+                continue
+
+            color = self._opponent_color_for_group(model.group_id)
+            faded = tuple(c + (255 - c) // 2 for c in color)
+
+            prev_px = (
+                float(prev[0] + 0.5) * self.pix_square_size,
+                float(prev[1] + 0.5) * self.pix_square_size,
+            )
+            curr_px = (
+                float(curr[0] + 0.5) * self.pix_square_size,
+                float(curr[1] + 0.5) * self.pix_square_size,
+            )
+
+            line_width = max(3, int(self.pix_square_size / 4))
+            pygame.draw.line(canvas, faded, prev_px, curr_px, width=line_width)
+
             dx = curr_px[0] - prev_px[0]
             dy = curr_px[1] - prev_px[1]
             length = math.hypot(dx, dy)

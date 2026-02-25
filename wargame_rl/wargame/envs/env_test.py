@@ -1,10 +1,12 @@
 from wargame_rl.wargame.envs.renders.human import HumanRender
-from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
+from wargame_rl.wargame.envs.types import (
+    OpponentPolicyConfig,
+    WargameEnvAction,
+    WargameEnvConfig,
+)
 
 
 class EnvTest:
-    # Set up the environment and and run N numbe of acitons
-
     def __init__(
         self,
         board_width: int = 50,
@@ -23,6 +25,10 @@ class EnvTest:
                 objective_radius_size=2,
                 number_of_wargame_models=3,
                 number_of_objectives=2,
+                number_of_opponent_models=3,
+                opponent_policy=OpponentPolicyConfig(
+                    type="scripted_advance_to_objective"
+                ),
             ),
             renderer=HumanRender(),
         )

@@ -1,8 +1,31 @@
 from __future__ import annotations
 
+from enum import Enum
+from typing import Any
+
 from pydantic import BaseModel, Field, model_validator
 
 from wargame_rl.wargame.envs.reward.phase import RewardPhaseConfig
+
+
+class TurnOrder(str, Enum):
+    """Who moves first each turn."""
+
+    player = "player"
+    opponent = "opponent"
+    random = "random"
+
+
+class OpponentPolicyConfig(BaseModel):
+    """Configuration for the opponent policy engine."""
+
+    type: str = Field(
+        description="Policy engine identifier, e.g. 'random', 'scripted_advance_to_objective'."
+    )
+    params: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Policy-specific parameters forwarded to the policy constructor.",
+    )
 
 
 class ModelConfig(BaseModel):
@@ -139,6 +162,26 @@ class WargameEnvConfig(BaseModel):
         "When None, uses the legacy Reward class and existing config fields.",
     )
 
+    # --- Opponent configuration ---
+    number_of_opponent_models: int = Field(
+        default=0,
+        ge=0,
+        description="Number of opponent models. 0 means no opponents (backward-compatible).",
+    )
+    opponent_models: list[ModelConfig] | None = Field(
+        default=None,
+        description="Per-opponent-model configuration (reuses ModelConfig). "
+        "Length must match number_of_opponent_models.",
+    )
+    turn_order: TurnOrder = Field(
+        default=TurnOrder.player,
+        description="Who moves first: 'player', 'opponent', or 'random' (coin-flip each step).",
+    )
+    opponent_policy: OpponentPolicyConfig | None = Field(
+        default=None,
+        description="Opponent policy engine config. Required when number_of_opponent_models > 0.",
+    )
+
     @model_validator(mode="before")
     @classmethod
     def size_to_width_height(cls, data: object) -> object:
@@ -164,6 +207,13 @@ class WargameEnvConfig(BaseModel):
         """True when every objective entry specifies x/y coordinates."""
         return self.objectives is not None and all(
             o.x is not None for o in self.objectives
+        )
+
+    @property
+    def has_fixed_opponent_positions(self) -> bool:
+        """True when every opponent model entry specifies x/y coordinates."""
+        return self.opponent_models is not None and all(
+            m.x is not None for m in self.opponent_models
         )
 
     @model_validator(mode="after")
@@ -206,6 +256,33 @@ class WargameEnvConfig(BaseModel):
                 ):
                     raise ValueError(
                         f"objectives[{i}] ({o.x}, {o.y}) is outside "
+                        f"the board ({self.board_width}x{self.board_height})"
+                    )
+
+        # --- Opponent validation ---
+        if self.number_of_opponent_models > 0 and self.opponent_policy is None:
+            raise ValueError(
+                "opponent_policy must be set when number_of_opponent_models > 0"
+            )
+        if self.opponent_models is not None:
+            if len(self.opponent_models) != self.number_of_opponent_models:
+                raise ValueError(
+                    f"opponent_models has {len(self.opponent_models)} entries "
+                    f"but number_of_opponent_models is {self.number_of_opponent_models}"
+                )
+            has_coords = [m.x is not None for m in self.opponent_models]
+            if any(has_coords) and not all(has_coords):
+                raise ValueError(
+                    "Either all opponent_models must have x/y coordinates or none"
+                )
+            for i, m in enumerate(self.opponent_models):
+                if (
+                    m.x is not None
+                    and m.y is not None
+                    and (m.x >= self.board_width or m.y >= self.board_height)
+                ):
+                    raise ValueError(
+                        f"opponent_models[{i}] ({m.x}, {m.y}) is outside "
                         f"the board ({self.board_width}x{self.board_height})"
                     )
         return self

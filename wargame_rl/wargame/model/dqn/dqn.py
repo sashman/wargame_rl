@@ -111,11 +111,13 @@ class DQN_Transformer(RL_Network):
         wargame_model_size: int,
         n_actions: int,
         transformer_config: TransformerConfig,
+        opponent_model_size: int = 0,
         device: Device | None = None,
     ) -> None:
         self.game_size = game_size
         self.objective_size = objective_size
         self.wargame_model_size = wargame_model_size
+        self.opponent_model_size = opponent_model_size
         self.n_actions = n_actions
 
         super().__init__()
@@ -133,6 +135,13 @@ class DQN_Transformer(RL_Network):
             self.wargame_model_size, self.config.embedding_size, bias=True
         )
 
+        if self.opponent_model_size > 0:
+            self.opponent_model_embedding: nn.Linear | None = nn.Linear(
+                self.opponent_model_size, self.config.embedding_size, bias=True
+            )
+        else:
+            self.opponent_model_embedding = None
+
         self.transformer = nn.ModuleDict(
             dict(
                 drop=nn.Dropout(self.config.dropout),
@@ -147,16 +156,13 @@ class DQN_Transformer(RL_Network):
             self.config.embedding_size, self.n_actions, bias=False
         )
 
-        # init all weights
         self.apply(self._init_weights)
-        # apply special scaled init to the residual projections, per GPT-2 paper
         for pn, p in self.named_parameters():
             if pn.endswith("c_proj.weight"):
                 torch.nn.init.normal_(
                     p, mean=0.0, std=0.02 / math.sqrt(2 * self.config.n_layers)
                 )
 
-        # report number of parameters
         print("number of parameters: %.2fM" % (self.get_num_params() / 1e6,))
 
         self.device = get_device(device)
@@ -239,32 +245,50 @@ class DQN_Transformer(RL_Network):
         )  # shape (batch_size, num_models, embedding_size)
         return result
 
-    def forward(self, xs: list[torch.Tensor]) -> torch.Tensor:
-        game_tensor, objective_tensor, wargame_model_tensor = xs
+    def _embed_opponent_models(
+        self, opp_tensor: torch.Tensor, is_batched: bool = False
+    ) -> torch.Tensor | None:
+        """Embed opponent model tokens.  Returns None when there are no opponents."""
+        if self.opponent_model_embedding is None:
+            return None
+        if not is_batched:
+            opp_tensor = opp_tensor.unsqueeze(0)
+        if opp_tensor.shape[1] == 0:
+            return None
+        result: torch.Tensor = self.opponent_model_embedding(opp_tensor)
+        return result
 
-        # we compbute embeddings for each of the tensors in xs
-        game_embedding = self.embed_game_state(game_tensor, self.is_batched(xs))
-        objective_embedding = self.embed_objective_state(
-            objective_tensor, self.is_batched(xs)
-        )
+    def forward(self, xs: list[torch.Tensor]) -> torch.Tensor:
+        game_tensor = xs[0]
+        objective_tensor = xs[1]
+        wargame_model_tensor = xs[2]
+        opp_tensor = xs[3] if len(xs) > 3 else None
+
+        batched = self.is_batched(xs)
+        game_embedding = self.embed_game_state(game_tensor, batched)
+        objective_embedding = self.embed_objective_state(objective_tensor, batched)
         wargame_model_embedding = self.embed_wargame_model_state(
-            wargame_model_tensor, self.is_batched(xs)
+            wargame_model_tensor, batched
         )
         n_wargame_models = wargame_model_embedding.shape[1]
-        # we concatenate the embeddings in a sequence for the transformer.
-        # Note that the transformer does not know it is a sequence as there is no positional encoding.
-        x = torch.cat(
-            [game_embedding, objective_embedding, wargame_model_embedding], dim=1
-        )
-        # the shape of x is now (batch_size, ..., embedding_size)
 
-        # we forward through the transformer
+        # Sequence: [game, objectives, player_models, (opponent_models)]
+        parts = [game_embedding, objective_embedding, wargame_model_embedding]
+
+        if opp_tensor is not None:
+            opp_embedding = self._embed_opponent_models(opp_tensor, batched)
+            if opp_embedding is not None:
+                parts.append(opp_embedding)
+
+        x = torch.cat(parts, dim=1)
+
         for block in self.transformer.h:  # type: ignore
             x = block(x)
         x = self.transformer.ln_f(x)  # type: ignore
 
-        # we select the output for the wargame models
-        wargame_model_output = x[:, -n_wargame_models:, :]
+        # Player model tokens are right after game(1) + objectives(N_o)
+        n_prefix = 1 + objective_embedding.shape[1]
+        wargame_model_output = x[:, n_prefix : n_prefix + n_wargame_models, :]
         logits: torch.Tensor = self.action_head(wargame_model_output)
 
         return logits
@@ -305,8 +329,15 @@ class DQN_Transformer(RL_Network):
         n_actions: int = env._action_handler.n_actions
         transformer_config = TransformerConfig()
 
+        opponent_model_size = 0
+        if observation.size_opponent_models:
+            opponent_model_size = observation.size_opponent_models[0]
+
         print(
-            f"game_size: {game_size}, objective_size: {objective_size}, wargame_model_size: {wargame_model_size}, transformer_config: {transformer_config}, n_actions: {n_actions}"
+            f"game_size: {game_size}, objective_size: {objective_size}, "
+            f"wargame_model_size: {wargame_model_size}, "
+            f"opponent_model_size: {opponent_model_size}, "
+            f"transformer_config: {transformer_config}, n_actions: {n_actions}"
         )
         return cls(
             game_size=game_size,
@@ -314,6 +345,7 @@ class DQN_Transformer(RL_Network):
             wargame_model_size=wargame_model_size,
             n_actions=n_actions,
             transformer_config=transformer_config,
+            opponent_model_size=opponent_model_size,
         )
 
 

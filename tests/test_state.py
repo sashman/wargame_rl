@@ -28,7 +28,7 @@ def test_observation_to_tensor(experiences: list[Experience]) -> None:
 
     # Test batch conversion
     state_batch = observations_to_tensor_batch(states)
-    state_turn, state_objectives, state_wargame_models = state_batch
+    state_turn, state_objectives, state_wargame_models, _state_opp = state_batch
 
     assert state_turn.shape == (batch_size, 1)
     assert state_objectives.shape == (batch_size, n_objectives, dim_location)
@@ -84,8 +84,8 @@ def test_experience_to_batch(experiences: list[Experience]) -> None:
     assert batch.actions.shape == (batch_size, n_wargame_models)
     assert batch.rewards.shape == (batch_size,)
     assert batch.dones.shape == (batch_size,)
-    state_turn, state_objectives, state_wargame_models = batch.state_tensors
-    new_state_turn, new_state_objectives, new_state_wargame_models = (
+    state_turn, state_objectives, state_wargame_models, _state_opp = batch.state_tensors
+    new_state_turn, new_state_objectives, new_state_wargame_models, _new_opp = (
         batch.new_state_tensors
     )
     assert state_turn.shape == (batch_size, 1)

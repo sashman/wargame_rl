@@ -41,6 +41,20 @@ def update_distances_to_objectives(
         )
 
 
+def _models_to_obs(
+    models: list[WargameModel], max_groups: int
+) -> list[WargameModelObservation]:
+    return [
+        WargameModelObservation(
+            location=m.location,
+            distances_to_objectives=m.distances_to_objectives,
+            group_id=m.group_id,
+            max_groups=max_groups,
+        )
+        for m in models
+    ]
+
+
 def build_observation(
     current_turn: int,
     wargame_models: list[WargameModel],
@@ -48,26 +62,19 @@ def build_observation(
     max_groups: int,
     board_width: int,
     board_height: int,
+    opponent_models: list[WargameModel] | None = None,
 ) -> WargameEnvObservation:
     """Build the observation dict from current state."""
-    wargame_obs = [
-        WargameModelObservation(
-            location=model.location,
-            distances_to_objectives=model.distances_to_objectives,
-            group_id=model.group_id,
-            max_groups=max_groups,
-        )
-        for model in wargame_models
-    ]
     objectives_obs = [
         WargameEnvObjectiveObservation(location=obj.location) for obj in objectives
     ]
     return WargameEnvObservation(
         current_turn=current_turn,
-        wargame_models=wargame_obs,
+        wargame_models=_models_to_obs(wargame_models, max_groups),
         objectives=objectives_obs,
         board_width=board_width,
         board_height=board_height,
+        opponent_models=_models_to_obs(opponent_models or [], max_groups),
     )
 
 
@@ -78,24 +85,17 @@ def build_info(
     deployment_zone: tuple[int, int, int, int],
     opponent_deployment_zone: tuple[int, int, int, int],
     max_groups: int,
+    opponent_models: list[WargameModel] | None = None,
 ) -> WargameEnvInfo:
     """Build the info dict from current state."""
-    wargame_obs = [
-        WargameModelObservation(
-            location=model.location,
-            distances_to_objectives=model.distances_to_objectives,
-            group_id=model.group_id,
-            max_groups=max_groups,
-        )
-        for model in wargame_models
-    ]
     objectives_obs = [
         WargameEnvObjectiveObservation(location=obj.location) for obj in objectives
     ]
     return WargameEnvInfo(
         current_turn=current_turn,
-        wargame_models=wargame_obs,
+        wargame_models=_models_to_obs(wargame_models, max_groups),
         objectives=objectives_obs,
+        opponent_models=_models_to_obs(opponent_models or [], max_groups),
         deployment_zone=deployment_zone,
         opponent_deployment_zone=opponent_deployment_zone,
     )

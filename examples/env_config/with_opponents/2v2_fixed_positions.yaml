@@ -1,0 +1,28 @@
+config_name: 2v2_fixed_positions
+number_of_wargame_models: 2
+number_of_opponent_models: 2
+number_of_objectives: 2
+objective_radius_size: 3
+board_width: 40
+board_height: 30
+group_cohesion_enabled: false
+max_groups: 1
+turn_order: opponent
+
+deployment_zone: [0, 0, 12, 30]
+opponent_deployment_zone: [28, 0, 40, 30]
+
+opponent_policy:
+  type: scripted_advance_to_objective
+
+models:
+  - { x: 5, y: 10, group_id: 0 }
+  - { x: 5, y: 20, group_id: 0 }
+
+opponent_models:
+  - { x: 35, y: 10, group_id: 0 }
+  - { x: 35, y: 20, group_id: 0 }
+
+objectives:
+  - { x: 20, y: 10 }
+  - { x: 20, y: 20 }

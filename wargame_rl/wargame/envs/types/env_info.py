@@ -18,6 +18,10 @@ class WargameEnvInfo(BaseModel):
     objectives: list[WargameEnvObjectiveObservation] = Field(
         description="The list of objectives."
     )
+    opponent_models: list[WargameModelObservation] = Field(
+        default_factory=list,
+        description="The list of opponent models.",
+    )
     deployment_zone: tuple[int, int, int, int] = Field(
         description="The player deployment zone coordinates."
     )
