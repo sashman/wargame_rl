@@ -25,13 +25,15 @@ alwaysApply: true
 
 ## Training Runs
 
-- Start training: `just train <env_config.yaml> [mlp|transformer]` (defaults to transformer)
+- Start training (PPO, default): `just train <env_config.yaml>`
+- Train with DQN: `just train <env_config.yaml> dqn`
+- Train with DQN + specific network: `just train <env_config.yaml> dqn transformer`
 - Env configs live in `examples/env_config/` — copy an existing one to create new scenarios
 - Training logs to Wandb automatically; checkpoints saved to `checkpoints/`
-- Key CLI options: `--record-during-training`, `--max-epochs`, `--render-mode`
-- Hyperparameters live in `DQNConfig` and `TrainingConfig` (`wargame_rl/wargame/model/dqn/config.py`) — change defaults there, not via CLI flags
+- Key CLI options: `--record-during-training`, `--max-epochs`, `--render-mode`, `--algorithm`, `--no-wandb`
+- Hyperparameters: `DQNConfig` in `wargame_rl/wargame/model/dqn/config.py`, `PPOConfig` in `wargame_rl/wargame/model/ppo/config.py`, `TrainingConfig` in `wargame_rl/wargame/model/dqn/config.py`
 - Profile a run: `just profile <config.yaml> [model] [max_epochs]` generates `profile.html`
-- Simulate latest checkpoint: `just simulate-latest [mlp|transformer]`
+- Simulate latest checkpoint: `just simulate-latest [network_type]`
 - Clean up: `just clean` removes `checkpoints/` and `wandb/`
 
 ## Common Dev Tasks

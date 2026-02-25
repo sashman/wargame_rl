@@ -45,12 +45,13 @@ dockerize:
 	docker build -t warghame-rl .
 
 # Use it like: just train path/to/config.yaml
-# Or with network type: just train path/to/config.yaml mlp
-train env_config_path model='':
+# Or with algorithm: just train path/to/config.yaml ppo
+# Or with algorithm and network: just train path/to/config.yaml dqn transformer
+train env_config_path algorithm='ppo' model='':
 	@if [ -z "{{model}}" ]; then \
-		uv run train.py --record-during-training --env-config-path {{env_config_path}}; \
+		uv run train.py --record-during-training --env-config-path {{env_config_path}} --algorithm {{algorithm}}; \
 	else \
-		uv run train.py --record-during-training --env-config-path {{env_config_path}} --network-type {{model}}; \
+		uv run train.py --record-during-training --env-config-path {{env_config_path}} --algorithm {{algorithm}} --network-type {{model}}; \
 	fi
 
 simulate-latest network_type='':

@@ -94,8 +94,19 @@ just validate
 
 #### Training
 
+Default algorithm is PPO:
 ```bash
 just train examples/env_config/example.yaml
+```
+
+Train with DQN instead:
+```bash
+just train examples/env_config/example.yaml dqn
+```
+
+Train with DQN and a specific network type:
+```bash
+just train examples/env_config/example.yaml dqn transformer
 ```
 
 #### Running a simulation

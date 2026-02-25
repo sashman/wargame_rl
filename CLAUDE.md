@@ -1,325 +1,151 @@
-# Wargame RL Project Analysis
+# Wargame RL
 
+Reinforcement learning project that trains agents (DQN, PPO) to play tabletop wargames on a discrete grid. Agents control multiple models (units) using polar-coordinate movement to capture objectives.
 
-## Coding Principles for Claude (Python)
+## Tech Stack
 
-When generating or modifying Python code, follow these principles strictly.
+- **Python 3.13** — UV package manager (`uv.lock`)
+- **Gymnasium 1.x** — RL environment (`WargameEnv`)
+- **PyTorch + PyTorch Lightning** — DQN and PPO training
+- **Wandb** — experiment tracking & video recording
+- **Pydantic + pydantic-yaml** — config & type models
+- **Typer** — CLI (`train.py`, `simulate.py`)
+- **Loguru** — logging
+- **Pygame** — human rendering
 
-### 1. Prefer Simplicity Over Cleverness
+## Project Layout
 
-- Write the simplest solution that works.
-- Avoid unnecessary abstractions, metaclasses, decorators, or design patterns unless clearly justified.
-- Do not optimize prematurely.
-- Prefer explicit code over "magic".
-- If a one-liner reduces readability, expand it.
-
-Bad:
-```python
-return [f(x) for x in items if x and not isinstance(x, (int, float))]
+```
+wargame_rl/
+├── wargame_rl/                    # Main package
+│   ├── __init__.py                # Registers Gymnasium env
+│   ├── plotting/                  # Training visualization
+│   └── wargame/
+│       ├── envs/                  # Gymnasium environment, reward, rendering
+│       │   ├── wargame.py         # WargameEnv
+│       │   ├── env_components/    # Actions, placement, termination, observation
+│       │   ├── reward/            # Phase manager, calculators, criteria
+│       │   ├── types/             # Config, observations, actions, info
+│       │   └── renders/           # Pygame renderer
+│       ├── model/                 # RL algorithms
+│       │   ├── net.py             # RL_Network base, MLPNetwork, TransformerNetwork
+│       │   ├── common/            # Shared: factory, observation, dataset, device, wandb, callbacks
+│       │   ├── dqn/               # DQN: agent, lightning module, replay buffer, config
+│       │   └── ppo/               # PPO: actor-critic, lightning module, agent, config
+│       └── types.py               # Experience, ExperienceBatch
+├── examples/env_config/           # YAML environment configurations
+├── tests/                         # Pytest suite with conftest.py fixtures
+├── docs/                          # Design docs (movement, reward phases, roadmap, rules)
+├── train.py                       # Training entry point (Typer CLI)
+├── simulate.py                    # Inference/simulation entry point
+└── main.py                        # Legacy entry (env test with random actions)
 ```
 
-Better:
-
-```python
-result = []
-
-for item in items:
-    if not item:
-        continue
-
-    if isinstance(item, (int, float)):
-        continue
-
-    result.append(f(item))
-
-return result
-```
-
-Clarity > brevity.
-
----
-
-### 2. Code Should Read Like Prose
-
-* Use descriptive variable and function names.
-* Avoid single-letter variables (except trivial loop indices).
-* Avoid abbreviations unless universally understood.
-* Functions should do one thing.
-
-Good:
-
-```python
-def calculate_total_price(items: list[Item]) -> float:
-    ...
-```
-
-Bad:
-
-```python
-def calc(tp):
-    ...
-```
-
----
-
-### 3. Keep Functions Small and Focused
-
-* Each function should have a single responsibility.
-* Prefer multiple small functions over one large function.
-* If a function exceeds ~30–40 lines, consider splitting it.
-
----
-
-### 4. Avoid Over-Engineering
-
-* Do not introduce classes if a function is enough.
-* Do not introduce dependency injection unless required.
-* Do not introduce frameworks or libraries unless explicitly requested.
-* Prefer standard library.
-
----
-
-### 5. Explicit Is Better Than Implicit
-
-Follow the spirit of PEP 20:
-
-* Make data transformations obvious.
-* Avoid hidden side effects.
-* Avoid mutating arguments unless clearly documented.
-* Be explicit about return values.
-
----
-
-### 6. Type Hints Are Required
-
-* Use Python type hints for all public functions.
-* Prefer built-in generics (`list[str]`, `dict[str, int]`) over `typing.List`.
-* Avoid overly complex type constructs.
-
-Example:
-
-```python
-def group_users_by_role(users: list[User]) -> dict[str, list[User]]:
-    ...
-```
-
----
-
-### 7. Error Handling Should Be Clear
-
-* Raise meaningful exceptions.
-* Do not swallow exceptions silently.
-* Avoid broad `except Exception` unless re-raising.
-
-Bad:
-
-```python
-try:
-    do_something()
-except Exception:
-    pass
-```
-
-Better:
-
-```python
-try:
-    do_something()
-except ValueError as error:
-    raise ConfigurationError("Invalid configuration value") from error
-```
-
----
-
-## Testing Principles
-
-Tests must be written for humans first.
-
-### 1. Tests Should Explain Behavior
-
-* Test names must describe behavior, not implementation.
-* A reader should understand system behavior by reading tests.
-
-Good:
-
-```python
-def test_calculate_total_price_applies_discount_for_premium_user():
-    ...
-```
-
-Bad:
-
-```python
-def test_total_price_1():
-    ...
-```
-
----
-
-### 2. Test Behavior, Not Implementation
-
-* Do not test private methods.
-* Do not test internal variables.
-* Test observable outcomes only.
-
----
-
-### 3. Each Test Should Have One Clear Purpose
-
-* One logical assertion per behavior.
-* Avoid large “kitchen sink” tests.
-* If a test needs many asserts, split it.
-
----
-
-### 4. Use Simple Arrange–Act–Assert Structure
-
-Tests should follow:
-
-```python
-def test_something():
-    # Arrange
-    ...
-
-    # Act
-    result = ...
-
-    # Assert
-    assert result == ...
-```
-
-Make the three phases visually clear.
-
----
-
-### 5. Avoid Over-Mocking
-
-* Prefer real objects over mocks.
-* Only mock external systems (API, DB, filesystem).
-* If a test needs heavy mocking, the design may be too complex.
-
----
-
-### 6. Tests Should Be Deterministic
-
-* No randomness without a fixed seed.
-* No dependency on system time (unless controlled).
-* No dependency on network.
-
----
-
-### 7. Edge Cases Must Be Explicit
-
-For every non-trivial function, consider:
-
-* Empty input
-* Invalid input
-* Boundary values
-* Typical valid case
-
----
-
-## Documentation and Comments
-
-* Write docstrings for public functions explaining:
-
-  * What it does
-  * Expected inputs
-  * Return value
-  * Possible exceptions
-* Avoid obvious comments.
-* Explain *why*, not *what*.
-
-Bad:
-
-```python
-# increment i
-i += 1
-```
-
-Good:
-
-```python
-# We retry once because the external service is eventually consistent.
-```
-
----
-
-## Final Rule
-
-The code should look like it was written by a thoughtful, pragmatic senior engineer — not a code generator trying to be clever.
-
-Prioritize:
-
-* Readability
-* Maintainability
-* Explicitness
-* Behavioral clarity in tests
-
-If forced to choose between elegance and clarity, choose clarity.
-
-
-
-
-
-
-## Project Overview
-This is a reinforcement learning environment for wargame simulations built with:
-- PyTorch for deep learning models
-- Gymnasium for environment interface
-- Python with modern development tools (UV, Just, Ruff, etc.)
+## Key Commands
+
+| Task | Command |
+|---|---|
+| Setup | `just setup` |
+| Sync deps | `just dev-sync` |
+| Format | `just format` |
+| Lint | `just lint` |
+| Test | `just test` |
+| Full validation | `just validate` |
+| Train (PPO, default) | `just train <config.yaml>` |
+| Train (DQN) | `just train <config.yaml> dqn` |
+| Simulate latest | `just simulate-latest` |
+| Test env (random) | `just test-env` |
+| Profile | `just profile <config.yaml> [model] [max_epochs]` |
+| Clean | `just clean` |
 
 ## Key Components
 
 ### Environment
-- `WargameEnv` in `wargame_rl.wargame.envs.wargame`
-- Supports configurable number of wargame models and objectives
-- 2D board environment with movement actions
-- Action space: Tuple(Discrete(5), Discrete(5)) where 5 actions = [up, down, left, right, stay]
 
-### Models
-- `DQN_MLP` - Multi-layer perceptron DQN (Legacy model, support will be dropped in the future)
-- `DQN_Transformer` - Transformer-based DQN (This is the model we are currently using)
-- Both models support different network architectures
+- `WargameEnv` — Gymnasium env with configurable board, models, objectives
+- **Polar movement** — actions encoded as (angle × speed) per model
+- **Reward phases** — curriculum learning with phased reward configs
+- **Deployment zones** — configurable spawn areas for player and opponent
+- **Group cohesion** — optional penalty for unit separation
+
+### RL Algorithms
+
+- **DQN** — epsilon-greedy agent, replay buffer, DQN Lightning module
+- **PPO** — actor-critic with GAE, clipped surrogate objective, PPO Lightning module
+
+### Networks
+
+- **TransformerNetwork** — NanoGPT-style transformer (default, actively developed)
+- **MLPNetwork** — simple MLP (legacy, will be dropped)
 
 ### Configuration
-- Environment configs in `examples/env_config/`
-- Support for different board sizes and numbers of models/objectives
-- Configurable parameters like objective radius, group cohesion, etc.
-- Support for opponent deployment zones (recently added feature)
 
-## How to Run
+- Environment configs live in `examples/env_config/`
+- Algorithm configs: `DQNConfig`, `PPOConfig` in respective `config.py` files
+- Training config: `TrainingConfig` in `wargame_rl/wargame/model/dqn/config.py`
 
-Look at the justfile for available commands.
+---
 
-### Environment Test
-You can use pytest
-```bash
-uv run pytest --verbose tests
-```
+## Interacting with the User
 
-### Training (with example config)
-```bash
-# Without wandb (since it requires API key)
-python train.py --env-config-path examples/env_config/example.yaml --max-epochs 1 --network-type transformer
-```
+- Keep responses brief and to the point
+- Ask clarifying questions in ambiguous problems
 
-### Simulation
-For now, you cannot really see what happens. So simulating is mostly to see if the code runs.
+## Coding Practice
 
-## Key Features
-1. Configurable wargame environments with different board sizes
-2. Support for multiple wargame models and objectives
-3. Both MLP and Transformer DQN architectures
-4. Proper reinforcement learning interface with Gymnasium
-5. Modular design with clear separation of environment and model components
-6. Support for opponent deployment zones (recently added feature)
-7. Support for per-entity configuration in environment configs
+- Before saying tasks are finished, ALWAYS run `uv run ruff format` and `uv run ruff check --fix`. Fix any errors.
+- Run `uv run pytest` after large changes
+- Run `uv run pytest` after adding any tests
+- ALWAYS run `uv run pre-commit run --files <changed-files>` on files that have changed
+- ALWAYS add type hinting for inputs and outputs
+- Pass dependencies in; don't construct them inside classes
+- NEVER include unimportable resources
+- Public facing methods should have docstrings
+- Follow the package dependency flow (see [README § Flow of dependencies](README.md#flow-of-dependencies)); layers above must not depend on layers below.
+- Follow KISS
+- Prefer complexity at startup, keep runtime simple
+- Prefer validation at initialisation / construction, keep runtime simple
+- Comments should focus on WHY it is implemented that way
+- Docstrings should explain WHAT is happening
+- When suggesting or writing PR titles, use conventional commits (`feat:`, `fix:`, etc.) then a space and a lower case letter (CI expects this)
+- Go from a config to an execution context before usage
 
-## Recent Changes
-- Added support for opponent deployment zones to enable adversarial play
-- Added support for optional per-entity configuration in environment configs
-- Enhanced wandb logging with video recording capabilities
+## Coding Style
 
-## Current Status
-The environment and models work correctly. The main limitation is wandb configuration, but the core functionality is intact. The DQN_Transformer model is the current focus for training and development.
+- Prefer simplicity over cleverness — write the simplest solution that works
+- Avoid unnecessary abstractions, metaclasses, or design patterns unless clearly justified
+- Use descriptive variable and function names; avoid abbreviations
+- Keep functions small and focused (single responsibility, ~30–40 lines max)
+- Explicit is better than implicit: no hidden side effects, be explicit about return values
+- Use Python type hints for all public functions; prefer built-in generics (`list[str]`) over `typing.List`
+- Raise meaningful exceptions; never swallow exceptions silently
+
+## Testing ("Good Enough" Testing)
+
+- Test the happy path and critical edge cases — not every possible permutation
+- Focus tests on logic and behavior, not implementation details
+- Prioritize tests that would catch real bugs over exhaustive coverage
+- If a bug is found, add a regression test before fixing it
+- Avoid mocking: ONLY mock when absolutely necessary (e.g., external APIs, paid services)
+- Prefer real dependencies and integration tests over unit tests with mocks
+- Avoid lots of tests, use parameterization and hypothesis testing
+- Tests should be deterministic: no randomness without a fixed seed
+- Use Arrange–Act–Assert structure
+
+## Package Management
+
+- Use `uv add` to add new packages
+- Use `uv run` to run any Python commands
+
+## Git Workflow
+
+- Always verify the current branch before committing (especially after a PR merge)
+- Create feature branches for all changes; avoid committing directly to `main`
+- Branch naming: `feature/<topic>`, `fix/<topic>`, `refactor/<topic>`
+- Commit messages: imperative mood, concise summary
+- After pushing a new feature branch, always create a PR using `gh pr create`
+- Run `just validate` before pushing
+
+## CUDA Environment
+
+- The dev machine may have a broken CUDA setup; set `CUDA_VISIBLE_DEVICES=""` to force CPU when training fails with CUDA errors

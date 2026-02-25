@@ -95,7 +95,7 @@ def test_dqn_training(env: WargameEnv, policy_net: RL_Network) -> None:
     model = DQNLightning(env=env, policy_net=policy_net, log=False)
 
     trainer = Trainer(
-        accelerator="auto",
+        accelerator="cpu",
         max_epochs=2,
         val_check_interval=1,
         logger=None,

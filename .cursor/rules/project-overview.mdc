@@ -5,14 +5,14 @@ alwaysApply: true
 
 # wargame_rl — Project Overview
 
-Reinforcement learning project that trains DQN agents to play tabletop wargames on a discrete grid. Agents control multiple models (units) to capture objectives.
+Reinforcement learning project that trains agents (DQN, PPO) to play tabletop wargames on a discrete grid. Agents control multiple models (units) using polar-coordinate movement to capture objectives.
 
 ## Tech Stack
 
-- **Python 3.12+** (UV package manager, `uv.lock`)
+- **Python 3.13** (UV package manager, `uv.lock`)
 - **Gymnasium 1.x** — RL environment (`WargameEnv`)
-- **PyTorch + PyTorch Lightning** — DQN training
-- **Wandb** — experiment tracking
+- **PyTorch + PyTorch Lightning** — DQN and PPO training
+- **Wandb** — experiment tracking & video recording
 - **Pydantic + pydantic-yaml** — config & type models
 - **Typer** — CLI (`train.py`, `simulate.py`)
 - **Loguru** — logging
@@ -38,13 +38,17 @@ Reinforcement learning project that trains DQN agents to play tabletop wargames 
 | Lint | `just lint` |
 | Test | `just test` |
 | Full validation | `just validate` |
-| Train | `just train <config.yaml> [mlp\|transformer]` |
+| Train (PPO, default) | `just train <config.yaml>` |
+| Train (DQN) | `just train <config.yaml> dqn` |
 | Simulate | `just simulate-latest` |
 
 ## Project Layout
 
 - `wargame_rl/wargame/envs/` — Gymnasium environment, reward, rendering, types
-- `wargame_rl/wargame/model/dqn/` — DQN networks (MLP & Transformer), Lightning module, training infra
+- `wargame_rl/wargame/model/dqn/` — DQN agent, Lightning module, replay buffer, config
+- `wargame_rl/wargame/model/ppo/` — PPO actor-critic, Lightning module, agent, config
+- `wargame_rl/wargame/model/common/` — Shared: factory, observation, dataset, device, wandb, callbacks
+- `wargame_rl/wargame/model/net.py` — RL_Network base, MLPNetwork, TransformerNetwork
 - `wargame_rl/wargame/types.py` — `Experience` / `ExperienceBatch`
 - `examples/env_config/` — YAML environment configurations
 - `tests/` — Pytest suite with shared fixtures in `conftest.py`
