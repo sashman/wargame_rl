@@ -320,7 +320,7 @@ class PPOLightning(LightningModule):
                 steps_s.append(steps)
         self.mean_episode_reward = sum(episode_rewards) / len(episode_rewards)
         if self.do_log:
-            self.log("mean_episode_reward", self.mean_episode_reward, prog_bar=False)
+            self.log("mean_episode_reward", self.mean_episode_reward, prog_bar=True)
             self.log("mean_episode_steps", sum(steps_s) / len(steps_s), prog_bar=False)
             self.log("max_episode_reward", max(episode_rewards), prog_bar=False)
             self.log("min_episode_reward", min(episode_rewards), prog_bar=False)
