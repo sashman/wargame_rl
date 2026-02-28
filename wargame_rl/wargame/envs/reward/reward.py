@@ -10,11 +10,18 @@ from wargame_rl.wargame.envs.wargame_model import WargameModel
 
 class Reward:
     def _get_closest_objective_reward(
-        self, previous_model_distance: float, distance_to_closest_objective: float
+        self,
+        previous_model_distance: float,
+        distance_to_closest_objective: float,
+        objective_radius_normalized: float,
     ) -> float:
-        if distance_to_closest_objective <= 0:
+        if distance_to_closest_objective <= objective_radius_normalized:
             # One-time bonus when first reaching an objective; no farming while camping.
-            return float(1) if previous_model_distance > 0 else float(0)
+            return (
+                float(1)
+                if previous_model_distance > objective_radius_normalized
+                else float(0)
+            )
 
         distance_improvement = float(
             distance_to_closest_objective - previous_model_distance
@@ -44,13 +51,18 @@ class Reward:
             cache.model_obj_norms_offset[model_idx, closest_obj_idx]
         )
         normalized_distance = distance_to_closest / max_diagonal
+        objective_radius_normalized = (
+            float(cache.obj_radii[closest_obj_idx]) / max_diagonal
+        )
 
         if previous_closest_objective_distance is None:
             return float(0), normalized_distance
 
         previous_closest_objective_distance = float(previous_closest_objective_distance)
         closest_objective_reward = self._get_closest_objective_reward(
-            previous_closest_objective_distance, normalized_distance
+            previous_closest_objective_distance,
+            normalized_distance,
+            objective_radius_normalized,
         )
 
         return closest_objective_reward, normalized_distance
