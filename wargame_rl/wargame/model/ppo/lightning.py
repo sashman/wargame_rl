@@ -282,7 +282,7 @@ class PPOLightning(LightningModule):
         while len(rollout) < self.n_steps:
             _reward, _steps, episode_exp = self.agent.run_episode(
                 self.ppo_model,
-                epsilon=0.0,
+                epsilon=1.0,
                 render=False,
                 save_steps=True,
             )

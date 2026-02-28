@@ -22,7 +22,7 @@ def _normalize(arr: np.ndarray, half_board: np.ndarray) -> np.ndarray:
 
 def _group_ids_to_one_hot(group_ids: np.ndarray, max_groups: int) -> np.ndarray:
     """Vectorized one-hot encoding for an array of group IDs."""
-    indices = np.clip(group_ids - 1, 0, max_groups - 1)
+    indices = np.clip(group_ids, 0, max_groups - 1)
     one_hot = np.zeros((len(indices), max_groups), dtype=np.float32)
     one_hot[np.arange(len(indices)), indices] = 1.0
     return one_hot
