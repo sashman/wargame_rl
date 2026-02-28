@@ -72,6 +72,20 @@ def test_reset_sets_internal_state(env: WargameEnv) -> None:
     assert env.last_reward is None
 
 
+def test_reset_clears_previous_closest_objective_distance(env: WargameEnv) -> None:
+    """reset() clears per-episode distance memory used by shaped rewards."""
+    env.reset(seed=42)
+    env.step(WargameEnvAction(actions=[0, 0]))
+    assert any(
+        m.previous_closest_objective_distance is not None for m in env.wargame_models
+    )
+
+    env.reset(seed=42)
+    assert all(
+        m.previous_closest_objective_distance is None for m in env.wargame_models
+    )
+
+
 # --- Step tests ---
 
 
@@ -115,6 +129,25 @@ def test_step_updates_last_reward(env: WargameEnv) -> None:
     assert env.last_reward is None
     _, reward, _, _, _ = env.step(WargameEnvAction(actions=[0, 0]))
     assert env.last_reward == reward
+
+
+def test_step_adds_terminal_success_bonus_when_all_models_at_objective() -> None:
+    config = WargameEnvConfig(
+        render_mode=None,
+        board_width=10,
+        board_height=10,
+        number_of_wargame_models=1,
+        number_of_objectives=1,
+        objective_radius_size=1,
+        terminal_success_bonus=12.5,
+        models=[{"x": 4, "y": 4, "group_id": 0}],
+        objectives=[{"x": 4, "y": 4}],
+    )
+    env = WargameEnv(config=config)
+    env.reset(seed=42)
+    _, reward, terminated, _, _ = env.step(WargameEnvAction(actions=[0]))
+    assert terminated is True
+    assert reward >= config.terminal_success_bonus
 
 
 def test_step_invalid_action_raises(env: WargameEnv) -> None:

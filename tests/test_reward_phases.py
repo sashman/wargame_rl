@@ -140,6 +140,24 @@ class TestClosestObjectiveCalculator:
         calc = ClosestObjectiveCalculator()
         assert calc.needs_model_model_distances is False
 
+    def test_at_objective_bonus_is_not_repeated(self, simple_env: WargameEnv) -> None:
+        simple_env.reset()
+        calc = ClosestObjectiveCalculator(weight=1.0)
+
+        obj_loc = simple_env.objectives[0].location.copy()
+        model = simple_env.wargame_models[0]
+        model.location = obj_loc.copy()
+        model.previous_closest_objective_distance = 0.5
+
+        cache = compute_distances(simple_env.wargame_models, simple_env.objectives)
+        ctx = _make_step_context(simple_env, cache)
+
+        first = calc.calculate(0, model, simple_env, ctx)
+        second = calc.calculate(0, model, simple_env, ctx)
+
+        assert first == ClosestObjectiveCalculator.REWARD_AT_OBJECTIVE
+        assert second == 0.0
+
 
 class TestGroupCohesionCalculator:
     def test_no_penalty_when_within_distance(self, simple_env: WargameEnv) -> None:

@@ -12,8 +12,9 @@ class Reward:
     def _get_closest_objective_reward(
         self, previous_model_distance: float, distance_to_closest_objective: float
     ) -> float:
-        if distance_to_closest_objective == 0:
-            return float(1)
+        if distance_to_closest_objective <= 0:
+            # One-time bonus when first reaching an objective; no farming while camping.
+            return float(1) if previous_model_distance > 0 else float(0)
 
         distance_improvement = float(
             distance_to_closest_objective - previous_model_distance

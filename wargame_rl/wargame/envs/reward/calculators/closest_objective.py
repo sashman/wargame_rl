@@ -48,8 +48,9 @@ class ClosestObjectiveCalculator(PerModelRewardCalculator):
 
         previous = float(previous)
 
-        if normalized_distance == 0:
-            return self.REWARD_AT_OBJECTIVE
+        if normalized_distance <= 0:
+            # One-time bonus when first reaching an objective; no farming while camping.
+            return self.REWARD_AT_OBJECTIVE if previous > 0 else 0.0
 
         improvement = normalized_distance - previous
         if improvement == 0:
