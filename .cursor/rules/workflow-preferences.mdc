@@ -16,6 +16,15 @@ alwaysApply: true
 - Prefer general, future-proof names over narrow ones (e.g. `models` not `model_placements`, `ModelConfig` not `ModelPlacement`)
 - When adding per-entity configuration, make positional fields optional so attributes (stats, group, etc.) can be specified independently of placement
 - Avoid hardcoded magic numbers in factory methods — push defaults into Pydantic models with `Field(default=...)`
+- Scripted behaviours: name classes descriptively with a `Scripted` prefix (e.g. `ScriptedAdvanceToObjectivePolicy`, not `ScriptedPolicy`)
+- Use registry pattern with string identifiers for YAML-configurable subsystems (opponent policies, reward calculators/criteria)
+
+## Adding New Entity Types
+
+- Mirror existing entity patterns: reuse the same model class (`WargameModel`), same config schema (`ModelConfig`), same placement logic
+- Parameterize shared infrastructure (e.g. `ActionHandler(n_models=...)`) rather than duplicating it
+- Always default new config fields to the no-op value so existing YAML configs keep working (e.g. `number_of_opponent_models=0`)
+- Full checklist: config types → env state → observation types → observation builder → tensor pipeline → DQN networks → renderer → tests → backward compat tests
 
 ## CUDA Environment
 

@@ -5,7 +5,7 @@ import loguru
 
 
 def environment_test() -> None:
-    from wargame_rl.wargame.envs.env_test import EnvTest
+    from wargame_rl.wargame.envs.interactive_demo import EnvTest
 
     # Initialize the environment with a 50x50 grid and human rendering mode
     env_test = EnvTest(board_width=100, board_height=74)

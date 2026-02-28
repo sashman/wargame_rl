@@ -17,13 +17,11 @@ def n_steps() -> int:
 
 
 @pytest.fixture
-@lru_cache(maxsize=1)
 def env() -> WargameEnv:
     return WargameEnv(config=WargameEnvConfig(render_mode=None))
 
 
 @pytest.fixture
-@lru_cache(maxsize=1)
 def experiences(env: WargameEnv, n_steps: int) -> list[Experience]:
     previous_state, _ = env.reset()
     output = []
@@ -45,12 +43,6 @@ def replay_buffer(n_steps: int, experiences: list[Experience]) -> ReplayBuffer:
     for experience in experiences:
         buffer.append(experience)
     return buffer
-
-
-# @pytest.fixture
-# @lru_cache(maxsize=1)
-# def dqn_net(env: WargameEnv) -> DQN_MLP:
-#     return DQN_Transformer.from_env(env=env)
 
 
 @pytest.fixture

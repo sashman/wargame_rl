@@ -9,11 +9,12 @@ alwaysApply: false
 ## Framework
 
 - Pytest with shared fixtures in `conftest.py`
-- Run with `just test` (or `uv run pytest --verbose --color=yes tests`)
+- Run with `just test` — generates terminal coverage + `coverage.xml`
+- Coverage reported as a PR comment via CI
 
 ## Fixtures
 
-- `env` — cached `WargameEnv` instance (no rendering)
+- `env` — `WargameEnv` instance (no rendering)
 - `experiences` — list of `Experience` tuples from random actions
 - `replay_buffer` — pre-populated `ReplayBuffer`
 - `dqn_net` — parametrized fixture testing both `DQN_MLP` and `DQN_Transformer`
@@ -21,11 +22,32 @@ alwaysApply: false
 
 ## Patterns
 
-- Use `@lru_cache(maxsize=1)` on expensive fixtures to avoid recomputation
+- Do NOT use `@lru_cache` on fixtures — it bypasses pytest's lifecycle and leaks state; use `scope="module"` or `scope="session"` if caching is needed
 - Parametrize over network types via the `dqn_net` fixture (runs tests for MLP and Transformer)
-- Test files: `test_env.py` (environment), `test_fixed_placement.py` (entity config & placement), `test_dqn.py` (model), `test_agent.py` (agent), `test_state.py` (state)
+- Use `RL_Network` (not `DQN_MLP`) as the type annotation when accepting the parametrized `dqn_net` fixture
+- Prefer integration tests over exhaustive unit tests to keep test runtime low
+- Test through public APIs — avoid accessing private attributes (`_action_handler`, `_player_moves_first`); add a public property to `WargameEnv` if one is missing
 - Type-annotate fixtures and test functions
+
+## Test Files
+
+- `test_env.py` — environment reset/step basics
+- `test_fixed_placement.py` — entity config & placement
+- `test_dqn.py` — DQN networks, loss, dataloaders, training
+- `test_agent.py` — agent actions and episode running
+- `test_state.py` — observation/batch tensor conversion
+- `test_opponents.py` — opponent system (config, policies, env integration, observation tensors, DQN compat)
+- `test_reward_phases.py` — reward calculators, criteria, phase manager, phased env integration
+- `test_integration.py` — cross-cutting integration tests (legacy reward, termination, ReplayBuffer, RLDataset, config backward compat)
+
+## Adding a New Entity/Feature
+
+Write tests covering: config validation, env integration (reset/step), observation/info contents, tensor shapes, DQN forward pass, and backward compatibility with configs that don't use the feature
+
+## Source Files That Are NOT Tests
+
+- `wargame_rl/wargame/envs/interactive_demo.py` — interactive Pygame demo (not a test); do not confuse with actual tests
 
 ## Validation
 
-- Run `just validate` (format + lint + test), not just `just test`, before pushing — mypy and ruff catch issues that pytest alone misses
+- Run `just validate` (format + lint + test) before pushing — mypy and ruff catch issues that pytest alone misses

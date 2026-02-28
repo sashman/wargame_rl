@@ -33,8 +33,12 @@ class ActionHandler:
     max_move_speed / n_speed_bins  up to  max_move_speed.
     """
 
-    def __init__(self, config: WargameEnvConfig) -> None:
-        self._config = config
+    def __init__(
+        self, config: WargameEnvConfig, *, n_models: int | None = None
+    ) -> None:
+        self._n_models = (
+            n_models if n_models is not None else config.number_of_wargame_models
+        )
         n_angles = config.n_movement_angles
         n_speeds = config.n_speed_bins
         max_speed = config.max_move_speed
@@ -57,6 +61,7 @@ class ActionHandler:
 
         self._n_move_actions = n_angles * n_speeds
         self._n_speed_bins = n_speeds
+        self._n_angles = n_angles
 
     @property
     def n_actions(self) -> int:
@@ -66,10 +71,7 @@ class ActionHandler:
     @property
     def action_space(self) -> spaces.Tuple:
         return spaces.Tuple(
-            [
-                spaces.Discrete(self.n_actions)
-                for _ in range(self._config.number_of_wargame_models)
-            ]
+            [spaces.Discrete(self.n_actions) for _ in range(self._n_models)]
         )
 
     def _decode_action(self, action: int) -> np.ndarray:
@@ -81,6 +83,26 @@ class ActionHandler:
         speed_idx = move_idx % self._n_speed_bins
         result: np.ndarray = self._displacements[angle_idx, speed_idx]
         return result
+
+    def encode_action(self, angle_idx: int, speed_idx: int) -> int:
+        """Encode an (angle_idx, speed_idx) pair into an action integer."""
+        return 1 + angle_idx * self._n_speed_bins + speed_idx
+
+    def best_action_toward(self, dx: float, dy: float) -> int:
+        """Return the action that moves closest to the direction (dx, dy).
+
+        Picks the angle bin nearest to atan2(dy, dx) at maximum speed.
+        Returns STAY_ACTION if dx == dy == 0.
+        """
+        if dx == 0.0 and dy == 0.0:
+            return STAY_ACTION
+        target_angle = np.arctan2(dy, dx) % (2 * np.pi)
+        angles = np.linspace(0, 2 * np.pi, self._n_angles, endpoint=False)
+        diffs = np.abs(angles - target_angle)
+        diffs = np.minimum(diffs, 2 * np.pi - diffs)
+        angle_idx = int(np.argmin(diffs))
+        speed_idx = self._n_speed_bins - 1  # max speed
+        return self.encode_action(angle_idx, speed_idx)
 
     def apply(
         self,

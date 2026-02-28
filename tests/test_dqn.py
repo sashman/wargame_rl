@@ -14,7 +14,7 @@ def test_dqn_forward(
     env: WargameEnv, experiences: list[Experience], policy_net: RL_Network, n_steps: int
 ) -> None:
     n_wargame_models = env.config.number_of_wargame_models
-    n_actions = env._action_handler.n_actions
+    n_actions = env.n_actions
     batch = experience_list_to_batch(experiences)
     next_q_values = policy_net.forward(batch.state_tensors)
     assert next_q_values.shape == (n_steps, n_wargame_models, n_actions)
@@ -79,8 +79,8 @@ def test_dataloaders(env: WargameEnv, policy_net: RL_Network) -> None:
     assert batch.actions.shape == (batch_size, n_wargame_models)
     assert batch.rewards.shape == (batch_size,)
     assert batch.dones.shape == (batch_size,)
-    state_turn, state_objectives, state_wargame_models = batch.state_tensors
-    new_state_turn, new_state_objectives, new_state_wargame_models = (
+    state_turn, state_objectives, state_wargame_models, _state_opp = batch.state_tensors
+    new_state_turn, new_state_objectives, new_state_wargame_models, _new_opp = (
         batch.new_state_tensors
     )
     assert state_turn.shape == (batch_size, 1)

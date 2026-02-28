@@ -45,8 +45,26 @@ Both expose `policy_from_env(env)` and `from_checkpoint(env, path)` class method
 - `RecordEpisodeCallback` — records MP4 episodes during training
 - `EnvConfigCallback` — persists env YAML config alongside checkpoints
 
+## Observation Tensor Pipeline
+
+`observation.py` converts `WargameEnvObservation` into a 4-tuple of tensors:
+1. **game** — current turn scalar
+2. **objectives** — objective features matrix
+3. **player_models** — player model features matrix
+4. **opponent_models** — opponent model features matrix (empty zeros tensor when no opponents)
+
+When adding a new entity type to observations:
+- Add it to `WargameEnvObservation` and the observation builder
+- Extend `_observation_to_numpy` to return the new array in the tuple
+- Update `observation_to_tensor` / `observations_to_tensor_batch` to handle the extra element
+- Update **both** `DQN_MLP` and `DQN_Transformer` `forward()` to unpack and process it
+- `DQN_Transformer` needs a dedicated embedding layer and the sequence token ordering must be updated; the player model tokens must remain extractable for the per-model action heads
+
 ## Conventions
 
 - Use `torch.Tensor` for all neural network operations
 - Observation tensors built by `observation.py` from `WargameEnvObservation`
 - Default algorithm is PPO; DQN is available but not the primary focus
+- Device management via `device.py` utility
+- Wandb integration in `wandb.py` — all logging goes through Lightning logger
+- When changing the observation tuple length, expect unpacking errors in tests (`test_state.py`, `test_dqn.py`) — fix them as part of the same change

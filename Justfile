@@ -33,9 +33,9 @@ lint:
 	uv run ruff check --fix
 	uv run mypy --ignore-missing-imports --install-types --non-interactive wargame_rl/ tests/
 
-# Run tests using pytest
+# Run tests using pytest with coverage
 test:
-	uv run pytest --verbose --color=yes tests
+	uv run pytest --verbose --color=yes --cov=wargame_rl --cov-report=term-missing --cov-report=xml:coverage.xml tests
 
 # Run all checks: format, lint, and test
 validate: format lint test
