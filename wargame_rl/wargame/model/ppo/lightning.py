@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader, Dataset
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.observation import observations_to_tensor_batch
 from wargame_rl.wargame.model.ppo.agent import Agent
+from wargame_rl.wargame.types import Experience
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.model.ppo.ppo import PPOModel
@@ -43,7 +44,7 @@ class PPOLightning(LightningModule):
         vf_coef: float = 0.5,
         ent_coef: float = 0.01,
         max_grad_norm: float = 0.5,
-        n_epochs: int = 10,
+        n_epochs: int = 4,
         n_steps: int = 2048,
         n_episodes: int = 10,
         **kwargs: Any,
@@ -245,15 +246,39 @@ class PPOLightning(LightningModule):
                 epoch_entropy_loss += entropy_loss.item()
 
         if self.do_log and n_updates > 0:
-            self.log("train_loss", total_loss_float / n_updates, prog_bar=True)
-            self.log("policy_loss", epoch_policy_loss / n_updates, prog_bar=False)
-            self.log("value_loss", epoch_value_loss / n_updates, prog_bar=False)
-            self.log("entropy_loss", epoch_entropy_loss / n_updates, prog_bar=False)
+            self.log(
+                "train_loss",
+                total_loss_float / n_updates,
+                prog_bar=True,
+                logger=True,
+                on_epoch=True,
+            )
+            self.log(
+                "policy_loss",
+                epoch_policy_loss / n_updates,
+                prog_bar=False,
+                logger=True,
+                on_epoch=True,
+            )
+            self.log(
+                "value_loss",
+                epoch_value_loss / n_updates,
+                prog_bar=False,
+                logger=True,
+                on_epoch=True,
+            )
+            self.log(
+                "entropy_loss",
+                epoch_entropy_loss / n_updates,
+                prog_bar=False,
+                logger=True,
+                on_epoch=True,
+            )
             self.log("env_steps", self.global_step, logger=False, prog_bar=True)
 
-    def _collect_experiences(self) -> list:
+    def _collect_experiences(self) -> list[Experience]:
         """Run episodes until n_steps transitions are collected (can span multiple episodes)."""
-        rollout: list = []
+        rollout: list[Experience] = []
         while len(rollout) < self.n_steps:
             _reward, _steps, episode_exp = self.agent.run_episode(
                 self.ppo_model,

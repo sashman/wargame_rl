@@ -83,7 +83,7 @@ def _observation_to_numpy(
     obj_locs = np.array([o.location for o in state.objectives], dtype=np.float32)
     obj_features = _normalize(obj_locs, half_board)
 
-    current_turn = np.array([0], dtype=np.float32)
+    current_turn = np.array([state.current_turn / 20], dtype=np.float32)
 
     return current_turn, obj_features, model_features
 

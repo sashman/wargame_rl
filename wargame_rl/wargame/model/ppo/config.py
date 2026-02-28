@@ -7,7 +7,7 @@ class PPOConfig(BaseModel):
     """Configuration for PPO training."""
 
     # Training parameters
-    batch_size: int = 64
+    batch_size: int = 128
     lr: float = 3e-4
     gamma: float = 0.99
     gae_lambda: float = 0.95

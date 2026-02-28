@@ -132,7 +132,7 @@ def train(
                 )
             logger = get_logger(run, disabled=no_wandb)
             trainer = Trainer(
-                accelerator="cpu",
+                accelerator="auto",
                 max_epochs=training_config.max_epochs,
                 val_check_interval=training_config.val_check_interval,
                 logger=logger,
@@ -181,7 +181,7 @@ def train(
                 )
             logger = get_logger(run, disabled=no_wandb)
             trainer = Trainer(
-                accelerator="cpu",
+                accelerator="auto",
                 max_epochs=training_config.max_epochs,
                 val_check_interval=training_config.val_check_interval,
                 logger=logger,
