@@ -33,9 +33,9 @@ class PPOLightning(LightningModule):
     def __init__(
         self,
         env: WargameEnv,
-        policy_net: PPOModel,
+        ppo_model: PPOModel,
         log: bool = True,
-        batch_size: int = 64,
+        batch_size: int = 1024,
         lr: float = 3e-4,
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
@@ -52,9 +52,9 @@ class PPOLightning(LightningModule):
 
         Args:
             env: Wargame environment
-            policy_net: PPO policy network
+            ppo_model: PPO policy-value model
             log: Whether to log metrics
-            batch_size: Batch size for training
+            batch_size: Minibatch size for PPO updates (samples per gradient step)
             lr: Learning rate
             gamma: Discount factor
             gae_lambda: Generalized Advantage Estimation lambda
@@ -71,11 +71,12 @@ class PPOLightning(LightningModule):
         self.save_hyperparameters()
 
         self.env = env
-        self.policy_net = policy_net
+        self.ppo_model = ppo_model
         self.agent = Agent(self.env)
         self.total_reward = 0
         self.episode_reward = 0
         self.do_log = log
+        self.batch_size = batch_size
         self.n_steps = n_steps
         self.n_epochs = n_epochs
         self.max_grad_norm = max_grad_norm
@@ -83,7 +84,7 @@ class PPOLightning(LightningModule):
 
         # Initialize optimizer
         self.optimizer = optim.Adam(
-            self.policy_net.parameters(),
+            self.ppo_model.parameters(),
             lr=lr,
             eps=1e-5,
         )
@@ -106,7 +107,7 @@ class PPOLightning(LightningModule):
             Action logits with shape (batch, n_models, n_actions).
         """
         action_logits: Tensor
-        action_logits, _ = self.policy_net(x)
+        action_logits, _ = self.ppo_model(x)
         return action_logits
 
     def compute_returns(self, rewards: Tensor, dones: Tensor, values: Tensor) -> Tensor:
@@ -143,20 +144,20 @@ class PPOLightning(LightningModule):
     def training_step(self, batch: Any, batch_idx: int) -> None:
         """Carry out a single training step.
 
-        Uses manual optimization because PPO runs multiple gradient steps
-        per batch of collected experience.
+        Collects n_steps transitions (across one or more episodes), computes
+        GAE returns/advantages, then runs n_epochs of minibatch PPO updates.
 
-        Follows the same observation-to-tensor pattern as the DQN pipeline:
-        observations are converted via ``observations_to_tensor_batch`` and
+        Uses manual optimization because PPO runs multiple gradient steps
+        per rollout. Observations are converted via ``observations_to_tensor_batch``;
         actions are extracted from ``WargameEnvAction.actions``.
 
         Args:
-            batch: Current batch of data (unused -- episodes are collected inline)
+            batch: Unused (rollout is collected inline)
             batch_idx: Batch index
         """
         experiences = self._collect_experiences()
 
-        device = self.policy_net.device
+        device = self.ppo_model.device
         optimizer = self.optimizers()
 
         state_tensors = observations_to_tensor_batch(
@@ -181,62 +182,87 @@ class PPOLightning(LightningModule):
             [exp.log_prob for exp in experiences]  # type: ignore[misc]
         ).detach()
 
-        _, state_values = self.policy_net(state_tensors)
+        _, state_values = self.ppo_model(state_tensors)
 
         returns = self.compute_returns(rewards, dones, state_values).detach()
         advantages = (returns - state_values).detach()
 
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
+        n_steps = len(experiences)
         total_loss_float = 0.0
+        n_updates = 0
+        epoch_policy_loss = 0.0
+        epoch_value_loss = 0.0
+        epoch_entropy_loss = 0.0
+
         for _ in range(self.n_epochs):
-            new_logits, new_state_values = self.policy_net(state_tensors)
-            new_dist = Categorical(logits=new_logits)
-            new_log_probs = new_dist.log_prob(actions).sum(dim=-1)
+            perm = torch.randperm(n_steps, device=device)
+            for start in range(0, n_steps, self.batch_size):
+                end = min(start + self.batch_size, n_steps)
+                mb_idx = perm[start:end]
 
-            ratio = torch.exp(new_log_probs - old_log_probs)
+                mb_state_tensors = [t[mb_idx] for t in state_tensors]
+                mb_actions = actions[mb_idx]
+                mb_old_log_probs = old_log_probs[mb_idx]
+                mb_returns = returns[mb_idx]
+                mb_advantages = advantages[mb_idx]
 
-            surr1 = ratio * advantages
-            surr2 = (
-                torch.clamp(ratio, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
-            )
-            policy_loss = -torch.min(surr1, surr2).mean()
+                new_logits, new_state_values = self.ppo_model(mb_state_tensors)
+                new_dist = Categorical(logits=new_logits)
+                new_log_probs = new_dist.log_prob(mb_actions).sum(dim=-1)
 
-            value_loss = self.value_loss_fn(new_state_values, returns) * self.vf_coef
+                ratio = torch.exp(new_log_probs - mb_old_log_probs)
 
-            entropy = new_dist.entropy().sum(dim=-1).mean()
-            entropy_loss = -entropy * self.ent_coef
+                surr1 = ratio * mb_advantages
+                surr2 = (
+                    torch.clamp(ratio, 1 - self.eps_clip, 1 + self.eps_clip)
+                    * mb_advantages
+                )
+                policy_loss = -torch.min(surr1, surr2).mean()
 
-            loss = policy_loss + value_loss + entropy_loss
+                value_loss = (
+                    self.value_loss_fn(new_state_values, mb_returns) * self.vf_coef
+                )
 
-            optimizer.zero_grad()  # type: ignore[union-attr]
-            self.manual_backward(loss)
+                entropy = new_dist.entropy().sum(dim=-1).mean()
+                entropy_loss = -entropy * self.ent_coef
 
-            torch.nn.utils.clip_grad_norm_(
-                self.policy_net.parameters(), self.max_grad_norm
-            )
-            optimizer.step()  # type: ignore[union-attr]
+                loss = policy_loss + value_loss + entropy_loss
 
-            total_loss_float += loss.item()
+                optimizer.zero_grad()  # type: ignore[union-attr]
+                self.manual_backward(loss)
 
-        if self.do_log:
-            self.log("train_loss", total_loss_float / self.n_epochs, prog_bar=True)
-            self.log("policy_loss", policy_loss.item(), prog_bar=False)
-            self.log("value_loss", value_loss.item(), prog_bar=False)
-            self.log("entropy_loss", entropy_loss.item(), prog_bar=False)
+                torch.nn.utils.clip_grad_norm_(
+                    self.ppo_model.parameters(), self.max_grad_norm
+                )
+                optimizer.step()  # type: ignore[union-attr]
+
+                total_loss_float += loss.item()
+                n_updates += 1
+                epoch_policy_loss += policy_loss.item()
+                epoch_value_loss += value_loss.item()
+                epoch_entropy_loss += entropy_loss.item()
+
+        if self.do_log and n_updates > 0:
+            self.log("train_loss", total_loss_float / n_updates, prog_bar=True)
+            self.log("policy_loss", epoch_policy_loss / n_updates, prog_bar=False)
+            self.log("value_loss", epoch_value_loss / n_updates, prog_bar=False)
+            self.log("entropy_loss", epoch_entropy_loss / n_updates, prog_bar=False)
             self.log("env_steps", self.global_step, logger=False, prog_bar=True)
 
     def _collect_experiences(self) -> list:
-        """Run episodes until at least one step is collected."""
-        experiences: list = []
-        while len(experiences) == 0:
-            _reward, _steps, experiences = self.agent.run_episode(
-                self.policy_net,
+        """Run episodes until n_steps transitions are collected (can span multiple episodes)."""
+        rollout: list = []
+        while len(rollout) < self.n_steps:
+            _reward, _steps, episode_exp = self.agent.run_episode(
+                self.ppo_model,
                 epsilon=0.0,
                 render=False,
                 save_steps=True,
             )
-        return experiences
+            rollout.extend(episode_exp)
+        return rollout[: self.n_steps]
 
     def configure_optimizers(self) -> optim.Optimizer:
         """Initialize optimizer."""
@@ -259,11 +285,11 @@ class PPOLightning(LightningModule):
         """
         steps_s = []
         episode_rewards = []
-        self.policy_net.eval()
+        self.ppo_model.eval()
         with torch.no_grad():
             for _ in range(n_episodes):
-                reward, steps, _ = self.agent.run_episode(
-                    self.policy_net, epsilon=epsilon, render=False, save_steps=False
+                reward, steps, experiences = self.agent.run_episode(
+                    self.ppo_model, epsilon=epsilon, render=False, save_steps=True
                 )
                 episode_rewards.append(reward)
                 steps_s.append(steps)
@@ -275,7 +301,7 @@ class PPOLightning(LightningModule):
             self.log("min_episode_reward", min(episode_rewards), prog_bar=False)
             success_rate = torch.tensor(steps_s) < self.env.max_turns
             self.log("success_rate", success_rate.float().mean() * 100, prog_bar=False)
-        self.policy_net.train()
+        self.ppo_model.train()
 
     def on_train_epoch_end(self) -> None:
         """Run after each training epoch."""

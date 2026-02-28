@@ -1,7 +1,4 @@
 import os
-
-os.environ["CUDA_VISIBLE_DEVICES"] = ""
-
 from enum import Enum
 
 import typer
@@ -25,6 +22,9 @@ from wargame_rl.wargame.model.net import MLPNetwork, TransformerNetwork
 from wargame_rl.wargame.model.ppo.config import PPOConfig
 from wargame_rl.wargame.model.ppo.lightning import PPOLightning
 from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
+
+# os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
@@ -127,6 +127,7 @@ def train(
                         env_config,
                         training_config.record_during_training,
                         training_config.record_after_epoch,
+                        filename_prefix="dqn",
                     )
                 )
             logger = get_logger(run, disabled=no_wandb)
@@ -153,7 +154,7 @@ def train(
             net = PPO_Transformer.from_env(env)
         else:
             raise NotImplementedError("We will probably never do this.")
-        model = PPOLightning(env=env, policy_net=net, **ppo_config.model_dump())
+        model = PPOLightning(env=env, ppo_model=net, **ppo_config.model_dump())
 
         config = {
             "wargame": env_config.model_dump(),
@@ -175,6 +176,7 @@ def train(
                         env_config,
                         training_config.record_during_training,
                         training_config.record_after_epoch,
+                        filename_prefix="ppo",
                     )
                 )
             logger = get_logger(run, disabled=no_wandb)

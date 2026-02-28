@@ -66,7 +66,7 @@ def test_ppo_model_forward_batch_returns_correct_shapes(
     env: WargameEnv, ppo_net: PPO_Transformer, experiences: list[Experience]
 ) -> None:
     # Arrange
-    batch_size = 4
+    batch_size = 256
     state_tensors = observations_to_tensor_batch(
         [exp.state for exp in experiences[:batch_size]], device=ppo_net.device
     )
@@ -139,7 +139,7 @@ def test_ppo_evaluate_actions_returns_correct_shapes(
     env: WargameEnv, ppo_net: PPO_Transformer, experiences: list[Experience]
 ) -> None:
     # Arrange
-    batch_size = 4
+    batch_size = 256
     state_tensors = observations_to_tensor_batch(
         [exp.state for exp in experiences[:batch_size]], device=ppo_net.device
     )
@@ -224,7 +224,7 @@ def test_compute_returns_propagates_future_reward_backwards(
 ) -> None:
     """Returns at steps before the reward should be smaller, decaying with distance."""
     # Arrange
-    model = PPOLightning(env=env, policy_net=ppo_net, log=False)
+    model = PPOLightning(env=env, ppo_model=ppo_net, log=False)
     rewards = torch.tensor([0.0, 0.0, 1.0])
     dones = torch.tensor([0.0, 0.0, 1.0])
     values = torch.zeros(3)
@@ -241,7 +241,7 @@ def test_compute_returns_terminal_state_blocks_reward_propagation(
 ) -> None:
     """A done=1 at step t should prevent rewards at t+1 from flowing back to t or earlier."""
     # Arrange
-    model = PPOLightning(env=env, policy_net=ppo_net, log=False)
+    model = PPOLightning(env=env, ppo_model=ppo_net, log=False)
     # Episode ends at t=1; the reward at t=2 belongs to a new episode
     rewards = torch.tensor([0.0, 0.0, 1.0])
     dones = torch.tensor([0.0, 1.0, 0.0])
@@ -264,7 +264,7 @@ def test_compute_returns_terminal_state_blocks_reward_propagation(
 def test_ppo_training_runs_without_error(
     env: WargameEnv, ppo_net: PPO_Transformer
 ) -> None:
-    model = PPOLightning(env=env, policy_net=ppo_net, log=False)
+    model = PPOLightning(env=env, ppo_model=ppo_net, log=False)
 
     trainer = Trainer(
         accelerator="auto",

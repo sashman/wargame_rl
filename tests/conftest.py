@@ -13,7 +13,7 @@ from wargame_rl.wargame.types import Experience
 
 @pytest.fixture
 def n_steps() -> int:
-    return 10
+    return 256
 
 
 @pytest.fixture
