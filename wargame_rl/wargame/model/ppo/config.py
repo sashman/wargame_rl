@@ -9,11 +9,11 @@ class PPOConfig(BaseModel):
     # Training parameters
     batch_size: int = 128
     lr: float = 3e-4
-    gamma: float = 0.99
+    gamma: float = 0.9
     gae_lambda: float = 0.95
     eps_clip: float = 0.2
     vf_coef: float = 0.5
-    ent_coef: float = 0.01
+    ent_coef: float = 0.1  # entropy coefficient (increase to explore more)
     max_grad_norm: float = 0.5
     n_epochs: int = 5
     n_steps: int = 2048
@@ -29,6 +29,6 @@ class PPOConfig(BaseModel):
 
 class PPOTrainingConfig(BaseModel):
     max_epochs: int = 500
-    val_check_interval: int | float = 0.2
-    record_during_training: bool = False
+    val_check_interval: int | float = 1
+    record_during_training: bool = True
     record_after_epoch: int = 50

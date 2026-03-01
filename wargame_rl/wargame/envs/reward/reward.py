@@ -13,20 +13,20 @@ class Reward:
         self, previous_model_distance: float, distance_to_closest_objective: float
     ) -> float:
         if distance_to_closest_objective == 0:
-            return float(1)
+            return float(25)
 
         distance_improvement = float(
             distance_to_closest_objective - previous_model_distance
         )
 
-        if distance_improvement == 0:
-            return float(-0.05)
+        # if distance_improvement == 0:
+        #     return float(-0.05)
 
         if distance_improvement < 0:
-            return float(0.15)
+            return float(0.15) * abs(distance_improvement) ** 2
 
-        if distance_improvement > 0:
-            return float(-0.5)
+        if distance_improvement >= 0:
+            return -(float(2) * abs(distance_improvement) + float(0.3))
 
         return float(0)
 
