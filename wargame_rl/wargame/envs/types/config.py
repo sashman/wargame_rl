@@ -161,6 +161,13 @@ class WargameEnvConfig(BaseModel):
         description="Ordered reward phases for curriculum learning. "
         "When None, uses the legacy Reward class and existing config fields.",
     )
+    terminal_success_bonus: float = Field(
+        default=0.0,
+        description=(
+            "Legacy reward bonus added once when all models are at an objective "
+            "and the episode terminates. Ignored when reward_phases are configured."
+        ),
+    )
 
     # --- Opponent configuration ---
     number_of_opponent_models: int = Field(

@@ -53,10 +53,13 @@ class DQNLightning(LightningModule):
         self.save_hyperparameters()
 
         self.env = env
-        self.policy_net: RL_Network = torch.compile(policy_net)  # type: ignore[assignment]
+        # Use the provided policy network directly in eager mode. torch.compile
+        # would require a system C++ toolchain which is not guaranteed to be
+        # available in all dev/test environments.
+        self.policy_net = policy_net
         self.policy_net.train()
-        self.to(policy_net.device)
-        self.target_net: RL_Network = torch.compile(deepcopy(policy_net))  # type: ignore[assignment]
+        self.to(self.policy_net.device)
+        self.target_net: RL_Network = deepcopy(policy_net)
         self.target_net.eval()
 
         self.buffer = ReplayBuffer(capacity=self.hparams.replay_size)  # type: ignore

@@ -147,7 +147,11 @@ class TestClosestObjectiveCalculator:
         obj_loc = simple_env.objectives[0].location.copy()
         model = simple_env.wargame_models[0]
         model.location = obj_loc.copy()
-        model.previous_closest_objective_distance = 0.5
+        # Pretend the model was previously far outside the objective zone so
+        # the full bonus is earned when it reaches the centre.
+        model.previous_closest_objective_distance = (
+            float(simple_env.config.objective_radius_size) * 10.0
+        )
 
         cache = compute_distances(simple_env.wargame_models, simple_env.objectives)
         ctx = _make_step_context(simple_env, cache)

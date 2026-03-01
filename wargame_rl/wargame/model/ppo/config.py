@@ -11,10 +11,15 @@ class PPOConfig(BaseModel):
     lr: float = 3e-4
     gamma: float = 0.9
     gae_lambda: float = 0.95
+    # Controls bias–variance tradeoff in GAE (Generalized Advantage Estimation).
+    # λ = 1 → Monte Carlo (low bias, high variance)
+    # λ = 0 → TD(0) (higher bias, low variance)
     eps_clip: float = 0.2
-    vf_coef: float = 0.5
-    ent_coef: float = 0.1  # entropy coefficient (increase to explore more)
-    max_grad_norm: float = 0.5
+    vf_coef: float = 0.5  # value function coefficient
+    # Value loss dominates → reduce this
+    # Value underfits → increase this
+    ent_coef: float = 0.01  # entropy coefficient (increase to explore more)
+    max_grad_norm: float = 0.5  # Gradient Stabilization (prevent exploding gradients)
     n_epochs: int = 5
     n_steps: int = 2048
     n_episodes: int = 10

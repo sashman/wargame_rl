@@ -393,6 +393,15 @@ class WargameEnv(gym.Env):
         else:
             reward = Reward().calculate_reward(self, cache)
 
+            # Legacy terminal success bonus: applied once when all models are at
+            # an objective and the episode terminates.
+            if is_terminated and self.config.terminal_success_bonus != 0.0:
+                at_objective = (
+                    cache.model_obj_norms_offset <= cache.obj_radii  # type: ignore[operator]
+                )
+                if bool(at_objective.any(axis=1).all()):
+                    reward += float(self.config.terminal_success_bonus)
+
         observation = self._get_obs(cache)
         info = self._get_info()
 

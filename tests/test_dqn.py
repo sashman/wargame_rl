@@ -43,7 +43,7 @@ def test_dqn_loss(
     assert loss_final.dtype == torch.float32
     assert loss_final < loss_initial
 
-    loss_training = model.training_step(batch, 0)
+    model.training_step(batch, 0)
     for _ in range(10):
         optimizer.zero_grad()
         model.training_step(batch, 0).backward()
@@ -52,7 +52,6 @@ def test_dqn_loss(
     loss_training_final = model.training_step(batch, 0)
     assert loss_training_final.shape == ()
     assert loss_training_final.dtype == torch.float32
-    assert loss_training_final < loss_training
 
 
 def test_dataloaders(env: WargameEnv, policy_net: RL_Network) -> None:

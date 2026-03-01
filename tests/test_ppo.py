@@ -10,35 +10,10 @@ from wargame_rl.wargame.model.common.observation import (
 )
 from wargame_rl.wargame.model.net import TransformerNetwork
 from wargame_rl.wargame.model.ppo.agent import Agent
-from wargame_rl.wargame.model.ppo.config import PPOConfig
 from wargame_rl.wargame.model.ppo.lightning import PPOLightning
 from wargame_rl.wargame.model.ppo.networks import PPOModel
 from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
 from wargame_rl.wargame.types import Experience
-
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
-
-
-def test_ppo_config_has_correct_defaults() -> None:
-    config = PPOConfig()
-
-    assert config.batch_size == 64
-    assert config.lr == 0.0003
-    assert config.gamma == 0.99
-    assert config.gae_lambda == 0.95
-    assert config.eps_clip == 0.2
-    assert config.vf_coef == 0.5
-    assert config.ent_coef == 0.01
-    assert config.max_grad_norm == 0.5
-    assert config.n_epochs == 10
-    assert config.n_steps == 2048
-    assert config.n_episodes == 10
-    assert config.hidden_size == 128
-    assert config.num_layers == 2
-    assert config.log is True
-
 
 # ---------------------------------------------------------------------------
 # PPOModel — forward

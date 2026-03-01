@@ -8,7 +8,7 @@ from torch import nn
 
 from wargame_rl.wargame.envs.types import WargameEnvObservation, WargameModelObservation
 from wargame_rl.wargame.model.common import Device
-from wargame_rl.wargame.model.dqn.observation import observation_to_tensor
+from wargame_rl.wargame.model.common.observation import observation_to_tensor
 
 # 'Agg': used to generate plots as images and save them to a file instead of rendering to screen
 matplotlib.use("Agg")
