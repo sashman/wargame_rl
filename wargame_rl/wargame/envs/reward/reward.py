@@ -24,17 +24,17 @@ class Reward:
             )
 
         distance_improvement = float(
-            distance_to_closest_objective - previous_model_distance
+            previous_model_distance - distance_to_closest_objective
         )
 
         if distance_improvement == 0:
             return float(-0.05)
 
         if distance_improvement < 0:
-            return float(0.5)
+            return float(-0.5) * distance_improvement
 
         if distance_improvement > 0:
-            return float(-0.5)
+            return float(0.05) * distance_improvement
 
         return float(0)
 
