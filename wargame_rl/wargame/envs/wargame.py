@@ -9,6 +9,7 @@ from gymnasium import spaces
 from wargame_rl.wargame.envs.env_components import (
     ActionHandler,
     DistanceCache,
+    GameClock,
     build_info,
     build_observation,
     compute_distances,
@@ -85,7 +86,7 @@ class WargameEnv(gym.Env):
         self.clock = None
 
         self.current_turn = 0
-        self.max_turns = self.board_width + self.board_height
+        self._game_clock = GameClock(n_rounds=config.number_of_battle_rounds)
 
         self.wargame_models = self.create_wargame_models(config)
         self.objectives = self.create_objectives(config)
@@ -139,6 +140,11 @@ class WargameEnv(gym.Env):
         else:
             self._opponent_action_handler = ActionHandler(config, n_models=0)
             self._opponent_policy = None
+
+    @property
+    def max_turns(self) -> int:
+        """Maximum steps per episode (equals number of battle rounds)."""
+        return self._game_clock.n_rounds
 
     @property
     def n_actions(self) -> int:
@@ -232,8 +238,11 @@ class WargameEnv(gym.Env):
         )
         if self.opponent_models:
             update_distances_to_objectives(self.opponent_models, self.objectives)
+
+        clock_state = self._game_clock.state
+        phase = clock_state.phase or BattlePhase.movement
         action_mask = self._action_handler.registry.get_model_action_masks(
-            BattlePhase.movement, len(self.wargame_models)
+            phase, len(self.wargame_models)
         )
         return build_observation(
             self.current_turn,
@@ -244,6 +253,9 @@ class WargameEnv(gym.Env):
             self.board_height,
             opponent_models=self.opponent_models,
             action_mask=action_mask,
+            battle_round=clock_state.battle_round or 1,
+            battle_phase_index=list(BattlePhase).index(phase),
+            n_rounds=self._game_clock.n_rounds,
         )
 
     def _get_info(self) -> WargameEnvInfo:
@@ -275,6 +287,10 @@ class WargameEnv(gym.Env):
         self.current_turn = 0
         self.last_reward = None
         self.last_step_context = None
+
+        self._game_clock.reset()
+        self._game_clock.skip_setup()
+        self._game_clock.advance_to_phase(BattlePhase.movement)
 
         # Place player models
         if self.config.has_fixed_model_positions:
@@ -343,8 +359,9 @@ class WargameEnv(gym.Env):
     def _apply_opponent_action(self) -> None:
         if self._opponent_policy is None or not self.opponent_models:
             return
+        phase = self._game_clock.state.phase or BattlePhase.movement
         opp_mask = self._opponent_action_handler.registry.get_model_action_masks(
-            BattlePhase.movement, len(self.opponent_models)
+            phase, len(self.opponent_models)
         )
         opp_action = self._opponent_policy.select_action(
             self.opponent_models, self, action_mask=opp_mask
@@ -378,6 +395,12 @@ class WargameEnv(gym.Env):
 
         self.current_turn += 1
 
+        # Advance clock one full round (auto-skip non-movement phases)
+        if not self._game_clock.is_game_over:
+            self._game_clock.advance_to_next_round()
+            if not self._game_clock.is_game_over:
+                self._game_clock.advance_to_phase(BattlePhase.movement)
+
         needs_mm = self.config.group_cohesion_enabled or (
             self.phase_manager is not None
             and self.phase_manager.needs_model_model_distances
@@ -388,7 +411,7 @@ class WargameEnv(gym.Env):
             compute_model_model=needs_mm,
         )
 
-        is_terminated = get_termination(self.current_turn, self.max_turns, cache)
+        is_terminated = self._game_clock.is_game_over or get_termination(cache)
 
         if self.phase_manager is not None:
             ctx = StepContext(

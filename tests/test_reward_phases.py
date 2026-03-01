@@ -68,6 +68,7 @@ def phased_env() -> WargameEnv:
         number_of_wargame_models=2,
         number_of_objectives=1,
         objective_radius_size=2,
+        number_of_battle_rounds=40,
         reward_phases=[
             RewardPhaseConfig(
                 name="group_up",

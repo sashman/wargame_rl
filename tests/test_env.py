@@ -15,6 +15,7 @@ def env_config() -> WargameEnvConfig:
         number_of_wargame_models=2,
         number_of_objectives=2,
         objective_radius_size=1,
+        number_of_battle_rounds=100,
     )
 
 

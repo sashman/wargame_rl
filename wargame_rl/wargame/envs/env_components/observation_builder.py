@@ -64,6 +64,9 @@ def build_observation(
     board_height: int,
     opponent_models: list[WargameModel] | None = None,
     action_mask: np.ndarray | None = None,
+    battle_round: int = 1,
+    battle_phase_index: int = 0,
+    n_rounds: int = 5,
 ) -> WargameEnvObservation:
     """Build the observation dict from current state."""
     objectives_obs = [
@@ -77,6 +80,9 @@ def build_observation(
         board_height=board_height,
         opponent_models=_models_to_obs(opponent_models or [], max_groups),
         action_mask=action_mask,
+        battle_round=battle_round,
+        battle_phase_index=battle_phase_index,
+        n_rounds=n_rounds,
     )
 
 

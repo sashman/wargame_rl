@@ -119,10 +119,15 @@ def _observation_to_numpy(
     obj_locs = np.array([o.location for o in state.objectives], dtype=np.float32)
     obj_features = _normalize(obj_locs, half_board)
 
-    current_turn = np.array([0], dtype=np.float32)
+    n_phases = 5  # len(BattlePhase)
+    normalized_round = state.battle_round / max(state.n_rounds, 1)
+    normalized_phase = state.battle_phase_index / max(n_phases - 1, 1)
+    game_features = np.array(
+        [0.0, normalized_round, normalized_phase], dtype=np.float32
+    )
 
     return (
-        current_turn,
+        game_features,
         obj_features,
         model_features,
         opponent_features,
