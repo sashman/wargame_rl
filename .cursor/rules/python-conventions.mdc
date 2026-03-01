@@ -6,29 +6,9 @@ alwaysApply: false
 
 # Python Conventions
 
-## Type Hints
-
-- All functions must have type annotations (enforced by mypy `disallow_untyped_defs`)
-- Use `from __future__ import annotations` for forward references
-- Use modern union syntax: `str | None` not `Optional[str]`
-- Use built-in generics: `list[int]`, `dict[str, Any]`, `tuple[int, ...]`
-
-## Imports
-
-- isort with Black profile (stdlib → third-party → local)
-- autoflake removes unused imports automatically
-- Local imports: `from wargame_rl.wargame...` (absolute, not relative)
-
-## Naming
-
-- Classes: `PascalCase` (`WargameEnv`, `DQN_MLP`, `ActionHandler`)
-- Functions / variables: `snake_case`
-- Constants: `UPPER_SNAKE_CASE` (`STAY_ACTION`)
-- Private methods: leading underscore (`_get_obs`)
-
-## Style
-
-- Ruff formatter: 88 char line length, 4-space indent, double quotes
-- Prefer Pydantic models for structured data and config
-- Use `loguru` for logging, not `print` or stdlib `logging`
-- Use `numpy` typed arrays where performance matters
+- All functions typed (mypy strict); `from __future__ import annotations`
+- Modern syntax: `str | None`, `list[int]`, `dict[str, Any]`
+- Imports: isort Black profile (stdlib → third-party → local); absolute (`from wargame_rl.wargame...`)
+- Classes `PascalCase` · functions/vars `snake_case` · constants `UPPER_SNAKE_CASE` · private `_leading_underscore`
+- Ruff: 88 chars, 4-space indent, double quotes
+- Pydantic for structured data/config · `loguru` for logging · `numpy` typed arrays for perf
