@@ -15,7 +15,7 @@ class PPOConfig(BaseModel):
     vf_coef: float = 0.5
     ent_coef: float = 0.01
     max_grad_norm: float = 0.5
-    n_epochs: int = 10
+    n_epochs: int = 5
     n_steps: int = 2048
     n_episodes: int = 10
 
@@ -25,13 +25,10 @@ class PPOConfig(BaseModel):
 
     # Training settings
     log: bool = True
-    sync_rate: int = (
-        1000  # How often to sync networks (not used in PPO but kept for consistency)
-    )
-    replay_size: int = 10000  # Not used in PPO but kept for consistency
 
-    class Config:
-        """Pydantic configuration."""
 
-        # Allow extra fields for backward compatibility
-        extra = "allow"
+class PPOTrainingConfig(BaseModel):
+    max_epochs: int = 500
+    val_check_interval: int | float = 0.2
+    record_during_training: bool = False
+    record_after_epoch: int = 50

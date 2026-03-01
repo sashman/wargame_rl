@@ -16,10 +16,14 @@ from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.common.record_episode_callback import (
     RecordEpisodeCallback,
 )
-from wargame_rl.wargame.model.dqn.config import DQNConfig, NetworkType, TrainingConfig
+from wargame_rl.wargame.model.dqn.config import (
+    DQNConfig,
+    DQNTrainingConfig,
+    NetworkType,
+)
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
 from wargame_rl.wargame.model.net import MLPNetwork, TransformerNetwork
-from wargame_rl.wargame.model.ppo.config import PPOConfig
+from wargame_rl.wargame.model.ppo.config import PPOConfig, PPOTrainingConfig
 from wargame_rl.wargame.model.ppo.lightning import PPOLightning
 from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
 
@@ -94,7 +98,7 @@ def train(
 
     if algorithm == AlgorithmType.DQN:
         dqn_config = DQNConfig()
-        training_config = TrainingConfig(
+        training_config = DQNTrainingConfig(
             record_during_training=record_during_training,
             record_after_epoch=record_after_epoch,
         )
@@ -143,7 +147,7 @@ def train(
 
     elif algorithm == AlgorithmType.PPO:
         ppo_config = PPOConfig()
-        training_config = TrainingConfig(
+        training_config = PPOTrainingConfig(
             record_during_training=record_during_training,
             record_after_epoch=record_after_epoch,
         )
@@ -186,6 +190,7 @@ def train(
                 val_check_interval=training_config.val_check_interval,
                 logger=logger,
                 callbacks=ppo_callbacks,
+                log_every_n_steps=1,
             )
 
             trainer.fit(model)

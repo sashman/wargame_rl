@@ -22,7 +22,7 @@ class DQNConfig(BaseModel):
     n_episodes: int = 20  # just for metrics
 
 
-class TrainingConfig(BaseModel):
+class DQNTrainingConfig(BaseModel):
     max_epochs: int = 150
     val_check_interval: int = 1
     record_during_training: bool = False
