@@ -31,7 +31,7 @@ class Reward:
             return float(-0.05)
 
         if distance_improvement < 0:
-            return float(-0.5) * distance_improvement
+            return float(0.5) * distance_improvement
 
         if distance_improvement > 0:
             return float(0.05) * distance_improvement
