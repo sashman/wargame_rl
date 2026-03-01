@@ -111,7 +111,13 @@ class PPOLightning(LightningModule):
         action_logits, _ = self.ppo_model(x)
         return action_logits
 
-    def compute_returns(self, rewards: Tensor, dones: Tensor, values: Tensor) -> Tensor:
+    def compute_returns(
+        self,
+        rewards: Tensor,
+        dones: Tensor,
+        values: Tensor,
+        last_value: Tensor | None = None,
+    ) -> Tensor:
         """Compute returns using Generalized Advantage Estimation.
 
         Args:
@@ -128,9 +134,14 @@ class PPOLightning(LightningModule):
 
         for t in reversed(range(len(rewards))):
             if t == len(rewards) - 1:
-                next_value = torch.tensor(
-                    0.0, device=rewards.device, dtype=rewards.dtype
-                )
+                if last_value is None:
+                    next_value = torch.tensor(
+                        0.0, device=rewards.device, dtype=rewards.dtype
+                    )
+                else:
+                    next_value = last_value.to(
+                        device=rewards.device, dtype=rewards.dtype
+                    )
             else:
                 next_value = values[t + 1]
 
@@ -185,7 +196,23 @@ class PPOLightning(LightningModule):
 
         _, state_values = self.ppo_model(state_tensors)
 
-        returns = self.compute_returns(rewards, dones, state_values).detach()
+        last_done = bool(experiences[-1].done)
+        if last_done:
+            last_value = torch.tensor(0.0, device=device, dtype=torch.float32)
+        else:
+            last_state_tensors = observations_to_tensor_batch(
+                [experiences[-1].new_state], device=device
+            )
+            with torch.no_grad():
+                _, last_state_value = self.ppo_model(last_state_tensors)
+            last_value = last_state_value.squeeze(0).detach()
+
+        returns = self.compute_returns(
+            rewards,
+            dones,
+            state_values,
+            last_value=last_value,
+        ).detach()
         advantages = (returns - state_values).detach()
 
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
