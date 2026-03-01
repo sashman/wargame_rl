@@ -38,11 +38,7 @@ class Agent:
 
         if np.random.random() < epsilon:
             if mask is not None:
-                actions: list[int] = []
-                for model_mask in mask:
-                    valid = np.where(model_mask)[0]
-                    actions.append(int(np.random.choice(valid)))
-                action = WargameEnvAction(actions)
+                action = WargameEnvAction.random(mask)
             else:
                 action = WargameEnvAction(self.env.action_space.sample())
         else:

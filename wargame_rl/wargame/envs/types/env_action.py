@@ -1,13 +1,27 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
+
+import numpy as np
 
 
 @dataclass
 class WargameEnvAction:
-    """
-    Action structure for the Wargame environment.
+    """Action structure for the Wargame environment.
 
-    List of ints, where each int contains the action for each wargame model: up (0), down (1), left (2), right (3).
-    The length of the list is equal to the number of wargame models.
+    ``actions`` is a list of ints — one per wargame model.
     """
 
-    actions: list[int]  # Actions for each wargame model
+    actions: list[int]
+
+    @classmethod
+    def random(cls, mask: np.ndarray) -> WargameEnvAction:
+        """Sample a random action per model, respecting a boolean mask.
+
+        Parameters
+        ----------
+        mask:
+            ``(n_models, n_actions)`` boolean array where True = valid.
+        """
+        actions = [int(np.random.choice(np.where(m)[0])) for m in mask]
+        return cls(actions)
