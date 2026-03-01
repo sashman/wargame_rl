@@ -22,13 +22,15 @@ def experience_list_to_batch(experiences: list[Experience]) -> ExperienceBatch:
         next_states_list
     )
     device = tensor_states[0].device
+    next_state_masks = tensor_next_states[4]
 
     return ExperienceBatch(
-        state_tensors=tensor_states,
+        state_tensors=tensor_states[:4],
         actions=torch.tensor(actions, dtype=torch.int32, device=device),
         rewards=torch.tensor(rewards, dtype=torch.float32, device=device),
         dones=torch.tensor(dones, dtype=torch.bool, device=device),
-        new_state_tensors=tensor_next_states,
+        new_state_tensors=tensor_next_states[:4],
+        next_state_masks=next_state_masks,
     )
 
 

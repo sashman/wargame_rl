@@ -26,11 +26,13 @@ def test_observation_to_tensor(experiences: list[Experience]) -> None:
         dim_location + dim_distances + max_groups + 1
     )  # group_id one-hot + same-group closest dist
 
+    game_size = state.size_game_observation
+
     # Test batch conversion
     state_batch = observations_to_tensor_batch(states)
-    state_turn, state_objectives, state_wargame_models, _state_opp = state_batch
+    state_turn, state_objectives, state_wargame_models, _state_opp, _mask = state_batch
 
-    assert state_turn.shape == (batch_size, 1)
+    assert state_turn.shape == (batch_size, game_size)
     assert state_objectives.shape == (batch_size, n_objectives, dim_location)
     assert state_wargame_models.shape == (batch_size, n_wargame_models, dim_model)
 
@@ -71,7 +73,8 @@ def test_experience_to_batch(experiences: list[Experience]) -> None:
     state_size = state.size
     assert wargame_config.number_of_wargame_models == n_wargame_models
     assert wargame_config.number_of_objectives == n_objectives
-    assert state_size == sum(size_objectives) + sum(size_wargame_models) + 1
+    game_size = state.size_game_observation
+    assert state_size == sum(size_objectives) + sum(size_wargame_models) + game_size
 
     np.testing.assert_array_equal(
         size_objectives, np.array([dim_location] * n_objectives)
@@ -88,9 +91,9 @@ def test_experience_to_batch(experiences: list[Experience]) -> None:
     new_state_turn, new_state_objectives, new_state_wargame_models, _new_opp = (
         batch.new_state_tensors
     )
-    assert state_turn.shape == (batch_size, 1)
+    assert state_turn.shape == (batch_size, game_size)
     assert state_objectives.shape == (batch_size, n_objectives, dim_location)
     assert state_wargame_models.shape == (batch_size, n_wargame_models, dim_model)
-    assert new_state_turn.shape == (batch_size, 1)
+    assert new_state_turn.shape == (batch_size, game_size)
     assert new_state_objectives.shape == (batch_size, n_objectives, dim_location)
     assert new_state_wargame_models.shape == (batch_size, n_wargame_models, dim_model)

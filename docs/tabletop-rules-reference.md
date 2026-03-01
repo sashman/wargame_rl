@@ -30,7 +30,7 @@ Before the first turn begins, several setup stages are resolved in order:
 - The game lasts a fixed number of **battle rounds** (standard: **5 rounds**).
 - Each battle round consists of two **player turns** — the first player completes their entire turn before the second player takes theirs.
 - Each player turn is divided into **phases** (see below), during which various interactions between armies and the game state take place.
-- The game can also end early if one player's army is completely destroyed.
+- The game does not end early if all of the enemy models are destroyed. The game carries through all of the turns, even though a player cannot take any actions.
 
 ### Winning the Game
 

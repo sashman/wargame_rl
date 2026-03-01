@@ -162,6 +162,12 @@ class WargameEnvConfig(BaseModel):
         "When None, uses the legacy Reward class and existing config fields.",
     )
 
+    number_of_battle_rounds: int = Field(
+        default=5,
+        gt=0,
+        description="Number of battle rounds per game (tabletop standard is 5).",
+    )
+
     # --- Opponent configuration ---
     number_of_opponent_models: int = Field(
         default=0,

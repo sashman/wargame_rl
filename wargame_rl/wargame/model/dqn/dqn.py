@@ -69,11 +69,15 @@ class DQN_MLP(RL_Network):
         self.action_dim = action_dim
 
     def forward(self, xs: list[torch.Tensor]) -> torch.Tensor:
-        # 1 Concatenate all tensors in xs
+        # Exclude the action mask tensor (last element) — it's used
+        # externally for action selection, not as network input.
+        state_tensors = xs[:4]
         if self.is_batched(xs):
-            x = torch.cat([x.flatten(start_dim=1) for x in xs], dim=1)
+            x = torch.cat([x.flatten(start_dim=1) for x in state_tensors], dim=1)
         else:
-            x = torch.cat([x.flatten(start_dim=0) for x in xs], dim=0).unsqueeze(0)
+            x = torch.cat(
+                [x.flatten(start_dim=0) for x in state_tensors], dim=0
+            ).unsqueeze(0)
 
         # 2 Forward through the network
         assert len(x.shape) == 2

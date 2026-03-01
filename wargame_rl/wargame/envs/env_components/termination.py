@@ -1,7 +1,8 @@
 """Termination logic for the wargame environment.
 
-Extracted so termination conditions (all-at-objective, max turns, custom rules)
-can be extended or swapped.
+Extracted so termination conditions (all-at-objective, custom rules)
+can be extended or swapped.  Round-limit termination is handled by
+the ``GameClock`` in the environment.
 """
 
 from __future__ import annotations
@@ -13,16 +14,9 @@ if TYPE_CHECKING:
 
 
 def get_termination(
-    current_turn: int,
-    max_turns: int,
     distance_cache: DistanceCache,
 ) -> bool:
     """True if every model has reached at least one objective."""
-
-    if check_max_turns_reached(current_turn, max_turns):
-        return True
-
-    # model_obj_norms_offset[i, j] <= obj_radii[j] means model i is at objective j
     at_objective = distance_cache.model_obj_norms_offset <= distance_cache.obj_radii
     return bool(at_objective.any(axis=1).all())
 

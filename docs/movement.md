@@ -1,10 +1,47 @@
-# Movement System
+# Movement & Action Space
 
-Wargame models use **polar coordinate movement** on a discrete integer grid. Each step, every model independently selects a direction and speed, or chooses to stay in place.
+## Union Action Space
 
-## Action Encoding
+Every model shares a single flat discrete action space. The space is partitioned into contiguous **slices**, each owned by an action type and tagged with the battle phases where it is valid. An `ActionRegistry` manages these slices and produces phase-aware boolean masks so the agent (and opponent policies) never select illegal actions.
 
-Each model's action is a single integer from `0` to `n_movement_angles × n_speed_bins`:
+Current slices:
+
+| Slice | Indices | Valid phases |
+|-------|---------|--------------|
+| `stay` | `0` | All phases |
+| `movement` | `1 .. N×S` | Movement phase only |
+
+With the defaults (`n_movement_angles=16`, `n_speed_bins=6`), the total action space is **97** (1 stay + 96 movement).
+
+### Action Masking
+
+During each step, the environment generates a `(n_models, n_actions)` boolean mask based on the current `BattlePhase`. The mask is:
+
+- Attached to the observation (`WargameEnvObservation.action_mask`).
+- Threaded through the DQN tensor pipeline as a `torch.bool` tensor.
+- Applied during **greedy** action selection (invalid Q-values set to `-inf` before argmax).
+- Applied during **random** exploration (sampling restricted to valid indices).
+- Applied in the **DQN loss** to mask target Q-values for next-state value estimation.
+
+### Extending with New Phases
+
+To add actions for a new phase (e.g. shooting, charging), register a new slice in `ActionHandler.__init__`:
+
+```python
+self._registry.register(
+    "shooting",
+    n_shooting_actions,
+    frozenset({BattlePhase.shooting}),
+)
+```
+
+This appends the new actions after the existing slices. The mask generation, observation pipeline, and DQN output layer automatically account for the larger `n_actions` — no other wiring changes are needed beyond implementing the action application logic itself.
+
+An action can be valid in multiple phases by including them in the `valid_phases` frozenset (e.g. `stay` is valid in all phases).
+
+## Movement Encoding
+
+Each model's movement action is a single integer from `1` to `n_movement_angles × n_speed_bins` (index `0` is the phase-universal stay action):
 
 | Action | Meaning |
 |--------|---------|
@@ -17,8 +54,6 @@ For movement actions, the angle and speed indices are decoded as:
 angle_idx = (action - 1) // n_speed_bins
 speed_idx = (action - 1) %  n_speed_bins
 ```
-
-With the default configuration (`n_movement_angles=16`, `n_speed_bins=6`), there are **97 discrete actions** per model (1 stay + 16 × 6 movement combinations).
 
 ## Direction
 

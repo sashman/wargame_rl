@@ -28,6 +28,7 @@ def _make_config(
         number_of_objectives=2,
         objective_radius_size=2,
         render_mode=None,
+        number_of_battle_rounds=40,
     )
     defaults.update(overrides)
     return WargameEnvConfig(models=models, objectives=objectives, **defaults)
