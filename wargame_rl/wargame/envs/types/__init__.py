@@ -14,13 +14,19 @@ from .config import (
 from .env_action import WargameEnvAction
 from .env_info import WargameEnvInfo
 from .env_observation import WargameEnvObservation
+from .game_timing import BattlePhase, GamePhase, GameState, PlayerSide, SetupPhase
 from .model_observation import WargameModelObservation
 from .objective_observation import WargameEnvObjectiveObservation
 
 __all__ = [
+    "BattlePhase",
+    "GamePhase",
+    "GameState",
     "ModelConfig",
     "ObjectiveConfig",
     "OpponentPolicyConfig",
+    "PlayerSide",
+    "SetupPhase",
     "TurnOrder",
     "WargameEnvConfig",
     "WargameEnvAction",
