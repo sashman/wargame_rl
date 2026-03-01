@@ -5,6 +5,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from wargame_rl.wargame.envs.types import WargameEnvAction
 
 if TYPE_CHECKING:
@@ -20,6 +22,7 @@ class OpponentPolicy(ABC):
         self,
         opponent_models: list[WargameModel],
         env: WargameEnv,
+        action_mask: np.ndarray | None = None,
     ) -> WargameEnvAction:
         """Return one action per opponent model."""
         ...

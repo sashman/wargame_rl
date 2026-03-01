@@ -25,6 +25,7 @@ class ScriptedAdvanceToObjectivePolicy(OpponentPolicy):
         self,
         opponent_models: list[WargameModel],
         env: WargameEnv,
+        action_mask: np.ndarray | None = None,
     ) -> WargameEnvAction:
         handler = env._opponent_action_handler
         actions: list[int] = []

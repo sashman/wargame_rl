@@ -21,3 +21,4 @@ class ExperienceBatch(NamedTuple):
     rewards: torch.Tensor
     dones: torch.Tensor
     new_state_tensors: list[torch.Tensor]
+    next_state_masks: torch.Tensor

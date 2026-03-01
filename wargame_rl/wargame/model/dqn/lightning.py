@@ -127,7 +127,10 @@ class DQNLightning(LightningModule):
         assert state_action_values.shape == (batch_size,)
 
         with torch.no_grad():
-            next_state_values = self.target_net(batch_next_states).max(-1)[0].sum(-1)
+            next_q = self.target_net(batch_next_states)
+            if batch.next_state_masks.numel() > 0:
+                next_q = next_q.masked_fill(~batch.next_state_masks, float("-inf"))
+            next_state_values = next_q.max(-1)[0].sum(-1)
             next_state_values[batch_dones] = 0.0
             next_state_values = next_state_values.detach()
 

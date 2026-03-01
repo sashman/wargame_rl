@@ -29,6 +29,7 @@ from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
 from wargame_rl.wargame.envs.reward.reward import Reward
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.types import (
+    BattlePhase,
     TurnOrder,
     WargameEnvAction,
     WargameEnvConfig,
@@ -231,6 +232,9 @@ class WargameEnv(gym.Env):
         )
         if self.opponent_models:
             update_distances_to_objectives(self.opponent_models, self.objectives)
+        action_mask = self._action_handler.registry.get_model_action_masks(
+            BattlePhase.movement, len(self.wargame_models)
+        )
         return build_observation(
             self.current_turn,
             self.wargame_models,
@@ -239,6 +243,7 @@ class WargameEnv(gym.Env):
             self.board_width,
             self.board_height,
             opponent_models=self.opponent_models,
+            action_mask=action_mask,
         )
 
     def _get_info(self) -> WargameEnvInfo:
@@ -338,7 +343,12 @@ class WargameEnv(gym.Env):
     def _apply_opponent_action(self) -> None:
         if self._opponent_policy is None or not self.opponent_models:
             return
-        opp_action = self._opponent_policy.select_action(self.opponent_models, self)
+        opp_mask = self._opponent_action_handler.registry.get_model_action_masks(
+            BattlePhase.movement, len(self.opponent_models)
+        )
+        opp_action = self._opponent_policy.select_action(
+            self.opponent_models, self, action_mask=opp_mask
+        )
         self._opponent_action_handler.apply(
             opp_action,
             self.opponent_models,

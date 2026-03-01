@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
+
+import numpy as np
 
 from .model_observation import WargameModelObservation
 from .objective_observation import WargameEnvObjectiveObservation
@@ -16,6 +20,7 @@ class WargameEnvObservation:
     board_width: int = 50
     board_height: int = 50
     opponent_models: list[WargameModelObservation] = field(default_factory=list)
+    action_mask: np.ndarray | None = field(default=None, repr=False)
 
     @property
     def size_wargame_models(self) -> list[int]:
