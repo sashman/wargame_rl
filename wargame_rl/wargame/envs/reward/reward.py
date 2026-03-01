@@ -19,9 +19,6 @@ class Reward:
             distance_to_closest_objective - previous_model_distance
         )
 
-        # if distance_improvement == 0:
-        #     return float(-0.05)
-
         if distance_improvement < 0:
             return float(0.15) * abs(distance_improvement) ** 2
 
