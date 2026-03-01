@@ -6,6 +6,17 @@ from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvObservatio
 from wargame_rl.wargame.model.dqn.device import Device, get_device
 
 
+def apply_action_mask(q_values: Tensor, mask: Tensor) -> Tensor:
+    """Set Q-values for invalid actions to ``-inf``.
+
+    Broadcasts the mask against *q_values* so it works whether *q_values*
+    has a leading batch dim and *mask* does not, or both match.
+    """
+    if mask.numel() == 0:
+        return q_values
+    return q_values.masked_fill(~mask, float("-inf"))
+
+
 def action_to_tensor(action: WargameEnvAction, device: Device | None = None) -> Tensor:
     device = get_device(device)
     _, action_tensor = torch.tensor(

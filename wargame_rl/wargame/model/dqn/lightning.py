@@ -12,6 +12,7 @@ from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.dataset import RLDataset, experience_list_to_batch
 from wargame_rl.wargame.model.dqn.dqn import RL_Network
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
+from wargame_rl.wargame.model.dqn.observation import apply_action_mask
 from wargame_rl.wargame.types import ExperienceBatch
 
 
@@ -128,8 +129,7 @@ class DQNLightning(LightningModule):
 
         with torch.no_grad():
             next_q = self.target_net(batch_next_states)
-            if batch.next_state_masks.numel() > 0:
-                next_q = next_q.masked_fill(~batch.next_state_masks, float("-inf"))
+            next_q = apply_action_mask(next_q, batch.next_state_masks)
             next_state_values = next_q.max(-1)[0].sum(-1)
             next_state_values[batch_dones] = 0.0
             next_state_values = next_state_values.detach()

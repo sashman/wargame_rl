@@ -7,7 +7,10 @@ import torch
 from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.model.dqn.dqn import RL_Network
 from wargame_rl.wargame.model.dqn.experience_replay import Experience, ReplayBuffer
-from wargame_rl.wargame.model.dqn.observation import observation_to_tensor
+from wargame_rl.wargame.model.dqn.observation import (
+    apply_action_mask,
+    observation_to_tensor,
+)
 
 
 class Agent:
@@ -49,10 +52,7 @@ class Agent:
                 q_values = policy_net(state)
                 assert q_values.shape[0] == 1
                 assert len(q_values.shape) == 3
-                if mask_tensor.numel() > 0:
-                    q_values = q_values.masked_fill(
-                        ~mask_tensor.unsqueeze(0), float("-inf")
-                    )
+                q_values = apply_action_mask(q_values, mask_tensor.unsqueeze(0))
                 _, action_indexes = q_values.max(axis=-1)
                 action = WargameEnvAction(actions=action_indexes.flatten().tolist())
 
