@@ -3,38 +3,26 @@ description: Development workflow — git, validation, dependencies, training
 alwaysApply: true
 ---
 
-# Development Workflow
+# Dev Workflow
 
-## Git Branching & Commits
+## Git
 
-- Branch naming: `feature/<topic>`, `fix/<topic>`, `refactor/<topic>`
-- Commit messages: imperative mood, concise summary line (e.g. "Add reward shaping for distance")
-- Always verify current branch before committing — especially after a PR merge which may leave you on `main`
-- Never commit directly to `main`; always use feature branches
+- Branches: `feature/<topic>`, `fix/<topic>`, `refactor/<topic>` — never commit to `main`
+- Commits: imperative mood (e.g. "Add reward shaping for distance")
+- Verify current branch before committing (PR merges may leave you on `main`)
+- If pre-commit hooks reject, fix and new commit (no `--amend`/`--no-verify`)
+- After pushing a feature branch, create PR via `gh pr create`
 
-## Validation Before Pushing
+## Validation & Deps
 
-- Run `just validate` (format + lint + test) before pushing
-- If pre-commit hooks reject a commit, fix the issues and create a new commit (don't `--amend` or `--no-verify`)
+- `just validate` (format + lint + test) before pushing
+- Quick iteration: `just format && just lint`
+- `uv add [--dev] <pkg>` for deps; `just dev-sync` after pulling lock changes; never edit `uv.lock`
 
-## Dependency Management
+## Training
 
-- Use `uv add <package>` / `uv add --dev <package>` for new dependencies
-- Run `just dev-sync` after pulling changes that modify `uv.lock`
-- Never manually edit `uv.lock`
-
-## Training Runs
-
-- Start training: `just train <env_config.yaml> [mlp|transformer]` (defaults to transformer)
-- Env configs live in `examples/env_config/` — copy an existing one to create new scenarios
-- Training logs to Wandb automatically; checkpoints saved to `checkpoints/`
-- Key CLI options: `--record-during-training`, `--max-epochs`, `--render-mode`
-- Hyperparameters live in `DQNConfig` and `TrainingConfig` (`wargame_rl/wargame/model/dqn/config.py`) — change defaults there, not via CLI flags
-- Profile a run: `just profile <config.yaml> [model] [max_epochs]` generates `profile.html`
-- Simulate latest checkpoint: `just simulate-latest [mlp|transformer]`
-- Clean up: `just clean` removes `checkpoints/` and `wandb/`
-
-## Common Dev Tasks
-
-- Quick iteration: `just format && just lint` to catch issues before the full test suite
-- Test env in isolation: `just test-env`
+- `just train <config.yaml> [mlp|transformer]` (defaults to transformer)
+- Configs in `examples/env_config/`; logs to Wandb; checkpoints in `checkpoints/`
+- CLI: `--record-during-training`, `--max-epochs`, `--render-mode`
+- Hyperparams in `DQNConfig`/`TrainingConfig` (`model/dqn/config.py`) — change there, not CLI
+- `just profile <config> [model] [epochs]` · `just simulate-latest [mlp|transformer]` · `just clean`
