@@ -53,7 +53,7 @@ class Agent:
                 assert q_values.shape[0] == 1
                 assert len(q_values.shape) == 3
                 q_values = apply_action_mask(q_values, mask_tensor.unsqueeze(0))
-                _, action_indexes = q_values.max(axis=-1)
+                _, action_indexes = q_values.max(dim=-1)
                 action = WargameEnvAction(actions=action_indexes.flatten().tolist())
 
         return action
