@@ -18,7 +18,9 @@ class PPOConfig(BaseModel):
     vf_coef: float = 0.5  # value function coefficient
     # Value loss dominates → reduce this
     # Value underfits → increase this
-    ent_coef: float = 0.01  # entropy coefficient (increase to explore more)
+    ent_coef: float = (
+        0.02  # entropy coefficient (increase to explore more) -- default is 0.01
+    )
     max_grad_norm: float = 0.5  # Gradient Stabilization (prevent exploding gradients)
     n_epochs: int = 5
     n_steps: int = 2048
