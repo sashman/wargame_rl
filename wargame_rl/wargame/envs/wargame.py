@@ -378,8 +378,6 @@ class WargameEnv(gym.Env):
             compute_model_model=needs_mm,
         )
 
-        at_objective = cache.model_obj_norms_offset <= cache.obj_radii
-        all_at_objectives = bool(at_objective.any(axis=1).all())
         is_terminated = get_termination(self.current_turn, self.max_turns, cache)
 
         if self.phase_manager is not None:
@@ -394,9 +392,6 @@ class WargameEnv(gym.Env):
             reward = self.phase_manager.calculate_reward(self, ctx)
         else:
             reward = Reward().calculate_reward(self, cache)
-
-        if all_at_objectives:
-            reward += self.config.terminal_success_bonus
 
         observation = self._get_obs(cache)
         info = self._get_info()

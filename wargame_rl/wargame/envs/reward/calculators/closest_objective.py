@@ -39,9 +39,6 @@ class ClosestObjectiveCalculator(PerModelRewardCalculator):
             cache.model_obj_norms_offset[model_idx, closest_obj_idx]
         )
         normalized_distance = distance_to_closest / max_diagonal
-        objective_radius_normalized = (
-            float(cache.obj_radii[closest_obj_idx]) / max_diagonal
-        )
 
         previous = model.previous_closest_objective_distance
         model.set_previous_closest_objective_distance(normalized_distance)
@@ -51,15 +48,10 @@ class ClosestObjectiveCalculator(PerModelRewardCalculator):
 
         previous = float(previous)
 
-        if normalized_distance <= objective_radius_normalized:
-            # One-time bonus when first reaching an objective; no farming while camping.
-            return (
-                self.REWARD_AT_OBJECTIVE
-                if previous > objective_radius_normalized
-                else 0.0
-            )
+        if normalized_distance == 0:
+            return self.REWARD_AT_OBJECTIVE
 
-        improvement = previous - normalized_distance
+        improvement = normalized_distance - previous
         if improvement == 0:
             return self.PENALTY_NO_CHANGE
         if improvement > 0:
