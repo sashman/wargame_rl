@@ -19,10 +19,10 @@ class ClosestObjectiveCalculator(PerModelRewardCalculator):
     signal is comparable across different board sizes.
     """
 
-    REWARD_AT_OBJECTIVE = 1.0
-    REWARD_CLOSER = 0.5
-    PENALTY_NO_CHANGE = -0.05
-    PENALTY_FARTHER = 0.5
+    REWARD_AT_OBJECTIVE = 0.1
+    REWARD_CLOSER = 0.05
+    PENALTY_NO_CHANGE = -0.005
+    PENALTY_FARTHER = 0.05
 
     def calculate(
         self,
