@@ -218,9 +218,6 @@ class HumanRender(Renderer):
         pygame.event.pump()
         pygame.display.update()
 
-        # We need to ensure that human-rendering occurs at the predefined framerate.
-        # The following line will automatically add a delay to
-        # keep the framerate stable.
         self.clock.tick(metadata["render_fps"])
 
     def get_frame_array(self) -> np.ndarray:

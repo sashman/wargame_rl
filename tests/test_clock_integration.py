@@ -8,6 +8,7 @@ auto-executed before the observation is returned.
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import (
     BATTLE_PHASE_ORDER,
+    NON_MOVEMENT_PHASES,
     BattlePhase,
     GamePhase,
 )
@@ -25,6 +26,7 @@ def _make_env(n_rounds: int = 10, **overrides: object) -> WargameEnv:
         number_of_objectives=1,
         objective_radius_size=2,
         number_of_battle_rounds=n_rounds,
+        skip_phases=[],  # step through every phase unless overridden
     )
     defaults.update(overrides)
     return WargameEnv(config=WargameEnvConfig(**defaults))
@@ -114,6 +116,77 @@ class TestTermination:
 
         _, _, terminated, _, _ = env.step(_stay())
         assert terminated
+
+
+class TestSkipPhases:
+    """Tests for skip_phases (default skips all non-movement phases)."""
+
+    def test_default_skips_non_movement(self) -> None:
+        """Config default skips command/shooting/charge/fight."""
+        cfg = WargameEnvConfig(
+            render_mode=None,
+            board_width=20,
+            board_height=20,
+            number_of_wargame_models=2,
+            number_of_objectives=1,
+            objective_radius_size=2,
+        )
+        env = WargameEnv(config=cfg)
+        env.reset(seed=42)
+        assert env._game_clock.state.phase is BattlePhase.movement
+        assert env.max_turns == cfg.number_of_battle_rounds
+
+    def test_reset_lands_on_movement(self) -> None:
+        env = _make_env(n_rounds=10, skip_phases=list(NON_MOVEMENT_PHASES))
+        env.reset(seed=42)
+        assert env._game_clock.state.phase is BattlePhase.movement
+
+    def test_step_returns_to_movement(self) -> None:
+        env = _make_env(n_rounds=10, skip_phases=list(NON_MOVEMENT_PHASES))
+        env.reset(seed=42)
+        env.step(_stay())
+        assert env._game_clock.state.phase is BattlePhase.movement
+
+    def test_one_step_per_round(self) -> None:
+        env = _make_env(n_rounds=10, skip_phases=list(NON_MOVEMENT_PHASES))
+        env.reset(seed=42)
+        assert env._game_clock.state.battle_round == 1
+        env.step(_stay())
+        assert env._game_clock.state.battle_round == 2
+
+    def test_max_turns_equals_n_rounds(self) -> None:
+        env = _make_env(n_rounds=7, skip_phases=list(NON_MOVEMENT_PHASES))
+        assert env.max_turns == 7
+
+    def test_terminates_after_n_rounds(self) -> None:
+        n_rounds = 3
+        env = _make_env(n_rounds=n_rounds, skip_phases=list(NON_MOVEMENT_PHASES))
+        env.reset(seed=42)
+        for i in range(n_rounds):
+            _, _, terminated, _, _ = env.step(_stay())
+            if i < n_rounds - 1:
+                assert not terminated
+        assert terminated
+
+    def test_observation_phase_is_movement(self) -> None:
+        env = _make_env(n_rounds=10, skip_phases=list(NON_MOVEMENT_PHASES))
+        obs, _ = env.reset(seed=42)
+        assert obs.battle_phase_index == list(BattlePhase).index(BattlePhase.movement)
+        obs, _, _, _, _ = env.step(_stay())
+        assert obs.battle_phase_index == list(BattlePhase).index(BattlePhase.movement)
+
+    def test_empty_skip_list_steps_all_phases(self) -> None:
+        env = _make_env(n_rounds=10, skip_phases=[])
+        env.reset(seed=42)
+        assert env._game_clock.state.phase is BattlePhase.command
+        assert env.max_turns == 10 * N_PHASES
+
+    def test_partial_skip(self) -> None:
+        """Skipping only command keeps 4 phases per round."""
+        env = _make_env(n_rounds=5, skip_phases=[BattlePhase.command])
+        env.reset(seed=42)
+        assert env._game_clock.state.phase is BattlePhase.movement
+        assert env.max_turns == 5 * 4
 
 
 class TestObservationClockFields:

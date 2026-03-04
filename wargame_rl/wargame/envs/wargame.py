@@ -81,6 +81,7 @@ class WargameEnv(gym.Env):
 
         self._action_handler = ActionHandler(config)
         self.action_space = self._action_handler.action_space
+        self._skip_phases = frozenset(config.skip_phases)
 
         self.renderer = renderer
 
@@ -147,7 +148,8 @@ class WargameEnv(gym.Env):
     @property
     def max_turns(self) -> int:
         """Maximum agent steps per episode (phases per turn x rounds)."""
-        return self._game_clock.n_rounds * len(BATTLE_PHASE_ORDER)
+        n_phases = len(BATTLE_PHASE_ORDER) - len(self._skip_phases)
+        return self._game_clock.n_rounds * n_phases
 
     @property
     def n_actions(self) -> int:
@@ -345,6 +347,8 @@ class WargameEnv(gym.Env):
         if self._is_opponent_active():
             self._execute_opponent_turn()
 
+        self._skip_past_excluded_phases()
+
         cache = compute_distances(self.wargame_models, self.objectives)
         observation = self._get_obs(cache)
         info: WargameEnvInfo = self._get_info()
@@ -413,6 +417,19 @@ class WargameEnv(gym.Env):
             self._apply_opponent_action()
             self._game_clock.advance_phase()
 
+    def _should_skip_phase(self) -> bool:
+        phase = self._game_clock.state.phase
+        return phase is not None and phase in self._skip_phases
+
+    def _skip_past_excluded_phases(self) -> None:
+        """Advance past player phases listed in ``skip_phases``."""
+        while (
+            not self._game_clock.is_game_over
+            and not self._is_opponent_active()
+            and self._should_skip_phase()
+        ):
+            self._game_clock.advance_phase()
+
     def step(
         self, action: WargameEnvAction
     ) -> tuple[WargameEnvObservation, float, bool, bool, dict[str, Any]]:
@@ -423,9 +440,13 @@ class WargameEnv(gym.Env):
 
         self.current_turn += 1
 
+        self._skip_past_excluded_phases()
+
         # If clock rolled over to opponent's turn, auto-execute it
         if not self._game_clock.is_game_over and self._is_opponent_active():
             self._execute_opponent_turn()
+
+        self._skip_past_excluded_phases()
 
         needs_mm = self.config.group_cohesion_enabled or (
             self.phase_manager is not None
