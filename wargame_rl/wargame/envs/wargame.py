@@ -31,12 +31,14 @@ from wargame_rl.wargame.envs.reward.reward import Reward
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.types import (
     BattlePhase,
+    PlayerSide,
     TurnOrder,
     WargameEnvAction,
     WargameEnvConfig,
     WargameEnvInfo,
     WargameEnvObservation,
 )
+from wargame_rl.wargame.envs.types.game_timing import BATTLE_PHASE_ORDER
 from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
@@ -86,6 +88,7 @@ class WargameEnv(gym.Env):
         self.clock = None
 
         self.current_turn = 0
+        self._player_side = self._initial_player_side()
         self._game_clock = GameClock(n_rounds=config.number_of_battle_rounds)
 
         self.wargame_models = self.create_wargame_models(config)
@@ -143,8 +146,8 @@ class WargameEnv(gym.Env):
 
     @property
     def max_turns(self) -> int:
-        """Maximum steps per episode (equals number of battle rounds)."""
-        return self._game_clock.n_rounds
+        """Maximum agent steps per episode (phases per turn x rounds)."""
+        return self._game_clock.n_rounds * len(BATTLE_PHASE_ORDER)
 
     @property
     def n_actions(self) -> int:
@@ -288,9 +291,10 @@ class WargameEnv(gym.Env):
         self.last_reward = None
         self.last_step_context = None
 
+        self._resolve_player_side()
         self._game_clock.reset()
         self._game_clock.skip_setup()
-        self._game_clock.advance_to_phase(BattlePhase.movement)
+        # Clock is now at round 1, player_1, command phase
 
         # Place player models
         if self.config.has_fixed_model_positions:
@@ -337,6 +341,10 @@ class WargameEnv(gym.Env):
                     self.np_random,
                 )
 
+        # If opponent goes first this round, auto-execute their full turn
+        if self._is_opponent_active():
+            self._execute_opponent_turn()
+
         cache = compute_distances(self.wargame_models, self.objectives)
         observation = self._get_obs(cache)
         info: WargameEnvInfo = self._get_info()
@@ -374,32 +382,50 @@ class WargameEnv(gym.Env):
             self._opponent_action_handler.action_space,
         )
 
-    def _player_moves_first(self) -> bool:
-        """Resolve turn order for this step."""
-        if self.config.turn_order == TurnOrder.player:
-            return True
+    def _initial_player_side(self) -> PlayerSide:
+        """Deterministic side assignment used at __init__ time."""
         if self.config.turn_order == TurnOrder.opponent:
-            return False
-        # TurnOrder.random
-        return bool(self.np_random.random() < 0.5)
+            return PlayerSide.player_2
+        return PlayerSide.player_1
+
+    def _resolve_player_side(self) -> None:
+        """Set ``_player_side`` based on ``TurnOrder`` (called each reset)."""
+        if self.config.turn_order == TurnOrder.player:
+            self._player_side = PlayerSide.player_1
+        elif self.config.turn_order == TurnOrder.opponent:
+            self._player_side = PlayerSide.player_2
+        else:
+            self._player_side = (
+                PlayerSide.player_1
+                if self.np_random.random() < 0.5
+                else PlayerSide.player_2
+            )
+
+    def _is_opponent_active(self) -> bool:
+        state = self._game_clock.state
+        return (
+            state.active_player is not None and state.active_player != self._player_side
+        )
+
+    def _execute_opponent_turn(self) -> None:
+        """Auto-execute all phases of the opponent's turn."""
+        while not self._game_clock.is_game_over and self._is_opponent_active():
+            self._apply_opponent_action()
+            self._game_clock.advance_phase()
 
     def step(
         self, action: WargameEnvAction
     ) -> tuple[WargameEnvObservation, float, bool, bool, dict[str, Any]]:
-        if self._player_moves_first():
-            self._apply_player_action(action)
-            self._apply_opponent_action()
-        else:
-            self._apply_opponent_action()
-            self._apply_player_action(action)
+        self._apply_player_action(action)
+
+        if not self._game_clock.is_game_over:
+            self._game_clock.advance_phase()
 
         self.current_turn += 1
 
-        # Advance clock one full round (auto-skip non-movement phases)
-        if not self._game_clock.is_game_over:
-            self._game_clock.advance_to_next_round()
-            if not self._game_clock.is_game_over:
-                self._game_clock.advance_to_phase(BattlePhase.movement)
+        # If clock rolled over to opponent's turn, auto-execute it
+        if not self._game_clock.is_game_over and self._is_opponent_active():
+            self._execute_opponent_turn()
 
         needs_mm = self.config.group_cohesion_enabled or (
             self.phase_manager is not None
@@ -413,6 +439,9 @@ class WargameEnv(gym.Env):
 
         is_terminated = self._game_clock.is_game_over or get_termination(cache)
 
+        clock_state = self._game_clock.state
+        phase = clock_state.phase or BattlePhase.command
+
         if self.phase_manager is not None:
             ctx = StepContext(
                 distance_cache=cache,
@@ -420,6 +449,8 @@ class WargameEnv(gym.Env):
                 max_turns=self.max_turns,
                 board_width=self.board_width,
                 board_height=self.board_height,
+                current_round=clock_state.battle_round or 0,
+                battle_phase=phase,
             )
             self.last_step_context = ctx
             reward = self.phase_manager.calculate_reward(self, ctx)

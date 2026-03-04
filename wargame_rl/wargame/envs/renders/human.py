@@ -279,7 +279,8 @@ class HumanRender(Renderer):
         clock_state = env._game_clock.state
         phase_label = clock_state.phase.value.title() if clock_state.phase else "—"
         round_num = clock_state.battle_round or 0
-        turn_text = f"Round: {round_num} / {env.max_turns}  |  {phase_label}"
+        n_rounds = env._game_clock.n_rounds
+        turn_text = f"Round: {round_num} / {n_rounds}  |  {phase_label}"
         steps_text = f"Step: {env.current_turn}"
         reward_text = f"Reward: {reward_str}"
         center_y = panel_y + self.PANEL_HEIGHT // 2

@@ -190,4 +190,4 @@ Stratagems are special tactical actions spent from Command Points (1 CP gained p
 
 ## Relevance to This Project
 
-The phases, attack sequence, terrain rules, and objective mechanics form the core loop that the RL environment aims to model. The current implementation covers movement and objective capture (phases 2 and partial 1). The [roadmap](goals-and-roadmap.md) outlines the path toward shooting (phase 3), charging/melee (phases 4-5), morale, terrain, and eventually stratagems.
+The phases, attack sequence, terrain rules, and objective mechanics form the core loop that the RL environment aims to model. The environment steps through all five phases per player turn (command, movement, shooting, charge, fight), with each `env.step()` advancing one phase. Currently only movement has real actions; other phases allow only "stay" until their mechanics are implemented. The [roadmap](goals-and-roadmap.md) outlines the path toward shooting (phase 3), charging/melee (phases 4-5), morale, terrain, and eventually stratagems.

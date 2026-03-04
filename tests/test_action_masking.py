@@ -147,9 +147,21 @@ class TestEnvActionMask:
             env.n_actions,
         )
 
-    def test_mask_all_valid_during_movement(self) -> None:
+    def test_mask_only_stay_during_command(self) -> None:
+        """After reset the clock is at the command phase; only stay is valid."""
         env = WargameEnv(config=WargameEnvConfig())
         obs, _ = env.reset()
+        assert obs.action_mask is not None
+        assert obs.action_mask[:, 0].all()
+        assert not obs.action_mask[:, 1:].any()
+
+    def test_mask_all_valid_during_movement(self) -> None:
+        """After stepping past command, the movement phase allows all actions."""
+        env = WargameEnv(config=WargameEnvConfig())
+        env.reset()
+        obs, _, _, _, _ = env.step(
+            WargameEnvAction(actions=list(env.action_space.sample()))
+        )
         assert obs.action_mask is not None
         assert obs.action_mask.all()
 

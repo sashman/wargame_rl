@@ -80,15 +80,15 @@ Each entry in `opponent_models` uses `ModelConfig`, the same schema as player mo
 
 ## Turn Order
 
-The `turn_order` field controls who moves first each step:
+Each `env.step()` call advances the player through **one battle phase** (command, movement, shooting, charge, or fight). After the player completes all five phases of their turn, the opponent's entire turn (all five phases) is auto-executed before the observation is returned. This means the player takes 5 steps per round, and the opponent acts autonomously between player turns.
+
+The `turn_order` field controls which side takes the first turn each round:
 
 | Value | Behaviour |
 |-------|-----------|
-| `player` | Player action is applied first, then the opponent policy acts. This is the default. |
-| `opponent` | Opponent policy acts first, then the player action is applied. |
-| `random` | A coin flip (`np_random.random() < 0.5`) decides each step. This adds stochasticity during training while remaining reproducible with a fixed seed. |
-
-Both sides always act exactly once per step. The order only affects which side sees the other's movement first within that step.
+| `player` | The RL agent takes the first turn each round (agent is `player_1` on the game clock). This is the default. |
+| `opponent` | The opponent takes the first turn each round. On `reset()` and after each player turn, the opponent's turn is auto-executed before the agent acts. |
+| `random` | A coin flip at each `reset()` determines which side goes first for the episode. Reproducible with a fixed seed. |
 
 ## Available Policies
 
