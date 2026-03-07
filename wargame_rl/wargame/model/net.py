@@ -1,6 +1,6 @@
 import math
 from abc import ABC, abstractmethod
-from typing import Self
+from typing import Self, cast
 
 import torch
 from torch import nn
@@ -111,7 +111,7 @@ class MLPNetwork(RL_Network):
         x = self.output(x)
         if self.is_policy:
             x = x.reshape(batch_size, self.n_wargame_models, self.action_dim)
-        return x
+        return cast(torch.Tensor, x)
 
     @classmethod
     def from_env(cls, env: WargameEnv, is_policy: bool) -> Self:
@@ -123,7 +123,7 @@ class MLPNetwork(RL_Network):
         print(
             f"Creating MLP network with obs_size: {obs_size}, n_wargame_models: {n_wargame_models}, n_actions: {n_actions}, is_policy: {is_policy}"
         )
-        return MLPNetwork(obs_size, n_actions, n_wargame_models, is_policy=is_policy)
+        return cls(obs_size, n_actions, n_wargame_models, is_policy=is_policy)
 
 
 class TransformerNetwork(RL_Network):

@@ -141,8 +141,8 @@ def test_step_adds_terminal_success_bonus_when_all_models_at_objective() -> None
         number_of_objectives=1,
         objective_radius_size=1,
         terminal_success_bonus=12.5,
-        models=[{"x": 4, "y": 4, "group_id": 0}],
-        objectives=[{"x": 4, "y": 4}],
+        models=[{"x": 4, "y": 4, "group_id": 0}],  # type: ignore[list-item]
+        objectives=[{"x": 4, "y": 4}],  # type: ignore[list-item]
     )
     env = WargameEnv(config=config)
     env.reset(seed=42)
