@@ -464,11 +464,16 @@ class WargameEnv(gym.Env):
             compute_model_model=needs_mm,
         )
 
-        is_terminated = (
-            self.current_turn >= self.max_turns
-            or self._game_clock.is_game_over
-            or get_termination(cache)
-        )
+        if self.config.max_turns_override is not None:
+            is_terminated = self.current_turn >= self.max_turns or get_termination(
+                cache
+            )
+        else:
+            is_terminated = (
+                self.current_turn >= self.max_turns
+                or self._game_clock.is_game_over
+                or get_termination(cache)
+            )
 
         clock_state = self._game_clock.state
         phase = clock_state.phase or BattlePhase.command
