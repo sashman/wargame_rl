@@ -89,3 +89,18 @@ profile env_config_path model='' max_epochs='':
 # Run a test env in isolation with random action
 test-env:
 	uv run main.py --env_test
+
+# One-shot: create branch from main, commit, push, open PR. Use after staging changes.
+# Always branches from main; if not on main, checks out main and pulls first.
+# Example: just ship feature/my-feature "Add reward shaping for distance"
+# PR title/body are filled from the commit message (gh pr create --fill).
+ship branch commit_message:
+	git stash -u
+	git checkout main
+	git pull
+	@git checkout -b {{branch}} 2>/dev/null || git checkout {{branch}}
+	git stash pop
+	git add -A
+	git commit -m "{{commit_message}}"
+	git push -u origin {{branch}}
+	gh pr create --fill
