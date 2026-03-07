@@ -147,7 +147,16 @@ class TestEnvActionMask:
             env.n_actions,
         )
 
+    def test_mask_only_stay_during_command(self) -> None:
+        """With skip_phases=[], reset lands on command; only stay is valid."""
+        env = WargameEnv(config=WargameEnvConfig(skip_phases=[]))
+        obs, _ = env.reset()
+        assert obs.action_mask is not None
+        assert obs.action_mask[:, 0].all()
+        assert not obs.action_mask[:, 1:].any()
+
     def test_mask_all_valid_during_movement(self) -> None:
+        """Default skip lands on movement after reset; all actions are valid."""
         env = WargameEnv(config=WargameEnvConfig())
         obs, _ = env.reset()
         assert obs.action_mask is not None

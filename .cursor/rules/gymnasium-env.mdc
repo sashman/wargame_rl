@@ -15,6 +15,11 @@ alwaysApply: false
 - `DistanceCache` pre-computes model-objective distances each step
 - Reward: `Reward` or `RewardPhaseManager`; termination in `env_components/termination.py`
 
+## Game timing and phases
+
+- `skip_phases`: list of battle phases to auto-advance (default: all non-movement). `max_turns = n_rounds × (5 - len(skip_phases))`; default is 1 step per round (movement only). Set `skip_phases: []` for full per-phase stepping (5 steps per round).
+- After the player's turn, the opponent's full turn is auto-executed before the next observation. Turn order: `turn_order` (player / opponent / random).
+
 ## Placement (`ModelConfig`/`ObjectiveConfig` in YAML)
 
 - No key → full auto · Key without x/y → random + config attrs · Key with x/y → fixed
@@ -25,13 +30,14 @@ alwaysApply: false
 - Reuse `WargameModel`/`ModelConfig`; YAML keys: `number_of_opponent_models`, `opponent_models`, `turn_order`, `opponent_policy`
 - `TurnOrder`: `player`/`opponent`/`random`
 - Policies in `envs/opponent/`, registry: `RandomPolicy("random")`, `ScriptedAdvanceToObjectivePolicy("scripted_advance_to_objective")`
-- New policies: one class per behaviour, `Scripted` prefix, register as `"scripted_<name>"`
+- New policies: one class per behaviour, `Scripted` prefix, register as `"scripted_<name>"`; implement `select_action(opponent_models, env, action_mask=None)`
 - `number_of_opponent_models=0` (default) → no policy, env unchanged
 
 ## Rendering
 
 - `"human"` (Pygame) / `"rgb_array"` (video); renderer injected via constructor
 - Player: blue/green circles · Opponents: red/warm triangles
+- Use a single FPS cap for human rendering; avoid phase-conditional throttle — it breaks when default stepping changes (e.g. skip_phases)
 
 ## Adding Features
 

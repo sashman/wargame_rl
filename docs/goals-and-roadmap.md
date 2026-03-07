@@ -82,7 +82,7 @@ Layer in the remaining tabletop systems.
 - [ ] **Melee combat** — Close-range attacks when models are adjacent; higher damage, no LOS requirement.
 - [ ] **Morale / battleshock** — Models that take casualties test morale; failures cause debuffs or retreat.
 - [ ] **Command abilities** — Special per-model actions (e.g. buff nearby allies, call in support) to increase tactical depth.
-- [ ] **Multi-phase turns** — Structure each turn into phases (movement → shooting → melee → morale) mirroring tabletop play.
+- [x] **Multi-phase turns** — Each `env.step()` advances one battle phase (command → movement → shooting → charge → fight). The opponent's full turn is auto-executed after the player completes theirs. Non-movement phases are skipped by default (`skip_phases` config) until their mechanics are implemented; set `skip_phases: []` for full per-phase stepping. Only movement has real actions currently; other phases allow only "stay".
 
 ### Phase 6 — Scale & Polish
 

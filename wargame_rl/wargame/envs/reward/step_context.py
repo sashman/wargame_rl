@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase
+
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.env_components.distance_cache import DistanceCache
 
@@ -21,3 +23,5 @@ class StepContext:
     max_turns: int
     board_width: int
     board_height: int
+    current_round: int = 1
+    battle_phase: BattlePhase = BattlePhase.command

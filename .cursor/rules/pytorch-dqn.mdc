@@ -15,7 +15,7 @@ alwaysApply: false
 
 ## Observation Tensor Pipeline
 
-`observation.py`: `WargameEnvObservation` → 4-tuple (game, objectives, player_models, opponent_models)
+`observation.py`: `WargameEnvObservation` → 5 tensors: game state `(3,)`, objectives, player_models, opponent_models, action_mask `(n_models, n_actions)`. When changing tensor count or shapes, update `docs/opponent-policies.md` (Observation Impact table) and tests.
 
 To add a new entity:
 1. Add to `WargameEnvObservation` + obs builder
