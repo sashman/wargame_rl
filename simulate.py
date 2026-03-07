@@ -15,10 +15,10 @@ from pydantic_yaml import parse_yaml_raw_as
 
 from wargame_rl.wargame.envs.renders.human import HumanRender, QuitRequested
 from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.config import NetworkType
-from wargame_rl.wargame.model.dqn.factory import create_environment
-from wargame_rl.wargame.model.net import MLPNetwork, TransformerNetwork
+from wargame_rl.wargame.model.net import MLPNetwork, RL_Network, TransformerNetwork
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
@@ -70,6 +70,7 @@ def simulate(
     logging.info(f"Agent created: {agent}")
 
     try:
+        policy_net: RL_Network
         if network_type == NetworkType.TRANSFORMER:
             policy_net = TransformerNetwork.from_checkpoint(env, checkpoint_path)
         else:
@@ -176,13 +177,13 @@ def get_env_config_path_for_checkpoint(checkpoint_path: str) -> str:
 
 @app.command()
 def main(
-    checkpoint_path: str = typer.Option(
+    checkpoint_path: str | None = typer.Option(
         None,
         help="Path to the trained model checkpoint, defaults to the latest checkpoint.",
     ),
     num_episodes: int = typer.Option(10, help="Number of episodes to run"),
     render: bool = typer.Option(True, help="Whether to render the environment"),
-    env_config_path: str = typer.Option(
+    env_config_path: str | None = typer.Option(
         None,
         help="Path to the environment config file, defaults to env_config.yaml from checkpoint directory.",
     ),

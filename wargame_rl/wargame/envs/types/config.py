@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel, Field, model_validator
 
 from wargame_rl.wargame.envs.reward.phase import RewardPhaseConfig
+from wargame_rl.wargame.envs.types.game_timing import NON_MOVEMENT_PHASES, BattlePhase
 
 
 class TurnOrder(str, Enum):
@@ -167,6 +168,19 @@ class WargameEnvConfig(BaseModel):
             "Legacy reward bonus added once when all models are at an objective "
             "and the episode terminates. Ignored when reward_phases are configured."
         ),
+    )
+
+    skip_phases: list[BattlePhase] = Field(
+        default_factory=lambda: list(NON_MOVEMENT_PHASES),
+        description="Battle phases to auto-advance through (the agent never steps "
+        "on these). Defaults to all non-movement phases. Set to [] to "
+        "step through every phase.",
+    )
+
+    number_of_battle_rounds: int = Field(
+        default=5,
+        gt=0,
+        description="Number of battle rounds per game (tabletop standard is 5).",
     )
 
     # --- Opponent configuration ---

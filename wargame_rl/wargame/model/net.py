@@ -92,11 +92,15 @@ class MLPNetwork(RL_Network):
         self.n_wargame_models = n_wargame_models
 
     def forward(self, xs: list[torch.Tensor]) -> torch.Tensor:
-        # 1 Concatenate all tensors in xs
+        # Exclude the action mask tensor (last element) — it's used
+        # externally for action selection, not as network input.
+        state_tensors = xs[:4]
         if self.is_batched(xs):
-            x = torch.cat([x.flatten(start_dim=1) for x in xs], dim=1)
+            x = torch.cat([x.flatten(start_dim=1) for x in state_tensors], dim=1)
         else:
-            x = torch.cat([x.flatten(start_dim=0) for x in xs], dim=0).unsqueeze(0)
+            x = torch.cat(
+                [x.flatten(start_dim=0) for x in state_tensors], dim=0
+            ).unsqueeze(0)
 
         # 2 Forward through the network
         assert len(x.shape) == 2
@@ -378,9 +382,14 @@ class TransformerNetwork(RL_Network):
 
 
 def convert_state_dict(state_dict: dict) -> dict:
+    """Normalize state_dict keys (Lightning 'policy_net.', torch.compile '_orig_mod.')."""
     new_state_dict = {}
+    prefix = "policy_net."
     for key, value in state_dict.items():
-        if key.startswith("policy_net."):
-            new_key = key[11:]
-            new_state_dict[new_key] = value
+        if not key.startswith(prefix):
+            continue
+        new_key = key[len(prefix) :]
+        if new_key.startswith("_orig_mod."):
+            new_key = new_key[10:]
+        new_state_dict[new_key] = value
     return new_state_dict

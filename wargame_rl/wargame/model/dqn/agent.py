@@ -5,7 +5,10 @@ import numpy as np
 import torch
 
 from wargame_rl.wargame.envs.types import WargameEnvAction
-from wargame_rl.wargame.model.common.observation import observation_to_tensor
+from wargame_rl.wargame.model.common.observation import (
+    apply_action_mask,
+    observation_to_tensor,
+)
 from wargame_rl.wargame.model.dqn.experience_replay import Experience, ReplayBuffer
 from wargame_rl.wargame.model.net import RL_Network
 
@@ -31,26 +34,26 @@ class Agent:
     def get_action(self, policy_net: RL_Network, epsilon: float) -> WargameEnvAction:
         """Using the given network, decide what action to carry out.
 
-        Uses an epsilon-greedy policy.
-
-        Args:
-            net: DQN network
-            epsilon: value to determine likelihood of taking a random action
-            device: current device
-
-        Returns:
-            action
-
+        Uses an epsilon-greedy policy with action masking — only valid
+        actions (according to ``observation.action_mask``) are considered.
         """
+        mask = self.observation.action_mask  # (n_models, n_actions) or None
+
         if np.random.random() < epsilon:
-            action = WargameEnvAction(self.env.action_space.sample())
+            if mask is not None:
+                action = WargameEnvAction.random(mask)
+            else:
+                action = WargameEnvAction(self.env.action_space.sample())
         else:
             with torch.no_grad():
-                state = observation_to_tensor(self.observation, policy_net.device)
+                tensors = observation_to_tensor(self.observation, policy_net.device)
+                mask_tensor = tensors[4]  # (n_models, n_actions)
+                state = tensors[:4]
                 q_values = policy_net(state)
                 assert q_values.shape[0] == 1
                 assert len(q_values.shape) == 3
-                _, action_indexes = q_values.max(axis=-1)
+                q_values = apply_action_mask(q_values, mask_tensor.unsqueeze(0))
+                _, action_indexes = q_values.max(dim=-1)
                 action = WargameEnvAction(actions=action_indexes.flatten().tolist())
 
         return action

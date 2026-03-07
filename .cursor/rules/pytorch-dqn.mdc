@@ -47,18 +47,14 @@ Both expose `policy_from_env(env)` and `from_checkpoint(env, path)` class method
 
 ## Observation Tensor Pipeline
 
-`observation.py` converts `WargameEnvObservation` into a 4-tuple of tensors:
-1. **game** — current turn scalar
-2. **objectives** — objective features matrix
-3. **player_models** — player model features matrix
-4. **opponent_models** — opponent model features matrix (empty zeros tensor when no opponents)
+`observation.py`: `WargameEnvObservation` → 5 tensors: game state `(3,)`, objectives, player_models, opponent_models, action_mask `(n_models, n_actions)`. When changing tensor count or shapes, update `docs/opponent-policies.md` (Observation Impact table) and tests.
 
-When adding a new entity type to observations:
-- Add it to `WargameEnvObservation` and the observation builder
-- Extend `_observation_to_numpy` to return the new array in the tuple
-- Update `observation_to_tensor` / `observations_to_tensor_batch` to handle the extra element
-- Update **both** `DQN_MLP` and `DQN_Transformer` `forward()` to unpack and process it
-- `DQN_Transformer` needs a dedicated embedding layer and the sequence token ordering must be updated; the player model tokens must remain extractable for the per-model action heads
+To add a new entity:
+1. Add to `WargameEnvObservation` + obs builder
+2. Extend `_observation_to_numpy` tuple
+3. Update `observation_to_tensor` / `observations_to_tensor_batch`
+4. Update **both** networks' `forward()` — Transformer needs dedicated embedding + updated token ordering; player tokens must stay extractable for per-model action heads
+5. Fix unpacking in tests (`test_state.py`, `test_dqn.py`)
 
 ## Conventions
 

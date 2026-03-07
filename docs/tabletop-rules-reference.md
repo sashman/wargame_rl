@@ -30,7 +30,7 @@ Before the first turn begins, several setup stages are resolved in order:
 - The game lasts a fixed number of **battle rounds** (standard: **5 rounds**).
 - Each battle round consists of two **player turns** — the first player completes their entire turn before the second player takes theirs.
 - Each player turn is divided into **phases** (see below), during which various interactions between armies and the game state take place.
-- The game can also end early if one player's army is completely destroyed.
+- The game does not end early if all of the enemy models are destroyed. The game carries through all of the turns, even though a player cannot take any actions.
 
 ### Winning the Game
 
@@ -190,4 +190,4 @@ Stratagems are special tactical actions spent from Command Points (1 CP gained p
 
 ## Relevance to This Project
 
-The phases, attack sequence, terrain rules, and objective mechanics form the core loop that the RL environment aims to model. The current implementation covers movement and objective capture (phases 2 and partial 1). The [roadmap](goals-and-roadmap.md) outlines the path toward shooting (phase 3), charging/melee (phases 4-5), morale, terrain, and eventually stratagems.
+The phases, attack sequence, terrain rules, and objective mechanics form the core loop that the RL environment aims to model. By default, the environment skips non-movement phases (`skip_phases` config) so each `env.step()` covers only the movement phase. Set `skip_phases: []` to step through all five phases per player turn (command, movement, shooting, charge, fight). Currently only movement has real actions; other phases allow only "stay" until their mechanics are implemented. The [roadmap](goals-and-roadmap.md) outlines the path toward shooting (phase 3), charging/melee (phases 4-5), morale, terrain, and eventually stratagems.

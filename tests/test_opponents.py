@@ -34,6 +34,7 @@ def _make_opponent_config(**overrides: object) -> WargameEnvConfig:
         objective_radius_size=2,
         render_mode=None,
         opponent_policy=OpponentPolicyConfig(type="random"),
+        number_of_battle_rounds=40,
     )
     defaults.update(overrides)
     return WargameEnvConfig(**defaults)
@@ -47,6 +48,7 @@ def _make_no_opponent_config(**overrides: object) -> WargameEnvConfig:
         number_of_objectives=2,
         objective_radius_size=2,
         render_mode=None,
+        number_of_battle_rounds=40,
     )
     defaults.update(overrides)
     return WargameEnvConfig(**defaults)
@@ -360,17 +362,17 @@ class TestBackwardCompatibility:
 
 
 class TestObservationTensors:
-    def test_tensor_list_has_four_elements_with_opponents(self) -> None:
+    def test_tensor_list_has_five_elements_with_opponents(self) -> None:
         env = WargameEnv(config=_make_opponent_config())
         obs, _ = env.reset(seed=42)
         tensors = observation_to_tensor(obs)
-        assert len(tensors) == 4
+        assert len(tensors) == 5
 
-    def test_tensor_list_has_four_elements_without_opponents(self) -> None:
+    def test_tensor_list_has_five_elements_without_opponents(self) -> None:
         env = WargameEnv(config=_make_no_opponent_config())
         obs, _ = env.reset(seed=42)
         tensors = observation_to_tensor(obs)
-        assert len(tensors) == 4
+        assert len(tensors) == 5
         assert tensors[3].shape[0] == 0  # 0 opponent models
 
     def test_opponent_tensor_shape(self) -> None:

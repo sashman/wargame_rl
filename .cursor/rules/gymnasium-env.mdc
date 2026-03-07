@@ -4,65 +4,52 @@ globs: "wargame_rl/wargame/envs/**/*.py"
 alwaysApply: false
 ---
 
-# Gymnasium Environment Patterns
+# Gymnasium Env Patterns
 
-## WargameEnv Structure
+## Structure
 
-`WargameEnv` extends `gymnasium.Env` with typed observation and action spaces.
+- `WargameEnv` extends `gymnasium.Env`; typed obs/action/info/config (all Pydantic)
+- Config: `WargameEnvConfig` (pydantic-yaml) from `examples/env_config/`
+- Actions: polar (angle, speed) pairs per model via `ActionHandler(n_models=...)`
+  - `ActionHandler.best_action_toward(dx, dy)` for scripted policies; never hardcode action counts — use `ActionHandler.n_actions`
+- `DistanceCache` pre-computes model-objective distances each step
+- Reward: `Reward` or `RewardPhaseManager`; termination in `env_components/termination.py`
 
-- **Observation**: `WargameEnvObservation` (Pydantic model) returned from `_get_obs()`
-- **Action**: `WargameEnvAction` wrapping the multi-discrete action space
-- **Info**: `WargameEnvInfo` (Pydantic model) returned from `_get_info()`
-- **Config**: `WargameEnvConfig` (pydantic-yaml) loaded from YAML files in `examples/env_config/`
+## Game timing and phases
 
-## Key Conventions
+- `skip_phases`: list of battle phases to auto-advance (default: all non-movement). `max_turns = n_rounds × (5 - len(skip_phases))`; default is 1 step per round (movement only). Set `skip_phases: []` for full per-phase stepping (5 steps per round).
+- After the player's turn, the opponent's full turn is auto-executed before the next observation. Turn order: `turn_order` (player / opponent / random).
 
-- Actions use polar coordinates: discrete (angle, speed) pairs per model
-- `ActionHandler` encapsulates action space creation and application; accepts `n_models` kwarg to create spaces for player or opponent model counts
-- `ActionHandler.best_action_toward(dx, dy)` encodes the best polar action toward a direction — use this in scripted policies
-- `DistanceCache` pre-computes distances between models and objectives each step
-- Reward is computed by the `Reward` class in `reward/reward.py` or `RewardPhaseManager`
-- Termination logic is in `env_components/termination.py`
-- Placement supports three modes via `ModelConfig`/`ObjectiveConfig` in env_config YAML:
-  - No `models`/`objectives` key: fully automatic (random placement, default attributes)
-  - `models`/`objectives` without x/y: random placement with config-driven attributes (group_id, max_wounds, radius_size)
-  - `models`/`objectives` with x/y: fixed placement at exact coordinates with config-driven attributes
-- `WargameEnvConfig.has_fixed_model_positions` / `has_fixed_objective_positions` / `has_fixed_opponent_positions` properties control dispatch
+## Placement (`ModelConfig`/`ObjectiveConfig` in YAML)
+
+- No key → full auto · Key without x/y → random + config attrs · Key with x/y → fixed
+- Properties: `has_fixed_model_positions` / `has_fixed_objective_positions` / `has_fixed_opponent_positions`
 
 ## Opponents
 
-- Opponent models reuse `WargameModel` and `ModelConfig` — same structure as player models
-- Configured via `number_of_opponent_models`, `opponent_models`, `turn_order`, and `opponent_policy` in YAML
-- `TurnOrder` enum (`player`/`opponent`/`random`) controls who moves first in `step()`
-- Opponent policies live in `envs/opponent/` and use a registry pattern (same as reward calculators/criteria)
-- Two built-in policies: `RandomPolicy` (`"random"`) and `ScriptedAdvanceToObjectivePolicy` (`"scripted_advance_to_objective"`)
-- New scripted policies: one class per behaviour, `Scripted` prefix, registered under `"scripted_<name>"`
-- When `number_of_opponent_models == 0` (default), no policy is created and the env behaves identically to before
+- Reuse `WargameModel`/`ModelConfig`; YAML keys: `number_of_opponent_models`, `opponent_models`, `turn_order`, `opponent_policy`
+- `TurnOrder`: `player`/`opponent`/`random`
+- Policies in `envs/opponent/`, registry: `RandomPolicy("random")`, `ScriptedAdvanceToObjectivePolicy("scripted_advance_to_objective")`
+- New policies: one class per behaviour, `Scripted` prefix, register as `"scripted_<name>"`; implement `select_action(opponent_models, env, action_mask=None)`
+- `number_of_opponent_models=0` (default) → no policy, env unchanged
 
 ## Rendering
 
-- Two render modes: `"human"` (Pygame window) and `"rgb_array"` (for video recording)
-- Renderer is injected via constructor, not created internally
-- Player models: circles in blue/green palette; Opponent models: triangles in red/warm palette
+- `"human"` (Pygame) / `"rgb_array"` (video); renderer injected via constructor
+- Player: blue/green circles · Opponents: red/warm triangles
+- Use a single FPS cap for human rendering; avoid phase-conditional throttle — it breaks when default stepping changes (e.g. skip_phases)
 
-## Adding New Features
+## Adding Features
 
-When modifying the environment:
-1. Update `WargameEnvConfig` in `types/` if new config is needed
-2. Add logic to the appropriate `env_components/` module
-3. Update observation types (`env_observation.py`, `env_info.py`) and observation builder if the observation space changes
-4. Update `observation_to_tensor` in `model/dqn/observation.py` to produce the new tensor
-5. Update both DQN networks (`DQN_MLP`, `DQN_Transformer`) to consume the new tensor
-6. Update reward calculation if reward signals change
-7. Update renderer if the new feature is visual
-8. Add tests — config validation, env integration, observation tensors, DQN forward pass, and backward compatibility
+1. Config → `WargameEnvConfig` in `types/`
+2. Logic → `env_components/`
+3. Obs → `env_observation.py`/`env_info.py` + obs builder
+4. Tensor → `model/dqn/observation.py`
+5. Networks → both `DQN_MLP` and `DQN_Transformer`
+6. Reward if signals change · Renderer if visual · Tests + backward compat
 
-## Design Principles
+## Design
 
-- Never hardcode action counts — derive `n_actions` from config via `ActionHandler.n_actions`
-- Keep model locations as integers unless the grid itself becomes continuous
-- Pre-compute expensive operations (e.g. trig displacement tables) at `__init__` time using numpy vectorized operations, not per-step
-- When adding features that need rendering (e.g. movement arrows), track required state (e.g. `previous_location`) in the same change to avoid retrofitting later
-- New entity types (like opponents) should mirror existing entity patterns: same model class, same config schema, same placement functions, separate action handler
-- Always maintain backward compatibility — new config fields default to the no-op value (e.g. `number_of_opponent_models=0`), existing configs must work without changes
-- Use the registry pattern for pluggable subsystems (policies, reward calculators, criteria) — keeps YAML-driven config decoupled from implementation
+- Integer locations; pre-compute expensive ops at `__init__` (numpy vectorized)
+- Track rendering state (e.g. `previous_location`) in same change
+- New entities mirror existing patterns; always backward compatible

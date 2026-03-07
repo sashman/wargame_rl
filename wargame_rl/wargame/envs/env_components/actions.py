@@ -3,18 +3,93 @@
 Polar coordinate movement: each model picks an (angle, speed) pair or stays
 still.  The continuous displacement is rounded to the nearest integer cell so
 that locations remain on the discrete grid.
+
+The ``ActionRegistry`` partitions the flat action space into contiguous slices
+(stay, movement, and future phase-specific slices) and provides phase-aware
+action masks.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 from gymnasium import spaces
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 STAY_ACTION = 0
+
+ALL_BATTLE_PHASES: frozenset[BattlePhase] = frozenset(BattlePhase)
+
+
+@dataclass(frozen=True, slots=True)
+class ActionSlice:
+    """A contiguous range of action indices belonging to one action type."""
+
+    name: str
+    start: int
+    end: int
+    valid_phases: frozenset[BattlePhase]
+
+    @property
+    def size(self) -> int:
+        return self.end - self.start
+
+
+class ActionRegistry:
+    """Tracks contiguous action slices and produces phase-aware masks."""
+
+    def __init__(self) -> None:
+        self._slices: list[ActionSlice] = []
+        self._by_name: dict[str, ActionSlice] = {}
+        self._offset: int = 0
+
+    def register(
+        self,
+        name: str,
+        n_actions: int,
+        valid_phases: frozenset[BattlePhase],
+    ) -> ActionSlice:
+        """Append a new slice at the current offset and return it."""
+        if name in self._by_name:
+            raise ValueError(f"Action slice '{name}' already registered")
+        s = ActionSlice(
+            name=name,
+            start=self._offset,
+            end=self._offset + n_actions,
+            valid_phases=valid_phases,
+        )
+        self._slices.append(s)
+        self._by_name[name] = s
+        self._offset += n_actions
+        return s
+
+    @property
+    def n_actions(self) -> int:
+        return self._offset
+
+    @property
+    def slices(self) -> list[ActionSlice]:
+        return list(self._slices)
+
+    def slice_for(self, name: str) -> ActionSlice:
+        return self._by_name[name]
+
+    def get_action_mask(self, phase: BattlePhase) -> np.ndarray:
+        """Return a ``(n_actions,)`` bool mask — True for valid actions."""
+        mask = np.zeros(self._offset, dtype=bool)
+        for s in self._slices:
+            if phase in s.valid_phases:
+                mask[s.start : s.end] = True
+        return mask
+
+    def get_model_action_masks(self, phase: BattlePhase, n_models: int) -> np.ndarray:
+        """Return ``(n_models, n_actions)`` masks, tiled per model."""
+        single = self.get_action_mask(phase)
+        return np.tile(single, (n_models, 1))
 
 
 class ActionHandler:
@@ -63,10 +138,22 @@ class ActionHandler:
         self._n_speed_bins = n_speeds
         self._n_angles = n_angles
 
+        self._registry = ActionRegistry()
+        self._registry.register("stay", 1, ALL_BATTLE_PHASES)
+        self._registry.register(
+            "movement",
+            self._n_move_actions,
+            frozenset({BattlePhase.movement}),
+        )
+
+    @property
+    def registry(self) -> ActionRegistry:
+        return self._registry
+
     @property
     def n_actions(self) -> int:
         """Total number of discrete actions (stay + all angle*speed combos)."""
-        return 1 + self._n_move_actions
+        return self._registry.n_actions
 
     @property
     def action_space(self) -> spaces.Tuple:

@@ -94,6 +94,10 @@ def train(
 
     env_config = get_env_config(env_config_path, render_mode)
 
+    # Ensure training episodes are long enough: override to at least 100 rounds
+    # unless the config explicitly requests more.
+    env_config.number_of_battle_rounds = max(env_config.number_of_battle_rounds, 100)
+
     env = create_environment(env_config=env_config)
 
     if algorithm == AlgorithmType.DQN:

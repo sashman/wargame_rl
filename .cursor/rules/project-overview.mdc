@@ -3,11 +3,12 @@ description: Project overview and tooling for wargame_rl
 alwaysApply: true
 ---
 
-# wargame_rl — Project Overview
+# wargame_rl
 
 Reinforcement learning project that trains agents (DQN, PPO) to play tabletop wargames on a discrete grid. Agents control multiple models (units) using polar-coordinate movement to capture objectives.
 
-## Tech Stack
+**Stack**: Python 3.12+ · UV · Gymnasium 1.x · PyTorch + Lightning · Wandb · Pydantic + pydantic-yaml · Typer · Loguru · Pygame
+**Tooling**: Just · Ruff (fmt/lint, 88 cols) · Mypy (strict) · isort · autoflake · Pytest · Pre-commit
 
 - **Python 3.13** (UV package manager, `uv.lock`)
 - **Gymnasium 1.x** — RL environment (`WargameEnv`)
@@ -50,13 +51,7 @@ Reinforcement learning project that trains agents (DQN, PPO) to play tabletop wa
 - `wargame_rl/wargame/model/common/` — Shared: factory, observation, dataset, device, wandb, callbacks
 - `wargame_rl/wargame/model/net.py` — RL_Network base, MLPNetwork, TransformerNetwork
 - `wargame_rl/wargame/types.py` — `Experience` / `ExperienceBatch`
-- `examples/env_config/` — YAML environment configurations
-- `tests/` — Pytest suite with shared fixtures in `conftest.py`
-- `docs/` — design documentation (e.g. `movement.md`)
+- `examples/env_config/` — YAML env configs
+- `tests/` — Pytest suite, fixtures in `conftest.py`
+- `docs/` — design docs
 - `train.py` / `simulate.py` / `main.py` — entry points
-
-## Git Workflow
-
-- Always verify the current branch before committing (especially after a PR merge, which may leave you on `main`)
-- Create feature branches for all changes; avoid committing directly to `main`
-- After pushing a new feature branch, always create a PR using `gh pr create`

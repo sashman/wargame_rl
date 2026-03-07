@@ -18,7 +18,9 @@ def n_steps() -> int:
 
 @pytest.fixture
 def env() -> WargameEnv:
-    return WargameEnv(config=WargameEnvConfig(render_mode=None))
+    return WargameEnv(
+        config=WargameEnvConfig(render_mode=None, number_of_battle_rounds=100)
+    )
 
 
 @pytest.fixture

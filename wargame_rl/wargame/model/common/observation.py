@@ -6,6 +6,17 @@ from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvObservatio
 from wargame_rl.wargame.model.common import Device, get_device
 
 
+def apply_action_mask(q_values: Tensor, mask: Tensor) -> Tensor:
+    """Set Q-values for invalid actions to ``-inf``.
+
+    Broadcasts the mask against *q_values* so it works whether *q_values*
+    has a leading batch dim and *mask* does not, or both match.
+    """
+    if mask.numel() == 0:
+        return q_values
+    return q_values.masked_fill(~mask, float("-inf"))
+
+
 def action_to_tensor(action: WargameEnvAction, device: Device | None = None) -> Tensor:
     device = get_device(device)
     _, action_tensor = torch.tensor(
@@ -85,10 +96,11 @@ def _models_to_features(
 
 def _observation_to_numpy(
     state: WargameEnvObservation,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Convert a single observation to four NumPy arrays.
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]:
+    """Convert a single observation to NumPy arrays.
 
-    Returns (current_turn, objectives, player_models, opponent_models).
+    Returns (current_turn, objectives, player_models, opponent_models, action_mask).
+    ``action_mask`` is ``(n_models, n_actions)`` or None when not available.
     """
     models = state.wargame_models
     max_groups = models[0].max_groups
@@ -118,9 +130,32 @@ def _observation_to_numpy(
     obj_locs = np.array([o.location for o in state.objectives], dtype=np.float32)
     obj_features = _normalize(obj_locs, half_board)
 
-    current_turn = np.array([state.current_turn / 20], dtype=np.float32)
+    n_phases = 5  # len(BattlePhase)
+    normalized_round = state.battle_round / max(state.n_rounds, 1)
+    normalized_phase = state.battle_phase_index / max(n_phases - 1, 1)
+    game_features = np.array(
+        [0.0, normalized_round, normalized_phase], dtype=np.float32
+    )
 
-    return current_turn, obj_features, model_features, opponent_features
+    return (
+        game_features,
+        obj_features,
+        model_features,
+        opponent_features,
+        state.action_mask,
+    )
+
+
+def _mask_to_tensor(
+    mask: np.ndarray | None,
+    n_models: int,
+    n_actions: int,
+    device: torch.device,
+) -> torch.Tensor:
+    """Convert an action mask to a bool tensor, defaulting to all-True."""
+    if mask is not None:
+        return torch.from_numpy(mask.astype(np.bool_)).to(device)
+    return torch.ones(n_models, n_actions, dtype=torch.bool, device=device)
 
 
 def observation_to_tensor(
@@ -132,25 +167,33 @@ def observation_to_tensor(
     ----------------
 
     The tensors are returned in the following order:
-        1. tensor_current_turn: shape (1,)
+        1. game_features: shape (3,) — placeholder, normalized_round, normalized_phase
         2. tensor_objectives: shape (num_objectives, 2), normalized to [-1, 1]
         3. tensor_wargame_models: shape (num_models, model_features)
         4. tensor_opponent_models: shape (num_opponent_models, model_features)
            (0 rows when no opponents)
+        5. tensor_action_mask: shape (n_models, n_actions), bool
 
     model_features includes normalized location, distances to objectives,
     group_id one-hot, and closest same-group distance.
     """
     device = get_device(device)
-    current_turn, obj_features, model_features, opp_features = _observation_to_numpy(
-        state
+    current_turn, obj_features, model_features, opp_features, mask = (
+        _observation_to_numpy(state)
+    )
+
+    n_models = model_features.shape[0]
+    n_actions = mask.shape[1] if mask is not None else 0
+    resolved_device = (
+        torch.device(device) if not isinstance(device, torch.device) else device
     )
 
     return [
-        torch.from_numpy(current_turn).to(device),
-        torch.from_numpy(obj_features).to(device),
-        torch.from_numpy(model_features).to(device),
-        torch.from_numpy(opp_features).to(device),
+        torch.from_numpy(current_turn).to(resolved_device),
+        torch.from_numpy(obj_features).to(resolved_device),
+        torch.from_numpy(model_features).to(resolved_device),
+        torch.from_numpy(opp_features).to(resolved_device),
+        _mask_to_tensor(mask, n_models, n_actions, resolved_device),
     ]
 
 
@@ -160,6 +203,9 @@ def observations_to_tensor_batch(
     """Batch-convert multiple observations to tensors without per-state tensor allocation."""
     assert len(states) > 0, "No states to convert to tensor"
     device = get_device(device)
+    resolved_device = (
+        torch.device(device) if not isinstance(device, torch.device) else device
+    )
 
     np_results = [_observation_to_numpy(s) for s in states]
 
@@ -168,9 +214,20 @@ def observations_to_tensor_batch(
     batch_models = np.stack([r[2] for r in np_results])
     batch_opp = np.stack([r[3] for r in np_results])
 
+    masks = [r[4] for r in np_results]
+    n_models = batch_models.shape[1]
+    if masks[0] is not None:
+        batch_masks = np.stack(masks)  # type: ignore[arg-type]
+        mask_tensor = torch.from_numpy(batch_masks.astype(np.bool_)).to(resolved_device)
+    else:
+        mask_tensor = torch.ones(
+            len(states), n_models, 0, dtype=torch.bool, device=resolved_device
+        )
+
     return [
-        torch.from_numpy(batch_turn).to(device),
-        torch.from_numpy(batch_obj).to(device),
-        torch.from_numpy(batch_models).to(device),
-        torch.from_numpy(batch_opp).to(device),
+        torch.from_numpy(batch_turn).to(resolved_device),
+        torch.from_numpy(batch_obj).to(resolved_device),
+        torch.from_numpy(batch_models).to(resolved_device),
+        torch.from_numpy(batch_opp).to(resolved_device),
+        mask_tensor,
     ]

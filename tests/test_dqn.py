@@ -6,7 +6,7 @@ from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.dataset import experience_list_to_batch
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
-from wargame_rl.wargame.model.net import RL_Network
+from wargame_rl.wargame.model.net import RL_Network, convert_state_dict
 from wargame_rl.wargame.types import Experience
 
 
@@ -78,14 +78,15 @@ def test_dataloaders(env: WargameEnv, policy_net: RL_Network) -> None:
     assert batch.actions.shape == (batch_size, n_wargame_models)
     assert batch.rewards.shape == (batch_size,)
     assert batch.dones.shape == (batch_size,)
+    game_size = observation.size_game_observation  # 3: placeholder + round + phase
     state_turn, state_objectives, state_wargame_models, _state_opp = batch.state_tensors
     new_state_turn, new_state_objectives, new_state_wargame_models, _new_opp = (
         batch.new_state_tensors
     )
-    assert state_turn.shape == (batch_size, 1)
+    assert state_turn.shape == (batch_size, game_size)
     assert state_objectives.shape == (batch_size, n_objectives, dim_location)
     assert state_wargame_models.shape == (batch_size, n_wargame_models, dim_model)
-    assert new_state_turn.shape == (batch_size, 1)
+    assert new_state_turn.shape == (batch_size, game_size)
     assert new_state_objectives.shape == (batch_size, n_objectives, dim_location)
     assert new_state_wargame_models.shape == (batch_size, n_wargame_models, dim_model)
 
@@ -101,3 +102,22 @@ def test_dqn_training(env: WargameEnv, policy_net: RL_Network) -> None:
     )
 
     trainer.fit(model)
+
+
+# ---------------------------------------------------------------------------
+# convert_state_dict (simulate-latest checkpoint loading)
+# ---------------------------------------------------------------------------
+
+
+def test_convert_state_dict_normalizes_lightning_checkpoint() -> None:
+    """Strips policy_net. and _orig_mod. prefixes and drops target_net (Lightning + torch.compile)."""
+    state_dict = {
+        "policy_net._orig_mod.game_embedding.weight": torch.randn(1, 1),
+        "target_net._orig_mod.game_embedding.weight": torch.randn(1, 1),
+    }
+    out = convert_state_dict(state_dict)
+    assert list(out.keys()) == ["game_embedding.weight"]
+    assert (
+        out["game_embedding.weight"]
+        is state_dict["policy_net._orig_mod.game_embedding.weight"]
+    )

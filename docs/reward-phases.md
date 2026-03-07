@@ -150,6 +150,18 @@ To add a new success criteria:
 
 Both calculators and criteria receive a `StepContext` object containing the distance cache, turn info, and board dimensions. As new game mechanics are added (combat, terrain, VP), additional fields will be added to `StepContext` without changing existing calculator signatures.
 
+### StepContext fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `distance_cache` | `DistanceCache` | Pre-computed distances between models and objectives |
+| `current_turn` | `int` | Step counter (increments each `env.step()` call; with default `skip_phases`, each step is one active phase, currently movement only) |
+| `max_turns` | `int` | Maximum agent steps per episode (`n_rounds × (5 - len(skip_phases))`; default `n_rounds` since non-movement phases are skipped) |
+| `board_width` | `int` | Board width in cells |
+| `board_height` | `int` | Board height in cells |
+| `current_round` | `int` | Current battle round (1-based) |
+| `battle_phase` | `BattlePhase` | Current battle phase (`command`, `movement`, `shooting`, `charge`, or `fight`) |
+
 ## File Layout
 
 ```

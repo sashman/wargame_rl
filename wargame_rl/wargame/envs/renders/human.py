@@ -218,9 +218,6 @@ class HumanRender(Renderer):
         pygame.event.pump()
         pygame.display.update()
 
-        # We need to ensure that human-rendering occurs at the predefined framerate.
-        # The following line will automatically add a delay to
-        # keep the framerate stable.
         self.clock.tick(metadata["render_fps"])
 
     def get_frame_array(self) -> np.ndarray:
@@ -276,8 +273,12 @@ class HumanRender(Renderer):
         font = pygame.font.Font(None, 24)
         text_color = (220, 220, 220)
         reward_str = f"{env.last_reward:.3f}" if env.last_reward is not None else "—"
-        turn_text = f"Turn: {env.current_turn} / {env.max_turns}"
-        steps_text = f"Steps: {env.current_turn}"
+        clock_state = env._game_clock.state
+        phase_label = clock_state.phase.value.title() if clock_state.phase else "—"
+        round_num = clock_state.battle_round or 0
+        n_rounds = env._game_clock.n_rounds
+        turn_text = f"Round: {round_num} / {n_rounds}  |  {phase_label}"
+        steps_text = f"Step: {env.current_turn}"
         reward_text = f"Reward: {reward_str}"
         center_y = panel_y + self.PANEL_HEIGHT // 2
         if self.epoch is not None:

@@ -24,6 +24,7 @@ def test_legacy_reward_produces_nonzero_rewards() -> None:
             number_of_wargame_models=2,
             number_of_objectives=1,
             objective_radius_size=2,
+            number_of_battle_rounds=40,
         )
     )
     env.reset(seed=42)
