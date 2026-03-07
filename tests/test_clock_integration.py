@@ -27,6 +27,7 @@ def _make_env(n_rounds: int = 10, **overrides: object) -> WargameEnv:
         objective_radius_size=2,
         number_of_battle_rounds=n_rounds,
         skip_phases=[],  # step through every phase unless overridden
+        max_turns_override=None,  # use game-clock-derived max_turns for clock tests
     )
     defaults.update(overrides)
     return WargameEnv(config=WargameEnvConfig(**defaults))
@@ -130,6 +131,7 @@ class TestSkipPhases:
             number_of_wargame_models=2,
             number_of_objectives=1,
             objective_radius_size=2,
+            max_turns_override=None,
         )
         env = WargameEnv(config=cfg)
         env.reset(seed=42)

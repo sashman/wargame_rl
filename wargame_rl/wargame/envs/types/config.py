@@ -183,6 +183,13 @@ class WargameEnvConfig(BaseModel):
         description="Number of battle rounds per game (tabletop standard is 5).",
     )
 
+    max_turns_override: int | None = Field(
+        default=100,
+        ge=1,
+        description="If set, episode step limit (overrides game-clock-derived max_turns). "
+        "Default 100 gives training 100 steps per episode. Set to None for strict game-clock length.",
+    )
+
     # --- Opponent configuration ---
     number_of_opponent_models: int = Field(
         default=0,
