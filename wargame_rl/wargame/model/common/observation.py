@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvObservation
+from wargame_rl.wargame.envs.types import WargameEnvObservation
 from wargame_rl.wargame.model.common import Device, get_device
 
 
@@ -15,14 +15,6 @@ def apply_action_mask(q_values: Tensor, mask: Tensor) -> Tensor:
     if mask.numel() == 0:
         return q_values
     return q_values.masked_fill(~mask, float("-inf"))
-
-
-def action_to_tensor(action: WargameEnvAction, device: Device | None = None) -> Tensor:
-    device = get_device(device)
-    _, action_tensor = torch.tensor(
-        action.actions, dtype=torch.float32, device=device
-    ).max(dim=-1)
-    return action_tensor.unsqueeze(0)
 
 
 def _normalize(arr: np.ndarray, half_board: np.ndarray) -> np.ndarray:

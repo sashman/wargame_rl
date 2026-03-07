@@ -13,6 +13,4 @@ class AllAtObjectivesCriteria(SuccessCriteria):
     """Succeeds when every model is within the radius of at least one objective."""
 
     def is_successful(self, env: WargameEnv, ctx: StepContext) -> bool:
-        cache = ctx.distance_cache
-        at_objective = cache.model_obj_norms_offset <= cache.obj_radii
-        return bool(at_objective.any(axis=1).all())
+        return ctx.distance_cache.all_models_at_objectives()

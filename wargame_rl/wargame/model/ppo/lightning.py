@@ -340,8 +340,8 @@ class PPOLightning(LightningModule):
         self.ppo_model.eval()
         with torch.no_grad():
             for _ in range(n_episodes):
-                reward, steps, experiences = self.agent.run_episode(
-                    self.ppo_model, epsilon=epsilon, render=False, save_steps=True
+                reward, steps, _ = self.agent.run_episode(
+                    self.ppo_model, epsilon=epsilon, render=False, save_steps=False
                 )
                 episode_rewards.append(reward)
                 steps_s.append(steps)
