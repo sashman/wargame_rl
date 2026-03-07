@@ -9,9 +9,9 @@ import torch
 from pydantic_yaml import to_yaml_str
 
 from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.dqn.config import NetworkType
-from wargame_rl.wargame.model.dqn.dqn import DQN_Transformer
-from wargame_rl.wargame.model.dqn.factory import create_environment
+from wargame_rl.wargame.model.net import TransformerNetwork
 
 _repo_root = Path(__file__).resolve().parent.parent
 if str(_repo_root) not in sys.path:
@@ -34,10 +34,10 @@ def test_simulate_latest_discovers_checkpoint_and_runs_episode(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """main() with no args (just simulate-latest) finds latest checkpoint and runs one episode."""
-    from wargame_rl.wargame.model.dqn import device as device_module
+    from wargame_rl.wargame.model.common import auto_device
 
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
-    device_module.auto_device.cache_clear()
+    auto_device.cache_clear()
 
     run_dir = tmp_path / "checkpoints" / "run1"
     run_dir.mkdir(parents=True)
@@ -49,7 +49,7 @@ def test_simulate_latest_discovers_checkpoint_and_runs_episode(
         number_of_battle_rounds=5,
     )
     env = create_environment(cfg, renderer=None)
-    net = DQN_Transformer.from_env(env)
+    net = TransformerNetwork.policy_from_env(env)
     lightning_state = {
         f"policy_net._orig_mod.{k}": v.clone() for k, v in net.state_dict().items()
     }

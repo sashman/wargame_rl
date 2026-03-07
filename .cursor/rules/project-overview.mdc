@@ -5,15 +5,51 @@ alwaysApply: true
 
 # wargame_rl
 
-RL project training DQN agents on discrete-grid tabletop wargames. Agents control multiple models (units) to capture objectives.
+Reinforcement learning project that trains agents (DQN, PPO) to play tabletop wargames on a discrete grid. Agents control multiple models (units) using polar-coordinate movement to capture objectives.
 
 **Stack**: Python 3.12+ · UV · Gymnasium 1.x · PyTorch + Lightning · Wandb · Pydantic + pydantic-yaml · Typer · Loguru · Pygame
 **Tooling**: Just · Ruff (fmt/lint, 88 cols) · Mypy (strict) · isort · autoflake · Pytest · Pre-commit
 
-## Layout
+- **Python 3.13** (UV package manager, `uv.lock`)
+- **Gymnasium 1.x** — RL environment (`WargameEnv`)
+- **PyTorch + PyTorch Lightning** — DQN and PPO training
+- **Wandb** — experiment tracking & video recording
+- **Pydantic + pydantic-yaml** — config & type models
+- **Typer** — CLI (`train.py`, `simulate.py`)
+- **Loguru** — logging
+- **Pygame** — human rendering
 
-- `wargame_rl/wargame/envs/` — env, reward, rendering, types
-- `wargame_rl/wargame/model/dqn/` — DQN networks, Lightning module, training
+## Development Tooling
+
+- **Just** — command runner (see `Justfile`)
+- **Ruff** — linter & formatter (line length 88, double quotes)
+- **Mypy** — strict type checking (`disallow_untyped_defs`, `no_implicit_optional`)
+- **isort** — import sorting (Black profile)
+- **autoflake** — removes unused imports
+- **Pytest** — testing
+- **Pre-commit** — hooks for all of the above
+
+## Key Commands
+
+| Task | Command |
+|------|---------|
+| Setup | `just setup` |
+| Sync deps | `just dev-sync` |
+| Format | `just format` |
+| Lint | `just lint` |
+| Test | `just test` |
+| Full validation | `just validate` |
+| Train (PPO, default) | `just train <config.yaml>` |
+| Train (DQN) | `just train <config.yaml> dqn` |
+| Simulate | `just simulate-latest` |
+
+## Project Layout
+
+- `wargame_rl/wargame/envs/` — Gymnasium environment, reward, rendering, types
+- `wargame_rl/wargame/model/dqn/` — DQN agent, Lightning module, replay buffer, config
+- `wargame_rl/wargame/model/ppo/` — PPO actor-critic, Lightning module, agent, config
+- `wargame_rl/wargame/model/common/` — Shared: factory, observation, dataset, device, wandb, callbacks
+- `wargame_rl/wargame/model/net.py` — RL_Network base, MLPNetwork, TransformerNetwork
 - `wargame_rl/wargame/types.py` — `Experience` / `ExperienceBatch`
 - `examples/env_config/` — YAML env configs
 - `tests/` — Pytest suite, fixtures in `conftest.py`

@@ -19,8 +19,7 @@ from torch import nn
 
 import wandb
 from wargame_rl.wargame.envs.types import WargameEnvConfig
-from wargame_rl.wargame.model.dqn.lightning import DQNLightning
-from wargame_rl.wargame.model.dqn.observation import observation_to_tensor
+from wargame_rl.wargame.model.common.observation import observation_to_tensor
 
 
 def _run_recording(
@@ -31,6 +30,7 @@ def _run_recording(
     policy_net_class_name: str,
     checkpoint_dir: str,
     render_fps: int,
+    filename_prefix: str,
 ) -> None:
     """Run in a separate process: create env with human renderer, run one episode, save MP4.
     Must set SDL_VIDEODRIVER=dummy before any pygame import to avoid EGL conflicts with PyTorch.
@@ -43,8 +43,8 @@ def _run_recording(
 
     from wargame_rl.wargame.envs.renders.human import HumanRender
     from wargame_rl.wargame.envs.types import WargameEnvAction
-    from wargame_rl.wargame.model.dqn.dqn import DQN_MLP, DQN_Transformer, RL_Network
-    from wargame_rl.wargame.model.dqn.factory import create_environment
+    from wargame_rl.wargame.model.common.factory import create_environment
+    from wargame_rl.wargame.model.net import MLPNetwork, RL_Network, TransformerNetwork
 
     # Build env with human renderer (same config as training)
     renderer = HumanRender()
@@ -57,10 +57,10 @@ def _run_recording(
         policy_state_dict_path, map_location="cpu", weights_only=True
     )
     try:
-        if policy_net_class_name == "DQN_Transformer":
-            policy_net: RL_Network = DQN_Transformer.from_env(env)
+        if policy_net_class_name in {"DQN_Transformer", "TransformerNetwork"}:
+            policy_net: RL_Network = TransformerNetwork.policy_from_env(env)
         else:
-            policy_net = DQN_MLP.from_env(env)
+            policy_net = MLPNetwork.policy_from_env(env)
         policy_net.load_state_dict(policy_state_dict)
         policy_net.eval()
     finally:
@@ -88,8 +88,8 @@ def _run_recording(
 
         out_dir = Path(checkpoint_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
-        # Name consistent with checkpoint style: dqn-epoch-XXX-recording.mp4
-        filename = f"dqn-epoch-{epoch:03d}-recording.mp4"
+        # Name consistent with checkpoint style: <prefix>-epoch-XXX-recording.mp4
+        filename = f"{filename_prefix}-epoch-{epoch:03d}-recording.mp4"
         filepath = out_dir / filename
 
         if frames:
@@ -115,7 +115,8 @@ class RecordEpisodeCallback(Callback):
     Starts only after record_after_epoch epochs. Runs only when the checkpoint
     callback adds or removes a checkpoint file (e.g. new top-k or updated last).
     Uses human-style rendering. Saves to the same directory as checkpoints, with
-    names like dqn-epoch-042-recording.mp4. Runs in a separate process (spawn) so
+    names like dqn-epoch-042-recording.mp4 or ppo-epoch-042-recording.mp4.
+    Runs in a separate process (spawn) so
     SDL uses the dummy driver and does not conflict with PyTorch/EGL.
     """
 
@@ -125,11 +126,14 @@ class RecordEpisodeCallback(Callback):
         env_config: WargameEnvConfig,
         record_during_training: bool = True,
         record_after_epoch: int = 20,
+        filename_prefix: str = "dqn",
     ) -> None:
         self.run_name = run_name
         self.env_config = env_config
         self.record_during_training = record_during_training
         self.record_after_epoch = record_after_epoch
+        # Prefix used for both checkpoint filenames and recording filenames (e.g. 'dqn' or 'ppo').
+        self.filename_prefix = filename_prefix
         self._checkpoint_dir = f"./checkpoints/{run_name}"
         self._last_ckpt_filenames: set[str] | None = None
         self._pending_proc: BaseProcess | None = None
@@ -184,7 +188,34 @@ class RecordEpisodeCallback(Callback):
             logger.debug("Skipping recording — previous recording still in progress")
             return
 
-        model = cast(DQNLightning, pl_module)
+        # Detect the policy network to record (supports both DQN and PPO Lightning modules).
+        env = getattr(pl_module, "env", None)
+        if env is None or not hasattr(env, "metadata"):
+            logger.warning(
+                "RecordEpisodeCallback: pl_module has no env with metadata; skipping recording"
+            )
+            return
+
+        policy_module: nn.Module | None = None
+        if hasattr(pl_module, "policy_net"):
+            # DQNLightning-style module
+            policy_module = cast(nn.Module, getattr(pl_module, "policy_net"))
+        else:
+            # PPO-style module: expect pl_module.ppo_model.policy_network
+            ppo_model = getattr(pl_module, "ppo_model", None)
+            policy_network = (
+                getattr(ppo_model, "policy_network", None)
+                if ppo_model is not None
+                else None
+            )
+            if isinstance(policy_network, nn.Module):
+                policy_module = policy_network
+
+        if policy_module is None:
+            logger.warning(
+                "RecordEpisodeCallback: pl_module has no policy_net or ppo_model.policy_network; skipping recording"
+            )
+            return
 
         # Save policy snapshot to a temp file so the spawn child can load it (pickling
         # tensors across processes hits shared-memory permission errors).
@@ -192,7 +223,7 @@ class RecordEpisodeCallback(Callback):
             suffix=".pt", delete=False, prefix="record_policy_"
         ) as f:
             policy_state_dict_path = f.name
-        orig_net: nn.Module = getattr(model.policy_net, "_orig_mod", model.policy_net)
+        orig_net: nn.Module = getattr(policy_module, "_orig_mod", policy_module)
         torch.save(orig_net.state_dict(), policy_state_dict_path)
 
         policy_net_class_name = type(orig_net).__name__
@@ -200,9 +231,12 @@ class RecordEpisodeCallback(Callback):
         env_config = self.env_config
         checkpoint_dir = self._checkpoint_dir
         epoch = trainer.current_epoch
-        render_fps = cast(int, model.env.metadata["render_fps"])
+        render_fps = cast(int, env.metadata["render_fps"])
+        filename_prefix = self.filename_prefix
 
-        filepath = Path(checkpoint_dir) / f"dqn-epoch-{epoch:03d}-recording.mp4"
+        filepath = (
+            Path(checkpoint_dir) / f"{filename_prefix}-epoch-{epoch:03d}-recording.mp4"
+        )
 
         # Run in a separate process so SDL_VIDEODRIVER=dummy is set before any pygame/CUDA
         # init; same process (or thread) hits EGL_BAD_ACCESS when PyTorch already has a context.
@@ -216,6 +250,7 @@ class RecordEpisodeCallback(Callback):
                 "policy_net_class_name": policy_net_class_name,
                 "checkpoint_dir": checkpoint_dir,
                 "render_fps": render_fps,
+                "filename_prefix": filename_prefix,
             },
             daemon=True,
         )

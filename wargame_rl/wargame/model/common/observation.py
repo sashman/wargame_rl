@@ -3,7 +3,7 @@ import torch
 from torch import Tensor
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvObservation
-from wargame_rl.wargame.model.dqn.device import Device, get_device
+from wargame_rl.wargame.model.common import Device, get_device
 
 
 def apply_action_mask(q_values: Tensor, mask: Tensor) -> Tensor:
@@ -33,7 +33,7 @@ def _normalize(arr: np.ndarray, half_board: np.ndarray) -> np.ndarray:
 
 def _group_ids_to_one_hot(group_ids: np.ndarray, max_groups: int) -> np.ndarray:
     """Vectorized one-hot encoding for an array of group IDs."""
-    indices = np.clip(group_ids - 1, 0, max_groups - 1)
+    indices = np.clip(group_ids, 0, max_groups - 1)
     one_hot = np.zeros((len(indices), max_groups), dtype=np.float32)
     one_hot[np.arange(len(indices)), indices] = 1.0
     return one_hot
@@ -167,7 +167,7 @@ def observation_to_tensor(
     ----------------
 
     The tensors are returned in the following order:
-        1. tensor_current_turn: shape (1,)
+        1. game_features: shape (3,) — placeholder, normalized_round, normalized_phase
         2. tensor_objectives: shape (num_objectives, 2), normalized to [-1, 1]
         3. tensor_wargame_models: shape (num_models, model_features)
         4. tensor_opponent_models: shape (num_opponent_models, model_features)

@@ -5,7 +5,7 @@ import itertools
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import ModelConfig, ObjectiveConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.dqn.dataset import RLDataset
+from wargame_rl.wargame.model.common.dataset import RLDataset
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.types import Experience
 

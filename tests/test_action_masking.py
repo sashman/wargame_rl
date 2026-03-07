@@ -170,7 +170,7 @@ class TestEnvActionMask:
 
 class TestTensorPipeline:
     def test_observation_to_tensor_returns_5_tensors(self) -> None:
-        from wargame_rl.wargame.model.dqn.observation import observation_to_tensor
+        from wargame_rl.wargame.model.common.observation import observation_to_tensor
 
         env = WargameEnv(config=WargameEnvConfig())
         obs, _ = env.reset()
@@ -183,7 +183,7 @@ class TestTensorPipeline:
         assert mask_tensor.shape == (n_models, n_actions)
 
     def test_batch_returns_5_tensors(self) -> None:
-        from wargame_rl.wargame.model.dqn.observation import (
+        from wargame_rl.wargame.model.common.observation import (
             observations_to_tensor_batch,
         )
 
@@ -203,14 +203,14 @@ class TestTensorPipeline:
 
 class TestExperienceBatch:
     def test_batch_has_next_state_masks(self) -> None:
-        from wargame_rl.wargame.model.dqn.dataset import experience_list_to_batch
+        from wargame_rl.wargame.model.common.dataset import experience_list_to_batch
         from wargame_rl.wargame.types import Experience
 
         env = WargameEnv(config=WargameEnvConfig())
         obs, _ = env.reset()
         action = WargameEnvAction(actions=list(env.action_space.sample()))
         new_obs, reward, done, _, _ = env.step(action)
-        exp = Experience(obs, action, reward, done, new_obs)
+        exp = Experience(obs, action, reward, done, new_obs, log_prob=None)
         batch = experience_list_to_batch([exp])
         assert batch.next_state_masks is not None
         assert batch.next_state_masks.shape[0] == 1  # batch of 1

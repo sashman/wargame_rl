@@ -5,12 +5,12 @@ import numpy as np
 import torch
 
 from wargame_rl.wargame.envs.types import WargameEnvAction
-from wargame_rl.wargame.model.dqn.dqn import RL_Network
-from wargame_rl.wargame.model.dqn.experience_replay import Experience, ReplayBuffer
-from wargame_rl.wargame.model.dqn.observation import (
+from wargame_rl.wargame.model.common.observation import (
     apply_action_mask,
     observation_to_tensor,
 )
+from wargame_rl.wargame.model.dqn.experience_replay import Experience, ReplayBuffer
+from wargame_rl.wargame.model.net import RL_Network
 
 
 class Agent:
@@ -95,6 +95,7 @@ class Agent:
                 reward=float(reward),
                 done=bool(done),
                 new_state=new_state,
+                log_prob=None,
             )
             self.replay_buffer.append(exp)
         self.observation = new_state

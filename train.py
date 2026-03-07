@@ -1,20 +1,45 @@
 import os
+from enum import Enum
+from typing import cast
 
 import typer
 from pydantic_yaml import parse_yaml_raw_as
 from pytorch_lightning import Trainer
+from pytorch_lightning.callbacks import Callback
 
 from wargame_rl.wargame.envs.types import WargameEnvConfig
-from wargame_rl.wargame.model.dqn.checkpoint_callback import get_checkpoint_callback
-from wargame_rl.wargame.model.dqn.config import DQNConfig, NetworkType, TrainingConfig
-from wargame_rl.wargame.model.dqn.dqn import DQN_MLP, DQN_Transformer
-from wargame_rl.wargame.model.dqn.env_config_callback import EnvConfigCallback
-from wargame_rl.wargame.model.dqn.factory import create_environment
+from wargame_rl.wargame.model.common import (
+    EnvConfigCallback,
+    get_checkpoint_callback,
+    get_logger,
+    init_wandb,
+)
+from wargame_rl.wargame.model.common.factory import create_environment
+from wargame_rl.wargame.model.common.record_episode_callback import (
+    RecordEpisodeCallback,
+)
+from wargame_rl.wargame.model.dqn.config import (
+    DQNConfig,
+    DQNTrainingConfig,
+    NetworkType,
+)
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
-from wargame_rl.wargame.model.dqn.record_episode_callback import RecordEpisodeCallback
-from wargame_rl.wargame.model.dqn.wandb import get_logger, init_wandb
+from wargame_rl.wargame.model.net import MLPNetwork, RL_Network, TransformerNetwork
+from wargame_rl.wargame.model.ppo.config import PPOConfig, PPOTrainingConfig
+from wargame_rl.wargame.model.ppo.lightning import PPOLightning
+from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
+
+# os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
 
 app = typer.Typer(pretty_exceptions_enable=False)
+
+
+class AlgorithmType(str, Enum):
+    """Type of algorithm to train."""
+
+    DQN = "dqn"
+    PPO = "ppo"
 
 
 def get_env_config(
@@ -41,7 +66,11 @@ def train(
         None, help="Render mode for the environment"
     ),
     env_config_path: str | None = typer.Option(
-        None, help="Path to the environment config file"
+        "examples/env_config/4_models_2_objectives_fixed.yaml",
+        help="Path to the environment config file",
+    ),
+    algorithm: AlgorithmType = typer.Option(
+        AlgorithmType.PPO, help="Algorithm to use for training"
     ),
     network_type: NetworkType = typer.Option(
         NetworkType.TRANSFORMER, help="Network type to use"
@@ -58,16 +87,12 @@ def train(
         None,
         help="Override max training epochs (defaults to TrainingConfig value)",
     ),
+    no_wandb: bool = typer.Option(
+        False,
+        help="Disable wandb logging (use local CSV logger instead)",
+    ),
 ) -> None:
-    """Train the DQN agent."""
-
-    dqn_config = DQNConfig()
-    training_config = TrainingConfig(
-        record_during_training=record_during_training,
-        record_after_epoch=record_after_epoch,
-    )
-    if max_epochs is not None:
-        training_config.max_epochs = max_epochs
+    """Train the agent."""
 
     env_config = get_env_config(env_config_path, render_mode)
 
@@ -76,40 +101,109 @@ def train(
     env_config.number_of_battle_rounds = max(env_config.number_of_battle_rounds, 100)
 
     env = create_environment(env_config=env_config)
-    if network_type == NetworkType.TRANSFORMER:
-        net = DQN_Transformer.from_env(env)
-    else:
-        net = DQN_MLP.from_env(env)
-    model = DQNLightning(env=env, policy_net=net, **dqn_config.model_dump())
 
-    config = {
-        "wargame": env_config.model_dump(),
-        "dqn": dqn_config.model_dump(),
-        "training": training_config.model_dump(),
-    }
-
-    with init_wandb(config=config, name=env_config.config_name) as run:
-        env_config_callback = EnvConfigCallback(run.name, env_config)
-        callbacks: list = [env_config_callback] + get_checkpoint_callback(run.name)
-        if training_config.record_during_training:
-            callbacks.append(
-                RecordEpisodeCallback(
-                    run.name,
-                    env_config,
-                    training_config.record_during_training,
-                    training_config.record_after_epoch,
-                )
-            )
-        logger = get_logger(run)
-        trainer = Trainer(
-            accelerator="auto",
-            max_epochs=training_config.max_epochs,
-            val_check_interval=training_config.val_check_interval,
-            logger=logger,
-            callbacks=callbacks,
+    if algorithm == AlgorithmType.DQN:
+        dqn_config = DQNConfig()
+        training_config = DQNTrainingConfig(
+            record_during_training=record_during_training,
+            record_after_epoch=record_after_epoch,
         )
+        if max_epochs is not None:
+            training_config.max_epochs = max_epochs
 
-        trainer.fit(model)
+        if network_type == NetworkType.TRANSFORMER:
+            net: RL_Network = TransformerNetwork.policy_from_env(env)
+        else:
+            net = MLPNetwork.policy_from_env(env)
+        model = DQNLightning(env=env, policy_net=net, **dqn_config.model_dump())
+
+        config = {
+            "wargame": env_config.model_dump(),
+            "dqn": dqn_config.model_dump(),
+            "training": training_config.model_dump(),
+        }
+
+        with init_wandb(
+            config=config, name=env_config.config_name, disabled=no_wandb
+        ) as run:
+            env_config_callback = EnvConfigCallback(run.name, env_config)
+            dqn_callbacks = cast(
+                list[Callback],
+                [env_config_callback]
+                + get_checkpoint_callback(run.name, filename_prefix="dqn"),
+            )
+            if training_config.record_during_training:
+                dqn_callbacks.append(
+                    RecordEpisodeCallback(
+                        run.name,
+                        env_config,
+                        training_config.record_during_training,
+                        training_config.record_after_epoch,
+                        filename_prefix="dqn",
+                    )
+                )
+            logger = get_logger(run, disabled=no_wandb)
+            trainer = Trainer(
+                accelerator="auto",
+                max_epochs=training_config.max_epochs,
+                val_check_interval=training_config.val_check_interval,
+                logger=logger,
+                callbacks=dqn_callbacks,
+            )
+
+            trainer.fit(model)
+
+    elif algorithm == AlgorithmType.PPO:
+        ppo_config = PPOConfig()
+        ppo_training_config = PPOTrainingConfig(
+            record_during_training=record_during_training,
+            record_after_epoch=record_after_epoch,
+        )
+        if max_epochs is not None:
+            ppo_training_config.max_epochs = max_epochs
+
+        if network_type == NetworkType.TRANSFORMER:
+            ppo_net = PPO_Transformer.from_env(env)
+        else:
+            raise NotImplementedError("We will probably never do this.")
+        ppo_model = PPOLightning(env=env, ppo_model=ppo_net, **ppo_config.model_dump())
+
+        config = {
+            "wargame": env_config.model_dump(),
+            "ppo": ppo_config.model_dump(),
+            "training": ppo_training_config.model_dump(),
+        }
+
+        with init_wandb(
+            config=config, name=env_config.config_name, disabled=no_wandb
+        ) as run:
+            env_config_callback = EnvConfigCallback(run.name, env_config)
+            ppo_callbacks = cast(
+                list[Callback],
+                [env_config_callback]
+                + get_checkpoint_callback(run.name, filename_prefix="ppo"),
+            )
+            if ppo_training_config.record_during_training:
+                ppo_callbacks.append(
+                    RecordEpisodeCallback(
+                        run.name,
+                        env_config,
+                        ppo_training_config.record_during_training,
+                        ppo_training_config.record_after_epoch,
+                        filename_prefix="ppo",
+                    )
+                )
+            logger = get_logger(run, disabled=no_wandb)
+            trainer = Trainer(
+                accelerator="auto",
+                max_epochs=ppo_training_config.max_epochs,
+                val_check_interval=ppo_training_config.val_check_interval,
+                logger=logger,
+                callbacks=ppo_callbacks,
+                log_every_n_steps=1,
+            )
+
+            trainer.fit(ppo_model)
 
 
 if __name__ == "__main__":

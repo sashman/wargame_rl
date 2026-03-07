@@ -15,10 +15,10 @@ from pydantic_yaml import parse_yaml_raw_as
 
 from wargame_rl.wargame.envs.renders.human import HumanRender, QuitRequested
 from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.config import NetworkType
-from wargame_rl.wargame.model.dqn.dqn import DQN_MLP, DQN_Transformer, RL_Network
-from wargame_rl.wargame.model.dqn.factory import create_environment
+from wargame_rl.wargame.model.net import MLPNetwork, RL_Network, TransformerNetwork
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
@@ -72,9 +72,9 @@ def simulate(
     try:
         policy_net: RL_Network
         if network_type == NetworkType.TRANSFORMER:
-            policy_net = DQN_Transformer.from_checkpoint(env, checkpoint_path)
+            policy_net = TransformerNetwork.from_checkpoint(env, checkpoint_path)
         else:
-            policy_net = DQN_MLP.from_checkpoint(env, checkpoint_path)
+            policy_net = MLPNetwork.from_checkpoint(env, checkpoint_path)
         logging.info(f"Loaded model from checkpoint: {checkpoint_path} successfully!")
     except RuntimeError as e:
         if "size mismatch" in str(e):

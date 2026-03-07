@@ -20,8 +20,8 @@ from wargame_rl.wargame.envs.types import (
 )
 from wargame_rl.wargame.envs.types.config import ModelConfig, ObjectiveConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.dqn.dqn import DQN_MLP, DQN_Transformer
-from wargame_rl.wargame.model.dqn.observation import observation_to_tensor
+from wargame_rl.wargame.model.common.observation import observation_to_tensor
+from wargame_rl.wargame.model.net import MLPNetwork, TransformerNetwork
 
 
 def _make_opponent_config(**overrides: object) -> WargameEnvConfig:
@@ -392,7 +392,7 @@ class TestObservationTensors:
 class TestDQNWithOpponents:
     def test_mlp_forward_with_opponents(self) -> None:
         env = WargameEnv(config=_make_opponent_config())
-        net = DQN_MLP.from_env(env)
+        net = MLPNetwork.policy_from_env(env)
         obs, _ = env.reset(seed=42)
         tensors = observation_to_tensor(obs, net.device)
         q_values = net(tensors)
@@ -401,7 +401,7 @@ class TestDQNWithOpponents:
 
     def test_transformer_forward_with_opponents(self) -> None:
         env = WargameEnv(config=_make_opponent_config())
-        net = DQN_Transformer.from_env(env)
+        net = TransformerNetwork.policy_from_env(env)
         obs, _ = env.reset(seed=42)
         tensors = observation_to_tensor(obs, net.device)
         q_values = net(tensors)
@@ -410,7 +410,7 @@ class TestDQNWithOpponents:
 
     def test_mlp_forward_without_opponents(self) -> None:
         env = WargameEnv(config=_make_no_opponent_config())
-        net = DQN_MLP.from_env(env)
+        net = MLPNetwork.policy_from_env(env)
         obs, _ = env.reset(seed=42)
         tensors = observation_to_tensor(obs, net.device)
         q_values = net(tensors)
@@ -419,7 +419,7 @@ class TestDQNWithOpponents:
 
     def test_transformer_forward_without_opponents(self) -> None:
         env = WargameEnv(config=_make_no_opponent_config())
-        net = DQN_Transformer.from_env(env)
+        net = TransformerNetwork.policy_from_env(env)
         obs, _ = env.reset(seed=42)
         tensors = observation_to_tensor(obs, net.device)
         q_values = net(tensors)

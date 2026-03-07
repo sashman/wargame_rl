@@ -124,6 +124,7 @@ def wargame_model_placement(
 
             model.location = np.array(loc, dtype=np.int32)
             model.previous_location = None
+            model.previous_closest_objective_distance = None
             model.stats["current_wounds"] = model.stats["max_wounds"]
             model.model_rewards_history.clear()
             occupied.add(loc)
@@ -168,6 +169,7 @@ def fixed_wargame_model_placement(
         assert cfg.x is not None and cfg.y is not None
         model.location = np.array([cfg.x, cfg.y], dtype=np.int32)
         model.previous_location = None
+        model.previous_closest_objective_distance = None
         model.stats["current_wounds"] = model.stats["max_wounds"]
         model.model_rewards_history.clear()
 

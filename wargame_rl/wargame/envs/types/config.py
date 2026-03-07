@@ -162,6 +162,13 @@ class WargameEnvConfig(BaseModel):
         description="Ordered reward phases for curriculum learning. "
         "When None, uses the legacy Reward class and existing config fields.",
     )
+    terminal_success_bonus: float = Field(
+        default=25.0,
+        description=(
+            "Legacy reward bonus added once when all models are at an objective "
+            "and the episode terminates. Ignored when reward_phases are configured."
+        ),
+    )
 
     skip_phases: list[BattlePhase] = Field(
         default_factory=lambda: list(NON_MOVEMENT_PHASES),
@@ -174,6 +181,13 @@ class WargameEnvConfig(BaseModel):
         default=5,
         gt=0,
         description="Number of battle rounds per game (tabletop standard is 5).",
+    )
+
+    max_turns_override: int | None = Field(
+        default=100,
+        ge=1,
+        description="If set, episode step limit (overrides game-clock-derived max_turns). "
+        "Default 100 gives training 100 steps per episode. Set to None for strict game-clock length.",
     )
 
     # --- Opponent configuration ---

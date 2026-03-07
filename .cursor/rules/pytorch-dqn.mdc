@@ -1,17 +1,49 @@
 ---
-description: PyTorch and DQN model patterns
+description: PyTorch RL model patterns (DQN and PPO)
 globs: "wargame_rl/wargame/model/**/*.py"
 alwaysApply: false
 ---
 
-# PyTorch / DQN Patterns
+# PyTorch / RL Model Patterns
 
-## Architecture
+## Networks
 
-- `DQN_MLP` (feed-forward) and `DQN_Transformer` (self-attention, `layers.py`) implement `RL_Network` protocol
-- Both have `from_env(env)` class method
-- `DQNLightning` handles training loop, epsilon-greedy, target sync, replay
-- Configs: `DQNConfig` / `TrainingConfig` / `TransformerConfig` (Pydantic, `config.py`)
+Two network variants implementing `RL_Network` protocol (in `net.py`):
+- `TransformerNetwork` — NanoGPT-style self-attention (default, actively developed)
+- `MLPNetwork` — standard feed-forward (legacy, will be dropped)
+
+Both expose `policy_from_env(env)` and `from_checkpoint(env, path)` class methods.
+
+## DQN (`model/dqn/`)
+
+- `DQNLightning` — PyTorch Lightning module: training loop, epsilon-greedy exploration, target network sync, experience replay
+- `DQNConfig` / `TrainingConfig` — Pydantic config models
+- `ReplayBuffer` — experience replay with `Experience` named tuples
+- `RLDataset` — PyTorch `IterableDataset` wrapping the replay buffer
+- `Agent` — runs episodes with epsilon-greedy policy
+
+## PPO (`model/ppo/`)
+
+- `PPOLightning` — PyTorch Lightning module: actor-critic training, GAE, clipped surrogate objective
+- `PPOConfig` — Pydantic config (lr, gamma, GAE lambda, clip epsilon, etc.)
+- `PPO_Transformer` — actor-critic model with shared transformer backbone, separate policy and value heads
+- `PPOModel` — wraps policy net + value net
+- PPO only supports `TransformerNetwork` (no MLP variant)
+
+## Shared (`model/common/`)
+
+- `create_environment()` — factory for `WargameEnv` from config
+- `observation_to_tensor` / `observations_to_tensor_batch` — observation conversion
+- `RLDataset` — generic RL dataset
+- `TransformerConfig` — shared transformer hyperparameters
+- `Device` / `get_device()` — device management
+- Wandb integration in `wandb.py` — all logging goes through Lightning logger
+
+## Callbacks
+
+- `CheckpointCallback` — saves model checkpoints
+- `RecordEpisodeCallback` — records MP4 episodes during training
+- `EnvConfigCallback` — persists env YAML config alongside checkpoints
 
 ## Observation Tensor Pipeline
 
@@ -26,4 +58,9 @@ To add a new entity:
 
 ## Conventions
 
-- `torch.Tensor` everywhere; device via `device.py`; Wandb via Lightning logger
+- Use `torch.Tensor` for all neural network operations
+- Observation tensors built by `observation.py` from `WargameEnvObservation`
+- Default algorithm is PPO; DQN is available but not the primary focus
+- Device management via `device.py` utility
+- Wandb integration in `wandb.py` — all logging goes through Lightning logger
+- When changing the observation tuple length, expect unpacking errors in tests (`test_state.py`, `test_dqn.py`) — fix them as part of the same change

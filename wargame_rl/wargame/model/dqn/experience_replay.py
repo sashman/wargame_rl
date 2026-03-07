@@ -4,7 +4,7 @@ from typing import Self
 
 import torch
 
-from wargame_rl.wargame.model.dqn.device import Device, get_device
+from wargame_rl.wargame.model.common import Device, get_device
 from wargame_rl.wargame.types import Experience
 
 

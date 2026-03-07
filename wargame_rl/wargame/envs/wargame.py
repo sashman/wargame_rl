@@ -147,7 +147,13 @@ class WargameEnv(gym.Env):
 
     @property
     def max_turns(self) -> int:
-        """Maximum agent steps per episode (phases per turn x rounds)."""
+        """Maximum agent steps per episode.
+
+        When config.max_turns_override is set, returns that value (e.g. 100 for training).
+        Otherwise uses game-clock-derived limit (n_rounds × active phases).
+        """
+        if self.config.max_turns_override is not None:
+            return self.config.max_turns_override
         n_phases = len(BATTLE_PHASE_ORDER) - len(self._skip_phases)
         return self._game_clock.n_rounds * n_phases
 
@@ -458,7 +464,16 @@ class WargameEnv(gym.Env):
             compute_model_model=needs_mm,
         )
 
-        is_terminated = self._game_clock.is_game_over or get_termination(cache)
+        if self.config.max_turns_override is not None:
+            is_terminated = self.current_turn >= self.max_turns or get_termination(
+                cache
+            )
+        else:
+            is_terminated = (
+                self.current_turn >= self.max_turns
+                or self._game_clock.is_game_over
+                or get_termination(cache)
+            )
 
         clock_state = self._game_clock.state
         phase = clock_state.phase or BattlePhase.command
@@ -477,6 +492,15 @@ class WargameEnv(gym.Env):
             reward = self.phase_manager.calculate_reward(self, ctx)
         else:
             reward = Reward().calculate_reward(self, cache)
+
+            # Legacy terminal success bonus: applied once when all models are at
+            # an objective and the episode terminates.
+            if is_terminated and self.config.terminal_success_bonus != 0.0:
+                at_objective = (
+                    cache.model_obj_norms_offset <= cache.obj_radii  # type: ignore[operator]
+                )
+                if bool(at_objective.any(axis=1).all()):
+                    reward += float(self.config.terminal_success_bonus)
 
         observation = self._get_obs(cache)
         info = self._get_info()
