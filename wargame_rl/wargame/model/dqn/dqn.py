@@ -354,9 +354,14 @@ class DQN_Transformer(RL_Network):
 
 
 def convert_state_dict(state_dict: dict) -> dict:
+    """Normalize state_dict keys (Lightning 'policy_net.', torch.compile '_orig_mod.')."""
     new_state_dict = {}
+    prefix = "policy_net."
     for key, value in state_dict.items():
-        if key.startswith("policy_net."):
-            new_key = key[11:]
-            new_state_dict[new_key] = value
+        if not key.startswith(prefix):
+            continue
+        new_key = key[len(prefix) :]
+        if new_key.startswith("_orig_mod."):
+            new_key = new_key[10:]
+        new_state_dict[new_key] = value
     return new_state_dict

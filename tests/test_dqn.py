@@ -4,7 +4,7 @@ from pytorch_lightning import Trainer
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.dqn.dataset import experience_list_to_batch
-from wargame_rl.wargame.model.dqn.dqn import RL_Network
+from wargame_rl.wargame.model.dqn.dqn import RL_Network, convert_state_dict
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.model.dqn.lightning import DQNLightning
 from wargame_rl.wargame.types import Experience
@@ -103,3 +103,22 @@ def test_dqn_training(env: WargameEnv, dqn_net: RL_Network) -> None:
     )
 
     trainer.fit(model)
+
+
+# ---------------------------------------------------------------------------
+# convert_state_dict (simulate-latest checkpoint loading)
+# ---------------------------------------------------------------------------
+
+
+def test_convert_state_dict_normalizes_lightning_checkpoint() -> None:
+    """Strips policy_net. and _orig_mod. prefixes and drops target_net (Lightning + torch.compile)."""
+    state_dict = {
+        "policy_net._orig_mod.game_embedding.weight": torch.randn(1, 1),
+        "target_net._orig_mod.game_embedding.weight": torch.randn(1, 1),
+    }
+    out = convert_state_dict(state_dict)
+    assert list(out.keys()) == ["game_embedding.weight"]
+    assert (
+        out["game_embedding.weight"]
+        is state_dict["policy_net._orig_mod.game_embedding.weight"]
+    )
