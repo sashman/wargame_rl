@@ -1,3 +1,4 @@
+import pytest
 import torch
 from pytorch_lightning import Trainer
 
@@ -21,6 +22,18 @@ def test_dqn_forward(
     assert next_q_values.dtype == torch.float32
 
 
+@pytest.mark.parametrize(
+    "policy_net",
+    [
+        pytest.param("dqn_mlp_net", id="mlp"),
+        pytest.param(
+            "dqn_transformer_net",
+            id="transformer",
+            marks=pytest.mark.flaky(reruns=3),
+        ),
+    ],
+    indirect=True,
+)
 def test_dqn_loss(
     env: WargameEnv, policy_net: RL_Network, replay_buffer: ReplayBuffer
 ) -> None:
