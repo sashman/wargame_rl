@@ -27,15 +27,5 @@ class AllModelsGroupedCriteria(SuccessCriteria):
         if cache.model_model_norms is None:
             return False
 
-        models = env.wargame_models
-        for i, model in enumerate(models):
-            same_group_mask = np.array(
-                [j != i and m.group_id == model.group_id for j, m in enumerate(models)]
-            )
-            if not same_group_mask.any():
-                continue
-            min_dist = float(cache.model_model_norms[i, same_group_mask].min())
-            if min_dist > self.max_distance:
-                return False
-
-        return True
+        group_ids = np.array([m.group_id for m in env.wargame_models], dtype=np.intp)
+        return cache.all_models_within_group_distance(group_ids, self.max_distance)

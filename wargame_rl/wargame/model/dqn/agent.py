@@ -9,8 +9,9 @@ from wargame_rl.wargame.model.common.observation import (
     apply_action_mask,
     observation_to_tensor,
 )
-from wargame_rl.wargame.model.dqn.experience_replay import Experience, ReplayBuffer
+from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.model.net import RL_Network
+from wargame_rl.wargame.types import Experience
 
 
 class Agent:

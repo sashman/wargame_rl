@@ -17,8 +17,7 @@ def get_termination(
     distance_cache: DistanceCache,
 ) -> bool:
     """True if every model has reached at least one objective."""
-    at_objective = distance_cache.model_obj_norms_offset <= distance_cache.obj_radii
-    return bool(at_objective.any(axis=1).all())
+    return distance_cache.all_models_at_objectives()
 
 
 def check_max_turns_reached(current_turn: int, max_turns: int) -> bool:

@@ -12,6 +12,7 @@ from wargame_rl.wargame.envs.env_components import (
     GameClock,
     build_info,
     build_observation,
+    check_max_turns_reached,
     compute_distances,
     fixed_objective_placement,
     fixed_wargame_model_placement,
@@ -465,12 +466,12 @@ class WargameEnv(gym.Env):
         )
 
         if self.config.max_turns_override is not None:
-            is_terminated = self.current_turn >= self.max_turns or get_termination(
-                cache
-            )
+            is_terminated = check_max_turns_reached(
+                self.current_turn, self.max_turns
+            ) or get_termination(cache)
         else:
             is_terminated = (
-                self.current_turn >= self.max_turns
+                check_max_turns_reached(self.current_turn, self.max_turns)
                 or self._game_clock.is_game_over
                 or get_termination(cache)
             )
@@ -496,10 +497,7 @@ class WargameEnv(gym.Env):
             # Legacy terminal success bonus: applied once when all models are at
             # an objective and the episode terminates.
             if is_terminated and self.config.terminal_success_bonus != 0.0:
-                at_objective = (
-                    cache.model_obj_norms_offset <= cache.obj_radii  # type: ignore[operator]
-                )
-                if bool(at_objective.any(axis=1).all()):
+                if cache.all_models_at_objectives():
                     reward += float(self.config.terminal_success_bonus)
 
         observation = self._get_obs(cache)

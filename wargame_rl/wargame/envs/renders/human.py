@@ -1,4 +1,5 @@
 import math
+from collections.abc import Callable
 
 import numpy as np
 import pygame
@@ -538,11 +539,14 @@ class HumanRender(Renderer):
             bottom = (cx, cy + r * 0.8)
             pygame.draw.polygon(canvas, color, [top_left, top_right, bottom])
 
-    def _draw_movement_arrows(
-        self, canvas: pygame.Surface, wargame_models: list[WargameModel]
+    def _draw_movement_arrows_for_models(
+        self,
+        canvas: pygame.Surface,
+        models: list[WargameModel],
+        color_for_group: Callable[[int], tuple[int, int, int]],
     ) -> None:
-        """Draw a small arrow from each model's previous location to its current location."""
-        for model in wargame_models:
+        """Draw a small arrow from each model's previous to current location."""
+        for model in models:
             if model.previous_location is None:
                 continue
             prev = model.previous_location
@@ -550,8 +554,7 @@ class HumanRender(Renderer):
             if (prev == curr).all():
                 continue
 
-            color = self._color_for_group(model.group_id)
-            # Fade the arrow color toward white so it's lighter than the model dot
+            color = color_for_group(model.group_id)
             faded = tuple(c + (255 - c) // 2 for c in color)
 
             prev_px = (
@@ -563,11 +566,9 @@ class HumanRender(Renderer):
                 float(curr[1] + 0.5) * self.pix_square_size,
             )
 
-            # Shaft
             line_width = max(3, int(self.pix_square_size / 4))
             pygame.draw.line(canvas, faded, prev_px, curr_px, width=line_width)
 
-            # Arrowhead
             dx = curr_px[0] - prev_px[0]
             dy = curr_px[1] - prev_px[1]
             length = math.hypot(dx, dy)
@@ -586,52 +587,22 @@ class HumanRender(Renderer):
                 tip[1] - uy * head_len - ux * head_w,
             )
             pygame.draw.polygon(canvas, faded, [tip, left, right])
+
+    def _draw_movement_arrows(
+        self, canvas: pygame.Surface, wargame_models: list[WargameModel]
+    ) -> None:
+        """Draw a small arrow from each model's previous location to its current location."""
+        self._draw_movement_arrows_for_models(
+            canvas, wargame_models, self._color_for_group
+        )
 
     def _draw_opponent_movement_arrows(
         self, canvas: pygame.Surface, opponent_models: list[WargameModel]
     ) -> None:
         """Draw movement arrows for opponent models using opponent colors."""
-        for model in opponent_models:
-            if model.previous_location is None:
-                continue
-            prev = model.previous_location
-            curr = model.location
-            if (prev == curr).all():
-                continue
-
-            color = self._opponent_color_for_group(model.group_id)
-            faded = tuple(c + (255 - c) // 2 for c in color)
-
-            prev_px = (
-                float(prev[0] + 0.5) * self.pix_square_size,
-                float(prev[1] + 0.5) * self.pix_square_size,
-            )
-            curr_px = (
-                float(curr[0] + 0.5) * self.pix_square_size,
-                float(curr[1] + 0.5) * self.pix_square_size,
-            )
-
-            line_width = max(3, int(self.pix_square_size / 4))
-            pygame.draw.line(canvas, faded, prev_px, curr_px, width=line_width)
-
-            dx = curr_px[0] - prev_px[0]
-            dy = curr_px[1] - prev_px[1]
-            length = math.hypot(dx, dy)
-            if length < 1e-6:
-                continue
-            ux, uy = dx / length, dy / length
-            head_len = min(self.pix_square_size * 0.45, length * 0.4)
-            head_w = head_len * 0.5
-            tip = curr_px
-            left = (
-                tip[0] - ux * head_len - uy * head_w,
-                tip[1] - uy * head_len + ux * head_w,
-            )
-            right = (
-                tip[0] - ux * head_len + uy * head_w,
-                tip[1] - uy * head_len - ux * head_w,
-            )
-            pygame.draw.polygon(canvas, faded, [tip, left, right])
+        self._draw_movement_arrows_for_models(
+            canvas, opponent_models, self._opponent_color_for_group
+        )
 
     def _draw_gridlines(
         self,

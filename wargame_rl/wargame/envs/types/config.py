@@ -1,12 +1,55 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Protocol, TypeVar
 
 from pydantic import BaseModel, Field, model_validator
 
 from wargame_rl.wargame.envs.reward.phase import RewardPhaseConfig
 from wargame_rl.wargame.envs.types.game_timing import NON_MOVEMENT_PHASES, BattlePhase
+
+
+class _HasCoords(Protocol):
+    x: int | None
+    y: int | None
+
+
+_CoordsT = TypeVar("_CoordsT", bound=_HasCoords)
+
+
+def _validate_coords_both_or_neither(x: int | None, y: int | None) -> None:
+    """Raise if exactly one of x, y is None."""
+    if (x is None) != (y is None):
+        raise ValueError("x and y must both be set or both be None")
+
+
+def _validate_entity_configs(
+    count: int,
+    configs: list[_CoordsT] | None,
+    board_width: int,
+    board_height: int,
+    entity_name: str,
+) -> None:
+    """Validate entity list length, all-or-none coords, and in-bounds for fixed positions."""
+    if configs is None:
+        return
+    if len(configs) != count:
+        raise ValueError(
+            f"{entity_name} has {len(configs)} entries but expected {count}"
+        )
+    has_coords = [c.x is not None for c in configs]
+    if any(has_coords) and not all(has_coords):
+        raise ValueError(f"Either all {entity_name} must have x/y coordinates or none")
+    for i, c in enumerate(configs):
+        if (
+            c.x is not None
+            and c.y is not None
+            and (c.x >= board_width or c.y >= board_height)
+        ):
+            raise ValueError(
+                f"{entity_name}[{i}] ({c.x}, {c.y}) is outside "
+                f"the board ({board_width}x{board_height})"
+            )
 
 
 class TurnOrder(str, Enum):
@@ -51,8 +94,7 @@ class ModelConfig(BaseModel):
 
     @model_validator(mode="after")
     def coords_both_or_neither(self) -> "ModelConfig":
-        if (self.x is None) != (self.y is None):
-            raise ValueError("x and y must both be set or both be None")
+        _validate_coords_both_or_neither(self.x, self.y)
         return self
 
 
@@ -81,8 +123,7 @@ class ObjectiveConfig(BaseModel):
 
     @model_validator(mode="after")
     def coords_both_or_neither(self) -> "ObjectiveConfig":
-        if (self.x is None) != (self.y is None):
-            raise ValueError("x and y must both be set or both be None")
+        _validate_coords_both_or_neither(self.x, self.y)
         return self
 
 
@@ -97,7 +138,7 @@ class WargameEnvConfig(BaseModel):
     number_of_wargame_models: int = 2  # Number of wargame models in the environment
     number_of_objectives: int = 2  # Number of objectives in the environment
     objective_radius_size: int = Field(
-        gt=0, default=0, description="Radius of the objective in the environment"
+        gt=0, default=1, description="Radius of the objective in the environment"
     )
     board_width: int = Field(
         gt=0, default=50, description="Width of the grid (x dimension)"
@@ -246,71 +287,29 @@ class WargameEnvConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_entity_configs(self) -> "WargameEnvConfig":
-        if self.models is not None:
-            if len(self.models) != self.number_of_wargame_models:
-                raise ValueError(
-                    f"models has {len(self.models)} entries "
-                    f"but number_of_wargame_models is {self.number_of_wargame_models}"
-                )
-            has_coords = [m.x is not None for m in self.models]
-            if any(has_coords) and not all(has_coords):
-                raise ValueError("Either all models must have x/y coordinates or none")
-            for i, m in enumerate(self.models):
-                if (
-                    m.x is not None
-                    and m.y is not None
-                    and (m.x >= self.board_width or m.y >= self.board_height)
-                ):
-                    raise ValueError(
-                        f"models[{i}] ({m.x}, {m.y}) is outside "
-                        f"the board ({self.board_width}x{self.board_height})"
-                    )
-        if self.objectives is not None:
-            if len(self.objectives) != self.number_of_objectives:
-                raise ValueError(
-                    f"objectives has {len(self.objectives)} entries "
-                    f"but number_of_objectives is {self.number_of_objectives}"
-                )
-            has_coords = [o.x is not None for o in self.objectives]
-            if any(has_coords) and not all(has_coords):
-                raise ValueError(
-                    "Either all objectives must have x/y coordinates or none"
-                )
-            for i, o in enumerate(self.objectives):
-                if (
-                    o.x is not None
-                    and o.y is not None
-                    and (o.x >= self.board_width or o.y >= self.board_height)
-                ):
-                    raise ValueError(
-                        f"objectives[{i}] ({o.x}, {o.y}) is outside "
-                        f"the board ({self.board_width}x{self.board_height})"
-                    )
-
-        # --- Opponent validation ---
+        _validate_entity_configs(
+            self.number_of_wargame_models,
+            self.models,
+            self.board_width,
+            self.board_height,
+            "models",
+        )
+        _validate_entity_configs(
+            self.number_of_objectives,
+            self.objectives,
+            self.board_width,
+            self.board_height,
+            "objectives",
+        )
         if self.number_of_opponent_models > 0 and self.opponent_policy is None:
             raise ValueError(
                 "opponent_policy must be set when number_of_opponent_models > 0"
             )
-        if self.opponent_models is not None:
-            if len(self.opponent_models) != self.number_of_opponent_models:
-                raise ValueError(
-                    f"opponent_models has {len(self.opponent_models)} entries "
-                    f"but number_of_opponent_models is {self.number_of_opponent_models}"
-                )
-            has_coords = [m.x is not None for m in self.opponent_models]
-            if any(has_coords) and not all(has_coords):
-                raise ValueError(
-                    "Either all opponent_models must have x/y coordinates or none"
-                )
-            for i, m in enumerate(self.opponent_models):
-                if (
-                    m.x is not None
-                    and m.y is not None
-                    and (m.x >= self.board_width or m.y >= self.board_height)
-                ):
-                    raise ValueError(
-                        f"opponent_models[{i}] ({m.x}, {m.y}) is outside "
-                        f"the board ({self.board_width}x{self.board_height})"
-                    )
+        _validate_entity_configs(
+            self.number_of_opponent_models,
+            self.opponent_models,
+            self.board_width,
+            self.board_height,
+            "opponent_models",
+        )
         return self

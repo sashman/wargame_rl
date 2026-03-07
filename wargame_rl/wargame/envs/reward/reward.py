@@ -61,15 +61,9 @@ class Reward:
         """Negative reward proportional to distance to closest same-group model when beyond group_max_distance; 0 when within range or alone in group."""
         if cache.model_model_norms is None:
             return 0.0
-        same_group_mask = np.array(
-            [
-                i != model_idx and m.group_id == model.group_id
-                for i, m in enumerate(env.wargame_models)
-            ]
-        )
-        if not same_group_mask.any():
-            return 0.0
-        min_dist = float(cache.model_model_norms[model_idx, same_group_mask].min())
+        group_ids = np.array([m.group_id for m in env.wargame_models], dtype=np.intp)
+        min_dists = cache.min_distances_to_same_group(group_ids)
+        min_dist = float(min_dists[model_idx])
         if min_dist <= env.config.group_max_distance:
             return 0.0
         excess = min_dist - env.config.group_max_distance
