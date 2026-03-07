@@ -17,3 +17,5 @@ alwaysApply: true
 - Parameterize shared infra (`ActionHandler(n_models=...)`) rather than duplicating
 - Default new config fields to no-op values (e.g. `number_of_opponent_models=0`)
 - CUDA workaround: `CUDA_VISIBLE_DEVICES=""` to force CPU if CUDA errors
+- Prefer explicit config (e.g. exclude/skip lists) over inferring behaviour from other subsystems — clearer and easier to tune
+- When adding config that changes step semantics or episode length, update docs (`docs/reward-phases.md`, `docs/tabletop-rules-reference.md`, `docs/opponent-policies.md`, `docs/goals-and-roadmap.md`) and any tests that assume steps-per-round or phase order

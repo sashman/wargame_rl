@@ -18,10 +18,11 @@ alwaysApply: false
 - Prefer integration tests; test through public APIs (add properties rather than accessing `_private` attrs)
 - Type-annotate fixtures and test functions
 - `wargame_rl/wargame/envs/interactive_demo.py` is NOT a test
+- When env default config changes stepping (e.g. `skip_phases`), tests that rely on per-phase or all-phase behaviour must set config explicitly (e.g. `skip_phases=[]` in a shared `_make_env` or in the test)
 
 ## Test Files
 
-`test_env` (reset/step) · `test_fixed_placement` (config/placement) · `test_dqn` (networks/loss/training) · `test_agent` (actions/episodes) · `test_state` (obs/batch tensors) · `test_opponents` (opponent system) · `test_reward_phases` (reward) · `test_integration` (cross-cutting, backward compat)
+`test_env` (reset/step) · `test_clock_integration` (phases, skip_phases, rounds) · `test_fixed_placement` (config/placement) · `test_dqn` (networks/loss/training) · `test_agent` (actions/episodes) · `test_state` (obs/batch tensors) · `test_opponents` (opponent system) · `test_reward_phases` (reward) · `test_integration` (cross-cutting, backward compat)
 
 ## New Features
 

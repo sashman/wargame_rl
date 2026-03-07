@@ -80,7 +80,7 @@ Each entry in `opponent_models` uses `ModelConfig`, the same schema as player mo
 
 ## Turn Order
 
-Each `env.step()` call advances the player through **one battle phase** (command, movement, shooting, charge, or fight). After the player completes all five phases of their turn, the opponent's entire turn (all five phases) is auto-executed before the observation is returned. This means the player takes 5 steps per round, and the opponent acts autonomously between player turns.
+Each `env.step()` call advances the player through **one battle phase** (command, movement, shooting, charge, or fight). After the player completes their turn, the opponent's entire turn (all five phases) is auto-executed before the observation is returned. By default, non-movement phases are skipped (`skip_phases` config), so the player takes 1 step per round. Set `skip_phases: []` for full per-phase stepping (5 steps per round).
 
 The `turn_order` field controls which side takes the first turn each round:
 
@@ -144,7 +144,7 @@ class ScriptedHoldPositionPolicy(OpponentPolicy):
     def __init__(self, env, **kwargs):
         self._env = env
 
-    def select_action(self, opponent_models, env):
+    def select_action(self, opponent_models, env, action_mask=None):
         # Every model stays in place
         return WargameEnvAction(actions=[0] * len(opponent_models))
 
@@ -172,7 +172,7 @@ opponent_policy:
   type: scripted_hold_position
 ```
 
-The `select_action` method receives the list of opponent `WargameModel` instances and the full `WargameEnv`, giving access to objectives, board dimensions, the action handler's `best_action_toward()` helper, and any other env state needed to compute actions.
+The `select_action` method receives the list of opponent `WargameModel` instances, the full `WargameEnv`, and optionally `action_mask` (phase-aware valid actions), giving access to objectives, board dimensions, the action handler's `best_action_toward()` helper, and any other env state needed to compute actions.
 
 ### Naming convention
 
@@ -180,14 +180,15 @@ Scripted policies are prefixed with `Scripted` in the class name and `scripted_`
 
 ## Observation Impact
 
-When opponents are present, the player agent's observation includes opponent model positions as a separate list (`opponent_models`). This is converted to a 4th tensor in the DQN observation pipeline:
+When opponents are present, the player agent's observation includes opponent model positions as a separate list (`opponent_models`). This is converted to 5 tensors in the DQN observation pipeline:
 
 | Tensor index | Content | Shape |
 |--------------|---------|-------|
-| 0 | Current turn | `(1,)` |
+| 0 | Game state | `(3,)` — current_turn, normalized_round, phase_index |
 | 1 | Objectives | `(n_objectives, 2)` |
 | 2 | Player models | `(n_player_models, features)` |
 | 3 | Opponent models | `(n_opponent_models, features)` |
+| 4 | Action mask | `(n_models, n_actions)` — bool, valid actions per model |
 
 When there are no opponents, tensor 3 has shape `(0, features)` and the network handles it gracefully (empty sequence for the Transformer, zero-width concatenation for the MLP).
 
