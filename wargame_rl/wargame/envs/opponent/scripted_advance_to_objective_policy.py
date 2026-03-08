@@ -59,7 +59,7 @@ class ScriptedAdvanceToObjectivePolicy(OpponentPolicy):
             dists = np.linalg.norm(obj_deltas, axis=1)
             nearest_idx = int(np.argmin(dists))
 
-            if dists[nearest_idx] <= obj_radii[nearest_idx]:
+            if dists[nearest_idx] < obj_radii[nearest_idx]:
                 actions.append(STAY_ACTION)
                 continue
 
@@ -75,10 +75,11 @@ class ScriptedAdvanceToObjectivePolicy(OpponentPolicy):
 
             blended = (1.0 - w) * obj_dir + w * centroid_dir
             dx, dy = float(blended[0]), float(blended[1])
-            # Cap movement so we don't overshoot the objective capture radius.
+            # Cap movement so we don't overshoot; allow at least 1 cell so we can step inside.
             distance_to_capture = float(dists[nearest_idx] - obj_radii[nearest_idx])
+            max_distance = max(distance_to_capture, 1.0)
             actions.append(
-                handler.best_action_toward(dx, dy, max_distance=distance_to_capture)
+                handler.best_action_toward(dx, dy, max_distance=max_distance)
             )
 
         return WargameEnvAction(actions=actions)

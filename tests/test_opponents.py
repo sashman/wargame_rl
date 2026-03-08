@@ -261,6 +261,34 @@ class TestScriptedAdvanceToObjectivePolicy:
             "scripted opponent overshot objective"
         )
 
+    def test_scripted_opponent_lands_inside_objective_radius(self) -> None:
+        """Scripted opponent advancing toward an objective eventually lands inside its radius."""
+        cfg = WargameEnvConfig(
+            board_width=40,
+            board_height=40,
+            number_of_wargame_models=1,
+            number_of_objectives=1,
+            number_of_opponent_models=1,
+            objective_radius_size=3,
+            opponent_policy=OpponentPolicyConfig(type="scripted_advance_to_objective"),
+            opponent_models=[ModelConfig(x=30, y=20, group_id=0)],
+            models=[ModelConfig(x=5, y=20, group_id=0)],
+            objectives=[ObjectiveConfig(x=20, y=20)],
+        )
+        env = WargameEnv(config=cfg)
+        env.reset(seed=42)
+        obj_loc = env.objectives[0].location
+        radius = env.objectives[0].radius_size
+        for _ in range(30):
+            dist = np.linalg.norm(env.opponent_models[0].location - obj_loc)
+            if dist < radius:
+                break
+            env.step(WargameEnvAction(actions=[0]))
+        dist_final = np.linalg.norm(env.opponent_models[0].location - obj_loc)
+        assert dist_final < radius, (
+            "scripted opponent should land inside objective radius"
+        )
+
 
 # ---------------------------------------------------------------------------
 # ActionHandler extensions
