@@ -30,9 +30,9 @@ opponent_models:
   - { group_id: 1 }
 
 objectives:
-  - { x: 10, y: 22 }
+  - { x: 30, y: 6 }
   - { x: 30, y: 22 }
-  - { x: 50, y: 22 }
+  - { x: 30, y: 38 }
 
 reward_phases:
   - name: move_and_group
