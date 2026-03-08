@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
 
 import torch
@@ -8,6 +9,7 @@ from pytorch_lightning import LightningModule
 from torch import Tensor, optim
 from torch.distributions import Categorical
 from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
 
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.observation import observations_to_tensor_batch
@@ -16,6 +18,13 @@ from wargame_rl.wargame.types import Experience
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.model.ppo.ppo import PPOModel
+
+
+class _NoOpProgress:
+    """No-op progress object when inner progress bars are disabled."""
+
+    def update(self, n: int = 1) -> None:
+        pass
 
 
 class _PPODummyDataset(Dataset[Tensor]):
@@ -47,6 +56,7 @@ class PPOLightning(LightningModule):
         n_epochs: int = 4,
         n_steps: int = 2048,
         n_episodes: int = 10,
+        show_inner_progress: bool = True,
         **kwargs: Any,
     ) -> None:
         """Initialize PPO Lightning Module.
@@ -66,12 +76,14 @@ class PPOLightning(LightningModule):
             n_epochs: Number of epochs for PPO updates
             n_steps: Number of steps to collect before each update
             n_episodes: Number of episodes to run for evaluation
+            show_inner_progress: Whether to show tqdm for rollout and PPO minibatch updates
         """
         super().__init__()
         self.automatic_optimization = False
         self.save_hyperparameters()
 
         self.env = env
+        self.show_inner_progress = show_inner_progress
         self.ppo_model = ppo_model
         self.agent = Agent(self.env)
         self.total_reward = 0
@@ -224,53 +236,67 @@ class PPOLightning(LightningModule):
         epoch_value_loss = 0.0
         epoch_entropy_loss = 0.0
 
-        for _ in range(self.n_epochs):
-            perm = torch.randperm(n_steps, device=device)
-            for start in range(0, n_steps, self.batch_size):
-                end = min(start + self.batch_size, n_steps)
-                mb_idx = perm[start:end]
+        n_minibatches = (n_steps + self.batch_size - 1) // self.batch_size
+        total_updates = self.n_epochs * n_minibatches
+        pbar_ctx = (
+            tqdm(
+                total=total_updates,
+                desc="PPO",
+                unit="upd",
+                leave=False,
+            )
+            if self.show_inner_progress
+            else nullcontext(_NoOpProgress())
+        )
+        with pbar_ctx as pbar:
+            for _ in range(self.n_epochs):
+                perm = torch.randperm(n_steps, device=device)
+                for start in range(0, n_steps, self.batch_size):
+                    end = min(start + self.batch_size, n_steps)
+                    mb_idx = perm[start:end]
 
-                mb_state_tensors = [t[mb_idx] for t in state_tensors]
-                mb_actions = actions[mb_idx]
-                mb_old_log_probs = old_log_probs[mb_idx]
-                mb_returns = returns[mb_idx]
-                mb_advantages = advantages[mb_idx]
+                    mb_state_tensors = [t[mb_idx] for t in state_tensors]
+                    mb_actions = actions[mb_idx]
+                    mb_old_log_probs = old_log_probs[mb_idx]
+                    mb_returns = returns[mb_idx]
+                    mb_advantages = advantages[mb_idx]
 
-                new_logits, new_state_values = self.ppo_model(mb_state_tensors)
-                new_dist = Categorical(logits=new_logits)
-                new_log_probs = new_dist.log_prob(mb_actions).sum(dim=-1)
+                    new_logits, new_state_values = self.ppo_model(mb_state_tensors)
+                    new_dist = Categorical(logits=new_logits)
+                    new_log_probs = new_dist.log_prob(mb_actions).sum(dim=-1)
 
-                ratio = torch.exp(new_log_probs - mb_old_log_probs)
+                    ratio = torch.exp(new_log_probs - mb_old_log_probs)
 
-                surr1 = ratio * mb_advantages
-                surr2 = (
-                    torch.clamp(ratio, 1 - self.eps_clip, 1 + self.eps_clip)
-                    * mb_advantages
-                )
-                policy_loss = -torch.min(surr1, surr2).mean()
+                    surr1 = ratio * mb_advantages
+                    surr2 = (
+                        torch.clamp(ratio, 1 - self.eps_clip, 1 + self.eps_clip)
+                        * mb_advantages
+                    )
+                    policy_loss = -torch.min(surr1, surr2).mean()
 
-                value_loss = (
-                    self.value_loss_fn(new_state_values, mb_returns) * self.vf_coef
-                )
+                    value_loss = (
+                        self.value_loss_fn(new_state_values, mb_returns) * self.vf_coef
+                    )
 
-                entropy = new_dist.entropy().sum(dim=-1).mean()
-                entropy_loss = -entropy * self.ent_coef
+                    entropy = new_dist.entropy().sum(dim=-1).mean()
+                    entropy_loss = -entropy * self.ent_coef
 
-                loss = policy_loss + value_loss + entropy_loss
+                    loss = policy_loss + value_loss + entropy_loss
 
-                optimizer.zero_grad()  # type: ignore[union-attr]
-                self.manual_backward(loss)
+                    optimizer.zero_grad()  # type: ignore[union-attr]
+                    self.manual_backward(loss)
 
-                torch.nn.utils.clip_grad_norm_(
-                    self.ppo_model.parameters(), self.max_grad_norm
-                )
-                optimizer.step()  # type: ignore[union-attr]
+                    torch.nn.utils.clip_grad_norm_(
+                        self.ppo_model.parameters(), self.max_grad_norm
+                    )
+                    optimizer.step()  # type: ignore[union-attr]
 
-                total_loss_float += loss.item()
-                n_updates += 1
-                epoch_policy_loss += policy_loss.item()
-                epoch_value_loss += value_loss.item()
-                epoch_entropy_loss += entropy_loss.item()
+                    total_loss_float += loss.item()
+                    n_updates += 1
+                    epoch_policy_loss += policy_loss.item()
+                    epoch_value_loss += value_loss.item()
+                    epoch_entropy_loss += entropy_loss.item()
+                    pbar.update(1)
 
         if self.do_log and n_updates > 0:
             self.log(
@@ -306,14 +332,26 @@ class PPOLightning(LightningModule):
     def _collect_experiences(self) -> list[Experience]:
         """Run episodes until n_steps transitions are collected (can span multiple episodes)."""
         rollout: list[Experience] = []
-        while len(rollout) < self.n_steps:
-            _reward, _steps, episode_exp = self.agent.run_episode(
-                self.ppo_model,
-                epsilon=1.0,
-                render=False,
-                save_steps=True,
+        pbar_ctx = (
+            tqdm(
+                total=self.n_steps,
+                desc="Rollout",
+                unit="step",
+                leave=False,
             )
-            rollout.extend(episode_exp)
+            if self.show_inner_progress
+            else nullcontext(_NoOpProgress())
+        )
+        with pbar_ctx as pbar:
+            while len(rollout) < self.n_steps:
+                _reward, _steps, episode_exp = self.agent.run_episode(
+                    self.ppo_model,
+                    epsilon=1.0,
+                    render=False,
+                    save_steps=True,
+                )
+                rollout.extend(episode_exp)
+                pbar.update(len(episode_exp))
         return rollout[: self.n_steps]
 
     def configure_optimizers(self) -> optim.Optimizer:

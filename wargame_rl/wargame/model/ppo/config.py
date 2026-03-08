@@ -32,6 +32,7 @@ class PPOConfig(BaseModel):
 
     # Training settings
     log: bool = True
+    show_inner_progress: bool = True  # Rollout and PPO minibatch tqdm bars
 
 
 class PPOTrainingConfig(BaseModel):

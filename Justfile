@@ -93,7 +93,8 @@ test-env:
 # One-shot: create branch from main, commit, push, open PR. Use after staging changes.
 # Always branches from main; if not on main, checks out main and pulls first.
 # Example: just ship feature/my-feature "Add reward shaping for distance"
-# PR title/body are filled from the commit message (gh pr create --fill).
+# PR title and body are filled from the commit message (gh pr create --fill).
+# Commit uses title + body so --fill gets a PR description (body = same as title).
 ship branch commit_message:
 	git stash -u
 	git checkout main
@@ -101,6 +102,6 @@ ship branch commit_message:
 	@git checkout -b {{branch}} 2>/dev/null || git checkout {{branch}}
 	git stash pop
 	git add -A
-	git commit -m "{{commit_message}}"
+	git commit -m "{{commit_message}}" -m "{{commit_message}}"
 	git push -u origin {{branch}}
 	gh pr create --fill

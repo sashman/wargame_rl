@@ -91,6 +91,10 @@ def train(
         False,
         help="Disable wandb logging (use local CSV logger instead)",
     ),
+    no_inner_progress: bool = typer.Option(
+        False,
+        help="Disable rollout/PPO tqdm progress bars (e.g. for CI or log redirection)",
+    ),
 ) -> None:
     """Train the agent."""
 
@@ -155,6 +159,8 @@ def train(
 
     elif algorithm == AlgorithmType.PPO:
         ppo_config = PPOConfig()
+        if no_inner_progress:
+            ppo_config.show_inner_progress = False
         ppo_training_config = PPOTrainingConfig(
             record_during_training=record_during_training,
             record_after_epoch=record_after_epoch,
