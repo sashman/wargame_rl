@@ -20,7 +20,7 @@ When the user invokes this skill, run the full ship workflow: **branch only from
      ```bash
      just ship <branch> "<commit message>"
      ```
-   - This checks out `main`, pulls latest, creates the new branch from `main`, stages all changes, commits, pushes, and runs `gh pr create --fill`.
+   - This checks out `main`, pulls latest, creates the new branch from `main`, stages all changes, commits with the message as both title and body, pushes, and runs `gh pr create --fill` so the PR title and description are populated from the commit.
    - If you're not on `main`, the recipe runs `git checkout main` and `git pull` first so the new branch is always created from up-to-date `main`.
 
 3. **If something fails**
