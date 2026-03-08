@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from wargame_rl.wargame.envs.env_components.actions import ActionHandler
+from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION, ActionHandler
 from wargame_rl.wargame.envs.opponent.random_policy import RandomPolicy
 from wargame_rl.wargame.envs.opponent.registry import (
     build_opponent_policy,
@@ -228,6 +228,39 @@ class TestScriptedAdvanceToObjectivePolicy:
         )
         assert final_dist < initial_dist
 
+    def test_scripted_opponent_does_not_overshoot_objective_when_close(self) -> None:
+        """When close to an objective, scripted opponent uses reduced speed and does not overshoot."""
+        cfg = WargameEnvConfig(
+            board_width=40,
+            board_height=40,
+            number_of_wargame_models=1,
+            number_of_objectives=1,
+            number_of_opponent_models=1,
+            objective_radius_size=3,
+            max_move_speed=6.0,
+            n_speed_bins=6,
+            opponent_policy=OpponentPolicyConfig(type="scripted_advance_to_objective"),
+            opponent_models=[
+                ModelConfig(x=24, y=20, group_id=0)
+            ],  # 4 cells E; 1 cell outside radius 3
+            models=[ModelConfig(x=5, y=20, group_id=0)],
+            objectives=[ObjectiveConfig(x=20, y=20)],
+        )
+        env = WargameEnv(config=cfg)
+        env.reset(seed=42)
+        obj_loc = env.objectives[0].location
+        radius = env.objectives[0].radius_size
+        opponent = env.opponent_models[0]
+        dist_before = np.linalg.norm(opponent.location - obj_loc)
+        assert dist_before > radius, "opponent must start outside capture radius"
+        # One step: player stays, opponent acts
+        env.step(WargameEnvAction(actions=[0]))
+        dist_after = np.linalg.norm(env.opponent_models[0].location - obj_loc)
+        # Should not overshoot: either inside radius or closer than before
+        assert dist_after <= radius or dist_after <= dist_before, (
+            "scripted opponent overshot objective"
+        )
+
 
 # ---------------------------------------------------------------------------
 # ActionHandler extensions
@@ -259,6 +292,22 @@ class TestActionHandlerExtensions:
             for s_idx in range(cfg.n_speed_bins):
                 encoded = handler.encode_action(a_idx, s_idx)
                 assert 1 <= encoded <= handler.n_actions - 1
+
+    def test_best_action_toward_max_distance_returns_stay_when_no_speed_fits(
+        self,
+    ) -> None:
+        cfg = _make_no_opponent_config()
+        handler = ActionHandler(cfg)
+        action = handler.best_action_toward(1.0, 0.0, max_distance=0.5)
+        assert action == STAY_ACTION
+
+    def test_best_action_toward_max_distance_caps_displacement(self) -> None:
+        cfg = _make_no_opponent_config()
+        handler = ActionHandler(cfg)
+        action = handler.best_action_toward(1.0, 0.0, max_distance=2.0)
+        displacement = handler._decode_action(action)
+        magnitude = float(np.linalg.norm(displacement))
+        assert magnitude <= 2.0 or action == STAY_ACTION
 
 
 # ---------------------------------------------------------------------------

@@ -75,7 +75,11 @@ class ScriptedAdvanceToObjectivePolicy(OpponentPolicy):
 
             blended = (1.0 - w) * obj_dir + w * centroid_dir
             dx, dy = float(blended[0]), float(blended[1])
-            actions.append(handler.best_action_toward(dx, dy))
+            # Cap movement so we don't overshoot the objective capture radius.
+            distance_to_capture = float(dists[nearest_idx] - obj_radii[nearest_idx])
+            actions.append(
+                handler.best_action_toward(dx, dy, max_distance=distance_to_capture)
+            )
 
         return WargameEnvAction(actions=actions)
 
