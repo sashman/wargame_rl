@@ -12,12 +12,16 @@ from wargame_rl.wargame.envs.reward.calculators.closest_objective import (
 from wargame_rl.wargame.envs.reward.calculators.group_cohesion import (
     GroupCohesionCalculator,
 )
+from wargame_rl.wargame.envs.reward.calculators.objective_control import (
+    ObjectiveControlCalculator,
+)
 
 RewardCalculatorType = PerModelRewardCalculator | GlobalRewardCalculator
 
 CALCULATOR_REGISTRY: dict[str, type[RewardCalculatorType]] = {
     "closest_objective": ClosestObjectiveCalculator,
     "group_cohesion": GroupCohesionCalculator,
+    "objective_control": ObjectiveControlCalculator,
 }
 
 

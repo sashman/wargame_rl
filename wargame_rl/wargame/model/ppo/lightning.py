@@ -373,8 +373,9 @@ class PPOLightning(LightningModule):
             n_episodes: Number of episodes to run
             epsilon: Exploration rate (0 for deterministic)
         """
-        steps_s = []
-        episode_rewards = []
+        steps_s: list[int] = []
+        episode_rewards: list[float] = []
+        episode_successes: list[bool] = []
         self.ppo_model.eval()
         with torch.no_grad():
             for _ in range(n_episodes):
@@ -383,18 +384,52 @@ class PPOLightning(LightningModule):
                 )
                 episode_rewards.append(reward)
                 steps_s.append(steps)
+                # Use phase success criteria when available (same as DQN)
+                phase_manager = getattr(self.env, "phase_manager", None)
+                if phase_manager is not None and self.env.last_step_context is not None:
+                    episode_successes.append(
+                        phase_manager.check_success(
+                            self.env, self.env.last_step_context
+                        )
+                    )
         self.mean_episode_reward = sum(episode_rewards) / len(episode_rewards)
         if self.do_log:
+            if episode_successes:
+                self._last_success_rate = sum(episode_successes) / len(
+                    episode_successes
+                )
+            else:
+                # Fallback when no phase manager: success = episode ended early
+                n_early = sum(1 for s in steps_s if s < self.env.max_turns)
+                self._last_success_rate = n_early / len(steps_s) if steps_s else 0.0
+            sr_pct = self._last_success_rate * 100
             self.log("mean_episode_reward", self.mean_episode_reward, prog_bar=True)
             self.log("mean_episode_steps", sum(steps_s) / len(steps_s), prog_bar=False)
             self.log("max_episode_reward", max(episode_rewards), prog_bar=False)
             self.log("min_episode_reward", min(episode_rewards), prog_bar=False)
-            success_rate = torch.tensor(steps_s) < self.env.max_turns
-            self.log("success_rate", success_rate.float().mean() * 100, prog_bar=False)
+            self.log("success_rate", sr_pct, prog_bar=False)
+        else:
+            self._last_success_rate = 0.0
         self.ppo_model.train()
 
     def on_train_epoch_end(self) -> None:
         """Run after each training epoch."""
         if self.do_log:
             self.run_episodes(self.n_episodes)
+            phase_manager = getattr(self.env, "phase_manager", None)
+            if phase_manager is not None:
+                advanced = phase_manager.try_advance(
+                    self._last_success_rate, self.current_epoch
+                )
+                self.log(
+                    "reward_phase",
+                    float(phase_manager.current_phase_index),
+                    prog_bar=False,
+                )
+                if advanced:
+                    self.log(
+                        "phase_advanced_at_epoch",
+                        float(self.current_epoch),
+                        prog_bar=False,
+                    )
         super().on_train_epoch_end()

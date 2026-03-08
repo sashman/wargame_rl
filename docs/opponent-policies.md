@@ -107,7 +107,7 @@ opponent_policy:
 
 ### `scripted_advance_to_objective`
 
-Each opponent model moves toward the nearest objective at maximum speed. The policy computes the angle from each model to its closest objective and selects the polar-coordinate action with the best matching direction.
+Each opponent model moves toward the nearest objective. The policy computes the angle from each model to its closest objective and selects the polar-coordinate action with the best matching direction. When close to an objective, movement speed is capped so the model does not overshoot the capture radius (avoids skipping over objectives).
 
 ```yaml
 opponent_policy:

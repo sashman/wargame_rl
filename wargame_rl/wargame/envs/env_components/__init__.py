@@ -4,6 +4,7 @@ from wargame_rl.wargame.envs.env_components.actions import ActionHandler
 from wargame_rl.wargame.envs.env_components.distance_cache import (
     DistanceCache,
     compute_distances,
+    compute_levels_of_control,
 )
 from wargame_rl.wargame.envs.env_components.game_clock import GameClock, GameClockError
 from wargame_rl.wargame.envs.env_components.observation_builder import (
@@ -21,6 +22,7 @@ from wargame_rl.wargame.envs.env_components.termination import (
     check_max_turns_reached,
     get_termination,
 )
+from wargame_rl.wargame.envs.env_components.vp import VPState, compute_primary_vp_earned
 
 __all__ = [
     "ActionHandler",
@@ -30,6 +32,7 @@ __all__ = [
     "build_info",
     "build_observation",
     "compute_distances",
+    "compute_levels_of_control",
     "update_distances_to_objectives",
     "wargame_model_placement",
     "objective_placement",
@@ -37,4 +40,6 @@ __all__ = [
     "fixed_objective_placement",
     "get_termination",
     "check_max_turns_reached",
+    "compute_primary_vp_earned",
+    "VPState",
 ]

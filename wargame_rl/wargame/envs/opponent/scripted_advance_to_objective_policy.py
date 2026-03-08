@@ -52,30 +52,43 @@ class ScriptedAdvanceToObjectivePolicy(OpponentPolicy):
 
         w = self._cohesion_weight
 
-        obj_radii = np.array([o.radius_size for o in env.objectives])
+        obj_radii = np.array([o.radius_size for o in env.objectives], dtype=float)
 
         for model in opponent_models:
             obj_deltas = obj_locs - model.location
             dists = np.linalg.norm(obj_deltas, axis=1)
             nearest_idx = int(np.argmin(dists))
+            r = obj_radii[nearest_idx]
+            obj_loc = obj_locs[nearest_idx]
 
-            if dists[nearest_idx] <= obj_radii[nearest_idx]:
+            # Use same "at objective" rule as game: offset = (model - obj) + (r/2, r/2), inside when norm(offset) <= r
+            offset = model.location - obj_loc + (r / 2.0)
+            norm_offset = float(np.linalg.norm(offset))
+            if norm_offset <= r:
                 actions.append(STAY_ACTION)
                 continue
 
-            to_obj = obj_deltas[nearest_idx]
+            # Move toward capture circle center (obj - r/2) so we land inside the game's capture zone
+            capture_center = obj_loc - (r / 2.0)
+            to_capture = capture_center - model.location
+            to_capture_norm = float(np.linalg.norm(to_capture))
             to_centroid = centroid - model.location
-
-            obj_norm = dists[nearest_idx]
             centroid_norm = np.linalg.norm(to_centroid)
-            obj_dir = to_obj / obj_norm
+            obj_dir = (
+                to_capture / to_capture_norm if to_capture_norm > 0 else to_capture
+            )
             centroid_dir = (
                 to_centroid / centroid_norm if centroid_norm > 0 else to_centroid
             )
 
             blended = (1.0 - w) * obj_dir + w * centroid_dir
             dx, dy = float(blended[0]), float(blended[1])
-            actions.append(handler.best_action_toward(dx, dy))
+            # Cap movement so we don't overshoot; allow at least 1 cell so we can step inside.
+            distance_to_boundary = norm_offset - r
+            max_distance = max(distance_to_boundary, 1.0)
+            actions.append(
+                handler.best_action_toward(dx, dy, max_distance=max_distance)
+            )
 
         return WargameEnvAction(actions=actions)
 

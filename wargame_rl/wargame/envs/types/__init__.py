@@ -14,6 +14,7 @@ from .config import (
 from .env_action import WargameEnvAction
 from .env_info import WargameEnvInfo
 from .env_observation import WargameEnvObservation
+from .env_score_state import EnvScoreState
 from .game_timing import (
     NON_MOVEMENT_PHASES,
     BattlePhase,
@@ -27,6 +28,7 @@ from .objective_observation import WargameEnvObjectiveObservation
 
 __all__ = [
     "BattlePhase",
+    "EnvScoreState",
     "GamePhase",
     "GameState",
     "ModelConfig",

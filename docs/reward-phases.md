@@ -74,8 +74,9 @@ reward_phases:
 
 | Type key | Scope | Parameters | Description |
 |----------|-------|------------|-------------|
-| `closest_objective` | per-model | *(none)* | +1.0 at objective, +0.5 closer, -0.05 no change, -0.5 farther. Distance normalised by board diagonal. |
+| `closest_objective` | per-model | *(none)* | Reward = change in potential; potential is positive when the model is inside the game's \"at objective\" circle (same offset-based rule as `all_at_objectives`). Aligns phase-one reward with success so the agent gets credit for reaching objectives. |
 | `group_cohesion` | per-model | `group_max_distance` (float, default 10.0), `violation_penalty` (float, default -10.0) | Negative reward proportional to excess distance beyond `group_max_distance` from the closest same-group model. 0 when within range or alone in group. |
+| `objective_control` | global | *(none)* | Reward equal to VP earned this step from controlling objectives (5 VP per objective controlled, cap 15 per turn). Only non-zero at end of Command phase from round 2 onwards, matching the primary mission. Requires `objective_control_range` and env VP state. |
 
 ## Available Success Criteria
 
@@ -83,6 +84,7 @@ reward_phases:
 |----------|------------|-------------|
 | `all_at_objectives` | *(none)* | Succeeds when every model is within the radius of at least one objective. |
 | `all_models_grouped` | `max_distance` (float, default 10.0) | Succeeds when every model is within `max_distance` of at least one same-group member. Models alone in their group are considered grouped. |
+| `player_leading_vp` | *(none)* | Succeeds when the player has more Victory Points than the opponent. |
 
 ## How Advancement Works
 
@@ -96,6 +98,10 @@ advance if:
 ```
 
 When advancement triggers, the `RewardPhaseManager` moves to the next phase and logs the transition. The new phase's reward calculators take effect immediately for subsequent episodes.
+
+**Success rate for advancement:** Both PPO and DQN use the current phase's success criteria (e.g. `all_at_objectives`) evaluated on the **last step** of each evaluation episode, then take the mean over episodes. Using "episode ended early" (steps &lt; max_turns) alone would be wrong when the game can also end by round limit, so the phase's `check_success(env, last_step_context)` is used.
+
+**Episode termination:** When reward phases are configured, the episode **terminates** when the current phase's success criteria are met *and* that criteria is marked as terminating (in addition to max_turns or game over). Criteria that terminate: `all_at_objectives`, `all_models_grouped`. Criteria that do *not* terminate (game runs to max_turns; success is still evaluated at end for advancement): `player_leading_vp`. When `reward_phases` is absent (legacy), termination uses the original rule: all models at objectives or max_turns/game_over.
 
 The `reward_phase` metric (phase index, 0-based) is logged to wandb every epoch, making phase transitions visible in the training dashboard.
 
@@ -150,6 +156,8 @@ To add a new success criteria:
 
 Both calculators and criteria receive a `StepContext` object containing the distance cache, turn info, and board dimensions. As new game mechanics are added (combat, terrain, VP), additional fields will be added to `StepContext` without changing existing calculator signatures.
 
+**Objective observation for targeting:** Each objective in the agent's observation includes `closest_player_distance` (min distance from any player model to that objective) and `closest_opponent_distance` (min distance from any opponent; a fixed sentinel when there are no opponents). These allow the policy to compare objectives when deciding which to target (e.g. prefer one that is closer to friendly units and farther from enemies).
+
 ### StepContext fields
 
 | Field | Type | Description |
@@ -179,6 +187,7 @@ wargame_rl/wargame/envs/reward/
     base.py                        # SuccessCriteria ABC
     all_at_objectives.py           # All models at objectives
     all_models_grouped.py          # All models within group distance
+    player_leading_vp.py          # Player VP > opponent VP
     registry.py                    # Type-string -> class mapping
   types/
     model_rewards.py               # Legacy ModelRewards (untouched)

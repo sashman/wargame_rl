@@ -1,6 +1,6 @@
-config_name: 4v4_scripted_advance_fixed_objectives
-number_of_wargame_models: 4
-number_of_opponent_models: 4
+config_name: 9v9_scripted_advance_fixed_objectives
+number_of_wargame_models: 9
+number_of_opponent_models: 9
 number_of_objectives: 3
 objective_radius_size: 3
 board_width: 60
@@ -20,14 +20,24 @@ opponent_policy:
 models:
   - { group_id: 0 }
   - { group_id: 0 }
+  - { group_id: 0 }
   - { group_id: 1 }
   - { group_id: 1 }
+  - { group_id: 1 }
+  - { group_id: 2 }
+  - { group_id: 2 }
+  - { group_id: 2 }
 
 opponent_models:
   - { group_id: 0 }
   - { group_id: 0 }
+  - { group_id: 0 }
   - { group_id: 1 }
   - { group_id: 1 }
+  - { group_id: 1 }
+  - { group_id: 2 }
+  - { group_id: 2 }
+  - { group_id: 2 }
 
 objectives:
   - { x: 30, y: 6 }

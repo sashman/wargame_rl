@@ -10,10 +10,12 @@ from wargame_rl.wargame.envs.env_components import (
     ActionHandler,
     DistanceCache,
     GameClock,
+    VPState,
     build_info,
     build_observation,
     check_max_turns_reached,
     compute_distances,
+    compute_primary_vp_earned,
     fixed_objective_placement,
     fixed_wargame_model_placement,
     get_termination,
@@ -32,6 +34,7 @@ from wargame_rl.wargame.envs.reward.reward import Reward
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.types import (
     BattlePhase,
+    EnvScoreState,
     PlayerSide,
     TurnOrder,
     WargameEnvAction,
@@ -77,6 +80,7 @@ class WargameEnv(gym.Env):
                         board_width=self.board_width, board_height=self.board_height
                     )
                 ),
+                "env_score_state": EnvScoreState.to_space(),
             }
         )
 
@@ -121,6 +125,9 @@ class WargameEnv(gym.Env):
         # Last reward from step(); None until first step after reset
         self.last_reward: float | None = None
 
+        # Victory points state (primary mission: 5 VP per objective controlled, cap 15 per turn)
+        self._vp_state = VPState()
+
         # Reward phases (curriculum learning) -- None uses legacy Reward path
         if config.reward_phases is not None:
             self.phase_manager: RewardPhaseManager | None = (
@@ -145,6 +152,22 @@ class WargameEnv(gym.Env):
         else:
             self._opponent_action_handler = ActionHandler(config, n_models=0)
             self._opponent_policy = None
+
+    @property
+    def player_vp(self) -> int:
+        return self._vp_state.player_vp
+
+    @property
+    def opponent_vp(self) -> int:
+        return self._vp_state.opponent_vp
+
+    @property
+    def vp_gained_this_step_player(self) -> int:
+        return self._vp_state.vp_gained_this_step_player
+
+    @property
+    def vp_gained_this_step_opponent(self) -> int:
+        return self._vp_state.vp_gained_this_step_opponent
 
     @property
     def max_turns(self) -> int:
@@ -183,15 +206,18 @@ class WargameEnv(gym.Env):
                 mc = model_configs[i]
                 group_id = mc.group_id
                 max_wounds = mc.max_wounds
+                oc = mc.oc
             else:
                 group_id = i // increment
                 max_wounds = 100
+                oc = 1
             result.append(
                 WargameModel(
                     location=np.zeros(2, dtype=int),
                     stats={"max_wounds": max_wounds, "current_wounds": max_wounds},
                     group_id=group_id,
                     distances_to_objectives=np.zeros([n_objectives, 2], dtype=int),
+                    oc=oc,
                 )
             )
         return result
@@ -268,6 +294,12 @@ class WargameEnv(gym.Env):
             battle_round=clock_state.battle_round or 1,
             battle_phase_index=list(BattlePhase).index(phase),
             n_rounds=self._game_clock.n_rounds,
+            control_range=self.config.objective_control_range,
+            env_score_state=EnvScoreState(
+                player_vp=self.player_vp,
+                opponent_vp=self.opponent_vp,
+            ),
+            distance_cache=distance_cache,
         )
 
     def _get_info(self) -> WargameEnvInfo:
@@ -289,6 +321,8 @@ class WargameEnv(gym.Env):
             ),
             self.config.max_groups,
             opponent_models=self.opponent_models,
+            player_vp=self.player_vp,
+            opponent_vp=self.opponent_vp,
         )
 
     def reset(
@@ -299,6 +333,7 @@ class WargameEnv(gym.Env):
         self.current_turn = 0
         self.last_reward = None
         self.last_step_context = None
+        self._vp_state.reset()
 
         self._resolve_player_side()
         self._game_clock.reset()
@@ -418,15 +453,39 @@ class WargameEnv(gym.Env):
             state.active_player is not None and state.active_player != self._player_side
         )
 
+    def _compute_primary_vp_earned(self) -> tuple[int, int]:
+        """VP earned this scoring moment (delegates to vp module)."""
+        return compute_primary_vp_earned(
+            self.wargame_models,
+            self.opponent_models,
+            self.objectives,
+            self.config.objective_control_range,
+        )
+
     def _execute_opponent_turn(self) -> None:
         """Auto-execute all phases of the opponent's turn."""
         while not self._game_clock.is_game_over and self._is_opponent_active():
+            phase_before = self._game_clock.state.phase or BattlePhase.command
             self._apply_opponent_action()
             self._game_clock.advance_phase()
+            # Score opponent VP at end of their Command phase (from round 2)
+            if (
+                phase_before == BattlePhase.command
+                and (self._game_clock.state.battle_round or 0) >= 2
+            ):
+                _, opp_vp = self._compute_primary_vp_earned()
+                self._vp_state.award_opponent(opp_vp)
 
     def _should_skip_phase(self) -> bool:
         phase = self._game_clock.state.phase
         return phase is not None and phase in self._skip_phases
+
+    def _first_active_phase(self) -> BattlePhase:
+        """First battle phase the player actually steps in (not in skip_phases)."""
+        for p in BATTLE_PHASE_ORDER:
+            if p not in self._skip_phases:
+                return p
+        return BattlePhase.command  # fallback
 
     def _skip_past_excluded_phases(self) -> None:
         """Advance past player phases listed in ``skip_phases``."""
@@ -440,6 +499,10 @@ class WargameEnv(gym.Env):
     def step(
         self, action: WargameEnvAction
     ) -> tuple[WargameEnvObservation, float, bool, bool, dict[str, Any]]:
+        self._vp_state.start_step()
+        clock = self._game_clock.state
+        phase_at_step_start = clock.phase or BattlePhase.command
+        round_at_step_start = clock.battle_round or 1
         self._apply_player_action(action)
 
         if not self._game_clock.is_game_over:
@@ -448,6 +511,17 @@ class WargameEnv(gym.Env):
         self.current_turn += 1
 
         self._skip_past_excluded_phases()
+
+        # Score player VP at the scoring moment (from round 2), before opponent turn.
+        # When Command is skipped, the agent only steps in Movement; the board state
+        # at start of Movement = end of Command, so we score when we're in the
+        # first active phase (Movement by default), not only when phase is Command.
+        if (
+            phase_at_step_start == self._first_active_phase()
+            and round_at_step_start >= 2
+        ):
+            player_vp_earned, _ = self._compute_primary_vp_earned()
+            self._vp_state.award_player(player_vp_earned)
 
         # If clock rolled over to opponent's turn, auto-execute it
         if not self._game_clock.is_game_over and self._is_opponent_active():
@@ -465,17 +539,6 @@ class WargameEnv(gym.Env):
             compute_model_model=needs_mm,
         )
 
-        if self.config.max_turns_override is not None:
-            is_terminated = check_max_turns_reached(
-                self.current_turn, self.max_turns
-            ) or get_termination(cache)
-        else:
-            is_terminated = (
-                check_max_turns_reached(self.current_turn, self.max_turns)
-                or self._game_clock.is_game_over
-                or get_termination(cache)
-            )
-
         clock_state = self._game_clock.state
         phase = clock_state.phase or BattlePhase.command
 
@@ -488,12 +551,42 @@ class WargameEnv(gym.Env):
                 board_height=self.board_height,
                 current_round=clock_state.battle_round or 0,
                 battle_phase=phase,
+                phase_at_step_start=phase_at_step_start,
             )
             self.last_step_context = ctx
+            # Terminate when phase success criteria are met and that criteria ends the episode
+            goal_reached = self.phase_manager.check_success(self, ctx)
+            criteria_terminates = getattr(
+                self.phase_manager.current_phase.criteria,
+                "terminates_episode",
+                True,
+            )
+            goal_ends_episode = goal_reached and criteria_terminates
+            if self.config.max_turns_override is not None:
+                is_terminated = (
+                    check_max_turns_reached(self.current_turn, self.max_turns)
+                    or goal_ends_episode
+                )
+            else:
+                is_terminated = (
+                    check_max_turns_reached(self.current_turn, self.max_turns)
+                    or self._game_clock.is_game_over
+                    or goal_ends_episode
+                )
             reward = self.phase_manager.calculate_reward(self, ctx)
         else:
+            # Legacy: terminate when all models at objectives (or max_turns / game_over)
+            if self.config.max_turns_override is not None:
+                is_terminated = check_max_turns_reached(
+                    self.current_turn, self.max_turns
+                ) or get_termination(cache)
+            else:
+                is_terminated = (
+                    check_max_turns_reached(self.current_turn, self.max_turns)
+                    or self._game_clock.is_game_over
+                    or get_termination(cache)
+                )
             reward = Reward().calculate_reward(self, cache)
-
             # Legacy terminal success bonus: applied once when all models are at
             # an objective and the episode terminates.
             if is_terminated and self.config.terminal_success_bonus != 0.0:

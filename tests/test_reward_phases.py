@@ -8,12 +8,16 @@ import pytest
 from wargame_rl.wargame.envs.env_components.distance_cache import (
     DistanceCache,
     compute_distances,
+    compute_levels_of_control,
 )
 from wargame_rl.wargame.envs.reward.calculators.closest_objective import (
     ClosestObjectiveCalculator,
 )
 from wargame_rl.wargame.envs.reward.calculators.group_cohesion import (
     GroupCohesionCalculator,
+)
+from wargame_rl.wargame.envs.reward.calculators.objective_control import (
+    ObjectiveControlCalculator,
 )
 from wargame_rl.wargame.envs.reward.calculators.registry import (
     CALCULATOR_REGISTRY,
@@ -24,6 +28,9 @@ from wargame_rl.wargame.envs.reward.criteria.all_at_objectives import (
 )
 from wargame_rl.wargame.envs.reward.criteria.all_models_grouped import (
     AllModelsGroupedCriteria,
+)
+from wargame_rl.wargame.envs.reward.criteria.player_leading_vp import (
+    PlayerLeadingVPCriteria,
 )
 from wargame_rl.wargame.envs.reward.criteria.registry import (
     CRITERIA_REGISTRY,
@@ -37,6 +44,8 @@ from wargame_rl.wargame.envs.reward.phase import (
 from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
+from wargame_rl.wargame.envs.types.config import ObjectiveConfig
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
 # ---------------------------------------------------------------------------
@@ -105,13 +114,20 @@ def phased_env() -> WargameEnv:
     return WargameEnv(config=config)
 
 
-def _make_step_context(env: WargameEnv, cache: DistanceCache) -> StepContext:
+def _make_step_context(
+    env: WargameEnv,
+    cache: DistanceCache,
+    phase_at_step_start: BattlePhase | None = None,
+    current_round: int = 1,
+) -> StepContext:
     return StepContext(
         distance_cache=cache,
         current_turn=env.current_turn,
         max_turns=env.max_turns,
         board_width=env.board_width,
         board_height=env.board_height,
+        current_round=current_round,
+        phase_at_step_start=phase_at_step_start,
     )
 
 
@@ -142,26 +158,62 @@ class TestClosestObjectiveCalculator:
         assert calc.needs_model_model_distances is False
 
     def test_at_objective_bonus_is_not_repeated(self, simple_env: WargameEnv) -> None:
-        simple_env.reset()
-        calc = ClosestObjectiveCalculator(weight=1.0)
-
-        obj_loc = simple_env.objectives[0].location.copy()
-        model = simple_env.wargame_models[0]
-        model.location = obj_loc.copy()
-        # Pretend the model was previously far outside the objective zone so
-        # the full bonus is earned when it reaches the centre.
-        model.previous_closest_objective_distance = (
-            float(simple_env.config.objective_radius_size) * 10.0
+        # Use fixed objective so capture centre (obj - r/2) is on-grid; r=2 => (9,9).
+        config = WargameEnvConfig(
+            render_mode=None,
+            board_width=20,
+            board_height=20,
+            number_of_wargame_models=2,
+            number_of_objectives=1,
+            objective_radius_size=2,
+            objectives=[ObjectiveConfig(x=10, y=10)],
         )
+        env = WargameEnv(config=config)
+        env.reset(seed=42)
+        calc = ClosestObjectiveCalculator(weight=1.0)
+        model = env.wargame_models[0]
+        model.location = np.array([9, 9])  # capture centre for obj (10,10) r=2
+        model.previous_closest_objective_distance = 20.0
 
-        cache = compute_distances(simple_env.wargame_models, simple_env.objectives)
-        ctx = _make_step_context(simple_env, cache)
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
 
-        first = calc.calculate(0, model, simple_env, ctx)
-        second = calc.calculate(0, model, simple_env, ctx)
+        first = calc.calculate(0, model, env, ctx)
+        second = calc.calculate(0, model, env, ctx)
 
         assert first == ClosestObjectiveCalculator.REWARD_AT_OBJECTIVE
         assert second == 0.0
+
+    def test_inside_offset_circle_outside_center_circle_gets_positive_potential(
+        self,
+    ) -> None:
+        """Model inside game's offset circle but outside center circle gets positive potential (reward/success aligned)."""
+        # Objective at (10, 10), r=3. Offset circle centre (8.5, 8.5). Place model at (8, 8): norm_offset = norm((-0.5,-0.5)) = 0.707 <= 3, but dist to (10,10) = 2.83 > 3? No, 2.83 < 3. So that's inside both. We need a cell inside offset circle, outside center circle. Center circle: dist to (10,10) <= 3. Offset: norm((model-obj)+r/2) <= 3. So model at (7, 10): delta = (-3, 0), offset = (-3+1.5, 1.5) = (-1.5, 1.5), norm_offset = 2.12 <= 3. Dist to center = 3. So on boundary of center circle. Model at (6, 10): delta = (-4, 0), offset = (-2.5, 1.5), norm_offset = 2.92 <= 3. Dist to center = 4 > 3. So (6, 10) is inside offset circle, outside center circle.
+        config = WargameEnvConfig(
+            render_mode=None,
+            board_width=20,
+            board_height=20,
+            number_of_wargame_models=1,
+            number_of_objectives=1,
+            objective_radius_size=3,
+            objectives=[ObjectiveConfig(x=10, y=10)],
+        )
+        env = WargameEnv(config=config)
+        env.reset(seed=42)
+        calc = ClosestObjectiveCalculator(weight=1.0)
+        model = env.wargame_models[0]
+        model.location = np.array([6, 10])  # inside offset circle, outside center
+        model.previous_closest_objective_distance = 3.5  # was outside
+
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        reward = calc.calculate(0, model, env, ctx)
+
+        # Should get positive reward (moved into offset circle); success would also be true for this model.
+        assert reward > 0.0
+        # Sanity: model is inside offset circle (all_models_at_objectives would include it)
+        at_objective = cache.model_obj_norms_offset[0, 0] <= cache.obj_radii[0]
+        assert at_objective
 
 
 class TestGroupCohesionCalculator:
@@ -251,9 +303,93 @@ class TestCalculatorRegistry:
         assert calc.group_max_distance == 3.0
         assert calc.violation_penalty == -5.0
 
+    def test_objective_control_registered(self) -> None:
+        calc = build_calculator("objective_control", weight=1.0, params={})
+        assert isinstance(calc, ObjectiveControlCalculator)
+
     def test_unknown_type_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown reward calculator"):
             build_calculator("nonexistent", weight=1.0, params={})
+
+
+class TestObjectiveControlCalculator:
+    """Env sets vp_gained_this_step_player only at the scoring moment; calculator echoes it."""
+
+    def test_returns_zero_when_no_vp_gained(self, simple_env: WargameEnv) -> None:
+        simple_env.reset()
+        simple_env._vp_state.vp_gained_this_step_player = 0
+        calc = ObjectiveControlCalculator(weight=1.0)
+        cache = compute_distances(simple_env.wargame_models, simple_env.objectives)
+        ctx = _make_step_context(
+            simple_env, cache, phase_at_step_start=BattlePhase.movement, current_round=2
+        )
+        assert calc.calculate(simple_env, ctx) == 0.0
+
+    def test_returns_weight_times_vp_gained(self, simple_env: WargameEnv) -> None:
+        simple_env.reset()
+        simple_env._vp_state.vp_gained_this_step_player = 10
+        calc = ObjectiveControlCalculator(weight=1.0)
+        cache = compute_distances(simple_env.wargame_models, simple_env.objectives)
+        ctx = _make_step_context(
+            simple_env, cache, phase_at_step_start=BattlePhase.command, current_round=2
+        )
+        assert calc.calculate(simple_env, ctx) == 10.0
+        calc_weighted = ObjectiveControlCalculator(weight=0.5)
+        assert calc_weighted.calculate(simple_env, ctx) == 5.0
+
+
+class TestComputeLevelsOfControl:
+    def test_single_objective_player_in_range_opponent_far(self) -> None:
+        from wargame_rl.wargame.envs.wargame_model import WargameModel
+        from wargame_rl.wargame.envs.wargame_objective import WargameObjective
+
+        obj = WargameObjective(location=np.array([10, 10]), radius_size=2)
+        player = WargameModel(
+            location=np.array([10, 10]),
+            stats={"max_wounds": 1, "current_wounds": 1},
+            distances_to_objectives=np.zeros((1, 2), dtype=int),
+            group_id=0,
+            oc=1,
+        )
+        opponent = WargameModel(
+            location=np.array([0, 0]),
+            stats={"max_wounds": 1, "current_wounds": 1},
+            distances_to_objectives=np.zeros((1, 2), dtype=int),
+            group_id=0,
+            oc=1,
+        )
+        player_loc, opponent_loc = compute_levels_of_control(
+            [player], [opponent], [obj], control_range=3.0
+        )
+        assert player_loc.shape == (1,)
+        assert opponent_loc.shape == (1,)
+        assert player_loc[0] == 1.0
+        assert opponent_loc[0] == 0.0
+
+    def test_contested_when_equal_loc(self) -> None:
+        from wargame_rl.wargame.envs.wargame_model import WargameModel
+        from wargame_rl.wargame.envs.wargame_objective import WargameObjective
+
+        obj = WargameObjective(location=np.array([10, 10]), radius_size=2)
+        p1 = WargameModel(
+            location=np.array([10, 10]),
+            stats={"max_wounds": 1, "current_wounds": 1},
+            distances_to_objectives=np.zeros((1, 2), dtype=int),
+            group_id=0,
+            oc=1,
+        )
+        p2 = WargameModel(
+            location=np.array([10, 11]),
+            stats={"max_wounds": 1, "current_wounds": 1},
+            distances_to_objectives=np.zeros((1, 2), dtype=int),
+            group_id=0,
+            oc=1,
+        )
+        player_loc, opponent_loc = compute_levels_of_control(
+            [p1], [p2], [obj], control_range=3.0
+        )
+        assert player_loc[0] == 1.0
+        assert opponent_loc[0] == 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +471,35 @@ class TestAllModelsGroupedCriteria:
         assert criteria.is_successful(simple_env, ctx) is True
 
 
+class TestPlayerLeadingVPCriteria:
+    def test_successful_when_player_ahead(self, simple_env: WargameEnv) -> None:
+        simple_env.reset()
+        simple_env._vp_state.player_vp = 15
+        simple_env._vp_state.opponent_vp = 10
+        cache = compute_distances(simple_env.wargame_models, simple_env.objectives)
+        ctx = _make_step_context(simple_env, cache)
+        criteria = PlayerLeadingVPCriteria()
+        assert criteria.is_successful(simple_env, ctx) is True
+
+    def test_not_successful_when_opponent_ahead(self, simple_env: WargameEnv) -> None:
+        simple_env.reset()
+        simple_env._vp_state.player_vp = 5
+        simple_env._vp_state.opponent_vp = 20
+        cache = compute_distances(simple_env.wargame_models, simple_env.objectives)
+        ctx = _make_step_context(simple_env, cache)
+        criteria = PlayerLeadingVPCriteria()
+        assert criteria.is_successful(simple_env, ctx) is False
+
+    def test_not_successful_when_tied(self, simple_env: WargameEnv) -> None:
+        simple_env.reset()
+        simple_env._vp_state.player_vp = 10
+        simple_env._vp_state.opponent_vp = 10
+        cache = compute_distances(simple_env.wargame_models, simple_env.objectives)
+        ctx = _make_step_context(simple_env, cache)
+        criteria = PlayerLeadingVPCriteria()
+        assert criteria.is_successful(simple_env, ctx) is False
+
+
 # ---------------------------------------------------------------------------
 # Criteria registry tests
 # ---------------------------------------------------------------------------
@@ -344,6 +509,7 @@ class TestCriteriaRegistry:
     def test_known_types(self) -> None:
         assert "all_at_objectives" in CRITERIA_REGISTRY
         assert "all_models_grouped" in CRITERIA_REGISTRY
+        assert "player_leading_vp" in CRITERIA_REGISTRY
 
     def test_build_all_at_objectives(self) -> None:
         c = build_criteria("all_at_objectives", {})
@@ -353,6 +519,10 @@ class TestCriteriaRegistry:
         c = build_criteria("all_models_grouped", {"max_distance": 7.0})
         assert isinstance(c, AllModelsGroupedCriteria)
         assert c.max_distance == 7.0
+
+    def test_build_player_leading_vp(self) -> None:
+        c = build_criteria("player_leading_vp", {})
+        assert isinstance(c, PlayerLeadingVPCriteria)
 
     def test_unknown_type_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown success criteria"):
@@ -532,6 +702,31 @@ class TestEnvIntegration:
             if steps > phased_env.max_turns + 5:
                 pytest.fail("Episode did not terminate")
         assert steps > 0
+
+    def test_player_leading_vp_phase_does_not_terminate_early(self) -> None:
+        """With player_leading_vp success criteria, episode runs to max_turns."""
+        config = WargameEnvConfig(
+            render_mode=None,
+            board_width=20,
+            board_height=20,
+            number_of_wargame_models=1,
+            number_of_objectives=1,
+            reward_phases=[
+                RewardPhaseConfig(
+                    name="vp_phase",
+                    reward_calculators=[
+                        RewardCalculatorConfig(type="closest_objective")
+                    ],
+                    success_criteria=SuccessCriteriaConfig(type="player_leading_vp"),
+                )
+            ],
+        )
+        env = WargameEnv(config=config)
+        env.reset(seed=42)
+        env._vp_state.player_vp = 20
+        env._vp_state.opponent_vp = 5
+        _, _, terminated, _, _ = env.step(WargameEnvAction(actions=[0]))
+        assert not terminated, "player_leading_vp phase must not end episode when ahead"
 
 
 # ---------------------------------------------------------------------------

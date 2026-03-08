@@ -36,6 +36,14 @@ Before the first turn begins, several setup stages are resolved in order:
 
 Victory is determined by **Victory Points (VP)**. Players accumulate VP throughout the game by controlling objectives, completing mission-specific goals, and destroying enemy units. After all battle rounds are complete (or one army is destroyed), the player with the most VP wins.
 
+### Score per objective controlled (primary mission)
+
+When using this style of primary mission (e.g. Chapter Approved matched play):
+
+- **When:** End of the Command phase (or end of your turn in the fifth battle round if you are going second). Scoring applies from the **second battle round onwards**.
+- **How:** The player whose turn it is scores **5 VP** for each objective marker they control.
+- **Cap:** Maximum **15 VP** per turn from this mission.
+
 ## Turn Phases
 
 Each player turn proceeds through five phases in order:
