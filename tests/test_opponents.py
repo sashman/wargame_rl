@@ -262,7 +262,7 @@ class TestScriptedAdvanceToObjectivePolicy:
         )
 
     def test_scripted_opponent_lands_inside_objective_radius(self) -> None:
-        """Scripted opponent advancing toward an objective eventually lands inside its radius."""
+        """Scripted opponent advancing toward an objective eventually lands inside (game's offset-based rule)."""
         cfg = WargameEnvConfig(
             board_width=40,
             board_height=40,
@@ -277,16 +277,19 @@ class TestScriptedAdvanceToObjectivePolicy:
         )
         env = WargameEnv(config=cfg)
         env.reset(seed=42)
-        obj_loc = env.objectives[0].location
-        radius = env.objectives[0].radius_size
+        obj_loc = env.objectives[0].location.astype(float)
+        radius = float(env.objectives[0].radius_size)
+
+        def at_objective(loc: np.ndarray) -> bool:
+            offset = loc - obj_loc + (radius / 2.0)
+            return bool(np.linalg.norm(offset) <= radius)
+
         for _ in range(30):
-            dist = np.linalg.norm(env.opponent_models[0].location - obj_loc)
-            if dist < radius:
+            if at_objective(env.opponent_models[0].location.astype(float)):
                 break
             env.step(WargameEnvAction(actions=[0]))
-        dist_final = np.linalg.norm(env.opponent_models[0].location - obj_loc)
-        assert dist_final < radius, (
-            "scripted opponent should land inside objective radius"
+        assert at_objective(env.opponent_models[0].location.astype(float)), (
+            "scripted opponent should land inside objective (game's at_objective rule)"
         )
 
 
