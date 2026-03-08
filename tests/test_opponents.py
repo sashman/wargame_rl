@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from wargame_rl.wargame.envs.env_components.actions import ActionHandler
+from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION, ActionHandler
 from wargame_rl.wargame.envs.opponent.random_policy import RandomPolicy
 from wargame_rl.wargame.envs.opponent.registry import (
     build_opponent_policy,
@@ -228,6 +228,36 @@ class TestScriptedAdvanceToObjectivePolicy:
         )
         assert final_dist < initial_dist
 
+    def test_models_do_not_overshoot_objective(self) -> None:
+        """Once a model is within objective radius, it never goes back outside."""
+        cfg = WargameEnvConfig(
+            board_width=40,
+            board_height=40,
+            number_of_wargame_models=1,
+            number_of_objectives=1,
+            number_of_opponent_models=1,
+            objective_radius_size=3,
+            opponent_policy=OpponentPolicyConfig(type="scripted_advance_to_objective"),
+            opponent_models=[ModelConfig(x=25, y=20, group_id=0)],
+            models=[ModelConfig(x=5, y=20, group_id=0)],
+            objectives=[ObjectiveConfig(x=20, y=20)],
+        )
+        env = WargameEnv(config=cfg)
+        env.reset(seed=42)
+        radius = float(env.objectives[0].radius_size)
+        ever_inside = False
+
+        for _ in range(40):
+            action = WargameEnvAction(actions=[0])
+            env.step(action)
+            dist = np.linalg.norm(
+                env.opponent_models[0].location - env.objectives[0].location
+            )
+            if dist <= radius:
+                ever_inside = True
+            if ever_inside:
+                assert dist <= radius + 1e-6, "model overshot objective"
+
 
 # ---------------------------------------------------------------------------
 # ActionHandler extensions
@@ -259,6 +289,21 @@ class TestActionHandlerExtensions:
             for s_idx in range(cfg.n_speed_bins):
                 encoded = handler.encode_action(a_idx, s_idx)
                 assert 1 <= encoded <= handler.n_actions - 1
+
+    def test_best_action_toward_respects_max_step_length(self) -> None:
+        """With max_step_length, returned action displacement norm is <= cap."""
+        cfg = _make_no_opponent_config()
+        handler = ActionHandler(cfg)
+        action = handler.best_action_toward(10.0, 0.0, max_step_length=2.0)
+        disp = handler._decode_action(action)
+        assert np.linalg.norm(disp) <= 2.0 + 1e-6
+
+    def test_best_action_toward_small_max_step_length_returns_stay(self) -> None:
+        """When no speed bin fits within max_step_length, returns STAY."""
+        cfg = _make_no_opponent_config()
+        handler = ActionHandler(cfg)
+        action = handler.best_action_toward(1.0, 0.0, max_step_length=0.5)
+        assert action == STAY_ACTION
 
 
 # ---------------------------------------------------------------------------

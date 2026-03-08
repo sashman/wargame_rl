@@ -75,7 +75,10 @@ class ScriptedAdvanceToObjectivePolicy(OpponentPolicy):
 
             blended = (1.0 - w) * obj_dir + w * centroid_dir
             dx, dy = float(blended[0]), float(blended[1])
-            actions.append(handler.best_action_toward(dx, dy))
+            distance_to_boundary = dists[nearest_idx] - obj_radii[nearest_idx]
+            actions.append(
+                handler.best_action_toward(dx, dy, max_step_length=distance_to_boundary)
+            )
 
         return WargameEnvAction(actions=actions)
 
