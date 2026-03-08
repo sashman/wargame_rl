@@ -8,12 +8,16 @@ import pytest
 from wargame_rl.wargame.envs.env_components.distance_cache import (
     DistanceCache,
     compute_distances,
+    compute_levels_of_control,
 )
 from wargame_rl.wargame.envs.reward.calculators.closest_objective import (
     ClosestObjectiveCalculator,
 )
 from wargame_rl.wargame.envs.reward.calculators.group_cohesion import (
     GroupCohesionCalculator,
+)
+from wargame_rl.wargame.envs.reward.calculators.objective_control import (
+    ObjectiveControlCalculator,
 )
 from wargame_rl.wargame.envs.reward.calculators.registry import (
     CALCULATOR_REGISTRY,
@@ -37,6 +41,7 @@ from wargame_rl.wargame.envs.reward.phase import (
 from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
 # ---------------------------------------------------------------------------
@@ -105,13 +110,20 @@ def phased_env() -> WargameEnv:
     return WargameEnv(config=config)
 
 
-def _make_step_context(env: WargameEnv, cache: DistanceCache) -> StepContext:
+def _make_step_context(
+    env: WargameEnv,
+    cache: DistanceCache,
+    phase_at_step_start: BattlePhase | None = None,
+    current_round: int = 1,
+) -> StepContext:
     return StepContext(
         distance_cache=cache,
         current_turn=env.current_turn,
         max_turns=env.max_turns,
         board_width=env.board_width,
         board_height=env.board_height,
+        current_round=current_round,
+        phase_at_step_start=phase_at_step_start,
     )
 
 
@@ -251,9 +263,93 @@ class TestCalculatorRegistry:
         assert calc.group_max_distance == 3.0
         assert calc.violation_penalty == -5.0
 
+    def test_objective_control_registered(self) -> None:
+        calc = build_calculator("objective_control", weight=1.0, params={})
+        assert isinstance(calc, ObjectiveControlCalculator)
+
     def test_unknown_type_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown reward calculator"):
             build_calculator("nonexistent", weight=1.0, params={})
+
+
+class TestObjectiveControlCalculator:
+    """Env sets vp_gained_this_step_player only at the scoring moment; calculator echoes it."""
+
+    def test_returns_zero_when_no_vp_gained(self, simple_env: WargameEnv) -> None:
+        simple_env.reset()
+        simple_env.vp_gained_this_step_player = 0
+        calc = ObjectiveControlCalculator(weight=1.0)
+        cache = compute_distances(simple_env.wargame_models, simple_env.objectives)
+        ctx = _make_step_context(
+            simple_env, cache, phase_at_step_start=BattlePhase.movement, current_round=2
+        )
+        assert calc.calculate(simple_env, ctx) == 0.0
+
+    def test_returns_weight_times_vp_gained(self, simple_env: WargameEnv) -> None:
+        simple_env.reset()
+        simple_env.vp_gained_this_step_player = 10
+        calc = ObjectiveControlCalculator(weight=1.0)
+        cache = compute_distances(simple_env.wargame_models, simple_env.objectives)
+        ctx = _make_step_context(
+            simple_env, cache, phase_at_step_start=BattlePhase.command, current_round=2
+        )
+        assert calc.calculate(simple_env, ctx) == 10.0
+        calc_weighted = ObjectiveControlCalculator(weight=0.5)
+        assert calc_weighted.calculate(simple_env, ctx) == 5.0
+
+
+class TestComputeLevelsOfControl:
+    def test_single_objective_player_in_range_opponent_far(self) -> None:
+        from wargame_rl.wargame.envs.wargame_model import WargameModel
+        from wargame_rl.wargame.envs.wargame_objective import WargameObjective
+
+        obj = WargameObjective(location=np.array([10, 10]), radius_size=2)
+        player = WargameModel(
+            location=np.array([10, 10]),
+            stats={"max_wounds": 1, "current_wounds": 1},
+            distances_to_objectives=np.zeros((1, 2), dtype=int),
+            group_id=0,
+            oc=1,
+        )
+        opponent = WargameModel(
+            location=np.array([0, 0]),
+            stats={"max_wounds": 1, "current_wounds": 1},
+            distances_to_objectives=np.zeros((1, 2), dtype=int),
+            group_id=0,
+            oc=1,
+        )
+        player_loc, opponent_loc = compute_levels_of_control(
+            [player], [opponent], [obj], control_range=3.0
+        )
+        assert player_loc.shape == (1,)
+        assert opponent_loc.shape == (1,)
+        assert player_loc[0] == 1.0
+        assert opponent_loc[0] == 0.0
+
+    def test_contested_when_equal_loc(self) -> None:
+        from wargame_rl.wargame.envs.wargame_model import WargameModel
+        from wargame_rl.wargame.envs.wargame_objective import WargameObjective
+
+        obj = WargameObjective(location=np.array([10, 10]), radius_size=2)
+        p1 = WargameModel(
+            location=np.array([10, 10]),
+            stats={"max_wounds": 1, "current_wounds": 1},
+            distances_to_objectives=np.zeros((1, 2), dtype=int),
+            group_id=0,
+            oc=1,
+        )
+        p2 = WargameModel(
+            location=np.array([10, 11]),
+            stats={"max_wounds": 1, "current_wounds": 1},
+            distances_to_objectives=np.zeros((1, 2), dtype=int),
+            group_id=0,
+            oc=1,
+        )
+        player_loc, opponent_loc = compute_levels_of_control(
+            [p1], [p2], [obj], control_range=3.0
+        )
+        assert player_loc[0] == 1.0
+        assert opponent_loc[0] == 1.0
 
 
 # ---------------------------------------------------------------------------

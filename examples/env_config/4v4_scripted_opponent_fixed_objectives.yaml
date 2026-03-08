@@ -45,4 +45,17 @@ reward_phases:
     success_criteria:
       type: all_at_objectives
     success_threshold: 0.8
+    min_epochs: 10
+  - name: control_objectives
+    reward_calculators:
+      - type: closest_objective
+        weight: 0.5
+      - type: group_cohesion
+        weight: 0.5
+        params: { group_max_distance: 5.0, violation_penalty: -0.1 }
+      - type: objective_control
+        weight: 1.0
+    success_criteria:
+      type: all_at_objectives
+    success_threshold: 0.8
     min_epochs: 0

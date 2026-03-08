@@ -4,8 +4,11 @@ from collections.abc import Callable
 import numpy as np
 import pygame
 
+from wargame_rl.wargame.envs.env_components.distance_cache import (
+    compute_levels_of_control,
+)
 from wargame_rl.wargame.envs.renders.renderer import Renderer
-from wargame_rl.wargame.envs.wargame import WargameEnv, WargameObjective
+from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.envs.wargame_model import WargameModel
 
 
@@ -14,7 +17,8 @@ class QuitRequested(Exception):
 
 
 class HumanRender(Renderer):
-    PANEL_HEIGHT = 36
+    PANEL_HEIGHT = 36  # North (title) panel
+    SOUTH_PANEL_HEIGHT = 72  # South panel: 2 rows (VP row + Round/Step/Reward row)
     GRID_SIZE = 1024  # Max width or height of the game grid in pixels
 
     # Distinct colors per group for player models
@@ -54,7 +58,9 @@ class HumanRender(Renderer):
         # Optional epoch number to show in south panel (e.g. when recording)
         self.epoch: int | None = None
         # Total window height: north panel + grid + south panel
-        self._total_window_height = self.GRID_SIZE + 2 * self.PANEL_HEIGHT
+        self._total_window_height = (
+            self.GRID_SIZE + self.PANEL_HEIGHT + self.SOUTH_PANEL_HEIGHT
+        )
         # Board dimensions (set in setup) for recomputing scale on window resize
         self._board_width: int = 50
         self._board_height: int = 50
@@ -95,7 +101,9 @@ class HumanRender(Renderer):
         self.canvas_width = math.ceil(scale * board_w)
         self.canvas_height = math.ceil(scale * board_h)
         self.pix_square_size = scale
-        self._total_window_height = self.canvas_height + 2 * self.PANEL_HEIGHT
+        self._total_window_height = (
+            self.canvas_height + self.PANEL_HEIGHT + self.SOUTH_PANEL_HEIGHT
+        )
         self._canvas_offset_x = 0
         self._canvas_offset_y = self.PANEL_HEIGHT
 
@@ -155,7 +163,10 @@ class HumanRender(Renderer):
             self._last_window_w, self._last_window_h = current_w, current_h
             self._total_window_height = current_h
             available_w = current_w
-            available_h = max(1, current_h - 2 * self.PANEL_HEIGHT)
+            available_h = max(
+                1,
+                current_h - self.PANEL_HEIGHT - self.SOUTH_PANEL_HEIGHT,
+            )
             self._compute_scale_and_canvas(available_w, available_h)
             self._canvas_offset_x = (current_w - self.canvas_width) // 2
             self._canvas_offset_y = (
@@ -164,7 +175,6 @@ class HumanRender(Renderer):
 
         board_width = env.config.board_width
         board_height = env.config.board_height
-        objectives = env.objectives
         wargame_models = env.wargame_models
         metadata = env.metadata
         deployment_zone = env.deployment_zone
@@ -184,8 +194,8 @@ class HumanRender(Renderer):
             self.canvas, opponent_deployment_zone, "Opponent Zone"
         )
 
-        # We draw the target
-        self._draw_target(self.canvas, objectives)
+        # We draw the target (with control-based coloring when env has control range)
+        self._draw_target(self.canvas, env)
 
         # Draw movement arrows (previous -> current location)
         self._draw_movement_arrows(self.canvas, wargame_models)
@@ -256,13 +266,17 @@ class HumanRender(Renderer):
         self.window.blit(text_surface, text_rect)
 
     def _draw_south_panel(self, env: WargameEnv) -> None:
-        """Draw the south panel with environment information."""
+        """Draw the south panel (2 rows): row 1 = VP; row 2 = Round, Step, Reward.
+
+        Uses a single font size and shared column anchors so both rows align
+        (left column, center, right column).
+        """
         if self.window is None:
             return
         window_w = self.window.get_width()
         window_h = self.window.get_height()
-        panel_y = window_h - self.PANEL_HEIGHT
-        panel_rect = pygame.Rect(0, panel_y, window_w, self.PANEL_HEIGHT)
+        panel_y = window_h - self.SOUTH_PANEL_HEIGHT
+        panel_rect = pygame.Rect(0, panel_y, window_w, self.SOUTH_PANEL_HEIGHT)
         pygame.draw.rect(self.window, (45, 45, 48), panel_rect)
         pygame.draw.line(
             self.window,
@@ -273,6 +287,11 @@ class HumanRender(Renderer):
         )
         font = pygame.font.Font(None, 24)
         text_color = (220, 220, 220)
+        margin = max(12, int(window_w * 0.02))
+        col_left = margin
+        col_center = window_w // 2
+        col_right = window_w - margin
+
         reward_str = f"{env.last_reward:.3f}" if env.last_reward is not None else "—"
         clock_state = env._game_clock.state
         phase_label = clock_state.phase.value.title() if clock_state.phase else "—"
@@ -281,28 +300,51 @@ class HumanRender(Renderer):
         turn_text = f"Round: {round_num} / {n_rounds}  |  {phase_label}"
         steps_text = f"Step: {env.current_turn}"
         reward_text = f"Reward: {reward_str}"
-        center_y = panel_y + self.PANEL_HEIGHT // 2
+        player_vp = getattr(env, "player_vp", 0)
+        opponent_vp = getattr(env, "opponent_vp", 0)
+        vp_player_text = f"Player VP: {player_vp}"
+        vp_opponent_text = f"Opponent VP: {opponent_vp}"
+        vp_gain_player = getattr(env, "vp_gained_this_step_player", 0)
+        vp_gain_opponent = getattr(env, "vp_gained_this_step_opponent", 0)
+
+        row1_y = panel_y + self.SOUTH_PANEL_HEIGHT // 4
+        row2_y = panel_y + 3 * self.SOUTH_PANEL_HEIGHT // 4
+
+        # Row 1: VP left-aligned and right-aligned to match row 2 columns
+        vp_p_surface = font.render(vp_player_text, True, self._OBJECTIVE_PLAYER_COLOR)
+        vp_o_surface = font.render(
+            vp_opponent_text, True, self._OBJECTIVE_OPPONENT_COLOR
+        )
+        vp_p_rect = vp_p_surface.get_rect(midleft=(col_left, row1_y))
+        vp_o_rect = vp_o_surface.get_rect(midright=(col_right, row1_y))
+        self.window.blit(vp_p_surface, vp_p_rect)
+        self.window.blit(vp_o_surface, vp_o_rect)
+
+        # Row 2: Round (left), Step (center), Reward (right); same font and anchors
         if self.epoch is not None:
-            epoch_text = f"Epoch: {self.epoch}"
-            epoch_surface = font.render(epoch_text, True, text_color)
-            turn_surface = font.render(turn_text, True, text_color)
-            steps_surface = font.render(steps_text, True, text_color)
-            reward_surface = font.render(reward_text, True, text_color)
-            epoch_rect = epoch_surface.get_rect(center=(window_w // 8, center_y))
-            turn_rect = turn_surface.get_rect(center=(3 * window_w // 8, center_y))
-            steps_rect = steps_surface.get_rect(center=(5 * window_w // 8, center_y))
-            reward_rect = reward_surface.get_rect(center=(7 * window_w // 8, center_y))
-            self.window.blit(epoch_surface, epoch_rect)
-        else:
-            turn_surface = font.render(turn_text, True, text_color)
-            steps_surface = font.render(steps_text, True, text_color)
-            reward_surface = font.render(reward_text, True, text_color)
-            turn_rect = turn_surface.get_rect(center=(window_w // 6, center_y))
-            steps_rect = steps_surface.get_rect(center=(window_w // 2, center_y))
-            reward_rect = reward_surface.get_rect(center=(5 * window_w // 6, center_y))
+            turn_text = f"Epoch: {self.epoch}  |  {turn_text}"
+        turn_surface = font.render(turn_text, True, text_color)
+        steps_surface = font.render(steps_text, True, text_color)
+        reward_surface = font.render(reward_text, True, text_color)
+        turn_rect = turn_surface.get_rect(midleft=(col_left, row2_y))
+        steps_rect = steps_surface.get_rect(center=(col_center, row2_y))
+        reward_rect = reward_surface.get_rect(midright=(col_right, row2_y))
         self.window.blit(turn_surface, turn_rect)
         self.window.blit(steps_surface, steps_rect)
         self.window.blit(reward_surface, reward_rect)
+
+        # VP-increase feedback: "+N VP" on row 1, same font for consistency
+        if vp_gain_player > 0 or vp_gain_opponent > 0:
+            if vp_gain_player > 0:
+                gain_text = f"+{vp_gain_player} VP"
+                gain_surface = font.render(gain_text, True, (255, 255, 100))
+                gain_rect = gain_surface.get_rect(midleft=(vp_p_rect.right + 8, row1_y))
+                self.window.blit(gain_surface, gain_rect)
+            if vp_gain_opponent > 0:
+                gain_text = f"+{vp_gain_opponent} VP"
+                gain_surface = font.render(gain_text, True, (255, 180, 100))
+                gain_rect = gain_surface.get_rect(midright=(vp_o_rect.left - 8, row1_y))
+                self.window.blit(gain_surface, gain_rect)
 
     def _get_model_index_at(self, env: WargameEnv, mx: int, my: int) -> int | None:
         """Return the index of the wargame model at window position (mx, my), or None."""
@@ -393,7 +435,7 @@ class HumanRender(Renderer):
                     continue
                 new_w = max(1, event.w)
                 new_h = max(
-                    2 * self.PANEL_HEIGHT + 1,
+                    self.PANEL_HEIGHT + self.SOUTH_PANEL_HEIGHT + 1,
                     event.h,
                 )
                 # Only resize when size actually changed to avoid feedback loop
@@ -408,7 +450,7 @@ class HumanRender(Renderer):
                 self._last_window_w, self._last_window_h = new_w, new_h
                 self._total_window_height = new_h
                 available_w = new_w
-                available_h = new_h - 2 * self.PANEL_HEIGHT
+                available_h = new_h - self.PANEL_HEIGHT - self.SOUTH_PANEL_HEIGHT
                 self._compute_scale_and_canvas(available_w, available_h)
                 self._canvas_offset_x = (new_w - self.canvas_width) // 2
                 self._canvas_offset_y = (
@@ -472,30 +514,51 @@ class HumanRender(Renderer):
             ),
         )
 
-    def _draw_target(
-        self, canvas: pygame.Surface, objectives: list[WargameObjective]
-    ) -> None:
-        """Draw objectives on the canvas."""
-        for objective in objectives:
-            pygame.draw.circle(
-                canvas,
-                (255, 100, 100),
-                (
-                    float(objective.location[0] + 0.5) * self.pix_square_size,
-                    float(objective.location[1] + 0.5) * self.pix_square_size,
-                ),
-                float(objective.radius_size * self.pix_square_size),
+    # Control colors: player-controlled, opponent-controlled, contested
+    _OBJECTIVE_PLAYER_COLOR = (60, 180, 80)  # green
+    _OBJECTIVE_OPPONENT_COLOR = (220, 80, 60)  # red
+    _OBJECTIVE_CONTESTED_COLOR = (255, 220, 0)  # yellow
+
+    def _draw_target(self, canvas: pygame.Surface, env: WargameEnv) -> None:
+        """Draw objectives on the canvas; color by control (player/opponent/contested)."""
+        objectives = env.objectives
+        control_range = getattr(env.config, "objective_control_range", None)
+        player_loc: np.ndarray | None = None
+        opponent_loc: np.ndarray | None = None
+        if control_range is not None and control_range > 0 and env.opponent_models:
+            player_loc, opponent_loc = compute_levels_of_control(
+                env.wargame_models,
+                env.opponent_models,
+                objectives,
+                control_range,
             )
 
+        for i, objective in enumerate(objectives):
+            if player_loc is not None and opponent_loc is not None:
+                pl, ol = float(player_loc[i]), float(opponent_loc[i])
+                if pl > ol:
+                    fill_color = self._OBJECTIVE_PLAYER_COLOR
+                elif ol > pl:
+                    fill_color = self._OBJECTIVE_OPPONENT_COLOR
+                else:
+                    fill_color = self._OBJECTIVE_CONTESTED_COLOR
+            else:
+                fill_color = (255, 100, 100)
+
+            cx = float(objective.location[0] + 0.5) * self.pix_square_size
+            cy = float(objective.location[1] + 0.5) * self.pix_square_size
+            r = float(objective.radius_size * self.pix_square_size)
+            pygame.draw.circle(canvas, fill_color, (cx, cy), r)
             pygame.draw.rect(
                 canvas,
-                (255, 0, 0),
+                (200, 80, 80),
                 pygame.Rect(
                     float(objective.location[0] * self.pix_square_size),
                     float(objective.location[1] * self.pix_square_size),
                     float(self.pix_square_size),
                     float(self.pix_square_size),
                 ),
+                1,
             )
 
     def _color_for_group(self, group_id: int) -> tuple[int, int, int]:

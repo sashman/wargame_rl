@@ -24,6 +24,8 @@ class WargameEnvObservation:
     battle_round: int = 1
     battle_phase_index: int = 0
     n_rounds: int = 5
+    player_vp: int = 0
+    opponent_vp: int = 0
 
     @property
     def size_wargame_models(self) -> list[int]:
@@ -39,8 +41,8 @@ class WargameEnvObservation:
 
     @property
     def size_game_observation(self) -> int:
-        # current_turn placeholder(1) + normalized_round(1) + phase_index(1)
-        return 3
+        # current_turn placeholder(1) + normalized_round(1) + phase_index(1) + player_vp(1) + opponent_vp(1)
+        return 5
 
     @property
     def size(self) -> int:

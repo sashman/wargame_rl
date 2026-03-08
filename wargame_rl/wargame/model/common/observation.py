@@ -119,14 +119,36 @@ def _observation_to_numpy(
         feature_dim,
     )
 
+    # Objectives: location (2) + player_level_of_control (1) + opponent_level_of_control (1)
     obj_locs = np.array([o.location for o in state.objectives], dtype=np.float32)
-    obj_features = _normalize(obj_locs, half_board)
+    obj_loc_normalized = _normalize(obj_locs, half_board)
+    obj_loc = np.array(
+        [
+            [
+                getattr(o, "player_level_of_control", 0.0),
+                getattr(o, "opponent_level_of_control", 0.0),
+            ]
+            for o in state.objectives
+        ],
+        dtype=np.float32,
+    )
+    obj_features = np.hstack([obj_loc_normalized, obj_loc])  # (n_objectives, 4)
 
     n_phases = 5  # len(BattlePhase)
     normalized_round = state.battle_round / max(state.n_rounds, 1)
     normalized_phase = state.battle_phase_index / max(n_phases - 1, 1)
+    max_vp = 100.0  # Normalize VP to [0, 1] for network input
+    player_vp_norm = getattr(state, "player_vp", 0) / max_vp
+    opponent_vp_norm = getattr(state, "opponent_vp", 0) / max_vp
     game_features = np.array(
-        [0.0, normalized_round, normalized_phase], dtype=np.float32
+        [
+            0.0,
+            normalized_round,
+            normalized_phase,
+            player_vp_norm,
+            opponent_vp_norm,
+        ],
+        dtype=np.float32,
     )
 
     return (

@@ -32,12 +32,14 @@ class WargameModel:
         distances_to_objectives: np.ndarray,
         group_id: int,
         previous_closest_objective_distance: float | None = None,
+        oc: int = 1,
     ):
         self.location = location
         self.previous_location: np.ndarray | None = None
         self.stats = stats
         self.distances_to_objectives = distances_to_objectives
         self.group_id = group_id
+        self.oc = oc
 
         self.previous_closest_objective_distance = previous_closest_objective_distance
         self.model_rewards_history: list["ModelRewards"] = []

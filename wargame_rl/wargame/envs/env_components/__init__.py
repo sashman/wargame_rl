@@ -4,6 +4,7 @@ from wargame_rl.wargame.envs.env_components.actions import ActionHandler
 from wargame_rl.wargame.envs.env_components.distance_cache import (
     DistanceCache,
     compute_distances,
+    compute_levels_of_control,
 )
 from wargame_rl.wargame.envs.env_components.game_clock import GameClock, GameClockError
 from wargame_rl.wargame.envs.env_components.observation_builder import (
@@ -30,6 +31,7 @@ __all__ = [
     "build_info",
     "build_observation",
     "compute_distances",
+    "compute_levels_of_control",
     "update_distances_to_objectives",
     "wargame_model_placement",
     "objective_placement",

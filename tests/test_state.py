@@ -20,6 +20,9 @@ def test_observation_to_tensor(experiences: list[Experience]) -> None:
     n_wargame_models = state.n_wargame_models
 
     dim_location = 2
+    dim_objective = (
+        4  # location (2) + player_level_of_control + opponent_level_of_control
+    )
     dim_distances = dim_location * n_objectives
     max_groups = state.wargame_models[0].max_groups
     dim_model = (
@@ -33,7 +36,7 @@ def test_observation_to_tensor(experiences: list[Experience]) -> None:
     state_turn, state_objectives, state_wargame_models, _state_opp, _mask = state_batch
 
     assert state_turn.shape == (batch_size, game_size)
-    assert state_objectives.shape == (batch_size, n_objectives, dim_location)
+    assert state_objectives.shape == (batch_size, n_objectives, dim_objective)
     assert state_wargame_models.shape == (batch_size, n_wargame_models, dim_model)
 
     # Test individual conversion and compare with batch
@@ -61,6 +64,9 @@ def test_experience_to_batch(experiences: list[Experience]) -> None:
     n_objectives = state.n_objectives
 
     dim_location = 2
+    dim_objective = (
+        4  # location (2) + player_level_of_control + opponent_level_of_control
+    )
     dim_distances = dim_location * n_objectives
     max_groups = state.wargame_models[0].max_groups
     dim_model = (
@@ -77,7 +83,7 @@ def test_experience_to_batch(experiences: list[Experience]) -> None:
     assert state_size == sum(size_objectives) + sum(size_wargame_models) + game_size
 
     np.testing.assert_array_equal(
-        size_objectives, np.array([dim_location] * n_objectives)
+        size_objectives, np.array([dim_objective] * n_objectives)
     )
     np.testing.assert_array_equal(
         size_wargame_models, np.array([dim_model] * n_wargame_models)
@@ -92,8 +98,8 @@ def test_experience_to_batch(experiences: list[Experience]) -> None:
         batch.new_state_tensors
     )
     assert state_turn.shape == (batch_size, game_size)
-    assert state_objectives.shape == (batch_size, n_objectives, dim_location)
+    assert state_objectives.shape == (batch_size, n_objectives, dim_objective)
     assert state_wargame_models.shape == (batch_size, n_wargame_models, dim_model)
     assert new_state_turn.shape == (batch_size, game_size)
-    assert new_state_objectives.shape == (batch_size, n_objectives, dim_location)
+    assert new_state_objectives.shape == (batch_size, n_objectives, dim_objective)
     assert new_state_wargame_models.shape == (batch_size, n_wargame_models, dim_model)

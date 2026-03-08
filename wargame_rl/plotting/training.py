@@ -49,9 +49,10 @@ def build_batch_tensor(
                 board_width=board_width,
                 board_height=board_height,
             )
-            game_tensor, objective_tensor, wargame_model_tensor = observation_to_tensor(
-                testing_state, device=device
-            )
+            tensors = observation_to_tensor(testing_state, device=device)
+            game_tensor = tensors[0]
+            objective_tensor = tensors[1]
+            wargame_model_tensor = tensors[2]
             batch_list_game.append(game_tensor.unsqueeze(0))
             batch_list_objective.append(objective_tensor.unsqueeze(0))
             batch_list_wargame_model.append(wargame_model_tensor.unsqueeze(0))

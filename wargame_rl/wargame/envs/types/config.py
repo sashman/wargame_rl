@@ -91,6 +91,11 @@ class ModelConfig(BaseModel):
     )
     group_id: int = Field(default=0, ge=0, description="Group this model belongs to")
     max_wounds: int = Field(default=100, gt=0)
+    oc: int = Field(
+        default=1,
+        ge=0,
+        description="Objective Control value; summed for Level of Control when contesting objectives.",
+    )
 
     @model_validator(mode="after")
     def coords_both_or_neither(self) -> "ModelConfig":
@@ -139,6 +144,11 @@ class WargameEnvConfig(BaseModel):
     number_of_objectives: int = 2  # Number of objectives in the environment
     objective_radius_size: int = Field(
         gt=0, default=1, description="Radius of the objective in the environment"
+    )
+    objective_control_range: float = Field(
+        default=3.0,
+        gt=0,
+        description='Distance (cells) within which a model contributes to Level of Control at an objective. Tabletop equivalent ~3".',
     )
     board_width: int = Field(
         gt=0, default=50, description="Width of the grid (x dimension)"

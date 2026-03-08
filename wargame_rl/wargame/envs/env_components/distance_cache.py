@@ -81,3 +81,39 @@ def compute_distances(
         obj_radii=obj_radii,
         model_model_norms=model_model,
     )
+
+
+def compute_levels_of_control(
+    player_models: list["WargameModel"],
+    opponent_models: list["WargameModel"],
+    objectives: list["WargameObjective"],
+    control_range: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute Level of Control (LoC) per objective for player and opponent.
+
+    A model is in range of an objective if Euclidean distance from model to
+    objective centre is <= control_range. LoC = sum of OC of models in range.
+
+    Returns:
+        player_loc: shape (n_objectives,) float
+        opponent_loc: shape (n_objectives,) float
+    """
+    obj_locs = np.array([o.location for o in objectives], dtype=float)  # (n_obj, 2)
+    n_objectives = len(objectives)
+
+    def loc_for_models(models: list["WargameModel"]) -> np.ndarray:
+        if not models:
+            return np.zeros(n_objectives, dtype=np.float64)
+        locs = np.array([m.location for m in models], dtype=float)  # (n_models, 2)
+        oc_vals = np.array([getattr(m, "oc", 1) for m in models], dtype=np.float64)
+        # (n_models, n_objectives, 2)
+        deltas = locs[:, np.newaxis, :] - obj_locs[np.newaxis, :, :]
+        norms = np.linalg.norm(deltas, axis=2, ord=2)  # (n_models, n_objectives)
+        in_range = norms <= control_range  # (n_models, n_objectives)
+        # Sum OC per objective: (n_objectives,)
+        result: np.ndarray = np.where(in_range, oc_vals[:, np.newaxis], 0.0).sum(axis=0)
+        return result
+
+    player_loc = loc_for_models(player_models)
+    opponent_loc = loc_for_models(opponent_models)
+    return player_loc, opponent_loc

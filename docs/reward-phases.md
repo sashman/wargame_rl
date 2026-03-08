@@ -76,6 +76,7 @@ reward_phases:
 |----------|-------|------------|-------------|
 | `closest_objective` | per-model | *(none)* | +1.0 at objective, +0.5 closer, -0.05 no change, -0.5 farther. Distance normalised by board diagonal. |
 | `group_cohesion` | per-model | `group_max_distance` (float, default 10.0), `violation_penalty` (float, default -10.0) | Negative reward proportional to excess distance beyond `group_max_distance` from the closest same-group model. 0 when within range or alone in group. |
+| `objective_control` | global | *(none)* | Reward equal to VP earned this step from controlling objectives (5 VP per objective controlled, cap 15 per turn). Only non-zero at end of Command phase from round 2 onwards, matching the primary mission. Requires `objective_control_range` and env VP state. |
 
 ## Available Success Criteria
 
@@ -96,6 +97,8 @@ advance if:
 ```
 
 When advancement triggers, the `RewardPhaseManager` moves to the next phase and logs the transition. The new phase's reward calculators take effect immediately for subsequent episodes.
+
+**Success rate for advancement:** Both PPO and DQN use the current phase's success criteria (e.g. `all_at_objectives`) evaluated on the **last step** of each evaluation episode, then take the mean over episodes. Using "episode ended early" (steps &lt; max_turns) alone would be wrong when the game can also end by round limit, so the phase's `check_success(env, last_step_context)` is used.
 
 The `reward_phase` metric (phase index, 0-based) is logged to wandb every epoch, making phase transitions visible in the training dashboard.
 

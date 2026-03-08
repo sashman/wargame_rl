@@ -25,3 +25,4 @@ class StepContext:
     board_height: int
     current_round: int = 1
     battle_phase: BattlePhase = BattlePhase.command
+    phase_at_step_start: BattlePhase | None = None
