@@ -12,9 +12,9 @@ class WargameEnvObjectiveObservation:
     location: np.ndarray  # Location of the objective in the grid
     player_level_of_control: float = 0.0  # Sum of OC of player models in range
     opponent_level_of_control: float = 0.0  # Sum of OC of opponent models in range
+    radius_size: int = 0  # Radius of the objective (for capture / control range)
 
     @property
     def size(self) -> int:
-        return (
-            int(self.location.size) + 2
-        )  # location (2) + player_loc (1) + opponent_loc (1)
+        # location (2) + player_loc (1) + opponent_loc (1) + radius_size (1)
+        return int(self.location.size) + 3

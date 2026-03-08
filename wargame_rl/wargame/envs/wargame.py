@@ -10,11 +10,12 @@ from wargame_rl.wargame.envs.env_components import (
     ActionHandler,
     DistanceCache,
     GameClock,
+    VPState,
     build_info,
     build_observation,
     check_max_turns_reached,
     compute_distances,
-    compute_levels_of_control,
+    compute_primary_vp_earned,
     fixed_objective_placement,
     fixed_wargame_model_placement,
     get_termination,
@@ -33,6 +34,7 @@ from wargame_rl.wargame.envs.reward.reward import Reward
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.types import (
     BattlePhase,
+    EnvScoreState,
     PlayerSide,
     TurnOrder,
     WargameEnvAction,
@@ -78,6 +80,7 @@ class WargameEnv(gym.Env):
                         board_width=self.board_width, board_height=self.board_height
                     )
                 ),
+                "env_score_state": EnvScoreState.to_space(),
             }
         )
 
@@ -122,11 +125,8 @@ class WargameEnv(gym.Env):
         # Last reward from step(); None until first step after reset
         self.last_reward: float | None = None
 
-        # Victory points (primary mission: 5 VP per objective controlled, cap 15 per turn)
-        self.player_vp: int = 0
-        self.opponent_vp: int = 0
-        self.vp_gained_this_step_player: int = 0
-        self.vp_gained_this_step_opponent: int = 0
+        # Victory points state (primary mission: 5 VP per objective controlled, cap 15 per turn)
+        self._vp_state = VPState()
 
         # Reward phases (curriculum learning) -- None uses legacy Reward path
         if config.reward_phases is not None:
@@ -152,6 +152,22 @@ class WargameEnv(gym.Env):
         else:
             self._opponent_action_handler = ActionHandler(config, n_models=0)
             self._opponent_policy = None
+
+    @property
+    def player_vp(self) -> int:
+        return self._vp_state.player_vp
+
+    @property
+    def opponent_vp(self) -> int:
+        return self._vp_state.opponent_vp
+
+    @property
+    def vp_gained_this_step_player(self) -> int:
+        return self._vp_state.vp_gained_this_step_player
+
+    @property
+    def vp_gained_this_step_opponent(self) -> int:
+        return self._vp_state.vp_gained_this_step_opponent
 
     @property
     def max_turns(self) -> int:
@@ -279,8 +295,10 @@ class WargameEnv(gym.Env):
             battle_phase_index=list(BattlePhase).index(phase),
             n_rounds=self._game_clock.n_rounds,
             control_range=self.config.objective_control_range,
-            player_vp=self.player_vp,
-            opponent_vp=self.opponent_vp,
+            env_score_state=EnvScoreState(
+                player_vp=self.player_vp,
+                opponent_vp=self.opponent_vp,
+            ),
         )
 
     def _get_info(self) -> WargameEnvInfo:
@@ -314,10 +332,7 @@ class WargameEnv(gym.Env):
         self.current_turn = 0
         self.last_reward = None
         self.last_step_context = None
-        self.player_vp = 0
-        self.opponent_vp = 0
-        self.vp_gained_this_step_player = 0
-        self.vp_gained_this_step_opponent = 0
+        self._vp_state.reset()
 
         self._resolve_player_side()
         self._game_clock.reset()
@@ -438,21 +453,12 @@ class WargameEnv(gym.Env):
         )
 
     def _compute_primary_vp_earned(self) -> tuple[int, int]:
-        """VP earned this scoring moment (5 per objective controlled, cap 15).
-
-        Returns (player_vp, opponent_vp) for current board state.
-        """
-        player_loc, opponent_loc = compute_levels_of_control(
+        """VP earned this scoring moment (delegates to vp module)."""
+        return compute_primary_vp_earned(
             self.wargame_models,
             self.opponent_models,
             self.objectives,
             self.config.objective_control_range,
-        )
-        player_controlled = int((player_loc > opponent_loc).sum())
-        opponent_controlled = int((opponent_loc > player_loc).sum())
-        return (
-            min(5 * player_controlled, 15),
-            min(5 * opponent_controlled, 15),
         )
 
     def _execute_opponent_turn(self) -> None:
@@ -467,8 +473,7 @@ class WargameEnv(gym.Env):
                 and (self._game_clock.state.battle_round or 0) >= 2
             ):
                 _, opp_vp = self._compute_primary_vp_earned()
-                self.opponent_vp += opp_vp
-                self.vp_gained_this_step_opponent += opp_vp
+                self._vp_state.award_opponent(opp_vp)
 
     def _should_skip_phase(self) -> bool:
         phase = self._game_clock.state.phase
@@ -493,8 +498,7 @@ class WargameEnv(gym.Env):
     def step(
         self, action: WargameEnvAction
     ) -> tuple[WargameEnvObservation, float, bool, bool, dict[str, Any]]:
-        self.vp_gained_this_step_player = 0
-        self.vp_gained_this_step_opponent = 0
+        self._vp_state.start_step()
         clock = self._game_clock.state
         phase_at_step_start = clock.phase or BattlePhase.command
         round_at_step_start = clock.battle_round or 1
@@ -516,8 +520,7 @@ class WargameEnv(gym.Env):
             and round_at_step_start >= 2
         ):
             player_vp_earned, _ = self._compute_primary_vp_earned()
-            self.player_vp += player_vp_earned
-            self.vp_gained_this_step_player = player_vp_earned
+            self._vp_state.award_player(player_vp_earned)
 
         # If clock rolled over to opponent's turn, auto-execute it
         if not self._game_clock.is_game_over and self._is_opponent_active():

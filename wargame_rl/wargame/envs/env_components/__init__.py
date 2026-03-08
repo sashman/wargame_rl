@@ -22,6 +22,7 @@ from wargame_rl.wargame.envs.env_components.termination import (
     check_max_turns_reached,
     get_termination,
 )
+from wargame_rl.wargame.envs.env_components.vp import VPState, compute_primary_vp_earned
 
 __all__ = [
     "ActionHandler",
@@ -39,4 +40,6 @@ __all__ = [
     "fixed_objective_placement",
     "get_termination",
     "check_max_turns_reached",
+    "compute_primary_vp_earned",
+    "VPState",
 ]

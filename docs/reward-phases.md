@@ -84,6 +84,7 @@ reward_phases:
 |----------|------------|-------------|
 | `all_at_objectives` | *(none)* | Succeeds when every model is within the radius of at least one objective. |
 | `all_models_grouped` | `max_distance` (float, default 10.0) | Succeeds when every model is within `max_distance` of at least one same-group member. Models alone in their group are considered grouped. |
+| `player_leading_vp` | *(none)* | Succeeds when the player has more Victory Points than the opponent. |
 
 ## How Advancement Works
 
@@ -182,6 +183,7 @@ wargame_rl/wargame/envs/reward/
     base.py                        # SuccessCriteria ABC
     all_at_objectives.py           # All models at objectives
     all_models_grouped.py          # All models within group distance
+    player_leading_vp.py          # Player VP > opponent VP
     registry.py                    # Type-string -> class mapping
   types/
     model_rewards.py               # Legacy ModelRewards (untouched)

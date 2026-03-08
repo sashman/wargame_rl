@@ -56,6 +56,6 @@ reward_phases:
       - type: objective_control
         weight: 1.0
     success_criteria:
-      type: all_at_objectives
+      type: player_leading_vp
     success_threshold: 0.8
     min_epochs: 0

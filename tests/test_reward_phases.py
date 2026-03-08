@@ -29,6 +29,9 @@ from wargame_rl.wargame.envs.reward.criteria.all_at_objectives import (
 from wargame_rl.wargame.envs.reward.criteria.all_models_grouped import (
     AllModelsGroupedCriteria,
 )
+from wargame_rl.wargame.envs.reward.criteria.player_leading_vp import (
+    PlayerLeadingVPCriteria,
+)
 from wargame_rl.wargame.envs.reward.criteria.registry import (
     CRITERIA_REGISTRY,
     build_criteria,
@@ -277,7 +280,7 @@ class TestObjectiveControlCalculator:
 
     def test_returns_zero_when_no_vp_gained(self, simple_env: WargameEnv) -> None:
         simple_env.reset()
-        simple_env.vp_gained_this_step_player = 0
+        simple_env._vp_state.vp_gained_this_step_player = 0
         calc = ObjectiveControlCalculator(weight=1.0)
         cache = compute_distances(simple_env.wargame_models, simple_env.objectives)
         ctx = _make_step_context(
@@ -287,7 +290,7 @@ class TestObjectiveControlCalculator:
 
     def test_returns_weight_times_vp_gained(self, simple_env: WargameEnv) -> None:
         simple_env.reset()
-        simple_env.vp_gained_this_step_player = 10
+        simple_env._vp_state.vp_gained_this_step_player = 10
         calc = ObjectiveControlCalculator(weight=1.0)
         cache = compute_distances(simple_env.wargame_models, simple_env.objectives)
         ctx = _make_step_context(
@@ -431,6 +434,35 @@ class TestAllModelsGroupedCriteria:
         assert criteria.is_successful(simple_env, ctx) is True
 
 
+class TestPlayerLeadingVPCriteria:
+    def test_successful_when_player_ahead(self, simple_env: WargameEnv) -> None:
+        simple_env.reset()
+        simple_env._vp_state.player_vp = 15
+        simple_env._vp_state.opponent_vp = 10
+        cache = compute_distances(simple_env.wargame_models, simple_env.objectives)
+        ctx = _make_step_context(simple_env, cache)
+        criteria = PlayerLeadingVPCriteria()
+        assert criteria.is_successful(simple_env, ctx) is True
+
+    def test_not_successful_when_opponent_ahead(self, simple_env: WargameEnv) -> None:
+        simple_env.reset()
+        simple_env._vp_state.player_vp = 5
+        simple_env._vp_state.opponent_vp = 20
+        cache = compute_distances(simple_env.wargame_models, simple_env.objectives)
+        ctx = _make_step_context(simple_env, cache)
+        criteria = PlayerLeadingVPCriteria()
+        assert criteria.is_successful(simple_env, ctx) is False
+
+    def test_not_successful_when_tied(self, simple_env: WargameEnv) -> None:
+        simple_env.reset()
+        simple_env._vp_state.player_vp = 10
+        simple_env._vp_state.opponent_vp = 10
+        cache = compute_distances(simple_env.wargame_models, simple_env.objectives)
+        ctx = _make_step_context(simple_env, cache)
+        criteria = PlayerLeadingVPCriteria()
+        assert criteria.is_successful(simple_env, ctx) is False
+
+
 # ---------------------------------------------------------------------------
 # Criteria registry tests
 # ---------------------------------------------------------------------------
@@ -440,6 +472,7 @@ class TestCriteriaRegistry:
     def test_known_types(self) -> None:
         assert "all_at_objectives" in CRITERIA_REGISTRY
         assert "all_models_grouped" in CRITERIA_REGISTRY
+        assert "player_leading_vp" in CRITERIA_REGISTRY
 
     def test_build_all_at_objectives(self) -> None:
         c = build_criteria("all_at_objectives", {})
@@ -449,6 +482,10 @@ class TestCriteriaRegistry:
         c = build_criteria("all_models_grouped", {"max_distance": 7.0})
         assert isinstance(c, AllModelsGroupedCriteria)
         assert c.max_distance == 7.0
+
+    def test_build_player_leading_vp(self) -> None:
+        c = build_criteria("player_leading_vp", {})
+        assert isinstance(c, PlayerLeadingVPCriteria)
 
     def test_unknown_type_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown success criteria"):

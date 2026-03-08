@@ -12,6 +12,10 @@ class WargameObjective:
     def __repr__(self) -> str:
         return f"WargameObjective(location={self.location}, radius_size={self.radius_size})"
 
+    # Max value for radius_size in the observation space. Discrete(n) has n elements
+    # (0 to n-1), so we use MAX + 1 to allow 0..MAX.
+    MAX_RADIUS_FOR_SPACE = 100
+
     @staticmethod
     def to_space(board_width: int, board_height: int) -> spaces.Dict:
         return spaces.Dict(
@@ -21,6 +25,9 @@ class WargameObjective:
                     high=np.array([board_width - 1, board_height - 1], dtype=np.int32),
                     shape=(2,),
                     dtype=np.int32,
-                )
+                ),
+                "radius_size": spaces.Discrete(
+                    WargameObjective.MAX_RADIUS_FOR_SPACE + 1
+                ),  # single scalar: 0..MAX_RADIUS_FOR_SPACE
             }
         )

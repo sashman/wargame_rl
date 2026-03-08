@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from wargame_rl.wargame.envs.types import (
+    EnvScoreState,
     WargameEnvInfo,
     WargameEnvObjectiveObservation,
     WargameEnvObservation,
@@ -72,14 +73,15 @@ def build_observation(
     battle_phase_index: int = 0,
     n_rounds: int = 5,
     control_range: float | None = None,
-    player_vp: int = 0,
-    opponent_vp: int = 0,
+    env_score_state: EnvScoreState | None = None,
 ) -> WargameEnvObservation:
-    """Build the observation dict from current state.
+    """Build the observation from current state.
 
     When control_range is set, each objective gets player_level_of_control and
     opponent_level_of_control from compute_levels_of_control. Otherwise both are 0.
     """
+    if env_score_state is None:
+        env_score_state = EnvScoreState()
     if control_range is not None and control_range > 0:
         player_loc, opponent_loc = compute_levels_of_control(
             wargame_models, opponent_models or [], objectives, control_range
@@ -89,12 +91,16 @@ def build_observation(
                 location=obj.location,
                 player_level_of_control=float(player_loc[i]),
                 opponent_level_of_control=float(opponent_loc[i]),
+                radius_size=obj.radius_size,
             )
             for i, obj in enumerate(objectives)
         ]
     else:
         objectives_obs = [
-            WargameEnvObjectiveObservation(location=obj.location) for obj in objectives
+            WargameEnvObjectiveObservation(
+                location=obj.location, radius_size=obj.radius_size
+            )
+            for obj in objectives
         ]
     return WargameEnvObservation(
         current_turn=current_turn,
@@ -107,8 +113,7 @@ def build_observation(
         battle_round=battle_round,
         battle_phase_index=battle_phase_index,
         n_rounds=n_rounds,
-        player_vp=player_vp,
-        opponent_vp=opponent_vp,
+        env_score_state=env_score_state,
     )
 
 
@@ -125,7 +130,10 @@ def build_info(
 ) -> WargameEnvInfo:
     """Build the info dict from current state."""
     objectives_obs = [
-        WargameEnvObjectiveObservation(location=obj.location) for obj in objectives
+        WargameEnvObjectiveObservation(
+            location=obj.location, radius_size=obj.radius_size
+        )
+        for obj in objectives
     ]
     return WargameEnvInfo(
         current_turn=current_turn,

@@ -83,7 +83,7 @@ def test_dataloaders(env: WargameEnv, policy_net: RL_Network) -> None:
     n_objectives = observation.n_objectives
     dim_location = 2
     dim_objective = (
-        4  # location (2) + player_level_of_control + opponent_level_of_control
+        5  # location (2) + player_loc + opponent_loc + radius_size (normalized)
     )
     dim_distances = dim_location * n_objectives
     max_groups = observation.wargame_models[0].max_groups

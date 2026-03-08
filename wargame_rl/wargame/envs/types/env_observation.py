@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from .env_score_state import EnvScoreState
 from .model_observation import WargameModelObservation
 from .objective_observation import WargameEnvObjectiveObservation
 
@@ -24,8 +25,17 @@ class WargameEnvObservation:
     battle_round: int = 1
     battle_phase_index: int = 0
     n_rounds: int = 5
-    player_vp: int = 0
-    opponent_vp: int = 0
+    env_score_state: EnvScoreState = field(default_factory=EnvScoreState)
+
+    @property
+    def player_vp(self) -> int:
+        """Player Victory Points (from env_score_state)."""
+        return self.env_score_state.player_vp
+
+    @property
+    def opponent_vp(self) -> int:
+        """Opponent Victory Points (from env_score_state)."""
+        return self.env_score_state.opponent_vp
 
     @property
     def size_wargame_models(self) -> list[int]:
