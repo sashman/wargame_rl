@@ -10,6 +10,7 @@ from wargame_rl.wargame.envs.env_components.placement import (
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import ModelConfig, ObjectiveConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -345,6 +346,37 @@ class TestFixedPlacementIntegration:
         np.testing.assert_array_equal(obs.wargame_models[1].location, [4, 5])
         np.testing.assert_array_equal(obs.objectives[0].location, [15, 10])
         np.testing.assert_array_equal(obs.objectives[1].location, [18, 12])
+
+    def test_objective_observation_has_targeting_distances(self) -> None:
+        """Per-objective observation includes closest player and opponent distances."""
+        cfg = _make_config(
+            models=[
+                ModelConfig(x=2, y=3),
+                ModelConfig(x=4, y=5),
+            ],
+            objectives=[
+                ObjectiveConfig(x=15, y=10),
+                ObjectiveConfig(x=18, y=12),
+            ],
+        )
+        env = WargameEnv(config=cfg)
+        obs, _ = env.reset(seed=42)
+        # No opponents: closest_opponent_distance is sentinel
+        sentinel = float(WargameObjective.MAX_DISTANCE_FOR_SPACE)
+        for o in obs.objectives:
+            assert hasattr(o, "closest_player_distance")
+            assert hasattr(o, "closest_opponent_distance")
+            assert o.closest_opponent_distance == sentinel
+        # Fixed positions: obj0 at (15,10), models at (2,3) and (4,5). Min dist = sqrt(11^2+5^2)=sqrt(146)
+        expected_min_0 = (11**2 + 5**2) ** 0.5
+        assert obs.objectives[0].closest_player_distance == pytest.approx(
+            expected_min_0, rel=1e-5
+        )
+        # obj1 at (18,12): min dist = sqrt(14^2+7^2)=sqrt(245)
+        expected_min_1 = (14**2 + 7**2) ** 0.5
+        assert obs.objectives[1].closest_player_distance == pytest.approx(
+            expected_min_1, rel=1e-5
+        )
 
     def test_reset_deterministic_without_seed(self, fixed_env: WargameEnv) -> None:
         """Fixed placements should be identical regardless of seed."""

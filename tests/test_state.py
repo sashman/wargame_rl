@@ -21,7 +21,7 @@ def test_observation_to_tensor(experiences: list[Experience]) -> None:
 
     dim_location = 2
     dim_objective = (
-        5  # location (2) + player_loc + opponent_loc + radius_size (normalized)
+        7  # location (2) + player_loc + opponent_loc + radius (1) + closest_* (2)
     )
     dim_distances = dim_location * n_objectives
     max_groups = state.wargame_models[0].max_groups
@@ -65,7 +65,7 @@ def test_experience_to_batch(experiences: list[Experience]) -> None:
 
     dim_location = 2
     dim_objective = (
-        5  # location (2) + player_loc + opponent_loc + radius_size (normalized)
+        7  # location (2) + player_loc + opponent_loc + radius (1) + closest_* (2)
     )
     dim_distances = dim_location * n_objectives
     max_groups = state.wargame_models[0].max_groups

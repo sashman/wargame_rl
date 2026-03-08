@@ -119,8 +119,11 @@ def _observation_to_numpy(
         feature_dim,
     )
 
-    # Objectives: location (2) + player_loc (1) + opponent_loc (1) + radius_size normalized (1)
+    # Objectives: location (2) + player_loc (1) + opponent_loc (1) + radius (1) + closest_* (2)
     max_radius = 100.0
+    max_dist_obj = (
+        1500.0  # Match WargameObjective.MAX_DISTANCE_FOR_SPACE for normalization
+    )
     obj_locs = np.array([o.location for o in state.objectives], dtype=np.float32)
     obj_loc_normalized = _normalize(obj_locs, half_board)
     obj_loc = np.array(
@@ -129,12 +132,22 @@ def _observation_to_numpy(
                 getattr(o, "player_level_of_control", 0.0),
                 getattr(o, "opponent_level_of_control", 0.0),
                 getattr(o, "radius_size", 0) / max_radius,
+                np.clip(
+                    getattr(o, "closest_player_distance", 0.0) / max_dist_obj,
+                    0.0,
+                    1.0,
+                ),
+                np.clip(
+                    getattr(o, "closest_opponent_distance", 0.0) / max_dist_obj,
+                    0.0,
+                    1.0,
+                ),
             ]
             for o in state.objectives
         ],
         dtype=np.float32,
     )
-    obj_features = np.hstack([obj_loc_normalized, obj_loc])  # (n_objectives, 5)
+    obj_features = np.hstack([obj_loc_normalized, obj_loc])  # (n_objectives, 7)
 
     n_phases = 5  # len(BattlePhase)
     normalized_round = state.battle_round / max(state.n_rounds, 1)
@@ -183,8 +196,8 @@ def observation_to_tensor(
     ----------------
 
     The tensors are returned in the following order:
-        1. game_features: shape (3,) — placeholder, normalized_round, normalized_phase
-        2. tensor_objectives: shape (num_objectives, 5) — loc (2), LoC (2), radius norm (1)
+        1. game_features: shape (5,) — placeholder, round, phase, player_vp, opponent_vp
+        2. tensor_objectives: shape (num_objectives, 7) — loc (2), LoC (2), radius (1), closest_player_dist (1), closest_opponent_dist (1)
         3. tensor_wargame_models: shape (num_models, model_features)
         4. tensor_opponent_models: shape (num_opponent_models, model_features)
            (0 rows when no opponents)

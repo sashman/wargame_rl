@@ -299,6 +299,7 @@ class WargameEnv(gym.Env):
                 player_vp=self.player_vp,
                 opponent_vp=self.opponent_vp,
             ),
+            distance_cache=distance_cache,
         )
 
     def _get_info(self) -> WargameEnvInfo:

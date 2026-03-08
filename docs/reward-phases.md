@@ -156,6 +156,8 @@ To add a new success criteria:
 
 Both calculators and criteria receive a `StepContext` object containing the distance cache, turn info, and board dimensions. As new game mechanics are added (combat, terrain, VP), additional fields will be added to `StepContext` without changing existing calculator signatures.
 
+**Objective observation for targeting:** Each objective in the agent's observation includes `closest_player_distance` (min distance from any player model to that objective) and `closest_opponent_distance` (min distance from any opponent; a fixed sentinel when there are no opponents). These allow the policy to compare objectives when deciding which to target (e.g. prefer one that is closer to friendly units and farther from enemies).
+
 ### StepContext fields
 
 | Field | Type | Description |
