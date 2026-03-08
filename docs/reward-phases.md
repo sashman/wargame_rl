@@ -74,7 +74,7 @@ reward_phases:
 
 | Type key | Scope | Parameters | Description |
 |----------|-------|------------|-------------|
-| `closest_objective` | per-model | *(none)* | +1.0 at objective, +0.5 closer, -0.05 no change, -0.5 farther. Distance normalised by board diagonal. |
+| `closest_objective` | per-model | *(none)* | Reward = change in potential; potential is positive when the model is inside the game's \"at objective\" circle (same offset-based rule as `all_at_objectives`). Aligns phase-one reward with success so the agent gets credit for reaching objectives. |
 | `group_cohesion` | per-model | `group_max_distance` (float, default 10.0), `violation_penalty` (float, default -10.0) | Negative reward proportional to excess distance beyond `group_max_distance` from the closest same-group model. 0 when within range or alone in group. |
 | `objective_control` | global | *(none)* | Reward equal to VP earned this step from controlling objectives (5 VP per objective controlled, cap 15 per turn). Only non-zero at end of Command phase from round 2 onwards, matching the primary mission. Requires `objective_control_range` and env VP state. |
 

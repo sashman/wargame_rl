@@ -44,6 +44,7 @@ from wargame_rl.wargame.envs.reward.phase import (
 from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
+from wargame_rl.wargame.envs.types.config import ObjectiveConfig
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
@@ -157,26 +158,62 @@ class TestClosestObjectiveCalculator:
         assert calc.needs_model_model_distances is False
 
     def test_at_objective_bonus_is_not_repeated(self, simple_env: WargameEnv) -> None:
-        simple_env.reset()
-        calc = ClosestObjectiveCalculator(weight=1.0)
-
-        obj_loc = simple_env.objectives[0].location.copy()
-        model = simple_env.wargame_models[0]
-        model.location = obj_loc.copy()
-        # Pretend the model was previously far outside the objective zone so
-        # the full bonus is earned when it reaches the centre.
-        model.previous_closest_objective_distance = (
-            float(simple_env.config.objective_radius_size) * 10.0
+        # Use fixed objective so capture centre (obj - r/2) is on-grid; r=2 => (9,9).
+        config = WargameEnvConfig(
+            render_mode=None,
+            board_width=20,
+            board_height=20,
+            number_of_wargame_models=2,
+            number_of_objectives=1,
+            objective_radius_size=2,
+            objectives=[ObjectiveConfig(x=10, y=10)],
         )
+        env = WargameEnv(config=config)
+        env.reset(seed=42)
+        calc = ClosestObjectiveCalculator(weight=1.0)
+        model = env.wargame_models[0]
+        model.location = np.array([9, 9])  # capture centre for obj (10,10) r=2
+        model.previous_closest_objective_distance = 20.0
 
-        cache = compute_distances(simple_env.wargame_models, simple_env.objectives)
-        ctx = _make_step_context(simple_env, cache)
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
 
-        first = calc.calculate(0, model, simple_env, ctx)
-        second = calc.calculate(0, model, simple_env, ctx)
+        first = calc.calculate(0, model, env, ctx)
+        second = calc.calculate(0, model, env, ctx)
 
         assert first == ClosestObjectiveCalculator.REWARD_AT_OBJECTIVE
         assert second == 0.0
+
+    def test_inside_offset_circle_outside_center_circle_gets_positive_potential(
+        self,
+    ) -> None:
+        """Model inside game's offset circle but outside center circle gets positive potential (reward/success aligned)."""
+        # Objective at (10, 10), r=3. Offset circle centre (8.5, 8.5). Place model at (8, 8): norm_offset = norm((-0.5,-0.5)) = 0.707 <= 3, but dist to (10,10) = 2.83 > 3? No, 2.83 < 3. So that's inside both. We need a cell inside offset circle, outside center circle. Center circle: dist to (10,10) <= 3. Offset: norm((model-obj)+r/2) <= 3. So model at (7, 10): delta = (-3, 0), offset = (-3+1.5, 1.5) = (-1.5, 1.5), norm_offset = 2.12 <= 3. Dist to center = 3. So on boundary of center circle. Model at (6, 10): delta = (-4, 0), offset = (-2.5, 1.5), norm_offset = 2.92 <= 3. Dist to center = 4 > 3. So (6, 10) is inside offset circle, outside center circle.
+        config = WargameEnvConfig(
+            render_mode=None,
+            board_width=20,
+            board_height=20,
+            number_of_wargame_models=1,
+            number_of_objectives=1,
+            objective_radius_size=3,
+            objectives=[ObjectiveConfig(x=10, y=10)],
+        )
+        env = WargameEnv(config=config)
+        env.reset(seed=42)
+        calc = ClosestObjectiveCalculator(weight=1.0)
+        model = env.wargame_models[0]
+        model.location = np.array([6, 10])  # inside offset circle, outside center
+        model.previous_closest_objective_distance = 3.5  # was outside
+
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        reward = calc.calculate(0, model, env, ctx)
+
+        # Should get positive reward (moved into offset circle); success would also be true for this model.
+        assert reward > 0.0
+        # Sanity: model is inside offset circle (all_models_at_objectives would include it)
+        at_objective = cache.model_obj_norms_offset[0, 0] <= cache.obj_radii[0]
+        assert at_objective
 
 
 class TestGroupCohesionCalculator:
