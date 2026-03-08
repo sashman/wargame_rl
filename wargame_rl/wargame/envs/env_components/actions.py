@@ -182,9 +182,10 @@ class ActionHandler:
 
         Picks the angle bin nearest to atan2(dy, dx). When max_step_length is
         None, uses maximum speed. When max_step_length is set, chooses the
-        largest speed bin whose displacement norm does not exceed that length
-        (or STAY_ACTION if no bin fits), so the step does not overshoot.
-        Returns STAY_ACTION if dx == dy == 0.
+        largest speed bin whose displacement norm does not exceed that length;
+        if no bin fits, returns the minimum-speed action in that direction so
+        the caller can still make progress (e.g. step into an objective).
+        Returns STAY_ACTION only if dx == dy == 0.
         """
         if dx == 0.0 and dy == 0.0:
             return STAY_ACTION
@@ -202,7 +203,7 @@ class ActionHandler:
                     speed_idx = s
                     break
             else:
-                return STAY_ACTION
+                speed_idx = 0
         else:
             speed_idx = self._n_speed_bins - 1
 
