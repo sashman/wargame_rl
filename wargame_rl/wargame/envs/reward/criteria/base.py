@@ -11,5 +11,9 @@ if TYPE_CHECKING:
 class SuccessCriteria(ABC):
     """Evaluates whether the agent achieved the phase goal this episode."""
 
+    # When True, meeting this criteria ends the episode. When False, episode
+    # runs until max_turns/game_over; success is still used for phase advancement.
+    terminates_episode: bool = True
+
     @abstractmethod
     def is_successful(self, env: WargameEnv, ctx: StepContext) -> bool: ...

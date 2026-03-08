@@ -538,17 +538,6 @@ class WargameEnv(gym.Env):
             compute_model_model=needs_mm,
         )
 
-        if self.config.max_turns_override is not None:
-            is_terminated = check_max_turns_reached(
-                self.current_turn, self.max_turns
-            ) or get_termination(cache)
-        else:
-            is_terminated = (
-                check_max_turns_reached(self.current_turn, self.max_turns)
-                or self._game_clock.is_game_over
-                or get_termination(cache)
-            )
-
         clock_state = self._game_clock.state
         phase = clock_state.phase or BattlePhase.command
 
@@ -564,10 +553,39 @@ class WargameEnv(gym.Env):
                 phase_at_step_start=phase_at_step_start,
             )
             self.last_step_context = ctx
+            # Terminate when phase success criteria are met and that criteria ends the episode
+            goal_reached = self.phase_manager.check_success(self, ctx)
+            criteria_terminates = getattr(
+                self.phase_manager.current_phase.criteria,
+                "terminates_episode",
+                True,
+            )
+            goal_ends_episode = goal_reached and criteria_terminates
+            if self.config.max_turns_override is not None:
+                is_terminated = (
+                    check_max_turns_reached(self.current_turn, self.max_turns)
+                    or goal_ends_episode
+                )
+            else:
+                is_terminated = (
+                    check_max_turns_reached(self.current_turn, self.max_turns)
+                    or self._game_clock.is_game_over
+                    or goal_ends_episode
+                )
             reward = self.phase_manager.calculate_reward(self, ctx)
         else:
+            # Legacy: terminate when all models at objectives (or max_turns / game_over)
+            if self.config.max_turns_override is not None:
+                is_terminated = check_max_turns_reached(
+                    self.current_turn, self.max_turns
+                ) or get_termination(cache)
+            else:
+                is_terminated = (
+                    check_max_turns_reached(self.current_turn, self.max_turns)
+                    or self._game_clock.is_game_over
+                    or get_termination(cache)
+                )
             reward = Reward().calculate_reward(self, cache)
-
             # Legacy terminal success bonus: applied once when all models are at
             # an objective and the episode terminates.
             if is_terminated and self.config.terminal_success_bonus != 0.0:

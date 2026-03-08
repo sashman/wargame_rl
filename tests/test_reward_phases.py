@@ -666,6 +666,31 @@ class TestEnvIntegration:
                 pytest.fail("Episode did not terminate")
         assert steps > 0
 
+    def test_player_leading_vp_phase_does_not_terminate_early(self) -> None:
+        """With player_leading_vp success criteria, episode runs to max_turns."""
+        config = WargameEnvConfig(
+            render_mode=None,
+            board_width=20,
+            board_height=20,
+            number_of_wargame_models=1,
+            number_of_objectives=1,
+            reward_phases=[
+                RewardPhaseConfig(
+                    name="vp_phase",
+                    reward_calculators=[
+                        RewardCalculatorConfig(type="closest_objective")
+                    ],
+                    success_criteria=SuccessCriteriaConfig(type="player_leading_vp"),
+                )
+            ],
+        )
+        env = WargameEnv(config=config)
+        env.reset(seed=42)
+        env._vp_state.player_vp = 20
+        env._vp_state.opponent_vp = 5
+        _, _, terminated, _, _ = env.step(WargameEnvAction(actions=[0]))
+        assert not terminated, "player_leading_vp phase must not end episode when ahead"
+
 
 # ---------------------------------------------------------------------------
 # WargameEnvConfig backward compatibility

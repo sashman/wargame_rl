@@ -101,6 +101,8 @@ When advancement triggers, the `RewardPhaseManager` moves to the next phase and 
 
 **Success rate for advancement:** Both PPO and DQN use the current phase's success criteria (e.g. `all_at_objectives`) evaluated on the **last step** of each evaluation episode, then take the mean over episodes. Using "episode ended early" (steps &lt; max_turns) alone would be wrong when the game can also end by round limit, so the phase's `check_success(env, last_step_context)` is used.
 
+**Episode termination:** When reward phases are configured, the episode **terminates** when the current phase's success criteria are met *and* that criteria is marked as terminating (in addition to max_turns or game over). Criteria that terminate: `all_at_objectives`, `all_models_grouped`. Criteria that do *not* terminate (game runs to max_turns; success is still evaluated at end for advancement): `player_leading_vp`. When `reward_phases` is absent (legacy), termination uses the original rule: all models at objectives or max_turns/game_over.
+
 The `reward_phase` metric (phase index, 0-based) is logged to wandb every epoch, making phase transitions visible in the training dashboard.
 
 ## Reward Aggregation
