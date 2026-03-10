@@ -35,6 +35,7 @@ from wargame_rl.wargame.envs.reward.phase import (
     SuccessCriteriaConfig,
 )
 from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
+from wargame_rl.wargame.envs.reward.reward import Reward
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
@@ -141,27 +142,57 @@ class TestClosestObjectiveCalculator:
         calc = ClosestObjectiveCalculator()
         assert calc.needs_model_model_distances is False
 
-    def test_at_objective_bonus_is_not_repeated(self, simple_env: WargameEnv) -> None:
+    def test_penalty_when_distance_increases(self, simple_env: WargameEnv) -> None:
         simple_env.reset()
         calc = ClosestObjectiveCalculator(weight=1.0)
 
-        obj_loc = simple_env.objectives[0].location.copy()
+        obj_loc = np.array([10, 10])
+        simple_env.objectives[0].location = obj_loc.copy()
         model = simple_env.wargame_models[0]
-        model.location = obj_loc.copy()
-        # Pretend the model was previously far outside the objective zone so
-        # the full bonus is earned when it reaches the centre.
-        model.previous_closest_objective_distance = (
-            float(simple_env.config.objective_radius_size) * 10.0
+        model.location = np.array([5, 5])
+
+        cache_prev = compute_distances(simple_env.wargame_models, simple_env.objectives)
+        ctx_prev = _make_step_context(simple_env, cache_prev)
+        first = calc.calculate(0, model, simple_env, ctx_prev)
+        assert first == 0.0
+
+        model.location = np.array([0, 0])
+        cache_now = compute_distances(simple_env.wargame_models, simple_env.objectives)
+        ctx_now = _make_step_context(simple_env, cache_now)
+
+        previous = float(model.previous_closest_objective_distance)
+        closest_obj_idx = int(cache_now.model_obj_norms[0].argmin())
+        distance_to_closest = float(
+            cache_now.model_obj_norms_offset[0, closest_obj_idx]
         )
+        max_diagonal = float(
+            (simple_env.board_width**2 + simple_env.board_height**2) ** 0.5
+        )
+        normalized_distance = distance_to_closest / max_diagonal
+        distance_improvement = normalized_distance - previous
+        expected = -(float(2) * abs(distance_improvement) + float(0.3))
 
-        cache = compute_distances(simple_env.wargame_models, simple_env.objectives)
-        ctx = _make_step_context(simple_env, cache)
+        reward = calc.calculate(0, model, simple_env, ctx_now)
+        assert reward == pytest.approx(expected)
 
-        first = calc.calculate(0, model, simple_env, ctx)
-        second = calc.calculate(0, model, simple_env, ctx)
+    def test_no_penalty_when_distance_decreases(self, simple_env: WargameEnv) -> None:
+        simple_env.reset()
+        calc = ClosestObjectiveCalculator(weight=1.0)
 
-        assert first == ClosestObjectiveCalculator.REWARD_AT_OBJECTIVE
-        assert second == 0.0
+        obj_loc = np.array([10, 10])
+        simple_env.objectives[0].location = obj_loc.copy()
+        model = simple_env.wargame_models[0]
+        model.location = np.array([0, 0])
+
+        cache_prev = compute_distances(simple_env.wargame_models, simple_env.objectives)
+        ctx_prev = _make_step_context(simple_env, cache_prev)
+        calc.calculate(0, model, simple_env, ctx_prev)
+
+        model.location = np.array([9, 9])
+        cache_now = compute_distances(simple_env.wargame_models, simple_env.objectives)
+        ctx_now = _make_step_context(simple_env, cache_now)
+        reward = calc.calculate(0, model, simple_env, ctx_now)
+        assert reward == 0.0
 
 
 class TestGroupCohesionCalculator:
@@ -532,6 +563,86 @@ class TestEnvIntegration:
             if steps > phased_env.max_turns + 5:
                 pytest.fail("Episode did not terminate")
         assert steps > 0
+
+    def test_phased_reward_matches_legacy_reward(self) -> None:
+        legacy_config = WargameEnvConfig(
+            render_mode=None,
+            board_width=20,
+            board_height=20,
+            number_of_wargame_models=2,
+            number_of_objectives=1,
+            objective_radius_size=2,
+            group_cohesion_enabled=True,
+            group_max_distance=3.0,
+            group_violation_penalty=-0.1,
+        )
+        phased_config = WargameEnvConfig(
+            render_mode=None,
+            board_width=20,
+            board_height=20,
+            number_of_wargame_models=2,
+            number_of_objectives=1,
+            objective_radius_size=2,
+            group_cohesion_enabled=True,
+            group_max_distance=3.0,
+            group_violation_penalty=-0.1,
+            reward_phases=[
+                RewardPhaseConfig(
+                    name="legacy_equivalent",
+                    reward_calculators=[
+                        RewardCalculatorConfig(type="closest_objective", weight=1.0),
+                        RewardCalculatorConfig(type="group_cohesion", weight=1.0),
+                    ],
+                    success_criteria=SuccessCriteriaConfig(type="all_at_objectives"),
+                    success_threshold=1.0,
+                    min_epochs=0,
+                )
+            ],
+        )
+        legacy_env = WargameEnv(config=legacy_config)
+        phased_env = WargameEnv(config=phased_config)
+
+        legacy_env.reset()
+        phased_env.reset()
+
+        obj_loc = np.array([10, 10])
+        legacy_env.objectives[0].location = obj_loc.copy()
+        phased_env.objectives[0].location = obj_loc.copy()
+
+        positions = [
+            (np.array([5, 5]), np.array([6, 5])),
+            (np.array([0, 0]), np.array([10, 0])),
+            (np.array([9, 9]), np.array([9, 10])),
+        ]
+        for p0, p1 in positions:
+            legacy_env.wargame_models[0].location = p0.copy()
+            legacy_env.wargame_models[1].location = p1.copy()
+            phased_env.wargame_models[0].location = p0.copy()
+            phased_env.wargame_models[1].location = p1.copy()
+
+            for env in (legacy_env, phased_env):
+                env.wargame_models[0].group_id = 0
+                env.wargame_models[1].group_id = 0
+
+            legacy_cache = compute_distances(
+                legacy_env.wargame_models,
+                legacy_env.objectives,
+                compute_model_model=True,
+            )
+            phased_cache = compute_distances(
+                phased_env.wargame_models,
+                phased_env.objectives,
+                compute_model_model=True,
+            )
+
+            legacy_reward = Reward().calculate_reward(legacy_env, legacy_cache)
+            assert phased_env.phase_manager is not None
+            phased_ctx = _make_step_context(phased_env, phased_cache)
+            phased_reward = phased_env.phase_manager.calculate_reward(
+                phased_env, phased_ctx
+            )
+
+            assert legacy_reward == pytest.approx(phased_reward)
 
 
 # ---------------------------------------------------------------------------
