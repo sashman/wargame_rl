@@ -680,7 +680,7 @@ class TestEnvIntegration:
             model.location = obj_loc.copy()
             model.group_id = 0
 
-        stay_actions = np.zeros(len(env.action_space.spaces), dtype=int)
+        stay_actions = [0 for _ in env.wargame_models]
         action = WargameEnvAction(actions=stay_actions)
         _, reward, terminated, _, _ = env.step(action)
 
