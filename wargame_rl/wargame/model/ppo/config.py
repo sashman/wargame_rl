@@ -10,16 +10,18 @@ class PPOConfig(BaseModel):
     batch_size: int = 128
     lr: float = 3e-4
     gamma: float = 0.9
-    gae_lambda: float = 0.95
+    gae_lambda: float = 0.95  # 0.9 is quite low, 0.95 - 0.99 is common, above 0.99 is very future oriented
     # Controls bias–variance tradeoff in GAE (Generalized Advantage Estimation).
     # λ = 1 → Monte Carlo (low bias, high variance)
     # λ = 0 → TD(0) (higher bias, low variance)
     eps_clip: float = 0.2
-    vf_coef: float = 0.5  # value function coefficient
+    vf_coef: float = (
+        0.3  # value function coefficient (usually between 0 and 2), strictly positive
+    )
     # Value loss dominates → reduce this
     # Value underfits → increase this
     ent_coef: float = (
-        0.02  # entropy coefficient (increase to explore more) -- default is 0.01
+        0.03  # entropy coefficient (increase to explore more) -- default is 0.01
     )
     max_grad_norm: float = 0.5  # Gradient Stabilization (prevent exploding gradients)
     n_epochs: int = 5
@@ -32,7 +34,7 @@ class PPOConfig(BaseModel):
 
     # Training settings
     log: bool = True
-    show_inner_progress: bool = True  # Rollout and PPO minibatch tqdm bars
+    show_inner_progress: bool = False  # Rollout and PPO minibatch tqdm bars
 
 
 class PPOTrainingConfig(BaseModel):
