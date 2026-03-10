@@ -133,7 +133,11 @@ class RewardPhaseManager:
         for gl_calc in phase.global_calculators:
             global_total += gl_calc.weight * gl_calc.calculate(env, ctx)
 
-        return avg_per_model + global_total
+        reward = avg_per_model + global_total
+        if ctx.is_terminated and env.config.terminal_success_bonus != 0.0:
+            if ctx.distance_cache.all_models_at_objectives():
+                reward += float(env.config.terminal_success_bonus)
+        return reward
 
     def check_success(self, env: WargameEnv, ctx: StepContext) -> bool:
         """Evaluate the current phase's success criteria."""

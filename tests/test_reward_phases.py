@@ -160,6 +160,7 @@ class TestClosestObjectiveCalculator:
         cache_now = compute_distances(simple_env.wargame_models, simple_env.objectives)
         ctx_now = _make_step_context(simple_env, cache_now)
 
+        assert model.previous_closest_objective_distance is not None
         previous = float(model.previous_closest_objective_distance)
         closest_obj_idx = int(cache_now.model_obj_norms[0].argmin())
         distance_to_closest = float(
@@ -643,6 +644,48 @@ class TestEnvIntegration:
             )
 
             assert legacy_reward == pytest.approx(phased_reward)
+
+    def test_phased_terminal_success_bonus_applied(self) -> None:
+        config = WargameEnvConfig(
+            render_mode=None,
+            board_width=20,
+            board_height=20,
+            number_of_wargame_models=2,
+            number_of_objectives=1,
+            objective_radius_size=2,
+            group_cohesion_enabled=True,
+            group_max_distance=3.0,
+            group_violation_penalty=-0.1,
+            max_turns_override=1,
+            terminal_success_bonus=25.0,
+            reward_phases=[
+                RewardPhaseConfig(
+                    name="legacy_equivalent",
+                    reward_calculators=[
+                        RewardCalculatorConfig(type="closest_objective", weight=1.0),
+                        RewardCalculatorConfig(type="group_cohesion", weight=1.0),
+                    ],
+                    success_criteria=SuccessCriteriaConfig(type="all_at_objectives"),
+                    success_threshold=1.0,
+                    min_epochs=0,
+                )
+            ],
+        )
+        env = WargameEnv(config=config)
+        env.reset()
+
+        obj_loc = np.array([10, 10])
+        env.objectives[0].location = obj_loc.copy()
+        for model in env.wargame_models:
+            model.location = obj_loc.copy()
+            model.group_id = 0
+
+        stay_actions = np.zeros(len(env.action_space.spaces), dtype=int)
+        action = WargameEnvAction(actions=stay_actions)
+        _, reward, terminated, _, _ = env.step(action)
+
+        assert terminated is True
+        assert reward == pytest.approx(25.0)
 
 
 # ---------------------------------------------------------------------------

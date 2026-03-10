@@ -486,6 +486,7 @@ class WargameEnv(gym.Env):
                 max_turns=self.max_turns,
                 board_width=self.board_width,
                 board_height=self.board_height,
+                is_terminated=is_terminated,
                 current_round=clock_state.battle_round or 0,
                 battle_phase=phase,
             )
