@@ -302,3 +302,6 @@ profile.html
 
 # Video recordings
 *.mp4
+
+# VSCode
+.vscode/

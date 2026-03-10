@@ -11,22 +11,19 @@ if TYPE_CHECKING:
 
 
 class ClosestObjectiveCalculator(PerModelRewardCalculator):
-    """Reward based on distance to the nearest objective.
+    """Legacy closest-objective reward to match Reward()."""
 
-    Inside the objective radius, reward increases linearly from 0 at the edge
-    of the zone to REWARD_AT_OBJECTIVE at the centre. The per-step reward is
-    the change in this potential, so staying at the same location yields 0.
-    """
+    def _get_closest_objective_reward(
+        self, previous_model_distance: float, distance_to_closest_objective: float
+    ) -> float:
+        distance_improvement = float(
+            distance_to_closest_objective - previous_model_distance
+        )
 
-    REWARD_AT_OBJECTIVE = 25.0
+        if distance_improvement >= 0:
+            return -(float(2) * abs(distance_improvement) + float(0.3))
 
-    def _potential(self, distance_to_center: float, objective_radius: float) -> float:
-        if objective_radius <= 0:
-            return 0.0
-        if distance_to_center >= objective_radius:
-            return 0.0
-        proximity = (objective_radius - distance_to_center) / objective_radius
-        return float(self.REWARD_AT_OBJECTIVE) * proximity
+        return float(0)
 
     def calculate(
         self,
@@ -37,18 +34,17 @@ class ClosestObjectiveCalculator(PerModelRewardCalculator):
     ) -> float:
         cache = ctx.distance_cache
         closest_obj_idx = int(cache.model_obj_norms[model_idx].argmin())
-        distance_to_center = float(cache.model_obj_norms[model_idx, closest_obj_idx])
-        objective_radius = float(cache.obj_radii[closest_obj_idx])
+        distance_to_closest = float(
+            cache.model_obj_norms_offset[model_idx, closest_obj_idx]
+        )
+
+        max_diagonal = float((ctx.board_width**2 + ctx.board_height**2) ** 0.5)
+        normalized_distance = distance_to_closest / max_diagonal
 
         previous = model.previous_closest_objective_distance
-        # Store the raw distance-to-centre for the next step.
-        model.set_previous_closest_objective_distance(distance_to_center)
+        model.set_previous_closest_objective_distance(normalized_distance)
 
         if previous is None:
             return 0.0
 
-        prev_distance = float(previous)
-        current_potential = self._potential(distance_to_center, objective_radius)
-        previous_potential = self._potential(prev_distance, objective_radius)
-
-        return current_potential - previous_potential
+        return self._get_closest_objective_reward(float(previous), normalized_distance)
