@@ -22,8 +22,8 @@ class GroupCohesionCalculator(PerModelRewardCalculator):
     def __init__(
         self,
         weight: float = 1.0,
-        group_max_distance: float = 10.0,
-        violation_penalty: float = -10.0,
+        group_max_distance: float | None = None,
+        violation_penalty: float | None = None,
     ) -> None:
         super().__init__(weight=weight)
         self.group_max_distance = group_max_distance
@@ -43,11 +43,21 @@ class GroupCohesionCalculator(PerModelRewardCalculator):
         group_ids = np.array([m.group_id for m in env.wargame_models], dtype=np.intp)
         min_dists = cache.min_distances_to_same_group(group_ids)
         min_dist = float(min_dists[model_idx])
-        if min_dist <= self.group_max_distance:
+        max_distance = (
+            float(self.group_max_distance)
+            if self.group_max_distance is not None
+            else float(env.config.group_max_distance)
+        )
+        if min_dist <= max_distance:
             return 0.0
 
-        excess = min_dist - self.group_max_distance
-        return self.violation_penalty * excess
+        excess = min_dist - max_distance
+        penalty = (
+            float(self.violation_penalty)
+            if self.violation_penalty is not None
+            else float(env.config.group_violation_penalty)
+        )
+        return penalty * excess
 
     @property
     def needs_model_model_distances(self) -> bool:
