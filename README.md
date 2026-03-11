@@ -7,6 +7,7 @@ Reinforcement learning model for playing table top wargames.
 - [Goals & Roadmap](docs/goals-and-roadmap.md) — Project vision, current status, and phased development plan
 - [Tabletop Rules Reference](docs/tabletop-rules-reference.md) — Condensed reference of the tabletop wargame mechanics we're modelling
 - [Movement System](docs/movement.md) — How polar coordinate movement works (action encoding, direction, speed, configuration)
+- [DDD in wargame/envs](docs/ddd-envs.md) — Domain-driven design motivation and how to extend the environment
 
 ## How to add a feature to the environement?
 1. Update types, states and space
