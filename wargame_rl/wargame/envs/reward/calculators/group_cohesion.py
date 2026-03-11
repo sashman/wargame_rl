@@ -43,19 +43,15 @@ class GroupCohesionCalculator(PerModelRewardCalculator):
         group_ids = np.array([m.group_id for m in env.wargame_models], dtype=np.intp)
         min_dists = cache.min_distances_to_same_group(group_ids)
         min_dist = float(min_dists[model_idx])
-        max_distance = (
-            float(self.group_max_distance)
-            if self.group_max_distance is not None
-            else float(env.config.group_max_distance)
+        max_distance = float(
+            self.group_max_distance if self.group_max_distance is not None else 10.0
         )
         if min_dist <= max_distance:
             return 0.0
 
         excess = min_dist - max_distance
-        penalty = (
-            float(self.violation_penalty)
-            if self.violation_penalty is not None
-            else float(env.config.group_violation_penalty)
+        penalty = float(
+            self.violation_penalty if self.violation_penalty is not None else -10.0
         )
         return penalty * excess
 

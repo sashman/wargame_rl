@@ -28,7 +28,6 @@ from wargame_rl.wargame.envs.opponent.registry import (
 )
 from wargame_rl.wargame.envs.renders import renderer
 from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
-from wargame_rl.wargame.envs.reward.reward import Reward
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.types import (
     BattlePhase,
@@ -121,13 +120,8 @@ class WargameEnv(gym.Env):
         # Last reward from step(); None until first step after reset
         self.last_reward: float | None = None
 
-        # Reward phases (curriculum learning) -- None uses legacy Reward path
-        if config.reward_phases is not None:
-            self.phase_manager: RewardPhaseManager | None = (
-                RewardPhaseManager.from_configs(config.reward_phases)
-            )
-        else:
-            self.phase_manager = None
+        # Reward phases (curriculum learning); always used for reward calculation
+        self.phase_manager = RewardPhaseManager.from_configs(config.reward_phases)
 
         # Last StepContext from step(); available for post-episode success checks
         self.last_step_context: StepContext | None = None
@@ -455,10 +449,7 @@ class WargameEnv(gym.Env):
 
         self._skip_past_excluded_phases()
 
-        needs_mm = self.config.group_cohesion_enabled or (
-            self.phase_manager is not None
-            and self.phase_manager.needs_model_model_distances
-        )
+        needs_mm = self.phase_manager.needs_model_model_distances
         cache = compute_distances(
             self.wargame_models,
             self.objectives,
@@ -479,27 +470,18 @@ class WargameEnv(gym.Env):
         clock_state = self._game_clock.state
         phase = clock_state.phase or BattlePhase.command
 
-        if self.phase_manager is not None:
-            ctx = StepContext(
-                distance_cache=cache,
-                current_turn=self.current_turn,
-                max_turns=self.max_turns,
-                board_width=self.board_width,
-                board_height=self.board_height,
-                is_terminated=is_terminated,
-                current_round=clock_state.battle_round or 0,
-                battle_phase=phase,
-            )
-            self.last_step_context = ctx
-            reward = self.phase_manager.calculate_reward(self, ctx)
-        else:
-            reward = Reward().calculate_reward(self, cache)
-
-            # Legacy terminal success bonus: applied once when all models are at
-            # an objective and the episode terminates.
-            if is_terminated and self.config.terminal_success_bonus != 0.0:
-                if cache.all_models_at_objectives():
-                    reward += float(self.config.terminal_success_bonus)
+        ctx = StepContext(
+            distance_cache=cache,
+            current_turn=self.current_turn,
+            max_turns=self.max_turns,
+            board_width=self.board_width,
+            board_height=self.board_height,
+            is_terminated=is_terminated,
+            current_round=clock_state.battle_round or 0,
+            battle_phase=phase,
+        )
+        self.last_step_context = ctx
+        reward = self.phase_manager.calculate_reward(self, ctx)
 
         observation = self._get_obs(cache)
         info = self._get_info()

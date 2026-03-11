@@ -13,7 +13,7 @@ alwaysApply: false
 - Actions: polar (angle, speed) pairs per model via `ActionHandler(n_models=...)`
   - `ActionHandler.best_action_toward(dx, dy)` for scripted policies; never hardcode action counts — use `ActionHandler.n_actions`
 - `DistanceCache` pre-computes model-objective distances each step
-- Reward: `Reward` or `RewardPhaseManager`; termination in `env_components/termination.py`
+- Reward: `RewardPhaseManager` (phased reward only); termination in `env_components/termination.py`
 
 ## Game timing and phases
 

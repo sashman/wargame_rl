@@ -35,7 +35,6 @@ from wargame_rl.wargame.envs.reward.phase import (
     SuccessCriteriaConfig,
 )
 from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
-from wargame_rl.wargame.envs.reward.reward import Reward
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
@@ -47,7 +46,7 @@ from wargame_rl.wargame.envs.wargame import WargameEnv
 
 @pytest.fixture
 def simple_env() -> WargameEnv:
-    """A small environment with no reward phases (legacy mode)."""
+    """A small environment with default single reward phase."""
     config = WargameEnvConfig(
         render_mode=None,
         board_width=20,
@@ -521,21 +520,20 @@ class TestRewardPhaseManager:
 
 
 class TestEnvIntegration:
-    def test_legacy_env_has_no_phase_manager(self, simple_env: WargameEnv) -> None:
-        assert simple_env.phase_manager is None
-        assert simple_env.last_step_context is None
+    def test_default_env_has_phase_manager(self, simple_env: WargameEnv) -> None:
+        assert simple_env.phase_manager.current_phase_name == "reach_objectives"
 
     def test_phased_env_has_phase_manager(self, phased_env: WargameEnv) -> None:
-        assert phased_env.phase_manager is not None
         assert phased_env.phase_manager.current_phase_name == "group_up"
 
-    def test_legacy_step_unchanged(self, simple_env: WargameEnv) -> None:
+    def test_default_phase_step_returns_reward(self, simple_env: WargameEnv) -> None:
         simple_env.reset()
+        assert simple_env.last_step_context is None
         action = WargameEnvAction(actions=simple_env.action_space.sample())
         obs, reward, terminated, truncated, info = simple_env.step(action)
         assert isinstance(reward, float)
         assert truncated is False
-        assert simple_env.last_step_context is None
+        assert simple_env.last_step_context is not None
 
     def test_phased_step_stores_context(self, phased_env: WargameEnv) -> None:
         phased_env.reset()
@@ -565,86 +563,6 @@ class TestEnvIntegration:
                 pytest.fail("Episode did not terminate")
         assert steps > 0
 
-    def test_phased_reward_matches_legacy_reward(self) -> None:
-        legacy_config = WargameEnvConfig(
-            render_mode=None,
-            board_width=20,
-            board_height=20,
-            number_of_wargame_models=2,
-            number_of_objectives=1,
-            objective_radius_size=2,
-            group_cohesion_enabled=True,
-            group_max_distance=3.0,
-            group_violation_penalty=-0.1,
-        )
-        phased_config = WargameEnvConfig(
-            render_mode=None,
-            board_width=20,
-            board_height=20,
-            number_of_wargame_models=2,
-            number_of_objectives=1,
-            objective_radius_size=2,
-            group_cohesion_enabled=True,
-            group_max_distance=3.0,
-            group_violation_penalty=-0.1,
-            reward_phases=[
-                RewardPhaseConfig(
-                    name="legacy_equivalent",
-                    reward_calculators=[
-                        RewardCalculatorConfig(type="closest_objective", weight=1.0),
-                        RewardCalculatorConfig(type="group_cohesion", weight=1.0),
-                    ],
-                    success_criteria=SuccessCriteriaConfig(type="all_at_objectives"),
-                    success_threshold=1.0,
-                    min_epochs=0,
-                )
-            ],
-        )
-        legacy_env = WargameEnv(config=legacy_config)
-        phased_env = WargameEnv(config=phased_config)
-
-        legacy_env.reset()
-        phased_env.reset()
-
-        obj_loc = np.array([10, 10])
-        legacy_env.objectives[0].location = obj_loc.copy()
-        phased_env.objectives[0].location = obj_loc.copy()
-
-        positions = [
-            (np.array([5, 5]), np.array([6, 5])),
-            (np.array([0, 0]), np.array([10, 0])),
-            (np.array([9, 9]), np.array([9, 10])),
-        ]
-        for p0, p1 in positions:
-            legacy_env.wargame_models[0].location = p0.copy()
-            legacy_env.wargame_models[1].location = p1.copy()
-            phased_env.wargame_models[0].location = p0.copy()
-            phased_env.wargame_models[1].location = p1.copy()
-
-            for env in (legacy_env, phased_env):
-                env.wargame_models[0].group_id = 0
-                env.wargame_models[1].group_id = 0
-
-            legacy_cache = compute_distances(
-                legacy_env.wargame_models,
-                legacy_env.objectives,
-                compute_model_model=True,
-            )
-            phased_cache = compute_distances(
-                phased_env.wargame_models,
-                phased_env.objectives,
-                compute_model_model=True,
-            )
-
-            legacy_reward = Reward().calculate_reward(legacy_env, legacy_cache)
-            assert phased_env.phase_manager is not None
-            phased_ctx = _make_step_context(phased_env, phased_cache)
-            phased_reward = phased_env.phase_manager.calculate_reward(
-                phased_env, phased_ctx
-            )
-
-            assert legacy_reward == pytest.approx(phased_reward)
-
     def test_phased_terminal_success_bonus_applied(self) -> None:
         config = WargameEnvConfig(
             render_mode=None,
@@ -653,14 +571,11 @@ class TestEnvIntegration:
             number_of_wargame_models=2,
             number_of_objectives=1,
             objective_radius_size=2,
-            group_cohesion_enabled=True,
-            group_max_distance=3.0,
-            group_violation_penalty=-0.1,
             max_turns_override=1,
             terminal_success_bonus=25.0,
             reward_phases=[
                 RewardPhaseConfig(
-                    name="legacy_equivalent",
+                    name="reach_objectives",
                     reward_calculators=[
                         RewardCalculatorConfig(type="closest_objective", weight=1.0),
                         RewardCalculatorConfig(type="group_cohesion", weight=1.0),
@@ -694,9 +609,10 @@ class TestEnvIntegration:
 
 
 class TestConfigBackwardCompat:
-    def test_no_reward_phases_field_default(self) -> None:
+    def test_reward_phases_default_single_phase(self) -> None:
         config = WargameEnvConfig(render_mode=None)
-        assert config.reward_phases is None
+        assert len(config.reward_phases) == 1
+        assert config.reward_phases[0].name == "reach_objectives"
 
     def test_reward_phases_parsed_from_dict(self) -> None:
         data = {
@@ -710,6 +626,5 @@ class TestConfigBackwardCompat:
             ],
         }
         config = WargameEnvConfig.model_validate(data)
-        assert config.reward_phases is not None
         assert len(config.reward_phases) == 1
         assert config.reward_phases[0].name == "test"
