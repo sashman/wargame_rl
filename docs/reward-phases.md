@@ -15,7 +15,7 @@ Each phase uses a simpler reward that the agent can learn quickly, then advances
 
 ## Configuration
 
-Reward phases are configured via the `reward_phases` field in the environment YAML config. When this field is absent (or `null`), the environment uses the original legacy `Reward` class -- no behaviour change.
+Reward is always computed via reward phases. Configure the `reward_phases` field in the environment YAML; if omitted, a single default phase is used (reach objectives with `closest_objective`).
 
 ### Minimal example
 
@@ -107,33 +107,6 @@ Each step, the phase manager computes the reward as follows:
 2. **Global calculators**: Each global calculator's output is multiplied by its `weight` and summed.
 3. **Final reward** = averaged per-model reward + global reward total.
 
-## Backward Compatibility
-
-The reward phases system is fully opt-in:
-
-- When `reward_phases` is absent from the YAML config, the environment uses the original `Reward` class and `get_termination()` function with zero code path changes.
-- All existing YAML configs continue to work without modification.
-- The original `reward.py` and `termination.py` files are unmodified and remain the canonical legacy path.
-
-To replicate the original reward behaviour using phases, set `group_cohesion_enabled: false` (to disable the legacy path) and configure a single phase with both calculators:
-
-```yaml
-group_cohesion_enabled: false
-
-reward_phases:
-  - name: move_and_group
-    reward_calculators:
-      - type: closest_objective
-        weight: 1.0
-      - type: group_cohesion
-        weight: 1.0
-        params: { group_max_distance: 5.0, violation_penalty: -0.1 }
-    success_criteria:
-      type: all_at_objectives
-    success_threshold: 0.8
-    min_epochs: 0
-```
-
 ## Adding New Calculators and Criteria
 
 To add a new reward calculator:
@@ -166,7 +139,6 @@ Both calculators and criteria receive a `StepContext` object containing the dist
 
 ```
 wargame_rl/wargame/envs/reward/
-  reward.py                        # Legacy reward (untouched)
   step_context.py                  # StepContext dataclass
   phase.py                         # Pydantic config models
   phase_manager.py                 # RewardPhaseManager
@@ -181,5 +153,5 @@ wargame_rl/wargame/envs/reward/
     all_models_grouped.py          # All models within group distance
     registry.py                    # Type-string -> class mapping
   types/
-    model_rewards.py               # Legacy ModelRewards (untouched)
+    model_rewards.py               # ModelRewards (per-model reward breakdown)
 ```

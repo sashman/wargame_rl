@@ -226,10 +226,7 @@ class DQNLightning(LightningModule):
                 episode_rewards.append(reward)
                 steps_s.append(steps)
 
-                if (
-                    self.env.phase_manager is not None
-                    and self.env.last_step_context is not None
-                ):
+                if self.env.last_step_context is not None:
                     success = self.env.phase_manager.check_success(
                         self.env, self.env.last_step_context
                     )
@@ -241,7 +238,7 @@ class DQNLightning(LightningModule):
         self.log("max_episode_reward", max(episode_rewards), prog_bar=False)
         self.log("min_episode_reward", min(episode_rewards), prog_bar=False)
 
-        if self.env.phase_manager is not None and episode_successes:
+        if episode_successes:
             sr = np.array(episode_successes, dtype=float).mean()
         else:
             sr = float((np.array(steps_s) < self.env.max_turns).mean())
@@ -254,18 +251,17 @@ class DQNLightning(LightningModule):
         if self.hparams.log:  # type: ignore
             sr = self.run_episodes(self.hparams.n_episodes)  # type: ignore
 
-            if self.env.phase_manager is not None:
-                advanced = self.env.phase_manager.try_advance(sr, self.current_epoch)
+            advanced = self.env.phase_manager.try_advance(sr, self.current_epoch)
+            self.log(
+                "reward_phase",
+                float(self.env.phase_manager.current_phase_index),
+                prog_bar=False,
+            )
+            if advanced:
                 self.log(
-                    "reward_phase",
-                    float(self.env.phase_manager.current_phase_index),
+                    "phase_advanced_at_epoch",
+                    float(self.current_epoch),
                     prog_bar=False,
                 )
-                if advanced:
-                    self.log(
-                        "phase_advanced_at_epoch",
-                        float(self.current_epoch),
-                        prog_bar=False,
-                    )
 
         return super().on_train_epoch_end()  # type: ignore
