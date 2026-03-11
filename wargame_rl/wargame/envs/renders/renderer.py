@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from wargame_rl.wargame.envs import wargame
+from wargame_rl.wargame.envs.domain.battle_view import BattleView
 
 
 class Renderer(ABC):
     @abstractmethod
-    def setup(self, env: wargame.WargameEnv) -> None:
+    def setup(self, view: BattleView) -> None:
         pass
 
     @abstractmethod
-    def render(self, env: wargame.WargameEnv) -> None:
+    def render(self, view: BattleView) -> None:
         pass
 
     @abstractmethod

@@ -7,8 +7,8 @@ import numpy as np
 from wargame_rl.wargame.envs.reward.calculators.base import PerModelRewardCalculator
 
 if TYPE_CHECKING:
+    from wargame_rl.wargame.envs.domain.battle_view import BattleView
     from wargame_rl.wargame.envs.reward.step_context import StepContext
-    from wargame_rl.wargame.envs.wargame import WargameEnv
     from wargame_rl.wargame.envs.wargame_model import WargameModel
 
 
@@ -33,14 +33,14 @@ class GroupCohesionCalculator(PerModelRewardCalculator):
         self,
         model_idx: int,
         model: WargameModel,
-        env: WargameEnv,
+        view: BattleView,
         ctx: StepContext,
     ) -> float:
         cache = ctx.distance_cache
         if cache.model_model_norms is None:
             return 0.0
 
-        group_ids = np.array([m.group_id for m in env.wargame_models], dtype=np.intp)
+        group_ids = np.array([m.group_id for m in view.player_models], dtype=np.intp)
         min_dists = cache.min_distances_to_same_group(group_ids)
         min_dist = float(min_dists[model_idx])
         max_distance = float(
