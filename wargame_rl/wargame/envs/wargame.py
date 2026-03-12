@@ -28,6 +28,7 @@ from wargame_rl.wargame.envs.env_components import (
     build_observation,
     compute_distances,
 )
+from wargame_rl.wargame.envs.mission import build_vp_calculator
 from wargame_rl.wargame.envs.opponent.policy import OpponentPolicy
 from wargame_rl.wargame.envs.opponent.registry import (
     _auto_register,
@@ -112,6 +113,11 @@ class WargameEnv(gym.Env):
         # Reward phases (curriculum learning); always used for reward calculation
         self.phase_manager = RewardPhaseManager.from_configs(config.reward_phases)
 
+        # Mission VP calculator (scores at end of command phase from round 2)
+        self._vp_calculator = build_vp_calculator(
+            config.mission.type, config.mission.params
+        )
+
         # Last StepContext from step(); available for post-episode success checks
         self.last_step_context: StepContext | None = None
 
@@ -163,6 +169,42 @@ class WargameEnv(gym.Env):
     def n_rounds(self) -> int:
         return self._game_clock.n_rounds
 
+    @property
+    def player_vp(self) -> int:
+        return self._battle.player_vp
+
+    @property
+    def opponent_vp(self) -> int:
+        return self._battle.opponent_vp
+
+    @property
+    def player_vp_delta(self) -> int:
+        return self._battle.player_vp_delta
+
+    @property
+    def opponent_vp_delta(self) -> int:
+        return self._battle.opponent_vp_delta
+
+    def _on_before_advance(self, clock: GameClock) -> None:
+        """Score VP when leaving command phase from round 2 (mission-driven)."""
+        state = clock.state
+        if state.phase != BattlePhase.command or state.battle_round is None:
+            return
+        if state.active_player is None:
+            return
+        vp = self._vp_calculator.compute_vp(
+            self,
+            state.active_player,
+            state.battle_round,
+            self._player_side,
+        )
+        if vp <= 0:
+            return
+        if state.active_player == self._player_side:
+            self._battle.add_player_vp(vp)
+        else:
+            self._battle.add_opponent_vp(vp)
+
     # Backward compat: static factory methods delegate to BattleFactory
     @staticmethod
     def create_wargame_models(config: WargameEnvConfig) -> list[WargameModel]:
@@ -210,6 +252,7 @@ class WargameEnv(gym.Env):
             self._skip_phases,
             self._player_side,
             self._apply_opponent_action,
+            on_before_advance=self._on_before_advance,
         )
 
         cache = compute_distances(self.wargame_models, self.objectives)
@@ -271,6 +314,7 @@ class WargameEnv(gym.Env):
     def step(
         self, action: WargameEnvAction
     ) -> tuple[WargameEnvObservation, float, bool, bool, dict[str, Any]]:
+        self._battle.reset_vp_deltas()
         self._apply_player_action(action)
 
         self.current_turn += 1
@@ -280,6 +324,7 @@ class WargameEnv(gym.Env):
             self._skip_phases,
             self._player_side,
             self._apply_opponent_action,
+            on_before_advance=self._on_before_advance,
         )
 
         needs_mm = self.phase_manager.needs_model_model_distances

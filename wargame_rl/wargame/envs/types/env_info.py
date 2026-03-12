@@ -28,3 +28,15 @@ class WargameEnvInfo(BaseModel):
     opponent_deployment_zone: tuple[int, int, int, int] = Field(
         description="The opponent deployment zone coordinates."
     )
+    player_vp: int = Field(
+        default=0, description="Cumulative victory points for the player."
+    )
+    opponent_vp: int = Field(
+        default=0, description="Cumulative victory points for the opponent."
+    )
+    player_vp_delta: int = Field(
+        default=0, description="VP added for the player during this step."
+    )
+    opponent_vp_delta: int = Field(
+        default=0, description="VP added for the opponent during this step."
+    )

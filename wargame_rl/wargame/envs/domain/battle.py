@@ -32,6 +32,10 @@ class Battle:
         self._objectives = objectives
         self._deployment_zone = deployment_zone
         self._opponent_deployment_zone = opponent_deployment_zone
+        self._player_vp = 0
+        self._opponent_vp = 0
+        self._player_vp_delta = 0
+        self._opponent_vp_delta = 0
 
     @property
     def board_width(self) -> int:
@@ -61,8 +65,43 @@ class Battle:
     def opponent_deployment_zone(self) -> np.ndarray:
         return self._opponent_deployment_zone.as_array()
 
+    @property
+    def player_vp(self) -> int:
+        return self._player_vp
+
+    @property
+    def opponent_vp(self) -> int:
+        return self._opponent_vp
+
+    @property
+    def player_vp_delta(self) -> int:
+        return self._player_vp_delta
+
+    @property
+    def opponent_vp_delta(self) -> int:
+        return self._opponent_vp_delta
+
+    def add_player_vp(self, amount: int) -> None:
+        """Add victory points for the player and accumulate delta for this step."""
+        self._player_vp += amount
+        self._player_vp_delta += amount
+
+    def add_opponent_vp(self, amount: int) -> None:
+        """Add victory points for the opponent and accumulate delta for this step."""
+        self._opponent_vp += amount
+        self._opponent_vp_delta += amount
+
+    def reset_vp_deltas(self) -> None:
+        """Reset per-step VP deltas (call at start of each env step)."""
+        self._player_vp_delta = 0
+        self._opponent_vp_delta = 0
+
     def reset_for_episode(self) -> None:
         """Clear episode state on all models before new placement."""
+        self._player_vp = 0
+        self._opponent_vp = 0
+        self._player_vp_delta = 0
+        self._opponent_vp_delta = 0
         for model in self._player_models:
             model.reset_for_episode()
         for model in self._opponent_models:

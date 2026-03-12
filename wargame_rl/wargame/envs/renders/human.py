@@ -16,6 +16,7 @@ class QuitRequested(Exception):
 
 class HumanRender(Renderer):
     PANEL_HEIGHT = 36
+    SOUTH_PANEL_ROWS = 2
     GRID_SIZE = 1024  # Max width or height of the game grid in pixels
 
     # Distinct colors per group for player models
@@ -54,8 +55,12 @@ class HumanRender(Renderer):
         self._pinned_model_index: int | None = None
         # Optional epoch number to show in south panel (e.g. when recording)
         self.epoch: int | None = None
-        # Total window height: north panel + grid + south panel
-        self._total_window_height = self.GRID_SIZE + 2 * self.PANEL_HEIGHT
+        # Total window height: north panel + grid + south panel (two rows)
+        self._total_window_height = (
+            self.GRID_SIZE
+            + self.PANEL_HEIGHT
+            + self.SOUTH_PANEL_ROWS * self.PANEL_HEIGHT
+        )
         # Board dimensions (set in setup) for recomputing scale on window resize
         self._board_width: int = 50
         self._board_height: int = 50
@@ -96,7 +101,11 @@ class HumanRender(Renderer):
         self.canvas_width = math.ceil(scale * board_w)
         self.canvas_height = math.ceil(scale * board_h)
         self.pix_square_size = scale
-        self._total_window_height = self.canvas_height + 2 * self.PANEL_HEIGHT
+        self._total_window_height = (
+            self.canvas_height
+            + self.PANEL_HEIGHT
+            + self.SOUTH_PANEL_ROWS * self.PANEL_HEIGHT
+        )
         self._canvas_offset_x = 0
         self._canvas_offset_y = self.PANEL_HEIGHT
 
@@ -156,7 +165,12 @@ class HumanRender(Renderer):
             self._last_window_w, self._last_window_h = current_w, current_h
             self._total_window_height = current_h
             available_w = current_w
-            available_h = max(1, current_h - 2 * self.PANEL_HEIGHT)
+            available_h = max(
+                1,
+                current_h
+                - self.PANEL_HEIGHT
+                - self.SOUTH_PANEL_ROWS * self.PANEL_HEIGHT,
+            )
             self._compute_scale_and_canvas(available_w, available_h)
             self._canvas_offset_x = (current_w - self.canvas_width) // 2
             self._canvas_offset_y = (
@@ -257,13 +271,14 @@ class HumanRender(Renderer):
         self.window.blit(text_surface, text_rect)
 
     def _draw_south_panel(self, view: BattleView) -> None:
-        """Draw the south panel with environment information."""
+        """Draw the south panel with environment information (two rows)."""
         if self.window is None:
             return
         window_w = self.window.get_width()
         window_h = self.window.get_height()
-        panel_y = window_h - self.PANEL_HEIGHT
-        panel_rect = pygame.Rect(0, panel_y, window_w, self.PANEL_HEIGHT)
+        south_h = self.SOUTH_PANEL_ROWS * self.PANEL_HEIGHT
+        panel_y = window_h - south_h
+        panel_rect = pygame.Rect(0, panel_y, window_w, south_h)
         pygame.draw.rect(self.window, (45, 45, 48), panel_rect)
         pygame.draw.line(
             self.window,
@@ -282,28 +297,55 @@ class HumanRender(Renderer):
         turn_text = f"Round: {round_num} / {n_rounds}  |  {phase_label}"
         steps_text = f"Step: {view.current_turn}"
         reward_text = f"Reward: {reward_str}"
-        center_y = panel_y + self.PANEL_HEIGHT // 2
+        center_y_row1 = panel_y + self.PANEL_HEIGHT // 2
         if self.epoch is not None:
             epoch_text = f"Epoch: {self.epoch}"
             epoch_surface = font.render(epoch_text, True, text_color)
             turn_surface = font.render(turn_text, True, text_color)
             steps_surface = font.render(steps_text, True, text_color)
             reward_surface = font.render(reward_text, True, text_color)
-            epoch_rect = epoch_surface.get_rect(center=(window_w // 8, center_y))
-            turn_rect = turn_surface.get_rect(center=(3 * window_w // 8, center_y))
-            steps_rect = steps_surface.get_rect(center=(5 * window_w // 8, center_y))
-            reward_rect = reward_surface.get_rect(center=(7 * window_w // 8, center_y))
+            epoch_rect = epoch_surface.get_rect(center=(window_w // 8, center_y_row1))
+            turn_rect = turn_surface.get_rect(center=(3 * window_w // 8, center_y_row1))
+            steps_rect = steps_surface.get_rect(
+                center=(5 * window_w // 8, center_y_row1)
+            )
+            reward_rect = reward_surface.get_rect(
+                center=(7 * window_w // 8, center_y_row1)
+            )
             self.window.blit(epoch_surface, epoch_rect)
         else:
             turn_surface = font.render(turn_text, True, text_color)
             steps_surface = font.render(steps_text, True, text_color)
             reward_surface = font.render(reward_text, True, text_color)
-            turn_rect = turn_surface.get_rect(center=(window_w // 6, center_y))
-            steps_rect = steps_surface.get_rect(center=(window_w // 2, center_y))
-            reward_rect = reward_surface.get_rect(center=(5 * window_w // 6, center_y))
+            turn_rect = turn_surface.get_rect(center=(window_w // 6, center_y_row1))
+            steps_rect = steps_surface.get_rect(center=(window_w // 2, center_y_row1))
+            reward_rect = reward_surface.get_rect(
+                center=(5 * window_w // 6, center_y_row1)
+            )
         self.window.blit(turn_surface, turn_rect)
         self.window.blit(steps_surface, steps_rect)
         self.window.blit(reward_surface, reward_rect)
+
+        # Row 2: victory points and delta this step
+        center_y_row2 = panel_y + self.PANEL_HEIGHT + self.PANEL_HEIGHT // 2
+        player_delta_str = (
+            f" (+{view.player_vp_delta})" if view.player_vp_delta > 0 else ""
+        )
+        opponent_delta_str = (
+            f" (+{view.opponent_vp_delta})" if view.opponent_vp_delta > 0 else ""
+        )
+        player_vp_text = f"Player VP: {view.player_vp}{player_delta_str}"
+        opponent_vp_text = f"Opponent VP: {view.opponent_vp}{opponent_delta_str}"
+        player_vp_surface = font.render(player_vp_text, True, text_color)
+        opponent_vp_surface = font.render(opponent_vp_text, True, text_color)
+        player_vp_rect = player_vp_surface.get_rect(
+            center=(window_w // 4, center_y_row2)
+        )
+        opponent_vp_rect = opponent_vp_surface.get_rect(
+            center=(3 * window_w // 4, center_y_row2)
+        )
+        self.window.blit(player_vp_surface, player_vp_rect)
+        self.window.blit(opponent_vp_surface, opponent_vp_rect)
 
     def _get_model_index_at(self, view: BattleView, mx: int, my: int) -> int | None:
         """Return the index of the wargame model at window position (mx, my), or None."""
@@ -394,7 +436,7 @@ class HumanRender(Renderer):
                     continue
                 new_w = max(1, event.w)
                 new_h = max(
-                    2 * self.PANEL_HEIGHT + 1,
+                    self.PANEL_HEIGHT + self.SOUTH_PANEL_ROWS * self.PANEL_HEIGHT + 1,
                     event.h,
                 )
                 # Only resize when size actually changed to avoid feedback loop
@@ -409,7 +451,11 @@ class HumanRender(Renderer):
                 self._last_window_w, self._last_window_h = new_w, new_h
                 self._total_window_height = new_h
                 available_w = new_w
-                available_h = new_h - 2 * self.PANEL_HEIGHT
+                available_h = (
+                    new_h
+                    - self.PANEL_HEIGHT
+                    - self.SOUTH_PANEL_ROWS * self.PANEL_HEIGHT
+                )
                 self._compute_scale_and_canvas(available_w, available_h)
                 self._canvas_offset_x = (new_w - self.canvas_width) // 2
                 self._canvas_offset_y = (

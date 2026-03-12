@@ -7,6 +7,8 @@ from collections.abc import Callable
 from wargame_rl.wargame.envs.domain.game_clock import GameClock
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase, GameState, PlayerSide
 
+OnBeforeAdvance = Callable[[GameClock], None]
+
 
 def _is_opponent_active(clock_state: GameState, player_side: PlayerSide) -> bool:
     return (
@@ -27,6 +29,7 @@ def run_until_player_phase(
     skip_phases: frozenset[BattlePhase],
     player_side: PlayerSide,
     apply_opponent_action: Callable[[], None],
+    on_before_advance: OnBeforeAdvance | None = None,
 ) -> None:
     """Skip excluded phases, then run opponent turn if active, until we're on a player phase.
 
@@ -39,11 +42,15 @@ def run_until_player_phase(
         and not _is_opponent_active(clock.state, player_side)
         and _should_skip_phase(clock.state, skip_phases)
     ):
+        if on_before_advance is not None:
+            on_before_advance(clock)
         clock.advance_phase()
 
     # Execute full opponent turn if it's their turn
     while not clock.is_game_over and _is_opponent_active(clock.state, player_side):
         apply_opponent_action()
+        if on_before_advance is not None:
+            on_before_advance(clock)
         clock.advance_phase()
 
     # Skip past excluded phases again (e.g. our command phase) until movement or game over
@@ -52,6 +59,8 @@ def run_until_player_phase(
         and not _is_opponent_active(clock.state, player_side)
         and _should_skip_phase(clock.state, skip_phases)
     ):
+        if on_before_advance is not None:
+            on_before_advance(clock)
         clock.advance_phase()
 
 
@@ -60,12 +69,17 @@ def run_after_player_action(
     skip_phases: frozenset[BattlePhase],
     player_side: PlayerSide,
     apply_opponent_action: Callable[[], None],
+    on_before_advance: OnBeforeAdvance | None = None,
 ) -> None:
     """Advance phase once after player action, then run opponent turn and skip phases as needed.
 
     Call this from step() after applying the player's action.
     """
     if not clock.is_game_over:
+        if on_before_advance is not None:
+            on_before_advance(clock)
         clock.advance_phase()
 
-    run_until_player_phase(clock, skip_phases, player_side, apply_opponent_action)
+    run_until_player_phase(
+        clock, skip_phases, player_side, apply_opponent_action, on_before_advance
+    )

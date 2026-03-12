@@ -97,6 +97,8 @@ def build_observation(
         battle_round=battle_round,
         battle_phase_index=battle_phase_index,
         n_rounds=view.n_rounds,
+        player_vp=view.player_vp,
+        opponent_vp=view.opponent_vp,
     )
 
 
@@ -117,4 +119,8 @@ def build_info(view: BattleView) -> WargameEnvInfo:
         opponent_models=_models_to_obs(view.opponent_models, max_groups),
         deployment_zone=deployment_zone,
         opponent_deployment_zone=opponent_deployment_zone,
+        player_vp=view.player_vp,
+        opponent_vp=view.opponent_vp,
+        player_vp_delta=view.player_vp_delta,
+        opponent_vp_delta=view.opponent_vp_delta,
     )

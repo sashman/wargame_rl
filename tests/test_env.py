@@ -35,12 +35,17 @@ def test_reset_returns_observation_and_info(env: WargameEnv) -> None:
 
 
 def test_reset_observation_has_expected_structure(env: WargameEnv) -> None:
-    """Observation has current_turn, wargame_models, and objectives."""
+    """Observation has current_turn, wargame_models, objectives, and VP."""
     observation, _ = env.reset(seed=42)
     assert hasattr(observation, "current_turn")
     assert hasattr(observation, "wargame_models")
     assert hasattr(observation, "objectives")
+    assert hasattr(observation, "player_vp")
+    assert hasattr(observation, "opponent_vp")
     assert observation.current_turn == 0
+    assert observation.player_vp == 0
+    assert observation.opponent_vp == 0
+    assert observation.size_game_observation == 5
     assert len(observation.wargame_models) == env.config.number_of_wargame_models
     assert len(observation.objectives) == env.config.number_of_objectives
 
@@ -57,13 +62,17 @@ def test_reset_with_seed_is_reproducible(env: WargameEnv) -> None:
 
 
 def test_reset_info_contains_expected_keys(env: WargameEnv) -> None:
-    """info dict contains current_turn, wargame_models, objectives, deployment zones."""
+    """info dict contains current_turn, wargame_models, objectives, deployment zones, VP."""
     _, info = env.reset(seed=42)
     assert "current_turn" in info
     assert "wargame_models" in info
     assert "objectives" in info
     assert "deployment_zone" in info
     assert "opponent_deployment_zone" in info
+    assert "player_vp" in info
+    assert "opponent_vp" in info
+    assert info["player_vp"] == 0
+    assert info["opponent_vp"] == 0
 
 
 def test_reset_sets_internal_state(env: WargameEnv) -> None:
