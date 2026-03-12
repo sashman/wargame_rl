@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 from wargame_rl.wargame.envs.reward.calculators.base import PerModelRewardCalculator
 
 if TYPE_CHECKING:
+    from wargame_rl.wargame.envs.domain.battle_view import BattleView
     from wargame_rl.wargame.envs.reward.step_context import StepContext
-    from wargame_rl.wargame.envs.wargame import WargameEnv
     from wargame_rl.wargame.envs.wargame_model import WargameModel
 
 
@@ -29,7 +29,7 @@ class ClosestObjectiveCalculator(PerModelRewardCalculator):
         self,
         model_idx: int,
         model: WargameModel,
-        env: WargameEnv,
+        view: BattleView,
         ctx: StepContext,
     ) -> float:
         cache = ctx.distance_cache

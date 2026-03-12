@@ -19,6 +19,10 @@ alwaysApply: true
 - Scripted behaviours: name classes descriptively with a `Scripted` prefix (e.g. `ScriptedAdvanceToObjectivePolicy`, not `ScriptedPolicy`)
 - Use registry pattern with string identifiers for YAML-configurable subsystems (opponent policies, reward calculators/criteria)
 
+## Environment and domain (wargame/envs)
+
+- When changing the environment, domain, reward, or rendering, follow [docs/ddd-envs.md](docs/ddd-envs.md): keep domain logic in `domain/`, use `BattleView` for read-only state, and preserve dependency direction (domain → types only; reward/renders → BattleView).
+
 ## Adding New Entity Types
 
 - Mirror existing entity patterns: reuse the same model class (`WargameModel`), same config schema (`ModelConfig`), same placement logic

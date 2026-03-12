@@ -1,26 +1,5 @@
-from __future__ import annotations
+"""Backward-compat re-export of WargameObjective from domain."""
 
-import numpy as np
-from gymnasium import spaces
+from wargame_rl.wargame.envs.domain.entities import WargameObjective
 
-
-class WargameObjective:
-    def __init__(self, location: np.ndarray, radius_size: int):
-        self.location = location  # Should be a numpy array of shape (2,)
-        self.radius_size = radius_size  # Radius of the objective in the environment
-
-    def __repr__(self) -> str:
-        return f"WargameObjective(location={self.location}, radius_size={self.radius_size})"
-
-    @staticmethod
-    def to_space(board_width: int, board_height: int) -> spaces.Dict:
-        return spaces.Dict(
-            {
-                "location": spaces.Box(
-                    low=np.array([0, 0], dtype=np.int32),
-                    high=np.array([board_width - 1, board_height - 1], dtype=np.int32),
-                    shape=(2,),
-                    dtype=np.int32,
-                )
-            }
-        )
+__all__ = ["WargameObjective"]
