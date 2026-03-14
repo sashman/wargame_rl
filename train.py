@@ -95,6 +95,14 @@ def train(
         False,
         help="Disable rollout/PPO tqdm progress bars (e.g. for CI or log redirection)",
     ),
+    run_suffix: str | None = typer.Option(
+        None,
+        help="Optional suffix appended to run name (for unique checkpoint dirs when running multiple jobs in parallel)",
+    ),
+    wandb_group: str | None = typer.Option(
+        None,
+        help="Wandb group name to organize runs in the UI (e.g. when running multiple configs in parallel)",
+    ),
 ) -> None:
     """Train the agent."""
 
@@ -128,7 +136,11 @@ def train(
         }
 
         with init_wandb(
-            config=config, name=env_config.config_name, disabled=no_wandb
+            config=config,
+            name=env_config.config_name,
+            disabled=no_wandb,
+            group=wandb_group,
+            run_suffix=run_suffix,
         ) as run:
             env_config_callback = EnvConfigCallback(run.name, env_config)
             dqn_callbacks = cast(
@@ -181,7 +193,11 @@ def train(
         }
 
         with init_wandb(
-            config=config, name=env_config.config_name, disabled=no_wandb
+            config=config,
+            name=env_config.config_name,
+            disabled=no_wandb,
+            group=wandb_group,
+            run_suffix=run_suffix,
         ) as run:
             env_config_callback = EnvConfigCallback(run.name, env_config)
             ppo_callbacks = cast(
