@@ -175,11 +175,17 @@ class ActionHandler:
         """Encode an (angle_idx, speed_idx) pair into an action integer."""
         return 1 + angle_idx * self._n_speed_bins + speed_idx
 
-    def best_action_toward(self, dx: float, dy: float) -> int:
+    def best_action_toward(
+        self, dx: float, dy: float, max_step_length: float | None = None
+    ) -> int:
         """Return the action that moves closest to the direction (dx, dy).
 
-        Picks the angle bin nearest to atan2(dy, dx) at maximum speed.
-        Returns STAY_ACTION if dx == dy == 0.
+        Picks the angle bin nearest to atan2(dy, dx). When max_step_length is
+        None, uses maximum speed. When max_step_length is set, chooses the
+        largest speed bin whose displacement norm does not exceed that length;
+        if no bin fits, returns the minimum-speed action in that direction so
+        the caller can still make progress (e.g. step into an objective).
+        Returns STAY_ACTION only if dx == dy == 0.
         """
         if dx == 0.0 and dy == 0.0:
             return STAY_ACTION
@@ -188,7 +194,19 @@ class ActionHandler:
         diffs = np.abs(angles - target_angle)
         diffs = np.minimum(diffs, 2 * np.pi - diffs)
         angle_idx = int(np.argmin(diffs))
-        speed_idx = self._n_speed_bins - 1  # max speed
+
+        if max_step_length is not None:
+            speed_idx = self._n_speed_bins - 1
+            for s in range(self._n_speed_bins - 1, -1, -1):
+                disp = self._displacements[angle_idx, s]
+                if np.linalg.norm(disp) <= max_step_length:
+                    speed_idx = s
+                    break
+            else:
+                speed_idx = 0
+        else:
+            speed_idx = self._n_speed_bins - 1
+
         return self.encode_action(angle_idx, speed_idx)
 
     def apply(
