@@ -10,7 +10,7 @@ just train-multi config1.yaml config2.yaml config3.yaml
 
 - Each run gets a unique **run name** (and thus checkpoint directory) via an automatic `--run-suffix` (1, 2, 3, …).
 - All runs from one `train-multi` invocation share a **Wandb group** (e.g. `train-multi-2025-03-14-12-00-00`) so they appear together in the Wandb UI.
-- Override algorithm and network type: `just train-multi config1.yaml config2.yaml algorithm=dqn model=transformer`.
+- `train-multi` uses PPO and transformer; for other algorithm/network use `just train` or run `train.py` manually.
 
 Each process calls `wandb.init()` independently; Wandb supports multiple concurrent runs and assigns each a unique run ID. No SDK changes are required for concurrency.
 

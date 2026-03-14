@@ -55,18 +55,13 @@ train env_config_path='examples/env_config/4_models_2_objectives_fixed_phased.ya
 	fi
 
 # Run multiple env configs in parallel. Each run gets a unique --run-suffix and shared --wandb-group.
-# Use: just train-multi config1.yaml config2.yaml
-# Or: just train-multi config1.yaml config2.yaml algorithm=dqn model=transformer
-train-multi algorithm='ppo' model='transformer' *configs:
-	@group="train-multi-$$(date +%Y-%m-%d-%H-%M-%S)" && \
+# Uses PPO + transformer. Use: just train-multi config1.yaml config2.yaml
+train-multi *configs:
+	@group="train-multi-$(date +%Y-%m-%d-%H-%M-%S)" && \
 	i=1 && \
 	for c in {{configs}}; do \
-		if [ -z "{{model}}" ]; then \
-			uv run train.py --record-during-training --env-config-path "$$c" --algorithm {{algorithm}} --run-suffix "$$i" --wandb-group "$$group" & \
-		else \
-			uv run train.py --record-during-training --env-config-path "$$c" --algorithm {{algorithm}} --network-type {{model}} --run-suffix "$$i" --wandb-group "$$group" & \
-		fi; \
-		i=$$((i+1)); \
+		uv run train.py --record-during-training --env-config-path "$c" --algorithm ppo --network-type transformer --run-suffix "$i" --wandb-group "$group" & \
+		i=$((i+1)); \
 	done && \
 	wait
 
