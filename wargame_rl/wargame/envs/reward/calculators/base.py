@@ -4,8 +4,8 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from wargame_rl.wargame.envs.domain.battle_view import BattleView
     from wargame_rl.wargame.envs.reward.step_context import StepContext
-    from wargame_rl.wargame.envs.wargame import WargameEnv
     from wargame_rl.wargame.envs.wargame_model import WargameModel
 
 
@@ -20,7 +20,7 @@ class PerModelRewardCalculator(ABC):
         self,
         model_idx: int,
         model: WargameModel,
-        env: WargameEnv,
+        view: BattleView,
         ctx: StepContext,
     ) -> float: ...
 
@@ -37,7 +37,7 @@ class GlobalRewardCalculator(ABC):
         self.weight = weight
 
     @abstractmethod
-    def calculate(self, env: WargameEnv, ctx: StepContext) -> float: ...
+    def calculate(self, view: BattleView, ctx: StepContext) -> float: ...
 
     @property
     def needs_model_model_distances(self) -> bool:

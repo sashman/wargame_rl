@@ -5,7 +5,11 @@ from typing import Any, Protocol, TypeVar
 
 from pydantic import BaseModel, Field, model_validator
 
-from wargame_rl.wargame.envs.reward.phase import RewardPhaseConfig
+from wargame_rl.wargame.envs.reward.phase import (
+    RewardCalculatorConfig,
+    RewardPhaseConfig,
+    SuccessCriteriaConfig,
+)
 from wargame_rl.wargame.envs.types.game_timing import NON_MOVEMENT_PHASES, BattlePhase
 
 
@@ -72,6 +76,19 @@ class OpponentPolicyConfig(BaseModel):
     )
 
 
+class MissionConfig(BaseModel):
+    """Configuration for the mission (victory point scoring rules)."""
+
+    type: str = Field(
+        default="default",
+        description="Mission type identifier; selects the VP calculator (e.g. 'default', 'none').",
+    )
+    params: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Mission-specific parameters (e.g. vp_per_objective, cap_per_turn, min_round).",
+    )
+
+
 class ModelConfig(BaseModel):
     """Per-model configuration (position, group, stats, etc.).
 
@@ -127,6 +144,19 @@ class ObjectiveConfig(BaseModel):
         return self
 
 
+def _default_reward_phases() -> list[RewardPhaseConfig]:
+    """Single default phase: reach objectives (closest_objective only)."""
+    return [
+        RewardPhaseConfig(
+            name="reach_objectives",
+            reward_calculators=[
+                RewardCalculatorConfig(type="closest_objective", weight=1.0),
+            ],
+            success_criteria=SuccessCriteriaConfig(type="all_at_objectives"),
+        )
+    ]
+
+
 class WargameEnvConfig(BaseModel):
     """
     Configuration for the Wargame environment.
@@ -165,18 +195,10 @@ class WargameEnvConfig(BaseModel):
         default=None,
         description="Per-objective configuration (attributes, and optionally positions). Length must match number_of_objectives.",
     )
-    group_cohesion_enabled: bool = Field(
-        default=True,
-        description="When True, models that break group cohesion receive group_violation_penalty; when False, no group cohesion reward is applied.",
-    )
     group_max_distance: float = Field(
         gt=0,
         default=10.0,
-        description="Max distance (L2) models in the same group may be from at least one other model in that group; violation yields group_violation_penalty (if group_cohesion_enabled).",
-    )
-    group_violation_penalty: float = Field(
-        default=-10.0,
-        description="Reward applied per model when it is farther than group_max_distance from every other model in its group.",
+        description="Max distance (L2) for group-aware placement on reset: models in the same group spawn within this distance. Reward phases use their own group_cohesion params.",
     )
     max_groups: int = Field(
         gt=0,
@@ -198,17 +220,15 @@ class WargameEnvConfig(BaseModel):
         default=6.0,
         description="Maximum distance a model can move in a single step.",
     )
-    reward_phases: list[RewardPhaseConfig] | None = Field(
-        default=None,
+    reward_phases: list[RewardPhaseConfig] = Field(
+        default_factory=_default_reward_phases,
+        min_length=1,
         description="Ordered reward phases for curriculum learning. "
-        "When None, uses the legacy Reward class and existing config fields.",
+        "Each phase defines reward calculators and success criteria for advancement.",
     )
     terminal_success_bonus: float = Field(
         default=25.0,
-        description=(
-            "Legacy reward bonus added once when all models are at an objective "
-            "and the episode terminates. Ignored when reward_phases are configured."
-        ),
+        description="Bonus added once when all models are at an objective and the episode terminates.",
     )
 
     skip_phases: list[BattlePhase] = Field(
@@ -249,6 +269,10 @@ class WargameEnvConfig(BaseModel):
     opponent_policy: OpponentPolicyConfig | None = Field(
         default=None,
         description="Opponent policy engine config. Required when number_of_opponent_models > 0.",
+    )
+    mission: MissionConfig = Field(
+        default_factory=MissionConfig,
+        description="Mission config: selects VP calculator and params (vp_per_objective, cap_per_turn, min_round).",
     )
 
     @model_validator(mode="before")

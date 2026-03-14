@@ -4,9 +4,10 @@ from collections.abc import Callable
 import numpy as np
 import pygame
 
+from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.renders.renderer import Renderer
-from wargame_rl.wargame.envs.wargame import WargameEnv, WargameObjective
 from wargame_rl.wargame.envs.wargame_model import WargameModel
+from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
 
 class QuitRequested(Exception):
@@ -15,6 +16,7 @@ class QuitRequested(Exception):
 
 class HumanRender(Renderer):
     PANEL_HEIGHT = 36
+    SOUTH_PANEL_ROWS = 2
     GRID_SIZE = 1024  # Max width or height of the game grid in pixels
 
     # Distinct colors per group for player models
@@ -53,8 +55,12 @@ class HumanRender(Renderer):
         self._pinned_model_index: int | None = None
         # Optional epoch number to show in south panel (e.g. when recording)
         self.epoch: int | None = None
-        # Total window height: north panel + grid + south panel
-        self._total_window_height = self.GRID_SIZE + 2 * self.PANEL_HEIGHT
+        # Total window height: north panel + grid + south panel (two rows)
+        self._total_window_height = (
+            self.GRID_SIZE
+            + self.PANEL_HEIGHT
+            + self.SOUTH_PANEL_ROWS * self.PANEL_HEIGHT
+        )
         # Board dimensions (set in setup) for recomputing scale on window resize
         self._board_width: int = 50
         self._board_height: int = 50
@@ -80,10 +86,10 @@ class HumanRender(Renderer):
         self.canvas_height = math.ceil(scale * self._board_height)
         self.canvas = pygame.Surface((self.canvas_width, self.canvas_height))
 
-    def setup(self, env: WargameEnv) -> None:
+    def setup(self, view: BattleView) -> None:
         # Scale so board fits within GRID_SIZE on the longer side; keep square cells
-        board_w = env.config.board_width
-        board_h = env.config.board_height
+        board_w = view.config.board_width
+        board_h = view.config.board_height
         self._board_width = board_w
         self._board_height = board_h
 
@@ -95,7 +101,11 @@ class HumanRender(Renderer):
         self.canvas_width = math.ceil(scale * board_w)
         self.canvas_height = math.ceil(scale * board_h)
         self.pix_square_size = scale
-        self._total_window_height = self.canvas_height + 2 * self.PANEL_HEIGHT
+        self._total_window_height = (
+            self.canvas_height
+            + self.PANEL_HEIGHT
+            + self.SOUTH_PANEL_ROWS * self.PANEL_HEIGHT
+        )
         self._canvas_offset_x = 0
         self._canvas_offset_y = self.PANEL_HEIGHT
 
@@ -127,20 +137,20 @@ class HumanRender(Renderer):
         if self.window is not None:
             self._last_window_w, self._last_window_h = self.window.get_size()
 
-    def render(self, env: WargameEnv) -> None:
-        self._process_events(env)
+    def render(self, view: BattleView) -> None:
+        self._process_events(view)
         if self.should_quit:
             raise QuitRequested()
-        self._render_frame(env)
+        self._render_frame(view)
         while self.paused:
-            self._process_events(env)
+            self._process_events(view)
             if self.should_quit:
                 raise QuitRequested()
-            self._render_frame(env)
+            self._render_frame(view)
             if self.clock is not None:
-                self.clock.tick(env.metadata["render_fps"])
+                self.clock.tick(view.metadata["render_fps"])
 
-    def _render_frame(self, env: WargameEnv) -> None:
+    def _render_frame(self, view: BattleView) -> None:
         if self.canvas is None:
             raise ValueError("Canvas is not initialized")
         if self.window is None:
@@ -155,20 +165,25 @@ class HumanRender(Renderer):
             self._last_window_w, self._last_window_h = current_w, current_h
             self._total_window_height = current_h
             available_w = current_w
-            available_h = max(1, current_h - 2 * self.PANEL_HEIGHT)
+            available_h = max(
+                1,
+                current_h
+                - self.PANEL_HEIGHT
+                - self.SOUTH_PANEL_ROWS * self.PANEL_HEIGHT,
+            )
             self._compute_scale_and_canvas(available_w, available_h)
             self._canvas_offset_x = (current_w - self.canvas_width) // 2
             self._canvas_offset_y = (
                 self.PANEL_HEIGHT + (available_h - self.canvas_height) // 2
             )
 
-        board_width = env.config.board_width
-        board_height = env.config.board_height
-        objectives = env.objectives
-        wargame_models = env.wargame_models
-        metadata = env.metadata
-        deployment_zone = env.deployment_zone
-        opponent_deployment_zone = env.opponent_deployment_zone
+        board_width = view.config.board_width
+        board_height = view.config.board_height
+        objectives = view.objectives
+        wargame_models = view.player_models
+        metadata = view.metadata
+        deployment_zone = view.deployment_zone
+        opponent_deployment_zone = view.opponent_deployment_zone
 
         # Clear window and canvas (window fill clears letterboxing after resize)
         self.window.fill((45, 45, 48))
@@ -191,9 +206,9 @@ class HumanRender(Renderer):
         self._draw_movement_arrows(self.canvas, wargame_models)
 
         # Draw opponent movement arrows and models
-        if env.opponent_models:
-            self._draw_opponent_movement_arrows(self.canvas, env.opponent_models)
-            self._draw_opponent_models(self.canvas, env.opponent_models)
+        if view.opponent_models:
+            self._draw_opponent_movement_arrows(self.canvas, view.opponent_models)
+            self._draw_opponent_models(self.canvas, view.opponent_models)
 
         # Now we draw the player agent models
         self._draw_agent(self.canvas, wargame_models)
@@ -206,16 +221,16 @@ class HumanRender(Renderer):
             self.canvas,
             (self._canvas_offset_x, self._canvas_offset_y),
         )
-        self._draw_north_panel(env)
-        self._draw_south_panel(env)
+        self._draw_north_panel(view)
+        self._draw_south_panel(view)
         # Show tooltip for pinned model (follows model) or hovered model
         tooltip_index = (
             self._pinned_model_index
             if self._pinned_model_index is not None
-            else self._get_hovered_model_index(env)
+            else self._get_hovered_model_index(view)
         )
         if tooltip_index is not None:
-            self._draw_model_tooltip(env, tooltip_index)
+            self._draw_model_tooltip(view, tooltip_index)
         pygame.event.pump()
         pygame.display.update()
 
@@ -231,7 +246,7 @@ class HumanRender(Renderer):
             dtype=np.uint8,
         )
 
-    def _draw_north_panel(self, env: WargameEnv) -> None:
+    def _draw_north_panel(self, view: BattleView) -> None:
         """Draw the north panel with hot key menu."""
         if self.window is None:
             return
@@ -255,14 +270,15 @@ class HumanRender(Renderer):
         )
         self.window.blit(text_surface, text_rect)
 
-    def _draw_south_panel(self, env: WargameEnv) -> None:
-        """Draw the south panel with environment information."""
+    def _draw_south_panel(self, view: BattleView) -> None:
+        """Draw the south panel with environment information (two rows)."""
         if self.window is None:
             return
         window_w = self.window.get_width()
         window_h = self.window.get_height()
-        panel_y = window_h - self.PANEL_HEIGHT
-        panel_rect = pygame.Rect(0, panel_y, window_w, self.PANEL_HEIGHT)
+        south_h = self.SOUTH_PANEL_ROWS * self.PANEL_HEIGHT
+        panel_y = window_h - south_h
+        panel_rect = pygame.Rect(0, panel_y, window_w, south_h)
         pygame.draw.rect(self.window, (45, 45, 48), panel_rect)
         pygame.draw.line(
             self.window,
@@ -273,38 +289,65 @@ class HumanRender(Renderer):
         )
         font = pygame.font.Font(None, 24)
         text_color = (220, 220, 220)
-        reward_str = f"{env.last_reward:.3f}" if env.last_reward is not None else "—"
-        clock_state = env._game_clock.state
+        reward_str = f"{view.last_reward:.3f}" if view.last_reward is not None else "—"
+        clock_state = view.game_clock_state
         phase_label = clock_state.phase.value.title() if clock_state.phase else "—"
         round_num = clock_state.battle_round or 0
-        n_rounds = env._game_clock.n_rounds
+        n_rounds = view.n_rounds
         turn_text = f"Round: {round_num} / {n_rounds}  |  {phase_label}"
-        steps_text = f"Step: {env.current_turn}"
+        steps_text = f"Step: {view.current_turn}"
         reward_text = f"Reward: {reward_str}"
-        center_y = panel_y + self.PANEL_HEIGHT // 2
+        center_y_row1 = panel_y + self.PANEL_HEIGHT // 2
         if self.epoch is not None:
             epoch_text = f"Epoch: {self.epoch}"
             epoch_surface = font.render(epoch_text, True, text_color)
             turn_surface = font.render(turn_text, True, text_color)
             steps_surface = font.render(steps_text, True, text_color)
             reward_surface = font.render(reward_text, True, text_color)
-            epoch_rect = epoch_surface.get_rect(center=(window_w // 8, center_y))
-            turn_rect = turn_surface.get_rect(center=(3 * window_w // 8, center_y))
-            steps_rect = steps_surface.get_rect(center=(5 * window_w // 8, center_y))
-            reward_rect = reward_surface.get_rect(center=(7 * window_w // 8, center_y))
+            epoch_rect = epoch_surface.get_rect(center=(window_w // 8, center_y_row1))
+            turn_rect = turn_surface.get_rect(center=(3 * window_w // 8, center_y_row1))
+            steps_rect = steps_surface.get_rect(
+                center=(5 * window_w // 8, center_y_row1)
+            )
+            reward_rect = reward_surface.get_rect(
+                center=(7 * window_w // 8, center_y_row1)
+            )
             self.window.blit(epoch_surface, epoch_rect)
         else:
             turn_surface = font.render(turn_text, True, text_color)
             steps_surface = font.render(steps_text, True, text_color)
             reward_surface = font.render(reward_text, True, text_color)
-            turn_rect = turn_surface.get_rect(center=(window_w // 6, center_y))
-            steps_rect = steps_surface.get_rect(center=(window_w // 2, center_y))
-            reward_rect = reward_surface.get_rect(center=(5 * window_w // 6, center_y))
+            turn_rect = turn_surface.get_rect(center=(window_w // 6, center_y_row1))
+            steps_rect = steps_surface.get_rect(center=(window_w // 2, center_y_row1))
+            reward_rect = reward_surface.get_rect(
+                center=(5 * window_w // 6, center_y_row1)
+            )
         self.window.blit(turn_surface, turn_rect)
         self.window.blit(steps_surface, steps_rect)
         self.window.blit(reward_surface, reward_rect)
 
-    def _get_model_index_at(self, env: WargameEnv, mx: int, my: int) -> int | None:
+        # Row 2: victory points and delta this step
+        center_y_row2 = panel_y + self.PANEL_HEIGHT + self.PANEL_HEIGHT // 2
+        player_delta_str = (
+            f" (+{view.player_vp_delta})" if view.player_vp_delta > 0 else ""
+        )
+        opponent_delta_str = (
+            f" (+{view.opponent_vp_delta})" if view.opponent_vp_delta > 0 else ""
+        )
+        player_vp_text = f"Player VP: {view.player_vp}{player_delta_str}"
+        opponent_vp_text = f"Opponent VP: {view.opponent_vp}{opponent_delta_str}"
+        player_vp_surface = font.render(player_vp_text, True, text_color)
+        opponent_vp_surface = font.render(opponent_vp_text, True, text_color)
+        player_vp_rect = player_vp_surface.get_rect(
+            center=(window_w // 4, center_y_row2)
+        )
+        opponent_vp_rect = opponent_vp_surface.get_rect(
+            center=(3 * window_w // 4, center_y_row2)
+        )
+        self.window.blit(player_vp_surface, player_vp_rect)
+        self.window.blit(opponent_vp_surface, opponent_vp_rect)
+
+    def _get_model_index_at(self, view: BattleView, mx: int, my: int) -> int | None:
         """Return the index of the wargame model at window position (mx, my), or None."""
         if not (
             self._canvas_offset_x <= mx < self._canvas_offset_x + self.canvas_width
@@ -314,7 +357,7 @@ class HumanRender(Renderer):
         canvas_x = float(mx - self._canvas_offset_x)
         canvas_y = float(my - self._canvas_offset_y)
         hit_radius = max(self.pix_square_size / 2, 12.0)
-        for i, model in enumerate(env.wargame_models):
+        for i, model in enumerate(view.player_models):
             center_x = (model.location[0] + 0.5) * self.pix_square_size
             center_y = (model.location[1] + 0.5) * self.pix_square_size
             dist_sq = (canvas_x - center_x) ** 2 + (canvas_y - center_y) ** 2
@@ -322,16 +365,16 @@ class HumanRender(Renderer):
                 return i
         return None
 
-    def _get_hovered_model_index(self, env: WargameEnv) -> int | None:
+    def _get_hovered_model_index(self, view: BattleView) -> int | None:
         """Return the index of the wargame model under the mouse, or None."""
         mx, my = pygame.mouse.get_pos()
-        return self._get_model_index_at(env, mx, my)
+        return self._get_model_index_at(view, mx, my)
 
-    def _draw_model_tooltip(self, env: WargameEnv, model_index: int) -> None:
+    def _draw_model_tooltip(self, view: BattleView, model_index: int) -> None:
         """Draw a popup overlay with model info near the hovered model."""
         if self.window is None:
             return
-        model = env.wargame_models[model_index]
+        model = view.player_models[model_index]
         # Model center in window coords (canvas may be offset when window is resized)
         center_x = (
             self._canvas_offset_x + (model.location[0] + 0.5) * self.pix_square_size
@@ -383,7 +426,7 @@ class HumanRender(Renderer):
         for j, s in enumerate(surfaces):
             self.window.blit(s, (rect.x + padding, rect.y + padding + j * line_height))
 
-    def _process_events(self, env: WargameEnv) -> None:
+    def _process_events(self, view: BattleView) -> None:
         """Process pygame events for pause (Space), quit (Esc), resize, and click-to-pin tooltip."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -393,7 +436,7 @@ class HumanRender(Renderer):
                     continue
                 new_w = max(1, event.w)
                 new_h = max(
-                    2 * self.PANEL_HEIGHT + 1,
+                    self.PANEL_HEIGHT + self.SOUTH_PANEL_ROWS * self.PANEL_HEIGHT + 1,
                     event.h,
                 )
                 # Only resize when size actually changed to avoid feedback loop
@@ -408,7 +451,11 @@ class HumanRender(Renderer):
                 self._last_window_w, self._last_window_h = new_w, new_h
                 self._total_window_height = new_h
                 available_w = new_w
-                available_h = new_h - 2 * self.PANEL_HEIGHT
+                available_h = (
+                    new_h
+                    - self.PANEL_HEIGHT
+                    - self.SOUTH_PANEL_ROWS * self.PANEL_HEIGHT
+                )
                 self._compute_scale_and_canvas(available_w, available_h)
                 self._canvas_offset_x = (new_w - self.canvas_width) // 2
                 self._canvas_offset_y = (
@@ -422,7 +469,7 @@ class HumanRender(Renderer):
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # left click
                     model_index = self._get_model_index_at(
-                        env, event.pos[0], event.pos[1]
+                        view, event.pos[0], event.pos[1]
                     )
                     self._pinned_model_index = model_index
 

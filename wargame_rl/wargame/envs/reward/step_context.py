@@ -23,5 +23,6 @@ class StepContext:
     max_turns: int
     board_width: int
     board_height: int
+    is_terminated: bool = False
     current_round: int = 1
     battle_phase: BattlePhase = BattlePhase.command

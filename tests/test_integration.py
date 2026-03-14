@@ -10,12 +10,12 @@ from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.types import Experience
 
 # ---------------------------------------------------------------------------
-# Legacy Reward class (default code path, no reward_phases)
+# Phased reward (default single phase)
 # ---------------------------------------------------------------------------
 
 
-def test_legacy_reward_produces_nonzero_rewards() -> None:
-    """Default env (no reward_phases) uses the Reward class; verify it returns floats."""
+def test_phased_reward_produces_nonzero_rewards() -> None:
+    """Env with default reward phase returns float rewards."""
     env = WargameEnv(
         config=WargameEnvConfig(
             render_mode=None,

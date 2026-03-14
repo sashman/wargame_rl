@@ -91,7 +91,9 @@ def test_dataloaders(env: WargameEnv, policy_net: RL_Network) -> None:
     assert batch.actions.shape == (batch_size, n_wargame_models)
     assert batch.rewards.shape == (batch_size,)
     assert batch.dones.shape == (batch_size,)
-    game_size = observation.size_game_observation  # 3: placeholder + round + phase
+    game_size = (
+        observation.size_game_observation
+    )  # 5: placeholder + round + phase + player_vp + opponent_vp
     state_turn, state_objectives, state_wargame_models, _state_opp = batch.state_tensors
     new_state_turn, new_state_objectives, new_state_wargame_models, _new_opp = (
         batch.new_state_tensors

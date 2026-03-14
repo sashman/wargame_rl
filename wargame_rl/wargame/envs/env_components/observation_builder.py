@@ -1,4 +1,4 @@
-"""Build observations and info from current env state.
+"""Build observations and info from battle state (BattleView).
 
 Extracted so observation shape or content can be varied without touching step/reset.
 """
@@ -9,12 +9,15 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from wargame_rl.wargame.envs.domain.battle_view import BattleView
+from wargame_rl.wargame.envs.env_components.actions import ActionRegistry
 from wargame_rl.wargame.envs.types import (
     WargameEnvInfo,
     WargameEnvObjectiveObservation,
     WargameEnvObservation,
     WargameModelObservation,
 )
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.env_components.distance_cache import DistanceCache
@@ -56,54 +59,68 @@ def _models_to_obs(
 
 
 def build_observation(
-    current_turn: int,
-    wargame_models: list[WargameModel],
-    objectives: list[WargameObjective],
-    max_groups: int,
-    board_width: int,
-    board_height: int,
-    opponent_models: list[WargameModel] | None = None,
-    action_mask: np.ndarray | None = None,
-    battle_round: int = 1,
-    battle_phase_index: int = 0,
-    n_rounds: int = 5,
+    view: BattleView,
+    distance_cache: DistanceCache | None = None,
+    action_registry: ActionRegistry | None = None,
 ) -> WargameEnvObservation:
-    """Build the observation dict from current state."""
+    """Build the Gym observation from battle state (BattleView)."""
+    if distance_cache is not None:
+        update_distances_to_objectives(
+            view.player_models, view.objectives, distance_cache
+        )
+    if view.opponent_models:
+        update_distances_to_objectives(view.opponent_models, view.objectives, None)
+
+    action_mask: np.ndarray | None = None
+    if action_registry is not None:
+        phase = view.game_clock_state.phase or BattlePhase.movement
+        action_mask = action_registry.get_model_action_masks(
+            phase, len(view.player_models)
+        )
+
+    clock = view.game_clock_state
+    phase = clock.phase or BattlePhase.movement
+    battle_phase_index = list(BattlePhase).index(phase)
+    battle_round = clock.battle_round if clock.battle_round is not None else 1
+    max_groups = view.config.max_groups
     objectives_obs = [
-        WargameEnvObjectiveObservation(location=obj.location) for obj in objectives
+        WargameEnvObjectiveObservation(location=obj.location) for obj in view.objectives
     ]
     return WargameEnvObservation(
-        current_turn=current_turn,
-        wargame_models=_models_to_obs(wargame_models, max_groups),
+        current_turn=view.current_turn,
+        wargame_models=_models_to_obs(view.player_models, max_groups),
         objectives=objectives_obs,
-        board_width=board_width,
-        board_height=board_height,
-        opponent_models=_models_to_obs(opponent_models or [], max_groups),
+        board_width=view.board_width,
+        board_height=view.board_height,
+        opponent_models=_models_to_obs(view.opponent_models, max_groups),
         action_mask=action_mask,
         battle_round=battle_round,
         battle_phase_index=battle_phase_index,
-        n_rounds=n_rounds,
+        n_rounds=view.n_rounds,
+        player_vp=view.player_vp,
+        opponent_vp=view.opponent_vp,
     )
 
 
-def build_info(
-    current_turn: int,
-    wargame_models: list[WargameModel],
-    objectives: list[WargameObjective],
-    deployment_zone: tuple[int, int, int, int],
-    opponent_deployment_zone: tuple[int, int, int, int],
-    max_groups: int,
-    opponent_models: list[WargameModel] | None = None,
-) -> WargameEnvInfo:
-    """Build the info dict from current state."""
+def build_info(view: BattleView) -> WargameEnvInfo:
+    """Build the Gym info dict from battle state (BattleView)."""
+    dz = view.deployment_zone
+    odz = view.opponent_deployment_zone
+    deployment_zone = (int(dz[0]), int(dz[1]), int(dz[2]), int(dz[3]))
+    opponent_deployment_zone = (int(odz[0]), int(odz[1]), int(odz[2]), int(odz[3]))
+    max_groups = view.config.max_groups
     objectives_obs = [
-        WargameEnvObjectiveObservation(location=obj.location) for obj in objectives
+        WargameEnvObjectiveObservation(location=obj.location) for obj in view.objectives
     ]
     return WargameEnvInfo(
-        current_turn=current_turn,
-        wargame_models=_models_to_obs(wargame_models, max_groups),
+        current_turn=view.current_turn,
+        wargame_models=_models_to_obs(view.player_models, max_groups),
         objectives=objectives_obs,
-        opponent_models=_models_to_obs(opponent_models or [], max_groups),
+        opponent_models=_models_to_obs(view.opponent_models, max_groups),
         deployment_zone=deployment_zone,
         opponent_deployment_zone=opponent_deployment_zone,
+        player_vp=view.player_vp,
+        opponent_vp=view.opponent_vp,
+        player_vp_delta=view.player_vp_delta,
+        opponent_vp_delta=view.opponent_vp_delta,
     )

@@ -3,24 +3,32 @@ from __future__ import annotations
 from typing import Any
 
 import gymnasium as gym
-import numpy as np
 from gymnasium import spaces
 
+from wargame_rl.wargame.envs.domain.battle_factory import (
+    create_objectives as _create_objectives,
+)
+from wargame_rl.wargame.envs.domain.battle_factory import (
+    create_wargame_models as _create_wargame_models,
+)
+from wargame_rl.wargame.envs.domain.battle_factory import (
+    from_config as _battle_from_config,
+)
+from wargame_rl.wargame.envs.domain.game_clock import GameClock
+from wargame_rl.wargame.envs.domain.placement import place_for_episode
+from wargame_rl.wargame.envs.domain.termination import is_battle_over
+from wargame_rl.wargame.envs.domain.turn_execution import (
+    run_after_player_action,
+    run_until_player_phase,
+)
 from wargame_rl.wargame.envs.env_components import (
     ActionHandler,
     DistanceCache,
-    GameClock,
     build_info,
     build_observation,
-    check_max_turns_reached,
     compute_distances,
-    fixed_objective_placement,
-    fixed_wargame_model_placement,
-    get_termination,
-    objective_placement,
-    update_distances_to_objectives,
-    wargame_model_placement,
 )
+from wargame_rl.wargame.envs.mission import build_vp_calculator
 from wargame_rl.wargame.envs.opponent.policy import OpponentPolicy
 from wargame_rl.wargame.envs.opponent.registry import (
     _auto_register,
@@ -28,7 +36,6 @@ from wargame_rl.wargame.envs.opponent.registry import (
 )
 from wargame_rl.wargame.envs.renders import renderer
 from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
-from wargame_rl.wargame.envs.reward.reward import Reward
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.types import (
     BattlePhase,
@@ -39,7 +46,7 @@ from wargame_rl.wargame.envs.types import (
     WargameEnvInfo,
     WargameEnvObservation,
 )
-from wargame_rl.wargame.envs.types.game_timing import BATTLE_PHASE_ORDER
+from wargame_rl.wargame.envs.types.game_timing import BATTLE_PHASE_ORDER, GameState
 from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
@@ -93,47 +100,28 @@ class WargameEnv(gym.Env):
         self._player_side = self._initial_player_side()
         self._game_clock = GameClock(n_rounds=config.number_of_battle_rounds)
 
-        self.wargame_models = self.create_wargame_models(config)
-        self.objectives = self.create_objectives(config)
-
-        if config.deployment_zone is not None:
-            self.deployment_zone = np.array(config.deployment_zone, dtype=int)
-        else:
-            self.deployment_zone = np.array(
-                [0, 0, self.board_width // 3, self.board_height], dtype=int
-            )
-
-        if config.opponent_deployment_zone is not None:
-            self.opponent_deployment_zone = np.array(
-                config.opponent_deployment_zone, dtype=int
-            )
-        else:
-            self.opponent_deployment_zone = np.array(
-                [
-                    self.board_width * 2 // 3,
-                    0,
-                    self.board_width,
-                    self.board_height,
-                ],
-                dtype=int,
-            )
+        self._battle = _battle_from_config(config)
+        self.wargame_models = self._battle.player_models
+        self.objectives = self._battle.objectives
+        self.opponent_models = self._battle.opponent_models
+        self.deployment_zone = self._battle.deployment_zone
+        self.opponent_deployment_zone = self._battle.opponent_deployment_zone
 
         # Last reward from step(); None until first step after reset
         self.last_reward: float | None = None
 
-        # Reward phases (curriculum learning) -- None uses legacy Reward path
-        if config.reward_phases is not None:
-            self.phase_manager: RewardPhaseManager | None = (
-                RewardPhaseManager.from_configs(config.reward_phases)
-            )
-        else:
-            self.phase_manager = None
+        # Reward phases (curriculum learning); always used for reward calculation
+        self.phase_manager = RewardPhaseManager.from_configs(config.reward_phases)
+
+        # Mission VP calculator (scores at end of command phase from round 2)
+        self._vp_calculator = build_vp_calculator(
+            config.mission.type, config.mission.params
+        )
 
         # Last StepContext from step(); available for post-episode success checks
         self.last_step_context: StepContext | None = None
 
         # --- Opponent setup ---
-        self.opponent_models: list[WargameModel] = self._create_opponent_models(config)
         if config.number_of_opponent_models > 0:
             self._opponent_action_handler = ActionHandler(
                 config, n_models=config.number_of_opponent_models
@@ -168,128 +156,78 @@ class WargameEnv(gym.Env):
         """Action space for opponent models (used by policies)."""
         return self._opponent_action_handler.action_space
 
-    @staticmethod
-    def _build_models(
-        n: int,
-        model_configs: list[Any] | None,
-        n_objectives: int,
-        max_groups: int,
-    ) -> list[WargameModel]:
-        """Shared helper to build a list of WargameModel instances."""
-        result: list[WargameModel] = []
-        increment = max(1, n // max_groups)
-        for i in range(n):
-            if model_configs is not None:
-                mc = model_configs[i]
-                group_id = mc.group_id
-                max_wounds = mc.max_wounds
-            else:
-                group_id = i // increment
-                max_wounds = 100
-            result.append(
-                WargameModel(
-                    location=np.zeros(2, dtype=int),
-                    stats={"max_wounds": max_wounds, "current_wounds": max_wounds},
-                    group_id=group_id,
-                    distances_to_objectives=np.zeros([n_objectives, 2], dtype=int),
-                )
-            )
-        return result
+    # BattleView protocol (read-only battle state for renderers and reward)
+    @property
+    def player_models(self) -> list[WargameModel]:
+        return self.wargame_models
 
+    @property
+    def game_clock_state(self) -> GameState:
+        return self._game_clock.state
+
+    @property
+    def n_rounds(self) -> int:
+        return self._game_clock.n_rounds
+
+    @property
+    def player_vp(self) -> int:
+        return self._battle.player_vp
+
+    @property
+    def opponent_vp(self) -> int:
+        return self._battle.opponent_vp
+
+    @property
+    def player_vp_delta(self) -> int:
+        return self._battle.player_vp_delta
+
+    @property
+    def opponent_vp_delta(self) -> int:
+        return self._battle.opponent_vp_delta
+
+    def _on_before_advance(self, clock: GameClock) -> None:
+        """Score VP when leaving command phase from round 2 (mission-driven)."""
+        state = clock.state
+        if state.phase != BattlePhase.command or state.battle_round is None:
+            return
+        if state.active_player is None:
+            return
+        vp = self._vp_calculator.compute_vp(
+            self,
+            state.active_player,
+            state.battle_round,
+            self._player_side,
+        )
+        if vp <= 0:
+            return
+        if state.active_player == self._player_side:
+            self._battle.add_player_vp(vp)
+        else:
+            self._battle.add_opponent_vp(vp)
+
+    # Backward compat: static factory methods delegate to BattleFactory
     @staticmethod
     def create_wargame_models(config: WargameEnvConfig) -> list[WargameModel]:
         """Build the list of player wargame models from config."""
-        return WargameEnv._build_models(
-            config.number_of_wargame_models,
-            config.models,
-            config.number_of_objectives,
-            config.max_groups,
-        )
-
-    @staticmethod
-    def _create_opponent_models(config: WargameEnvConfig) -> list[WargameModel]:
-        """Build the list of opponent models from config."""
-        return WargameEnv._build_models(
-            config.number_of_opponent_models,
-            config.opponent_models,
-            config.number_of_objectives,
-            config.max_groups,
-        )
+        return _create_wargame_models(config)
 
     @staticmethod
     def create_objectives(config: WargameEnvConfig) -> list[WargameObjective]:
-        """Build the list of objectives from config.
-
-        When ``objectives`` are provided, per-objective radius_size overrides
-        the global value if set.
-        """
-        result: list[WargameObjective] = []
-        for i in range(config.number_of_objectives):
-            if (
-                config.objectives is not None
-                and config.objectives[i].radius_size is not None
-            ):
-                radius = config.objectives[i].radius_size
-            else:
-                radius = config.objective_radius_size
-
-            result.append(
-                WargameObjective(
-                    location=np.zeros(2, dtype=int),
-                    radius_size=radius,  # type: ignore[arg-type]
-                )
-            )
-        return result
+        """Build the list of objectives from config."""
+        return _create_objectives(config)
 
     def _get_obs(
         self, distance_cache: DistanceCache | None = None
     ) -> WargameEnvObservation:
         """Get the observation for the current state of the environment."""
-        update_distances_to_objectives(
-            self.wargame_models, self.objectives, distance_cache
-        )
-        if self.opponent_models:
-            update_distances_to_objectives(self.opponent_models, self.objectives)
-
-        clock_state = self._game_clock.state
-        phase = clock_state.phase or BattlePhase.movement
-        action_mask = self._action_handler.registry.get_model_action_masks(
-            phase, len(self.wargame_models)
-        )
         return build_observation(
-            self.current_turn,
-            self.wargame_models,
-            self.objectives,
-            self.config.max_groups,
-            self.board_width,
-            self.board_height,
-            opponent_models=self.opponent_models,
-            action_mask=action_mask,
-            battle_round=clock_state.battle_round or 1,
-            battle_phase_index=list(BattlePhase).index(phase),
-            n_rounds=self._game_clock.n_rounds,
+            self,
+            distance_cache=distance_cache,
+            action_registry=self._action_handler.registry,
         )
 
     def _get_info(self) -> WargameEnvInfo:
-        return build_info(
-            self.current_turn,
-            self.wargame_models,
-            self.objectives,
-            (
-                int(self.deployment_zone[0]),
-                int(self.deployment_zone[1]),
-                int(self.deployment_zone[2]),
-                int(self.deployment_zone[3]),
-            ),
-            (
-                int(self.opponent_deployment_zone[0]),
-                int(self.opponent_deployment_zone[1]),
-                int(self.opponent_deployment_zone[2]),
-                int(self.opponent_deployment_zone[3]),
-            ),
-            self.config.max_groups,
-            opponent_models=self.opponent_models,
-        )
+        return build_info(self)
 
     def reset(
         self, seed: int | None = None, options: dict[str, Any] | None = None
@@ -300,61 +238,22 @@ class WargameEnv(gym.Env):
         self.last_reward = None
         self.last_step_context = None
 
+        self._battle.reset_for_episode()
         self._resolve_player_side()
         self._game_clock.reset()
         self._game_clock.skip_setup()
         # Clock is now at round 1, player_1, command phase
 
-        # Place player models
-        if self.config.has_fixed_model_positions:
-            fixed_wargame_model_placement(
-                self.wargame_models,
-                self.config.models,  # type: ignore[arg-type]
-            )
-        else:
-            wargame_model_placement(
-                self.wargame_models,
-                self.deployment_zone,
-                self.config.group_max_distance,
-                self.np_random,
-            )
+        place_for_episode(self._battle, self.config, self.np_random)
 
-        # Place objectives
-        if self.config.has_fixed_objective_positions:
-            fixed_objective_placement(
-                self.objectives,
-                self.config.objectives,  # type: ignore[arg-type]
-            )
-        else:
-            objective_placement(
-                self.objectives,
-                self.deployment_zone,
-                self.board_width,
-                self.board_height,
-                self.np_random,
-                self.opponent_deployment_zone,
-            )
-
-        # Place opponent models
-        if self.opponent_models:
-            if self.config.has_fixed_opponent_positions:
-                fixed_wargame_model_placement(
-                    self.opponent_models,
-                    self.config.opponent_models,  # type: ignore[arg-type]
-                )
-            else:
-                wargame_model_placement(
-                    self.opponent_models,
-                    self.opponent_deployment_zone,
-                    self.config.group_max_distance,
-                    self.np_random,
-                )
-
-        # If opponent goes first this round, auto-execute their full turn
-        if self._is_opponent_active():
-            self._execute_opponent_turn()
-
-        self._skip_past_excluded_phases()
+        # If opponent goes first this round, auto-execute their turn and skip to player phase
+        run_until_player_phase(
+            self._game_clock,
+            self._skip_phases,
+            self._player_side,
+            self._apply_opponent_action,
+            on_before_advance=self._on_before_advance,
+        )
 
         cache = compute_distances(self.wargame_models, self.objectives)
         observation = self._get_obs(cache)
@@ -412,93 +311,52 @@ class WargameEnv(gym.Env):
                 else PlayerSide.player_2
             )
 
-    def _is_opponent_active(self) -> bool:
-        state = self._game_clock.state
-        return (
-            state.active_player is not None and state.active_player != self._player_side
-        )
-
-    def _execute_opponent_turn(self) -> None:
-        """Auto-execute all phases of the opponent's turn."""
-        while not self._game_clock.is_game_over and self._is_opponent_active():
-            self._apply_opponent_action()
-            self._game_clock.advance_phase()
-
-    def _should_skip_phase(self) -> bool:
-        phase = self._game_clock.state.phase
-        return phase is not None and phase in self._skip_phases
-
-    def _skip_past_excluded_phases(self) -> None:
-        """Advance past player phases listed in ``skip_phases``."""
-        while (
-            not self._game_clock.is_game_over
-            and not self._is_opponent_active()
-            and self._should_skip_phase()
-        ):
-            self._game_clock.advance_phase()
-
     def step(
         self, action: WargameEnvAction
     ) -> tuple[WargameEnvObservation, float, bool, bool, dict[str, Any]]:
+        self._battle.reset_vp_deltas()
         self._apply_player_action(action)
-
-        if not self._game_clock.is_game_over:
-            self._game_clock.advance_phase()
 
         self.current_turn += 1
 
-        self._skip_past_excluded_phases()
-
-        # If clock rolled over to opponent's turn, auto-execute it
-        if not self._game_clock.is_game_over and self._is_opponent_active():
-            self._execute_opponent_turn()
-
-        self._skip_past_excluded_phases()
-
-        needs_mm = self.config.group_cohesion_enabled or (
-            self.phase_manager is not None
-            and self.phase_manager.needs_model_model_distances
+        run_after_player_action(
+            self._game_clock,
+            self._skip_phases,
+            self._player_side,
+            self._apply_opponent_action,
+            on_before_advance=self._on_before_advance,
         )
+
+        needs_mm = self.phase_manager.needs_model_model_distances
         cache = compute_distances(
             self.wargame_models,
             self.objectives,
             compute_model_model=needs_mm,
         )
 
-        if self.config.max_turns_override is not None:
-            is_terminated = check_max_turns_reached(
-                self.current_turn, self.max_turns
-            ) or get_termination(cache)
-        else:
-            is_terminated = (
-                check_max_turns_reached(self.current_turn, self.max_turns)
-                or self._game_clock.is_game_over
-                or get_termination(cache)
-            )
+        is_terminated = is_battle_over(
+            self._game_clock,
+            self.current_turn,
+            self.max_turns,
+            self.config.max_turns_override,
+            cache.all_models_at_objectives(),
+        )
 
         clock_state = self._game_clock.state
         phase = clock_state.phase or BattlePhase.command
 
-        if self.phase_manager is not None:
-            ctx = StepContext(
-                distance_cache=cache,
-                current_turn=self.current_turn,
-                max_turns=self.max_turns,
-                board_width=self.board_width,
-                board_height=self.board_height,
-                current_round=clock_state.battle_round or 0,
-                battle_phase=phase,
-            )
-            self.last_step_context = ctx
-            reward = self.phase_manager.calculate_reward(self, ctx)
-        else:
-            reward = Reward().calculate_reward(self, cache)
-
-            # Legacy terminal success bonus: applied once when all models are at
-            # an objective and the episode terminates.
-            if is_terminated and self.config.terminal_success_bonus != 0.0:
-                if cache.all_models_at_objectives():
-                    reward += float(self.config.terminal_success_bonus)
+        ctx = StepContext(
+            distance_cache=cache,
+            current_turn=self.current_turn,
+            max_turns=self.max_turns,
+            board_width=self.board_width,
+            board_height=self.board_height,
+            is_terminated=is_terminated,
+            current_round=clock_state.battle_round or 0,
+            battle_phase=phase,
+        )
+        self.last_step_context = ctx
+        reward = self.phase_manager.calculate_reward(self, ctx)
 
         observation = self._get_obs(cache)
         info = self._get_info()

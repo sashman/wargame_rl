@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.reward.calculators.base import (
     GlobalRewardCalculator,
     PerModelRewardCalculator,
@@ -16,7 +17,6 @@ from wargame_rl.wargame.envs.reward.phase import RewardPhaseConfig
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.reward.step_context import StepContext
-    from wargame_rl.wargame.envs.wargame import WargameEnv
 
 
 @dataclass
@@ -111,33 +111,37 @@ class RewardPhaseManager:
 
     # -- Core methods ---------------------------------------------------------
 
-    def calculate_reward(self, env: WargameEnv, ctx: StepContext) -> float:
+    def calculate_reward(self, view: BattleView, ctx: StepContext) -> float:
         """Compute the total reward for the current step.
 
         Per-model rewards are weighted, summed per model, then averaged
         across all models.  Global rewards are weighted and added on top.
         """
         phase = self.current_phase
-        n_models = len(env.wargame_models)
+        n_models = len(view.player_models)
 
         per_model_total = 0.0
-        for i, model in enumerate(env.wargame_models):
+        for i, model in enumerate(view.player_models):
             model_reward = 0.0
             for pm_calc in phase.per_model_calculators:
-                model_reward += pm_calc.weight * pm_calc.calculate(i, model, env, ctx)
+                model_reward += pm_calc.weight * pm_calc.calculate(i, model, view, ctx)
             per_model_total += model_reward
 
         avg_per_model = per_model_total / n_models if n_models > 0 else 0.0
 
         global_total = 0.0
         for gl_calc in phase.global_calculators:
-            global_total += gl_calc.weight * gl_calc.calculate(env, ctx)
+            global_total += gl_calc.weight * gl_calc.calculate(view, ctx)
 
-        return avg_per_model + global_total
+        reward = avg_per_model + global_total
+        if ctx.is_terminated and view.config.terminal_success_bonus != 0.0:
+            if ctx.distance_cache.all_models_at_objectives():
+                reward += float(view.config.terminal_success_bonus)
+        return reward
 
-    def check_success(self, env: WargameEnv, ctx: StepContext) -> bool:
+    def check_success(self, view: BattleView, ctx: StepContext) -> bool:
         """Evaluate the current phase's success criteria."""
-        return self.current_phase.criteria.is_successful(env, ctx)
+        return self.current_phase.criteria.is_successful(view, ctx)
 
     def try_advance(self, success_rate: float, current_epoch: int) -> bool:
         """Attempt to advance to the next phase.
