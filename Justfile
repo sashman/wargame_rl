@@ -56,8 +56,10 @@ train env_config_path='examples/env_config/4_models_2_objectives_fixed_phased.ya
 
 # Run multiple env configs in parallel. Each run gets a unique --run-suffix and shared --wandb-group.
 # Uses PPO + transformer. Use: just train-multi config1.yaml config2.yaml
+# Trap INT/TERM so Ctrl+C kills all background train.py processes.
 train-multi *configs:
-	@group="train-multi-$(date +%Y-%m-%d-%H-%M-%S)" && \
+	@trap 'kill 0' INT TERM && \
+	group="train-multi-$(date +%Y-%m-%d-%H-%M-%S)" && \
 	i=1 && \
 	for c in {{configs}}; do \
 		uv run train.py --record-during-training --env-config-path "$c" --algorithm ppo --network-type transformer --run-suffix "$i" --wandb-group "$group" & \
