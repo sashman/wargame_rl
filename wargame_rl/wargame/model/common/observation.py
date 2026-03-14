@@ -126,7 +126,14 @@ def _observation_to_numpy(
     normalized_round = state.battle_round / max(state.n_rounds, 1)
     normalized_phase = state.battle_phase_index / max(n_phases - 1, 1)
     game_features = np.array(
-        [0.0, normalized_round, normalized_phase], dtype=np.float32
+        [
+            0.0,
+            normalized_round,
+            normalized_phase,
+            float(state.player_vp),
+            float(state.opponent_vp),
+        ],
+        dtype=np.float32,
     )
 
     return (
@@ -159,7 +166,7 @@ def observation_to_tensor(
     ----------------
 
     The tensors are returned in the following order:
-        1. game_features: shape (3,) — placeholder, normalized_round, normalized_phase
+        1. game_features: shape (5,) — placeholder, normalized_round, normalized_phase, player_vp, opponent_vp
         2. tensor_objectives: shape (num_objectives, 2), normalized to [-1, 1]
         3. tensor_wargame_models: shape (num_models, model_features)
         4. tensor_opponent_models: shape (num_opponent_models, model_features)

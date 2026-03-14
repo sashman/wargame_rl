@@ -76,6 +76,19 @@ class OpponentPolicyConfig(BaseModel):
     )
 
 
+class MissionConfig(BaseModel):
+    """Configuration for the mission (victory point scoring rules)."""
+
+    type: str = Field(
+        default="default",
+        description="Mission type identifier; selects the VP calculator (e.g. 'default', 'none').",
+    )
+    params: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Mission-specific parameters (e.g. vp_per_objective, cap_per_turn, min_round).",
+    )
+
+
 class ModelConfig(BaseModel):
     """Per-model configuration (position, group, stats, etc.).
 
@@ -256,6 +269,10 @@ class WargameEnvConfig(BaseModel):
     opponent_policy: OpponentPolicyConfig | None = Field(
         default=None,
         description="Opponent policy engine config. Required when number_of_opponent_models > 0.",
+    )
+    mission: MissionConfig = Field(
+        default_factory=MissionConfig,
+        description="Mission config: selects VP calculator and params (vp_per_objective, cap_per_turn, min_round).",
     )
 
     @model_validator(mode="before")

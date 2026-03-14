@@ -5,6 +5,7 @@ This module contains all the type definitions used throughout the wargame enviro
 """
 
 from .config import (
+    MissionConfig,
     ModelConfig,
     ObjectiveConfig,
     OpponentPolicyConfig,
@@ -29,6 +30,7 @@ __all__ = [
     "BattlePhase",
     "GamePhase",
     "GameState",
+    "MissionConfig",
     "ModelConfig",
     "NON_MOVEMENT_PHASES",
     "ObjectiveConfig",
