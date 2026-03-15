@@ -41,6 +41,7 @@ Reinforcement learning project that trains agents (DQN, PPO) to play tabletop wa
 | Full validation | `just validate` |
 | Train (PPO, default) | `just train <config.yaml>` |
 | Train (DQN) | `just train <config.yaml> dqn` |
+| Train multiple configs in parallel | `just train-multi config1.yaml config2.yaml` |
 | Simulate | `just simulate-latest` |
 
 ## Project Layout
