@@ -29,6 +29,7 @@ class RewardPhase:
     criteria: SuccessCriteria
     success_threshold: float
     min_epochs: int
+    min_epochs_above_threshold: int
 
 
 @dataclass
@@ -43,6 +44,7 @@ class RewardPhaseManager:
     phases: list[RewardPhase]
     _current_idx: int = field(default=0, init=False)
     _epoch_entered: int = field(default=0, init=False)
+    _consecutive_epochs_above_threshold: int = field(default=0, init=False)
 
     @classmethod
     def from_configs(cls, configs: list[RewardPhaseConfig]) -> RewardPhaseManager:
@@ -74,6 +76,7 @@ class RewardPhaseManager:
                     criteria=criteria,
                     success_threshold=cfg.success_threshold,
                     min_epochs=cfg.min_epochs,
+                    min_epochs_above_threshold=cfg.min_epochs_above_threshold,
                 )
             )
 
@@ -150,6 +153,10 @@ class RewardPhaseManager:
     def try_advance(self, success_rate: float, current_epoch: int) -> bool:
         """Attempt to advance to the next phase.
 
+        Advancement requires: min_epochs in phase, success_rate >= threshold,
+        and success_rate >= threshold for at least min_epochs_above_threshold
+        consecutive epochs.
+
         Returns True if the phase was advanced.
         """
         if self.is_final_phase:
@@ -158,14 +165,21 @@ class RewardPhaseManager:
         phase = self.current_phase
         epochs_in_phase = current_epoch - self._epoch_entered
 
+        if success_rate < phase.success_threshold:
+            self._consecutive_epochs_above_threshold = 0
+            return False
+
+        self._consecutive_epochs_above_threshold += 1
+
         if epochs_in_phase < phase.min_epochs:
             return False
 
-        if success_rate < phase.success_threshold:
+        if self._consecutive_epochs_above_threshold < phase.min_epochs_above_threshold:
             return False
 
         self._current_idx += 1
         self._epoch_entered = current_epoch
+        self._consecutive_epochs_above_threshold = 0
         new_phase = self.current_phase
         logger.info(
             "Reward phase advanced: '{}' -> '{}' (success_rate={:.2f}, epoch={})",

@@ -56,6 +56,7 @@ reward_phases:
 | `success_criteria` | object | *required* | Criteria that determines whether an episode counts as successful |
 | `success_threshold` | float | `0.8` | Fraction of evaluation episodes (0--1) that must succeed to advance |
 | `min_epochs` | int | `0` | Minimum epochs spent in this phase before advancement is eligible |
+| `min_epochs_above_threshold` | int | `5` | Success rate must be ≥ success_threshold for this many consecutive epochs before advancing |
 
 ### Reward calculator fields
 
@@ -96,6 +97,7 @@ At the end of each training epoch, the training loop runs evaluation episodes (c
 advance if:
     success_rate >= success_threshold
     AND epochs_in_current_phase >= min_epochs
+    AND success_rate has been >= success_threshold for the last min_epochs_above_threshold consecutive epochs
     AND current phase is not the final phase
 ```
 

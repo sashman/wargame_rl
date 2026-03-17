@@ -546,13 +546,20 @@ class TestRewardPhaseManager:
     def test_advance_when_conditions_met(
         self, two_phase_manager: RewardPhaseManager
     ) -> None:
-        advanced = two_phase_manager.try_advance(success_rate=0.9, current_epoch=5)
+        # min_epochs=2, min_epochs_above_threshold=5: need 5 consecutive epochs at/above threshold
+        for epoch in range(2, 6):
+            advanced = two_phase_manager.try_advance(
+                success_rate=0.9, current_epoch=epoch
+            )
+            assert advanced is False
+        advanced = two_phase_manager.try_advance(success_rate=0.9, current_epoch=6)
         assert advanced is True
         assert two_phase_manager.current_phase_name == "phase_two"
         assert two_phase_manager.is_final_phase is True
 
     def test_no_advance_past_final(self, two_phase_manager: RewardPhaseManager) -> None:
-        two_phase_manager.try_advance(success_rate=0.9, current_epoch=5)
+        for epoch in range(2, 7):
+            two_phase_manager.try_advance(success_rate=0.9, current_epoch=epoch)
         advanced = two_phase_manager.try_advance(success_rate=1.0, current_epoch=100)
         assert advanced is False
 
