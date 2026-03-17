@@ -5,13 +5,13 @@ from typing import TYPE_CHECKING, Any
 
 import torch
 import torch.nn as nn
-from pytorch_lightning import LightningModule
 from torch import Tensor, optim
 from torch.distributions import Categorical
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.model.common.lightning_base import WargameLightningBase
 from wargame_rl.wargame.model.common.observation import observations_to_tensor_batch
 from wargame_rl.wargame.model.ppo.agent import Agent
 from wargame_rl.wargame.types import Experience
@@ -37,7 +37,7 @@ class _PPODummyDataset(Dataset[Tensor]):
         return torch.tensor(0.0)
 
 
-class PPOLightning(LightningModule):
+class PPOLightning(WargameLightningBase):
     """PPO Lightning Module for training PPO agents."""
 
     def __init__(
@@ -78,22 +78,19 @@ class PPOLightning(LightningModule):
             n_episodes: Number of episodes to run for evaluation
             show_inner_progress: Whether to show tqdm for rollout and PPO minibatch updates
         """
-        super().__init__()
+        super().__init__(env=env, do_log=log, n_episodes=n_episodes)
         self.automatic_optimization = False
         self.save_hyperparameters()
 
-        self.env = env
         self.show_inner_progress = show_inner_progress
         self.ppo_model = ppo_model
         self.agent = Agent(self.env)
         self.total_reward = 0
         self.episode_reward = 0
-        self.do_log = log
         self.batch_size = batch_size
         self.n_steps = n_steps
         self.n_epochs = n_epochs
         self.max_grad_norm = max_grad_norm
-        self.n_episodes = n_episodes
 
         # Initialize optimizer
         self.optimizer = optim.Adam(
@@ -366,35 +363,14 @@ class PPOLightning(LightningModule):
             num_workers=0,
         )
 
-    def run_episodes(self, n_episodes: int, epsilon: float = 0.0) -> None:
-        """Run episodes for evaluation.
+    def _set_policy_mode(self, eval_mode: bool) -> None:
+        if eval_mode:
+            self.ppo_model.eval()
+        else:
+            self.ppo_model.train()
 
-        Args:
-            n_episodes: Number of episodes to run
-            epsilon: Exploration rate (0 for deterministic)
-        """
-        steps_s = []
-        episode_rewards = []
-        self.ppo_model.eval()
-        with torch.no_grad():
-            for _ in range(n_episodes):
-                reward, steps, _ = self.agent.run_episode(
-                    self.ppo_model, epsilon=epsilon, render=False, save_steps=False
-                )
-                episode_rewards.append(reward)
-                steps_s.append(steps)
-        self.mean_episode_reward = sum(episode_rewards) / len(episode_rewards)
-        if self.do_log:
-            self.log("mean_episode_reward", self.mean_episode_reward, prog_bar=True)
-            self.log("mean_episode_steps", sum(steps_s) / len(steps_s), prog_bar=False)
-            self.log("max_episode_reward", max(episode_rewards), prog_bar=False)
-            self.log("min_episode_reward", min(episode_rewards), prog_bar=False)
-            success_rate = torch.tensor(steps_s) < self.env.max_turns
-            self.log("success_rate", success_rate.float().mean() * 100, prog_bar=False)
-        self.ppo_model.train()
-
-    def on_train_epoch_end(self) -> None:
-        """Run after each training epoch."""
-        if self.do_log:
-            self.run_episodes(self.n_episodes)
-        super().on_train_epoch_end()
+    def _run_episode_eval(self, epsilon: float) -> tuple[float, int]:
+        reward, steps, _ = self.agent.run_episode(
+            self.ppo_model, epsilon=epsilon, render=False, save_steps=False
+        )
+        return reward, steps

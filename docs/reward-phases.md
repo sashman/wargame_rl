@@ -74,7 +74,7 @@ reward_phases:
 
 | Type key | Scope | Parameters | Description |
 |----------|-------|------------|-------------|
-| `closest_objective` | per-model | *(none)* | +1.0 at objective, +0.5 closer, -0.05 no change, -0.5 farther. Distance normalised by board diagonal. |
+| `closest_objective` | per-model | *(none)* | 0 when getting closer, negative penalty when distance stays the same or increases. Uses the change in distance to the closest objective, normalised by board diagonal. |
 | `group_cohesion` | per-model | `group_max_distance` (float, default 10.0), `violation_penalty` (float, default -10.0) | Negative reward proportional to excess distance beyond `group_max_distance` from the closest same-group model. 0 when within range or alone in group. |
 
 ## Available Success Criteria
