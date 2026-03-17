@@ -137,6 +137,10 @@ class RewardPhaseManager:
         if ctx.is_terminated and view.config.terminal_success_bonus != 0.0:
             if ctx.distance_cache.all_models_at_objectives():
                 reward += float(view.config.terminal_success_bonus)
+        if ctx.is_terminated and view.config.terminal_vp_bonus != 0.0:
+            vp_threshold = phase.criteria.vp_threshold_for_terminal_bonus(view)
+            if vp_threshold is not None and view.player_vp >= vp_threshold:
+                reward += float(view.config.terminal_vp_bonus)
         return reward
 
     def check_success(self, view: BattleView, ctx: StepContext) -> bool:

@@ -13,6 +13,8 @@ Teaching an agent to play a full wargame in one shot is hard. The reward signal 
 
 Each phase uses a simpler reward that the agent can learn quickly, then advances to a harder phase once it has mastered the current one.
 
+**Phase order:** Put the "Win the game" (VP) phase **after** a phase where the agent learns to reach objectives (e.g. `move_and_group` with `all_at_objectives` or `closest_objective`). That way the agent already knows how to get to objectives before you ask it to score VP; the VP phase then focuses on holding control at scoring time.
+
 ## Configuration
 
 Reward is always computed via reward phases. Configure the `reward_phases` field in the environment YAML; if omitted, a single default phase is used (reach objectives with `closest_objective`).
@@ -76,6 +78,7 @@ reward_phases:
 |----------|-------|------------|-------------|
 | `closest_objective` | per-model | *(none)* | +1.0 at objective, +0.5 closer, -0.05 no change, -0.5 farther. Distance normalised by board diagonal. |
 | `group_cohesion` | per-model | `group_max_distance` (float, default 10.0), `violation_penalty` (float, default -10.0) | Negative reward proportional to excess distance beyond `group_max_distance` from the closest same-group model. 0 when within range or alone in group. |
+| `vp_gain` | global | *(none)* | Reward = weight × player VP gained this step. Use in a "Win the game" phase. VP is only awarded at scoring moments (e.g. end of command phase); for a denser signal, add a small weight on `closest_objective` (e.g. 0.2) in the same phase. |
 
 ## Available Success Criteria
 
@@ -83,6 +86,7 @@ reward_phases:
 |----------|------------|-------------|
 | `all_at_objectives` | *(none)* | Succeeds when every model is within the radius of at least one objective. |
 | `all_models_grouped` | `max_distance` (float, default 10.0) | Succeeds when every model is within `max_distance` of at least one same-group member. Models alone in their group are considered grouped. |
+| `player_vp_min` | `fraction_of_max` (float, e.g. 0.33), `min_vp` (int, default 0) | Succeeds when player VP at episode end ≥ threshold. Threshold = max(min_vp, round(fraction_of_max × theoretical_max)). Theoretical max depends on `number_of_battle_rounds`, objectives, and mission params, so the same fraction gives a higher VP bar when episodes have more rounds. |
 
 ## How Advancement Works
 

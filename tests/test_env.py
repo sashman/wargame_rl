@@ -45,7 +45,7 @@ def test_reset_observation_has_expected_structure(env: WargameEnv) -> None:
     assert observation.current_turn == 0
     assert observation.player_vp == 0
     assert observation.opponent_vp == 0
-    assert observation.size_game_observation == 5
+    assert observation.size_game_observation == 6
     assert len(observation.wargame_models) == env.config.number_of_wargame_models
     assert len(observation.objectives) == env.config.number_of_objectives
 

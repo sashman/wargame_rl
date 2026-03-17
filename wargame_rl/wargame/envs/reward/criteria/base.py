@@ -13,3 +13,7 @@ class SuccessCriteria(ABC):
 
     @abstractmethod
     def is_successful(self, view: BattleView, ctx: StepContext) -> bool: ...
+
+    def vp_threshold_for_terminal_bonus(self, view: BattleView) -> int | None:
+        """Return VP threshold for terminal bonus, or None if not applicable."""
+        return None
