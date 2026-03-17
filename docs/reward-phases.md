@@ -152,11 +152,13 @@ wargame_rl/wargame/envs/reward/
     base.py                        # PerModelRewardCalculator, GlobalRewardCalculator ABCs
     closest_objective.py           # Closest-objective reward
     group_cohesion.py              # Group cohesion penalty
+    vp_gain.py                     # VP gain reward (global)
     registry.py                    # Type-string -> class mapping
   criteria/
     base.py                        # SuccessCriteria ABC
     all_at_objectives.py           # All models at objectives
     all_models_grouped.py          # All models within group distance
+    player_vp_min.py               # Player VP min success criteria
     registry.py                    # Type-string -> class mapping
   types/
     model_rewards.py               # ModelRewards (per-model reward breakdown)

@@ -32,7 +32,7 @@ An objective is **controlled** by a side if that side has at least one model wit
 
 - **Battle state**: `player_vp` and `opponent_vp` are cumulative; `player_vp_delta` and `opponent_vp_delta` are the VP added during the current env step (for display).
 - **Info**: Each step’s info dict includes `player_vp`, `opponent_vp`, `player_vp_delta`, and `opponent_vp_delta`.
-- **Observation**: The agent observation includes `player_vp` and `opponent_vp` in the game-feature vector so the policy can condition on score.
+- **Observation**: The agent observation includes `player_vp`, `opponent_vp`, and `player_vp_delta` in the game-feature vector so the policy can condition on score and step-wise VP gain. For VP-based reward shaping and phase success (e.g. `vp_gain` calculator, `player_vp_min` criteria, optional `terminal_vp_bonus`), see [reward-phases.md](reward-phases.md).
 
 ## Adding mission types
 

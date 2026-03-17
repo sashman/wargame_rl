@@ -184,7 +184,7 @@ When opponents are present, the player agent's observation includes opponent mod
 
 | Tensor index | Content | Shape |
 |--------------|---------|-------|
-| 0 | Game state | `(3,)` — current_turn, normalized_round, phase_index |
+| 0 | Game state | `(6,)` — placeholder, normalized_round, phase_index, player_vp, opponent_vp, player_vp_delta (see `envs/types/env_observation.py`, `model/common/observation.py`) |
 | 1 | Objectives | `(n_objectives, 2)` |
 | 2 | Player models | `(n_player_models, features)` |
 | 3 | Opponent models | `(n_opponent_models, features)` |
