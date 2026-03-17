@@ -11,6 +11,7 @@ from torch.distributions import Categorical
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
+import wandb
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.observation import observations_to_tensor_batch
 from wargame_rl.wargame.model.ppo.agent import Agent
@@ -391,6 +392,14 @@ class PPOLightning(LightningModule):
             self.log("min_episode_reward", min(episode_rewards), prog_bar=False)
             success_rate = torch.tensor(steps_s) < self.env.max_turns
             self.log("success_rate", success_rate.float().mean() * 100, prog_bar=False)
+            phase_index = int(self.env.phase_manager.current_phase_index)
+            self.log(
+                "reward_phase",
+                float(phase_index),
+                prog_bar=False,
+            )
+            if wandb.run is not None:  # type: ignore[attr-defined]
+                wandb.log({"reward_phase": phase_index}, step=self.global_step)  # type: ignore[attr-defined]
         self.ppo_model.train()
 
     def on_train_epoch_end(self) -> None:

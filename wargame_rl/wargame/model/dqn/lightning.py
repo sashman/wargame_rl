@@ -7,6 +7,7 @@ from torch import Tensor, nn
 from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
 
+import wandb
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.dataset import RLDataset, experience_list_to_batch
 from wargame_rl.wargame.model.common.observation import apply_action_mask
@@ -252,11 +253,14 @@ class DQNLightning(LightningModule):
             sr = self.run_episodes(self.hparams.n_episodes)  # type: ignore
 
             advanced = self.env.phase_manager.try_advance(sr, self.current_epoch)
+            phase_index = int(self.env.phase_manager.current_phase_index)
             self.log(
                 "reward_phase",
-                float(self.env.phase_manager.current_phase_index),
+                float(phase_index),
                 prog_bar=False,
             )
+            if wandb.run is not None:  # type: ignore[attr-defined]
+                wandb.log({"reward_phase": phase_index}, step=self.global_step)  # type: ignore[attr-defined]
             if advanced:
                 self.log(
                     "phase_advanced_at_epoch",
