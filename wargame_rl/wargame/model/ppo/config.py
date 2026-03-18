@@ -29,7 +29,7 @@ class PPOConfig(BaseModel):
     # Parallel rollout collection: number of independent env instances.
     # When set to 1, rollout collection is identical to the existing code.
     # When set to <= 0, an automatic hardware-based selection is used.
-    num_rollout_envs: int = 1
+    num_rollout_envs: int = 0
     n_episodes: int = 10
 
     # Network parameters

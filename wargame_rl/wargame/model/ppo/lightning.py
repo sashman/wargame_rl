@@ -124,7 +124,7 @@ class PPOLightning(LightningModule):
         max_grad_norm: float = 0.5,
         n_epochs: int = 4,
         n_steps: int = 2048,
-        num_rollout_envs: int = 1,
+        num_rollout_envs: int = 0,
         n_episodes: int = 10,
         show_inner_progress: bool = True,
         **kwargs: Any,
