@@ -147,7 +147,9 @@ def test_ppo_agent_run_episode_returns_correct_types(
     agent = Agent(env)
 
     # Act
-    total_reward, steps, collected_experiences = agent.run_episode(ppo_net)
+    total_reward, steps, collected_experiences = agent.run_episode_with_experiences(
+        ppo_net
+    )
 
     # Assert
     assert isinstance(total_reward, float)
@@ -163,7 +165,7 @@ def test_ppo_agent_experiences_contain_scalar_log_prob(
     agent = Agent(env)
 
     # Act
-    _, _, collected_experiences = agent.run_episode(ppo_net)
+    _, _, collected_experiences = agent.run_episode_with_experiences(ppo_net)
     first = collected_experiences[0]
 
     # Assert
@@ -179,7 +181,7 @@ def test_ppo_agent_run_episode_without_saving_steps_returns_empty_experiences(
     agent = Agent(env)
 
     # Act
-    total_reward, steps, collected_experiences = agent.run_episode(
+    total_reward, steps, collected_experiences = agent.run_episode_with_experiences(
         ppo_net, save_steps=False
     )
 

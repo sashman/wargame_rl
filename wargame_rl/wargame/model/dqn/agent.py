@@ -1,10 +1,8 @@
-from typing import Tuple
-
 import gymnasium as gym
 import numpy as np
 import torch
 
-from wargame_rl.wargame.envs.types import WargameEnvAction
+from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvObservation
 from wargame_rl.wargame.model.common.agent_base import BaseAgent
 from wargame_rl.wargame.model.common.observation import (
     apply_action_mask,
@@ -12,7 +10,6 @@ from wargame_rl.wargame.model.common.observation import (
 )
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.model.net import RL_Network
-from wargame_rl.wargame.types import Experience
 
 
 class Agent(BaseAgent):
@@ -29,14 +26,16 @@ class Agent(BaseAgent):
         self.reset()
 
     def get_action(
-        self, policy_net: RL_Network, epsilon: float
-    ) -> tuple[WargameEnvAction, None]:
+        self,
+        policy_net: RL_Network,
+        observation: WargameEnvObservation,
+        epsilon: float,
+    ) -> WargameEnvAction:
         """Using the given network, decide what action to carry out.
 
         Uses an epsilon-greedy policy with action masking — only valid
         actions (according to ``observation.action_mask``) are considered.
         """
-        observation = self._require_observation()
         mask = observation.action_mask  # (n_models, n_actions) or None
 
         if np.random.random() < epsilon:
@@ -56,50 +55,5 @@ class Agent(BaseAgent):
                 _, action_indexes = q_values.max(dim=-1)
                 action = WargameEnvAction(actions=action_indexes.flatten().tolist())
 
-        return action, None
-
-    @torch.no_grad()
-    def play_step(
-        self,
-        net: RL_Network,
-        epsilon: float = 0.0,
-        save_step: bool = True,
-    ) -> Tuple[float, bool, Experience | None]:
-        """Carries out a single interaction step.
-
-        Single interaction step between the agent and the environment.
-
-        Args:
-            net: DQN network
-            epsilon: value to determine likelihood of taking a random action
-            device: current device
-
-        Returns:
-            reward, done
-
-        """
-        action, _log_prob = self.get_action(net, epsilon)
-
-        # do step in the environment
-        # So, in the deprecated version of gym, the env.step() has 4 values
-        # unpacked which is: obs, reward, done, info = env.step(action)
-        # In the latest version of gym, the step() function returns back an
-        # additional variable which is truncated.
-        #     obs, reward, terminated, truncated, info = env.step(action)
-        observation = self._require_observation()
-        new_state, reward, done, _, _info = self.env.step(action)
-
-        exp: Experience | None = None
-        if save_step:
-            exp = Experience(
-                state=observation,
-                action=action,
-                reward=float(reward),
-                done=bool(done),
-                new_state=new_state,
-                log_prob=None,
-            )
-            if self.replay_buffer is not None:
-                self.replay_buffer.append(exp)
-        self.observation = new_state
-        return float(reward), bool(done), exp
+        self._last_log_prob = None
+        return action

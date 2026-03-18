@@ -341,7 +341,7 @@ class PPOLightning(WargameLightningBase):
         )
         with pbar_ctx as pbar:
             while len(rollout) < self.n_steps:
-                _reward, _steps, episode_exp = self.agent.run_episode(
+                _reward, _steps, episode_exp = self.agent.run_episode_with_experiences(
                     self.ppo_model,
                     epsilon=1.0,
                     render=False,
@@ -363,14 +363,5 @@ class PPOLightning(WargameLightningBase):
             num_workers=0,
         )
 
-    def _set_policy_mode(self, eval_mode: bool) -> None:
-        if eval_mode:
-            self.ppo_model.eval()
-        else:
-            self.ppo_model.train()
-
-    def _run_episode_eval(self, epsilon: float) -> tuple[float, int]:
-        reward, steps, _ = self.agent.run_episode(
-            self.ppo_model, epsilon=epsilon, render=False, save_steps=False
-        )
-        return reward, steps
+    def _policy_model(self) -> PPOModel:
+        return self.ppo_model

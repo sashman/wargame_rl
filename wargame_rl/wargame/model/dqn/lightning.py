@@ -164,7 +164,7 @@ class DQNLightning(WargameLightningBase):
         self.optimization_steps += 1
         # run one episode
         epsilon = self.get_epsilon()
-        reward, n_steps, _ = self.agent.run_episode(
+        reward, n_steps = self.agent.run_episode(
             self.policy_net, epsilon=epsilon, render=False, save_steps=True
         )
         mean_reward = reward / n_steps
@@ -207,14 +207,5 @@ class DQNLightning(WargameLightningBase):
         """Get train loader."""
         return self.__dataloader()
 
-    def _set_policy_mode(self, eval_mode: bool) -> None:
-        if eval_mode:
-            self.policy_net.eval()
-        else:
-            self.policy_net.train()
-
-    def _run_episode_eval(self, epsilon: float) -> tuple[float, int]:
-        reward, steps, _ = self.agent.run_episode(
-            self.policy_net, epsilon=epsilon, render=False, save_steps=False
-        )
-        return reward, steps
+    def _policy_model(self) -> RL_Network:
+        return self.policy_net

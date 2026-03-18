@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 import torch
+import torch.nn as nn
 from pytorch_lightning import LightningModule
 
 from wargame_rl.wargame.envs.wargame import WargameEnv
@@ -27,12 +28,26 @@ class WargameLightningBase(LightningModule, ABC):
         self.mean_episode_reward = 0.0
 
     @abstractmethod
+    def _policy_model(self) -> nn.Module:
+        """Return the policy model used for evaluation."""
+
     def _run_episode_eval(self, epsilon: float) -> tuple[float, int]:
         """Run a single evaluation episode and return (reward, steps)."""
+        reward, steps = self.agent.run_episode(  # type: ignore[attr-defined]
+            self._policy_model(),
+            epsilon=epsilon,
+            render=False,
+            save_steps=False,
+        )
+        return reward, steps
 
-    @abstractmethod
     def _set_policy_mode(self, eval_mode: bool) -> None:
         """Hook to toggle model eval/train mode for evaluation."""
+        policy = self._policy_model()
+        if eval_mode:
+            policy.eval()
+        else:
+            policy.train()
 
     def _evaluate_episodes(
         self,

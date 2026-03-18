@@ -17,15 +17,17 @@ def test_agent(agent: Agent, policy_net: RL_Network) -> None:
     wargame_config = WargameEnvConfig()
     n_wargame_models = wargame_config.number_of_wargame_models
     agent.reset()
-    random_action = agent.get_action(policy_net, 1)
-    policy_action = agent.get_action(policy_net, 0)
+    observation = agent.observation
+    assert observation is not None
+    random_action = agent.get_action(policy_net, observation, 1)
+    policy_action = agent.get_action(policy_net, observation, 0)
 
     assert isinstance(policy_action, WargameEnvAction)
     assert isinstance(random_action, WargameEnvAction)
     assert np.array(random_action.actions).shape == (n_wargame_models,)
     assert np.array(policy_action.actions).shape == (n_wargame_models,)
 
-    reward, done = agent.play_step(policy_net, 0)
+    reward, done, _exp = agent.play_step(policy_net, 0)
     assert isinstance(reward, float)
     assert isinstance(done, bool)
 
