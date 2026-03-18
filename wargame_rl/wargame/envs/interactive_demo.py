@@ -17,6 +17,10 @@ class EnvTest:
 
         if board_height is None:
             board_height = board_width
+
+        # In CI / headless runs we want to avoid constructing `HumanRender()`
+        # since `WargameEnv.reset()` will immediately call `renderer.setup()`.
+        renderer = HumanRender() if render_mode is not None else None
         self.env = WargameEnv(
             WargameEnvConfig(
                 board_width=board_width,
@@ -30,7 +34,7 @@ class EnvTest:
                     type="scripted_advance_to_objective"
                 ),
             ),
-            renderer=HumanRender(),
+            renderer=renderer,
         )
         self.env.reset()
 
