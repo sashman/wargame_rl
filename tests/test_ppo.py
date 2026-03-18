@@ -231,6 +231,53 @@ def test_compute_returns_terminal_state_blocks_reward_propagation(
     assert returns[2].item() == pytest.approx(1.0, abs=1e-5)
 
 
+def test_compute_returns_terminal_state_blocks_reward_propagation_per_env(
+    env: WargameEnv, ppo_net: PPO_Transformer
+) -> None:
+    """done[t, env]=1 should block future reward propagation for that env."""
+    # Arrange
+    model = PPOLightning(env=env, ppo_model=ppo_net, log=False)
+    # rewards only at final step
+    rewards = torch.tensor(
+        [[0.0, 0.0], [0.0, 0.0], [1.0, 1.0]],
+        dtype=torch.float32,
+    )
+    # Env0 terminates at t=1; Env1 continues.
+    dones = torch.tensor(
+        [[0.0, 0.0], [1.0, 0.0], [0.0, 0.0]],
+        dtype=torch.float32,
+    )
+    values = torch.zeros_like(rewards)
+
+    # Act
+    returns = model.compute_returns(rewards, dones, values)
+
+    # Assert: env0 is fully blocked by dones at t=1
+    assert returns.shape == rewards.shape
+    assert returns[0, 0].item() == pytest.approx(0.0, abs=1e-5)
+    assert returns[1, 0].item() == pytest.approx(0.0, abs=1e-5)
+    assert returns[2, 0].item() == pytest.approx(1.0, abs=1e-5)
+
+    # Assert: env1 should receive some propagated value from the final reward
+    assert returns[0, 1].item() > 0.0
+    assert returns[2, 1].item() == pytest.approx(1.0, abs=1e-5)
+
+
+def test_auto_detect_num_rollout_envs_uses_divisor_of_n_steps(
+    env: WargameEnv, ppo_net: PPO_Transformer
+) -> None:
+    """When `num_rollout_envs <= 0`, selection should never break rollout modulo."""
+    model = PPOLightning(
+        env=env,
+        ppo_model=ppo_net,
+        log=False,
+        n_steps=60,
+        num_rollout_envs=0,
+    )
+    assert model.num_rollout_envs >= 1
+    assert 60 % model.num_rollout_envs == 0
+
+
 # ---------------------------------------------------------------------------
 # Training
 # ---------------------------------------------------------------------------
