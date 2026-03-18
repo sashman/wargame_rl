@@ -3,6 +3,8 @@ from __future__ import annotations
 from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
 
+import gymnasium as gym
+import numpy as np
 import torch
 import torch.nn as nn
 from pytorch_lightning import LightningModule
@@ -12,6 +14,7 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 import wandb
+from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.observation import observations_to_tensor_batch
 from wargame_rl.wargame.model.ppo.agent import Agent
@@ -26,6 +29,22 @@ class _NoOpProgress:
 
     def update(self, n: int = 1) -> None:
         pass
+
+
+class _WargameEnvActionWrapper(gym.ActionWrapper):
+    """Convert vector-env Tuple actions into `WargameEnvAction`.
+
+    Gymnasium vector environments expect actions compatible with `action_space`.
+    Our `WargameEnv.step()` expects a `WargameEnvAction`, so this wrapper
+    bridges the formats for action dispatch.
+    """
+
+    def action(self, action: Any) -> WargameEnvAction:  # type: ignore[override]
+        if isinstance(action, WargameEnvAction):
+            return action
+        # Expected shape from vector env: tuple/list/ndarray of length n_models.
+        actions_list = [int(x) for x in np.asarray(action).reshape(-1)]
+        return WargameEnvAction(actions=actions_list)
 
 
 class _PPODummyDataset(Dataset[Tensor]):
@@ -56,6 +75,7 @@ class PPOLightning(LightningModule):
         max_grad_norm: float = 0.5,
         n_epochs: int = 4,
         n_steps: int = 2048,
+        num_rollout_envs: int = 1,
         n_episodes: int = 10,
         show_inner_progress: bool = True,
         **kwargs: Any,
@@ -76,6 +96,9 @@ class PPOLightning(LightningModule):
             max_grad_norm: Maximum gradient norm
             n_epochs: Number of epochs for PPO updates
             n_steps: Number of steps to collect before each update
+            num_rollout_envs: Number of parallel env instances for rollout
+                collection (must be >= 1). When set to 1, rollout collection is
+                unchanged.
             n_episodes: Number of episodes to run for evaluation
             show_inner_progress: Whether to show tqdm for rollout and PPO minibatch updates
         """
@@ -92,6 +115,7 @@ class PPOLightning(LightningModule):
         self.do_log = log
         self.batch_size = batch_size
         self.n_steps = n_steps
+        self.num_rollout_envs = num_rollout_envs
         self.n_epochs = n_epochs
         self.max_grad_norm = max_grad_norm
         self.n_episodes = n_episodes
@@ -141,16 +165,18 @@ class PPOLightning(LightningModule):
         Returns:
             Computed returns
         """
-        # Compute advantages using GAE
+        # Compute advantages using GAE.
+        # Supports both:
+        # - rewards/dones/values with shape (T,)
+        # - rewards/dones/values with shape (T, num_envs)
         advantages = torch.zeros_like(rewards)
-        gae = torch.tensor(0.0, device=rewards.device, dtype=rewards.dtype)
+        gae = torch.zeros_like(rewards[0])
 
-        for t in reversed(range(len(rewards))):
-            if t == len(rewards) - 1:
+        time_steps = rewards.shape[0]
+        for t in reversed(range(time_steps)):
+            if t == time_steps - 1:
                 if last_value is None:
-                    next_value = torch.tensor(
-                        0.0, device=rewards.device, dtype=rewards.dtype
-                    )
+                    next_value = torch.zeros_like(values[t])
                 else:
                     next_value = last_value.to(
                         device=rewards.device, dtype=rewards.dtype
@@ -180,57 +206,80 @@ class PPOLightning(LightningModule):
             batch: Unused (rollout is collected inline)
             batch_idx: Batch index
         """
-        experiences = self._collect_experiences()
-
         device = self.ppo_model.device
         optimizer = self.optimizers()
 
-        state_tensors = observations_to_tensor_batch(
-            [exp.state for exp in experiences], device=device
-        )
-        actions = torch.tensor(
-            [exp.action.actions for exp in experiences],
-            dtype=torch.long,
-            device=device,
-        )
-        rewards = torch.tensor(
-            [exp.reward for exp in experiences],
-            dtype=torch.float32,
-            device=device,
-        )
-        dones = torch.tensor(
-            [exp.done for exp in experiences],
-            dtype=torch.float32,
-            device=device,
-        )
-        old_log_probs = torch.stack(
-            [exp.log_prob for exp in experiences]  # type: ignore[misc]
-        ).detach()
+        if self.num_rollout_envs == 1:
+            experiences = self._collect_experiences()
 
-        _, state_values = self.ppo_model(state_tensors)
-
-        last_done = bool(experiences[-1].done)
-        if last_done:
-            last_value = torch.tensor(0.0, device=device, dtype=torch.float32)
-        else:
-            last_state_tensors = observations_to_tensor_batch(
-                [experiences[-1].new_state], device=device
+            state_tensors = observations_to_tensor_batch(
+                [exp.state for exp in experiences], device=device
             )
-            with torch.no_grad():
-                _, last_state_value = self.ppo_model(last_state_tensors)
-            last_value = last_state_value.squeeze(0).detach()
+            actions = torch.tensor(
+                [exp.action.actions for exp in experiences],
+                dtype=torch.long,
+                device=device,
+            )
+            rewards = torch.tensor(
+                [exp.reward for exp in experiences],
+                dtype=torch.float32,
+                device=device,
+            )
+            dones = torch.tensor(
+                [exp.done for exp in experiences],
+                dtype=torch.float32,
+                device=device,
+            )
+            old_log_probs = torch.stack(
+                [exp.log_prob for exp in experiences]  # type: ignore[misc]
+            ).detach()
 
-        returns = self.compute_returns(
-            rewards,
-            dones,
-            state_values,
-            last_value=last_value,
-        ).detach()
-        advantages = (returns - state_values).detach()
+            _, state_values = self.ppo_model(state_tensors)
+
+            last_done = bool(experiences[-1].done)
+            if last_done:
+                last_value = torch.tensor(0.0, device=device, dtype=torch.float32)
+            else:
+                last_state_tensors = observations_to_tensor_batch(
+                    [experiences[-1].new_state], device=device
+                )
+                with torch.no_grad():
+                    _, last_state_value = self.ppo_model(last_state_tensors)
+                last_value = last_state_value.squeeze(0).detach()
+
+            returns = self.compute_returns(
+                rewards,
+                dones,
+                state_values,
+                last_value=last_value,
+            ).detach()
+            advantages = (returns - state_values).detach()
+            n_steps = len(experiences)
+        else:
+            (
+                state_tensors,
+                actions,
+                rewards_2d,
+                dones_2d,
+                old_log_probs_2d,
+                values_2d,
+                last_values,
+            ) = self._collect_rollout_parallel()
+
+            returns_2d = self.compute_returns(
+                rewards_2d,
+                dones_2d,
+                values_2d,
+                last_value=last_values,
+            ).detach()
+            advantages_2d = (returns_2d - values_2d).detach()
+
+            returns = returns_2d.reshape(-1)
+            advantages = advantages_2d.reshape(-1)
+            old_log_probs = old_log_probs_2d.reshape(-1).detach()
+            n_steps = actions.shape[0]
 
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-
-        n_steps = len(experiences)
         total_loss_float = 0.0
         n_updates = 0
         epoch_policy_loss = 0.0
@@ -329,6 +378,133 @@ class PPOLightning(LightningModule):
                 on_epoch=True,
             )
             self.log("env_steps", self.global_step, logger=False, prog_bar=True)
+
+    def _collect_rollout_parallel(
+        self,
+    ) -> tuple[
+        list[Tensor],
+        Tensor,
+        Tensor,
+        Tensor,
+        Tensor,
+        Tensor,
+        Tensor,
+    ]:
+        """Collect rollouts across multiple env instances.
+
+        This implementation keeps env stepping in Python (single process) but
+        batches the policy/value forward pass across environments to reduce
+        neural network overhead.
+        """
+        if self.num_rollout_envs < 1:
+            raise ValueError("num_rollout_envs must be >= 1")
+        if self.num_rollout_envs == 1:
+            raise ValueError("_collect_rollout_parallel called with num_rollout_envs=1")
+        if self.n_steps % self.num_rollout_envs != 0:
+            raise ValueError(
+                "n_steps must be divisible by num_rollout_envs "
+                f"({self.n_steps} % {self.num_rollout_envs} != 0)"
+            )
+
+        n_envs = self.num_rollout_envs
+        t_steps = self.n_steps // n_envs
+        device = self.ppo_model.device
+
+        envs: list[WargameEnv] = [
+            WargameEnv(self.env.config, renderer=None) for _ in range(n_envs)
+        ]
+        obs_list: list[Any] = []
+        try:
+            for env_idx, env in enumerate(envs):
+                obs, _ = env.reset(seed=env_idx)
+                obs_list.append(obs)
+
+            # Store state_tensors for PPO updates in flattened (T * n_envs) form.
+            # The returned order matches a row-major flatten of the 2D rollout arrays.
+            state_tensors_per_feature: list[list[Tensor]] = [[] for _ in range(5)]
+            n_models = self.env.config.number_of_wargame_models
+
+            actions_2d_np = np.zeros((t_steps, n_envs, n_models), dtype=np.int64)
+            rewards_2d_np = np.zeros((t_steps, n_envs), dtype=np.float32)
+            dones_2d_np = np.zeros((t_steps, n_envs), dtype=np.float32)
+            old_log_probs_2d_np = np.zeros((t_steps, n_envs), dtype=np.float32)
+            values_2d_np = np.zeros((t_steps, n_envs), dtype=np.float32)
+
+            pbar_ctx = (
+                tqdm(
+                    total=self.n_steps,
+                    desc="Rollout",
+                    unit="step",
+                    leave=False,
+                )
+                if self.show_inner_progress
+                else nullcontext(_NoOpProgress())
+            )
+            with pbar_ctx as pbar:
+                for t in range(t_steps):
+                    state_tensors_batch = observations_to_tensor_batch(
+                        obs_list, device=device
+                    )
+                    for feat_idx, feat_tensor in enumerate(state_tensors_batch):
+                        state_tensors_per_feature[feat_idx].append(feat_tensor)
+
+                    with torch.no_grad():
+                        logits, state_values = self.ppo_model(state_tensors_batch)
+                        dist = Categorical(logits=logits)
+                        actions = dist.sample()  # (n_envs, n_models)
+                        joint_log_prob = dist.log_prob(actions).sum(dim=-1)  # (n_envs,)
+
+                    actions_np = actions.detach().cpu().numpy()
+                    values_np = state_values.detach().cpu().numpy()
+                    log_probs_np = joint_log_prob.detach().cpu().numpy()
+
+                    actions_2d_np[t] = actions_np
+                    values_2d_np[t] = values_np
+                    old_log_probs_2d_np[t] = log_probs_np
+
+                    for env_i, env in enumerate(envs):
+                        env_action = WargameEnvAction(
+                            actions=[int(a) for a in actions_2d_np[t, env_i]]
+                        )
+                        next_obs, reward, done, _, _ = env.step(env_action)
+                        rewards_2d_np[t, env_i] = float(reward)
+                        dones_2d_np[t, env_i] = 1.0 if done else 0.0
+
+                        if done:
+                            next_obs, _ = env.reset()
+                        obs_list[env_i] = next_obs
+
+                    pbar.update(n_envs)
+
+            state_tensors_flat = [
+                torch.cat(chunks, dim=0) for chunks in state_tensors_per_feature
+            ]
+            actions_flat = torch.from_numpy(actions_2d_np.reshape(-1, n_models)).to(
+                device=device
+            )
+
+            rewards_2d = torch.from_numpy(rewards_2d_np).to(device=device)
+            dones_2d = torch.from_numpy(dones_2d_np).to(device=device)
+            old_log_probs_2d = torch.from_numpy(old_log_probs_2d_np).to(device=device)
+            values_2d = torch.from_numpy(values_2d_np).to(device=device)
+
+            last_state_tensors = observations_to_tensor_batch(obs_list, device=device)
+            with torch.no_grad():
+                _, last_values = self.ppo_model(last_state_tensors)
+
+            last_values = last_values.detach()
+            return (
+                state_tensors_flat,
+                actions_flat,
+                rewards_2d,
+                dones_2d,
+                old_log_probs_2d,
+                values_2d,
+                last_values,
+            )
+        finally:
+            for env in envs:
+                env.close()
 
     def _collect_experiences(self) -> list[Experience]:
         """Run episodes until n_steps transitions are collected (can span multiple episodes)."""

@@ -26,6 +26,9 @@ class PPOConfig(BaseModel):
     max_grad_norm: float = 0.5  # Gradient Stabilization (prevent exploding gradients)
     n_epochs: int = 5
     n_steps: int = 2048
+    # Parallel rollout collection: number of independent env instances.
+    # When set to 1, rollout collection is identical to the existing code.
+    num_rollout_envs: int = 1
     n_episodes: int = 10
 
     # Network parameters
