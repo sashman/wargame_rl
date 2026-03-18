@@ -81,3 +81,31 @@ def compute_distances(
         obj_radii=obj_radii,
         model_model_norms=model_model,
     )
+
+
+def objective_ownership_from_norms_offset(
+    player_norms_offset: np.ndarray,
+    opponent_norms_offset: np.ndarray,
+    obj_radii: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute per-objective ownership flags from distance caches.
+
+    Ownership rule (shared with VP scoring):
+    - A side "controls" an objective if at least one model is within the objective
+      radius using the same in-range test as the distance cache:
+      `model_obj_norms_offset <= obj_radii`.
+    - Contested objectives (both sides have at least one model in range) count as
+      controlled by neither.
+
+    Returns:
+        (player_controls, opponent_controls), each a boolean array of shape
+        `(n_objectives,)`.
+    """
+    # Any model in range per objective.
+    player_any = np.any(player_norms_offset <= obj_radii, axis=0)
+    opponent_any = np.any(opponent_norms_offset <= obj_radii, axis=0)
+
+    # Contested objectives count as controlled by neither.
+    player_controls = player_any & ~opponent_any
+    opponent_controls = opponent_any & ~player_any
+    return player_controls, opponent_controls
