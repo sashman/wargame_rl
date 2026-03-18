@@ -530,7 +530,7 @@ class HumanRender(Renderer):
         opponent_models: list[WargameModel],
         objectives: list[WargameObjective],
     ) -> None:
-        """Draw objectives on the canvas as hollow ownership rings."""
+        """Draw objectives with ownership fill and a constant grey rim."""
         if not objectives:
             return
 
@@ -563,33 +563,19 @@ class HumanRender(Renderer):
             )
             max_base_width = max(1, radius_px // 2)
             rim_width = min(base_width, max_base_width)
-            highlight_width = max(1, rim_width // 2)
-            highlight_radius = max(1, radius_px - max(1, rim_width // 3))
-            highlight_width = min(
-                highlight_width,
-                max(1, highlight_radius // 2),  # keep ring visible
-            )
 
-            # Base ring (always).
-            pygame.draw.circle(canvas, base_rim_color, (cx, cy), radius_px, rim_width)
-
-            # Owner highlight overlay (smaller, thinner ring).
+            # Fill first, then draw the grey rim so the rim stays constant.
             if player_controls[i]:
-                pygame.draw.circle(
-                    canvas,
-                    player_rim_color,
-                    (cx, cy),
-                    highlight_radius,
-                    highlight_width,
-                )
+                pygame.draw.circle(canvas, player_rim_color, (cx, cy), radius_px)
             elif opponent_controls[i]:
                 pygame.draw.circle(
                     canvas,
                     opponent_rim_color,
                     (cx, cy),
-                    highlight_radius,
-                    highlight_width,
+                    radius_px,
                 )
+
+            pygame.draw.circle(canvas, base_rim_color, (cx, cy), radius_px, rim_width)
 
     def _color_for_group(self, group_id: int) -> tuple[int, int, int]:
         """Return a distinct color for the given group_id (1-based). Cycles through palette if needed."""
