@@ -263,6 +263,21 @@ def test_compute_returns_terminal_state_blocks_reward_propagation_per_env(
     assert returns[2, 1].item() == pytest.approx(1.0, abs=1e-5)
 
 
+def test_auto_detect_num_rollout_envs_uses_divisor_of_n_steps(
+    env: WargameEnv, ppo_net: PPO_Transformer
+) -> None:
+    """When `num_rollout_envs <= 0`, selection should never break rollout modulo."""
+    model = PPOLightning(
+        env=env,
+        ppo_model=ppo_net,
+        log=False,
+        n_steps=60,
+        num_rollout_envs=0,
+    )
+    assert model.num_rollout_envs >= 1
+    assert 60 % model.num_rollout_envs == 0
+
+
 # ---------------------------------------------------------------------------
 # Training
 # ---------------------------------------------------------------------------

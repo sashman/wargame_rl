@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
 
@@ -60,6 +61,54 @@ class _PPODummyDataset(Dataset[Tensor]):
 class PPOLightning(LightningModule):
     """PPO Lightning Module for training PPO agents."""
 
+    def _largest_divisor_at_most(self, n: int, max_value: int) -> int:
+        """Return largest divisor of `n` that is <= `max_value`."""
+        candidate = min(n, max_value)
+        for v in range(candidate, 0, -1):
+            if n % v == 0:
+                return v
+        return 1
+
+    def _cuda_appears_usable(self) -> bool:
+        """Best-effort check that CUDA kernels can execute.
+
+        This is defensive against environments where CUDA is present but
+        incompatible with the installed GPU/driver.
+        """
+        try:
+            if not torch.cuda.is_available():
+                return False
+            if self.ppo_model.device.type != "cuda":
+                return False
+            # Tiny kernel to force real CUDA initialization / execution.
+            _ = torch.empty((1,), device=self.ppo_model.device).sum().item()
+            return True
+        except Exception:
+            return False
+
+    def _auto_detect_num_rollout_envs(self) -> int:
+        """Pick a heuristic `num_rollout_envs` based on CPU/GPU availability."""
+        # Respect CPU affinity / cgroup limits when possible.
+        cpu_count = 1
+        try:
+            if hasattr(os, "sched_getaffinity"):
+                cpu_count = len(os.sched_getaffinity(0))  # type: ignore[arg-type]
+            else:
+                cpu_count = os.cpu_count() or 1
+        except Exception:
+            cpu_count = os.cpu_count() or 1
+
+        # If the model runs on a usable GPU, we can typically afford more envs
+        # to amortize inference overhead. On CPU, keep it conservative.
+        if self._cuda_appears_usable():
+            max_envs = 8
+        else:
+            max_envs = 4
+
+        heuristic = max(1, min(max_envs, cpu_count))
+        # Enforce `n_steps` divisibility so rollout collection never errors.
+        return self._largest_divisor_at_most(self.n_steps, heuristic)
+
     def __init__(
         self,
         env: WargameEnv,
@@ -115,7 +164,10 @@ class PPOLightning(LightningModule):
         self.do_log = log
         self.batch_size = batch_size
         self.n_steps = n_steps
-        self.num_rollout_envs = num_rollout_envs
+        if num_rollout_envs <= 0:
+            self.num_rollout_envs = self._auto_detect_num_rollout_envs()
+        else:
+            self.num_rollout_envs = num_rollout_envs
         self.n_epochs = n_epochs
         self.max_grad_norm = max_grad_norm
         self.n_episodes = n_episodes
