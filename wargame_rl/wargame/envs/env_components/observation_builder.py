@@ -99,6 +99,7 @@ def build_observation(
         n_rounds=view.n_rounds,
         player_vp=view.player_vp,
         opponent_vp=view.opponent_vp,
+        player_vp_delta=view.player_vp_delta,
     )
 
 

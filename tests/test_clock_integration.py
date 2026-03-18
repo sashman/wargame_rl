@@ -212,7 +212,7 @@ class TestObservationClockFields:
         obs, _, _, _, _ = env.step(_stay())
         assert obs.battle_phase_index == list(BattlePhase).index(BattlePhase.movement)
 
-    def test_game_tensor_size_is_5(self) -> None:
+    def test_game_tensor_size_is_6(self) -> None:
         env = _make_env()
         obs, _ = env.reset(seed=42)
-        assert obs.size_game_observation == 5
+        assert obs.size_game_observation == 6

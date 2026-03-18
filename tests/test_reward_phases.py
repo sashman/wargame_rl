@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -19,12 +21,14 @@ from wargame_rl.wargame.envs.reward.calculators.registry import (
     CALCULATOR_REGISTRY,
     build_calculator,
 )
+from wargame_rl.wargame.envs.reward.calculators.vp_gain import VPGainCalculator
 from wargame_rl.wargame.envs.reward.criteria.all_at_objectives import (
     AllAtObjectivesCriteria,
 )
 from wargame_rl.wargame.envs.reward.criteria.all_models_grouped import (
     AllModelsGroupedCriteria,
 )
+from wargame_rl.wargame.envs.reward.criteria.player_vp_min import PlayerVPMinCriteria
 from wargame_rl.wargame.envs.reward.criteria.registry import (
     CRITERIA_REGISTRY,
     build_criteria,
@@ -257,6 +261,27 @@ class TestGroupCohesionCalculator:
         assert reward == 0.0
 
 
+class TestVPGainCalculator:
+    def test_zero_when_no_vp_delta(self) -> None:
+        view = SimpleNamespace(player_vp_delta=0)
+        ctx: StepContext = SimpleNamespace()  # type: ignore[assignment]
+        calc = VPGainCalculator(weight=1.0)
+        assert calc.calculate(view, ctx) == 0.0
+
+    def test_reward_scaled_by_weight(self) -> None:
+        view = SimpleNamespace(player_vp_delta=5)
+        ctx: StepContext = SimpleNamespace()  # type: ignore[assignment]
+        calc = VPGainCalculator(weight=1.0)
+        assert calc.calculate(view, ctx) == 5.0
+        calc = VPGainCalculator(weight=0.5)
+        assert calc.calculate(view, ctx) == 2.5
+
+    def test_build_vp_gain(self) -> None:
+        calc = build_calculator("vp_gain", weight=1.0, params={})
+        assert isinstance(calc, VPGainCalculator)
+        assert calc.weight == 1.0
+
+
 # ---------------------------------------------------------------------------
 # Calculator registry tests
 # ---------------------------------------------------------------------------
@@ -266,6 +291,7 @@ class TestCalculatorRegistry:
     def test_known_types(self) -> None:
         assert "closest_objective" in CALCULATOR_REGISTRY
         assert "group_cohesion" in CALCULATOR_REGISTRY
+        assert "vp_gain" in CALCULATOR_REGISTRY
 
     def test_build_closest_objective(self) -> None:
         calc = build_calculator("closest_objective", weight=0.7, params={})
@@ -366,6 +392,43 @@ class TestAllModelsGroupedCriteria:
         assert criteria.is_successful(simple_env, ctx) is True
 
 
+class TestPlayerVPMinCriteria:
+    def test_threshold_from_fraction_of_max(self) -> None:
+        config = SimpleNamespace(
+            mission=SimpleNamespace(type="default", params={}),
+            number_of_battle_rounds=5,
+        )
+        view = SimpleNamespace(
+            player_vp=25,
+            config=config,
+            objectives=[None, None, None],
+        )
+        ctx: StepContext = SimpleNamespace()  # type: ignore[assignment]
+        criteria = PlayerVPMinCriteria(fraction_of_max=0.33)
+        # theoretical_max = 4 * 15 = 60, threshold = 20
+        assert criteria.is_successful(view, ctx) is True
+        view.player_vp = 19
+        assert criteria.is_successful(view, ctx) is False
+
+    def test_vp_threshold_for_terminal_bonus(self) -> None:
+        config = SimpleNamespace(
+            mission=SimpleNamespace(type="default", params={}),
+            number_of_battle_rounds=5,
+        )
+        view = SimpleNamespace(
+            player_vp=20,
+            config=config,
+            objectives=[None, None, None],
+        )
+        criteria = PlayerVPMinCriteria(fraction_of_max=0.33)
+        assert criteria.vp_threshold_for_terminal_bonus(view) == 20
+
+    def test_build_criteria_player_vp_min(self) -> None:
+        criteria = build_criteria("player_vp_min", params={"fraction_of_max": 0.33})
+        assert isinstance(criteria, PlayerVPMinCriteria)
+        assert criteria.fraction_of_max == 0.33
+
+
 # ---------------------------------------------------------------------------
 # Criteria registry tests
 # ---------------------------------------------------------------------------
@@ -375,6 +438,7 @@ class TestCriteriaRegistry:
     def test_known_types(self) -> None:
         assert "all_at_objectives" in CRITERIA_REGISTRY
         assert "all_models_grouped" in CRITERIA_REGISTRY
+        assert "player_vp_min" in CRITERIA_REGISTRY
 
     def test_build_all_at_objectives(self) -> None:
         c = build_criteria("all_at_objectives", {})
@@ -482,13 +546,20 @@ class TestRewardPhaseManager:
     def test_advance_when_conditions_met(
         self, two_phase_manager: RewardPhaseManager
     ) -> None:
-        advanced = two_phase_manager.try_advance(success_rate=0.9, current_epoch=5)
+        # min_epochs=2, min_epochs_above_threshold=5: need 5 consecutive epochs at/above threshold
+        for epoch in range(2, 6):
+            advanced = two_phase_manager.try_advance(
+                success_rate=0.9, current_epoch=epoch
+            )
+            assert advanced is False
+        advanced = two_phase_manager.try_advance(success_rate=0.9, current_epoch=6)
         assert advanced is True
         assert two_phase_manager.current_phase_name == "phase_two"
         assert two_phase_manager.is_final_phase is True
 
     def test_no_advance_past_final(self, two_phase_manager: RewardPhaseManager) -> None:
-        two_phase_manager.try_advance(success_rate=0.9, current_epoch=5)
+        for epoch in range(2, 7):
+            two_phase_manager.try_advance(success_rate=0.9, current_epoch=epoch)
         advanced = two_phase_manager.try_advance(success_rate=1.0, current_epoch=100)
         assert advanced is False
 
@@ -601,6 +672,42 @@ class TestEnvIntegration:
 
         assert terminated is True
         assert reward == pytest.approx(25.0)
+
+    def test_phased_terminal_vp_bonus_applied(self) -> None:
+        config = WargameEnvConfig(
+            render_mode=None,
+            board_width=20,
+            board_height=20,
+            number_of_wargame_models=2,
+            number_of_objectives=1,
+            objective_radius_size=2,
+            max_turns_override=1,
+            terminal_vp_bonus=10.0,
+            reward_phases=[
+                RewardPhaseConfig(
+                    name="win_by_vp",
+                    reward_calculators=[
+                        RewardCalculatorConfig(type="vp_gain", weight=1.0),
+                    ],
+                    success_criteria=SuccessCriteriaConfig(
+                        type="player_vp_min",
+                        params={"fraction_of_max": 0.33},
+                    ),
+                    success_threshold=0.8,
+                    min_epochs=0,
+                )
+            ],
+        )
+        env = WargameEnv(config=config)
+        env.reset()
+        env._battle.add_player_vp(20)
+
+        action = WargameEnvAction(actions=[0 for _ in env.wargame_models])
+        _, reward, terminated, _, _ = env.step(action)
+
+        assert terminated is True
+        # Terminal VP bonus applied (player_vp >= threshold). vp_gain is 0 this step (deltas reset at step start).
+        assert reward == pytest.approx(10.0)
 
 
 # ---------------------------------------------------------------------------

@@ -11,6 +11,7 @@ from torch.distributions import Categorical
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
+import wandb
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.observation import observations_to_tensor_batch
 from wargame_rl.wargame.model.ppo.agent import Agent
@@ -366,15 +367,22 @@ class PPOLightning(LightningModule):
             num_workers=0,
         )
 
-    def run_episodes(self, n_episodes: int, epsilon: float = 0.0) -> None:
+    def run_episodes(self, n_episodes: int, epsilon: float = 0.0) -> float:
         """Run episodes for evaluation.
+
+        Uses the current phase's success criteria (phase_manager.check_success)
+        so that success_rate and phase advancement match the curriculum.
 
         Args:
             n_episodes: Number of episodes to run
             epsilon: Exploration rate (0 for deterministic)
+
+        Returns:
+            Success rate as a fraction in [0, 1].
         """
-        steps_s = []
-        episode_rewards = []
+        steps_s: list[int] = []
+        episode_rewards: list[float] = []
+        episode_successes: list[bool] = []
         self.ppo_model.eval()
         with torch.no_grad():
             for _ in range(n_episodes):
@@ -383,18 +391,42 @@ class PPOLightning(LightningModule):
                 )
                 episode_rewards.append(reward)
                 steps_s.append(steps)
+                if self.env.last_step_context is not None:
+                    success = self.env.phase_manager.check_success(
+                        self.env, self.env.last_step_context
+                    )
+                    episode_successes.append(success)
         self.mean_episode_reward = sum(episode_rewards) / len(episode_rewards)
+        if episode_successes:
+            sr = sum(episode_successes) / len(episode_successes)
+        else:
+            sr = sum(1 for s in steps_s if s < self.env.max_turns) / len(steps_s)
         if self.do_log:
             self.log("mean_episode_reward", self.mean_episode_reward, prog_bar=True)
             self.log("mean_episode_steps", sum(steps_s) / len(steps_s), prog_bar=False)
             self.log("max_episode_reward", max(episode_rewards), prog_bar=False)
             self.log("min_episode_reward", min(episode_rewards), prog_bar=False)
-            success_rate = torch.tensor(steps_s) < self.env.max_turns
-            self.log("success_rate", success_rate.float().mean() * 100, prog_bar=False)
+            self.log("success_rate", sr * 100, prog_bar=False)
+            phase_index = int(self.env.phase_manager.current_phase_index)
+            self.log(
+                "reward_phase",
+                float(phase_index),
+                prog_bar=False,
+            )
+            if wandb.run is not None:  # type: ignore[attr-defined]
+                wandb.log({"reward_phase": phase_index}, step=self.global_step)  # type: ignore[attr-defined]
         self.ppo_model.train()
+        return float(sr)
 
     def on_train_epoch_end(self) -> None:
         """Run after each training epoch."""
         if self.do_log:
-            self.run_episodes(self.n_episodes)
+            sr = self.run_episodes(self.n_episodes)
+            advanced = self.env.phase_manager.try_advance(sr, self.current_epoch)
+            if advanced:
+                self.log(
+                    "phase_advanced_at_epoch",
+                    float(self.current_epoch),
+                    prog_bar=False,
+                )
         super().on_train_epoch_end()

@@ -54,3 +54,8 @@ class RewardPhaseConfig(BaseModel):
         ge=0,
         description="Minimum epochs in this phase before eligible to advance",
     )
+    min_epochs_above_threshold: int = Field(
+        default=5,
+        ge=0,
+        description="Success rate must be >= success_threshold for this many consecutive epochs before advancing.",
+    )

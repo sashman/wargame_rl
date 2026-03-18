@@ -46,7 +46,7 @@ Reinforcement learning project that trains agents (DQN, PPO) to play tabletop wa
 
 ## Project Layout
 
-- `wargame_rl/wargame/envs/` — Gymnasium environment, reward, rendering, types (see [docs/ddd-envs.md](docs/ddd-envs.md) for DDD structure and extension)
+- `wargame_rl/wargame/envs/` — Gymnasium environment, reward (phases, calculators e.g. closest_objective, group_cohesion, vp_gain; success criteria e.g. all_at_objectives, player_vp_min — see [docs/reward-phases.md](docs/reward-phases.md)), rendering, types (see [docs/ddd-envs.md](docs/ddd-envs.md) for DDD structure and extension)
 - `wargame_rl/wargame/model/dqn/` — DQN agent, Lightning module, replay buffer, config
 - `wargame_rl/wargame/model/ppo/` — PPO actor-critic, Lightning module, agent, config
 - `wargame_rl/wargame/model/common/` — Shared: factory, observation, dataset, device, wandb, callbacks
