@@ -197,8 +197,8 @@ class WargameEnvConfig(BaseModel):
     )
     group_max_distance: float = Field(
         gt=0,
-        default=10.0,
-        description="Max distance (L2) for group-aware placement on reset: models in the same group spawn within this distance. Reward phases use their own group_cohesion params.",
+        default=3.0,
+        description="Max distance (L2) for group-aware placement on reset: models in the same group spawn within this distance (default 3). Reward phases use their own group_cohesion params.",
     )
     enforce_group_coherency_legality: bool = Field(
         default=False,
