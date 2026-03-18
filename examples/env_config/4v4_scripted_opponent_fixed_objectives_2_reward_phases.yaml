@@ -1,4 +1,4 @@
-config_name: 4v4_scripted_advance_fixed_objectives
+config_name: 4v4_scripted_advance_fixed_objectives_2_reward_phases
 number_of_wargame_models: 4
 number_of_opponent_models: 4
 number_of_objectives: 3
@@ -43,3 +43,15 @@ reward_phases:
       type: all_at_objectives
     success_threshold: 0.8
     min_epochs: 0
+
+  - name: win_by_vp
+    reward_calculators:
+      - type: vp_gain
+        weight: 1.0
+      - type: closest_objective
+        weight: 0.2
+    success_criteria:
+      type: player_vp_min
+      params: { fraction_of_max: 0.33 }
+    success_threshold: 0.8
+    min_epochs: 20
