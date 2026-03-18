@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 class DistanceCache:
     model_obj_deltas: np.ndarray  # (n_models, n_objectives, 2)
     model_obj_norms: np.ndarray  # (n_models, n_objectives)
+    # Back-compat field name: distance to objective *center* (Euclidean).
     model_obj_norms_offset: np.ndarray  # (n_models, n_objectives)
     obj_radii: np.ndarray  # (n_objectives,)
     model_model_norms: np.ndarray | None  # (n_models, n_models) or None
@@ -64,11 +65,6 @@ def compute_distances(
     # (n_models, n_objectives)
     norms = np.linalg.norm(deltas, axis=2, ord=2)
 
-    # offset: model.location - objective.location + radius_size / 2
-    # radius_size/2 is a scalar per objective, broadcast to both x/y components
-    offsets = deltas + (obj_radii[np.newaxis, :, np.newaxis] / 2)
-    norms_offset = np.linalg.norm(offsets, axis=2, ord=2)
-
     model_model = None
     if compute_model_model:
         mm_deltas = model_locs[:, np.newaxis, :] - model_locs[np.newaxis, :, :]
@@ -77,7 +73,9 @@ def compute_distances(
     return DistanceCache(
         model_obj_deltas=deltas,
         model_obj_norms=norms,
-        model_obj_norms_offset=norms_offset,
+        # "offset" is kept in the field name for backward-compat, but we now
+        # define it as the straight Euclidean distance to the objective center.
+        model_obj_norms_offset=norms,
         obj_radii=obj_radii,
         model_model_norms=model_model,
     )
