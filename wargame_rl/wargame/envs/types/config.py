@@ -200,6 +200,15 @@ class WargameEnvConfig(BaseModel):
         default=10.0,
         description="Max distance (L2) for group-aware placement on reset: models in the same group spawn within this distance. Reward phases use their own group_cohesion params.",
     )
+    enforce_group_coherency_legality: bool = Field(
+        default=False,
+        description=(
+            "If true, movement attempts that would break group coherency are "
+            "treated as physically illegal for that model: its move is "
+            "reverted to `previous_location` (effectively becoming `stay`). "
+            "Uses `group_max_distance` as the coherency threshold."
+        ),
+    )
     max_groups: int = Field(
         gt=0,
         default=100,
