@@ -87,7 +87,7 @@ Reward calculators and success criteria already take `view: BattleView` and (whe
 
 1. Implement the interface in `reward/calculators/` or `reward/criteria/` (see existing base classes). Use only `view` and `ctx`; do not take the full env.
 2. If your logic needs something not on `BattleView` (e.g. a new entity list), add that property to the `BattleView` protocol and to `WargameEnv`, then use it in the calculator/criterion.
-3. Register the new class in the reward registry (see `reward-phases.md`) so YAML can reference it by type key.
+3. Register the new class in the reward registry and document it in [reward-phases.md](reward-phases.md) (tables and file layout) so YAML can reference it by type key.
 
 ### Adding or changing rendering
 

@@ -1,5 +1,8 @@
 *.env
 
+# pre-commit caches (generated during hook runs; never commit)
+.cache_precommit/
+
 # Created by .ignore support plugin (hsz.mobi)
 ### Diff template
 *.patch

@@ -230,6 +230,11 @@ class WargameEnvConfig(BaseModel):
         default=25.0,
         description="Bonus added once when all models are at an objective and the episode terminates.",
     )
+    terminal_vp_bonus: float = Field(
+        default=0.0,
+        description="Bonus added once at episode end when player VP meets the current phase's VP threshold "
+        "(only when the phase uses a VP-based success criteria such as player_vp_min). 0 disables.",
+    )
 
     skip_phases: list[BattlePhase] = Field(
         default_factory=lambda: list(NON_MOVEMENT_PHASES),

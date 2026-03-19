@@ -9,10 +9,12 @@ from wargame_rl.wargame.envs.reward.criteria.all_models_grouped import (
     AllModelsGroupedCriteria,
 )
 from wargame_rl.wargame.envs.reward.criteria.base import SuccessCriteria
+from wargame_rl.wargame.envs.reward.criteria.player_vp_min import PlayerVPMinCriteria
 
 CRITERIA_REGISTRY: dict[str, type[SuccessCriteria]] = {
     "all_at_objectives": AllAtObjectivesCriteria,
     "all_models_grouped": AllModelsGroupedCriteria,
+    "player_vp_min": PlayerVPMinCriteria,
 }
 
 

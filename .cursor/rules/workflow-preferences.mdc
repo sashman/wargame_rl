@@ -30,6 +30,7 @@ alwaysApply: true
 - Always default new config fields to the no-op value so existing YAML configs keep working (e.g. `number_of_opponent_models=0`)
 - Full checklist: config types → env state → observation types → observation builder → tensor pipeline → DQN networks → renderer → tests → backward compat tests
 - When adding config that changes step semantics or episode length, update docs (`docs/reward-phases.md`, `docs/tabletop-rules-reference.md`, `docs/opponent-policies.md`, `docs/goals-and-roadmap.md`) and any tests that assume steps-per-round or phase order
+- When adding new reward calculators or success criteria, register them and document in `docs/reward-phases.md` (tables and file layout)
 
 ## CUDA Environment
 

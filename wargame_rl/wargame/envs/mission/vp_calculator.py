@@ -34,32 +34,27 @@ class VPCalculator(ABC):
         ...
 
 
-def _count_controlled_by_side(
-    player_in_range: np.ndarray,
-    opponent_in_range: np.ndarray,
-) -> tuple[int, int]:
-    """Count objectives controlled by player and by opponent.
-
-    Control: at least one model in radius; contested (both in range) counts for neither.
-    """
-    n_player = int(np.sum(player_in_range & ~opponent_in_range))
-    n_opponent = int(np.sum(opponent_in_range & ~player_in_range))
-    return n_player, n_opponent
-
-
 def objective_control_from_caches(
     player_norms_offset: np.ndarray,
     opponent_norms_offset: np.ndarray,
     obj_radii: np.ndarray,
 ) -> tuple[int, int]:
-    """Compute how many objectives each side controls.
+    """Backwards-compatible objective control count helper.
 
-    Uses same in-range rule as distance cache: model within radius when
-    norm_offset <= obj_radius. Returns (player_controlled, opponent_controlled).
+    Returns:
+        (player_controlled, opponent_controlled) where contested objectives
+        count for neither.
     """
-    player_any = np.any(player_norms_offset <= obj_radii[np.newaxis, :], axis=0)
-    opponent_any = np.any(opponent_norms_offset <= obj_radii[np.newaxis, :], axis=0)
-    return _count_controlled_by_side(player_any, opponent_any)
+    from wargame_rl.wargame.envs.env_components.distance_cache import (
+        objective_ownership_from_norms_offset,
+    )
+
+    player_controls, opponent_controls = objective_ownership_from_norms_offset(
+        player_norms_offset,
+        opponent_norms_offset,
+        obj_radii,
+    )
+    return int(np.sum(player_controls)), int(np.sum(opponent_controls))
 
 
 class DefaultVPCalculator(VPCalculator):
@@ -86,6 +81,7 @@ class DefaultVPCalculator(VPCalculator):
             return 0
         from wargame_rl.wargame.envs.env_components.distance_cache import (
             compute_distances,
+            objective_ownership_from_norms_offset,
         )
 
         player_cache = compute_distances(view.player_models, view.objectives)
@@ -95,11 +91,14 @@ class DefaultVPCalculator(VPCalculator):
             opponent_norms = opponent_cache.model_obj_norms_offset
         else:
             opponent_norms = np.zeros((0, n_obj), dtype=np.float64)
-        n_player, n_opponent = objective_control_from_caches(
+
+        player_controls, opponent_controls = objective_ownership_from_norms_offset(
             player_cache.model_obj_norms_offset,
             opponent_norms,
             player_cache.obj_radii,
         )
+        n_player = int(np.sum(player_controls))
+        n_opponent = int(np.sum(opponent_controls))
         controlled = n_player if scoring_side == player_side else n_opponent
         raw = controlled * self.vp_per_objective
         return min(self.cap_per_turn, raw)

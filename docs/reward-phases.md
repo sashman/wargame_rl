@@ -13,6 +13,8 @@ Teaching an agent to play a full wargame in one shot is hard. The reward signal 
 
 Each phase uses a simpler reward that the agent can learn quickly, then advances to a harder phase once it has mastered the current one.
 
+**Phase order:** Put the "Win the game" (VP) phase **after** a phase where the agent learns to reach objectives (e.g. `move_and_group` with `all_at_objectives` or `closest_objective`). That way the agent already knows how to get to objectives before you ask it to score VP; the VP phase then focuses on holding control at scoring time.
+
 ## Configuration
 
 Reward is always computed via reward phases. Configure the `reward_phases` field in the environment YAML; if omitted, a single default phase is used (reach objectives with `closest_objective`).
@@ -54,6 +56,7 @@ reward_phases:
 | `success_criteria` | object | *required* | Criteria that determines whether an episode counts as successful |
 | `success_threshold` | float | `0.8` | Fraction of evaluation episodes (0--1) that must succeed to advance |
 | `min_epochs` | int | `0` | Minimum epochs spent in this phase before advancement is eligible |
+| `min_epochs_above_threshold` | int | `5` | Success rate must be ≥ success_threshold for this many consecutive epochs before advancing |
 
 ### Reward calculator fields
 
@@ -76,6 +79,7 @@ reward_phases:
 |----------|-------|------------|-------------|
 | `closest_objective` | per-model | *(none)* | 0 when getting closer, negative penalty when distance stays the same or increases. Uses the change in distance to the closest objective, normalised by board diagonal. |
 | `group_cohesion` | per-model | `group_max_distance` (float, default 10.0), `violation_penalty` (float, default -10.0) | Negative reward proportional to excess distance beyond `group_max_distance` from the closest same-group model. 0 when within range or alone in group. |
+| `vp_gain` | global | *(none)* | Reward = weight × player VP gained this step. Use in a "Win the game" phase. VP is only awarded at scoring moments (e.g. end of command phase); for a denser signal, add a small weight on `closest_objective` (e.g. 0.2) in the same phase. |
 
 ## Available Success Criteria
 
@@ -83,6 +87,7 @@ reward_phases:
 |----------|------------|-------------|
 | `all_at_objectives` | *(none)* | Succeeds when every model is within the radius of at least one objective. |
 | `all_models_grouped` | `max_distance` (float, default 10.0) | Succeeds when every model is within `max_distance` of at least one same-group member. Models alone in their group are considered grouped. |
+| `player_vp_min` | `fraction_of_max` (float, e.g. 0.33), `min_vp` (int, default 0) | Succeeds when player VP at episode end ≥ threshold. Threshold = max(min_vp, round(fraction_of_max × theoretical_max)). Theoretical max depends on `number_of_battle_rounds`, objectives, and mission params, so the same fraction gives a higher VP bar when episodes have more rounds. |
 
 ## How Advancement Works
 
@@ -92,6 +97,7 @@ At the end of each training epoch, the training loop runs evaluation episodes (c
 advance if:
     success_rate >= success_threshold
     AND epochs_in_current_phase >= min_epochs
+    AND success_rate has been >= success_threshold for the last min_epochs_above_threshold consecutive epochs
     AND current phase is not the final phase
 ```
 
@@ -146,11 +152,13 @@ wargame_rl/wargame/envs/reward/
     base.py                        # PerModelRewardCalculator, GlobalRewardCalculator ABCs
     closest_objective.py           # Closest-objective reward
     group_cohesion.py              # Group cohesion penalty
+    vp_gain.py                     # VP gain reward (global)
     registry.py                    # Type-string -> class mapping
   criteria/
     base.py                        # SuccessCriteria ABC
     all_at_objectives.py           # All models at objectives
     all_models_grouped.py          # All models within group distance
+    player_vp_min.py               # Player VP min success criteria
     registry.py                    # Type-string -> class mapping
   types/
     model_rewards.py               # ModelRewards (per-model reward breakdown)

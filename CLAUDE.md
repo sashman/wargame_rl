@@ -35,7 +35,7 @@ wargame_rl/
 │       └── types.py               # Experience, ExperienceBatch
 ├── examples/env_config/           # YAML environment configurations
 ├── tests/                         # Pytest suite with conftest.py fixtures
-├── docs/                          # Design docs (movement, reward phases, roadmap, rules)
+├── docs/                          # Design docs (movement, reward phases, missions-and-vp, roadmap, rules)
 ├── train.py                       # Training entry point (Typer CLI)
 ├── simulate.py                    # Inference/simulation entry point
 └── main.py                        # Legacy entry (env test with random actions)
@@ -65,6 +65,7 @@ wargame_rl/
 - `WargameEnv` — Gymnasium env with configurable board, models, objectives
 - **Polar movement** — actions encoded as (angle × speed) per model
 - **Reward phases** — curriculum learning with phased reward configs
+- **VP reward and success** — `vp_gain` calculator, `player_vp_min` success criteria, optional terminal VP bonus; observation includes `player_vp_delta` for step-wise VP signal
 - **Deployment zones** — configurable spawn areas for player and opponent
 - **Group cohesion** — optional penalty for unit separation
 

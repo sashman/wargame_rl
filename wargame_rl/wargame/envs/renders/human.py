@@ -5,6 +5,10 @@ import numpy as np
 import pygame
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
+from wargame_rl.wargame.envs.env_components.distance_cache import (
+    compute_distances,
+    objective_ownership_from_norms_offset,
+)
 from wargame_rl.wargame.envs.renders.renderer import Renderer
 from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.envs.wargame_objective import WargameObjective
@@ -200,7 +204,7 @@ class HumanRender(Renderer):
         )
 
         # We draw the target
-        self._draw_target(self.canvas, objectives)
+        self._draw_target(self.canvas, wargame_models, view.opponent_models, objectives)
 
         # Draw movement arrows (previous -> current location)
         self._draw_movement_arrows(self.canvas, wargame_models)
@@ -520,30 +524,58 @@ class HumanRender(Renderer):
         )
 
     def _draw_target(
-        self, canvas: pygame.Surface, objectives: list[WargameObjective]
+        self,
+        canvas: pygame.Surface,
+        player_models: list[WargameModel],
+        opponent_models: list[WargameModel],
+        objectives: list[WargameObjective],
     ) -> None:
-        """Draw objectives on the canvas."""
-        for objective in objectives:
-            pygame.draw.circle(
-                canvas,
-                (255, 100, 100),
-                (
-                    float(objective.location[0] + 0.5) * self.pix_square_size,
-                    float(objective.location[1] + 0.5) * self.pix_square_size,
-                ),
-                float(objective.radius_size * self.pix_square_size),
-            )
+        """Draw objectives with ownership fill and a constant grey rim."""
+        if not objectives:
+            return
 
-            pygame.draw.rect(
-                canvas,
-                (255, 0, 0),
-                pygame.Rect(
-                    float(objective.location[0] * self.pix_square_size),
-                    float(objective.location[1] * self.pix_square_size),
-                    float(self.pix_square_size),
-                    float(self.pix_square_size),
-                ),
+        player_cache = compute_distances(player_models, objectives)
+        n_obj = len(objectives)
+        if opponent_models:
+            opponent_cache = compute_distances(opponent_models, objectives)
+            opponent_norms = opponent_cache.model_obj_norms_offset
+        else:
+            opponent_norms = np.zeros((0, n_obj), dtype=np.float64)
+
+        player_controls, opponent_controls = objective_ownership_from_norms_offset(
+            player_cache.model_obj_norms_offset,
+            opponent_norms,
+            player_cache.obj_radii,
+        )
+
+        base_rim_color = (90, 90, 90)  # dark grey
+        player_rim_color = (120, 220, 140)  # light green
+        opponent_rim_color = (255, 105, 180)  # pink
+
+        base_width = max(2, int(round(self.pix_square_size / 8)))
+        for i, objective in enumerate(objectives):
+            cx = int(round(float(objective.location[0] + 0.5) * self.pix_square_size))
+            cy = int(round(float(objective.location[1] + 0.5) * self.pix_square_size))
+
+            radius_px = max(
+                1,
+                int(round(float(objective.radius_size) * float(self.pix_square_size))),
             )
+            max_base_width = max(1, radius_px // 2)
+            rim_width = min(base_width, max_base_width)
+
+            # Fill first, then draw the grey rim so the rim stays constant.
+            if player_controls[i]:
+                pygame.draw.circle(canvas, player_rim_color, (cx, cy), radius_px)
+            elif opponent_controls[i]:
+                pygame.draw.circle(
+                    canvas,
+                    opponent_rim_color,
+                    (cx, cy),
+                    radius_px,
+                )
+
+            pygame.draw.circle(canvas, base_rim_color, (cx, cy), radius_px, rim_width)
 
     def _color_for_group(self, group_id: int) -> tuple[int, int, int]:
         """Return a distinct color for the given group_id (1-based). Cycles through palette if needed."""

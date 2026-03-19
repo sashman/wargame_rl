@@ -33,6 +33,8 @@ Train reinforcement learning agents that learn to play tabletop wargames — nav
 | Episode recording | Done — MP4 capture during training |
 | Fixed & random placement | Done |
 | YAML-driven env config | Done |
+| Reward phases (curriculum) | Done — phased reward configs, success criteria, phase advancement (min_epochs, min_epochs_above_threshold), logged to Wandb |
+| VP reward and success | Done — `vp_gain` calculator, `player_vp_min` success criteria, optional terminal VP bonus; observation includes `player_vp_delta` |
 
 ## Roadmap
 
@@ -43,7 +45,7 @@ Harden what already works before adding new game mechanics.
 - [ ] **Per-model movement speed** — Let each model define its own `max_move_speed`; speed bins become fractions of that model's maximum. The action space stays uniform.
 - [ ] **Positional encoding for transformer** — Add learned or sinusoidal positional encodings to the transformer network so it can distinguish token order.
 - [ ] **Hyperparameter sweep tooling** — Add a `just sweep` target backed by Wandb Sweeps (or Optuna) for systematic hyperparameter search.
-- [ ] **Curriculum learning** — Start with simple scenarios (1 model, 1 objective) and progressively increase complexity during training.
+- [x] **Curriculum learning** — Reward phases with success criteria and phase advancement (see [reward-phases.md](reward-phases.md)).
 - [ ] **Improved metrics & dashboards** — Track win rate, average turns to completion, reward components breakdown, and group violation rate as first-class Wandb metrics.
 
 ### Phase 2 — Combat: Shooting Phase
@@ -70,7 +72,7 @@ Make the grid more than a flat plane.
 
 Move from single-agent objective capture to adversarial gameplay.
 
-- [ ] **Scripted opponent** — Add a rule-based opponent (e.g. advance-and-shoot) as a training baseline.
+- [x] **Scripted opponent** — Rule-based opponent (e.g. advance-to-objective) as a training baseline.
 - [ ] **Two-agent environment** — Refactor the env to support two sides, each controlling their own models, with alternating or simultaneous turns.
 - [ ] **Self-play training** — Train the agent against copies of itself; periodically freeze opponents from the checkpoint pool.
 - [ ] **Elo tracking** — Rate agent versions against each other to measure improvement over training.
@@ -87,7 +89,7 @@ Layer in the remaining tabletop systems.
 ### Phase 6 — Scale & Polish
 
 - [ ] **Larger scenarios** — Support 10+ models per side with efficient batched inference.
-- [ ] **Algorithm exploration** — Experiment with PPO, MAPPO, or QMIX as alternatives to DQN for multi-agent settings.
+- [x] **PPO** — Implemented and default algorithm. MAPPO, QMIX, etc. remain for future exploration.
 - [ ] **Web replay viewer** — Browser-based replay viewer (replacing or complementing Pygame) for easier sharing.
 - [ ] **Community scenarios** — Publish a library of env configs representing classic tabletop missions (hold the line, king of the hill, escort, etc.).
 

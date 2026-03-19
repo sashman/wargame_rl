@@ -119,11 +119,19 @@ class WargameLightningBase(LightningModule, ABC):
     def _advance_reward_phase(self, success_rate: float) -> bool:
         advanced = self.env.phase_manager.try_advance(success_rate, self.current_epoch)
         if self.do_log:
+            phase_index = int(self.env.phase_manager.current_phase_index)
             self.log(
                 "reward_phase",
-                float(self.env.phase_manager.current_phase_index),
+                float(phase_index),
                 prog_bar=False,
             )
+            try:
+                import wandb
+
+                if wandb.run is not None:  # type: ignore[attr-defined]
+                    wandb.log({"reward_phase": phase_index}, step=self.global_step)  # type: ignore[attr-defined]
+            except ModuleNotFoundError:
+                pass
             if advanced:
                 self.log(
                     "phase_advanced_at_epoch",
