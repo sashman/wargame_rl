@@ -49,7 +49,10 @@ class DQNLightning(WargameLightningBase):
             n_samples_per_epoch: number of samples per epoch
 
         """
-        super().__init__(env=env, do_log=log, n_episodes=n_episodes)
+
+        self.buffer = ReplayBuffer(capacity=self.hparams.replay_size)  # type: ignore
+        agent = Agent(self.env, self.buffer)
+        super().__init__(env=env, agent=agent, do_log=log, n_episodes=n_episodes)
         self.save_hyperparameters()
 
         # Use the provided policy network directly in eager mode. torch.compile
@@ -60,9 +63,6 @@ class DQNLightning(WargameLightningBase):
         self.to(self.policy_net.device)
         self.target_net: RL_Network = deepcopy(policy_net)
         self.target_net.eval()
-
-        self.buffer = ReplayBuffer(capacity=self.hparams.replay_size)  # type: ignore
-        self.agent = Agent(self.env, self.buffer)
         self.total_reward = 0
         self.episode_reward = 0
         self.populate()

@@ -1,8 +1,8 @@
-import gymnasium as gym
 import numpy as np
 import torch
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvObservation
+from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.agent_base import BaseAgent
 from wargame_rl.wargame.model.common.observation import (
     apply_action_mask,
@@ -13,7 +13,9 @@ from wargame_rl.wargame.model.net import RL_Network
 
 
 class Agent(BaseAgent):
-    def __init__(self, env: gym.Env, replay_buffer: ReplayBuffer | None = None) -> None:
+    def __init__(
+        self, env: WargameEnv, replay_buffer: ReplayBuffer | None = None
+    ) -> None:
         """Base Agent class handling the interaction with the environment.
 
         Args:

@@ -1,15 +1,15 @@
-import gymnasium as gym
 import numpy as np
 import pytest
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
+from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.model.net import RL_Network
 
 
 @pytest.fixture
-def agent(env: gym.Env, replay_buffer: ReplayBuffer) -> Agent:
+def agent(env: WargameEnv, replay_buffer: ReplayBuffer) -> Agent:
     return Agent(env, replay_buffer)
 
 

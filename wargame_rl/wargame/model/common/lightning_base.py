@@ -8,6 +8,7 @@ import torch.nn as nn
 from pytorch_lightning import LightningModule
 
 from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.model.common.agent_base import BaseAgent
 
 
 class WargameLightningBase(LightningModule, ABC):
@@ -16,6 +17,7 @@ class WargameLightningBase(LightningModule, ABC):
     def __init__(
         self,
         env: WargameEnv,
+        agent: BaseAgent,
         do_log: bool = True,
         n_episodes: int = 10,
         eval_log_prefix: str = "",
@@ -24,6 +26,7 @@ class WargameLightningBase(LightningModule, ABC):
         self.env = env
         self.do_log = do_log
         self.n_episodes = n_episodes
+        self.agent = agent
         self.eval_log_prefix = eval_log_prefix
         self.mean_episode_reward = 0.0
 
