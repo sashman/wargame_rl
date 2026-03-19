@@ -78,9 +78,7 @@ class PPOLightning(WargameLightningBase):
             n_episodes: Number of episodes to run for evaluation
             show_inner_progress: Whether to show tqdm for rollout and PPO minibatch updates
         """
-        super().__init__(
-            env=env, agent=Agent(self.env), do_log=log, n_episodes=n_episodes
-        )
+        super().__init__(env=env, agent=Agent(env), do_log=log, n_episodes=n_episodes)
         self.automatic_optimization = False
         self.save_hyperparameters()
 

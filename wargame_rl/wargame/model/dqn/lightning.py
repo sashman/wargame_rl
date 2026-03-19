@@ -50,10 +50,11 @@ class DQNLightning(WargameLightningBase):
 
         """
 
-        self.buffer = ReplayBuffer(capacity=self.hparams.replay_size)  # type: ignore
-        agent = Agent(self.env, self.buffer)
+        buffer = ReplayBuffer(capacity=replay_size)
+        agent = Agent(env, buffer)
         super().__init__(env=env, agent=agent, do_log=log, n_episodes=n_episodes)
         self.save_hyperparameters()
+        self.buffer = buffer
 
         # Use the provided policy network directly in eager mode. torch.compile
         # would require a system C++ toolchain which is not guaranteed to be
