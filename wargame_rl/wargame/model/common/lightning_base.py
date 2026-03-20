@@ -89,9 +89,9 @@ class WargameLightningBase(LightningModule, ABC):
         if self.do_log:
             prefix = f"{log_prefix}_" if log_prefix else ""
             self.log(
-                f"{prefix}mean_episode_reward",
+                f"reward/{prefix}mean_episode_reward",
                 self.mean_episode_reward,
-                prog_bar=True,
+                prog_bar=False,
             )
             self.log(
                 f"{prefix}mean_episode_steps",
@@ -99,10 +99,14 @@ class WargameLightningBase(LightningModule, ABC):
                 prog_bar=False,
             )
             self.log(
-                f"{prefix}max_episode_reward", max(episode_rewards), prog_bar=False
+                f"reward/{prefix}max_episode_reward",
+                max(episode_rewards),
+                prog_bar=False,
             )
             self.log(
-                f"{prefix}min_episode_reward", min(episode_rewards), prog_bar=False
+                f"reward/{prefix}min_episode_reward",
+                min(episode_rewards),
+                prog_bar=False,
             )
 
         if episode_successes:

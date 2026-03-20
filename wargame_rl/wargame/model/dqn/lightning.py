@@ -173,12 +173,12 @@ class DQNLightning(WargameLightningBase):
         loss = self.dqn_mse_loss(batch)
         self.log("optimization_step", self.optimization_steps, prog_bar=False)
         self.log("n_steps", n_steps, prog_bar=False)
-        self.log("reward", reward, prog_bar=False)
-        self.log("mean_reward", mean_reward, prog_bar=True)
+        self.log("reward/reward", reward, prog_bar=False)
+        self.log("reward/mean_reward", mean_reward, prog_bar=False)
         for name, value in self.agent.last_episode_reward_breakdown.items():
-            self.log(f"reward_components/{name}", value, prog_bar=False)
+            self.log(f"reward/components/{name}", value, prog_bar=False)
         self.log("epsilon", epsilon, prog_bar=True)
-        self.log("train_loss", loss, prog_bar=True)
+        self.log("loss/train_loss", loss, prog_bar=False)
         self.log("env_steps", self.global_step, logger=False, prog_bar=True)
         if self.optimization_steps % self.hparams.sync_rate == 0:  # type: ignore
             self.target_net.load_state_dict(self.policy_net.state_dict())

@@ -406,7 +406,21 @@ class PPOLightning(WargameLightningBase):
                 on_epoch=True,
             )
             self.log(
+                "loss/train_loss",
+                total_loss_float / n_updates,
+                prog_bar=False,
+                logger=True,
+                on_epoch=True,
+            )
+            self.log(
                 "policy_loss",
+                epoch_policy_loss / n_updates,
+                prog_bar=False,
+                logger=True,
+                on_epoch=True,
+            )
+            self.log(
+                "loss/policy_loss",
                 epoch_policy_loss / n_updates,
                 prog_bar=False,
                 logger=True,
@@ -420,7 +434,21 @@ class PPOLightning(WargameLightningBase):
                 on_epoch=True,
             )
             self.log(
+                "loss/value_loss",
+                epoch_value_loss / n_updates,
+                prog_bar=False,
+                logger=True,
+                on_epoch=True,
+            )
+            self.log(
                 "entropy_loss",
+                epoch_entropy_loss / n_updates,
+                prog_bar=False,
+                logger=True,
+                on_epoch=True,
+            )
+            self.log(
+                "loss/entropy_loss",
                 epoch_entropy_loss / n_updates,
                 prog_bar=False,
                 logger=True,
@@ -429,6 +457,9 @@ class PPOLightning(WargameLightningBase):
             for name, value in rollout_reward_breakdown.items():
                 self.log(
                     f"reward_components/{name}", value, prog_bar=False, logger=True
+                )
+                self.log(
+                    f"reward/components/{name}", value, prog_bar=False, logger=True
                 )
             self.log("env_steps", self.global_step, logger=False, prog_bar=True)
 

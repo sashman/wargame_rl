@@ -26,6 +26,7 @@ class ClosestObjectiveCalculator(PerModelRewardCalculator):
         self.best_distance_bonus_scale = (
             0.0 if best_distance_bonus_scale is None else best_distance_bonus_scale
         )
+        self._last_breakdown: dict[int, dict[str, float]] = {}
 
     @staticmethod
     def _normalized_distance(
@@ -82,9 +83,23 @@ class ClosestObjectiveCalculator(PerModelRewardCalculator):
         bonus = self._best_distance_bonus(best_prev, normalized_distance)
 
         if previous is None:
+            self._last_breakdown[model_idx] = {
+                "distance_delta": 0.0,
+                "base_penalty": 0.0,
+                "best_distance_bonus": bonus,
+            }
             return bonus
 
+        distance_delta = float(normalized_distance - previous)
         base_penalty = self._penalty_for_non_improvement(
             float(previous), normalized_distance
         )
+        self._last_breakdown[model_idx] = {
+            "distance_delta": distance_delta,
+            "base_penalty": base_penalty,
+            "best_distance_bonus": bonus,
+        }
         return base_penalty + bonus
+
+    def get_last_breakdown(self, model_idx: int) -> dict[str, float]:
+        return self._last_breakdown.get(model_idx, {})

@@ -208,7 +208,8 @@ def test_reward_breakdown_matches_total(simple_env: WargameEnv) -> None:
     breakdown = simple_env.phase_manager.last_reward_breakdown
 
     assert breakdown
-    assert sum(breakdown.values()) == pytest.approx(reward)
+    base_total = sum(value for key, value in breakdown.items() if "/" not in key)
+    assert base_total == pytest.approx(reward)
 
 
 class TestGroupCohesionCalculator:

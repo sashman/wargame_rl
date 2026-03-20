@@ -130,15 +130,26 @@ class RewardPhaseManager:
         n_models = len(view.player_models)
 
         per_model_sums = {name: 0.0 for name, _calc in phase.per_model_calculators}
+        per_model_component_sums: dict[str, float] = {}
         for i, model in enumerate(view.player_models):
             for name, pm_calc in phase.per_model_calculators:
                 per_model_sums[name] += pm_calc.weight * pm_calc.calculate(
                     i, model, view, ctx
                 )
+                breakdown: dict[str, float] = pm_calc.get_last_breakdown(i)
+                if breakdown:
+                    for component_name, value in breakdown.items():
+                        key = f"{name}/{component_name}"
+                        per_model_component_sums[key] = (
+                            per_model_component_sums.get(key, 0.0)
+                            + pm_calc.weight * value
+                        )
 
         if n_models > 0:
             for name in per_model_sums:
                 per_model_sums[name] /= n_models
+            for name in per_model_component_sums:
+                per_model_component_sums[name] /= n_models
 
         avg_per_model = sum(per_model_sums.values()) if n_models > 0 else 0.0
 
@@ -149,8 +160,9 @@ class RewardPhaseManager:
         global_total = sum(global_sums.values())
 
         reward = avg_per_model + global_total
-        breakdown: dict[str, float] = {}
+        breakdown = {}
         breakdown.update(per_model_sums)
+        breakdown.update(per_model_component_sums)
         breakdown.update(global_sums)
         if ctx.is_terminated and view.config.terminal_success_bonus != 0.0:
             if ctx.distance_cache.all_models_at_objectives():
