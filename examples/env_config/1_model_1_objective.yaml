@@ -3,3 +3,4 @@ number_of_objectives: 1
 objective_radius_size: 3
 board_width: 50
 board_height: 50
+group_max_distance: 3

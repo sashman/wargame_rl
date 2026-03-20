@@ -111,6 +111,11 @@ class ActionHandler:
     def __init__(
         self, config: WargameEnvConfig, *, n_models: int | None = None
     ) -> None:
+        self._enforce_group_coherency_legality: bool = (
+            config.enforce_group_coherency_legality
+        )
+        self._group_max_distance: float = float(config.group_max_distance)
+
         self._n_models = (
             n_models if n_models is not None else config.number_of_wargame_models
         )
@@ -231,3 +236,35 @@ class ActionHandler:
                 [0, 0],
                 [board_width - 1, board_height - 1],
             )
+
+            # Optionally enforce "group coherency" as a hard movement legality
+            # constraint: after each tentative move, verify the moved model's
+            # `group_id` peers still have a same-group neighbor within
+            # `group_max_distance`. If not, revert this model to its previous
+            # location (effectively treating it like `stay`).
+            if self._enforce_group_coherency_legality and not np.all(displacement == 0):
+                if not self._is_group_coherent(wargame_models, model.group_id):
+                    if model.previous_location is None:
+                        raise RuntimeError(
+                            "previous_location was not set before applying action"
+                        )
+                    model.location = model.previous_location.copy()
+
+    def _is_group_coherent(self, wargame_models: list[Any], group_id: int) -> bool:
+        """Check that every model in `group_id` has a same-group peer nearby.
+
+        Rule implemented here matches the existing reward criteria semantics:
+        - A group with 0-1 models is always coherent.
+        - Otherwise, every model must have at least one same-group member at
+          distance <= `group_max_distance` (Euclidean / L2).
+        """
+        group_models = [m for m in wargame_models if m.group_id == group_id]
+        if len(group_models) <= 1:
+            return True
+
+        locs = np.array([m.location for m in group_models], dtype=np.float64)
+        deltas = locs[:, np.newaxis, :] - locs[np.newaxis, :, :]
+        dists = np.linalg.norm(deltas, axis=2, ord=2)  # (n, n)
+        np.fill_diagonal(dists, np.inf)
+        min_dists = dists.min(axis=1)
+        return bool((min_dists <= self._group_max_distance).all())

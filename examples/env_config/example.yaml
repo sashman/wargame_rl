@@ -4,3 +4,4 @@ objective_radius_size: 5
 board_width: 100
 board_height: 74
 max_groups: 100
+group_max_distance: 3

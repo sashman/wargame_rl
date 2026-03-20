@@ -5,6 +5,7 @@ objective_radius_size: 3
 board_width: 60
 board_height: 44
 max_groups: 2
+group_max_distance: 3
 
 models:
   - { x: 5, y: 10, group_id: 0 }
