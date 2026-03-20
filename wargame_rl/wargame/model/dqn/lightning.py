@@ -1,15 +1,13 @@
 from copy import deepcopy
 
-import numpy as np
 import torch
-from pytorch_lightning import LightningModule
 from torch import Tensor, nn
 from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
 
-import wandb
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.dataset import RLDataset, experience_list_to_batch
+from wargame_rl.wargame.model.common.lightning_base import WargameLightningBase
 from wargame_rl.wargame.model.common.observation import apply_action_mask
 from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
@@ -17,7 +15,7 @@ from wargame_rl.wargame.model.net import RL_Network
 from wargame_rl.wargame.types import ExperienceBatch
 
 
-class DQNLightning(LightningModule):
+class DQNLightning(WargameLightningBase):
     def __init__(
         self,
         env: WargameEnv,
@@ -51,10 +49,13 @@ class DQNLightning(LightningModule):
             n_samples_per_epoch: number of samples per epoch
 
         """
-        super().__init__()
-        self.save_hyperparameters()
 
-        self.env = env
+        buffer = ReplayBuffer(capacity=replay_size)
+        agent = Agent(env, buffer)
+        super().__init__(env=env, agent=agent, do_log=log, n_episodes=n_episodes)
+        self.save_hyperparameters()
+        self.buffer = buffer
+
         # Use the provided policy network directly in eager mode. torch.compile
         # would require a system C++ toolchain which is not guaranteed to be
         # available in all dev/test environments.
@@ -63,9 +64,6 @@ class DQNLightning(LightningModule):
         self.to(self.policy_net.device)
         self.target_net: RL_Network = deepcopy(policy_net)
         self.target_net.eval()
-
-        self.buffer = ReplayBuffer(capacity=self.hparams.replay_size)  # type: ignore
-        self.agent = Agent(self.env, self.buffer)
         self.total_reward = 0
         self.episode_reward = 0
         self.populate()
@@ -210,62 +208,5 @@ class DQNLightning(LightningModule):
         """Get train loader."""
         return self.__dataloader()
 
-    def run_episodes(self, n_episodes: int, epsilon: float = 0.0) -> float:
-        """Run evaluation episodes and log metrics.
-
-        Returns the success rate as a fraction in [0, 1].
-        """
-        steps_s = []
-        episode_rewards = []
-        episode_successes = []
-        self.policy_net.eval()
-        with torch.no_grad():
-            for _ in range(n_episodes):
-                reward, steps = self.agent.run_episode(
-                    self.policy_net, epsilon=epsilon, render=False, save_steps=False
-                )
-                episode_rewards.append(reward)
-                steps_s.append(steps)
-
-                if self.env.last_step_context is not None:
-                    success = self.env.phase_manager.check_success(
-                        self.env, self.env.last_step_context
-                    )
-                    episode_successes.append(success)
-
-        self.mean_episode_reward = sum(episode_rewards) / len(episode_rewards)
-        self.log("mean_episode_reward", self.mean_episode_reward, prog_bar=False)
-        self.log("mean_episode_steps", sum(steps_s) / len(steps_s), prog_bar=False)
-        self.log("max_episode_reward", max(episode_rewards), prog_bar=False)
-        self.log("min_episode_reward", min(episode_rewards), prog_bar=False)
-
-        if episode_successes:
-            sr = np.array(episode_successes, dtype=float).mean()
-        else:
-            sr = float((np.array(steps_s) < self.env.max_turns).mean())
-
-        self.log("success_rate", sr * 100, prog_bar=False)
-        self.policy_net.train()
-        return float(sr)
-
-    def on_train_epoch_end(self) -> None:
-        if self.hparams.log:  # type: ignore
-            sr = self.run_episodes(self.hparams.n_episodes)  # type: ignore
-
-            advanced = self.env.phase_manager.try_advance(sr, self.current_epoch)
-            phase_index = int(self.env.phase_manager.current_phase_index)
-            self.log(
-                "reward_phase",
-                float(phase_index),
-                prog_bar=False,
-            )
-            if wandb.run is not None:  # type: ignore[attr-defined]
-                wandb.log({"reward_phase": phase_index}, step=self.global_step)  # type: ignore[attr-defined]
-            if advanced:
-                self.log(
-                    "phase_advanced_at_epoch",
-                    float(self.current_epoch),
-                    prog_bar=False,
-                )
-
-        return super().on_train_epoch_end()  # type: ignore
+    def _policy_model(self) -> RL_Network:
+        return self.policy_net

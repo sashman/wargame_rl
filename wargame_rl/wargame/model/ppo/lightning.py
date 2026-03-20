@@ -8,15 +8,14 @@ import gymnasium as gym
 import numpy as np
 import torch
 import torch.nn as nn
-from pytorch_lightning import LightningModule
 from torch import Tensor, optim
 from torch.distributions import Categorical
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-import wandb
 from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.model.common.lightning_base import WargameLightningBase
 from wargame_rl.wargame.model.common.observation import observations_to_tensor_batch
 from wargame_rl.wargame.model.ppo.agent import Agent
 from wargame_rl.wargame.types import Experience
@@ -58,7 +57,7 @@ class _PPODummyDataset(Dataset[Tensor]):
         return torch.tensor(0.0)
 
 
-class PPOLightning(LightningModule):
+class PPOLightning(WargameLightningBase):
     """PPO Lightning Module for training PPO agents."""
 
     def _largest_divisor_at_most(self, n: int, max_value: int) -> int:
@@ -151,17 +150,14 @@ class PPOLightning(LightningModule):
             n_episodes: Number of episodes to run for evaluation
             show_inner_progress: Whether to show tqdm for rollout and PPO minibatch updates
         """
-        super().__init__()
+        super().__init__(env=env, agent=Agent(env), do_log=log, n_episodes=n_episodes)
         self.automatic_optimization = False
         self.save_hyperparameters()
 
-        self.env = env
         self.show_inner_progress = show_inner_progress
         self.ppo_model = ppo_model
-        self.agent = Agent(self.env)
         self.total_reward = 0
         self.episode_reward = 0
-        self.do_log = log
         self.batch_size = batch_size
         self.n_steps = n_steps
         if num_rollout_envs <= 0:
@@ -170,7 +166,6 @@ class PPOLightning(LightningModule):
             self.num_rollout_envs = num_rollout_envs
         self.n_epochs = n_epochs
         self.max_grad_norm = max_grad_norm
-        self.n_episodes = n_episodes
 
         # Initialize optimizer
         self.optimizer = optim.Adam(
@@ -573,7 +568,7 @@ class PPOLightning(LightningModule):
         )
         with pbar_ctx as pbar:
             while len(rollout) < self.n_steps:
-                _reward, _steps, episode_exp = self.agent.run_episode(
+                _reward, _steps, episode_exp = self.agent.run_episode_with_experiences(
                     self.ppo_model,
                     epsilon=1.0,
                     render=False,
@@ -595,66 +590,5 @@ class PPOLightning(LightningModule):
             num_workers=0,
         )
 
-    def run_episodes(self, n_episodes: int, epsilon: float = 0.0) -> float:
-        """Run episodes for evaluation.
-
-        Uses the current phase's success criteria (phase_manager.check_success)
-        so that success_rate and phase advancement match the curriculum.
-
-        Args:
-            n_episodes: Number of episodes to run
-            epsilon: Exploration rate (0 for deterministic)
-
-        Returns:
-            Success rate as a fraction in [0, 1].
-        """
-        steps_s: list[int] = []
-        episode_rewards: list[float] = []
-        episode_successes: list[bool] = []
-        self.ppo_model.eval()
-        with torch.no_grad():
-            for _ in range(n_episodes):
-                reward, steps, _ = self.agent.run_episode(
-                    self.ppo_model, epsilon=epsilon, render=False, save_steps=False
-                )
-                episode_rewards.append(reward)
-                steps_s.append(steps)
-                if self.env.last_step_context is not None:
-                    success = self.env.phase_manager.check_success(
-                        self.env, self.env.last_step_context
-                    )
-                    episode_successes.append(success)
-        self.mean_episode_reward = sum(episode_rewards) / len(episode_rewards)
-        if episode_successes:
-            sr = sum(episode_successes) / len(episode_successes)
-        else:
-            sr = sum(1 for s in steps_s if s < self.env.max_turns) / len(steps_s)
-        if self.do_log:
-            self.log("mean_episode_reward", self.mean_episode_reward, prog_bar=True)
-            self.log("mean_episode_steps", sum(steps_s) / len(steps_s), prog_bar=False)
-            self.log("max_episode_reward", max(episode_rewards), prog_bar=False)
-            self.log("min_episode_reward", min(episode_rewards), prog_bar=False)
-            self.log("success_rate", sr * 100, prog_bar=False)
-            phase_index = int(self.env.phase_manager.current_phase_index)
-            self.log(
-                "reward_phase",
-                float(phase_index),
-                prog_bar=False,
-            )
-            if wandb.run is not None:  # type: ignore[attr-defined]
-                wandb.log({"reward_phase": phase_index}, step=self.global_step)  # type: ignore[attr-defined]
-        self.ppo_model.train()
-        return float(sr)
-
-    def on_train_epoch_end(self) -> None:
-        """Run after each training epoch."""
-        if self.do_log:
-            sr = self.run_episodes(self.n_episodes)
-            advanced = self.env.phase_manager.try_advance(sr, self.current_epoch)
-            if advanced:
-                self.log(
-                    "phase_advanced_at_epoch",
-                    float(self.current_epoch),
-                    prog_bar=False,
-                )
-        super().on_train_epoch_end()
+    def _policy_model(self) -> PPOModel:
+        return self.ppo_model
