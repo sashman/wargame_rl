@@ -139,7 +139,11 @@ class RewardPhaseManager:
         reward = avg_per_model + global_total
         if ctx.is_terminated and view.config.terminal_success_bonus != 0.0:
             if ctx.distance_cache.all_models_at_objectives():
-                reward += float(view.config.terminal_success_bonus)
+                # Scale terminal bonus by remaining turns to encourage faster success.
+                remaining = max(0.0, float(ctx.max_turns - ctx.current_turn))
+                denom = float(ctx.max_turns) if ctx.max_turns > 0 else 1.0
+                remaining_frac = remaining / denom
+                reward += float(view.config.terminal_success_bonus) * remaining_frac
         if ctx.is_terminated and view.config.terminal_vp_bonus != 0.0:
             vp_threshold = phase.criteria.vp_threshold_for_terminal_bonus(view)
             if vp_threshold is not None and view.player_vp >= vp_threshold:

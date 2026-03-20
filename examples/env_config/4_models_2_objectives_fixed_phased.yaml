@@ -21,8 +21,9 @@ reward_phases:
     reward_calculators:
       - type: closest_objective
         weight: 1.0
+        params: { best_distance_bonus_scale: 5.0 }
       - type: group_cohesion
-        weight: 1.0
+        weight: 10.0
         params: { group_max_distance: 5.0, violation_penalty: -0.1 }
     success_criteria:
       type: all_at_objectives
