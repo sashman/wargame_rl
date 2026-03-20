@@ -109,6 +109,9 @@ class WargameEnv(gym.Env):
 
         # Last reward from step(); None until first step after reset
         self.last_reward: float | None = None
+        self.last_reward_breakdown: dict[str, float] = {}
+        self.episode_reward_breakdown: dict[str, float] = {}
+        self.episode_reward_steps: int = 0
 
         # Reward phases (curriculum learning); always used for reward calculation
         self.phase_manager = RewardPhaseManager.from_configs(config.reward_phases)
@@ -237,6 +240,9 @@ class WargameEnv(gym.Env):
         self.current_turn = 0
         self.last_reward = None
         self.last_step_context = None
+        self.last_reward_breakdown = {}
+        self.episode_reward_breakdown = {}
+        self.episode_reward_steps = 0
 
         self._battle.reset_for_episode()
         self._resolve_player_side()
@@ -362,6 +368,12 @@ class WargameEnv(gym.Env):
         info = self._get_info()
 
         self.last_reward = reward
+        self.last_reward_breakdown = dict(self.phase_manager.last_reward_breakdown)
+        for key, value in self.last_reward_breakdown.items():
+            self.episode_reward_breakdown[key] = (
+                self.episode_reward_breakdown.get(key, 0.0) + value
+            )
+        self.episode_reward_steps += 1
         return observation, reward, is_terminated, False, info.model_dump()
 
     def render(self) -> None:

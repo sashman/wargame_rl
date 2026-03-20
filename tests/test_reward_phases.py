@@ -199,6 +199,19 @@ class TestClosestObjectiveCalculator:
         assert reward == 0.0
 
 
+def test_reward_breakdown_matches_total(simple_env: WargameEnv) -> None:
+    """RewardPhaseManager should expose per-calculator breakdown matching total."""
+    simple_env.reset()
+    cache = compute_distances(simple_env.wargame_models, simple_env.objectives)
+    ctx = _make_step_context(simple_env, cache)
+    reward = simple_env.phase_manager.calculate_reward(simple_env, ctx)
+    breakdown = simple_env.phase_manager.last_reward_breakdown
+
+    assert breakdown
+    base_total = sum(value for key, value in breakdown.items() if "/" not in key)
+    assert base_total == pytest.approx(reward)
+
+
 class TestGroupCohesionCalculator:
     def test_no_penalty_when_within_distance(self, simple_env: WargameEnv) -> None:
         simple_env.reset()
