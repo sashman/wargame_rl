@@ -19,6 +19,7 @@ class BaseAgent(ABC):
         self.observation: WargameEnvObservation | None = None
         self._last_log_prob: torch.Tensor | None = None
         self.replay_buffer: ReplayBuffer | None = None
+        self.last_episode_reward_breakdown: dict[str, float] = {}
 
     def reset(self) -> None:
         """Reset environment state for a new episode."""
@@ -108,5 +109,13 @@ class BaseAgent(ABC):
 
             if render:
                 self.env.render()
+
+        if self.env.episode_reward_steps > 0:
+            self.last_episode_reward_breakdown = {
+                key: value / float(self.env.episode_reward_steps)
+                for key, value in self.env.episode_reward_breakdown.items()
+            }
+        else:
+            self.last_episode_reward_breakdown = {}
 
         return total_reward, steps, experiences

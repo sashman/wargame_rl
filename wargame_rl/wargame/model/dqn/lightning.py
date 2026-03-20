@@ -175,6 +175,8 @@ class DQNLightning(WargameLightningBase):
         self.log("n_steps", n_steps, prog_bar=False)
         self.log("reward", reward, prog_bar=False)
         self.log("mean_reward", mean_reward, prog_bar=True)
+        for name, value in self.agent.last_episode_reward_breakdown.items():
+            self.log(f"reward_components/{name}", value, prog_bar=False)
         self.log("epsilon", epsilon, prog_bar=True)
         self.log("train_loss", loss, prog_bar=True)
         self.log("env_steps", self.global_step, logger=False, prog_bar=True)
