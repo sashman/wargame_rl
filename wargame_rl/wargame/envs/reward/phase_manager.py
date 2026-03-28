@@ -30,6 +30,9 @@ class RewardPhase:
     success_threshold: float
     min_epochs: int
     min_epochs_above_threshold: int
+    terminal_success_bonus: float
+    terminal_vp_bonus: float
+    terminate_on_success: bool
 
 
 @dataclass
@@ -83,6 +86,9 @@ class RewardPhaseManager:
                     success_threshold=cfg.success_threshold,
                     min_epochs=cfg.min_epochs,
                     min_epochs_above_threshold=cfg.min_epochs_above_threshold,
+                    terminal_success_bonus=cfg.terminal_success_bonus,
+                    terminal_vp_bonus=cfg.terminal_vp_bonus,
+                    terminate_on_success=cfg.terminate_on_success,
                 )
             )
 
@@ -105,6 +111,11 @@ class RewardPhaseManager:
     @property
     def is_final_phase(self) -> bool:
         return self._current_idx >= len(self.phases) - 1
+
+    @property
+    def terminate_on_success(self) -> bool:
+        """Whether the current phase should terminate on all-at-objectives."""
+        return self.current_phase.terminate_on_success
 
     @property
     def needs_model_model_distances(self) -> bool:
@@ -164,20 +175,20 @@ class RewardPhaseManager:
         breakdown.update(per_model_sums)
         breakdown.update(per_model_component_sums)
         breakdown.update(global_sums)
-        if ctx.is_terminated and view.config.terminal_success_bonus != 0.0:
+        if ctx.is_terminated and phase.terminal_success_bonus != 0.0:
             if ctx.distance_cache.all_models_at_objectives():
                 # Scale terminal bonus by remaining turns to encourage faster success.
                 remaining = max(0.0, float(ctx.max_turns - ctx.current_turn + 1))
                 denom = float(ctx.max_turns) if ctx.max_turns > 0 else 1.0
                 remaining_frac = remaining / denom
-                bonus = float(view.config.terminal_success_bonus) * remaining_frac
+                bonus = phase.terminal_success_bonus * remaining_frac
                 reward += bonus
                 if bonus != 0.0:
                     breakdown["terminal_success_bonus"] = bonus
-        if ctx.is_terminated and view.config.terminal_vp_bonus != 0.0:
+        if ctx.is_terminated and phase.terminal_vp_bonus != 0.0:
             vp_threshold = phase.criteria.vp_threshold_for_terminal_bonus(view)
             if vp_threshold is not None and view.player_vp >= vp_threshold:
-                bonus = float(view.config.terminal_vp_bonus)
+                bonus = phase.terminal_vp_bonus
                 reward += bonus
                 if bonus != 0.0:
                     breakdown["terminal_vp_bonus"] = bonus

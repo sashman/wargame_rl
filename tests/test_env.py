@@ -2,6 +2,11 @@
 
 import pytest
 
+from wargame_rl.wargame.envs.reward.phase import (
+    RewardCalculatorConfig,
+    RewardPhaseConfig,
+    SuccessCriteriaConfig,
+)
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
@@ -149,15 +154,24 @@ def test_step_adds_terminal_success_bonus_when_all_models_at_objective() -> None
         number_of_wargame_models=1,
         number_of_objectives=1,
         objective_radius_size=1,
-        terminal_success_bonus=12.5,
         models=[{"x": 4, "y": 4, "group_id": 0}],  # type: ignore[list-item]
         objectives=[{"x": 4, "y": 4}],  # type: ignore[list-item]
+        reward_phases=[
+            RewardPhaseConfig(
+                name="reach",
+                reward_calculators=[
+                    RewardCalculatorConfig(type="closest_objective", weight=1.0),
+                ],
+                success_criteria=SuccessCriteriaConfig(type="all_at_objectives"),
+                terminal_success_bonus=12.5,
+            ),
+        ],
     )
     env = WargameEnv(config=config)
     env.reset(seed=42)
     _, reward, terminated, _, _ = env.step(WargameEnvAction(actions=[0]))
     assert terminated is True
-    assert reward >= config.terminal_success_bonus
+    assert reward >= 12.5
 
 
 def test_step_invalid_action_raises(env: WargameEnv) -> None:

@@ -12,11 +12,20 @@ if TYPE_CHECKING:
 
 
 class VPGainCalculator(GlobalRewardCalculator):
-    """Global reward proportional to player VP gained this step.
+    """Global reward normalized by cap_per_turn so max unweighted reward is 1.0.
 
-    Encourages the agent to score victory points. No opponent term;
-    reward = weight * player_vp_delta.
+    reward = weight * (player_vp_delta / cap_per_turn)
     """
 
     def calculate(self, view: BattleView, ctx: StepContext) -> float:
-        return self.weight * float(view.player_vp_delta)
+        cap_per_turn = 15
+        config = getattr(view, "config", None)
+        mission = getattr(config, "mission", None)
+        mission_params = getattr(mission, "params", None)
+        if isinstance(mission_params, dict):
+            cap_per_turn = int(mission_params.get("cap_per_turn", cap_per_turn))
+
+        if cap_per_turn <= 0:
+            return 0.0
+
+        return self.weight * (float(view.player_vp_delta) / float(cap_per_turn))

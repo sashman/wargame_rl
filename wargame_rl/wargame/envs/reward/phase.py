@@ -59,3 +59,18 @@ class RewardPhaseConfig(BaseModel):
         ge=0,
         description="Success rate must be >= success_threshold for this many consecutive epochs before advancing.",
     )
+    terminal_success_bonus: float = Field(
+        default=0.0,
+        description="Bonus added at episode end when all models are at an objective. "
+        "Scaled by remaining turns fraction. 0 disables.",
+    )
+    terminal_vp_bonus: float = Field(
+        default=0.0,
+        description="Bonus added at episode end when player VP meets the phase's "
+        "VP threshold. 0 disables.",
+    )
+    terminate_on_success: bool = Field(
+        default=True,
+        description="If True, episode ends early when all models reach an objective. "
+        "Set to False to let the episode run to the turn limit.",
+    )

@@ -83,6 +83,10 @@ def train(
         10,
         help="Start recording only after this many epochs (when record_during_training is enabled)",
     ),
+    record_every_n_epochs: int = typer.Option(
+        20,
+        help="Record every N epochs after recording starts",
+    ),
     max_epochs: int | None = typer.Option(
         None,
         help="Override max training epochs (defaults to TrainingConfig value)",
@@ -119,6 +123,7 @@ def train(
         training_config = DQNTrainingConfig(
             record_during_training=record_during_training,
             record_after_epoch=record_after_epoch,
+            record_every_n_epochs=record_every_n_epochs,
         )
         if max_epochs is not None:
             training_config.max_epochs = max_epochs
@@ -153,8 +158,9 @@ def train(
                     RecordEpisodeCallback(
                         run.name,
                         env_config,
-                        training_config.record_during_training,
-                        training_config.record_after_epoch,
+                        record_during_training=training_config.record_during_training,
+                        record_after_epoch=training_config.record_after_epoch,
+                        record_every_n_epochs=training_config.record_every_n_epochs,
                         filename_prefix="dqn",
                     )
                 )
@@ -176,6 +182,7 @@ def train(
         ppo_training_config = PPOTrainingConfig(
             record_during_training=record_during_training,
             record_after_epoch=record_after_epoch,
+            record_every_n_epochs=record_every_n_epochs,
         )
         if max_epochs is not None:
             ppo_training_config.max_epochs = max_epochs
@@ -210,8 +217,9 @@ def train(
                     RecordEpisodeCallback(
                         run.name,
                         env_config,
-                        ppo_training_config.record_during_training,
-                        ppo_training_config.record_after_epoch,
+                        record_during_training=ppo_training_config.record_during_training,
+                        record_after_epoch=ppo_training_config.record_after_epoch,
+                        record_every_n_epochs=ppo_training_config.record_every_n_epochs,
                         filename_prefix="ppo",
                     )
                 )
