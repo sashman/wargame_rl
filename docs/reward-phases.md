@@ -57,6 +57,9 @@ reward_phases:
 | `success_threshold` | float | `0.8` | Fraction of evaluation episodes (0--1) that must succeed to advance |
 | `min_epochs` | int | `0` | Minimum epochs spent in this phase before advancement is eligible |
 | `min_epochs_above_threshold` | int | `5` | Success rate must be ≥ success_threshold for this many consecutive epochs before advancing |
+| `terminal_success_bonus` | float | `0.0` | Bonus added at episode end when all models are at an objective. Scaled by remaining-turn fraction so faster success gets higher reward. |
+| `terminal_vp_bonus` | float | `0.0` | Bonus added at episode end when player VP meets the phase's VP threshold (for VP-based success criteria). |
+| `terminate_on_success` | bool | `true` | Whether to end the episode as soon as all models are at objectives. Set `false` in VP phases when you want to keep scoring. |
 
 ### Reward calculator fields
 
@@ -79,7 +82,7 @@ reward_phases:
 |----------|-------|------------|-------------|
 | `closest_objective` | per-model | *(none)* | 0 when getting closer, negative penalty when distance stays the same or increases. Uses the change in distance to the closest objective, normalised by board diagonal. |
 | `group_cohesion` | per-model | `group_max_distance` (float, default 10.0), `violation_penalty` (float, default -10.0) | Negative reward proportional to excess distance beyond `group_max_distance` from the closest same-group model. 0 when within range or alone in group. |
-| `vp_gain` | global | *(none)* | Reward = weight × player VP gained this step. Use in a "Win the game" phase. VP is only awarded at scoring moments (e.g. end of command phase); for a denser signal, add a small weight on `closest_objective` (e.g. 0.2) in the same phase. |
+| `vp_gain` | global | *(none)* | Reward = weight × (player_vp_delta / cap_per_turn). `cap_per_turn` is read from mission config (default 15), so unweighted max per step is 1.0. Use in a "Win the game" phase. |
 
 ## Available Success Criteria
 

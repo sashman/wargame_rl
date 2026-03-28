@@ -274,20 +274,38 @@ class TestGroupCohesionCalculator:
         assert reward == 0.0
 
 
+def _vp_view(vp_delta: int, cap_per_turn: int = 15) -> SimpleNamespace:
+    mission = SimpleNamespace(params={"cap_per_turn": cap_per_turn})
+    config = SimpleNamespace(mission=mission)
+    return SimpleNamespace(player_vp_delta=vp_delta, config=config)
+
+
 class TestVPGainCalculator:
     def test_zero_when_no_vp_delta(self) -> None:
-        view = SimpleNamespace(player_vp_delta=0)
+        view = _vp_view(vp_delta=0)
         ctx: StepContext = SimpleNamespace()  # type: ignore[assignment]
         calc = VPGainCalculator(weight=1.0)
         assert calc.calculate(view, ctx) == 0.0
 
-    def test_reward_scaled_by_weight(self) -> None:
-        view = SimpleNamespace(player_vp_delta=5)
+    def test_reward_normalized_by_cap(self) -> None:
+        view = _vp_view(vp_delta=5, cap_per_turn=15)
         ctx: StepContext = SimpleNamespace()  # type: ignore[assignment]
         calc = VPGainCalculator(weight=1.0)
-        assert calc.calculate(view, ctx) == 5.0
+        assert calc.calculate(view, ctx) == pytest.approx(5 / 15)
         calc = VPGainCalculator(weight=0.5)
-        assert calc.calculate(view, ctx) == 2.5
+        assert calc.calculate(view, ctx) == pytest.approx(0.5 * 5 / 15)
+
+    def test_max_reward_is_one(self) -> None:
+        view = _vp_view(vp_delta=15, cap_per_turn=15)
+        ctx: StepContext = SimpleNamespace()  # type: ignore[assignment]
+        calc = VPGainCalculator(weight=1.0)
+        assert calc.calculate(view, ctx) == pytest.approx(1.0)
+
+    def test_zero_when_cap_is_zero(self) -> None:
+        view = _vp_view(vp_delta=5, cap_per_turn=0)
+        ctx: StepContext = SimpleNamespace()  # type: ignore[assignment]
+        calc = VPGainCalculator(weight=1.0)
+        assert calc.calculate(view, ctx) == 0.0
 
     def test_build_vp_gain(self) -> None:
         calc = build_calculator("vp_gain", weight=1.0, params={})
@@ -656,7 +674,6 @@ class TestEnvIntegration:
             number_of_objectives=1,
             objective_radius_size=2,
             max_turns_override=1,
-            terminal_success_bonus=25.0,
             reward_phases=[
                 RewardPhaseConfig(
                     name="reach_objectives",
@@ -667,6 +684,7 @@ class TestEnvIntegration:
                     success_criteria=SuccessCriteriaConfig(type="all_at_objectives"),
                     success_threshold=1.0,
                     min_epochs=0,
+                    terminal_success_bonus=25.0,
                 )
             ],
         )
@@ -695,7 +713,6 @@ class TestEnvIntegration:
             number_of_objectives=1,
             objective_radius_size=2,
             max_turns_override=1,
-            terminal_vp_bonus=10.0,
             reward_phases=[
                 RewardPhaseConfig(
                     name="win_by_vp",
@@ -708,6 +725,7 @@ class TestEnvIntegration:
                     ),
                     success_threshold=0.8,
                     min_epochs=0,
+                    terminal_vp_bonus=10.0,
                 )
             ],
         )
@@ -719,8 +737,40 @@ class TestEnvIntegration:
         _, reward, terminated, _, _ = env.step(action)
 
         assert terminated is True
-        # Terminal VP bonus applied (player_vp >= threshold). vp_gain is 0 this step (deltas reset at step start).
         assert reward == pytest.approx(10.0)
+
+    def test_terminate_on_success_false_does_not_end_episode_early(self) -> None:
+        config = WargameEnvConfig(
+            render_mode=None,
+            board_width=20,
+            board_height=20,
+            number_of_wargame_models=2,
+            number_of_objectives=1,
+            objective_radius_size=2,
+            max_turns_override=10,
+            reward_phases=[
+                RewardPhaseConfig(
+                    name="vp_training",
+                    reward_calculators=[
+                        RewardCalculatorConfig(type="closest_objective", weight=1.0),
+                    ],
+                    success_criteria=SuccessCriteriaConfig(type="all_at_objectives"),
+                    terminate_on_success=False,
+                )
+            ],
+        )
+        env = WargameEnv(config=config)
+        env.reset()
+
+        obj_loc = np.array([10, 10])
+        env.objectives[0].location = obj_loc.copy()
+        for model in env.wargame_models:
+            model.location = obj_loc.copy()
+            model.group_id = 0
+
+        action = WargameEnvAction(actions=[0 for _ in env.wargame_models])
+        _, _, terminated, _, _ = env.step(action)
+        assert terminated is False
 
 
 # ---------------------------------------------------------------------------
@@ -748,3 +798,36 @@ class TestConfigBackwardCompat:
         config = WargameEnvConfig.model_validate(data)
         assert len(config.reward_phases) == 1
         assert config.reward_phases[0].name == "test"
+
+    def test_legacy_terminal_success_bonus_backfills_phase(self) -> None:
+        config = WargameEnvConfig(
+            render_mode=None,
+            terminal_success_bonus=12.0,
+            reward_phases=[
+                RewardPhaseConfig(
+                    name="legacy",
+                    reward_calculators=[
+                        RewardCalculatorConfig(type="closest_objective", weight=1.0)
+                    ],
+                    success_criteria=SuccessCriteriaConfig(type="all_at_objectives"),
+                )
+            ],
+        )
+        assert config.reward_phases[0].terminal_success_bonus == pytest.approx(12.0)
+
+    def test_phase_bonus_overrides_legacy_env_value(self) -> None:
+        config = WargameEnvConfig(
+            render_mode=None,
+            terminal_success_bonus=12.0,
+            reward_phases=[
+                RewardPhaseConfig(
+                    name="phase_override",
+                    reward_calculators=[
+                        RewardCalculatorConfig(type="closest_objective", weight=1.0)
+                    ],
+                    success_criteria=SuccessCriteriaConfig(type="all_at_objectives"),
+                    terminal_success_bonus=3.0,
+                )
+            ],
+        )
+        assert config.reward_phases[0].terminal_success_bonus == pytest.approx(3.0)

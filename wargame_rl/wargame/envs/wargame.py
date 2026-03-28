@@ -340,12 +340,15 @@ class WargameEnv(gym.Env):
             compute_model_model=needs_mm,
         )
 
+        all_at_objective = (
+            cache.all_models_at_objectives() and self.phase_manager.terminate_on_success
+        )
         is_terminated = is_battle_over(
             self._game_clock,
             self.current_turn,
             self.max_turns,
             self.config.max_turns_override,
-            cache.all_models_at_objectives(),
+            all_at_objective,
         )
 
         clock_state = self._game_clock.state
