@@ -1,0 +1,97 @@
+config_name: 12v10_scripted_advance_fixed_objectives_2_reward_phases
+number_of_wargame_models: 12
+number_of_opponent_models: 10
+number_of_objectives: 3
+objective_radius_size: 3
+board_width: 60
+board_height: 44
+max_groups: 2
+turn_order: random
+
+deployment_zone: [0, 0, 20, 44]
+opponent_deployment_zone: [40, 0, 60, 44]
+
+opponent_policy:
+  type: scripted_advance_to_objective
+
+models:
+  - { group_id: 0 }
+  - { group_id: 0 }
+  - { group_id: 0 }
+  - { group_id: 1 }
+  - { group_id: 1 }
+  - { group_id: 1 }
+  - { group_id: 2 }
+  - { group_id: 2 }
+  - { group_id: 2}
+  - { group_id: 3 }
+  - { group_id: 3 }
+  - { group_id: 3 }
+
+opponent_models:
+  - { group_id: 0 }
+  - { group_id: 0 }
+  - { group_id: 0 }
+  - { group_id: 1 }
+  - { group_id: 1 }
+  - { group_id: 1 }
+  - { group_id: 2 }
+  - { group_id: 2 }
+  - { group_id: 3 }
+  - { group_id: 3 }
+
+
+objectives:
+  - { x: 30, y: 6 }
+  - { x: 30, y: 22 }
+  - { x: 30, y: 38 }
+
+reward_phases:
+  - name: reach_objectives
+    terminal_success_bonus: 1.0
+    terminate_on_success: true
+    reward_calculators:
+      - type: closest_objective
+        weight: 1.0
+        params: { best_distance_bonus_scale: 1000.0 }
+      - type: group_cohesion
+        weight: 0.5
+        params: { group_max_distance: 5.0, violation_penalty: -0.1 }
+      - type: vp_gain
+        weight: 1.0
+    success_criteria:
+      type: all_at_objectives
+    success_threshold: 0.95
+    min_epochs: 0
+    min_epochs_above_threshold: 10
+
+  - name: win_by_vp
+    terminate_on_success: false
+    reward_calculators:
+      - type: vp_gain
+        weight: 1.0
+      - type: closest_objective
+        weight: 0.1
+      - type: group_cohesion
+        weight: 0.5
+        params: { group_max_distance: 5.0, violation_penalty: -0.1 }
+    success_criteria:
+      type: player_vp_min
+      params: { fraction_of_max: 0.33 }
+    success_threshold: 0.8
+    min_epochs: 20
+
+
+  - name: win_only_by_vp
+    terminate_on_success: false
+    reward_calculators:
+      - type: vp_gain
+        weight: 1.0
+      - type: group_cohesion
+        weight: 0.5
+        params: { group_max_distance: 5.0, violation_penalty: -0.1 }
+    success_criteria:
+      type: player_vp_min
+      params: { fraction_of_max: 0.4 }
+    success_threshold: 0.8
+    min_epochs: 20
