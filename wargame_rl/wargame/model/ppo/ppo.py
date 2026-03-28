@@ -37,5 +37,6 @@ class PPO_Transformer(PPOModel):
             policy_network=policy_network,
             value_network=value_network,
             device=env.device if hasattr(env, "device") else None,
+            share_transformer=config.share_transformer,
         )
         return cast(PPO_Transformer, net.to(net.device))

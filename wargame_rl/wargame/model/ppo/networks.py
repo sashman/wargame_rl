@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Tuple, cast
 
 import torch
 import torch.nn as nn
@@ -9,7 +9,7 @@ from torch.distributions import Categorical
 
 from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.model.common import Device, get_device
-from wargame_rl.wargame.model.net import RL_Network
+from wargame_rl.wargame.model.net import RL_Network, TransformerNetwork
 
 
 class PPOModel(nn.Module):
@@ -20,12 +20,23 @@ class PPOModel(nn.Module):
         policy_network: RL_Network,
         value_network: RL_Network,
         device: Device = None,
+        share_transformer: bool = False,
     ) -> None:
         super().__init__()
         if not policy_network.is_policy or value_network.is_policy:
             raise ValueError("Wrong network type.")
+        if share_transformer and (
+            not isinstance(policy_network, TransformerNetwork)
+            or not isinstance(value_network, TransformerNetwork)
+        ):
+            raise ValueError(
+                "`share_transformer=True` requires TransformerNetwork for both policy and value networks."
+            )
+        if share_transformer:
+            value_network.share_backbone_with(policy_network)
         self.policy_network = policy_network
         self.value_network = value_network
+        self.share_transformer = share_transformer
         self.to(get_device(device))
 
     @property
@@ -46,6 +57,16 @@ class PPOModel(nn.Module):
             (action_logits, state_values) where action_logits has shape
             (batch, n_models, n_actions) and state_values has shape (batch,).
         """
+        if self.share_transformer:
+            policy_network = cast(TransformerNetwork, self.policy_network)
+            value_network = cast(TransformerNetwork, self.value_network)
+            encoded, n_prefix, n_wargame_models = policy_network.encode_state(x)
+            action_logits = policy_network.policy_from_encoded(
+                encoded, n_prefix, n_wargame_models
+            )
+            state_values = value_network.value_from_encoded(encoded)
+            return action_logits, state_values
+
         action_logits = self.policy_network(x)
         state_values = self.value_network(x)
         return action_logits, state_values

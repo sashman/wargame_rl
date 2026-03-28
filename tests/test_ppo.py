@@ -10,6 +10,7 @@ from wargame_rl.wargame.model.common.observation import (
 )
 from wargame_rl.wargame.model.net import TransformerNetwork
 from wargame_rl.wargame.model.ppo.agent import Agent
+from wargame_rl.wargame.model.ppo.config import PPOConfig
 from wargame_rl.wargame.model.ppo.lightning import PPOLightning
 from wargame_rl.wargame.model.ppo.networks import PPOModel
 from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
@@ -54,6 +55,69 @@ def test_ppo_model_forward_batch_returns_correct_shapes(
     # Assert
     assert logits.shape == (batch_size, n_models, n_actions)
     assert values.shape == (batch_size,)
+
+
+def test_ppo_model_forward_shared_transformer_returns_correct_shapes(
+    env: WargameEnv, experiences: list[Experience]
+) -> None:
+    # Arrange
+    batch_size = 256
+    shared_net = PPO_Transformer.from_env(
+        env=env, config=PPOConfig(share_transformer=True)
+    )
+    state_tensors = observations_to_tensor_batch(
+        [exp.state for exp in experiences[:batch_size]], device=shared_net.device
+    )
+    n_models = env.config.number_of_wargame_models
+    n_actions = env._action_handler.n_actions
+
+    # Act
+    logits, values = shared_net(state_tensors)
+
+    # Assert
+    assert logits.shape == (batch_size, n_models, n_actions)
+    assert values.shape == (batch_size,)
+
+
+def test_ppo_from_env_with_shared_transformer_shares_backbone_modules(
+    env: WargameEnv,
+) -> None:
+    # Arrange
+    shared_net = PPO_Transformer.from_env(
+        env=env, config=PPOConfig(share_transformer=True)
+    )
+
+    # Assert
+    assert isinstance(shared_net.policy_network, TransformerNetwork)
+    assert isinstance(shared_net.value_network, TransformerNetwork)
+    assert (
+        shared_net.policy_network.game_embedding
+        is shared_net.value_network.game_embedding
+    )
+    assert (
+        shared_net.policy_network.objective_embedding
+        is shared_net.value_network.objective_embedding
+    )
+    assert (
+        shared_net.policy_network.wargame_model_embedding
+        is shared_net.value_network.wargame_model_embedding
+    )
+    assert shared_net.policy_network.transformer is shared_net.value_network.transformer
+
+
+def test_ppo_shared_transformer_reduces_total_parameter_count(env: WargameEnv) -> None:
+    # Arrange
+    separate = PPO_Transformer.from_env(
+        env=env, config=PPOConfig(share_transformer=False)
+    )
+    shared = PPO_Transformer.from_env(env=env, config=PPOConfig(share_transformer=True))
+
+    # Act
+    separate_params = sum(p.numel() for p in separate.parameters())
+    shared_params = sum(p.numel() for p in shared.parameters())
+
+    # Assert
+    assert shared_params < separate_params
 
 
 def test_ppo_model_raises_when_policy_and_value_networks_are_swapped(
