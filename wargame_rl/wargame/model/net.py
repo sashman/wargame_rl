@@ -338,8 +338,10 @@ class TransformerNetwork(RL_Network):
         """Apply value head to encoded tokens."""
         if self.is_policy:
             raise ValueError("Value head requested from a policy network.")
-        value: torch.Tensor = self.action_head(encoded)
-        return value.mean(dim=[1, 2])
+        # Use the global game token (first token) as the critic summary.
+        game_token = encoded[:, 0, :]
+        value: torch.Tensor = self.action_head(game_token)
+        return value.squeeze(-1)
 
     def share_backbone_with(self, backbone_source: "TransformerNetwork") -> None:
         """Share embedding + transformer trunk with another TransformerNetwork."""
