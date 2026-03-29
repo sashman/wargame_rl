@@ -35,6 +35,9 @@ class PPOConfig(BaseModel):
     # Network parameters
     hidden_size: int = 128
     num_layers: int = 2
+    # When True, PPO uses a shared Transformer trunk for actor and critic.
+    # Policy and value keep separate output heads.
+    share_transformer: bool = False
 
     # Training settings
     log: bool = True
