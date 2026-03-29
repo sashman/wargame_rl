@@ -33,6 +33,8 @@ class PPOModel(nn.Module):
                 "`share_transformer=True` requires TransformerNetwork for both policy and value networks."
             )
         if share_transformer:
+            assert isinstance(policy_network, TransformerNetwork)
+            assert isinstance(value_network, TransformerNetwork)
             value_network.share_backbone_with(policy_network)
         self.policy_network = policy_network
         self.value_network = value_network
