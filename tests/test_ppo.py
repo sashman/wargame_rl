@@ -103,6 +103,11 @@ def test_ppo_from_env_with_shared_transformer_shares_backbone_modules(
         is shared_net.value_network.wargame_model_embedding
     )
     assert shared_net.policy_network.transformer is shared_net.value_network.transformer
+    assert shared_net.policy_network.policy_head is not None
+    assert shared_net.value_network.value_head is not None
+    assert (
+        shared_net.policy_network.policy_head is not shared_net.value_network.value_head
+    )
 
 
 def test_ppo_shared_transformer_reduces_total_parameter_count(env: WargameEnv) -> None:
