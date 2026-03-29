@@ -110,14 +110,12 @@ def _run_recording(
 
 
 class RecordEpisodeCallback(Callback):
-    """Records a single episode as MP4 when a new checkpoint is saved (async).
+    """Records a single episode as MP4 at regular training intervals (async).
 
-    Starts only after record_after_epoch epochs. Runs only when the checkpoint
-    callback adds or removes a checkpoint file (e.g. new top-k or updated last).
-    Uses human-style rendering. Saves to the same directory as checkpoints, with
-    names like dqn-epoch-042-recording.mp4 or ppo-epoch-042-recording.mp4.
-    Runs in a separate process (spawn) so
-    SDL uses the dummy driver and does not conflict with PyTorch/EGL.
+    Starts after record_after_epoch, then records every record_every_n_epochs.
+    Uses human-style rendering and stores videos next to checkpoints.
+    Runs in a separate process (spawn) so SDL uses the dummy driver and does
+    not conflict with PyTorch/EGL.
     """
 
     def __init__(
@@ -126,16 +124,16 @@ class RecordEpisodeCallback(Callback):
         env_config: WargameEnvConfig,
         record_during_training: bool = True,
         record_after_epoch: int = 20,
+        record_every_n_epochs: int = 20,
         filename_prefix: str = "dqn",
     ) -> None:
         self.run_name = run_name
         self.env_config = env_config
         self.record_during_training = record_during_training
         self.record_after_epoch = record_after_epoch
-        # Prefix used for both checkpoint filenames and recording filenames (e.g. 'dqn' or 'ppo').
+        self.record_every_n_epochs = max(1, record_every_n_epochs)
         self.filename_prefix = filename_prefix
         self._checkpoint_dir = f"./checkpoints/{run_name}"
-        self._last_ckpt_filenames: set[str] | None = None
         self._pending_proc: BaseProcess | None = None
         self._pending_filepath: Path | None = None
         self._logged_videos: set[str] = set()
@@ -159,7 +157,10 @@ class RecordEpisodeCallback(Callback):
 
         if wandb.run is not None:
             logger.info("Logging recorded episode to wandb: {}", filepath.name)
-            wandb.log({"episode_recording": wandb.Video(str(filepath), format="mp4")})
+            wandb.log(
+                {"episode_recording": wandb.Video(str(filepath), format="mp4")},
+                commit=False,
+            )
             self._logged_videos.add(video_key)
 
     def on_train_epoch_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
@@ -167,23 +168,17 @@ class RecordEpisodeCallback(Callback):
 
         if not self.record_during_training:
             return
-        if trainer.current_epoch < self.record_after_epoch:
+        epoch = trainer.current_epoch
+        if epoch < self.record_after_epoch:
             return
 
-        # Only record when the checkpoint callback saved (set of .ckpt files changed).
-        ckpt_dir = Path(self._checkpoint_dir)
-        current_filenames = (
-            {p.name for p in ckpt_dir.glob("*.ckpt")} if ckpt_dir.exists() else set()
-        )
+        epochs_since_start = epoch - self.record_after_epoch
         if (
-            self._last_ckpt_filenames is not None
-            and current_filenames == self._last_ckpt_filenames
+            epochs_since_start > 0
+            and epochs_since_start % self.record_every_n_epochs != 0
         ):
-            self._last_ckpt_filenames = current_filenames
             return
-        self._last_ckpt_filenames = current_filenames
 
-        # If a previous recording is still running, skip this one to avoid piling up.
         if self._pending_proc is not None and self._pending_proc.is_alive():
             logger.debug("Skipping recording — previous recording still in progress")
             return

@@ -38,3 +38,20 @@ def test_run_episode(agent: Agent, policy_net: RL_Network) -> None:
     assert isinstance(total_reward, float)
     assert isinstance(steps, int)
     assert steps >= 1
+
+
+def test_episode_reward_breakdown(agent: Agent, policy_net: RL_Network) -> None:
+    """Episode reward breakdown should be tracked and averaged per step."""
+    _total_reward, steps = agent.run_episode(policy_net, epsilon=0.5, save_steps=False)
+    env = agent.env
+
+    assert env.episode_reward_steps == steps
+    assert env.episode_reward_steps > 0
+    assert env.episode_reward_breakdown
+    assert agent.last_episode_reward_breakdown
+
+    for key, value in agent.last_episode_reward_breakdown.items():
+        assert key in env.episode_reward_breakdown
+        assert value == pytest.approx(
+            env.episode_reward_breakdown[key] / env.episode_reward_steps
+        )

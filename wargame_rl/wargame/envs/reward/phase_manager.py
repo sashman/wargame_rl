@@ -24,12 +24,15 @@ class RewardPhase:
     """A fully instantiated reward phase with live calculator/criteria objects."""
 
     name: str
-    per_model_calculators: list[PerModelRewardCalculator]
-    global_calculators: list[GlobalRewardCalculator]
+    per_model_calculators: list[tuple[str, PerModelRewardCalculator]]
+    global_calculators: list[tuple[str, GlobalRewardCalculator]]
     criteria: SuccessCriteria
     success_threshold: float
     min_epochs: int
     min_epochs_above_threshold: int
+    terminal_success_bonus: float
+    terminal_vp_bonus: float
+    terminate_on_success: bool
 
 
 @dataclass
@@ -45,6 +48,7 @@ class RewardPhaseManager:
     _current_idx: int = field(default=0, init=False)
     _epoch_entered: int = field(default=0, init=False)
     _consecutive_epochs_above_threshold: int = field(default=0, init=False)
+    last_reward_breakdown: dict[str, float] = field(default_factory=dict, init=False)
 
     @classmethod
     def from_configs(cls, configs: list[RewardPhaseConfig]) -> RewardPhaseManager:
@@ -54,15 +58,20 @@ class RewardPhaseManager:
 
         phases: list[RewardPhase] = []
         for cfg in configs:
-            per_model: list[PerModelRewardCalculator] = []
-            global_: list[GlobalRewardCalculator] = []
+            per_model: list[tuple[str, PerModelRewardCalculator]] = []
+            global_: list[tuple[str, GlobalRewardCalculator]] = []
+            name_counts: dict[str, int] = {}
 
             for calc_cfg in cfg.reward_calculators:
+                base_name = calc_cfg.type
+                name_counts[base_name] = name_counts.get(base_name, 0) + 1
+                suffix = name_counts[base_name]
+                calc_name = base_name if suffix == 1 else f"{base_name}_{suffix}"
                 calc = build_calculator(calc_cfg.type, calc_cfg.weight, calc_cfg.params)
                 if isinstance(calc, PerModelRewardCalculator):
-                    per_model.append(calc)
+                    per_model.append((calc_name, calc))
                 else:
-                    global_.append(calc)
+                    global_.append((calc_name, calc))
 
             criteria = build_criteria(
                 cfg.success_criteria.type, cfg.success_criteria.params
@@ -77,6 +86,9 @@ class RewardPhaseManager:
                     success_threshold=cfg.success_threshold,
                     min_epochs=cfg.min_epochs,
                     min_epochs_above_threshold=cfg.min_epochs_above_threshold,
+                    terminal_success_bonus=cfg.terminal_success_bonus,
+                    terminal_vp_bonus=cfg.terminal_vp_bonus,
+                    terminate_on_success=cfg.terminate_on_success,
                 )
             )
 
@@ -101,13 +113,18 @@ class RewardPhaseManager:
         return self._current_idx >= len(self.phases) - 1
 
     @property
+    def terminate_on_success(self) -> bool:
+        """Whether the current phase should terminate on all-at-objectives."""
+        return self.current_phase.terminate_on_success
+
+    @property
     def needs_model_model_distances(self) -> bool:
         """True if any calculator in the current phase needs model-model norms."""
         phase = self.current_phase
-        for pm_calc in phase.per_model_calculators:
+        for _name, pm_calc in phase.per_model_calculators:
             if pm_calc.needs_model_model_distances:
                 return True
-        for gl_calc in phase.global_calculators:
+        for _name, gl_calc in phase.global_calculators:
             if gl_calc.needs_model_model_distances:
                 return True
         return False
@@ -123,27 +140,59 @@ class RewardPhaseManager:
         phase = self.current_phase
         n_models = len(view.player_models)
 
-        per_model_total = 0.0
+        per_model_sums = {name: 0.0 for name, _calc in phase.per_model_calculators}
+        per_model_component_sums: dict[str, float] = {}
         for i, model in enumerate(view.player_models):
-            model_reward = 0.0
-            for pm_calc in phase.per_model_calculators:
-                model_reward += pm_calc.weight * pm_calc.calculate(i, model, view, ctx)
-            per_model_total += model_reward
+            for name, pm_calc in phase.per_model_calculators:
+                per_model_sums[name] += pm_calc.weight * pm_calc.calculate(
+                    i, model, view, ctx
+                )
+                breakdown: dict[str, float] = pm_calc.get_last_breakdown(i)
+                if breakdown:
+                    for component_name, value in breakdown.items():
+                        key = f"{name}/{component_name}"
+                        per_model_component_sums[key] = (
+                            per_model_component_sums.get(key, 0.0)
+                            + pm_calc.weight * value
+                        )
 
-        avg_per_model = per_model_total / n_models if n_models > 0 else 0.0
+        if n_models > 0:
+            for name in per_model_sums:
+                per_model_sums[name] /= n_models
+            for name in per_model_component_sums:
+                per_model_component_sums[name] /= n_models
 
-        global_total = 0.0
-        for gl_calc in phase.global_calculators:
-            global_total += gl_calc.weight * gl_calc.calculate(view, ctx)
+        avg_per_model = sum(per_model_sums.values()) if n_models > 0 else 0.0
+
+        global_sums = {name: 0.0 for name, _calc in phase.global_calculators}
+        for name, gl_calc in phase.global_calculators:
+            global_sums[name] += gl_calc.weight * gl_calc.calculate(view, ctx)
+
+        global_total = sum(global_sums.values())
 
         reward = avg_per_model + global_total
-        if ctx.is_terminated and view.config.terminal_success_bonus != 0.0:
+        breakdown = {}
+        breakdown.update(per_model_sums)
+        breakdown.update(per_model_component_sums)
+        breakdown.update(global_sums)
+        if ctx.is_terminated and phase.terminal_success_bonus != 0.0:
             if ctx.distance_cache.all_models_at_objectives():
-                reward += float(view.config.terminal_success_bonus)
-        if ctx.is_terminated and view.config.terminal_vp_bonus != 0.0:
+                # Scale terminal bonus by remaining turns to encourage faster success.
+                remaining = max(0.0, float(ctx.max_turns - ctx.current_turn + 1))
+                denom = float(ctx.max_turns) if ctx.max_turns > 0 else 1.0
+                remaining_frac = remaining / denom
+                bonus = phase.terminal_success_bonus * remaining_frac
+                reward += bonus
+                if bonus != 0.0:
+                    breakdown["terminal_success_bonus"] = bonus
+        if ctx.is_terminated and phase.terminal_vp_bonus != 0.0:
             vp_threshold = phase.criteria.vp_threshold_for_terminal_bonus(view)
             if vp_threshold is not None and view.player_vp >= vp_threshold:
-                reward += float(view.config.terminal_vp_bonus)
+                bonus = phase.terminal_vp_bonus
+                reward += bonus
+                if bonus != 0.0:
+                    breakdown["terminal_vp_bonus"] = bonus
+        self.last_reward_breakdown = breakdown
         return reward
 
     def check_success(self, view: BattleView, ctx: StepContext) -> bool:

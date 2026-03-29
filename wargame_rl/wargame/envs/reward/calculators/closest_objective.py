@@ -11,19 +11,52 @@ if TYPE_CHECKING:
 
 
 class ClosestObjectiveCalculator(PerModelRewardCalculator):
-    """Legacy closest-objective reward to match Reward()."""
+    """Legacy closest-objective reward to match Reward().
 
-    def _get_closest_objective_reward(
-        self, previous_model_distance: float, distance_to_closest_objective: float
-    ) -> float:
-        distance_improvement = float(
-            distance_to_closest_objective - previous_model_distance
+    Optionally adds a bonus when a model achieves a new best (lowest) distance
+    to its closest objective, scaled by the improvement in normalized distance.
+    """
+
+    def __init__(
+        self,
+        weight: float = 1.0,
+        best_distance_bonus_scale: float | None = None,
+    ) -> None:
+        super().__init__(weight=weight)
+        self.best_distance_bonus_scale = (
+            0.0 if best_distance_bonus_scale is None else best_distance_bonus_scale
         )
+        self._last_breakdown: dict[int, dict[str, float]] = {}
 
-        if distance_improvement >= 0:
-            return -(float(2) * abs(distance_improvement) + float(0.3))
+    @staticmethod
+    def _normalized_distance(
+        ctx: StepContext, distance_to_closest_objective: float
+    ) -> float:
+        max_diagonal = float((ctx.board_width**2 + ctx.board_height**2) ** 0.5)
+        return distance_to_closest_objective / max_diagonal
 
-        return float(0)
+    @staticmethod
+    def _penalty_for_non_improvement(
+        previous_model_distance: float, current_distance: float
+    ) -> float:
+        """Penalty when the model fails to get closer (or stays the same)."""
+        distance_delta = float(current_distance - previous_model_distance)
+
+        if distance_delta >= 0:
+            return -(float(2) * abs(distance_delta) + float(0.3))
+
+        return 0.0
+
+    def _best_distance_bonus(
+        self, previous_best: float | None, current_distance: float
+    ) -> float:
+        """Bonus when a new best (lowest) distance is achieved."""
+        if previous_best is None or current_distance >= previous_best:
+            return 0.0
+        if self.best_distance_bonus_scale == 0.0:
+            return 0.0
+        improvement = float(previous_best - current_distance)
+        return self.best_distance_bonus_scale * (improvement**3)
 
     def calculate(
         self,
@@ -38,13 +71,35 @@ class ClosestObjectiveCalculator(PerModelRewardCalculator):
             cache.model_obj_norms_offset[model_idx, closest_obj_idx]
         )
 
-        max_diagonal = float((ctx.board_width**2 + ctx.board_height**2) ** 0.5)
-        normalized_distance = distance_to_closest / max_diagonal
+        normalized_distance = self._normalized_distance(ctx, distance_to_closest)
 
         previous = model.previous_closest_objective_distance
         model.set_previous_closest_objective_distance(normalized_distance)
 
-        if previous is None:
-            return 0.0
+        best_prev = model.best_closest_objective_distance
+        if best_prev is None or normalized_distance < best_prev:
+            model.set_best_closest_objective_distance(normalized_distance)
 
-        return self._get_closest_objective_reward(float(previous), normalized_distance)
+        bonus = self._best_distance_bonus(best_prev, normalized_distance)
+
+        if previous is None:
+            self._last_breakdown[model_idx] = {
+                "distance_delta": 0.0,
+                "base_penalty": 0.0,
+                "best_distance_bonus": bonus,
+            }
+            return bonus
+
+        distance_delta = float(normalized_distance - previous)
+        base_penalty = self._penalty_for_non_improvement(
+            float(previous), normalized_distance
+        )
+        self._last_breakdown[model_idx] = {
+            "distance_delta": distance_delta,
+            "base_penalty": base_penalty,
+            "best_distance_bonus": bonus,
+        }
+        return base_penalty + bonus
+
+    def get_last_breakdown(self, model_idx: int) -> dict[str, float]:
+        return self._last_breakdown.get(model_idx, {})

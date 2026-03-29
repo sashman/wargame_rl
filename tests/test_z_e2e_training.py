@@ -28,6 +28,7 @@ def test_training_smoke() -> None:
         network_type=NetworkType.TRANSFORMER,
         record_during_training=False,
         record_after_epoch=10,
+        record_every_n_epochs=20,
         max_epochs=1,
         no_wandb=True,
     )

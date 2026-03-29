@@ -1,6 +1,6 @@
-config_name: 4v4_scripted_advance_fixed_objectives_2_reward_phases
-number_of_wargame_models: 4
-number_of_opponent_models: 4
+config_name: 12v10_scripted_advance_fixed_objectives_2_reward_phases
+number_of_wargame_models: 12
+number_of_opponent_models: 10
 number_of_objectives: 3
 objective_radius_size: 3
 board_width: 60
@@ -17,14 +17,29 @@ opponent_policy:
 models:
   - { group_id: 0 }
   - { group_id: 0 }
+  - { group_id: 0 }
   - { group_id: 1 }
   - { group_id: 1 }
+  - { group_id: 1 }
+  - { group_id: 2 }
+  - { group_id: 2 }
+  - { group_id: 2}
+  - { group_id: 3 }
+  - { group_id: 3 }
+  - { group_id: 3 }
 
 opponent_models:
   - { group_id: 0 }
   - { group_id: 0 }
+  - { group_id: 0 }
   - { group_id: 1 }
   - { group_id: 1 }
+  - { group_id: 1 }
+  - { group_id: 2 }
+  - { group_id: 2 }
+  - { group_id: 3 }
+  - { group_id: 3 }
+
 
 objectives:
   - { x: 30, y: 6 }
@@ -65,6 +80,7 @@ reward_phases:
       params: { fraction_of_max: 0.33 }
     success_threshold: 0.8
     min_epochs: 20
+
 
   - name: win_only_by_vp
     terminate_on_success: false

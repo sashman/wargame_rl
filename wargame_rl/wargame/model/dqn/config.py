@@ -27,3 +27,4 @@ class DQNTrainingConfig(BaseModel):
     val_check_interval: int = 1
     record_during_training: bool = True
     record_after_epoch: int = 20
+    record_every_n_epochs: int = 20

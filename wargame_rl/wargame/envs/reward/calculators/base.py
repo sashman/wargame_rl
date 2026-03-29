@@ -24,6 +24,10 @@ class PerModelRewardCalculator(ABC):
         ctx: StepContext,
     ) -> float: ...
 
+    def get_last_breakdown(self, model_idx: int) -> dict[str, float]:
+        """Optional per-model breakdown for the last calculate() call."""
+        return {}
+
     @property
     def needs_model_model_distances(self) -> bool:
         """Override to return True if this calculator uses model-model norms."""
