@@ -227,13 +227,14 @@ class WargameEnvConfig(BaseModel):
         "Each phase defines reward calculators and success criteria for advancement.",
     )
     terminal_success_bonus: float = Field(
-        default=25.0,
-        description="Bonus added once when all models are at an objective and the episode terminates.",
+        default=0.0,
+        description="Deprecated: use terminal_success_bonus on RewardPhaseConfig instead. "
+        "Applied only to phases that do not define their own value.",
     )
     terminal_vp_bonus: float = Field(
         default=0.0,
-        description="Bonus added once at episode end when player VP meets the current phase's VP threshold "
-        "(only when the phase uses a VP-based success criteria such as player_vp_min). 0 disables.",
+        description="Deprecated: use terminal_vp_bonus on RewardPhaseConfig instead. "
+        "Applied only to phases that do not define their own value.",
     )
 
     skip_phases: list[BattlePhase] = Field(
@@ -313,6 +314,31 @@ class WargameEnvConfig(BaseModel):
         return self.opponent_models is not None and all(
             m.x is not None for m in self.opponent_models
         )
+
+    @model_validator(mode="after")
+    def apply_legacy_terminal_bonus_defaults(self) -> "WargameEnvConfig":
+        """Backfill per-phase terminal bonuses from deprecated env-level fields."""
+        if not self.reward_phases:
+            return self
+
+        updated_phases: list[RewardPhaseConfig] = []
+        for phase in self.reward_phases:
+            updates: dict[str, float] = {}
+
+            phase_has_success_bonus = "terminal_success_bonus" in phase.model_fields_set
+            if not phase_has_success_bonus and self.terminal_success_bonus != 0.0:
+                updates["terminal_success_bonus"] = self.terminal_success_bonus
+
+            phase_has_vp_bonus = "terminal_vp_bonus" in phase.model_fields_set
+            if not phase_has_vp_bonus and self.terminal_vp_bonus != 0.0:
+                updates["terminal_vp_bonus"] = self.terminal_vp_bonus
+
+            updated_phases.append(
+                phase if not updates else phase.model_copy(update=updates)
+            )
+
+        self.reward_phases = updated_phases
+        return self
 
     @model_validator(mode="after")
     def validate_entity_configs(self) -> "WargameEnvConfig":

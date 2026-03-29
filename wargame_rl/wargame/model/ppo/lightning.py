@@ -256,8 +256,9 @@ class PPOLightning(WargameLightningBase):
         device = self.ppo_model.device
         optimizer = self.optimizers()
 
+        rollout_reward_breakdown: dict[str, float] = {}
         if self.num_rollout_envs == 1:
-            experiences = self._collect_experiences()
+            experiences, rollout_reward_breakdown = self._collect_experiences()
 
             state_tensors = observations_to_tensor_batch(
                 [exp.state for exp in experiences], device=device
@@ -311,6 +312,7 @@ class PPOLightning(WargameLightningBase):
                 old_log_probs_2d,
                 values_2d,
                 last_values,
+                rollout_reward_breakdown,
             ) = self._collect_rollout_parallel()
 
             returns_2d = self.compute_returns(
@@ -397,33 +399,37 @@ class PPOLightning(WargameLightningBase):
 
         if self.do_log and n_updates > 0:
             self.log(
-                "train_loss",
+                "loss/train_loss",
                 total_loss_float / n_updates,
-                prog_bar=True,
+                prog_bar=False,
                 logger=True,
                 on_epoch=True,
             )
             self.log(
-                "policy_loss",
+                "loss/policy_loss",
                 epoch_policy_loss / n_updates,
                 prog_bar=False,
                 logger=True,
                 on_epoch=True,
             )
             self.log(
-                "value_loss",
+                "loss/value_loss",
                 epoch_value_loss / n_updates,
                 prog_bar=False,
                 logger=True,
                 on_epoch=True,
             )
             self.log(
-                "entropy_loss",
+                "loss/entropy_loss",
                 epoch_entropy_loss / n_updates,
                 prog_bar=False,
                 logger=True,
                 on_epoch=True,
             )
+            for name, value in rollout_reward_breakdown.items():
+                self.log(
+                    f"reward/components/{name}", value, prog_bar=False, logger=True
+                )
             self.log("env_steps", self.global_step, logger=False, prog_bar=True)
 
     def _collect_rollout_parallel(
@@ -436,6 +442,7 @@ class PPOLightning(WargameLightningBase):
         Tensor,
         Tensor,
         Tensor,
+        dict[str, float],
     ]:
         """Collect rollouts across multiple env instances.
 
@@ -487,6 +494,8 @@ class PPOLightning(WargameLightningBase):
                 if self.show_inner_progress
                 else nullcontext(_NoOpProgress())
             )
+            breakdown_sums: dict[str, float] = {}
+            total_steps = 0
             with pbar_ctx as pbar:
                 for t in range(t_steps):
                     state_tensors_batch = observations_to_tensor_batch(
@@ -516,6 +525,9 @@ class PPOLightning(WargameLightningBase):
                         next_obs, reward, done, _, _ = env.step(env_action)
                         rewards_2d_np[t, env_i] = float(reward)
                         dones_2d_np[t, env_i] = 1.0 if done else 0.0
+                        for key, value in env.last_reward_breakdown.items():
+                            breakdown_sums[key] = breakdown_sums.get(key, 0.0) + value
+                        total_steps += 1
 
                         if done:
                             next_obs, _ = env.reset()
@@ -540,6 +552,11 @@ class PPOLightning(WargameLightningBase):
                 _, last_values = self.ppo_model(last_state_tensors)
 
             last_values = last_values.detach()
+            breakdown_mean = (
+                {key: (value / total_steps) for key, value in breakdown_sums.items()}
+                if total_steps > 0
+                else {}
+            )
             return (
                 state_tensors_flat,
                 actions_flat,
@@ -548,14 +565,17 @@ class PPOLightning(WargameLightningBase):
                 old_log_probs_2d,
                 values_2d,
                 last_values,
+                breakdown_mean,
             )
         finally:
             for env in envs:
                 env.close()
 
-    def _collect_experiences(self) -> list[Experience]:
+    def _collect_experiences(self) -> tuple[list[Experience], dict[str, float]]:
         """Run episodes until n_steps transitions are collected (can span multiple episodes)."""
         rollout: list[Experience] = []
+        breakdown_sums: dict[str, float] = {}
+        total_steps = 0
         pbar_ctx = (
             tqdm(
                 total=self.n_steps,
@@ -576,7 +596,26 @@ class PPOLightning(WargameLightningBase):
                 )
                 rollout.extend(episode_exp)
                 pbar.update(len(episode_exp))
-        return rollout[: self.n_steps]
+                episode_steps = len(episode_exp)
+                if episode_steps > 0:
+                    for key, value in self.agent.last_episode_reward_breakdown.items():
+                        breakdown_sums[key] = breakdown_sums.get(key, 0.0) + (
+                            value * episode_steps
+                        )
+                    total_steps += episode_steps
+        rollout = rollout[: self.n_steps]
+        used_steps = len(rollout)
+        if total_steps > 0 and used_steps < total_steps:
+            scale = used_steps / total_steps
+            for key in breakdown_sums:
+                breakdown_sums[key] *= scale
+            total_steps = used_steps
+        breakdown_mean = (
+            {key: (value / total_steps) for key, value in breakdown_sums.items()}
+            if total_steps > 0
+            else {}
+        )
+        return rollout, breakdown_mean
 
     def configure_optimizers(self) -> optim.Optimizer:
         """Initialize optimizer."""

@@ -30,6 +30,7 @@ class WargameModel:
         distances_to_objectives: np.ndarray,
         group_id: int,
         previous_closest_objective_distance: float | None = None,
+        best_closest_objective_distance: float | None = None,
     ):
         self.location = location
         self.previous_location: np.ndarray | None = None
@@ -38,15 +39,20 @@ class WargameModel:
         self.group_id = group_id
 
         self.previous_closest_objective_distance = previous_closest_objective_distance
+        self.best_closest_objective_distance = best_closest_objective_distance
         self.model_rewards_history: list["ModelRewards"] = []
 
     def set_previous_closest_objective_distance(self, distance: float) -> None:
         self.previous_closest_objective_distance = distance
 
+    def set_best_closest_objective_distance(self, distance: float) -> None:
+        self.best_closest_objective_distance = distance
+
     def reset_for_episode(self) -> None:
         """Clear episode state before new placement (previous location, distances, rewards)."""
         self.previous_location = None
         self.previous_closest_objective_distance = None
+        self.best_closest_objective_distance = None
         self.stats["current_wounds"] = self.stats["max_wounds"]
         self.model_rewards_history.clear()
 

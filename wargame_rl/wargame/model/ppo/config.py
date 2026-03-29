@@ -49,3 +49,4 @@ class PPOTrainingConfig(BaseModel):
     val_check_interval: int | float = 1
     record_during_training: bool = True
     record_after_epoch: int = 50
+    record_every_n_epochs: int = 20
