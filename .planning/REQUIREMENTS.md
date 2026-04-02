@@ -104,38 +104,38 @@ Deferred to future milestones. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WOUND-01 | — | Pending |
-| WOUND-02 | — | Pending |
-| WOUND-03 | — | Pending |
-| WOUND-04 | — | Pending |
-| WOUND-05 | — | Pending |
-| SHOT-01 | — | Pending |
-| SHOT-02 | — | Pending |
-| SHOT-03 | — | Pending |
-| SHOT-04 | — | Pending |
-| SHOT-05 | — | Pending |
-| SHOT-06 | — | Pending |
-| LOS-01 | — | Pending |
-| LOS-02 | — | Pending |
-| LOS-03 | — | Pending |
-| LOS-04 | — | Pending |
-| ACT-01 | — | Pending |
-| ACT-02 | — | Pending |
-| ACT-03 | — | Pending |
-| ACT-04 | — | Pending |
-| CRWD-01 | — | Pending |
-| CRWD-02 | — | Pending |
-| CRWD-03 | — | Pending |
-| CRWD-04 | — | Pending |
-| OBS-01 | — | Pending |
-| OBS-02 | — | Pending |
-| OBS-03 | — | Pending |
+| WOUND-01 | Phase 1 | Pending |
+| WOUND-02 | Phase 1 | Pending |
+| WOUND-03 | Phase 1 | Pending |
+| WOUND-04 | Phase 2 | Pending |
+| WOUND-05 | Phase 1 | Pending |
+| SHOT-01 | Phase 5 | Pending |
+| SHOT-02 | Phase 5 | Pending |
+| SHOT-03 | Phase 4 | Pending |
+| SHOT-04 | Phase 5 | Pending |
+| SHOT-05 | Phase 5 | Pending |
+| SHOT-06 | Phase 5 | Pending |
+| LOS-01 | Phase 3 | Pending |
+| LOS-02 | Phase 3 | Pending |
+| LOS-03 | Phase 4 | Pending |
+| LOS-04 | Phase 3 | Pending |
+| ACT-01 | Phase 4 | Pending |
+| ACT-02 | Phase 4 | Pending |
+| ACT-03 | Phase 4 | Pending |
+| ACT-04 | Phase 4 | Pending |
+| CRWD-01 | Phase 6 | Pending |
+| CRWD-02 | Phase 6 | Pending |
+| CRWD-03 | Phase 6 | Pending |
+| CRWD-04 | Phase 6 | Pending |
+| OBS-01 | Phase 2 | Pending |
+| OBS-02 | Phase 5 | Pending |
+| OBS-03 | Phase 2 | Pending |
 
 **Coverage:**
 - v1 requirements: 26 total
-- Mapped to phases: 0
-- Unmapped: 26 ⚠️
+- Mapped to phases: 26 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-02*
-*Last updated: 2026-04-02 after initial definition*
+*Last updated: 2026-04-02 after roadmap creation*
