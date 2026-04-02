@@ -14,6 +14,7 @@ from wargame_rl.wargame.envs.domain.battle_factory import (
 from wargame_rl.wargame.envs.domain.battle_factory import (
     from_config as _battle_from_config,
 )
+from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.game_clock import GameClock
 from wargame_rl.wargame.envs.domain.placement import place_for_episode
 from wargame_rl.wargame.envs.domain.termination import is_battle_over
@@ -284,8 +285,9 @@ class WargameEnv(gym.Env):
         if self._opponent_policy is None or not self.opponent_models:
             return
         phase = self._game_clock.state.phase or BattlePhase.movement
+        opp_alive = alive_mask_for(self.opponent_models)
         opp_mask = self._opponent_action_handler.registry.get_model_action_masks(
-            phase, len(self.opponent_models)
+            phase, len(self.opponent_models), alive_mask=opp_alive
         )
         opp_action = self._opponent_policy.select_action(
             self.opponent_models, self, action_mask=opp_mask
@@ -333,22 +335,33 @@ class WargameEnv(gym.Env):
             on_before_advance=self._on_before_advance,
         )
 
+        player_alive = alive_mask_for(self.wargame_models)
         needs_mm = self.phase_manager.needs_model_model_distances
         cache = compute_distances(
             self.wargame_models,
             self.objectives,
             compute_model_model=needs_mm,
+            alive_mask=player_alive,
         )
 
         all_at_objective = (
-            cache.all_models_at_objectives() and self.phase_manager.terminate_on_success
+            cache.all_models_at_objectives(alive_mask=player_alive)
+            and self.phase_manager.terminate_on_success
         )
+
+        all_player_eliminated = not player_alive.any()
+        all_opponent_eliminated = bool(self.opponent_models) and all(
+            not m.is_alive for m in self.opponent_models
+        )
+        all_eliminated = all_player_eliminated or all_opponent_eliminated
+
         is_terminated = is_battle_over(
             self._game_clock,
             self.current_turn,
             self.max_turns,
             self.config.max_turns_override,
             all_at_objective,
+            all_eliminated=all_eliminated,
         )
 
         clock_state = self._game_clock.state

@@ -47,14 +47,22 @@ class ScriptedAdvanceToObjectivePolicy(OpponentPolicy):
         actions: list[int] = []
         obj_locs = np.array([o.location for o in env.objectives])
 
-        model_locs = np.array([m.location for m in opponent_models])
-        centroid = model_locs.mean(axis=0)
+        alive_models_list = [m for m in opponent_models if m.is_alive]
+        if not alive_models_list:
+            return WargameEnvAction(actions=[STAY_ACTION] * len(opponent_models))
+
+        alive_locs = np.array([m.location for m in alive_models_list])
+        centroid = alive_locs.mean(axis=0)
 
         w = self._cohesion_weight
 
         obj_radii = np.array([o.radius_size for o in env.objectives])
 
         for model in opponent_models:
+            if not model.is_alive:
+                actions.append(STAY_ACTION)
+                continue
+
             obj_deltas = obj_locs - model.location
             dists = np.linalg.norm(obj_deltas, axis=1)
             nearest_idx = int(np.argmin(dists))
