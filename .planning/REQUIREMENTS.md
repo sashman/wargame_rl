@@ -9,11 +9,11 @@ Requirements for the shooting & model destruction milestone. Each maps to roadma
 
 ### Wounds & Elimination
 
-- [ ] **WOUND-01**: Each model has configurable max wounds and tracks current wounds during an episode
-- [ ] **WOUND-02**: Models reduced to 0 wounds are eliminated and removed from active play
+- [x] **WOUND-01**: Each model has configurable max wounds and tracks current wounds during an episode
+- [x] **WOUND-02**: Models reduced to 0 wounds are eliminated and removed from active play
 - [ ] **WOUND-03**: Eliminated models are excluded from action selection, movement, and objective control
 - [ ] **WOUND-04**: Observation space handles eliminated models gracefully (alive flags or padding, no shape changes mid-episode)
-- [ ] **WOUND-05**: Episode terminates when all models on one side are eliminated
+- [x] **WOUND-05**: Episode terminates when all models on one side are eliminated
 
 ### Shooting
 
@@ -104,11 +104,11 @@ Deferred to future milestones. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WOUND-01 | Phase 1 | Pending |
-| WOUND-02 | Phase 1 | Pending |
+| WOUND-01 | Phase 1 | Complete |
+| WOUND-02 | Phase 1 | Complete |
 | WOUND-03 | Phase 1 | Pending |
 | WOUND-04 | Phase 2 | Pending |
-| WOUND-05 | Phase 1 | Pending |
+| WOUND-05 | Phase 1 | Complete |
 | SHOT-01 | Phase 5 | Pending |
 | SHOT-02 | Phase 5 | Pending |
 | SHOT-03 | Phase 4 | Pending |

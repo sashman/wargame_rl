@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Existing YAML configs without wound settings still work with backward-compatible defaults
 **Plans:** 2 plans
 Plans:
-- [ ] 01-01-PLAN.md — Domain foundation: take_damage, is_alive, config default, termination extension, unit tests
+- [x] 01-01-PLAN.md — Domain foundation: take_damage, is_alive, config default, termination extension, unit tests
 - [ ] 01-02-PLAN.md — Alive-filtering across env loop, env step wiring, integration tests
 
 ### Phase 2: Alive-Aware Observation
