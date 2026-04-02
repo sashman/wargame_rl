@@ -107,7 +107,7 @@ class ModelConfig(BaseModel):
         description="Y coordinate on the board. If None, placed randomly.",
     )
     group_id: int = Field(default=0, ge=0, description="Group this model belongs to")
-    max_wounds: int = Field(default=100, gt=0)
+    max_wounds: int = Field(default=1, gt=0)
 
     @model_validator(mode="after")
     def coords_both_or_neither(self) -> "ModelConfig":

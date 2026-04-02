@@ -56,6 +56,20 @@ class WargameModel:
         self.stats["current_wounds"] = self.stats["max_wounds"]
         self.model_rewards_history.clear()
 
+    @property
+    def is_alive(self) -> bool:
+        """True while the model has wounds remaining."""
+        return self.stats["current_wounds"] > 0
+
+    def take_damage(self, amount: int) -> None:
+        """Reduce current wounds by amount, clamped to 0.
+
+        Sole entry point for wound reduction across the codebase.
+        """
+        self.stats["current_wounds"] = max(
+            0, self.stats["current_wounds"] - amount
+        )
+
     def __repr__(self) -> str:
         return f"WargameModel(location={self.location}, distances_to_objectives={self.distances_to_objectives}, group_id={self.group_id})"
 
@@ -96,6 +110,11 @@ class WargameModel:
                 "group_id": group_id_space,
             }
         )
+
+
+def alive_mask_for(models: list[WargameModel]) -> np.ndarray:
+    """Boolean array where True = model is alive. Used by distance cache, action masking, and reward."""
+    return np.array([m.is_alive for m in models], dtype=bool)
 
 
 class WargameObjective:
