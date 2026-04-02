@@ -8,7 +8,14 @@ import pytest
 from wargame_rl.wargame.envs.domain.entities import WargameModel, alive_mask_for
 from wargame_rl.wargame.envs.domain.game_clock import GameClock
 from wargame_rl.wargame.envs.domain.termination import is_battle_over
-from wargame_rl.wargame.envs.types.config import ModelConfig
+from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
+from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
+from wargame_rl.wargame.envs.types.config import (
+    ModelConfig,
+    ObjectiveConfig,
+    OpponentPolicyConfig,
+)
+from wargame_rl.wargame.envs.wargame import WargameEnv
 
 
 def _make_model(max_wounds: int, current_wounds: int | None = None) -> WargameModel:
@@ -106,3 +113,168 @@ def test_alive_mask_for() -> None:
     dead.take_damage(1)
     result = alive_mask_for([alive, dead])
     np.testing.assert_array_equal(result, np.array([True, False]))
+
+
+# ---------------------------------------------------------------------------
+# Integration test fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def wound_env() -> WargameEnv:
+    """Env with 2 player models (max_wounds=2), 1 objective, no opponents."""
+    config = WargameEnvConfig(
+        board_width=20,
+        board_height=20,
+        number_of_wargame_models=2,
+        number_of_objectives=1,
+        objective_radius_size=2,
+        models=[
+            ModelConfig(x=5, y=5, max_wounds=2),
+            ModelConfig(x=10, y=10, max_wounds=2),
+        ],
+        objectives=[ObjectiveConfig(x=10, y=10, radius_size=2)],
+        max_turns_override=50,
+        number_of_battle_rounds=5,
+    )
+    return WargameEnv(config=config)
+
+
+@pytest.fixture
+def wound_env_with_opponents() -> WargameEnv:
+    """Env with 2 player models and 2 opponent models, all 1 wound."""
+    config = WargameEnvConfig(
+        board_width=20,
+        board_height=20,
+        number_of_wargame_models=2,
+        number_of_objectives=1,
+        objective_radius_size=2,
+        models=[
+            ModelConfig(x=2, y=2, max_wounds=1),
+            ModelConfig(x=3, y=3, max_wounds=1),
+        ],
+        objectives=[ObjectiveConfig(x=10, y=10, radius_size=2)],
+        number_of_opponent_models=2,
+        opponent_models=[
+            ModelConfig(x=17, y=17, max_wounds=1),
+            ModelConfig(x=18, y=18, max_wounds=1),
+        ],
+        opponent_policy=OpponentPolicyConfig(
+            type="scripted_advance_to_objective"
+        ),
+        max_turns_override=50,
+        number_of_battle_rounds=5,
+    )
+    return WargameEnv(config=config)
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: eliminated model exclusion
+# ---------------------------------------------------------------------------
+
+
+def test_eliminated_model_does_not_move(wound_env: WargameEnv) -> None:
+    """Dead models must not move regardless of the action given."""
+    wound_env.reset(seed=42)
+    wound_env.wargame_models[0].take_damage(2)
+    frozen_loc = wound_env.wargame_models[0].location.copy()
+
+    move_action = wound_env._action_handler.encode_action(0, 0)
+    wound_env.step(WargameEnvAction(actions=[move_action, 0]))
+
+    np.testing.assert_array_equal(
+        wound_env.wargame_models[0].location, frozen_loc
+    )
+
+
+def test_eliminated_model_not_controlling_objective() -> None:
+    """A dead model at an objective should not count for objective control.
+
+    Model 0 is placed at the objective and killed. Model 1 is alive but far
+    away. all_models_at_objectives should return False because the alive model
+    is not at the objective.
+    """
+    config = WargameEnvConfig(
+        board_width=20,
+        board_height=20,
+        number_of_wargame_models=2,
+        number_of_objectives=1,
+        objective_radius_size=2,
+        models=[
+            ModelConfig(x=10, y=10, max_wounds=2),
+            ModelConfig(x=1, y=1, max_wounds=2),
+        ],
+        objectives=[ObjectiveConfig(x=10, y=10, radius_size=2)],
+        max_turns_override=50,
+        number_of_battle_rounds=5,
+    )
+    env = WargameEnv(config=config)
+    env.reset(seed=42)
+
+    env.wargame_models[0].take_damage(2)
+    alive = alive_mask_for(env.wargame_models)
+    cache = compute_distances(
+        env.wargame_models, env.objectives, alive_mask=alive
+    )
+    assert cache.all_models_at_objectives(alive_mask=alive) is False
+
+
+def test_termination_all_player_eliminated(wound_env: WargameEnv) -> None:
+    """Episode must terminate when all player models are eliminated."""
+    wound_env.reset(seed=42)
+    for m in wound_env.wargame_models:
+        m.take_damage(m.stats["max_wounds"])
+
+    _, _, terminated, _, _ = wound_env.step(WargameEnvAction(actions=[0, 0]))
+    assert terminated is True
+
+
+def test_termination_all_opponent_eliminated(
+    wound_env_with_opponents: WargameEnv,
+) -> None:
+    """Episode must terminate when all opponent models are eliminated."""
+    wound_env_with_opponents.reset(seed=42)
+    for m in wound_env_with_opponents.opponent_models:
+        m.take_damage(m.stats["max_wounds"])
+
+    _, _, terminated, _, _ = wound_env_with_opponents.step(
+        WargameEnvAction(actions=[0, 0])
+    )
+    assert terminated is True
+
+
+def test_no_vacuous_termination_zero_opponents(
+    wound_env: WargameEnv,
+) -> None:
+    """A 0-opponent config must not trigger vacuous all_eliminated termination."""
+    wound_env.reset(seed=42)
+    _, _, terminated, _, _ = wound_env.step(WargameEnvAction(actions=[0, 0]))
+    assert terminated is False
+
+
+def test_all_alive_models_at_objectives() -> None:
+    """Alive models at objective = success, despite dead models existing."""
+    config = WargameEnvConfig(
+        board_width=20,
+        board_height=20,
+        number_of_wargame_models=2,
+        number_of_objectives=1,
+        objective_radius_size=2,
+        models=[
+            ModelConfig(x=10, y=10, max_wounds=2),
+            ModelConfig(x=10, y=10, max_wounds=2),
+        ],
+        objectives=[ObjectiveConfig(x=10, y=10, radius_size=2)],
+        max_turns_override=50,
+        number_of_battle_rounds=5,
+    )
+    env = WargameEnv(config=config)
+    env.reset(seed=42)
+
+    env.wargame_models[0].take_damage(2)
+
+    alive = alive_mask_for(env.wargame_models)
+    cache = compute_distances(
+        env.wargame_models, env.objectives, alive_mask=alive
+    )
+    assert cache.all_models_at_objectives(alive_mask=alive) is True
