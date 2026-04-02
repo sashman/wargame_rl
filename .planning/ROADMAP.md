@@ -30,7 +30,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. A model reduced to 0 wounds is eliminated — excluded from action selection, movement, and objective control
   3. The episode terminates when all models on one side are eliminated
   4. Existing YAML configs without wound settings still work with backward-compatible defaults
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 01-01-PLAN.md — Domain foundation: take_damage, is_alive, config default, termination extension, unit tests
+- [ ] 01-02-PLAN.md — Alive-filtering across env loop, env step wiring, integration tests
 
 ### Phase 2: Alive-Aware Observation
 **Goal**: The RL agent can distinguish alive from eliminated models and see wound status in its observations
