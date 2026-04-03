@@ -244,6 +244,13 @@ class WargameEnvConfig(BaseModel):
         "step through every phase.",
     )
 
+    terminate_on_player_elimination: bool = Field(
+        default=False,
+        description="If True, episode ends when all player models are eliminated. "
+        "If False (default, matching tabletop rules), the opponent continues "
+        "playing and scoring VP after wiping the player.",
+    )
+
     number_of_battle_rounds: int = Field(
         default=5,
         gt=0,

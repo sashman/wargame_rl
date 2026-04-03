@@ -37,9 +37,7 @@ def _make_model(max_wounds: int, current_wounds: int | None = None) -> WargameMo
         (3, 2, 1),
     ],
 )
-def test_wound_tracking(
-    max_wounds: int, damage: int, expected_current: int
-) -> None:
+def test_wound_tracking(max_wounds: int, damage: int, expected_current: int) -> None:
     model = _make_model(max_wounds)
     model.take_damage(damage)
     assert model.stats["current_wounds"] == expected_current
@@ -159,9 +157,7 @@ def wound_env_with_opponents() -> WargameEnv:
             ModelConfig(x=17, y=17, max_wounds=1),
             ModelConfig(x=18, y=18, max_wounds=1),
         ],
-        opponent_policy=OpponentPolicyConfig(
-            type="scripted_advance_to_objective"
-        ),
+        opponent_policy=OpponentPolicyConfig(type="scripted_advance_to_objective"),
         max_turns_override=50,
         number_of_battle_rounds=5,
     )
@@ -182,9 +178,7 @@ def test_eliminated_model_does_not_move(wound_env: WargameEnv) -> None:
     move_action = wound_env._action_handler.encode_action(0, 0)
     wound_env.step(WargameEnvAction(actions=[move_action, 0]))
 
-    np.testing.assert_array_equal(
-        wound_env.wargame_models[0].location, frozen_loc
-    )
+    np.testing.assert_array_equal(wound_env.wargame_models[0].location, frozen_loc)
 
 
 def test_eliminated_model_not_controlling_objective() -> None:
@@ -213,19 +207,44 @@ def test_eliminated_model_not_controlling_objective() -> None:
 
     env.wargame_models[0].take_damage(2)
     alive = alive_mask_for(env.wargame_models)
-    cache = compute_distances(
-        env.wargame_models, env.objectives, alive_mask=alive
-    )
+    cache = compute_distances(env.wargame_models, env.objectives, alive_mask=alive)
     assert cache.all_models_at_objectives(alive_mask=alive) is False
 
 
-def test_termination_all_player_eliminated(wound_env: WargameEnv) -> None:
-    """Episode must terminate when all player models are eliminated."""
+def test_player_elimination_does_not_terminate_by_default(
+    wound_env: WargameEnv,
+) -> None:
+    """Without terminate_on_player_elimination, wiping the player does not end the game."""
     wound_env.reset(seed=42)
     for m in wound_env.wargame_models:
         m.take_damage(m.stats["max_wounds"])
 
     _, _, terminated, _, _ = wound_env.step(WargameEnvAction(actions=[0, 0]))
+    assert terminated is False
+
+
+def test_player_elimination_terminates_when_flag_set() -> None:
+    """With terminate_on_player_elimination=True, wiping the player ends the episode."""
+    config = WargameEnvConfig(
+        board_width=20,
+        board_height=20,
+        number_of_wargame_models=2,
+        number_of_objectives=1,
+        objective_radius_size=2,
+        models=[
+            ModelConfig(x=5, y=5, max_wounds=2),
+            ModelConfig(x=10, y=10, max_wounds=2),
+        ],
+        objectives=[ObjectiveConfig(x=10, y=10, radius_size=2)],
+        max_turns_override=50,
+        terminate_on_player_elimination=True,
+    )
+    env = WargameEnv(config=config)
+    env.reset(seed=42)
+    for m in env.wargame_models:
+        m.take_damage(m.stats["max_wounds"])
+
+    _, _, terminated, _, _ = env.step(WargameEnvAction(actions=[0, 0]))
     assert terminated is True
 
 
@@ -274,7 +293,5 @@ def test_all_alive_models_at_objectives() -> None:
     env.wargame_models[0].take_damage(2)
 
     alive = alive_mask_for(env.wargame_models)
-    cache = compute_distances(
-        env.wargame_models, env.objectives, alive_mask=alive
-    )
+    cache = compute_distances(env.wargame_models, env.objectives, alive_mask=alive)
     assert cache.all_models_at_objectives(alive_mask=alive) is True

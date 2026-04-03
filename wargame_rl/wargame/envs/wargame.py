@@ -344,12 +344,16 @@ class WargameEnv(gym.Env):
             alive_mask=player_alive,
         )
 
+        any_player_alive = player_alive.any()
         all_at_objective = (
-            cache.all_models_at_objectives(alive_mask=player_alive)
+            bool(any_player_alive)
+            and cache.all_models_at_objectives(alive_mask=player_alive)
             and self.phase_manager.terminate_on_success
         )
 
-        all_player_eliminated = not player_alive.any()
+        all_player_eliminated = (
+            self.config.terminate_on_player_elimination and not any_player_alive
+        )
         all_opponent_eliminated = bool(self.opponent_models) and all(
             not m.is_alive for m in self.opponent_models
         )
