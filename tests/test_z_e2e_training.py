@@ -33,4 +33,5 @@ def test_training_smoke() -> None:
         max_epochs=1,
         no_wandb=True,
         n_steps=64,
+        n_eval_episodes=1,
     )

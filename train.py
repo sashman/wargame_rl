@@ -103,6 +103,10 @@ def train(
         None,
         help="Override PPO rollout steps (defaults to PPOConfig value)",
     ),
+    n_eval_episodes: int | None = typer.Option(
+        None,
+        help="Override number of evaluation episodes per epoch (defaults to config value)",
+    ),
     run_suffix: str | None = typer.Option(
         None,
         help="Optional suffix appended to run name (for unique checkpoint dirs when running multiple jobs in parallel)",
@@ -124,6 +128,8 @@ def train(
 
     if algorithm == AlgorithmType.DQN:
         dqn_config = DQNConfig()
+        if n_eval_episodes is not None:
+            dqn_config.n_episodes = n_eval_episodes
         training_config = DQNTrainingConfig(
             record_during_training=record_during_training,
             record_after_epoch=record_after_epoch,
@@ -185,6 +191,8 @@ def train(
             ppo_config.show_inner_progress = False
         if n_steps is not None:
             ppo_config.n_steps = n_steps
+        if n_eval_episodes is not None:
+            ppo_config.n_episodes = n_eval_episodes
         ppo_training_config = PPOTrainingConfig(
             record_during_training=record_during_training,
             record_after_epoch=record_after_epoch,
