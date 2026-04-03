@@ -146,7 +146,9 @@ wargame_rl/
 - Commit messages: imperative mood, concise summary
 - After pushing a new feature branch, always create a PR using `gh pr create`
 - Run `just validate` before pushing
+- **Shipping:** always create a new branch from up-to-date `main` — never reuse an existing feature branch for a new PR
 
 ## CUDA Environment
 
-- The dev machine may have a broken CUDA setup; set `CUDA_VISIBLE_DEVICES=""` to force CPU when training fails with CUDA errors
+- Do NOT preemptively disable CUDA — only set `CUDA_VISIBLE_DEVICES=""` when training actually fails with CUDA errors
+- By default, let PyTorch use the GPU

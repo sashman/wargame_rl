@@ -34,4 +34,5 @@ alwaysApply: true
 
 ## CUDA Environment
 
-- The dev machine may have a broken CUDA setup; set `CUDA_VISIBLE_DEVICES=""` to force CPU when training fails with CUDA errors
+- Do NOT preemptively disable CUDA — only set `CUDA_VISIBLE_DEVICES=""` when training actually fails with CUDA errors
+- By default, let PyTorch use the GPU
