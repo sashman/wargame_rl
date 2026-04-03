@@ -107,11 +107,13 @@ def test_dataloaders(env: WargameEnv, policy_net: RL_Network) -> None:
 
 
 def test_dqn_training(env: WargameEnv, policy_net: RL_Network) -> None:
-    model = DQNLightning(env=env, policy_net=policy_net, log=False)
+    model = DQNLightning(
+        env=env, policy_net=policy_net, log=False, n_samples_per_epoch=64, batch_size=32
+    )
 
     trainer = Trainer(
         accelerator="cpu",
-        max_epochs=2,
+        max_epochs=1,
         val_check_interval=1,
         logger=None,
     )

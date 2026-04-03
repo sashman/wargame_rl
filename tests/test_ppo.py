@@ -288,11 +288,19 @@ def test_auto_detect_num_rollout_envs_uses_divisor_of_n_steps(
 def test_ppo_training_runs_without_error(
     env: WargameEnv, ppo_net: PPO_Transformer
 ) -> None:
-    model = PPOLightning(env=env, ppo_model=ppo_net, log=False)
+    model = PPOLightning(
+        env=env,
+        ppo_model=ppo_net,
+        log=False,
+        n_steps=64,
+        batch_size=32,
+        n_epochs=1,
+        num_rollout_envs=1,
+    )
 
     trainer = Trainer(
         accelerator="auto",
-        max_epochs=2,
+        max_epochs=1,
         val_check_interval=1,
         logger=None,
     )

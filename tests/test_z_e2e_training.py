@@ -1,6 +1,7 @@
 """End-to-end test: run the training entrypoint (PPO) for one epoch.
 
 Collected last so that faster unit/integration tests run first (file name sorts after test_*).
+Uses a minimal env config (2 models, small board) to keep CI fast.
 """
 
 import os
@@ -18,7 +19,7 @@ def test_training_smoke() -> None:
     from wargame_rl.wargame.model.dqn.config import NetworkType
 
     env_config_path = os.path.join(
-        project_root, "examples", "env_config", "4_models_2_objectives_fixed.yaml"
+        project_root, "examples", "env_config", "ci_smoke.yaml"
     )
 
     train(
@@ -31,4 +32,6 @@ def test_training_smoke() -> None:
         record_every_n_epochs=20,
         max_epochs=1,
         no_wandb=True,
+        n_steps=64,
+        n_eval_episodes=1,
     )
