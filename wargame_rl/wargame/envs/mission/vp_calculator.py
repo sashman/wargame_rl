@@ -79,15 +79,22 @@ class DefaultVPCalculator(VPCalculator):
     ) -> int:
         if current_round < self.min_round:
             return 0
+        from wargame_rl.wargame.envs.domain.entities import alive_mask_for
         from wargame_rl.wargame.envs.env_components.distance_cache import (
             compute_distances,
             objective_ownership_from_norms_offset,
         )
 
-        player_cache = compute_distances(view.player_models, view.objectives)
+        player_alive = alive_mask_for(view.player_models)
+        player_cache = compute_distances(
+            view.player_models, view.objectives, alive_mask=player_alive
+        )
         n_obj = len(view.objectives)
         if view.opponent_models:
-            opponent_cache = compute_distances(view.opponent_models, view.objectives)
+            opp_alive = alive_mask_for(view.opponent_models)
+            opponent_cache = compute_distances(
+                view.opponent_models, view.objectives, alive_mask=opp_alive
+            )
             opponent_norms = opponent_cache.model_obj_norms_offset
         else:
             opponent_norms = np.zeros((0, n_obj), dtype=np.float64)

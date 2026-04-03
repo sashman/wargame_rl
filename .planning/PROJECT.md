@@ -36,7 +36,7 @@ Agents learn recognisable tactical behaviour — advancing on objectives, mainta
 - [ ] Positional encoding for transformer network
 - [ ] Hyperparameter sweep tooling (Wandb Sweeps or Optuna)
 - [ ] Improved metrics & dashboards (win rate, avg turns, reward breakdown, group violation rate)
-- [ ] Wounds & elimination (models with 0 wounds removed from play)
+- ✓ Wounds & elimination (models with 0 wounds removed from play) — validated in Phase 1
 - [ ] Shooting action type with configurable accuracy/damage
 - [ ] Line of sight (raycasting or grid-based LOS)
 - [ ] Action type selection (move, shoot, or stay per model)
@@ -109,4 +109,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-02 after initialization*
+*Last updated: 2026-04-03 after Phase 1 completion*

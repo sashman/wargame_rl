@@ -107,7 +107,7 @@ class ModelConfig(BaseModel):
         description="Y coordinate on the board. If None, placed randomly.",
     )
     group_id: int = Field(default=0, ge=0, description="Group this model belongs to")
-    max_wounds: int = Field(default=100, gt=0)
+    max_wounds: int = Field(default=1, gt=0)
 
     @model_validator(mode="after")
     def coords_both_or_neither(self) -> "ModelConfig":
@@ -242,6 +242,13 @@ class WargameEnvConfig(BaseModel):
         description="Battle phases to auto-advance through (the agent never steps "
         "on these). Defaults to all non-movement phases. Set to [] to "
         "step through every phase.",
+    )
+
+    terminate_on_player_elimination: bool = Field(
+        default=False,
+        description="If True, episode ends when all player models are eliminated. "
+        "If False (default, matching tabletop rules), the opponent continues "
+        "playing and scoring VP after wiping the player.",
     )
 
     number_of_battle_rounds: int = Field(

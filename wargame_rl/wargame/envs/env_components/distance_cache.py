@@ -19,15 +19,29 @@ class DistanceCache:
     obj_radii: np.ndarray  # (n_objectives,)
     model_model_norms: np.ndarray | None  # (n_models, n_models) or None
 
-    def all_models_at_objectives(self) -> bool:
-        """True if every model is within the radius of at least one objective."""
-        at_objective = self.model_obj_norms_offset <= self.obj_radii
-        return bool(at_objective.any(axis=1).all())
+    def all_models_at_objectives(
+        self, alive_mask: np.ndarray | None = None
+    ) -> bool:
+        """True if every model is within the radius of at least one objective.
 
-    def min_distances_to_same_group(self, group_ids: np.ndarray) -> np.ndarray:
+        Dead models (alive_mask False) are treated as satisfied so they don't
+        block the all-at-objectives check.
+        """
+        at_objective = self.model_obj_norms_offset <= self.obj_radii
+        per_model = at_objective.any(axis=1)
+        if alive_mask is not None:
+            per_model = per_model | ~alive_mask
+        return bool(per_model.all())
+
+    def min_distances_to_same_group(
+        self,
+        group_ids: np.ndarray,
+        alive_mask: np.ndarray | None = None,
+    ) -> np.ndarray:
         """Per-model min distance to nearest same-group model.
 
-        For models with no same-group member, returns 0 (treated as within range).
+        Dead models are excluded from same-group calculations. A live model
+        whose group members are all dead gets 0 (alone in group = no penalty).
         Requires model_model_norms to be set.
         """
         if self.model_model_norms is None:
@@ -36,6 +50,8 @@ class DistanceCache:
         out = np.zeros(n, dtype=np.float64)
         for i in range(n):
             same = (np.arange(n) != i) & (group_ids == group_ids[i])
+            if alive_mask is not None:
+                same = same & alive_mask
             if not same.any():
                 out[i] = 0.0
             else:
@@ -43,10 +59,15 @@ class DistanceCache:
         return out
 
     def all_models_within_group_distance(
-        self, group_ids: np.ndarray, max_distance: float
+        self,
+        group_ids: np.ndarray,
+        max_distance: float,
+        alive_mask: np.ndarray | None = None,
     ) -> bool:
         """True if every model is within max_distance of at least one same-group model (or alone in its group)."""
-        min_dists = self.min_distances_to_same_group(group_ids)
+        min_dists = self.min_distances_to_same_group(
+            group_ids, alive_mask=alive_mask
+        )
         return bool((min_dists <= max_distance).all())
 
 
@@ -54,6 +75,7 @@ def compute_distances(
     wargame_models: list[WargameModel],
     objectives: list[WargameObjective],
     compute_model_model: bool = False,
+    alive_mask: np.ndarray | None = None,
 ) -> DistanceCache:
     model_locs = np.array([m.location for m in wargame_models])  # (n_models, 2)
     obj_locs = np.array([o.location for o in objectives])  # (n_objectives, 2)
@@ -69,6 +91,15 @@ def compute_distances(
     if compute_model_model:
         mm_deltas = model_locs[:, np.newaxis, :] - model_locs[np.newaxis, :, :]
         model_model = np.linalg.norm(mm_deltas, axis=2, ord=2)
+
+    if alive_mask is not None:
+        dead = ~alive_mask
+        norms = norms.copy()
+        norms[dead] = np.inf
+        if model_model is not None:
+            model_model = model_model.copy()
+            model_model[dead, :] = np.inf
+            model_model[:, dead] = np.inf
 
     return DistanceCache(
         model_obj_deltas=deltas,

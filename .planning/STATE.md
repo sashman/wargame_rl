@@ -1,3 +1,19 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: executing
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-04-03T09:35:04.858Z"
+last_activity: 2026-04-03
+progress:
+  total_phases: 6
+  completed_phases: 1
+  total_plans: 2
+  completed_plans: 2
+  percent: 0
+---
+
 # Project State
 
 ## Project Reference
@@ -5,20 +21,21 @@
 See: .planning/PROJECT.md (updated 2026-04-02)
 
 **Core value:** Agents learn recognisable tactical behaviour through reward shaping and environment design
-**Current focus:** Phase 1: Wounds & Elimination
+**Current focus:** Phase 01 — wounds-elimination
 
 ## Current Position
 
-Phase: 1 of 6 (Wounds & Elimination)
-Plan: 0 of 0 in current phase
-Status: Ready to plan
-Last activity: 2026-04-02 — Roadmap created for Shooting & Destruction milestone
+Phase: 2
+Plan: Not started
+Status: Ready to execute
+Last activity: 2026-04-03
 
 Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 0
 - Average duration: -
 - Total execution time: 0 hours
@@ -30,10 +47,12 @@ Progress: [░░░░░░░░░░] 0%
 | - | - | - | - |
 
 **Recent Trend:**
+
 - Last 5 plans: -
 - Trend: -
 
 *Updated after each plan completion*
+| Phase 01 P01 | 5min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -45,6 +64,9 @@ Recent decisions affecting current work:
 - Wounds/elimination before shooting (shooting needs durable state to be meaningful)
 - LOS as a single domain service reused by rules, masks, and rendering (not duplicated)
 - Phases 2 and 3 are independent and can execute in parallel
+- [Phase 01]: Wounds clamped at 0 via max() — no negative wound state possible
+- [Phase 01]: Default max_wounds=1 safe because no damage source exists until Phase 5
+- [Phase 01]: all_eliminated checked first in is_battle_over for fast-path termination
 
 ### Pending Todos
 
@@ -57,6 +79,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-02
-Stopped at: Roadmap created, ready to plan Phase 1
+Last session: 2026-04-02T21:19:14.873Z
+Stopped at: Completed 01-01-PLAN.md
 Resume file: None

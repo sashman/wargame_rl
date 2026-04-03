@@ -16,14 +16,19 @@ def is_battle_over(
     max_turns: int,
     max_turns_override: int | None,
     all_models_at_objectives_flag: bool,
+    all_eliminated: bool = False,
 ) -> bool:
-    """True when the episode should end: turn limit, clock complete, or all at objectives.
+    """True when the episode should end: elimination, turn limit, clock complete, or all at objectives.
 
     When max_turns_override is set (e.g. for training), clock.is_game_over is not
     considered; otherwise game can end by clock or by success.
     """
+    if all_eliminated:
+        return True
     if max_turns_override is not None:
         return current_turn >= max_turns or all_models_at_objectives_flag
     return (
-        current_turn >= max_turns or clock.is_game_over or all_models_at_objectives_flag
+        current_turn >= max_turns
+        or clock.is_game_over
+        or all_models_at_objectives_flag
     )

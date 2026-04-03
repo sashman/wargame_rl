@@ -5,6 +5,7 @@ import numpy as np
 import pygame
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
+from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.env_components.distance_cache import (
     compute_distances,
     objective_ownership_from_norms_offset,
@@ -534,10 +535,16 @@ class HumanRender(Renderer):
         if not objectives:
             return
 
-        player_cache = compute_distances(player_models, objectives)
+        player_alive = alive_mask_for(player_models)
+        player_cache = compute_distances(
+            player_models, objectives, alive_mask=player_alive
+        )
         n_obj = len(objectives)
         if opponent_models:
-            opponent_cache = compute_distances(opponent_models, objectives)
+            opp_alive = alive_mask_for(opponent_models)
+            opponent_cache = compute_distances(
+                opponent_models, objectives, alive_mask=opp_alive
+            )
             opponent_norms = opponent_cache.model_obj_norms_offset
         else:
             opponent_norms = np.zeros((0, n_obj), dtype=np.float64)
@@ -592,6 +599,22 @@ class HumanRender(Renderer):
     ) -> None:
         """Draw wargame models (agents) on the canvas. Color is determined by model group_id."""
         for model in wargame_models:
+            if not model.is_alive:
+                grey = (180, 180, 180)
+                cx = float(model.location[0] + 0.5) * self.pix_square_size
+                cy = float(model.location[1] + 0.5) * self.pix_square_size
+                r = self.pix_square_size / 3
+                pygame.draw.circle(canvas, grey, (cx, cy), r)
+                xr = self.pix_square_size / 4
+                pygame.draw.line(
+                    canvas, (120, 120, 120),
+                    (cx - xr, cy - xr), (cx + xr, cy + xr), 2,
+                )
+                pygame.draw.line(
+                    canvas, (120, 120, 120),
+                    (cx + xr, cy - xr), (cx - xr, cy + xr), 2,
+                )
+                continue
             color = self._color_for_group(model.group_id)
             pygame.draw.circle(
                 canvas,
@@ -608,11 +631,17 @@ class HumanRender(Renderer):
     ) -> None:
         """Draw opponent models as downward-pointing triangles."""
         for model in opponent_models:
-            color = self._opponent_color_for_group(model.group_id)
             cx = float(model.location[0] + 0.5) * self.pix_square_size
             cy = float(model.location[1] + 0.5) * self.pix_square_size
             r = self.pix_square_size / 3
-            # Equilateral triangle pointing down
+            if not model.is_alive:
+                grey = (180, 180, 180)
+                top_left = (cx - r, cy - r * 0.6)
+                top_right = (cx + r, cy - r * 0.6)
+                bottom = (cx, cy + r * 0.8)
+                pygame.draw.polygon(canvas, grey, [top_left, top_right, bottom])
+                continue
+            color = self._opponent_color_for_group(model.group_id)
             top_left = (cx - r, cy - r * 0.6)
             top_right = (cx + r, cy - r * 0.6)
             bottom = (cx, cy + r * 0.8)
@@ -626,6 +655,8 @@ class HumanRender(Renderer):
     ) -> None:
         """Draw a small arrow from each model's previous to current location."""
         for model in models:
+            if not model.is_alive:
+                continue
             if model.previous_location is None:
                 continue
             prev = model.previous_location
