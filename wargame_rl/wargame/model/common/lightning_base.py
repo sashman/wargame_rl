@@ -93,6 +93,14 @@ class WargameLightningBase(LightningModule, ABC):
                 self.mean_episode_reward,
                 prog_bar=False,
             )
+            if not log_prefix:
+                # Kept for checkpoint monitor compatibility (ModelCheckpoint
+                # defaults to monitor="mean_episode_reward").
+                self.log(
+                    "mean_episode_reward",
+                    self.mean_episode_reward,
+                    prog_bar=False,
+                )
             self.log(
                 f"{prefix}mean_episode_steps",
                 sum(steps_s) / len(steps_s),

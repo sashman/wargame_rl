@@ -18,7 +18,11 @@ def test_training_smoke() -> None:
     from wargame_rl.wargame.model.dqn.config import NetworkType
 
     env_config_path = os.path.join(
-        project_root, "examples", "env_config", "4_models_2_objectives_fixed.yaml"
+        project_root,
+        "examples",
+        "env_config",
+        "with_opponents",
+        "2v2_fixed_positions.yaml",
     )
 
     train(

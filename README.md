@@ -8,6 +8,7 @@ Reinforcement learning model for playing table top wargames.
 - [Tabletop Rules Reference](docs/tabletop-rules-reference.md) — Condensed reference of the tabletop wargame mechanics we're modelling
 - [Movement System](docs/movement.md) — How polar coordinate movement works (action encoding, direction, speed, configuration)
 - [DDD in wargame/envs](docs/ddd-envs.md) — Domain-driven design motivation and how to extend the environment
+- [Self-Play + Elo](docs/self-play-elo.md) — PPO self-play schedule, snapshot pool, and Elo workflow
 
 ## How to add a feature to the environement?
 1. Update types, states and space
@@ -121,6 +122,12 @@ just simulate-latest
 Specific checkpoint:
 ```bash
 just simulate checkpoints/policy-dqn-env-v2-2025-10-24-22-50-54/last.ckpt checkpoints/policy-dqn-env-v2-2025-10-24-22-50-54/env_config.yaml
+```
+
+#### Elo evaluation
+
+```bash
+just evaluate-elo checkpoints/<run>/last.ckpt checkpoints/<run>/env_config.yaml 10
 ```
 
 #### Testing Env
