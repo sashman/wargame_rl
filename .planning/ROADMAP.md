@@ -12,9 +12,9 @@ This milestone adds combat to the wargame environment. Models gain durable wound
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Wounds & Elimination** - Domain foundation: wound tracking, elimination logic, and termination on full wipe
-- [ ] **Phase 2: Alive-Aware Observation** - Observation pipeline handles eliminated models with alive flags and wound status
-- [ ] **Phase 3: Line of Sight Service** - Single domain service for Bresenham LOS reused by rules, masks, and rendering
+- [x] **Phase 1: Wounds & Elimination** - Domain foundation: wound tracking, elimination logic, and termination on full wipe
+- [x] **Phase 2: Alive-Aware Observation** - Observation pipeline handles eliminated models with alive flags and wound status
+- [x] **Phase 3: Line of Sight Service** - Single domain service for Bresenham LOS reused by rules, masks, and rendering (completed 2026-04-04)
 - [ ] **Phase 4: Shooting Action Space** - Extend ActionRegistry with shooting targets, phase-gated masks combining LOS/range/alive
 - [ ] **Phase 5: Shooting Resolution** - Tabletop attack sequence (hit→wound→save→damage) with configurable weapon profiles
 - [ ] **Phase 6: Combat Reward & Curriculum** - Reward calculators for damage/losses and curriculum phases for learning to shoot
@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 2 plans
 Plans:
 - [x] 01-01-PLAN.md — Domain foundation: take_damage, is_alive, config default, termination extension, unit tests
-- [ ] 01-02-PLAN.md — Alive-filtering across env loop, env step wiring, integration tests
+- [x] 01-02-PLAN.md — Alive-filtering across env loop, env step wiring, integration tests
 
 ### Phase 2: Alive-Aware Observation
 **Goal**: The RL agent can distinguish alive from eliminated models and see wound status in its observations
@@ -54,7 +54,9 @@ Plans:
   1. LOS queries correctly report visibility between any two grid positions using Bresenham ray tracing
   2. The LOS service is a single domain module callable from rules, action masks, and renderers
   3. LOS results are deterministic and tested against known board configurations with blocking cells
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [x] `03-01-PLAN.md` — `domain/los.py`, tests, optional `blocking_mask`, env helpers, human LOS debug (L)
 
 ### Phase 4: Shooting Action Space
 **Goal**: Models can select shoot-target actions during the shooting phase with correct validity masking
@@ -97,9 +99,9 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Wounds & Elimination | 0/0 | Not started | - |
-| 2. Alive-Aware Observation | 0/0 | Not started | - |
-| 3. Line of Sight Service | 0/0 | Not started | - |
+| 1. Wounds & Elimination | 2/2 | Complete | (see phase detail) |
+| 2. Alive-Aware Observation | 1/1 | Complete | (see phase detail) |
+| 3. Line of Sight Service | 1/1 | Complete | 2026-04-04 |
 | 4. Shooting Action Space | 0/0 | Not started | - |
 | 5. Shooting Resolution | 0/0 | Not started | - |
 | 6. Combat Reward & Curriculum | 0/0 | Not started | - |

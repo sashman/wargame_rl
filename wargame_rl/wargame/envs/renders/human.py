@@ -6,6 +6,7 @@ import pygame
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.los import iter_los_cells
 from wargame_rl.wargame.envs.env_components.distance_cache import (
     compute_distances,
     objective_ownership_from_norms_offset,
@@ -75,6 +76,8 @@ class HumanRender(Renderer):
         # Last window size we used for layout (to detect resize even without VIDEORESIZE)
         self._last_window_w: int = 0
         self._last_window_h: int = 0
+        # Toggle with L: draw Bresenham LOS between first alive player and opponent.
+        self._debug_los: bool = False
 
     def _compute_scale_and_canvas(
         self, available_width: int, available_height: int
@@ -218,6 +221,9 @@ class HumanRender(Renderer):
         # Now we draw the player agent models
         self._draw_agent(self.canvas, wargame_models)
 
+        if self._debug_los:
+            self._draw_debug_los_line(view)
+
         # Finally, add some gridlines
         self._draw_gridlines(self.canvas, board_width, board_height)
 
@@ -266,9 +272,9 @@ class HumanRender(Renderer):
             width=1,
         )
         font = pygame.font.Font(None, 24)
-        menu_text = "Space: Pause | Esc: Quit"
+        menu_text = "Space: Pause | Esc: Quit | L: LOS debug"
         if self.paused:
-            menu_text = "PAUSED - Space: Resume | Esc: Quit"
+            menu_text = "PAUSED - Space: Resume | Esc: Quit | L: LOS debug"
         text_surface = font.render(menu_text, True, (220, 220, 220))
         text_rect = text_surface.get_rect(
             center=(window_w // 2, self.PANEL_HEIGHT // 2)
@@ -431,6 +437,40 @@ class HumanRender(Renderer):
         for j, s in enumerate(surfaces):
             self.window.blit(s, (rect.x + padding, rect.y + padding + j * line_height))
 
+    def _draw_debug_los_line(self, view: BattleView) -> None:
+        """Draw LOS polyline using domain ``iter_los_cells`` (first alive player → opponent)."""
+        if self.canvas is None:
+            return
+        player_alive = alive_mask_for(view.player_models)
+        try:
+            p_idx = next(i for i, ok in enumerate(player_alive) if ok)
+        except StopIteration:
+            return
+        if not view.opponent_models:
+            return
+        opp_alive = alive_mask_for(view.opponent_models)
+        try:
+            o_idx = next(i for i, ok in enumerate(opp_alive) if ok)
+        except StopIteration:
+            return
+        pm = view.player_models[p_idx]
+        om = view.opponent_models[o_idx]
+        x0, y0 = int(pm.location[0]), int(pm.location[1])
+        x1, y1 = int(om.location[0]), int(om.location[1])
+        cells = iter_los_cells(
+            x0, y0, x1, y1, view.config.board_width, view.config.board_height
+        )
+        if len(cells) < 2:
+            return
+        color = (255, 80, 80)
+        w = max(1, int(self.pix_square_size * 0.08))
+        for i in range(len(cells) - 1):
+            ax = (cells[i][0] + 0.5) * self.pix_square_size
+            ay = (cells[i][1] + 0.5) * self.pix_square_size
+            bx = (cells[i + 1][0] + 0.5) * self.pix_square_size
+            by = (cells[i + 1][1] + 0.5) * self.pix_square_size
+            pygame.draw.line(self.canvas, color, (ax, ay), (bx, by), width=w)
+
     def _process_events(self, view: BattleView) -> None:
         """Process pygame events for pause (Space), quit (Esc), resize, and click-to-pin tooltip."""
         for event in pygame.event.get():
@@ -471,6 +511,8 @@ class HumanRender(Renderer):
                     self.paused = not self.paused
                 elif event.key == pygame.K_ESCAPE:
                     self.should_quit = True
+                elif event.key == pygame.K_l:
+                    self._debug_los = not self._debug_los
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # left click
                     model_index = self._get_model_index_at(

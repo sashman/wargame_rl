@@ -27,6 +27,7 @@ wargame_rl/wargame/envs/
 │   ├── game_clock.py          # Turn/phase/round logic
 │   ├── placement.py           # place_for_episode, placement helpers
 │   ├── termination.py         # is_battle_over, check_max_turns_reached
+│   ├── los.py                 # Grid Bresenham LOS, injectable blocking (terrain)
 │   └── turn_execution.py      # run_until_player_phase, run_after_player_action
 ├── env_components/            # Adapters: actions, observation, distance cache, re-exports
 ├── reward/                    # Reward phases, calculators, criteria (use BattleView)
