@@ -1,0 +1,14 @@
+config_name: ci_smoke
+number_of_wargame_models: 2
+number_of_objectives: 1
+objective_radius_size: 2
+board_width: 20
+board_height: 20
+number_of_battle_rounds: 5
+
+models:
+  - { x: 5, y: 5, group_id: 0 }
+  - { x: 7, y: 7, group_id: 0 }
+
+objectives:
+  - { x: 15, y: 15 }

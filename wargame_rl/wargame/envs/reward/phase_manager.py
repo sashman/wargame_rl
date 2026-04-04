@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
+from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.reward.calculators.base import (
     GlobalRewardCalculator,
     PerModelRewardCalculator,
@@ -138,11 +139,12 @@ class RewardPhaseManager:
         across all models.  Global rewards are weighted and added on top.
         """
         phase = self.current_phase
-        n_models = len(view.player_models)
+        alive_models = [(i, m) for i, m in enumerate(view.player_models) if m.is_alive]
+        n_alive = len(alive_models)
 
         per_model_sums = {name: 0.0 for name, _calc in phase.per_model_calculators}
         per_model_component_sums: dict[str, float] = {}
-        for i, model in enumerate(view.player_models):
+        for i, model in alive_models:
             for name, pm_calc in phase.per_model_calculators:
                 per_model_sums[name] += pm_calc.weight * pm_calc.calculate(
                     i, model, view, ctx
@@ -156,13 +158,13 @@ class RewardPhaseManager:
                             + pm_calc.weight * value
                         )
 
-        if n_models > 0:
+        if n_alive > 0:
             for name in per_model_sums:
-                per_model_sums[name] /= n_models
+                per_model_sums[name] /= n_alive
             for name in per_model_component_sums:
-                per_model_component_sums[name] /= n_models
+                per_model_component_sums[name] /= n_alive
 
-        avg_per_model = sum(per_model_sums.values()) if n_models > 0 else 0.0
+        avg_per_model = sum(per_model_sums.values()) if n_alive > 0 else 0.0
 
         global_sums = {name: 0.0 for name, _calc in phase.global_calculators}
         for name, gl_calc in phase.global_calculators:
@@ -176,7 +178,8 @@ class RewardPhaseManager:
         breakdown.update(per_model_component_sums)
         breakdown.update(global_sums)
         if ctx.is_terminated and phase.terminal_success_bonus != 0.0:
-            if ctx.distance_cache.all_models_at_objectives():
+            player_alive = alive_mask_for(view.player_models)
+            if ctx.distance_cache.all_models_at_objectives(alive_mask=player_alive):
                 # Scale terminal bonus by remaining turns to encourage faster success.
                 remaining = max(0.0, float(ctx.max_turns - ctx.current_turn + 1))
                 denom = float(ctx.max_turns) if ctx.max_turns > 0 else 1.0

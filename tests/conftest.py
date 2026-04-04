@@ -23,14 +23,22 @@ def env() -> WargameEnv:
     )
 
 
-@pytest.fixture
-def experiences(env: WargameEnv, n_steps: int) -> list[Experience]:
-    previous_state, _ = env.reset()
-    output = []
+@pytest.fixture(scope="session")
+def _session_env() -> WargameEnv:
+    """Shared env instance used only by the session-scoped experience fixtures."""
+    return WargameEnv(
+        config=WargameEnvConfig(render_mode=None, number_of_battle_rounds=100)
+    )
 
-    for _ in range(n_steps):
-        action = WargameEnvAction(actions=env.action_space.sample())
-        state, reward, terminated, _, _ = env.step(action)
+
+@pytest.fixture(scope="session")
+def experiences(_session_env: WargameEnv) -> list[Experience]:
+    previous_state, _ = _session_env.reset()
+    output: list[Experience] = []
+
+    for _ in range(256):
+        action = WargameEnvAction(actions=_session_env.action_space.sample())
+        state, reward, terminated, _, _ = _session_env.step(action)
         output.append(
             Experience(previous_state, action, reward, terminated, state, None)
         )
@@ -39,9 +47,9 @@ def experiences(env: WargameEnv, n_steps: int) -> list[Experience]:
     return output
 
 
-@pytest.fixture
-def replay_buffer(n_steps: int, experiences: list[Experience]) -> ReplayBuffer:
-    buffer = ReplayBuffer(n_steps)
+@pytest.fixture(scope="session")
+def replay_buffer(experiences: list[Experience]) -> ReplayBuffer:
+    buffer = ReplayBuffer(256)
     for experience in experiences:
         buffer.append(experience)
     return buffer

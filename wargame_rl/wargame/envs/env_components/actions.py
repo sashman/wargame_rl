@@ -86,10 +86,24 @@ class ActionRegistry:
                 mask[s.start : s.end] = True
         return mask
 
-    def get_model_action_masks(self, phase: BattlePhase, n_models: int) -> np.ndarray:
-        """Return ``(n_models, n_actions)`` masks, tiled per model."""
+    def get_model_action_masks(
+        self,
+        phase: BattlePhase,
+        n_models: int,
+        alive_mask: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Return ``(n_models, n_actions)`` masks, tiled per model.
+
+        Dead models (alive_mask False) are restricted to STAY_ACTION only.
+        """
         single = self.get_action_mask(phase)
-        return np.tile(single, (n_models, 1))
+        masks = np.tile(single, (n_models, 1))
+        if alive_mask is not None:
+            for i in range(n_models):
+                if not alive_mask[i]:
+                    masks[i, :] = False
+                    masks[i, STAY_ACTION] = True
+        return masks
 
 
 class ActionHandler:
@@ -217,13 +231,18 @@ class ActionHandler:
         board_height: int,
         action_space: spaces.Tuple,
     ) -> None:
-        """Apply the action tuple to the wargame models (mutates locations)."""
+        """Apply the action tuple to the wargame models (mutates locations).
+
+        Dead models are skipped — they do not move regardless of the action.
+        """
         for i, act in enumerate(action.actions):
+            model = wargame_models[i]
+            if not model.is_alive:
+                continue
             if not action_space[i].contains(act):  # type: ignore
                 raise ValueError(
                     f"Action {act} for wargame model {i} is out of bounds."
                 )
-            model = wargame_models[i]
             model.previous_location = model.location.copy()
             displacement = self._decode_action(act)
             model.location = np.clip(

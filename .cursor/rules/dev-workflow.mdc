@@ -13,6 +13,12 @@ alwaysApply: true
 - If pre-commit hooks reject, fix and new commit (no `--amend`/`--no-verify`)
 - After pushing a feature branch, create PR via `gh pr create`
 
+## Shipping (branch → commit → push → PR)
+
+- **Always create a new branch from `main`** — never reuse an existing feature branch for a new PR
+- Checkout `main`, pull latest, then create the new branch so it has a clean base
+- Never push directly on an in-progress branch from another workflow (e.g. a GSD project-init branch)
+
 ## Validation & Deps
 
 - `just validate` (format + lint + test) before pushing
