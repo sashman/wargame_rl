@@ -28,7 +28,5 @@ def is_battle_over(
     if max_turns_override is not None:
         return current_turn >= max_turns or all_models_at_objectives_flag
     return (
-        current_turn >= max_turns
-        or clock.is_game_over
-        or all_models_at_objectives_flag
+        current_turn >= max_turns or clock.is_game_over or all_models_at_objectives_flag
     )

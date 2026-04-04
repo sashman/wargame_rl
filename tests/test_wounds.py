@@ -223,7 +223,7 @@ def test_player_elimination_does_not_terminate_by_default(
     assert terminated is False
 
 
-def test_player_elimination_terminates_when_flag_set() -> None:
+def test_termination_all_player_eliminated() -> None:
     """With terminate_on_player_elimination=True, wiping the player ends the episode."""
     config = WargameEnvConfig(
         board_width=20,

@@ -19,9 +19,7 @@ class DistanceCache:
     obj_radii: np.ndarray  # (n_objectives,)
     model_model_norms: np.ndarray | None  # (n_models, n_models) or None
 
-    def all_models_at_objectives(
-        self, alive_mask: np.ndarray | None = None
-    ) -> bool:
+    def all_models_at_objectives(self, alive_mask: np.ndarray | None = None) -> bool:
         """True if every model is within the radius of at least one objective.
 
         Dead models (alive_mask False) are treated as satisfied so they don't
@@ -65,9 +63,7 @@ class DistanceCache:
         alive_mask: np.ndarray | None = None,
     ) -> bool:
         """True if every model is within max_distance of at least one same-group model (or alone in its group)."""
-        min_dists = self.min_distances_to_same_group(
-            group_ids, alive_mask=alive_mask
-        )
+        min_dists = self.min_distances_to_same_group(group_ids, alive_mask=alive_mask)
         return bool((min_dists <= max_distance).all())
 
 

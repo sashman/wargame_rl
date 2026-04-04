@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-04-03T09:35:04.858Z"
-last_activity: 2026-04-03
+status: planning_next
+stopped_at: "Completed 01-02-PLAN.md — phase 01 plans done"
+last_updated: "2026-04-04T19:32:00+02:00"
+last_activity: 2026-04-04
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 0
   total_plans: 2
   completed_plans: 2
-  percent: 0
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-02)
 
 **Core value:** Agents learn recognisable tactical behaviour through reward shaping and environment design
-**Current focus:** Phase 01 — wounds-elimination
+**Current focus:** Phase 02 — alive-aware observation (next)
 
 ## Current Position
 
-Phase: 2
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-04-03
+Phase: 01 (wounds-elimination) — complete (2/2 plans summarized)
+Plan: —
+Status: Ready to discuss/plan phase 02
+Last activity: 2026-04-04
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [████████████████████] 2/2 plans in phase 01 (100%)
 
 ## Performance Metrics
 
@@ -79,6 +79,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-02T21:19:14.873Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-04-04
+Stopped at: Completed plan 01-02; criteria/group cohesion alive_mask + test rename + renderer X; `just validate` green
 Resume file: None

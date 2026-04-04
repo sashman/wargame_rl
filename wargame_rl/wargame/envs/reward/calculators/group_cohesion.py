@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.reward.calculators.base import PerModelRewardCalculator
 
 if TYPE_CHECKING:
@@ -41,7 +42,8 @@ class GroupCohesionCalculator(PerModelRewardCalculator):
             return 0.0
 
         group_ids = np.array([m.group_id for m in view.player_models], dtype=np.intp)
-        min_dists = cache.min_distances_to_same_group(group_ids)
+        alive = alive_mask_for(view.player_models)
+        min_dists = cache.min_distances_to_same_group(group_ids, alive_mask=alive)
         min_dist = float(min_dists[model_idx])
         max_distance = float(
             self.group_max_distance if self.group_max_distance is not None else 10.0
