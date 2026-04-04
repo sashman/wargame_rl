@@ -8,6 +8,18 @@ A reinforcement learning project that trains agents (DQN, PPO) to play tabletop 
 
 Agents learn recognisable tactical behaviour — advancing on objectives, maintaining unit cohesion, using cover, focusing fire, retreating when outmatched — through reward shaping and environment design.
 
+## Current Milestone: v1.1 Self-Play Stabilization & League Training
+
+**Goal:** Make PPO self-play and Elo evaluation reliable enough for day-to-day model iteration and promotion decisions.
+
+**Target features:**
+- Checkpoint/snapshot compatibility metadata and strict loader validation
+- Robust model-opponent loading across checkpoint formats and network settings
+- League-style opponent sampling (recent, strong, and diverse historical snapshots)
+- Elo confidence reporting and reproducible evaluation runs
+- CI smoke coverage for self-play and Elo CLI workflows
+- Training dashboards for self-play mode mix, opponent mix, and Elo trend
+
 ## Requirements
 
 ### Validated
@@ -32,29 +44,12 @@ Agents learn recognisable tactical behaviour — advancing on objectives, mainta
 
 ### Active
 
-- [ ] Per-model movement speed (speed bins as fractions of each model's max)
-- [ ] Positional encoding for transformer network
-- [ ] Hyperparameter sweep tooling (Wandb Sweeps or Optuna)
-- [ ] Improved metrics & dashboards (win rate, avg turns, reward breakdown, group violation rate)
-- ✓ Wounds & elimination (models with 0 wounds removed from play) — validated in Phase 1
-- [ ] Shooting action type with configurable accuracy/damage
-- [ ] Line of sight (raycasting or grid-based LOS)
-- [ ] Action type selection (move, shoot, or stay per model)
-- [ ] Reward shaping for combat (damage dealt, models lost, balanced vs objectives)
-- [ ] Terrain types (open, cover, blocking, difficult ground)
-- [ ] Cover mechanics (defensive bonus during shooting)
-- [ ] Difficult terrain (reduced movement speed)
-- [ ] Blocking terrain (impassable, blocks LOS)
-- [ ] Map generation (procedural or template-based layouts)
-- [ ] Two-agent environment (two sides with alternating or simultaneous turns)
-- [ ] Self-play training (agent vs frozen checkpoint copies)
-- [ ] Elo tracking for agent version comparison
-- [ ] Melee combat (close-range attacks when adjacent)
-- [ ] Morale / battleshock (casualties trigger morale tests)
-- [ ] Command abilities (per-model special actions)
-- [ ] Larger scenarios (10+ models per side with batched inference)
-- [ ] Web replay viewer (browser-based, replacing/complementing Pygame)
-- [ ] Community scenarios (library of env configs for classic missions)
+- [ ] Persist architecture metadata in PPO snapshots/checkpoints and validate at load time
+- [ ] Harden `model` opponent policy to handle checkpoint variants with explicit mismatch errors
+- [ ] Add league opponent sampling strategy (recent + high-Elo + random historical)
+- [ ] Add Elo reliability metrics (win rate, draw rate, uncertainty/confidence)
+- [ ] Add CI smoke tests for self-play training loop and `evaluate_elo.py`
+- [ ] Add dashboards/metrics for opponent mix, self-play ratio, and Elo trend
 
 ### Out of Scope
 
@@ -67,9 +62,9 @@ Agents learn recognisable tactical behaviour — advancing on objectives, mainta
 
 This is a brownfield project with a working environment, two RL algorithms, and a mature training pipeline. The codebase follows DDD principles in the environment layer (`domain/` for rules, `BattleView` protocol for consumers). Extension points are well-documented in `docs/ddd-envs.md`.
 
-The existing roadmap in `docs/goals-and-roadmap.md` defines six phases progressing from foundation hardening through combat, terrain, opponent AI, advanced mechanics, and scale. Phase 1 (foundation) is partially complete — curriculum learning, PPO, and multi-phase turns are done; per-model speed, positional encoding, sweep tooling, and metrics remain.
+Branch `feat/self-play` introduced a first pass of PPO self-play, snapshot opponents, and Elo evaluation tooling. This milestone focuses on production-hardening that pipeline: compatibility safety, opponent league quality, reproducible evaluation, and operational observability.
 
-The project models a specific tabletop miniatures wargame with detailed rules (see `docs/tabletop-rules-reference.md`). The environment currently implements movement and objective control; shooting, melee, morale, and terrain are planned additions that map directly to the tabletop's phase structure.
+Combat/terrain roadmap items remain important but are deferred while self-play infrastructure is stabilized, because training quality and model comparison now depend on this pipeline.
 
 ## Constraints
 
@@ -109,4 +104,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-03 after Phase 1 completion*
+*Last updated: 2026-04-04 after starting milestone v1.1*
