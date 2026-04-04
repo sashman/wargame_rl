@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready for **`/gsd-plan-phase 3`** (research → PLAN.md)
+status: planning
 stopped_at: Phase 3 planned — execute 03-01-PLAN
 last_updated: "2026-04-04T19:44:10.612Z"
-last_activity: 2026-04-04 — Phase 3 discussion areas 1–4 captured; context committed
+last_activity: 2026-04-04 — Phase 3 planned (03-01-PLAN)
 progress:
   total_phases: 6
   completed_phases: 2
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-02)
 
 **Core value:** Agents learn recognisable tactical behaviour through reward shaping and environment design
-**Current focus:** Phase 03 — Line of Sight service (`03-CONTEXT.md` gathered); ready to plan
+**Current focus:** Phase 03 — Line of Sight service; **execute `03-01-PLAN.md`**
 
 ## Current Position
 
-Phase: 03 (line-of-sight-service) — discuss-phase complete; **`03-CONTEXT.md`** + **`03-DISCUSSION-LOG.md`**
-Plan: —
-Status: Ready for **`/gsd-plan-phase 3`** (research → PLAN.md)
-Last activity: 2026-04-04 — Phase 3 discussion areas 1–4 captured; context committed
+Phase: 03 (line-of-sight-service) — **`03-01-PLAN.md`** (wave 1, 5 tasks); `03-RESEARCH.md` + `03-VALIDATION.md`
+Plan: 03-01 — domain LOS, tests, config mask, env helper, render debug
+Status: Ready for **`/gsd-execute-phase 3`**
+Last activity: 2026-04-04 — Plan-phase complete (research + validation + plan committed)
 
-Progress: Phase 01 complete (2/2 plans); Phase 02 plan 1/1 complete; Phase 03 context ready
+Progress: Phase 01 complete (2/2 plans); Phase 02 plan 1/1 complete; Phase 03 planned (1 plan)
 
 ## Performance Metrics
 
