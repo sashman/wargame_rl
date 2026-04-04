@@ -8,6 +8,7 @@ import pytest
 from wargame_rl.wargame.envs.domain.entities import WargameModel, alive_mask_for
 from wargame_rl.wargame.envs.domain.game_clock import GameClock
 from wargame_rl.wargame.envs.domain.termination import is_battle_over
+from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import (
@@ -16,6 +17,7 @@ from wargame_rl.wargame.envs.types.config import (
     OpponentPolicyConfig,
 )
 from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.model.common.observation import observation_to_tensor
 
 
 def _make_model(max_wounds: int, current_wounds: int | None = None) -> WargameModel:
@@ -295,3 +297,48 @@ def test_all_alive_models_at_objectives() -> None:
     alive = alive_mask_for(env.wargame_models)
     cache = compute_distances(env.wargame_models, env.objectives, alive_mask=alive)
     assert cache.all_models_at_objectives(alive_mask=alive) is True
+
+
+def test_observation_includes_alive_and_wounds_after_elimination(
+    wound_env: WargameEnv,
+) -> None:
+    wound_env.reset(seed=42)
+    wound_env.wargame_models[0].take_damage(2)
+    obs, _, _, _, _ = wound_env.step(WargameEnvAction(actions=[0, 0]))
+    m0 = obs.wargame_models[0]
+    m1 = obs.wargame_models[1]
+    assert m0.alive == 0.0
+    assert m0.current_wounds == 0
+    assert m0.max_wounds == 2
+    assert m1.alive == 1.0
+    assert m1.current_wounds == 2
+
+
+def test_observation_action_mask_dead_player_stay_only(wound_env: WargameEnv) -> None:
+    wound_env.reset(seed=42)
+    wound_env.wargame_models[0].take_damage(2)
+    obs, _, _, _, _ = wound_env.step(WargameEnvAction(actions=[0, 0]))
+    assert obs.action_mask is not None
+    row = obs.action_mask[0]
+    assert row[STAY_ACTION]
+    assert not row[1:].any()
+
+
+def test_observation_tensor_width_stable_with_elimination(
+    wound_env: WargameEnv,
+) -> None:
+    wound_env.reset(seed=42)
+    cfg = wound_env.config
+    n_obj = cfg.number_of_objectives
+    max_groups = cfg.max_groups
+    expected_dim = 2 + n_obj * 2 + max_groups + 1 + 3
+
+    obs0, _, _, _, _ = wound_env.step(WargameEnvAction(actions=[0, 0]))
+    t0 = observation_to_tensor(obs0, device="cpu")[2]
+    assert t0.shape == (2, expected_dim)
+
+    wound_env.wargame_models[0].take_damage(2)
+    obs1, _, _, _, _ = wound_env.step(WargameEnvAction(actions=[0, 0]))
+    t1 = observation_to_tensor(obs1, device="cpu")[2]
+    assert t1.shape == (2, expected_dim)
+    assert float(t1[0, -3]) == 0.0

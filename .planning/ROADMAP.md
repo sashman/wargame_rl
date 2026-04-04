@@ -43,7 +43,8 @@ Plans:
   1. The observation tensor includes current_wounds/max_wounds for all models without shape changes mid-episode
   2. Eliminated models are clearly flagged (alive=0) so the policy distinguishes alive from dead
   3. A training run completes without observation shape mismatches when models are eliminated mid-episode
-**Plans**: TBD
+**Plans**:
+- [x] `02-01-PLAN.md` — Types, `to_space`, observation builder + mask, tensor +3 features, tests, suite sweep
 
 ### Phase 3: Line of Sight Service
 **Goal**: A single authoritative LOS query exists in the domain layer, reusable by rules, masks, and renderers

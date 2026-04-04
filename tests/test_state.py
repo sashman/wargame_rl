@@ -23,8 +23,8 @@ def test_observation_to_tensor(experiences: list[Experience]) -> None:
     dim_distances = dim_location * n_objectives
     max_groups = state.wargame_models[0].max_groups
     dim_model = (
-        dim_location + dim_distances + max_groups + 1
-    )  # group_id one-hot + same-group closest dist
+        dim_location + dim_distances + max_groups + 1 + 3
+    )  # + alive, wound ratio, max_wounds/100
 
     game_size = state.size_game_observation
 
@@ -64,8 +64,8 @@ def test_experience_to_batch(experiences: list[Experience]) -> None:
     dim_distances = dim_location * n_objectives
     max_groups = state.wargame_models[0].max_groups
     dim_model = (
-        dim_location + dim_distances + max_groups + 1
-    )  # group_id one-hot + same-group closest dist
+        dim_location + dim_distances + max_groups + 1 + 3
+    )  # + alive, wound ratio, max_wounds/100
 
     n_wargame_models = state.n_wargame_models
     size_objectives = state.size_objectives

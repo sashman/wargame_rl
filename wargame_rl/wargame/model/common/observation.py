@@ -66,6 +66,9 @@ def _models_to_features(
 
     Returns shape (n_models, feature_dim). When n_models == 0 returns
     a (0, feature_dim) array so the tensor always has a known width.
+
+    The last three columns are: ``alive`` (0–1), normalized current wounds,
+    and normalized max wounds (÷ 100), per Phase 2 observation contract.
     """
     if not models:
         return np.zeros((0, feature_dim), dtype=np.float32)
@@ -76,7 +79,7 @@ def _models_to_features(
     )
     group_ids = np.array([m.group_id for m in models], dtype=np.int32)
 
-    return np.hstack(
+    core = np.hstack(
         [
             _normalize(locs, half_board),
             _normalize(dists, half_board_tiled),
@@ -84,6 +87,15 @@ def _models_to_features(
             _same_group_closest_distance(locs, group_ids, max_dist),
         ]
     )
+    alive_col = np.array([[m.alive] for m in models], dtype=np.float32)
+    cw = np.array([[float(m.current_wounds)] for m in models], dtype=np.float32)
+    mw = np.array([[float(m.max_wounds)] for m in models], dtype=np.float32)
+    mw_safe = np.maximum(mw, 1.0)
+    wound_ratio = np.clip(cw / mw_safe, 0.0, 1.0)
+    max_w_norm = np.clip(mw / 100.0, 0.0, 1.0)
+    out = np.hstack([core, alive_col, wound_ratio, max_w_norm])
+    assert out.shape[1] == feature_dim, (out.shape[1], feature_dim)
+    return out
 
 
 def _observation_to_numpy(
@@ -95,7 +107,11 @@ def _observation_to_numpy(
     ``action_mask`` is ``(n_models, n_actions)`` or None when not available.
     """
     models = state.wargame_models
-    max_groups = models[0].max_groups
+    max_groups = (
+        models[0].max_groups
+        if models
+        else (state.opponent_models[0].max_groups if state.opponent_models else 1)
+    )
 
     half_board = np.array(
         [state.board_width / 2.0, state.board_height / 2.0], dtype=np.float32
@@ -105,7 +121,8 @@ def _observation_to_numpy(
     max_dist = float(np.sqrt(state.board_width**2 + state.board_height**2))
 
     # 2 (loc) + n_objectives*2 (dists) + max_groups (group one-hot) + 1 (closest)
-    feature_dim = 2 + n_objectives * 2 + max_groups + 1
+    # +3 alive, current/max wound ratio, max_wounds/100
+    feature_dim = 2 + n_objectives * 2 + max_groups + 1 + 3
 
     model_features = _models_to_features(
         models, half_board, half_board_tiled, max_dist, max_groups, feature_dim
@@ -174,8 +191,10 @@ def observation_to_tensor(
            (0 rows when no opponents)
         5. tensor_action_mask: shape (n_models, n_actions), bool
 
-    model_features includes normalized location, distances to objectives,
-    group_id one-hot, and closest same-group distance.
+    model_features include normalized location, distances to objectives,
+    group_id one-hot, closest same-group distance, then ``alive`` (0–1),
+    ``current_wounds / max(max_wounds, 1)`` in [0, 1], and ``max_wounds / 100``
+    in [0, 1].
     """
     device = get_device(device)
     current_turn, obj_features, model_features, opp_features, mask = (
