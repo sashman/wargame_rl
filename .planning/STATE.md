@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-02)
 Phase: 02 (alive-aware-observation) — context captured; no plans yet
 Plan: —
 Status: Ready to plan phase 02 (`02-CONTEXT.md`)
-Last activity: 2026-04-04
+Last activity: 2026-04-04 - Completed quick task 260404-soy: Check if plotting/ directory is used, remove it and any related tests
 
 Progress: Phase 01 complete (2/2 plans); Phase 02 discuss done
 
@@ -75,6 +75,12 @@ None yet.
 
 - CUDA setup may be broken on dev machine — use `CUDA_VISIBLE_DEVICES=""` for training
 - LOS currently has no blocking terrain (terrain is v2) — LOS will report all-clear until terrain lands
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260404-soy | Check if plotting/ directory is used, remove it and any related tests | 2026-04-04 | 0bb7882 | [260404-soy-check-if-plotting-directory-is-used-remo](./quick/260404-soy-check-if-plotting-directory-is-used-remo/) |
 
 ## Session Continuity
 
