@@ -42,6 +42,26 @@ class AlgorithmType(str, Enum):
     PPO = "ppo"
 
 
+def _build_default_run_base_name(
+    algorithm: AlgorithmType,
+    network_type: NetworkType,
+    env_config: WargameEnvConfig,
+) -> str:
+    """Build a descriptive run name base from training and env metadata."""
+    parts = [
+        algorithm.value,
+        network_type.value,
+        f"m{env_config.number_of_wargame_models}",
+        f"opp{env_config.number_of_opponent_models}",
+        f"obj{env_config.number_of_objectives}",
+        f"b{env_config.board_width}x{env_config.board_height}",
+        f"ph{len(env_config.reward_phases)}",
+    ]
+    if env_config.opponent_policy is not None:
+        parts.append(f"vs-{env_config.opponent_policy.type}")
+    return "-".join(parts)
+
+
 def get_env_config(
     env_config_path: str | None, render_mode: str | None
 ) -> WargameEnvConfig:
@@ -107,6 +127,10 @@ def train(
         None,
         help="Override number of evaluation episodes per epoch (defaults to config value)",
     ),
+    run_name: str | None = typer.Option(
+        None,
+        help="Optional run name base. If omitted, a descriptive name is generated from algorithm/network/env settings.",
+    ),
     run_suffix: str | None = typer.Option(
         None,
         help="Optional suffix appended to run name (for unique checkpoint dirs when running multiple jobs in parallel)",
@@ -123,6 +147,8 @@ def train(
     # Ensure training episodes are long enough: override to at least 100 rounds
     # unless the config explicitly requests more.
     env_config.number_of_battle_rounds = max(env_config.number_of_battle_rounds, 100)
+    default_run_name = _build_default_run_base_name(algorithm, network_type, env_config)
+    run_name_base = run_name if run_name else default_run_name
 
     env = create_environment(env_config=env_config)
 
@@ -152,7 +178,7 @@ def train(
 
         with init_wandb(
             config=config,
-            name=env_config.config_name,
+            name=run_name_base,
             disabled=no_wandb,
             group=wandb_group,
             run_suffix=run_suffix,
@@ -215,7 +241,7 @@ def train(
 
         with init_wandb(
             config=config,
-            name=env_config.config_name,
+            name=run_name_base,
             disabled=no_wandb,
             group=wandb_group,
             run_suffix=run_suffix,
