@@ -33,7 +33,8 @@ def build_batch_tensor(
             distances_to_objectives = np.array(
                 [location - objective.location for objective in observation.objectives]
             )
-            max_groups = observation.wargame_models[0].max_groups
+            ref = observation.wargame_models[0]
+            max_groups = ref.max_groups
             testing_state = WargameEnvObservation(
                 current_turn=observation.current_turn,
                 wargame_models=[
@@ -42,6 +43,9 @@ def build_batch_tensor(
                         distances_to_objectives=distances_to_objectives,
                         group_id=1,
                         max_groups=max_groups,
+                        alive=ref.alive,
+                        current_wounds=ref.current_wounds,
+                        max_wounds=ref.max_wounds,
                     )
                     for _ in range(n_models)
                 ],

@@ -44,7 +44,7 @@ Plans:
   2. Eliminated models are clearly flagged (alive=0) so the policy distinguishes alive from dead
   3. A training run completes without observation shape mismatches when models are eliminated mid-episode
 **Plans**:
-- [ ] `02-01-PLAN.md` — Types, `to_space`, observation builder + mask, tensor +3 features, tests, suite sweep
+- [x] `02-01-PLAN.md` — Types, `to_space`, observation builder + mask, tensor +3 features, tests, suite sweep
 
 ### Phase 3: Line of Sight Service
 **Goal**: A single authoritative LOS query exists in the domain layer, reusable by rules, masks, and renderers

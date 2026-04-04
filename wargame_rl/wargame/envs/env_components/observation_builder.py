@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
+from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.env_components.actions import ActionRegistry
 from wargame_rl.wargame.envs.types import (
     WargameEnvInfo,
@@ -53,6 +54,9 @@ def _models_to_obs(
             distances_to_objectives=m.distances_to_objectives,
             group_id=m.group_id,
             max_groups=max_groups,
+            alive=1.0 if m.is_alive else 0.0,
+            current_wounds=int(m.stats["current_wounds"]),
+            max_wounds=int(m.stats["max_wounds"]),
         )
         for m in models
     ]
@@ -74,8 +78,9 @@ def build_observation(
     action_mask: np.ndarray | None = None
     if action_registry is not None:
         phase = view.game_clock_state.phase or BattlePhase.movement
+        player_alive = alive_mask_for(view.player_models)
         action_mask = action_registry.get_model_action_masks(
-            phase, len(view.player_models)
+            phase, len(view.player_models), alive_mask=player_alive
         )
 
     clock = view.game_clock_state

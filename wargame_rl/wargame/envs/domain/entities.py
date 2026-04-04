@@ -97,6 +97,12 @@ class WargameModel:
                 "current_wounds": spaces.Box(0, 100, shape=(1,), dtype=np.int32),
             }
         )
+        alive_space = spaces.Box(
+            low=np.array([0.0], dtype=np.float32),
+            high=np.array([1.0], dtype=np.float32),
+            shape=(1,),
+            dtype=np.float32,
+        )
 
         group_id_space: spaces.Discrete = spaces.Discrete(1)
 
@@ -105,6 +111,7 @@ class WargameModel:
                 "location": location_space,
                 "distances_to_objectives": distances_to_objectives_space,
                 "stats": stats_space,
+                "alive": alive_space,
                 "group_id": group_id_space,
             }
         )
