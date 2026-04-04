@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning_next
-stopped_at: "Completed 01-02-PLAN.md — phase 01 plans done"
-last_updated: "2026-04-04T19:32:00+02:00"
+status: planning
+stopped_at: Phase 2 context gathered
+last_updated: "2026-04-04T17:48:44.156Z"
 last_activity: 2026-04-04
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
   completed_plans: 2
-  percent: 100
 ---
 
 # Project State
@@ -21,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-02)
 
 **Core value:** Agents learn recognisable tactical behaviour through reward shaping and environment design
-**Current focus:** Phase 02 — alive-aware observation (next)
+**Current focus:** Phase 02 — alive-aware observation (plan next)
 
 ## Current Position
 
-Phase: 01 (wounds-elimination) — complete (2/2 plans summarized)
+Phase: 02 (alive-aware-observation) — context captured; no plans yet
 Plan: —
-Status: Ready to discuss/plan phase 02
+Status: Ready to plan phase 02 (`02-CONTEXT.md`)
 Last activity: 2026-04-04
 
-Progress: [████████████████████] 2/2 plans in phase 01 (100%)
+Progress: Phase 01 complete (2/2 plans); Phase 02 discuss done
 
 ## Performance Metrics
 
@@ -79,6 +78,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-04
-Stopped at: Completed plan 01-02; criteria/group cohesion alive_mask + test rename + renderer X; `just validate` green
-Resume file: None
+Last session: 2026-04-04T17:48:44.154Z
+Stopped at: Phase 2 context gathered
+Resume file: .planning/phases/02-alive-aware-observation/02-CONTEXT.md
