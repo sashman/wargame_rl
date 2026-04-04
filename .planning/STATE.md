@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 2 planned — execute 02-01-PLAN
-last_updated: "2026-04-04T17:54:40.208Z"
-last_activity: 2026-04-04
+status: "Ready for **Phase 3** (Line of Sight): no `03-*` CONTEXT yet — prefer **`/gsd-discuss-phase 3`** before **`/gsd-plan-phase 3`** (Phases 2 and 3 may run in parallel per roadmap)"
+stopped_at: Phase 3 context gathered
+last_updated: "2026-04-04T19:40:06.665Z"
+last_activity: 2026-04-04 — GSD resume; confirmed Phase 2 plan 1 complete (obs + tensors + masks + tests)
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-02)
 
 **Core value:** Agents learn recognisable tactical behaviour through reward shaping and environment design
-**Current focus:** Phase 02 — alive-aware observation (plan next)
+**Current focus:** Phase 02 — alive-aware observation **delivered** (02-01); next milestone work is Phase 03 (LOS) or formal phase transition
 
 ## Current Position
 
-Phase: 02 (alive-aware-observation) — context captured; no plans yet
-Plan: —
-Status: Ready to plan phase 02 (`02-CONTEXT.md`)
-Last activity: 2026-04-04 - Completed quick task 260404-soy: Check if plotting/ directory is used, remove it and any related tests
+Phase: 02 (alive-aware-observation) — **02-01 executed** (`02-01-SUMMARY.md`, 2026-04-04); roadmap lists no further Phase 2 plans
+Plan: 02-01 complete
+Status: Ready for **Phase 3** (Line of Sight): no `03-*` CONTEXT yet — prefer **`/gsd-discuss-phase 3`** before **`/gsd-plan-phase 3`** (Phases 2 and 3 may run in parallel per roadmap)
+Last activity: 2026-04-04 — GSD resume; confirmed Phase 2 plan 1 complete (obs + tensors + masks + tests)
 
-Progress: Phase 01 complete (2/2 plans); Phase 02 discuss done
+Progress: Phase 01 complete (2/2 plans); Phase 02 plan 1/1 complete
 
 ## Performance Metrics
 
@@ -84,6 +84,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-04T17:54:40.206Z
-Stopped at: Phase 2 planned — execute 02-01-PLAN
-Resume file: .planning/phases/02-alive-aware-observation/02-01-PLAN.md
+Last session: 2026-04-04T19:40:06.664Z
+Stopped at: Phase 3 context gathered
+Resume file: .planning/phases/03-line-of-sight-service/03-CONTEXT.md
