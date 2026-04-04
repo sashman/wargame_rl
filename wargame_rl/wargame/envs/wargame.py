@@ -42,6 +42,7 @@ from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.types import (
     BattlePhase,
+    OpponentPolicyConfig,
     PlayerSide,
     TurnOrder,
     WargameEnvAction,
@@ -328,6 +329,34 @@ class WargameEnv(gym.Env):
             self.board_height,
             self._opponent_action_handler.action_space,
         )
+
+    def set_opponent_policy_config(self, config: OpponentPolicyConfig | None) -> None:
+        """Swap the active opponent policy at runtime.
+
+        Args:
+            config: New opponent policy config. Must be provided when opponents
+                are enabled.
+        """
+        if self.config.number_of_opponent_models <= 0:
+            if config is not None:
+                raise ValueError(
+                    "Cannot set opponent policy when number_of_opponent_models == 0"
+                )
+            self._opponent_policy = None
+            self.config.opponent_policy = None
+            return
+
+        if config is None:
+            raise ValueError(
+                "opponent policy config cannot be None when opponents are enabled"
+            )
+
+        self.config.opponent_policy = config
+        self._opponent_policy = build_opponent_policy(config, self)
+
+    def get_opponent_policy_config(self) -> OpponentPolicyConfig | None:
+        """Return the currently configured opponent policy."""
+        return self.config.opponent_policy
 
     def _initial_player_side(self) -> PlayerSide:
         """Deterministic side assignment used at __init__ time."""

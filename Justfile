@@ -81,6 +81,13 @@ simulate checkpoint env_config_path network_type='':
 		uv run simulate.py --checkpoint-path {{checkpoint}} --env-config-path {{env_config_path}} --network-type {{network_type}}; \
 	fi
 
+evaluate-elo checkpoint env_config_path episodes='10' snapshot_dir='':
+	@if [ -z "{{snapshot_dir}}" ]; then \
+		uv run evaluate_elo.py --checkpoint-path {{checkpoint}} --env-config-path {{env_config_path}} --episodes-per-opponent {{episodes}}; \
+	else \
+		uv run evaluate_elo.py --checkpoint-path {{checkpoint}} --env-config-path {{env_config_path}} --episodes-per-opponent {{episodes}} --snapshot-dir {{snapshot_dir}}; \
+	fi
+
 clean-checkpoints:
 	rm -rf checkpoints/
 

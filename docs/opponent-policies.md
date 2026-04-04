@@ -118,6 +118,27 @@ opponent_policy:
 
 **Use case:** Provides goal-directed opposition that competes for the same objectives as the player. Good for training agents that need to learn to reach objectives before the opponent does.
 
+### `model`
+
+Load a frozen PPO policy checkpoint/snapshot and use it as the opponent.
+
+```yaml
+opponent_policy:
+  type: model
+  params:
+    checkpoint_path: checkpoints/my-run/self_play_snapshots/ppo_policy_epoch_0042.pt
+    deterministic: true
+```
+
+**Parameters:**
+
+| Param | Type | Default | Description |
+|------|------|---------|-------------|
+| `checkpoint_path` | string | *required* | Path to a PPO checkpoint/snapshot. Supports Lightning checkpoints and self-play snapshot `.pt` files containing `policy_state_dict`. |
+| `deterministic` | bool | `true` | If `true`, uses argmax action selection; if `false`, samples from the policy logits. |
+
+**Use case:** Self-play training and agent-vs-agent Elo evaluation.
+
 ## Planned Policies (Not Yet Implemented)
 
 The following policies are designed in the architecture but raise `NotImplementedError` if used:
@@ -125,7 +146,6 @@ The following policies are designed in the architecture but raise `NotImplemente
 | Type key | Description |
 |----------|-------------|
 | `human` | Read actions from the renderer (keyboard/mouse input). Enables human-vs-agent play. |
-| `model` | Load a pre-trained DQN checkpoint and use it as the opponent. Enables self-play and agent-vs-agent evaluation. |
 
 ## Adding a New Policy
 
@@ -160,6 +180,7 @@ def _auto_register():
     for mod in (
         "wargame_rl.wargame.envs.opponent.random_policy",
         "wargame_rl.wargame.envs.opponent.scripted_advance_to_objective_policy",
+        "wargame_rl.wargame.envs.opponent.model_policy",
         "wargame_rl.wargame.envs.opponent.scripted_hold_position_policy",  # new
     ):
         importlib.import_module(mod)
@@ -201,6 +222,7 @@ wargame_rl/wargame/envs/opponent/
   registry.py                                   # Type-string -> class registry + factory
   random_policy.py                              # RandomPolicy
   scripted_advance_to_objective_policy.py        # ScriptedAdvanceToObjectivePolicy
+  model_policy.py                               # Frozen PPO checkpoint policy
 
 examples/env_config/with_opponents/
   4v4_random_opponent.yaml                      # 4v4 with random opponent
