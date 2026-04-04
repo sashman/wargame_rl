@@ -18,8 +18,11 @@ Each process calls `wandb.init()` independently; Wandb supports multiple concurr
 
 When running `just train` or `uv run train.py` directly, you can pass:
 
+- **`--run-name`** — Override the base run name explicitly.
 - **`--run-suffix`** — Appended to the run name so checkpoint dirs stay unique (e.g. when scripting parallel jobs yourself).
 - **`--wandb-group`** — Group name in the Wandb UI for organizing related runs.
+
+If `--run-name` is not provided, the base name is generated from training/env metadata (algorithm, network type, model/objective counts, board size, phase count, and opponent policy type when present), then timestamp/suffix are appended.
 
 ## Hyperparameter search (future)
 
