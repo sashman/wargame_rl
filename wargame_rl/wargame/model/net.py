@@ -179,11 +179,13 @@ class TransformerNetwork(RL_Network):
             )
         )
         if self.is_policy:
-            self.action_head = nn.Linear(
+            self.policy_head: nn.Linear | None = nn.Linear(
                 self.config.embedding_size, self.n_actions, bias=False
             )
+            self.value_head: nn.Linear | None = None
         else:
-            self.action_head = nn.Linear(self.config.embedding_size, 1, bias=False)
+            self.policy_head = None
+            self.value_head = nn.Linear(self.config.embedding_size, 1, bias=False)
 
         self.apply(self._init_weights)
         for pn, p in self.named_parameters():
@@ -286,7 +288,15 @@ class TransformerNetwork(RL_Network):
         result: torch.Tensor = self.opponent_model_embedding(opp_tensor)
         return result
 
-    def forward(self, xs: list[torch.Tensor]) -> torch.Tensor:
+    def encode_state(self, xs: list[torch.Tensor]) -> tuple[torch.Tensor, int, int]:
+        """Encode observation tensors into contextual token representations.
+
+        Returns:
+            Tuple of:
+            - encoded sequence tensor of shape (batch, seq_len, embedding_size)
+            - prefix length before player-model tokens
+            - number of player-model tokens
+        """
         game_tensor = xs[0]
         objective_tensor = xs[1]
         wargame_model_tensor = xs[2]
@@ -313,16 +323,46 @@ class TransformerNetwork(RL_Network):
         for block in self.transformer.h:  # type: ignore
             x = block(x)
         x = self.transformer.ln_f(x)  # type: ignore
+        n_prefix = 1 + objective_embedding.shape[1]
+        return x, n_prefix, n_wargame_models
+
+    def policy_from_encoded(
+        self, encoded: torch.Tensor, n_prefix: int, n_wargame_models: int
+    ) -> torch.Tensor:
+        """Apply policy head to encoded tokens."""
+        if not self.is_policy:
+            raise ValueError("Policy head requested from a value network.")
+        if self.policy_head is None:
+            raise ValueError("Policy head is not initialized.")
+        wargame_model_output = encoded[:, n_prefix : n_prefix + n_wargame_models, :]
+        logits: torch.Tensor = self.policy_head(wargame_model_output)
+        return logits
+
+    def value_from_encoded(self, encoded: torch.Tensor) -> torch.Tensor:
+        """Apply value head to encoded tokens."""
+        if self.is_policy:
+            raise ValueError("Value head requested from a policy network.")
+        if self.value_head is None:
+            raise ValueError("Value head is not initialized.")
+        # Use the global game token (first token) as the critic summary.
+        game_token = encoded[:, 0, :]
+        value: torch.Tensor = self.value_head(game_token)
+        return value.squeeze(-1)
+
+    def share_backbone_with(self, backbone_source: "TransformerNetwork") -> None:
+        """Share embedding + transformer trunk with another TransformerNetwork."""
+        self.game_embedding = backbone_source.game_embedding
+        self.objective_embedding = backbone_source.objective_embedding
+        self.wargame_model_embedding = backbone_source.wargame_model_embedding
+        self.opponent_model_embedding = backbone_source.opponent_model_embedding
+        self.transformer = backbone_source.transformer
+
+    def forward(self, xs: list[torch.Tensor]) -> torch.Tensor:
+        encoded, n_prefix, n_wargame_models = self.encode_state(xs)
 
         if self.is_policy:
-            # Player model tokens are right after game(1) + objectives(N_o).
-            n_prefix = 1 + objective_embedding.shape[1]
-            wargame_model_output = x[:, n_prefix : n_prefix + n_wargame_models, :]
-            logits: torch.Tensor = self.action_head(wargame_model_output)
-            return logits
-
-        value: torch.Tensor = self.action_head(x)
-        return value.mean(dim=[1, 2])
+            return self.policy_from_encoded(encoded, n_prefix, n_wargame_models)
+        return self.value_from_encoded(encoded)
 
     # def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
     #     # start with all of the candidate parameters
