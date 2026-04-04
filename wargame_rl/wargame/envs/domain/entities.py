@@ -66,9 +66,7 @@ class WargameModel:
 
         Sole entry point for wound reduction across the codebase.
         """
-        self.stats["current_wounds"] = max(
-            0, self.stats["current_wounds"] - amount
-        )
+        self.stats["current_wounds"] = max(0, self.stats["current_wounds"] - amount)
 
     def __repr__(self) -> str:
         return f"WargameModel(location={self.location}, distances_to_objectives={self.distances_to_objectives}, group_id={self.group_id})"

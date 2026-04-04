@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.reward.criteria.base import SuccessCriteria
 
 if TYPE_CHECKING:
@@ -28,4 +29,7 @@ class AllModelsGroupedCriteria(SuccessCriteria):
             return False
 
         group_ids = np.array([m.group_id for m in view.player_models], dtype=np.intp)
-        return cache.all_models_within_group_distance(group_ids, self.max_distance)
+        alive = alive_mask_for(view.player_models)
+        return cache.all_models_within_group_distance(
+            group_ids, self.max_distance, alive_mask=alive
+        )

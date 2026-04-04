@@ -139,9 +139,7 @@ class RewardPhaseManager:
         across all models.  Global rewards are weighted and added on top.
         """
         phase = self.current_phase
-        alive_models = [
-            (i, m) for i, m in enumerate(view.player_models) if m.is_alive
-        ]
+        alive_models = [(i, m) for i, m in enumerate(view.player_models) if m.is_alive]
         n_alive = len(alive_models)
 
         per_model_sums = {name: 0.0 for name, _calc in phase.per_model_calculators}

@@ -607,12 +607,18 @@ class HumanRender(Renderer):
                 pygame.draw.circle(canvas, grey, (cx, cy), r)
                 xr = self.pix_square_size / 4
                 pygame.draw.line(
-                    canvas, (120, 120, 120),
-                    (cx - xr, cy - xr), (cx + xr, cy + xr), 2,
+                    canvas,
+                    (120, 120, 120),
+                    (cx - xr, cy - xr),
+                    (cx + xr, cy + xr),
+                    2,
                 )
                 pygame.draw.line(
-                    canvas, (120, 120, 120),
-                    (cx + xr, cy - xr), (cx - xr, cy + xr), 2,
+                    canvas,
+                    (120, 120, 120),
+                    (cx + xr, cy - xr),
+                    (cx - xr, cy + xr),
+                    2,
                 )
                 continue
             color = self._color_for_group(model.group_id)
@@ -640,6 +646,21 @@ class HumanRender(Renderer):
                 top_right = (cx + r, cy - r * 0.6)
                 bottom = (cx, cy + r * 0.8)
                 pygame.draw.polygon(canvas, grey, [top_left, top_right, bottom])
+                xr = self.pix_square_size / 4
+                pygame.draw.line(
+                    canvas,
+                    (120, 120, 120),
+                    (cx - xr, cy - xr),
+                    (cx + xr, cy + xr),
+                    2,
+                )
+                pygame.draw.line(
+                    canvas,
+                    (120, 120, 120),
+                    (cx + xr, cy - xr),
+                    (cx - xr, cy + xr),
+                    2,
+                )
                 continue
             color = self._opponent_color_for_group(model.group_id)
             top_left = (cx - r, cy - r * 0.6)
