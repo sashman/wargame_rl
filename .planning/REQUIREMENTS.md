@@ -26,10 +26,10 @@ Requirements for the shooting & model destruction milestone. Each maps to roadma
 
 ### Line of Sight
 
-- [ ] **LOS-01**: A model can only shoot targets it has line of sight to
-- [ ] **LOS-02**: LOS is computed via grid-based ray tracing (Bresenham) checking for blocking cells
+- [x] **LOS-01**: A model can only shoot targets it has line of sight to *(query implemented Phase 3; enforcement Phase 4)*
+- [x] **LOS-02**: LOS is computed via grid-based ray tracing (Bresenham) checking for blocking cells
 - [ ] **LOS-03**: LOS results are used in action masking so the agent cannot select invalid shoot targets
-- [ ] **LOS-04**: The LOS query is a single domain service reused by rules, masks, and rendering
+- [x] **LOS-04**: The LOS query is a single domain service reused by rules, masks, and rendering
 
 ### Action Space
 
@@ -115,10 +115,10 @@ Deferred to future milestones. Tracked but not in current roadmap.
 | SHOT-04 | Phase 5 | Pending |
 | SHOT-05 | Phase 5 | Pending |
 | SHOT-06 | Phase 5 | Pending |
-| LOS-01 | Phase 3 | Pending |
-| LOS-02 | Phase 3 | Pending |
+| LOS-01 | Phase 3 | Complete (query; mask in Phase 4) |
+| LOS-02 | Phase 3 | Complete |
 | LOS-03 | Phase 4 | Pending |
-| LOS-04 | Phase 3 | Pending |
+| LOS-04 | Phase 3 | Complete |
 | ACT-01 | Phase 4 | Pending |
 | ACT-02 | Phase 4 | Pending |
 | ACT-03 | Phase 4 | Pending |

@@ -3,33 +3,35 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 3 planned — execute 03-01-PLAN
-last_updated: "2026-04-04T19:44:10.612Z"
-last_activity: 2026-04-04 — Phase 3 planned (03-01-PLAN)
+stopped_at: Phase 3 complete — ready to discuss/plan Phase 4 (shooting action space)
+last_updated: "2026-04-04T20:05:00.000Z"
+last_activity: 2026-04-04 — Phase 3 transitioned; roadmap + PROJECT updated
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-02)
+See: .planning/PROJECT.md (updated 2026-04-04)
 
 **Core value:** Agents learn recognisable tactical behaviour through reward shaping and environment design
-**Current focus:** Phase 03 — Line of Sight service; **execute `03-01-PLAN.md`**
+**Current focus:** Phase **4** — Shooting Action Space (LOS-03, ACT-*, masks)
 
 ## Current Position
 
-Phase: 03 (line-of-sight-service) — **`03-01-PLAN.md`** (wave 1, 5 tasks); `03-RESEARCH.md` + `03-VALIDATION.md`
-Plan: 03-01 — domain LOS, tests, config mask, env helper, render debug
-Status: Ready for **`/gsd-execute-phase 3`**
-Last activity: 2026-04-04 — Plan-phase complete (research + validation + plan committed)
+Phase: **4** (shooting-action-space) — not started; **no `04-*` CONTEXT** yet
+Plan: —
+Status: Ready for **`/gsd-discuss-phase 4`** (recommended) or **`/gsd-plan-phase 4`**
+Last activity: 2026-04-04 — Phase 3 (LOS) marked complete; `gsd-tools phase complete 3`
 
-Progress: Phase 01 complete (2/2 plans); Phase 02 plan 1/1 complete; Phase 03 planned (1 plan)
+Progress: Phases **1–3** complete (4/4 plans executed in tracked milestone plans); **Phase 4** next
+
+**Plans bar:** `[████████████████████] 4/4 plans (100%)` *(milestone plan queue to date)*
 
 ## Performance Metrics
 
@@ -60,6 +62,7 @@ Progress: Phase 01 complete (2/2 plans); Phase 02 plan 1/1 complete; Phase 03 pl
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
+- **Phase 3:** LOS uses Bresenham + **interior-only** `is_blocking`; optional **`blocking_mask`** in YAML; **`domain/los.py`** is the single source (human debug uses **`L`** + `iter_los_cells`).
 - Wounds/elimination before shooting (shooting needs durable state to be meaningful)
 - LOS as a single domain service reused by rules, masks, and rendering (not duplicated)
 - Phases 2 and 3 are independent and can execute in parallel
@@ -74,7 +77,7 @@ None yet.
 ### Blockers/Concerns
 
 - CUDA setup may be broken on dev machine — use `CUDA_VISIBLE_DEVICES=""` for training
-- LOS currently has no blocking terrain (terrain is v2) — LOS will report all-clear until terrain lands
+- Full **terrain v2** still future — use optional **`blocking_mask`** for LOS tests and hand-authored blocking until terrain lands
 
 ### Quick Tasks Completed
 
@@ -84,6 +87,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-04T19:44:10.611Z
-Stopped at: Phase 3 planned — execute 03-01-PLAN
-Resume file: .planning/phases/03-line-of-sight-service/03-01-PLAN.md
+Last session: 2026-04-04T20:05:00.000Z
+Stopped at: Phase 3 complete; ready to plan Phase 4 (shooting action space)
+Resume file: —

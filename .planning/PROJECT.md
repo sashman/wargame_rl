@@ -29,6 +29,7 @@ Agents learn recognisable tactical behaviour — advancing on objectives, mainta
 - ✓ Pygame human rendering with tooltips, arrows, panels — existing
 - ✓ Multi-run parallel training with grouped Wandb logging — existing
 - ✓ DDD-structured environment with BattleView protocol for read-only state access — existing
+- ✓ Line-of-sight query on discrete grid (Bresenham, injectable blocking, `WargameEnv.has_line_of_sight_between_cells`) — Phase 3
 
 ### Active
 
@@ -38,9 +39,9 @@ the current one finishes.
 
 #### v1.0 — Ranged Combat & Model Destruction (current milestone)
 
-- ✓ Wounds & elimination (models with 0 wounds removed from play) — validated in Phase 1
-- [ ] Alive-aware observation (alive flags, wound status in tensor, no shape changes mid-episode)
-- [ ] Line of sight service (Bresenham ray tracing, single domain module)
+- ✓ Wounds & elimination (models with 0 wounds removed from play) — Phase 1
+- ✓ Alive-aware observation (alive flags, wound status in tensor, no shape changes mid-episode) — Phase 2
+- ✓ Line of sight service (Bresenham ray tracing, optional `blocking_mask`, domain `los.py`, env + render hooks) — Phase 3
 - [ ] Shooting action space (target selection registered in ActionRegistry, phase-gated masks)
 - [ ] Shooting resolution (hit → wound → save → damage with configurable weapon profiles)
 - [ ] Combat reward & curriculum (damage dealt / models lost calculators, shooting curriculum phase)
@@ -142,7 +143,7 @@ This is a brownfield project with a working environment, two RL algorithms, and 
 
 The project models a tabletop miniatures wargame with detailed rules (see `docs/tabletop-rules-reference.md`). The environment currently implements movement and objective control. The long-term vision spans 8 milestones (v1.0–v8.0) progressing from ranged combat through terrain, advanced movement, weapon diversity, morale, tactical resources, adversarial self-play, and scale. Melee combat is explicitly out of scope.
 
-v1.0 (Ranged Combat & Model Destruction) is the active milestone — Phase 1 complete, Phase 2 planned. Future milestones are captured in the Active requirements above and will be created via `/gsd-new-milestone` as each completes.
+v1.0 (Ranged Combat & Model Destruction) is the active milestone — Phases 1–3 delivered; next is Phase 4 (shooting action space). Future milestones are captured in the Active requirements above and will be created via `/gsd-new-milestone` as each completes.
 
 ## Constraints
 
@@ -163,6 +164,7 @@ v1.0 (Ranged Combat & Model Destruction) is the active milestone — Phase 1 com
 | Registry pattern for reward calculators, criteria, opponents | YAML-extensible without code changes to core | ✓ Good |
 | Reward phases for curriculum learning | Breaks sparse reward problem into learnable stages | ✓ Good |
 | Skip non-movement phases by default | Keeps training fast until mechanics are implemented | ✓ Good |
+| Phase 3 LOS: interior cells only for blocking; optional YAML `blocking_mask`; single `domain/los.py` | Matches tabletop-style trace; v2 terrain maps onto mask; no duplicate Bresenham in render | ✓ Good |
 
 ## Evolution
 
@@ -182,4 +184,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-04 — expanded Active requirements with v2.0–v8.0 strategic milestones*
+*Last updated: 2026-04-04 — Phase 3 complete; LOS validated; v1.0 progress through Phase 3*
