@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import gymnasium as gym
@@ -16,6 +17,7 @@ from wargame_rl.wargame.envs.domain.battle_factory import (
 )
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.game_clock import GameClock
+from wargame_rl.wargame.envs.domain.los import has_line_of_sight, iter_los_cells
 from wargame_rl.wargame.envs.domain.placement import place_for_episode
 from wargame_rl.wargame.envs.domain.termination import is_battle_over
 from wargame_rl.wargame.envs.domain.turn_execution import (
@@ -159,6 +161,33 @@ class WargameEnv(gym.Env):
     def opponent_action_space(self) -> spaces.Tuple:
         """Action space for opponent models (used by policies)."""
         return self._opponent_action_handler.action_space
+
+    def _make_is_blocking(self) -> Callable[[int, int], bool]:
+        """Terrain blocking predicate from ``config.blocking_mask`` (LOS interior cells only)."""
+        mask = self.config.blocking_mask
+        if mask is None:
+            return lambda _x, _y: False
+        return lambda x, y: bool(mask[y][x])
+
+    def has_line_of_sight_between_cells(
+        self, x0: int, y0: int, x1: int, y1: int
+    ) -> bool:
+        """True if there is line of sight between two grid cells (Bresenham + blocking mask)."""
+        return has_line_of_sight(
+            x0,
+            y0,
+            x1,
+            y1,
+            self.board_width,
+            self.board_height,
+            self._make_is_blocking(),
+        )
+
+    def iter_los_cells_between_cells(
+        self, x0: int, y0: int, x1: int, y1: int
+    ) -> list[tuple[int, int]]:
+        """Inclusive Bresenham cells between endpoints; empty if an endpoint is out of bounds."""
+        return iter_los_cells(x0, y0, x1, y1, self.board_width, self.board_height)
 
     # BattleView protocol (read-only battle state for renderers and reward)
     @property

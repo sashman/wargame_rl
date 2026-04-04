@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Protocol, TypeVar
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from wargame_rl.wargame.envs.reward.phase import (
     RewardCalculatorConfig,
@@ -176,6 +176,14 @@ class WargameEnvConfig(BaseModel):
     board_height: int = Field(
         gt=0, default=50, description="Height of the grid (y dimension)"
     )
+    blocking_mask: list[list[bool]] | None = Field(
+        default=None,
+        description=(
+            "Optional LOS blocking grid: outer list is y (row 0..board_height-1), "
+            "inner is x (column 0..board_width-1). Cells True block line-of-sight "
+            "through interior path cells only. None = no terrain blocking."
+        ),
+    )
     render_mode: str | None = Field(
         default=None, description="Rendering mode for the environment"
     )
@@ -288,6 +296,31 @@ class WargameEnvConfig(BaseModel):
         description="Mission config: selects VP calculator and params (vp_per_objective, cap_per_turn, min_round).",
     )
 
+    @field_validator("blocking_mask", mode="before")
+    @classmethod
+    def normalize_blocking_mask(cls, value: object) -> object:
+        """Allow YAML 0/1 integers as well as booleans."""
+        if value is None:
+            return None
+        if not isinstance(value, list):
+            raise TypeError("blocking_mask must be a list of rows or None")
+        rows: list[list[bool]] = []
+        for i, row in enumerate(value):
+            if not isinstance(row, list):
+                raise TypeError(f"blocking_mask row {i} must be a list")
+            out_row: list[bool] = []
+            for j, cell in enumerate(row):
+                if isinstance(cell, bool):
+                    out_row.append(cell)
+                elif cell in (0, 1):
+                    out_row.append(cell == 1)
+                else:
+                    raise ValueError(
+                        f"blocking_mask cell [{i}][{j}] must be bool or 0/1, got {cell!r}"
+                    )
+            rows.append(out_row)
+        return rows
+
     @model_validator(mode="before")
     @classmethod
     def size_to_width_height(cls, data: object) -> object:
@@ -345,6 +378,24 @@ class WargameEnvConfig(BaseModel):
             )
 
         self.reward_phases = updated_phases
+        return self
+
+    @model_validator(mode="after")
+    def validate_blocking_mask_shape(self) -> "WargameEnvConfig":
+        if self.blocking_mask is None:
+            return self
+        if len(self.blocking_mask) != self.board_height:
+            raise ValueError(
+                "blocking_mask must have board_height rows "
+                f"({self.board_height}), got {len(self.blocking_mask)}"
+            )
+        for yi, row in enumerate(self.blocking_mask):
+            if len(row) != self.board_width:
+                raise ValueError(
+                    "blocking_mask row "
+                    f"{yi} must have length board_width ({self.board_width}), "
+                    f"got {len(row)}"
+                )
         return self
 
     @model_validator(mode="after")
