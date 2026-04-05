@@ -17,6 +17,10 @@ from wargame_rl.wargame.envs.env_components.placement import (
     objective_placement,
     wargame_model_placement,
 )
+from wargame_rl.wargame.envs.env_components.shooting_masks import (
+    compute_shooting_masks,
+    max_weapon_ranges,
+)
 from wargame_rl.wargame.envs.env_components.termination import (
     check_max_turns_reached,
     get_termination,
@@ -30,6 +34,8 @@ __all__ = [
     "build_info",
     "build_observation",
     "compute_distances",
+    "compute_shooting_masks",
+    "max_weapon_ranges",
     "update_distances_to_objectives",
     "wargame_model_placement",
     "objective_placement",
