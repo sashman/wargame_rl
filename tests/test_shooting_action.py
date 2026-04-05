@@ -8,10 +8,7 @@ from gymnasium import spaces
 from pydantic import ValidationError
 
 from wargame_rl.wargame.envs.domain.entities import WargameModel
-from wargame_rl.wargame.envs.env_components.actions import (
-    STAY_ACTION,
-    ActionHandler,
-)
+from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION, ActionHandler
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import ModelConfig, WeaponProfile
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
@@ -177,9 +174,7 @@ class TestShootingActionMask:
 
 class TestPhaseAwareApply:
     def _action_space(self, handler: ActionHandler, n: int) -> spaces.Tuple:
-        return spaces.Tuple(
-            [spaces.Discrete(handler.n_actions) for _ in range(n)]
-        )
+        return spaces.Tuple([spaces.Discrete(handler.n_actions) for _ in range(n)])
 
     def test_shooting_action_noop(self) -> None:
         cfg = _small_config(n_opponents=N_OPPONENTS)
@@ -190,7 +185,11 @@ class TestPhaseAwareApply:
         assert s is not None
         action = WargameEnvAction(actions=[s.start])
         h.apply(
-            action, [model], 20, 20, self._action_space(h, 1),
+            action,
+            [model],
+            20,
+            20,
+            self._action_space(h, 1),
             phase=BattlePhase.shooting,
         )
         np.testing.assert_array_equal(model.location, original)
@@ -202,7 +201,11 @@ class TestPhaseAwareApply:
         original = model.location.copy()
         action = WargameEnvAction(actions=[1])  # first movement action
         h.apply(
-            action, [model], 20, 20, self._action_space(h, 1),
+            action,
+            [model],
+            20,
+            20,
+            self._action_space(h, 1),
             phase=BattlePhase.movement,
         )
         assert not np.array_equal(model.location, original)
@@ -214,7 +217,11 @@ class TestPhaseAwareApply:
         original = model.location.copy()
         action = WargameEnvAction(actions=[STAY_ACTION])
         h.apply(
-            action, [model], 20, 20, self._action_space(h, 1),
+            action,
+            [model],
+            20,
+            20,
+            self._action_space(h, 1),
             phase=BattlePhase.shooting,
         )
         np.testing.assert_array_equal(model.location, original)
