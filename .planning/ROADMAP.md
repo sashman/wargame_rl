@@ -67,7 +67,10 @@ Plans:
   2. Shooting actions are masked out in non-shooting phases; movement actions are masked out in shooting phase
   3. Action masks correctly filter shoot targets by LOS, weapon range, and target alive status
   4. Each model selects an action type per phase — move (movement), shoot (shooting), or stay (any)
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 04-01-PLAN.md — Config types (WeaponProfile), ActionHandler shooting slice + phase-aware apply, unit tests
+- [ ] 04-02-PLAN.md — Shooting mask function, observation builder overlay, env wiring, integration tests
 
 ### Phase 5: Shooting Resolution
 **Goal**: Shooting actions resolve damage through the tabletop attack sequence with configurable weapons
