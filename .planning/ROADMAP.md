@@ -69,7 +69,7 @@ Plans:
   4. Each model selects an action type per phase — move (movement), shoot (shooting), or stay (any)
 **Plans:** 2 plans
 Plans:
-- [ ] 04-01-PLAN.md — Config types (WeaponProfile), ActionHandler shooting slice + phase-aware apply, unit tests
+- [x] 04-01-PLAN.md — Config types (WeaponProfile), ActionHandler shooting slice + phase-aware apply, unit tests
 - [ ] 04-02-PLAN.md — Shooting mask function, observation builder overlay, env wiring, integration tests
 
 ### Phase 5: Shooting Resolution

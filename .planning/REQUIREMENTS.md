@@ -19,7 +19,7 @@ Requirements for the shooting & model destruction milestone. Each maps to roadma
 
 - [ ] **SHOT-01**: Models can select a shoot action targeting an enemy model within weapon range
 - [ ] **SHOT-02**: Shooting resolves via the tabletop attack sequence: hit roll → wound roll → save → damage
-- [ ] **SHOT-03**: Shooting is only valid during the shooting phase (phase-gated via action masks)
+- [x] **SHOT-03**: Shooting is only valid during the shooting phase (phase-gated via action masks)
 - [ ] **SHOT-04**: Models that advanced or fell back cannot shoot (consistent with tabletop rules)
 - [ ] **SHOT-05**: Models in engagement range cannot shoot (locked in combat restriction)
 - [ ] **SHOT-06**: Weapon profiles are configurable per model (range, attacks, BS, strength, AP, damage)
@@ -33,10 +33,10 @@ Requirements for the shooting & model destruction milestone. Each maps to roadma
 
 ### Action Space
 
-- [ ] **ACT-01**: Each model selects an action type per phase: move (movement phase), shoot (shooting phase), or stay (any phase)
-- [ ] **ACT-02**: Shooting actions are registered in ActionRegistry as a new slice with shooting-phase validity
+- [x] **ACT-01**: Each model selects an action type per phase: move (movement phase), shoot (shooting phase), or stay (any phase)
+- [x] **ACT-02**: Shooting actions are registered in ActionRegistry as a new slice with shooting-phase validity
 - [ ] **ACT-03**: Action masks combine phase validity, LOS, range, and model alive status
-- [ ] **ACT-04**: The total action space grows to accommodate shooting target indices alongside existing movement actions
+- [x] **ACT-04**: The total action space grows to accommodate shooting target indices alongside existing movement actions
 
 ### Combat Reward
 
@@ -122,7 +122,7 @@ Deferred to v9.0. Roadmap phases TBD when the milestone is activated.
 | WOUND-05 | Phase 1 | Complete |
 | SHOT-01 | Phase 5 | Pending |
 | SHOT-02 | Phase 5 | Pending |
-| SHOT-03 | Phase 4 | Pending |
+| SHOT-03 | Phase 4 | Complete |
 | SHOT-04 | Phase 5 | Pending |
 | SHOT-05 | Phase 5 | Pending |
 | SHOT-06 | Phase 5 | Pending |
@@ -130,10 +130,10 @@ Deferred to v9.0. Roadmap phases TBD when the milestone is activated.
 | LOS-02 | Phase 3 | Complete |
 | LOS-03 | Phase 4 | Pending |
 | LOS-04 | Phase 3 | Complete |
-| ACT-01 | Phase 4 | Pending |
-| ACT-02 | Phase 4 | Pending |
+| ACT-01 | Phase 4 | Complete |
+| ACT-02 | Phase 4 | Complete |
 | ACT-03 | Phase 4 | Pending |
-| ACT-04 | Phase 4 | Pending |
+| ACT-04 | Phase 4 | Complete |
 | CRWD-01 | Phase 6 | Pending |
 | CRWD-02 | Phase 6 | Pending |
 | CRWD-03 | Phase 6 | Pending |
