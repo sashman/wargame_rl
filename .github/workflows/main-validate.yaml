@@ -3,7 +3,13 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
   pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
 
 defaults:
   run:
@@ -14,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.13"]
 
     steps:
       - name: 🛎️ Checkout
@@ -37,7 +43,7 @@ jobs:
         run: just dev-sync
 
       - name: 💅 Format
-        run: just format
+        run: uv run ruff format --check
 
       - name: 🔍 Lint
         run: just lint
@@ -49,7 +55,7 @@ jobs:
       pull-requests: write
     strategy:
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.13"]
 
     steps:
       - name: 🛎️ Checkout
@@ -79,3 +85,15 @@ jobs:
         uses: MishaKav/pytest-coverage-comment@main
         with:
           pytest-xml-coverage-path: coverage.xml
+
+  ci-passed:
+    needs: [lint, test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: All checks passed
+        run: |
+          if [[ "${{ needs.lint.result }}" == "failure" ||
+                "${{ needs.test.result }}" == "failure" ]]; then
+            exit 1
+          fi
