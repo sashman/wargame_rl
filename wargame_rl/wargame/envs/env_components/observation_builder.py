@@ -12,6 +12,10 @@ import numpy as np
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.env_components.actions import ActionRegistry
+from wargame_rl.wargame.envs.env_components.shooting_masks import (
+    compute_shooting_masks,
+    max_weapon_ranges,
+)
 from wargame_rl.wargame.envs.types import (
     WargameEnvInfo,
     WargameEnvObjectiveObservation,
@@ -82,6 +86,29 @@ def build_observation(
         action_mask = action_registry.get_model_action_masks(
             phase, len(view.player_models), alive_mask=player_alive
         )
+        if (
+            action_registry.has_slice("shooting")
+            and phase == BattlePhase.shooting
+            and view.opponent_models
+        ):
+            shooting_slice = action_registry.slice_for("shooting")
+            opponent_alive = alive_mask_for(view.opponent_models)
+            player_positions = np.array([m.location for m in view.player_models])
+            opponent_positions = np.array([m.location for m in view.opponent_models])
+            player_ranges = max_weapon_ranges(
+                view.config.models, len(view.player_models)
+            )
+            shooting_validity = compute_shooting_masks(
+                player_positions,
+                opponent_positions,
+                player_alive,
+                opponent_alive,
+                player_ranges,
+                view.has_line_of_sight_between_cells,
+            )
+            action_mask[:, shooting_slice.start : shooting_slice.end] &= (
+                shooting_validity
+            )
 
     clock = view.game_clock_state
     phase = clock.phase or BattlePhase.movement

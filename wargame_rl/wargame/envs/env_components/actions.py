@@ -78,6 +78,10 @@ class ActionRegistry:
     def slice_for(self, name: str) -> ActionSlice:
         return self._by_name[name]
 
+    def has_slice(self, name: str) -> bool:
+        """True if a slice with this name has been registered."""
+        return name in self._by_name
+
     def get_action_mask(self, phase: BattlePhase) -> np.ndarray:
         """Return a ``(n_actions,)`` bool mask — True for valid actions."""
         mask = np.zeros(self._offset, dtype=bool)
