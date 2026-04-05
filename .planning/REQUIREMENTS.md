@@ -88,6 +88,17 @@ Deferred to future milestones. Tracked but not in current roadmap.
 - **SCALE-02**: Web replay viewer
 - **SCALE-03**: Community scenario library
 
+### Structured state & events (v9.0)
+
+Deferred to v9.0. Roadmap phases TBD when the milestone is activated.
+
+- **SGS-01**: A canonical programmatic game-state model exists (board, entities, phase, scoring, etc.), sourced from domain / read-only views, not tied to RL observation tensors
+- **SGS-02**: Serialised state is suitable for external APIs and for LLM-facing validation (stable identifiers, documented semantics, explicit schema version)
+- **SGS-03**: A layered change protocol expresses updates as full snapshots and/or granular deltas at defined abstraction levels to minimise redundancy
+- **SGS-04**: Default encoding is JSON; a codec or encoder interface allows additional formats without changing the canonical model
+- **SGS-05**: An append-only, ordered event stream can represent a complete match history for storage or streaming
+- **SGS-06**: Replay is deterministic: events (optionally with periodic snapshots) applied from a known initial configuration reconstruct any requested historical state (fast-forward / seek)
+
 ## Out of Scope
 
 | Feature | Reason |
@@ -135,7 +146,8 @@ Deferred to future milestones. Tracked but not in current roadmap.
 - v1 requirements: 26 total
 - Mapped to phases: 26 ✓
 - Unmapped: 0
+- v9.0 (structured state & events): 6 requirements (**SGS-01**–**SGS-06**); phases not yet defined
 
 ---
 *Requirements defined: 2026-04-02*
-*Last updated: 2026-04-02 after roadmap creation*
+*Last updated: 2026-04-05 — added v9.0 SGS-* requirements (roadmap TBD)*

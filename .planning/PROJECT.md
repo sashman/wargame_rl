@@ -119,6 +119,15 @@ the current one finishes.
 - [ ] Web replay viewer (browser-based, replacing/complementing Pygame)
 - [ ] Community scenario library (env configs for classic missions)
 
+#### v9.0 — Structured game state & event streaming
+
+- [ ] **Canonical state model** — Programmatic representation of the full game (board, models, objectives, phase, scores, etc.) derived from domain / `BattleView`, independent of raw tensors
+- [ ] **API- and LLM-ready text** — Stable field names, documented semantics, and schema versioning so the same payload suits HTTP/streaming APIs and LLM validation of legality and consistency
+- [ ] **Layered change protocol** — Efficient encoding of state updates: full snapshots where needed, plus granular deltas at the right abstraction level (turn, step, sub-step) without redundant bulk
+- [ ] **Pluggable serialisation** — Default JSON; clear extension points for alternative encodings (e.g. binary or compact formats) behind a shared interface
+- [ ] **Append-only event stream** — Ordered events that record match history end-to-end and can be stored or streamed to consumers
+- [ ] **Deterministic replay / fast-forward** — Apply the event log (or snapshot + tail) from a known initial configuration to reconstruct any past state or seek to a checkpoint
+
 #### Foundation (cross-cutting, slotted into milestones as needed)
 
 - [ ] Positional encoding for transformer network
@@ -141,7 +150,7 @@ the current one finishes.
 
 This is a brownfield project with a working environment, two RL algorithms, and a mature training pipeline. The codebase follows DDD principles in the environment layer (`domain/` for rules, `BattleView` protocol for consumers). Extension points are well-documented in `docs/ddd-envs.md`.
 
-The project models a tabletop miniatures wargame with detailed rules (see `docs/tabletop-rules-reference.md`). The environment currently implements movement and objective control. The long-term vision spans 8 milestones (v1.0–v8.0) progressing from ranged combat through terrain, advanced movement, weapon diversity, morale, tactical resources, adversarial self-play, and scale. Melee combat is explicitly out of scope.
+The project models a tabletop miniatures wargame with detailed rules (see `docs/tabletop-rules-reference.md`). The environment currently implements movement and objective control. The long-term vision spans nine milestone tracks (v1.0–v9.0) progressing from ranged combat through terrain, advanced movement, weapon diversity, morale, tactical resources, adversarial self-play, scale, and structured programmatic state with event streaming for APIs and LLMs (v9.0). Melee combat is explicitly out of scope.
 
 v1.0 (Ranged Combat & Model Destruction) is the active milestone — Phases 1–3 delivered; next is Phase 4 (shooting action space). Future milestones are captured in the Active requirements above and will be created via `/gsd-new-milestone` as each completes.
 
@@ -184,4 +193,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-04 — Phase 3 complete; LOS validated; v1.0 progress through Phase 3*
+*Last updated: 2026-04-05 — v9.0 scoped: structured game state, layered deltas, JSON-default codecs, event stream, replay*
