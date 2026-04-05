@@ -28,14 +28,14 @@ Requirements for the shooting & model destruction milestone. Each maps to roadma
 
 - [x] **LOS-01**: A model can only shoot targets it has line of sight to *(query implemented Phase 3; enforcement Phase 4)*
 - [x] **LOS-02**: LOS is computed via grid-based ray tracing (Bresenham) checking for blocking cells
-- [ ] **LOS-03**: LOS results are used in action masking so the agent cannot select invalid shoot targets
+- [x] **LOS-03**: LOS results are used in action masking so the agent cannot select invalid shoot targets
 - [x] **LOS-04**: The LOS query is a single domain service reused by rules, masks, and rendering
 
 ### Action Space
 
 - [x] **ACT-01**: Each model selects an action type per phase: move (movement phase), shoot (shooting phase), or stay (any phase)
 - [x] **ACT-02**: Shooting actions are registered in ActionRegistry as a new slice with shooting-phase validity
-- [ ] **ACT-03**: Action masks combine phase validity, LOS, range, and model alive status
+- [x] **ACT-03**: Action masks combine phase validity, LOS, range, and model alive status
 - [x] **ACT-04**: The total action space grows to accommodate shooting target indices alongside existing movement actions
 
 ### Combat Reward
@@ -128,11 +128,11 @@ Deferred to v9.0. Roadmap phases TBD when the milestone is activated.
 | SHOT-06 | Phase 5 | Pending |
 | LOS-01 | Phase 3 | Complete (query; mask in Phase 4) |
 | LOS-02 | Phase 3 | Complete |
-| LOS-03 | Phase 4 | Pending |
+| LOS-03 | Phase 4 | Complete |
 | LOS-04 | Phase 3 | Complete |
 | ACT-01 | Phase 4 | Complete |
 | ACT-02 | Phase 4 | Complete |
-| ACT-03 | Phase 4 | Pending |
+| ACT-03 | Phase 4 | Complete |
 | ACT-04 | Phase 4 | Complete |
 | CRWD-01 | Phase 6 | Pending |
 | CRWD-02 | Phase 6 | Pending |

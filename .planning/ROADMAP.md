@@ -70,7 +70,7 @@ Plans:
 **Plans:** 2 plans
 Plans:
 - [x] 04-01-PLAN.md — Config types (WeaponProfile), ActionHandler shooting slice + phase-aware apply, unit tests
-- [ ] 04-02-PLAN.md — Shooting mask function, observation builder overlay, env wiring, integration tests
+- [x] 04-02-PLAN.md — Shooting mask function, observation builder overlay, env wiring, integration tests
 
 ### Phase 5: Shooting Resolution
 **Goal**: Shooting actions resolve damage through the tabletop attack sequence with configurable weapons

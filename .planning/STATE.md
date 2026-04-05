@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-04-05T16:47:28.275Z"
+status: verifying
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-04-05T18:14:41.730Z"
 last_activity: 2026-04-05
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-04)
 
 Phase: 04 (shooting-action-space) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-05
 
 Progress: Phases **1–3** complete (4/4 plans executed in tracked milestone plans); **Phase 4** next
@@ -55,6 +55,7 @@ Progress: Phases **1–3** complete (4/4 plans executed in tracked milestone pla
 *Updated after each plan completion*
 | Phase 01 P01 | 5min | 2 tasks | 4 files |
 | Phase 04 P01 | 3min | 3 tasks | 4 files |
+| Phase 04 P02 | 3min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,8 @@ Recent decisions affecting current work:
 - [Phase 01]: all_eliminated checked first in is_battle_over for fast-path termination
 - [Phase 04]: WeaponProfile has only range field — Phase 5 adds resolution stats
 - [Phase 04]: Shooting slice conditionally registered via n_shoot_targets kwarg; apply() no-ops shooting actions until Phase 5
+- [Phase 04]: Shooting mask overlay uses bitwise AND on base registry mask — registry handles phase gating, overlay adds per-target filtering
+- [Phase 04]: compute_shooting_masks is a pure function with callback-based LOS injection, decoupled from BattleView
 
 ### Pending Todos
 
@@ -90,6 +93,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-05T16:47:28.273Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-04-05T18:14:41.728Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
