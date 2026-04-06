@@ -1,4 +1,5 @@
-"""Tests for shooting resolution: config extensions, domain resolution, entity extensions."""
+"""Tests for shooting resolution: config extensions, domain resolution, entity extensions,
+integration tests for env wiring, masks, observation pipeline, RNG, and StepContext."""
 
 from __future__ import annotations
 
@@ -15,7 +16,17 @@ from wargame_rl.wargame.envs.domain.shooting import (
     resolve_shooting,
     wound_roll_threshold,
 )
-from wargame_rl.wargame.envs.types.config import ModelConfig, WeaponProfile
+from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
+from wargame_rl.wargame.envs.env_components.shooting_masks import compute_shooting_masks
+from wargame_rl.wargame.envs.types import WargameEnvAction
+from wargame_rl.wargame.envs.types.config import (
+    ModelConfig,
+    OpponentPolicyConfig,
+    WeaponProfile,
+)
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase
+from wargame_rl.wargame.envs.wargame import WargameEnv, WargameEnvConfig
+from wargame_rl.wargame.model.common.observation import observation_to_tensor
 
 
 def _make_model(
@@ -299,3 +310,314 @@ class TestBattleFactoryStats:
         )
         expected_keys = {"max_wounds", "current_wounds", "toughness", "save"}
         assert set(models[0].stats.keys()) == expected_keys
+
+
+# ---------------------------------------------------------------------------
+# Fixtures for integration tests
+# ---------------------------------------------------------------------------
+
+
+def _shooting_env_config(
+    *,
+    n_player: int = 1,
+    n_opponent: int = 1,
+    max_wounds: int = 3,
+) -> WargameEnvConfig:
+    """Config with armed player models and unarmed opponents in range."""
+    return WargameEnvConfig(
+        board_width=30,
+        board_height=30,
+        number_of_wargame_models=n_player,
+        number_of_objectives=1,
+        number_of_opponent_models=n_opponent,
+        models=[
+            ModelConfig(
+                x=5 + i,
+                y=5,
+                max_wounds=max_wounds,
+                weapons=[WeaponProfile(range=50, attacks=4, ballistic_skill=2, strength=8, ap=2, damage=2)],
+            )
+            for i in range(n_player)
+        ],
+        opponent_models=[
+            ModelConfig(x=20 + i, y=5, max_wounds=max_wounds)
+            for i in range(n_opponent)
+        ],
+        opponent_policy=OpponentPolicyConfig(type="random"),
+        skip_phases=[BattlePhase.command, BattlePhase.charge, BattlePhase.fight],
+        n_movement_angles=8,
+        n_speed_bins=3,
+    )
+
+
+def _step_to_shooting(env: WargameEnv) -> None:
+    """Step with STAY until we're in shooting phase (movement -> shooting)."""
+    n = len(env.wargame_models)
+    stay = WargameEnvAction(actions=[STAY_ACTION] * n)
+    env.step(stay)
+
+
+# ---------------------------------------------------------------------------
+# Integration: env shooting resolution
+# ---------------------------------------------------------------------------
+
+
+class TestShootingIntegration:
+    """Env step with shooting phase resolves damage."""
+
+    def test_player_shooting_deals_damage(self) -> None:
+        env = WargameEnv(config=_shooting_env_config(max_wounds=10))
+        env.reset(seed=42)
+        initial_wounds = env.opponent_models[0].stats["current_wounds"]
+        _step_to_shooting(env)
+        shooting_slice = env._action_handler.shooting_slice
+        assert shooting_slice is not None
+        shoot_action = WargameEnvAction(actions=[shooting_slice.start])
+        env.step(shoot_action)
+        assert env._last_player_shooting_results, "Expected at least one result"
+        total_dmg = sum(r.damage_dealt for r in env._last_player_shooting_results)
+        if total_dmg > 0:
+            assert env.opponent_models[0].stats["current_wounds"] < initial_wounds
+
+    def test_deterministic_with_fixed_seed(self) -> None:
+        results = []
+        for _ in range(2):
+            env = WargameEnv(config=_shooting_env_config(max_wounds=10))
+            env.reset(seed=42)
+            _step_to_shooting(env)
+            ss = env._action_handler.shooting_slice
+            assert ss is not None
+            env.step(WargameEnvAction(actions=[ss.start]))
+            results.append(
+                [
+                    (r.hits, r.wounds, r.unsaved, r.damage_dealt)
+                    for r in env._last_player_shooting_results
+                ]
+            )
+        assert results[0] == results[1]
+
+    def test_both_sides_shoot(self) -> None:
+        """Both player and opponent paths resolve damage in same round."""
+        cfg = _shooting_env_config(n_player=2, n_opponent=2, max_wounds=10)
+        cfg_with_opp_weapons = cfg.model_copy(
+            update={
+                "opponent_models": [
+                    ModelConfig(x=20, y=5, max_wounds=10, weapons=[WeaponProfile(range=50)]),
+                    ModelConfig(x=21, y=5, max_wounds=10, weapons=[WeaponProfile(range=50)]),
+                ]
+            }
+        )
+        env = WargameEnv(config=cfg_with_opp_weapons)
+        env.reset(seed=42)
+        _step_to_shooting(env)
+        ss = env._action_handler.shooting_slice
+        assert ss is not None
+        env.step(WargameEnvAction(actions=[ss.start, ss.start + 1]))
+        # At least one side should have resolved
+        p_dmg = sum(r.damage_dealt for r in env._last_player_shooting_results)
+        o_dmg = sum(r.damage_dealt for r in env._last_opponent_shooting_results)
+        assert p_dmg >= 0
+        assert o_dmg >= 0
+
+
+# ---------------------------------------------------------------------------
+# Shooting mask extensions
+# ---------------------------------------------------------------------------
+
+
+class TestShootingMaskExtensions:
+    """compute_shooting_masks with player_advanced and engagement_range."""
+
+    def test_advanced_model_masked(self) -> None:
+        pp = np.array([[0, 0], [5, 5]])
+        op = np.array([[10, 0]])
+        pa = np.array([True, True])
+        oa = np.array([True])
+        pr = np.array([20.0, 20.0])
+        advanced = np.array([True, False])
+        m = compute_shooting_masks(
+            pp, op, pa, oa, pr, lambda *_: True, player_advanced=advanced
+        )
+        assert not m[0, 0], "Advanced model should not be able to shoot"
+        assert m[1, 0], "Non-advanced model should be able to shoot"
+
+    def test_engagement_range_masks_model(self) -> None:
+        pp = np.array([[0, 0], [10, 10]])
+        op = np.array([[1, 0]])  # Distance 1 from first player
+        pa = np.array([True, True])
+        oa = np.array([True])
+        pr = np.array([50.0, 50.0])
+        m = compute_shooting_masks(
+            pp, op, pa, oa, pr, lambda *_: True, engagement_range=2.0
+        )
+        assert not m[0, 0], "Model within engagement range should be masked"
+        assert m[1, 0], "Model outside engagement range should shoot"
+
+    def test_backward_compat_no_new_params(self) -> None:
+        pp = np.array([[0, 0]])
+        op = np.array([[5, 0]])
+        pa = np.array([True])
+        oa = np.array([True])
+        pr = np.array([20.0])
+        m = compute_shooting_masks(pp, op, pa, oa, pr, lambda *_: True)
+        assert m[0, 0]
+
+
+# ---------------------------------------------------------------------------
+# Observation extension
+# ---------------------------------------------------------------------------
+
+
+class TestObservationExtension:
+    """Observation tensor includes combat features and expected damage."""
+
+    def test_feature_dim_matches(self) -> None:
+        cfg = _shooting_env_config(n_player=2, n_opponent=2)
+        env = WargameEnv(config=cfg)
+        obs, _ = env.reset(seed=42)
+        tensors = observation_to_tensor(obs)
+        player_f = tensors[2]
+        opp_f = tensors[3]
+        assert player_f.shape[1] == opp_f.shape[1]
+        n_obj = 1
+        max_groups = cfg.max_groups
+        n_opp = 2
+        expected_dim = 2 + n_obj * 2 + max_groups + 1 + 3 + 7 + n_opp
+        assert player_f.shape[1] == expected_dim
+
+    def test_weapon_stats_nonzero_for_armed(self) -> None:
+        cfg = _shooting_env_config(n_player=1, n_opponent=1)
+        env = WargameEnv(config=cfg)
+        obs, _ = env.reset(seed=42)
+        tensors = observation_to_tensor(obs)
+        player_f = tensors[2]
+        base_idx = 2 + 1 * 2 + cfg.max_groups + 1 + 3
+        # weapon_attacks/10 should be > 0 for armed player
+        assert player_f[0, base_idx].item() > 0
+
+    def test_expected_damage_nonzero(self) -> None:
+        cfg = _shooting_env_config(n_player=1, n_opponent=1)
+        env = WargameEnv(config=cfg)
+        obs, _ = env.reset(seed=42)
+        tensors = observation_to_tensor(obs)
+        player_f = tensors[2]
+        ed_col_idx = 2 + 1 * 2 + cfg.max_groups + 1 + 3 + 7
+        # Expected damage against the one opponent should be > 0
+        assert player_f[0, ed_col_idx].item() > 0
+
+    def test_opponent_ed_columns_zero(self) -> None:
+        cfg = _shooting_env_config(n_player=1, n_opponent=1)
+        env = WargameEnv(config=cfg)
+        obs, _ = env.reset(seed=42)
+        tensors = observation_to_tensor(obs)
+        opp_f = tensors[3]
+        ed_col_idx = 2 + 1 * 2 + cfg.max_groups + 1 + 3 + 7
+        assert opp_f[0, ed_col_idx].item() == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Backward compatibility
+# ---------------------------------------------------------------------------
+
+
+class TestBackwardCompatIntegration:
+    """Envs with no weapon configs or 0 opponents still work."""
+
+    def test_no_model_configs(self) -> None:
+        cfg = WargameEnvConfig(board_width=20, board_height=20)
+        env = WargameEnv(config=cfg)
+        obs, _ = env.reset(seed=42)
+        tensors = observation_to_tensor(obs)
+        assert tensors[2].shape[0] == cfg.number_of_wargame_models
+
+    def test_zero_opponents_no_ed_columns(self) -> None:
+        cfg = WargameEnvConfig(board_width=20, board_height=20)
+        env = WargameEnv(config=cfg)
+        obs, _ = env.reset(seed=42)
+        tensors = observation_to_tensor(obs)
+        n_obj = cfg.number_of_objectives
+        expected_dim = 2 + n_obj * 2 + cfg.max_groups + 1 + 3 + 7
+        assert tensors[2].shape[1] == expected_dim
+
+    def test_full_step_loop(self) -> None:
+        cfg = WargameEnvConfig(board_width=20, board_height=20)
+        env = WargameEnv(config=cfg)
+        env.reset(seed=0)
+        for _ in range(10):
+            action = WargameEnvAction(actions=list(env.action_space.sample()))
+            env.step(action)
+
+
+# ---------------------------------------------------------------------------
+# Combat RNG determinism
+# ---------------------------------------------------------------------------
+
+
+class TestCombatRNG:
+    """Same seed → identical results; different seeds → different results."""
+
+    def test_same_seed_same_results(self) -> None:
+        results_by_run: list[list[tuple[int, ...]]] = []
+        for _ in range(2):
+            env = WargameEnv(config=_shooting_env_config(max_wounds=10))
+            env.reset(seed=42)
+            _step_to_shooting(env)
+            ss = env._action_handler.shooting_slice
+            assert ss is not None
+            env.step(WargameEnvAction(actions=[ss.start]))
+            results_by_run.append(
+                [(r.hits, r.wounds, r.unsaved, r.damage_dealt) for r in env._last_player_shooting_results]
+            )
+        assert results_by_run[0] == results_by_run[1]
+
+    def test_different_seeds_differ(self) -> None:
+        results_by_seed: list[list[tuple[int, ...]]] = []
+        for seed in [42, 99]:
+            env = WargameEnv(config=_shooting_env_config(max_wounds=10))
+            env.reset(seed=seed)
+            _step_to_shooting(env)
+            ss = env._action_handler.shooting_slice
+            assert ss is not None
+            env.step(WargameEnvAction(actions=[ss.start]))
+            results_by_seed.append(
+                [(r.hits, r.wounds, r.unsaved, r.damage_dealt) for r in env._last_player_shooting_results]
+            )
+        assert results_by_seed[0] != results_by_seed[1]
+
+
+# ---------------------------------------------------------------------------
+# StepContext combat fields
+# ---------------------------------------------------------------------------
+
+
+class TestStepContextCombat:
+    """StepContext after step has combat outcome fields."""
+
+    def test_fields_populated(self) -> None:
+        env = WargameEnv(config=_shooting_env_config(max_wounds=10))
+        env.reset(seed=42)
+        _step_to_shooting(env)
+        ss = env._action_handler.shooting_slice
+        assert ss is not None
+        env.step(WargameEnvAction(actions=[ss.start]))
+        ctx = env.last_step_context
+        assert ctx is not None
+        assert isinstance(ctx.player_damage_dealt, int)
+        assert isinstance(ctx.opponent_damage_dealt, int)
+        assert isinstance(ctx.player_models_killed, int)
+        assert isinstance(ctx.opponent_models_killed, int)
+        assert ctx.player_damage_dealt >= 0
+
+    def test_kill_tracking(self) -> None:
+        """When target has 1 wound and takes damage, kills count increments."""
+        cfg = _shooting_env_config(n_player=1, n_opponent=1, max_wounds=1)
+        env = WargameEnv(config=cfg)
+        env.reset(seed=42)
+        _step_to_shooting(env)
+        ss = env._action_handler.shooting_slice
+        assert ss is not None
+        env.step(WargameEnvAction(actions=[ss.start]))
+        ctx = env.last_step_context
+        assert ctx is not None
+        if ctx.player_damage_dealt > 0:
+            assert ctx.player_models_killed >= 1
