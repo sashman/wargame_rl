@@ -12,6 +12,13 @@ from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjecti
 from wargame_rl.wargame.envs.domain.game_clock import GameClock, GameClockError
 from wargame_rl.wargame.envs.domain.los import has_line_of_sight, iter_los_cells
 from wargame_rl.wargame.envs.domain.placement import place_for_episode
+from wargame_rl.wargame.envs.domain.shooting import (
+    ENGAGEMENT_RANGE,
+    ShootingResult,
+    expected_damage,
+    resolve_shooting,
+    wound_roll_threshold,
+)
 from wargame_rl.wargame.envs.domain.termination import (
     check_max_turns_reached,
     is_battle_over,
@@ -42,4 +49,9 @@ __all__ = [
     "from_config",
     "run_after_player_action",
     "run_until_player_phase",
+    "ENGAGEMENT_RANGE",
+    "ShootingResult",
+    "expected_damage",
+    "resolve_shooting",
+    "wound_roll_threshold",
 ]
