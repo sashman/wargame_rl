@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 5 context gathered
-last_updated: "2026-04-06T10:32:22.482Z"
-last_activity: 2026-04-05
+status: executing
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-04-06T14:32:13.190Z"
+last_activity: 2026-04-06
 progress:
   total_phases: 6
   completed_phases: 4
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 8
+  completed_plans: 7
 ---
 
 # Project State
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-04)
 
 **Core value:** Agents learn recognisable tactical behaviour through reward shaping and environment design
-**Current focus:** Phase 04 — shooting-action-space
+**Current focus:** Phase 05 — shooting-resolution
 
 ## Current Position
 
-Phase: 5
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-04-05
+Phase: 05 (shooting-resolution) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-04-06
 
 Progress: Phases **1–3** complete (4/4 plans executed in tracked milestone plans); **Phase 4** next
 
@@ -56,6 +56,7 @@ Progress: Phases **1–3** complete (4/4 plans executed in tracked milestone pla
 | Phase 01 P01 | 5min | 2 tasks | 4 files |
 | Phase 04 P01 | 3min | 3 tasks | 4 files |
 | Phase 04 P02 | 3min | 2 tasks | 6 files |
+| Phase 05 P01 | 5min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,9 @@ Recent decisions affecting current work:
 - [Phase 04]: Shooting slice conditionally registered via n_shoot_targets kwarg; apply() no-ops shooting actions until Phase 5
 - [Phase 04]: Shooting mask overlay uses bitwise AND on base registry mask — registry handles phase gating, overlay adds per-target filtering
 - [Phase 04]: compute_shooting_masks is a pure function with callback-based LOS injection, decoupled from BattleView
+- [Phase 05]: wound_roll_threshold uses integer multiplication (2*S vs T) to avoid rounding issues
+- [Phase 05]: ShootingResult is frozen dataclass with slots for immutability and performance
+- [Phase 05]: Natural 1/6 rules via boolean masking — extensible when modifiers arrive
 
 ### Pending Todos
 
@@ -93,6 +97,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-06T10:32:22.481Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-shooting-resolution/05-CONTEXT.md
+Last session: 2026-04-06T14:32:13.189Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: None

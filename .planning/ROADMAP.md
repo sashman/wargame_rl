@@ -83,7 +83,7 @@ Plans:
   4. Weapon-relevant stats appear in the agent's observation for informed targeting decisions
 **Plans:** 2 plans
 Plans:
-- [ ] 05-01-PLAN.md — Config + domain shooting resolution + entity extensions + unit tests
+- [x] 05-01-PLAN.md — Config + domain shooting resolution + entity extensions + unit tests
 - [ ] 05-02-PLAN.md — Env wiring + mask extensions + observation pipeline + integration tests
 
 ### Phase 6: Combat Reward & Curriculum

@@ -18,11 +18,11 @@ Requirements for the shooting & model destruction milestone. Each maps to roadma
 ### Shooting
 
 - [ ] **SHOT-01**: Models can select a shoot action targeting an enemy model within weapon range
-- [ ] **SHOT-02**: Shooting resolves via the tabletop attack sequence: hit roll → wound roll → save → damage
+- [x] **SHOT-02**: Shooting resolves via the tabletop attack sequence: hit roll → wound roll → save → damage
 - [x] **SHOT-03**: Shooting is only valid during the shooting phase (phase-gated via action masks)
-- [ ] **SHOT-04**: Models that advanced or fell back cannot shoot (consistent with tabletop rules)
-- [ ] **SHOT-05**: Models in engagement range cannot shoot (locked in combat restriction)
-- [ ] **SHOT-06**: Weapon profiles are configurable per model (range, attacks, BS, strength, AP, damage)
+- [x] **SHOT-04**: Models that advanced or fell back cannot shoot (consistent with tabletop rules)
+- [x] **SHOT-05**: Models in engagement range cannot shoot (locked in combat restriction)
+- [x] **SHOT-06**: Weapon profiles are configurable per model (range, attacks, BS, strength, AP, damage)
 
 ### Line of Sight
 
@@ -121,11 +121,11 @@ Deferred to v9.0. Roadmap phases TBD when the milestone is activated.
 | WOUND-04 | Phase 2 | Pending |
 | WOUND-05 | Phase 1 | Complete |
 | SHOT-01 | Phase 5 | Pending |
-| SHOT-02 | Phase 5 | Pending |
+| SHOT-02 | Phase 5 | Complete |
 | SHOT-03 | Phase 4 | Complete |
-| SHOT-04 | Phase 5 | Pending |
-| SHOT-05 | Phase 5 | Pending |
-| SHOT-06 | Phase 5 | Pending |
+| SHOT-04 | Phase 5 | Complete |
+| SHOT-05 | Phase 5 | Complete |
+| SHOT-06 | Phase 5 | Complete |
 | LOS-01 | Phase 3 | Complete (query; mask in Phase 4) |
 | LOS-02 | Phase 3 | Complete |
 | LOS-03 | Phase 4 | Complete |
