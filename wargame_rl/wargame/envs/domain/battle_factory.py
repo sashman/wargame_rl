@@ -27,13 +27,22 @@ def _build_models(
             mc = model_configs[i]
             group_id = mc.group_id
             max_wounds = mc.max_wounds
+            toughness = mc.toughness
+            save = mc.save
         else:
             group_id = i // increment
             max_wounds = 100
+            toughness = 3
+            save = 4
         result.append(
             WargameModel(
                 location=np.zeros(2, dtype=int),
-                stats={"max_wounds": max_wounds, "current_wounds": max_wounds},
+                stats={
+                    "max_wounds": max_wounds,
+                    "current_wounds": max_wounds,
+                    "toughness": toughness,
+                    "save": save,
+                },
                 group_id=group_id,
                 distances_to_objectives=np.zeros([n_objectives, 2], dtype=int),
             )
