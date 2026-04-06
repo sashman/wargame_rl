@@ -103,18 +103,12 @@ def _models_to_features(
     w_str = np.array(
         [[float(m.weapon_strength) / 10.0] for m in models], dtype=np.float32
     )
-    w_ap = np.array(
-        [[float(m.weapon_ap) / 6.0] for m in models], dtype=np.float32
-    )
+    w_ap = np.array([[float(m.weapon_ap) / 6.0] for m in models], dtype=np.float32)
     w_dmg = np.array(
         [[float(m.weapon_damage) / 10.0] for m in models], dtype=np.float32
     )
-    t_col = np.array(
-        [[float(m.toughness) / 10.0] for m in models], dtype=np.float32
-    )
-    sv_col = np.array(
-        [[float(m.save_stat) / 7.0] for m in models], dtype=np.float32
-    )
+    t_col = np.array([[float(m.toughness) / 10.0] for m in models], dtype=np.float32)
+    sv_col = np.array([[float(m.save_stat) / 7.0] for m in models], dtype=np.float32)
     out = np.hstack(
         [
             core,
@@ -161,7 +155,6 @@ def _observation_to_numpy(
     # 2 (loc) + n_objectives*2 (dists) + max_groups (group one-hot) + 1 (closest)
     # +3 alive, wound_ratio, max_wounds_norm  +7 combat stats
     base_feature_dim = 2 + n_objectives * 2 + max_groups + 1 + 3 + 7
-    feature_dim = base_feature_dim + n_opponent
 
     model_features = _models_to_features(
         models, half_board, half_board_tiled, max_dist, max_groups, base_feature_dim
