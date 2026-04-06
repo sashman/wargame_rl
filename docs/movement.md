@@ -10,8 +10,9 @@ Current slices:
 |-------|---------|--------------|
 | `stay` | `0` | All phases |
 | `movement` | `1 .. N×S` | Movement phase only |
+| `shooting` | `N×S+1 .. N×S+T` | Shooting phase only (if opponents configured) |
 
-With the defaults (`n_movement_angles=16`, `n_speed_bins=6`), the total action space is **97** (1 stay + 96 movement).
+With the defaults (`n_movement_angles=16`, `n_speed_bins=6`) and no opponents, the total action space is **97** (1 stay + 96 movement). With opponents, shooting target indices are appended (see [shooting.md](shooting.md)).
 
 ### Action Masking
 
@@ -25,17 +26,17 @@ During each step, the environment generates a `(n_models, n_actions)` boolean ma
 
 ### Extending with New Phases
 
-To add actions for a new phase (e.g. shooting, charging), register a new slice in `ActionHandler.__init__`:
+To add actions for a new phase (e.g. charging), register a new slice in `ActionHandler.__init__`:
 
 ```python
 self._registry.register(
-    "shooting",
-    n_shooting_actions,
-    frozenset({BattlePhase.shooting}),
+    "charging",
+    n_charging_actions,
+    frozenset({BattlePhase.charge}),
 )
 ```
 
-This appends the new actions after the existing slices. The mask generation, observation pipeline, and DQN output layer automatically account for the larger `n_actions` — no other wiring changes are needed beyond implementing the action application logic itself.
+This appends the new actions after the existing slices. The mask generation, observation pipeline, and network output layer automatically account for the larger `n_actions` — no other wiring changes are needed beyond implementing the action application logic itself. Shooting already follows this pattern (see [shooting.md](shooting.md)).
 
 An action can be valid in multiple phases by including them in the `valid_phases` frozenset (e.g. `stay` is valid in all phases).
 

@@ -89,6 +89,12 @@ class MissionConfig(BaseModel):
     )
 
 
+class WeaponProfile(BaseModel):
+    """Weapon stat block. Phase 4 uses only range; Phase 5 adds resolution stats."""
+
+    range: int = Field(gt=0, description="Maximum range in grid cells")
+
+
 class ModelConfig(BaseModel):
     """Per-model configuration (position, group, stats, etc.).
 
@@ -108,6 +114,10 @@ class ModelConfig(BaseModel):
     )
     group_id: int = Field(default=0, ge=0, description="Group this model belongs to")
     max_wounds: int = Field(default=1, gt=0)
+    weapons: list[WeaponProfile] = Field(
+        default_factory=list,
+        description="Weapon profiles. Empty = cannot shoot.",
+    )
 
     @model_validator(mode="after")
     def coords_both_or_neither(self) -> "ModelConfig":

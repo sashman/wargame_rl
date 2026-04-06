@@ -90,7 +90,9 @@ class WargameEnv(gym.Env):
             }
         )
 
-        self._action_handler = ActionHandler(config)
+        self._action_handler = ActionHandler(
+            config, n_shoot_targets=config.number_of_opponent_models
+        )
         self.action_space = self._action_handler.action_space
         self._skip_phases = frozenset(config.skip_phases)
 
@@ -130,7 +132,9 @@ class WargameEnv(gym.Env):
         # --- Opponent setup ---
         if config.number_of_opponent_models > 0:
             self._opponent_action_handler = ActionHandler(
-                config, n_models=config.number_of_opponent_models
+                config,
+                n_models=config.number_of_opponent_models,
+                n_shoot_targets=config.number_of_wargame_models,
             )
             self._opponent_policy: OpponentPolicy | None = build_opponent_policy(
                 config.opponent_policy,  # type: ignore[arg-type]
@@ -302,12 +306,14 @@ class WargameEnv(gym.Env):
         return observation, info.model_dump()
 
     def _apply_player_action(self, action: WargameEnvAction) -> None:
+        phase = self._game_clock.state.phase or BattlePhase.movement
         self._action_handler.apply(
             action,
             self.wargame_models,
             self.board_width,
             self.board_height,
             self._action_handler.action_space,
+            phase=phase,
         )
 
     def _apply_opponent_action(self) -> None:
@@ -327,6 +333,7 @@ class WargameEnv(gym.Env):
             self.board_width,
             self.board_height,
             self._opponent_action_handler.action_space,
+            phase=phase,
         )
 
     def _initial_player_side(self) -> PlayerSide:
