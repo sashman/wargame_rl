@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-04-06T14:32:13.190Z"
+status: verifying
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-04-06T14:48:47.650Z"
 last_activity: 2026-04-06
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-04)
 
 Phase: 05 (shooting-resolution) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-06
 
 Progress: Phases **1–3** complete (4/4 plans executed in tracked milestone plans); **Phase 4** next
@@ -57,6 +57,7 @@ Progress: Phases **1–3** complete (4/4 plans executed in tracked milestone pla
 | Phase 04 P01 | 3min | 3 tasks | 4 files |
 | Phase 04 P02 | 3min | 2 tasks | 6 files |
 | Phase 05 P01 | 5min | 3 tasks | 6 files |
+| Phase 05 P02 | 14min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,9 @@ Recent decisions affecting current work:
 - [Phase 05]: wound_roll_threshold uses integer multiplication (2*S vs T) to avoid rounding issues
 - [Phase 05]: ShootingResult is frozen dataclass with slots for immutability and performance
 - [Phase 05]: Natural 1/6 rules via boolean masking — extensible when modifiers arrive
+- [Phase 05]: Network from_env derives input sizes from observation_to_tensor output, not observation.size — prevents dim mismatch with expected damage columns
+- [Phase 05]: Expected damage columns only in player features; opponent features zero-padded to match feature_dim
+- [Phase 05]: Shooting resolution at env level (not ActionHandler) — env owns combat flow, ActionHandler stays movement-only
 
 ### Pending Todos
 
@@ -97,6 +101,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-06T14:32:13.189Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-04-06T14:48:47.649Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None

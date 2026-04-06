@@ -84,7 +84,7 @@ Plans:
 **Plans:** 2 plans
 Plans:
 - [x] 05-01-PLAN.md — Config + domain shooting resolution + entity extensions + unit tests
-- [ ] 05-02-PLAN.md — Env wiring + mask extensions + observation pipeline + integration tests
+- [x] 05-02-PLAN.md — Env wiring + mask extensions + observation pipeline + integration tests
 
 ### Phase 6: Combat Reward & Curriculum
 **Goal**: The agent learns to use shooting effectively through reward shaping and curriculum progression

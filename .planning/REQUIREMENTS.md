@@ -17,7 +17,7 @@ Requirements for the shooting & model destruction milestone. Each maps to roadma
 
 ### Shooting
 
-- [ ] **SHOT-01**: Models can select a shoot action targeting an enemy model within weapon range
+- [x] **SHOT-01**: Models can select a shoot action targeting an enemy model within weapon range
 - [x] **SHOT-02**: Shooting resolves via the tabletop attack sequence: hit roll → wound roll → save → damage
 - [x] **SHOT-03**: Shooting is only valid during the shooting phase (phase-gated via action masks)
 - [x] **SHOT-04**: Models that advanced or fell back cannot shoot (consistent with tabletop rules)
@@ -48,7 +48,7 @@ Requirements for the shooting & model destruction milestone. Each maps to roadma
 ### Observation
 
 - [ ] **OBS-01**: Agent observation includes model wound status (current wounds / max wounds) for all visible models
-- [ ] **OBS-02**: Agent observation includes weapon profiles or combat-relevant stats for decision making
+- [x] **OBS-02**: Agent observation includes weapon profiles or combat-relevant stats for decision making
 - [ ] **OBS-03**: Eliminated models are flagged in the observation so the policy can distinguish alive from dead
 
 ## v2 Requirements
@@ -120,7 +120,7 @@ Deferred to v9.0. Roadmap phases TBD when the milestone is activated.
 | WOUND-03 | Phase 1 | Pending |
 | WOUND-04 | Phase 2 | Pending |
 | WOUND-05 | Phase 1 | Complete |
-| SHOT-01 | Phase 5 | Pending |
+| SHOT-01 | Phase 5 | Complete |
 | SHOT-02 | Phase 5 | Complete |
 | SHOT-03 | Phase 4 | Complete |
 | SHOT-04 | Phase 5 | Complete |
@@ -139,7 +139,7 @@ Deferred to v9.0. Roadmap phases TBD when the milestone is activated.
 | CRWD-03 | Phase 6 | Pending |
 | CRWD-04 | Phase 6 | Pending |
 | OBS-01 | Phase 2 | Pending |
-| OBS-02 | Phase 5 | Pending |
+| OBS-02 | Phase 5 | Complete |
 | OBS-03 | Phase 2 | Pending |
 
 **Coverage:**
