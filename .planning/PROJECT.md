@@ -31,6 +31,7 @@ Agents learn recognisable tactical behaviour — advancing on objectives, mainta
 - ✓ DDD-structured environment with BattleView protocol for read-only state access — existing
 - ✓ Line-of-sight query on discrete grid (Bresenham, injectable blocking, `WargameEnv.has_line_of_sight_between_cells`) — Phase 3
 - ✓ Shooting action space (target selection in ActionRegistry, phase-gated masks combining LOS/range/alive, WeaponProfile config) — Phase 4
+- ✓ Shooting resolution (hit → wound → save → damage with stochastic D6 rolls, configurable weapon profiles and defensive stats, combat stats + expected damage in observation) — Phase 5
 
 ### Active
 
@@ -44,7 +45,7 @@ the current one finishes.
 - ✓ Alive-aware observation (alive flags, wound status in tensor, no shape changes mid-episode) — Phase 2
 - ✓ Line of sight service (Bresenham ray tracing, optional `blocking_mask`, domain `los.py`, env + render hooks) — Phase 3
 - ✓ Shooting action space (target selection registered in ActionRegistry, phase-gated masks) — Phase 4
-- [ ] Shooting resolution (hit → wound → save → damage with configurable weapon profiles)
+- ✓ Shooting resolution (hit → wound → save → damage with configurable weapon profiles) — Phase 5
 - [ ] Combat reward & curriculum (damage dealt / models lost calculators, shooting curriculum phase)
 
 #### v2.0 — Terrain & Battlefield Geometry
@@ -153,7 +154,7 @@ This is a brownfield project with a working environment, two RL algorithms, and 
 
 The project models a tabletop miniatures wargame with detailed rules (see `docs/tabletop-rules-reference.md`). The environment currently implements movement and objective control. The long-term vision spans nine milestone tracks (v1.0–v9.0) progressing from ranged combat through terrain, advanced movement, weapon diversity, morale, tactical resources, adversarial self-play, scale, and structured programmatic state with event streaming for APIs and LLMs (v9.0). Melee combat is explicitly out of scope.
 
-v1.0 (Ranged Combat & Model Destruction) is the active milestone — Phases 1–3 delivered; next is Phase 4 (shooting action space). Future milestones are captured in the Active requirements above and will be created via `/gsd-new-milestone` as each completes.
+v1.0 (Ranged Combat & Model Destruction) is the active milestone — Phases 1–5 delivered; next is Phase 6 (combat reward & curriculum). Future milestones are captured in the Active requirements above and will be created via `/gsd-new-milestone` as each completes.
 
 ## Constraints
 
@@ -194,4 +195,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-05 — Phase 4 complete: shooting action space with target selection, phase-gated masks, WeaponProfile config*
+*Last updated: 2026-04-06 — Phase 5 complete: shooting resolution with stochastic D6 attack sequence, configurable weapon/defense stats, combat observation features*
