@@ -30,6 +30,7 @@ Agents learn recognisable tactical behaviour — advancing on objectives, mainta
 - ✓ Multi-run parallel training with grouped Wandb logging — existing
 - ✓ DDD-structured environment with BattleView protocol for read-only state access — existing
 - ✓ Line-of-sight query on discrete grid (Bresenham, injectable blocking, `WargameEnv.has_line_of_sight_between_cells`) — Phase 3
+- ✓ Shooting action space (target selection in ActionRegistry, phase-gated masks combining LOS/range/alive, WeaponProfile config) — Phase 4
 
 ### Active
 
@@ -42,7 +43,7 @@ the current one finishes.
 - ✓ Wounds & elimination (models with 0 wounds removed from play) — Phase 1
 - ✓ Alive-aware observation (alive flags, wound status in tensor, no shape changes mid-episode) — Phase 2
 - ✓ Line of sight service (Bresenham ray tracing, optional `blocking_mask`, domain `los.py`, env + render hooks) — Phase 3
-- [ ] Shooting action space (target selection registered in ActionRegistry, phase-gated masks)
+- ✓ Shooting action space (target selection registered in ActionRegistry, phase-gated masks) — Phase 4
 - [ ] Shooting resolution (hit → wound → save → damage with configurable weapon profiles)
 - [ ] Combat reward & curriculum (damage dealt / models lost calculators, shooting curriculum phase)
 
@@ -193,4 +194,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-05 — v9.0 scoped: structured game state, layered deltas, JSON-default codecs, event stream, replay*
+*Last updated: 2026-04-05 — Phase 4 complete: shooting action space with target selection, phase-gated masks, WeaponProfile config*

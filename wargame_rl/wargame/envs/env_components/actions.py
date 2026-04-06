@@ -78,6 +78,10 @@ class ActionRegistry:
     def slice_for(self, name: str) -> ActionSlice:
         return self._by_name[name]
 
+    def has_slice(self, name: str) -> bool:
+        """True if a slice with this name has been registered."""
+        return name in self._by_name
+
     def get_action_mask(self, phase: BattlePhase) -> np.ndarray:
         """Return a ``(n_actions,)`` bool mask — True for valid actions."""
         mask = np.zeros(self._offset, dtype=bool)
@@ -123,7 +127,11 @@ class ActionHandler:
     """
 
     def __init__(
-        self, config: WargameEnvConfig, *, n_models: int | None = None
+        self,
+        config: WargameEnvConfig,
+        *,
+        n_models: int | None = None,
+        n_shoot_targets: int = 0,
     ) -> None:
         self._n_models = (
             n_models if n_models is not None else config.number_of_wargame_models
@@ -159,6 +167,20 @@ class ActionHandler:
             self._n_move_actions,
             frozenset({BattlePhase.movement}),
         )
+
+        if n_shoot_targets > 0:
+            self._shooting_slice: ActionSlice | None = self._registry.register(
+                "shooting",
+                n_shoot_targets,
+                frozenset({BattlePhase.shooting}),
+            )
+        else:
+            self._shooting_slice = None
+
+    @property
+    def shooting_slice(self) -> ActionSlice | None:
+        """Shooting action slice, or None when no shoot targets are registered."""
+        return self._shooting_slice
 
     @property
     def registry(self) -> ActionRegistry:
@@ -230,10 +252,13 @@ class ActionHandler:
         board_width: int,
         board_height: int,
         action_space: spaces.Tuple,
+        *,
+        phase: BattlePhase = BattlePhase.movement,
     ) -> None:
         """Apply the action tuple to the wargame models (mutates locations).
 
         Dead models are skipped — they do not move regardless of the action.
+        Shooting-slice actions are no-ops (Phase 5 adds resolution).
         """
         for i, act in enumerate(action.actions):
             model = wargame_models[i]
@@ -243,6 +268,11 @@ class ActionHandler:
                 raise ValueError(
                     f"Action {act} for wargame model {i} is out of bounds."
                 )
+            if (
+                self._shooting_slice is not None
+                and self._shooting_slice.start <= act < self._shooting_slice.end
+            ):
+                continue
             model.previous_location = model.location.copy()
             displacement = self._decode_action(act)
             model.location = np.clip(
