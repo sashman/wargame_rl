@@ -14,7 +14,9 @@ from wargame_rl.wargame.envs.domain.los import has_line_of_sight, iter_los_cells
 from wargame_rl.wargame.envs.domain.placement import place_for_episode
 from wargame_rl.wargame.envs.domain.shooting import (
     ENGAGEMENT_RANGE,
+    DefenderStats,
     ShootingResult,
+    WeaponStats,
     expected_damage,
     resolve_shooting,
     wound_roll_threshold,
@@ -49,8 +51,10 @@ __all__ = [
     "from_config",
     "run_after_player_action",
     "run_until_player_phase",
+    "DefenderStats",
     "ENGAGEMENT_RANGE",
     "ShootingResult",
+    "WeaponStats",
     "expected_damage",
     "resolve_shooting",
     "wound_roll_threshold",

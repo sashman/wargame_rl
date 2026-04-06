@@ -3,6 +3,8 @@ integration tests for env wiring, masks, observation pipeline, RNG, and StepCont
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 import pytest
 from pydantic import ValidationError
@@ -11,6 +13,7 @@ from wargame_rl.wargame.envs.domain.battle_factory import _build_models
 from wargame_rl.wargame.envs.domain.entities import WargameModel
 from wargame_rl.wargame.envs.domain.shooting import (
     ENGAGEMENT_RANGE,
+    DefenderStats,
     ShootingResult,
     expected_damage,
     resolve_shooting,
@@ -27,6 +30,17 @@ from wargame_rl.wargame.envs.types.config import (
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.envs.wargame import WargameEnv, WargameEnvConfig
 from wargame_rl.wargame.model.common.observation import observation_to_tensor
+
+
+@dataclass(frozen=True, slots=True)
+class _TestWeapon:
+    """Lightweight weapon satisfying WeaponStats protocol (no Pydantic validation)."""
+
+    attacks: int = 2
+    ballistic_skill: int = 3
+    strength: int = 4
+    ap: int = 1
+    damage: int = 1
 
 
 def _make_model(
@@ -102,18 +116,18 @@ class TestWoundRollThreshold:
     @pytest.mark.parametrize(
         "strength, toughness, expected",
         [
-            (8, 4, 2),   # S >= 2T
-            (6, 3, 2),   # S >= 2T (boundary: 6 == 2*3)
+            (8, 4, 2),  # S >= 2T
+            (6, 3, 2),  # S >= 2T (boundary: 6 == 2*3)
             (10, 4, 2),  # S >> 2T
-            (5, 4, 3),   # S > T
-            (4, 3, 3),   # S > T
-            (4, 4, 4),   # S == T
-            (1, 1, 4),   # S == T (edge: both 1)
-            (3, 4, 5),   # S < T but not <= T/2
-            (3, 5, 5),   # S < T, 2*3=6 > 5 so not <= T/2
-            (2, 4, 6),   # S <= T/2 (boundary: 2*2 == 4)
-            (1, 4, 6),   # S <= T/2
-            (1, 2, 6),   # S <= T/2 (boundary: 2*1 == 2)
+            (5, 4, 3),  # S > T
+            (4, 3, 3),  # S > T
+            (4, 4, 4),  # S == T
+            (1, 1, 4),  # S == T (edge: both 1)
+            (3, 4, 5),  # S < T but not <= T/2
+            (3, 5, 5),  # S < T, 2*3=6 > 5 so not <= T/2
+            (2, 4, 6),  # S <= T/2 (boundary: 2*2 == 4)
+            (1, 4, 6),  # S <= T/2
+            (1, 2, 6),  # S <= T/2 (boundary: 2*1 == 2)
         ],
         ids=[
             "S=8,T=4->2+",
@@ -139,13 +153,34 @@ class TestWoundRollThreshold:
 # ---------------------------------------------------------------------------
 
 
+def _wp(
+    attacks: int = 2,
+    bs: int = 3,
+    strength: int = 4,
+    ap: int = 1,
+    damage: int = 1,
+) -> _TestWeapon:
+    """Shorthand to build a weapon satisfying WeaponStats protocol."""
+    return _TestWeapon(
+        attacks=attacks,
+        ballistic_skill=bs,
+        strength=strength,
+        ap=ap,
+        damage=damage,
+    )
+
+
+def _ds(toughness: int = 3, save: int = 4) -> DefenderStats:
+    return DefenderStats(toughness=toughness, save=save)
+
+
 class TestResolveShooting:
     """Deterministic shooting resolution with fixed seeds."""
 
     def test_deterministic_seed_42(self) -> None:
         """Fixed seed(42) produces a deterministic result."""
         rng = np.random.default_rng(42)
-        r = resolve_shooting(2, 3, 4, 1, 1, 3, 4, rng)
+        r = resolve_shooting(_wp(), _ds(), rng)
         assert isinstance(r, ShootingResult)
         assert r.hits == 1
         assert r.wounds == 1
@@ -155,14 +190,18 @@ class TestResolveShooting:
     def test_all_miss_high_bs(self) -> None:
         """BS=6 with low attacks: very likely to miss everything."""
         rng = np.random.default_rng(123)
-        r = resolve_shooting(1, 6, 1, 0, 1, 10, 2, rng)
+        r = resolve_shooting(
+            _wp(attacks=1, bs=6, strength=1, ap=0), _ds(toughness=10, save=2), rng
+        )
         assert r.hits >= 0
         assert r.damage_dealt >= 0
 
     def test_guaranteed_scenario(self) -> None:
         """High S, low T, no save — most attacks should deal damage."""
         rng = np.random.default_rng(99)
-        r = resolve_shooting(10, 2, 10, 0, 1, 1, 7, rng)
+        r = resolve_shooting(
+            _wp(attacks=10, bs=2, strength=10, ap=0), _ds(toughness=1, save=7), rng
+        )
         assert r.hits > 0
         assert r.wounds > 0
         assert r.unsaved > 0
@@ -173,36 +212,43 @@ class TestResolveShooting:
         rng = np.random.default_rng(0)
         total_hits = 0
         total_ones = 0
+        wp = _wp(attacks=100, bs=2, strength=10, ap=0)
+        ds = _ds(toughness=1, save=7)
         for seed in range(100):
             rng = np.random.default_rng(seed)
             rolls = rng.integers(1, 7, size=100)
             ones_count = int(np.sum(rolls == 1))
             total_ones += ones_count
             rng2 = np.random.default_rng(seed)
-            r = resolve_shooting(100, 2, 10, 0, 1, 1, 7, rng2)
+            r = resolve_shooting(wp, ds, rng2)
             total_hits += r.hits
         assert total_hits < 100 * 100  # some must miss from natural 1s
 
     def test_natural_6_always_succeeds_wound(self) -> None:
         """Even with impossible wound threshold, natural 6 wounds."""
         total_wounds = 0
+        wp = _wp(attacks=20, bs=2, strength=1, ap=0)
+        ds = _ds(toughness=100, save=7)
         for seed in range(50):
             rng = np.random.default_rng(seed)
-            r = resolve_shooting(20, 2, 1, 0, 1, 100, 7, rng)
+            r = resolve_shooting(wp, ds, rng)
             total_wounds += r.wounds
         assert total_wounds > 0  # some natural 6s must wound
 
     def test_zero_attacks_returns_zeros(self) -> None:
         """Edge case: 0 attacks means nothing happens."""
         rng = np.random.default_rng(42)
-        # numpy.random.Generator.integers with size=0 returns empty array
-        r = resolve_shooting(0, 3, 4, 1, 1, 3, 4, rng)
+        r = resolve_shooting(_wp(attacks=0), _ds(), rng)
         assert r == ShootingResult(hits=0, wounds=0, unsaved=0, damage_dealt=0)
 
     def test_damage_multiplier(self) -> None:
         """Damage > 1 multiplies unsaved wounds."""
         rng = np.random.default_rng(99)
-        r = resolve_shooting(10, 2, 10, 0, 3, 1, 7, rng)
+        r = resolve_shooting(
+            _wp(attacks=10, bs=2, strength=10, ap=0, damage=3),
+            _ds(toughness=1, save=7),
+            rng,
+        )
         if r.unsaved > 0:
             assert r.damage_dealt == r.unsaved * 3
 
@@ -220,41 +266,44 @@ class TestExpectedDamage:
 
     def test_default_profile(self) -> None:
         """Default profile (2, 3, 4, 1, 1, 3, 4) ≈ 0.593."""
-        ed = expected_damage(2, 3, 4, 1, 1, 3, 4)
+        ed = expected_damage(_wp(), _ds())
         assert abs(ed - 2 * (4 / 6) * (4 / 6) * (4 / 6)) < 1e-10
 
     def test_zero_attacks(self) -> None:
-        assert expected_damage(0, 3, 4, 1, 1, 3, 4) == 0.0
+        assert expected_damage(_wp(attacks=0), _ds()) == 0.0
 
     def test_save_7_all_fail(self) -> None:
         """save=7 means all saves fail (p_fail_save=1.0)."""
-        ed = expected_damage(2, 3, 4, 0, 1, 4, 7)
+        ed = expected_damage(_wp(ap=0), _ds(toughness=4, save=7))
         p_hit = 4 / 6
         p_wound = 3 / 6  # S=4, T=4 → 4+ → (7-4)/6
         assert abs(ed - 2 * p_hit * p_wound * 1.0 * 1) < 1e-10
 
     @pytest.mark.parametrize(
-        "attacks, bs, s, ap, d, t, sv, expected_approx",
+        "weapon, defender, expected_approx",
         [
             # bs=4→p_hit=3/6, S=T=4→4+→p_wound=3/6, sv=3+ap=0→mod=3→p_save=4/6→p_fail=2/6
-            (1, 4, 4, 0, 1, 4, 3, 1 * (3 / 6) * (3 / 6) * (2 / 6)),
+            (
+                _wp(attacks=1, bs=4, strength=4, ap=0),
+                _ds(toughness=4, save=3),
+                1 * (3 / 6) * (3 / 6) * (2 / 6),
+            ),
             # bs=3→p_hit=4/6, S=8≥2T=8→2+→p_wound=5/6, sv=3+ap=2→mod=5→p_save=2/6→p_fail=4/6
-            (4, 3, 8, 2, 2, 4, 3, 4 * (4 / 6) * (5 / 6) * (4 / 6) * 2),
+            (
+                _wp(attacks=4, bs=3, strength=8, ap=2, damage=2),
+                _ds(toughness=4, save=3),
+                4 * (4 / 6) * (5 / 6) * (4 / 6) * 2,
+            ),
         ],
         ids=["single-shot-low-AP", "multi-shot-high-S"],
     )
     def test_parametrized(
         self,
-        attacks: int,
-        bs: int,
-        s: int,
-        ap: int,
-        d: int,
-        t: int,
-        sv: int,
+        weapon: _TestWeapon,
+        defender: DefenderStats,
         expected_approx: float,
     ) -> None:
-        ed = expected_damage(attacks, bs, s, ap, d, t, sv)
+        ed = expected_damage(weapon, defender)
         assert abs(ed - expected_approx) < 1e-10
 
 
@@ -298,16 +347,12 @@ class TestBattleFactoryStats:
         assert models[0].stats["save"] == 4
 
     def test_default_stats_with_default_config(self) -> None:
-        models = _build_models(
-            1, [ModelConfig()], n_objectives=1, max_groups=100
-        )
+        models = _build_models(1, [ModelConfig()], n_objectives=1, max_groups=100)
         assert models[0].stats["toughness"] == 3
         assert models[0].stats["save"] == 4
 
     def test_stats_keys(self) -> None:
-        models = _build_models(
-            1, [ModelConfig()], n_objectives=1, max_groups=100
-        )
+        models = _build_models(1, [ModelConfig()], n_objectives=1, max_groups=100)
         expected_keys = {"max_wounds", "current_wounds", "toughness", "save"}
         assert set(models[0].stats.keys()) == expected_keys
 
@@ -335,13 +380,21 @@ def _shooting_env_config(
                 x=5 + i,
                 y=5,
                 max_wounds=max_wounds,
-                weapons=[WeaponProfile(range=50, attacks=4, ballistic_skill=2, strength=8, ap=2, damage=2)],
+                weapons=[
+                    WeaponProfile(
+                        range=50,
+                        attacks=4,
+                        ballistic_skill=2,
+                        strength=8,
+                        ap=2,
+                        damage=2,
+                    )
+                ],
             )
             for i in range(n_player)
         ],
         opponent_models=[
-            ModelConfig(x=20 + i, y=5, max_wounds=max_wounds)
-            for i in range(n_opponent)
+            ModelConfig(x=20 + i, y=5, max_wounds=max_wounds) for i in range(n_opponent)
         ],
         opponent_policy=OpponentPolicyConfig(type="random"),
         skip_phases=[BattlePhase.command, BattlePhase.charge, BattlePhase.fight],
@@ -402,8 +455,12 @@ class TestShootingIntegration:
         cfg_with_opp_weapons = cfg.model_copy(
             update={
                 "opponent_models": [
-                    ModelConfig(x=20, y=5, max_wounds=10, weapons=[WeaponProfile(range=50)]),
-                    ModelConfig(x=21, y=5, max_wounds=10, weapons=[WeaponProfile(range=50)]),
+                    ModelConfig(
+                        x=20, y=5, max_wounds=10, weapons=[WeaponProfile(range=50)]
+                    ),
+                    ModelConfig(
+                        x=21, y=5, max_wounds=10, weapons=[WeaponProfile(range=50)]
+                    ),
                 ]
             }
         )
@@ -566,7 +623,10 @@ class TestCombatRNG:
             assert ss is not None
             env.step(WargameEnvAction(actions=[ss.start]))
             results_by_run.append(
-                [(r.hits, r.wounds, r.unsaved, r.damage_dealt) for r in env._last_player_shooting_results]
+                [
+                    (r.hits, r.wounds, r.unsaved, r.damage_dealt)
+                    for r in env._last_player_shooting_results
+                ]
             )
         assert results_by_run[0] == results_by_run[1]
 
@@ -580,7 +640,10 @@ class TestCombatRNG:
             assert ss is not None
             env.step(WargameEnvAction(actions=[ss.start]))
             results_by_seed.append(
-                [(r.hits, r.wounds, r.unsaved, r.damage_dealt) for r in env._last_player_shooting_results]
+                [
+                    (r.hits, r.wounds, r.unsaved, r.damage_dealt)
+                    for r in env._last_player_shooting_results
+                ]
             )
         assert results_by_seed[0] != results_by_seed[1]
 

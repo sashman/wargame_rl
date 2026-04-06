@@ -18,9 +18,13 @@ from wargame_rl.wargame.envs.domain.battle_factory import (
 )
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.game_clock import GameClock
-from wargame_rl.wargame.envs.domain.shooting import ShootingResult, resolve_shooting
 from wargame_rl.wargame.envs.domain.los import has_line_of_sight, iter_los_cells
 from wargame_rl.wargame.envs.domain.placement import place_for_episode
+from wargame_rl.wargame.envs.domain.shooting import (
+    DefenderStats,
+    ShootingResult,
+    resolve_shooting,
+)
 from wargame_rl.wargame.envs.domain.termination import is_battle_over
 from wargame_rl.wargame.envs.domain.turn_execution import (
     run_after_player_action,
@@ -353,16 +357,12 @@ class WargameEnv(gym.Env):
             if not weapons:
                 continue
             w = weapons[0]
-            result = resolve_shooting(
-                w.attacks,
-                w.ballistic_skill,
-                w.strength,
-                w.ap,
-                w.damage,
-                targets[target_idx].stats["toughness"],
-                targets[target_idx].stats["save"],
-                self._combat_rng,
+            target = targets[target_idx]
+            defender = DefenderStats(
+                toughness=target.stats["toughness"],
+                save=target.stats["save"],
             )
+            result = resolve_shooting(w, defender, self._combat_rng)
             if result.damage_dealt > 0:
                 targets[target_idx].take_damage(result.damage_dealt)
             results.append(result)

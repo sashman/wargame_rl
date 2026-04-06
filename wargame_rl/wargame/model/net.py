@@ -8,8 +8,8 @@ from torch import nn
 from wargame_rl.wargame.envs.types import WargameEnvObservation
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common import Device, get_device
-from wargame_rl.wargame.model.common.observation import observation_to_tensor
 from wargame_rl.wargame.model.common.config import TransformerConfig
+from wargame_rl.wargame.model.common.observation import observation_to_tensor
 from wargame_rl.wargame.model.dqn.layers import Block, LayerNorm
 
 
@@ -400,9 +400,7 @@ class TransformerNetwork(RL_Network):
         game_size = int(tensors[0].shape[-1])
         objective_size = int(tensors[1].shape[-1])
         wargame_model_size = int(tensors[2].shape[-1]) if tensors[2].numel() > 0 else 0
-        opponent_model_size = (
-            int(tensors[3].shape[-1]) if tensors[3].numel() > 0 else 0
-        )
+        opponent_model_size = int(tensors[3].shape[-1]) if tensors[3].numel() > 0 else 0
         n_actions: int = env._action_handler.n_actions
         transformer_config = TransformerConfig()
 

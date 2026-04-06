@@ -107,9 +107,7 @@ class WeaponProfile(BaseModel):
         ge=0,
         description="Armour penetration (worsens target save by this amount)",
     )
-    damage: int = Field(
-        default=1, gt=0, description="Wounds inflicted per failed save"
-    )
+    damage: int = Field(default=1, gt=0, description="Wounds inflicted per failed save")
 
 
 class ModelConfig(BaseModel):
@@ -131,9 +129,7 @@ class ModelConfig(BaseModel):
     )
     group_id: int = Field(default=0, ge=0, description="Group this model belongs to")
     max_wounds: int = Field(default=1, gt=0)
-    toughness: int = Field(
-        default=3, gt=0, description="Wound roll comparison stat"
-    )
+    toughness: int = Field(default=3, gt=0, description="Wound roll comparison stat")
     save: int = Field(
         default=4,
         ge=2,

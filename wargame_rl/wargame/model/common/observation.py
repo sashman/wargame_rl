@@ -1,10 +1,23 @@
+from dataclasses import dataclass
+
 import numpy as np
 import torch
 from torch import Tensor
 
-from wargame_rl.wargame.envs.domain.shooting import expected_damage
+from wargame_rl.wargame.envs.domain.shooting import DefenderStats, expected_damage
 from wargame_rl.wargame.envs.types import WargameEnvObservation
 from wargame_rl.wargame.model.common import Device, get_device
+
+
+@dataclass(frozen=True, slots=True)
+class _ObsWeaponStats:
+    """Bridges observation's ``weapon_*`` fields to the ``WeaponStats`` protocol."""
+
+    attacks: int
+    ballistic_skill: int
+    strength: int
+    ap: int
+    damage: int
 
 
 def apply_action_mask(q_values: Tensor, mask: Tensor) -> Tensor:
@@ -179,15 +192,15 @@ def _observation_to_numpy(
                 om = state.opponent_models[oi]
                 if om.toughness == 0:
                     continue
-                ed_matrix[pi, oi] = expected_damage(
-                    pm.weapon_attacks,
-                    pm.weapon_ballistic_skill,
-                    pm.weapon_strength,
-                    pm.weapon_ap,
-                    pm.weapon_damage,
-                    om.toughness,
-                    om.save_stat,
+                weapon = _ObsWeaponStats(
+                    attacks=pm.weapon_attacks,
+                    ballistic_skill=pm.weapon_ballistic_skill,
+                    strength=pm.weapon_strength,
+                    ap=pm.weapon_ap,
+                    damage=pm.weapon_damage,
                 )
+                defender = DefenderStats(toughness=om.toughness, save=om.save_stat)
+                ed_matrix[pi, oi] = expected_damage(weapon, defender)
         ed_normalized = np.clip(ed_matrix / 10.0, 0.0, 1.0)
         model_features = np.hstack([model_features, ed_normalized])
         opp_padding = np.zeros((n_opponent, n_opponent), dtype=np.float32)
