@@ -81,7 +81,10 @@ Plans:
   2. Weapon profiles (range, attacks, BS, strength, AP, damage) are configurable per model in YAML
   3. Models that advanced cannot shoot; models in engagement range cannot shoot
   4. Weapon-relevant stats appear in the agent's observation for informed targeting decisions
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 05-01-PLAN.md — Config + domain shooting resolution + entity extensions + unit tests
+- [ ] 05-02-PLAN.md — Env wiring + mask extensions + observation pipeline + integration tests
 
 ### Phase 6: Combat Reward & Curriculum
 **Goal**: The agent learns to use shooting effectively through reward shaping and curriculum progression
