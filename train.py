@@ -30,6 +30,7 @@ from wargame_rl.wargame.model.net import MLPNetwork, RL_Network, TransformerNetw
 from wargame_rl.wargame.model.ppo.config import PPOConfig, PPOTrainingConfig
 from wargame_rl.wargame.model.ppo.lightning import PPOLightning
 from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
+from wargame_rl.wargame.model.ppo.self_play_callback import PPOSelfPlayCallback
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
@@ -344,6 +345,17 @@ def train(
                         record_after_epoch=ppo_training_config.record_after_epoch,
                         record_every_n_epochs=ppo_training_config.record_every_n_epochs,
                         filename_prefix="ppo",
+                    )
+                )
+            if (
+                ppo_training_config.self_play.enabled
+                and env_config.number_of_opponent_models > 0
+            ):
+                ppo_callbacks.append(
+                    PPOSelfPlayCallback(
+                        run_name=run.name,
+                        env_config=env_config,
+                        self_play_config=ppo_training_config.self_play,
                     )
                 )
             logger = get_logger(run, disabled=no_wandb)
