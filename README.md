@@ -110,6 +110,16 @@ Train with DQN and a specific network type:
 just train examples/env_config/example.yaml dqn transformer
 ```
 
+Resume full training state (model + optimizer + epoch/step) from an existing checkpoint:
+```bash
+uv run train.py --env-config-path examples/env_config/ci_smoke.yaml --algorithm ppo --resume-ckpt-path checkpoints/<run>/last.ckpt
+```
+
+Warm start from checkpoint weights only (fresh optimizer and training counters):
+```bash
+uv run train.py --env-config-path examples/env_config/ci_smoke.yaml --algorithm dqn --warm-start-ckpt-path checkpoints/<run>/last.ckpt
+```
+
 #### Running a simulation
 
 Latest checkpoint, will find the last checkpoint file and its related env config:

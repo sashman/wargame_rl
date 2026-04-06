@@ -1,11 +1,13 @@
 import os
 from enum import Enum
-from typing import cast
+from typing import Any, cast
 
+import torch
 import typer
 from pydantic_yaml import parse_yaml_raw_as
-from pytorch_lightning import Trainer
+from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import Callback
+from typer.models import OptionInfo
 
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.common import (
@@ -80,6 +82,68 @@ def get_env_config(
     return WargameEnvConfig(**env_config.model_dump())
 
 
+def _validate_checkpoint_mode(
+    resume_ckpt_path: str | None,
+    warm_start_ckpt_path: str | None,
+) -> None:
+    if resume_ckpt_path is not None and warm_start_ckpt_path is not None:
+        raise ValueError(
+            "resume_ckpt_path and warm_start_ckpt_path are mutually exclusive"
+        )
+    for checkpoint_path in (resume_ckpt_path, warm_start_ckpt_path):
+        if checkpoint_path is not None and not os.path.exists(checkpoint_path):
+            raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
+
+
+def _extract_state_dict(payload: dict[str, Any]) -> dict[str, torch.Tensor]:
+    if "state_dict" in payload and isinstance(payload["state_dict"], dict):
+        state_dict = payload["state_dict"]
+    else:
+        state_dict = payload
+    if not isinstance(state_dict, dict):
+        raise ValueError(
+            "Unsupported checkpoint payload: missing state_dict dictionary"
+        )
+    output = {k: v for k, v in state_dict.items() if isinstance(v, torch.Tensor)}
+    if not output:
+        raise ValueError("No tensor weights found in checkpoint state_dict")
+    return output
+
+
+def _apply_warm_start_weights(
+    model: LightningModule,
+    warm_start_ckpt_path: str,
+) -> None:
+    loaded = torch.load(warm_start_ckpt_path, map_location="cpu", weights_only=False)
+    if not isinstance(loaded, dict):
+        raise ValueError(
+            f"Unsupported checkpoint format for warm start: {warm_start_ckpt_path}"
+        )
+    state_dict = _extract_state_dict(loaded)
+    model.load_state_dict(state_dict, strict=False)
+    if isinstance(model, DQNLightning):
+        # Keep online/target aligned when warm-starting from online weights only.
+        model.target_net.load_state_dict(model.policy_net.state_dict())
+        model.target_net.eval()
+
+
+def _fit_with_optional_resume(
+    trainer: Trainer,
+    model: LightningModule,
+    resume_ckpt_path: str | None,
+) -> None:
+    if resume_ckpt_path is None:
+        trainer.fit(model)
+        return
+    trainer.fit(model, ckpt_path=resume_ckpt_path)
+
+
+def _resolve_optional_str(value: str | OptionInfo | None) -> str | None:
+    if isinstance(value, OptionInfo):
+        return None
+    return value
+
+
 @app.command()
 def train(
     render_mode: str | None = typer.Option(
@@ -127,6 +191,14 @@ def train(
         None,
         help="Override number of evaluation episodes per epoch (defaults to config value)",
     ),
+    resume_ckpt_path: str | None = typer.Option(
+        None,
+        help="Resume full training state (model, optimizer, epoch/step) from a Lightning checkpoint.",
+    ),
+    warm_start_ckpt_path: str | None = typer.Option(
+        None,
+        help="Load model weights from checkpoint and start fresh optimizer/epoch state.",
+    ),
     run_name: str | None = typer.Option(
         None,
         help="Optional run name base. If omitted, a descriptive name is generated from algorithm/network/env settings.",
@@ -141,6 +213,15 @@ def train(
     ),
 ) -> None:
     """Train the agent."""
+    render_mode = _resolve_optional_str(render_mode)
+    env_config_path = _resolve_optional_str(env_config_path)
+    run_name = _resolve_optional_str(run_name)
+    run_suffix = _resolve_optional_str(run_suffix)
+    wandb_group = _resolve_optional_str(wandb_group)
+    resume_ckpt_path = _resolve_optional_str(resume_ckpt_path)
+    warm_start_ckpt_path = _resolve_optional_str(warm_start_ckpt_path)
+
+    _validate_checkpoint_mode(resume_ckpt_path, warm_start_ckpt_path)
 
     env_config = get_env_config(env_config_path, render_mode)
 
@@ -209,7 +290,9 @@ def train(
                 callbacks=dqn_callbacks,
             )
 
-            trainer.fit(model)
+            if warm_start_ckpt_path is not None:
+                _apply_warm_start_weights(model, warm_start_ckpt_path)
+            _fit_with_optional_resume(trainer, model, resume_ckpt_path)
 
     elif algorithm == AlgorithmType.PPO:
         ppo_config = PPOConfig()
@@ -273,7 +356,9 @@ def train(
                 log_every_n_steps=1,
             )
 
-            trainer.fit(ppo_model)
+            if warm_start_ckpt_path is not None:
+                _apply_warm_start_weights(ppo_model, warm_start_ckpt_path)
+            _fit_with_optional_resume(trainer, ppo_model, resume_ckpt_path)
 
 
 if __name__ == "__main__":
