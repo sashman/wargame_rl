@@ -11,6 +11,7 @@ import numpy as np
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.shooting import ENGAGEMENT_RANGE
 from wargame_rl.wargame.envs.env_components.actions import ActionRegistry
 from wargame_rl.wargame.envs.env_components.shooting_masks import (
     compute_shooting_masks,
@@ -26,6 +27,7 @@ from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.env_components.distance_cache import DistanceCache
+    from wargame_rl.wargame.envs.types.config import ModelConfig
     from wargame_rl.wargame.envs.wargame_model import WargameModel
     from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
@@ -50,20 +52,49 @@ def update_distances_to_objectives(
 
 
 def _models_to_obs(
-    models: list[WargameModel], max_groups: int
+    models: list[WargameModel],
+    max_groups: int,
+    model_configs: list[ModelConfig] | None = None,
 ) -> list[WargameModelObservation]:
-    return [
-        WargameModelObservation(
-            location=m.location,
-            distances_to_objectives=m.distances_to_objectives,
-            group_id=m.group_id,
-            max_groups=max_groups,
-            alive=1.0 if m.is_alive else 0.0,
-            current_wounds=int(m.stats["current_wounds"]),
-            max_wounds=int(m.stats["max_wounds"]),
+    result: list[WargameModelObservation] = []
+    for i, m in enumerate(models):
+        w_attacks = 0
+        w_bs = 0
+        w_str = 0
+        w_ap = 0
+        w_dmg = 0
+        toughness = 0
+        save = 0
+        if model_configs is not None and i < len(model_configs):
+            cfg = model_configs[i]
+            toughness = cfg.toughness
+            save = cfg.save
+            if cfg.weapons:
+                w = cfg.weapons[0]
+                w_attacks = w.attacks
+                w_bs = w.ballistic_skill
+                w_str = w.strength
+                w_ap = w.ap
+                w_dmg = w.damage
+        result.append(
+            WargameModelObservation(
+                location=m.location,
+                distances_to_objectives=m.distances_to_objectives,
+                group_id=m.group_id,
+                max_groups=max_groups,
+                alive=1.0 if m.is_alive else 0.0,
+                current_wounds=int(m.stats["current_wounds"]),
+                max_wounds=int(m.stats["max_wounds"]),
+                weapon_attacks=w_attacks,
+                weapon_ballistic_skill=w_bs,
+                weapon_strength=w_str,
+                weapon_ap=w_ap,
+                weapon_damage=w_dmg,
+                toughness=toughness,
+                save_stat=save,
+            )
         )
-        for m in models
-    ]
+    return result
 
 
 def build_observation(
@@ -98,6 +129,9 @@ def build_observation(
             player_ranges = max_weapon_ranges(
                 view.config.models, len(view.player_models)
             )
+            player_advanced = np.array(
+                [m.advanced_this_turn for m in view.player_models]
+            )
             shooting_validity = compute_shooting_masks(
                 player_positions,
                 opponent_positions,
@@ -105,6 +139,8 @@ def build_observation(
                 opponent_alive,
                 player_ranges,
                 view.has_line_of_sight_between_cells,
+                player_advanced=player_advanced,
+                engagement_range=float(ENGAGEMENT_RANGE),
             )
             action_mask[:, shooting_slice.start : shooting_slice.end] &= (
                 shooting_validity
@@ -120,11 +156,15 @@ def build_observation(
     ]
     return WargameEnvObservation(
         current_turn=view.current_turn,
-        wargame_models=_models_to_obs(view.player_models, max_groups),
+        wargame_models=_models_to_obs(
+            view.player_models, max_groups, model_configs=view.config.models
+        ),
         objectives=objectives_obs,
         board_width=view.board_width,
         board_height=view.board_height,
-        opponent_models=_models_to_obs(view.opponent_models, max_groups),
+        opponent_models=_models_to_obs(
+            view.opponent_models, max_groups, model_configs=view.config.opponent_models
+        ),
         action_mask=action_mask,
         battle_round=battle_round,
         battle_phase_index=battle_phase_index,
@@ -147,9 +187,13 @@ def build_info(view: BattleView) -> WargameEnvInfo:
     ]
     return WargameEnvInfo(
         current_turn=view.current_turn,
-        wargame_models=_models_to_obs(view.player_models, max_groups),
+        wargame_models=_models_to_obs(
+            view.player_models, max_groups, model_configs=view.config.models
+        ),
         objectives=objectives_obs,
-        opponent_models=_models_to_obs(view.opponent_models, max_groups),
+        opponent_models=_models_to_obs(
+            view.opponent_models, max_groups, model_configs=view.config.opponent_models
+        ),
         deployment_zone=deployment_zone,
         opponent_deployment_zone=opponent_deployment_zone,
         player_vp=view.player_vp,

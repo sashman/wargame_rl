@@ -18,11 +18,16 @@ def compute_shooting_masks(
     opponent_alive: np.ndarray,
     player_max_ranges: np.ndarray,
     has_los_fn: Callable[[int, int, int, int], bool],
+    *,
+    player_advanced: np.ndarray | None = None,
+    engagement_range: float = 0.0,
 ) -> np.ndarray:
     """Per-model shooting validity: ``(n_player, n_opponent)`` bool mask.
 
     A target K is valid for model M iff:
     - M is alive (player_alive[M] is True)
+    - M has not advanced this turn (player_advanced[M] is not True)
+    - M is not within engagement_range of any opponent
     - K is alive (opponent_alive[K] is True)
     - Euclidean distance(M, K) <= player_max_ranges[M]
     - has_los_fn(Mx, My, Kx, Ky) is True
@@ -41,6 +46,10 @@ def compute_shooting_masks(
 
     for m in range(n_player):
         if not player_alive[m] or player_max_ranges[m] <= 0:
+            continue
+        if player_advanced is not None and player_advanced[m]:
+            continue
+        if engagement_range > 0 and float(distances[m].min()) <= engagement_range:
             continue
         mx, my = int(player_positions[m, 0]), int(player_positions[m, 1])
         for k in range(n_opponent):

@@ -26,3 +26,7 @@ class StepContext:
     is_terminated: bool = False
     current_round: int = 1
     battle_phase: BattlePhase = BattlePhase.command
+    player_damage_dealt: int = 0
+    opponent_damage_dealt: int = 0
+    player_models_killed: int = 0
+    opponent_models_killed: int = 0
