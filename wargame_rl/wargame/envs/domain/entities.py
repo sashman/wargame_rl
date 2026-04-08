@@ -41,6 +41,7 @@ class WargameModel:
         self.previous_closest_objective_distance = previous_closest_objective_distance
         self.best_closest_objective_distance = best_closest_objective_distance
         self.model_rewards_history: list["ModelRewards"] = []
+        self.advanced_this_turn: bool = False
 
     def set_previous_closest_objective_distance(self, distance: float) -> None:
         self.previous_closest_objective_distance = distance
@@ -55,6 +56,7 @@ class WargameModel:
         self.best_closest_objective_distance = None
         self.stats["current_wounds"] = self.stats["max_wounds"]
         self.model_rewards_history.clear()
+        self.advanced_this_turn = False
 
     @property
     def is_alive(self) -> bool:

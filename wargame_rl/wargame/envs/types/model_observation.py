@@ -5,25 +5,31 @@ import numpy as np
 
 @dataclass
 class WargameModelObservation:
-    """
-    Observation structure for a Wargame model.
-    """
+    """Observation structure for a Wargame model."""
 
-    location: np.ndarray  # Location of the wargame model in the grid
-    distances_to_objectives: np.ndarray  # Distances to all objectives
-    group_id: int  # Group ID; models with the same group_id must stay within group_max_distance of at least one peer
-    max_groups: int  # One-hot encoding size for group_id (from env config)
-    alive: float  # 1.0 while the model has wounds remaining, else 0.0
+    location: np.ndarray
+    distances_to_objectives: np.ndarray
+    group_id: int
+    max_groups: int
+    alive: float
     current_wounds: int
     max_wounds: int
+    weapon_attacks: int = 0
+    weapon_ballistic_skill: int = 0
+    weapon_strength: int = 0
+    weapon_ap: int = 0
+    weapon_damage: int = 0
+    toughness: int = 0
+    save_stat: int = 0
 
     @property
     def size(self) -> int:
-        """Location + distances + group one-hot + same-group distance + alive + wound scalars (3)."""
+        """Location + distances + group one-hot + same-group distance + alive + wound scalars (3) + combat stats (7)."""
         return int(
             self.location.size
             + self.distances_to_objectives.size
             + self.max_groups
             + 1
             + 3
+            + 7
         )

@@ -331,7 +331,7 @@ def test_observation_tensor_width_stable_with_elimination(
     cfg = wound_env.config
     n_obj = cfg.number_of_objectives
     max_groups = cfg.max_groups
-    expected_dim = 2 + n_obj * 2 + max_groups + 1 + 3
+    expected_dim = 2 + n_obj * 2 + max_groups + 1 + 3 + 7
 
     obs0, _, _, _, _ = wound_env.step(WargameEnvAction(actions=[0, 0]))
     t0 = observation_to_tensor(obs0, device="cpu")[2]

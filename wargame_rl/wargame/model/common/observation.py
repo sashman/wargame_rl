@@ -1,9 +1,40 @@
+from dataclasses import dataclass
+
 import numpy as np
 import torch
 from torch import Tensor
 
+from wargame_rl.wargame.envs.domain.shooting import DefenderStats, expected_damage
 from wargame_rl.wargame.envs.types import WargameEnvObservation
 from wargame_rl.wargame.model.common import Device, get_device
+
+# ---------------------------------------------------------------------------
+# Normalization constants — divisors chosen so typical values map to [0, 1].
+# ---------------------------------------------------------------------------
+NORM_ATTACKS = 10.0
+NORM_BALLISTIC_SKILL = 6.0  # D6 max
+NORM_STRENGTH = 10.0
+NORM_AP = 6.0  # D6 max
+NORM_DAMAGE = 10.0
+NORM_TOUGHNESS = 10.0
+NORM_SAVE = 7.0  # 7 = "no save" ceiling
+NORM_MAX_WOUNDS = 100.0
+NORM_EXPECTED_DAMAGE = 10.0
+
+N_WOUND_FEATURES = 3  # alive, wound_ratio, max_wounds_norm
+N_COMBAT_STATS = 7  # attacks, bs, strength, ap, damage, toughness, save
+N_BATTLE_PHASES = 5  # command, movement, shooting, charge, fight
+
+
+@dataclass(frozen=True, slots=True)
+class _ObsWeaponStats:
+    """Bridges observation's ``weapon_*`` fields to the ``WeaponStats`` protocol."""
+
+    attacks: int
+    ballistic_skill: int
+    strength: int
+    ap: int
+    damage: int
 
 
 def apply_action_mask(q_values: Tensor, mask: Tensor) -> Tensor:
@@ -92,8 +123,38 @@ def _models_to_features(
     mw = np.array([[float(m.max_wounds)] for m in models], dtype=np.float32)
     mw_safe = np.maximum(mw, 1.0)
     wound_ratio = np.clip(cw / mw_safe, 0.0, 1.0)
-    max_w_norm = np.clip(mw / 100.0, 0.0, 1.0)
-    out = np.hstack([core, alive_col, wound_ratio, max_w_norm])
+    max_w_norm = np.clip(mw / NORM_MAX_WOUNDS, 0.0, 1.0)
+    w_attacks = np.array(
+        [[m.weapon_attacks / NORM_ATTACKS] for m in models], dtype=np.float32
+    )
+    w_bs = np.array(
+        [[m.weapon_ballistic_skill / NORM_BALLISTIC_SKILL] for m in models],
+        dtype=np.float32,
+    )
+    w_str = np.array(
+        [[m.weapon_strength / NORM_STRENGTH] for m in models], dtype=np.float32
+    )
+    w_ap = np.array([[m.weapon_ap / NORM_AP] for m in models], dtype=np.float32)
+    w_dmg = np.array(
+        [[m.weapon_damage / NORM_DAMAGE] for m in models], dtype=np.float32
+    )
+    t_col = np.array([[m.toughness / NORM_TOUGHNESS] for m in models], dtype=np.float32)
+    sv_col = np.array([[m.save_stat / NORM_SAVE] for m in models], dtype=np.float32)
+    out = np.hstack(
+        [
+            core,
+            alive_col,
+            wound_ratio,
+            max_w_norm,
+            w_attacks,
+            w_bs,
+            w_str,
+            w_ap,
+            w_dmg,
+            t_col,
+            sv_col,
+        ]
+    )
     assert out.shape[1] == feature_dim, (out.shape[1], feature_dim)
     return out
 
@@ -120,12 +181,14 @@ def _observation_to_numpy(
     half_board_tiled = np.tile(half_board, n_objectives)
     max_dist = float(np.sqrt(state.board_width**2 + state.board_height**2))
 
-    # 2 (loc) + n_objectives*2 (dists) + max_groups (group one-hot) + 1 (closest)
-    # +3 alive, current/max wound ratio, max_wounds/100
-    feature_dim = 2 + n_objectives * 2 + max_groups + 1 + 3
+    n_opponent = len(state.opponent_models)
+
+    n_spatial = 2 + n_objectives * 2  # location + distances-to-objectives
+    n_group = max_groups + 1  # one-hot group + closest same-group distance
+    base_feature_dim = n_spatial + n_group + N_WOUND_FEATURES + N_COMBAT_STATS
 
     model_features = _models_to_features(
-        models, half_board, half_board_tiled, max_dist, max_groups, feature_dim
+        models, half_board, half_board_tiled, max_dist, max_groups, base_feature_dim
     )
     opponent_features = _models_to_features(
         state.opponent_models,
@@ -133,15 +196,42 @@ def _observation_to_numpy(
         half_board_tiled,
         max_dist,
         max_groups,
-        feature_dim,
+        base_feature_dim,
     )
+
+    n_player = len(models)
+    if n_player > 0 and n_opponent > 0:
+        ed_matrix = np.zeros((n_player, n_opponent), dtype=np.float32)
+        for pi in range(n_player):
+            pm = models[pi]
+            if pm.weapon_attacks == 0:
+                continue
+            for oi in range(n_opponent):
+                om = state.opponent_models[oi]
+                if om.toughness == 0:
+                    continue
+                weapon = _ObsWeaponStats(
+                    attacks=pm.weapon_attacks,
+                    ballistic_skill=pm.weapon_ballistic_skill,
+                    strength=pm.weapon_strength,
+                    ap=pm.weapon_ap,
+                    damage=pm.weapon_damage,
+                )
+                defender = DefenderStats(toughness=om.toughness, save=om.save_stat)
+                ed_matrix[pi, oi] = expected_damage(weapon, defender)
+        ed_normalized = np.clip(ed_matrix / NORM_EXPECTED_DAMAGE, 0.0, 1.0)
+        model_features = np.hstack([model_features, ed_normalized])
+        opp_padding = np.zeros((n_opponent, n_opponent), dtype=np.float32)
+        opponent_features = np.hstack([opponent_features, opp_padding])
+    elif n_opponent > 0:
+        opp_padding = np.zeros((n_opponent, n_opponent), dtype=np.float32)
+        opponent_features = np.hstack([opponent_features, opp_padding])
 
     obj_locs = np.array([o.location for o in state.objectives], dtype=np.float32)
     obj_features = _normalize(obj_locs, half_board)
 
-    n_phases = 5  # len(BattlePhase)
     normalized_round = state.battle_round / max(state.n_rounds, 1)
-    normalized_phase = state.battle_phase_index / max(n_phases - 1, 1)
+    normalized_phase = state.battle_phase_index / max(N_BATTLE_PHASES - 1, 1)
     game_features = np.array(
         [
             0.0,
@@ -186,15 +276,17 @@ def observation_to_tensor(
     The tensors are returned in the following order:
         1. game_features: shape (6,) — placeholder, normalized_round, normalized_phase, player_vp, opponent_vp, player_vp_delta
         2. tensor_objectives: shape (num_objectives, 2), normalized to [-1, 1]
-        3. tensor_wargame_models: shape (num_models, model_features)
-        4. tensor_opponent_models: shape (num_opponent_models, model_features)
+        3. tensor_wargame_models: shape (num_models, feature_dim)
+        4. tensor_opponent_models: shape (num_opponent_models, feature_dim)
            (0 rows when no opponents)
         5. tensor_action_mask: shape (n_models, n_actions), bool
 
-    model_features include normalized location, distances to objectives,
-    group_id one-hot, closest same-group distance, then ``alive`` (0–1),
-    ``current_wounds / max(max_wounds, 1)`` in [0, 1], and ``max_wounds / 100``
-    in [0, 1].
+    feature_dim = base + n_opponent, where base includes normalized location,
+    distances to objectives, group_id one-hot, closest same-group distance,
+    wound features (alive, wound_ratio, max_wounds_norm), and combat stats
+    (attacks, bs, strength, ap, damage, toughness, save — each divided by
+    its NORM_* constant). The final n_opponent columns are expected damage
+    per target (player models) or zero-padding (opponent models).
     """
     device = get_device(device)
     current_turn, obj_features, model_features, opp_features, mask = (

@@ -9,6 +9,7 @@ from wargame_rl.wargame.envs.types import WargameEnvObservation
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common import Device, get_device
 from wargame_rl.wargame.model.common.config import TransformerConfig
+from wargame_rl.wargame.model.common.observation import observation_to_tensor
 from wargame_rl.wargame.model.dqn.layers import Block, LayerNorm
 
 
@@ -117,7 +118,8 @@ class MLPNetwork(RL_Network):
     def from_env(cls, env: WargameEnv, is_policy: bool) -> Self:
         observation: WargameEnvObservation
         observation, _ = env.reset()
-        obs_size: int = observation.size
+        tensors = observation_to_tensor(observation)
+        obs_size = sum(t.numel() for t in tensors[:4])
         n_wargame_models: int = observation.n_wargame_models
         n_actions: int = env._action_handler.n_actions
         print(
@@ -394,15 +396,13 @@ class TransformerNetwork(RL_Network):
     def from_env(cls, env: WargameEnv, is_policy: bool) -> Self:
         observation: WargameEnvObservation
         observation, _ = env.reset()
-        objective_size: int = observation.size_objectives[0]
-        wargame_model_size: int = observation.size_wargame_models[0]
-        game_size: int = observation.size_game_observation
+        tensors = observation_to_tensor(observation)
+        game_size = int(tensors[0].shape[-1])
+        objective_size = int(tensors[1].shape[-1])
+        wargame_model_size = int(tensors[2].shape[-1]) if tensors[2].numel() > 0 else 0
+        opponent_model_size = int(tensors[3].shape[-1]) if tensors[3].numel() > 0 else 0
         n_actions: int = env._action_handler.n_actions
         transformer_config = TransformerConfig()
-
-        opponent_model_size = 0
-        if observation.size_opponent_models:
-            opponent_model_size = observation.size_opponent_models[0]
 
         print(
             f"game_size: {game_size}, objective_size: {objective_size}, "

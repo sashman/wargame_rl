@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 import gymnasium as gym
+import numpy as np
 from gymnasium import spaces
 
 from wargame_rl.wargame.envs.domain.battle_factory import (
@@ -19,6 +20,11 @@ from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.game_clock import GameClock
 from wargame_rl.wargame.envs.domain.los import has_line_of_sight, iter_los_cells
 from wargame_rl.wargame.envs.domain.placement import place_for_episode
+from wargame_rl.wargame.envs.domain.shooting import (
+    DefenderStats,
+    ShootingResult,
+    resolve_shooting,
+)
 from wargame_rl.wargame.envs.domain.termination import is_battle_over
 from wargame_rl.wargame.envs.domain.turn_execution import (
     run_after_player_action,
@@ -31,6 +37,7 @@ from wargame_rl.wargame.envs.env_components import (
     build_observation,
     compute_distances,
 )
+from wargame_rl.wargame.envs.env_components.actions import ActionSlice
 from wargame_rl.wargame.envs.mission import build_vp_calculator
 from wargame_rl.wargame.envs.opponent.policy import OpponentPolicy
 from wargame_rl.wargame.envs.opponent.registry import (
@@ -49,6 +56,7 @@ from wargame_rl.wargame.envs.types import (
     WargameEnvInfo,
     WargameEnvObservation,
 )
+from wargame_rl.wargame.envs.types.config import ModelConfig
 from wargame_rl.wargame.envs.types.game_timing import BATTLE_PHASE_ORDER, GameState
 from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.envs.wargame_objective import WargameObjective
@@ -111,6 +119,11 @@ class WargameEnv(gym.Env):
         self.opponent_models = self._battle.opponent_models
         self.deployment_zone = self._battle.deployment_zone
         self.opponent_deployment_zone = self._battle.opponent_deployment_zone
+
+        # Combat RNG (re-seeded per episode in reset)
+        self._combat_rng: np.random.Generator = np.random.default_rng()
+        self._last_player_shooting_results: list[ShootingResult] = []
+        self._last_opponent_shooting_results: list[ShootingResult] = []
 
         # Last reward from step(); None until first step after reset
         self.last_reward: float | None = None
@@ -271,6 +284,11 @@ class WargameEnv(gym.Env):
     ) -> tuple[WargameEnvObservation, dict[str, Any]]:
         super().reset(seed=seed)
 
+        combat_seed = self.np_random.integers(0, 2**31)
+        self._combat_rng = np.random.default_rng(int(combat_seed))
+        self._last_player_shooting_results = []
+        self._last_opponent_shooting_results = []
+
         self.current_turn = 0
         self.last_reward = None
         self.last_step_context = None
@@ -305,16 +323,70 @@ class WargameEnv(gym.Env):
 
         return observation, info.model_dump()
 
+    def _resolve_shooting_action(
+        self,
+        action: WargameEnvAction,
+        attackers: list[WargameModel],
+        targets: list[WargameModel],
+        shooting_slice: ActionSlice | None,
+        attacker_configs: list[ModelConfig] | None,
+    ) -> list[ShootingResult]:
+        """Resolve shooting for each model in the action against targets.
+
+        Returns one ShootingResult per model that actually fired.
+        """
+        results: list[ShootingResult] = []
+        if shooting_slice is None:
+            return results
+        for i, act in enumerate(action.actions):
+            if i >= len(attackers):
+                continue
+            attacker = attackers[i]
+            if not attacker.is_alive:
+                continue
+            if not (shooting_slice.start <= act < shooting_slice.end):
+                continue
+            target_idx = act - shooting_slice.start
+            if target_idx >= len(targets) or not targets[target_idx].is_alive:
+                continue
+            weapons = (
+                attacker_configs[i].weapons
+                if attacker_configs and i < len(attacker_configs)
+                else []
+            )
+            if not weapons:
+                continue
+            w = weapons[0]
+            target = targets[target_idx]
+            defender = DefenderStats(
+                toughness=target.stats["toughness"],
+                save=target.stats["save"],
+            )
+            result = resolve_shooting(w, defender, self._combat_rng)
+            if result.damage_dealt > 0:
+                targets[target_idx].take_damage(result.damage_dealt)
+            results.append(result)
+        return results
+
     def _apply_player_action(self, action: WargameEnvAction) -> None:
         phase = self._game_clock.state.phase or BattlePhase.movement
-        self._action_handler.apply(
-            action,
-            self.wargame_models,
-            self.board_width,
-            self.board_height,
-            self._action_handler.action_space,
-            phase=phase,
-        )
+        if phase == BattlePhase.shooting:
+            self._last_player_shooting_results = self._resolve_shooting_action(
+                action,
+                self.wargame_models,
+                self.opponent_models,
+                self._action_handler.shooting_slice,
+                self.config.models,
+            )
+        else:
+            self._action_handler.apply(
+                action,
+                self.wargame_models,
+                self.board_width,
+                self.board_height,
+                self._action_handler.action_space,
+                phase=phase,
+            )
 
     def _apply_opponent_action(self) -> None:
         if self._opponent_policy is None or not self.opponent_models:
@@ -327,14 +399,23 @@ class WargameEnv(gym.Env):
         opp_action = self._opponent_policy.select_action(
             self.opponent_models, self, action_mask=opp_mask
         )
-        self._opponent_action_handler.apply(
-            opp_action,
-            self.opponent_models,
-            self.board_width,
-            self.board_height,
-            self._opponent_action_handler.action_space,
-            phase=phase,
-        )
+        if phase == BattlePhase.shooting:
+            self._last_opponent_shooting_results = self._resolve_shooting_action(
+                opp_action,
+                self.opponent_models,
+                self.wargame_models,
+                self._opponent_action_handler.shooting_slice,
+                self.config.opponent_models,
+            )
+        else:
+            self._opponent_action_handler.apply(
+                opp_action,
+                self.opponent_models,
+                self.board_width,
+                self.board_height,
+                self._opponent_action_handler.action_space,
+                phase=phase,
+            )
 
     def _initial_player_side(self) -> PlayerSide:
         """Deterministic side assignment used at __init__ time."""
@@ -359,6 +440,11 @@ class WargameEnv(gym.Env):
         self, action: WargameEnvAction
     ) -> tuple[WargameEnvObservation, float, bool, bool, dict[str, Any]]:
         self._battle.reset_vp_deltas()
+        self._last_player_shooting_results = []
+        self._last_opponent_shooting_results = []
+        opp_alive_before = [m.is_alive for m in self.opponent_models]
+        player_alive_before = [m.is_alive for m in self.wargame_models]
+
         self._apply_player_action(action)
 
         self.current_turn += 1
@@ -407,6 +493,21 @@ class WargameEnv(gym.Env):
         clock_state = self._game_clock.state
         phase = clock_state.phase or BattlePhase.command
 
+        p_dmg = sum(r.damage_dealt for r in self._last_player_shooting_results)
+        o_dmg = sum(r.damage_dealt for r in self._last_opponent_shooting_results)
+        p_kills = sum(
+            1
+            for i, m in enumerate(self.opponent_models)
+            if i < len(opp_alive_before) and opp_alive_before[i] and not m.is_alive
+        )
+        o_kills = sum(
+            1
+            for i, m in enumerate(self.wargame_models)
+            if i < len(player_alive_before)
+            and player_alive_before[i]
+            and not m.is_alive
+        )
+
         ctx = StepContext(
             distance_cache=cache,
             current_turn=self.current_turn,
@@ -416,6 +517,10 @@ class WargameEnv(gym.Env):
             is_terminated=is_terminated,
             current_round=clock_state.battle_round or 0,
             battle_phase=phase,
+            player_damage_dealt=p_dmg,
+            opponent_damage_dealt=o_dmg,
+            player_models_killed=p_kills,
+            opponent_models_killed=o_kills,
         )
         self.last_step_context = ctx
         reward = self.phase_manager.calculate_reward(self, ctx)

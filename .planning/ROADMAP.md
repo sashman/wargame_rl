@@ -15,8 +15,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Wounds & Elimination** - Domain foundation: wound tracking, elimination logic, and termination on full wipe
 - [x] **Phase 2: Alive-Aware Observation** - Observation pipeline handles eliminated models with alive flags and wound status
 - [x] **Phase 3: Line of Sight Service** - Single domain service for Bresenham LOS reused by rules, masks, and rendering (completed 2026-04-04)
-- [ ] **Phase 4: Shooting Action Space** - Extend ActionRegistry with shooting targets, phase-gated masks combining LOS/range/alive
-- [ ] **Phase 5: Shooting Resolution** - Tabletop attack sequence (hit→wound→save→damage) with configurable weapon profiles
+- [x] **Phase 4: Shooting Action Space** - Extend ActionRegistry with shooting targets, phase-gated masks combining LOS/range/alive (completed 2026-04-05)
+- [x] **Phase 5: Shooting Resolution** - Tabletop attack sequence (hit→wound→save→damage) with configurable weapon profiles (completed 2026-04-06)
 - [ ] **Phase 6: Combat Reward & Curriculum** - Reward calculators for damage/losses and curriculum phases for learning to shoot
 
 ## Phase Details
@@ -81,7 +81,10 @@ Plans:
   2. Weapon profiles (range, attacks, BS, strength, AP, damage) are configurable per model in YAML
   3. Models that advanced cannot shoot; models in engagement range cannot shoot
   4. Weapon-relevant stats appear in the agent's observation for informed targeting decisions
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [x] 05-01-PLAN.md — Config + domain shooting resolution + entity extensions + unit tests
+- [x] 05-02-PLAN.md — Env wiring + mask extensions + observation pipeline + integration tests
 
 ### Phase 6: Combat Reward & Curriculum
 **Goal**: The agent learns to use shooting effectively through reward shaping and curriculum progression
@@ -105,6 +108,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Wounds & Elimination | 2/2 | Complete | (see phase detail) |
 | 2. Alive-Aware Observation | 1/1 | Complete | (see phase detail) |
 | 3. Line of Sight Service | 1/1 | Complete | 2026-04-04 |
-| 4. Shooting Action Space | 0/0 | Not started | - |
-| 5. Shooting Resolution | 0/0 | Not started | - |
+| 4. Shooting Action Space | 2/2 | Complete | 2026-04-05 |
+| 5. Shooting Resolution | 2/2 | Complete | 2026-04-06 |
 | 6. Combat Reward & Curriculum | 0/0 | Not started | - |
