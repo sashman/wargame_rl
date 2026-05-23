@@ -133,6 +133,8 @@ the current one finishes.
 #### Foundation (cross-cutting, slotted into milestones as needed)
 
 - [ ] Positional encoding for transformer network
+- [ ] Transformer shooting head: structural alignment between opponent tokens and target selection (avoid relying on learned implicit index correspondence via a single linear head)
+- [ ] Attention masking for dead entities: prevent dead model tokens from diluting attention signal and wasting network capacity learning to ignore them
 - [ ] Hyperparameter sweep tooling (Wandb Sweeps or Optuna)
 - [ ] Improved metrics & dashboards (win rate, avg turns, reward breakdown, group violation rate)
 
