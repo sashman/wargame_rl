@@ -6,7 +6,8 @@ serialisable to JSON, MessagePack, or any other format.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import numpy as np
 from pydantic import BaseModel, Field
@@ -59,6 +60,10 @@ class ModelSnapshot(BaseModel):
     save: int
     advanced_this_turn: bool
     weapons: list[WeaponSnapshot]
+    distances_to_objectives: list[float]
+    at_objective: list[bool]
+    closest_objective_idx: int | None
+    closest_objective_distance: float | None
 
 
 class ObjectiveSnapshot(BaseModel):
@@ -66,6 +71,8 @@ class ObjectiveSnapshot(BaseModel):
 
     location: list[int]
     radius_size: int
+    player_models_in_range: list[int]
+    opponent_models_in_range: list[int]
 
 
 class ClockSnapshot(BaseModel):
@@ -103,7 +110,7 @@ class RewardSnapshot(BaseModel):
 class GameStateSnapshot(BaseModel):
     """Complete, serialisable snapshot of game state at one point in time."""
 
-    schema_version: str = "1.0"
+    schema_version: str = "1.1"
     step: int
     max_steps: int
     clock: ClockSnapshot
@@ -122,11 +129,18 @@ class GameStateSnapshot(BaseModel):
     objective_control: list[str]
     player_actions: list[int] | None
     opponent_actions: list[int] | None
+    player_action_descriptions: list[str] | None
     player_combat_results: list[CombatResultSnapshot]
     opponent_combat_results: list[CombatResultSnapshot]
     reward: RewardSnapshot
     is_terminated: bool
     is_truncated: bool
+    player_alive_count: int
+    opponent_alive_count: int
+    player_total_wounds: int
+    opponent_total_wounds: int
+    mission_type: str
+    mission_params: dict[str, int | float | str]
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +151,8 @@ class GameStateSnapshot(BaseModel):
 def _model_to_snapshot(
     model: WargameModel,
     config: ModelConfig | None,
+    obj_distances: list[float] | None = None,
+    obj_in_range: list[bool] | None = None,
 ) -> ModelSnapshot:
     """Convert a domain WargameModel to a snapshot."""
     weapons: list[WeaponSnapshot] = []
@@ -152,6 +168,16 @@ def _model_to_snapshot(
                     damage=w.damage,
                 )
             )
+
+    dists = obj_distances or []
+    at_obj = obj_in_range or []
+    if dists and model.is_alive:
+        closest_idx = int(np.argmin(dists))
+        closest_dist = float(dists[closest_idx])
+    else:
+        closest_idx = None
+        closest_dist = None
+
     return ModelSnapshot(
         location=model.location.tolist(),
         previous_location=(
@@ -167,13 +193,23 @@ def _model_to_snapshot(
         save=model.stats["save"],
         advanced_this_turn=model.advanced_this_turn,
         weapons=weapons,
+        distances_to_objectives=dists,
+        at_objective=at_obj,
+        closest_objective_idx=closest_idx,
+        closest_objective_distance=closest_dist,
     )
 
 
-def _objective_to_snapshot(obj: WargameObjective) -> ObjectiveSnapshot:
+def _objective_to_snapshot(
+    obj: WargameObjective,
+    player_in_range: list[int],
+    opponent_in_range: list[int],
+) -> ObjectiveSnapshot:
     return ObjectiveSnapshot(
         location=obj.location.tolist(),
         radius_size=obj.radius_size,
+        player_models_in_range=player_in_range,
+        opponent_models_in_range=opponent_in_range,
     )
 
 
@@ -229,39 +265,140 @@ def _combat_result_to_snapshot(
     )
 
 
-def _compute_objective_control(
+@dataclass
+class _SpatialData:
+    """Intermediate spatial analysis used to populate multiple snapshot fields."""
+
+    objective_control: list[str]
+    player_obj_dists: list[list[float]]
+    player_at_obj: list[list[bool]]
+    opponent_obj_dists: list[list[float]]
+    opponent_at_obj: list[list[bool]]
+    player_in_range_per_obj: list[list[int]]
+    opponent_in_range_per_obj: list[list[int]]
+
+
+def _compute_spatial_data(
     player_models: list[WargameModel],
     opponent_models: list[WargameModel],
     objectives: list[WargameObjective],
-) -> list[str]:
-    """Compute per-objective ownership strings: 'player', 'opponent', or 'none'."""
+) -> _SpatialData:
+    """Compute all spatial relationships between models and objectives."""
+    n_obj = len(objectives)
+    n_player = len(player_models)
+    n_opp = len(opponent_models)
+
+    empty = _SpatialData(
+        objective_control=[],
+        player_obj_dists=[[] for _ in range(n_player)],
+        player_at_obj=[[] for _ in range(n_player)],
+        opponent_obj_dists=[[] for _ in range(n_opp)],
+        opponent_at_obj=[[] for _ in range(n_opp)],
+        player_in_range_per_obj=[],
+        opponent_in_range_per_obj=[],
+    )
     if not objectives:
-        return []
+        return empty
 
     p_cache = compute_distances(player_models, objectives)
     o_cache = (
         compute_distances(opponent_models, objectives) if opponent_models else None
     )
 
+    p_norms = p_cache.model_obj_norms_offset
+    radii = p_cache.obj_radii
+    p_in_range = p_norms <= radii
+
     if o_cache is not None:
-        p_ctrl, o_ctrl = objective_ownership_from_norms_offset(
-            p_cache.model_obj_norms_offset,
-            o_cache.model_obj_norms_offset,
-            p_cache.obj_radii,
-        )
+        o_norms = o_cache.model_obj_norms_offset
+        o_in_range = o_norms <= radii
+        p_ctrl, o_ctrl = objective_ownership_from_norms_offset(p_norms, o_norms, radii)
     else:
-        p_ctrl = np.any(p_cache.model_obj_norms_offset <= p_cache.obj_radii, axis=0)
+        o_norms = np.zeros((0, n_obj), dtype=np.float64)
+        o_in_range = np.zeros((0, n_obj), dtype=bool)
+        p_ctrl = np.any(p_in_range, axis=0)
         o_ctrl = np.zeros_like(p_ctrl, dtype=bool)
 
-    result: list[str] = []
+    control: list[str] = []
     for pi, oi in zip(p_ctrl, o_ctrl):
         if pi:
-            result.append("player")
+            control.append("player")
         elif oi:
-            result.append("opponent")
+            control.append("opponent")
         else:
-            result.append("none")
-    return result
+            control.append("none")
+
+    p_dists = [p_norms[i].tolist() for i in range(n_player)]
+    p_at = [p_in_range[i].tolist() for i in range(n_player)]
+    o_dists = [o_norms[i].tolist() for i in range(n_opp)]
+    o_at = [o_in_range[i].tolist() for i in range(n_opp)]
+
+    p_in_range_per_obj: list[list[int]] = []
+    o_in_range_per_obj: list[list[int]] = []
+    for j in range(n_obj):
+        p_in_range_per_obj.append([i for i in range(n_player) if p_in_range[i, j]])
+        o_in_range_per_obj.append(
+            [i for i in range(n_opp) if o_in_range[i, j]] if n_opp > 0 else []
+        )
+
+    return _SpatialData(
+        objective_control=control,
+        player_obj_dists=p_dists,
+        player_at_obj=p_at,
+        opponent_obj_dists=o_dists,
+        opponent_at_obj=o_at,
+        player_in_range_per_obj=p_in_range_per_obj,
+        opponent_in_range_per_obj=o_in_range_per_obj,
+    )
+
+
+COMPASS_LABELS_16 = [
+    "E",
+    "ENE",
+    "NE",
+    "NNE",
+    "N",
+    "NNW",
+    "NW",
+    "WNW",
+    "W",
+    "WSW",
+    "SW",
+    "SSW",
+    "S",
+    "SSE",
+    "SE",
+    "ESE",
+]
+
+
+def _describe_action(
+    action: int,
+    n_angles: int,
+    n_speed_bins: int,
+    shooting_slice_start: int | None,
+    shooting_slice_end: int | None,
+) -> str:
+    """Decode a raw action integer into a human-readable description."""
+    if action == 0:
+        return "Stay"
+    if (
+        shooting_slice_start is not None
+        and shooting_slice_end is not None
+        and shooting_slice_start <= action < shooting_slice_end
+    ):
+        target_idx = action - shooting_slice_start
+        return f"Shoot at opponent {target_idx}"
+    move_idx = action - 1
+    angle_idx = move_idx // n_speed_bins
+    speed_idx = move_idx % n_speed_bins
+    speed_label = speed_idx + 1
+    if n_angles <= 16:
+        step = 16 // n_angles
+        direction = COMPASS_LABELS_16[angle_idx * step]
+    else:
+        direction = f"angle {angle_idx}"
+    return f"Move {direction} at speed {speed_label}"
 
 
 # ---------------------------------------------------------------------------
@@ -295,15 +432,23 @@ def build_snapshot(
     phase_index: int,
     is_terminated: bool,
     is_truncated: bool,
+    n_angles: int = 16,
+    n_speed_bins: int = 6,
+    shooting_slice_start: int | None = None,
+    shooting_slice_end: int | None = None,
 ) -> GameStateSnapshot:
     """Build a complete game-state snapshot from env internals."""
     player_configs = config.models
     opponent_configs = config.opponent_models
 
+    spatial = _compute_spatial_data(player_models, opponent_models, objectives)
+
     p_snaps = [
         _model_to_snapshot(
             m,
             player_configs[i] if player_configs and i < len(player_configs) else None,
+            obj_distances=spatial.player_obj_dists[i],
+            obj_in_range=spatial.player_at_obj[i],
         )
         for i, m in enumerate(player_models)
     ]
@@ -315,11 +460,24 @@ def build_snapshot(
                 if opponent_configs and i < len(opponent_configs)
                 else None
             ),
+            obj_distances=spatial.opponent_obj_dists[i]
+            if i < len(spatial.opponent_obj_dists)
+            else [],
+            obj_in_range=spatial.opponent_at_obj[i]
+            if i < len(spatial.opponent_at_obj)
+            else [],
         )
         for i, m in enumerate(opponent_models)
     ]
 
-    obj_snaps = [_objective_to_snapshot(o) for o in objectives]
+    obj_snaps = [
+        _objective_to_snapshot(
+            o,
+            player_in_range=spatial.player_in_range_per_obj[j],
+            opponent_in_range=spatial.opponent_in_range_per_obj[j],
+        )
+        for j, o in enumerate(objectives)
+    ]
     clock = _clock_to_snapshot(clock_state)
 
     p_combat = [
@@ -331,11 +489,20 @@ def build_snapshot(
         for r in opponent_shooting_results
     ]
 
-    obj_control = _compute_objective_control(player_models, opponent_models, objectives)
-
     p_actions: list[int] | None = None
+    p_action_descs: list[str] | None = None
     if player_action is not None and hasattr(player_action, "actions"):
         p_actions = list(player_action.actions)
+        p_action_descs = [
+            _describe_action(
+                a,
+                n_angles,
+                n_speed_bins,
+                shooting_slice_start,
+                shooting_slice_end,
+            )
+            for a in p_actions
+        ]
 
     o_actions: list[int] | None = None
     if opponent_action is not None and hasattr(opponent_action, "actions"):
@@ -343,6 +510,13 @@ def build_snapshot(
 
     dz: list[int] = deployment_zone.tolist()
     odz: list[int] = opponent_deployment_zone.tolist()
+
+    p_alive = sum(1 for m in player_models if m.is_alive)
+    o_alive = sum(1 for m in opponent_models if m.is_alive)
+    p_wounds = sum(m.stats["current_wounds"] for m in player_models if m.is_alive)
+    o_wounds = sum(m.stats["current_wounds"] for m in opponent_models if m.is_alive)
+
+    mission_params: dict[str, Any] = dict(config.mission.params)
 
     return GameStateSnapshot(
         step=step,
@@ -360,9 +534,10 @@ def build_snapshot(
         opponent_vp=opponent_vp,
         player_vp_delta=player_vp_delta,
         opponent_vp_delta=opponent_vp_delta,
-        objective_control=obj_control,
+        objective_control=spatial.objective_control,
         player_actions=p_actions,
         opponent_actions=o_actions,
+        player_action_descriptions=p_action_descs,
         player_combat_results=p_combat,
         opponent_combat_results=o_combat,
         reward=RewardSnapshot(
@@ -373,6 +548,12 @@ def build_snapshot(
         ),
         is_terminated=is_terminated,
         is_truncated=is_truncated,
+        player_alive_count=p_alive,
+        opponent_alive_count=o_alive,
+        player_total_wounds=p_wounds,
+        opponent_total_wounds=o_wounds,
+        mission_type=config.mission.type,
+        mission_params=mission_params,
     )
 
 

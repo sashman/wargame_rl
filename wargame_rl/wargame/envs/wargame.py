@@ -555,6 +555,7 @@ class WargameEnv(gym.Env):
 
     def to_snapshot(self) -> GameStateSnapshot:
         """Build a serialisable snapshot of the current game state."""
+        ss = self._action_handler.shooting_slice
         return build_snapshot(
             config=self.config,
             step=self.current_turn,
@@ -580,6 +581,10 @@ class WargameEnv(gym.Env):
             phase_index=self.phase_manager.current_phase_index,
             is_terminated=self._last_terminated,
             is_truncated=False,
+            n_angles=self.config.n_movement_angles,
+            n_speed_bins=self.config.n_speed_bins,
+            shooting_slice_start=ss.start if ss else None,
+            shooting_slice_end=ss.end if ss else None,
         )
 
     def render(self) -> None:

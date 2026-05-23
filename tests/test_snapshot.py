@@ -101,6 +101,7 @@ class TestSnapshotAfterReset:
         assert len(snap.objectives) == 1
         assert snap.step == 0
         assert snap.player_actions is None
+        assert snap.player_action_descriptions is None
         assert snap.is_terminated is False
 
 
@@ -186,7 +187,7 @@ class TestSchemaVersion:
     def test_schema_version(self, shooting_env: WargameEnv) -> None:
         shooting_env.reset(seed=42)
         snap = shooting_env.to_snapshot()
-        assert snap.schema_version == "1.0"
+        assert snap.schema_version == "1.1"
 
 
 class TestEncoder:
@@ -198,3 +199,104 @@ class TestEncoder:
         parsed = json.loads(raw)
         assert isinstance(parsed, dict)
         assert encoder.content_type() == "application/json"
+
+
+class TestSpatialFields:
+    def test_model_distances_to_objectives(self, shooting_env: WargameEnv) -> None:
+        shooting_env.reset(seed=42)
+        snap = shooting_env.to_snapshot()
+
+        for pm in snap.player_models:
+            assert len(pm.distances_to_objectives) == len(snap.objectives)
+            assert all(d >= 0.0 for d in pm.distances_to_objectives)
+
+        for om in snap.opponent_models:
+            assert len(om.distances_to_objectives) == len(snap.objectives)
+
+    def test_at_objective_flags(self, shooting_env: WargameEnv) -> None:
+        shooting_env.reset(seed=42)
+        snap = shooting_env.to_snapshot()
+
+        for pm in snap.player_models:
+            assert len(pm.at_objective) == len(snap.objectives)
+            assert all(isinstance(v, bool) for v in pm.at_objective)
+
+    def test_closest_objective(self, shooting_env: WargameEnv) -> None:
+        shooting_env.reset(seed=42)
+        snap = shooting_env.to_snapshot()
+
+        for pm in snap.player_models:
+            if pm.alive:
+                assert pm.closest_objective_idx is not None
+                assert pm.closest_objective_distance is not None
+                assert 0 <= pm.closest_objective_idx < len(snap.objectives)
+            else:
+                assert pm.closest_objective_idx is None
+
+    def test_objective_models_in_range(self, shooting_env: WargameEnv) -> None:
+        shooting_env.reset(seed=42)
+        snap = shooting_env.to_snapshot()
+
+        for obj in snap.objectives:
+            assert isinstance(obj.player_models_in_range, list)
+            assert isinstance(obj.opponent_models_in_range, list)
+            for idx in obj.player_models_in_range:
+                assert 0 <= idx < len(snap.player_models)
+            for idx in obj.opponent_models_in_range:
+                assert 0 <= idx < len(snap.opponent_models)
+
+
+class TestForceBalance:
+    def test_alive_counts(self, shooting_env: WargameEnv) -> None:
+        shooting_env.reset(seed=42)
+        snap = shooting_env.to_snapshot()
+
+        assert snap.player_alive_count == sum(1 for m in snap.player_models if m.alive)
+        assert snap.opponent_alive_count == sum(
+            1 for m in snap.opponent_models if m.alive
+        )
+
+    def test_total_wounds(self, shooting_env: WargameEnv) -> None:
+        shooting_env.reset(seed=42)
+        snap = shooting_env.to_snapshot()
+
+        assert snap.player_total_wounds == sum(
+            m.current_wounds for m in snap.player_models if m.alive
+        )
+        assert snap.opponent_total_wounds == sum(
+            m.current_wounds for m in snap.opponent_models if m.alive
+        )
+
+
+class TestActionDescriptions:
+    def test_action_descriptions_after_step(self, shooting_env: WargameEnv) -> None:
+        shooting_env.reset(seed=42)
+        n = len(shooting_env.wargame_models)
+        shooting_env.step(WargameEnvAction(actions=[STAY_ACTION] * n))
+        snap = shooting_env.to_snapshot()
+
+        assert snap.player_action_descriptions is not None
+        assert len(snap.player_action_descriptions) == n
+        assert all(d == "Stay" for d in snap.player_action_descriptions)
+
+    def test_shooting_action_description(self, shooting_env: WargameEnv) -> None:
+        shooting_env.reset(seed=42)
+        _step_to_shooting(shooting_env)
+
+        ss = shooting_env._action_handler.shooting_slice
+        assert ss is not None
+        shooting_env.step(WargameEnvAction(actions=[ss.start, ss.start + 1]))
+        snap = shooting_env.to_snapshot()
+
+        assert snap.player_action_descriptions is not None
+        assert snap.player_action_descriptions[0] == "Shoot at opponent 0"
+        assert snap.player_action_descriptions[1] == "Shoot at opponent 1"
+
+
+class TestMissionContext:
+    def test_mission_fields(self, shooting_env: WargameEnv) -> None:
+        shooting_env.reset(seed=42)
+        snap = shooting_env.to_snapshot()
+
+        assert isinstance(snap.mission_type, str)
+        assert isinstance(snap.mission_params, dict)
