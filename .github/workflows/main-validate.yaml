@@ -3,20 +3,34 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
   pull_request:
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
 
 defaults:
   run:
     shell: bash
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - '**.py'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.github/workflows/**'
+              - 'Justfile'
+              - 'examples/env_config/**'
+
   lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -49,6 +63,8 @@ jobs:
         run: just lint
 
   test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -87,7 +103,7 @@ jobs:
           pytest-xml-coverage-path: coverage.xml
 
   ci-passed:
-    needs: [lint, test]
+    needs: [changes, lint, test]
     if: always()
     runs-on: ubuntu-latest
     steps:
