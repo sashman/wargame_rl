@@ -16,15 +16,15 @@ opponent_policy:
 
 models:
   - { group_id: 0 }
-  - { group_id: 0 }
   - { group_id: 1 }
-  - { group_id: 1 }
+  - { group_id: 2 }
+  - { group_id: 3 }
 
 opponent_models:
   - { group_id: 0 }
-  - { group_id: 0 }
   - { group_id: 1 }
-  - { group_id: 1 }
+  - { group_id: 2 }
+  - { group_id: 3 }
 
 objectives:
   - { x: 30, y: 6 }
@@ -63,7 +63,7 @@ reward_phases:
     success_criteria:
       type: player_vp_min
       params: { fraction_of_max: 0.33 }
-    success_threshold: 0.8
+    success_threshold: 0.7
     min_epochs: 20
 
   - name: win_only_by_vp

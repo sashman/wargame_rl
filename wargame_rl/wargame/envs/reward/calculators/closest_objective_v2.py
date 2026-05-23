@@ -19,30 +19,43 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
     """Closest-objective shaping that targets only net-VP-impactful objectives.
 
     A target objective is considered net-positive for the player when this model's
-    arrival can improve objective control:
+    arrival improves objective state:
     - neutral -> player-controlled
     - opponent-controlled -> contested
+    - contested -> player-controlled
 
-    Objectives already controlled/contested by a friendly model are ignored.
-    If no net-positive target exists, this calculator returns 0 for the model.
+    Control state here is based on in-range model counts:
+    - player-controlled: player_count >= opponent_count + 1
+    - opponent-controlled: opponent_count >= player_count + 1
+    - contested: both present, neither side has +1 margin
+    - neutral: neither side present
+
+    Each objective is assigned to at most one player group for "move closer"
+    shaping on a step. Other groups cannot earn shaping reward for that objective.
+    If no net-positive target exists for a model, this calculator returns 0 unless
+    over-stack penalty applies.
     """
 
     def __init__(
         self,
         weight: float = 1.0,
         best_distance_bonus_scale: float | None = None,
+        overstack_penalty_per_extra: float = 0.05,
     ) -> None:
         super().__init__(weight=weight)
         self.best_distance_bonus_scale = (
             0.0 if best_distance_bonus_scale is None else best_distance_bonus_scale
         )
+        self.overstack_penalty_per_extra = overstack_penalty_per_extra
         self._last_breakdown: dict[int, dict[str, float]] = {}
         self._target_obj_idx: dict[int, int] = {}
         self._previous_target_distance: dict[int, float] = {}
         self._best_target_distance: dict[int, float] = {}
         self._cached_step_key: tuple[int, int] | None = None
-        self._cached_player_any: np.ndarray | None = None
-        self._cached_opponent_any: np.ndarray | None = None
+        self._cached_player_in_range: np.ndarray | None = None
+        self._cached_player_counts: np.ndarray | None = None
+        self._cached_opponent_counts: np.ndarray | None = None
+        self._cached_group_assignment: dict[int, int] | None = None
 
     @staticmethod
     def _normalized_distance(ctx: StepContext, distance_to_objective: float) -> float:
@@ -77,17 +90,25 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         self,
         view: BattleView,
         ctx: StepContext,
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         step_key = (ctx.current_turn, id(ctx.distance_cache))
+        if self._cached_step_key != step_key:
+            self._cached_group_assignment = None
         if (
             self._cached_step_key == step_key
-            and self._cached_player_any is not None
-            and self._cached_opponent_any is not None
+            and self._cached_player_in_range is not None
+            and self._cached_player_counts is not None
+            and self._cached_opponent_counts is not None
         ):
-            return self._cached_player_any, self._cached_opponent_any
+            return (
+                self._cached_player_in_range,
+                self._cached_player_counts,
+                self._cached_opponent_counts,
+            )
 
         cache = ctx.distance_cache
-        player_any = np.any(cache.model_obj_norms_offset <= cache.obj_radii, axis=0)
+        player_in_range = cache.model_obj_norms_offset <= cache.obj_radii
+        player_counts = np.sum(player_in_range, axis=0)
 
         n_obj = len(view.objectives)
         if view.opponent_models:
@@ -97,32 +118,145 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
                 view.objectives,
                 alive_mask=opp_alive,
             )
-            opponent_any = np.any(
-                opponent_cache.model_obj_norms_offset <= opponent_cache.obj_radii,
-                axis=0,
+            opponent_in_range = (
+                opponent_cache.model_obj_norms_offset <= opponent_cache.obj_radii
             )
+            opponent_counts = np.sum(opponent_in_range, axis=0)
         else:
-            opponent_any = np.zeros(n_obj, dtype=bool)
+            opponent_counts = np.zeros(n_obj, dtype=int)
 
         self._cached_step_key = step_key
-        self._cached_player_any = player_any
-        self._cached_opponent_any = opponent_any
-        return player_any, opponent_any
+        self._cached_player_in_range = player_in_range
+        self._cached_player_counts = player_counts
+        self._cached_opponent_counts = opponent_counts
+        return player_in_range, player_counts, opponent_counts
+
+    @staticmethod
+    def _state_label(player_count: int, opponent_count: int) -> str:
+        if player_count <= 0 and opponent_count <= 0:
+            return "neutral"
+        if player_count >= opponent_count + 1:
+            return "player"
+        if opponent_count >= player_count + 1:
+            return "opponent"
+        return "contested"
+
+    def _is_positive_transition(
+        self,
+        player_count: int,
+        opponent_count: int,
+    ) -> bool:
+        current = self._state_label(player_count, opponent_count)
+        next_state = self._state_label(player_count + 1, opponent_count)
+        return (
+            (current == "neutral" and next_state == "player")
+            or (current == "opponent" and next_state == "contested")
+            or (current == "contested" and next_state == "player")
+        )
+
+    def _compute_group_assignment(
+        self,
+        view: BattleView,
+        cache: DistanceCache,
+        candidate_mask: np.ndarray,
+        step_key: tuple[int, int],
+    ) -> dict[int, int]:
+        if (
+            self._cached_step_key == step_key
+            and self._cached_group_assignment is not None
+        ):
+            return self._cached_group_assignment
+
+        group_ids = np.array([m.group_id for m in view.player_models], dtype=int)
+        n_obj = candidate_mask.shape[1]
+        assignment: dict[int, int] = {}
+        for obj_idx in range(n_obj):
+            model_idxs = np.flatnonzero(candidate_mask[:, obj_idx])
+            if model_idxs.size == 0:
+                continue
+            best_group: int | None = None
+            best_distance: float | None = None
+            for idx in model_idxs:
+                group_id = int(group_ids[idx])
+                dist = float(cache.model_obj_norms_offset[idx, obj_idx])
+                if best_distance is None or dist < best_distance:
+                    best_distance = dist
+                    best_group = group_id
+            if best_group is not None:
+                assignment[obj_idx] = best_group
+
+        self._cached_group_assignment = assignment
+        return assignment
+
+    def _overstack_penalty(
+        self,
+        model_idx: int,
+        player_in_range: np.ndarray,
+        player_counts: np.ndarray,
+        opponent_counts: np.ndarray,
+    ) -> float:
+        if self.overstack_penalty_per_extra <= 0:
+            return 0.0
+        penalty = 0.0
+        for obj_idx in range(player_in_range.shape[1]):
+            if not bool(player_in_range[model_idx, obj_idx]):
+                continue
+            p_count = int(player_counts[obj_idx])
+            o_count = int(opponent_counts[obj_idx])
+            if p_count >= o_count + 2:
+                extra = p_count - (o_count + 1)
+                penalty -= self.overstack_penalty_per_extra * float(extra)
+        return penalty
 
     def _choose_target_objective(
         self,
         model_idx: int,
+        view: BattleView,
+        step_key: tuple[int, int],
         cache: DistanceCache,
-        player_any: np.ndarray,
+        player_in_range: np.ndarray,
+        player_counts: np.ndarray,
+        opponent_counts: np.ndarray,
     ) -> int | None:
         model_distances = cache.model_obj_norms_offset[model_idx]
-        obj_radii = cache.obj_radii
-        model_outside = model_distances > obj_radii
+        model_outside = ~player_in_range[model_idx]
+        n_obj = model_distances.shape[0]
+        positive_transition = np.zeros(n_obj, dtype=bool)
+        for obj_idx in range(n_obj):
+            if not bool(model_outside[obj_idx]):
+                continue
+            positive_transition[obj_idx] = self._is_positive_transition(
+                int(player_counts[obj_idx]),
+                int(opponent_counts[obj_idx]),
+            )
+        candidate_mask = np.zeros_like(player_in_range, dtype=bool)
+        candidate_mask[model_idx] = model_outside & positive_transition
 
-        # If player already has presence, moving this model there cannot improve
-        # control state (already player-controlled or already contested).
-        net_positive = np.logical_not(player_any)
-        candidates = model_outside & net_positive
+        # Objective-to-group assignment: one objective can reward only one group.
+        # Build assignment from all model candidates, not only this model.
+        for idx, _m in enumerate(view.player_models):
+            if idx == model_idx:
+                continue
+            idx_outside = ~player_in_range[idx]
+            idx_positive = np.zeros(n_obj, dtype=bool)
+            for obj_idx in range(n_obj):
+                if not bool(idx_outside[obj_idx]):
+                    continue
+                idx_positive[obj_idx] = self._is_positive_transition(
+                    int(player_counts[obj_idx]),
+                    int(opponent_counts[obj_idx]),
+                )
+            candidate_mask[idx] = idx_outside & idx_positive
+
+        assignment = self._compute_group_assignment(
+            view, cache, candidate_mask, step_key
+        )
+        model_group = int(view.player_models[model_idx].group_id)
+        allowed = np.array(
+            [assignment.get(obj_idx, None) == model_group for obj_idx in range(n_obj)],
+            dtype=bool,
+        )
+        candidates = candidate_mask[model_idx] & allowed
         if not np.any(candidates):
             return None
 
@@ -140,8 +274,25 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         ctx: StepContext,
     ) -> float:
         cache = ctx.distance_cache
-        player_any, _ = self._objective_presence_masks(view, ctx)
-        target_obj_idx = self._choose_target_objective(model_idx, cache, player_any)
+        step_key = (ctx.current_turn, id(ctx.distance_cache))
+        player_in_range, player_counts, opponent_counts = (
+            self._objective_presence_masks(view, ctx)
+        )
+        target_obj_idx = self._choose_target_objective(
+            model_idx=model_idx,
+            view=view,
+            step_key=step_key,
+            cache=cache,
+            player_in_range=player_in_range,
+            player_counts=player_counts,
+            opponent_counts=opponent_counts,
+        )
+        overstack_penalty = self._overstack_penalty(
+            model_idx=model_idx,
+            player_in_range=player_in_range,
+            player_counts=player_counts,
+            opponent_counts=opponent_counts,
+        )
 
         if target_obj_idx is None:
             self._clear_model_state(model_idx)
@@ -151,8 +302,9 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
                 "distance_delta": 0.0,
                 "base_penalty": 0.0,
                 "best_distance_bonus": 0.0,
+                "overstack_penalty": overstack_penalty,
             }
-            return 0.0
+            return overstack_penalty
 
         distance_to_target = float(
             cache.model_obj_norms_offset[model_idx, target_obj_idx]
@@ -170,8 +322,9 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
                 "distance_delta": 0.0,
                 "base_penalty": 0.0,
                 "best_distance_bonus": 0.0,
+                "overstack_penalty": overstack_penalty,
             }
-            return 0.0
+            return overstack_penalty
 
         previous = self._previous_target_distance.get(model_idx)
         self._previous_target_distance[model_idx] = normalized_distance
@@ -189,8 +342,9 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
                 "distance_delta": 0.0,
                 "base_penalty": 0.0,
                 "best_distance_bonus": bonus,
+                "overstack_penalty": overstack_penalty,
             }
-            return bonus
+            return bonus + overstack_penalty
 
         distance_delta = float(normalized_distance - previous)
         base_penalty = self._penalty_for_non_improvement(
@@ -202,8 +356,9 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
             "distance_delta": distance_delta,
             "base_penalty": base_penalty,
             "best_distance_bonus": bonus,
+            "overstack_penalty": overstack_penalty,
         }
-        return base_penalty + bonus
+        return base_penalty + bonus + overstack_penalty
 
     def get_last_breakdown(self, model_idx: int) -> dict[str, float]:
         return self._last_breakdown.get(model_idx, {})
