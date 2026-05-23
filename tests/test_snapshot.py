@@ -8,7 +8,7 @@ import pytest
 
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.state.snapshot import GameStateSnapshot, JsonEncoder
-from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
+from wargame_rl.wargame.envs.types import TurnOrder, WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import (
     ModelConfig,
     OpponentPolicyConfig,
@@ -74,7 +74,7 @@ def shooting_env() -> WargameEnv:
             ),
         ],
         opponent_policy=OpponentPolicyConfig(type="random"),
-        turn_order="player",
+        turn_order=TurnOrder.player,
         skip_phases=[BattlePhase.command, BattlePhase.charge, BattlePhase.fight],
         n_movement_angles=8,
         n_speed_bins=3,

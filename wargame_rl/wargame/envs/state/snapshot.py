@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 class WeaponSnapshot(BaseModel):
     """Weapon stat block (mirrors WeaponProfile with native types)."""
 
-    weapon_range: int = Field(alias="range")
+    weapon_range: int = Field(validation_alias="range")
     attacks: int
     ballistic_skill: int
     strength: int
