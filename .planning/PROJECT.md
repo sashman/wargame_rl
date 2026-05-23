@@ -39,7 +39,7 @@ Organised by target milestone. Each milestone builds on the previous — later m
 assume earlier ones are complete. Milestones are created via `/gsd-new-milestone` when
 the current one finishes.
 
-#### v1.0 — Ranged Combat & Model Destruction (current milestone)
+#### v1.0 — Ranged Combat & Model Destruction [WIP · HIGH]
 
 - ✓ Wounds & elimination (models with 0 wounds removed from play) — Phase 1
 - ✓ Alive-aware observation (alive flags, wound status in tensor, no shape changes mid-episode) — Phase 2
@@ -48,7 +48,7 @@ the current one finishes.
 - ✓ Shooting resolution (hit → wound → save → damage with configurable weapon profiles) — Phase 5
 - [ ] Combat reward & curriculum (damage dealt / models lost calculators, shooting curriculum phase)
 
-#### v2.0 — Terrain & Battlefield Geometry
+#### v2.0 — Terrain & Battlefield Geometry [NEXT · HIGH]
 
 - [ ] Terrain cell types (open, light cover, dense cover, blocking, difficult ground)
 - [ ] Cover bonus (+1 armour save against ranged attacks when in/behind cover)
@@ -60,7 +60,7 @@ the current one finishes.
 - [ ] Terrain encoded in observation space
 - [ ] Variable base sizes: models have different base radii affecting movement, coherency, engagement, objective control, and LOS (research spike — investigate impact on grid representation and DL training)
 
-#### v3.0 — Advanced Movement & Deployment
+#### v3.0 — Advanced Movement & Deployment [LOW]
 
 - [ ] Advance move (move + random bonus, forfeits shooting that turn)
 - [ ] Fall back move (disengage from threat zone, forfeits shooting that turn)
@@ -72,7 +72,7 @@ the current one finishes.
 - [ ] Forward deployment (set up outside deployment zone before battle, >9" from enemies)
 - [ ] Reconnaissance advance (free pre-battle move up to X")
 
-#### v4.0 — Weapon Systems & Attack Modifiers
+#### v4.0 — Weapon Systems & Attack Modifiers [LOW]
 
 - [ ] Weapon tags: mobile-fire (shoot after advancing), braced (+1 accuracy when stationary), burst-fire (extra attacks at half range)
 - [ ] Area weapons (bonus attacks proportional to target unit size)
@@ -85,7 +85,7 @@ the current one finishes.
 - [ ] Multiple weapon loadouts per model with profile selection
 - [ ] Weapon keywords: precision-allocation (target leaders in attached units), volatile (risk of self-damage), critical-bypass (critical wounds become mortal damage)
 
-#### v5.0 — Morale & Unit Resilience
+#### v5.0 — Morale & Unit Resilience [LOWEST]
 
 - [ ] Resolve test when below half strength (roll vs Leadership characteristic)
 - [ ] Shaken status effects (objective control value = 0, restricted tactical options)
@@ -94,7 +94,7 @@ the current one finishes.
 - [ ] Recovery mechanic (shaken clears at start of next command phase)
 - [ ] Stricter unit coherency enforcement (models must stay within 2" of each other; 7+ model units need 2 neighbours)
 
-#### v6.0 — Tactical Resources & Reactions
+#### v6.0 — Tactical Resources & Reactions [LOWEST]
 
 - [ ] Command resources generated each command phase (1 per turn, capped)
 - [ ] Tactical actions: spend resources for one-time effects during specific phases
@@ -104,7 +104,7 @@ the current one finishes.
 - [ ] Smoke cover action (temporary concealment for a unit)
 - [ ] Action economy as a learned strategic decision
 
-#### v7.0 — Adversarial Play & Self-Play
+#### v7.0 — Adversarial Play & Self-Play [WIP · HIGH]
 
 - [ ] Two-agent environment with alternating full turns
 - [ ] Self-play training against frozen checkpoint opponents
@@ -112,7 +112,7 @@ the current one finishes.
 - [ ] Opponent pool diversity (mix of scripted, frozen, and live opponents)
 - [ ] Competitive reward design (win/loss, VP differential, margin of victory)
 
-#### v8.0 — Scale, Missions & Polish
+#### v8.0 — Scale, Missions & Polish [LOWEST]
 
 - [ ] Larger scenarios (10+ models per side with batched inference)
 - [ ] Mission variety (different objective layouts, primary/secondary objectives)
@@ -121,7 +121,7 @@ the current one finishes.
 - [ ] Web replay viewer (browser-based, replacing/complementing Pygame)
 - [ ] Community scenario library (env configs for classic missions)
 
-#### v9.0 — Structured game state & event streaming
+#### v9.0 — Structured game state & event streaming [NEXT · HIGH]
 
 - [ ] **Canonical state model** — Programmatic representation of the full game (board, models, objectives, phase, scores, etc.) derived from domain / `BattleView`, independent of raw tensors
 - [ ] **API- and LLM-ready text** — Stable field names, documented semantics, and schema versioning so the same payload suits HTTP/streaming APIs and LLM validation of legality and consistency
@@ -154,7 +154,7 @@ This is a brownfield project with a working environment, two RL algorithms, and 
 
 The project models a tabletop miniatures wargame with detailed rules (see `docs/tabletop-rules-reference.md`). The environment currently implements movement and objective control. The long-term vision spans nine milestone tracks (v1.0–v9.0) progressing from ranged combat through terrain, advanced movement, weapon diversity, morale, tactical resources, adversarial self-play, scale, and structured programmatic state with event streaming for APIs and LLMs (v9.0). Melee combat is explicitly out of scope.
 
-v1.0 (Ranged Combat & Model Destruction) is the active milestone — Phases 1–5 delivered; next is Phase 6 (combat reward & curriculum). Future milestones are captured in the Active requirements above and will be created via `/gsd-new-milestone` as each completes.
+**Current priorities:** v1.0 (Ranged Combat) and v7.0 (Adversarial Play) are active WIP. v2.0 (Terrain) and v9.0 (Structured State) are next up after current work lands. v3.0/v4.0 are low priority; v5.0/v6.0/v8.0 are lowest priority. Future milestones are captured in the Active requirements above and will be created via `/gsd-new-milestone` as each completes.
 
 ## Constraints
 
