@@ -989,6 +989,41 @@ class TestEnvIntegration:
         assert terminated is True
         assert reward == pytest.approx(25.0)
 
+    def test_phased_terminal_success_bonus_uses_phase_criteria(self) -> None:
+        config = WargameEnvConfig(
+            render_mode=None,
+            board_width=20,
+            board_height=20,
+            number_of_wargame_models=2,
+            number_of_objectives=1,
+            objective_radius_size=2,
+            max_turns_override=1,
+            reward_phases=[
+                RewardPhaseConfig(
+                    name="win_by_vp",
+                    reward_calculators=[
+                        RewardCalculatorConfig(type="vp_gain", weight=1.0),
+                    ],
+                    success_criteria=SuccessCriteriaConfig(
+                        type="player_vp_min",
+                        params={"fraction_of_max": 0.33},
+                    ),
+                    success_threshold=0.8,
+                    min_epochs=0,
+                    terminal_success_bonus=7.0,
+                )
+            ],
+        )
+        env = WargameEnv(config=config)
+        env.reset()
+        env._battle.add_player_vp(20)
+
+        action = WargameEnvAction(actions=[0 for _ in env.wargame_models])
+        _, reward, terminated, _, _ = env.step(action)
+
+        assert terminated is True
+        assert reward == pytest.approx(7.0)
+
     def test_phased_terminal_vp_bonus_applied(self) -> None:
         config = WargameEnvConfig(
             render_mode=None,

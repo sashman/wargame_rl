@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
-from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.reward.calculators.base import (
     GlobalRewardCalculator,
     PerModelRewardCalculator,
@@ -178,8 +177,7 @@ class RewardPhaseManager:
         breakdown.update(per_model_component_sums)
         breakdown.update(global_sums)
         if ctx.is_terminated and phase.terminal_success_bonus != 0.0:
-            player_alive = alive_mask_for(view.player_models)
-            if ctx.distance_cache.all_models_at_objectives(alive_mask=player_alive):
+            if phase.criteria.is_successful(view, ctx):
                 # Scale terminal bonus by remaining turns to encourage faster success.
                 remaining = max(0.0, float(ctx.max_turns - ctx.current_turn + 1))
                 denom = float(ctx.max_turns) if ctx.max_turns > 0 else 1.0
