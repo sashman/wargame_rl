@@ -48,6 +48,15 @@ class ShootingResult:
     damage_dealt: int
 
 
+@dataclass(frozen=True, slots=True)
+class PairedShootingResult:
+    """A shooting result paired with attacker and target indices."""
+
+    attacker_idx: int
+    target_idx: int
+    result: ShootingResult
+
+
 def wound_roll_threshold(strength: int, toughness: int) -> int:
     """Return the minimum D6 roll needed to wound (2-6).
 
