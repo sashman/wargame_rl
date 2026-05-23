@@ -22,11 +22,12 @@ from wargame_rl.wargame.envs.env_components.distance_cache import (
     compute_distances,
     objective_ownership_from_norms_offset,
 )
+from wargame_rl.wargame.envs.types.config import WargameEnvConfig
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase, GameState
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
-    from wargame_rl.wargame.envs.types.config import ModelConfig, WargameEnvConfig
-    from wargame_rl.wargame.envs.types.game_timing import GameState
+    from wargame_rl.wargame.envs.types.config import ModelConfig
 
 
 # ---------------------------------------------------------------------------
@@ -555,6 +556,78 @@ def build_snapshot(
         mission_type=config.mission.type,
         mission_params=mission_params,
     )
+
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+
+def validate_snapshot(
+    snapshot: GameStateSnapshot,
+    config: WargameEnvConfig,
+) -> list[str]:
+    """Return a list of validation errors. Empty list means the snapshot is valid."""
+    errors: list[str] = []
+
+    if len(snapshot.player_models) != config.number_of_wargame_models:
+        errors.append(
+            f"Expected {config.number_of_wargame_models} player models, "
+            f"got {len(snapshot.player_models)}"
+        )
+    if len(snapshot.opponent_models) != config.number_of_opponent_models:
+        errors.append(
+            f"Expected {config.number_of_opponent_models} opponent models, "
+            f"got {len(snapshot.opponent_models)}"
+        )
+    if len(snapshot.objectives) != config.number_of_objectives:
+        errors.append(
+            f"Expected {config.number_of_objectives} objectives, "
+            f"got {len(snapshot.objectives)}"
+        )
+
+    bw, bh = config.board_width, config.board_height
+    for side, models in [
+        ("player", snapshot.player_models),
+        ("opponent", snapshot.opponent_models),
+    ]:
+        for i, m in enumerate(models):
+            x, y = m.location
+            if x < 0 or x >= bw or y < 0 or y >= bh:
+                errors.append(
+                    f"{side} model {i} location ({x}, {y}) out of bounds "
+                    f"[0, {bw}) x [0, {bh})"
+                )
+            if m.current_wounds < 0 or m.current_wounds > m.max_wounds:
+                errors.append(
+                    f"{side} model {i} current_wounds={m.current_wounds} "
+                    f"not in [0, {m.max_wounds}]"
+                )
+
+    for i, o in enumerate(snapshot.objectives):
+        x, y = o.location
+        if x < 0 or x >= bw or y < 0 or y >= bh:
+            errors.append(
+                f"objective {i} location ({x}, {y}) out of bounds [0, {bw}) x [0, {bh})"
+            )
+
+    clock = snapshot.clock
+    if clock.game_phase == "battle":
+        if clock.battle_round is not None:
+            n_rounds = config.number_of_battle_rounds
+            if clock.battle_round < 1 or clock.battle_round > n_rounds:
+                errors.append(
+                    f"battle_round={clock.battle_round} not in [1, {n_rounds}]"
+                )
+        if clock.battle_phase is not None:
+            valid_phases = {p.value for p in BattlePhase}
+            if clock.battle_phase not in valid_phases:
+                errors.append(f"invalid battle_phase '{clock.battle_phase}'")
+
+    if snapshot.step < 0 or snapshot.step > snapshot.max_steps:
+        errors.append(f"step={snapshot.step} not in [0, {snapshot.max_steps}]")
+
+    return errors
 
 
 # ---------------------------------------------------------------------------

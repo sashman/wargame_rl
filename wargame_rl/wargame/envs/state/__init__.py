@@ -7,6 +7,7 @@ from wargame_rl.wargame.envs.state.snapshot import (
     JsonEncoder,
     SnapshotEncoder,
     build_snapshot,
+    validate_snapshot,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "JsonEncoder",
     "SnapshotEncoder",
     "build_snapshot",
+    "validate_snapshot",
 ]

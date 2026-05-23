@@ -23,6 +23,7 @@ from wargame_rl.wargame.envs.domain.placement import place_for_episode
 from wargame_rl.wargame.envs.domain.shooting import (
     DefenderStats,
     PairedShootingResult,
+    ShootingResult,
     resolve_shooting,
 )
 from wargame_rl.wargame.envs.domain.termination import is_battle_over
@@ -47,7 +48,11 @@ from wargame_rl.wargame.envs.opponent.registry import (
 from wargame_rl.wargame.envs.renders import renderer
 from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
 from wargame_rl.wargame.envs.reward.step_context import StepContext
-from wargame_rl.wargame.envs.state.snapshot import GameStateSnapshot, build_snapshot
+from wargame_rl.wargame.envs.state.snapshot import (
+    GameStateSnapshot,
+    build_snapshot,
+    validate_snapshot,
+)
 from wargame_rl.wargame.envs.types import (
     BattlePhase,
     PlayerSide,
@@ -58,7 +63,11 @@ from wargame_rl.wargame.envs.types import (
     WargameEnvObservation,
 )
 from wargame_rl.wargame.envs.types.config import ModelConfig
-from wargame_rl.wargame.envs.types.game_timing import BATTLE_PHASE_ORDER, GameState
+from wargame_rl.wargame.envs.types.game_timing import (
+    BATTLE_PHASE_ORDER,
+    GamePhase,
+    GameState,
+)
 from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
@@ -586,6 +595,132 @@ class WargameEnv(gym.Env):
             shooting_slice_start=ss.start if ss else None,
             shooting_slice_end=ss.end if ss else None,
         )
+
+    def load_state(
+        self, snapshot: GameStateSnapshot
+    ) -> tuple[WargameEnvObservation, dict[str, Any]]:
+        """Restore env from a snapshot. Returns (observation, info) like reset().
+
+        The env is ready for ``step()`` immediately after this call.
+        """
+        errors = validate_snapshot(snapshot, self.config)
+        if errors:
+            raise ValueError(
+                "Invalid snapshot:\n" + "\n".join(f"  - {e}" for e in errors)
+            )
+
+        # Clock
+        clock = snapshot.clock
+        self._game_clock.set_state(
+            GamePhase(clock.game_phase),
+            battle_round=clock.battle_round,
+            active_player=(
+                PlayerSide(clock.active_player) if clock.active_player else None
+            ),
+            phase=BattlePhase(clock.battle_phase) if clock.battle_phase else None,
+            total_steps=snapshot.step,
+        )
+
+        # Player models
+        for i, ms in enumerate(snapshot.player_models):
+            m = self.wargame_models[i]
+            m.location = np.array(ms.location, dtype=np.int32)
+            m.previous_location = (
+                np.array(ms.previous_location, dtype=np.int32)
+                if ms.previous_location is not None
+                else None
+            )
+            m.stats["current_wounds"] = ms.current_wounds
+            m.advanced_this_turn = ms.advanced_this_turn
+            m.previous_closest_objective_distance = None
+            m.best_closest_objective_distance = None
+            m.model_rewards_history.clear()
+
+        # Opponent models
+        for i, ms in enumerate(snapshot.opponent_models):
+            m = self.opponent_models[i]
+            m.location = np.array(ms.location, dtype=np.int32)
+            m.previous_location = (
+                np.array(ms.previous_location, dtype=np.int32)
+                if ms.previous_location is not None
+                else None
+            )
+            m.stats["current_wounds"] = ms.current_wounds
+            m.advanced_this_turn = ms.advanced_this_turn
+            m.previous_closest_objective_distance = None
+            m.best_closest_objective_distance = None
+            m.model_rewards_history.clear()
+
+        # Objectives
+        for i, os_ in enumerate(snapshot.objectives):
+            self.objectives[i].location = np.array(os_.location, dtype=np.int32)
+
+        # VP
+        self._battle._player_vp = snapshot.player_vp
+        self._battle._opponent_vp = snapshot.opponent_vp
+        self._battle._player_vp_delta = 0
+        self._battle._opponent_vp_delta = 0
+
+        # Env counters
+        self.current_turn = snapshot.step
+        self._last_terminated = snapshot.is_terminated
+
+        # Reconstruct last actions
+        if snapshot.player_actions is not None:
+            self._last_player_action = WargameEnvAction(
+                actions=list(snapshot.player_actions)
+            )
+        else:
+            self._last_player_action = None
+
+        if snapshot.opponent_actions is not None:
+            self._last_opponent_action = WargameEnvAction(
+                actions=list(snapshot.opponent_actions)
+            )
+        else:
+            self._last_opponent_action = None
+
+        # Reconstruct combat results as PairedShootingResult stubs
+        self._last_player_shooting_results = [
+            PairedShootingResult(
+                attacker_idx=cr.attacker_idx,
+                target_idx=cr.target_idx,
+                result=ShootingResult(
+                    hits=cr.hits,
+                    wounds=cr.wounds,
+                    unsaved=cr.unsaved,
+                    damage_dealt=cr.damage_dealt,
+                ),
+            )
+            for cr in snapshot.player_combat_results
+        ]
+        self._last_opponent_shooting_results = [
+            PairedShootingResult(
+                attacker_idx=cr.attacker_idx,
+                target_idx=cr.target_idx,
+                result=ShootingResult(
+                    hits=cr.hits,
+                    wounds=cr.wounds,
+                    unsaved=cr.unsaved,
+                    damage_dealt=cr.damage_dealt,
+                ),
+            )
+            for cr in snapshot.opponent_combat_results
+        ]
+
+        # Reward
+        self.last_reward = snapshot.reward.total
+        self.last_reward_breakdown = dict(snapshot.reward.breakdown)
+        self.episode_reward_breakdown = {}
+        self.episode_reward_steps = 0
+        self.last_step_context = None
+
+        # Recompute distances and build observation
+        cache = compute_distances(self.wargame_models, self.objectives)
+        observation = self._get_obs(cache)
+        info = self._get_info()
+
+        return observation, info.model_dump()
 
     def render(self) -> None:
         if self.renderer is not None:
