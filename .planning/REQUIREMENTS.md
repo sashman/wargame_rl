@@ -90,14 +90,33 @@ Deferred to future milestones. Tracked but not in current roadmap.
 
 ### Structured state & events (v9.0)
 
-Deferred to v9.0. Roadmap phases TBD when the milestone is activated.
+Roadmap: `.planning/v9-ROADMAP.md`
 
-- **SGS-01**: A canonical programmatic game-state model exists (board, entities, phase, scoring, etc.), sourced from domain / read-only views, not tied to RL observation tensors
-- **SGS-02**: Serialised state is suitable for external APIs and for LLM-facing validation (stable identifiers, documented semantics, explicit schema version)
-- **SGS-03**: A layered change protocol expresses updates as full snapshots and/or granular deltas at defined abstraction levels to minimise redundancy
-- **SGS-04**: Default encoding is JSON; a codec or encoder interface allows additional formats without changing the canonical model
-- **SGS-05**: An append-only, ordered event stream can represent a complete match history for storage or streaming
-- **SGS-06**: Replay is deterministic: events (optionally with periodic snapshots) applied from a known initial configuration reconstruct any requested historical state (fast-forward / seek)
+#### Canonical State & Export
+
+- [ ] **SGS-01**: A canonical programmatic game-state model exists (board, entities, phase, scoring, etc.), sourced from domain / read-only views, not tied to RL observation tensors
+- [ ] **SGS-02**: Serialised state is suitable for external APIs and for LLM-facing validation (stable identifiers, documented semantics, explicit schema version)
+- [ ] **SGS-04**: Default encoding is JSON; a codec or encoder interface allows additional formats without changing the canonical model
+
+#### State Injection (new — discovered during v9.0 research)
+
+- [ ] **SGS-07**: `GameClock.set_state()` can position the clock at any valid round/phase/player combination for state injection
+- [ ] **SGS-08**: `WargameEnv.load_state(snapshot)` constructs a mid-episode environment from a `GameStateSnapshot`, recomputing derived state
+- [ ] **SGS-09**: Round-trip state fidelity: `to_snapshot()` → `load_state()` → `to_snapshot()` produces identical output
+
+#### LLM Text Representation (new — discovered during v9.0 research)
+
+- [ ] **SGS-10**: `describe_action()` method produces human/LLM-readable text for any action integer (e.g. "Move NE at speed 4", "Shoot at opponent 1")
+- [ ] **SGS-11**: Combat results include attacker-target pairing and analytical context (probabilities, expected damage) for LLM evaluation
+- [ ] **SGS-12**: Opponent actions are recorded before application and available in state output
+- [ ] **SGS-13**: `StepNarrator` produces per-step text summaries covering state, decoded actions, combat narrative, and reward breakdown with phase context
+- [ ] **SGS-14**: Reward breakdown and active reward phase name are included in state output
+
+#### Event Streaming & Replay (deferred)
+
+- [ ] **SGS-03**: A layered change protocol expresses updates as full snapshots and/or granular deltas at defined abstraction levels to minimise redundancy
+- [ ] **SGS-05**: An append-only, ordered event stream can represent a complete match history for storage or streaming
+- [ ] **SGS-06**: Replay is deterministic: events (optionally with periodic snapshots) applied from a known initial configuration reconstruct any requested historical state (fast-forward / seek)
 
 ## Out of Scope
 
@@ -142,12 +161,36 @@ Deferred to v9.0. Roadmap phases TBD when the milestone is activated.
 | OBS-02 | Phase 5 | Complete |
 | OBS-03 | Phase 2 | Pending |
 
-**Coverage:**
+**v1.0 Coverage:**
 - v1 requirements: 26 total
 - Mapped to phases: 26 ✓
 - Unmapped: 0
-- v9.0 (structured state & events): 6 requirements (**SGS-01**–**SGS-06**); phases not yet defined
+
+**v9.0 Coverage (structured state & events):**
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| SGS-01 | Phase 1 | Pending |
+| SGS-02 | Phase 3 | Pending |
+| SGS-03 | Phase 4 | Deferred |
+| SGS-04 | Phase 1 | Pending |
+| SGS-05 | Phase 4 | Deferred |
+| SGS-06 | Phase 4 | Deferred |
+| SGS-07 | Phase 2 | Pending |
+| SGS-08 | Phase 2 | Pending |
+| SGS-09 | Phase 2 | Pending |
+| SGS-10 | Phase 3 | Pending |
+| SGS-11 | Phase 1 | Pending |
+| SGS-12 | Phase 1 | Pending |
+| SGS-13 | Phase 3 | Pending |
+| SGS-14 | Phase 1 | Pending |
+
+- v9.0 requirements: 14 total (6 original + 8 discovered during research)
+- Mapped to phases: 14 ✓
+- Active (Phases 1–3): 11
+- Deferred (Phase 4): 3
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-02*
-*Last updated: 2026-04-05 — added v9.0 SGS-* requirements (roadmap TBD)*
+*Last updated: 2026-05-23 — v9.0 requirements expanded (SGS-07–SGS-14 from research), phases mapped to v9-ROADMAP.md*
