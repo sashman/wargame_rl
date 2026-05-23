@@ -373,7 +373,7 @@ COMPASS_LABELS_16 = [
 ]
 
 
-def _describe_action(
+def describe_action(
     action: int,
     n_angles: int,
     n_speed_bins: int,
@@ -495,7 +495,7 @@ def build_snapshot(
     if player_action is not None and hasattr(player_action, "actions"):
         p_actions = list(player_action.actions)
         p_action_descs = [
-            _describe_action(
+            describe_action(
                 a,
                 n_angles,
                 n_speed_bins,
