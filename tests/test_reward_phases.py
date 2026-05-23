@@ -14,6 +14,9 @@ from wargame_rl.wargame.envs.env_components.distance_cache import (
 from wargame_rl.wargame.envs.reward.calculators.closest_objective import (
     ClosestObjectiveCalculator,
 )
+from wargame_rl.wargame.envs.reward.calculators.closest_objective_v2 import (
+    ClosestObjectiveV2Calculator,
+)
 from wargame_rl.wargame.envs.reward.calculators.group_cohesion import (
     GroupCohesionCalculator,
 )
@@ -40,7 +43,11 @@ from wargame_rl.wargame.envs.reward.phase import (
 )
 from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
 from wargame_rl.wargame.envs.reward.step_context import StepContext
-from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
+from wargame_rl.wargame.envs.types import (
+    OpponentPolicyConfig,
+    WargameEnvAction,
+    WargameEnvConfig,
+)
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
 # ---------------------------------------------------------------------------
@@ -199,6 +206,180 @@ class TestClosestObjectiveCalculator:
         assert reward == 0.0
 
 
+class TestClosestObjectiveV2Calculator:
+    def test_neutral_capture_candidate_rewarded(self) -> None:
+        env = WargameEnv(
+            config=WargameEnvConfig(
+                render_mode=None,
+                board_width=20,
+                board_height=20,
+                number_of_wargame_models=1,
+                number_of_objectives=2,
+                objective_radius_size=2,
+            )
+        )
+        env.reset()
+
+        env.objectives[0].location = np.array([10, 10])
+        env.objectives[1].location = np.array([18, 18])
+        model = env.wargame_models[0]
+        model.location = np.array([0, 0])
+
+        calc = ClosestObjectiveV2Calculator(
+            weight=1.0,
+            best_distance_bonus_scale=1000.0,
+        )
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(0, model, env, ctx) == 0.0
+
+        model.location = np.array([2, 2])
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(0, model, env, ctx) > 0.0
+
+    def test_opponent_controlled_denial_candidate_rewarded(self) -> None:
+        env = WargameEnv(
+            config=WargameEnvConfig(
+                render_mode=None,
+                board_width=20,
+                board_height=20,
+                number_of_wargame_models=1,
+                number_of_opponent_models=1,
+                number_of_objectives=1,
+                objective_radius_size=2,
+                opponent_policy=OpponentPolicyConfig(type="random"),
+            )
+        )
+        env.reset()
+
+        env.objectives[0].location = np.array([10, 10])
+        env.wargame_models[0].location = np.array([0, 0])
+        env.opponent_models[0].location = np.array([10, 10])
+        model = env.wargame_models[0]
+
+        calc = ClosestObjectiveV2Calculator(
+            weight=1.0,
+            best_distance_bonus_scale=1000.0,
+        )
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(0, model, env, ctx) == 0.0
+
+        model.location = np.array([2, 2])
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(0, model, env, ctx) > 0.0
+
+    def test_player_controlled_or_contested_objective_not_candidate(self) -> None:
+        env = WargameEnv(
+            config=WargameEnvConfig(
+                render_mode=None,
+                board_width=20,
+                board_height=20,
+                number_of_wargame_models=2,
+                number_of_opponent_models=1,
+                number_of_objectives=1,
+                objective_radius_size=2,
+                opponent_policy=OpponentPolicyConfig(type="random"),
+            )
+        )
+        env.reset()
+
+        env.objectives[0].location = np.array([10, 10])
+        env.wargame_models[0].location = np.array([0, 0])
+        env.wargame_models[1].location = np.array([10, 10])  # player-controlled
+        env.opponent_models[0].location = np.array([0, 19])  # not contested yet
+
+        calc = ClosestObjectiveV2Calculator(
+            weight=1.0,
+            best_distance_bonus_scale=1000.0,
+        )
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        reward = calc.calculate(0, env.wargame_models[0], env, ctx)
+        assert reward == 0.0
+        assert calc.get_last_breakdown(0)["target_obj_idx"] == pytest.approx(-1.0)
+
+        env.opponent_models[0].location = np.array([10, 10])  # contested now
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        reward = calc.calculate(0, env.wargame_models[0], env, ctx)
+        assert reward == 0.0
+        assert calc.get_last_breakdown(0)["target_obj_idx"] == pytest.approx(-1.0)
+
+    def test_no_candidate_returns_zero(self) -> None:
+        env = WargameEnv(
+            config=WargameEnvConfig(
+                render_mode=None,
+                board_width=20,
+                board_height=20,
+                number_of_wargame_models=1,
+                number_of_objectives=1,
+                objective_radius_size=2,
+            )
+        )
+        env.reset()
+
+        env.objectives[0].location = np.array([10, 10])
+        model = env.wargame_models[0]
+        model.location = np.array([10, 10])  # already in range, so cannot "arrive"
+
+        calc = ClosestObjectiveV2Calculator(weight=1.0)
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(0, model, env, ctx) == 0.0
+
+    def test_target_switch_resets_memory(self) -> None:
+        env = WargameEnv(
+            config=WargameEnvConfig(
+                render_mode=None,
+                board_width=20,
+                board_height=20,
+                number_of_wargame_models=1,
+                number_of_objectives=2,
+                objective_radius_size=2,
+            )
+        )
+        env.reset()
+
+        env.objectives[0].location = np.array([5, 5])
+        env.objectives[1].location = np.array([18, 18])
+        model = env.wargame_models[0]
+        model.location = np.array([0, 0])
+
+        calc = ClosestObjectiveV2Calculator(
+            weight=1.0,
+            best_distance_bonus_scale=1000.0,
+        )
+
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(0, model, env, ctx) == 0.0
+
+        model.location = np.array([2, 2])
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(0, model, env, ctx) > 0.0
+        assert calc.get_last_breakdown(0)["target_switched"] == pytest.approx(0.0)
+
+        model.location = np.array(
+            [5, 5]
+        )  # inside objective 0: objective 1 becomes target
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(0, model, env, ctx) == 0.0
+        assert calc.get_last_breakdown(0)["target_switched"] == pytest.approx(1.0)
+
+        model.location = np.array(
+            [6, 6]
+        )  # still inside objective 0, closer to objective 1
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(0, model, env, ctx) > 0.0
+        assert calc.get_last_breakdown(0)["target_switched"] == pytest.approx(0.0)
+
+
 def test_reward_breakdown_matches_total(simple_env: WargameEnv) -> None:
     """RewardPhaseManager should expose per-calculator breakdown matching total."""
     simple_env.reset()
@@ -321,12 +502,18 @@ class TestVPGainCalculator:
 class TestCalculatorRegistry:
     def test_known_types(self) -> None:
         assert "closest_objective" in CALCULATOR_REGISTRY
+        assert "closest_objective_v2" in CALCULATOR_REGISTRY
         assert "group_cohesion" in CALCULATOR_REGISTRY
         assert "vp_gain" in CALCULATOR_REGISTRY
 
     def test_build_closest_objective(self) -> None:
         calc = build_calculator("closest_objective", weight=0.7, params={})
         assert isinstance(calc, ClosestObjectiveCalculator)
+        assert calc.weight == 0.7
+
+    def test_build_closest_objective_v2(self) -> None:
+        calc = build_calculator("closest_objective_v2", weight=0.7, params={})
+        assert isinstance(calc, ClosestObjectiveV2Calculator)
         assert calc.weight == 0.7
 
     def test_build_group_cohesion_with_params(self) -> None:

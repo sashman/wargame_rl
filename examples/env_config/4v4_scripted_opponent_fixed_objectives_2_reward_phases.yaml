@@ -55,7 +55,7 @@ reward_phases:
     reward_calculators:
       - type: vp_gain
         weight: 1.0
-      - type: closest_objective
+      - type: closest_objective_v2
         weight: 0.1
       - type: group_cohesion
         weight: 0.5

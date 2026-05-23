@@ -9,6 +9,9 @@ from wargame_rl.wargame.envs.reward.calculators.base import (
 from wargame_rl.wargame.envs.reward.calculators.closest_objective import (
     ClosestObjectiveCalculator,
 )
+from wargame_rl.wargame.envs.reward.calculators.closest_objective_v2 import (
+    ClosestObjectiveV2Calculator,
+)
 from wargame_rl.wargame.envs.reward.calculators.group_cohesion import (
     GroupCohesionCalculator,
 )
@@ -18,6 +21,7 @@ RewardCalculatorType = PerModelRewardCalculator | GlobalRewardCalculator
 
 CALCULATOR_REGISTRY: dict[str, type[RewardCalculatorType]] = {
     "closest_objective": ClosestObjectiveCalculator,
+    "closest_objective_v2": ClosestObjectiveV2Calculator,
     "group_cohesion": GroupCohesionCalculator,
     "vp_gain": VPGainCalculator,
 }

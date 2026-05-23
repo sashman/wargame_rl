@@ -13,7 +13,7 @@ Teaching an agent to play a full wargame in one shot is hard. The reward signal 
 
 Each phase uses a simpler reward that the agent can learn quickly, then advances to a harder phase once it has mastered the current one.
 
-**Phase order:** Put the "Win the game" (VP) phase **after** a phase where the agent learns to reach objectives (e.g. `move_and_group` with `all_at_objectives` or `closest_objective`). That way the agent already knows how to get to objectives before you ask it to score VP; the VP phase then focuses on holding control at scoring time.
+**Phase order:** Put the "Win the game" (VP) phase **after** a phase where the agent learns to reach objectives (e.g. `move_and_group` with `all_at_objectives`, `closest_objective`, or `closest_objective_v2`). That way the agent already knows how to get to objectives before you ask it to score VP; the VP phase then focuses on holding control at scoring time.
 
 ## Configuration
 
@@ -80,7 +80,8 @@ reward_phases:
 
 | Type key | Scope | Parameters | Description |
 |----------|-------|------------|-------------|
-| `closest_objective` | per-model | *(none)* | 0 when getting closer, negative penalty when distance stays the same or increases. Uses the change in distance to the closest objective, normalised by board diagonal. |
+| `closest_objective` | per-model | `best_distance_bonus_scale` (float, optional) | Legacy shaping: 0 when getting closer, negative penalty when distance stays the same or increases. Optionally adds a best-distance bonus. Uses distance change to the nearest objective, normalised by board diagonal. |
+| `closest_objective_v2` | per-model | `best_distance_bonus_scale` (float, optional) | Targets the nearest objective where this model's arrival can improve net VP position (neutral -> player-controlled or opponent-controlled -> contested). If no such objective exists for the model on this step, returns 0.0. On target switch, emits 0.0 and resets target-distance memory. |
 | `group_cohesion` | per-model | `group_max_distance` (float, default 10.0), `violation_penalty` (float, default -10.0) | Negative reward proportional to excess distance beyond `group_max_distance` from the closest same-group model. 0 when within range or alone in group. |
 | `vp_gain` | global | *(none)* | Reward = weight × (player_vp_delta / cap_per_turn). `cap_per_turn` is read from mission config (default 15), so unweighted max per step is 1.0. Use in a "Win the game" phase. |
 
@@ -154,6 +155,7 @@ wargame_rl/wargame/envs/reward/
   calculators/
     base.py                        # PerModelRewardCalculator, GlobalRewardCalculator ABCs
     closest_objective.py           # Closest-objective reward
+    closest_objective_v2.py        # Net-VP-impact closest-objective reward
     group_cohesion.py              # Group cohesion penalty
     vp_gain.py                     # VP gain reward (global)
     registry.py                    # Type-string -> class mapping
