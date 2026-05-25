@@ -55,6 +55,15 @@ reward_phases:
     reward_calculators:
       - type: vp_gain
         weight: 1.0
+      - type: objective_flip_bonus
+        weight: 1.0
+        params:
+          {
+            bonus_capture_first: 5.0,
+            bonus_flip_to_contested: 3.0,
+            bonus_contested_to_controlled: 5.0,
+            unique_per_objective: true,
+          }
       - type: closest_objective_v2
         weight: 0.1
       - type: group_cohesion
@@ -71,6 +80,17 @@ reward_phases:
     reward_calculators:
       - type: vp_gain
         weight: 1.0
+      - type: objective_flip_bonus
+        weight: 1.0
+        params:
+          {
+            bonus_capture_first: 5.0,
+            bonus_flip_to_contested: 3.0,
+            bonus_contested_to_controlled: 5.0,
+            unique_per_objective: true,
+          }
+      - type: closest_objective_v2
+        weight: 0.05
       - type: group_cohesion
         weight: 0.5
         params: { group_max_distance: 5.0, violation_penalty: -0.1 }
