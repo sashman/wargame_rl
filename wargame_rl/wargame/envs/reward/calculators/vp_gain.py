@@ -30,4 +30,4 @@ class VPGainCalculator(GlobalRewardCalculator):
 
         opponent_vp_delta = float(getattr(view, "opponent_vp_delta", 0))
         net_vp_delta = float(view.player_vp_delta) - opponent_vp_delta
-        return self.weight * (net_vp_delta / float(cap_per_turn))
+        return net_vp_delta / float(cap_per_turn)

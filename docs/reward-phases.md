@@ -81,9 +81,9 @@ reward_phases:
 | Type key | Scope | Parameters | Description |
 |----------|-------|------------|-------------|
 | `closest_objective` | per-model | `best_distance_bonus_scale` (float, optional) | Legacy shaping: 0 when getting closer, negative penalty when distance stays the same or increases. Optionally adds a best-distance bonus. Uses distance change to the nearest objective, normalised by board diagonal. |
-| `closest_objective_v2` | per-model | `best_distance_bonus_scale` (float, optional) | Targets the nearest objective where this model's arrival can improve net VP position (neutral -> player-controlled or opponent-controlled -> contested). If no such objective exists for the model on this step, returns 0.0. On target switch, emits 0.0 and resets target-distance memory. |
+| `closest_objective_v2` | per-model | `best_distance_bonus_scale` (float, optional), `overstack_penalty_per_extra` (float, default 0.05) | Targets the nearest objective where this model's arrival can improve net VP position (neutral -> player-controlled, opponent-controlled -> contested, contested -> player-controlled). If no target exists it returns 0.0, except models over-stacking already controlled objectives can receive a small negative penalty. Enforces one objective assignment per group per step for shaping. On target switch, emits 0.0 and resets target-distance memory. |
 | `group_cohesion` | per-model | `group_max_distance` (float, default 10.0), `violation_penalty` (float, default -10.0) | Negative reward proportional to excess distance beyond `group_max_distance` from the closest same-group model. 0 when within range or alone in group. |
-| `vp_gain` | global | *(none)* | Reward = weight × (player_vp_delta / cap_per_turn). `cap_per_turn` is read from mission config (default 15), so unweighted max per step is 1.0. Use in a "Win the game" phase. |
+| `vp_gain` | global | *(none)* | Reward = weight × ((player_vp_delta - opponent_vp_delta) / cap_per_turn). `cap_per_turn` is read from mission config (default 15), so net VP swings are normalized to turn cap scale. Use in a "Win the game" phase. |
 
 ## Available Success Criteria
 

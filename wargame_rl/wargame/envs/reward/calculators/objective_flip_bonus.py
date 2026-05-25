@@ -42,6 +42,7 @@ class ObjectiveFlipBonusCalculator(GlobalRewardCalculator):
         self._previous_states: list[str] | None = None
         self._rewarded_objectives: set[int] = set()
         self._last_turn: int | None = None
+        self._last_step_key: tuple[int, int] | None = None
 
     @staticmethod
     def _state_label(player_count: int, opponent_count: int) -> str:
@@ -93,11 +94,22 @@ class ObjectiveFlipBonusCalculator(GlobalRewardCalculator):
         ]
 
     def calculate(self, view: BattleView, ctx: StepContext) -> float:
-        # New episode heuristic (turn counter restarts at 0/1 after reset).
+        step_key = (ctx.current_turn, id(ctx.distance_cache))
+        # New episode heuristic (supports consecutive 1-step episodes).
         if self._last_turn is not None and ctx.current_turn < self._last_turn:
             self._previous_states = None
             self._rewarded_objectives.clear()
+        elif (
+            self._last_turn is not None
+            and ctx.current_turn == 1
+            and self._last_turn == 1
+            and self._last_step_key is not None
+            and self._last_step_key != step_key
+        ):
+            self._previous_states = None
+            self._rewarded_objectives.clear()
         self._last_turn = ctx.current_turn
+        self._last_step_key = step_key
 
         current_states = self._current_states(view, ctx)
         if self._previous_states is None or len(self._previous_states) != len(
@@ -127,4 +139,4 @@ class ObjectiveFlipBonusCalculator(GlobalRewardCalculator):
                     self._rewarded_objectives.add(obj_idx)
 
         self._previous_states = current_states
-        return self.weight * bonus
+        return bonus

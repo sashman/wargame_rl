@@ -5,7 +5,7 @@ number_of_objectives: 3
 objective_radius_size: 3
 board_width: 60
 board_height: 44
-max_groups: 2
+max_groups: 4
 turn_order: random
 
 deployment_zone: [0, 0, 20, 44]

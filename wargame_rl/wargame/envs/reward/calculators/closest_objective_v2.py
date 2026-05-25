@@ -56,6 +56,8 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         self._cached_player_counts: np.ndarray | None = None
         self._cached_opponent_counts: np.ndarray | None = None
         self._cached_group_assignment: dict[int, int] | None = None
+        self._last_turn: int | None = None
+        self._last_step_key: tuple[int, int] | None = None
 
     @staticmethod
     def _normalized_distance(ctx: StepContext, distance_to_objective: float) -> float:
@@ -85,6 +87,16 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         self._target_obj_idx.pop(model_idx, None)
         self._previous_target_distance.pop(model_idx, None)
         self._best_target_distance.pop(model_idx, None)
+
+    def _reset_episode_state(self) -> None:
+        self._target_obj_idx.clear()
+        self._previous_target_distance.clear()
+        self._best_target_distance.clear()
+        self._cached_step_key = None
+        self._cached_player_in_range = None
+        self._cached_player_counts = None
+        self._cached_opponent_counts = None
+        self._cached_group_assignment = None
 
     def _objective_presence_masks(
         self,
@@ -275,6 +287,20 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
     ) -> float:
         cache = ctx.distance_cache
         step_key = (ctx.current_turn, id(ctx.distance_cache))
+        # Detect episode boundaries (including consecutive 1-step episodes).
+        if self._last_turn is not None:
+            if ctx.current_turn < self._last_turn:
+                self._reset_episode_state()
+            elif (
+                ctx.current_turn == 1
+                and self._last_turn == 1
+                and self._last_step_key is not None
+                and self._last_step_key != step_key
+            ):
+                self._reset_episode_state()
+        self._last_turn = ctx.current_turn
+        self._last_step_key = step_key
+
         player_in_range, player_counts, opponent_counts = (
             self._objective_presence_masks(view, ctx)
         )
