@@ -1,6 +1,6 @@
 import math
 from abc import ABC, abstractmethod
-from typing import Self, cast
+from typing import Any, Self, cast
 
 import torch
 from torch import nn
@@ -140,6 +140,8 @@ class TransformerNetwork(RL_Network):
         is_policy: bool,
         transformer_config: TransformerConfig,
         opponent_model_size: int = 0,
+        shooting_slice_start: int | None = None,
+        shooting_slice_end: int | None = None,
         device: Device | None = None,
     ) -> None:
         self.game_size = game_size
@@ -148,6 +150,8 @@ class TransformerNetwork(RL_Network):
         self.opponent_model_size = opponent_model_size
         self.n_actions = n_actions
         self.is_policy = is_policy
+        self.shooting_slice_start = shooting_slice_start
+        self.shooting_slice_end = shooting_slice_end
 
         super().__init__()
 
@@ -185,9 +189,27 @@ class TransformerNetwork(RL_Network):
                 self.config.embedding_size, self.n_actions, bias=False
             )
             self.value_head: nn.Linear | None = None
+            self.shoot_query_proj: nn.Linear | None = None
+            self.shoot_key_proj: nn.Linear | None = None
+            if (
+                self.opponent_model_embedding is not None
+                and self.shooting_slice_start is not None
+                and self.shooting_slice_end is not None
+                and self.shooting_slice_end > self.shooting_slice_start
+            ):
+                self.shoot_query_proj = nn.Linear(
+                    self.config.embedding_size, self.config.embedding_size, bias=True
+                )
+                self.shoot_key_proj = nn.Linear(
+                    self.config.embedding_size, self.config.embedding_size, bias=True
+                )
+            self._last_policy_context: dict[str, Any] | None = None
         else:
             self.policy_head = None
             self.value_head = nn.Linear(self.config.embedding_size, 1, bias=False)
+            self.shoot_query_proj = None
+            self.shoot_key_proj = None
+            self._last_policy_context = None
 
         self.apply(self._init_weights)
         for pn, p in self.named_parameters():
@@ -290,6 +312,30 @@ class TransformerNetwork(RL_Network):
         result: torch.Tensor = self.opponent_model_embedding(opp_tensor)
         return result
 
+    def _alive_feature_index(self, feature_dim: int, n_opponents: int) -> int:
+        """Infer the alive-feature column index from observation feature layout."""
+        return feature_dim - (n_opponents if n_opponents > 0 else 0) - 10
+
+    def _alive_mask_from_features(
+        self, model_features: torch.Tensor, n_opponents: int
+    ) -> torch.Tensor:
+        """Extract alive mask from model feature rows."""
+        n_models, feature_dim = model_features.shape
+        if n_models == 0:
+            return torch.zeros(0, dtype=torch.bool, device=model_features.device)
+        idx = self._alive_feature_index(feature_dim, n_opponents)
+        if idx < 0 or idx >= feature_dim:
+            return torch.ones(n_models, dtype=torch.bool, device=model_features.device)
+        alive_col = model_features[:, idx]
+        return alive_col > 0.5
+
+    def _encode_tokens(self, x: torch.Tensor) -> torch.Tensor:
+        """Run transformer blocks on a single-sample token sequence."""
+        for block in self.transformer.h:  # type: ignore
+            x = block(x)
+        encoded = self.transformer.ln_f(x)  # type: ignore
+        return cast(torch.Tensor, encoded)
+
     def encode_state(self, xs: list[torch.Tensor]) -> tuple[torch.Tensor, int, int]:
         """Encode observation tensors into contextual token representations.
 
@@ -301,32 +347,102 @@ class TransformerNetwork(RL_Network):
         """
         game_tensor = xs[0]
         objective_tensor = xs[1]
-        wargame_model_tensor = xs[2]
+        player_tensor = xs[2]
         opp_tensor = xs[3] if len(xs) > 3 else None
+        mask_tensor = xs[4] if len(xs) > 4 else None
 
         batched = self.is_batched(xs)
-        game_embedding = self.embed_game_state(game_tensor, batched)
-        objective_embedding = self.embed_objective_state(objective_tensor, batched)
-        wargame_model_embedding = self.embed_wargame_model_state(
-            wargame_model_tensor, batched
+        if not batched:
+            game_tensor = game_tensor.unsqueeze(0)
+            objective_tensor = objective_tensor.unsqueeze(0)
+            player_tensor = player_tensor.unsqueeze(0)
+            if opp_tensor is not None:
+                opp_tensor = opp_tensor.unsqueeze(0)
+            if mask_tensor is not None and mask_tensor.ndim == 2:
+                mask_tensor = mask_tensor.unsqueeze(0)
+
+        game_embedding = self.embed_game_state(game_tensor, is_batched=True)
+        objective_embedding = self.embed_objective_state(
+            objective_tensor, is_batched=True
         )
-        n_wargame_models = wargame_model_embedding.shape[1]
+        player_embedding = self.embed_wargame_model_state(
+            player_tensor, is_batched=True
+        )
+        opp_embedding = (
+            self._embed_opponent_models(opp_tensor, is_batched=True)
+            if opp_tensor is not None
+            else None
+        )
 
-        # Sequence: [game, objectives, player_models, (opponent_models)]
-        parts = [game_embedding, objective_embedding, wargame_model_embedding]
+        batch_size = int(player_embedding.shape[0])
+        n_wargame_models = int(player_embedding.shape[1])
+        n_opponents = int(opp_tensor.shape[1]) if opp_tensor is not None else 0
+        n_prefix = 1 + int(objective_embedding.shape[1])
 
-        if opp_tensor is not None:
-            opp_embedding = self._embed_opponent_models(opp_tensor, batched)
-            if opp_embedding is not None:
-                parts.append(opp_embedding)
+        encoded_samples: list[torch.Tensor] = []
+        player_alive_indices: list[torch.Tensor] = []
+        opp_alive_indices: list[torch.Tensor] = []
+        seq_lengths: list[int] = []
 
-        x = torch.cat(parts, dim=1)
+        for b in range(batch_size):
+            player_alive = self._alive_mask_from_features(player_tensor[b], n_opponents)
+            p_idx = torch.nonzero(player_alive, as_tuple=False).squeeze(1).long()
+            player_alive_indices.append(p_idx)
 
-        for block in self.transformer.h:  # type: ignore
-            x = block(x)
-        x = self.transformer.ln_f(x)  # type: ignore
-        n_prefix = 1 + objective_embedding.shape[1]
-        return x, n_prefix, n_wargame_models
+            player_part = player_embedding[b : b + 1, p_idx, :]
+            parts: list[torch.Tensor] = [
+                game_embedding[b : b + 1],
+                objective_embedding[b : b + 1],
+                player_part,
+            ]
+
+            if opp_embedding is not None and opp_tensor is not None and n_opponents > 0:
+                opp_alive = self._alive_mask_from_features(opp_tensor[b], n_opponents)
+                o_idx = torch.nonzero(opp_alive, as_tuple=False).squeeze(1).long()
+                opp_alive_indices.append(o_idx)
+                parts.append(opp_embedding[b : b + 1, o_idx, :])
+            else:
+                opp_alive_indices.append(
+                    torch.zeros(0, dtype=torch.long, device=player_embedding.device)
+                )
+
+            compact_tokens = torch.cat(parts, dim=1)
+            encoded_sample = self._encode_tokens(compact_tokens)
+            encoded_samples.append(encoded_sample)
+            seq_lengths.append(int(encoded_sample.shape[1]))
+
+        max_seq_len = max(seq_lengths) if seq_lengths else n_prefix
+        encoded = torch.zeros(
+            batch_size,
+            max_seq_len,
+            self.embedding_size,
+            device=player_embedding.device,
+            dtype=player_embedding.dtype,
+        )
+        for b, encoded_sample in enumerate(encoded_samples):
+            encoded[b, : encoded_sample.shape[1], :] = encoded_sample[0]
+
+        self._last_policy_context = {
+            "n_prefix": n_prefix,
+            "n_wargame_models": n_wargame_models,
+            "n_opponents": n_opponents,
+            "player_alive_indices": player_alive_indices,
+            "opp_alive_indices": opp_alive_indices,
+            "mask_tensor": mask_tensor,
+        }
+        return encoded, n_prefix, n_wargame_models
+
+    def _shooting_scores(
+        self, player_latents: torch.Tensor, opponent_latents: torch.Tensor
+    ) -> torch.Tensor:
+        """Compute compact shooting logits from player/opponent latents."""
+        if self.shoot_query_proj is None or self.shoot_key_proj is None:
+            raise ValueError("Shooting head is not initialized.")
+        q = self.shoot_query_proj(player_latents)
+        k = self.shoot_key_proj(opponent_latents)
+        scale = 1.0 / math.sqrt(float(q.shape[-1]))
+        scores: torch.Tensor = torch.matmul(q, k.transpose(-2, -1)) * scale
+        return scores
 
     def policy_from_encoded(
         self, encoded: torch.Tensor, n_prefix: int, n_wargame_models: int
@@ -336,8 +452,82 @@ class TransformerNetwork(RL_Network):
             raise ValueError("Policy head requested from a value network.")
         if self.policy_head is None:
             raise ValueError("Policy head is not initialized.")
-        wargame_model_output = encoded[:, n_prefix : n_prefix + n_wargame_models, :]
-        logits: torch.Tensor = self.policy_head(wargame_model_output)
+        context = self._last_policy_context
+        if (
+            context is None
+            or "player_alive_indices" not in context
+            or "opp_alive_indices" not in context
+        ):
+            wargame_model_output = encoded[:, n_prefix : n_prefix + n_wargame_models, :]
+            logits: torch.Tensor = self.policy_head(wargame_model_output)
+            return logits
+
+        batch_size = int(encoded.shape[0])
+        logits = torch.full(
+            (batch_size, n_wargame_models, self.n_actions),
+            float("-inf"),
+            device=encoded.device,
+            dtype=encoded.dtype,
+        )
+        logits[:, :, 0] = 0.0
+
+        player_alive_indices = cast(list[torch.Tensor], context["player_alive_indices"])
+        opp_alive_indices = cast(list[torch.Tensor], context["opp_alive_indices"])
+        n_prefix_ctx = cast(int, context["n_prefix"])
+
+        for b in range(batch_size):
+            p_idx = player_alive_indices[b]
+            n_alive_players = int(p_idx.numel())
+            if n_alive_players == 0:
+                continue
+
+            player_latents = encoded[
+                b : b + 1,
+                n_prefix_ctx : n_prefix_ctx + n_alive_players,
+                :,
+            ]
+            base_logits = self.policy_head(player_latents).squeeze(0)
+            logits[b, p_idx, :] = base_logits
+
+            can_score_shooting = (
+                self.shooting_slice_start is not None
+                and self.shooting_slice_end is not None
+                and self.shooting_slice_end > self.shooting_slice_start
+                and self.shoot_query_proj is not None
+                and self.shoot_key_proj is not None
+            )
+            if not can_score_shooting:
+                continue
+
+            o_idx = opp_alive_indices[b]
+            n_alive_opponents = int(o_idx.numel())
+            if n_alive_opponents == 0:
+                continue
+
+            opp_start = n_prefix_ctx + n_alive_players
+            opponent_latents = encoded[
+                b : b + 1,
+                opp_start : opp_start + n_alive_opponents,
+                :,
+            ]
+            shooting_scores = self._shooting_scores(
+                player_latents, opponent_latents
+            ).squeeze(0)
+            shot_cols = cast(int, self.shooting_slice_start) + o_idx
+            logits[b, p_idx.unsqueeze(1), shot_cols.unsqueeze(0)] = shooting_scores
+
+        mask_tensor = cast(torch.Tensor | None, context["mask_tensor"])
+        if (
+            mask_tensor is not None
+            and mask_tensor.shape[-1] == self.n_actions
+            and mask_tensor.shape[-2] == n_wargame_models
+        ):
+            logits = logits.masked_fill(~mask_tensor.bool(), float("-inf"))
+
+        all_invalid = torch.isneginf(logits).all(dim=-1)
+        logits[:, :, 0] = torch.where(
+            all_invalid, torch.zeros_like(logits[:, :, 0]), logits[:, :, 0]
+        )
         return logits
 
     def value_from_encoded(self, encoded: torch.Tensor) -> torch.Tensor:
@@ -402,12 +592,14 @@ class TransformerNetwork(RL_Network):
         wargame_model_size = int(tensors[2].shape[-1]) if tensors[2].numel() > 0 else 0
         opponent_model_size = int(tensors[3].shape[-1]) if tensors[3].numel() > 0 else 0
         n_actions: int = env._action_handler.n_actions
+        shooting_slice = env._action_handler.shooting_slice
         transformer_config = TransformerConfig()
 
         print(
             f"game_size: {game_size}, objective_size: {objective_size}, "
             f"wargame_model_size: {wargame_model_size}, "
             f"opponent_model_size: {opponent_model_size}, "
+            f"shooting_slice: {shooting_slice}, "
             f"transformer_config: {transformer_config}, n_actions: {n_actions}"
         )
         return cls(
@@ -418,6 +610,8 @@ class TransformerNetwork(RL_Network):
             transformer_config=transformer_config,
             is_policy=is_policy,
             opponent_model_size=opponent_model_size,
+            shooting_slice_start=shooting_slice.start if shooting_slice else None,
+            shooting_slice_end=shooting_slice.end if shooting_slice else None,
         )
 
 
