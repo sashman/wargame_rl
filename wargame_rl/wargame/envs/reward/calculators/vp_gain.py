@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 class VPGainCalculator(GlobalRewardCalculator):
     """Global reward normalized by cap_per_turn so max unweighted reward is 1.0.
 
-    reward = weight * (player_vp_delta / cap_per_turn)
+    reward = weight * ((player_vp_delta - opponent_vp_delta) / cap_per_turn)
     """
 
     def calculate(self, view: BattleView, ctx: StepContext) -> float:
@@ -28,4 +28,6 @@ class VPGainCalculator(GlobalRewardCalculator):
         if cap_per_turn <= 0:
             return 0.0
 
-        return self.weight * (float(view.player_vp_delta) / float(cap_per_turn))
+        opponent_vp_delta = float(getattr(view, "opponent_vp_delta", 0))
+        net_vp_delta = float(view.player_vp_delta) - opponent_vp_delta
+        return self.weight * (net_vp_delta / float(cap_per_turn))

@@ -20,6 +20,9 @@ from wargame_rl.wargame.envs.reward.calculators.closest_objective_v2 import (
 from wargame_rl.wargame.envs.reward.calculators.group_cohesion import (
     GroupCohesionCalculator,
 )
+from wargame_rl.wargame.envs.reward.calculators.objective_flip_bonus import (
+    ObjectiveFlipBonusCalculator,
+)
 from wargame_rl.wargame.envs.reward.calculators.registry import (
     CALCULATOR_REGISTRY,
     build_calculator,
@@ -553,14 +556,22 @@ class TestGroupCohesionCalculator:
         assert reward == 0.0
 
 
-def _vp_view(vp_delta: int, cap_per_turn: int = 15) -> SimpleNamespace:
+def _vp_view(
+    vp_delta: int,
+    cap_per_turn: int = 15,
+    opponent_vp_delta: int = 0,
+) -> SimpleNamespace:
     mission = SimpleNamespace(params={"cap_per_turn": cap_per_turn})
     config = SimpleNamespace(mission=mission)
-    return SimpleNamespace(player_vp_delta=vp_delta, config=config)
+    return SimpleNamespace(
+        player_vp_delta=vp_delta,
+        opponent_vp_delta=opponent_vp_delta,
+        config=config,
+    )
 
 
 class TestVPGainCalculator:
-    def test_zero_when_no_vp_delta(self) -> None:
+    def test_zero_when_no_net_vp_delta(self) -> None:
         view = _vp_view(vp_delta=0)
         ctx: StepContext = SimpleNamespace()  # type: ignore[assignment]
         calc = VPGainCalculator(weight=1.0)
@@ -574,7 +585,19 @@ class TestVPGainCalculator:
         calc = VPGainCalculator(weight=0.5)
         assert calc.calculate(view, ctx) == pytest.approx(0.5 * 5 / 15)
 
-    def test_max_reward_is_one(self) -> None:
+    def test_net_reward_subtracts_opponent_vp_delta(self) -> None:
+        view = _vp_view(vp_delta=5, opponent_vp_delta=2, cap_per_turn=15)
+        ctx: StepContext = SimpleNamespace()  # type: ignore[assignment]
+        calc = VPGainCalculator(weight=1.0)
+        assert calc.calculate(view, ctx) == pytest.approx(3 / 15)
+
+    def test_negative_when_opponent_outscores_player(self) -> None:
+        view = _vp_view(vp_delta=1, opponent_vp_delta=4, cap_per_turn=15)
+        ctx: StepContext = SimpleNamespace()  # type: ignore[assignment]
+        calc = VPGainCalculator(weight=1.0)
+        assert calc.calculate(view, ctx) == pytest.approx(-3 / 15)
+
+    def test_max_reward_is_one_when_net_hits_cap(self) -> None:
         view = _vp_view(vp_delta=15, cap_per_turn=15)
         ctx: StepContext = SimpleNamespace()  # type: ignore[assignment]
         calc = VPGainCalculator(weight=1.0)
@@ -592,6 +615,125 @@ class TestVPGainCalculator:
         assert calc.weight == 1.0
 
 
+class TestObjectiveFlipBonusCalculator:
+    def _make_env(self) -> WargameEnv:
+        env = WargameEnv(
+            config=WargameEnvConfig(
+                render_mode=None,
+                board_width=20,
+                board_height=20,
+                number_of_wargame_models=2,
+                number_of_opponent_models=2,
+                number_of_objectives=1,
+                objective_radius_size=2,
+                opponent_policy=OpponentPolicyConfig(type="random"),
+            )
+        )
+        env.reset()
+        env.objectives[0].location = np.array([10, 10])
+        return env
+
+    def test_neutral_to_player_controlled_bonus(self) -> None:
+        env = self._make_env()
+        calc = ObjectiveFlipBonusCalculator(weight=1.0, bonus_capture_first=7.0)
+
+        env.wargame_models[0].location = np.array([0, 0])
+        env.wargame_models[1].location = np.array([0, 1])
+        env.opponent_models[0].location = np.array([19, 19])
+        env.opponent_models[1].location = np.array([19, 18])
+
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(env, ctx) == 0.0  # initialize state
+
+        env.wargame_models[0].location = np.array([10, 10])
+        env.wargame_models[1].location = np.array([10, 11])  # player count = 2
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(env, ctx) == pytest.approx(7.0)
+
+    def test_opponent_to_contested_bonus(self) -> None:
+        env = self._make_env()
+        calc = ObjectiveFlipBonusCalculator(weight=1.0, bonus_flip_to_contested=4.0)
+
+        env.wargame_models[0].location = np.array([0, 0])
+        env.wargame_models[1].location = np.array([0, 1])
+        env.opponent_models[0].location = np.array([10, 10])
+        env.opponent_models[1].location = np.array([10, 11])  # opponent count = 2
+
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(env, ctx) == 0.0
+
+        env.wargame_models[0].location = np.array([10, 9])
+        env.wargame_models[1].location = np.array(
+            [10, 10]
+        )  # player count -> 2 (contested)
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(env, ctx) == pytest.approx(4.0)
+
+    def test_contested_to_player_controlled_bonus(self) -> None:
+        env = self._make_env()
+        calc = ObjectiveFlipBonusCalculator(
+            weight=1.0, bonus_contested_to_controlled=6.0
+        )
+
+        env.wargame_models[0].location = np.array([10, 9])  # player count = 1
+        env.wargame_models[1].location = np.array([0, 0])
+        env.opponent_models[0].location = np.array([10, 10])  # opponent count = 1
+        env.opponent_models[1].location = np.array([19, 19])
+
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(env, ctx) == 0.0
+
+        env.wargame_models[1].location = np.array([10, 11])  # player count -> 2
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(env, ctx) == pytest.approx(6.0)
+
+    def test_unique_per_objective_rewards_only_once(self) -> None:
+        env = self._make_env()
+        calc = ObjectiveFlipBonusCalculator(
+            weight=1.0,
+            bonus_capture_first=7.0,
+            unique_per_objective=True,
+        )
+
+        env.wargame_models[0].location = np.array([0, 0])
+        env.wargame_models[1].location = np.array([0, 1])
+        env.opponent_models[0].location = np.array([19, 19])
+        env.opponent_models[1].location = np.array([19, 18])
+
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(env, ctx) == 0.0
+
+        env.wargame_models[0].location = np.array([10, 10])
+        env.wargame_models[1].location = np.array([10, 11])
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(env, ctx) == pytest.approx(7.0)
+
+        env.wargame_models[0].location = np.array([0, 0])
+        env.wargame_models[1].location = np.array([0, 1])
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(env, ctx) == 0.0
+
+        env.wargame_models[0].location = np.array([10, 10])
+        env.wargame_models[1].location = np.array([10, 11])
+        cache = compute_distances(env.wargame_models, env.objectives)
+        ctx = _make_step_context(env, cache)
+        assert calc.calculate(env, ctx) == pytest.approx(0.0)
+
+    def test_build_objective_flip_bonus(self) -> None:
+        calc = build_calculator("objective_flip_bonus", weight=1.0, params={})
+        assert isinstance(calc, ObjectiveFlipBonusCalculator)
+        assert calc.weight == 1.0
+
+
 # ---------------------------------------------------------------------------
 # Calculator registry tests
 # ---------------------------------------------------------------------------
@@ -602,6 +744,7 @@ class TestCalculatorRegistry:
         assert "closest_objective" in CALCULATOR_REGISTRY
         assert "closest_objective_v2" in CALCULATOR_REGISTRY
         assert "group_cohesion" in CALCULATOR_REGISTRY
+        assert "objective_flip_bonus" in CALCULATOR_REGISTRY
         assert "vp_gain" in CALCULATOR_REGISTRY
 
     def test_build_closest_objective(self) -> None:
