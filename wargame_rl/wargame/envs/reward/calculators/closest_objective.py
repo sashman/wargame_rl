@@ -13,19 +13,35 @@ if TYPE_CHECKING:
 class ClosestObjectiveCalculator(PerModelRewardCalculator):
     """Legacy closest-objective reward to match Reward().
 
-    Optionally adds a bonus when a model achieves a new best (lowest) distance
-    to its closest objective, scaled by the improvement in normalized distance.
+    Two shaping modes against the nearest objective (distance normalized by the
+    board diagonal):
+
+    - ``progress_scale > 0`` (recommended): a smooth linear potential pull,
+      ``reward = progress_scale * distance_closed`` (positive when closing,
+      negative when receding). Speed-to-objective is then driven by the env
+      discount (gamma) and the remaining-fraction terminal bonus, not by a
+      convex distance term.
+    - legacy (default): 0 when getting closer, a flat penalty when distance
+      stays the same or grows, plus an optional cubic best-distance bonus
+      (``best_distance_bonus_scale``).
     """
 
     def __init__(
         self,
         weight: float = 1.0,
         best_distance_bonus_scale: float | None = None,
+        progress_scale: float = 0.0,
     ) -> None:
         super().__init__(weight=weight)
         self.best_distance_bonus_scale = (
             0.0 if best_distance_bonus_scale is None else best_distance_bonus_scale
         )
+        # When > 0, use a smooth linear potential pull toward the nearest
+        # objective instead of the legacy flat penalty + cubic best-distance
+        # bonus. A convex (cubic) term is a poor proxy for "arrive fast" (it only
+        # fires on a new best distance and is wildly scale-sensitive); discounting
+        # and the remaining-fraction terminal bonus carry the speed incentive.
+        self.progress_scale = progress_scale
         self._last_breakdown: dict[int, dict[str, float]] = {}
 
     @staticmethod
@@ -79,6 +95,23 @@ class ClosestObjectiveCalculator(PerModelRewardCalculator):
         best_prev = model.best_closest_objective_distance
         if best_prev is None or normalized_distance < best_prev:
             model.set_best_closest_objective_distance(normalized_distance)
+
+        if self.progress_scale > 0.0:
+            # Linear potential pull toward the nearest objective: positive when
+            # closing distance, negative when receding. Smooth and dense.
+            distance_delta = (
+                0.0 if previous is None else float(normalized_distance - previous)
+            )
+            progress = (
+                0.0 if previous is None else self.progress_scale * (-distance_delta)
+            )
+            self._last_breakdown[model_idx] = {
+                "distance_delta": distance_delta,
+                "base_penalty": 0.0,
+                "best_distance_bonus": 0.0,
+                "progress": progress,
+            }
+            return progress
 
         bonus = self._best_distance_bonus(best_prev, normalized_distance)
 

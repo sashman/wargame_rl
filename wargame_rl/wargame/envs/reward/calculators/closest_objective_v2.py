@@ -43,6 +43,8 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         overstack_penalty_per_extra: float = 0.05,
         non_improvement_penalty_slope: float = 2.0,
         non_improvement_penalty_base: float = 0.3,
+        progress_scale: float = 0.0,
+        fallback_to_nearest: bool = False,
     ) -> None:
         super().__init__(weight=weight)
         self.best_distance_bonus_scale = (
@@ -51,6 +53,15 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         self.overstack_penalty_per_extra = overstack_penalty_per_extra
         self.non_improvement_penalty_slope = non_improvement_penalty_slope
         self.non_improvement_penalty_base = non_improvement_penalty_base
+        # When > 0, use a smooth linear potential pull toward the assigned objective
+        # (reward = progress_scale * distance_closed) instead of the legacy flat
+        # penalty + cubic best-distance bonus. This is the recommended "go to the
+        # right objective" shaping.
+        self.progress_scale = progress_scale
+        # When True, a model with no VP-relevant/assigned target falls back to its
+        # nearest objective (so e.g. extra models, when models > objectives, are
+        # still guided to an objective). Keep False for strict de-stacking.
+        self.fallback_to_nearest = fallback_to_nearest
         self._last_breakdown: dict[int, dict[str, float]] = {}
         self._target_obj_idx: dict[int, int] = {}
         self._previous_target_distance: dict[int, float] = {}
@@ -275,6 +286,10 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         )
         candidates = candidate_mask[model_idx] & allowed
         if not np.any(candidates):
+            if self.fallback_to_nearest:
+                # No VP-relevant/assigned target: still pull this model toward its
+                # nearest objective (handles extra models when models > objectives).
+                return int(np.argmin(model_distances))
             return None
 
         candidate_indices = np.flatnonzero(candidates)
@@ -350,6 +365,26 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         best_prev = self._best_target_distance.get(model_idx)
         if best_prev is None or normalized_distance < best_prev:
             self._best_target_distance[model_idx] = normalized_distance
+
+        if self.progress_scale > 0.0:
+            # Linear potential pull toward the assigned objective: positive when
+            # closing distance, negative when receding. Smooth, policy-invariant.
+            distance_delta = (
+                0.0 if previous is None else float(normalized_distance - previous)
+            )
+            progress = (
+                0.0 if previous is None else self.progress_scale * (-distance_delta)
+            )
+            self._last_breakdown[model_idx] = {
+                "target_obj_idx": float(target_obj_idx),
+                "target_switched": 0.0,
+                "distance_delta": distance_delta,
+                "base_penalty": 0.0,
+                "best_distance_bonus": 0.0,
+                "progress": progress,
+                "overstack_penalty": overstack_penalty,
+            }
+            return progress + overstack_penalty
 
         bonus = self._best_distance_bonus(best_prev, normalized_distance)
 

@@ -80,11 +80,12 @@ reward_phases:
 
 | Type key | Scope | Parameters | Description |
 |----------|-------|------------|-------------|
-| `closest_objective` | per-model | `best_distance_bonus_scale` (float, optional) | Legacy shaping: 0 when getting closer, negative penalty when distance stays the same or increases. Optionally adds a best-distance bonus. Uses distance change to the nearest objective, normalised by board diagonal. |
-| `closest_objective_v2` | per-model | `best_distance_bonus_scale` (float, optional), `overstack_penalty_per_extra` (float, default 0.05), `non_improvement_penalty_slope` (float, default 2.0), `non_improvement_penalty_base` (float, default 0.3) | Targets the nearest objective where this model's arrival improves the player's control using the **same OC/count rule as VP scoring** (neutral→player, opponent→contested, contested→player). If no target exists it returns 0.0, except models over-stacking an already-controlled objective receive a small negative penalty. One objective assignment per group per step. On target switch, emits 0.0 and resets target-distance memory. |
+| `closest_objective` | per-model | `progress_scale` (float, default 0.0), `best_distance_bonus_scale` (float, optional) | Shaping toward the nearest objective, normalised by board diagonal. **`progress_scale > 0` (recommended)** switches to a smooth linear potential pull (reward = `progress_scale × distance_closed`, positive when closing, negative when receding); speed-to-objective then comes from discounting + the remaining-fraction terminal bonus, not a convex term. Legacy mode (default): 0 when getting closer, a flat penalty when distance stays the same or increases, plus an optional cubic best-distance bonus. |
+| `closest_objective_v2` | per-model | `progress_scale` (float, default 0.0), `fallback_to_nearest` (bool, default false), `best_distance_bonus_scale` (float, optional), `overstack_penalty_per_extra` (float, default 0.05), `non_improvement_penalty_slope` (float, default 2.0), `non_improvement_penalty_base` (float, default 0.3) | Targets the nearest objective where this model's arrival improves the player's control using the **same OC/count rule as VP scoring** (neutral→player, opponent→contested, contested→player); one objective assignment per group per step (de-stacks across models). **`progress_scale > 0` (recommended)** switches to a smooth linear potential pull toward the assigned objective (reward = `progress_scale × distance_closed`, positive when closing, negative when receding), replacing the legacy flat penalty + cubic bonus. **`fallback_to_nearest`** sends a model with no assigned target to its nearest objective (e.g. extra models when models > objectives). With `progress_scale = 0` it uses the legacy penalty/cubic shaping. Over-stacking an already-controlled objective incurs a small negative penalty. |
 | `group_cohesion` | per-model | `group_max_distance` (float, default 10.0), `violation_penalty` (float, default -10.0) | Negative reward proportional to excess distance beyond `group_max_distance` from the closest same-group model. 0 when within range or alone in group. |
 | `vp_gain` | global | *(none)* | Reward = weight × ((player_vp_delta - opponent_vp_delta) / cap_per_turn). `cap_per_turn` is read from mission config (default 15), so net VP swings are normalized to turn cap scale. Use in a "Win the game" phase. |
 | `objective_flip_bonus` | global | `bonus_capture_first` (float, default 5.0), `bonus_flip_to_contested` (float, default 3.0), `bonus_contested_to_controlled` (float, default 5.0), `loss_penalty_scale` (float, default 1.0) | Symmetric control-state potential under the same OC/count rule as VP scoring. Gaining control adds value (neutral→player = `bonus_capture_first`; opponent→contested = `bonus_flip_to_contested`; contested→player = `bonus_contested_to_controlled`); losing control subtracts the mirror value × `loss_penalty_scale`. At `loss_penalty_scale=1.0` it is a pure (farming-proof) potential. Returns unweighted. |
+| `objective_coverage` | global | *(none)* | Dense reward = (number of player-controlled objectives) / (number of objectives), using the same OC/count rule as VP scoring. Paid every step, so it rewards spreading models to hold *multiple distinct* objectives rather than over-stacking one. Returns unweighted. |
 
 ## Available Success Criteria
 
@@ -97,7 +98,7 @@ reward_phases:
 
 ## How Advancement Works
 
-At the end of each training epoch, the training loop runs evaluation episodes (controlled by `n_episodes` in `DQNConfig`). For each episode, the active phase's success criteria is checked. The resulting success rate is compared against the phase's `success_threshold`:
+At the end of each training epoch, the training loop runs evaluation episodes (controlled by `n_episodes` in the active algorithm config — `PPOConfig` for the default PPO, or `DQNConfig` for DQN; overridable via `--n-eval-episodes`). For each episode, the active phase's success criteria is checked. The resulting success rate is compared against the phase's `success_threshold`:
 
 ```
 advance if:
@@ -115,7 +116,7 @@ The `reward_phase` metric (phase index, 0-based) is logged to wandb every epoch,
 
 Each step, the phase manager computes the reward as follows:
 
-1. **Per-model calculators**: For each model, every per-model calculator's output is multiplied by its `weight` and summed. The per-model totals are then **averaged across all models**.
+1. **Per-model calculators**: For each **alive** model, every per-model calculator's output is multiplied by its `weight` and summed. The per-model totals are then **averaged across the alive models** (dead models are excluded; if no models are alive the per-model contribution is 0).
 2. **Global calculators**: Each global calculator's output is multiplied by its `weight` and summed.
 3. **Final reward** = averaged per-model reward + global reward total.
 
@@ -144,8 +145,13 @@ Both calculators and criteria receive a `StepContext` object containing the dist
 | `max_turns` | `int` | Maximum agent steps per episode (`n_rounds × (5 - len(skip_phases))`; default `n_rounds` since non-movement phases are skipped) |
 | `board_width` | `int` | Board width in cells |
 | `board_height` | `int` | Board height in cells |
+| `is_terminated` | `bool` | Whether this step terminates the episode (used to gate terminal bonuses). Default `False` |
 | `current_round` | `int` | Current battle round (1-based) |
 | `battle_phase` | `BattlePhase` | Current battle phase (`command`, `movement`, `shooting`, `charge`, or `fight`) |
+| `player_damage_dealt` | `int` | Damage the player dealt this step. Default `0` |
+| `opponent_damage_dealt` | `int` | Damage the opponent dealt this step. Default `0` |
+| `player_models_killed` | `int` | Opponent models the player eliminated this step. Default `0` |
+| `opponent_models_killed` | `int` | Player models the opponent eliminated this step. Default `0` |
 
 ## File Layout
 
@@ -159,6 +165,7 @@ wargame_rl/wargame/envs/reward/
     closest_objective.py           # Closest-objective reward
     closest_objective_v2.py        # OC/count-margin closest-objective reward
     group_cohesion.py              # Group cohesion penalty
+    objective_coverage.py          # Dense fraction-of-objectives-controlled reward
     objective_flip_bonus.py        # Symmetric objective control-state potential
     vp_gain.py                     # VP gain reward (global)
     registry.py                    # Type-string -> class mapping

@@ -39,7 +39,9 @@ reward_phases:
     reward_calculators:
       - type: closest_objective
         weight: 1.0
-        params: { best_distance_bonus_scale: 1000.0 }
+        params: { progress_scale: 10.0 }
+      - type: objective_coverage
+        weight: 0.3
       - type: group_cohesion
         weight: 0.5
         params: { group_max_distance: 5.0, violation_penalty: -0.1 }
@@ -66,6 +68,9 @@ reward_phases:
             loss_penalty_scale: 1.0,
           }
       - type: closest_objective_v2
+        weight: 0.3
+        params: { progress_scale: 10.0 }
+      - type: objective_coverage
         weight: 0.1
     success_criteria:
       type: player_ahead_on_vp
@@ -88,7 +93,10 @@ reward_phases:
             loss_penalty_scale: 1.0,
           }
       - type: closest_objective_v2
-        weight: 0.05
+        weight: 0.15
+        params: { progress_scale: 10.0 }
+      - type: objective_coverage
+        weight: 0.1
     success_criteria:
       type: player_vp_min
       params: { fraction_of_max: 0.4 }
