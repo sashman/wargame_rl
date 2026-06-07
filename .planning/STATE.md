@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-04-06T14:56:09.666Z"
-last_activity: 2026-04-06
+status: active
+stopped_at: v9 roadmap updated; v1.0 Phase 6 next
+last_updated: "2026-06-07T09:21:00.000Z"
+last_activity: 2026-06-07
 progress:
   total_phases: 6
   completed_phases: 5
@@ -20,18 +20,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-04)
 
 **Core value:** Agents learn recognisable tactical behaviour through reward shaping and environment design
-**Current focus:** Phase 05 — shooting-resolution
+**Current focus:** v1.0 Phases 1–5 complete, Phase 6 deferred; v9 Phases 1–3 complete, Phase 4 deferred
 
 ## Current Position
 
-Phase: 6
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-04-06
+**v1.0 (Shooting & Model Destruction):**
+Phases 1–5 complete (8/8 plans executed)
+Phase 6 deferred
 
-Progress: Phases **1–3** complete (4/4 plans executed in tracked milestone plans); **Phase 4** next
-
-**Plans bar:** `[████████████████████] 4/4 plans (100%)` *(milestone plan queue to date)*
+**v9 (Structured Game State & LLM-Readable Representation):**
+Phases 1–3 complete (merged 2026-05-23 via PRs #110, #111)
+Phase 4 deferred
 
 ## Performance Metrics
 
@@ -101,6 +100,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-06T14:48:47.649Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-06-07T09:21:00.000Z
+Stopped at: Updated v9 roadmap to reflect merged work
 Resume file: None
