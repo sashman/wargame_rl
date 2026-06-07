@@ -26,7 +26,7 @@ For the default mission, VP are scored **at the end of the command phase** for e
 
 ## Objective control
 
-An objective is **controlled** by a side if that side has at least one model within the objective’s radius. If both sides have at least one model in range, the objective is **contested** and neither side scores VP for it. Control is re-evaluated each time VP are scored.
+An objective is **controlled** by the side with the **greater Level of Control** within range — the number of that side's models within the objective’s radius (each model contributes its Objective Control value, currently 1). The side with **strictly more** models in range controls the objective and scores it; **equal totals (including zero) mean the objective is contested/uncontrolled** and neither side scores. Control is re-evaluated each time VP are scored. This matches the tabletop OC rule — see [tabletop-rules-reference.md](tabletop-rules-reference.md).
 
 ## Env state and observation
 

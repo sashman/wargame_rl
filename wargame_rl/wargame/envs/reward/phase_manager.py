@@ -94,6 +94,14 @@ class RewardPhaseManager:
 
         return cls(phases=phases)
 
+    def reset_episode(self) -> None:
+        """Reset per-episode state of all calculators across all phases."""
+        for phase in self.phases:
+            for _name, pm_calc in phase.per_model_calculators:
+                pm_calc.reset_episode()
+            for _name, gl_calc in phase.global_calculators:
+                gl_calc.reset_episode()
+
     # -- Properties -----------------------------------------------------------
 
     @property

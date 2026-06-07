@@ -57,7 +57,7 @@ reward_phases:
 | `success_threshold` | float | `0.8` | Fraction of evaluation episodes (0--1) that must succeed to advance |
 | `min_epochs` | int | `0` | Minimum epochs spent in this phase before advancement is eligible |
 | `min_epochs_above_threshold` | int | `5` | Success rate must be ≥ success_threshold for this many consecutive epochs before advancing |
-| `terminal_success_bonus` | float | `0.0` | Bonus added at episode end when all models are at an objective. Scaled by remaining-turn fraction so faster success gets higher reward. |
+| `terminal_success_bonus` | float | `0.0` | Bonus added at episode end **when the phase's `success_criteria` is met** (previously hardcoded to all-models-at-objectives). Scaled by remaining-turn fraction so faster success gets higher reward. |
 | `terminal_vp_bonus` | float | `0.0` | Bonus added at episode end when player VP meets the phase's VP threshold (for VP-based success criteria). |
 | `terminate_on_success` | bool | `true` | Whether to end the episode as soon as all models are at objectives. Set `false` in VP phases when you want to keep scoring. |
 
@@ -81,9 +81,10 @@ reward_phases:
 | Type key | Scope | Parameters | Description |
 |----------|-------|------------|-------------|
 | `closest_objective` | per-model | `best_distance_bonus_scale` (float, optional) | Legacy shaping: 0 when getting closer, negative penalty when distance stays the same or increases. Optionally adds a best-distance bonus. Uses distance change to the nearest objective, normalised by board diagonal. |
-| `closest_objective_v2` | per-model | `best_distance_bonus_scale` (float, optional), `overstack_penalty_per_extra` (float, default 0.05) | Targets the nearest objective where this model's arrival can improve net VP position (neutral -> player-controlled, opponent-controlled -> contested, contested -> player-controlled). If no target exists it returns 0.0, except models over-stacking already controlled objectives can receive a small negative penalty. Enforces one objective assignment per group per step for shaping. On target switch, emits 0.0 and resets target-distance memory. |
+| `closest_objective_v2` | per-model | `best_distance_bonus_scale` (float, optional), `overstack_penalty_per_extra` (float, default 0.05), `non_improvement_penalty_slope` (float, default 2.0), `non_improvement_penalty_base` (float, default 0.3) | Targets the nearest objective where this model's arrival improves the player's control using the **same OC/count rule as VP scoring** (neutral→player, opponent→contested, contested→player). If no target exists it returns 0.0, except models over-stacking an already-controlled objective receive a small negative penalty. One objective assignment per group per step. On target switch, emits 0.0 and resets target-distance memory. |
 | `group_cohesion` | per-model | `group_max_distance` (float, default 10.0), `violation_penalty` (float, default -10.0) | Negative reward proportional to excess distance beyond `group_max_distance` from the closest same-group model. 0 when within range or alone in group. |
 | `vp_gain` | global | *(none)* | Reward = weight × ((player_vp_delta - opponent_vp_delta) / cap_per_turn). `cap_per_turn` is read from mission config (default 15), so net VP swings are normalized to turn cap scale. Use in a "Win the game" phase. |
+| `objective_flip_bonus` | global | `bonus_capture_first` (float, default 5.0), `bonus_flip_to_contested` (float, default 3.0), `bonus_contested_to_controlled` (float, default 5.0), `loss_penalty_scale` (float, default 1.0) | Symmetric control-state potential under the same OC/count rule as VP scoring. Gaining control adds value (neutral→player = `bonus_capture_first`; opponent→contested = `bonus_flip_to_contested`; contested→player = `bonus_contested_to_controlled`); losing control subtracts the mirror value × `loss_penalty_scale`. At `loss_penalty_scale=1.0` it is a pure (farming-proof) potential. Returns unweighted. |
 
 ## Available Success Criteria
 
@@ -92,6 +93,7 @@ reward_phases:
 | `all_at_objectives` | *(none)* | Succeeds when every model is within the radius of at least one objective. |
 | `all_models_grouped` | `max_distance` (float, default 10.0) | Succeeds when every model is within `max_distance` of at least one same-group member. Models alone in their group are considered grouped. |
 | `player_vp_min` | `fraction_of_max` (float, e.g. 0.33), `min_vp` (int, default 0) | Succeeds when player VP at episode end ≥ threshold. Threshold = max(min_vp, round(fraction_of_max × theoretical_max)). Theoretical max depends on `number_of_battle_rounds`, objectives, and mission params, so the same fraction gives a higher VP bar when episodes have more rounds. |
+| `player_ahead_on_vp` | *(none)* | Succeeds when `player_vp > opponent_vp` at evaluation time (a win-rate signal; use with `terminate_on_success: false`). |
 
 ## How Advancement Works
 
@@ -155,14 +157,16 @@ wargame_rl/wargame/envs/reward/
   calculators/
     base.py                        # PerModelRewardCalculator, GlobalRewardCalculator ABCs
     closest_objective.py           # Closest-objective reward
-    closest_objective_v2.py        # Net-VP-impact closest-objective reward
+    closest_objective_v2.py        # OC/count-margin closest-objective reward
     group_cohesion.py              # Group cohesion penalty
+    objective_flip_bonus.py        # Symmetric objective control-state potential
     vp_gain.py                     # VP gain reward (global)
     registry.py                    # Type-string -> class mapping
   criteria/
     base.py                        # SuccessCriteria ABC
     all_at_objectives.py           # All models at objectives
     all_models_grouped.py          # All models within group distance
+    player_ahead_on_vp.py          # Player ahead on VP (win-rate) criteria
     player_vp_min.py               # Player VP min success criteria
     registry.py                    # Type-string -> class mapping
   types/

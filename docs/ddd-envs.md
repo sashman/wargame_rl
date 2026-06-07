@@ -55,7 +55,7 @@ wargame_rl/wargame/envs/
 - **BattleFactory**: builds a `Battle` and its entities from `WargameEnvConfig`.
 - **place_for_episode**: places player models, objectives, and opponent models for a new episode (fixed or random from config).
 - **GameClock**: advance setup/battle phases, rounds, turns; `is_game_over`.
-- **termination**: `is_battle_over(clock, current_turn, max_turns, max_turns_override, all_models_at_objectives_flag)`.
+- **termination**: `is_battle_over(clock, current_turn, max_turns, all_models_at_objectives_flag)`.
 - **turn_execution**: `run_until_player_phase`, `run_after_player_action` (skip phases, run opponent turn, advance clock).
 
 The env calls these; it does not reimplement their logic.

@@ -41,12 +41,16 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         weight: float = 1.0,
         best_distance_bonus_scale: float | None = None,
         overstack_penalty_per_extra: float = 0.05,
+        non_improvement_penalty_slope: float = 2.0,
+        non_improvement_penalty_base: float = 0.3,
     ) -> None:
         super().__init__(weight=weight)
         self.best_distance_bonus_scale = (
             0.0 if best_distance_bonus_scale is None else best_distance_bonus_scale
         )
         self.overstack_penalty_per_extra = overstack_penalty_per_extra
+        self.non_improvement_penalty_slope = non_improvement_penalty_slope
+        self.non_improvement_penalty_base = non_improvement_penalty_base
         self._last_breakdown: dict[int, dict[str, float]] = {}
         self._target_obj_idx: dict[int, int] = {}
         self._previous_target_distance: dict[int, float] = {}
@@ -56,21 +60,21 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         self._cached_player_counts: np.ndarray | None = None
         self._cached_opponent_counts: np.ndarray | None = None
         self._cached_group_assignment: dict[int, int] | None = None
-        self._last_turn: int | None = None
-        self._last_step_key: tuple[int, int] | None = None
 
     @staticmethod
     def _normalized_distance(ctx: StepContext, distance_to_objective: float) -> float:
         max_diagonal = float((ctx.board_width**2 + ctx.board_height**2) ** 0.5)
         return distance_to_objective / max_diagonal
 
-    @staticmethod
     def _penalty_for_non_improvement(
-        previous_model_distance: float, current_distance: float
+        self, previous_model_distance: float, current_distance: float
     ) -> float:
         distance_delta = float(current_distance - previous_model_distance)
         if distance_delta >= 0:
-            return -(float(2) * abs(distance_delta) + float(0.3))
+            return -(
+                self.non_improvement_penalty_slope * abs(distance_delta)
+                + self.non_improvement_penalty_base
+            )
         return 0.0
 
     def _best_distance_bonus(
@@ -88,7 +92,8 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         self._previous_target_distance.pop(model_idx, None)
         self._best_target_distance.pop(model_idx, None)
 
-    def _reset_episode_state(self) -> None:
+    def reset_episode(self) -> None:
+        """Clear per-episode state (called by the env on reset)."""
         self._target_obj_idx.clear()
         self._previous_target_distance.clear()
         self._best_target_distance.clear()
@@ -287,19 +292,6 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
     ) -> float:
         cache = ctx.distance_cache
         step_key = (ctx.current_turn, id(ctx.distance_cache))
-        # Detect episode boundaries (including consecutive 1-step episodes).
-        if self._last_turn is not None:
-            if ctx.current_turn < self._last_turn:
-                self._reset_episode_state()
-            elif (
-                ctx.current_turn == 1
-                and self._last_turn == 1
-                and self._last_step_key is not None
-                and self._last_step_key != step_key
-            ):
-                self._reset_episode_state()
-        self._last_turn = ctx.current_turn
-        self._last_step_key = step_key
 
         player_in_range, player_counts, opponent_counts = (
             self._objective_presence_masks(view, ctx)

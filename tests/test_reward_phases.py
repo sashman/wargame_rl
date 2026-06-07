@@ -464,7 +464,7 @@ class TestClosestObjectiveV2Calculator:
         assert calc.calculate(0, model, env, ctx) > 0.0
         assert calc.get_last_breakdown(0)["target_switched"] == pytest.approx(0.0)
 
-    def test_episode_reset_clears_internal_target_state(self) -> None:
+    def test_reset_episode_clears_target_memory(self) -> None:
         env = WargameEnv(
             config=WargameEnvConfig(
                 render_mode=None,
@@ -475,66 +475,72 @@ class TestClosestObjectiveV2Calculator:
                 objective_radius_size=2,
             )
         )
+        env.reset(seed=0)
+        env.objectives[0].location = np.array([10, 10])
+        model = env.wargame_models[0]
         calc = ClosestObjectiveV2Calculator(
             weight=1.0,
             best_distance_bonus_scale=1000.0,
         )
 
-        env.reset(seed=0)
-        env.objectives[0].location = np.array([10, 10])
-        model = env.wargame_models[0]
         model.location = np.array([0, 0])
-        cache = compute_distances(env.wargame_models, env.objectives)
-        ctx = StepContext(
-            distance_cache=cache,
-            current_turn=1,
-            max_turns=env.max_turns,
-            board_width=env.board_width,
-            board_height=env.board_height,
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
         )
-        assert calc.calculate(0, model, env, ctx) == 0.0
+        assert calc.calculate(0, model, env, ctx) == 0.0  # lock-on (target switched)
+        assert calc.get_last_breakdown(0)["target_switched"] == pytest.approx(1.0)
 
         model.location = np.array([2, 2])
-        cache = compute_distances(env.wargame_models, env.objectives)
-        ctx = StepContext(
-            distance_cache=cache,
-            current_turn=2,
-            max_turns=env.max_turns,
-            board_width=env.board_width,
-            board_height=env.board_height,
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
         )
-        assert calc.calculate(0, model, env, ctx) > 0.0
+        assert calc.calculate(0, model, env, ctx) > 0.0  # progress (big bonus scale)
 
-        env.reset(seed=1)
-        env.objectives[0].location = np.array([10, 10])
-        model = env.wargame_models[0]
+        # Explicit episode reset clears the per-model target memory.
+        calc.reset_episode()
         model.location = np.array([0, 0])
-        cache = compute_distances(env.wargame_models, env.objectives)
-        ctx = StepContext(
-            distance_cache=cache,
-            current_turn=1,
-            max_turns=env.max_turns,
-            board_width=env.board_width,
-            board_height=env.board_height,
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
         )
-        # First step in new episode should re-initialize, not penalize from old state.
-        assert calc.calculate(0, model, env, ctx) == 0.0
-
-        model.location = np.array(
-            [5, 5]
-        )  # inside objective 0: objective 1 becomes target
-        cache = compute_distances(env.wargame_models, env.objectives)
-        ctx = _make_step_context(env, cache)
+        # Re-locks on target -> 0.0, not a penalty computed from stale distance.
         assert calc.calculate(0, model, env, ctx) == 0.0
         assert calc.get_last_breakdown(0)["target_switched"] == pytest.approx(1.0)
 
-        model.location = np.array(
-            [6, 6]
-        )  # still inside objective 0, closer to objective 1
-        cache = compute_distances(env.wargame_models, env.objectives)
-        ctx = _make_step_context(env, cache)
-        assert calc.calculate(0, model, env, ctx) > 0.0
-        assert calc.get_last_breakdown(0)["target_switched"] == pytest.approx(0.0)
+    def test_v2_penalty_only_without_bonus_scale(self) -> None:
+        env = WargameEnv(
+            config=WargameEnvConfig(
+                render_mode=None,
+                board_width=20,
+                board_height=20,
+                number_of_wargame_models=1,
+                number_of_objectives=1,
+                objective_radius_size=2,
+            )
+        )
+        env.reset()
+        env.objectives[0].location = np.array([10, 10])
+        model = env.wargame_models[0]
+        calc = ClosestObjectiveV2Calculator(weight=1.0)  # default scale -> penalty only
+
+        model.location = np.array([0, 0])
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
+        assert calc.calculate(0, model, env, ctx) == 0.0  # lock-on
+
+        # Move closer: improving with scale==0 yields exactly 0.0 (no positive bonus).
+        model.location = np.array([2, 2])
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
+        assert calc.calculate(0, model, env, ctx) == pytest.approx(0.0)
+
+        # Move away from the objective: non-improvement -> negative penalty.
+        model.location = np.array([1, 1])
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
+        assert calc.calculate(0, model, env, ctx) < 0.0
 
 
 def test_reward_breakdown_matches_total(simple_env: WargameEnv) -> None:
@@ -750,107 +756,164 @@ class TestObjectiveFlipBonusCalculator:
         ctx = _make_step_context(env, cache)
         assert calc.calculate(env, ctx) == pytest.approx(6.0)
 
-    def test_unique_per_objective_rewards_only_once(self) -> None:
+    def test_losing_sole_control_is_penalised(self) -> None:
+        env = self._make_env()
+        calc = ObjectiveFlipBonusCalculator(weight=1.0)  # defaults 5/3/5, loss 1.0
+
+        # Baseline: neutral.
+        env.wargame_models[0].location = np.array([0, 0])
+        env.wargame_models[1].location = np.array([0, 1])
+        env.opponent_models[0].location = np.array([19, 19])
+        env.opponent_models[1].location = np.array([19, 18])
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
+        assert calc.calculate(env, ctx) == 0.0
+
+        # Player captures it (neutral -> player): +bonus_capture_first.
+        env.wargame_models[0].location = np.array([10, 10])
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
+        assert calc.calculate(env, ctx) == pytest.approx(5.0)
+
+        # Opponent contests it (player -> contested): -bonus_contested_to_controlled.
+        env.opponent_models[0].location = np.array([10, 11])
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
+        assert calc.calculate(env, ctx) == pytest.approx(-5.0)
+
+    def test_losing_to_opponent_is_penalised(self) -> None:
+        env = self._make_env()
+        calc = ObjectiveFlipBonusCalculator(weight=1.0)  # defaults 5/3/5, loss 1.0
+
+        env.wargame_models[0].location = np.array([0, 0])
+        env.wargame_models[1].location = np.array([0, 1])
+        env.opponent_models[0].location = np.array([19, 19])
+        env.opponent_models[1].location = np.array([19, 18])
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
+        assert calc.calculate(env, ctx) == 0.0
+
+        # Player controls (neutral -> player): +5.
+        env.wargame_models[0].location = np.array([10, 10])
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
+        assert calc.calculate(env, ctx) == pytest.approx(5.0)
+
+        # Player leaves and opponent takes it (player -> opponent): -(flip + take).
+        env.wargame_models[0].location = np.array([0, 0])
+        env.opponent_models[0].location = np.array([10, 10])
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
+        assert calc.calculate(env, ctx) == pytest.approx(-(3.0 + 5.0))
+
+    def test_capture_then_loss_telescopes_to_zero(self) -> None:
         env = self._make_env()
         calc = ObjectiveFlipBonusCalculator(
-            weight=1.0,
-            bonus_capture_first=7.0,
-            unique_per_objective=True,
+            weight=1.0, bonus_capture_first=2.0, loss_penalty_scale=1.0
         )
 
         env.wargame_models[0].location = np.array([0, 0])
         env.wargame_models[1].location = np.array([0, 1])
         env.opponent_models[0].location = np.array([19, 19])
         env.opponent_models[1].location = np.array([19, 18])
-
-        cache = compute_distances(env.wargame_models, env.objectives)
-        ctx = _make_step_context(env, cache)
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
         assert calc.calculate(env, ctx) == 0.0
 
-        env.wargame_models[0].location = np.array([10, 10])
-        env.wargame_models[1].location = np.array([10, 11])
-        cache = compute_distances(env.wargame_models, env.objectives)
-        ctx = _make_step_context(env, cache)
-        assert calc.calculate(env, ctx) == pytest.approx(7.0)
+        env.wargame_models[0].location = np.array([10, 10])  # capture
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
+        gained = calc.calculate(env, ctx)
+        assert gained == pytest.approx(2.0)
+
+        env.wargame_models[0].location = np.array([0, 0])  # leave -> neutral
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
+        lost = calc.calculate(env, ctx)
+        # loss_penalty_scale == 1.0 -> pure potential -> telescopes to zero.
+        assert gained + lost == pytest.approx(0.0)
+
+    def test_loss_penalty_scale_zero_is_gains_only(self) -> None:
+        env = self._make_env()
+        calc = ObjectiveFlipBonusCalculator(
+            weight=1.0, bonus_capture_first=2.0, loss_penalty_scale=0.0
+        )
 
         env.wargame_models[0].location = np.array([0, 0])
         env.wargame_models[1].location = np.array([0, 1])
-        cache = compute_distances(env.wargame_models, env.objectives)
-        ctx = _make_step_context(env, cache)
+        env.opponent_models[0].location = np.array([19, 19])
+        env.opponent_models[1].location = np.array([19, 18])
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
         assert calc.calculate(env, ctx) == 0.0
 
-        env.wargame_models[0].location = np.array([10, 10])
-        env.wargame_models[1].location = np.array([10, 11])
-        cache = compute_distances(env.wargame_models, env.objectives)
-        ctx = _make_step_context(env, cache)
+        env.wargame_models[0].location = np.array([10, 10])  # capture -> +2
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
+        assert calc.calculate(env, ctx) == pytest.approx(2.0)
+
+        env.wargame_models[0].location = np.array([0, 0])  # lose -> 0 (scale 0)
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
         assert calc.calculate(env, ctx) == pytest.approx(0.0)
-
-    def test_one_step_episode_reset_reenables_unique_bonus(self) -> None:
-        env = self._make_env()
-        calc = ObjectiveFlipBonusCalculator(
-            weight=1.0,
-            bonus_capture_first=7.0,
-            unique_per_objective=True,
-        )
-
-        # Episode 1: initialize then capture.
-        env.wargame_models[0].location = np.array([0, 0])
-        env.wargame_models[1].location = np.array([0, 1])
-        env.opponent_models[0].location = np.array([19, 19])
-        env.opponent_models[1].location = np.array([19, 18])
-        cache = compute_distances(env.wargame_models, env.objectives)
-        ctx = StepContext(
-            distance_cache=cache,
-            current_turn=1,
-            max_turns=env.max_turns,
-            board_width=env.board_width,
-            board_height=env.board_height,
-        )
-        assert calc.calculate(env, ctx) == 0.0
-        env.wargame_models[0].location = np.array([10, 10])
-        env.wargame_models[1].location = np.array([10, 11])
-        cache = compute_distances(env.wargame_models, env.objectives)
-        ctx = StepContext(
-            distance_cache=cache,
-            current_turn=2,
-            max_turns=env.max_turns,
-            board_width=env.board_width,
-            board_height=env.board_height,
-        )
-        assert calc.calculate(env, ctx) == pytest.approx(7.0)
-
-        # Episode 2 (same turn index pattern): bonus should be available again.
-        env.reset(seed=123)
-        env.objectives[0].location = np.array([10, 10])
-        env.wargame_models[0].location = np.array([0, 0])
-        env.wargame_models[1].location = np.array([0, 1])
-        env.opponent_models[0].location = np.array([19, 19])
-        env.opponent_models[1].location = np.array([19, 18])
-        cache = compute_distances(env.wargame_models, env.objectives)
-        ctx = StepContext(
-            distance_cache=cache,
-            current_turn=1,
-            max_turns=env.max_turns,
-            board_width=env.board_width,
-            board_height=env.board_height,
-        )
-        assert calc.calculate(env, ctx) == 0.0
-        env.wargame_models[0].location = np.array([10, 10])
-        env.wargame_models[1].location = np.array([10, 11])
-        cache = compute_distances(env.wargame_models, env.objectives)
-        ctx = StepContext(
-            distance_cache=cache,
-            current_turn=2,
-            max_turns=env.max_turns,
-            board_width=env.board_width,
-            board_height=env.board_height,
-        )
-        assert calc.calculate(env, ctx) == pytest.approx(7.0)
 
     def test_build_objective_flip_bonus(self) -> None:
         calc = build_calculator("objective_flip_bonus", weight=1.0, params={})
         assert isinstance(calc, ObjectiveFlipBonusCalculator)
         assert calc.weight == 1.0
+
+
+def test_env_reset_resets_stateful_calculators() -> None:
+    """env.reset() clears stateful calculators via phase_manager.reset_episode()."""
+    config = WargameEnvConfig(
+        render_mode=None,
+        board_width=20,
+        board_height=20,
+        number_of_wargame_models=1,
+        number_of_objectives=1,
+        objective_radius_size=2,
+        number_of_battle_rounds=20,
+        reward_phases=[
+            RewardPhaseConfig(
+                name="win",
+                reward_calculators=[
+                    RewardCalculatorConfig(
+                        type="objective_flip_bonus",
+                        weight=1.0,
+                        params={"bonus_capture_first": 2.0, "loss_penalty_scale": 1.0},
+                    ),
+                ],
+                success_criteria=SuccessCriteriaConfig(type="player_ahead_on_vp"),
+                success_threshold=0.5,
+                min_epochs=0,
+                terminate_on_success=False,
+            )
+        ],
+    )
+    env = WargameEnv(config=config)
+    env.reset(seed=0)
+    action = WargameEnvAction(actions=[0 for _ in env.wargame_models])
+    for _ in range(3):
+        env.step(action)
+
+    calc = env.phase_manager.current_phase.global_calculators[0][1]
+    assert isinstance(calc, ObjectiveFlipBonusCalculator)
+
+    env.reset(seed=1)
+    # reset_episode() must have cleared the per-episode previous-state memory.
+    assert calc._previous_states is None
 
 
 # ---------------------------------------------------------------------------
@@ -1017,6 +1080,7 @@ class TestCriteriaRegistry:
         assert "all_at_objectives" in CRITERIA_REGISTRY
         assert "all_models_grouped" in CRITERIA_REGISTRY
         assert "player_vp_min" in CRITERIA_REGISTRY
+        assert "player_ahead_on_vp" in CRITERIA_REGISTRY
 
     def test_build_all_at_objectives(self) -> None:
         c = build_criteria("all_at_objectives", {})
@@ -1220,7 +1284,7 @@ class TestEnvIntegration:
             number_of_wargame_models=2,
             number_of_objectives=1,
             objective_radius_size=2,
-            max_turns_override=1,
+            number_of_battle_rounds=1,
             reward_phases=[
                 RewardPhaseConfig(
                     name="reach_objectives",
@@ -1259,7 +1323,7 @@ class TestEnvIntegration:
             number_of_wargame_models=2,
             number_of_objectives=1,
             objective_radius_size=2,
-            max_turns_override=1,
+            number_of_battle_rounds=1,
             reward_phases=[
                 RewardPhaseConfig(
                     name="win_by_vp",
@@ -1294,7 +1358,7 @@ class TestEnvIntegration:
             number_of_wargame_models=2,
             number_of_objectives=1,
             objective_radius_size=2,
-            max_turns_override=1,
+            number_of_battle_rounds=1,
             reward_phases=[
                 RewardPhaseConfig(
                     name="win_by_vp",
@@ -1329,7 +1393,7 @@ class TestEnvIntegration:
             number_of_wargame_models=2,
             number_of_objectives=1,
             objective_radius_size=2,
-            max_turns_override=10,
+            number_of_battle_rounds=10,
             reward_phases=[
                 RewardPhaseConfig(
                     name="vp_training",

@@ -19,9 +19,13 @@ def get_checkpoint_callback(
     """
     checkpoint_callback = ModelCheckpoint(
         dirpath=f"./checkpoints/{name}",
-        filename=f"{filename_prefix}-{{epoch:03d}}-{{mean_episode_reward:.3f}}",
+        # Metric is logged as "reward/mean_episode_reward" (see lightning_base.py).
+        # auto_insert_metric_name=False so the "/" in the metric name is substituted
+        # as a value rather than turned into a "name=" prefix (which breaks on "/").
+        filename=f"{filename_prefix}-{{epoch:03d}}-{{reward/mean_episode_reward:.3f}}",
+        auto_insert_metric_name=False,
         save_top_k=3,
-        monitor="mean_episode_reward",
+        monitor="reward/mean_episode_reward",
         mode="max",
         save_last=True,
     )

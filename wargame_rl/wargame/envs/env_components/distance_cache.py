@@ -126,11 +126,35 @@ def objective_ownership_from_norms_offset(
         (player_controls, opponent_controls), each a boolean array of shape
         `(n_objectives,)`.
     """
-    # Any model in range per objective.
-    player_any = np.any(player_norms_offset <= obj_radii, axis=0)
-    opponent_any = np.any(opponent_norms_offset <= obj_radii, axis=0)
-
-    # Contested objectives count as controlled by neither.
-    player_controls = player_any & ~opponent_any
-    opponent_controls = opponent_any & ~player_any
+    # OC/count rule (OC=1 per model): strictly greater in-range count controls.
+    player_counts = np.sum(player_norms_offset <= obj_radii, axis=0)
+    opponent_counts = np.sum(opponent_norms_offset <= obj_radii, axis=0)
+    player_controls = player_counts > opponent_counts
+    opponent_controls = opponent_counts > player_counts
     return player_controls, opponent_controls
+
+
+def objective_states_from_norms_offset(
+    player_norms_offset: np.ndarray,
+    opponent_norms_offset: np.ndarray,
+    obj_radii: np.ndarray,
+) -> list[str]:
+    """Per-objective control state under the same OC/count rule as VP scoring.
+
+    "player": player count > opponent count; "opponent": opponent count > player
+    count; "contested": equal and >=1 present; "neutral": none present.
+    """
+    player_counts = np.sum(player_norms_offset <= obj_radii, axis=0)
+    opponent_counts = np.sum(opponent_norms_offset <= obj_radii, axis=0)
+    states: list[str] = []
+    for player_count, opponent_count in zip(player_counts, opponent_counts):
+        p, o = int(player_count), int(opponent_count)
+        if p <= 0 and o <= 0:
+            states.append("neutral")
+        elif p > o:
+            states.append("player")
+        elif o > p:
+            states.append("opponent")
+        else:
+            states.append("contested")
+    return states
