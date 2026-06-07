@@ -88,17 +88,119 @@ JsonMatchCodec.decode()
 
 ### GameStateSnapshot
 
-A complete, serialisable Pydantic model of the game at one point in time. Contains:
+> Source: [`wargame_rl/wargame/envs/state/snapshot.py`](../wargame_rl/wargame/envs/state/snapshot.py)
 
-- Board dimensions, clock state, round/phase
-- All player and opponent model states (position, wounds, weapons, objective distances)
-- Objective states (control, models in range)
-- Actions taken (raw integers + decoded descriptions)
-- Combat results with analytical context (expected damage, hit/wound probabilities)
-- Reward breakdown (per-calculator contributions, active phase)
-- VP state, termination flags
+A complete, serialisable Pydantic model of the game at one point in time. This is the "universal interchange format" — everything downstream operates on snapshots.
 
-This is the "universal interchange format" — everything downstream operates on snapshots.
+#### Schema
+
+```python
+class GameStateSnapshot(BaseModel):
+    schema_version: str = "1.1"
+    step: int
+    max_steps: int
+    clock: ClockSnapshot
+    n_rounds: int
+    board_width: int
+    board_height: int
+    player_models: list[ModelSnapshot]
+    opponent_models: list[ModelSnapshot]
+    objectives: list[ObjectiveSnapshot]
+    deployment_zone: list[int]
+    opponent_deployment_zone: list[int]
+    player_vp: int
+    opponent_vp: int
+    player_vp_delta: int
+    opponent_vp_delta: int
+    objective_control: list[str]
+    player_actions: list[int] | None
+    opponent_actions: list[int] | None
+    player_action_descriptions: list[str] | None
+    player_combat_results: list[CombatResultSnapshot]
+    opponent_combat_results: list[CombatResultSnapshot]
+    reward: RewardSnapshot
+    is_terminated: bool
+    is_truncated: bool
+    player_alive_count: int
+    opponent_alive_count: int
+    player_total_wounds: int
+    opponent_total_wounds: int
+    mission_type: str
+    mission_params: dict[str, int | float | str]
+```
+
+#### Sub-models
+
+```python
+class ClockSnapshot(BaseModel):
+    game_phase: str          # "deployment" | "battle"
+    battle_round: int | None
+    active_player: str | None
+    battle_phase: str | None # "command" | "movement" | "shooting" | ...
+
+class ModelSnapshot(BaseModel):
+    location: list[int]
+    previous_location: list[int] | None
+    group_id: int
+    alive: bool
+    current_wounds: int
+    max_wounds: int
+    toughness: int
+    save: int
+    advanced_this_turn: bool
+    weapons: list[WeaponSnapshot]
+    distances_to_objectives: list[float]
+    at_objective: list[bool]
+    closest_objective_idx: int | None
+    closest_objective_distance: float | None
+
+class ObjectiveSnapshot(BaseModel):
+    location: list[int]
+    radius_size: int
+    player_models_in_range: list[int]
+    opponent_models_in_range: list[int]
+
+class WeaponSnapshot(BaseModel):
+    weapon_range: int
+    attacks: int
+    ballistic_skill: int
+    strength: int
+    ap: int
+    damage: int
+
+class CombatResultSnapshot(BaseModel):
+    attacker_idx: int
+    target_idx: int
+    hits: int
+    wounds: int
+    unsaved: int
+    damage_dealt: int
+    expected_damage: float
+    hit_probability: float
+    wound_probability: float
+
+class RewardSnapshot(BaseModel):
+    total: float | None
+    breakdown: dict[str, float]
+    phase_name: str
+    phase_index: int
+```
+
+#### Field summary
+
+| Group | Fields | Purpose |
+|-------|--------|---------|
+| **Timing** | `step`, `max_steps`, `clock`, `n_rounds` | Where in the episode and game clock |
+| **Board** | `board_width`, `board_height`, `deployment_zone`, `opponent_deployment_zone` | Static geometry |
+| **Units** | `player_models`, `opponent_models` | Full per-model state inc. weapons, wounds, distances |
+| **Objectives** | `objectives`, `objective_control` | Positions, radii, ownership |
+| **Actions** | `player_actions`, `opponent_actions`, `player_action_descriptions` | Raw + decoded actions taken |
+| **Combat** | `player_combat_results`, `opponent_combat_results` | Hits, wounds, damage with expected-value analytics |
+| **Reward** | `reward` | Per-calculator breakdown and active phase |
+| **VP** | `player_vp`, `opponent_vp`, `*_vp_delta` | Victory point state and step-wise change |
+| **Terminal** | `is_terminated`, `is_truncated` | Episode end flags |
+| **Attrition** | `player_alive_count`, `opponent_alive_count`, `*_total_wounds` | Aggregate health |
+| **Mission** | `mission_type`, `mission_params` | Active mission and its parameters |
 
 ### StateExporter Protocol
 
