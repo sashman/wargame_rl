@@ -7,7 +7,7 @@ initial state; StepEvents record per-step deltas. Periodic anchor snapshots
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -224,7 +224,7 @@ def _compute_model_delta(
     cur: ModelSnapshot,
 ) -> ModelDelta | None:
     """Compute delta for a single model. Returns None if unchanged."""
-    changes: dict[str, object] = {}
+    changes: dict[str, Any] = {}
     if cur.location != prev.location:
         changes["location"] = cur.location
     if cur.previous_location != prev.previous_location:
@@ -251,7 +251,7 @@ def _compute_model_delta(
 
 def _apply_model_delta(model: ModelSnapshot, md: ModelDelta) -> ModelSnapshot:
     """Apply a ModelDelta to a ModelSnapshot."""
-    updates: dict[str, object] = {}
+    updates: dict[str, Any] = {}
     if md.location is not None:
         updates["location"] = md.location
     if md.previous_location is not None:
