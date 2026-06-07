@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Line of Sight Service** - Single domain service for Bresenham LOS reused by rules, masks, and rendering (completed 2026-04-04)
 - [x] **Phase 4: Shooting Action Space** - Extend ActionRegistry with shooting targets, phase-gated masks combining LOS/range/alive (completed 2026-04-05)
 - [x] **Phase 5: Shooting Resolution** - Tabletop attack sequence (hit→wound→save→damage) with configurable weapon profiles (completed 2026-04-06)
-- [ ] **Phase 6: Combat Reward & Curriculum** - Reward calculators for damage/losses and curriculum phases for learning to shoot
+- [ ] ~~**Phase 6: Combat Reward & Curriculum**~~ - Deferred: Reward calculators for damage/losses and curriculum phases for learning to shoot
 
 ## Phase Details
 
@@ -86,7 +86,7 @@ Plans:
 - [x] 05-01-PLAN.md — Config + domain shooting resolution + entity extensions + unit tests
 - [x] 05-02-PLAN.md — Env wiring + mask extensions + observation pipeline + integration tests
 
-### Phase 6: Combat Reward & Curriculum
+### Phase 6: Combat Reward & Curriculum (Deferred)
 **Goal**: The agent learns to use shooting effectively through reward shaping and curriculum progression
 **Depends on**: Phase 5
 **Requirements**: CRWD-01, CRWD-02, CRWD-03, CRWD-04
@@ -95,6 +95,7 @@ Plans:
   2. A `models_lost` penalty calculator is registered and configurable in YAML reward phases
   3. A curriculum phase exists where the agent learns to shoot before combining shooting with movement and objectives
   4. An agent trained with combat reward phases demonstrates shooting at valid targets during simulation
+**Note**: Deferred — shooting mechanics (Phases 1–5) are complete; reward shaping for combat will be revisited when needed.
 **Plans**: TBD
 
 ## Progress
@@ -110,4 +111,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Line of Sight Service | 1/1 | Complete | 2026-04-04 |
 | 4. Shooting Action Space | 2/2 | Complete | 2026-04-05 |
 | 5. Shooting Resolution | 2/2 | Complete | 2026-04-06 |
-| 6. Combat Reward & Curriculum | 0/0 | Not started | - |
+| 6. Combat Reward & Curriculum | - | Deferred | - |

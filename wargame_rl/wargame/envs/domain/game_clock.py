@@ -12,6 +12,7 @@ from wargame_rl.wargame.envs.types.game_timing import (
     GamePhase,
     GameState,
     PlayerSide,
+    SetupPhase,
 )
 
 
@@ -100,6 +101,50 @@ class GameClock:
         self._active_player = self._first_player
         self._phase_idx = 0
         self._total_steps = 0
+        return self.state
+
+    # -- State injection -------------------------------------------------------
+
+    def set_state(
+        self,
+        game_phase: GamePhase,
+        *,
+        battle_round: int | None = None,
+        active_player: PlayerSide | None = None,
+        phase: BattlePhase | None = None,
+        setup_phase: SetupPhase | None = None,
+        total_steps: int = 0,
+    ) -> GameState:
+        """Position the clock at an arbitrary valid state.
+
+        Used by ``WargameEnv.load_state()`` to restore a mid-episode clock
+        position from a snapshot.
+        """
+        if game_phase is GamePhase.battle:
+            if battle_round is None or active_player is None or phase is None:
+                raise GameClockError(
+                    "battle_round, active_player, and phase are required "
+                    "when game_phase is battle"
+                )
+            if battle_round < 1 or battle_round > self._n_rounds:
+                raise GameClockError(
+                    f"battle_round must be in [1, {self._n_rounds}], got {battle_round}"
+                )
+            self._game_phase = GamePhase.battle
+            self._round = battle_round
+            self._active_player = active_player
+            self._phase_idx = BATTLE_PHASE_ORDER.index(phase)
+        elif game_phase is GamePhase.setup:
+            if setup_phase is None:
+                raise GameClockError("setup_phase is required when game_phase is setup")
+            self._game_phase = GamePhase.setup
+            self._setup_idx = SETUP_PHASE_ORDER.index(setup_phase)
+        elif game_phase is GamePhase.complete:
+            self._game_phase = GamePhase.complete
+        else:
+            raise GameClockError(f"Unknown game_phase: {game_phase}")
+
+        self._total_steps = total_steps
         return self.state
 
     # -- Setup navigation -----------------------------------------------------

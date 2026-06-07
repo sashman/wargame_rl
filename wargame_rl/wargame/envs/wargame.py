@@ -22,6 +22,7 @@ from wargame_rl.wargame.envs.domain.los import has_line_of_sight, iter_los_cells
 from wargame_rl.wargame.envs.domain.placement import place_for_episode
 from wargame_rl.wargame.envs.domain.shooting import (
     DefenderStats,
+    PairedShootingResult,
     ShootingResult,
     resolve_shooting,
 )
@@ -47,6 +48,11 @@ from wargame_rl.wargame.envs.opponent.registry import (
 from wargame_rl.wargame.envs.renders import renderer
 from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
 from wargame_rl.wargame.envs.reward.step_context import StepContext
+from wargame_rl.wargame.envs.state.snapshot import (
+    GameStateSnapshot,
+    build_snapshot,
+    validate_snapshot,
+)
 from wargame_rl.wargame.envs.types import (
     BattlePhase,
     PlayerSide,
@@ -57,7 +63,11 @@ from wargame_rl.wargame.envs.types import (
     WargameEnvObservation,
 )
 from wargame_rl.wargame.envs.types.config import ModelConfig
-from wargame_rl.wargame.envs.types.game_timing import BATTLE_PHASE_ORDER, GameState
+from wargame_rl.wargame.envs.types.game_timing import (
+    BATTLE_PHASE_ORDER,
+    GamePhase,
+    GameState,
+)
 from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
@@ -122,8 +132,13 @@ class WargameEnv(gym.Env):
 
         # Combat RNG (re-seeded per episode in reset)
         self._combat_rng: np.random.Generator = np.random.default_rng()
-        self._last_player_shooting_results: list[ShootingResult] = []
-        self._last_opponent_shooting_results: list[ShootingResult] = []
+        self._last_player_shooting_results: list[PairedShootingResult] = []
+        self._last_opponent_shooting_results: list[PairedShootingResult] = []
+
+        # Last actions and termination flag (for snapshot / replay)
+        self._last_player_action: WargameEnvAction | None = None
+        self._last_opponent_action: WargameEnvAction | None = None
+        self._last_terminated: bool = False
 
         # Last reward from step(); None until first step after reset
         self.last_reward: float | None = None
@@ -288,6 +303,9 @@ class WargameEnv(gym.Env):
         self._combat_rng = np.random.default_rng(int(combat_seed))
         self._last_player_shooting_results = []
         self._last_opponent_shooting_results = []
+        self._last_player_action = None
+        self._last_opponent_action = None
+        self._last_terminated = False
 
         self.current_turn = 0
         self.last_reward = None
@@ -330,12 +348,12 @@ class WargameEnv(gym.Env):
         targets: list[WargameModel],
         shooting_slice: ActionSlice | None,
         attacker_configs: list[ModelConfig] | None,
-    ) -> list[ShootingResult]:
+    ) -> list[PairedShootingResult]:
         """Resolve shooting for each model in the action against targets.
 
-        Returns one ShootingResult per model that actually fired.
+        Returns one PairedShootingResult per model that actually fired.
         """
-        results: list[ShootingResult] = []
+        results: list[PairedShootingResult] = []
         if shooting_slice is None:
             return results
         for i, act in enumerate(action.actions):
@@ -365,7 +383,11 @@ class WargameEnv(gym.Env):
             result = resolve_shooting(w, defender, self._combat_rng)
             if result.damage_dealt > 0:
                 targets[target_idx].take_damage(result.damage_dealt)
-            results.append(result)
+            results.append(
+                PairedShootingResult(
+                    attacker_idx=i, target_idx=target_idx, result=result
+                )
+            )
         return results
 
     def _apply_player_action(self, action: WargameEnvAction) -> None:
@@ -399,6 +421,7 @@ class WargameEnv(gym.Env):
         opp_action = self._opponent_policy.select_action(
             self.opponent_models, self, action_mask=opp_mask
         )
+        self._last_opponent_action = opp_action
         if phase == BattlePhase.shooting:
             self._last_opponent_shooting_results = self._resolve_shooting_action(
                 opp_action,
@@ -445,6 +468,7 @@ class WargameEnv(gym.Env):
         opp_alive_before = [m.is_alive for m in self.opponent_models]
         player_alive_before = [m.is_alive for m in self.wargame_models]
 
+        self._last_player_action = action
         self._apply_player_action(action)
 
         self.current_turn += 1
@@ -489,12 +513,13 @@ class WargameEnv(gym.Env):
             all_at_objective,
             all_eliminated=all_eliminated,
         )
+        self._last_terminated = is_terminated
 
         clock_state = self._game_clock.state
         phase = clock_state.phase or BattlePhase.command
 
-        p_dmg = sum(r.damage_dealt for r in self._last_player_shooting_results)
-        o_dmg = sum(r.damage_dealt for r in self._last_opponent_shooting_results)
+        p_dmg = sum(r.result.damage_dealt for r in self._last_player_shooting_results)
+        o_dmg = sum(r.result.damage_dealt for r in self._last_opponent_shooting_results)
         p_kills = sum(
             1
             for i, m in enumerate(self.opponent_models)
@@ -536,6 +561,166 @@ class WargameEnv(gym.Env):
             )
         self.episode_reward_steps += 1
         return observation, reward, is_terminated, False, info.model_dump()
+
+    def to_snapshot(self) -> GameStateSnapshot:
+        """Build a serialisable snapshot of the current game state."""
+        ss = self._action_handler.shooting_slice
+        return build_snapshot(
+            config=self.config,
+            step=self.current_turn,
+            max_steps=self.max_turns,
+            clock_state=self._game_clock.state,
+            n_rounds=self._game_clock.n_rounds,
+            player_models=self.wargame_models,
+            opponent_models=self.opponent_models,
+            objectives=self.objectives,
+            deployment_zone=self.deployment_zone,
+            opponent_deployment_zone=self.opponent_deployment_zone,
+            player_vp=self.player_vp,
+            opponent_vp=self.opponent_vp,
+            player_vp_delta=self.player_vp_delta,
+            opponent_vp_delta=self.opponent_vp_delta,
+            player_shooting_results=self._last_player_shooting_results,
+            opponent_shooting_results=self._last_opponent_shooting_results,
+            player_action=self._last_player_action,
+            opponent_action=self._last_opponent_action,
+            last_reward=self.last_reward,
+            reward_breakdown=self.last_reward_breakdown,
+            phase_name=self.phase_manager.current_phase_name,
+            phase_index=self.phase_manager.current_phase_index,
+            is_terminated=self._last_terminated,
+            is_truncated=False,
+            n_angles=self.config.n_movement_angles,
+            n_speed_bins=self.config.n_speed_bins,
+            shooting_slice_start=ss.start if ss else None,
+            shooting_slice_end=ss.end if ss else None,
+        )
+
+    def load_state(
+        self, snapshot: GameStateSnapshot
+    ) -> tuple[WargameEnvObservation, dict[str, Any]]:
+        """Restore env from a snapshot. Returns (observation, info) like reset().
+
+        The env is ready for ``step()`` immediately after this call.
+        """
+        errors = validate_snapshot(snapshot, self.config)
+        if errors:
+            raise ValueError(
+                "Invalid snapshot:\n" + "\n".join(f"  - {e}" for e in errors)
+            )
+
+        # Clock
+        clock = snapshot.clock
+        self._game_clock.set_state(
+            GamePhase(clock.game_phase),
+            battle_round=clock.battle_round,
+            active_player=(
+                PlayerSide(clock.active_player) if clock.active_player else None
+            ),
+            phase=BattlePhase(clock.battle_phase) if clock.battle_phase else None,
+            total_steps=snapshot.step,
+        )
+
+        # Player models
+        for i, ms in enumerate(snapshot.player_models):
+            m = self.wargame_models[i]
+            m.location = np.array(ms.location, dtype=np.int32)
+            m.previous_location = (
+                np.array(ms.previous_location, dtype=np.int32)
+                if ms.previous_location is not None
+                else None
+            )
+            m.stats["current_wounds"] = ms.current_wounds
+            m.advanced_this_turn = ms.advanced_this_turn
+            m.previous_closest_objective_distance = None
+            m.best_closest_objective_distance = None
+            m.model_rewards_history.clear()
+
+        # Opponent models
+        for i, ms in enumerate(snapshot.opponent_models):
+            m = self.opponent_models[i]
+            m.location = np.array(ms.location, dtype=np.int32)
+            m.previous_location = (
+                np.array(ms.previous_location, dtype=np.int32)
+                if ms.previous_location is not None
+                else None
+            )
+            m.stats["current_wounds"] = ms.current_wounds
+            m.advanced_this_turn = ms.advanced_this_turn
+            m.previous_closest_objective_distance = None
+            m.best_closest_objective_distance = None
+            m.model_rewards_history.clear()
+
+        # Objectives
+        for i, os_ in enumerate(snapshot.objectives):
+            self.objectives[i].location = np.array(os_.location, dtype=np.int32)
+
+        # VP
+        self._battle._player_vp = snapshot.player_vp
+        self._battle._opponent_vp = snapshot.opponent_vp
+        self._battle._player_vp_delta = 0
+        self._battle._opponent_vp_delta = 0
+
+        # Env counters
+        self.current_turn = snapshot.step
+        self._last_terminated = snapshot.is_terminated
+
+        # Reconstruct last actions
+        if snapshot.player_actions is not None:
+            self._last_player_action = WargameEnvAction(
+                actions=list(snapshot.player_actions)
+            )
+        else:
+            self._last_player_action = None
+
+        if snapshot.opponent_actions is not None:
+            self._last_opponent_action = WargameEnvAction(
+                actions=list(snapshot.opponent_actions)
+            )
+        else:
+            self._last_opponent_action = None
+
+        # Reconstruct combat results as PairedShootingResult stubs
+        self._last_player_shooting_results = [
+            PairedShootingResult(
+                attacker_idx=cr.attacker_idx,
+                target_idx=cr.target_idx,
+                result=ShootingResult(
+                    hits=cr.hits,
+                    wounds=cr.wounds,
+                    unsaved=cr.unsaved,
+                    damage_dealt=cr.damage_dealt,
+                ),
+            )
+            for cr in snapshot.player_combat_results
+        ]
+        self._last_opponent_shooting_results = [
+            PairedShootingResult(
+                attacker_idx=cr.attacker_idx,
+                target_idx=cr.target_idx,
+                result=ShootingResult(
+                    hits=cr.hits,
+                    wounds=cr.wounds,
+                    unsaved=cr.unsaved,
+                    damage_dealt=cr.damage_dealt,
+                ),
+            )
+            for cr in snapshot.opponent_combat_results
+        ]
+
+        # Reward
+        self.last_reward = snapshot.reward.total
+        self.last_reward_breakdown = dict(snapshot.reward.breakdown)
+        self.episode_reward_breakdown = {}
+        self.episode_reward_steps = 0
+        self.last_step_context = None
+
+        # Recompute distances and build observation
+        cache = compute_distances(self.wargame_models, self.objectives)
+        observation = self._get_obs(cache)
+        info = self._get_info()
+
+        return observation, info.model_dump()
 
     def render(self) -> None:
         if self.renderer is not None:

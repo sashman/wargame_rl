@@ -428,7 +428,9 @@ class TestShootingIntegration:
         shoot_action = WargameEnvAction(actions=[shooting_slice.start])
         env.step(shoot_action)
         assert env._last_player_shooting_results, "Expected at least one result"
-        total_dmg = sum(r.damage_dealt for r in env._last_player_shooting_results)
+        total_dmg = sum(
+            r.result.damage_dealt for r in env._last_player_shooting_results
+        )
         if total_dmg > 0:
             assert env.opponent_models[0].stats["current_wounds"] < initial_wounds
 
@@ -443,7 +445,12 @@ class TestShootingIntegration:
             env.step(WargameEnvAction(actions=[ss.start]))
             results.append(
                 [
-                    (r.hits, r.wounds, r.unsaved, r.damage_dealt)
+                    (
+                        r.result.hits,
+                        r.result.wounds,
+                        r.result.unsaved,
+                        r.result.damage_dealt,
+                    )
                     for r in env._last_player_shooting_results
                 ]
             )
@@ -470,9 +477,8 @@ class TestShootingIntegration:
         ss = env._action_handler.shooting_slice
         assert ss is not None
         env.step(WargameEnvAction(actions=[ss.start, ss.start + 1]))
-        # At least one side should have resolved
-        p_dmg = sum(r.damage_dealt for r in env._last_player_shooting_results)
-        o_dmg = sum(r.damage_dealt for r in env._last_opponent_shooting_results)
+        p_dmg = sum(r.result.damage_dealt for r in env._last_player_shooting_results)
+        o_dmg = sum(r.result.damage_dealt for r in env._last_opponent_shooting_results)
         assert p_dmg >= 0
         assert o_dmg >= 0
 
@@ -624,7 +630,12 @@ class TestCombatRNG:
             env.step(WargameEnvAction(actions=[ss.start]))
             results_by_run.append(
                 [
-                    (r.hits, r.wounds, r.unsaved, r.damage_dealt)
+                    (
+                        r.result.hits,
+                        r.result.wounds,
+                        r.result.unsaved,
+                        r.result.damage_dealt,
+                    )
                     for r in env._last_player_shooting_results
                 ]
             )
@@ -641,7 +652,12 @@ class TestCombatRNG:
             env.step(WargameEnvAction(actions=[ss.start]))
             results_by_seed.append(
                 [
-                    (r.hits, r.wounds, r.unsaved, r.damage_dealt)
+                    (
+                        r.result.hits,
+                        r.result.wounds,
+                        r.result.unsaved,
+                        r.result.damage_dealt,
+                    )
                     for r in env._last_player_shooting_results
                 ]
             )
