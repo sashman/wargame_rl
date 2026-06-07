@@ -50,7 +50,7 @@ reward_phases:
     min_epochs: 0
     min_epochs_above_threshold: 10
 
-  - name: win_by_vp
+  - name: win_at_the_end
     terminate_on_success: false
     reward_calculators:
       - type: vp_gain
@@ -70,8 +70,8 @@ reward_phases:
         weight: 0.5
         params: { group_max_distance: 5.0, violation_penalty: -0.1 }
     success_criteria:
-      type: player_vp_min
-      params: { fraction_of_max: 0.33 }
+      type: last_turn
+      params: { }
     success_threshold: 0.7
     min_epochs: 20
 
