@@ -9,11 +9,13 @@ Usage:
 
 import logging
 import os
+from pathlib import Path
 
 import typer
 from pydantic_yaml import parse_yaml_raw_as
 
 from wargame_rl.wargame.envs.renders.human import HumanRender, QuitRequested
+from wargame_rl.wargame.envs.state import EventLogExporter, JsonMatchCodec
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.dqn.agent import Agent
@@ -45,6 +47,7 @@ def simulate(
     render: bool = True,
     env_config_path: str | None = None,
     network_type: NetworkType = NetworkType.TRANSFORMER,
+    record_events: bool = False,
 ) -> None:
     """Run simulation with trained agent.
 
@@ -52,6 +55,7 @@ def simulate(
         checkpoint_path: Path to the trained model checkpoint
         num_episodes: Number of episodes to run
         render: Whether to render the environment
+        record_events: Whether to record the last episode as a JSON event log
     """
 
     if not os.path.exists(checkpoint_path):
@@ -61,7 +65,16 @@ def simulate(
 
     env_config = get_env_config(env_config_path, render)
     renderer = HumanRender()
-    env = create_environment(env_config=env_config, renderer=renderer)
+
+    event_exporter: EventLogExporter | None = None
+    if record_events:
+        event_exporter = EventLogExporter(anchor_interval=10)
+
+    env = create_environment(
+        env_config=env_config,
+        renderer=renderer,
+        state_exporters=[event_exporter] if event_exporter else None,
+    )
     logging.info(f"Action space: {env.action_space}")
     logging.info(f"Observation space: {env.observation_space}")
     logging.info(f"Running {num_episodes} episodes...")
@@ -139,6 +152,16 @@ def simulate(
     )
     logging.info("=" * 50)
 
+    if event_exporter and len(event_exporter.log) > 0:
+        recordings_dir = Path("recordings")
+        recordings_dir.mkdir(exist_ok=True)
+        out_path = recordings_dir / "simulate_events.json"
+        codec = JsonMatchCodec()
+        out_path.write_bytes(codec.encode(event_exporter.log))
+        logging.info(
+            f"Event log written to {out_path} ({len(event_exporter.log)} events)"
+        )
+
     env.close()
 
 
@@ -190,6 +213,10 @@ def main(
     network_type: NetworkType = typer.Option(
         NetworkType.TRANSFORMER, help="Network type to use"
     ),
+    record_events: bool = typer.Option(
+        False,
+        help="Record the last episode as a JSON event log (written to recordings/)",
+    ),
 ) -> None:
     # Handle dynamic defaults inside the function
     if checkpoint_path is None:
@@ -198,7 +225,14 @@ def main(
     if env_config_path is None:
         env_config_path = get_env_config_path_for_checkpoint(checkpoint_path)
 
-    simulate(checkpoint_path, num_episodes, render, env_config_path, network_type)
+    simulate(
+        checkpoint_path,
+        num_episodes,
+        render,
+        env_config_path,
+        network_type,
+        record_events=record_events,
+    )
 
 
 if __name__ == "__main__":

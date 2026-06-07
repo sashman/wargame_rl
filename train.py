@@ -1,14 +1,17 @@
 import os
 from enum import Enum
+from pathlib import Path
 from typing import Any, cast
 
 import torch
 import typer
+from loguru import logger as log
 from pydantic_yaml import parse_yaml_raw_as
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import Callback
 from typer.models import OptionInfo
 
+from wargame_rl.wargame.envs.state import EventLogExporter, JsonMatchCodec
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.common import (
     EnvConfigCallback,
@@ -211,6 +214,10 @@ def train(
         None,
         help="Wandb group name to organize runs in the UI (e.g. when running multiple configs in parallel)",
     ),
+    record_events: bool = typer.Option(
+        False,
+        help="Record the last training episode as a JSON event log (written to recordings/)",
+    ),
 ) -> None:
     """Train the agent."""
     render_mode = _resolve_optional_str(render_mode)
@@ -228,7 +235,14 @@ def train(
     default_run_name = _build_default_run_base_name(algorithm, network_type, env_config)
     run_name_base = run_name if run_name else default_run_name
 
-    env = create_environment(env_config=env_config)
+    event_exporter: EventLogExporter | None = None
+    if record_events:
+        event_exporter = EventLogExporter(anchor_interval=10)
+
+    env = create_environment(
+        env_config=env_config,
+        state_exporters=[event_exporter] if event_exporter else None,
+    )
 
     if algorithm == AlgorithmType.DQN:
         dqn_config = DQNConfig()
@@ -356,6 +370,19 @@ def train(
             if warm_start_ckpt_path is not None:
                 _apply_warm_start_weights(ppo_model, warm_start_ckpt_path)
             _fit_with_optional_resume(trainer, ppo_model, resume_ckpt_path)
+
+    if event_exporter and len(event_exporter.log) > 0:
+        _write_event_log(event_exporter, run_name_base)
+
+
+def _write_event_log(exporter: EventLogExporter, run_name: str) -> None:
+    """Serialise the last recorded episode to a JSON file in recordings/."""
+    recordings_dir = Path("recordings")
+    recordings_dir.mkdir(exist_ok=True)
+    out_path = recordings_dir / f"{run_name}_events.json"
+    codec = JsonMatchCodec()
+    out_path.write_bytes(codec.encode(exporter.log))
+    log.info(f"Event log written to {out_path} ({len(exporter.log)} events)")
 
 
 if __name__ == "__main__":

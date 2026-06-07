@@ -48,6 +48,7 @@ from wargame_rl.wargame.envs.opponent.registry import (
 from wargame_rl.wargame.envs.renders import renderer
 from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
 from wargame_rl.wargame.envs.reward.step_context import StepContext
+from wargame_rl.wargame.envs.state.exporter import StateExporter
 from wargame_rl.wargame.envs.state.snapshot import (
     GameStateSnapshot,
     build_snapshot,
@@ -81,7 +82,10 @@ class WargameEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 5}
 
     def __init__(
-        self, config: WargameEnvConfig, renderer: renderer.Renderer | None = None
+        self,
+        config: WargameEnvConfig,
+        renderer: renderer.Renderer | None = None,
+        state_exporters: list[StateExporter] | None = None,
     ):
         self.board_width = config.board_width
         self.board_height = config.board_height
@@ -115,6 +119,7 @@ class WargameEnv(gym.Env):
         self._skip_phases = frozenset(config.skip_phases)
 
         self.renderer = renderer
+        self._state_exporters: list[StateExporter] = state_exporters or []
 
         self.window = None
         self.clock = None
@@ -333,6 +338,11 @@ class WargameEnv(gym.Env):
         if self.renderer is not None:
             self.renderer.setup(self)
             self.renderer.render(self)
+
+        if self._state_exporters:
+            snapshot = self.to_snapshot()
+            for exporter in self._state_exporters:
+                exporter.on_reset(snapshot)
 
         return observation, info.model_dump()
 
@@ -554,6 +564,12 @@ class WargameEnv(gym.Env):
                 self.episode_reward_breakdown.get(key, 0.0) + value
             )
         self.episode_reward_steps += 1
+
+        if self._state_exporters:
+            snapshot = self.to_snapshot()
+            for exporter in self._state_exporters:
+                exporter.on_step(snapshot)
+
         return observation, reward, is_terminated, False, info.model_dump()
 
     def to_snapshot(self) -> GameStateSnapshot:
