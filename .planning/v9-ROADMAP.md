@@ -8,9 +8,9 @@ The build order follows dependency: the canonical schema first (everything depen
 
 ## Phases
 
-- [ ] **Phase 1: Canonical State Model & Export** — Pydantic `GameStateSnapshot` projected from `BattleView`, JSON serialisation, `WargameEnv.to_snapshot()`, combat/action metadata capture
-- [ ] **Phase 2: State Injection & Bidirectional I/O** — `GameClock.set_state()`, `WargameEnv.load_state(snapshot)`, validation, derive computed fields from injected state
-- [ ] **Phase 3: LLM-Readable Text Representation** — Action descriptions, combat narrative, step narrator, reward breakdown text for LLM evaluation
+- [x] **Phase 1: Canonical State Model & Export** — Pydantic `GameStateSnapshot` projected from `BattleView`, JSON serialisation, `WargameEnv.to_snapshot()`, combat/action metadata capture (completed 2026-05-23)
+- [x] **Phase 2: State Injection & Bidirectional I/O** — `GameClock.set_state()`, `WargameEnv.load_state(snapshot)`, validation, derive computed fields from injected state (completed 2026-05-23)
+- [x] **Phase 3: LLM-Readable Text Representation** — Action descriptions, combat narrative, step narrator, reward breakdown text for LLM evaluation (completed 2026-05-23)
 - [ ] ~~**Phase 4: Event Streaming & Replay**~~ — Deferred: append-only event log, delta encoding, deterministic replay, pluggable codec interface
 
 ## Phase Details
@@ -27,7 +27,7 @@ The build order follows dependency: the canonical schema first (everything depen
   5. Opponent actions are recorded before application and available in the snapshot
 **Plans:** 1 plan
 Plans:
-- [ ] v9-01-01-PLAN.md — Snapshot Pydantic models, PairedShootingResult, build_snapshot factory, to_snapshot(), encoder protocol, tests
+- [x] v9-01-01-PLAN.md — Snapshot Pydantic models, PairedShootingResult, build_snapshot factory, to_snapshot(), encoder protocol, tests
 
 ### Phase 2: State Injection & Bidirectional I/O
 **Goal**: An arbitrary game state can be constructed from a snapshot, enabling scenario testing, LLM-driven evaluation, and programmatic game setup
@@ -38,7 +38,8 @@ Plans:
   2. `GameClock.set_state()` can position the clock at any valid round/phase/player combination
   3. Round-trip fidelity: `env.to_snapshot()` → `env.load_state(snapshot)` → `env.to_snapshot()` produces identical output (excluding derived-only fields)
   4. `validate_snapshot(snapshot, config)` rejects snapshots that violate hard constraints (locations out of bounds, wounds out of range, entity count mismatch, invalid clock state)
-**Plans**: TBD
+**Plans**: Implemented directly (no formal plan — code landed in v9-01 branch)
+**Key commits**: `42fad10` — `GameClock.set_state()`, `validate_snapshot()`, `WargameEnv.load_state()`, 23 tests
 
 ### Phase 3: LLM-Readable Text Representation
 **Goal**: An LLM can read a structured text summary of any game step and judge whether the RL agent's actions are tactically sound
@@ -49,7 +50,8 @@ Plans:
   2. `StepNarrator` produces per-step text summaries covering: state before action, decoded actions, combat narrative with hit/wound/save probabilities, reward breakdown with phase context, and state after
   3. Combat narrative includes analytical context: expected damage per target, wound threshold, modified save — enough for an LLM to evaluate whether the agent chose the optimal target
   4. Reward breakdown text includes the active reward phase name — without this, reward values are uninterpretable to an LLM
-**Plans**: TBD
+**Plans**: Implemented directly (no formal plan — code landed in v9-01 branch)
+**Key commits**: `ee30c1b` — `StepNarrator`, public `describe_action` API, 8 tests
 
 ### Phase 4: Event Streaming & Replay (Deferred)
 **Goal**: A complete match history can be recorded as an ordered event stream and replayed deterministically
@@ -72,7 +74,7 @@ Phase 4 is deferred.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Canonical State Model & Export | 0/1 | Planned | - |
-| 2. State Injection & Bidirectional I/O | 0/0 | Not started | - |
-| 3. LLM-Readable Text Representation | 0/0 | Not started | - |
+| 1. Canonical State Model & Export | 1/1 | Complete | 2026-05-23 |
+| 2. State Injection & Bidirectional I/O | 1/1 | Complete | 2026-05-23 |
+| 3. LLM-Readable Text Representation | 1/1 | Complete | 2026-05-23 |
 | 4. Event Streaming & Replay | - | Deferred | - |

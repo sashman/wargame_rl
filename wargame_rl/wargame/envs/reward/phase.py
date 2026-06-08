@@ -61,8 +61,8 @@ class RewardPhaseConfig(BaseModel):
     )
     terminal_success_bonus: float = Field(
         default=0.0,
-        description="Bonus added at episode end when all models are at an objective. "
-        "Scaled by remaining turns fraction. 0 disables.",
+        description="Bonus added at episode end when the phase's success_criteria is "
+        "met. Scaled by remaining turns fraction (faster success = higher). 0 disables.",
     )
     terminal_vp_bonus: float = Field(
         default=0.0,

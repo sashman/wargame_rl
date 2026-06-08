@@ -64,6 +64,30 @@ def test_objective_control_split() -> None:
     assert n_opponent == 1
 
 
+def test_majority_scores_vp() -> None:
+    """2 player vs 1 opponent in range -> player controls that objective."""
+    player_norms = np.array([[0.0], [0.0]])  # 2 player models in range
+    opponent_norms = np.array([[0.0]])  # 1 opponent in range
+    radii = np.array([1.0])
+    n_player, n_opponent = objective_control_from_caches(
+        player_norms, opponent_norms, radii
+    )
+    assert n_player == 1
+    assert n_opponent == 0
+
+
+def test_equal_counts_no_vp() -> None:
+    """Equal in-range counts -> contested -> neither side controls."""
+    player_norms = np.array([[0.0], [0.0]])
+    opponent_norms = np.array([[0.0], [0.0]])
+    radii = np.array([1.0])
+    n_player, n_opponent = objective_control_from_caches(
+        player_norms, opponent_norms, radii
+    )
+    assert n_player == 0
+    assert n_opponent == 0
+
+
 def test_default_vp_calculator_below_min_round() -> None:
     """Default calculator returns 0 when current_round < min_round."""
     env = WargameEnv(

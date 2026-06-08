@@ -174,13 +174,7 @@ class WargameEnv(gym.Env):
 
     @property
     def max_turns(self) -> int:
-        """Maximum agent steps per episode.
-
-        When config.max_turns_override is set, returns that value (e.g. 100 for training).
-        Otherwise uses game-clock-derived limit (n_rounds × active phases).
-        """
-        if self.config.max_turns_override is not None:
-            return self.config.max_turns_override
+        """Maximum agent steps per episode (game-clock-derived: n_rounds × active phases)."""
         n_phases = len(BATTLE_PHASE_ORDER) - len(self._skip_phases)
         return self._game_clock.n_rounds * n_phases
 
@@ -315,6 +309,7 @@ class WargameEnv(gym.Env):
         self.episode_reward_steps = 0
 
         self._battle.reset_for_episode()
+        self.phase_manager.reset_episode()
         self._resolve_player_side()
         self._game_clock.reset()
         self._game_clock.skip_setup()
@@ -509,7 +504,6 @@ class WargameEnv(gym.Env):
             self._game_clock,
             self.current_turn,
             self.max_turns,
-            self.config.max_turns_override,
             all_at_objective,
             all_eliminated=all_eliminated,
         )

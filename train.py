@@ -225,9 +225,6 @@ def train(
 
     env_config = get_env_config(env_config_path, render_mode)
 
-    # Ensure training episodes are long enough: override to at least 100 rounds
-    # unless the config explicitly requests more.
-    env_config.number_of_battle_rounds = max(env_config.number_of_battle_rounds, 100)
     default_run_name = _build_default_run_base_name(algorithm, network_type, env_config)
     run_name_base = run_name if run_name else default_run_name
 
