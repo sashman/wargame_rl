@@ -41,22 +41,24 @@ Derive alive masks (both from the per-model `alive` feature column, located via
 - Player alive mask `Ap`: `P[..., alive] > 0.5`
 - Opponent alive mask `Ao`: `O[..., alive] > 0.5`
 
-For each batch item:
-1. Gather alive player rows from `P` and alive opponent rows from `O`.
-2. Keep the compact→full index maps as `player_alive_indices` /
-   `opp_alive_indices` (tensors of original row indices), returned on the
-   `EncodedState` so reconstruction is explicit (no module-level state).
-3. Build token sequence:
-   - `[game_token, objective_tokens, alive_player_tokens, alive_opponent_tokens]`
-4. Run the transformer on the compacted sequence.
+Token positions are fixed (`[game, objectives, all players, all opponents]`),
+so player `p` is always at index `n_prefix + p` and opponent `o` at
+`n_prefix + Np + o`. Dead rows are **not** removed; instead they are excluded
+from attention via a boolean key-padding mask:
+1. Build the alive masks `Ap` `(B, Np)` and `Ao` `(B, No)` from the `alive`
+   feature column.
+2. Form a key-padding mask `(B, L)` that is `True` for the prefix (game +
+   objectives) and for alive player/opponent rows, `False` for dead rows.
+3. Run the transformer in a **single batched pass**, passing the mask as
+   `attn_mask = key_mask[:, None, None, :]` into each block's attention
+   (`scaled_dot_product_attention(attn_mask=...)`).
+4. Return `player_alive` on the `EncodedState` so reconstruction can force dead
+   player rows to stay-only without relying on the env mask.
 
-This removes dead tokens from attention while preserving a reversible mapping
-back to full action rows/columns.
-
-> Implementation note: encoding currently loops per batch item (each sample is a
-> separate transformer forward, then padded to the batch max length). This keeps
-> variable alive-token counts simple but trades away batched throughput; batching
-> via padding + a key-padding attention mask is a known future optimization.
+Excluding dead rows as *keys* is equivalent to removing them for the encodings
+of live tokens (and the game token), but keeps one batched forward for the whole
+minibatch. Since the game + objective tokens are always valid keys, no query is
+ever fully masked, so there is no softmax NaN.
 
 ### 3.2 Bilinear Shooting Head
 

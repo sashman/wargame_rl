@@ -66,7 +66,9 @@ class SelfAttention(nn.Module):
                 ),
             )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, attn_mask: torch.Tensor | None = None
+    ) -> torch.Tensor:
         B, T, C = (
             x.size()
         )  # batch size, sequence length, embedding dimensionality (n_embd)
@@ -83,6 +85,8 @@ class SelfAttention(nn.Module):
             1, 2
         )  # (B, nh, T, hs)
 
+        # ``attn_mask`` is a bool key-padding mask (True = attend) broadcastable to
+        # (B, nh, T, T); used to drop dead/padding tokens as keys in one batched pass.
         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
         if self.flash:
             # efficient attention using Flash Attention CUDA kernels
@@ -90,15 +94,17 @@ class SelfAttention(nn.Module):
                 q,
                 k,
                 v,
-                attn_mask=None,
+                attn_mask=attn_mask,
                 dropout_p=self.dropout if self.training else 0,
-                is_causal=self.is_causal,
+                is_causal=self.is_causal and attn_mask is None,
             )
         else:
             # manual implementation of attention
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
             if self.is_causal:
                 att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float("-inf"))
+            if attn_mask is not None:
+                att = att.masked_fill(~attn_mask, float("-inf"))
             att = F.softmax(att, dim=-1)
             att = self.attn_dropout(att)
             y = att @ v  # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
@@ -139,7 +145,9 @@ class Block(nn.Module):
         self.ln_2 = LayerNorm(config.embedding_size, bias=config.bias)
         self.mlp = MLP(config)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x + self.attn(self.ln_1(x))
+    def forward(
+        self, x: torch.Tensor, attn_mask: torch.Tensor | None = None
+    ) -> torch.Tensor:
+        x = x + self.attn(self.ln_1(x), attn_mask=attn_mask)
         x = x + self.mlp(self.ln_2(x))
         return x

@@ -26,14 +26,19 @@ class EncodedState:
     :meth:`TransformerNetwork.policy_from_encoded` /
     :meth:`TransformerNetwork.value_from_encoded`, so encoding metadata is
     passed explicitly between calls instead of being stored on the module.
+
+    Token positions are fixed (game, objectives, all player rows, all opponent
+    rows), so player ``p`` lives at ``n_prefix + p`` and opponent ``o`` at
+    ``n_prefix + n_wargame_models + o``. ``player_alive`` (shape
+    ``(batch, n_wargame_models)``) marks live player rows so dead ones can be
+    forced stay-only without depending on the env action mask.
     """
 
     encoded: torch.Tensor
     n_prefix: int
     n_wargame_models: int
     n_opponents: int
-    player_alive_indices: list[torch.Tensor]
-    opp_alive_indices: list[torch.Tensor]
+    player_alive: torch.Tensor
     mask_tensor: torch.Tensor | None
 
 
@@ -346,32 +351,41 @@ class TransformerNetwork(RL_Network):
         trailing = n_opponents if n_opponents > 0 else 0
         return feature_dim - trailing - (N_WOUND_FEATURES + N_COMBAT_STATS)
 
-    def _alive_mask_from_features(
-        self, model_features: torch.Tensor, n_opponents: int
+    def _alive_from_features(
+        self, model_tensor: torch.Tensor, n_opponents: int
     ) -> torch.Tensor:
-        """Extract alive mask from model feature rows."""
-        n_models, feature_dim = model_features.shape
+        """Per-row alive mask ``(batch, n_models)`` from the ``alive`` feature column.
+
+        Falls back to all-alive if the inferred column index is out of range, so a
+        layout change degrades to "everything alive" rather than crashing.
+        """
+        feature_dim = int(model_tensor.shape[-1])
+        n_models = int(model_tensor.shape[1])
         if n_models == 0:
-            return torch.zeros(0, dtype=torch.bool, device=model_features.device)
+            return torch.ones(
+                model_tensor.shape[0], 0, dtype=torch.bool, device=model_tensor.device
+            )
         idx = self._alive_feature_index(feature_dim, n_opponents)
         if idx < 0 or idx >= feature_dim:
-            return torch.ones(n_models, dtype=torch.bool, device=model_features.device)
-        alive_col = model_features[:, idx]
-        return alive_col > 0.5
-
-    def _encode_tokens(self, x: torch.Tensor) -> torch.Tensor:
-        """Run transformer blocks on a single-sample token sequence."""
-        for block in self.transformer.h:  # type: ignore
-            x = block(x)
-        encoded = self.transformer.ln_f(x)  # type: ignore
-        return cast(torch.Tensor, encoded)
+            return torch.ones(
+                model_tensor.shape[0],
+                n_models,
+                dtype=torch.bool,
+                device=model_tensor.device,
+            )
+        return model_tensor[:, :, idx] > 0.5
 
     def encode_state(self, xs: list[torch.Tensor]) -> EncodedState:
         """Encode observation tensors into contextual token representations.
 
+        Runs a single batched transformer pass over the fixed-length token
+        sequence ``[game, objectives, players, opponents]``; dead player/opponent
+        rows are excluded from attention via a key-padding mask rather than being
+        removed, so the batch stays a single forward.
+
         Returns:
-            An :class:`EncodedState` bundling the padded encoded sequence and the
-            alive-index / mask metadata needed to rebuild full-size policy logits.
+            An :class:`EncodedState` with the encoded sequence and the metadata
+            needed to rebuild full-size policy logits.
         """
         game_tensor = xs[0]
         objective_tensor = xs[1]
@@ -404,59 +418,42 @@ class TransformerNetwork(RL_Network):
 
         batch_size = int(player_embedding.shape[0])
         n_wargame_models = int(player_embedding.shape[1])
-        n_opponents = int(opp_tensor.shape[1]) if opp_tensor is not None else 0
         n_prefix = 1 + int(objective_embedding.shape[1])
 
-        encoded_samples: list[torch.Tensor] = []
-        player_alive_indices: list[torch.Tensor] = []
-        opp_alive_indices: list[torch.Tensor] = []
-        seq_lengths: list[int] = []
+        parts = [game_embedding, objective_embedding, player_embedding]
+        if opp_embedding is not None:
+            n_opponents = int(opp_embedding.shape[1])
+            parts.append(opp_embedding)
+        else:
+            n_opponents = 0
 
-        for b in range(batch_size):
-            player_alive = self._alive_mask_from_features(player_tensor[b], n_opponents)
-            p_idx = torch.nonzero(player_alive, as_tuple=False).squeeze(1).long()
-            player_alive_indices.append(p_idx)
+        tokens = torch.cat(parts, dim=1)
+        seq_len = int(tokens.shape[1])
 
-            player_part = player_embedding[b : b + 1, p_idx, :]
-            parts: list[torch.Tensor] = [
-                game_embedding[b : b + 1],
-                objective_embedding[b : b + 1],
-                player_part,
-            ]
-
-            if opp_embedding is not None and opp_tensor is not None and n_opponents > 0:
-                opp_alive = self._alive_mask_from_features(opp_tensor[b], n_opponents)
-                o_idx = torch.nonzero(opp_alive, as_tuple=False).squeeze(1).long()
-                opp_alive_indices.append(o_idx)
-                parts.append(opp_embedding[b : b + 1, o_idx, :])
-            else:
-                opp_alive_indices.append(
-                    torch.zeros(0, dtype=torch.long, device=player_embedding.device)
-                )
-
-            compact_tokens = torch.cat(parts, dim=1)
-            encoded_sample = self._encode_tokens(compact_tokens)
-            encoded_samples.append(encoded_sample)
-            seq_lengths.append(int(encoded_sample.shape[1]))
-
-        max_seq_len = max(seq_lengths) if seq_lengths else n_prefix
-        encoded = torch.zeros(
-            batch_size,
-            max_seq_len,
-            self.embedding_size,
-            device=player_embedding.device,
-            dtype=player_embedding.dtype,
+        # Key-padding mask: prefix + alive players + alive opponents may be
+        # attended to; dead rows are dropped as keys (True = attend).
+        player_alive = self._alive_from_features(player_tensor, n_opponents)
+        key_mask = torch.ones(
+            batch_size, seq_len, dtype=torch.bool, device=tokens.device
         )
-        for b, encoded_sample in enumerate(encoded_samples):
-            encoded[b, : encoded_sample.shape[1], :] = encoded_sample[0]
+        key_mask[:, n_prefix : n_prefix + n_wargame_models] = player_alive
+        if opp_embedding is not None and opp_tensor is not None and n_opponents > 0:
+            opp_alive = self._alive_from_features(opp_tensor, n_opponents)
+            opp_start = n_prefix + n_wargame_models
+            key_mask[:, opp_start : opp_start + n_opponents] = opp_alive
+        attn_mask = key_mask[:, None, None, :]
+
+        x = tokens
+        for block in self.transformer.h:  # type: ignore
+            x = block(x, attn_mask=attn_mask)
+        encoded = cast(torch.Tensor, self.transformer.ln_f(x))  # type: ignore
 
         return EncodedState(
             encoded=encoded,
             n_prefix=n_prefix,
             n_wargame_models=n_wargame_models,
             n_opponents=n_opponents,
-            player_alive_indices=player_alive_indices,
-            opp_alive_indices=opp_alive_indices,
+            player_alive=player_alive,
             mask_tensor=mask_tensor,
         )
 
@@ -475,8 +472,10 @@ class TransformerNetwork(RL_Network):
     def policy_from_encoded(self, state: EncodedState) -> torch.Tensor:
         """Rebuild full-size policy logits ``(batch, n_models, n_actions)``.
 
-        Dead player rows stay ``-inf`` except ``stay``; shooting columns for alive
-        opponents carry bilinear scores. Invalid actions are enforced by the
+        Fully vectorized: player ``p`` is at token ``n_prefix + p`` and opponent
+        ``o`` at ``n_prefix + n_models + o``, so no per-sample loop is needed.
+        Dead player rows are forced stay-only; shooting columns carry bilinear
+        player-vs-opponent scores. Remaining invalid actions are enforced by the
         env-provided action mask carried on ``state``.
         """
         if not self.is_policy:
@@ -487,55 +486,33 @@ class TransformerNetwork(RL_Network):
         encoded = state.encoded
         n_prefix = state.n_prefix
         n_wargame_models = state.n_wargame_models
-        batch_size = int(encoded.shape[0])
-        logits = torch.full(
-            (batch_size, n_wargame_models, self.n_actions),
-            float("-inf"),
-            device=encoded.device,
-            dtype=encoded.dtype,
+        n_opponents = state.n_opponents
+
+        player_latents = encoded[:, n_prefix : n_prefix + n_wargame_models, :]
+        base_logits = self.policy_head(player_latents)
+
+        can_score_shooting = (
+            self.shooting_slice_start is not None
+            and self.shooting_slice_end is not None
+            and self.shooting_slice_end > self.shooting_slice_start
+            and self.shoot_query_proj is not None
+            and self.shoot_key_proj is not None
+            and n_opponents > 0
         )
-        logits[:, :, 0] = 0.0
+        if can_score_shooting:
+            opp_start = n_prefix + n_wargame_models
+            opponent_latents = encoded[:, opp_start : opp_start + n_opponents, :]
+            shooting_scores = self._shooting_scores(player_latents, opponent_latents)
+            start = cast(int, self.shooting_slice_start)
+            base_logits = base_logits.clone()
+            base_logits[:, :, start : start + n_opponents] = shooting_scores
 
-        for b in range(batch_size):
-            p_idx = state.player_alive_indices[b]
-            n_alive_players = int(p_idx.numel())
-            if n_alive_players == 0:
-                continue
-
-            player_latents = encoded[
-                b : b + 1,
-                n_prefix : n_prefix + n_alive_players,
-                :,
-            ]
-            base_logits = self.policy_head(player_latents).squeeze(0)
-            logits[b, p_idx, :] = base_logits
-
-            can_score_shooting = (
-                self.shooting_slice_start is not None
-                and self.shooting_slice_end is not None
-                and self.shooting_slice_end > self.shooting_slice_start
-                and self.shoot_query_proj is not None
-                and self.shoot_key_proj is not None
-            )
-            if not can_score_shooting:
-                continue
-
-            o_idx = state.opp_alive_indices[b]
-            n_alive_opponents = int(o_idx.numel())
-            if n_alive_opponents == 0:
-                continue
-
-            opp_start = n_prefix + n_alive_players
-            opponent_latents = encoded[
-                b : b + 1,
-                opp_start : opp_start + n_alive_opponents,
-                :,
-            ]
-            shooting_scores = self._shooting_scores(
-                player_latents, opponent_latents
-            ).squeeze(0)
-            shot_cols = cast(int, self.shooting_slice_start) + o_idx
-            logits[b, p_idx.unsqueeze(1), shot_cols.unsqueeze(0)] = shooting_scores
+        # Dead player rows: keep only ``stay`` (finite) so they sample as stay even
+        # if the env mask is absent. Alive rows keep their head/shooting logits.
+        dead_row = torch.full_like(base_logits, float("-inf"))
+        dead_row[:, :, 0] = 0.0
+        alive = state.player_alive.unsqueeze(-1)
+        logits = torch.where(alive, base_logits, dead_row)
 
         mask_tensor = state.mask_tensor
         if (
@@ -546,9 +523,10 @@ class TransformerNetwork(RL_Network):
             logits = logits.masked_fill(~mask_tensor.bool(), float("-inf"))
 
         all_invalid = torch.isneginf(logits).all(dim=-1)
-        logits[:, :, 0] = torch.where(
+        stay = torch.where(
             all_invalid, torch.zeros_like(logits[:, :, 0]), logits[:, :, 0]
         )
+        logits = torch.cat([stay.unsqueeze(-1), logits[:, :, 1:]], dim=-1)
         return logits
 
     def value_from_encoded(self, state: EncodedState) -> torch.Tensor:
