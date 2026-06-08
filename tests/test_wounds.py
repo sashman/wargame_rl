@@ -79,7 +79,6 @@ def test_is_battle_over_all_eliminated() -> None:
         clock=clock,
         current_turn=0,
         max_turns=100,
-        max_turns_override=100,
         all_models_at_objectives_flag=False,
         all_eliminated=True,
     )
@@ -92,7 +91,6 @@ def test_is_battle_over_without_elimination() -> None:
         clock=clock,
         current_turn=0,
         max_turns=100,
-        max_turns_override=100,
         all_models_at_objectives_flag=False,
         all_eliminated=False,
     )
@@ -134,7 +132,6 @@ def wound_env() -> WargameEnv:
             ModelConfig(x=10, y=10, max_wounds=2),
         ],
         objectives=[ObjectiveConfig(x=10, y=10, radius_size=2)],
-        max_turns_override=50,
         number_of_battle_rounds=5,
     )
     return WargameEnv(config=config)
@@ -160,7 +157,6 @@ def wound_env_with_opponents() -> WargameEnv:
             ModelConfig(x=18, y=18, max_wounds=1),
         ],
         opponent_policy=OpponentPolicyConfig(type="scripted_advance_to_objective"),
-        max_turns_override=50,
         number_of_battle_rounds=5,
     )
     return WargameEnv(config=config)
@@ -201,7 +197,6 @@ def test_eliminated_model_not_controlling_objective() -> None:
             ModelConfig(x=1, y=1, max_wounds=2),
         ],
         objectives=[ObjectiveConfig(x=10, y=10, radius_size=2)],
-        max_turns_override=50,
         number_of_battle_rounds=5,
     )
     env = WargameEnv(config=config)
@@ -238,7 +233,6 @@ def test_termination_all_player_eliminated() -> None:
             ModelConfig(x=10, y=10, max_wounds=2),
         ],
         objectives=[ObjectiveConfig(x=10, y=10, radius_size=2)],
-        max_turns_override=50,
         terminate_on_player_elimination=True,
     )
     env = WargameEnv(config=config)
@@ -286,7 +280,6 @@ def test_all_alive_models_at_objectives() -> None:
             ModelConfig(x=10, y=10, max_wounds=2),
         ],
         objectives=[ObjectiveConfig(x=10, y=10, radius_size=2)],
-        max_turns_override=50,
         number_of_battle_rounds=5,
     )
     env = WargameEnv(config=config)

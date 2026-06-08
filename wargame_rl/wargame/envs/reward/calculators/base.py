@@ -15,6 +15,10 @@ class PerModelRewardCalculator(ABC):
     def __init__(self, weight: float = 1.0) -> None:
         self.weight = weight
 
+    def reset_episode(self) -> None:
+        """Clear any per-episode internal state. Default: no-op."""
+        return None
+
     @abstractmethod
     def calculate(
         self,
@@ -39,6 +43,10 @@ class GlobalRewardCalculator(ABC):
 
     def __init__(self, weight: float = 1.0) -> None:
         self.weight = weight
+
+    def reset_episode(self) -> None:
+        """Clear any per-episode internal state. Default: no-op."""
+        return None
 
     @abstractmethod
     def calculate(self, view: BattleView, ctx: StepContext) -> float: ...

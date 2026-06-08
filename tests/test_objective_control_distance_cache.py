@@ -72,3 +72,39 @@ def test_objective_control_excludes_just_outside_radius() -> None:
 
     assert bool(player_controls[0]) is False
     assert bool(opponent_controls[0]) is False
+
+
+def test_majority_count_controls() -> None:
+    """OC/count rule: more models in range than the enemy => control."""
+    player_norms = np.array([[0.0], [0.0]])  # 2 player models in range
+    opponent_norms = np.array([[0.0]])  # 1 opponent in range
+    radii = np.array([1.0])
+    player_controls, opponent_controls = objective_ownership_from_norms_offset(
+        player_norms, opponent_norms, radii
+    )
+    assert bool(player_controls[0]) is True
+    assert bool(opponent_controls[0]) is False
+
+
+def test_equal_counts_contested() -> None:
+    """Equal in-range counts => contested (neither controls)."""
+    player_norms = np.array([[0.0], [0.0]])
+    opponent_norms = np.array([[0.0], [0.0]])
+    radii = np.array([1.0])
+    player_controls, opponent_controls = objective_ownership_from_norms_offset(
+        player_norms, opponent_norms, radii
+    )
+    assert bool(player_controls[0]) is False
+    assert bool(opponent_controls[0]) is False
+
+
+def test_minority_does_not_control() -> None:
+    """Fewer models in range than the enemy => the enemy controls."""
+    player_norms = np.array([[0.0]])
+    opponent_norms = np.array([[0.0], [0.0]])
+    radii = np.array([1.0])
+    player_controls, opponent_controls = objective_ownership_from_norms_offset(
+        player_norms, opponent_norms, radii
+    )
+    assert bool(player_controls[0]) is False
+    assert bool(opponent_controls[0]) is True
