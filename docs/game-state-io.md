@@ -36,7 +36,7 @@ wargame_rl/wargame/envs/state/
 ├── event_log.py        # EventLog: append-only accumulator with anchor snapshots
 ├── exporter.py         # StateExporter protocol, EventLogExporter
 ├── replay.py           # ReplayController: seek to any step from an EventLog
-├── codecs.py           # MatchCodec protocol, JsonMatchCodec, CODEC_REGISTRY
+├── codecs.py           # MatchCodec protocol, JsonMatchCodec (JSONL), CODEC_REGISTRY
 ├── narrator.py         # StepNarrator: LLM-readable text summaries
 └── analysis.py         # MatchAnalysis model, analyze_match()
 ```
@@ -57,13 +57,13 @@ WargameEnv.step()  ──→ to_snapshot() ──→ exporter.on_step(snapshot)
                                          JsonMatchCodec.encode()
                                                     │
                                                     ▼
-                                         recordings/xxx_events.json
+                                         recordings/xxx_events.jsonl
 ```
 
 ### Replay & Analysis
 
 ```
-recordings/xxx_events.json
+recordings/xxx_events.jsonl
         │
         ▼
 JsonMatchCodec.decode()
@@ -226,11 +226,13 @@ The delta representation (`StateDelta`) captures per-step changes at field level
 
 ```python
 CODEC_REGISTRY: dict[str, type[MatchCodec]] = {
-    "json": JsonMatchCodec,
+    "json": JsonMatchCodec,  # JSONL (newline-delimited JSON)
 }
 ```
 
 Follows the same registry pattern as reward calculators and opponent policies. New codecs (e.g., MessagePack, Protobuf) can be registered without changing existing code. Each codec implements `encode(EventLog) -> bytes` and `decode(bytes) -> EventLog`.
+
+The default `JsonMatchCodec` uses **JSONL** (newline-delimited JSON, one object per line). The first line is a header with version and anchor_interval; subsequent lines are individual events. This enables streaming writes, crash-safe recording, and easy inspection with standard tools (`head`, `tail`, `wc -l`, `jq`).
 
 ### ReplayController
 
@@ -310,7 +312,7 @@ from wargame_rl.wargame.envs.state import (
 
 # Load
 codec = JsonMatchCodec()
-log = codec.decode(Path("recording.json").read_bytes())
+log = codec.decode(Path("recording.jsonl").read_bytes())
 ctrl = ReplayController(log)
 
 # Seek to specific moment
@@ -331,4 +333,4 @@ print(report.model_dump_json(indent=2))
 2. **Parallel to RL pipeline** — state I/O never touches `observation_to_tensor()`, Lightning modules, or checkpoints.
 3. **Snapshot is the universal format** — everything operates on `GameStateSnapshot`. New consumers just need the snapshot.
 4. **Registry pattern for extension** — codecs, exporters, and analyzers all follow the same pattern used by reward calculators.
-5. **Interoperable** — JSON output readable by any language, LLM, or tool. No framework lock-in.
+5. **Interoperable** — JSONL output readable by any language, LLM, or tool. No framework lock-in. Standard tools (`head`, `tail`, `jq`) work out of the box.

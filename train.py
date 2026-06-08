@@ -376,10 +376,10 @@ def train(
 
 
 def _write_event_log(exporter: EventLogExporter, run_name: str) -> None:
-    """Serialise the last recorded episode to a JSON file in recordings/."""
+    """Serialise the last recorded episode to a JSONL file in recordings/."""
     recordings_dir = Path("recordings")
     recordings_dir.mkdir(exist_ok=True)
-    out_path = recordings_dir / f"{run_name}_events.json"
+    out_path = recordings_dir / f"{run_name}_events.jsonl"
     codec = JsonMatchCodec()
     out_path.write_bytes(codec.encode(exporter.log))
     log.info(f"Event log written to {out_path} ({len(exporter.log)} events)")

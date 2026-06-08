@@ -2,9 +2,9 @@
 """Replay and inspect recorded match event logs.
 
 Usage:
-    python replay_events.py narrate recordings/my_events.json
-    python replay_events.py seek recordings/my_events.json --step 5
-    python replay_events.py summary recordings/my_events.json
+    python replay_events.py narrate recordings/my_events.jsonl
+    python replay_events.py seek recordings/my_events.jsonl --step 5
+    python replay_events.py summary recordings/my_events.jsonl
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ narrator = StepNarrator()
 
 
 def _load_log(file_path: str) -> ReplayController:
-    """Load an event log from a JSON file and return a ReplayController."""
+    """Load an event log from a JSONL file and return a ReplayController."""
     path = Path(file_path)
     if not path.exists():
         raise typer.BadParameter(f"File not found: {file_path}")
@@ -36,7 +36,7 @@ def _load_log(file_path: str) -> ReplayController:
 
 @app.command()
 def narrate(
-    file_path: str = typer.Argument(help="Path to the recorded event log JSON file"),
+    file_path: str = typer.Argument(help="Path to the recorded event log JSONL file"),
 ) -> None:
     """Narrate every step of a recorded match in human-readable text."""
     controller = _load_log(file_path)
@@ -51,7 +51,7 @@ def narrate(
 
 @app.command()
 def seek(
-    file_path: str = typer.Argument(help="Path to the recorded event log JSON file"),
+    file_path: str = typer.Argument(help="Path to the recorded event log JSONL file"),
     step: int = typer.Option(..., help="Step number to seek to"),
 ) -> None:
     """Reconstruct and narrate the game state at a specific step."""
@@ -67,7 +67,7 @@ def seek(
 
 @app.command()
 def summary(
-    file_path: str = typer.Argument(help="Path to the recorded event log JSON file"),
+    file_path: str = typer.Argument(help="Path to the recorded event log JSONL file"),
 ) -> None:
     """Print a summary of a recorded match."""
     path = Path(file_path)

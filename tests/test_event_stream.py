@@ -259,7 +259,7 @@ class TestCodecRoundTrip:
 
     def test_json_codec_content_type(self) -> None:
         codec = JsonMatchCodec()
-        assert codec.content_type() == "application/json"
+        assert codec.content_type() == "application/x-ndjson"
 
     def test_build_codec_json(self) -> None:
         codec = build_codec("json")

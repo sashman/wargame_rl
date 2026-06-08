@@ -2,9 +2,9 @@
 """Analyze recorded match event logs for training evaluation.
 
 Usage:
-    python analyze_events.py report recordings/my_events.json
-    python analyze_events.py report recordings/my_events.json --json
-    python analyze_events.py compare recordings/run1.json recordings/run2.json
+    python analyze_events.py report recordings/my_events.jsonl
+    python analyze_events.py report recordings/my_events.jsonl --json
+    python analyze_events.py compare recordings/run1.jsonl recordings/run2.jsonl
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ def _load_and_analyze(file_path: str) -> MatchAnalysis:
 
 @app.command()
 def report(
-    file_path: str = typer.Argument(help="Path to the recorded event log JSON file"),
+    file_path: str = typer.Argument(help="Path to the recorded event log JSONL file"),
     json_output: bool = typer.Option(
         False, "--json", help="Output as JSON instead of human-readable text"
     ),
@@ -55,7 +55,7 @@ def report(
 @app.command()
 def compare(
     file_paths: list[str] = typer.Argument(
-        help="Paths to event log JSON files to compare"
+        help="Paths to event log JSONL files to compare"
     ),
 ) -> None:
     """Compare multiple recorded matches side-by-side."""

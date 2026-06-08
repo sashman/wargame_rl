@@ -155,7 +155,7 @@ def simulate(
     if event_exporter and len(event_exporter.log) > 0:
         recordings_dir = Path("recordings")
         recordings_dir.mkdir(exist_ok=True)
-        out_path = recordings_dir / "simulate_events.json"
+        out_path = recordings_dir / "simulate_events.jsonl"
         codec = JsonMatchCodec()
         out_path.write_bytes(codec.encode(event_exporter.log))
         logging.info(

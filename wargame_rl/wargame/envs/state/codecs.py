@@ -35,30 +35,37 @@ class MatchCodec(Protocol):
 
 
 class JsonMatchCodec:
-    """JSON codec for match event logs.
+    """JSONL codec for match event logs.
 
-    Serialises the full event list as a JSON array with metadata.
+    Serialises each event as a separate JSON line (newline-delimited JSON).
+    First line is a header with version and anchor_interval metadata.
     """
 
     def encode(self, event_log: EventLog) -> bytes:
-        """Serialise an EventLog to JSON bytes."""
-        payload: dict[str, Any] = {
+        """Serialise an EventLog to JSONL bytes (one JSON object per line)."""
+        lines: list[str] = []
+        header: dict[str, Any] = {
+            "type": "header",
             "version": "1.0",
             "anchor_interval": event_log.anchor_interval,
-            "events": [
-                _event_adapter.dump_python(e, mode="python") for e in event_log.events
-            ],
         }
-        return json.dumps(payload, default=_json_default).encode("utf-8")
+        lines.append(json.dumps(header))
+        for event in event_log.events:
+            raw = _event_adapter.dump_python(event, mode="python")
+            lines.append(json.dumps(raw, default=_json_default))
+        return ("\n".join(lines) + "\n").encode("utf-8")
 
     def decode(self, data: bytes) -> EventLog:
-        """Deserialise JSON bytes into an EventLog."""
-        payload = json.loads(data)
-        anchor_interval = payload.get("anchor_interval", 10)
+        """Deserialise JSONL bytes into an EventLog."""
+        text = data.decode("utf-8")
+        lines = [line for line in text.splitlines() if line.strip()]
+
+        header = json.loads(lines[0])
+        anchor_interval = header.get("anchor_interval", 10)
         log = EventLog(anchor_interval=anchor_interval)
 
-        raw_events = payload["events"]
-        for raw in raw_events:
+        for line in lines[1:]:
+            raw = json.loads(line)
             event = _event_adapter.validate_python(raw)
             if isinstance(event, ResetEvent):
                 log.record_reset(event.snapshot)
@@ -74,7 +81,7 @@ class JsonMatchCodec:
         return log
 
     def content_type(self) -> str:
-        return "application/json"
+        return "application/x-ndjson"
 
 
 def _json_default(obj: object) -> Any:
