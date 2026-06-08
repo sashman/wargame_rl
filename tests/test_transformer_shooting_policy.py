@@ -11,7 +11,10 @@ from wargame_rl.wargame.envs.types.config import (
 )
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.common.observation import observation_to_tensor
+from wargame_rl.wargame.model.common.observation import (
+    observation_to_tensor,
+    observations_to_tensor_batch,
+)
 from wargame_rl.wargame.model.net import TransformerNetwork
 
 
@@ -78,3 +81,87 @@ def test_transformer_policy_without_shooting_keeps_shoot_head_disabled() -> None
     net = TransformerNetwork.policy_from_env(env)
     assert net.shoot_query_proj is None
     assert net.shoot_key_proj is None
+
+
+def test_transformer_shooting_scores_land_in_correct_opponent_columns() -> None:
+    """The bilinear head's score for (player i, opponent j) lands in env column
+    ``shooting_slice.start + j`` for the matching player row."""
+    env = WargameEnv(config=_shooting_env_config())
+    net = TransformerNetwork.policy_from_env(env)
+    net.eval()
+
+    env.reset(seed=8)
+    obs, _, _, _, _ = _advance_to_shooting(env)
+    shooting_slice = env._action_handler.shooting_slice
+    assert shooting_slice is not None
+
+    tensors = observation_to_tensor(obs, net.device)
+    with torch.no_grad():
+        state = net.encode_state(tensors)
+        logits = net.policy_from_encoded(state)
+
+        p_idx = state.player_alive_indices[0]
+        o_idx = state.opp_alive_indices[0]
+        n_p, n_o = int(p_idx.numel()), int(o_idx.numel())
+        assert n_p > 0 and n_o > 0
+
+        start = state.n_prefix
+        player_latents = state.encoded[0:1, start : start + n_p, :]
+        opp_latents = state.encoded[0:1, start + n_p : start + n_p + n_o, :]
+        expected = net._shooting_scores(player_latents, opp_latents).squeeze(0)
+
+    for pi in range(n_p):
+        for oj in range(n_o):
+            col = shooting_slice.start + int(o_idx[oj])
+            assert torch.allclose(
+                logits[0, int(p_idx[pi]), col], expected[pi, oj], atol=1e-5
+            )
+
+
+def test_transformer_policy_batched_matches_single_obs() -> None:
+    """Batched forward (variable alive counts) equals stacked single forwards."""
+    env = WargameEnv(config=_shooting_env_config())
+    net = TransformerNetwork.policy_from_env(env)
+    net.eval()
+
+    env.reset(seed=3)
+    env.opponent_models[0].take_damage(env.opponent_models[0].stats["current_wounds"])
+    obs_a, _, _, _, _ = _advance_to_shooting(env)  # one opponent dead
+
+    env.reset(seed=4)
+    obs_b, _, _, _, _ = _advance_to_shooting(env)  # all alive
+
+    with torch.no_grad():
+        single_a = net(observation_to_tensor(obs_a, net.device))[0]
+        single_b = net(observation_to_tensor(obs_b, net.device))[0]
+        batched = net(observations_to_tensor_batch([obs_a, obs_b], net.device))
+
+    def _finite(t: torch.Tensor) -> torch.Tensor:
+        return torch.where(torch.isneginf(t), torch.zeros_like(t), t)
+
+    assert torch.equal(torch.isneginf(batched[0]), torch.isneginf(single_a))
+    assert torch.equal(torch.isneginf(batched[1]), torch.isneginf(single_b))
+    assert torch.allclose(_finite(batched[0]), _finite(single_a), atol=1e-5)
+    assert torch.allclose(_finite(batched[1]), _finite(single_b), atol=1e-5)
+
+
+def test_transformer_value_path_runs_with_compaction() -> None:
+    """The critic path still produces finite scalars through the shared encoding."""
+    env = WargameEnv(config=_shooting_env_config())
+    value_net = TransformerNetwork.value_from_env(env)
+    value_net.eval()
+
+    env.reset(seed=5)
+    obs_a, _, _, _, _ = _advance_to_shooting(env)
+    env.reset(seed=6)
+    obs_b, _, _, _, _ = _advance_to_shooting(env)
+
+    with torch.no_grad():
+        single = value_net(observation_to_tensor(obs_a, value_net.device))
+        batched = value_net(
+            observations_to_tensor_batch([obs_a, obs_b], value_net.device)
+        )
+
+    assert single.shape == (1,)
+    assert batched.shape == (2,)
+    assert torch.isfinite(batched).all()

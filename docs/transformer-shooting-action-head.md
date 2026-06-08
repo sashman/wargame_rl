@@ -35,20 +35,28 @@ Given:
 - Opponent model tensor: `O` with shape `(B, No, Fo)`
 - Action mask tensor: `M` with shape `(B, Np, A)` for batched and `(Np, A)` for single observation
 
-Derive alive masks:
-- Player alive mask `Ap`: model row has any valid non-stay action in `M` (equivalently dead rows are stay-only from env)
-- Opponent alive mask `Ao`: inferred from opponent features `alive` field (`N_WOUND_FEATURES` includes alive flag)
+Derive alive masks (both from the per-model `alive` feature column, located via
+`_alive_feature_index`, which is the first of the trailing
+`N_WOUND_FEATURES + N_COMBAT_STATS` columns):
+- Player alive mask `Ap`: `P[..., alive] > 0.5`
+- Opponent alive mask `Ao`: `O[..., alive] > 0.5`
 
 For each batch item:
 1. Gather alive player rows from `P` and alive opponent rows from `O`.
-2. Keep index maps:
-   - `player_full_to_compact` / `player_compact_to_full`
-   - `opp_full_to_compact` / `opp_compact_to_full`
+2. Keep the compact→full index maps as `player_alive_indices` /
+   `opp_alive_indices` (tensors of original row indices), returned on the
+   `EncodedState` so reconstruction is explicit (no module-level state).
 3. Build token sequence:
    - `[game_token, objective_tokens, alive_player_tokens, alive_opponent_tokens]`
-4. Run transformer only on compacted sequence.
+4. Run the transformer on the compacted sequence.
 
-This removes dead-token compute while preserving a reversible mapping back to full action rows/columns.
+This removes dead tokens from attention while preserving a reversible mapping
+back to full action rows/columns.
+
+> Implementation note: encoding currently loops per batch item (each sample is a
+> separate transformer forward, then padded to the batch max length). This keeps
+> variable alive-token counts simple but trades away batched throughput; batching
+> via padding + a key-padding attention mask is a known future optimization.
 
 ### 3.2 Bilinear Shooting Head
 
@@ -105,7 +113,10 @@ Result: final logits match exact env action indexing while shooting values come 
 No public interface changes.
 
 Internal `TransformerNetwork` adjustments:
-- Extend encoded-state metadata to include alive index mappings.
+- `encode_state` returns an `EncodedState` dataclass carrying the encoded
+  sequence plus alive-index / mask metadata; `policy_from_encoded` and
+  `value_from_encoded` take that object (state is passed explicitly, not stored
+  on the module).
 - Add shooting projection layers (`shoot_query_proj`, `shoot_key_proj`) in policy mode.
 - Add helper methods for:
   - alive mask derivation

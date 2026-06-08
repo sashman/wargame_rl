@@ -1,6 +1,7 @@
 import math
 from abc import ABC, abstractmethod
-from typing import Any, Self, cast
+from dataclasses import dataclass
+from typing import Self, cast
 
 import torch
 from torch import nn
@@ -9,8 +10,31 @@ from wargame_rl.wargame.envs.types import WargameEnvObservation
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common import Device, get_device
 from wargame_rl.wargame.model.common.config import TransformerConfig
-from wargame_rl.wargame.model.common.observation import observation_to_tensor
+from wargame_rl.wargame.model.common.observation import (
+    N_COMBAT_STATS,
+    N_WOUND_FEATURES,
+    observation_to_tensor,
+)
 from wargame_rl.wargame.model.dqn.layers import Block, LayerNorm
+
+
+@dataclass(frozen=True, slots=True)
+class EncodedState:
+    """Transformer encoding plus the metadata needed to rebuild full-size logits.
+
+    Returned by :meth:`TransformerNetwork.encode_state` and consumed by
+    :meth:`TransformerNetwork.policy_from_encoded` /
+    :meth:`TransformerNetwork.value_from_encoded`, so encoding metadata is
+    passed explicitly between calls instead of being stored on the module.
+    """
+
+    encoded: torch.Tensor
+    n_prefix: int
+    n_wargame_models: int
+    n_opponents: int
+    player_alive_indices: list[torch.Tensor]
+    opp_alive_indices: list[torch.Tensor]
+    mask_tensor: torch.Tensor | None
 
 
 class RL_Network(nn.Module, ABC):
@@ -203,13 +227,11 @@ class TransformerNetwork(RL_Network):
                 self.shoot_key_proj = nn.Linear(
                     self.config.embedding_size, self.config.embedding_size, bias=True
                 )
-            self._last_policy_context: dict[str, Any] | None = None
         else:
             self.policy_head = None
             self.value_head = nn.Linear(self.config.embedding_size, 1, bias=False)
             self.shoot_query_proj = None
             self.shoot_key_proj = None
-            self._last_policy_context = None
 
         self.apply(self._init_weights)
         for pn, p in self.named_parameters():
@@ -313,8 +335,16 @@ class TransformerNetwork(RL_Network):
         return result
 
     def _alive_feature_index(self, feature_dim: int, n_opponents: int) -> int:
-        """Infer the alive-feature column index from observation feature layout."""
-        return feature_dim - (n_opponents if n_opponents > 0 else 0) - 10
+        """Infer the alive-feature column index from observation feature layout.
+
+        Per-model rows end with ``N_WOUND_FEATURES + N_COMBAT_STATS`` columns
+        (``alive`` is the first of these), optionally followed by ``n_opponents``
+        expected-damage / padding columns. The ``alive`` flag therefore sits that
+        many columns before the end. This is coupled to the layout produced by
+        ``model/common/observation.py``; the constants keep the two in sync.
+        """
+        trailing = n_opponents if n_opponents > 0 else 0
+        return feature_dim - trailing - (N_WOUND_FEATURES + N_COMBAT_STATS)
 
     def _alive_mask_from_features(
         self, model_features: torch.Tensor, n_opponents: int
@@ -336,14 +366,12 @@ class TransformerNetwork(RL_Network):
         encoded = self.transformer.ln_f(x)  # type: ignore
         return cast(torch.Tensor, encoded)
 
-    def encode_state(self, xs: list[torch.Tensor]) -> tuple[torch.Tensor, int, int]:
+    def encode_state(self, xs: list[torch.Tensor]) -> EncodedState:
         """Encode observation tensors into contextual token representations.
 
         Returns:
-            Tuple of:
-            - encoded sequence tensor of shape (batch, seq_len, embedding_size)
-            - prefix length before player-model tokens
-            - number of player-model tokens
+            An :class:`EncodedState` bundling the padded encoded sequence and the
+            alive-index / mask metadata needed to rebuild full-size policy logits.
         """
         game_tensor = xs[0]
         objective_tensor = xs[1]
@@ -422,15 +450,15 @@ class TransformerNetwork(RL_Network):
         for b, encoded_sample in enumerate(encoded_samples):
             encoded[b, : encoded_sample.shape[1], :] = encoded_sample[0]
 
-        self._last_policy_context = {
-            "n_prefix": n_prefix,
-            "n_wargame_models": n_wargame_models,
-            "n_opponents": n_opponents,
-            "player_alive_indices": player_alive_indices,
-            "opp_alive_indices": opp_alive_indices,
-            "mask_tensor": mask_tensor,
-        }
-        return encoded, n_prefix, n_wargame_models
+        return EncodedState(
+            encoded=encoded,
+            n_prefix=n_prefix,
+            n_wargame_models=n_wargame_models,
+            n_opponents=n_opponents,
+            player_alive_indices=player_alive_indices,
+            opp_alive_indices=opp_alive_indices,
+            mask_tensor=mask_tensor,
+        )
 
     def _shooting_scores(
         self, player_latents: torch.Tensor, opponent_latents: torch.Tensor
@@ -444,24 +472,21 @@ class TransformerNetwork(RL_Network):
         scores: torch.Tensor = torch.matmul(q, k.transpose(-2, -1)) * scale
         return scores
 
-    def policy_from_encoded(
-        self, encoded: torch.Tensor, n_prefix: int, n_wargame_models: int
-    ) -> torch.Tensor:
-        """Apply policy head to encoded tokens."""
+    def policy_from_encoded(self, state: EncodedState) -> torch.Tensor:
+        """Rebuild full-size policy logits ``(batch, n_models, n_actions)``.
+
+        Dead player rows stay ``-inf`` except ``stay``; shooting columns for alive
+        opponents carry bilinear scores. Invalid actions are enforced by the
+        env-provided action mask carried on ``state``.
+        """
         if not self.is_policy:
             raise ValueError("Policy head requested from a value network.")
         if self.policy_head is None:
             raise ValueError("Policy head is not initialized.")
-        context = self._last_policy_context
-        if (
-            context is None
-            or "player_alive_indices" not in context
-            or "opp_alive_indices" not in context
-        ):
-            wargame_model_output = encoded[:, n_prefix : n_prefix + n_wargame_models, :]
-            logits: torch.Tensor = self.policy_head(wargame_model_output)
-            return logits
 
+        encoded = state.encoded
+        n_prefix = state.n_prefix
+        n_wargame_models = state.n_wargame_models
         batch_size = int(encoded.shape[0])
         logits = torch.full(
             (batch_size, n_wargame_models, self.n_actions),
@@ -471,19 +496,15 @@ class TransformerNetwork(RL_Network):
         )
         logits[:, :, 0] = 0.0
 
-        player_alive_indices = cast(list[torch.Tensor], context["player_alive_indices"])
-        opp_alive_indices = cast(list[torch.Tensor], context["opp_alive_indices"])
-        n_prefix_ctx = cast(int, context["n_prefix"])
-
         for b in range(batch_size):
-            p_idx = player_alive_indices[b]
+            p_idx = state.player_alive_indices[b]
             n_alive_players = int(p_idx.numel())
             if n_alive_players == 0:
                 continue
 
             player_latents = encoded[
                 b : b + 1,
-                n_prefix_ctx : n_prefix_ctx + n_alive_players,
+                n_prefix : n_prefix + n_alive_players,
                 :,
             ]
             base_logits = self.policy_head(player_latents).squeeze(0)
@@ -499,12 +520,12 @@ class TransformerNetwork(RL_Network):
             if not can_score_shooting:
                 continue
 
-            o_idx = opp_alive_indices[b]
+            o_idx = state.opp_alive_indices[b]
             n_alive_opponents = int(o_idx.numel())
             if n_alive_opponents == 0:
                 continue
 
-            opp_start = n_prefix_ctx + n_alive_players
+            opp_start = n_prefix + n_alive_players
             opponent_latents = encoded[
                 b : b + 1,
                 opp_start : opp_start + n_alive_opponents,
@@ -516,7 +537,7 @@ class TransformerNetwork(RL_Network):
             shot_cols = cast(int, self.shooting_slice_start) + o_idx
             logits[b, p_idx.unsqueeze(1), shot_cols.unsqueeze(0)] = shooting_scores
 
-        mask_tensor = cast(torch.Tensor | None, context["mask_tensor"])
+        mask_tensor = state.mask_tensor
         if (
             mask_tensor is not None
             and mask_tensor.shape[-1] == self.n_actions
@@ -530,14 +551,14 @@ class TransformerNetwork(RL_Network):
         )
         return logits
 
-    def value_from_encoded(self, encoded: torch.Tensor) -> torch.Tensor:
+    def value_from_encoded(self, state: EncodedState) -> torch.Tensor:
         """Apply value head to encoded tokens."""
         if self.is_policy:
             raise ValueError("Value head requested from a policy network.")
         if self.value_head is None:
             raise ValueError("Value head is not initialized.")
         # Use the global game token (first token) as the critic summary.
-        game_token = encoded[:, 0, :]
+        game_token = state.encoded[:, 0, :]
         value: torch.Tensor = self.value_head(game_token)
         return value.squeeze(-1)
 
@@ -550,11 +571,11 @@ class TransformerNetwork(RL_Network):
         self.transformer = backbone_source.transformer
 
     def forward(self, xs: list[torch.Tensor]) -> torch.Tensor:
-        encoded, n_prefix, n_wargame_models = self.encode_state(xs)
+        encoded_state = self.encode_state(xs)
 
         if self.is_policy:
-            return self.policy_from_encoded(encoded, n_prefix, n_wargame_models)
-        return self.value_from_encoded(encoded)
+            return self.policy_from_encoded(encoded_state)
+        return self.value_from_encoded(encoded_state)
 
     # def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
     #     # start with all of the candidate parameters
