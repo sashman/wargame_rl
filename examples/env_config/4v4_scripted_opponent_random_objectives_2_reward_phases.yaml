@@ -8,6 +8,10 @@ board_height: 44
 max_groups: 4
 turn_order: random
 number_of_battle_rounds: 20
+skip_phases:
+  - command
+  - charge
+  - fight
 
 deployment_zone: [0, 0, 20, 44]
 opponent_deployment_zone: [40, 0, 60, 44]

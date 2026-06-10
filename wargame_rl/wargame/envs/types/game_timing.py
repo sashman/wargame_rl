@@ -59,9 +59,6 @@ BATTLE_PHASE_ORDER: tuple[BattlePhase, ...] = tuple(BattlePhase)
 NON_MOVEMENT_PHASES: list[BattlePhase] = [
     p for p in BattlePhase if p != BattlePhase.movement
 ]
-NON_MOVEMENT_SHOOTING_PHASES: list[BattlePhase] = [
-    p for p in BattlePhase if (p != BattlePhase.movement and p != BattlePhase.shooting)
-]
 
 
 @dataclass(frozen=True, slots=True)

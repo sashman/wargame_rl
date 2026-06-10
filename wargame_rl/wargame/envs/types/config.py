@@ -10,10 +10,7 @@ from wargame_rl.wargame.envs.reward.phase import (
     RewardPhaseConfig,
     SuccessCriteriaConfig,
 )
-from wargame_rl.wargame.envs.types.game_timing import (
-    NON_MOVEMENT_SHOOTING_PHASES,
-    BattlePhase,
-)
+from wargame_rl.wargame.envs.types.game_timing import NON_MOVEMENT_PHASES, BattlePhase
 
 
 class _HasCoords(Protocol):
@@ -281,7 +278,7 @@ class WargameEnvConfig(BaseModel):
     )
 
     skip_phases: list[BattlePhase] = Field(
-        default_factory=lambda: list(NON_MOVEMENT_SHOOTING_PHASES),
+        default_factory=lambda: list(NON_MOVEMENT_PHASES),
         description="Battle phases to auto-advance through (the agent never steps "
         "on these). Defaults to all non-movement phases. Set to [] to "
         "step through every phase.",
