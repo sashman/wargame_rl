@@ -8,6 +8,10 @@ board_height: 44
 max_groups: 4
 turn_order: random
 number_of_battle_rounds: 20
+skip_phases:
+  - command
+  - charge
+  - fight
 
 deployment_zone: [0, 0, 20, 44]
 opponent_deployment_zone: [40, 0, 60, 44]
@@ -45,13 +49,16 @@ reward_phases:
         params: { group_max_distance: 5.0, violation_penalty: -0.1 }
       - type: vp_gain
         weight: 1.0
+      - type: killing
+        weight: 1.0
+        params: { bonus_killing_opponent: 5.0}
     success_criteria:
       type: all_at_objectives
     success_threshold: 0.95
     min_epochs: 0
     min_epochs_above_threshold: 10
 
-  - name: win_at_the_end
+  - name: win_only_by_vp
     terminate_on_success: false
     reward_calculators:
       - type: vp_gain
@@ -70,19 +77,22 @@ reward_phases:
         params: { progress_scale: 10.0 }
       - type: objective_coverage
         weight: 0.1
+      - type: killing
+        weight: 1.0
+        params: { bonus_killing_opponent: 5.0}
     success_criteria:
-      type: player_ahead_on_vp
-      params: {}
+      type: player_vp_min
+      params: { fraction_of_max: 0.4 }
     success_threshold: 0.7
     min_epochs: 20
 
-  - name: win_only_by_vp
+  - name: win_at_the_end
     terminate_on_success: false
     reward_calculators:
       - type: vp_gain
         weight: 1.0
       - type: objective_flip_bonus
-        weight: 1.0
+        weight: 0.5
         params:
           {
             bonus_capture_first: 2.0,
@@ -90,13 +100,8 @@ reward_phases:
             bonus_contested_to_controlled: 2.0,
             loss_penalty_scale: 1.0,
           }
-      - type: closest_objective_v2
-        weight: 0.15
-        params: { progress_scale: 10.0 }
-      - type: objective_coverage
-        weight: 0.1
     success_criteria:
-      type: player_vp_min
-      params: { fraction_of_max: 0.4 }
+      type: player_ahead_on_vp
+      params: {}
     success_threshold: 0.8
     min_epochs: 20

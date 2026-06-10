@@ -15,6 +15,7 @@ from wargame_rl.wargame.envs.reward.calculators.closest_objective_v2 import (
 from wargame_rl.wargame.envs.reward.calculators.group_cohesion import (
     GroupCohesionCalculator,
 )
+from wargame_rl.wargame.envs.reward.calculators.killing import KillingReward
 from wargame_rl.wargame.envs.reward.calculators.objective_coverage import (
     ObjectiveCoverageCalculator,
 )
@@ -32,6 +33,7 @@ CALCULATOR_REGISTRY: dict[str, type[RewardCalculatorType]] = {
     "objective_coverage": ObjectiveCoverageCalculator,
     "objective_flip_bonus": ObjectiveFlipBonusCalculator,
     "vp_gain": VPGainCalculator,
+    "killing": KillingReward,
 }
 
 

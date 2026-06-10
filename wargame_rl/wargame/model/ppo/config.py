@@ -45,7 +45,7 @@ class PPOConfig(BaseModel):
 
 
 class PPOTrainingConfig(BaseModel):
-    max_epochs: int = 3000
+    max_epochs: int = 10000
     val_check_interval: int | float = 1
     record_during_training: bool = True
     record_after_epoch: int = 50
