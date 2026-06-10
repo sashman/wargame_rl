@@ -62,11 +62,9 @@ class PPOModel(nn.Module):
         if self.share_transformer:
             policy_network = cast(TransformerNetwork, self.policy_network)
             value_network = cast(TransformerNetwork, self.value_network)
-            encoded, n_prefix, n_wargame_models = policy_network.encode_state(x)
-            action_logits = policy_network.policy_from_encoded(
-                encoded, n_prefix, n_wargame_models
-            )
-            state_values = value_network.value_from_encoded(encoded)
+            encoded_state = policy_network.encode_state(x)
+            action_logits = policy_network.policy_from_encoded(encoded_state)
+            state_values = value_network.value_from_encoded(encoded_state)
             return action_logits, state_values
 
         action_logits = self.policy_network(x)
