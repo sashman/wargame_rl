@@ -45,6 +45,9 @@ reward_phases:
         params: { group_max_distance: 5.0, violation_penalty: -0.1 }
       - type: vp_gain
         weight: 1.0
+      - type: killing
+        weight: 1.0
+        params: { bonus_killing_opponent: 5.0}
     success_criteria:
       type: all_at_objectives
     success_threshold: 0.95
@@ -70,6 +73,9 @@ reward_phases:
         params: { progress_scale: 10.0 }
       - type: objective_coverage
         weight: 0.1
+      - type: killing
+        weight: 1.0
+        params: { bonus_killing_opponent: 5.0}
     success_criteria:
       type: player_vp_min
       params: { fraction_of_max: 0.4 }
@@ -90,8 +96,6 @@ reward_phases:
             bonus_contested_to_controlled: 2.0,
             loss_penalty_scale: 1.0,
           }
-      - type: objective_coverage
-        weight: 0.1
     success_criteria:
       type: player_ahead_on_vp
       params: {}
