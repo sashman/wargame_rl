@@ -20,7 +20,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-04)
 
 **Core value:** Agents learn recognisable tactical behaviour through reward shaping and environment design
-**Current focus:** v1.0 Phases 1–5 complete, Phase 6 deferred; v9 Phases 1–3 complete, Phase 4 deferred
+**Current focus:** v9 Phase 4 (Event Streaming & Replay) next; v1.0 complete (Phase 6 deferred)
 
 ## Current Position
 
@@ -30,7 +30,8 @@ Phase 6 deferred
 
 **v9 (Structured Game State & LLM-Readable Representation):**
 Phases 1–3 complete (merged 2026-05-23 via PRs #110, #111)
-Phase 4 deferred
+Phase 4 (Event Streaming & Replay) — not started
+Phase 5 (Milestone Validation) — not started
 
 ## Performance Metrics
 

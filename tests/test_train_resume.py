@@ -125,7 +125,9 @@ def test_train_forwards_resume_ckpt_to_trainer(
 
     monkeypatch.setattr(train_module, "Trainer", DummyTrainer)
     monkeypatch.setattr(
-        train_module, "create_environment", lambda env_config: _make_env()
+        train_module,
+        "create_environment",
+        lambda env_config, **kwargs: _make_env(),
     )
     monkeypatch.setattr(
         train_module,
