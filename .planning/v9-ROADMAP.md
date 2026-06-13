@@ -4,14 +4,15 @@
 
 This milestone adds programmatic state I/O and LLM-interpretable representation to the wargame environment. The codebase already contains rich structured data at every step — entity positions and wounds, game clock state, combat results, detailed reward breakdowns, and decodable action indices — but none of it is surfaced outside the RL tensor pipeline. This milestone builds a Pydantic-based canonical state model (`GameStateSnapshot`), bidirectional I/O (export and injection), and a text narration layer for LLM evaluation.
 
-The build order follows dependency: the canonical schema first (everything depends on it), then state injection (the "input" side of bidirectional I/O), then LLM text (builds on the data captured in the snapshot). Event streaming and replay are deferred — they require a stable schema and are lower priority than the user's core goals of bidirectional state I/O and LLM-interpretable representation.
+The build order follows dependency: the canonical schema first (everything depends on it), then state injection (the "input" side of bidirectional I/O), then LLM text (builds on the data captured in the snapshot). Event streaming and replay build on the stable schema established in Phases 1–3. A final validation phase verifies all milestone requirements and success criteria end-to-end.
 
 ## Phases
 
 - [x] **Phase 1: Canonical State Model & Export** — Pydantic `GameStateSnapshot` projected from `BattleView`, JSON serialisation, `WargameEnv.to_snapshot()`, combat/action metadata capture (completed 2026-05-23)
 - [x] **Phase 2: State Injection & Bidirectional I/O** — `GameClock.set_state()`, `WargameEnv.load_state(snapshot)`, validation, derive computed fields from injected state (completed 2026-05-23)
 - [x] **Phase 3: LLM-Readable Text Representation** — Action descriptions, combat narrative, step narrator, reward breakdown text for LLM evaluation (completed 2026-05-23)
-- [ ] ~~**Phase 4: Event Streaming & Replay**~~ — Deferred: append-only event log, delta encoding, deterministic replay, pluggable codec interface
+- [ ] **Phase 4: Event Streaming & Replay** — Append-only event log, delta encoding, deterministic replay, pluggable codec interface
+- [ ] **Phase 5: Milestone Validation** — End-to-end verification of all v9 requirements and success criteria across Phases 1–4
 
 ## Phase Details
 
@@ -53,28 +54,38 @@ Plans:
 **Plans**: Implemented directly (no formal plan — code landed in v9-01 branch)
 **Key commits**: `ee30c1b` — `StepNarrator`, public `describe_action` API, 8 tests
 
-### Phase 4: Event Streaming & Replay (Deferred)
+### Phase 4: Event Streaming & Replay
 **Goal**: A complete match history can be recorded as an ordered event stream and replayed deterministically
-**Depends on**: Phase 1 (stable schema)
+**Depends on**: Phase 1 (stable schema — now complete)
 **Requirements**: SGS-03, SGS-05, SGS-06
 **Success Criteria** (what must be TRUE):
   1. A `StateExporter` protocol with `on_reset()` / `on_step()` hooks produces an append-only event log recording the full match
   2. Delta encoding represents state updates efficiently (full snapshots at anchors, granular deltas between them)
   3. Deterministic replay: applying the event log from a known initial configuration reconstructs any requested historical state
   4. A pluggable formatter registry (extending SGS-04) allows alternative encodings behind a shared codec interface
-**Note**: This phase is deferred — not planned for immediate execution. SGS-03, SGS-05, SGS-06 are lower priority per user direction. The schema must stabilise through Phases 1–3 before building streaming and replay on top of it.
+**Plans**: TBD
+
+### Phase 5: Milestone Validation
+**Goal**: All v9 requirements and phase success criteria are verified end-to-end against the live codebase
+**Depends on**: Phases 1–4
+**Requirements**: All SGS-* requirements
+**Success Criteria** (what must be TRUE):
+  1. Every SGS-* requirement marked Complete has a passing test or verifiable evidence
+  2. All phase success criteria (Phases 1–4) hold against the current codebase
+  3. Round-trip and replay scenarios exercise the full pipeline: snapshot → inject → step → stream → replay
+  4. Requirements traceability table in REQUIREMENTS.md is fully updated
 **Plans**: TBD
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 (Phases 2 and 3 are independent after Phase 1 and can execute in parallel)
-Phase 4 is deferred.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Canonical State Model & Export | 1/1 | Complete | 2026-05-23 |
 | 2. State Injection & Bidirectional I/O | 1/1 | Complete | 2026-05-23 |
 | 3. LLM-Readable Text Representation | 1/1 | Complete | 2026-05-23 |
-| 4. Event Streaming & Replay | - | Deferred | - |
+| 4. Event Streaming & Replay | 0/0 | Not started | - |
+| 5. Milestone Validation | 0/0 | Not started | - |

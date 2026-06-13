@@ -1,16 +1,21 @@
+from __future__ import annotations
+
 from wargame_rl.wargame.envs.renders import renderer
+from wargame_rl.wargame.envs.state.exporter import StateExporter
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
 
 def create_environment(
-    env_config: WargameEnvConfig, renderer: renderer.Renderer | None = None
+    env_config: WargameEnvConfig,
+    renderer: renderer.Renderer | None = None,
+    state_exporters: list[StateExporter] | None = None,
 ) -> WargameEnv:
     """Create the Wargame environment.
 
     Returns:
         Configured gymnasium environment
     """
-    env = WargameEnv(env_config, renderer)
+    env = WargameEnv(env_config, renderer, state_exporters=state_exporters)
 
     return env

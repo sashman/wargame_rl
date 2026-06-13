@@ -99,6 +99,30 @@ profile env_config_path model='' max_epochs='':
 		{{ if model != "" { "--network-type " + model } else { "" } }} \
 		{{ if max_epochs != "" { "--max-epochs " + max_epochs } else { "" } }}
 
+# Record a short training run with event logging (E2E demo: 1 epoch, no wandb)
+record env_config_path='examples/env_config/4_models_2_objectives_fixed.yaml':
+	uv run train.py --record-events --max-epochs 1 --no-wandb --env-config-path {{env_config_path}}
+
+# Replay a recorded match event log (narrate all steps)
+replay file:
+	uv run replay_events.py narrate {{file}}
+
+# Show summary of a recorded match event log
+replay-summary file:
+	uv run replay_events.py summary {{file}}
+
+# Analyze a recorded match for training evaluation
+analyze file:
+	uv run analyze_events.py report {{file}}
+
+# Analyze a recorded match (JSON output for programmatic use)
+analyze-json file:
+	uv run analyze_events.py report {{file}} --json
+
+# Compare multiple recorded matches side-by-side
+analyze-compare +files:
+	uv run analyze_events.py compare {{files}}
+
 # Run a test env in isolation with random action
 test-env:
 	uv run main.py --env_test
