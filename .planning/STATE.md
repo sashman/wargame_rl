@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: active
-stopped_at: v9 roadmap updated; v1.0 Phase 6 next
-last_updated: "2026-06-07T09:21:00.000Z"
-last_activity: 2026-06-07
+stopped_at: v9 milestone complete (all 5 phases validated)
+last_updated: "2026-06-19T00:00:00.000Z"
+last_activity: 2026-06-19
 progress:
   total_phases: 6
   completed_phases: 5
@@ -20,7 +20,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-04)
 
 **Core value:** Agents learn recognisable tactical behaviour through reward shaping and environment design
-**Current focus:** v9 Phase 4 (Event Streaming & Replay) next; v1.0 complete (Phase 6 deferred)
+**Current focus:** v9 milestone complete; v1.0 Phase 6 deferred
 
 ## Current Position
 
@@ -29,9 +29,10 @@ Phases 1–5 complete (8/8 plans executed)
 Phase 6 deferred
 
 **v9 (Structured Game State & LLM-Readable Representation):**
-Phases 1–3 complete (merged 2026-05-23 via PRs #110, #111)
-Phase 4 (Event Streaming & Replay) — not started
-Phase 5 (Milestone Validation) — not started
+All 5 phases complete. 14/14 SGS-* requirements verified.
+- Phases 1–3 merged 2026-05-23 (PRs #110, #111)
+- Phase 4 merged 2026-06-18 (PR #114)
+- Phase 5 (Milestone Validation) completed 2026-06-19
 
 ## Performance Metrics
 
@@ -101,6 +102,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-07T09:21:00.000Z
-Stopped at: Updated v9 roadmap to reflect merged work
+Last session: 2026-06-19T00:00:00.000Z
+Stopped at: v9 milestone validation complete — all SGS-* requirements verified
 Resume file: None
