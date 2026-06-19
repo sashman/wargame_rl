@@ -70,18 +70,20 @@ Deferred to a later terrain milestone (tracked, not in this roadmap):
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TERR-01 | TBD | Pending |
-| TERR-02 | TBD | Pending |
-| TERR-03 | TBD | Pending |
-| TERR-04 | TBD | Pending |
-| TERR-05 | TBD | Pending |
-| TERR-06 | TBD | Pending |
-| TERR-07 | TBD | Pending |
-| TERR-08 | TBD | Pending |
-| TERR-09 | TBD | Pending |
-| TERR-10 | TBD | Pending |
+| TERR-01 | Phase 1 | Pending |
+| TERR-02 | Phase 1 | Pending |
+| TERR-03 | Phase 1 | Pending |
+| TERR-04 | Phase 1 | Pending |
+| TERR-05 | Phase 1 | Pending |
+| TERR-06 | Phase 1 | Pending |
+| TERR-07 | Phase 1 | Pending |
+| TERR-08 | Phase 2 | Pending |
+| TERR-09 | Phase 2 | Pending |
+| TERR-10 | Phase 1 | Pending |
 
-*Phase column filled by the roadmapper.*
+*Phase column filled by the roadmapper. TERR-03 (no-op default / backward compat) is assigned to
+Phase 1 for traceability; its observation-side guarantee (no-terrain adds nothing, pre-terrain
+checkpoints load) is also verified in Phase 2 via TERR-09's backward-compat tests.*
 
 ---
 *Requirements defined: 2026-06-19 — v2.0 Terrain & Line-of-Sight Blocking*

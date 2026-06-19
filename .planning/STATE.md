@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Terrain & Line-of-Sight Blocking
 status: active
-stopped_at: v2.0 milestone started — defining requirements
-last_updated: "2026-06-19T22:00:00.000Z"
-last_activity: 2026-06-19
+stopped_at: v2.0 roadmap created — ready to plan Phase 1
+last_updated: "2026-06-20T00:00:00.000Z"
+last_activity: 2026-06-20
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
-  total_plans: 0
+  total_plans: 4
   completed_plans: 0
 ---
 
@@ -17,34 +17,30 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-04)
+See: .planning/PROJECT.md (updated 2026-06-19)
 
 **Core value:** Agents learn recognisable tactical behaviour through reward shaping and environment design
-**Current focus:** v2.0 Terrain & Line-of-Sight Blocking — defining requirements
+**Current focus:** v2.0 Terrain & Line-of-Sight Blocking — Phase 1 (Terrain in the Simulation)
 
 ## Current Position
 
-**Milestone v2.0 (Terrain & Line-of-Sight Blocking) started 2026-06-19.**
-Phase: Not started (defining requirements) · Status: Defining requirements
-Scope: terrain piece = footprint rectangle + thin L-shaped walls; walls block LOS only
-(movement unaffected); terrain encoded in observation. No cover/dense/difficult/elevation
-this milestone. Research-first chosen.
-Next: research → requirements → roadmap.
+Phase: 1 of 2 (Terrain in the Simulation — LOS-Blocking)
+Plan: 0 of 2 in current phase
+Status: Ready to plan
+Last activity: 2026-06-20 — v2.0 roadmap created (2 phases, 10/10 TERR-* mapped)
 
-**v9.0 (Structured Game State & LLM-Readable Representation): ✅ ARCHIVED 2026-06-19**
-All 5 phases complete. 14/14 SGS-* requirements verified.
-Archive: `.planning/milestones/v9-ROADMAP.md`, `.planning/milestones/v9-REQUIREMENTS.md`
-- Phases 1–3 merged 2026-05-23 (PRs #110, #111)
-- Phase 4 merged 2026-06-18 (PR #114)
-- Phase 5 (Milestone Validation) merged 2026-06-19 (PR #116)
+Progress: [░░░░░░░░░░] 0%
 
-**v1.0 (Shooting & Model Destruction):**
-Phases 1–5 complete (8/8 plans executed); Phase 6 (Combat Reward & Curriculum) deferred
+**Roadmap shape:** Two phases with a clean one-way dependency.
+- Phase 1 `v2-01-terrain-los-blocking`: config + `domain/terrain.py` rasteriser + LOS seam + renderer
+  (TERR-01..07, TERR-10). Walls rasterised to whole cells OR'd into `is_blocking`; `domain/los.py`
+  Bresenham untouched; footprint NOT rasterised.
+- Phase 2 `v2-02-terrain-observation`: terrain entity-token stream through obs pipeline + both
+  networks + PPO, `terrain_embedding` appended LAST and None-guarded (TERR-08, TERR-09).
 
 ## Performance Metrics
 
 **Velocity:**
-
 - Total plans completed: 0
 - Average duration: -
 - Total execution time: 0 hours
@@ -56,16 +52,10 @@ Phases 1–5 complete (8/8 plans executed); Phase 6 (Combat Reward & Curriculum)
 | - | - | - | - |
 
 **Recent Trend:**
-
 - Last 5 plans: -
 - Trend: -
 
 *Updated after each plan completion*
-| Phase 01 P01 | 5min | 2 tasks | 4 files |
-| Phase 04 P01 | 3min | 3 tasks | 4 files |
-| Phase 04 P02 | 3min | 2 tasks | 6 files |
-| Phase 05 P01 | 5min | 3 tasks | 6 files |
-| Phase 05 P02 | 14min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -74,23 +64,16 @@ Phases 1–5 complete (8/8 plans executed); Phase 6 (Combat Reward & Curriculum)
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- **Phase 3:** LOS uses Bresenham + **interior-only** `is_blocking`; optional **`blocking_mask`** in YAML; **`domain/los.py`** is the single source (human debug uses **`L`** + `iter_los_cells`).
-- Wounds/elimination before shooting (shooting needs durable state to be meaningful)
-- LOS as a single domain service reused by rules, masks, and rendering (not duplicated)
-- Phases 2 and 3 are independent and can execute in parallel
-- [Phase 01]: Wounds clamped at 0 via max() — no negative wound state possible
-- [Phase 01]: Default max_wounds=1 safe because no damage source exists until Phase 5
-- [Phase 01]: all_eliminated checked first in is_battle_over for fast-path termination
-- [Phase 04]: WeaponProfile has only range field — Phase 5 adds resolution stats
-- [Phase 04]: Shooting slice conditionally registered via n_shoot_targets kwarg; apply() no-ops shooting actions until Phase 5
-- [Phase 04]: Shooting mask overlay uses bitwise AND on base registry mask — registry handles phase gating, overlay adds per-target filtering
-- [Phase 04]: compute_shooting_masks is a pure function with callback-based LOS injection, decoupled from BattleView
-- [Phase 05]: wound_roll_threshold uses integer multiplication (2*S vs T) to avoid rounding issues
-- [Phase 05]: ShootingResult is frozen dataclass with slots for immutability and performance
-- [Phase 05]: Natural 1/6 rules via boolean masking — extensible when modifiers arrive
-- [Phase 05]: Network from_env derives input sizes from observation_to_tensor output, not observation.size — prevents dim mismatch with expected damage columns
-- [Phase 05]: Expected damage columns only in player features; opponent features zero-padded to match feature_dim
-- [Phase 05]: Shooting resolution at env level (not ActionHandler) — env owns combat flow, ActionHandler stays movement-only
+- **v2.0 build order:** Two phases, strictly sequential — Phase 2 needs `BattleView.terrain` from
+  Phase 1. Phase 1 = mechanics (LOS), Phase 2 = perception (observation).
+- **v2.0 wall representation:** WHOLE-CELL rasterisation OR'd into the existing `is_blocking(x,y)`
+  seam; `domain/los.py` Bresenham unchanged; cell-edge "true thin" walls deferred (TERRF-01).
+- **v2.0 footprint:** No-op area marker this milestone — NOT rasterised, no LOS effect.
+- **v2.0 observation:** Terrain as a new entity-token stream appended LAST; `terrain_embedding` is
+  `None` when `terrain_size == 0` (mirrors `opponent_model_embedding is None`) → no terrain =
+  byte-identical behaviour, pre-terrain checkpoints still load.
+- **Phase 3 (v1):** LOS uses Bresenham + interior-only `is_blocking`; optional `blocking_mask` in
+  YAML; `domain/los.py` is the single source (terrain walls now merge into the same grid).
 
 ### Pending Todos
 
@@ -98,17 +81,18 @@ None yet.
 
 ### Blockers/Concerns
 
-- CUDA setup may be broken on dev machine — use `CUDA_VISIBLE_DEVICES=""` for training
-- Full **terrain v2** still future — use optional **`blocking_mask`** for LOS tests and hand-authored blocking until terrain lands
-
-### Quick Tasks Completed
-
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 260404-soy | Check if plotting/ directory is used, remove it and any related tests | 2026-04-04 | 0bb7882 | [260404-soy-check-if-plotting-directory-is-used-remo](./quick/260404-soy-check-if-plotting-directory-is-used-remo/) |
+- **LOS symmetry (Phase 1):** Bresenham `A→B` vs `B→A` can diverge near cell corners — the Hypothesis
+  symmetry property test is the highest-value test; canonicalise endpoint order in the seam if it fails.
+- **L-wall rasterisation (Phase 1):** guarantee 4-connectivity to avoid diagonal pinholes / sealed
+  gaps; verify with golden L-wall boards (elbow + intended gap).
+- **Checkpoint compat (Phase 2):** verify pre-terrain checkpoint loads & infers; test Transformer +
+  MLP + PPO; append terrain LAST, keep action_mask last in the tensor list.
+- **Wall-camping / distribution shift (out of strict scope):** flag for the combat-reward / curriculum
+  phase — keep a sparse objective anchor; ship terrain as a distinct config, not an in-place flag flip.
+- CUDA setup may be broken on dev machine — use `CUDA_VISIBLE_DEVICES=""` only if training fails.
 
 ## Session Continuity
 
-Last session: 2026-06-19T00:00:00.000Z
-Stopped at: v9 milestone validation complete — all SGS-* requirements verified
+Last session: 2026-06-20T00:00:00.000Z
+Stopped at: v2.0 roadmap created — REQUIREMENTS.md traceability filled, STATE.md initialised
 Resume file: None

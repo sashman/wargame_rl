@@ -1,13 +1,32 @@
-# Roadmap: Shooting & Model Destruction
+# Roadmap: Terrain & Line-of-Sight Blocking (v2.0)
 
 ## Milestones
 
 - ✅ **v9.0 Structured Game State & LLM-Readable Representation** — shipped 2026-06-19 ([archive](milestones/v9-ROADMAP.md))
-- 🚧 **v1.0 Shooting & Model Destruction** — Phases 1–5 complete; Phase 6 (Combat Reward & Curriculum) deferred (this roadmap)
+- ✅ **v1.0 Shooting & Model Destruction** — Phases 1–5 complete; Phase 6 (Combat Reward & Curriculum) deferred ([archive](milestones/v1-ROADMAP.md))
+- 🚧 **v2.0 Terrain & Line-of-Sight Blocking** — Phases 1–2 (this roadmap)
 
 ## Overview
 
-This milestone adds combat to the wargame environment. Models gain durable wound state, a line-of-sight service enables target validity, the action space grows to include shooting, and combat rewards drive curriculum learning. The build order follows dependency: wounds first (shooting needs something to damage), LOS next (shooting needs validity checks), then action space, resolution, and finally rewards. Phases 2 and 3 are independent and can execute in parallel.
+This milestone adds terrain that blocks **line of sight only** to the existing PPO/DQN wargame
+env. A terrain piece is a **footprint rectangle** (an area marker with no gameplay effect this
+milestone) plus thin **walls** (usually L-shaped segments inside the footprint) that block LOS while
+leaving movement untouched, with all terrain **encoded in the observation**. Research reached a clean
+consensus: this is a pure domain-logic + NumPy + existing-Pydantic-config change with **no new
+dependencies**, extending surfaces the codebase already has (the single Bresenham LOS seam, the
+entity-token transformer, the config→factory→aggregate→view DDD spine).
+
+The work splits into a natural **two-phase build order** with a clean one-way dependency: Phase 1
+puts terrain into the simulation/LOS (does the rule work?); Phase 2 puts terrain into the observation
+(can the agent see it?). Phase 2 needs `BattleView.terrain` from Phase 1. Walls are authored as thin
+segments but **rasterised to whole blocking cells** OR'd into the existing `is_blocking(x, y)` seam —
+the Bresenham core in `domain/los.py` stays untouched, and the footprint is deliberately not
+rasterised (no LOS effect yet). The central backward-compat guarantee: **no terrain ⇒ zero terrain
+tokens ⇒ byte-identical behaviour and pre-terrain checkpoints still load.**
+
+> **Phase directory naming:** This milestone restarts phase numbering at 1, but directories carry a
+> `v2-` prefix so they never collide with the existing v1.0 dirs (`01-`…`05-`) or `v9-01-`:
+> `v2-01-terrain-los-blocking`, `v2-02-terrain-observation`.
 
 ## Phases
 
@@ -17,103 +36,54 @@ This milestone adds combat to the wargame environment. Models gain durable wound
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [x] **Phase 1: Wounds & Elimination** - Domain foundation: wound tracking, elimination logic, and termination on full wipe
-- [x] **Phase 2: Alive-Aware Observation** - Observation pipeline handles eliminated models with alive flags and wound status
-- [x] **Phase 3: Line of Sight Service** - Single domain service for Bresenham LOS reused by rules, masks, and rendering (completed 2026-04-04)
-- [x] **Phase 4: Shooting Action Space** - Extend ActionRegistry with shooting targets, phase-gated masks combining LOS/range/alive (completed 2026-04-05)
-- [x] **Phase 5: Shooting Resolution** - Tabletop attack sequence (hit→wound→save→damage) with configurable weapon profiles (completed 2026-04-06)
-- [ ] ~~**Phase 6: Combat Reward & Curriculum**~~ - Deferred: Reward calculators for damage/losses and curriculum phases for learning to shoot
+- [ ] **Phase 1: Terrain in the Simulation (LOS-Blocking)** - Config + domain rasteriser + LOS seam + renderer so walls block line of sight while movement is unaffected
+- [ ] **Phase 2: Terrain in the Observation** - Terrain entity-token stream through the obs pipeline and both networks so the agent can see and reason about terrain
 
 ## Phase Details
 
-### Phase 1: Wounds & Elimination
-**Goal**: Models have durable wound state that changes during an episode; eliminated models are removed from play
-**Depends on**: Nothing (first phase)
-**Requirements**: WOUND-01, WOUND-02, WOUND-03, WOUND-05
+### Phase 1: Terrain in the Simulation (LOS-Blocking)
+**Goal**: Walls authored in YAML block line of sight through the single LOS service while movement
+passes through freely; configs with no terrain behave exactly as today.
+**Directory**: `v2-01-terrain-los-blocking`
+**Depends on**: Nothing (first phase; depends only on the existing domain/LOS layer)
+**Requirements**: TERR-01, TERR-02, TERR-03, TERR-04, TERR-05, TERR-06, TERR-07, TERR-10
 **Success Criteria** (what must be TRUE):
-  1. A model configured with max_wounds=2 starts each episode with 2 wounds and the value can be reduced during play
-  2. A model reduced to 0 wounds is eliminated — excluded from action selection, movement, and objective control
-  3. The episode terminates when all models on one side are eliminated
-  4. Existing YAML configs without wound settings still work with backward-compatible defaults
-**Plans:** 2 plans
-Plans:
-- [x] 01-01-PLAN.md — Domain foundation: take_damage, is_alive, config default, termination extension, unit tests
-- [x] 01-02-PLAN.md — Alive-filtering across env loop, env step wiring, integration tests
-
-### Phase 2: Alive-Aware Observation
-**Goal**: The RL agent can distinguish alive from eliminated models and see wound status in its observations
-**Depends on**: Phase 1
-**Requirements**: WOUND-04, OBS-01, OBS-03
-**Success Criteria** (what must be TRUE):
-  1. The observation tensor includes current_wounds/max_wounds for all models without shape changes mid-episode
-  2. Eliminated models are clearly flagged (alive=0) so the policy distinguishes alive from dead
-  3. A training run completes without observation shape mismatches when models are eliminated mid-episode
-**Plans**:
-- [x] `02-01-PLAN.md` — Types, `to_space`, observation builder + mask, tensor +3 features, tests, suite sweep
-
-### Phase 3: Line of Sight Service
-**Goal**: A single authoritative LOS query exists in the domain layer, reusable by rules, masks, and renderers
-**Depends on**: Nothing (independent of Phase 2; depends on domain layer existing)
-**Requirements**: LOS-01, LOS-02, LOS-04
-**Success Criteria** (what must be TRUE):
-  1. LOS queries correctly report visibility between any two grid positions using Bresenham ray tracing
-  2. The LOS service is a single domain module callable from rules, action masks, and renderers
-  3. LOS results are deterministic and tested against known board configurations with blocking cells
-**Plans:** 1 plan
-Plans:
-- [x] `03-01-PLAN.md` — `domain/los.py`, tests, optional `blocking_mask`, env helpers, human LOS debug (L)
-
-### Phase 4: Shooting Action Space
-**Goal**: Models can select shoot-target actions during the shooting phase with correct validity masking
-**Depends on**: Phase 1, Phase 2, Phase 3
-**Requirements**: ACT-01, ACT-02, ACT-03, ACT-04, LOS-03, SHOT-03
-**Success Criteria** (what must be TRUE):
-  1. The action space includes shooting target indices registered as a new ActionRegistry slice
-  2. Shooting actions are masked out in non-shooting phases; movement actions are masked out in shooting phase
-  3. Action masks correctly filter shoot targets by LOS, weapon range, and target alive status
-  4. Each model selects an action type per phase — move (movement), shoot (shooting), or stay (any)
-**Plans:** 2 plans
-Plans:
-- [x] 04-01-PLAN.md — Config types (WeaponProfile), ActionHandler shooting slice + phase-aware apply, unit tests
-- [x] 04-02-PLAN.md — Shooting mask function, observation builder overlay, env wiring, integration tests
-
-### Phase 5: Shooting Resolution
-**Goal**: Shooting actions resolve damage through the tabletop attack sequence with configurable weapons
-**Depends on**: Phase 4
-**Requirements**: SHOT-01, SHOT-02, SHOT-04, SHOT-05, SHOT-06, OBS-02
-**Success Criteria** (what must be TRUE):
-  1. A shoot action resolves via hit roll → wound roll → save → damage, applying wounds to the target
-  2. Weapon profiles (range, attacks, BS, strength, AP, damage) are configurable per model in YAML
-  3. Models that advanced cannot shoot; models in engagement range cannot shoot
-  4. Weapon-relevant stats appear in the agent's observation for informed targeting decisions
-**Plans:** 2 plans
-Plans:
-- [x] 05-01-PLAN.md — Config + domain shooting resolution + entity extensions + unit tests
-- [x] 05-02-PLAN.md — Env wiring + mask extensions + observation pipeline + integration tests
-
-### Phase 6: Combat Reward & Curriculum (Deferred)
-**Goal**: The agent learns to use shooting effectively through reward shaping and curriculum progression
-**Depends on**: Phase 5
-**Requirements**: CRWD-01, CRWD-02, CRWD-03, CRWD-04
-**Success Criteria** (what must be TRUE):
-  1. A `damage_dealt` reward calculator is registered and configurable in YAML reward phases
-  2. A `models_lost` penalty calculator is registered and configurable in YAML reward phases
-  3. A curriculum phase exists where the agent learns to shoot before combining shooting with movement and objectives
-  4. An agent trained with combat reward phases demonstrates shooting at valid targets during simulation
-**Note**: Deferred — shooting mechanics (Phases 1–5) are complete; reward shaping for combat will be revisited when needed.
+  1. A YAML config can declare a terrain piece (footprint rectangle + zero or more thin L-shaped walls); loading is rejected with a clear error when a wall lies outside its footprint or any coordinate falls off the board.
+  2. A shot whose ray crosses a wall cell is blocked, an open lane stays clear, and a footprint alone never blocks LOS — verified by golden L-wall boards including the diagonal elbow and an intended 1-cell gap.
+  3. LOS through walls is symmetric (A sees B iff B sees A) and deterministic on known boards — verified by a Hypothesis property test over randomised grids and endpoints.
+  4. Shooting masks, action masks, shooting resolution, the renderer overlay, and the snapshot all agree on the same wall blocking because they route through the single `has_line_of_sight_between_cells` seam; the renderer draws walls from the rasterised blocking grid and colours the debug LOS line by the actual verdict.
+  5. A model can still move through a wall cell (movement unaffected), and an existing no-terrain config produces byte-identical LOS behaviour and existing `test_los.py` golden traces stay green.
 **Plans**: TBD
+
+Plans:
+- [ ] v2-01-01: TBD (config types + validators; `domain/terrain.py` value objects + `build_los_blocking_grid` rasteriser, unit-tested without Gym)
+- [ ] v2-01-02: TBD (wire `battle_factory` → `Battle.terrain` + precomputed `los_blocking_grid`; `BattleView.terrain`; repoint `_make_is_blocking`; renderer overlay; LOS-symmetry property test + golden L-wall boards)
+
+### Phase 2: Terrain in the Observation
+**Goal**: Terrain (footprints and walls) is encoded in the agent's observation as an entity-token
+stream appended last, so the policy can reason about it without any mid-episode shape change and
+without breaking pre-terrain checkpoints.
+**Directory**: `v2-02-terrain-observation`
+**Depends on**: Phase 1 (requires `BattleView.terrain`)
+**Requirements**: TERR-08, TERR-09
+**Success Criteria** (what must be TRUE):
+  1. With terrain configured, the observation includes terrain tokens carrying geometry only (wall endpoints + footprint bbox, normalised) — one token per wall, token count equals wall count, and no per-enemy visibility side-channel leaks privileged info.
+  2. With no terrain configured, the observation adds nothing: tensor shapes and dtypes are byte-identical to a captured pre-terrain golden, and there is no mid-episode observation shape change.
+  3. A pre-terrain checkpoint loads and infers on a no-terrain config and produces numerically-equal logits/values, because `terrain_embedding` is `None` when `terrain_size == 0` and terrain tokens are appended after opponents.
+  4. Player and opponent token positions, per-model action heads, and the critic token are unchanged when terrain is present, across the Transformer, MLP, and PPO networks.
+**Plans**: TBD
+
+Plans:
+- [ ] v2-02-01: TBD (`WargameTerrainObservation` + `env_observation.terrain` + builder `_terrain_to_obs`; terrain tensor in `model/common/observation.py`, None-guarded, inserted before mask)
+- [ ] v2-02-02: TBD (`terrain_embedding` appended LAST in Transformer + MLP + PPO backbone share; `from_env` reads `terrain_size`; backward-compat tests: no-terrain byte-identical + pre-terrain checkpoint loads & infers)
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
-(Phases 2 and 3 are independent and can execute in parallel)
+Phases execute in numeric order: 1 → 2
+(Phase 2 depends on `BattleView.terrain` from Phase 1 — strictly sequential)
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Wounds & Elimination | 2/2 | Complete | (see phase detail) |
-| 2. Alive-Aware Observation | 1/1 | Complete | (see phase detail) |
-| 3. Line of Sight Service | 1/1 | Complete | 2026-04-04 |
-| 4. Shooting Action Space | 2/2 | Complete | 2026-04-05 |
-| 5. Shooting Resolution | 2/2 | Complete | 2026-04-06 |
-| 6. Combat Reward & Curriculum | - | Deferred | - |
+| 1. Terrain in the Simulation (LOS-Blocking) | 0/2 | Not started | - |
+| 2. Terrain in the Observation | 0/2 | Not started | - |
