@@ -1,149 +1,87 @@
-# Requirements: Wargame RL — Shooting & Destruction
+# Requirements: Wargame RL — Terrain & Line-of-Sight Blocking (v2.0)
 
-**Defined:** 2026-04-02
+**Defined:** 2026-06-19
 **Core Value:** Agents learn recognisable tactical behaviour through reward shaping and environment design
 
-## v1 Requirements
+> Prior milestones are archived under `.planning/milestones/`:
+> v1.0 (Shooting & Model Destruction) → `v1-REQUIREMENTS.md` / `v1-ROADMAP.md` (Phase 6 deferred);
+> v9.0 (Structured Game State) → `v9-REQUIREMENTS.md` / `v9-ROADMAP.md` (shipped).
 
-Requirements for the shooting & model destruction milestone. Each maps to roadmap phases.
+## Milestone Scope
 
-### Wounds & Elimination
+Terrain that blocks **line of sight only**, modeled as a **footprint** (a large rectangle area
+marker with no gameplay effect this milestone) plus thin **walls** (segments within the footprint,
+usually L-shaped) that block LOS. Movement is unaffected. Terrain is encoded in the observation so
+the agent can reason about it. Wall grid representation is **whole-cell rasterisation** behind the
+existing single LOS seam (cell-edge "true thin" walls deferred). See `.planning/research/SUMMARY.md`.
 
-- [x] **WOUND-01**: Each model has configurable max wounds and tracks current wounds during an episode
-- [x] **WOUND-02**: Models reduced to 0 wounds are eliminated and removed from active play
-- [ ] **WOUND-03**: Eliminated models are excluded from action selection, movement, and objective control
-- [ ] **WOUND-04**: Observation space handles eliminated models gracefully (alive flags or padding, no shape changes mid-episode)
-- [x] **WOUND-05**: Episode terminates when all models on one side are eliminated
+## v2.0 Requirements
 
-### Shooting
+Each requirement maps to exactly one roadmap phase.
 
-- [x] **SHOT-01**: Models can select a shoot action targeting an enemy model within weapon range
-- [x] **SHOT-02**: Shooting resolves via the tabletop attack sequence: hit roll → wound roll → save → damage
-- [x] **SHOT-03**: Shooting is only valid during the shooting phase (phase-gated via action masks)
-- [x] **SHOT-04**: Models that advanced or fell back cannot shoot (consistent with tabletop rules)
-- [x] **SHOT-05**: Models in engagement range cannot shoot (locked in combat restriction)
-- [x] **SHOT-06**: Weapon profiles are configurable per model (range, attacks, BS, strength, AP, damage)
+### Terrain Model & Configuration
+
+- [ ] **TERR-01**: A terrain piece is configurable in YAML as a footprint rectangle plus zero or more thin walls (e.g. L-shaped) placed within that footprint
+- [ ] **TERR-02**: Terrain config is validated at load — walls lie within their footprint and all coordinates fall within board bounds
+- [ ] **TERR-03**: Configs with no terrain behave exactly as today; existing YAML configs and pre-terrain checkpoints keep working (no-op default)
 
 ### Line of Sight
 
-- [x] **LOS-01**: A model can only shoot targets it has line of sight to *(query implemented Phase 3; enforcement Phase 4)*
-- [x] **LOS-02**: LOS is computed via grid-based ray tracing (Bresenham) checking for blocking cells
-- [x] **LOS-03**: LOS results are used in action masking so the agent cannot select invalid shoot targets
-- [x] **LOS-04**: The LOS query is a single domain service reused by rules, masks, and rendering
-
-### Action Space
-
-- [x] **ACT-01**: Each model selects an action type per phase: move (movement phase), shoot (shooting phase), or stay (any phase)
-- [x] **ACT-02**: Shooting actions are registered in ActionRegistry as a new slice with shooting-phase validity
-- [x] **ACT-03**: Action masks combine phase validity, LOS, range, and model alive status
-- [x] **ACT-04**: The total action space grows to accommodate shooting target indices alongside existing movement actions
-
-### Combat Reward
-
-- [ ] **CRWD-01**: A reward calculator rewards dealing damage to opponent models (registered in reward registry)
-- [ ] **CRWD-02**: A reward calculator penalises losing own models to opponent fire
-- [ ] **CRWD-03**: Combat reward is balanced against existing objective-capture incentives via reward phase weights
-- [ ] **CRWD-04**: A curriculum phase exists where the agent learns to shoot before combining shooting with movement and objectives
+- [ ] **TERR-04**: Walls block line of sight — a shot whose ray crosses a wall cell is blocked; footprints do not block LOS
+- [ ] **TERR-05**: Walls and footprints do not affect movement — models traverse terrain freely
+- [ ] **TERR-06**: Wall LOS blocking flows through the single LOS service so shooting masks, action masks, resolution, and rendering all agree on the same blocking
+- [ ] **TERR-07**: LOS through walls is symmetric (A sees B iff B sees A) and deterministic on known board configurations
 
 ### Observation
 
-- [ ] **OBS-01**: Agent observation includes model wound status (current wounds / max wounds) for all visible models
-- [x] **OBS-02**: Agent observation includes weapon profiles or combat-relevant stats for decision making
-- [ ] **OBS-03**: Eliminated models are flagged in the observation so the policy can distinguish alive from dead
+- [ ] **TERR-08**: Terrain (footprints and walls) is encoded in the agent's observation so the policy can reason about it
+- [ ] **TERR-09**: Terrain encoding causes no mid-episode observation shape change and adds nothing to the observation when no terrain is configured
 
-## v2 Requirements
+### Rendering
 
-Deferred to future milestones. Tracked but not in current roadmap.
+- [ ] **TERR-10**: The renderer draws terrain footprints and walls, and the LOS debug overlay reflects actual wall blocking
 
-### Terrain & Cover
+## Future Requirements
 
-- **TERR-01**: Terrain types encoded in board cells (open, cover, blocking, difficult)
-- **TERR-02**: Cover mechanics grant defensive bonus during shooting resolution
-- **TERR-03**: Difficult terrain reduces movement speed
-- **TERR-04**: Blocking terrain is impassable and blocks LOS
-- **TERR-05**: Procedural or template-based map generation
+Deferred to a later terrain milestone (tracked, not in this roadmap):
 
-### Self-Play & Multi-Agent
-
-- **SELF-01**: Two-agent environment with alternating turns
-- **SELF-02**: Self-play via frozen checkpoint opponent pool
-- **SELF-03**: Elo tracking for agent version comparison
-
-### Advanced Mechanics
-
-- **ADV-01**: Melee combat when models are adjacent
-- **ADV-02**: Morale / battleshock from casualties
-- **ADV-03**: Command abilities (per-model special actions)
-
-### Foundation
-
-- **FOUND-01**: Per-model movement speed
-- **FOUND-02**: Positional encoding for transformer
-- **FOUND-03**: Hyperparameter sweep tooling
-- **FOUND-04**: Improved metrics & dashboards
-
-### Scale & Polish
-
-- **SCALE-01**: Larger scenarios (10+ models, batched inference)
-- **SCALE-02**: Web replay viewer
-- **SCALE-03**: Community scenario library
-
-### Structured state & events (v9.0) — ✅ SHIPPED 2026-06-19
-
-Completed and archived. See `.planning/milestones/v9-REQUIREMENTS.md` and
-`.planning/milestones/v9-ROADMAP.md`. All 14 SGS-* requirements verified with test evidence.
+- **TERRF-01**: Cell-edge "true thin" walls (sub-cell LOS via supercover traversal)
+- **TERRF-02**: Footprint-obscures-LOS (40k-faithful ruin obscuring, dense visibility)
+- **TERRF-03**: Cover bonus (+1 armour save vs ranged when in/behind cover)
+- **TERRF-04**: Difficult terrain (movement speed penalty)
+- **TERRF-05**: Impassable/blocking terrain (models cannot move through)
+- **TERRF-06**: Elevation and height advantage (improved AP from elevated positions)
+- **TERRF-07**: Board templates and procedural terrain placement for training variety
+- **TERRF-08**: Variable base sizes (research spike — impact on grid, coherency, engagement, LOS)
+- **TERRF-09**: Terrain in `GameStateSnapshot` for cross-consumer / LLM / replay completeness
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Full weapon keyword matrix (Melta, Blast, Lethal Hits, etc.) | Complexity; start with basic hit/wound/save/damage pipeline |
-| Overwatch / reaction fire | Requires out-of-turn action framework; defer to advanced mechanics |
-| Indirect fire (shooting without LOS) | Special rule; basic LOS-required shooting first |
-| Fog of war / partial observability | Design decision deferred; current milestone assumes perfect information |
-| Terrain interaction with shooting (cover saves) | Terrain is v2; LOS uses blocking cells only if terrain exists |
-| Morale tests from shooting casualties | Morale system is v2 |
-| Pistol weapons in engagement range | Edge case; basic "no shooting in engagement" rule first |
+| Cell-edge thin walls this milestone | Whole-cell rasterisation reuses the existing Bresenham seam with no LOS-core change; cell-edge needs new ray traversal — deferred |
+| Footprint gameplay effects (cover, dense visibility, difficult ground) | Footprint is a no-op area marker this milestone; effects deferred to a later terrain milestone |
+| Terrain affecting movement (impassable, difficult) | Milestone is LOS-only; movement untouched |
+| Elevation / 3D / height | Discrete 2D grid only this milestone |
+| Procedural / template terrain generation | Hand-authored YAML terrain first; generation deferred |
+| Variable base sizes | Research spike; large cross-cutting change deferred |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WOUND-01 | Phase 1 | Complete |
-| WOUND-02 | Phase 1 | Complete |
-| WOUND-03 | Phase 1 | Pending |
-| WOUND-04 | Phase 2 | Pending |
-| WOUND-05 | Phase 1 | Complete |
-| SHOT-01 | Phase 5 | Complete |
-| SHOT-02 | Phase 5 | Complete |
-| SHOT-03 | Phase 4 | Complete |
-| SHOT-04 | Phase 5 | Complete |
-| SHOT-05 | Phase 5 | Complete |
-| SHOT-06 | Phase 5 | Complete |
-| LOS-01 | Phase 3 | Complete (query; mask in Phase 4) |
-| LOS-02 | Phase 3 | Complete |
-| LOS-03 | Phase 4 | Complete |
-| LOS-04 | Phase 3 | Complete |
-| ACT-01 | Phase 4 | Complete |
-| ACT-02 | Phase 4 | Complete |
-| ACT-03 | Phase 4 | Complete |
-| ACT-04 | Phase 4 | Complete |
-| CRWD-01 | Phase 6 | Pending |
-| CRWD-02 | Phase 6 | Pending |
-| CRWD-03 | Phase 6 | Pending |
-| CRWD-04 | Phase 6 | Pending |
-| OBS-01 | Phase 2 | Pending |
-| OBS-02 | Phase 5 | Complete |
-| OBS-03 | Phase 2 | Pending |
+| TERR-01 | TBD | Pending |
+| TERR-02 | TBD | Pending |
+| TERR-03 | TBD | Pending |
+| TERR-04 | TBD | Pending |
+| TERR-05 | TBD | Pending |
+| TERR-06 | TBD | Pending |
+| TERR-07 | TBD | Pending |
+| TERR-08 | TBD | Pending |
+| TERR-09 | TBD | Pending |
+| TERR-10 | TBD | Pending |
 
-**v1.0 Coverage:**
-- v1 requirements: 26 total
-- Mapped to phases: 26 ✓
-- Unmapped: 0
-
-**v9.0 Coverage (structured state & events):** Shipped 2026-06-19 — archived to
-`.planning/milestones/v9-REQUIREMENTS.md` (14/14 SGS-* complete with test evidence).
+*Phase column filled by the roadmapper.*
 
 ---
-*Requirements defined: 2026-04-02*
-*Last updated: 2026-06-19 — v9.0 milestone archived; v1.0 shooting requirements remain (Phase 6 deferred)*
+*Requirements defined: 2026-06-19 — v2.0 Terrain & Line-of-Sight Blocking*
