@@ -1,126 +1,161 @@
-# Feature Landscape — RL Tabletop / Grid Wargame Environments
+# Feature Research — v2.0 Terrain & Line-of-Sight Blocking
 
-**Domain:** Turn-based (or phase-based) tactical combat on a discrete grid, trained with RL
-**Researched:** 2026-04-02
-**Project lens:** Brownfield milestone — combat, terrain, opponent AI, advanced mechanics atop existing movement, objectives, curriculum, PPO/DQN, scripted opponents (`docs/goals-and-roadmap.md`, `docs/tabletop-rules-reference.md`).
+**Domain:** Terrain that blocks line of sight (footprint + thin walls) in a discrete-grid RL wargame env
+**Researched:** 2026-06-19
+**Confidence:** HIGH for tabletop mapping and existing-system integration (verified against code + rules ref + Warhammer Community); MEDIUM for the wall-representation decision (open design question, see Dependency Notes)
 
-**Overall confidence:** **MEDIUM–HIGH** for categorisation relative to this repo’s rules target and public RL tactical-env patterns; **MEDIUM** for “what every paper builds” (research prototypes vary widely).
-
----
-
-## How mechanics usually show up in RL wargame-style envs
-
-| Mechanic | Typical implementation | RL-facing concern |
-|----------|------------------------|------------------|
-| **Shooting** | Discrete target choice + range check + stochastic or deterministic damage | Exploding combinatorial action space; needs masking and/or factorisation |
-| **LOS** | Grid raycast, visibility graph, or hex line algorithms; terrain blocks or soft-blocks | Must align with observation (honest partial observability vs omniscient cheat) |
-| **Terrain** | Per-cell tags: open, difficult, blocking, cover; may affect movement cost, saves, visibility | Observation encoding and map variety for generalisation |
-| **Self-play** | Two-player env API + same policy both sides, or frozen checkpoints / population | Training stability (non-stationarity), role conditioning, league/Elo optional |
-| **Melee** | Adjacency / engagement range, often separate phase; no LOS or shorter range | Credit assignment across phases; coupling with movement (charge, pile-in) |
-| **Morale** | Threshold triggers (e.g. half strength), random or deterministic pass/fail, debuffs | Delayed consequences; sparse signal unless shaped |
-
-Recent adjacent work (e.g. hex-and-counter wargames with RL, grid tactical envs with fog/LOS/cover) reinforces that **terrain + visibility + combat resolution** appear together when the stated goal is tactical depth rather than abstract board control. Self-play appears as a **training methodology** once a symmetric two-player interface exists, not as a substitute for environment mechanics.
+> **Scope guard (read first).** This milestone is *line of sight only*. Terrain = a **footprint** (large rectangle area marker, no gameplay effect this milestone) + **thin walls** (segments inside the footprint, usually L-shaped) that **block LOS only**. Movement is unaffected. Everything in the "Anti-Features / Out of Scope This Milestone" section is explicitly deferred. The downstream requirements author should keep proposed scope to the Table Stakes set.
 
 ---
 
-## Table stakes
+## Tabletop grounding (how "ruins / area terrain with walls" actually work)
 
-Features a **credible** “wargame RL environment” (grid, ranged combat, two sides) is expected to expose or simulate. Omitting these tends to make “tactical combat” claims weak or the MDP degenerate.
+Verified against the project rules reference (`docs/tabletop-rules-reference.md`) and Warhammer Community / Goonhammer (40k 10th edition, current rules):
 
-| Feature | Why expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| **Damage / durability / removal** | Combat must change who can act and who controls space | Low–Med | Wounds, HP, or binary alive; elimination updates observation and action slots |
-| **Ranged attacks with range limits** | Defines shooting as a distinct interaction from movement | Med | Often one target per model per step initially |
-| **Visibility / LOS for ranged fire** | Without it, “shooting” collapses to range-only arcades | Med | Grid raycast or Bresenham-style; must match what the agent is allowed to know |
-| **Legal action specification** | Invalid shoot/move must be disallowed or masked | Med | Gymnasium `action_masks`, invalid-action penalties, or structured action spaces |
-| **Combat-aware reward (non-purely sparse)** | RL needs gradients when objectives are long-horizon | Med | Damage dealt/taken, eliminations, shaping balanced with mission VP |
-| **Two-sided game state** | Wargames are adversarial; single-agent-vs-environment is a stepping stone | Med–High | API for two policies or player/opponent turns; your roadmap’s Phase 4 |
-| **Turn / phase ordering consistent with actions** | Avoids ambiguous simultaneous resolution | Med | You already have multi-phase turns; stakes rise when shooting/melee go live |
-| **Terrain minimum viable set** | “Tactics” without terrain is often just geometry | Med | At least **blocking** (movement and/or LOS) **or** **cover** (defensive modifier)—ideally both for rules fidelity |
+- **Ruins are defined by a footprint.** The footprint is the piece's area on the table (the base outline, or the vertical projection of the upper floors when there is no base).
+- **In real 40k 10e the footprint itself blocks LOS** ("Ruins completely block visibility of all models through their footprint, regardless of windows"). Models outside can shoot *in*, models wholly inside can shoot *out*, and `TOWERING`/`AIRCRAFT` ignore the block.
+- **Walls** in tabletop are primarily a *movement* + *cover* construct (infantry walk through walls; non-infantry are stopped by walls >2"). They are not, by themselves, the canonical LOS blocker — the footprint is.
 
-**Dependency note:** Shooting **depends on** damage model + (for credibility) LOS + legal targets. Terrain **interacts with** movement (already present) and **should** interact with LOS/cover once shooting exists.
+**Design divergence to flag for the requirements author (HIGH importance):**
+This milestone deliberately models **walls (segments) as the LOS blocker** and treats the **footprint as a no-op marker**. That is a *simplification/inversion* of 40k 10e (where the footprint obscures). It is a reasonable, intentional choice — segment-level walls give finer tactical geometry (you can be adjacent to a wall and still shoot down a corridor) and defer the "wholly-within / shoot-in-shoot-out" complexity. But requirements should state plainly that v2.0 terrain is **"walls block the ray"**, *not* "footprint obscures the area," so nobody expects 40k-faithful ruin obscuring yet. The footprint exists now only to (a) author/group walls, (b) appear in the observation, and (c) be the future hook for cover/dense-visibility.
 
 ---
 
-## Differentiators
+## Feature Landscape
 
-Valued or research-novel relative to a minimal “units shoot each other on a grid” demo. Not all are required for a useful training sandbox.
+### Table Stakes (Required for a credible "walls block LOS + terrain in observation" milestone)
 
-| Feature | Value proposition | Complexity | Notes |
+| Feature | Why Expected | Complexity | Notes / Dependency |
+|---------|--------------|------------|--------------------|
+| **Terrain config schema: footprint rect + wall segments** | Without authored terrain there is nothing to block; YAML is the only authoring path | LOW–MED | New Pydantic models in `envs/types/config.py` (e.g. `TerrainPieceConfig` = footprint `(x_min,y_min,x_max,y_max)` + `walls: list[WallSegmentConfig]`). Mirror existing `ObjectiveConfig`/`ModelConfig` style; validate in-bounds + walls-inside-footprint at construction (KISS: validate at init). Defaults to `None`/`[]`. |
+| **Walls compiled into the LOS blocking input** | The single job of the milestone: a wall on the ray blocks the shot | MED | Extends `domain/los.py`. Today `WargameEnv._make_is_blocking()` builds an `is_blocking(x,y)` predicate from `config.blocking_mask`. Walls must feed the same single LOS service so there is **one** Bresenham path (renderer + shooting masks already share it). |
+| **Wall grid representation decision (whole-cell vs cell-edge)** | Determines the LOS algorithm and the obs encoding; it is the milestone's central open question | MED (whole-cell) / HIGH (cell-edge) | See Dependency Notes. **Recommend whole-cell for v2.0** (walls → blocking cells, reuse existing interior-cell predicate, near-zero new LOS code). Cell-edge is more faithful to "thin walls" but needs a new edge-crossing LOS test. |
+| **Backward-compatible no-op default** | Project constraint: existing YAML configs must behave exactly as today | LOW | `terrain: None`/absent → empty wall set → `is_blocking` returns `False` everywhere (same as current `blocking_mask=None`). Add backward-compat tests asserting identical obs/behaviour. |
+| **Terrain encoded in observation space** | Stated milestone goal — agent must see/reason about terrain (observation honesty: terrain is public) | MED | Cleanest fit for the entity-centric transformer: terrain as a **new token type** (footprints and/or wall segments as tokens with their own `nn.Linear` embedding), exactly like `objectives`/`opponents`. Requires the full obs pipeline touch: `WargameEnvObservation` field → `observation_builder.build_observation` → `_observation_to_numpy` → `observation_to_tensor`/`observations_to_tensor_batch` → **both** networks' `forward` (Transformer needs the new embedding + token-order update; MLP just flattens). Fixed token count per episode (no shape changes mid-episode). |
+| **Renderer draws footprints + walls** | Debuggability — humans/video must see what blocks LOS, and the existing `L` LOS debug overlay must agree with the new blockers | LOW–MED | `renders/human.py` already has gridlines + `iter_los_cells` LOS overlay. Add footprint rectangles (translucent fill) + wall segments (thick lines). Reuse existing scale/canvas transforms. |
+| **Tests: LOS-through-wall, no-terrain regression, obs shape stability** | Milestone is a correctness change to a shared service; needs regression coverage | LOW–MED | Extend `tests/test_los.py` (wall blocks ray; open lane does not) + obs-shape/backward-compat tests. Deterministic, no randomness. |
+
+### Differentiators (Optional polish — include only if cheap; not required to ship the milestone)
+
+| Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| **Self-play + checkpoint pool / league** | Automatic curriculum of stronger opponents; common in competitive RL | High | Requires stable two-agent loop; optional Elo/version tracking |
-| **Faithful attack pipeline** | Hit → wound → save → damage (per `tabletop-rules-reference.md`) | High | Richer but slower to learn; good for sim fidelity, harder for first RL convergence |
-| **Partial observability / fog-of-war** | Matches human information; stresses robust policies | Med–High | Tension with “debuggability”; must match LOS rules |
-| **Curriculum across mechanics** | Phased rewards and success criteria (you already have reward phases) | Med | Differentiator vs one-shot sparse mission rewards |
-| **Charge + fight sub-mechanics** | Pile-in, consolidate, fight order — tabletop flavour | High | Often phased after basic melee |
-| **Morale / battleshock** | Cascading debuffs, OC suppression | Med–High | Sparse signal; needs careful shaping and phase hooks (Command phase) |
-| **Command points / stratagems** | Extra action economy and tactical timing | High | Large design space; usually late milestone |
-| **Procedural maps + scenario library** | Generalisation beyond hand-tuned boards | Med–High | Pairs well with terrain types |
-| **Multi-unit coordination objectives** | Group cohesion + focus fire + objective VP (you partially have this) | Med | Team RL (MAPPO, QMIX) is optional future stack |
-| **Transformer / entity-centric encoders** | Variable units/objectives; attention over battlefield | Med | Architectural differentiator, not a rules feature |
+| **Cell-edge ("thin") wall segments** | Faithful "thin L-shaped wall" geometry; models can sit either side of a wall in adjacent cells and still see down open lanes | HIGH | The more "correct" rendering of walls, but requires a grid-edge LOS algorithm (supercover/edge-crossing) rather than the current interior-cell predicate. A differentiator, not table stakes — recommend deferring unless the open question resolves toward edges. |
+| **Footprint membership in observation (e.g. "model is inside terrain" flag)** | Cheap precursor to future cover / dense-visibility; gives the agent a richer terrain signal | LOW | Footprints are already authored; adding an "inside-footprint" per-model bit is a small obs addition. Pure no-op on gameplay this milestone. |
+| **Terrain in the canonical `GameStateSnapshot`** | v9.0 shipped structured state; terrain in the snapshot keeps LLM/replay representations complete | MED | Extends `envs/state/snapshot.py` + JSON schema. Nice for cross-consumer consistency, but not needed for RL training to work. |
+| **Wall LOS debug overlay toggle** | Show exactly which cells/edges block on the `L` debug view | LOW | Small renderer add; aids verification. |
+| **Multiple terrain pieces per board** | Several ruins for richer geometry | LOW | Falls out naturally if the schema is `list[TerrainPieceConfig]`; not a separate feature, just don't cap it at one. |
+
+### Anti-Features (Out of scope this milestone — defer, do NOT pull in)
+
+These are all explicitly **DEFERRED** per `PROJECT.md`. Listed so the requirements author keeps them out of v2.0 scope.
+
+| Feature | Why It Gets Requested | Why Out of Scope Now | Defer To |
+|---------|----------------------|----------------------|----------|
+| **Cover save bonus (+1 Sv vs ranged)** | "Terrain should protect units" | Touches shooting *resolution* (`domain/shooting.py`), not LOS; new reward/obs surface | Later terrain milestone |
+| **Dense terrain visibility (woods / wholly-inside never fully visible)** | "Real ruins hide units inside" | Requires footprint-membership + partial-visibility model; this milestone makes footprint a no-op | Later terrain milestone |
+| **Footprint-obscures-LOS (40k-faithful ruin)** | "That's how real ruins work" | Milestone intentionally models *walls* as the blocker; area-obscuring is a different LOS model + shoot-in/shoot-out rules | Later terrain milestone |
+| **Difficult ground (movement penalty)** | "Terrain should slow you down" | Movement is explicitly unaffected this milestone | Later terrain milestone |
+| **Impassable / blocking movement** | "Walls should stop models" | Movement unaffected; pathing/placement collision is a large change | Later terrain milestone |
+| **Elevation / height / plunging fire** | "Ruins have floors" | 3D adds a whole dimension to grid + obs; far out of scope | Later terrain milestone |
+| **Board templates / procedural terrain placement** | "Need variety for generalisation" | Authoring/generation system; orthogonal to the LOS mechanic | Later terrain milestone |
+| **Variable base sizes** | "Tanks are bigger than infantry" | Flagged as its own research spike; affects movement/coherency/LOS broadly | Later terrain milestone |
+| **Per-cell full-grid terrain channel in obs** | "Just feed a 2D map to a CNN" | Conflicts with the entity-centric transformer (variable board sizes, token model); blows up input dim | Use terrain *tokens* instead |
 
 ---
 
-## Anti-features
+## Feature Dependencies
 
-Deliberately **not** building these (or not building them *early*) avoids scope explosion, misleading training signal, or contradictions with project constraints.
+```
+Terrain config schema (footprint + walls)
+    └──requires──> WargameEnvConfig validation (envs/types/config.py)
 
-| Anti-feature | Why avoid | What to do instead |
-|--------------|-----------|-------------------|
-| **Perfect information while modelling hidden rules** | Violates stated principle “observation honesty” | Expose only visible enemies/cells; document belief-state if needed later |
-| **Full weapon keyword matrix on day one** | Explodes rules surface (Indirect, Devastating, etc.) | Start with one weapon profile + optional toggles per scenario |
-| **Army list building / points balancing** | Out of scope per `PROJECT.md` | Fixed scenarios in YAML; curated force lists |
-| **Real-time continuous simulation** | Contradicts discrete grid + turn-based goal | Keep phase/step discrete |
-| **3+ player diplomacy / FFA** | Out of scope; explodes joint action spaces | Strict two-player (or two-team) APIs |
-| **Unshaped sparse combat** | Long episodes, vanishing gradients | Pair every new mechanic with calculators / phase-aware rewards |
-| **Simultaneous move resolution without spec** | Ambiguous collisions and fairness | Prefer explicit turn order or documented simultaneous rules |
+Walls block LOS
+    └──requires──> Terrain config schema
+    └──requires──> Wall representation decision (whole-cell vs cell-edge)
+    └──requires──> domain/los.py is_blocking predicate  [EXISTS]
+                       └──shared by──> shooting masks + renderer LOS overlay  [EXISTS]
 
----
+Terrain in observation
+    └──requires──> Terrain config schema
+    └──enhances──> agent's tactical reasoning (the milestone goal)
+    └──touches──> full obs pipeline + BOTH networks (Transformer embedding + MLP flatten)
 
-## Feature dependencies
+Renderer footprints/walls ──enhances──> debuggability (agrees with `L` LOS overlay)
 
-```text
-Wounds / elimination ─────────────────┐
-                                      ├──► Shooting (credible ranged combat)
-LOS / visibility ─────────────────────┤
-Legal targets + action structure ────┘
-
-Terrain: blocking ──────► LOS blocks, movement blocks
-Terrain: difficult ──────► Movement costs (extends existing movement)
-Terrain: cover ──────────► Shooting resolution modifier
-
-Two-agent env API ───────► Self-play, Elo, frozen opponents
-Shooting + melee + morale ► Full phase loop (command → … → fight) with real actions
+No-terrain default ──conflicts-if-broken──> every existing YAML config (must stay no-op)
 ```
 
-**Ordering rationale (aligns with your roadmap):**
-Combat resolution (wounds, shoot, LOS, actions) **before** heavy terrain variety is acceptable for prototypes, but **production-quality shooting** almost always pulls terrain in for LOS/cover. Opponent AI at strength **requires** a two-sided stepping API; self-play layers on top. Melee and morale **depend on** stable positioning, engagement concepts, and usually shooting already stressing the observation/action pipeline.
+### Dependency Notes
+
+- **Walls block LOS requires the wall-representation decision.** This is the milestone's pivotal choice and should be resolved in planning/discussion before implementation:
+  - **Whole-cell blocking (RECOMMENDED for v2.0):** rasterise each wall segment into a set of blocking grid cells and OR them into the existing `is_blocking(x,y)` predicate (same mechanism as `config.blocking_mask`). **Pros:** ~zero new LOS code, reuses the proven interior-cell Bresenham, trivially consistent with renderer + shooting masks, easiest obs encoding (cells or segment tokens). **Cons:** a "thin" wall occupies whole cells, so two models in cells on opposite sides of a 1-cell wall cannot see each other even point-blank; corners are chunky.
+  - **Cell-edge segments (DEFER / differentiator):** walls live on edges between cells; LOS is blocked only when the Bresenham/supercover ray *crosses* a blocked edge. **Pros:** faithful thin walls, better corner/corridor behaviour. **Cons:** requires a new edge-aware LOS routine (the current predicate is cell-keyed, endpoints excluded), more complex obs encoding, and more test surface. Recommend only if the open question resolves toward edges and there's appetite for the extra LOS work.
+- **Terrain in observation requires the config schema and touches both networks.** Per the pytorch rule, adding an entity type means: obs dataclass field → builder → numpy tuple → `observation_to_tensor` (+ batch) → **both** `DQN`/`Transformer` forwards (Transformer needs a dedicated terrain embedding and updated token ordering; player tokens must remain extractable for per-model action heads) → fix unpacking in `test_state.py`/`test_dqn.py`. Encode terrain as **tokens**, not a dense grid, to fit the variable-size entity transformer.
+- **No-terrain default conflicts with everything if broken.** The single hard backward-compat rule: absent/empty terrain must reproduce today's observation tensor shapes and LOS behaviour. If terrain adds an always-present token slot, that changes obs shape for *all* configs — acceptable only if it's a fixed, documented change covered by updated tests (preferred: a fixed minimum terrain token count, zero-padded when no terrain, mirroring how opponents are handled).
 
 ---
 
-## MVP recommendation (for requirements downstream)
+## MVP Definition
 
-**Prioritise (table stakes slice):**
+### Launch With (v2.0 — table stakes)
 
-1. Functional wounds + elimination
-2. Shooting with range + LOS + masked/valid actions
-3. Action-type selection per model (move / shoot / pass)
-4. Combat-aware reward components (damage, losses, tie-in to VP/objectives)
-5. Terrain: blocking + cover (minimum set that interacts with movement and shooting)
+- [ ] **Terrain config schema** — `TerrainPieceConfig` (footprint rect + `walls`) in `WargameEnvConfig`, validated at construction, default no-op
+- [ ] **Walls compiled into LOS** — walls feed the single `domain/los.py` blocking predicate (recommend whole-cell rasterisation OR-ed with existing `blocking_mask`)
+- [ ] **Terrain in observation** — terrain tokens through the full obs pipeline + both networks, fixed token count, no mid-episode shape change
+- [ ] **Renderer footprints + walls** — drawn on the Pygame canvas; `L` LOS overlay agrees with the new blockers
+- [ ] **Backward-compatible default** — no terrain ⇒ identical obs + LOS to today (regression test)
+- [ ] **Tests** — wall-blocks-ray, open-lane-passes, no-terrain regression, obs-shape stability (deterministic)
 
-**Defer as differentiators until the slice trains:** full dice attack sequence fidelity, stratagems, full morale chain, charge fight sequencing, league self-play.
+### Add After Validation (later terrain milestone)
 
----
+- [ ] **Cell-edge thin walls** — trigger: whole-cell corners/adjacency prove too coarse for desired tactics
+- [ ] **Footprint-membership obs flag** — trigger: starting cover or dense-visibility work
+- [ ] **Terrain in `GameStateSnapshot`** — trigger: LLM/replay consumers need terrain
+
+### Future Consideration (deferred terrain features)
+
+- [ ] Cover save bonus · dense visibility · difficult ground · impassable terrain · elevation/plunging fire · board templates/procedural placement · variable base sizes — all per `PROJECT.md` deferral list
+
+## Feature Prioritization Matrix
+
+| Feature | User Value | Implementation Cost | Priority |
+|---------|------------|---------------------|----------|
+| Terrain config schema (footprint + walls) | HIGH | LOW–MED | P1 |
+| Walls block LOS (whole-cell) | HIGH | MED | P1 |
+| Terrain in observation (tokens) | HIGH | MED | P1 |
+| Backward-compatible no-op default | HIGH | LOW | P1 |
+| Renderer footprints + walls | MED | LOW–MED | P1 |
+| Regression + LOS tests | HIGH | LOW–MED | P1 |
+| Cell-edge thin walls | MED | HIGH | P3 |
+| Footprint-membership obs flag | LOW–MED | LOW | P2 |
+| Terrain in GameStateSnapshot | LOW | MED | P3 |
+
+**Priority key:** P1 must-have for the milestone · P2 add if cheap · P3 defer.
+
+## Existing-System Integration Map (for the requirements author)
+
+| Existing system | File | What v2.0 touches |
+|-----------------|------|-------------------|
+| LOS service | `wargame_rl/wargame/envs/domain/los.py` | Walls feed `is_blocking`; keep single Bresenham path |
+| LOS wiring | `wargame_rl/wargame/envs/wargame.py` (`_make_is_blocking`, `has_line_of_sight_between_cells`) | Combine walls with existing `blocking_mask` |
+| Config | `wargame_rl/wargame/envs/types/config.py` | New `TerrainPieceConfig`/`WallSegmentConfig`; validate at init; default no-op |
+| Observation types | `wargame_rl/wargame/envs/types/env_observation.py` | New terrain field |
+| Obs builder | `wargame_rl/wargame/envs/env_components/observation_builder.py` | Emit terrain into observation |
+| Tensor pipeline | `wargame_rl/wargame/model/common/observation.py` | New terrain tensor in `_observation_to_numpy` + `observation_to_tensor`(+batch) |
+| Networks | `wargame_rl/wargame/model/net.py` | Terrain embedding + token order (Transformer); flatten (MLP) |
+| Renderer | `wargame_rl/wargame/envs/renders/human.py` | Draw footprints + walls; LOS debug agreement |
+| Shooting masks | `wargame_rl/wargame/envs/env_components/shooting_masks.py` | No change — already consumes `has_line_of_sight_between_cells` |
+| Snapshot (optional) | `wargame_rl/wargame/envs/state/snapshot.py` | Differentiator only |
 
 ## Sources
 
-- Project: `.planning/PROJECT.md`, `docs/goals-and-roadmap.md`, `docs/tabletop-rules-reference.md` — **HIGH** confidence for intended feature set and rules mapping.
-- Ecosystem (illustrative, not exhaustive): arXiv “Hex and Counter Wargames” (RL + terrain/unit interactions); open tactical Gymnasium-style projects (e.g. grid combat with LOS/fog/cover patterns cited in community repos); SPIRAL / self-play MARL literature for two-player training framing — **MEDIUM** confidence for “what researchers often add when going beyond toy combat.”
+- `/home/sash/Workspace/wargame_rl/.planning/PROJECT.md` — milestone scope, deferral list, constraints — **HIGH**
+- `/home/sash/Workspace/wargame_rl/docs/tabletop-rules-reference.md` — terrain table (Ruins block LOS; footprint; infantry through walls) — **HIGH**
+- Existing code: `domain/los.py`, `types/config.py` (`blocking_mask`), `env_components/observation_builder.py`, `model/common/observation.py`, `model/net.py`, `renders/human.py` — **HIGH** (read directly)
+- `.cursor/rules/pytorch-dqn.mdc`, `gymnasium-env.mdc` — obs/entity extension checklist — **HIGH**
+- Warhammer Community "Simple Terrain", Goonhammer Ruleshammer Terrain Guide, tuser.tv 10e ruins/visibility — current 40k 10e ruin/footprint/wall LOS behaviour — **MEDIUM–HIGH** (multiple sources agree; used to flag the footprint-vs-wall design divergence)
+- `.planning/research/v1-FEATURES.md` — prior terrain categorisation reused — **HIGH**
 
 ---
-
-## Gaps / phase-specific follow-ups
-
-- Exact partial-observability design (per-cell vs per-unit visibility, memory) — needs a dedicated design pass when LOS lands.
-- Whether charge phase is stochastic (2D6) or abstracted for RL stability — feasibility trade-off.
-- Single shared policy vs separate policies per side for self-play — architecture decision in Phase 4.
+*Feature research for: v2.0 Terrain & Line-of-Sight Blocking (footprint + thin walls)*
+*Researched: 2026-06-19*

@@ -1,187 +1,140 @@
 # Project Research Summary
 
-**Project:** Wargame RL
-**Domain:** Brownfield RL tabletop wargame (discrete grid, multi-unit control, curriculum rewards) expanding into combat, terrain/LOS, and self-play
-**Researched:** 2026-04-02
-**Confidence:** MEDIUM–HIGH (HIGH for stack/architecture fit to this repo; MEDIUM for ecosystem-wide RL tactical-env norms)
+**Project:** wargame_rl — v2.0 Terrain & Line-of-Sight Blocking
+**Domain:** Brownfield discrete-grid RL tabletop wargame (DDD env, transformer-over-entities observation)
+**Researched:** 2026-06-19
+**Confidence:** HIGH
 
 ## Executive Summary
 
-This milestone is **not** a stack pivot: Gymnasium, PyTorch Lightning, PPO (default) + DQN, transformer-over-entities, Pydantic YAML configs, Wandb, and UV remain the right foundation. The upcoming work is **domain logic and training patterns**—combat resolution, terrain grids, LOS queries, and opponent escalation—implemented mostly as **pure Python/NumPy** domain services under the existing DDD layout (`domain/`, `BattleView`, registries), not as a game engine or heavy MARL framework.
+This milestone adds **terrain that blocks line of sight only** to an existing, working PPO/DQN wargame env. A terrain piece is a **footprint rectangle** (an area marker with *no* gameplay effect this milestone) plus **thin L-shaped walls** that block LOS but leave movement untouched, with all terrain **encoded into the observation**. The four research tracks reached an unusually clean consensus: this is a *pure domain-logic + NumPy + existing-Pydantic-config* change — **no new dependencies** — that extends surfaces the codebase already has (the single Bresenham LOS seam, the entity-token transformer, the config→factory→aggregate→view DDD spine).
 
-Experts building credible tactical RL environments typically separate **authoritative simulation** (terrain, LOS, wounds, legal actions) from **observation construction** and **training orchestration** (single-agent Gym with environment-side opponent vs PettingZoo AEC). This repo should **extend aggregate and `BattleView`**, keep **one LOS/combat source of truth** callable from rules and observations, and grow **action spaces with explicit legal masks** derived from the same domain rules. Self-play should favor a **frozen checkpoint pool** and scripted baselines before considering league play or PettingZoo.
+The recommended approach is **whole-cell wall blocking**: author walls as thin segments, but **rasterise them to whole blocking cells** in a new pure `domain/terrain.py` service, OR them into the existing injectable `is_blocking(x, y)` predicate, and leave `domain/los.py`'s Bresenham core completely unchanged. The footprint is deliberately **not** rasterised (no LOS effect yet). Terrain is encoded as a **new entity-token stream appended LAST** in the observation, with a `terrain_embedding` that is `None` when no terrain is present — exactly mirroring the proven `opponent_model_embedding is None` pattern. This yields the central backward-compat guarantee: **no terrain ⇒ zero terrain tokens ⇒ byte-identical behaviour and pre-terrain checkpoints still load.** Cell-edge "true thin" walls are explicitly deferred (they would require new ray traversal and break the tested interior-only contract).
 
-Primary risks are **reward shaping diverging from real mission outcomes**, **action-space explosion without factoring**, **subtle LOS/terrain bugs that RL exploits**, **curriculum ordering that fights new mechanics**, and **naive self-play cycling**. Mitigations: sparse anchors on VP/success criteria, factored actions + mask unit tests, golden/property tests for LOS, phased calculators aligned with `docs/reward-phases.md`, and opponent pools with fixed scripted eval suites—not Elo alone.
+The work splits into a natural **two-phase build order** with a clean one-way dependency: **Phase A** puts terrain into the simulation/LOS (config + rasteriser + Battle/BattleView wiring + repoint `_make_is_blocking` + renderer + tests); **Phase B** puts terrain into the observation (obs type + tensor pipeline + both networks + backward-compat tests). The top risks are all geometry/contract integrity issues — rasterised L-wall corner pinholes or sealed gaps, Bresenham `A→B` vs `B→A` asymmetry, mask↔resolution LOS divergence, observation shape drift / checkpoint break, observation honesty, and renderer/debug divergence — every one of which has a concrete, testable mitigation. The two non-negotiable tests are a **Hypothesis LOS-symmetry property test** and **golden L-wall boards**.
 
 ## Key Findings
 
 ### Recommended Stack
 
-**Keep:** Gymnasium 1.x, PyTorch + Lightning 2.5+, PPO + DQN, transformer policy, Pydantic/pydantic-yaml, Wandb, UV. No OpenSpiel, RLlib multi-agent, or Unity/Godot for grid dice math.
-
-**Add (mostly zero new dependencies):** NumPy for vectorized combat dice; Bresenham-style LOS in-domain; `torch.profiler` for GPU profiling alongside existing pyinstrument. **Optional:** Wandb Sweeps (or Optuna + Wandb) for hyperparameter search; PettingZoo only if a milestone explicitly wants first-class two-agent APIs.
-
-**Key insight:** Upcoming features are **domain + reward shaping**, not infrastructure churn. The main fork is **extend Gym + `OpponentPolicy` (frozen checkpoint)** vs **adopt PettingZoo**—defer until combat/terrain stabilize.
-
-Detail: [STACK.md](./STACK.md).
+No stack change. Everything is built on libraries already pinned in the project; the integration surfaces (LOS seam, blocking predicate, config, observation pipeline, transformer) already exist and are the only things touched. See `STACK.md`.
 
 **Core technologies:**
-
-- **Gymnasium + existing Lightning loop:** Stable training surface; opponent stays env-side until P4 needs a hard two-agent contract.
-- **NumPy:** Batch RNG and threshold comparisons for hit/wound/save/damage—no external combat library.
-- **Domain modules + `BattleView`:** Terrain grid, LOS queries, wounds—keeps reward/render honest and testable.
+- **NumPy** (already pinned): wall rasterisation to a boolean blocking grid + vectorised observation features — grid blocking is a 2D bool array; no geometry lib needed.
+- **Pydantic + pydantic-yaml** (already pinned): new `TerrainPieceConfig` / `WallConfig` models with init-time validation, mirroring the existing `blocking_mask` / `ObjectiveConfig` pattern.
+- **In-repo Bresenham** (`domain/los.py`): single LOS source of truth, reused unchanged; walls feed it via the existing `is_blocking` injection point.
+- **Explicitly NOT added:** Shapely (GEOS native dep, continuous geometry unused on a grid, slower than integer Bresenham), SciPy/`ndimage` (only relevant to deferred dense-visibility), roguelike FOV libs like `tcod`. No new dependency is justified.
 
 ### Expected Features
 
-**Must have (table stakes):** Damage/durability/removal; ranged attacks with range limits; **LOS aligned with what the agent may know**; legal actions or masks; combat-aware (non-purely-sparse) reward; two-sided game state API path; turn/phase ordering consistent with actions; **terrain minimum: blocking and/or cover** for credible tactics.
+Scope is *line of sight only*. See `FEATURES.md`.
 
-**Should have (differentiators):** Self-play + checkpoint pool/league; faithful tabletop attack pipeline; fog-of-war; curriculum across mechanics (already partially present); procedural maps; multi-unit coordination objectives; transformer entity encoding (already architectural).
+**Must have (table stakes):**
+- **Terrain config schema** — `TerrainPieceConfig` (footprint rect + `walls`), validated at construction (in-bounds, walls ⊂ footprint), default no-op (`None`).
+- **Walls compiled into the single LOS blocking predicate** — whole-cell rasterisation OR'd with the existing `blocking_mask`; one Bresenham path for masks, resolution, renderer, snapshot.
+- **Terrain encoded in the observation** — terrain tokens through the full obs pipeline + **both** networks, fixed token semantics, no mid-episode shape change.
+- **Backward-compatible no-op default** — absent/empty terrain reproduces today's tensor shapes and LOS behaviour exactly.
+- **Renderer draws footprints + walls** — drawn from the rasterised grid so the debug `L` LOS overlay agrees with what actually blocks.
+- **Tests** — wall-blocks-ray, open-lane-passes, no-terrain regression, obs-shape stability (deterministic).
 
-**Defer (v2+ / anti-features):** Perfect info while claiming hidden rules; full weapon keyword matrix day one; army building; real-time sim; 3+ player FFA; unshaped sparse combat-only training; simultaneous resolution without a written spec.
+**Should have (cheap polish only):**
+- Footprint-membership obs flag (cheap precursor to future cover).
+- Terrain in `GameStateSnapshot` (cross-consumer/LLM/replay completeness).
+- Multiple terrain pieces per board (falls out of `list[TerrainPieceConfig]`).
 
-**MVP slice (for requirements):** (1) wounds + elimination, (2) shooting with range + LOS + masked actions, (3) per-model action type (move/shoot/pass), (4) combat-aware reward tied to objectives, (5) blocking + cover terrain interacting with movement and shooting.
+**Defer (later terrain milestone):**
+- Cell-edge "true thin" walls, footprint-obscures-LOS (40k-faithful ruin), cover save bonus, dense visibility, difficult/impassable ground, elevation, board templates/procedural placement, variable base sizes, per-cell full-grid terrain channel.
 
-Detail: [FEATURES.md](./FEATURES.md).
+> **Design divergence to flag:** real 40k 10e has the *footprint* obscure LOS; this milestone intentionally inverts that — **walls block, footprint is a no-op marker**. Requirements should state "walls block the ray," not "footprint obscures the area."
 
 ### Architecture Approach
 
-Combat, terrain, and LOS live in **domain services** and the **battle aggregate**; **LOS implemented once** (e.g. `domain/los.py`) and reused by shooting rules, masks, and (when enabled) observation filtering—not duplicated in reward or Pygame. **`ActionRegistry` / `ActionHandler`** own space size and masks; **observation_builder** reads `BattleView` + read-only queries; **reward registries** stay declarative with extended `StepContext`. **Self-play:** new `OpponentPolicy` types (e.g. frozen RL checkpoint) before rewriting around PettingZoo.
+Terrain slots into the existing DDD spine (config → `battle_factory` → `Battle` aggregate → `BattleView` → consumers) identically to how objectives already do. The terrain blocking grid is **precomputed once at `Battle` construction** (terrain is static per episode), removing the current per-query closure rebuild, and exposed behind the single `has_line_of_sight_between_cells` seam so **every consumer (shooting masks, action masks, renderer, snapshot) gets terrain for free with zero call-site changes.** See `ARCHITECTURE.md`.
 
 **Major components:**
-
-1. **Board / terrain layer** — Per-cell types from config; movement cost and blocking; observation channel.
-2. **LOS / cover query service** — Grid ray trace over terrain + positions; cover modifiers for saves.
-3. **Combat resolver + unit state** — Wounds, elimination, ordered resolution; invoked from phase execution.
-4. **Phase-gated actions + masks** — Shooting/melee slices; fixed target ordering for transformer alignment.
-5. **Opponent escalation** — Scripted → frozen snapshots → pool/Elo; symmetric rules for both sides.
-
-**Recommended build order (dependency-minimizing):** terrain board + placement (blocking/difficult) → LOS/cover query (tests without Gym) → wounds/elimination + alive masks → shooting (then melee) + `ActionHandler` wiring → reward calculators + curriculum phases → observation honesty pass → frozen-checkpoint self-play.
-
-Detail: [ARCHITECTURE.md](./ARCHITECTURE.md).
+1. **`domain/terrain.py`** (NEW, pure) — `Footprint`, `Wall`, `TerrainPiece` value objects + `build_los_blocking_grid(terrain, base_mask, w, h)` rasteriser (walls only; footprint NOT rasterised).
+2. **`Battle` / `BattleView`** (MOD) — hold `terrain` + precomputed `los_blocking_grid`; read-only `terrain` accessor for obs/render.
+3. **`wargame.py::_make_is_blocking`** (MOD) — the single behavioural edit for blocking; sources the merged grid; `domain/los.py` stays untouched.
+4. **Observation pipeline** (MOD) — `WargameTerrainObservation` → `env_observation.terrain` → `observation_builder._terrain_to_obs` → terrain tensor (inserted before mask: `[game, obj, players, opp, terrain, mask]`) → `terrain_embedding` (None-guarded) appended LAST in **both** networks + PPO.
+5. **`renders/human.py`** (MOD) — draw footprints + walls from the rasterised grid; colour debug LOS by actual verdict.
 
 ### Critical Pitfalls
 
-1. **Reward shaping hijacks the mission** — Keep sparse anchors (VP, terminal outcomes); eval vs **fixed scripted** opponents before advancing phases; log decomposed combat metrics (P2, ties to P1 dashboards).
-2. **Action space explosion / bad masks** — Factor action type vs arguments; unit-test mask ↔ domain legality bidirectionally; grow complexity incrementally (P2, P5 melee adds branches).
-3. **LOS/terrain bugs as learnable exploits** — Golden/property tests on known boards; renderer uses same queries as rules; watch edge positioning and obs/render disagreement (P2–P4).
-4. **Curriculum fights new mechanics** — Extend reward-phase discipline: movement/group competence before heavy combat mix; dedicated phases per new calculator (P2, P1 eval harness).
-5. **Naive self-play cycling** — Frozen **pool**, periodic snapshots, mixture with scripted/random; anchor Elo with fixed baselines, not self-play-only (P4).
-6. **Two-agent refactor leaks info or breaks Markov property** — Per-side observation contract from `BattleView` + tests before shipping P4 (design touchpoints P2–P3 if visibility matters).
-7. **Scale: attention cost and missing PE** — P1 positional encoding before large squads; P6 profile env + network; curriculum from smaller battles upward.
+Top risks (all from `PITFALLS.md`), each with a testable mitigation:
 
-Detail: [PITFALLS.md](./PITFALLS.md).
+1. **Rasterised L-wall corner pinholes / sealed gaps** — Bresenham wall cells are diagonally (not 4-)connected, so rays slip through elbows, or over-thickening seals an intended lane. Mitigate: guarantee 4-connectivity in the rasteriser (not in the LOS trace), author the corner cell explicitly, and add golden L-wall boards testing diagonal-through-elbow and intended-gap rays. *(Phase A)*
+2. **LOS symmetry break (`A→B` clear, `B→A` blocked)** — Bresenham is direction-dependent near cell corners; RL will exploit one-way firing lanes. Mitigate: **Hypothesis property test `los(A,B)==los(B,A)`** (highest-value test in the milestone); if it fails, canonicalise endpoint order in the seam. *(Phase A)*
+3. **Mask ↔ resolution LOS divergence** — if the shooting mask and resolution use different predicates, the agent is offered illegal shots / makes masked-out ones. Mitigate: one precomputed grid, all consumers route through `has_line_of_sight_between_cells`; consistency test that masked pairs == LOS-clear ∩ range ∩ alive. *(Phase A)*
+4. **Observation shape drift / checkpoint break** — terrain inserted mid-list or `terrain_embedding` instantiated at `terrain_size==0` shifts indices or state-dict keys. Mitigate: `None` embedding when absent, append terrain LAST, fix unpackers once (`opp=xs[3]`, `terrain=xs[4]`, `mask=xs[5]`); backward-compat tests including **pre-terrain checkpoint loads & infers**; verify Transformer **and** MLP **and** PPO. *(Phase B)*
+5. **Renderer / debug LOS divergence + observation honesty** — drawing authored thin segments while LOS blocks whole cells creates visual/logical mismatch; terrain tokens must carry geometry only (no per-enemy visibility side-channel) and round-trip to the blocking cells. Mitigate: render from the rasterised grid, colour debug line by verdict; geometry-only tokens, token count == wall count. *(Phase A render; Phase B honesty)*
+
+Also flagged (curriculum/eval concern, out of strict milestone scope): **reward exploitation via wall-camping / "hide-and-plink"** and **distribution shift when terrain is switched on** — keep a sparse objective anchor and treat terrain-enabled as a distinct training/curriculum config, not an in-place flag flip.
 
 ## Implications for Roadmap
 
-Official phase themes in [docs/goals-and-roadmap.md](../../docs/goals-and-roadmap.md) (P1–P6) align with research, with one **ordering tension**: architecture and feature dependency graphs favor **terrain + LOS primitives before production-quality shooting**, while a linear “P2 combat then P3 terrain” plan risks rework and weak tactical credibility. **Recommendation:** overlap or partially **front-load** a minimal terrain grid and LOS query service **before or in the same wave as** ranged combat going trainable—not full procedural maps on day one.
+Research strongly converges on a **two-phase structure** with a clean one-way dependency (B needs `BattleView.terrain` from A). A is *mechanics* (does the rule work?), B is *perception* (can the agent see it?) — separate test surfaces, separate risk profiles, each backward-compat guarantee independently verifiable.
 
-### Phase 1: Foundation & instrumentation (P1)
+### Phase A: Terrain in the simulation (LOS-blocking)
+**Rationale:** Unlocks everything and depends on nothing new; isolates the geometry/LOS-seam risk from the tensor/network risk.
+**Delivers:** Config types + validators (`TerrainPieceConfig`, `WallConfig`, `WargameEnvConfig.terrain` default `None`); pure `domain/terrain.py` value objects + `build_los_blocking_grid`; `battle_factory` → `Battle.terrain` + precomputed `los_blocking_grid`; `BattleView.terrain`; repointed `_make_is_blocking`; renderer overlay drawn from the rasterised grid.
+**Addresses:** Terrain config schema, walls-block-LOS (whole-cell), backward-compatible no-op default, renderer footprints+walls.
+**Avoids:** Pitfalls 1 (corner pinhole/seal), 2 (symmetry), 3 (interior-only contract), 4 (mask↔resolution), 8 (renderer divergence).
+**Exit:** shooting/action masks and `has_line_of_sight_between_cells` respect walls; movement unchanged; existing tests green; LOS-symmetry property test + golden L-wall boards pass.
 
-**Rationale:** Scaling and debugging depend on metrics and representation before combat complexity lands.
-**Delivers:** Per-model speed, transformer positional encoding, improved dashboards, Wandb Sweeps (or Optuna) as needed.
-**Addresses:** Active `PROJECT.md` items; pitfall #7 (scale), #1 (instrumentation for reward hijack detection).
-**Avoids:** Training large squads on an under-specified entity encoding.
-
-### Phase 2: Board primitives & LOS service (early P3 + domain spine)
-
-**Rationale:** ARCHITECTURE and FEATURES agree credible shooting pulls terrain/LOS; implement **blocking/difficult** and **Bresenham LOS + cover query** in `domain/` with unit tests.
-**Delivers:** Terrain in config/factory, `BattleView` surface, movement extension, LOS module used by nothing else yet—or immediately by mask prototypes.
-**Addresses:** Table stakes terrain minimum; pitfall #3 (single source of truth).
-**Avoids:** LOS only in reward or renderer.
-
-### Phase 3: Wounds, elimination, and alive-aware pipeline (P2 prep)
-
-**Rationale:** Shooting without durable state changes is not a MDP upgrade; masks and obs must handle **elimination** without ghost exploits.
-**Delivers:** Wound model, termination hooks, padded obs + alive flags, sync domain list ↔ obs builder.
-**Addresses:** Table stakes damage/removal; pitfall #9.
-**Avoids:** Mid-episode shape bugs and pad exploitation.
-
-### Phase 4: Ranged combat, action factoring, combat rewards (P2 core)
-
-**Rationale:** Depends on LOS legality + wounds; unlocks first adversarial “contest.”
-**Delivers:** Phase-gated shoot actions, domain resolver (start simpler than full dice pipeline if needed), registered calculators/criteria, curriculum phases.
-**Addresses:** MVP slice items 2–4; stack choice (NumPy resolution).
-**Avoids:** Pitfalls #1–2 (shaping + action explosion); defer full keyword fidelity to later.
-
-### Phase 5: Terrain depth, cover curriculum, observation honesty
-
-**Rationale:** Cover modifiers, richer maps, and **fog/visibility** aligned with LOS service; separate from “grid exists.”
-**Delivers:** Cover in resolution, optional procedural maps, per-side obs modes documented in config.
-**Addresses:** Differentiators; pitfall #3, #10 (terrain visible but unrewarded).
-**Avoids:** Perfect-info cheat vs stated honesty.
-
-### Phase 6: Two-agent API & self-play (P4)
-
-**Rationale:** Requires stable rules + obs contract for both sides.
-**Delivers:** Frozen checkpoint `OpponentPolicy`, pool sampling, Elo logging (pure Python), optional PettingZoo only if justified.
-**Addresses:** Self-play differentiator; stack pattern (no RLlib).
-**Avoids:** Pitfalls #5–6 (cycling, info leaks).
-
-### Phase 7: Melee, morale, command (P5)
-
-**Rationale:** Depends on stable positioning, engagement, and shooting stress on action pipeline.
-**Delivers:** Melee/charge/fight hooks, phased enablement, integration tests for `skip_phases` vs full rules.
-**Avoids:** Pitfall #11 (train/test phase mismatch).
-
-### Phase 8: Scale & polish (P6)
-
-**Rationale:** 10+ models, batched inference, throughput.
-**Delivers:** Profiling-driven batching, optional local obs windows if attention cost bites.
-**Avoids:** Pitfall #7.
+### Phase B: Terrain in the observation
+**Rationale:** Depends on Phase A (`BattleView.terrain`); owns the tensor/network contract and checkpoint compatibility.
+**Delivers:** `WargameTerrainObservation` + `env_observation.terrain` + `_terrain_to_obs`; terrain tensor in `model/common/observation.py` (insert before mask, fix both converters); `terrain_embedding` (None-guarded) appended LAST in **both** networks + PPO backbone share; `from_env` reads `terrain_size`; an example terrain config + a no-terrain config.
+**Uses:** NumPy feature encoding + the entity-token transformer (`net.py`), the `opponent_model_embedding is None` precedent.
+**Implements:** The observation-pipeline component end to end.
+**Avoids:** Pitfalls 5 (shape drift/checkpoint break), 9 (observation honesty), 7 (distribution shift — ship as a distinct config/curriculum stage).
+**Exit:** agent observes terrain; no-terrain runs reproduce prior behaviour byte-identically; a pre-terrain checkpoint still loads and infers; player/opponent token positions unchanged.
 
 ### Phase Ordering Rationale
-
-- **Simulation before training tricks:** Domain terrain/LOS/wounds before heavy self-play.
-- **One query module for LOS** drives rules, masks, and later fog—reduces exploit surface.
-- **P4 after** combat + honesty stabilizes avoids refactoring two policies against moving rules.
-- **P1 PE and metrics** early prevents false negatives when P2–P6 expand state and action space.
+- **Dependency-driven:** B literally cannot start without `BattleView.terrain` from A; A introduces no new dependency on B.
+- **Risk isolation:** A's risk is domain geometry + the LOS seam; B's risk is the tensor/network/checkpoint contract. Splitting keeps each PR small and each backward-compat guarantee independently testable.
+- **Avoids the cross-cutting pitfalls** by construction: single blocking seam (no mask/resolution drift), append-last token stream (no index drift), rasterise-walls-only (footprint never blocks).
 
 ### Research Flags
+Phases likely needing deeper research/decision confirmation during planning:
+- **Phase A:** Confirm the **4-connectivity rasterisation rule** for L-walls (supercover vs orthogonal-filler at diagonal steps) and the **endpoint-canonicalisation rule** for LOS symmetry. These are the only genuinely open design choices; both are pure-Python, well-bounded, and testable. (The whole-cell-vs-cell-edge decision itself is already settled: whole-cell, cell-edge deferred.)
 
-**Likely need `/gsd-research-phase` or a design pass during planning:**
-
-- **Partial observability:** Per-cell vs per-unit visibility, memory, and config surface (FEATURES gaps).
-- **PettingZoo vs Gym + frozen opponent:** API and Lightning integration tradeoff (ARCHITECTURE open point).
-- **Charge/melee stochasticity:** 2D6 vs abstraction for RL stability (FEATURES gap).
-- **Single shared policy vs per-side policies** for self-play (FEATURES / P4).
-
-**Standard patterns (skip extra research unless integration surprises):**
-
-- Bresenham LOS on a grid; NumPy dice pipelines; Wandb Sweeps; frozen checkpoint pools; reward registry extensions per `docs/reward-phases.md`.
+Phases with standard patterns (skip deeper research):
+- **Phase B:** Adding an entity-token stream is a fully documented, precedented procedure (the `pytorch-dqn.mdc` "add a new entity" checklist + the opponents `None`-embedding template). Mechanical, not novel.
 
 ## Confidence Assessment
 
-| Area         | Confidence   | Notes                                                                 |
-| ------------ | ------------ | --------------------------------------------------------------------- |
-| Stack        | **HIGH**     | Grounded in current repo; explicit avoid list; minimal new deps       |
-| Features     | **MEDIUM–HIGH** | Strong fit to `PROJECT.md` / rules docs; ecosystem “paper norm” varies |
-| Architecture | **HIGH**     | Matches `docs/ddd-envs.md` and codebase seams; PettingZoo is optional |
-| Pitfalls     | **MEDIUM–HIGH** | Repo-specific items HIGH; general RL self-play/LOS MEDIUM             |
+| Area | Confidence | Notes |
+|------|------------|-------|
+| Stack | HIGH | "No new deps" verified against `pyproject.toml` + existing seams; reuses v1 conclusion. |
+| Features | HIGH | Grounded in code + `PROJECT.md` + tabletop rules ref; MEDIUM only on the (now-settled) wall-representation choice. |
+| Architecture | HIGH | Grounded in a full read of the env source (`los.py`, `battle.py`, `battle_factory.py`, `battle_view.py`, `net.py`, etc.). |
+| Pitfalls | HIGH | Codebase-specific pitfalls grounded in source + `test_los.py`; MEDIUM only for RL training/exploitation patterns (literature + community consensus). |
 
-**Overall confidence:** **MEDIUM–HIGH**
+**Overall confidence:** HIGH
 
 ### Gaps to Address
-
-- Exact fog-of-war and per-side observation contract—resolve before locking P4.
-- Whether to simplify the attack pipeline for first trainable combat vs full tabletop fidelity—product/curriculum choice.
-- Charge phase randomness vs deterministic training aids—feasibility when P5 scopes.
-- Confirm roadmap ordering: **minimal terrain+LOS before full P2** vs strict P2-then-P3—stakeholders should align with this synthesis to avoid duplicate LOS implementations.
+- **Rasteriser connectivity rule (4-connected walls):** decide and document in Phase A planning; verify with golden L-wall boards (diagonal elbow + intended gap). Recovery cost is low if caught before training.
+- **LOS symmetry canonicalisation:** the Hypothesis property test may fail on some boards; plan the canonical endpoint ordering as the seam-level fix up front. Low recovery cost pre-training.
+- **Whole-cell accuracy loss (MEDIUM):** acceptable this milestone (movement unaffected, grid already bounds LOS precision, cover deferred); revisit as a dedicated supercover-LOS phase only if a future milestone needs true thin walls.
+- **Curriculum / wall-camping (out of strict scope):** flag for the combat-reward / curriculum phase — keep a sparse objective anchor and a pressuring opponent; ship terrain as a distinct config, not an in-place flag flip.
 
 ## Sources
 
-### Primary (HIGH confidence for this repo)
-
-- [.planning/PROJECT.md](../PROJECT.md) — requirements and scope
-- [docs/goals-and-roadmap.md](../../docs/goals-and-roadmap.md) — phase themes (P1–P6)
-- [docs/tabletop-rules-reference.md](../../docs/tabletop-rules-reference.md) — rules mapping
-- [docs/ddd-envs.md](../../docs/ddd-envs.md), [docs/reward-phases.md](../../docs/reward-phases.md) — layering and curriculum
-- [.planning/codebase/ARCHITECTURE.md](../codebase/ARCHITECTURE.md), [.planning/codebase/CONCERNS.md](../codebase/CONCERNS.md) — integration and known risks
+### Primary (HIGH confidence)
+- In-repo code — `envs/domain/los.py`, `envs/wargame.py` (`_make_is_blocking`, `has_line_of_sight_between_cells`), `envs/types/config.py` (`blocking_mask`), `domain/battle.py` / `battle_factory.py` / `battle_view.py`, `env_components/observation_builder.py` + `shooting_masks.py`, `types/env_observation.py`, `model/common/observation.py`, `model/net.py`, `renders/human.py`, `tests/test_los.py`, `pyproject.toml`.
+- `.cursor/rules/pytorch-dqn.mdc`, `gymnasium-env.mdc` — "add a new entity" obs/tensor/network checklist.
+- `docs/ddd-envs.md` — domain/BattleView extension boundaries; `docs/tabletop-rules-reference.md` — terrain/ruins LOS behaviour.
+- `.planning/PROJECT.md` — milestone scope, deferral list, backward-compat constraint.
+- Prior research — `.planning/research/v1-STACK.md`, `v1-FEATURES.md`, `v1-PITFALLS.md`.
 
 ### Secondary (MEDIUM confidence)
+- Warhammer Community "Simple Terrain", Goonhammer Ruleshammer Terrain Guide, tuser.tv 10e ruins/visibility — current 40k 10e footprint/wall LOS (used to flag the footprint-vs-wall divergence).
+- Bresenham diagonal-connectivity / supercover / direction-dependence (Wikipedia + standard grid-LOS/FOV references).
+- RL reward-shaping & distribution-shift patterns — strategy-game RL community consensus.
 
-- Parallel research artifacts: [STACK.md](./STACK.md), [FEATURES.md](./FEATURES.md), [ARCHITECTURE.md](./ARCHITECTURE.md), [PITFALLS.md](./PITFALLS.md)
-- RL tactical / self-play literature and grid-LOS practice (summarized in research files; verify per implementation)
+### Tertiary (LOW confidence)
+- None — all findings trace to code, project docs, or multiple agreeing external sources.
 
 ---
-*Research completed: 2026-04-02*
+*Research completed: 2026-06-19*
 *Ready for roadmap: yes*
