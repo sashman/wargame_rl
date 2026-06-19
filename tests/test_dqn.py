@@ -22,18 +22,11 @@ def test_dqn_forward(
     assert next_q_values.dtype == torch.float32
 
 
-@pytest.mark.parametrize(
-    "policy_net",
-    [
-        pytest.param("dqn_mlp_net", id="mlp"),
-        pytest.param(
-            "dqn_transformer_net",
-            id="transformer",
-            marks=pytest.mark.flaky(reruns=3),
-        ),
-    ],
-    indirect=True,
-)
+# `policy_net` is already parametrized (mlp/transformer) by the conftest
+# fixture, so we must NOT re-parametrize it here — doing so collides with
+# pytest-rerunfailures on a flaky rerun ("duplicate parametrization").
+# The transformer case is flaky, so rerun the whole test up to 3 times.
+@pytest.mark.flaky(reruns=3)
 def test_dqn_loss(
     env: WargameEnv,
     policy_net: RL_Network,
