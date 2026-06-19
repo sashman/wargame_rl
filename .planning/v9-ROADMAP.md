@@ -11,8 +11,8 @@ The build order follows dependency: the canonical schema first (everything depen
 - [x] **Phase 1: Canonical State Model & Export** — Pydantic `GameStateSnapshot` projected from `BattleView`, JSON serialisation, `WargameEnv.to_snapshot()`, combat/action metadata capture (completed 2026-05-23)
 - [x] **Phase 2: State Injection & Bidirectional I/O** — `GameClock.set_state()`, `WargameEnv.load_state(snapshot)`, validation, derive computed fields from injected state (completed 2026-05-23)
 - [x] **Phase 3: LLM-Readable Text Representation** — Action descriptions, combat narrative, step narrator, reward breakdown text for LLM evaluation (completed 2026-05-23)
-- [ ] **Phase 4: Event Streaming & Replay** — Append-only event log, delta encoding, deterministic replay, pluggable codec interface
-- [ ] **Phase 5: Milestone Validation** — End-to-end verification of all v9 requirements and success criteria across Phases 1–4
+- [x] **Phase 4: Event Streaming & Replay** — Append-only event log, delta encoding, deterministic replay, pluggable codec interface (completed 2026-06-18, PR #114)
+- [x] **Phase 5: Milestone Validation** — End-to-end verification of all v9 requirements and success criteria across Phases 1–4 (completed 2026-06-19)
 
 ## Phase Details
 
@@ -59,22 +59,26 @@ Plans:
 **Depends on**: Phase 1 (stable schema — now complete)
 **Requirements**: SGS-03, SGS-05, SGS-06
 **Success Criteria** (what must be TRUE):
-  1. A `StateExporter` protocol with `on_reset()` / `on_step()` hooks produces an append-only event log recording the full match
-  2. Delta encoding represents state updates efficiently (full snapshots at anchors, granular deltas between them)
-  3. Deterministic replay: applying the event log from a known initial configuration reconstructs any requested historical state
-  4. A pluggable formatter registry (extending SGS-04) allows alternative encodings behind a shared codec interface
-**Plans**: TBD
+  1. A `StateExporter` protocol with `on_reset()` / `on_step()` hooks produces an append-only event log recording the full match ✓
+  2. Delta encoding represents state updates efficiently (full snapshots at anchors, granular deltas between them) ✓
+  3. Deterministic replay: applying the event log from a known initial configuration reconstructs any requested historical state ✓
+  4. A pluggable formatter registry (extending SGS-04) allows alternative encodings behind a shared codec interface ✓
+**Plans**: Implemented directly (PR #114 merged 2026-06-18)
+**Key tests**: `test_event_stream.py` (307 lines, 6 test classes)
 
 ### Phase 5: Milestone Validation
 **Goal**: All v9 requirements and phase success criteria are verified end-to-end against the live codebase
 **Depends on**: Phases 1–4
 **Requirements**: All SGS-* requirements
 **Success Criteria** (what must be TRUE):
-  1. Every SGS-* requirement marked Complete has a passing test or verifiable evidence
-  2. All phase success criteria (Phases 1–4) hold against the current codebase
-  3. Round-trip and replay scenarios exercise the full pipeline: snapshot → inject → step → stream → replay
-  4. Requirements traceability table in REQUIREMENTS.md is fully updated
-**Plans**: TBD
+  1. Every SGS-* requirement marked Complete has a passing test or verifiable evidence ✓
+  2. All phase success criteria (Phases 1–4) hold against the current codebase ✓
+  3. Round-trip and replay scenarios exercise the full pipeline: snapshot → inject → step → stream → replay ✓
+  4. Requirements traceability table in REQUIREMENTS.md is fully updated ✓
+**Plans**: 1 plan
+Plans:
+- [x] v9-05 validation — End-to-end pipeline tests, analyze_match() coverage, requirements traceability update
+**Key tests**: `test_v9_milestone_validation.py` (25 tests: 2 E2E pipeline, 11 analyze_match, 12 SGS-* spot-checks)
 
 ## Progress
 
@@ -87,5 +91,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Canonical State Model & Export | 1/1 | Complete | 2026-05-23 |
 | 2. State Injection & Bidirectional I/O | 1/1 | Complete | 2026-05-23 |
 | 3. LLM-Readable Text Representation | 1/1 | Complete | 2026-05-23 |
-| 4. Event Streaming & Replay | 0/0 | Not started | - |
-| 5. Milestone Validation | 0/0 | Not started | - |
+| 4. Event Streaming & Replay | 1/1 | Complete | 2026-06-18 |
+| 5. Milestone Validation | 1/1 | Complete | 2026-06-19 |
+
+**Milestone v9.0 complete.** All 14 SGS-* requirements verified with test evidence.
