@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: active
-stopped_at: v9 milestone complete (all 5 phases validated)
-last_updated: "2026-06-19T00:00:00.000Z"
+stopped_at: v9.0 milestone archived (all 5 phases validated, 14/14 SGS-* verified)
+last_updated: "2026-06-19T22:00:00.000Z"
 last_activity: 2026-06-19
 progress:
   total_phases: 6
@@ -20,19 +20,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-04)
 
 **Core value:** Agents learn recognisable tactical behaviour through reward shaping and environment design
-**Current focus:** v9 milestone complete; v1.0 Phase 6 deferred
+**Current focus:** v9.0 archived; planning next milestone (v1.0 Phase 6 deferred)
 
 ## Current Position
 
-**v1.0 (Shooting & Model Destruction):**
-Phases 1–5 complete (8/8 plans executed)
-Phase 6 deferred
+**No active milestone — between milestones.** Next: `/gsd-new-milestone`.
 
-**v9 (Structured Game State & LLM-Readable Representation):**
+**v9.0 (Structured Game State & LLM-Readable Representation): ✅ ARCHIVED 2026-06-19**
 All 5 phases complete. 14/14 SGS-* requirements verified.
+Archive: `.planning/milestones/v9-ROADMAP.md`, `.planning/milestones/v9-REQUIREMENTS.md`
 - Phases 1–3 merged 2026-05-23 (PRs #110, #111)
 - Phase 4 merged 2026-06-18 (PR #114)
-- Phase 5 (Milestone Validation) completed 2026-06-19
+- Phase 5 (Milestone Validation) merged 2026-06-19 (PR #116)
+
+**v1.0 (Shooting & Model Destruction):**
+Phases 1–5 complete (8/8 plans executed); Phase 6 (Combat Reward & Curriculum) deferred
 
 ## Performance Metrics
 

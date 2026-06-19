@@ -32,6 +32,10 @@ Agents learn recognisable tactical behaviour — advancing on objectives, mainta
 - ✓ Line-of-sight query on discrete grid (Bresenham, injectable blocking, `WargameEnv.has_line_of_sight_between_cells`) — Phase 3
 - ✓ Shooting action space (target selection in ActionRegistry, phase-gated masks combining LOS/range/alive, WeaponProfile config) — Phase 4
 - ✓ Shooting resolution (hit → wound → save → damage with stochastic D6 rolls, configurable weapon profiles and defensive stats, combat stats + expected damage in observation) — Phase 5
+- ✓ Canonical game-state model (`GameStateSnapshot` from `BattleView`, JSON + JSON Schema, `WargameEnv.to_snapshot()`) — v9.0
+- ✓ Bidirectional state I/O (`GameClock.set_state()`, `WargameEnv.load_state()`, `validate_snapshot()`, round-trip fidelity) — v9.0
+- ✓ LLM-readable text representation (`StepNarrator`, public `describe_action()`, combat narrative with probabilities/expected damage, reward-phase context) — v9.0
+- ✓ Append-only event stream with delta encoding and deterministic replay behind a pluggable codec interface — v9.0
 
 ### Active
 
@@ -121,14 +125,11 @@ the current one finishes.
 - [ ] Web replay viewer (browser-based, replacing/complementing Pygame)
 - [ ] Community scenario library (env configs for classic missions)
 
-#### v9.0 — Structured game state & event streaming [NEXT · HIGH]
+#### v9.0 — Structured game state & event streaming [✅ SHIPPED 2026-06-19]
 
-- [ ] **Canonical state model** — Programmatic representation of the full game (board, models, objectives, phase, scores, etc.) derived from domain / `BattleView`, independent of raw tensors
-- [ ] **API- and LLM-ready text** — Stable field names, documented semantics, and schema versioning so the same payload suits HTTP/streaming APIs and LLM validation of legality and consistency
-- [ ] **Layered change protocol** — Efficient encoding of state updates: full snapshots where needed, plus granular deltas at the right abstraction level (turn, step, sub-step) without redundant bulk
-- [ ] **Pluggable serialisation** — Default JSON; clear extension points for alternative encodings (e.g. binary or compact formats) behind a shared interface
-- [ ] **Append-only event stream** — Ordered events that record match history end-to-end and can be stored or streamed to consumers
-- [ ] **Deterministic replay / fast-forward** — Apply the event log (or snapshot + tail) from a known initial configuration to reconstruct any past state or seek to a checkpoint
+Complete — see `.planning/milestones/v9-ROADMAP.md`. All 14 SGS-* requirements verified with
+test evidence. Delivered: canonical `GameStateSnapshot`, bidirectional I/O, LLM-readable
+narration, and an append-only event stream with deterministic replay.
 
 #### Foundation (cross-cutting, slotted into milestones as needed)
 
@@ -156,7 +157,7 @@ This is a brownfield project with a working environment, two RL algorithms, and 
 
 The project models a tabletop miniatures wargame with detailed rules (see `docs/tabletop-rules-reference.md`). The environment currently implements movement and objective control. The long-term vision spans nine milestone tracks (v1.0–v9.0) progressing from ranged combat through terrain, advanced movement, weapon diversity, morale, tactical resources, adversarial self-play, scale, and structured programmatic state with event streaming for APIs and LLMs (v9.0). Melee combat is explicitly out of scope.
 
-**Current priorities:** v1.0 (Ranged Combat) and v7.0 (Adversarial Play) are active WIP. v2.0 (Terrain) and v9.0 (Structured State) are next up after current work lands. v3.0/v4.0 are low priority; v5.0/v6.0/v8.0 are lowest priority. Future milestones are captured in the Active requirements above and will be created via `/gsd-new-milestone` as each completes.
+**Current priorities:** v9.0 (Structured State) shipped 2026-06-19. v1.0 (Ranged Combat) is complete except the deferred Phase 6 (Combat Reward & Curriculum). v7.0 (Adversarial Play) is active WIP and v2.0 (Terrain) is next up. v3.0/v4.0 are low priority; v5.0/v6.0/v8.0 are lowest priority. Future milestones are captured in the Active requirements above and will be created via `/gsd-new-milestone` as each completes.
 
 ## Constraints
 
@@ -178,6 +179,10 @@ The project models a tabletop miniatures wargame with detailed rules (see `docs/
 | Reward phases for curriculum learning | Breaks sparse reward problem into learnable stages | ✓ Good |
 | Skip non-movement phases by default | Keeps training fast until mechanics are implemented | ✓ Good |
 | Phase 3 LOS: interior cells only for blocking; optional YAML `blocking_mask`; single `domain/los.py` | Matches tabletop-style trace; v2 terrain maps onto mask; no duplicate Bresenham in render | ✓ Good |
+| v9.0: canonical `GameStateSnapshot` projected from `BattleView`, decoupled from RL observation tensors | Same data serves two consumers (RL pipeline + external/LLM) without coupling | ✓ Good |
+| v9.0: default JSON encoding behind a pluggable codec interface (event log uses JSONL) | Extensible to binary/compact formats without changing the canonical model | ✓ Good |
+| v9.0: combat results carry attacker-target pairing + analytical context (probabilities, expected damage) | Enables an LLM to judge whether the agent chose the optimal target | ✓ Good |
+| v9.0: append-only event stream with delta encoding between full-snapshot anchors; deterministic replay | Compact history + reproducible seek/fast-forward from a known initial configuration | ✓ Good |
 
 ## Evolution
 
@@ -197,4 +202,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-06 — Phase 5 complete: shooting resolution with stochastic D6 attack sequence, configurable weapon/defense stats, combat observation features*
+*Last updated: 2026-06-19 — v9.0 milestone complete: structured game state, bidirectional I/O, LLM-readable narration, and event streaming with deterministic replay (14/14 SGS-* verified)*

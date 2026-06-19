@@ -1,5 +1,10 @@
 # Roadmap: Shooting & Model Destruction
 
+## Milestones
+
+- ✅ **v9.0 Structured Game State & LLM-Readable Representation** — shipped 2026-06-19 ([archive](milestones/v9-ROADMAP.md))
+- 🚧 **v1.0 Shooting & Model Destruction** — Phases 1–5 complete; Phase 6 (Combat Reward & Curriculum) deferred (this roadmap)
+
 ## Overview
 
 This milestone adds combat to the wargame environment. Models gain durable wound state, a line-of-sight service enables target validity, the action space grows to include shooting, and combat rewards drive curriculum learning. The build order follows dependency: wounds first (shooting needs something to damage), LOS next (shooting needs validity checks), then action space, resolution, and finally rewards. Phases 2 and 3 are independent and can execute in parallel.
