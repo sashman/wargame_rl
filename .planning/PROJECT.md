@@ -43,6 +43,28 @@ Organised by target milestone. Each milestone builds on the previous — later m
 assume earlier ones are complete. Milestones are created via `/gsd-new-milestone` when
 the current one finishes.
 
+## Current Milestone: v2.0 Terrain & Line-of-Sight Blocking
+
+**Goal:** Add terrain pieces that block line of sight — modeled as a footprint plus thin
+walls — and expose terrain in the agent's observation.
+
+**Target features:**
+- Terrain piece = footprint + walls. Footprint is a large rectangle area marker (no gameplay
+  effects this milestone — defines the piece, supports authoring/observation/future cover).
+  Walls are thin segments placed within the footprint, usually in an L shape.
+- Walls block line of sight only. A wall on the LOS ray blocks the shot; movement passes
+  through walls freely (no impassability, no difficult ground this milestone).
+- Terrain encoded in the observation space so the agent can see and reason about it.
+
+**Key context:**
+- Extends the single-source LOS service (`domain/los.py`, Bresenham). Walls become a new
+  input alongside the existing optional `blocking_mask`.
+- Wall grid representation (thin cell-edge segments vs whole-cell blocking) is an open
+  research/planning decision.
+- Backward compatible: configs with no terrain behave exactly as today (no-op default).
+- Deferred to a later terrain milestone: cover bonus, dense visibility, difficult ground,
+  elevation, board templates / procedural placement, variable base sizes.
+
 #### v1.0 — Ranged Combat & Model Destruction [WIP · HIGH]
 
 - ✓ Wounds & elimination (models with 0 wounds removed from play) — Phase 1
@@ -52,16 +74,22 @@ the current one finishes.
 - ✓ Shooting resolution (hit → wound → save → damage with configurable weapon profiles) — Phase 5
 - [ ] Combat reward & curriculum (damage dealt / models lost calculators, shooting curriculum phase)
 
-#### v2.0 — Terrain & Battlefield Geometry [NEXT · HIGH]
+#### v2.0 — Terrain & Line-of-Sight Blocking [WIP · HIGH]
 
-- [ ] Terrain cell types (open, light cover, dense cover, blocking, difficult ground)
+This milestone is scoped to terrain that blocks line of sight (footprint + thin walls) and
+its observation encoding. Other terrain effects are deferred to a later terrain milestone.
+
+- [ ] Terrain piece model: footprint rectangle + thin walls (usually L-shaped) within it
+- [ ] Walls block line of sight (integrated into `domain/los.py`); movement unaffected
+- [ ] Terrain encoded in observation space
+
+Deferred to a later terrain milestone:
 - [ ] Cover bonus (+1 armour save against ranged attacks when in/behind cover)
 - [ ] Dense terrain visibility (models wholly inside are never fully visible from outside)
-- [ ] Blocking terrain (impassable, blocks line of sight)
 - [ ] Difficult terrain (movement speed penalty when traversing)
+- [ ] Blocking/impassable terrain (models cannot move through)
 - [ ] Elevation and height advantage (improved AP from elevated positions)
 - [ ] Board templates and procedural terrain placement for training variety
-- [ ] Terrain encoded in observation space
 - [ ] Variable base sizes: models have different base radii affecting movement, coherency, engagement, objective control, and LOS (research spike — investigate impact on grid representation and DL training)
 
 #### v3.0 — Advanced Movement & Deployment [LOW]
@@ -157,7 +185,7 @@ This is a brownfield project with a working environment, two RL algorithms, and 
 
 The project models a tabletop miniatures wargame with detailed rules (see `docs/tabletop-rules-reference.md`). The environment currently implements movement and objective control. The long-term vision spans nine milestone tracks (v1.0–v9.0) progressing from ranged combat through terrain, advanced movement, weapon diversity, morale, tactical resources, adversarial self-play, scale, and structured programmatic state with event streaming for APIs and LLMs (v9.0). Melee combat is explicitly out of scope.
 
-**Current priorities:** v9.0 (Structured State) shipped 2026-06-19. v1.0 (Ranged Combat) is complete except the deferred Phase 6 (Combat Reward & Curriculum). v7.0 (Adversarial Play) is active WIP and v2.0 (Terrain) is next up. v3.0/v4.0 are low priority; v5.0/v6.0/v8.0 are lowest priority. Future milestones are captured in the Active requirements above and will be created via `/gsd-new-milestone` as each completes.
+**Current priorities:** v2.0 (Terrain & Line-of-Sight Blocking) is the active WIP milestone (started 2026-06-19). v9.0 (Structured State) shipped 2026-06-19. v1.0 (Ranged Combat) is complete except the deferred Phase 6 (Combat Reward & Curriculum). v7.0 (Adversarial Play) is queued WIP. v3.0/v4.0 are low priority; v5.0/v6.0/v8.0 are lowest priority. Future milestones are captured in the Active requirements above and will be created via `/gsd-new-milestone` as each completes.
 
 ## Constraints
 
@@ -202,4 +230,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-19 — v9.0 milestone complete: structured game state, bidirectional I/O, LLM-readable narration, and event streaming with deterministic replay (14/14 SGS-* verified)*
+*Last updated: 2026-06-19 — v2.0 milestone started: terrain & line-of-sight blocking (footprint + thin walls), terrain in observation space*

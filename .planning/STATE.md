@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
+milestone: v2.0
+milestone_name: Terrain & Line-of-Sight Blocking
 status: active
-stopped_at: v9.0 milestone archived (all 5 phases validated, 14/14 SGS-* verified)
+stopped_at: v2.0 milestone started — defining requirements
 last_updated: "2026-06-19T22:00:00.000Z"
 last_activity: 2026-06-19
 progress:
-  total_phases: 6
-  completed_phases: 5
-  total_plans: 8
-  completed_plans: 8
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
@@ -20,11 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-04)
 
 **Core value:** Agents learn recognisable tactical behaviour through reward shaping and environment design
-**Current focus:** v9.0 archived; planning next milestone (v1.0 Phase 6 deferred)
+**Current focus:** v2.0 Terrain & Line-of-Sight Blocking — defining requirements
 
 ## Current Position
 
-**No active milestone — between milestones.** Next: `/gsd-new-milestone`.
+**Milestone v2.0 (Terrain & Line-of-Sight Blocking) started 2026-06-19.**
+Phase: Not started (defining requirements) · Status: Defining requirements
+Scope: terrain piece = footprint rectangle + thin L-shaped walls; walls block LOS only
+(movement unaffected); terrain encoded in observation. No cover/dense/difficult/elevation
+this milestone. Research-first chosen.
+Next: research → requirements → roadmap.
 
 **v9.0 (Structured Game State & LLM-Readable Representation): ✅ ARCHIVED 2026-06-19**
 All 5 phases complete. 14/14 SGS-* requirements verified.
