@@ -1,10 +1,26 @@
-# Roadmap: Structured Game State & LLM-Readable Representation
+# Milestone v9.0: Structured Game State & LLM-Readable Representation
+
+**Status:** ✅ SHIPPED 2026-06-19
+**Phases:** 1–5
+**Total Plans:** 3 formal plans (Phases 2–4 implemented directly in-branch)
+**Timeline:** 2026-05-23 → 2026-06-19 (~27 days)
+**PRs:** #110, #111, #114, #116
 
 ## Overview
 
-This milestone adds programmatic state I/O and LLM-interpretable representation to the wargame environment. The codebase already contains rich structured data at every step — entity positions and wounds, game clock state, combat results, detailed reward breakdowns, and decodable action indices — but none of it is surfaced outside the RL tensor pipeline. This milestone builds a Pydantic-based canonical state model (`GameStateSnapshot`), bidirectional I/O (export and injection), and a text narration layer for LLM evaluation.
+This milestone added programmatic state I/O and LLM-interpretable representation to the
+wargame environment. The codebase already contained rich structured data at every step —
+entity positions and wounds, game clock state, combat results, detailed reward breakdowns,
+and decodable action indices — but none of it was surfaced outside the RL tensor pipeline.
+This milestone built a Pydantic-based canonical state model (`GameStateSnapshot`),
+bidirectional I/O (export and injection), a text narration layer for LLM evaluation, and an
+append-only event stream with deterministic replay.
 
-The build order follows dependency: the canonical schema first (everything depends on it), then state injection (the "input" side of bidirectional I/O), then LLM text (builds on the data captured in the snapshot). Event streaming and replay build on the stable schema established in Phases 1–3. A final validation phase verifies all milestone requirements and success criteria end-to-end.
+The build order followed dependency: the canonical schema first (everything depends on it),
+then state injection (the "input" side of bidirectional I/O), then LLM text (builds on the
+data captured in the snapshot). Event streaming and replay built on the stable schema
+established in Phases 1–3. A final validation phase verified all milestone requirements and
+success criteria end-to-end.
 
 ## Phases
 
@@ -12,7 +28,7 @@ The build order follows dependency: the canonical schema first (everything depen
 - [x] **Phase 2: State Injection & Bidirectional I/O** — `GameClock.set_state()`, `WargameEnv.load_state(snapshot)`, validation, derive computed fields from injected state (completed 2026-05-23)
 - [x] **Phase 3: LLM-Readable Text Representation** — Action descriptions, combat narrative, step narrator, reward breakdown text for LLM evaluation (completed 2026-05-23)
 - [x] **Phase 4: Event Streaming & Replay** — Append-only event log, delta encoding, deterministic replay, pluggable codec interface (completed 2026-06-18, PR #114)
-- [x] **Phase 5: Milestone Validation** — End-to-end verification of all v9 requirements and success criteria across Phases 1–4 (completed 2026-06-19)
+- [x] **Phase 5: Milestone Validation** — End-to-end verification of all v9 requirements and success criteria across Phases 1–4 (completed 2026-06-19, PR #116)
 
 ## Phase Details
 
@@ -27,7 +43,6 @@ The build order follows dependency: the canonical schema first (everything depen
   4. Combat results include attacker-target pairing (which model shot which target) — not just flat `ShootingResult` lists
   5. Opponent actions are recorded before application and available in the snapshot
 **Plans:** 1 plan
-Plans:
 - [x] v9-01-01-PLAN.md — Snapshot Pydantic models, PairedShootingResult, build_snapshot factory, to_snapshot(), encoder protocol, tests
 
 ### Phase 2: State Injection & Bidirectional I/O
@@ -56,7 +71,7 @@ Plans:
 
 ### Phase 4: Event Streaming & Replay
 **Goal**: A complete match history can be recorded as an ordered event stream and replayed deterministically
-**Depends on**: Phase 1 (stable schema — now complete)
+**Depends on**: Phase 1 (stable schema)
 **Requirements**: SGS-03, SGS-05, SGS-06
 **Success Criteria** (what must be TRUE):
   1. A `StateExporter` protocol with `on_reset()` / `on_step()` hooks produces an append-only event log recording the full match ✓
@@ -76,22 +91,38 @@ Plans:
   3. Round-trip and replay scenarios exercise the full pipeline: snapshot → inject → step → stream → replay ✓
   4. Requirements traceability table in REQUIREMENTS.md is fully updated ✓
 **Plans**: 1 plan
-Plans:
 - [x] v9-05 validation — End-to-end pipeline tests, analyze_match() coverage, requirements traceability update
 **Key tests**: `test_v9_milestone_validation.py` (25 tests: 2 E2E pipeline, 11 analyze_match, 12 SGS-* spot-checks)
 
-## Progress
+---
 
-**Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
-(Phases 2 and 3 are independent after Phase 1 and can execute in parallel)
+## Milestone Summary
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. Canonical State Model & Export | 1/1 | Complete | 2026-05-23 |
-| 2. State Injection & Bidirectional I/O | 1/1 | Complete | 2026-05-23 |
-| 3. LLM-Readable Text Representation | 1/1 | Complete | 2026-05-23 |
-| 4. Event Streaming & Replay | 1/1 | Complete | 2026-06-18 |
-| 5. Milestone Validation | 1/1 | Complete | 2026-06-19 |
+**Delivered:** A canonical, serialisable game-state model with bidirectional I/O, LLM-readable
+text narration, and an append-only event stream with deterministic replay — surfacing the
+environment's rich internal state for external APIs, scenario authoring, and LLM evaluation.
 
-**Milestone v9.0 complete.** All 14 SGS-* requirements verified with test evidence.
+**Stats:**
+- Phases: 5 (3 formal plans; Phases 2–4 implemented directly in-branch)
+- Requirements: 14/14 SGS-* complete with test evidence
+- New module: `wargame_rl/wargame/envs/state/` — ~2,040 LOC across 9 files (snapshot, codecs, events, event_log, exporter, narrator, replay, analysis)
+- Tests: ~1,615 LOC across 5 test files (snapshot, state_injection, narrator, event_stream, v9_milestone_validation)
+- Timeline: 2026-05-23 → 2026-06-19 (~27 days)
+
+**Key Decisions:**
+- Canonical `GameStateSnapshot` projected from `BattleView` (read-only), decoupled from RL observation tensors — same data, two consumers
+- Default encoding JSON; pluggable codec interface for alternative formats (event log later switched to JSONL)
+- Combat results carry attacker-target pairing + analytical context (probabilities, expected damage) so an LLM can judge target selection
+- Reward breakdown text includes the active reward phase name — values are uninterpretable without it
+- Event log is append-only with delta encoding between full-snapshot anchors; replay is deterministic from a known initial configuration
+
+**Issues Resolved:**
+- mypy arg-type errors in delta construction (`c02603b`) and snapshot (`1bdcd77`)
+- Replay assertions made tolerant of delta-encoding gaps on Python 3.13 (`7690b3c`, `6196228`)
+
+**Technical Debt / Deferred:**
+- None specific to v9. Transformer shooting-head alignment and dead-entity attention masking remain cross-cutting foundation items tracked in PROJECT.md.
+
+---
+
+_For current project status, see `.planning/ROADMAP.md` and `.planning/PROJECT.md`._
