@@ -1,8 +1,8 @@
 ---
 phase: 1
 slug: terrain-los-blocking
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-06-20
 ---
@@ -85,4 +85,4 @@ created: 2026-06-20
 - [ ] Feedback latency < 60s
 - [ ] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-06-20 (plan checker D8 PASS)
