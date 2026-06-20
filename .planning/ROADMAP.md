@@ -8,21 +8,27 @@
 
 ## Overview
 
-This milestone adds terrain that blocks **line of sight only** to the existing PPO/DQN wargame
-env. A terrain piece is a **footprint rectangle** (an area marker with no gameplay effect this
-milestone) plus thin **walls** (usually L-shaped segments inside the footprint) that block LOS while
-leaving movement untouched, with all terrain **encoded in the observation**. Research reached a clean
-consensus: this is a pure domain-logic + NumPy + existing-Pydantic-config change with **no new
-dependencies**, extending surfaces the codebase already has (the single Bresenham LOS seam, the
-entity-token transformer, the config→factory→aggregate→view DDD spine).
+This milestone adds terrain (Ruins) that blocks **line of sight only** to the existing PPO/DQN
+wargame env, using the canonical Warhammer 40k 10e **Ruins abstraction**: a terrain piece is a
+**footprint rectangle** and the *footprint itself* is the LOS blocker. A ruin blocks the line between
+two models only when its footprint lies between them and **both** are outside it; a model inside the
+footprint can **see out** and be **seen into** (per-ruin see-into/see-out exceptions). Walls have **no
+LOS role** this milestone (deferred). Movement is untouched. Terrain is **encoded in the observation**.
+This is a pure domain-logic + NumPy + existing-Pydantic-config change with **no new dependencies**,
+extending surfaces the codebase already has (the single Bresenham LOS seam, the entity-token
+transformer, the config→factory→aggregate→view DDD spine).
 
 The work splits into a natural **two-phase build order** with a clean one-way dependency: Phase 1
 puts terrain into the simulation/LOS (does the rule work?); Phase 2 puts terrain into the observation
-(can the agent see it?). Phase 2 needs `BattleView.terrain` from Phase 1. Walls are authored as thin
-segments but **rasterised to whole blocking cells** OR'd into the existing `is_blocking(x, y)` seam —
-the Bresenham core in `domain/los.py` stays untouched, and the footprint is deliberately not
-rasterised (no LOS effect yet). The central backward-compat guarantee: **no terrain ⇒ zero terrain
-tokens ⇒ byte-identical behaviour and pre-terrain checkpoints still load.**
+(can the agent see it?). Phase 2 needs `BattleView.terrain` from Phase 1. The footprint-based LOS is
+**endpoint-aware** — a cell is blocking iff it is inside some footprint F with both query endpoints
+outside F — built as a per-query `is_blocking(x, y)` predicate that plugs into the existing seam; the
+Bresenham core in `domain/los.py` stays untouched. The central backward-compat guarantee: **no terrain
+⇒ zero terrain tokens ⇒ byte-identical behaviour and pre-terrain checkpoints still load.**
+
+> **LOS model note:** An earlier draft assumed thin walls rasterised to blocking cells. Phase 1
+> discussion reset to the source 10e Ruins rules, which abstract LOS to the **footprint** (you cannot
+> see through a ruin even via windows). Walls are deferred. See `01-terrain-los-blocking/01-CONTEXT.md`.
 
 > **Phase directory naming:** This milestone restarts phase numbering at 1 with unprefixed
 > directories (`01-terrain-los-blocking`, `02-terrain-observation`). The completed v1.0 phase
@@ -38,38 +44,39 @@ tokens ⇒ byte-identical behaviour and pre-terrain checkpoints still load.**
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Terrain in the Simulation (LOS-Blocking)** - Config + domain rasteriser + LOS seam + renderer so walls block line of sight while movement is unaffected
+- [ ] **Phase 1: Terrain in the Simulation (LOS-Blocking)** - Config + domain footprint model + endpoint-aware LOS seam + renderer so ruin footprints block line of sight (with see-in/see-out) while movement is unaffected
 - [ ] **Phase 2: Terrain in the Observation** - Terrain entity-token stream through the obs pipeline and both networks so the agent can see and reason about terrain
 
 ## Phase Details
 
 ### Phase 1: Terrain in the Simulation (LOS-Blocking)
-**Goal**: Walls authored in YAML block line of sight through the single LOS service while movement
-passes through freely; configs with no terrain behave exactly as today.
+**Goal**: Ruin footprints authored in YAML block line of sight through the single LOS service (with
+10e see-into/see-out exceptions) while movement is unaffected; configs with no terrain behave exactly
+as today.
 **Directory**: `01-terrain-los-blocking`
 **Depends on**: Nothing (first phase; depends only on the existing domain/LOS layer)
 **Requirements**: TERR-01, TERR-02, TERR-03, TERR-04, TERR-05, TERR-06, TERR-07, TERR-10
 **Success Criteria** (what must be TRUE):
-  1. A YAML config can declare a terrain piece (footprint rectangle + zero or more thin L-shaped walls); loading is rejected with a clear error when a wall lies outside its footprint or any coordinate falls off the board.
-  2. A shot whose ray crosses a wall cell is blocked, an open lane stays clear, and a footprint alone never blocks LOS — verified by golden L-wall boards including the diagonal elbow and an intended 1-cell gap.
-  3. LOS through walls is symmetric (A sees B iff B sees A) and deterministic on known boards — verified by a Hypothesis property test over randomised grids and endpoints.
-  4. Shooting masks, action masks, shooting resolution, the renderer overlay, and the snapshot all agree on the same wall blocking because they route through the single `has_line_of_sight_between_cells` seam; the renderer draws walls from the rasterised blocking grid and colours the debug LOS line by the actual verdict.
-  5. A model can still move through a wall cell (movement unaffected), and an existing no-terrain config produces byte-identical LOS behaviour and existing `test_los.py` golden traces stay green.
+  1. A YAML config can declare a terrain piece as a footprint rectangle `[x0,y0,x1,y1]` in absolute coords; loading is rejected with a clear error when a corner is off-board or two footprints overlap.
+  2. With both models outside a footprint that lies between them, LOS is blocked; if the observer or the target is inside the footprint, LOS is clear (see-out / see-into); a footprint not on the line never blocks — verified by golden boards.
+  3. LOS is symmetric (A sees B iff B sees A) and deterministic on known boards — verified by a Hypothesis property test over randomised footprints and endpoints.
+  4. Shooting masks, action masks, shooting resolution, the renderer overlay, and the snapshot all agree on the same footprint blocking because they route through the single `has_line_of_sight_between_cells` seam (an endpoint-aware blocking predicate); the renderer colours the debug LOS line by the actual verdict.
+  5. Models can move through and occupy footprint cells (movement unaffected), and an existing no-terrain config produces byte-identical LOS behaviour and existing `test_los.py` golden traces stay green.
 **Plans**: TBD
 
 Plans:
-- [ ] 01-01: TBD (config types + validators; `domain/terrain.py` value objects + `build_los_blocking_grid` rasteriser, unit-tested without Gym)
-- [ ] 01-02: TBD (wire `battle_factory` → `Battle.terrain` + precomputed `los_blocking_grid`; `BattleView.terrain`; repoint `_make_is_blocking`; renderer overlay; LOS-symmetry property test + golden L-wall boards)
+- [ ] 01-01: TBD (config types + validators for footprint pieces; `domain/terrain.py` footprint value objects + endpoint-aware `is_blocking` predicate builder, unit-tested without Gym)
+- [ ] 01-02: TBD (wire `battle_factory` → `Battle.terrain`; `BattleView.terrain`; make `_make_is_blocking` endpoint-aware via footprints; renderer footprint overlay + verdict-coloured LOS; LOS-symmetry property test + golden boards; example terrain config)
 
 ### Phase 2: Terrain in the Observation
-**Goal**: Terrain (footprints and walls) is encoded in the agent's observation as an entity-token
+**Goal**: Terrain footprints are encoded in the agent's observation as an entity-token
 stream appended last, so the policy can reason about it without any mid-episode shape change and
 without breaking pre-terrain checkpoints.
 **Directory**: `02-terrain-observation`
 **Depends on**: Phase 1 (requires `BattleView.terrain`)
 **Requirements**: TERR-08, TERR-09
 **Success Criteria** (what must be TRUE):
-  1. With terrain configured, the observation includes terrain tokens carrying geometry only (wall endpoints + footprint bbox, normalised) — one token per wall, token count equals wall count, and no per-enemy visibility side-channel leaks privileged info.
+  1. With terrain configured, the observation includes terrain tokens carrying geometry only (footprint corners/bbox, normalised) — one token per footprint, token count equals footprint count, and no per-enemy visibility side-channel leaks privileged info.
   2. With no terrain configured, the observation adds nothing: tensor shapes and dtypes are byte-identical to a captured pre-terrain golden, and there is no mid-episode observation shape change.
   3. A pre-terrain checkpoint loads and infers on a no-terrain config and produces numerically-equal logits/values, because `terrain_embedding` is `None` when `terrain_size == 0` and terrain tokens are appended after opponents.
   4. Player and opponent token positions, per-model action heads, and the critic token are unchanged when terrain is present, across the Transformer, MLP, and PPO networks.

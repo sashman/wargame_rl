@@ -9,11 +9,16 @@
 
 ## Milestone Scope
 
-Terrain that blocks **line of sight only**, modeled as a **footprint** (a large rectangle area
-marker with no gameplay effect this milestone) plus thin **walls** (segments within the footprint,
-usually L-shaped) that block LOS. Movement is unaffected. Terrain is encoded in the observation so
-the agent can reason about it. Wall grid representation is **whole-cell rasterisation** behind the
-existing single LOS seam (cell-edge "true thin" walls deferred). See `.planning/research/SUMMARY.md`.
+Terrain (Ruins) that blocks **line of sight only**, using the canonical Warhammer 40k 10e **Ruins
+abstraction**: a terrain piece is a **footprint rectangle** and the *footprint itself* is the LOS
+blocker. A ruin blocks the line between two models only when its footprint lies between them and
+**both** models are outside it; a model inside the footprint can **see out** and be **seen into**
+(see-into / see-out exceptions). Walls have **no LOS role** this milestone and are deferred. Movement
+is unaffected. Terrain is encoded in the observation so the agent can reason about it. The
+footprint-based blocking predicate plugs into the existing single LOS seam (`domain/los.py`
+Bresenham unchanged). See `01-terrain-los-blocking/01-CONTEXT.md` and the 10e Ruins rules cited
+there; note the research `SUMMARY.md`'s wall-rasterisation recommendation is **superseded** by this
+footprint-based decision.
 
 ## v2.0 Requirements
 
@@ -21,33 +26,33 @@ Each requirement maps to exactly one roadmap phase.
 
 ### Terrain Model & Configuration
 
-- [ ] **TERR-01**: A terrain piece is configurable in YAML as a footprint rectangle plus zero or more thin walls (e.g. L-shaped) placed within that footprint
-- [ ] **TERR-02**: Terrain config is validated at load — walls lie within their footprint and all coordinates fall within board bounds
+- [ ] **TERR-01**: A terrain piece (ruin) is configurable in YAML as a footprint rectangle, given as two opposite corners `[x0, y0, x1, y1]` in absolute board coordinates
+- [ ] **TERR-02**: Terrain config is validated at load — footprint corners fall within board bounds and footprints do not overlap each other
 - [ ] **TERR-03**: Configs with no terrain behave exactly as today; existing YAML configs and pre-terrain checkpoints keep working (no-op default)
 
 ### Line of Sight
 
-- [ ] **TERR-04**: Walls block line of sight — a shot whose ray crosses a wall cell is blocked; footprints do not block LOS
-- [ ] **TERR-05**: Walls and footprints do not affect movement — models traverse terrain freely
-- [ ] **TERR-06**: Wall LOS blocking flows through the single LOS service so shooting masks, action masks, resolution, and rendering all agree on the same blocking
-- [ ] **TERR-07**: LOS through walls is symmetric (A sees B iff B sees A) and deterministic on known board configurations
+- [ ] **TERR-04**: A ruin footprint blocks line of sight when it lies between two models that are **both outside** it; a model inside a footprint can see out of it and be seen into (10e see-out / see-into exceptions, evaluated per ruin)
+- [ ] **TERR-05**: Terrain does not affect movement — models traverse and may occupy footprint cells freely
+- [ ] **TERR-06**: Footprint LOS blocking flows through the single LOS service (an endpoint-aware blocking predicate) so shooting masks, action masks, resolution, and rendering all agree on the same blocking
+- [ ] **TERR-07**: LOS is symmetric (A sees B iff B sees A) and deterministic on known board configurations
 
 ### Observation
 
-- [ ] **TERR-08**: Terrain (footprints and walls) is encoded in the agent's observation so the policy can reason about it
+- [ ] **TERR-08**: Terrain footprints are encoded in the agent's observation so the policy can reason about them
 - [ ] **TERR-09**: Terrain encoding causes no mid-episode observation shape change and adds nothing to the observation when no terrain is configured
 
 ### Rendering
 
-- [ ] **TERR-10**: The renderer draws terrain footprints and walls, and the LOS debug overlay reflects actual wall blocking
+- [ ] **TERR-10**: The renderer draws terrain footprints (translucent fill + outline + label), and the LOS debug overlay is coloured by the actual blocked/clear verdict
 
 ## Future Requirements
 
 Deferred to a later terrain milestone (tracked, not in this roadmap):
 
-- **TERRF-01**: Cell-edge "true thin" walls (sub-cell LOS via supercover traversal)
-- **TERRF-02**: Footprint-obscures-LOS (40k-faithful ruin obscuring, dense visibility)
-- **TERRF-03**: Cover bonus (+1 armour save vs ranged when in/behind cover)
+- **TERRF-01**: Walls within a footprint (thin L-shaped segments) — for rendering realism, movement interaction, and/or finer-grained LOS than the footprint abstraction
+- **TERRF-02**: Dense/Woods-style visibility ("not fully visible" partial obscuring) distinct from the Ruins footprint block
+- **TERRF-03**: Cover bonus / Benefit of Cover (+1 armour save vs ranged when not fully visible due to terrain) — maps onto the footprint model
 - **TERRF-04**: Difficult terrain (movement speed penalty)
 - **TERRF-05**: Impassable/blocking terrain (models cannot move through)
 - **TERRF-06**: Elevation and height advantage (improved AP from elevated positions)
@@ -59,8 +64,8 @@ Deferred to a later terrain milestone (tracked, not in this roadmap):
 
 | Feature | Reason |
 |---------|--------|
-| Cell-edge thin walls this milestone | Whole-cell rasterisation reuses the existing Bresenham seam with no LOS-core change; cell-edge needs new ray traversal — deferred |
-| Footprint gameplay effects (cover, dense visibility, difficult ground) | Footprint is a no-op area marker this milestone; effects deferred to a later terrain milestone |
+| Walls as LOS blockers this milestone | 10e abstracts ruin LOS to the footprint (can't see through even via windows/doors); walls deferred to a later milestone for rendering/movement/finer LOS |
+| Footprint gameplay effects beyond LOS (cover, dense visibility, difficult ground) | This milestone is LOS-blocking only; cover/visibility effects deferred to a later terrain milestone |
 | Terrain affecting movement (impassable, difficult) | Milestone is LOS-only; movement untouched |
 | Elevation / 3D / height | Discrete 2D grid only this milestone |
 | Procedural / template terrain generation | Hand-authored YAML terrain first; generation deferred |
