@@ -62,11 +62,11 @@ as today.
   3. LOS is symmetric (A sees B iff B sees A) and deterministic on known boards — verified by a Hypothesis property test over randomised footprints and endpoints.
   4. Shooting masks, action masks, shooting resolution, the renderer overlay, and the snapshot all agree on the same footprint blocking because they route through the single `has_line_of_sight_between_cells` seam (an endpoint-aware blocking predicate); the renderer colours the debug LOS line by the actual verdict.
   5. Models can move through and occupy footprint cells (movement unaffected), and an existing no-terrain config produces byte-identical LOS behaviour and existing `test_los.py` golden traces stay green.
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: TBD (config types + validators for footprint pieces; `domain/terrain.py` footprint value objects + endpoint-aware `is_blocking` predicate builder, unit-tested without Gym)
-- [ ] 01-02: TBD (wire `battle_factory` → `Battle.terrain`; `BattleView.terrain`; make `_make_is_blocking` endpoint-aware via footprints; renderer footprint overlay + verdict-coloured LOS; LOS-symmetry property test + golden boards; example terrain config)
+- [ ] 01-01-PLAN.md — Terrain config schema (`TerrainPieceConfig` + `WargameEnvConfig.terrain`) with bounds/non-overlap validation, pure `domain/terrain.py` (`Footprint`/`Terrain`), domain + config tests; Wave-0 hypothesis dep
+- [ ] 01-02-PLAN.md — Wire `battle_factory`→`Battle.terrain`→`BattleView.terrain`; endpoint-aware symmetric LOS seam; renderer footprint overlay + verdict-coloured LOS; golden boards + symmetry/consistency/movement tests; demo `terrain_los_demo.yaml`
 
 ### Phase 2: Terrain in the Observation
 **Goal**: Terrain footprints are encoded in the agent's observation as an entity-token
