@@ -32,11 +32,14 @@ Last activity: 2026-06-20 — v2.0 roadmap created (2 phases, 10/10 TERR-* mappe
 Progress: [░░░░░░░░░░] 0%
 
 **Roadmap shape:** Two phases with a clean one-way dependency.
-- Phase 1 `v2-01-terrain-los-blocking`: config + `domain/terrain.py` rasteriser + LOS seam + renderer
+- Phase 1 `01-terrain-los-blocking`: config + `domain/terrain.py` rasteriser + LOS seam + renderer
   (TERR-01..07, TERR-10). Walls rasterised to whole cells OR'd into `is_blocking`; `domain/los.py`
   Bresenham untouched; footprint NOT rasterised.
-- Phase 2 `v2-02-terrain-observation`: terrain entity-token stream through obs pipeline + both
+- Phase 2 `02-terrain-observation`: terrain entity-token stream through obs pipeline + both
   networks + PPO, `terrain_embedding` appended LAST and None-guarded (TERR-08, TERR-09).
+
+**Phase dirs:** v1.0 phases archived to `.planning/milestones/v1.0-phases/`; v9.0 phase dir to
+`.planning/milestones/v9.0-phases/`. v2.0 uses unprefixed `01-`/`02-` (tooling resolves correctly).
 
 ## Performance Metrics
 

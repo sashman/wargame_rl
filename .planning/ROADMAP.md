@@ -24,9 +24,11 @@ the Bresenham core in `domain/los.py` stays untouched, and the footprint is deli
 rasterised (no LOS effect yet). The central backward-compat guarantee: **no terrain ⇒ zero terrain
 tokens ⇒ byte-identical behaviour and pre-terrain checkpoints still load.**
 
-> **Phase directory naming:** This milestone restarts phase numbering at 1, but directories carry a
-> `v2-` prefix so they never collide with the existing v1.0 dirs (`01-`…`05-`) or `v9-01-`:
-> `v2-01-terrain-los-blocking`, `v2-02-terrain-observation`.
+> **Phase directory naming:** This milestone restarts phase numbering at 1 with unprefixed
+> directories (`01-terrain-los-blocking`, `02-terrain-observation`). The completed v1.0 phase
+> directories were archived to `.planning/milestones/v1.0-phases/` (and the v9.0 phase dir to
+> `.planning/milestones/v9.0-phases/`) so the `01-`/`02-` namespace is free and the GSD tooling
+> resolves these phases correctly.
 
 ## Phases
 
@@ -44,7 +46,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### Phase 1: Terrain in the Simulation (LOS-Blocking)
 **Goal**: Walls authored in YAML block line of sight through the single LOS service while movement
 passes through freely; configs with no terrain behave exactly as today.
-**Directory**: `v2-01-terrain-los-blocking`
+**Directory**: `01-terrain-los-blocking`
 **Depends on**: Nothing (first phase; depends only on the existing domain/LOS layer)
 **Requirements**: TERR-01, TERR-02, TERR-03, TERR-04, TERR-05, TERR-06, TERR-07, TERR-10
 **Success Criteria** (what must be TRUE):
@@ -56,14 +58,14 @@ passes through freely; configs with no terrain behave exactly as today.
 **Plans**: TBD
 
 Plans:
-- [ ] v2-01-01: TBD (config types + validators; `domain/terrain.py` value objects + `build_los_blocking_grid` rasteriser, unit-tested without Gym)
-- [ ] v2-01-02: TBD (wire `battle_factory` → `Battle.terrain` + precomputed `los_blocking_grid`; `BattleView.terrain`; repoint `_make_is_blocking`; renderer overlay; LOS-symmetry property test + golden L-wall boards)
+- [ ] 01-01: TBD (config types + validators; `domain/terrain.py` value objects + `build_los_blocking_grid` rasteriser, unit-tested without Gym)
+- [ ] 01-02: TBD (wire `battle_factory` → `Battle.terrain` + precomputed `los_blocking_grid`; `BattleView.terrain`; repoint `_make_is_blocking`; renderer overlay; LOS-symmetry property test + golden L-wall boards)
 
 ### Phase 2: Terrain in the Observation
 **Goal**: Terrain (footprints and walls) is encoded in the agent's observation as an entity-token
 stream appended last, so the policy can reason about it without any mid-episode shape change and
 without breaking pre-terrain checkpoints.
-**Directory**: `v2-02-terrain-observation`
+**Directory**: `02-terrain-observation`
 **Depends on**: Phase 1 (requires `BattleView.terrain`)
 **Requirements**: TERR-08, TERR-09
 **Success Criteria** (what must be TRUE):
@@ -74,8 +76,8 @@ without breaking pre-terrain checkpoints.
 **Plans**: TBD
 
 Plans:
-- [ ] v2-02-01: TBD (`WargameTerrainObservation` + `env_observation.terrain` + builder `_terrain_to_obs`; terrain tensor in `model/common/observation.py`, None-guarded, inserted before mask)
-- [ ] v2-02-02: TBD (`terrain_embedding` appended LAST in Transformer + MLP + PPO backbone share; `from_env` reads `terrain_size`; backward-compat tests: no-terrain byte-identical + pre-terrain checkpoint loads & infers)
+- [ ] 02-01: TBD (`WargameTerrainObservation` + `env_observation.terrain` + builder `_terrain_to_obs`; terrain tensor in `model/common/observation.py`, None-guarded, inserted before mask)
+- [ ] 02-02: TBD (`terrain_embedding` appended LAST in Transformer + MLP + PPO backbone share; `from_env` reads `terrain_size`; backward-compat tests: no-terrain byte-identical + pre-terrain checkpoint loads & infers)
 
 ## Progress
 
