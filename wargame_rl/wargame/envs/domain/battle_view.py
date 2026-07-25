@@ -7,6 +7,7 @@ from typing import Any, Protocol, runtime_checkable
 import numpy as np
 
 from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
+from wargame_rl.wargame.envs.domain.terrain import Terrain
 from wargame_rl.wargame.envs.types.config import WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import GameState
 
@@ -52,6 +53,8 @@ class BattleView(Protocol):
     def opponent_vp(self) -> int: ...
     @property
     def player_vp_delta(self) -> int: ...
+    @property
+    def terrain(self) -> Terrain: ...
     @property
     def opponent_vp_delta(self) -> int: ...
 

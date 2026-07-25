@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
+from wargame_rl.wargame.envs.domain.terrain import Terrain
 from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions, DeploymentZone
 
 
@@ -25,6 +26,7 @@ class Battle:
         objectives: list[WargameObjective],
         deployment_zone: DeploymentZone,
         opponent_deployment_zone: DeploymentZone,
+        terrain: Terrain,
     ) -> None:
         self._board_dimensions = board_dimensions
         self._player_models = player_models
@@ -32,6 +34,7 @@ class Battle:
         self._objectives = objectives
         self._deployment_zone = deployment_zone
         self._opponent_deployment_zone = opponent_deployment_zone
+        self._terrain = terrain
         self._player_vp = 0
         self._opponent_vp = 0
         self._player_vp_delta = 0
@@ -64,6 +67,10 @@ class Battle:
     @property
     def opponent_deployment_zone(self) -> np.ndarray:
         return self._opponent_deployment_zone.as_array()
+
+    @property
+    def terrain(self) -> Terrain:
+        return self._terrain
 
     @property
     def player_vp(self) -> int:
