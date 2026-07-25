@@ -10,7 +10,7 @@ in `.planning/milestones/`.
 **Shipped:** 2026-06-19
 **Phases:** 5 | **Plans:** 3 formal (Phases 2–4 implemented directly) | **Requirements:** 14/14 SGS-* complete
 **PRs:** #110, #111, #114, #116
-**Archive:** [v9-ROADMAP.md](milestones/v9-ROADMAP.md) · [v9-REQUIREMENTS.md](milestones/v9-REQUIREMENTS.md)
+**Archive:** removed (git history preserves full detail)
 
 **Delivered:** A canonical, serialisable game-state model with bidirectional I/O, LLM-readable
 text narration, and an append-only event stream with deterministic replay — surfacing the
