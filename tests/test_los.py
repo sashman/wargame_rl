@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import pytest
+from hypothesis import assume, given, settings
+from hypothesis import strategies as st
 
 from wargame_rl.wargame.envs.domain.los import has_line_of_sight, iter_los_cells
 from wargame_rl.wargame.envs.types import TerrainPieceConfig, WargameEnvConfig
@@ -219,3 +221,135 @@ def test_terrain_validation_overlap_with_zone_or_objective_allowed() -> None:
         number_of_battle_rounds=1,
     )
     assert cfg.terrain is not None
+
+
+# --- Terrain LOS behavioural tests ---
+
+
+def _terrain_env(
+    terrain: list[TerrainPieceConfig],
+    *,
+    board_width: int = 20,
+    board_height: int = 20,
+    blocking_mask: list[list[bool]] | None = None,
+) -> WargameEnv:
+    """Helper to build a minimal env with terrain footprints."""
+    cfg = WargameEnvConfig(
+        board_width=board_width,
+        board_height=board_height,
+        terrain=terrain,
+        blocking_mask=blocking_mask,
+        number_of_wargame_models=1,
+        number_of_objectives=1,
+        render_mode=None,
+        number_of_battle_rounds=1,
+    )
+    return WargameEnv(cfg)
+
+
+def test_terrain_los_blocked_between_outside_models() -> None:
+    """Both models outside footprint between them -> LOS blocked."""
+    # Footprint at columns 8-12 on row 5; observer (0,5), target (19,5)
+    env = _terrain_env([TerrainPieceConfig(footprint=(8, 4, 12, 6))])
+    assert env.has_line_of_sight_between_cells(0, 5, 19, 5) is False
+
+
+def test_terrain_los_see_into_target_inside() -> None:
+    """Target inside footprint -> LOS clear (10e see-into rule)."""
+    env = _terrain_env([TerrainPieceConfig(footprint=(8, 4, 12, 6))])
+    assert env.has_line_of_sight_between_cells(0, 5, 10, 5) is True
+
+
+def test_terrain_los_see_out_observer_inside() -> None:
+    """Observer inside footprint -> LOS clear (10e see-out rule)."""
+    env = _terrain_env([TerrainPieceConfig(footprint=(8, 4, 12, 6))])
+    assert env.has_line_of_sight_between_cells(10, 5, 19, 5) is True
+
+
+def test_terrain_los_per_ruin_other_ruin_still_blocks() -> None:
+    """Inside ruin A, ruin B between observer and target -> blocked by ruin B."""
+    env = _terrain_env(
+        [
+            TerrainPieceConfig(footprint=(0, 4, 3, 6)),  # ruin A (observer inside)
+            TerrainPieceConfig(footprint=(8, 4, 12, 6)),  # ruin B (between)
+        ]
+    )
+    assert env.has_line_of_sight_between_cells(2, 5, 19, 5) is False
+
+
+def test_terrain_los_off_line_footprint_unaffected() -> None:
+    """Footprint not on the LOS line -> LOS clear."""
+    env = _terrain_env([TerrainPieceConfig(footprint=(8, 14, 12, 18))])
+    assert env.has_line_of_sight_between_cells(0, 5, 19, 5) is True
+
+
+def test_terrain_los_interior_only_endpoint_footprint_does_not_block() -> None:
+    """A footprint cell coinciding with an endpoint doesn't block (endpoint excluded)."""
+    # Footprint at (5,5)-(5,5), target at (5,5)
+    env = _terrain_env([TerrainPieceConfig(footprint=(5, 5, 5, 5))])
+    assert env.has_line_of_sight_between_cells(0, 5, 5, 5) is True
+
+
+def test_terrain_los_blocking_mask_and_footprint_coexist() -> None:
+    """Both blocking_mask and footprint configured; either one blocks via OR."""
+    mask = [[False] * 20 for _ in range(20)]
+    mask[5][15] = True  # block cell (15, 5)
+    env = _terrain_env(
+        [TerrainPieceConfig(footprint=(8, 4, 12, 6))],
+        blocking_mask=mask,
+    )
+    # Blocked by footprint
+    assert env.has_line_of_sight_between_cells(0, 5, 19, 5) is False
+    # Blocked by mask cell (15, 5) — line from (13, 5) to (19, 5) passes through (15, 5)
+    assert env.has_line_of_sight_between_cells(13, 5, 19, 5) is False
+    # Clear line that avoids both
+    assert env.has_line_of_sight_between_cells(0, 0, 5, 0) is True
+
+
+@given(
+    board_w=st.integers(min_value=8, max_value=20),
+    board_h=st.integers(min_value=8, max_value=20),
+    fp_data=st.lists(
+        st.tuples(
+            st.integers(min_value=0, max_value=15),
+            st.integers(min_value=0, max_value=15),
+            st.integers(min_value=1, max_value=3),
+            st.integers(min_value=1, max_value=3),
+        ),
+        min_size=0,
+        max_size=2,
+    ),
+    x0=st.integers(min_value=0, max_value=19),
+    y0=st.integers(min_value=0, max_value=19),
+    x1=st.integers(min_value=0, max_value=19),
+    y1=st.integers(min_value=0, max_value=19),
+)
+@settings(max_examples=200, deadline=None)
+def test_terrain_los_symmetry(
+    board_w: int,
+    board_h: int,
+    fp_data: list[tuple[int, int, int, int]],
+    x0: int,
+    y0: int,
+    x1: int,
+    y1: int,
+) -> None:
+    """has_los(A,B) == has_los(B,A) over random boards/footprints/endpoints."""
+    assume(x0 < board_w and y0 < board_h and x1 < board_w and y1 < board_h)
+
+    footprints: list[TerrainPieceConfig] = []
+    for fx, fy, fw, fh in fp_data:
+        fx1 = fx + fw
+        fy1 = fy + fh
+        assume(fx1 < board_w and fy1 < board_h)
+        # Reject if overlaps any previous footprint
+        for prev in footprints:
+            px0, py0, px1, py1 = prev.footprint
+            if fx <= px1 and fx1 >= px0 and fy <= py1 and fy1 >= py0:
+                assume(False)
+        footprints.append(TerrainPieceConfig(footprint=(fx, fy, fx1, fy1)))
+
+    env = _terrain_env(footprints, board_width=board_w, board_height=board_h)
+    forward = env.has_line_of_sight_between_cells(x0, y0, x1, y1)
+    backward = env.has_line_of_sight_between_cells(x1, y1, x0, y0)
+    assert forward == backward

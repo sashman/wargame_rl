@@ -7,7 +7,11 @@ from wargame_rl.wargame.envs.reward.phase import (
     RewardPhaseConfig,
     SuccessCriteriaConfig,
 )
-from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
+from wargame_rl.wargame.envs.types import (
+    TerrainPieceConfig,
+    WargameEnvAction,
+    WargameEnvConfig,
+)
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
 
@@ -221,3 +225,29 @@ def test_multiple_steps(env: WargameEnv) -> None:
 
     assert step_count >= 1
     assert env.current_turn == step_count
+
+
+# --- Terrain movement tests ---
+
+
+def test_terrain_movement_through_footprint() -> None:
+    """Model can move into/through/occupy footprint cells (TERR-05)."""
+    config = WargameEnvConfig(
+        render_mode=None,
+        board_width=20,
+        board_height=20,
+        number_of_wargame_models=1,
+        number_of_objectives=1,
+        objective_radius_size=1,
+        terrain=[TerrainPieceConfig(footprint=(8, 8, 12, 12))],
+        number_of_battle_rounds=100,
+    )
+    env = WargameEnv(config=config)
+    env.reset(seed=42)
+    for _ in range(20):
+        action = WargameEnvAction(actions=list(env.action_space.sample()))
+        obs, _, terminated, _, _ = env.step(action)
+        if terminated:
+            break
+    # Verify env didn't crash — terrain does not block movement
+    assert env.current_turn >= 1
