@@ -52,78 +52,17 @@ the current one finishes.
 - ✓ Shooting resolution (hit → wound → save → damage with configurable weapon profiles) — Phase 5
 - [ ] Combat reward & curriculum (damage dealt / models lost calculators, shooting curriculum phase)
 
-#### v2.0 — Terrain & Battlefield Geometry [NEXT · HIGH]
+#### Future milestones (not active)
 
-- [ ] Terrain cell types (open, light cover, dense cover, blocking, difficult ground)
-- [ ] Cover bonus (+1 armour save against ranged attacks when in/behind cover)
-- [ ] Dense terrain visibility (models wholly inside are never fully visible from outside)
-- [ ] Blocking terrain (impassable, blocks line of sight)
-- [ ] Difficult terrain (movement speed penalty when traversing)
-- [ ] Elevation and height advantage (improved AP from elevated positions)
-- [ ] Board templates and procedural terrain placement for training variety
-- [ ] Terrain encoded in observation space
-- [ ] Variable base sizes: models have different base radii affecting movement, coherency, engagement, objective control, and LOS (research spike — investigate impact on grid representation and DL training)
-
-#### v3.0 — Advanced Movement & Deployment [LOW]
-
-- [ ] Advance move (move + random bonus, forfeits shooting that turn)
-- [ ] Fall back move (disengage from threat zone, forfeits shooting that turn)
-- [ ] Remain stationary bonus (heavy-class weapons get +1 accuracy when unit doesn't move)
-- [ ] Threat zone / engagement range (1" zone around enemies — can't end normal move inside)
-- [ ] Per-model movement speed (speed bins as fractions of each model's max)
-- [ ] Reserve deployment (units arrive from board edges on turn 2+)
-- [ ] Drop insertion (units arrive anywhere on board, >9" from enemies)
-- [ ] Forward deployment (set up outside deployment zone before battle, >9" from enemies)
-- [ ] Reconnaissance advance (free pre-battle move up to X")
-
-#### v4.0 — Weapon Systems & Attack Modifiers [LOW]
-
-- [ ] Weapon tags: mobile-fire (shoot after advancing), braced (+1 accuracy when stationary), burst-fire (extra attacks at half range)
-- [ ] Area weapons (bonus attacks proportional to target unit size)
-- [ ] Close-range overcharge (extra damage at half range)
-- [ ] Auto-hit weapons (spray/torrent — skip accuracy roll)
-- [ ] Armour penetration tiers (weapons reduce saves by different amounts)
-- [ ] Alternative saves / energy shields (unaffected by AP)
-- [ ] Damage resistance (per-wound chance to ignore damage)
-- [ ] Mortal damage (bypasses all saves, excess carries to next model)
-- [ ] Multiple weapon loadouts per model with profile selection
-- [ ] Weapon keywords: precision-allocation (target leaders in attached units), volatile (risk of self-damage), critical-bypass (critical wounds become mortal damage)
-
-#### v5.0 — Morale & Unit Resilience [LOWEST]
-
-- [ ] Resolve test when below half strength (roll vs Leadership characteristic)
-- [ ] Shaken status effects (objective control value = 0, restricted tactical options)
-- [ ] Desperate escape (falling back while shaken risks losing additional models)
-- [ ] Leadership characteristic per unit/model
-- [ ] Recovery mechanic (shaken clears at start of next command phase)
-- [ ] Stricter unit coherency enforcement (models must stay within 2" of each other; 7+ model units need 2 neighbours)
-
-#### v6.0 — Tactical Resources & Reactions [LOWEST]
-
-- [ ] Command resources generated each command phase (1 per turn, capped)
-- [ ] Tactical actions: spend resources for one-time effects during specific phases
-- [ ] Re-roll action (spend 1 resource to re-roll any single dice)
-- [ ] Opportunity fire (reactive shooting during opponent's movement, heavily reduced accuracy — hits on 6s only, once per turn)
-- [ ] Emergency cover action (infantry gains temporary invulnerable save + cover for a phase)
-- [ ] Smoke cover action (temporary concealment for a unit)
-- [ ] Action economy as a learned strategic decision
-
-#### v7.0 — Adversarial Play & Self-Play [WIP · HIGH]
-
-- [ ] Two-agent environment with alternating full turns
-- [ ] Self-play training against frozen checkpoint opponents
-- [ ] Elo rating system for agent version comparison
-- [ ] Opponent pool diversity (mix of scripted, frozen, and live opponents)
-- [ ] Competitive reward design (win/loss, VP differential, margin of victory)
-
-#### v8.0 — Scale, Missions & Polish [LOWEST]
-
-- [ ] Larger scenarios (10+ models per side with batched inference)
-- [ ] Mission variety (different objective layouts, primary/secondary objectives)
-- [ ] Progressive scoring (earn VP each turn for controlled objectives)
-- [ ] Battle size configurations (small skirmish to full battle)
-- [ ] Web replay viewer (browser-based, replacing/complementing Pygame)
-- [ ] Community scenario library (env configs for classic missions)
+| Milestone | Theme | Priority |
+|-----------|-------|----------|
+| v2.0 | Terrain & battlefield geometry (cover, blocking, elevation) | NEXT |
+| v3.0 | Advanced movement & deployment (advance, fall back, reserves) | LOW |
+| v4.0 | Weapon systems & attack modifiers (tags, area, mortal damage) | LOW |
+| v5.0 | Morale & unit resilience (resolve, shaken, leadership) | LOWEST |
+| v6.0 | Tactical resources & reactions (command points, overwatch) | LOWEST |
+| v7.0 | Adversarial play & self-play (two-agent, Elo, opponent pool) | HIGH |
+| v8.0 | Scale, missions & polish (10+ models, web replay) | LOWEST |
 
 #### v9.0 — Structured game state & event streaming [✅ SHIPPED 2026-06-19]
 
@@ -141,23 +80,11 @@ narration, and an append-only event stream with deterministic replay.
 
 ### Out of Scope
 
-- Full army list building / points system — focus is on tactical play, not list construction
-- Multiplayer (3+ players) — two-player only, per tabletop standard
-- Mobile or web deployment of the training pipeline — local/CI training only
-- Real-time gameplay — turn-based discrete steps only
-- Melee combat (charge & fight phases, pile in, consolidate) — extremely complex interaction model, deferred indefinitely
-- Transports (embark/disembark mechanics) — niche mechanic, high implementation cost
-- Aircraft (minimum move, forced reserves) — specialised sub-system, low RL training value
-- Psychic powers / abilities — faction-specific, not core mechanics
-- Faction-specific rules / detachments — keeps the domain generic
+Melee combat, transports, aircraft, psychic powers, faction-specific rules, army list building, multiplayer (3+), mobile/web deployment, real-time gameplay.
 
 ## Context
 
-This is a brownfield project with a working environment, two RL algorithms, and a mature training pipeline. The codebase follows DDD principles in the environment layer (`domain/` for rules, `BattleView` protocol for consumers). Extension points are well-documented in `docs/ddd-envs.md`.
-
-The project models a tabletop miniatures wargame with detailed rules (see `docs/tabletop-rules-reference.md`). The environment currently implements movement and objective control. The long-term vision spans nine milestone tracks (v1.0–v9.0) progressing from ranged combat through terrain, advanced movement, weapon diversity, morale, tactical resources, adversarial self-play, scale, and structured programmatic state with event streaming for APIs and LLMs (v9.0). Melee combat is explicitly out of scope.
-
-**Current priorities:** v9.0 (Structured State) shipped 2026-06-19. v1.0 (Ranged Combat) is complete except the deferred Phase 6 (Combat Reward & Curriculum). v7.0 (Adversarial Play) is active WIP and v2.0 (Terrain) is next up. v3.0/v4.0 are low priority; v5.0/v6.0/v8.0 are lowest priority. Future milestones are captured in the Active requirements above and will be created via `/gsd-new-milestone` as each completes.
+Brownfield project: working env, DQN + PPO algorithms, mature training pipeline. DDD structure in `envs/` with `BattleView` protocol. v1.0 (ranged combat) complete. v9.0 (structured state) shipped 2026-06-19. Next up: v2.0 (terrain) or v7.0 (self-play).
 
 ## Constraints
 
@@ -184,22 +111,5 @@ The project models a tabletop miniatures wargame with detailed rules (see `docs/
 | v9.0: combat results carry attacker-target pairing + analytical context (probabilities, expected damage) | Enables an LLM to judge whether the agent chose the optimal target | ✓ Good |
 | v9.0: append-only event stream with delta encoding between full-snapshot anchors; deterministic replay | Compact history + reproducible seek/fast-forward from a known initial configuration | ✓ Good |
 
-## Evolution
-
-This document evolves at phase transitions and milestone boundaries.
-
-**After each phase transition** (via `/gsd-transition`):
-1. Requirements invalidated? → Move to Out of Scope with reason
-2. Requirements validated? → Move to Validated with phase reference
-3. New requirements emerged? → Add to Active
-4. Decisions to log? → Add to Key Decisions
-5. "What This Is" still accurate? → Update if drifted
-
-**After each milestone** (via `/gsd-complete-milestone`):
-1. Full review of all sections
-2. Core Value check — still the right priority?
-3. Audit Out of Scope — reasons still valid?
-4. Update Context with current state
-
 ---
-*Last updated: 2026-06-19 — v9.0 milestone complete: structured game state, bidirectional I/O, LLM-readable narration, and event streaming with deterministic replay (14/14 SGS-* verified)*
+*Last updated: 2026-07-25*
