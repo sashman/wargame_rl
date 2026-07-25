@@ -1,8 +1,8 @@
 ---
 gsd_state_version: 1.0
-milestone: between
+milestone: v2.0
 status: active
-stopped_at: v9.0 shipped; planning next milestone
+stopped_at: v2.0 planning complete; Phase 1 ready to execute
 last_updated: "2026-07-25"
 last_activity: 2026-07-25
 ---
@@ -10,27 +10,30 @@ last_activity: 2026-07-25
 # Project State
 
 **Core value:** Agents learn recognisable tactical behaviour through reward shaping and environment design
-**Current focus:** Between milestones — next up: v2.0 (Terrain) or v7.0 (Self-Play)
+**Current focus:** v2.0 Phase 1 — Terrain in the Simulation (LOS-Blocking)
 
 ## Current Position
 
-- **v9.0** (Structured State): ✅ Shipped 2026-06-19. Archive in `milestones/`.
+- **v2.0** (Terrain & LOS-Blocking): Phase 1 planned (2 plans ready), not started.
+- **v9.0** (Structured State): Shipped 2026-06-19.
 - **v1.0** (Ranged Combat): Phases 1–5 complete. Phase 6 deferred.
-- **Next:** `/gsd-new-milestone` to start v2.0 or v7.0.
 
 ## Decisions
 
-Key decisions logged in PROJECT.md. Architecture decisions that persist:
-- Snapshot schema uses native Python types (no numpy) for trivial serialisation
-- Event log uses anchor snapshots at configurable intervals for efficient seek
-- LOS: Bresenham + interior-only blocking; single `domain/los.py` source
-- Shooting resolution at env level (not ActionHandler) — env owns combat flow
+Key v2 decisions (from `phases/01-terrain-los-blocking/01-CONTEXT.md`):
+- **Footprint-based 10e Ruins LOS** — no walls this milestone
+- Blocking is **endpoint-aware** (per-query predicate, not a static grid)
+- See-into/see-out exceptions evaluated **per ruin**
+- `domain/los.py` Bresenham core stays **untouched**
+- Canonicalise endpoint order in seam for symmetry guarantee
+- Movement unaffected by terrain
 
 ## Blockers/Concerns
 
 - CUDA setup may be broken on dev machine — use `CUDA_VISIBLE_DEVICES=""` for training
+- Verify `hypothesis` is available as dev dep before executing Phase 1
 
 ## Session Continuity
 
 Last session: 2026-07-25
-Stopped at: Compacted .planning/ artifacts
+Stopped at: Reconciled v2 planning onto compacted .planning/
