@@ -1,0 +1,22 @@
+config_name: terrain_los_demo
+board_width: 60
+board_height: 44
+number_of_wargame_models: 4
+number_of_opponent_models: 4
+number_of_objectives: 3
+number_of_battle_rounds: 5
+
+deployment_zone: [0, 0, 20, 44]
+opponent_deployment_zone: [40, 0, 60, 44]
+
+opponent_policy:
+  type: scripted_advance_to_objective
+
+terrain:
+  - { footprint: [27, 8, 33, 16] }
+  - { footprint: [27, 28, 33, 36] }
+
+objectives:
+  - { x: 30, y: 6 }
+  - { x: 30, y: 22 }
+  - { x: 30, y: 38 }
