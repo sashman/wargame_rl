@@ -56,6 +56,17 @@ def _validate_entity_configs(
             )
 
 
+def _normalise_rect(r: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    x0, y0, x1, y1 = r
+    return (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
+
+
+def _rects_overlap(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
+    ax0, ay0, ax1, ay1 = a
+    bx0, by0, bx1, by1 = b
+    return ax0 <= bx1 and bx0 <= ax1 and ay0 <= by1 and by0 <= ay1
+
+
 class TurnOrder(str, Enum):
     """Who moves first each turn."""
 
@@ -147,6 +158,14 @@ class ModelConfig(BaseModel):
         return self
 
 
+class TerrainPieceConfig(BaseModel):
+    """Configuration for a single terrain piece (axis-aligned rectangle)."""
+
+    footprint: tuple[int, int, int, int] = Field(
+        description="Bounding rectangle (x0, y0, x1, y1) in grid cells."
+    )
+
+
 class ObjectiveConfig(BaseModel):
     """Per-objective configuration (position, radius, etc.).
 
@@ -215,6 +234,11 @@ class WargameEnvConfig(BaseModel):
             "inner is x (column 0..board_width-1). Cells True block line-of-sight "
             "through interior path cells only. None = no terrain blocking."
         ),
+    )
+    terrain: list[TerrainPieceConfig] | None = Field(
+        default=None,
+        description="Terrain pieces that block LOS. Each piece is an axis-aligned "
+        "rectangle defined by a (x0, y0, x1, y1) footprint. None = no terrain.",
     )
     render_mode: str | None = Field(
         default=None, description="Rendering mode for the environment"
@@ -427,6 +451,26 @@ class WargameEnvConfig(BaseModel):
                     f"{yi} must have length board_width ({self.board_width}), "
                     f"got {len(row)}"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def validate_terrain(self) -> "WargameEnvConfig":
+        """Validate terrain footprints are in-bounds and non-overlapping."""
+        if self.terrain is None:
+            return self
+        normalised: list[tuple[int, int, int, int]] = [
+            _normalise_rect(t.footprint) for t in self.terrain
+        ]
+        for i, (x0, y0, x1, y1) in enumerate(normalised):
+            if x0 < 0 or y0 < 0 or x1 >= self.board_width or y1 >= self.board_height:
+                raise ValueError(
+                    f"terrain[{i}] {self.terrain[i].footprint} is outside "
+                    f"the board ({self.board_width}x{self.board_height})"
+                )
+        for i in range(len(normalised)):
+            for j in range(i + 1, len(normalised)):
+                if _rects_overlap(normalised[i], normalised[j]):
+                    raise ValueError(f"terrain[{i}] overlaps terrain[{j}]")
         return self
 
     @model_validator(mode="after")

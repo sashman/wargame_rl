@@ -9,6 +9,7 @@ from .config import (
     ModelConfig,
     ObjectiveConfig,
     OpponentPolicyConfig,
+    TerrainPieceConfig,
     TurnOrder,
     WargameEnvConfig,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "OpponentPolicyConfig",
     "PlayerSide",
     "SetupPhase",
+    "TerrainPieceConfig",
     "TurnOrder",
     "WargameEnvConfig",
     "WargameEnvAction",

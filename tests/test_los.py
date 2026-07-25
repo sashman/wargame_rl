@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from wargame_rl.wargame.envs.domain.los import has_line_of_sight, iter_los_cells
-from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.envs.types import TerrainPieceConfig, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
 
@@ -144,3 +144,78 @@ def test_blocking_mask_invalid_shape_raises() -> None:
             render_mode=None,
             number_of_battle_rounds=1,
         )
+
+
+# --- Terrain config tests ---
+
+
+def test_terrain_config_parses_footprint() -> None:
+    """Valid terrain constructs and stores footprint tuple."""
+    cfg = WargameEnvConfig(
+        board_width=50,
+        board_height=50,
+        terrain=[TerrainPieceConfig(footprint=(27, 8, 33, 16))],
+        number_of_wargame_models=1,
+        number_of_objectives=1,
+        render_mode=None,
+        number_of_battle_rounds=1,
+    )
+    assert cfg.terrain is not None
+    assert cfg.terrain[0].footprint == (27, 8, 33, 16)
+
+
+def test_terrain_config_default_none() -> None:
+    """No terrain key gives None."""
+    cfg = WargameEnvConfig(
+        number_of_wargame_models=1,
+        number_of_objectives=1,
+        render_mode=None,
+        number_of_battle_rounds=1,
+    )
+    assert cfg.terrain is None
+
+
+def test_terrain_validation_off_board_corner_raises() -> None:
+    """Terrain extending beyond board boundary raises ValueError."""
+    with pytest.raises(ValueError, match="outside the board"):
+        WargameEnvConfig(
+            board_width=10,
+            board_height=10,
+            terrain=[TerrainPieceConfig(footprint=(8, 8, 11, 9))],
+            number_of_wargame_models=1,
+            number_of_objectives=1,
+            render_mode=None,
+            number_of_battle_rounds=1,
+        )
+
+
+def test_terrain_validation_overlapping_footprints_raises() -> None:
+    """Two overlapping terrain pieces raise ValueError."""
+    with pytest.raises(ValueError, match="overlap"):
+        WargameEnvConfig(
+            board_width=50,
+            board_height=50,
+            terrain=[
+                TerrainPieceConfig(footprint=(5, 5, 10, 10)),
+                TerrainPieceConfig(footprint=(8, 8, 15, 15)),
+            ],
+            number_of_wargame_models=1,
+            number_of_objectives=1,
+            render_mode=None,
+            number_of_battle_rounds=1,
+        )
+
+
+def test_terrain_validation_overlap_with_zone_or_objective_allowed() -> None:
+    """Terrain overlapping deployment zones or objective positions is allowed."""
+    cfg = WargameEnvConfig(
+        board_width=50,
+        board_height=50,
+        terrain=[TerrainPieceConfig(footprint=(0, 0, 5, 5))],
+        deployment_zone=(0, 0, 10, 50),
+        number_of_wargame_models=1,
+        number_of_objectives=1,
+        render_mode=None,
+        number_of_battle_rounds=1,
+    )
+    assert cfg.terrain is not None
