@@ -37,8 +37,8 @@ Each requirement maps to exactly one roadmap phase.
 
 ### Observation
 
-- [ ] **TERR-08**: Terrain footprints are encoded in the agent's observation so the policy can reason about them
-- [ ] **TERR-09**: Terrain encoding causes no mid-episode observation shape change and adds nothing to the observation when no terrain is configured
+- [x] **TERR-08**: Terrain footprints are encoded in the agent's observation so the policy can reason about them
+- [x] **TERR-09**: Terrain encoding causes no mid-episode observation shape change and adds nothing to the observation when no terrain is configured
 
 ### Rendering
 
@@ -80,8 +80,8 @@ Deferred to a later terrain milestone (tracked, not in this roadmap):
 | TERR-05 | Phase 1 | Pending |
 | TERR-06 | Phase 1 | Pending |
 | TERR-07 | Phase 1 | Pending |
-| TERR-08 | Phase 2 | Pending |
-| TERR-09 | Phase 2 | Pending |
+| TERR-08 | Phase 2 | Done |
+| TERR-09 | Phase 2 | Done |
 | TERR-10 | Phase 1 | Pending |
 
 *Phase column filled by the roadmapper. TERR-03 (no-op default / backward compat) is assigned to

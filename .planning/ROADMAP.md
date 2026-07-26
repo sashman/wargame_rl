@@ -42,8 +42,8 @@ Bresenham core in `domain/los.py` stays untouched. The central backward-compat g
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Terrain in the Simulation (LOS-Blocking)** - Config + domain footprint model + endpoint-aware LOS seam + renderer so ruin footprints block line of sight (with see-in/see-out) while movement is unaffected
-- [ ] **Phase 2: Terrain in the Observation** - Terrain entity-token stream through the obs pipeline and both networks so the agent can see and reason about terrain
+- [x] **Phase 1: Terrain in the Simulation (LOS-Blocking)** - Config + domain footprint model + endpoint-aware LOS seam + renderer so ruin footprints block line of sight (with see-in/see-out) while movement is unaffected
+- [x] **Phase 2: Terrain in the Observation** - Terrain entity-token stream through the obs pipeline and both networks so the agent can see and reason about terrain
 
 ## Phase Details
 
@@ -63,8 +63,8 @@ as today.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Terrain config schema (`TerrainPieceConfig` + `WargameEnvConfig.terrain`) with bounds/non-overlap validation, pure `domain/terrain.py` (`Footprint`/`Terrain`), domain + config tests; Wave-0 hypothesis dep
-- [ ] 01-02-PLAN.md — Wire `battle_factory`→`Battle.terrain`→`BattleView.terrain`; endpoint-aware symmetric LOS seam; renderer footprint overlay + verdict-coloured LOS; golden boards + symmetry/consistency/movement tests; demo `terrain_los_demo.yaml`
+- [x] 01-01-PLAN.md — Terrain config schema (`TerrainPieceConfig` + `WargameEnvConfig.terrain`) with bounds/non-overlap validation, pure `domain/terrain.py` (`Footprint`/`Terrain`), domain + config tests; Wave-0 hypothesis dep
+- [x] 01-02-PLAN.md — Wire `battle_factory`→`Battle.terrain`→`BattleView.terrain`; endpoint-aware symmetric LOS seam; renderer footprint overlay + verdict-coloured LOS; golden boards + symmetry/consistency/movement tests; demo `terrain_los_demo.yaml`
 
 ### Phase 2: Terrain in the Observation
 **Goal**: Terrain footprints are encoded in the agent's observation as an entity-token
@@ -78,11 +78,11 @@ without breaking pre-terrain checkpoints.
   2. With no terrain configured, the observation adds nothing: tensor shapes and dtypes are byte-identical to a captured pre-terrain golden, and there is no mid-episode observation shape change.
   3. A pre-terrain checkpoint loads and infers on a no-terrain config and produces numerically-equal logits/values, because `terrain_embedding` is `None` when `terrain_size == 0` and terrain tokens are appended after opponents.
   4. Player and opponent token positions, per-model action heads, and the critic token are unchanged when terrain is present, across the Transformer, MLP, and PPO networks.
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: TBD (`WargameTerrainObservation` + `env_observation.terrain` + builder `_terrain_to_obs`; terrain tensor in `model/common/observation.py`, None-guarded, inserted before mask)
-- [ ] 02-02: TBD (`terrain_embedding` appended LAST in Transformer + MLP + PPO backbone share; `from_env` reads `terrain_size`; backward-compat tests: no-terrain byte-identical + pre-terrain checkpoint loads & infers)
+- [x] 02-01-PLAN.md — `WargameTerrainObservation` + `env_observation.terrain` + builder `_terrain_to_obs`; terrain tensor in `model/common/observation.py`, None-guarded, inserted before mask
+- [x] 02-02-PLAN.md — `terrain_embedding` appended LAST in Transformer + MLP; `from_env` reads `terrain_size`; backward-compat tests: no-terrain zero-row tensor + pre-terrain network forward unchanged
 
 ## Progress
 
@@ -92,5 +92,5 @@ Phases execute in numeric order: 1 → 2
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Terrain in the Simulation (LOS-Blocking) | 0/2 | Not started | - |
-| 2. Terrain in the Observation | 0/2 | Not started | - |
+| 1. Terrain in the Simulation (LOS-Blocking) | 2/2 | Complete | 2026-07-25 |
+| 2. Terrain in the Observation | 2/2 | Complete | 2026-07-26 |
