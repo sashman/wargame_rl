@@ -83,7 +83,8 @@ def _same_group_closest_distance(
     closest = pairwise.min(axis=1)
     closest = np.where(np.isinf(closest), max_dist, closest)
     closest = np.clip(closest, 0.0, max_dist) / max_dist
-    return closest.astype(np.float32).reshape(n, 1)
+    result: np.ndarray = closest.astype(np.float32).reshape(n, 1)
+    return result
 
 
 def _models_to_features(
