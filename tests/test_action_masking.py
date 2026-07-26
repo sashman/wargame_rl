@@ -169,20 +169,20 @@ class TestEnvActionMask:
 
 
 class TestTensorPipeline:
-    def test_observation_to_tensor_returns_5_tensors(self) -> None:
+    def test_observation_to_tensor_returns_6_tensors(self) -> None:
         from wargame_rl.wargame.model.common.observation import observation_to_tensor
 
         env = WargameEnv(config=WargameEnvConfig())
         obs, _ = env.reset()
         tensors = observation_to_tensor(obs)
-        assert len(tensors) == 5
-        mask_tensor = tensors[4]
+        assert len(tensors) == 6
+        mask_tensor = tensors[5]
         assert mask_tensor.dtype == np.bool_ or str(mask_tensor.dtype) == "torch.bool"
         n_models = len(obs.wargame_models)
         n_actions = env.n_actions
         assert mask_tensor.shape == (n_models, n_actions)
 
-    def test_batch_returns_5_tensors(self) -> None:
+    def test_batch_returns_6_tensors(self) -> None:
         from wargame_rl.wargame.model.common.observation import (
             observations_to_tensor_batch,
         )
@@ -192,8 +192,8 @@ class TestTensorPipeline:
         action = WargameEnvAction(actions=list(env.action_space.sample()))
         obs2, _, _, _, _ = env.step(action)
         batch = observations_to_tensor_batch([obs1, obs2])
-        assert len(batch) == 5
-        assert batch[4].shape[0] == 2  # batch dim
+        assert len(batch) == 6
+        assert batch[5].shape[0] == 2  # batch dim (mask)
 
 
 # ---------------------------------------------------------------------------
@@ -214,5 +214,5 @@ class TestExperienceBatch:
         batch = experience_list_to_batch([exp])
         assert batch.next_state_masks is not None
         assert batch.next_state_masks.shape[0] == 1  # batch of 1
-        assert len(batch.state_tensors) == 4
-        assert len(batch.new_state_tensors) == 4
+        assert len(batch.state_tensors) == 5
+        assert len(batch.new_state_tensors) == 5

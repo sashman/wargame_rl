@@ -22,6 +22,7 @@ from wargame_rl.wargame.envs.types import (
     WargameEnvObjectiveObservation,
     WargameEnvObservation,
     WargameModelObservation,
+    WargameTerrainObservation,
 )
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
@@ -97,6 +98,30 @@ def _models_to_obs(
     return result
 
 
+def _terrain_to_obs(
+    view: BattleView,
+) -> list[WargameTerrainObservation]:
+    """Build terrain observations from BattleView terrain footprints.
+
+    Each footprint's corners are normalized to [-1, 1] using board half-dimensions.
+    """
+    half_w = view.board_width / 2.0
+    half_h = view.board_height / 2.0
+    result: list[WargameTerrainObservation] = []
+    for fp in view.terrain.footprints:
+        footprint_norm = np.array(
+            [
+                (fp.x0 - half_w) / half_w,
+                (fp.y0 - half_h) / half_h,
+                (fp.x1 - half_w) / half_w,
+                (fp.y1 - half_h) / half_h,
+            ],
+            dtype=np.float32,
+        )
+        result.append(WargameTerrainObservation(footprint=footprint_norm))
+    return result
+
+
 def build_observation(
     view: BattleView,
     distance_cache: DistanceCache | None = None,
@@ -154,6 +179,7 @@ def build_observation(
     objectives_obs = [
         WargameEnvObjectiveObservation(location=obj.location) for obj in view.objectives
     ]
+    terrain_obs = _terrain_to_obs(view)
     return WargameEnvObservation(
         current_turn=view.current_turn,
         wargame_models=_models_to_obs(
@@ -165,6 +191,7 @@ def build_observation(
         opponent_models=_models_to_obs(
             view.opponent_models, max_groups, model_configs=view.config.opponent_models
         ),
+        terrain=terrain_obs,
         action_mask=action_mask,
         battle_round=battle_round,
         battle_phase_index=battle_phase_index,

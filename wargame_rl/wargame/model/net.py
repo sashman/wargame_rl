@@ -124,7 +124,7 @@ class MLPNetwork(RL_Network):
     def forward(self, xs: list[torch.Tensor]) -> torch.Tensor:
         # Exclude the action mask tensor (last element) — it's used
         # externally for action selection, not as network input.
-        state_tensors = xs[:4]
+        state_tensors = xs[:5]
         if self.is_batched(xs):
             x = torch.cat([x.flatten(start_dim=1) for x in state_tensors], dim=1)
         else:
@@ -132,7 +132,6 @@ class MLPNetwork(RL_Network):
                 [x.flatten(start_dim=0) for x in state_tensors], dim=0
             ).unsqueeze(0)
 
-        # 2 Forward through the network
         assert len(x.shape) == 2
 
         batch_size = x.shape[0]
@@ -148,7 +147,7 @@ class MLPNetwork(RL_Network):
         observation: WargameEnvObservation
         observation, _ = env.reset()
         tensors = observation_to_tensor(observation)
-        obs_size = sum(t.numel() for t in tensors[:4])
+        obs_size = sum(t.numel() for t in tensors[:5])
         n_wargame_models: int = observation.n_wargame_models
         n_actions: int = env._action_handler.n_actions
         print(
@@ -169,6 +168,7 @@ class TransformerNetwork(RL_Network):
         is_policy: bool,
         transformer_config: TransformerConfig,
         opponent_model_size: int = 0,
+        terrain_size: int = 0,
         shooting_slice_start: int | None = None,
         shooting_slice_end: int | None = None,
         device: Device | None = None,
@@ -177,6 +177,7 @@ class TransformerNetwork(RL_Network):
         self.objective_size = objective_size
         self.wargame_model_size = wargame_model_size
         self.opponent_model_size = opponent_model_size
+        self.terrain_size = terrain_size
         self.n_actions = n_actions
         self.is_policy = is_policy
         self.shooting_slice_start = shooting_slice_start
@@ -203,6 +204,13 @@ class TransformerNetwork(RL_Network):
             )
         else:
             self.opponent_model_embedding = None
+
+        if self.terrain_size > 0:
+            self.terrain_embedding: nn.Linear | None = nn.Linear(
+                self.terrain_size, self.config.embedding_size, bias=True
+            )
+        else:
+            self.terrain_embedding = None
 
         self.transformer = nn.ModuleDict(
             dict(
@@ -375,13 +383,27 @@ class TransformerNetwork(RL_Network):
             )
         return model_tensor[:, :, idx] > 0.5
 
+    def _embed_terrain(
+        self, terrain_tensor: torch.Tensor, is_batched: bool = False
+    ) -> torch.Tensor | None:
+        """Embed terrain footprint tokens. Returns None when there is no terrain."""
+        if self.terrain_embedding is None:
+            return None
+        if not is_batched:
+            terrain_tensor = terrain_tensor.unsqueeze(0)
+        if terrain_tensor.shape[1] == 0:
+            return None
+        result: torch.Tensor = self.terrain_embedding(terrain_tensor)
+        return result
+
     def encode_state(self, xs: list[torch.Tensor]) -> EncodedState:
         """Encode observation tensors into contextual token representations.
 
         Runs a single batched transformer pass over the fixed-length token
-        sequence ``[game, objectives, players, opponents]``; dead player/opponent
-        rows are excluded from attention via a key-padding mask rather than being
-        removed, so the batch stays a single forward.
+        sequence ``[game, objectives, players, opponents, terrain]``; dead
+        player/opponent rows are excluded from attention via a key-padding mask
+        rather than being removed, so the batch stays a single forward.
+        Terrain tokens are appended last (after opponents).
 
         Returns:
             An :class:`EncodedState` with the encoded sequence and the metadata
@@ -391,7 +413,8 @@ class TransformerNetwork(RL_Network):
         objective_tensor = xs[1]
         player_tensor = xs[2]
         opp_tensor = xs[3] if len(xs) > 3 else None
-        mask_tensor = xs[4] if len(xs) > 4 else None
+        terrain_tensor = xs[4] if len(xs) > 4 else None
+        mask_tensor = xs[5] if len(xs) > 5 else None
 
         batched = self.is_batched(xs)
         if not batched:
@@ -400,6 +423,8 @@ class TransformerNetwork(RL_Network):
             player_tensor = player_tensor.unsqueeze(0)
             if opp_tensor is not None:
                 opp_tensor = opp_tensor.unsqueeze(0)
+            if terrain_tensor is not None:
+                terrain_tensor = terrain_tensor.unsqueeze(0)
             if mask_tensor is not None and mask_tensor.ndim == 2:
                 mask_tensor = mask_tensor.unsqueeze(0)
 
@@ -415,6 +440,11 @@ class TransformerNetwork(RL_Network):
             if opp_tensor is not None
             else None
         )
+        terrain_embedding = (
+            self._embed_terrain(terrain_tensor, is_batched=True)
+            if terrain_tensor is not None
+            else None
+        )
 
         batch_size = int(player_embedding.shape[0])
         n_wargame_models = int(player_embedding.shape[1])
@@ -427,11 +457,14 @@ class TransformerNetwork(RL_Network):
         else:
             n_opponents = 0
 
+        if terrain_embedding is not None:
+            parts.append(terrain_embedding)
+
         tokens = torch.cat(parts, dim=1)
         seq_len = int(tokens.shape[1])
 
-        # Key-padding mask: prefix + alive players + alive opponents may be
-        # attended to; dead rows are dropped as keys (True = attend).
+        # Key-padding mask: prefix + alive players + alive opponents + terrain
+        # may be attended to; dead rows are dropped as keys (True = attend).
         player_alive = self._alive_from_features(player_tensor, n_opponents)
         key_mask = torch.ones(
             batch_size, seq_len, dtype=torch.bool, device=tokens.device
@@ -441,6 +474,7 @@ class TransformerNetwork(RL_Network):
             opp_alive = self._alive_from_features(opp_tensor, n_opponents)
             opp_start = n_prefix + n_wargame_models
             key_mask[:, opp_start : opp_start + n_opponents] = opp_alive
+        # Terrain tokens are always attendable (no alive/dead concept).
         attn_mask = key_mask[:, None, None, :]
 
         x = tokens
@@ -546,6 +580,7 @@ class TransformerNetwork(RL_Network):
         self.objective_embedding = backbone_source.objective_embedding
         self.wargame_model_embedding = backbone_source.wargame_model_embedding
         self.opponent_model_embedding = backbone_source.opponent_model_embedding
+        self.terrain_embedding = backbone_source.terrain_embedding
         self.transformer = backbone_source.transformer
 
     def forward(self, xs: list[torch.Tensor]) -> torch.Tensor:
@@ -590,6 +625,7 @@ class TransformerNetwork(RL_Network):
         objective_size = int(tensors[1].shape[-1])
         wargame_model_size = int(tensors[2].shape[-1]) if tensors[2].numel() > 0 else 0
         opponent_model_size = int(tensors[3].shape[-1]) if tensors[3].numel() > 0 else 0
+        terrain_size = int(tensors[4].shape[-1]) if tensors[4].numel() > 0 else 0
         n_actions: int = env._action_handler.n_actions
         shooting_slice = env._action_handler.shooting_slice
         transformer_config = TransformerConfig()
@@ -598,6 +634,7 @@ class TransformerNetwork(RL_Network):
             f"game_size: {game_size}, objective_size: {objective_size}, "
             f"wargame_model_size: {wargame_model_size}, "
             f"opponent_model_size: {opponent_model_size}, "
+            f"terrain_size: {terrain_size}, "
             f"shooting_slice: {shooting_slice}, "
             f"transformer_config: {transformer_config}, n_actions: {n_actions}"
         )
@@ -609,6 +646,7 @@ class TransformerNetwork(RL_Network):
             transformer_config=transformer_config,
             is_policy=is_policy,
             opponent_model_size=opponent_model_size,
+            terrain_size=terrain_size,
             shooting_slice_start=shooting_slice.start if shooting_slice else None,
             shooting_slice_end=shooting_slice.end if shooting_slice else None,
         )

@@ -426,6 +426,6 @@ class TestBackwardCompat:
         env = WargameEnv(config=_shooting_env_config())
         obs, _ = env.reset(seed=42)
         tensors = observation_to_tensor(obs)
-        assert len(tensors) == 5
-        mask_tensor = tensors[4]
+        assert len(tensors) == 6
+        mask_tensor = tensors[5]
         assert mask_tensor.shape == (2, env.n_actions)

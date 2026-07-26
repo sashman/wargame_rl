@@ -475,7 +475,7 @@ class PPOLightning(WargameLightningBase):
 
             # Store state_tensors for PPO updates in flattened (T * n_envs) form.
             # The returned order matches a row-major flatten of the 2D rollout arrays.
-            state_tensors_per_feature: list[list[Tensor]] = [[] for _ in range(5)]
+            state_tensors_per_feature: list[list[Tensor]] = [[] for _ in range(6)]
             n_models = self.env.config.number_of_wargame_models
 
             actions_2d_np = np.zeros((t_steps, n_envs, n_models), dtype=np.int64)

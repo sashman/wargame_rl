@@ -26,6 +26,7 @@ from .game_timing import (
 )
 from .model_observation import WargameModelObservation
 from .objective_observation import WargameEnvObjectiveObservation
+from .terrain_observation import WargameTerrainObservation
 
 __all__ = [
     "BattlePhase",
@@ -46,4 +47,5 @@ __all__ = [
     "WargameEnvObservation",
     "WargameModelObservation",
     "WargameEnvObjectiveObservation",
+    "WargameTerrainObservation",
 ]
