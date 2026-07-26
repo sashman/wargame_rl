@@ -2,9 +2,9 @@
 
 ## Overview
 
-Terrain (Ruins) blocks **line of sight only**, following the Warhammer 40k 10th Edition Ruins abstraction: a terrain piece is a **footprint rectangle** and the footprint itself is the LOS blocker. Movement is unaffected — models move through and occupy footprint cells freely.
+Terrain (Ruins) blocks **line of sight only**: a terrain piece is a **footprint rectangle** and the footprint itself is the LOS blocker. Movement is unaffected — models move through and occupy footprint cells freely.
 
-A ruin blocks the line between two models only when its footprint lies between them and **both** models are outside it. A model inside a ruin can see out and be seen into (the 10e see-out / see-into exceptions, evaluated per ruin independently).
+A ruin blocks the line between two models only when its footprint lies between them and **both** models are outside it. A model inside a ruin can see out and be seen into (see-out / see-into exceptions, evaluated per ruin independently).
 
 ## Configuration
 
@@ -39,7 +39,7 @@ The pure domain lives in `domain/terrain.py`:
 | Class | Description |
 |-------|-------------|
 | `Footprint` | Frozen dataclass: `x0, y0, x1, y1` with `contains(x, y)` and `from_corners()` factory |
-| `Terrain` | Collection of footprints; `blocking_footprints_for_endpoints(x0, y0, x1, y1)` returns footprints containing **neither** endpoint (the 10e filter) |
+| `Terrain` | Collection of footprints; `blocking_footprints_for_endpoints(x0, y0, x1, y1)` returns footprints containing **neither** endpoint |
 
 `Terrain` is static per episode — it is constructed from config during `battle_factory.from_config()` and does not change during play.
 
@@ -71,7 +71,7 @@ The Bresenham core in `domain/los.py` is **untouched** — all terrain logic liv
 
 ### See-Into / See-Out Rules
 
-The 10e Ruins rules state that a model inside a ruin can see out, and models outside can see into a ruin. This is implemented by the "neither endpoint" filter: a footprint only participates in blocking when both the observer and the target are outside it.
+The Ruins rules state that a model inside a ruin can see out, and models outside can see into a ruin. This is implemented by the "neither endpoint" filter: a footprint only participates in blocking when both the observer and the target are outside it.
 
 | Observer | Target | Footprint between them? | LOS |
 |----------|--------|------------------------|-----|
