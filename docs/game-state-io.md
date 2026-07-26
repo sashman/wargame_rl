@@ -133,10 +133,11 @@ class GameStateSnapshot(BaseModel):
 
 ```python
 class ClockSnapshot(BaseModel):
-    game_phase: str          # "deployment" | "battle"
+    game_phase: str  # "deployment" | "battle"
     battle_round: int | None
     active_player: str | None
-    battle_phase: str | None # "command" | "movement" | "shooting" | ...
+    battle_phase: str | None  # "command" | "movement" | "shooting" | ...
+
 
 class ModelSnapshot(BaseModel):
     location: list[int]
@@ -154,11 +155,13 @@ class ModelSnapshot(BaseModel):
     closest_objective_idx: int | None
     closest_objective_distance: float | None
 
+
 class ObjectiveSnapshot(BaseModel):
     location: list[int]
     radius_size: int
     player_models_in_range: list[int]
     opponent_models_in_range: list[int]
+
 
 class WeaponSnapshot(BaseModel):
     weapon_range: int
@@ -167,6 +170,7 @@ class WeaponSnapshot(BaseModel):
     strength: int
     ap: int
     damage: int
+
 
 class CombatResultSnapshot(BaseModel):
     attacker_idx: int
@@ -178,6 +182,7 @@ class CombatResultSnapshot(BaseModel):
     expected_damage: float
     hit_probability: float
     wound_probability: float
+
 
 class RewardSnapshot(BaseModel):
     total: float | None
