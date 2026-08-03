@@ -1,0 +1,163 @@
+config_name: 25v25_scripted_advance_random_objectives_3_reward_phases_terrain
+number_of_wargame_models: 25
+number_of_opponent_models: 25
+number_of_objectives: 3
+objective_radius_size: 3
+board_width: 60
+board_height: 44
+max_groups: 5
+turn_order: random
+number_of_battle_rounds: 20
+skip_phases:
+  - command
+  - charge
+  - fight
+
+deployment_zone: [0, 0, 20, 44]
+opponent_deployment_zone: [40, 0, 60, 44]
+
+opponent_policy:
+  type: scripted_advance_to_objective
+
+# Terrain blocks line-of-sight only (models can still move through it).
+# Symmetric layout: a central ruin plus mirrored mid-field and flank ruins,
+# so neither side gets a clean firing lane into the objective band.
+terrain:
+  - { footprint: [28, 19, 34, 25] } # centre
+  - { footprint: [26, 8, 32, 14] } # mid-field north
+  - { footprint: [26, 30, 32, 36] } # mid-field south
+  - { footprint: [16, 18, 22, 24] } # player-side approach
+  - { footprint: [38, 18, 44, 24] } # opponent-side approach
+  - { footprint: [30, 0, 36, 4] } # north flank
+  - { footprint: [30, 40, 36, 43] } # south flank
+
+# 5 groups of 5. `weapons` is required for shooting to resolve at all — with an
+# empty list a model cannot shoot, which also makes terrain LOS inert.
+# range 12 on a 60x44 board puts the engagement band at a scale where a ~6-cell
+# ruin actually breaks a firing lane.
+models:
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+
+opponent_models:
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+
+# No `objectives:` block -> the 3 objectives (number_of_objectives) are placed
+# randomly outside both deployment zones at the start of every episode.
+
+reward_phases:
+  # Goal: every alive model inside an objective radius. Only calculators that
+  # move models onto objectives belong here — vp_gain and killing were removed
+  # because neither advances this criteria and both outweighed the shaping term.
+  - name: reach_objectives
+    terminal_success_bonus: 5.0
+    terminate_on_success: true
+    reward_calculators:
+      - type: closest_objective
+        weight: 1.0
+        params: { progress_scale: 10.0 }
+      - type: objective_coverage
+        weight: 0.5
+      - type: group_cohesion
+        weight: 0.5
+        params: { group_max_distance: 5.0, violation_penalty: -0.1 }
+    success_criteria:
+      type: all_at_objectives
+    success_threshold: 0.7
+    min_epochs: 0
+    min_epochs_above_threshold: 10
+
+  - name: win_only_by_vp
+    terminate_on_success: false
+    reward_calculators:
+      - type: vp_gain
+        weight: 1.0
+      - type: objective_flip_bonus
+        weight: 1.0
+        params:
+          {
+            bonus_capture_first: 2.0,
+            bonus_flip_to_contested: 1.0,
+            bonus_contested_to_controlled: 2.0,
+            loss_penalty_scale: 1.0,
+          }
+      - type: closest_objective_v2
+        weight: 0.3
+        params: { progress_scale: 10.0 }
+      - type: objective_coverage
+        weight: 0.1
+      - type: killing
+        weight: 1.0
+        params: { bonus_killing_opponent: 5.0 }
+    success_criteria:
+      type: player_vp_min
+      params: { fraction_of_max: 0.4 }
+    success_threshold: 0.7
+    min_epochs: 20
+
+  - name: win_at_the_end
+    terminate_on_success: false
+    reward_calculators:
+      - type: vp_gain
+        weight: 1.0
+      - type: objective_flip_bonus
+        weight: 0.5
+        params:
+          {
+            bonus_capture_first: 2.0,
+            bonus_flip_to_contested: 1.0,
+            bonus_contested_to_controlled: 2.0,
+            loss_penalty_scale: 1.0,
+          }
+    success_criteria:
+      type: player_ahead_on_vp
+      params: {}
+    success_threshold: 0.8
+    min_epochs: 20

@@ -47,12 +47,13 @@ dockerize:
 # Use it like: just train path/to/config.yaml
 # Or with algorithm: just train path/to/config.yaml ppo
 # Or with algorithm and network: just train path/to/config.yaml dqn transformer
-train env_config_path='examples/env_config/4v4_scripted_opponent_fixed_objectives_2_reward_phases.yaml' algorithm='ppo' model='transformer':
-	@if [ -z "{{model}}" ]; then \
-		uv run train.py --record-during-training --env-config-path {{env_config_path}} --algorithm {{algorithm}}; \
-	else \
-		uv run train.py --record-during-training --env-config-path {{env_config_path}} --algorithm {{algorithm}} --network-type {{model}}; \
-	fi
+# Or with an epoch cap: just train path/to/config.yaml ppo transformer 800
+train env_config_path='examples/env_config/4v4_scripted_opponent_fixed_objectives_2_reward_phases.yaml' algorithm='ppo' model='transformer' max_epochs='':
+	@uv run train.py --record-during-training \
+		--env-config-path {{env_config_path}} \
+		--algorithm {{algorithm}} \
+		{{ if model != "" { "--network-type " + model } else { "" } }} \
+		{{ if max_epochs != "" { "--max-epochs " + max_epochs } else { "" } }}
 
 # Run multiple env configs in parallel. Each run gets a unique --run-suffix and shared --wandb-group.
 # Uses PPO + transformer. Use: just train-multi config1.yaml config2.yaml
@@ -80,6 +81,17 @@ simulate checkpoint env_config_path network_type='':
 	else \
 		uv run simulate.py --checkpoint-path {{checkpoint}} --env-config-path {{env_config_path}} --network-type {{network_type}}; \
 	fi
+
+# Record a match event log from a trained checkpoint (no rendering) for analysis.
+# Use it like: just record-sim checkpoints/<run>/best.ckpt examples/env_config/foo.yaml
+record-sim checkpoint env_config_path num_episodes='1' network_type='transformer':
+	@uv run simulate.py \
+		--checkpoint-path {{checkpoint}} \
+		--env-config-path {{env_config_path}} \
+		--network-type {{network_type}} \
+		--num-episodes {{num_episodes}} \
+		--no-render \
+		--record-events
 
 clean-checkpoints:
 	rm -rf checkpoints/
