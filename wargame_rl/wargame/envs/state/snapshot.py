@@ -109,12 +109,19 @@ class RewardSnapshot(BaseModel):
 
 
 class GameStateSnapshot(BaseModel):
-    """Complete, serialisable snapshot of game state at one point in time."""
+    """Complete, serialisable snapshot of game state at one point in time.
 
-    schema_version: str = "1.1"
+    ``clock`` describes the state *after* the step completed, so its
+    ``battle_phase`` is the phase that will execute next. ``action_phase`` is the
+    phase the reported actions were executed in — use that, not ``clock``, when
+    attributing ``player_actions`` to a phase.
+    """
+
+    schema_version: str = "1.2"
     step: int
     max_steps: int
     clock: ClockSnapshot
+    action_phase: str | None = None
     n_rounds: int
     board_width: int
     board_height: int
@@ -437,6 +444,7 @@ def build_snapshot(
     n_speed_bins: int = 6,
     shooting_slice_start: int | None = None,
     shooting_slice_end: int | None = None,
+    action_phase: str | None = None,
 ) -> GameStateSnapshot:
     """Build a complete game-state snapshot from env internals."""
     player_configs = config.models
@@ -523,6 +531,7 @@ def build_snapshot(
         step=step,
         max_steps=max_steps,
         clock=clock,
+        action_phase=action_phase,
         n_rounds=n_rounds,
         board_width=config.board_width,
         board_height=config.board_height,

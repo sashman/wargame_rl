@@ -16,6 +16,7 @@ from wargame_rl.wargame.envs.state.snapshot import (
     CombatResultSnapshot,
     GameStateSnapshot,
     ModelSnapshot,
+    ObjectiveSnapshot,
     RewardSnapshot,
 )
 
@@ -43,6 +44,8 @@ class StateDelta(BaseModel):
 
     step: int
     clock: ClockSnapshot | None = None
+    action_phase: str | None = None
+    objectives: list[ObjectiveSnapshot] | None = None
     player_model_deltas: list[ModelDelta] = Field(default_factory=list)
     opponent_model_deltas: list[ModelDelta] = Field(default_factory=list)
     player_vp: int | None = None
@@ -94,6 +97,13 @@ def compute_delta(
 
     if current.clock != previous.clock:
         delta.clock = current.clock
+    if current.action_phase != previous.action_phase:
+        delta.action_phase = current.action_phase
+
+    # Objective occupancy changes as models move even though location/radius are
+    # static, so the whole list must be diffed — not just the objective markers.
+    if current.objectives != previous.objectives:
+        delta.objectives = current.objectives
 
     if current.player_vp != previous.player_vp:
         delta.player_vp = current.player_vp
@@ -162,6 +172,10 @@ def apply_delta(
 
     if delta.clock is not None:
         updates["clock"] = delta.clock
+    if delta.action_phase is not None:
+        updates["action_phase"] = delta.action_phase
+    if delta.objectives is not None:
+        updates["objectives"] = delta.objectives
     if delta.player_vp is not None:
         updates["player_vp"] = delta.player_vp
     if delta.opponent_vp is not None:

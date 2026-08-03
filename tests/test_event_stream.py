@@ -21,24 +21,6 @@ from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
 
-def _strip_objective_in_range(snap: GameStateSnapshot) -> GameStateSnapshot:
-    """Remove derived objective fields not tracked by delta encoding."""
-    result: GameStateSnapshot = snap.model_copy(
-        update={
-            "objectives": [
-                o.model_copy(
-                    update={
-                        "player_models_in_range": [],
-                        "opponent_models_in_range": [],
-                    }
-                )
-                for o in snap.objectives
-            ]
-        }
-    )
-    return result
-
-
 @pytest.fixture
 def env_with_exporter() -> tuple[WargameEnv, EventLogExporter]:
     """Env wired with an EventLogExporter for recording."""
@@ -238,9 +220,7 @@ class TestReplay:
         controller = ReplayController(exporter.log)
         for expected in snapshots_direct:
             reconstructed = controller.seek(expected.step)
-            assert _strip_objective_in_range(
-                reconstructed
-            ) == _strip_objective_in_range(expected)
+            assert reconstructed == expected
 
     def test_replay_iter_snapshots(self, recorded_log: EventLog) -> None:
         controller = ReplayController(recorded_log)
@@ -248,6 +228,38 @@ class TestReplay:
         assert len(all_snaps) == len(recorded_log)
         assert all_snaps[0].step == controller.first_step
         assert all_snaps[-1].step == controller.last_step
+
+    def test_iter_snapshots_matches_seek(self, recorded_log: EventLog) -> None:
+        """Regression: iter_snapshots() carried reset-time objective occupancy
+        for the whole episode because deltas ignored `objectives` and anchors
+        were never applied, so it disagreed with seek()."""
+        controller = ReplayController(recorded_log)
+        for snapshot in controller.iter_snapshots():
+            assert snapshot == controller.seek(snapshot.step)
+
+    def test_objective_occupancy_tracked_across_steps(
+        self,
+        env_with_exporter: tuple[WargameEnv, EventLogExporter],
+    ) -> None:
+        """Regression: objective occupancy must follow models as they move."""
+        env, exporter = env_with_exporter
+        env.reset(seed=7)
+        direct: list[GameStateSnapshot] = [env.to_snapshot()]
+        for _ in range(10):
+            action = WargameEnvAction(actions=env.action_space.sample())
+            _, _, terminated, truncated, _ = env.step(action)
+            direct.append(env.to_snapshot())
+            if terminated or truncated:
+                break
+
+        replayed = ReplayController(exporter.log).iter_snapshots()
+        for expected, actual in zip(direct, replayed):
+            assert [o.player_models_in_range for o in actual.objectives] == [
+                o.player_models_in_range for o in expected.objectives
+            ]
+            assert [o.opponent_models_in_range for o in actual.objectives] == [
+                o.opponent_models_in_range for o in expected.objectives
+            ]
 
     def test_empty_log_raises(self) -> None:
         with pytest.raises(ValueError, match="empty"):

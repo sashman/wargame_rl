@@ -144,6 +144,7 @@ class WargameEnv(gym.Env):
         # Last actions and termination flag (for snapshot / replay)
         self._last_player_action: WargameEnvAction | None = None
         self._last_opponent_action: WargameEnvAction | None = None
+        self._last_action_phase: BattlePhase | None = None
         self._last_terminated: bool = False
 
         # Last reward from step(); None until first step after reset
@@ -319,6 +320,7 @@ class WargameEnv(gym.Env):
         self._last_opponent_shooting_results = []
         self._last_player_action = None
         self._last_opponent_action = None
+        self._last_action_phase = None
         self._last_terminated = False
 
         self.current_turn = 0
@@ -412,6 +414,9 @@ class WargameEnv(gym.Env):
 
     def _apply_player_action(self, action: WargameEnvAction) -> None:
         phase = self._game_clock.state.phase or BattlePhase.movement
+        # Captured before the clock advances so snapshots can attribute the
+        # recorded actions to the phase that actually executed them.
+        self._last_action_phase = phase
         if phase == BattlePhase.shooting:
             self._last_player_shooting_results = self._resolve_shooting_action(
                 action,
@@ -619,6 +624,9 @@ class WargameEnv(gym.Env):
             n_speed_bins=self.config.n_speed_bins,
             shooting_slice_start=ss.start if ss else None,
             shooting_slice_end=ss.end if ss else None,
+            action_phase=(
+                self._last_action_phase.value if self._last_action_phase else None
+            ),
         )
 
     def load_state(
@@ -689,6 +697,9 @@ class WargameEnv(gym.Env):
         # Env counters
         self.current_turn = snapshot.step
         self._last_terminated = snapshot.is_terminated
+        self._last_action_phase = (
+            BattlePhase(snapshot.action_phase) if snapshot.action_phase else None
+        )
 
         # Reconstruct last actions
         if snapshot.player_actions is not None:
