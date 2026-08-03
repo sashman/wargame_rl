@@ -27,7 +27,17 @@ When the user invokes this skill, run the full ship workflow: **branch only from
    - After the PR is created, generate a short description from the changes in the branch (vs `main`).
    - Run `git log main..HEAD --oneline` and `git diff main --stat` (or `--name-only`) to see commits and changed files.
    - Compose a PR body that includes: (1) a short summary (one or two sentences) of what the PR does, and (2) a "Changes" section listing notable files or areas (e.g. "env: add VP to Battle and BattleView", "mission: new VP calculator and registry").
-   - Run `gh pr edit --body "<description>"` to set the PR description. Use a single-quoted or escaped multi-line string so the shell receives the body correctly.
+   - Write the body to a file, then set it via the REST API:
+     ```bash
+     cat > /tmp/pr-body.md <<'EOF'
+     <description>
+     EOF
+     PR=$(gh pr view --json number --jq .number)
+     REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+     gh api -X PATCH "repos/$REPO/pulls/$PR" -F body=@/tmp/pr-body.md --jq '.html_url'
+     ```
+   - **Do not use `gh pr edit --body`.** On this repo it fails with a deprecated Projects (classic) GraphQL error (`repository.pullRequest.projectCards`) and leaves the body unchanged — the command reports the error but the PR silently keeps the `--fill` body. The REST endpoint above is unaffected.
+   - Verify it applied: `gh api "repos/$REPO/pulls/$PR" --jq '.body | length'` should match the body you wrote, not the shorter commit-derived one.
 
 4. **If something fails**
    - If pre-commit or commit fails, suggest running `just validate` first and fixing any issues, then try again.
