@@ -8,6 +8,7 @@ Reinforcement learning model for playing table top wargames.
 - [Tabletop Rules Reference](docs/tabletop-rules-reference.md) — Condensed reference of the tabletop wargame mechanics we're modelling
 - [Movement System](docs/movement.md) — How polar coordinate movement works (action encoding, direction, speed, configuration)
 - [DDD in wargame/envs](docs/ddd-envs.md) — Domain-driven design motivation and how to extend the environment
+- [Metrics Reference](docs/metrics.md) — Semantics of every Wandb metric, plus an evaluation procedure for assessing runs
 
 ## How to add a feature to the environement?
 1. Update types, states and space
