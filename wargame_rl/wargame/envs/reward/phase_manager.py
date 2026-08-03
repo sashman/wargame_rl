@@ -184,6 +184,17 @@ class RewardPhaseManager:
         breakdown.update(per_model_sums)
         breakdown.update(per_model_component_sums)
         breakdown.update(global_sums)
+        # TODO(metrics-trap-B): the terminal bonuses below enter `breakdown` as
+        # once-per-episode values, but every downstream consumer averages this
+        # dict over steps (agent_base divides by episode_reward_steps, then the
+        # PPO rollout divides by total_steps). The logged
+        # `reward/components/terminal_*` therefore scales inversely with episode
+        # length and moves when only episode length changed — it is not
+        # comparable to the dense components beside it, nor across runs.
+        # Fix: emit terminal bonuses on a separate per-episode key rather than
+        # folding them into the per-step breakdown. This is a metrics-reporting
+        # change only; the reward itself is correct.
+        # See docs/metrics.md § Reading rules.
         if ctx.is_terminated and phase.terminal_success_bonus != 0.0:
             if phase.criteria.is_successful(view, ctx):
                 # Scale terminal bonus by remaining turns to encourage faster success.

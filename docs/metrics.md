@@ -130,6 +130,10 @@ A 90% success rate under `all_at_objectives` says nothing about whether the play
 
 Traps that produce confidently wrong conclusions.
 
+Ⓐ, Ⓑ and Ⓒ are defects rather than inherent properties, and are marked in the source as
+`TODO(metrics-trap-A|B|C)` at the site where the fix belongs — grep for `metrics-trap` to find
+them. Ⓓ, Ⓔ and Ⓕ are correct by design; this document is their only fix.
+
 **Ⓐ `success_rate` silently changes definition.** `lightning_base.py:112–115`: when
 `episode_successes` is empty — which happens if `env.last_step_context` is `None` — it falls
 back to `(steps < max_turns).mean()`, i.e. "episode ended early" rather than "criteria met".
