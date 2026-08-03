@@ -109,6 +109,13 @@ class WargameLightningBase(LightningModule, ABC):
                 prog_bar=False,
             )
 
+        # TODO(metrics-trap-A): this fallback publishes a different definition
+        # under the same `success_rate` key — "episode ended early" instead of
+        # "phase criteria met" — with no signal to the reader. Only reachable if
+        # every eval episode ran zero steps, so it is latent rather than active,
+        # but a consumer cannot tell which definition produced a given value.
+        # Fix: warn, or emit the fallback under a distinct key.
+        # See docs/metrics.md § Reading rules.
         if episode_successes:
             sr = float(np.array(episode_successes, dtype=float).mean())
         else:
@@ -129,6 +136,11 @@ class WargameLightningBase(LightningModule, ABC):
                 float(phase_index),
                 prog_bar=False,
             )
+            # TODO(metrics-trap-C): `reward_phase` is written twice — once above
+            # through Lightning and once here through the raw wandb API — on two
+            # different step counters, so the same value lands on two rows. Drop
+            # one path once it is established which counter consumers should
+            # read. See docs/metrics.md § Reading rules.
             try:
                 import wandb
 
