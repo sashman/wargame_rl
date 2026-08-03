@@ -7,7 +7,9 @@ alwaysApply: true
 
 ## Task Runner
 
-- Always use `just` to run tasks (train, test, lint, etc.) — never invoke `uv run` directly
+- **Always start from the Justfile.** Before running any project operation (format, lint, test, train, validate, sync, simulate, etc.), check `Justfile` for an existing recipe and use `just <recipe>` — never invoke `uv run` (or other tool wrappers) directly when a recipe exists
+- If no recipe exists for what you need, prefer adding one to the Justfile over running ad-hoc `uv run` commands; only fall back to `uv run` when a one-off is clearly not worth a recipe
+- Discover recipes with `just` / `just --list` when unsure of the name or arguments
 - Default algorithm is PPO; do not default to DQN unless explicitly asked
 - Default network type is transformer; do not default to MLP unless explicitly asked
 
