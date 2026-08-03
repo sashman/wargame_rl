@@ -652,15 +652,31 @@ class TransformerNetwork(RL_Network):
         )
 
 
+# Lightning wraps the policy network differently per algorithm; the first prefix
+# that matches any key wins. Order matters only in that each is unambiguous.
+POLICY_NET_PREFIXES = ("policy_net.", "ppo_model.policy_network.")
+
+
 def convert_state_dict(state_dict: dict) -> dict:
-    """Normalize state_dict keys (Lightning 'policy_net.', torch.compile '_orig_mod.')."""
-    new_state_dict = {}
-    prefix = "policy_net."
-    for key, value in state_dict.items():
-        if not key.startswith(prefix):
-            continue
-        new_key = key[len(prefix) :]
-        if new_key.startswith("_orig_mod."):
-            new_key = new_key[10:]
-        new_state_dict[new_key] = value
-    return new_state_dict
+    """Normalize state_dict keys (Lightning DQN/PPO wrappers, torch.compile).
+
+    Raises:
+        ValueError: If no known policy-network prefix matches any key.
+    """
+    for prefix in POLICY_NET_PREFIXES:
+        new_state_dict = {}
+        for key, value in state_dict.items():
+            if not key.startswith(prefix):
+                continue
+            new_key = key[len(prefix) :]
+            if new_key.startswith("_orig_mod."):
+                new_key = new_key[10:]
+            new_state_dict[new_key] = value
+        if new_state_dict:
+            return new_state_dict
+
+    raise ValueError(
+        "No policy network found in checkpoint: no key starts with any of "
+        f"{POLICY_NET_PREFIXES}. Got prefixes like: "
+        f"{sorted({k.split('.')[0] for k in state_dict})[:5]}"
+    )

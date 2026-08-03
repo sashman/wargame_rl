@@ -92,14 +92,17 @@ JsonMatchCodec.decode()
 
 A complete, serialisable Pydantic model of the game at one point in time. This is the "universal interchange format" — everything downstream operates on snapshots.
 
+> **`clock` vs `action_phase`.** The snapshot is taken after `step()` has advanced the clock, so `clock.battle_phase` is the phase that will execute *next*. The actions in the same snapshot were executed in `action_phase`. Always attribute `player_actions` / `player_action_descriptions` to `action_phase`.
+
 #### Schema
 
 ```python
 class GameStateSnapshot(BaseModel):
-    schema_version: str = "1.1"
+    schema_version: str = "1.2"
     step: int
     max_steps: int
     clock: ClockSnapshot
+    action_phase: str | None
     n_rounds: int
     board_width: int
     board_height: int
@@ -195,7 +198,7 @@ class RewardSnapshot(BaseModel):
 
 | Group | Fields | Purpose |
 |-------|--------|---------|
-| **Timing** | `step`, `max_steps`, `clock`, `n_rounds` | Where in the episode and game clock |
+| **Timing** | `step`, `max_steps`, `clock`, `action_phase`, `n_rounds` | Where in the episode and game clock |
 | **Board** | `board_width`, `board_height`, `deployment_zone`, `opponent_deployment_zone` | Static geometry |
 | **Units** | `player_models`, `opponent_models` | Full per-model state inc. weapons, wounds, distances |
 | **Objectives** | `objectives`, `objective_control` | Positions, radii, ownership |

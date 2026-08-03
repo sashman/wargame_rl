@@ -115,6 +115,28 @@ class TestSnapshotAfterStep:
         assert snap.step >= 1
         assert snap.player_actions is not None
 
+    def test_action_phase_is_the_phase_that_acted(
+        self, shooting_env: WargameEnv
+    ) -> None:
+        """Regression: `clock.battle_phase` is the *next* phase because the clock
+        advances before the snapshot is taken, so actions could not be attributed
+        to a phase. `action_phase` records the phase that actually executed."""
+        shooting_env.reset(seed=42)
+        n = len(shooting_env.wargame_models)
+
+        shooting_env.step(WargameEnvAction(actions=[STAY_ACTION] * n))
+        first = shooting_env.to_snapshot()
+        assert first.action_phase == BattlePhase.movement.value
+        assert first.clock.battle_phase != first.action_phase
+
+        shooting_env.step(WargameEnvAction(actions=[STAY_ACTION] * n))
+        second = shooting_env.to_snapshot()
+        assert second.action_phase == BattlePhase.shooting.value
+
+    def test_action_phase_is_none_after_reset(self, shooting_env: WargameEnv) -> None:
+        shooting_env.reset(seed=42)
+        assert shooting_env.to_snapshot().action_phase is None
+
     def test_opponent_actions_recorded(self, shooting_env: WargameEnv) -> None:
         """Opponent acts after player finishes all phases in a round."""
         shooting_env.reset(seed=42)
@@ -187,7 +209,7 @@ class TestSchemaVersion:
     def test_schema_version(self, shooting_env: WargameEnv) -> None:
         shooting_env.reset(seed=42)
         snap = shooting_env.to_snapshot()
-        assert snap.schema_version == "1.1"
+        assert snap.schema_version == "1.2"
 
 
 class TestEncoder:

@@ -84,7 +84,14 @@ class ReplayController:
 
         for event in self._log.events[1:]:
             assert isinstance(event, StepEvent)
-            current = apply_delta(current, event.delta)
+            # Prefer the anchor when present: it is authoritative and resyncs the
+            # walk, so a field missing from a delta cannot persist for the rest
+            # of the episode.
+            current = (
+                event.anchor
+                if event.anchor is not None
+                else apply_delta(current, event.delta)
+            )
             snapshots.append(current)
 
         return snapshots

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 import torch
 from pytorch_lightning import Trainer
@@ -8,7 +10,7 @@ from wargame_rl.wargame.model.common.observation import (
     observation_to_tensor,
     observations_to_tensor_batch,
 )
-from wargame_rl.wargame.model.net import TransformerNetwork
+from wargame_rl.wargame.model.net import TransformerNetwork, convert_state_dict
 from wargame_rl.wargame.model.ppo.agent import Agent
 from wargame_rl.wargame.model.ppo.config import PPOConfig
 from wargame_rl.wargame.model.ppo.lightning import PPOLightning
@@ -375,3 +377,39 @@ def test_ppo_training_runs_without_error(
     )
 
     trainer.fit(model)
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint loading — convert_state_dict
+# ---------------------------------------------------------------------------
+
+
+def test_transformer_loads_from_ppo_lightning_checkpoint(
+    env: WargameEnv, ppo_net: PPO_Transformer, tmp_path: Path
+) -> None:
+    """Regression: PPO checkpoints key the policy under
+    'ppo_model.policy_network.', but convert_state_dict only stripped the DQN
+    'policy_net.' prefix, so every key was dropped and loading failed."""
+    # Arrange
+    module = PPOLightning(env=env, ppo_model=ppo_net, log=False)
+    checkpoint_path = tmp_path / "ppo.ckpt"
+    torch.save({"state_dict": module.state_dict()}, checkpoint_path)
+
+    # Act
+    loaded = TransformerNetwork.from_checkpoint(env, str(checkpoint_path))
+
+    # Assert
+    expected = ppo_net.policy_network.state_dict()
+    actual = loaded.state_dict()
+    assert set(actual) == set(expected)
+    for key, value in expected.items():
+        assert torch.equal(actual[key].cpu(), value.cpu())
+
+
+def test_convert_state_dict_raises_on_unknown_prefix() -> None:
+    # Arrange
+    state_dict = {"mystery_module.weight": torch.zeros(1)}
+
+    # Act / Assert
+    with pytest.raises(ValueError, match="No policy network found"):
+        convert_state_dict(state_dict)
