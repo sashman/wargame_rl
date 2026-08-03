@@ -157,6 +157,7 @@ register_policy("scripted_hold_position", ScriptedHoldPositionPolicy)
 ```python
 def _auto_register():
     import importlib
+
     for mod in (
         "wargame_rl.wargame.envs.opponent.random_policy",
         "wargame_rl.wargame.envs.opponent.scripted_advance_to_objective_policy",

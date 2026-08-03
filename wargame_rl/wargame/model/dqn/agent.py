@@ -48,8 +48,8 @@ class Agent(BaseAgent):
         else:
             with torch.no_grad():
                 tensors = observation_to_tensor(observation, policy_net.device)
-                mask_tensor = tensors[4]  # (n_models, n_actions)
-                state = tensors[:4]
+                mask_tensor = tensors[5]  # (n_models, n_actions)
+                state = tensors[:5]
                 q_values = policy_net(state)
                 assert q_values.shape[0] == 1
                 assert len(q_values.shape) == 3

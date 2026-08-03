@@ -10,6 +10,7 @@ from wargame_rl.wargame.envs.types import WargameEnvConfig
 
 from .battle import Battle
 from .entities import WargameModel, WargameObjective
+from .terrain import Footprint, Terrain
 from .value_objects import BoardDimensions, DeploymentZone
 
 
@@ -115,6 +116,11 @@ def from_config(config: WargameEnvConfig) -> Battle:
             y_max=board_height,
         )
 
+    footprints = [
+        Footprint.from_corners(*tp.footprint) for tp in (config.terrain or [])
+    ]
+    terrain = Terrain(footprints)
+
     return Battle(
         board_dimensions=board_dimensions,
         player_models=player_models,
@@ -122,6 +128,7 @@ def from_config(config: WargameEnvConfig) -> Battle:
         objectives=objectives,
         deployment_zone=deployment_zone,
         opponent_deployment_zone=opponent_deployment_zone,
+        terrain=terrain,
     )
 
 

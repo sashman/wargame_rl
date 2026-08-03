@@ -9,6 +9,7 @@ from .config import (
     ModelConfig,
     ObjectiveConfig,
     OpponentPolicyConfig,
+    TerrainPieceConfig,
     TurnOrder,
     WargameEnvConfig,
 )
@@ -25,6 +26,7 @@ from .game_timing import (
 )
 from .model_observation import WargameModelObservation
 from .objective_observation import WargameEnvObjectiveObservation
+from .terrain_observation import WargameTerrainObservation
 
 __all__ = [
     "BattlePhase",
@@ -37,6 +39,7 @@ __all__ = [
     "OpponentPolicyConfig",
     "PlayerSide",
     "SetupPhase",
+    "TerrainPieceConfig",
     "TurnOrder",
     "WargameEnvConfig",
     "WargameEnvAction",
@@ -44,4 +47,5 @@ __all__ = [
     "WargameEnvObservation",
     "WargameModelObservation",
     "WargameEnvObjectiveObservation",
+    "WargameTerrainObservation",
 ]

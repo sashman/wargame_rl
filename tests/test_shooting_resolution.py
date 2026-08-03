@@ -21,7 +21,7 @@ from wargame_rl.wargame.envs.domain.shooting import (
 )
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.env_components.shooting_masks import compute_shooting_masks
-from wargame_rl.wargame.envs.types import WargameEnvAction
+from wargame_rl.wargame.envs.types import TerrainPieceConfig, WargameEnvAction
 from wargame_rl.wargame.envs.types.config import (
     ModelConfig,
     OpponentPolicyConfig,
@@ -700,3 +700,41 @@ class TestStepContextCombat:
         assert ctx is not None
         if ctx.player_damage_dealt > 0:
             assert ctx.player_models_killed >= 1
+
+
+# ---------------------------------------------------------------------------
+# Terrain + shooting mask integration
+# ---------------------------------------------------------------------------
+
+
+def test_terrain_shooting_mask_blocks_through_footprint() -> None:
+    """Shooter and target on opposite sides of footprint -> mask forbids."""
+    cfg = WargameEnvConfig(
+        board_width=30,
+        board_height=30,
+        number_of_wargame_models=1,
+        number_of_objectives=1,
+        number_of_opponent_models=1,
+        terrain=[TerrainPieceConfig(footprint=(10, 4, 14, 6))],
+        models=[
+            ModelConfig(
+                x=5,
+                y=5,
+                weapons=[WeaponProfile(range=50)],
+            )
+        ],
+        opponent_models=[ModelConfig(x=20, y=5)],
+        opponent_policy=OpponentPolicyConfig(type="random"),
+        skip_phases=[BattlePhase.command, BattlePhase.charge, BattlePhase.fight],
+    )
+    env = WargameEnv(config=cfg)
+    env.reset(seed=42)
+    pp = np.array([[5, 5]])
+    op = np.array([[20, 5]])
+    pa = np.array([True])
+    oa = np.array([True])
+    pr = np.array([50.0])
+    mask = compute_shooting_masks(
+        pp, op, pa, oa, pr, env.has_line_of_sight_between_cells
+    )
+    assert not mask[0, 0], "LOS through footprint should block shooting"

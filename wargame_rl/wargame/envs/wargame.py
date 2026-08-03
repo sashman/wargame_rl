@@ -27,6 +27,7 @@ from wargame_rl.wargame.envs.domain.shooting import (
     resolve_shooting,
 )
 from wargame_rl.wargame.envs.domain.termination import is_battle_over
+from wargame_rl.wargame.envs.domain.terrain import Terrain
 from wargame_rl.wargame.envs.domain.turn_execution import (
     run_after_player_action,
     run_until_player_phase,
@@ -193,25 +194,39 @@ class WargameEnv(gym.Env):
         """Action space for opponent models (used by policies)."""
         return self._opponent_action_handler.action_space
 
-    def _make_is_blocking(self) -> Callable[[int, int], bool]:
-        """Terrain blocking predicate from ``config.blocking_mask`` (LOS interior cells only)."""
+    @property
+    def terrain(self) -> "Terrain":
+        """Read-only access to terrain footprints."""
+        return self._battle.terrain
+
+    def _make_is_blocking(
+        self, x0: int, y0: int, x1: int, y1: int
+    ) -> Callable[[int, int], bool]:
+        """Per-query blocking predicate: static blocking_mask OR membership of any
+        footprint that contains NEITHER endpoint (10e see-out / see-into rule)."""
         mask = self.config.blocking_mask
-        if mask is None:
-            return lambda _x, _y: False
-        return lambda x, y: bool(mask[y][x])
+        active = self._battle.terrain.blocking_footprints_for_endpoints(x0, y0, x1, y1)
+
+        def is_blocking(x: int, y: int) -> bool:
+            if mask is not None and mask[y][x]:
+                return True
+            return any(fp.contains(x, y) for fp in active)
+
+        return is_blocking
 
     def has_line_of_sight_between_cells(
         self, x0: int, y0: int, x1: int, y1: int
     ) -> bool:
-        """True if there is line of sight between two grid cells (Bresenham + blocking mask)."""
+        """True if LOS is clear between two cells (symmetric: canonical ordering)."""
+        (ax, ay), (bx, by) = sorted([(x0, y0), (x1, y1)])
         return has_line_of_sight(
-            x0,
-            y0,
-            x1,
-            y1,
+            ax,
+            ay,
+            bx,
+            by,
             self.board_width,
             self.board_height,
-            self._make_is_blocking(),
+            self._make_is_blocking(ax, ay, bx, by),
         )
 
     def iter_los_cells_between_cells(

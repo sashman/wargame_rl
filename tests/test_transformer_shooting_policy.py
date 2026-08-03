@@ -72,7 +72,7 @@ def test_transformer_policy_dead_opponent_shooting_column_is_neginf() -> None:
     tensors = observation_to_tensor(obs, net.device)
     logits = net(tensors)
     dead_target_col = shooting_slice.start
-    assert not tensors[4][:, dead_target_col].any()
+    assert not tensors[5][:, dead_target_col].any()
     assert torch.isneginf(logits[0, :, dead_target_col]).all()
 
 
@@ -96,7 +96,7 @@ def test_transformer_shooting_scores_land_in_correct_opponent_columns() -> None:
     assert shooting_slice is not None
 
     tensors = observation_to_tensor(obs, net.device)
-    mask = tensors[4]
+    mask = tensors[5]
     with torch.no_grad():
         state = net.encode_state(tensors)
         logits = net.policy_from_encoded(state)
@@ -220,7 +220,7 @@ def test_dead_tokens_do_not_affect_alive_logits() -> None:
         noise = torch.randn(feature_dim, device=opp.device)
         noise[alive_idx] = opp[row, alive_idx]  # keep it dead
         opp_mutated[row] = noise
-    mutated = [tensors[0], tensors[1], tensors[2], opp_mutated, tensors[4]]
+    mutated = [tensors[0], tensors[1], tensors[2], opp_mutated, tensors[4], tensors[5]]
 
     with torch.no_grad():
         before = net(tensors)

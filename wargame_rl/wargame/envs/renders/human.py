@@ -16,6 +16,15 @@ from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
 
+def los_line_color(
+    view: BattleView, x0: int, y0: int, x1: int, y1: int
+) -> tuple[int, int, int]:
+    """Return green if LOS clear, red if blocked."""
+    if view.has_line_of_sight_between_cells(x0, y0, x1, y1):
+        return (80, 200, 80)
+    return (255, 80, 80)
+
+
 class QuitRequested(Exception):
     """Raised when the user presses Esc to stop the application."""
 
@@ -206,6 +215,8 @@ class HumanRender(Renderer):
         self._draw_deployment_zone_text(
             self.canvas, opponent_deployment_zone, "Opponent Zone"
         )
+
+        self._draw_terrain(self.canvas, view)
 
         # We draw the target
         self._draw_target(self.canvas, wargame_models, view.opponent_models, objectives)
@@ -438,7 +449,10 @@ class HumanRender(Renderer):
             self.window.blit(s, (rect.x + padding, rect.y + padding + j * line_height))
 
     def _draw_debug_los_line(self, view: BattleView) -> None:
-        """Draw LOS polyline using domain ``iter_los_cells`` (first alive player → opponent)."""
+        """Draw LOS polyline using domain ``iter_los_cells`` (first alive player -> opponent).
+
+        Line colour reflects LOS verdict: green if clear, red if blocked.
+        """
         if self.canvas is None:
             return
         player_alive = alive_mask_for(view.player_models)
@@ -462,7 +476,7 @@ class HumanRender(Renderer):
         )
         if len(cells) < 2:
             return
-        color = (255, 80, 80)
+        color = los_line_color(view, x0, y0, x1, y1)
         w = max(1, int(self.pix_square_size * 0.08))
         for i in range(len(cells) - 1):
             ax = (cells[i][0] + 0.5) * self.pix_square_size
@@ -565,6 +579,25 @@ class HumanRender(Renderer):
                 text_y * self.pix_square_size - text_height / 2,
             ),
         )
+
+    def _draw_terrain(self, canvas: pygame.Surface, view: BattleView) -> None:
+        """Draw terrain footprints as translucent filled rectangles with labels."""
+        fill_color = (140, 120, 90)
+        outline_color = (100, 80, 60)
+        label_color = (60, 50, 40)
+        for fp in view.terrain.footprints:
+            x = fp.x0 * self.pix_square_size
+            y = fp.y0 * self.pix_square_size
+            w = (fp.x1 - fp.x0 + 1) * self.pix_square_size
+            h = (fp.y1 - fp.y0 + 1) * self.pix_square_size
+            fill_surf = pygame.Surface((int(w), int(h)), pygame.SRCALPHA)
+            fill_surf.fill((*fill_color, 90))
+            canvas.blit(fill_surf, (x, y))
+            pygame.draw.rect(canvas, outline_color, pygame.Rect(x, y, w, h), width=2)
+            font = pygame.font.Font(None, max(16, int(self.pix_square_size * 0.8)))
+            text = font.render("Ruin", True, label_color)
+            text_rect = text.get_rect(center=(x + w / 2, y + h / 2))
+            canvas.blit(text, text_rect)
 
     def _draw_target(
         self,

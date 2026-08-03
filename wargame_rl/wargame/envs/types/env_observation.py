@@ -6,6 +6,7 @@ import numpy as np
 
 from .model_observation import WargameModelObservation
 from .objective_observation import WargameEnvObjectiveObservation
+from .terrain_observation import WargameTerrainObservation
 
 
 @dataclass
@@ -20,6 +21,7 @@ class WargameEnvObservation:
     board_width: int = 50
     board_height: int = 50
     opponent_models: list[WargameModelObservation] = field(default_factory=list)
+    terrain: list[WargameTerrainObservation] = field(default_factory=list)
     action_mask: np.ndarray | None = field(default=None, repr=False)
     battle_round: int = 1
     battle_phase_index: int = 0
@@ -41,6 +43,10 @@ class WargameEnvObservation:
         return [objective.size for objective in self.objectives]
 
     @property
+    def size_terrain(self) -> list[int]:
+        return [t.size for t in self.terrain]
+
+    @property
     def size_game_observation(self) -> int:
         # placeholder(1) + normalized_round(1) + phase_index(1) + player_vp(1) + opponent_vp(1) + player_vp_delta(1)
         return 6
@@ -51,6 +57,7 @@ class WargameEnvObservation:
             sum(self.size_wargame_models)
             + sum(self.size_opponent_models)
             + sum(self.size_objectives)
+            + sum(self.size_terrain)
             + self.size_game_observation
         )
         return total_size
@@ -66,3 +73,7 @@ class WargameEnvObservation:
     @property
     def n_objectives(self) -> int:
         return len(self.objectives)
+
+    @property
+    def n_terrain(self) -> int:
+        return len(self.terrain)

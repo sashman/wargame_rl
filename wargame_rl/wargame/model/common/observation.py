@@ -24,6 +24,7 @@ NORM_EXPECTED_DAMAGE = 10.0
 N_WOUND_FEATURES = 3  # alive, wound_ratio, max_wounds_norm
 N_COMBAT_STATS = 7  # attacks, bs, strength, ap, damage, toughness, save
 N_BATTLE_PHASES = 5  # command, movement, shooting, charge, fight
+TERRAIN_FEATURE_DIM = 4  # x0_norm, y0_norm, x1_norm, y1_norm
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,7 +83,8 @@ def _same_group_closest_distance(
     closest = pairwise.min(axis=1)
     closest = np.where(np.isinf(closest), max_dist, closest)
     closest = np.clip(closest, 0.0, max_dist) / max_dist
-    return closest.astype(np.float32).reshape(n, 1)
+    result: np.ndarray = closest.astype(np.float32).reshape(n, 1)
+    return result
 
 
 def _models_to_features(
@@ -161,11 +163,14 @@ def _models_to_features(
 
 def _observation_to_numpy(
     state: WargameEnvObservation,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]:
+) -> tuple[
+    np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray | None
+]:
     """Convert a single observation to NumPy arrays.
 
-    Returns (current_turn, objectives, player_models, opponent_models, action_mask).
-    ``action_mask`` is ``(n_models, n_actions)`` or None when not available.
+    Returns (game_features, objectives, player_models, opponent_models,
+    terrain, action_mask). ``terrain`` has shape ``(n_terrain, 4)`` (may be
+    0 rows). ``action_mask`` is ``(n_models, n_actions)`` or None.
     """
     models = state.wargame_models
     max_groups = (
@@ -244,11 +249,19 @@ def _observation_to_numpy(
         dtype=np.float32,
     )
 
+    if state.terrain:
+        terrain_features = np.array(
+            [t.footprint for t in state.terrain], dtype=np.float32
+        )
+    else:
+        terrain_features = np.zeros((0, TERRAIN_FEATURE_DIM), dtype=np.float32)
+
     return (
         game_features,
         obj_features,
         model_features,
         opponent_features,
+        terrain_features,
         state.action_mask,
     )
 
@@ -279,7 +292,9 @@ def observation_to_tensor(
         3. tensor_wargame_models: shape (num_models, feature_dim)
         4. tensor_opponent_models: shape (num_opponent_models, feature_dim)
            (0 rows when no opponents)
-        5. tensor_action_mask: shape (n_models, n_actions), bool
+        5. tensor_terrain: shape (n_terrain, 4), normalized footprint corners
+           (0 rows when no terrain)
+        6. tensor_action_mask: shape (n_models, n_actions), bool
 
     feature_dim = base + n_opponent, where base includes normalized location,
     distances to objectives, group_id one-hot, closest same-group distance,
@@ -289,7 +304,7 @@ def observation_to_tensor(
     per target (player models) or zero-padding (opponent models).
     """
     device = get_device(device)
-    current_turn, obj_features, model_features, opp_features, mask = (
+    current_turn, obj_features, model_features, opp_features, terrain_features, mask = (
         _observation_to_numpy(state)
     )
 
@@ -304,6 +319,7 @@ def observation_to_tensor(
         torch.from_numpy(obj_features).to(resolved_device),
         torch.from_numpy(model_features).to(resolved_device),
         torch.from_numpy(opp_features).to(resolved_device),
+        torch.from_numpy(terrain_features).to(resolved_device),
         _mask_to_tensor(mask, n_models, n_actions, resolved_device),
     ]
 
@@ -324,8 +340,9 @@ def observations_to_tensor_batch(
     batch_obj = np.stack([r[1] for r in np_results])
     batch_models = np.stack([r[2] for r in np_results])
     batch_opp = np.stack([r[3] for r in np_results])
+    batch_terrain = np.stack([r[4] for r in np_results])
 
-    masks = [r[4] for r in np_results]
+    masks = [r[5] for r in np_results]
     n_models = batch_models.shape[1]
     if masks[0] is not None:
         batch_masks = np.stack(masks)  # type: ignore[arg-type]
@@ -340,5 +357,6 @@ def observations_to_tensor_batch(
         torch.from_numpy(batch_obj).to(resolved_device),
         torch.from_numpy(batch_models).to(resolved_device),
         torch.from_numpy(batch_opp).to(resolved_device),
+        torch.from_numpy(batch_terrain).to(resolved_device),
         mask_tensor,
     ]
