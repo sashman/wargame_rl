@@ -1,0 +1,28 @@
+# Testing
+
+Applies to everything under `tests/`. General testing philosophy lives in the root `CLAUDE.md`
+("Good Enough" Testing); this file covers the project-specific setup.
+
+## Setup
+
+- Pytest + shared fixtures in `conftest.py`; run via `just test`; coverage → `coverage.xml`
+- Fixtures: `env`, `experiences`, `replay_buffer`, `dqn_net` (parametrized MLP+Transformer), `dqn_mlp_net`, `dqn_transformer_net`
+
+## Rules
+
+- No `@lru_cache` on fixtures — use `scope="module"`/`scope="session"` instead
+- Use `RL_Network` (not `DQN_MLP`) when accepting parametrized `dqn_net`
+- Prefer integration tests; test through public APIs (add properties rather than accessing `_private` attrs)
+- Type-annotate fixtures and test functions
+- `wargame_rl/wargame/envs/interactive_demo.py` is NOT a test
+- When env default config changes stepping (e.g. `skip_phases`), tests that rely on per-phase or all-phase behaviour must set config explicitly (e.g. `skip_phases=[]` in a shared `_make_env` or in the test)
+
+## Test Files
+
+`test_env` (reset/step) · `test_clock_integration` (phases, skip_phases, rounds) · `test_fixed_placement` (config/placement) · `test_dqn` (networks/loss/training) · `test_agent` (actions/episodes) · `test_state` (obs/batch tensors) · `test_opponents` (opponent system) · `test_reward_phases` (reward) · `test_integration` (cross-cutting, backward compat)
+
+## New Features
+
+Cover: config validation · env integration · obs/info · tensor shapes · DQN forward · backward compat
+
+Run `just validate` before pushing.

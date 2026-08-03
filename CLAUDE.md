@@ -13,6 +13,16 @@ Reinforcement learning project that trains agents (DQN, PPO) to play tabletop wa
 - **Loguru** — logging
 - **Pygame** — human rendering
 
+## Development Tooling
+
+- **Just** — command runner (see `Justfile`)
+- **Ruff** — linter & formatter (line length 88, double quotes)
+- **Mypy** — strict type checking (`disallow_untyped_defs`, `no_implicit_optional`)
+- **isort** — import sorting (Black profile)
+- **autoflake** — removes unused imports
+- **Pytest** — testing
+- **Pre-commit** — hooks for all of the above
+
 ## Project Layout
 
 ```
@@ -53,6 +63,8 @@ wargame_rl/
 | Full validation | `just validate` |
 | Train (PPO, default) | `just train <config.yaml>` |
 | Train (DQN) | `just train <config.yaml> dqn` |
+| Train multiple configs in parallel | `just train-multi config1.yaml config2.yaml` |
+| Ship (branch → commit → push → PR) | `just ship <branch> "<message>"` |
 | Simulate latest | `just simulate-latest` |
 | Test env (random) | `just test-env` |
 | Profile | `just profile <config.yaml> [model] [max_epochs]` |
@@ -84,6 +96,14 @@ wargame_rl/
 - Environment configs live in `examples/env_config/`
 - Algorithm configs: `DQNConfig`, `PPOConfig` in respective `config.py` files
 - Training config: `TrainingConfig` in `wargame_rl/wargame/model/dqn/config.py`
+
+### Directory-scoped guidance
+
+Detailed patterns live next to the code they govern — read them when working in these areas:
+
+- `wargame_rl/wargame/envs/CLAUDE.md` — Gymnasium env, phases, placement, opponents, rendering
+- `wargame_rl/wargame/model/CLAUDE.md` — networks, DQN/PPO, observation tensor pipeline
+- `tests/CLAUDE.md` — fixtures, test file map, per-feature coverage checklist
 
 ---
 
@@ -121,6 +141,33 @@ wargame_rl/
 - Use Python type hints for all public functions; prefer built-in generics (`list[str]`) over `typing.List`
 - Raise meaningful exceptions; never swallow exceptions silently
 
+## Python Conventions
+
+- All functions typed (mypy strict); `from __future__ import annotations`
+- Modern syntax: `str | None`, `list[int]`, `dict[str, Any]`
+- Imports: isort Black profile (stdlib → third-party → local); absolute (`from wargame_rl.wargame...`)
+- Classes `PascalCase` · functions/vars `snake_case` · constants `UPPER_SNAKE_CASE` · private `_leading_underscore`
+- Ruff: 88 chars, 4-space indent, double quotes
+- Pydantic for structured data/config · `loguru` for logging · `numpy` typed arrays for perf
+
+## Naming & Design
+
+- Prefer general, future-proof names over narrow ones (e.g. `models` not `model_placements`, `ModelConfig` not `ModelPlacement`)
+- When adding per-entity configuration, make positional fields optional so attributes (stats, group, etc.) can be specified independently of placement
+- Avoid hardcoded magic numbers in factory methods — push defaults into Pydantic models with `Field(default=...)`
+- Scripted behaviours: name classes descriptively with a `Scripted` prefix (e.g. `ScriptedAdvanceToObjectivePolicy`, not `ScriptedPolicy`)
+- Use registry pattern with string identifiers for YAML-configurable subsystems (opponent policies, reward calculators/criteria)
+
+## Adding New Entity Types
+
+- Mirror existing entity patterns: reuse the same model class (`WargameModel`), same config schema (`ModelConfig`), same placement logic
+- Parameterize shared infrastructure (e.g. `ActionHandler(n_models=...)`) rather than duplicating it
+- Always default new config fields to the no-op value so existing YAML configs keep working (e.g. `number_of_opponent_models=0`)
+- Full checklist: config types → env state → observation types → observation builder → tensor pipeline → DQN networks → renderer → tests → backward compat tests
+- When adding config that changes step semantics or episode length, update docs (`docs/reward-phases.md`, `docs/tabletop-rules-reference.md`, `docs/opponent-policies.md`, `docs/goals-and-roadmap.md`) and any tests that assume steps-per-round or phase order
+- When adding new reward calculators or success criteria, register them and document in `docs/reward-phases.md` (tables and file layout)
+- When changing the environment, domain, reward, or rendering, follow [docs/ddd-envs.md](docs/ddd-envs.md): keep domain logic in `domain/`, use `BattleView` for read-only state, and preserve dependency direction (domain → types only; reward/renders → BattleView)
+
 ## Testing ("Good Enough" Testing)
 
 - Test the happy path and critical edge cases — not every possible permutation
@@ -135,18 +182,33 @@ wargame_rl/
 
 ## Package Management
 
-- Use `uv add` to add new packages
-- Always start from the Justfile: use `just <recipe>` for project operations; only use `uv run` when no suitable recipe exists
+- Use `uv add [--dev] <pkg>` to add new packages; run `just dev-sync` after pulling lock changes; never manually edit `uv.lock`
+- **Always start from the Justfile.** Before running any project operation (format, lint, test, train, validate, sync, simulate, etc.), check `Justfile` for an existing recipe and use `just <recipe>` — never invoke `uv run` (or other tool wrappers) directly when a recipe exists
+- If no recipe exists for what you need, prefer adding one to the Justfile over running ad-hoc `uv run` commands; only fall back to `uv run` when a one-off is clearly not worth a recipe
+- Discover recipes with `just` / `just --list` when unsure of the name or arguments
+
+## Training Runs
+
+- Default algorithm is **PPO**; do not default to DQN unless explicitly asked
+- Default network type is **transformer**; do not default to MLP unless explicitly asked
+- Start training: `just train <env_config.yaml>` · DQN: `just train <env_config.yaml> dqn` · DQN + network: `just train <env_config.yaml> dqn transformer`
+- **Multiple configs in parallel**: `just train-multi config1.yaml config2.yaml` runs one training per config concurrently (PPO + transformer); each run gets a unique `--run-suffix` and shared `--wandb-group` so they appear grouped in the Wandb UI
+- Env configs live in `examples/env_config/` — copy an existing one to create new scenarios
+- Training logs to Wandb automatically; checkpoints saved to `checkpoints/`. Reward phase index and phase advancement are logged (`reward_phase`, `phase_advanced_at_epoch`) so curriculum runs show phase transitions in the dashboard
+- Key CLI options: `--record-during-training`, `--max-epochs`, `--render-mode`, `--algorithm`, `--no-wandb`, `--run-suffix`, `--wandb-group`
+- Profile a run: `just profile <config.yaml> [model] [max_epochs]` generates `profile.html`
+- Simulate latest checkpoint: `just simulate-latest [network_type]` · Clean up: `just clean` removes `checkpoints/` and `wandb/`
 
 ## Git Workflow
 
 - Always verify the current branch before committing (especially after a PR merge)
 - Create feature branches for all changes; avoid committing directly to `main`
 - Branch naming: `feature/<topic>`, `fix/<topic>`, `refactor/<topic>`
-- Commit messages: imperative mood, concise summary
+- Commit messages: imperative mood, concise summary (e.g. "Add reward shaping for distance")
+- If pre-commit hooks reject a commit, fix the issues and make a new commit — no `--amend`, no `--no-verify`
 - After pushing a new feature branch, always create a PR using `gh pr create`
-- Run `just validate` before pushing
-- **Shipping:** always create a new branch from up-to-date `main` — never reuse an existing feature branch for a new PR
+- Run `just validate` (format + lint + test) before pushing; `just format && just lint` for quick iteration
+- **Shipping:** always create a new branch from up-to-date `main` — never reuse an existing feature branch for a new PR. Checkout `main`, pull latest, then branch. Never push directly on an in-progress branch from another workflow. The `/ship` skill (`.claude/skills/ship/`) automates this via `just ship`
 
 ## CUDA Environment
 
