@@ -1,0 +1,52 @@
+# Gymnasium Env Patterns
+
+Applies to everything under `wargame_rl/wargame/envs/`.
+
+## Structure
+
+- `WargameEnv` extends `gymnasium.Env`; typed obs/action/info/config (all Pydantic)
+- Config: `WargameEnvConfig` (pydantic-yaml) from `examples/env_config/`
+- Actions: polar (angle, speed) pairs per model via `ActionHandler(n_models=...)`
+  - `ActionHandler.best_action_toward(dx, dy)` for scripted policies; never hardcode action counts — use `ActionHandler.n_actions`
+- `DistanceCache` pre-computes model-objective distances each step
+- Reward: `RewardPhaseManager` (phased reward only); termination in `env_components/termination.py`
+
+## Game timing and phases
+
+- `skip_phases`: list of battle phases to auto-advance (default: all non-movement). `max_turns = n_rounds × (5 - len(skip_phases))`; default is 1 step per round (movement only). Set `skip_phases: []` for full per-phase stepping (5 steps per round).
+- After the player's turn, the opponent's full turn is auto-executed before the next observation. Turn order: `turn_order` (player / opponent / random).
+
+## Placement (`ModelConfig`/`ObjectiveConfig` in YAML)
+
+- No key → full auto · Key without x/y → random + config attrs · Key with x/y → fixed
+- Properties: `has_fixed_model_positions` / `has_fixed_objective_positions` / `has_fixed_opponent_positions`
+
+## Opponents
+
+- Reuse `WargameModel`/`ModelConfig`; YAML keys: `number_of_opponent_models`, `opponent_models`, `turn_order`, `opponent_policy`
+- `TurnOrder`: `player`/`opponent`/`random`
+- Policies in `envs/opponent/`, registry: `RandomPolicy("random")`, `ScriptedAdvanceToObjectivePolicy("scripted_advance_to_objective")`
+- New policies: one class per behaviour, `Scripted` prefix, register as `"scripted_<name>"`; implement `select_action(opponent_models, env, action_mask=None)`
+- `number_of_opponent_models=0` (default) → no policy, env unchanged
+
+## Rendering
+
+- `"human"` (Pygame) / `"rgb_array"` (video); renderer injected via constructor
+- Player: blue/green circles · Opponents: red/warm triangles
+- Use a single FPS cap for human rendering; avoid phase-conditional throttle — it breaks when default stepping changes (e.g. skip_phases)
+
+## Adding Features
+
+1. Config → `WargameEnvConfig` in `types/`
+2. Logic → `env_components/`
+3. Obs → `env_observation.py`/`env_info.py` + obs builder
+4. Tensor → `model/dqn/observation.py`
+5. Networks → both `DQN_MLP` and `DQN_Transformer`
+6. Reward if signals change · Renderer if visual · Tests + backward compat
+
+## Design
+
+- Integer locations; pre-compute expensive ops at `__init__` (numpy vectorized)
+- Track rendering state (e.g. `previous_location`) in same change
+- New entities mirror existing patterns; always backward compatible
+- Follow [docs/ddd-envs.md](../../../docs/ddd-envs.md): keep domain logic in `domain/`, use `BattleView` for read-only state, and preserve dependency direction (domain → types only; reward/renders → BattleView)
