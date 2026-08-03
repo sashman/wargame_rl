@@ -94,10 +94,10 @@ wargame_rl/
 
 ## Coding Practice
 
-- Before saying tasks are finished, ALWAYS run `uv run ruff format` and `uv run ruff check --fix`. Fix any errors.
-- Run `uv run pytest` after large changes
-- Run `uv run pytest` after adding any tests
-- ALWAYS run `uv run pre-commit run --files <changed-files>` on files that have changed
+- Before saying tasks are finished, ALWAYS run `just format` and `just lint`. Fix any errors.
+- Run `just test` after large changes
+- Run `just test` after adding any tests
+- ALWAYS run `just format && just lint` (or `just validate`) on files that have changed; use Justfile recipes rather than `uv run` directly
 - ALWAYS add type hinting for inputs and outputs
 - Pass dependencies in; don't construct them inside classes
 - NEVER include unimportable resources
@@ -136,7 +136,7 @@ wargame_rl/
 ## Package Management
 
 - Use `uv add` to add new packages
-- Use `uv run` to run any Python commands
+- Always start from the Justfile: use `just <recipe>` for project operations; only use `uv run` when no suitable recipe exists
 
 ## Git Workflow
 
