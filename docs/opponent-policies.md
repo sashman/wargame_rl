@@ -181,7 +181,7 @@ Scripted policies are prefixed with `Scripted` in the class name and `scripted_`
 
 ## Observation Impact
 
-When opponents are present, the player agent's observation includes opponent model positions as a separate list (`opponent_models`). This is converted to 5 tensors in the DQN observation pipeline:
+When opponents are present, the player agent's observation includes opponent model positions as a separate list (`opponent_models`). This is converted to 6 tensors in the observation pipeline:
 
 | Tensor index | Content | Shape |
 |--------------|---------|-------|
@@ -189,9 +189,10 @@ When opponents are present, the player agent's observation includes opponent mod
 | 1 | Objectives | `(n_objectives, 2)` |
 | 2 | Player models | `(n_player_models, features)` |
 | 3 | Opponent models | `(n_opponent_models, features)` |
-| 4 | Action mask | `(n_models, n_actions)` — bool, valid actions per model |
+| 4 | Terrain | `(n_terrain, 4)` — normalized footprint corners |
+| 5 | Action mask | `(n_models, n_actions)` — bool, valid actions per model |
 
-When there are no opponents, tensor 3 has shape `(0, features)` and the network handles it gracefully (empty sequence for the Transformer, zero-width concatenation for the MLP).
+When there are no opponents, tensor 3 has shape `(0, features)`; likewise tensor 4 is `(0, 4)` with no terrain. The networks handle both gracefully (empty sequence for the Transformer, zero-width concatenation for the MLP).
 
 ## File Layout
 
