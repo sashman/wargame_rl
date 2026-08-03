@@ -32,9 +32,14 @@ wargame_rl/
 │   ├── plotting/                  # Training visualization
 │   └── wargame/
 │       ├── envs/                  # Gymnasium environment, reward, rendering
-│       │   ├── wargame.py         # WargameEnv
-│       │   ├── env_components/    # Actions, placement, termination, observation
+│       │   ├── wargame.py         # WargameEnv — facade, implements BattleView
+│       │   ├── domain/            # Battle aggregate, BattleView, clock, placement,
+│       │   │                      #   termination, LOS, shooting, terrain, turn execution
+│       │   ├── env_components/    # Adapters: actions, distance cache, observation builder
 │       │   ├── reward/            # Phase manager, calculators, criteria
+│       │   ├── mission/           # VP calculators + registry
+│       │   ├── opponent/          # Opponent policies + registry
+│       │   ├── state/             # Snapshots, event log, replay, narrator, analysis
 │       │   ├── types/             # Config, observations, actions, info
 │       │   └── renders/           # Pygame renderer
 │       ├── model/                 # RL algorithms
@@ -67,6 +72,9 @@ wargame_rl/
 | Ship (branch → commit → push → PR) | `just ship <branch> "<message>"` |
 | Simulate latest | `just simulate-latest` |
 | Test env (random) | `just test-env` |
+| Record a match event log | `just record <config.yaml>` |
+| Replay / narrate a log | `just replay <file>` · `just replay-summary <file>` |
+| Analyse a log | `just analyze <file>` · `just analyze-compare <files...>` |
 | Profile | `just profile <config.yaml> [model] [max_epochs]` |
 | Clean | `just clean` |
 
@@ -80,6 +88,11 @@ wargame_rl/
 - **VP reward and success** — `vp_gain` calculator, `player_vp_min` success criteria, optional terminal VP bonus; observation includes `player_vp_delta` for step-wise VP signal
 - **Deployment zones** — configurable spawn areas for player and opponent
 - **Group cohesion** — optional penalty for unit separation
+- **DDD layering** — `domain/` owns the rules (Battle aggregate, clock, placement, termination, LOS, shooting); `wargame.py` is a facade; reward/renders depend only on the `BattleView` protocol. See [docs/ddd-envs.md](docs/ddd-envs.md)
+
+### Game State I/O (`envs/state/`)
+
+Snapshot/event pipeline for recording and inspecting matches — `GameStateSnapshot`, event-log deltas, `StateExporter` (wired into `step()`), replay, narration, and `analyze_match` metrics. Driven by `replay_events.py` / `analyze_events.py` and the `record` · `replay` · `analyze` · `analyze-compare` recipes. See [docs/game-state-io.md](docs/game-state-io.md)
 
 ### RL Algorithms
 
@@ -122,7 +135,7 @@ Detailed patterns live next to the code they govern — read them when working i
 - Pass dependencies in; don't construct them inside classes
 - NEVER include unimportable resources
 - Public facing methods should have docstrings
-- Follow the package dependency flow (see [README § Flow of dependencies](README.md#flow-of-dependencies)); layers above must not depend on layers below.
+- Follow the package dependency flow (see [docs/ddd-envs.md § Dependency direction](docs/ddd-envs.md#dependency-direction)); layers above must not depend on layers below.
 - Follow KISS
 - Prefer complexity at startup, keep runtime simple
 - Prefer validation at initialisation / construction, keep runtime simple
