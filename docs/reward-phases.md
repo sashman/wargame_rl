@@ -91,10 +91,32 @@ reward_phases:
 
 | Type key | Parameters | Description |
 |----------|------------|-------------|
-| `all_at_objectives` | *(none)* | Succeeds when every model is within the radius of at least one objective. |
+| `all_at_objectives` | *(none)* | Succeeds when every model is within the radius of at least one objective. Dead models count as satisfied. **Scales badly with army size** — see the note below; prefer `fraction_at_objectives` beyond a handful of models. |
+| `fraction_at_objectives` | `min_fraction` (float in (0, 1], default 0.5) | Succeeds when at least `min_fraction` of **alive** models are within the radius of an objective. Dead models are excluded from numerator and denominator alike, unlike `all_at_objectives`. |
 | `all_models_grouped` | `max_distance` (float, default 10.0) | Succeeds when every model is within `max_distance` of at least one same-group member. Models alone in their group are considered grouped. |
 | `player_vp_min` | `fraction_of_max` (float, e.g. 0.33), `min_vp` (int, default 0) | Succeeds when player VP at episode end ≥ threshold. Threshold = max(min_vp, round(fraction_of_max × theoretical_max)). Theoretical max depends on `number_of_battle_rounds`, objectives, and mission params, so the same fraction gives a higher VP bar when episodes have more rounds. |
 | `player_ahead_on_vp` | *(none)* | Succeeds when `player_vp > opponent_vp` at evaluation time (a win-rate signal; use with `terminate_on_success: false`). |
+
+### Choosing an at-objectives criteria
+
+`all_at_objectives` requires **every** alive model inside a radius on the same
+step. If each model independently has probability `p` of being on an objective,
+success needs `p**n_models` — which collapses as the army grows:
+
+| per-model accuracy | 4 models | 25 models |
+|---|---|---|
+| 0.90 | 0.66 | 0.07 |
+| 0.95 | 0.81 | 0.28 |
+| 0.99 | 0.96 | 0.78 |
+
+A 25v25 run held `success_rate` at exactly 0 for 330 epochs while every other
+metric improved. Lowering `success_threshold` does not help: that tunes how many
+*episodes* must succeed, not how many *models* must arrive. Use
+`fraction_at_objectives` and raise `min_fraction` across phases instead.
+
+**Set `min_fraction` from measurement, not intuition.** Success is evaluated on
+the episode's final step, so measure the final-step fraction your current policy
+reaches and pick a bar just above it.
 
 ## How Advancement Works
 
@@ -172,6 +194,7 @@ wargame_rl/wargame/envs/reward/
   criteria/
     base.py                        # SuccessCriteria ABC
     all_at_objectives.py           # All models at objectives
+    fraction_at_objectives.py      # A fraction of alive models at objectives
     all_models_grouped.py          # All models within group distance
     player_ahead_on_vp.py          # Player ahead on VP (win-rate) criteria
     player_vp_min.py               # Player VP min success criteria

@@ -31,6 +31,24 @@ class DistanceCache:
             per_model = per_model | ~alive_mask
         return bool(per_model.all())
 
+    def fraction_at_objectives(self, alive_mask: np.ndarray | None = None) -> float:
+        """Fraction of alive models within the radius of at least one objective.
+
+        Unlike :meth:`all_models_at_objectives`, dead models are excluded from
+        both numerator and denominator rather than counted as satisfied.
+        Returns 0.0 when no model is alive.
+        """
+        at_objective = self.model_obj_norms_offset <= self.obj_radii
+        per_model: np.ndarray = np.atleast_1d(at_objective.any(axis=1))
+        if alive_mask is not None:
+            per_model = per_model & alive_mask
+            n_alive = int(alive_mask.sum())
+        else:
+            n_alive = int(per_model.size)
+        if n_alive == 0:
+            return 0.0
+        return float(per_model.sum()) / n_alive
+
     def min_distances_to_same_group(
         self,
         group_ids: np.ndarray,

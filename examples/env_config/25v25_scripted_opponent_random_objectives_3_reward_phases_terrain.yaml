@@ -93,25 +93,53 @@ opponent_models:
 # randomly outside both deployment zones at the start of every episode.
 
 reward_phases:
-  # Goal: every alive model inside an objective radius. Only calculators that
-  # move models onto objectives belong here — vp_gain and killing were removed
-  # because neither advances this criteria and both outweighed the shaping term.
-  - name: reach_objectives
+  # `all_at_objectives` is unreachable at this army size: with per-model accuracy
+  # p, success needs p**25. A 25v25 run held success_rate at exactly 0 for 330
+  # epochs while the policy was otherwise learning well. Split into a two-step
+  # fraction ladder instead. Thresholds are measured, not guessed — evaluating
+  # that run's best checkpoint over 80 episodes gives a 48% success rate at
+  # min_fraction 0.2 and 20% at 0.4, so each phase starts with real signal
+  # (unlike the 0% of all_at_objectives) and needs a genuine gain to advance.
+  #
+  # Only calculators that move models onto objectives belong in these phases;
+  # vp_gain and killing were removed because neither advances the criteria and
+  # both outweighed the shaping term.
+  - name: approach_objectives
     terminal_success_bonus: 5.0
-    terminate_on_success: true
+    terminate_on_success: false
     reward_calculators:
       - type: closest_objective
         weight: 1.0
         params: { progress_scale: 10.0 }
       - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: fraction_at_objectives
+      params: { min_fraction: 0.2 }
+    success_threshold: 0.7
+    min_epochs: 0
+    min_epochs_above_threshold: 10
+
+  # Massing enough models to hold a point. objective_coverage is weighted up
+  # because reaching 40% across 3 objectives requires spreading, not stacking;
+  # group_cohesion is live now that groups have 5 members each.
+  - name: mass_on_objectives
+    terminal_success_bonus: 5.0
+    terminate_on_success: false
+    reward_calculators:
+      - type: closest_objective
         weight: 0.5
+        params: { progress_scale: 10.0 }
+      - type: objective_coverage
+        weight: 0.8
       - type: group_cohesion
         weight: 0.5
         params: { group_max_distance: 5.0, violation_penalty: -0.1 }
     success_criteria:
-      type: all_at_objectives
-    success_threshold: 0.7
-    min_epochs: 0
+      type: fraction_at_objectives
+      params: { min_fraction: 0.4 }
+    success_threshold: 0.6
+    min_epochs: 20
     min_epochs_above_threshold: 10
 
   - name: win_only_by_vp
