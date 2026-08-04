@@ -19,17 +19,19 @@ opponent_deployment_zone: [40, 0, 60, 44]
 opponent_policy:
   type: scripted_advance_to_objective
 
+# range 40 reaches across the ~20-cell gap between deployment zones; other
+# weapon stats use WeaponProfile defaults (attacks 2, BS 3+, S4, AP1, D1).
 models:
-  - { group_id: 0 }
-  - { group_id: 1 }
-  - { group_id: 2 }
-  - { group_id: 3 }
+  - { group_id: 0, weapons: [{ range: 40 }] }
+  - { group_id: 1, weapons: [{ range: 40 }] }
+  - { group_id: 2, weapons: [{ range: 40 }] }
+  - { group_id: 3, weapons: [{ range: 40 }] }
 
 opponent_models:
-  - { group_id: 0 }
-  - { group_id: 1 }
-  - { group_id: 2 }
-  - { group_id: 3 }
+  - { group_id: 0, weapons: [{ range: 40 }] }
+  - { group_id: 1, weapons: [{ range: 40 }] }
+  - { group_id: 2, weapons: [{ range: 40 }] }
+  - { group_id: 3, weapons: [{ range: 40 }] }
 
 # No `objectives:` block -> the 3 objectives (number_of_objectives) are placed
 # randomly outside both deployment zones at the start of every episode.
