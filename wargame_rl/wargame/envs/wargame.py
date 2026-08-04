@@ -516,11 +516,6 @@ class WargameEnv(gym.Env):
         )
 
         any_player_alive = player_alive.any()
-        all_at_objective = (
-            bool(any_player_alive)
-            and cache.all_models_at_objectives(alive_mask=player_alive)
-            and self.phase_manager.terminate_on_success
-        )
 
         all_player_eliminated = (
             self.config.terminate_on_player_elimination and not any_player_alive
@@ -529,15 +524,6 @@ class WargameEnv(gym.Env):
             not m.is_alive for m in self.opponent_models
         )
         all_eliminated = all_player_eliminated or all_opponent_eliminated
-
-        is_terminated = is_battle_over(
-            self._game_clock,
-            self.current_turn,
-            self.max_turns,
-            all_at_objective,
-            all_eliminated=all_eliminated,
-        )
-        self._last_terminated = is_terminated
 
         clock_state = self._game_clock.state
         phase = clock_state.phase or BattlePhase.command
@@ -557,13 +543,17 @@ class WargameEnv(gym.Env):
             and not m.is_alive
         )
 
+        # Built before termination is known because the phase's success criteria
+        # need a context to evaluate against. No criteria reads `is_terminated`,
+        # so the provisional False here cannot change their verdict; it is
+        # corrected below before any reward is calculated.
         ctx = StepContext(
             distance_cache=cache,
             current_turn=self.current_turn,
             max_turns=self.max_turns,
             board_width=self.board_width,
             board_height=self.board_height,
-            is_terminated=is_terminated,
+            is_terminated=False,
             current_round=clock_state.battle_round or 0,
             battle_phase=phase,
             player_damage_dealt=p_dmg,
@@ -571,6 +561,25 @@ class WargameEnv(gym.Env):
             player_models_killed=p_kills,
             opponent_models_killed=o_kills,
         )
+
+        # Consults the *configured* criteria for the active phase rather than a
+        # hardcoded all-models-at-objectives test, so a phase gated on a model
+        # fraction or on VP can end on its own success.
+        succeeded = (
+            bool(any_player_alive)
+            and self.phase_manager.terminate_on_success
+            and self.phase_manager.check_success(self, ctx)
+        )
+
+        is_terminated = is_battle_over(
+            self._game_clock,
+            self.current_turn,
+            self.max_turns,
+            succeeded,
+            all_eliminated=all_eliminated,
+        )
+        self._last_terminated = is_terminated
+        ctx.is_terminated = is_terminated
         self.last_step_context = ctx
         reward = self.phase_manager.calculate_reward(self, ctx)
 

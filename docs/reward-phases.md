@@ -59,7 +59,7 @@ reward_phases:
 | `min_epochs_above_threshold` | int | `5` | Success rate must be ≥ success_threshold for this many consecutive epochs before advancing |
 | `terminal_success_bonus` | float | `0.0` | Bonus added at episode end **when the phase's `success_criteria` is met** (previously hardcoded to all-models-at-objectives). Scaled by remaining-turn fraction **only when `terminate_on_success` is true** — see below. |
 | `terminal_vp_bonus` | float | `0.0` | Bonus added at episode end when player VP meets the phase's VP threshold (for VP-based success criteria). |
-| `terminate_on_success` | bool | `true` | Whether to end the episode as soon as all models are at objectives. Set `false` in VP phases when you want to keep scoring. |
+| `terminate_on_success` | bool | `true` | Whether to end the episode as soon as **this phase's `success_criteria`** is met. Set `false` in VP phases when you want to keep scoring — and read the warning below, because this flag changes what `success_rate` measures. |
 
 ### Reward calculator fields
 
@@ -147,6 +147,19 @@ Each epoch's `success_rate` is an `n_episodes`-sample binomial, not a measuremen
 | 0.9 | 0.99 | 0.88 |
 
 At `n_episodes=10`, `min_epochs_above_threshold: 10` turns a nominal 0.7 threshold into an effective bar near 0.85. Prefer **more evaluation episodes and a shorter run** — `--n-eval-episodes 30` with `min_epochs_above_threshold: 3` keeps the effective bar close to the nominal one for roughly the same eval cost.
+
+### `terminate_on_success` silently changes what `success_rate` means
+
+The flag consults the phase's configured `success_criteria` (it was previously hardcoded to all-models-at-objectives, so fraction- and VP-gated phases could never end early). Switching it on is not a neutral speed optimisation — it redefines the metric every gate is calibrated against:
+
+| `terminate_on_success` | `success_rate` measures |
+|---|---|
+| `false` | the criteria **holds at the final step** |
+| `true` | the criteria was **ever met** — episodes that achieve it stop there, so it is true at the last step by construction |
+
+Recorded matches show peak occupancy running ~3x final occupancy, so flipping this raises `success_rate` by roughly that factor without the policy improving at all. Every threshold in a ladder calibrated under one setting is wrong under the other.
+
+For VP phases it is also semantically wrong: `win_at_the_end` must mean ahead *at the end*, not ahead at some point. Keep it `false` there.
 
 ### `terminal_success_bonus` and the remaining-turn scale
 

@@ -118,8 +118,14 @@ reward_phases:
       - type: closest_objective
         weight: 1.0
         params: { progress_scale: 10.0 }
+      # Weighted above objective_coverage because occupancy, not control, is
+      # what the criteria measures. Recorded matches show the policy reaching
+      # objectives then leaving them (peak 3/4 -> final 1/4): `closest_objective`
+      # with progress_scale is a potential, so a round trip away and back sums
+      # to zero and nothing opposes drift. Only a per-step occupancy term makes
+      # holding strictly better than oscillating.
       - type: models_at_objectives
-        weight: 0.5
+        weight: 1.0
       - type: objective_coverage
         weight: 0.3
     success_criteria:
@@ -164,7 +170,7 @@ reward_phases:
         weight: 0.5
         params: { progress_scale: 10.0 }
       - type: models_at_objectives
-        weight: 1.0
+        weight: 1.5
       - type: objective_coverage
         weight: 0.8
       - type: group_cohesion
