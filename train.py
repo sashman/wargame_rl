@@ -194,6 +194,14 @@ def train(
         None,
         help="Override number of evaluation episodes per epoch (defaults to config value)",
     ),
+    gamma: float | None = typer.Option(
+        None,
+        help="Override PPO discount factor (defaults to PPOConfig value)",
+    ),
+    ent_coef: float | None = typer.Option(
+        None,
+        help="Override PPO entropy coefficient (defaults to PPOConfig value)",
+    ),
     resume_ckpt_path: str | None = typer.Option(
         None,
         help="Resume full training state (model, optimizer, epoch/step) from a Lightning checkpoint.",
@@ -313,6 +321,10 @@ def train(
             ppo_config.n_steps = n_steps
         if n_eval_episodes is not None:
             ppo_config.n_episodes = n_eval_episodes
+        if gamma is not None:
+            ppo_config.gamma = gamma
+        if ent_coef is not None:
+            ppo_config.ent_coef = ent_coef
         ppo_training_config = PPOTrainingConfig(
             record_during_training=record_during_training,
             record_after_epoch=record_after_epoch,

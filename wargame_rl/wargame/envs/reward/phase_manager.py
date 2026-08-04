@@ -197,11 +197,20 @@ class RewardPhaseManager:
         # See docs/metrics.md § Reading rules.
         if ctx.is_terminated and phase.terminal_success_bonus != 0.0:
             if phase.criteria.is_successful(view, ctx):
-                # Scale terminal bonus by remaining turns to encourage faster success.
-                remaining = max(0.0, float(ctx.max_turns - ctx.current_turn + 1))
-                denom = float(ctx.max_turns) if ctx.max_turns > 0 else 1.0
-                remaining_frac = remaining / denom
-                bonus = phase.terminal_success_bonus * remaining_frac
+                # The remaining-turns scaling is a *speed* incentive, and it only
+                # means anything when success ends the episode early. With
+                # terminate_on_success disabled every episode runs to max_turns,
+                # so remaining_frac collapses to 1/max_turns and silently scales
+                # the bonus down by that factor (0.05 at 20 rounds) — which made
+                # the configured bonus worth ~1% of episode reward and left the
+                # success criterion with almost no gradient behind it.
+                if phase.terminate_on_success:
+                    remaining = max(0.0, float(ctx.max_turns - ctx.current_turn + 1))
+                    denom = float(ctx.max_turns) if ctx.max_turns > 0 else 1.0
+                    speed_scale = remaining / denom
+                else:
+                    speed_scale = 1.0
+                bonus = phase.terminal_success_bonus * speed_scale
                 reward += bonus
                 if bonus != 0.0:
                     breakdown["terminal_success_bonus"] = bonus

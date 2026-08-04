@@ -49,13 +49,14 @@ dockerize:
 # Or with algorithm and network: just train path/to/config.yaml dqn transformer
 # Or with an epoch cap: just train path/to/config.yaml ppo transformer 800
 # Or with a match event log for analysis: just train path/to/config.yaml ppo transformer 800 true
-train env_config_path='examples/env_config/4v4_scripted_opponent_fixed_objectives_2_reward_phases.yaml' algorithm='ppo' model='transformer' max_epochs='' record_events='':
+train env_config_path='examples/env_config/4v4_scripted_opponent_fixed_objectives_2_reward_phases.yaml' algorithm='ppo' model='transformer' max_epochs='' record_events='' *extra='':
 	@uv run train.py --record-during-training \
 		--env-config-path {{env_config_path}} \
 		--algorithm {{algorithm}} \
 		{{ if model != "" { "--network-type " + model } else { "" } }} \
 		{{ if max_epochs != "" { "--max-epochs " + max_epochs } else { "" } }} \
-		{{ if record_events != "" { "--record-events" } else { "" } }}
+		{{ if record_events != "" { "--record-events" } else { "" } }} \
+		{{extra}}
 
 # Run multiple env configs in parallel. Each run gets a unique --run-suffix and shared --wandb-group.
 # Uses PPO + transformer. Use: just train-multi config1.yaml config2.yaml
