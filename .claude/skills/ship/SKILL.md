@@ -60,3 +60,7 @@ Use `feature/<topic>`, `fix/<topic>`, or `refactor/<topic>` — never commit to 
 ## PR titles
 
 Use conventional commits (`feat:`, `fix:`, `refactor:`, `chore:`, `docs:`) followed by a space and a lower case letter — CI enforces this.
+
+## Docs-drift check (automatic)
+
+`just ship` and `gh pr create` both trigger a `PostToolUse` hook that names live docs referencing the code you just changed. When it reports, act on it before moving on: fix mechanical drift directly, and only suggest anything that asserts behaviour. It stays silent when nothing is implicated, so a report means something genuinely cites the changed code. See the Git Workflow section of the root `CLAUDE.md`.

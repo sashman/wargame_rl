@@ -242,6 +242,7 @@ Detailed patterns live next to the code they govern — read them when working i
 - After pushing a new feature branch, always create a PR using `gh pr create`
 - Run `just validate` (format + lint + test) before pushing; `just format && just lint` for quick iteration
 - **Shipping:** always create a new branch from up-to-date `main` — never reuse an existing feature branch for a new PR. Checkout `main`, pull latest, then branch. Never push directly on an in-progress branch from another workflow. The `/ship` skill (`.claude/skills/ship/`) automates this via `just ship`
+- **Docs-drift check:** a `PostToolUse` hook (`.claude/settings.json` → `.claude/hooks/docs_check.py`) fires after `gh pr create` and `just ship`. It diffs the branch against `main` and names the live docs that cite the changed paths, symbols, recipes or config fields. Fix mechanical drift (renamed symbol, changed default, missing table row) directly; only *suggest* anything asserting behaviour. It is silent when nothing is implicated, and never fails a ship. `reports/` and `.planning/` are exempt — they record what was believed at the time. Run it by hand with `python3 .claude/hooks/docs_check.py --dry-run [<base>..<head>]`
 
 ## CUDA Environment
 
