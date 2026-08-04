@@ -50,12 +50,20 @@ def main() -> None:
     config_path = sys.argv[1]
     n_episodes = int(sys.argv[2]) if len(sys.argv) > 2 else 25
     record = len(sys.argv) > 3 and sys.argv[3].lower() in {"record", "true", "1"}
+    # Pass the checkpoint script's base to put an agent and the baselines on
+    # identical layouts; objective placement dominates episode variance, so an
+    # unpaired comparison spends several VP of it on which maps each drew.
+    # Empty means "not given" — the recipe passes every optional argument
+    # through, so an omitted one arrives as "" rather than being absent.
+    seed_base = (
+        int(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4] else EVAL_SEED_BASE
+    )
 
     with open(config_path) as handle:
         env_config = parse_yaml_raw_as(WargameEnvConfig, handle.read())
 
     env = create_environment(env_config=env_config)
-    seeds = [EVAL_SEED_BASE + i for i in range(n_episodes)]
+    seeds = [seed_base + i for i in range(n_episodes)]
 
     print(f"\n{config_path}  ({n_episodes} episodes, seeds {seeds[0]}-{seeds[-1]})\n")
     header = f"{'baseline':<18}{'on_obj':>9}{'win':>8}{'player_vp':>11}"

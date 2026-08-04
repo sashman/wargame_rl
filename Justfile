@@ -136,8 +136,9 @@ measure-phase-gates checkpoint env_config n_episodes='30':
 
 # Scripted baseline scores for an env config -- the floor and bar for any learned policy.
 # Pass `record` as the third argument to also write reference traces to recordings/.
-measure-baselines env_config n_episodes='25' record='':
-	@uv run python -m scripts.measure_baselines {{env_config}} {{n_episodes}} {{record}}
+# Pass `seed_base` (e.g. 700000) to score on the same layouts as measure-checkpoint.
+measure-baselines env_config n_episodes='25' record='' seed_base='':
+	@uv run python -m scripts.measure_baselines {{env_config}} {{n_episodes}} "{{record}}" "{{seed_base}}"
 
 # Score a checkpoint on held-out seeds through the same code path as the baselines,
 # so the two are directly comparable. Pass `record` as the fourth argument for a trace.
