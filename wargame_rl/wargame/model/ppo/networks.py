@@ -81,8 +81,10 @@ class PPOModel(nn.Module):
             deterministic: If True take argmax, otherwise sample.
 
         Returns:
-            (env_action, joint_log_prob) where env_action contains a per-model
-            action list and joint_log_prob is the sum of per-model log-probs (scalar).
+            (env_action, per_model_log_probs) where env_action contains a
+            per-model action list and per_model_log_probs has shape
+            (n_models,) — kept unsummed so PPO can clip each model's
+            importance ratio separately.
         """
         action_logits, _ = self.forward(state_tensors)
         action_dist = Categorical(logits=action_logits)
@@ -92,11 +94,10 @@ class PPOModel(nn.Module):
         else:
             actions = action_dist.sample()
 
-        per_model_log_probs = action_dist.log_prob(actions)
-        joint_log_prob = per_model_log_probs.sum(dim=-1).squeeze(0)
+        per_model_log_probs = action_dist.log_prob(actions).squeeze(0)
 
         env_action = WargameEnvAction(actions=actions.flatten().tolist())
-        return env_action, joint_log_prob
+        return env_action, per_model_log_probs
 
     def evaluate_actions(
         self, state_tensors: list[torch.Tensor], actions: Tensor
@@ -108,13 +109,13 @@ class PPOModel(nn.Module):
             actions: Per-model actions, shape (batch_size, n_models).
 
         Returns:
-            (action_logits, joint_log_probs, joint_entropy) where the joint
-            quantities are summed across models, giving shape (batch_size,).
+            (action_logits, log_probs, entropy) with the per-model quantities
+            left unsummed, shape (batch_size, n_models).
         """
         action_logits, _ = self.forward(state_tensors)
         action_dist = Categorical(logits=action_logits)
 
-        joint_log_probs = action_dist.log_prob(actions).sum(dim=-1)
-        joint_entropy = action_dist.entropy().sum(dim=-1)
+        log_probs = action_dist.log_prob(actions)
+        entropy = action_dist.entropy()
 
-        return action_logits, joint_log_probs, joint_entropy
+        return action_logits, log_probs, entropy

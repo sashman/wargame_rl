@@ -149,7 +149,7 @@ def test_transformer_policy_batched_matches_single_obs() -> None:
 
 
 def test_transformer_value_path_runs_with_masking() -> None:
-    """The critic path still produces finite scalars through the shared encoding."""
+    """The critic path still produces finite per-model values."""
     env = WargameEnv(config=_shooting_env_config())
     value_net = TransformerNetwork.value_from_env(env)
     value_net.eval()
@@ -165,8 +165,9 @@ def test_transformer_value_path_runs_with_masking() -> None:
             observations_to_tensor_batch([obs_a, obs_b], value_net.device)
         )
 
-    assert single.shape == (1,)
-    assert batched.shape == (2,)
+    n_models = env.config.number_of_wargame_models
+    assert single.shape == (1, n_models)
+    assert batched.shape == (2, n_models)
     assert torch.isfinite(batched).all()
 
 

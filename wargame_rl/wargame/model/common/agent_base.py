@@ -65,6 +65,9 @@ class BaseAgent(ABC):
                 done=bool(done),
                 new_state=new_state,
                 log_prob=log_prob,
+                per_model_reward=torch.as_tensor(
+                    self.env.last_per_model_reward, dtype=torch.float32
+                ),
             )
             self._record_experience(exp)
 

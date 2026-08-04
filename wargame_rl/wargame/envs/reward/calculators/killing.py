@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 
 class KillingReward(GlobalRewardCalculator):
-    """Get a reward for killing an oponent."""
+    """Reward for killing opponent models this step."""
 
     def __init__(
         self,
@@ -19,13 +19,16 @@ class KillingReward(GlobalRewardCalculator):
     ) -> None:
         super().__init__(weight=weight)
         self.bonus_killing_opponent = bonus_killing_opponent
-        self._previous_opponent_models_killed: int = 0
-
-    def reset_episode(self) -> None:
-        """Clear per-episode state (called by the env on reset)."""
-        self._previous_opponent_models_killed = 0
 
     def calculate(self, view: BattleView, ctx: StepContext) -> float:
-        diff = ctx.opponent_models_killed - self._previous_opponent_models_killed
-        self._previous_opponent_models_killed = ctx.opponent_models_killed
-        return self.bonus_killing_opponent * diff
+        """Return the bonus for each opponent model killed on this step.
+
+        Reads `player_models_killed` — the `player_` prefix means "by the
+        player", matching `player_damage_dealt`. Reading
+        `opponent_models_killed` instead paid the agent for its *own* losses.
+
+        The context field is already a per-step count, so it is used directly;
+        subtracting a running total made the reward telescope to the final step
+        and go negative on the step after any kill.
+        """
+        return self.bonus_killing_opponent * float(ctx.player_models_killed)

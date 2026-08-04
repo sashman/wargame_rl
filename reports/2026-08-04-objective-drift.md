@@ -56,6 +56,15 @@ stopped at the good moment, so the final state is favourable by construction.
 
 ## Interpretation
 
+> **Superseded, 2026-08-04.** The explanation below is more elaborate than the data
+> requires. The policy's movement head was later measured at **98.6% of maximum entropy**
+> after 945 epochs — a near-uniform distribution over 97 movement actions, which under
+> evenly-spaced angle bins is a zero-drift random walk. That produces the traces above
+> directly, with no appeal to reward-term geometry. The analysis of `closest_objective`
+> as a potential function is still correct *about the calculator*, and the gap it
+> identifies is real; it is simply not established as the cause of this drift. See
+> [the correction](2026-08-04-correction-what-was-actually-broken.md).
+
 `closest_objective` with `progress_scale` computes `10 x distance_closed`. This is a
 **potential function**: over any trajectory that leaves an objective and returns, the
 contributions cancel to exactly zero. The policy is therefore mathematically indifferent

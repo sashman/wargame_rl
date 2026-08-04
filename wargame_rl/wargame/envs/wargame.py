@@ -47,7 +47,10 @@ from wargame_rl.wargame.envs.opponent.registry import (
     build_opponent_policy,
 )
 from wargame_rl.wargame.envs.renders import renderer
-from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
+from wargame_rl.wargame.envs.reward.phase_manager import (
+    CurriculumPosition,
+    RewardPhaseManager,
+)
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.state.exporter import StateExporter
 from wargame_rl.wargame.envs.state.snapshot import (
@@ -87,7 +90,14 @@ class WargameEnv(gym.Env):
         config: WargameEnvConfig,
         renderer: renderer.Renderer | None = None,
         state_exporters: list[StateExporter] | None = None,
+        phase_position: CurriculumPosition | None = None,
     ):
+        """Build the environment.
+
+        `phase_position` shares curriculum progress with another environment.
+        Training passes the eval env's position to every rollout env so they
+        reward the phase the curriculum has actually reached.
+        """
         self.board_width = config.board_width
         self.board_height = config.board_height
         self.window_size = 1024  # The size of the PyGame window
@@ -150,11 +160,18 @@ class WargameEnv(gym.Env):
         # Last reward from step(); None until first step after reset
         self.last_reward: float | None = None
         self.last_reward_breakdown: dict[str, float] = {}
+        # Per-model decomposition of `last_reward`, for algorithms that credit
+        # each model's own action rather than a single army-wide scalar.
+        self.last_per_model_reward: np.ndarray = np.zeros(
+            config.number_of_wargame_models, dtype=np.float64
+        )
         self.episode_reward_breakdown: dict[str, float] = {}
         self.episode_reward_steps: int = 0
 
         # Reward phases (curriculum learning); always used for reward calculation
-        self.phase_manager = RewardPhaseManager.from_configs(config.reward_phases)
+        self.phase_manager = RewardPhaseManager.from_configs(
+            config.reward_phases, position=phase_position
+        )
 
         # Mission VP calculator (scores at end of command phase from round 2)
         self._vp_calculator = build_vp_calculator(
@@ -189,6 +206,11 @@ class WargameEnv(gym.Env):
     def n_actions(self) -> int:
         """Number of discrete actions per model (including stay)."""
         return self._action_handler.n_actions
+
+    @property
+    def player_action_handler(self) -> ActionHandler:
+        """Action handler for the player's models (used by baseline policies)."""
+        return self._action_handler
 
     @property
     def opponent_action_space(self) -> spaces.Tuple:
@@ -588,6 +610,7 @@ class WargameEnv(gym.Env):
 
         self.last_reward = reward
         self.last_reward_breakdown = dict(self.phase_manager.last_reward_breakdown)
+        self.last_per_model_reward = self.phase_manager.last_per_model_reward.copy()
         for key, value in self.last_reward_breakdown.items():
             self.episode_reward_breakdown[key] = (
                 self.episode_reward_breakdown.get(key, 0.0) + value

@@ -77,10 +77,47 @@ success_threshold`, at least `min_epochs` spent in the phase, and the threshold 
 | `loss/train_loss` | `ppo/lightning.py:401` | Total: policy + `vf_coef`·value + `ent_coef`·entropy. Routinely negative — the entropy term is negative. **Negative is not an error.** |
 | `loss/policy_loss` | `ppo/lightning.py:408` | Clipped surrogate. Near zero at convergence; magnitude says how much the update moved. |
 | `loss/value_loss` | `ppo/lightning.py:415` | Critic MSE. The one loss that should fall monotonically. The clearest single convergence signal. |
-| `loss/entropy_loss` | `ppo/lightning.py:422` | Negative entropy. Rising *toward zero* = policy sharpening. A fast collapse toward 0 early is premature determinism. |
+| `loss/entropy_loss` | `ppo/lightning.py:422` | **`-ent_coef × entropy`, not entropy.** Divide by `ent_coef` before reading it as nats. Rising *toward zero* = policy sharpening. |
 
 Lightning suffixes these `_step` and `_epoch`. With `on_epoch=True` and one log call per epoch
 the two are equal; prefer `_epoch`.
+
+> ⚠️ **`loss/entropy_loss` is not entropy.** It is the coefficient-multiplied
+> loss term. A past experiment read `-1.79 → -0.59` as an entropy drop and
+> concluded `ent_coef` had sharpened the policy; dividing by the respective
+> coefficients (0.03, 0.01) gives 59.7 and 59.0 nats — a 3× coefficient change
+> moved entropy by ~1%. Read `train/entropy_movement` and
+> `train/entropy_shooting` instead: raw nats, already per model, split by
+> phase. The aggregate mixes a heavily-masked shooting phase with a wide-open
+> movement phase and is uninterpretable either way.
+
+### Update health (per epoch)
+
+| Key | Meaning | Healthy range |
+|---|---|---|
+| `train/entropy_movement` | Mean per-model entropy in the movement phase, raw nats | Well below `ln(n_movement_actions)`. At 97 actions the ceiling is 4.575; sitting at ~4.5 means the policy is still uniform |
+| `train/entropy_shooting` | Same, shooting phase. Naturally low — masking often leaves 1–2 valid targets | — |
+| `train/clip_fraction` | Fraction of samples outside the PPO trust region | 0.1–0.3. Above ~0.4 the objective is saturating and much of each minibatch contributes no gradient |
+| `train/approx_kl` | Policy movement per update | ~0.01–0.03 |
+| `train/explained_variance` | How much of the return the critic explains | Rising toward 1. Near 0 means it is no better than predicting the mean |
+| `train/rollout_phase_index` | The **rollout** env's reward phase | Must track `reward_phase`. If they diverge, training and evaluation are on different reward functions |
+| `train/distinct_layouts_seen` | Distinct objective layouts in the last rollout | Should vary between epochs. A constant value means training is replaying fixed maps |
+| `train/num_rollout_envs_resolved` | Rollout envs actually used | `num_rollout_envs` defaults to 0 = auto-detect, so the config never showed which path ran |
+
+### Baselines and the scoreboard
+
+| Key | Meaning |
+|---|---|
+| `eval/vp_player`, `eval/vp_opponent`, `eval/vp_margin` | **The phase-invariant scoreboard.** `success_rate` changes definition at every phase boundary and reward changes with the calculator set, so neither is comparable across a run or between runs. VP is the game's own measure and never changes meaning. |
+| `eval/win_rate` | Fraction of eval episodes ending ahead on VP |
+| `eval/baseline_squad_march_*` | The bar to beat: whole squads marched onto objectives by a scripted heuristic |
+| `eval/baseline_random_*` | The floor |
+
+**Always read a number against the baselines.** Measured once per run at
+`on_train_start` and constant thereafter. Every `success_rate` in `reports/`
+predating them was quoted with no floor and no ceiling — which is how a policy
+scoring 17% against an 80% heuristic was read as progress. Reproduce or extend
+with `just measure-baselines <env_config>`.
 
 ### Reward components (per epoch, from training rollouts)
 

@@ -46,9 +46,15 @@ def run_until_player_phase(
             on_before_advance(clock)
         clock.advance_phase()
 
-    # Execute full opponent turn if it's their turn
+    # Execute full opponent turn if it's their turn. The opponent acts only in
+    # phases the player also plays: without this guard its policy is invoked in
+    # every phase, and because scripted policies emit movement actions
+    # regardless of phase, that gave the opponent one move per battle phase --
+    # four per round against the player's one. `on_before_advance` still fires
+    # on skipped phases so VP continue to score at the command boundary.
     while not clock.is_game_over and _is_opponent_active(clock.state, player_side):
-        apply_opponent_action()
+        if not _should_skip_phase(clock.state, skip_phases):
+            apply_opponent_action()
         if on_before_advance is not None:
             on_before_advance(clock)
         clock.advance_phase()

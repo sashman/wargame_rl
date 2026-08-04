@@ -1,5 +1,27 @@
 # Reward-phase curriculum at 25v25: why it stalled, and what moved it
 
+> ## ⚠️ Substantially retracted, 2026-08-04
+>
+> Later measurement invalidated most of this report's cross-run conclusions. Read
+> [the correction](2026-08-04-correction-what-was-actually-broken.md) first.
+>
+> In short: **training reward always came from phase 0**, no matter what `reward_phase`
+> reported, because the rollout environments built their own phase manager. `vp_gain`,
+> `objective_flip_bonus`, `killing`, `closest_objective_v2` and `group_cohesion` were
+> never trained on in any run below. Training also replayed **8 fixed objective layouts**
+> every epoch while evaluation drew random ones, and the scripted opponent moved **four
+> times per round** to the player's one.
+>
+> Most decisively: a **12-line scripted heuristic scores an 80% win rate** on this config
+> where the 945-epoch policy scores 17%. The policy's movement head sat at 98.6% of
+> maximum entropy — barely moved from initialisation. Every rung, threshold and
+> `success_rate` below was measured against a near-random policy.
+>
+> What survives: **D1, D2 and D4's method lesson** (arithmetic, independent of policy
+> quality) and the fact that the drift and the gate mechanics were real. What does not:
+> every hyperparameter verdict, the ladder sizing, and the claim that reaching
+> `win_at_the_end` meant anything about play.
+
 **Date:** 2026-08-04
 **Config:** `examples/env_config/25v25_scripted_opponent_random_objectives_3_reward_phases_terrain.yaml`
 **Algorithm:** PPO + TransformerNetwork (6.51M params), 25v25, 3 random objectives, 20 rounds
@@ -75,14 +97,28 @@ plausible reading is that it displaced the dense shaping that performs the navig
 This was not isolated experimentally — run 2 also changed the terminal-bonus magnitude
 and the gate sampling.
 
-### H5 — lowering the entropy coefficient (refuted)
+### H5 — lowering the entropy coefficient (RETRACTED — the mechanism was misread)
+
+> **Correction, 2026-08-04.** This section's central claim is wrong.
+> `loss/entropy_loss` is **`-ent_coef × entropy`**, not entropy. Dividing by the
+> respective coefficients gives **59.7 nats at `ent_coef` 0.03 and 59.0 nats at 0.01** —
+> a 3× change in the coefficient moved total policy entropy by about **1%**. The stated
+> reading ("0.59 nats ⇒ ~1.8 actions live") is off by roughly 100×: it is 59 nats across
+> 25 models, ~2.4 nats each, ~11 actions each.
+>
+> H5 is therefore **untested**, not refuted. The measurements below stand; the
+> explanation attached to them does not.
+>
+> The correct inference is the one nobody drew: if entropy is nearly invariant to a 3×
+> change in its own regulariser, something else is setting it. That something was the
+> loss shape — entropy was summed over 25 models, making the effective coefficient
+> 25× the nominal one. See [mechanism defects, D6](2026-08-04-mechanism-defects.md).
 
 `loss/entropy_loss_epoch` sat in `[-1.81, -1.72]` — a 0.09-nat band — across 975 epochs
 and three configurations differing in γ, terminal-bonus magnitude (40x), and reward
 composition. Invariance under that much change suggested the coefficient was pinning it.
 
-It was: `ent_coef` 0.03 → 0.01 moved entropy −1.79 → −0.59. But the outcome inverted
-expectations. Over epochs 100–149:
+Measured, over epochs 100–149:
 
 | Metric (epochs 100–149) | ent 0.03 | ent 0.01 |
 |---|---|---|
@@ -92,14 +128,19 @@ expectations. Over epochs 100–149:
 | `mean_episode_reward` (eval) | **5.03** | 1.27 |
 | `min_episode_reward` (eval) | −0.06 | **−2.25** |
 
-Every *training-rollout* component improved while *evaluation* reward fell 4x. Objectives
-are placed randomly each episode; at 0.59 nats the policy keeps roughly `e^0.59 ≈ 1.8`
-actions live and had converged to a rigid routine that generalised poorly to unseen
-layouts. The `min_episode_reward` of −2.25 is consistent with catastrophic failures on
-some layouts.
+Every *training-rollout* component improved while *evaluation* reward fell 4x.
 
-This is a clean instance of the training-rollout vs evaluation distinction in
-`docs/metrics.md`: the two quantities disagreed in **sign of change**.
+That divergence is real and is the durable finding here — a clean instance of the
+training-rollout vs evaluation distinction in `docs/metrics.md`, with the two quantities
+disagreeing in **sign of change**. But the original explanation (a policy sharpened by
+the lower coefficient overfitting to a rigid routine) cannot be right, because the
+coefficient barely moved entropy.
+
+The likelier cause, found later: training rollouts replayed **8 fixed objective layouts**
+every epoch while evaluation drew random ones
+([D7](2026-08-04-mechanism-defects.md)). Training-rollout numbers improving while eval
+falls is exactly what fitting a handful of maps looks like, and it would occur under any
+`ent_coef`. This has not been isolated experimentally.
 
 ## What produced the advancement
 
