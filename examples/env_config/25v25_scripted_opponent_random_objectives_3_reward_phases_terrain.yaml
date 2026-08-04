@@ -93,24 +93,39 @@ opponent_models:
 # randomly outside both deployment zones at the start of every episode.
 
 reward_phases:
-  # `all_at_objectives` is unreachable at this army size: with per-model accuracy
-  # p, success needs p**25. A 25v25 run held success_rate at exactly 0 for 330
-  # epochs while the policy was otherwise learning well. Split into a two-step
-  # fraction ladder instead. Thresholds are measured, not guessed — evaluating
-  # that run's best checkpoint over 80 episodes gives a 48% success rate at
-  # min_fraction 0.2 and 20% at 0.4, so each phase starts with real signal
-  # (unlike the 0% of all_at_objectives) and needs a genuine gain to advance.
+  # !! EVERY THRESHOLD BELOW IS UNCALIBRATED. Treat them as placeholders. !!
   #
-  # Only calculators that move models onto objectives belong in these phases;
-  # vp_gain and killing were removed because neither advances the criteria and
-  # both outweighed the shaping term.
-  # `models_at_objectives` is the dense counterpart of the fraction criteria.
-  # Without it the phase was gated on a model fraction that nothing paid for:
-  # `objective_coverage` saturates once the player out-counts the opponent (~2
-  # models a point) and `closest_objective` pays for approaching, not staying.
-  # A run with the terminal bonus alone behind the criteria stalled at 34% —
-  # a sparse binary signal says whether the episode succeeded, not which way to
-  # move, so it cannot replace dense shaping.
+  # The numbers that used to be documented here were measured under three
+  # conditions that have since been shown false or fixed:
+  #   1. Training reward always came from phase 0 regardless of the reported
+  #      phase (the rollout envs built their own RewardPhaseManager), so no
+  #      phase-1/2/3 threshold was ever measured against its own reward.
+  #   2. The opponent moved four times per round to the player's one, so it
+  #      held every objective before VP scoring opened at round 2.
+  #   3. The rollout envs replayed 8 fixed layouts every epoch while eval drew
+  #      random ones.
+  # Conditions 2 and 3 are fixed; the measurements taken under them are not
+  # recoverable and have been removed rather than left to mislead.
+  #
+  # Re-derive rungs with `just measure-baselines <this config>` for the
+  # reachable range and `just measure-phase-gates <ckpt> <this config>` for a
+  # policy's live per-epoch rate. Size against the *live* rate the gate reads,
+  # never a best-checkpoint sweep: best checkpoints are selected on reward and
+  # run 10-15 points optimistic. Keep the ladder monotonic — a rung measured
+  # harder than a later rung stalls everything behind it.
+  #
+  # What survives, because it is arithmetic rather than measurement:
+  #   - `all_at_objectives` is unreachable at this army size: with per-model
+  #     accuracy p, success needs p**25.
+  #   - `min_epochs_above_threshold` demands *consecutive* epochs above the bar,
+  #     and each epoch's success_rate is an n_episodes-sample binomial. At
+  #     n_episodes=10 a run of 10 readings >= 0.7 needs a true rate near 0.85.
+  #     Launch with --n-eval-episodes 30 and a run of 3.
+  #   - `models_at_objectives` is the dense counterpart of the fraction
+  #     criteria. Without it the phase is gated on a quantity nothing pays for:
+  #     `objective_coverage` saturates once the player out-counts the opponent
+  #     (~2 models a point) and `closest_objective` pays for approaching, not
+  #     staying.
   - name: approach_objectives
     terminal_success_bonus: 3.0
     terminate_on_success: false
@@ -131,30 +146,10 @@ reward_phases:
     success_criteria:
       type: fraction_at_objectives
       params: { min_fraction: 0.15 }
-    # `min_epochs_above_threshold` demands *consecutive* epochs above the bar, and
-    # each epoch's success_rate is an n_episodes-sample binomial. At n_episodes=10
-    # a run of 10 consecutive readings >= 0.7 needs a true rate near 0.85, so the
-    # nominal 0.7 was silently a 0.85 gate. Launch with --n-eval-episodes 30 and
-    # a run of 3, which puts the effective bar back near the nominal value.
-    #
-    # Rungs are sized from measurement (see measure_phase_gates.py), against the
-    # *live* per-epoch success_rate the gate actually reads — not against a
-    # best-checkpoint sweep. Best checkpoints are selected on reward, so they run
-    # 10-15 points optimistic; sizing rungs from them puts every gate out of
-    # reach of the thing that opens it.
-    #
-    # Live rates observed: min_fraction 0.15 -> ~36%, 0.20 -> ~25%, 0.25 -> ~17%.
-    #
-    # The gate needs `min_epochs_above_threshold` *consecutive* epochs above the
-    # bar, each an n_episodes-sample binomial, so it only fires when the live
-    # mean sits near the threshold. At a live mean of 0.174 against a 0.35 bar,
-    # P(one epoch passes) is 0.003 and P(three running) is 2e-8 — never, at any
-    # epoch budget. Phase 0 at a 0.365 mean against 0.45 gives ~0.008 per
-    # attempt and duly advanced after 38 epochs.
-    #
-    # The ladder must also stay monotonic: an earlier version had
-    # mass_on_objectives at min_fraction 0.35 measuring 0.20, harder than
-    # win_only_by_vp and harder than the final win_at_the_end criteria.
+    # Placeholder — see the uncalibrated warning at the top of reward_phases.
+    # For reference, the scripted `squad_march` baseline saturates this
+    # criteria (1.00 final fraction on objectives) on this config, so the
+    # reachable ceiling here is 1.0 and this rung is not the hard part.
     success_threshold: 0.45
     min_epochs: 0
     min_epochs_above_threshold: 3

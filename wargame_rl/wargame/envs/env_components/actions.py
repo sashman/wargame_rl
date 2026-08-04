@@ -264,6 +264,9 @@ class ActionHandler:
 
         Dead models are skipped — they do not move regardless of the action.
         Shooting-slice actions are no-ops (Phase 5 adds resolution).
+        Models displace only in the movement phase: the action mask already
+        enforces that for a learned policy, but scripted policies bypass the
+        mask, so honouring `phase` here keeps them on the same footing.
         """
         for i, act in enumerate(action.actions):
             model = wargame_models[i]
@@ -273,6 +276,8 @@ class ActionHandler:
                 raise ValueError(
                     f"Action {act} for wargame model {i} is out of bounds."
                 )
+            if phase is not BattlePhase.movement:
+                continue
             if (
                 self._shooting_slice is not None
                 and self._shooting_slice.start <= act < self._shooting_slice.end
