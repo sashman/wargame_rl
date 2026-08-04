@@ -126,6 +126,10 @@ replay file:
 replay-summary file:
 	uv run replay_events.py summary {{file}}
 
+# Compact rolling-mean summary of a Wandb training run. Use: just run-summary <run_id> [bucket]
+run-summary run_id bucket='50':
+	@uv run run_summary.py {{run_id}} {{bucket}}
+
 # Analyze a recorded match for training evaluation
 analyze file:
 	uv run analyze_events.py report {{file}}
