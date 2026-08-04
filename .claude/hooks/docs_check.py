@@ -65,7 +65,12 @@ MIN_SYMBOL_LENGTH = 4
 # settings.json because that predicate was observed not to gate: every
 # registered handler ran on every Bash call, firing the report on unrelated
 # commands and firing it once per handler.
-TRIGGER_PATTERN = re.compile(r"\bgh\s+pr\s+create\b|\bjust\s+ship\b")
+# Anchored to command positions -- start of line, or after a shell separator --
+# rather than matching anywhere. An unanchored pattern fired on `git commit -m`
+# whose message body merely quoted "gh pr create".
+TRIGGER_PATTERN = re.compile(
+    r"(?:^|&&|\|\||[;|\n])\s*(?:gh\s+pr\s+create|just\s+ship)\b"
+)
 
 # Backtick spans, `#` comments and quoted strings inside source are prose, not
 # code. Without stripping them a comment explaining `n_episodes='25'` counts as
