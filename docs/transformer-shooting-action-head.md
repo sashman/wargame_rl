@@ -1,10 +1,14 @@
-# Transformer Shooting Action Head Design (Transformer-Only)
+# Transformer Shooting Action Head (Transformer-Only)
+
+> **Status: implemented.** Lives in `TransformerNetwork` (`wargame_rl/wargame/model/net.py`),
+> covered by `tests/test_transformer_shooting_policy.py`. This document describes the
+> shipped design, not a plan.
 
 ## 1. Problem Statement and Scope
 
-The environment already supports a shooting action slice in the union action space, with phase-aware and feasibility-aware masking. The current model policy path does not produce shooting-aware logits from model interactions in a way that uses opponent-token context explicitly for target selection.
+The environment supports a shooting action slice in the union action space, with phase-aware and feasibility-aware masking. Before this change the model policy path did not produce shooting-aware logits from model interactions in a way that used opponent-token context explicitly for target selection.
 
-This design upgrades `TransformerNetwork` policy output behavior to support shooting logits while preserving the external output contract.
+`TransformerNetwork` policy output now produces shooting logits while preserving the external output contract.
 
 In scope:
 - `TransformerNetwork` internals (`wargame_rl/wargame/model/net.py`)
@@ -28,7 +32,7 @@ Compatibility guarantees:
 
 ## 3. Core Design
 
-### 3.1 Alive-token Compaction Before Transformer
+### 3.1 Alive-token Masking Before Transformer
 
 Given:
 - Player model tensor: `P` with shape `(B, Np, Fp)`
@@ -67,29 +71,34 @@ Add a separate shooting head with higher capacity than raw dot product:
 - `shoot_key_proj: Linear(E, H)`
 - Optional scale `1/sqrt(H)` on pairwise score
 
-Let:
-- `Zp` = encoded alive player token latents `(B, Np_alive, E)`
-- `Zo` = encoded alive opponent token latents `(B, No_alive, E)`
-- `Q = shoot_query_proj(Zp)` `(B, Np_alive, H)`
-- `K = shoot_key_proj(Zo)` `(B, No_alive, H)`
+Let (token positions are fixed, so all rows are present — dead ones were already
+excluded as attention *keys* in §3.1):
+- `Zp` = encoded player token latents `(B, Np, E)`, sliced at `[n_prefix : n_prefix + Np]`
+- `Zo` = encoded opponent token latents `(B, No, E)`, sliced at `[n_prefix + Np : …]`
+- `Q = shoot_query_proj(Zp)` `(B, Np, H)`
+- `K = shoot_key_proj(Zo)` `(B, No, H)`
 
-Shooting logits in compact space:
-- `S = Q @ K^T / sqrt(H)` with shape `(B, Np_alive, No_alive)`
+Shooting logits:
+- `S = Q @ K^T / sqrt(H)` with shape `(B, Np, No)`
 
 This head is separate from movement/stay logits so the model can allocate dedicated capacity to targeting.
 
 ### 3.3 Movement/Stay + Shooting Merge
 
-1. Keep existing policy head for base logits from player tokens:
-   - `base_logits_compact`: `(B, Np_alive, A)`
-2. Reconstruct full tensor:
-   - Initialize `final_logits` with `-inf` shape `(B, Np_full, A)`
-3. Scatter compact player rows back into full player rows using `player_compact_to_full`.
-4. For shooting slice `[s0:s1)`:
-   - For each alive player row and alive opponent col, scatter `S[..., i, j]` into
-     `final_logits[..., player_full_i, s0 + opp_full_j]`.
-5. Keep non-shooting columns from `base_logits_compact` scatter result.
-6. Dead player rows remain `-inf` except `stay` can be retained as finite (env mask also enforces stay-only).
+`policy_from_encoded` is fully vectorized — no per-sample loop, no gather/scatter
+index maps:
+
+1. Base logits from the shared policy head over player latents: `(B, Np, A)`.
+2. Overwrite the shooting slice in place: `base_logits[:, :, s0 : s0 + No] = S`.
+   Opponent `o` maps directly to column `s0 + o`.
+3. Dead player rows are replaced wholesale by a row that is `-inf` everywhere
+   except `stay` (index 0) at `0.0`, selected with
+   `torch.where(player_alive, base_logits, dead_row)`. Dead rows are therefore
+   stay-only even when the env mask is absent.
+4. The env-provided action mask (carried on `EncodedState.mask_tensor`) is then
+   applied with `masked_fill`, but only when its shape matches `(Np, A)`.
+5. Finally, any row that ended up entirely `-inf` gets `stay` reset to `0.0`, so
+   `Categorical(logits=...)` never sees a fully-invalid row.
 
 Result: final logits match exact env action indexing while shooting values come from player-opponent bilinear interaction.
 
@@ -99,13 +108,15 @@ Result: final logits match exact env action indexing while shooting values come 
 - Skip shooting head merge; behavior stays movement-only.
 
 2. No alive players:
-- Return all `-inf` except optional finite `stay` entries per row.
+- Every row becomes the dead row: `-inf` except finite `stay`.
 
-3. No alive opponents:
-- Shooting slice remains `-inf` for all players; movement/stay unchanged.
+3. No opponent models (`n_opponents == 0`):
+- Shooting head is skipped entirely; movement/stay unchanged. Dead *opponents*
+  are handled by the env action mask, which zeroes their shooting columns.
 
 4. Batched observations with variable alive counts:
-- Use per-sample gather/scatter logic with explicit index maps.
+- No special handling needed — token positions are fixed, so the whole batch is
+  one masked `torch.where` over the same shape.
 
 5. Numerical stability:
 - Keep invalid entries at `-inf` so downstream `Categorical(logits=...)` + action masks remain consistent.
@@ -119,38 +130,29 @@ Internal `TransformerNetwork` adjustments:
   sequence plus alive-index / mask metadata; `policy_from_encoded` and
   `value_from_encoded` take that object (state is passed explicitly, not stored
   on the module).
-- Add shooting projection layers (`shoot_query_proj`, `shoot_key_proj`) in policy mode.
-- Add helper methods for:
-  - alive mask derivation
-  - token compaction + index tracking
-  - scatter reconstruction to full `(B, Np, A)` tensor
-  - shooting-slice merge
+- Shooting projection layers (`shoot_query_proj`, `shoot_key_proj`) are built in
+  policy mode only, and only when the env exposes a non-empty shooting slice
+  (`env._action_handler.shooting_slice` → `shooting_slice_start` /
+  `shooting_slice_end` constructor args). They are `None` otherwise.
+- Helper methods: `_alive_feature_index` / `_alive_from_features` (alive mask
+  derivation) and `_shooting_scores` (bilinear scores).
 
 `MLPNetwork` remains unchanged.
 
-## 6. Implementation Checklist
+## 6. Test Coverage
 
-1. Add policy-only shooting head layers in `TransformerNetwork.__init__`.
-2. Refactor state encoding to support alive compaction and index map outputs.
-3. Keep value-network path functional with compacted encoding (shared backbone compatible).
-4. Build full-size logits tensor initialized to `-inf`.
-5. Scatter base logits and merge shooting logits into env shooting slice indices.
-6. Preserve final output shape and action order contract.
-7. Do not modify `MLPNetwork`.
+`tests/test_transformer_shooting_policy.py`:
 
-## 7. Deferred Test Checklist (for Implementation Phase)
-
-1. Transformer policy shape regression:
-- Single observation and batch outputs remain `(B, n_models, n_actions)`.
-
-2. Shooting merge correctness:
-- Shooting logits land exactly in env shooting slice columns mapped by opponent full indices.
-
-3. Dead-player behavior:
-- Dead rows are effectively invalid except stay-compatible entries.
-
-4. No-shooting env compatibility:
-- Movement-only envs still produce valid logits without shooting-head usage.
-
-5. Shared-transformer PPO path:
-- `share_transformer=True` forward path stays operational with unchanged output shapes.
+1. `test_transformer_policy_batched_matches_single_obs` — batch and single-observation
+   outputs agree, shape `(B, n_models, n_actions)`.
+2. `test_transformer_shooting_scores_land_in_correct_opponent_columns` — shooting logits
+   land in the env shooting slice columns indexed by opponent.
+3. `test_transformer_policy_dead_player_row_is_stay_only` — dead rows are stay-only.
+4. `test_transformer_policy_dead_opponent_shooting_column_is_neginf` — dead targets are
+   unselectable.
+5. `test_transformer_policy_without_shooting_keeps_shoot_head_disabled` — movement-only
+   envs leave the head at `None`.
+6. `test_transformer_value_path_runs_with_masking` — value head works on the same encoding.
+7. `test_self_attention_key_mask_ignores_masked_positions` /
+   `test_dead_tokens_do_not_affect_alive_logits` — key-padding mask is honoured.
+8. `test_transformer_policy_no_nan_with_dead_units` — no softmax NaN.

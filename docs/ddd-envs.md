@@ -28,8 +28,14 @@ wargame_rl/wargame/envs/
 │   ├── placement.py           # place_for_episode, placement helpers
 │   ├── termination.py         # is_battle_over, check_max_turns_reached
 │   ├── los.py                 # Grid Bresenham LOS, injectable blocking (terrain)
+│   ├── terrain.py             # Footprint, Terrain (LOS-blocking geometry)
+│   ├── shooting.py            # Attack sequence: hit → wound → save → damage
 │   └── turn_execution.py      # run_until_player_phase, run_after_player_action
-├── env_components/            # Adapters: actions, observation, distance cache, re-exports
+├── env_components/            # Adapters: actions, observation, distances, shooting masks
+├── opponent/                  # Opponent policies + registry
+├── mission/                   # VP calculators + registry
+├── baseline/                  # Scripted reference policies + evaluation
+├── state/                     # Snapshots, event log, replay, narration, analysis
 ├── reward/                    # Reward phases, calculators, criteria (use BattleView)
 ├── renders/                   # Pygame etc. (use BattleView)
 ├── types/                     # Config, observation/info types, game timing types
@@ -44,18 +50,20 @@ wargame_rl/wargame/envs/
 
 ### Battle (aggregate root)
 
-`Battle` holds the current battle state: board dimensions, player models, opponent models, objectives, and deployment zones. All mutations to that state go through the aggregate (e.g. placement, or the action handler applying moves to the models held by the battle). The env holds a `_battle` created by `BattleFactory.from_config(config)` and delegates reset placement to `place_for_episode(_battle, config, rng)`.
+`Battle` holds the current battle state: board dimensions, player models, opponent models, objectives, deployment zones, terrain, and victory points. All mutations to that state go through the aggregate (e.g. placement, VP accrual, or the action handler applying moves to the models held by the battle). The env holds a `_battle` created by `battle_factory.from_config(config)` and delegates reset placement to `place_for_episode(_battle, config, rng)`.
 
 ### BattleView (protocol)
 
-`BattleView` is a read-only interface: board size, config, player/opponent models, objectives, deployment zones, current turn, last reward, game clock state, n_rounds. `WargameEnv` implements it so that reward calculators, success criteria, and renderers can take `view: BattleView` instead of the full env. That keeps their contract minimal and makes it easy to test or reuse them with another view implementation (e.g. a replay or a headless battle).
+`BattleView` is a read-only interface: board size, config, metadata, player/opponent models, objectives, deployment zones, terrain, current turn, last reward, game clock state, n_rounds, player/opponent VP and VP deltas, plus the `has_line_of_sight_between_cells` seam. `WargameEnv` implements it so that reward calculators, success criteria, and renderers can take `view: BattleView` instead of the full env. That keeps their contract minimal and makes it easy to test or reuse them with another view implementation (e.g. a replay or a headless battle).
 
 ### Domain services
 
-- **BattleFactory**: builds a `Battle` and its entities from `WargameEnvConfig`.
+- **battle_factory.from_config**: builds a `Battle` and its entities (models, objectives, zones, terrain) from `WargameEnvConfig`. Module-level functions, not a class.
 - **place_for_episode**: places player models, objectives, and opponent models for a new episode (fixed or random from config).
 - **GameClock**: advance setup/battle phases, rounds, turns; `is_game_over`.
-- **termination**: `is_battle_over(clock, current_turn, max_turns, all_models_at_objectives_flag)`.
+- **termination**: `is_battle_over(clock, current_turn, max_turns, success_flag, all_eliminated=False)`.
+- **los / terrain**: Bresenham LOS with an injectable blocking predicate; `Terrain` supplies the footprints that block a given query.
+- **shooting**: `resolve_shooting(weapon, defender, rng)` and `expected_damage`, plus `wound_roll_threshold`.
 - **turn_execution**: `run_until_player_phase`, `run_after_player_action` (skip phases, run opponent turn, advance clock).
 
 The env calls these; it does not reimplement their logic.
@@ -80,7 +88,7 @@ Placement is in `domain/placement.py`. To add a new strategy (e.g. by scenario n
 
 ### Adding termination conditions
 
-Termination is in `domain/termination.py`. `is_battle_over` currently combines turn limit, clock completion, and “all models at objectives.” To add another condition (e.g. “all opponents eliminated”), extend `is_battle_over` (or a helper it calls) with an extra parameter or a small domain service that the env can call. Keep the env to a single call that decides “is the episode over?” so step() stays simple.
+Termination is in `domain/termination.py`. `is_battle_over` currently combines turn limit, clock completion, side elimination (`all_eliminated`), and a `success_flag` the env computes from the active reward phase's configured success criteria. To add another condition, extend `is_battle_over` (or a helper it calls) with an extra parameter or a small domain service that the env can call. Keep the env to a single call that decides “is the episode over?” so step() stays simple.
 
 ### Adding or changing reward / success criteria
 

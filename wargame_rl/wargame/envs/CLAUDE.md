@@ -6,10 +6,10 @@ Applies to everything under `wargame_rl/wargame/envs/`.
 
 - `WargameEnv` extends `gymnasium.Env`; typed obs/action/info/config (all Pydantic)
 - Config: `WargameEnvConfig` (pydantic-yaml) from `examples/env_config/`
-- Actions: polar (angle, speed) pairs per model via `ActionHandler(n_models=...)`
-  - `ActionHandler.best_action_toward(dx, dy)` for scripted policies; never hardcode action counts — use `ActionHandler.n_actions`
+- Actions: polar (angle, speed) pairs per model via `ActionHandler(config, n_models=..., n_shoot_targets=...)`; a `shooting` slice is registered only when `n_shoot_targets > 0`
+  - `ActionHandler.best_action_toward(dx, dy, max_step_length=None)` for scripted policies; never hardcode action counts — use `ActionHandler.n_actions`
 - `DistanceCache` pre-computes model-objective distances each step
-- Reward: `RewardPhaseManager` (phased reward only); termination in `env_components/termination.py`
+- Reward: `RewardPhaseManager` (phased reward only); battle-over logic in `domain/termination.py` (`env_components/termination.py` is a re-export plus `get_termination(distance_cache)`)
 
 ## Game timing and phases
 
@@ -27,8 +27,9 @@ Applies to everything under `wargame_rl/wargame/envs/`.
 - `TurnOrder`: `player`/`opponent`/`random`
 - Policies in `envs/opponent/`, registry: `RandomPolicy("random")`, `ScriptedAdvanceToObjectivePolicy("scripted_advance_to_objective")`, `ScriptedAdvanceAndShootPolicy("scripted_advance_and_shoot")`
 - New policies: one class per behaviour, `Scripted` prefix, register as `"scripted_<name>"`; implement `select_action(opponent_models, env, action_mask=None)`
+- Read env state through the public properties — `opponent_action_handler`, `player_action_handler`, `last_player_shooting_results`, `last_opponent_shooting_results`, `terrain` — not the private attributes
 - A policy that fires must set `shoots = True`; only then does the env overlay range/LOS/engagement validity on its mask (`_opponent_action_mask`). Nothing downstream re-checks legality — see [docs/shooting.md](../../../docs/shooting.md)
-- Only `scripted_advance_and_shoot` shoots back. Switching a config to it invalidates every baseline and agent score measured on that config
+- `scripted_advance_and_shoot` and `random` both shoot back (`shoots = True`); `scripted_advance_to_objective` does not. Switching a config to a shooting opponent invalidates every baseline and agent score measured on that config
 - `number_of_opponent_models=0` (default) → no policy, env unchanged
 
 ## Rendering
@@ -42,8 +43,8 @@ Applies to everything under `wargame_rl/wargame/envs/`.
 1. Config → `WargameEnvConfig` in `types/`
 2. Logic → `env_components/`
 3. Obs → `env_observation.py`/`env_info.py` + obs builder
-4. Tensor → `model/dqn/observation.py`
-5. Networks → both `DQN_MLP` and `DQN_Transformer`
+4. Tensor → `model/common/observation.py`
+5. Networks → both `MLPNetwork` and `TransformerNetwork` in `model/net.py`
 6. Reward if signals change · Renderer if visual · Tests + backward compat
 
 ## Design
