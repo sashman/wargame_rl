@@ -86,7 +86,19 @@ reward_phases:
 | `vp_gain` | global | *(none)* | Reward = weight × ((player_vp_delta - opponent_vp_delta) / cap_per_turn). `cap_per_turn` is read from mission config (default 15), so net VP swings are normalized to turn cap scale. Use in a "Win the game" phase. |
 | `objective_flip_bonus` | global | `bonus_capture_first` (float, default 5.0), `bonus_flip_to_contested` (float, default 3.0), `bonus_contested_to_controlled` (float, default 5.0), `loss_penalty_scale` (float, default 1.0) | Symmetric control-state potential under the same OC/count rule as VP scoring. Gaining control adds value (neutral→player = `bonus_capture_first`; opponent→contested = `bonus_flip_to_contested`; contested→player = `bonus_contested_to_controlled`); losing control subtracts the mirror value × `loss_penalty_scale`. At `loss_penalty_scale=1.0` it is a pure (farming-proof) potential. Returns unweighted. |
 | `objective_coverage` | global | *(none)* | Dense reward = (number of player-controlled objectives) / (number of objectives), using the same OC/count rule as VP scoring. Paid every step, so it rewards spreading models to hold *multiple distinct* objectives rather than over-stacking one. Returns unweighted. |
-| `models_at_objectives` | global | *(none)* | Dense reward = (alive models within some objective radius) / (alive models). The step-wise counterpart of the `fraction_at_objectives` criteria — unlike `objective_coverage` it does **not** saturate once a point is controlled, so it keeps paying as more models arrive. Dead models leave both numerator and denominator. Returns unweighted. |
+| `models_at_objectives` | global | *(none)* | Dense reward = (alive models within some objective radius) / (alive models). The step-wise counterpart of the `fraction_at_objectives` criteria — unlike `objective_coverage` it does **not** saturate once a point is controlled, so it keeps paying as more models arrive. Dead models leave both numerator and denominator. Returns unweighted. **Not recommended:** every competent scripted baseline saturates it at 1.000, so it scores a 0.53-win policy and a 0.78-win policy identically. Prefer `objective_hold`. |
+| `objective_hold` | **per-model** | `player_value` (float, default 1.0), `contested_value` (float, default 0.5), `opponent_value` (float, default 0.25) | Value of the objective this model occupies, keyed on control state under the same OC/count rule as VP scoring; 0 when off every objective. The **only calculator that pays a model while it is stationary** — `closest_objective`'s progress is a potential that exhausts on arrival and is exactly 0 on shooting steps, and `group_cohesion` returns 0 inside its limit, so without this all models share an identical reward for most of an episode. Pays for *controlling* rather than standing, and supplies a gradient across `neutral → contested → player`, which `objective_coverage` and `vp_gain` are both flat across because control is a strict count comparison. |
+| `model_kills` | **per-model** | `bonus_per_kill` (float, default 2.0) | Bonus for each opponent **this model** killed this step. The per-model counterpart of `killing`: under that global term every model is paid the same whether it fired, missed, or stood still, leaving the shooting head — half the agent's decisions — with no credit path. Note the scale difference: `killing` broadcasts its bonus to all N models per kill, so its default 5.0 makes a 25-model wipe worth 125 per model. |
+| `killing` | global | `bonus_killing_opponent` (float, default 5.0) | Bonus × opponent models killed this step. **Prefer `model_kills`:** this spreads kill credit flat across the army, and at the default bonus it is easily the largest term in a phase. |
+
+### Choosing calculators
+
+Two rules, both learned by measurement rather than taste:
+
+- **Every phase needs at least one per-model calculator.** Only `closest_objective`, `closest_objective_v2`, `group_cohesion`, `objective_hold` and `model_kills` are per-model; the rest are broadcast bit-identically to every model. A phase built purely from global terms gives all models the same reward and undoes per-model credit assignment by configuration.
+- **Every phase should keep `vp_gain`.** A rung that drops the goal signal trains away from it: win rate fell 62% → 47% when a curriculum advanced into a phase that rewarded occupancy and had no VP term, while `success_rate` held at ~80%.
+
+`tests/test_curriculum_configs.py` enforces both over the shipped configs.
 
 ## Available Success Criteria
 
@@ -225,9 +237,12 @@ wargame_rl/wargame/envs/reward/
     closest_objective.py           # Closest-objective reward
     closest_objective_v2.py        # OC/count-margin closest-objective reward
     group_cohesion.py              # Group cohesion penalty
+    model_kills.py                 # Per-model credit for this model's kills
     models_at_objectives.py        # Dense fraction-of-models-on-objectives reward
     objective_coverage.py          # Dense fraction-of-objectives-controlled reward
     objective_flip_bonus.py        # Symmetric objective control-state potential
+    objective_hold.py              # Per-model control-scaled occupancy reward
+    killing.py                     # Global kill bonus (prefer model_kills)
     vp_gain.py                     # VP gain reward (global)
     registry.py                    # Type-string -> class mapping
   criteria/

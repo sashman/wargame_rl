@@ -1,0 +1,174 @@
+config_name: 25v25_curriculum
+number_of_wargame_models: 25
+number_of_opponent_models: 25
+number_of_objectives: 3
+objective_radius_size: 3
+board_width: 60
+board_height: 44
+max_groups: 5
+turn_order: random
+number_of_battle_rounds: 20
+skip_phases:
+  - command
+  - charge
+  - fight
+
+deployment_zone: [0, 0, 20, 44]
+opponent_deployment_zone: [40, 0, 60, 44]
+
+opponent_policy:
+  type: scripted_advance_to_objective
+
+# Terrain blocks line-of-sight only (models can still move through it).
+# Symmetric layout: a central ruin plus mirrored mid-field and flank ruins,
+# so neither side gets a clean firing lane into the objective band.
+terrain:
+  - { footprint: [28, 19, 34, 25] } # centre
+  - { footprint: [26, 8, 32, 14] } # mid-field north
+  - { footprint: [26, 30, 32, 36] } # mid-field south
+  - { footprint: [16, 18, 22, 24] } # player-side approach
+  - { footprint: [38, 18, 44, 24] } # opponent-side approach
+  - { footprint: [30, 0, 36, 4] } # north flank
+  - { footprint: [30, 40, 36, 43] } # south flank
+
+# 5 groups of 5. `weapons` is required for shooting to resolve at all — with an
+# empty list a model cannot shoot, which also makes terrain LOS inert.
+# range 12 on a 60x44 board puts the engagement band at a scale where a ~6-cell
+# ruin actually breaks a firing lane.
+models:
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+
+opponent_models:
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+
+# No `objectives:` block -> the 3 objectives (number_of_objectives) are placed
+# randomly outside both deployment zones at the start of every episode.
+
+
+# ---------------------------------------------------------------------------
+# Two-rung curriculum — the ARM under test against 25v25_single_phase.yaml.
+#
+# Two rungs, not four. The previous ladder's rungs were each stack-passable,
+# redundant, or inert, and one of them measurably trained away from the goal:
+# win rate fell 62% -> 47% on advancing to a phase with no VP term.
+#
+# The rungs share a calculator set and differ only in weighting, so advancing
+# is a handover rather than a change of task. Every rung keeps vp_gain and at
+# least one per-model term. See 25v25_single_phase.yaml for why each calculator
+# is present, absent, and weighted as it is.
+# ---------------------------------------------------------------------------
+reward_phases:
+  # R0 — establish control. Shaping leads while the policy learns to arrive and
+  # hold; the goal signal is present but not yet dominant.
+  - name: establish_control
+    terminate_on_success: false
+    terminal_success_bonus: 2.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.01
+      - type: objective_hold
+        weight: 0.4
+      - type: model_kills
+        weight: 0.5
+        params: { bonus_per_kill: 2.0 }
+      - type: group_cohesion
+        weight: 0.3
+        params: { group_max_distance: 6.0, violation_penalty: -0.05 }
+      - type: vp_gain
+        weight: 1.0
+      - type: objective_coverage
+        weight: 0.4
+    # 0.40 x 285 = 114 VP. A stack on one objective caps at 19 scoring rounds
+    # x 5 VP = 95 VP = 0.3333 of the theoretical max, so this is the smallest
+    # bar a one-objective stack provably cannot clear. That bound is
+    # arithmetic, not measurement, so it survives any future policy.
+    success_criteria:
+      type: player_vp_min
+      params: { fraction_of_max: 0.40 }
+    # Measured: a 30-epoch policy clears 114 VP on 0.47 of eval episodes, and
+    # scores 112.7 +- 35.7 VP. At n_eval_episodes=30 and k=3 the gate costs
+    # ~12 epochs when the true rate equals the threshold and ~5 at +0.05, and
+    # stalls below -0.07 — so this sits just under the measured rate.
+    success_threshold: 0.40
+    min_epochs: 15
+    min_epochs_above_threshold: 3
+
+  # R1 — win. Identical to 25v25_single_phase.yaml's only phase, so the two
+  # configs converge on the same reward and differ only in how they get there.
+  - name: win
+    terminate_on_success: false
+    terminal_success_bonus: 2.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.01
+      - type: objective_hold
+        weight: 0.25
+      - type: model_kills
+        weight: 1.0
+        params: { bonus_per_kill: 2.0 }
+      - type: group_cohesion
+        weight: 0.3
+        params: { group_max_distance: 6.0, violation_penalty: -0.05 }
+      - type: vp_gain
+        weight: 2.0
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: player_ahead_on_vp
+      params: {}

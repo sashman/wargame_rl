@@ -117,7 +117,43 @@ the two are equal; prefer `_epoch`.
 `on_train_start` and constant thereafter. Every `success_rate` in `reports/`
 predating them was quoted with no floor and no ceiling — which is how a policy
 scoring 17% against an 80% heuristic was read as progress. Reproduce or extend
-with `just measure-baselines <env_config>`.
+with `just measure-baselines <env_config> [n] record`.
+
+**The bar is `squad_march_shoot`, not `squad_march`.** Every other baseline is
+movement-only, so their ~0.78 win rate is the ceiling of a policy class the
+agent is not in — it gets a shooting decision every other step. Measured on
+25v25 over 40 held-out episodes:
+
+| baseline | on obj | win | player VP | opp VP |
+|---|---|---|---|---|
+| random | 0.018 | 0.00 | 16.8 | 168.6 |
+| greedy_nearest | 1.000 | 0.53 | 125.9 | 117.9 |
+| split_evenly | 1.000 | 0.78 | 148.4 | 104.8 |
+| squad_march | 1.000 | 0.78 | 147.9 | 102.9 |
+| **squad_march_shoot** | **1.000** | **1.00** | **176.0** | **46.5** |
+
+## 3. Trace metrics (`just analyze`, `just analyze-compare`)
+
+Per-step metrics from recorded event logs. Aggregates hid the objective drift
+that drove the reward redesign; traces showed it immediately. **But most of
+these metrics do not rank policy quality**, which was established by running
+them over the scripted baselines above — a check worth repeating whenever one
+is added.
+
+| metric | discriminates policy quality? |
+|---|---|
+| **`vp_per_step`** | **Yes — the one that does.** 0.00 / 2.13 / 3.75 / 5.00 across the baselines, matching win rate exactly |
+| `final_fraction_at_objectives`, `peak_*`, `objective_drift_ratio` | Only against random. Every competent policy saturates at 1.00 with a drift ratio of 1.00 — the same saturation that makes `models_at_objectives` unable to rank policies |
+| `mean_group_distance` | Measures coherency, not quality. Piling the whole army on one point scores *best*, so read it as a legality check against the phase's `group_max_distance`, never as a score |
+| `target_selection_optimality` | Only defined when shooting happens — `N/A` for every movement-only policy |
+| `idle_rate` | **Ignore.** Structurally ~50%+: it counts every `Stay` regardless of phase, and half of all steps are the shooting phase where `Stay` is often the only legal action |
+| `objective_approach_rate` | **Inverted.** Falls once models *arrive* and stop approaching, so competent policies score 13–15% and random scores 24% |
+| `tactical_score` | **Ignore.** Composed from `idle_rate` and `objective_approach_rate`, so it penalises competent play — it scored random 50/100 and every scripted policy 30/100 |
+
+Two of these were fixed rather than documented: `mean_group_distance` used to be
+an all-pairs army-wide mean (so concentration read as cohesion), and
+`oscillation_rate` counted a stationary model as oscillating every step, scoring
+holding policies at ~70% against random's 5%.
 
 ### Reward components (per epoch, from training rollouts)
 
