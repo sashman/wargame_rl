@@ -13,6 +13,7 @@ from __future__ import annotations
 import pytest
 import torch
 
+from wargame_rl.wargame.envs.state import EventLogExporter
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.lightning_base import EVAL_SEED_BASE
@@ -118,3 +119,46 @@ def test_eval_envs_are_built_once_and_reused() -> None:
     second = module._ensure_eval_envs(2)
 
     assert first[0] is second[0]
+
+
+def test_evaluation_still_records_event_logs() -> None:
+    """`--record-events` keeps working once evaluation runs on its own envs.
+
+    The exporter is attached to the training env, which batched evaluation no
+    longer steps. Without forwarding it, a run set to record silently produces
+    an empty log — the same failure that left five earlier runs with
+    `--record-events` set and nothing on disk.
+
+    Only env 0 records; recording every env would interleave concurrent
+    episodes into a single log.
+    """
+    env = WargameEnv(
+        config=WargameEnvConfig(
+            render_mode=None,
+            number_of_wargame_models=3,
+            number_of_objectives=2,
+            number_of_battle_rounds=4,
+        ),
+        state_exporters=[EventLogExporter(anchor_interval=10)],
+    )
+    module = PPOLightning(
+        env=env,
+        ppo_model=PPO_Transformer.from_env(env),
+        log=False,
+        n_steps=8,
+        batch_size=4,
+        n_epochs=1,
+        num_rollout_envs=2,
+    )
+    module._set_policy_mode(True)
+
+    with torch.no_grad():
+        module._run_episodes_batched(2, [EVAL_SEED_BASE, EVAL_SEED_BASE + 1])
+
+    exporter = env.state_exporters[0]
+    assert isinstance(exporter, EventLogExporter)
+    assert len(exporter.log) > 1, "evaluation recorded no steps"
+
+    eval_envs = module._eval_envs or []
+    assert eval_envs[0].state_exporters
+    assert not eval_envs[1].state_exporters

@@ -213,6 +213,11 @@ class WargameEnv(gym.Env):
         return self._action_handler
 
     @property
+    def state_exporters(self) -> list[StateExporter]:
+        """Exporters recording this env's steps (empty when not recording)."""
+        return list(self._state_exporters)
+
+    @property
     def opponent_action_space(self) -> spaces.Tuple:
         """Action space for opponent models (used by policies)."""
         return self._opponent_action_handler.action_space

@@ -131,8 +131,14 @@ class WargameLightningBase(LightningModule, ABC):
                 self.env.config,
                 renderer=None,
                 phase_position=self.env.phase_manager.position,
+                # Only env 0 records. `--record-events` attaches its exporter to
+                # the training env, which batched evaluation no longer steps —
+                # without this, a run set to record produces nothing, which is
+                # exactly the failure EventLogCallback was written to fix.
+                # Recording every env would interleave episodes into one log.
+                state_exporters=self.env.state_exporters if index == 0 else None,
             )
-            for _ in range(wave_size)
+            for index in range(wave_size)
         ]
         self._eval_envs = envs
         return envs
