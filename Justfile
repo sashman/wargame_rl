@@ -128,11 +128,15 @@ replay-summary file:
 
 # Compact rolling-mean summary of a Wandb training run. Use: just run-summary <run_id> [bucket]
 run-summary run_id bucket='50':
-	@uv run scripts/run_summary.py {{run_id}} {{bucket}}
+	@uv run python -m scripts.run_summary {{run_id}} {{bucket}}
 
 # Measure every reward phase's criteria against a checkpoint, plus the min_fraction curve
 measure-phase-gates checkpoint env_config n_episodes='30':
-	@uv run scripts/measure_phase_gates.py {{checkpoint}} {{env_config}} {{n_episodes}}
+	@uv run python -m scripts.measure_phase_gates {{checkpoint}} {{env_config}} {{n_episodes}}
+
+# Scripted baseline scores for an env config -- the floor and bar for any learned policy
+measure-baselines env_config n_episodes='25':
+	@uv run python -m scripts.measure_baselines {{env_config}} {{n_episodes}}
 
 # Analyze a recorded match for training evaluation
 analyze file:

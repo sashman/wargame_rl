@@ -191,6 +191,11 @@ class WargameEnv(gym.Env):
         return self._action_handler.n_actions
 
     @property
+    def player_action_handler(self) -> ActionHandler:
+        """Action handler for the player's models (used by baseline policies)."""
+        return self._action_handler
+
+    @property
     def opponent_action_space(self) -> spaces.Tuple:
         """Action space for opponent models (used by policies)."""
         return self._opponent_action_handler.action_space

@@ -192,6 +192,11 @@ class ActionHandler:
         return self._registry.n_actions
 
     @property
+    def n_move_actions(self) -> int:
+        """Number of movement actions (angle*speed combos, excluding stay)."""
+        return self._n_move_actions
+
+    @property
     def action_space(self) -> spaces.Tuple:
         return spaces.Tuple(
             [spaces.Discrete(self.n_actions) for _ in range(self._n_models)]
