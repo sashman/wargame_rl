@@ -17,6 +17,12 @@ if TYPE_CHECKING:
 class OpponentPolicy(ABC):
     """Selects actions for opponent models each turn."""
 
+    # Whether this policy ever emits shooting-slice actions. Refining the
+    # opponent's mask with range/LOS validity costs up to n_opponent x n_player
+    # line-of-sight walks per shooting phase, so the env only pays it for
+    # policies that can actually fire.
+    shoots: bool = False
+
     @abstractmethod
     def select_action(
         self,

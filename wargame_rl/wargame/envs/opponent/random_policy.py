@@ -18,6 +18,10 @@ if TYPE_CHECKING:
 class RandomPolicy(OpponentPolicy):
     """Each opponent model picks a uniformly random action."""
 
+    # It samples from whatever mask it is handed, so it fires in the shooting
+    # phase and needs that mask to be a legal one.
+    shoots = True
+
     def __init__(self, env: WargameEnv, **kwargs: object) -> None:
         self._env = env
 

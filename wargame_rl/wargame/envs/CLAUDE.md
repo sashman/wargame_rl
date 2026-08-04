@@ -25,8 +25,10 @@ Applies to everything under `wargame_rl/wargame/envs/`.
 
 - Reuse `WargameModel`/`ModelConfig`; YAML keys: `number_of_opponent_models`, `opponent_models`, `turn_order`, `opponent_policy`
 - `TurnOrder`: `player`/`opponent`/`random`
-- Policies in `envs/opponent/`, registry: `RandomPolicy("random")`, `ScriptedAdvanceToObjectivePolicy("scripted_advance_to_objective")`
+- Policies in `envs/opponent/`, registry: `RandomPolicy("random")`, `ScriptedAdvanceToObjectivePolicy("scripted_advance_to_objective")`, `ScriptedAdvanceAndShootPolicy("scripted_advance_and_shoot")`
 - New policies: one class per behaviour, `Scripted` prefix, register as `"scripted_<name>"`; implement `select_action(opponent_models, env, action_mask=None)`
+- A policy that fires must set `shoots = True`; only then does the env overlay range/LOS/engagement validity on its mask (`_opponent_action_mask`). Nothing downstream re-checks legality — see [docs/shooting.md](../../../docs/shooting.md)
+- Only `scripted_advance_and_shoot` shoots back. Switching a config to it invalidates every baseline and agent score measured on that config
 - `number_of_opponent_models=0` (default) → no policy, env unchanged
 
 ## Rendering

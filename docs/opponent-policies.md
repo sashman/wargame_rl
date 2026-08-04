@@ -118,6 +118,26 @@ opponent_policy:
 
 **Use case:** Provides goal-directed opposition that competes for the same objectives as the player. Good for training agents that need to learn to reach objectives before the opponent does.
 
+**Note:** this policy never fires, even when its models carry weapons. Use `scripted_advance_and_shoot` for an opponent that shoots back.
+
+### `scripted_advance_and_shoot`
+
+Identical movement to `scripted_advance_to_objective`, which it subclasses. In each shooting phase every alive model fires at a uniformly random target drawn from the ones its action mask allows — alive, in weapon range, line of sight clear, and not locked in engagement range. A model with no valid target holds fire.
+
+```yaml
+opponent_policy:
+  type: scripted_advance_and_shoot
+  params: { cohesion_weight: 0.3 }   # optional, inherited from the movement policy
+```
+
+**Parameters:** `cohesion_weight` (default `0.3`), as for `scripted_advance_to_objective`.
+
+Target choice is uniform rather than nearest-first. Nearest-first would concentrate fire and make the opponent a sharper threat than "returns fire" warrants; uniform keeps it a plain two-sided-game fixture whose damage output is easy to reason about. Targets are drawn from `env.np_random`, so a seeded episode replays exactly.
+
+**Use case:** the only opponent that makes the game two-sided. Every other policy leaves the player facing an enemy that cannot answer, which is why the `squad_march_shoot` baseline scores 1.00 on 25v25 — a bar set against a defenceless opponent. **Adopting this policy in a config invalidates any baseline or agent score measured on it; re-run `just measure-baselines` before reading a result.**
+
+Requires the shooting phase to be active (`skip_phases` must not contain `shooting`) and `opponent_models` entries to carry `weapons`.
+
 ## Planned Policies (Not Yet Implemented)
 
 The following policies are designed in the architecture but raise `NotImplementedError` if used:
@@ -175,6 +195,12 @@ opponent_policy:
 
 The `select_action` method receives the list of opponent `WargameModel` instances, the full `WargameEnv`, and optionally `action_mask` (phase-aware valid actions), giving access to objectives, board dimensions, the action handler's `best_action_toward()` helper, and any other env state needed to compute actions.
 
+### Policies that shoot
+
+Set the class attribute `shoots = True` on any policy that emits shooting-slice actions. The env only refines that policy's action mask with range, line-of-sight and engagement-range validity when the flag is set, because doing so costs up to `n_opponent × n_player` line-of-sight walks per shooting phase and most policies never fire. Without the flag the mask allows any target and `_resolve_shooting_action` applies the shot unchecked — a policy could shoot through terrain from across the board.
+
+Given the flag, honouring `action_mask` is all a policy needs to do to play by the same rules the player does.
+
 ### Naming convention
 
 Scripted policies are prefixed with `Scripted` in the class name and `scripted_` in the registry key (e.g. `ScriptedFlankPolicy` / `"scripted_flank"`). This distinguishes hand-coded behaviour from learned or external policies.
@@ -203,6 +229,7 @@ wargame_rl/wargame/envs/opponent/
   registry.py                                   # Type-string -> class registry + factory
   random_policy.py                              # RandomPolicy
   scripted_advance_to_objective_policy.py        # ScriptedAdvanceToObjectivePolicy
+  scripted_advance_and_shoot_policy.py           # ScriptedAdvanceAndShootPolicy
 
 examples/env_config/with_opponents/
   4v4_random_opponent.yaml                      # 4v4 with random opponent
