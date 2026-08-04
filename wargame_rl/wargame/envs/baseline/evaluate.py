@@ -75,7 +75,12 @@ def evaluate_baseline(
         observation, _ = env.reset(seed=seed)
         terminated = truncated = False
         while not (terminated or truncated):
-            action = policy.select_action(env.wargame_models, env)
+            # The observation's mask already encodes range, line of sight,
+            # target-alive and engagement-range validity, so a shooting
+            # baseline plays by exactly the rules the learned policy does.
+            action = policy.select_action(
+                env.wargame_models, env, action_mask=observation.action_mask
+            )
             observation, _reward, terminated, truncated, _info = env.step(action)
 
         alive = alive_mask_for(env.wargame_models)

@@ -33,13 +33,17 @@ class BaselinePolicy(ABC):
     ) -> WargameEnvAction:
         """Return one action per player model.
 
-        Baselines act only in the movement phase; every other phase yields
-        ``STAY``. They deliberately do not shoot, so they measure positional
-        play alone and stay a conservative bar for the learned policy.
+        Movement and shooting are dispatched separately; every other phase
+        yields ``STAY``. Most baselines do not shoot, which makes them a
+        conservative positional bar — see `ScriptedSquadMarchShootPolicy` for
+        the one that does.
         """
-        if env.game_clock_state.phase is not BattlePhase.movement:
-            return WargameEnvAction(actions=[STAY_ACTION] * len(models))
-        return self.select_movement(models, env)
+        phase = env.game_clock_state.phase
+        if phase is BattlePhase.movement:
+            return self.select_movement(models, env)
+        if phase is BattlePhase.shooting:
+            return self.select_shooting(models, env, action_mask)
+        return WargameEnvAction(actions=[STAY_ACTION] * len(models))
 
     @abstractmethod
     def select_movement(
@@ -47,6 +51,19 @@ class BaselinePolicy(ABC):
     ) -> WargameEnvAction:
         """Return one movement-phase action per player model."""
         ...
+
+    def select_shooting(
+        self,
+        models: list[WargameModel],
+        env: WargameEnv,
+        action_mask: np.ndarray | None = None,
+    ) -> WargameEnvAction:
+        """Return one shooting-phase action per player model.
+
+        Defaults to holding fire, so existing baselines are unchanged and stay
+        a pure measure of positional play.
+        """
+        return WargameEnvAction(actions=[STAY_ACTION] * len(models))
 
 
 def step_toward_objective(

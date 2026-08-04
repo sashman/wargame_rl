@@ -19,7 +19,15 @@ from wargame_rl.wargame.envs.types.config import WargameEnvConfig
 from wargame_rl.wargame.model.common.factory import create_environment
 
 # Ordered weakest to strongest so the printed table reads as a scale.
-BASELINES = ("random", "greedy_nearest", "split_evenly", "squad_march")
+# `squad_march_shoot` is the only one that fires, and therefore the only bar
+# set by the policy class the learned agent is actually in.
+BASELINES = (
+    "random",
+    "greedy_nearest",
+    "split_evenly",
+    "squad_march",
+    "squad_march_shoot",
+)
 
 # Held out from the training seed space so baselines stay a genuine reference.
 EVAL_SEED_BASE = 10_000
