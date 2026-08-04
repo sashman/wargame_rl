@@ -87,6 +87,12 @@ def compare(
         ("Mean dist to obj", [f"{a.mean_distance_to_objective:.1f}" for a in analyses]),
         ("Mean group distance", [f"{a.mean_group_distance:.1f}" for a in analyses]),
         (
+            "On obj (final)",
+            [f"{a.final_fraction_at_objectives:.2f}" for a in analyses],
+        ),
+        ("On obj (peak)", [f"{a.peak_fraction_at_objectives:.2f}" for a in analyses]),
+        ("Drift ratio", [f"{a.objective_drift_ratio:.2f}" for a in analyses]),
+        (
             "Time to first obj",
             [str(a.time_to_first_objective or "never") for a in analyses],
         ),

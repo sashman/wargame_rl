@@ -134,9 +134,10 @@ run-summary run_id bucket='50':
 measure-phase-gates checkpoint env_config n_episodes='30':
 	@uv run python -m scripts.measure_phase_gates {{checkpoint}} {{env_config}} {{n_episodes}}
 
-# Scripted baseline scores for an env config -- the floor and bar for any learned policy
-measure-baselines env_config n_episodes='25':
-	@uv run python -m scripts.measure_baselines {{env_config}} {{n_episodes}}
+# Scripted baseline scores for an env config -- the floor and bar for any learned policy.
+# Pass `record` as the third argument to also write reference traces to recordings/.
+measure-baselines env_config n_episodes='25' record='':
+	@uv run python -m scripts.measure_baselines {{env_config}} {{n_episodes}} {{record}}
 
 # Analyze a recorded match for training evaluation
 analyze file:

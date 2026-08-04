@@ -7,16 +7,19 @@ next to a learned policy is produced by exactly the same code path.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
+from wargame_rl.wargame.envs.state import EventLogExporter, JsonMatchCodec
+from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.envs.wargame import WargameEnv
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.baseline.policy import BaselinePolicy
-    from wargame_rl.wargame.envs.wargame import WargameEnv
 
 
 @dataclass(frozen=True)
@@ -51,6 +54,39 @@ def _worst_cohesion_gap(env: WargameEnv) -> float:
     group_ids = np.array([m.group_id for m in models], dtype=np.intp)
     distances = cache.min_distances_to_same_group(group_ids, alive_mask=alive)
     return float(distances[alive].max())
+
+
+def record_baseline_episode(
+    policy: BaselinePolicy,
+    config: WargameEnvConfig,
+    seed: int,
+    output_path: Path,
+) -> Path:
+    """Run one episode with event recording and write the log.
+
+    Reference traces are what give a per-step metric a scale: an agent's
+    `oscillation_rate` of 0.3 means nothing until a known-good policy's is on
+    the same chart. `just analyze-compare <agent> <baseline>` consumes these.
+
+    One episode rather than the whole seed set, because `EventLog.record_reset`
+    replaces the event list — the log only ever holds the most recent episode.
+    """
+    exporter = EventLogExporter()
+    env = WargameEnv(config, renderer=None, state_exporters=[exporter])
+    try:
+        observation, _ = env.reset(seed=seed)
+        terminated = truncated = False
+        while not (terminated or truncated):
+            action = policy.select_action(
+                env.wargame_models, env, action_mask=observation.action_mask
+            )
+            observation, _reward, terminated, truncated, _info = env.step(action)
+    finally:
+        env.close()
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(JsonMatchCodec().encode(exporter.log))
+    return output_path
 
 
 def evaluate_baseline(
