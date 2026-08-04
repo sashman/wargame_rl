@@ -104,13 +104,22 @@ reward_phases:
   # Only calculators that move models onto objectives belong in these phases;
   # vp_gain and killing were removed because neither advances the criteria and
   # both outweighed the shaping term.
+  # `models_at_objectives` is the dense counterpart of the fraction criteria.
+  # Without it the phase was gated on a model fraction that nothing paid for:
+  # `objective_coverage` saturates once the player out-counts the opponent (~2
+  # models a point) and `closest_objective` pays for approaching, not staying.
+  # A run with the terminal bonus alone behind the criteria stalled at 34% —
+  # a sparse binary signal says whether the episode succeeded, not which way to
+  # move, so it cannot replace dense shaping.
   - name: approach_objectives
-    terminal_success_bonus: 5.0
+    terminal_success_bonus: 3.0
     terminate_on_success: false
     reward_calculators:
       - type: closest_objective
         weight: 1.0
         params: { progress_scale: 10.0 }
+      - type: models_at_objectives
+        weight: 0.5
       - type: objective_coverage
         weight: 0.3
     success_criteria:
@@ -129,12 +138,14 @@ reward_phases:
   # because reaching 40% across 3 objectives requires spreading, not stacking;
   # group_cohesion is live now that groups have 5 members each.
   - name: mass_on_objectives
-    terminal_success_bonus: 5.0
+    terminal_success_bonus: 3.0
     terminate_on_success: false
     reward_calculators:
       - type: closest_objective
         weight: 0.5
         params: { progress_scale: 10.0 }
+      - type: models_at_objectives
+        weight: 1.0
       - type: objective_coverage
         weight: 0.8
       - type: group_cohesion
@@ -148,7 +159,7 @@ reward_phases:
     min_epochs_above_threshold: 3
 
   - name: win_only_by_vp
-    terminal_success_bonus: 5.0
+    terminal_success_bonus: 3.0
     terminate_on_success: false
     reward_calculators:
       - type: vp_gain
@@ -165,6 +176,10 @@ reward_phases:
       - type: closest_objective_v2
         weight: 0.3
         params: { progress_scale: 10.0 }
+      # Retained from the earlier phases so the objective-holding behaviour is
+      # not forgotten the moment the dense shaping switches to VP.
+      - type: models_at_objectives
+        weight: 0.3
       - type: objective_coverage
         weight: 0.1
       - type: killing
@@ -178,11 +193,13 @@ reward_phases:
     min_epochs_above_threshold: 3
 
   - name: win_at_the_end
-    terminal_success_bonus: 5.0
+    terminal_success_bonus: 3.0
     terminate_on_success: false
     reward_calculators:
       - type: vp_gain
         weight: 1.0
+      - type: models_at_objectives
+        weight: 0.2
       - type: objective_flip_bonus
         weight: 0.5
         params:

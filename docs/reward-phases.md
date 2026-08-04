@@ -86,6 +86,7 @@ reward_phases:
 | `vp_gain` | global | *(none)* | Reward = weight × ((player_vp_delta - opponent_vp_delta) / cap_per_turn). `cap_per_turn` is read from mission config (default 15), so net VP swings are normalized to turn cap scale. Use in a "Win the game" phase. |
 | `objective_flip_bonus` | global | `bonus_capture_first` (float, default 5.0), `bonus_flip_to_contested` (float, default 3.0), `bonus_contested_to_controlled` (float, default 5.0), `loss_penalty_scale` (float, default 1.0) | Symmetric control-state potential under the same OC/count rule as VP scoring. Gaining control adds value (neutral→player = `bonus_capture_first`; opponent→contested = `bonus_flip_to_contested`; contested→player = `bonus_contested_to_controlled`); losing control subtracts the mirror value × `loss_penalty_scale`. At `loss_penalty_scale=1.0` it is a pure (farming-proof) potential. Returns unweighted. |
 | `objective_coverage` | global | *(none)* | Dense reward = (number of player-controlled objectives) / (number of objectives), using the same OC/count rule as VP scoring. Paid every step, so it rewards spreading models to hold *multiple distinct* objectives rather than over-stacking one. Returns unweighted. |
+| `models_at_objectives` | global | *(none)* | Dense reward = (alive models within some objective radius) / (alive models). The step-wise counterpart of the `fraction_at_objectives` criteria — unlike `objective_coverage` it does **not** saturate once a point is controlled, so it keeps paying as more models arrive. Dead models leave both numerator and denominator. Returns unweighted. |
 
 ## Available Success Criteria
 
@@ -211,6 +212,7 @@ wargame_rl/wargame/envs/reward/
     closest_objective.py           # Closest-objective reward
     closest_objective_v2.py        # OC/count-margin closest-objective reward
     group_cohesion.py              # Group cohesion penalty
+    models_at_objectives.py        # Dense fraction-of-models-on-objectives reward
     objective_coverage.py          # Dense fraction-of-objectives-controlled reward
     objective_flip_bonus.py        # Symmetric objective control-state potential
     vp_gain.py                     # VP gain reward (global)
