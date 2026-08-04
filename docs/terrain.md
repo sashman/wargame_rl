@@ -62,7 +62,7 @@ LOS blocking is **endpoint-aware**: the blocking predicate is evaluated per quer
 For a query from cell `(x0, y0)` to cell `(x1, y1)`:
 
 1. Ask `Terrain.blocking_footprints_for_endpoints(x0, y0, x1, y1)` for "active" footprints — those containing **neither** endpoint.
-2. A cell along the Bresenham ray is blocking if:
+2. A **strictly interior** cell along the Bresenham ray is blocking if (both endpoints are exempt, and models never occlude — only the static mask and footprints block):
    - `config.blocking_mask[y][x]` is True (legacy static blocking), **OR**
    - The cell is contained by any active footprint.
 3. Endpoint order is canonicalised (`sorted([(x0,y0),(x1,y1)])`) before the call to `has_line_of_sight`, guaranteeing **symmetry**: `has_los(A, B) == has_los(B, A)`.

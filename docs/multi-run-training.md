@@ -16,7 +16,9 @@ Each process calls `wandb.init()` independently; Wandb supports multiple concurr
 
 ## Optional CLI options (single-run)
 
-When running `just train` or `uv run train.py` directly, you can pass:
+Pass these to `uv run train.py` directly, or as trailing extra arguments to `just train`
+(they come after the recipe's five positional arguments — e.g.
+`just train config.yaml ppo transformer '' '' --run-name my-run`):
 
 - **`--run-name`** — Override the base run name explicitly.
 - **`--run-suffix`** — Appended to the run name so checkpoint dirs stay unique (e.g. when scripting parallel jobs yourself).

@@ -87,7 +87,7 @@ reward_phases:
 | `objective_flip_bonus` | global | `bonus_capture_first` (float, default 5.0), `bonus_flip_to_contested` (float, default 3.0), `bonus_contested_to_controlled` (float, default 5.0), `loss_penalty_scale` (float, default 1.0) | Symmetric control-state potential under the same OC/count rule as VP scoring. Gaining control adds value (neutral→player = `bonus_capture_first`; opponent→contested = `bonus_flip_to_contested`; contested→player = `bonus_contested_to_controlled`); losing control subtracts the mirror value × `loss_penalty_scale`. At `loss_penalty_scale=1.0` it is a pure (farming-proof) potential. Returns unweighted. |
 | `objective_coverage` | global | *(none)* | Dense reward = (number of player-controlled objectives) / (number of objectives), using the same OC/count rule as VP scoring. Paid every step, so it rewards spreading models to hold *multiple distinct* objectives rather than over-stacking one. Returns unweighted. |
 | `models_at_objectives` | global | *(none)* | Dense reward = (alive models within some objective radius) / (alive models). The step-wise counterpart of the `fraction_at_objectives` criteria — unlike `objective_coverage` it does **not** saturate once a point is controlled, so it keeps paying as more models arrive. Dead models leave both numerator and denominator. Returns unweighted. **Not recommended:** every competent scripted baseline saturates it at 1.000, so it scores a 0.53-win policy and a 0.78-win policy identically. Prefer `objective_hold`. |
-| `objective_hold` | **per-model** | `player_value` (float, default 1.0), `contested_value` (float, default 0.5), `opponent_value` (float, default 0.25) | Value of the objective this model occupies, keyed on control state under the same OC/count rule as VP scoring; 0 when off every objective. The **only calculator that pays a model while it is stationary** — `closest_objective`'s progress is a potential that exhausts on arrival and is exactly 0 on shooting steps, and `group_cohesion` returns 0 inside its limit, so without this all models share an identical reward for most of an episode. Pays for *controlling* rather than standing, and supplies a gradient across `neutral → contested → player`, which `objective_coverage` and `vp_gain` are both flat across because control is a strict count comparison. |
+| `objective_hold` | **per-model** | `player_value` (float, default 1.0), `contested_value` (float, default 0.5), `opponent_value` (float, default 0.25) | Value of the objective this model occupies, keyed on control state under the same OC/count rule as VP scoring; 0 when off every objective, and 0 on a neutral one since holding a point nobody contests is worth nothing. The **only calculator that pays a model while it is stationary** — `closest_objective`'s progress is a potential that exhausts on arrival and is exactly 0 on shooting steps, and `group_cohesion` returns 0 inside its limit, so without this all models share an identical reward for most of an episode. Pays for *controlling* rather than standing, and supplies a gradient across `neutral → contested → player`, which `objective_coverage` and `vp_gain` are both flat across because control is a strict count comparison. |
 | `model_kills` | **per-model** | `bonus_per_kill` (float, default 2.0) | Bonus for each opponent **this model** killed this step. The per-model counterpart of `killing`: under that global term every model is paid the same whether it fired, missed, or stood still, leaving the shooting head — half the agent's decisions — with no credit path. Note the scale difference: `killing` broadcasts its bonus to all N models per kill, so its default 5.0 makes a 25-model wipe worth 125 per model. |
 | `killing` | global | `bonus_killing_opponent` (float, default 5.0) | Bonus × opponent models killed this step. **Prefer `model_kills`:** this spreads kill credit flat across the army, and at the default bonus it is easily the largest term in a phase. |
 
@@ -98,7 +98,7 @@ Two rules, both learned by measurement rather than taste:
 - **Every phase needs at least one per-model calculator.** Only `closest_objective`, `closest_objective_v2`, `group_cohesion`, `objective_hold` and `model_kills` are per-model; the rest are broadcast bit-identically to every model. A phase built purely from global terms gives all models the same reward and undoes per-model credit assignment by configuration.
 - **Every phase should keep `vp_gain`.** A rung that drops the goal signal trains away from it: win rate fell 62% → 47% when a curriculum advanced into a phase that rewarded occupancy and had no VP term, while `success_rate` held at ~80%.
 
-`tests/test_curriculum_configs.py` enforces both over the shipped configs.
+`tests/test_curriculum_configs.py` enforces both over the two shipped training configs — `examples/env_config/25v25_single_phase.yaml` (the single-phase control) and `25v25_curriculum.yaml` (the two-rung arm, whose final phase is identical to the control's). It also pins three narrower invariants read off past measurements: no phase may use `models_at_objectives`, a `player_vp_min` gate must sit above the 95/285 fraction a one-objective stack reaches unaided, and any phase setting `terminal_success_bonus` must keep `terminate_on_success: false` so the bonus is not scaled away.
 
 ## Available Success Criteria
 
@@ -144,6 +144,8 @@ advance if:
 ```
 
 When advancement triggers, the `RewardPhaseManager` moves to the next phase and logs the transition. The new phase's reward calculators take effect immediately for subsequent episodes.
+
+A training run holds several environments — one per rollout worker plus the evaluation envs — and each builds its own `RewardPhaseManager`, because calculators carry per-episode state (`closest_objective`'s previous distance, `objective_flip_bonus`'s potential) that one env resetting would corrupt for the others. What they share is a single `CurriculumPosition` (`reward/phase_manager.py`), passed in as `WargameEnv(..., phase_position=...)`, so one advance moves every env at once. Sharing the position rather than propagating an index means there is no synchronisation step to forget — which is how the rollout envs came to train on phase 0 for every run to date while `reward_phase` reported otherwise.
 
 The `reward_phase` metric (phase index, 0-based) is logged to wandb every epoch, making phase transitions visible in the training dashboard.
 
@@ -192,6 +194,10 @@ Each step, the phase manager computes the reward as follows:
 2. **Global calculators**: Each global calculator's output is multiplied by its `weight` and summed.
 3. **Final reward** = averaged per-model reward + global reward total.
 
+The averaged scalar is what `env.step()` returns and what the episode-reward metrics sum. Alongside it the manager records `last_per_model_reward`, an array holding each alive model's own weighted total **plus** the global total broadcast whole (global terms are the part of the outcome not attributable to one model, so every model sees the same value). PPO trains on that vector — rewards, values, advantages and ratios all carry a per-model axis — because averaging 25 models into one number leaves each model's action explaining ~4% of the signal it is credited with. Terminal bonuses are added to both the scalar and the broadcast share.
+
+This is why calculator scope is a design decision rather than an implementation detail: a phase built only from global calculators hands every model a bit-identical reward and reduces the per-model vector back to a broadcast scalar.
+
 ## Adding New Calculators and Criteria
 
 To add a new reward calculator:
@@ -224,6 +230,7 @@ Both calculators and criteria receive a `StepContext` object containing the dist
 | `opponent_damage_dealt` | `int` | Damage the opponent dealt this step. Default `0` |
 | `player_models_killed` | `int` | Opponent models the player eliminated this step. Default `0` |
 | `opponent_models_killed` | `int` | Player models the opponent eliminated this step. Default `0` |
+| `player_kills_by_model` | `np.ndarray \| None` | Kills made by each player model this step, shape `(n_player_models,)`; `player_models_killed` is its sum. `None` when no shooting was resolved this step. Read by `model_kills` so a kill is credited to the model that fired |
 
 ## File Layout
 
@@ -254,5 +261,7 @@ wargame_rl/wargame/envs/reward/
     player_vp_min.py               # Player VP min success criteria
     registry.py                    # Type-string -> class mapping
   types/
-    model_rewards.py               # ModelRewards (per-model reward breakdown)
+    model_rewards.py               # ModelRewards (legacy two-field breakdown; the
+                                   #   live per-model vector is the phase manager's
+                                   #   last_per_model_reward)
 ```

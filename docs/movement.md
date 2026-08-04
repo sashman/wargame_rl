@@ -19,10 +19,9 @@ With the defaults (`n_movement_angles=16`, `n_speed_bins=6`) and no opponents, t
 During each step, the environment generates a `(n_models, n_actions)` boolean mask based on the current `BattlePhase`. The mask is:
 
 - Attached to the observation (`WargameEnvObservation.action_mask`).
-- Threaded through the DQN tensor pipeline as a `torch.bool` tensor.
-- Applied during **greedy** action selection (invalid Q-values set to `-inf` before argmax).
-- Applied during **random** exploration (sampling restricted to valid indices).
-- Applied in the **DQN loss** to mask target Q-values for next-state value estimation.
+- Threaded through the observation tensor pipeline as tensor 5, a `torch.bool` tensor (`model/common/observation.py`).
+- Applied by **PPO** inside `TransformerNetwork.policy_from_encoded`, which fills masked logits with `-inf` before the categorical distribution is formed — so sampling, log-probs, and entropy all see only legal actions. (`MLPNetwork` does not consume the mask; it is DQN-only.)
+- Applied by **DQN** during greedy selection (invalid Q-values set to `-inf` before argmax), during random exploration (sampling restricted to valid indices), and in the loss to mask target Q-values for next-state value estimation.
 
 ### Extending with New Phases
 
@@ -84,6 +83,8 @@ With 16 angular bins, each bin is 22.5° apart:
 | 13 | 292.5° | SSE |
 | 14 | 315° | SE |
 | 15 | 337.5° | ESE |
+
+Board `y` increases *downward* (row 0 renders at the top), so the compass labels above read correctly only on a y-up plot: index 4 (+90°) displaces a model toward the bottom of the rendered board.
 
 ## Speed
 

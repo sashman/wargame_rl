@@ -56,9 +56,11 @@ With shooting enabled, each game turn produces two agent decisions: one movement
 During the shooting phase, a per-model target validity mask is overlaid on the base phase mask. A target K is valid for player model M if **all** of:
 
 1. **Model M is alive** — dead models get `STAY_ACTION` only
-2. **Opponent K is alive** — dead targets are masked out
-3. **In range** — Euclidean distance from M to K ≤ max weapon range of M
-4. **Line of sight** — `has_line_of_sight` from M's cell to K's cell returns True
+2. **M did not advance this turn** — `advanced_this_turn` gate. Dormant: nothing in the env ever sets the flag True (only `load_state` restores it from a snapshot), so today this never masks anything. See [tabletop-rules-reference.md](tabletop-rules-reference.md) for the rule it will enforce.
+3. **M is not locked in engagement** — masked out entirely if the nearest enemy is within `ENGAGEMENT_RANGE` (1 cell, `domain/shooting.py`)
+4. **Opponent K is alive** — dead targets are masked out
+5. **In range** — Euclidean distance from M to K ≤ max weapon range of M
+6. **Line of sight** — `has_line_of_sight` from M's cell to K's cell returns True
 
 The overlay is computed by `compute_shooting_masks()` (a pure function in `env_components/shooting_masks.py`) and applied via bitwise AND on the shooting slice of the base mask.
 
@@ -70,7 +72,7 @@ The player's overlay is applied in `build_observation` (`env_components/observat
 
 The opponent's overlay is built **only for policies that declare `shoots = True`** (see [opponent-policies.md](opponent-policies.md#policies-that-shoot)). It costs up to `n_opponent × n_player` line-of-sight walks per shooting phase, which is not worth paying for the movement-only policies that most configs run.
 
-This masking is the *only* enforcement of shooting legality. `_resolve_shooting_action` re-checks nothing beyond attacker-alive, target-alive and the action falling inside the shooting slice — it trusts the mask for both sides.
+This masking is the *only* enforcement of shooting legality. `_resolve_shooting_action` re-checks nothing beyond attacker-alive, target-alive, the attacker carrying at least one weapon, and the action falling inside the shooting slice — it trusts the mask for both sides.
 
 ### Range Calculation
 
@@ -82,9 +84,11 @@ max_range = max(w.range for w in model_config.weapons)
 
 Models with no weapons (`weapons: []`) have max range 0 and cannot shoot anyone.
 
+Note the asymmetry with resolution: masking uses the *longest*-ranged weapon, while `_resolve_shooting_action` always fires `weapons[0]`. For a multi-weapon model that makes targets between the first weapon's range and the longest weapon's range selectable but resolved with the wrong profile. Single-weapon models — every current config — are unaffected. Multi-weapon targeting is listed under Future Extensions below.
+
 ### Line of Sight
 
-LOS uses the Bresenham ray-tracing service from `domain/los.py`. The same `has_line_of_sight_between_cells` method on `BattleView` is used for mask computation and human rendering. See `docs/tabletop-rules-reference.md` for LOS semantics (interior-cell-only blocking, no model occlusion).
+LOS uses the Bresenham ray-tracing service from `domain/los.py`. The same `has_line_of_sight_between_cells` method on `BattleView` is used for mask computation and human rendering. See [terrain.md](terrain.md) for LOS semantics (interior-cell-only blocking, no model occlusion).
 
 ## Weapon Configuration
 
@@ -99,31 +103,49 @@ models:
       - range: 24
 ```
 
-`WeaponProfile` currently has only a `range` field (integer, grid cells). Phase 5 adds resolution stats (`attacks`, `ballistic_skill`, `strength`, `ap`, `damage`).
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `range` | `int` (> 0) | *required* | Maximum range in grid cells |
+| `attacks` | `int` (> 0) | `2` | Hit rolls per shooting action |
+| `ballistic_skill` | `int` (2–6) | `3` | D6 roll needed to hit (3 means 3+) |
+| `strength` | `int` (> 0) | `4` | Compared against target toughness for the wound roll |
+| `ap` | `int` (≥ 0) | `1` | Armour penetration; worsens the target's save by this much |
+| `damage` | `int` (> 0) | `1` | Wounds inflicted per failed save |
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `range` | `int` (> 0) | Maximum range in grid cells |
+The defending side's stats come from `ModelConfig`: `toughness` (default `3`), `save` (default `4`, where `7` means no armour), and `max_wounds` (default `1`).
 
 `ModelConfig.weapons` defaults to an empty list. Existing configs without weapon definitions are unaffected — models simply cannot shoot.
 
 ## Action Dispatch
 
-`ActionHandler.apply()` is phase-aware. When an action falls in the shooting slice, it is treated as a **no-op** — the model's location is not changed. Shooting resolution (hit → wound → save → damage) is Phase 5; Phase 4 only handles target selection and masking.
+`WargameEnv._apply_player_action` branches on the current phase (and `_apply_opponent_action` does the same for the opponent):
 
 ```
-if action in shooting_slice range:
-    continue  # no-op, Phase 5 adds resolution
+if phase is shooting:
+    _resolve_shooting_action(...)   # hit → wound → save → damage
 else:
-    apply movement displacement
+    ActionHandler.apply(...)        # movement displacement
 ```
+
+`ActionHandler.apply()` is itself phase-aware and displaces models only in the movement phase, so a scripted policy that bypasses the mask cannot move outside it. Shooting-slice actions reaching `apply()` are no-ops.
+
+## Shooting Resolution
+
+`_resolve_shooting_action` runs the full attack sequence per firing model via `resolve_shooting(weapon, defender, rng)` in `domain/shooting.py`:
+
+1. **Hit** — roll `attacks` D6; a roll ≥ `ballistic_skill` hits, unmodified 6 always hits, unmodified 1 always misses.
+2. **Wound** — one D6 per hit against `wound_roll_threshold(strength, toughness)` (same 1-always-fails / 6-always-succeeds rule).
+3. **Save** — one D6 per wound against `save + ap`; failures become unsaved.
+4. **Damage** — `unsaved × damage` wounds applied to the target; a model at 0 wounds is dead.
+
+Rolls use `self._combat_rng`, seeded from `np_random` at each `reset()`, so a seeded episode resolves identically. Each shot is recorded as a `PairedShootingResult` (attacker index, target index, `ShootingResult`, and whether this shot made the kill) and exposed for the step via `env.last_player_shooting_results` / `env.last_opponent_shooting_results`. `domain/shooting.py` also provides `expected_damage(weapon, defender)`, a closed-form expectation with no dice.
 
 ## Observation Context
 
 During a shooting step the agent observes:
 
 - `battle_phase_index` indicating the current phase is shooting
-- Opponent model features (position, alive flag, wound status) at fixed observation slots
+- Opponent model features (position, alive flag, wound status, and the seven combat stats: weapon attacks/BS/strength/AP/damage plus toughness and save) at fixed observation slots
 - `action_mask` with only shooting targets and stay valid, filtered by LOS/range/alive
 
 The transformer attends over opponent tokens and selects a target index. The positional alignment between observation slot K and action index K allows implicit pointer-style learning.
@@ -140,4 +162,4 @@ If the transformer struggles with the implicit observation-to-action index mappi
 
 ### Precomputed Probability Matrices
 
-Attacker × defender expected damage tables (hit chance, wound chance, expected value) computed from weapon profiles and target stats. Dual purpose: observation feature for the transformer (perfect information, mirroring real player capability) and explainability tool. Requires full weapon profiles from Phase 5.
+Attacker × defender expected damage tables (hit chance, wound chance, expected value) computed from weapon profiles and target stats. Dual purpose: observation feature for the transformer (perfect information, mirroring real player capability) and explainability tool. The per-pair primitive already exists as `expected_damage` in `domain/shooting.py`; what is missing is materialising it as a matrix in the observation.

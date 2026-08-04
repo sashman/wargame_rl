@@ -32,7 +32,10 @@ quantity as the per-epoch `success_rate` a gate reads. See
 **Quote every number against a floor and a bar.** A `success_rate` alone says nothing —
 17% read as progress until a scripted baseline scored 80% on the same board. Run
 `just measure-baselines <env_config>` before interpreting any result; training logs
-`eval/baseline_*` automatically.
+`eval/baseline_*` automatically. Note every number in these reports was measured against
+`scripted_advance_to_objective`, an opponent that never fires — the `squad_march_shoot`
+bar of 1.00 is partly an artefact of that, and falls to 0.60 against
+`scripted_advance_and_shoot`.
 
 **Verify the thing you are tuning is the thing being trained.** Seven runs tuned reward
 phases whose rewards never reached the gradient.
@@ -41,7 +44,11 @@ phases whose rewards never reached the gradient.
 
 ```bash
 # Scripted baseline scores -- the floor and the bar. Run this before reading any result.
-just measure-baselines <env_config> [n_episodes]
+# Pass a seed_base to score on the same layouts as measure-checkpoint.
+just measure-baselines <env_config> [n_episodes] [record] [seed_base]
+
+# Score a checkpoint through the baselines' own code path, so the two are comparable
+just measure-checkpoint <checkpoint> <env_config> [n_episodes] [record]
 
 # Rolling-mean metrics for a run (point readings are n-sample binomials -- do not trust them)
 just run-summary <run_id> [bucket_size]

@@ -258,7 +258,7 @@ The `analyze_match()` function takes a list of snapshots and produces a `MatchAn
 | Dimension | Metrics |
 |-----------|---------|
 | **Movement efficiency** | Objective approach rate, idle rate, edge contact rate, mean distance to objective |
-| **Tactical quality** | Group cohesion (inter-model distance), time to first objective, VP/step, target selection optimality |
+| **Tactical quality** | Group cohesion (inter-model distance), time to first objective, VP/step, objective occupancy (final / peak / drift ratio), target selection optimality |
 | **Rule compliance** | Movement violations (teleportation), bounds violations |
 | **Degenerate behavior** | Action entropy, oscillation rate, reward stagnation |
 | **Composite** | Tactical score (0-100), issue flags |
@@ -272,17 +272,20 @@ The analysis output is available as:
 
 | Command | Purpose |
 |---------|---------|
-| `just record <config>` | Train 1 epoch with event recording (quick E2E test) |
+| `just record <config>` | Train 1 epoch with event recording, no wandb (quick E2E test) |
+| `just record-sim <ckpt> <config> [n] [net]` | Record N episodes from a trained checkpoint, no rendering |
 | `just replay <file>` | Narrate a recorded match step-by-step |
 | `just replay-summary <file>` | Match metadata overview |
 | `just analyze <file>` | Full analysis report (text) |
 | `just analyze-json <file>` | Analysis report as JSON |
 | `just analyze-compare f1 f2` | Side-by-side metric comparison |
 
-Training and simulation also support `--record-events` for production use:
+Training and simulation also support `--record-events` for production use. The
+`train` recipe takes it as its fifth *positional* argument, not as a flag:
 ```bash
-just train config.yaml           # normal training
-just train config.yaml --record-events  # + event log
+just train config.yaml                            # normal training
+just train config.yaml ppo transformer '' true    # + event log
+uv run train.py --env-config-path config.yaml --record-events
 ```
 
 ## Extension Points
