@@ -9,7 +9,16 @@ class PPOConfig(BaseModel):
     # Training parameters
     batch_size: int = 128
     lr: float = 3e-4
-    gamma: float = 0.9
+    # 0.9^40 = 0.015, so under the old default a terminal bonus was worth 0.044
+    # at t=0 and the effective horizon was ~10 steps of a 40-step episode --
+    # while the decisions that matter here (which objective a squad walks to)
+    # pay off 20-35 steps later. With a hard 40-step cap, 1/(1-0.99) = 100 is
+    # effectively undiscounted, the standard choice for an episodic task.
+    #
+    # The earlier "0.99 is worse" finding is retracted as unmeasured: it was
+    # taken under a training loop that never applied the reward being tuned.
+    # Re-tested as the first screen arm.
+    gamma: float = 0.99
     gae_lambda: float = 0.95  # 0.9 is quite low, 0.95 - 0.99 is common, above 0.99 is very future oriented
     # Controls bias–variance tradeoff in GAE (Generalized Advantage Estimation).
     # λ = 1 → Monte Carlo (low bias, high variance)
@@ -24,15 +33,13 @@ class PPOConfig(BaseModel):
     #
     # It used to multiply the entropy *summed* over models, so its effective
     # magnitude scaled with army size: 0.03 at 25 models was an effective 0.75,
-    # which is ~25x a conventional setting and is why a measured 3x change in
-    # this value moved total policy entropy by ~1%. 0.75 is set here to hold
-    # the pre-change pressure constant at 25 models, so that switching to
-    # per-model credit assignment is the only variable under test.
+    # ~25x a conventional setting, which is why a measured 3x change in the
+    # nominal value moved total policy entropy by only ~1%.
     #
-    # 0.03 is the scale-free conventional value and the obvious second arm:
-    # `--ent-coef 0.03`. Expect it to matter, since the movement head has been
-    # measured sitting at 98.6% of maximum entropy after 945 epochs.
-    ent_coef: float = 0.75
+    # 0.03 is measured, not assumed. Two 30-epoch arms differing in nothing
+    # else: at 0.75 movement entropy stayed flat at 4.52 and the agent won 0%
+    # of episodes; at 0.03 it fell 4.52 -> 3.95 and win rate reached ~55%.
+    ent_coef: float = 0.03
     max_grad_norm: float = 0.5  # Gradient Stabilization (prevent exploding gradients)
     n_epochs: int = 5
     n_steps: int = 2048
