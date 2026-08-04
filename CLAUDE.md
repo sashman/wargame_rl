@@ -209,6 +209,8 @@ Detailed patterns live next to the code they govern — read them when working i
 - Env configs live in `examples/env_config/` — copy an existing one to create new scenarios
 - Training logs to Wandb automatically; checkpoints saved to `checkpoints/`. Reward phase index and phase advancement are logged (`reward_phase`, `phase_advanced_at_epoch`) so curriculum runs show phase transitions in the dashboard
 - **Reading run metrics:** see [docs/metrics.md](docs/metrics.md) for what each Wandb key means and the procedure for evaluating a run. Several metrics are means-of-means or change definition silently — check the reading rules there before drawing conclusions from `success_rate`, `terminal_success_bonus`, or any `reward/components/*` value
+- **Past experiments:** [reports/](reports/README.md) records findings from previous runs, including refuted hypotheses. Check it before re-testing a hyperparameter — `gamma` 0.99 and `ent_coef` 0.01 have both been tried at 25v25 and both made results worse
+- **Inspecting a run:** `just run-summary <run_id> [bucket]` for rolling means (single-epoch `success_rate` is an `n_episodes`-sample binomial — never read a point value); `uv run measure_phase_gates.py <ckpt> <env_config> 40` for per-phase criteria rates and the whole `min_fraction` curve
 - Key CLI options: `--record-during-training`, `--max-epochs`, `--render-mode`, `--algorithm`, `--no-wandb`, `--run-suffix`, `--wandb-group`
 - Profile a run: `just profile <config.yaml> [model] [max_epochs]` generates `profile.html`
 - Simulate latest checkpoint: `just simulate-latest [network_type]` · Clean up: `just clean` removes `checkpoints/` and `wandb/`
