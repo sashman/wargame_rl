@@ -64,6 +64,14 @@ The overlay is computed by `compute_shooting_masks()` (a pure function in `env_c
 
 If no targets are valid for a model, only `STAY_ACTION` remains — the model passes its shooting.
 
+### Both sides are masked
+
+The player's overlay is applied in `build_observation` (`env_components/observation_builder.py`); the opponent's is applied in `WargameEnv._opponent_action_mask`, with the sides swapped. `compute_shooting_masks` is positional despite its `player_`/`opponent_` parameter names, so the same function serves both.
+
+The opponent's overlay is built **only for policies that declare `shoots = True`** (see [opponent-policies.md](opponent-policies.md#policies-that-shoot)). It costs up to `n_opponent × n_player` line-of-sight walks per shooting phase, which is not worth paying for the movement-only policies that most configs run.
+
+This masking is the *only* enforcement of shooting legality. `_resolve_shooting_action` re-checks nothing beyond attacker-alive, target-alive and the action falling inside the shooting slice — it trusts the mask for both sides.
+
 ### Range Calculation
 
 Range uses Euclidean distance on the grid, consistent with the `DistanceCache`. A model's effective range is the **maximum** across all its weapons — a target is "in range" if any weapon can reach it.

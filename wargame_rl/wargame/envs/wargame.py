@@ -21,6 +21,7 @@ from wargame_rl.wargame.envs.domain.game_clock import GameClock
 from wargame_rl.wargame.envs.domain.los import has_line_of_sight, iter_los_cells
 from wargame_rl.wargame.envs.domain.placement import place_for_episode
 from wargame_rl.wargame.envs.domain.shooting import (
+    ENGAGEMENT_RANGE,
     DefenderStats,
     PairedShootingResult,
     ShootingResult,
@@ -40,6 +41,10 @@ from wargame_rl.wargame.envs.env_components import (
     compute_distances,
 )
 from wargame_rl.wargame.envs.env_components.actions import ActionSlice
+from wargame_rl.wargame.envs.env_components.shooting_masks import (
+    compute_shooting_masks,
+    max_weapon_ranges,
+)
 from wargame_rl.wargame.envs.mission import build_vp_calculator
 from wargame_rl.wargame.envs.opponent.policy import OpponentPolicy
 from wargame_rl.wargame.envs.opponent.registry import (
@@ -213,9 +218,24 @@ class WargameEnv(gym.Env):
         return self._action_handler
 
     @property
+    def opponent_action_handler(self) -> ActionHandler:
+        """Action handler for the opponent's models (used by opponent policies)."""
+        return self._opponent_action_handler
+
+    @property
     def state_exporters(self) -> list[StateExporter]:
         """Exporters recording this env's steps (empty when not recording)."""
         return list(self._state_exporters)
+
+    @property
+    def last_player_shooting_results(self) -> list[PairedShootingResult]:
+        """Shots the player resolved during the most recent step."""
+        return list(self._last_player_shooting_results)
+
+    @property
+    def last_opponent_shooting_results(self) -> list[PairedShootingResult]:
+        """Shots the opponent resolved during the most recent step."""
+        return list(self._last_opponent_shooting_results)
 
     @property
     def opponent_action_space(self) -> spaces.Tuple:
@@ -469,14 +489,51 @@ class WargameEnv(gym.Env):
                 phase=phase,
             )
 
+    def _opponent_action_mask(
+        self, phase: BattlePhase, opp_alive: np.ndarray
+    ) -> np.ndarray:
+        """Legal actions per opponent model, shooting targets included.
+
+        Mirrors the player's mask in `build_observation`, with the sides
+        swapped: the opponent's shots are held to the same range, line-of-sight
+        and engagement-range rules the player's are. Without this the opponent's
+        mask is phase-and-alive only, and any shooting action it emits is
+        applied unchecked by `_resolve_shooting_action`.
+        """
+        handler = self._opponent_action_handler
+        mask = handler.registry.get_model_action_masks(
+            phase, len(self.opponent_models), alive_mask=opp_alive
+        )
+        shooting_slice = handler.shooting_slice
+        if (
+            phase != BattlePhase.shooting
+            or shooting_slice is None
+            or not self.wargame_models
+            or self._opponent_policy is None
+            or not self._opponent_policy.shoots
+        ):
+            return mask
+
+        mask[:, shooting_slice.start : shooting_slice.end] &= compute_shooting_masks(
+            np.array([m.location for m in self.opponent_models]),
+            np.array([m.location for m in self.wargame_models]),
+            opp_alive,
+            alive_mask_for(self.wargame_models),
+            max_weapon_ranges(self.config.opponent_models, len(self.opponent_models)),
+            self.has_line_of_sight_between_cells,
+            player_advanced=np.array(
+                [m.advanced_this_turn for m in self.opponent_models]
+            ),
+            engagement_range=float(ENGAGEMENT_RANGE),
+        )
+        return mask
+
     def _apply_opponent_action(self) -> None:
         if self._opponent_policy is None or not self.opponent_models:
             return
         phase = self._game_clock.state.phase or BattlePhase.movement
         opp_alive = alive_mask_for(self.opponent_models)
-        opp_mask = self._opponent_action_handler.registry.get_model_action_masks(
-            phase, len(self.opponent_models), alive_mask=opp_alive
-        )
+        opp_mask = self._opponent_action_mask(phase, opp_alive)
         opp_action = self._opponent_policy.select_action(
             self.opponent_models, self, action_mask=opp_mask
         )
