@@ -58,6 +58,19 @@ train env_config_path='examples/env_config/4v4_scripted_opponent_fixed_objective
 		{{ if record_events != "" { "--record-events" } else { "" } }} \
 		{{extra}}
 
+# Like train-multi, but caps every arm at the same epoch count so the arms stay
+# comparable and the experiment ends on its own.
+# Use: just train-multi-epochs 1000 config1.yaml config2.yaml
+train-multi-epochs max_epochs *configs:
+	@trap 'kill 0' INT TERM && \
+	group="train-multi-$(date +%Y-%m-%d-%H-%M-%S)" && \
+	i=1 && \
+	for c in {{configs}}; do \
+		uv run train.py --record-during-training --env-config-path "$c" --algorithm ppo --network-type transformer --max-epochs {{max_epochs}} --run-suffix "$i" --wandb-group "$group" & \
+		i=$((i+1)); \
+	done && \
+	wait
+
 # Run multiple env configs in parallel. Each run gets a unique --run-suffix and shared --wandb-group.
 # Uses PPO + transformer. Use: just train-multi config1.yaml config2.yaml
 # Trap INT/TERM so Ctrl+C kills all background train.py processes.

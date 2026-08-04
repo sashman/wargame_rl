@@ -172,7 +172,7 @@ Same numbers appear as `exposure` / `terrain_d` / `alive` columns in
 `just measure-baselines` and `just measure-checkpoint`, produced by the same
 `evaluate_selector` path, so an agent row is directly comparable to a baseline row.
 
-**Reading rules — this metric has three traps.**
+**Reading rules — this metric has four traps.**
 
 1. **It is a mean over *alive* models, so casualties push it down on their own.**
    Survivors are disproportionately the models that were out of sight or out of
@@ -191,13 +191,30 @@ Same numbers appear as `exposure` / `terrain_d` / `alive` columns in
    exposed models died. **Compare policies within one config**, where every arm
    faces the same fire.
 
-2. **Low exposure is not good play.** `random` scores 0.024 exposure against the
+   (Numbers above are 10 seeds; the 25-seed table under trap 3 is the reference.)
+
+2. **Low exposure is not good play.** `random` scores 0.018 exposure against the
    shooting opponent — the best number in the table — by wandering off and never
-   closing to weapon range, for 12.5 VP against 166.0. Exposure only means
+   closing to weapon range, for 13.6 VP against 164.4. Exposure only means
    something read beside `eval/vp_margin`: the claim worth making is *lower
    exposure at equal or better VP*.
 
-3. **It is not the same quantity as the shooting mask.** `exposure_rate`
+3. **Killing the enemy lowers it too.** A dead opponent is one fewer model with
+   line of sight to you, so exposure falls for shooting well as much as for
+   hiding well. On `25v25_stochastic_terrain_shooting`, 25 seeds:
+
+   | baseline | exposure | alive | opp VP |
+   |---|---|---|---|
+   | squad_march | 0.305 | 0.272 | 145.4 |
+   | **squad_march_shoot** | **0.201** | **0.442** | **110.4** |
+
+   `squad_march_shoot` has *both* the lower exposure and the higher survival,
+   which mortality alone cannot explain — it is thinning the opposing firing
+   line. So a policy showing lower exposure than this bar has to be doing
+   something the bar is not, and `terrain_proximity` plus kill-driven VP are what
+   separate "broke line of sight" from "shot first".
+
+4. **It is not the same quantity as the shooting mask.** `exposure_rate`
    deliberately ignores the engagement-range and advanced gating that
    `compute_shooting_masks` applies for real shots. A shooter within
    `ENGAGEMENT_RANGE` of any enemy cannot fire at all, so including that gate
