@@ -9,16 +9,25 @@ class PPOConfig(BaseModel):
     # Training parameters
     batch_size: int = 128
     lr: float = 3e-4
-    # 0.9^40 = 0.015, so under the old default a terminal bonus was worth 0.044
-    # at t=0 and the effective horizon was ~10 steps of a 40-step episode --
-    # while the decisions that matter here (which objective a squad walks to)
-    # pay off 20-35 steps later. With a hard 40-step cap, 1/(1-0.99) = 100 is
-    # effectively undiscounted, the standard choice for an episodic task.
+    # 0.9, kept because it was measured -- twice now, against the theory.
     #
-    # The earlier "0.99 is worse" finding is retracted as unmeasured: it was
-    # taken under a training loop that never applied the reward being tuned.
-    # Re-tested as the first screen arm.
-    gamma: float = 0.99
+    # The theoretical case for 0.99 is real: 0.9^40 = 0.015, so a terminal
+    # bonus is worth 0.044 at t=0 and the effective horizon is ~10 steps of a
+    # 40-step episode, while squad-assignment decisions pay off 20-35 steps
+    # later. A hard 40-step cap makes 1/(1-0.99) = 100 effectively undiscounted.
+    #
+    # Measured anyway, two 100-epoch arms on 25v25_single_phase.yaml differing
+    # in nothing else, scored on 60 fresh held-out seeds:
+    #
+    #                win    player VP   opp VP   on objectives
+    #   gamma 0.99   0.97       121.2     41.1           0.697
+    #   gamma 0.90   0.95       147.4     33.6           0.907
+    #
+    # Win rate is saturated near the 1.00 ceiling and cannot separate them, but
+    # VP margin (+114 vs +80) and occupancy both favour 0.90 clearly. Retest if
+    # the reward's time structure changes -- the theoretical argument does not
+    # go away, it is simply outweighed here.
+    gamma: float = 0.9
     gae_lambda: float = 0.95  # 0.9 is quite low, 0.95 - 0.99 is common, above 0.99 is very future oriented
     # Controls bias–variance tradeoff in GAE (Generalized Advantage Estimation).
     # λ = 1 → Monte Carlo (low bias, high variance)
