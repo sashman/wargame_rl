@@ -29,10 +29,12 @@ from wargame_rl.wargame.envs.domain.shooting import (
 )
 from wargame_rl.wargame.envs.domain.termination import is_battle_over
 from wargame_rl.wargame.envs.domain.terrain import Terrain
+from wargame_rl.wargame.envs.domain.terrain_placement import generate_terrain
 from wargame_rl.wargame.envs.domain.turn_execution import (
     run_after_player_action,
     run_until_player_phase,
 )
+from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions
 from wargame_rl.wargame.envs.env_components import (
     ActionHandler,
     DistanceCache,
@@ -41,6 +43,10 @@ from wargame_rl.wargame.envs.env_components import (
     compute_distances,
 )
 from wargame_rl.wargame.envs.env_components.actions import ActionSlice
+from wargame_rl.wargame.envs.env_components.exposure import (
+    ExposureTracker,
+    distances_to_nearest_footprint,
+)
 from wargame_rl.wargame.envs.env_components.shooting_masks import (
     compute_shooting_masks,
     max_weapon_ranges,
@@ -145,6 +151,20 @@ class WargameEnv(gym.Env):
         self._game_clock = GameClock(n_rounds=config.number_of_battle_rounds)
 
         self._battle = _battle_from_config(config)
+        # Random terrain is regenerated on every reset, but a layout has to
+        # exist before the first one: network sizing reads an observation, and
+        # the terrain tensor must already have its final piece count.
+        if config.random_terrain is not None:
+            self._battle.set_terrain(
+                generate_terrain(
+                    config.random_terrain,
+                    BoardDimensions(
+                        width=self._battle.board_width,
+                        height=self._battle.board_height,
+                    ),
+                    self.np_random,
+                )
+            )
         self.wargame_models = self._battle.player_models
         self.objectives = self._battle.objectives
         self.opponent_models = self._battle.opponent_models
@@ -185,6 +205,14 @@ class WargameEnv(gym.Env):
 
         # Last StepContext from step(); available for post-episode success checks
         self.last_step_context: StepContext | None = None
+
+        # Cover measurement (off by default; costs an extra mask build per
+        # shooting phase). Weapon ranges come from config, so they are resolved
+        # once here rather than on every shooting phase.
+        self._exposure_tracker = ExposureTracker()
+        self._opponent_max_ranges = max_weapon_ranges(
+            config.opponent_models, config.number_of_opponent_models
+        )
 
         # --- Opponent setup ---
         if config.number_of_opponent_models > 0:
@@ -246,6 +274,26 @@ class WargameEnv(gym.Env):
     def terrain(self) -> "Terrain":
         """Read-only access to terrain footprints."""
         return self._battle.terrain
+
+    @property
+    def exposure_rate(self) -> float | None:
+        """Fraction of alive model-shooting-phases an enemy could see and shoot.
+
+        The measure of cover use: terrain blocks line of sight and nothing else,
+        so breaking line of sight is the only thing that lowers this. None when
+        `track_exposure` is off.
+        """
+        return self._exposure_tracker.exposure_rate
+
+    @property
+    def terrain_proximity(self) -> float | None:
+        """Mean distance from an alive model to the nearest terrain footprint.
+
+        Read next to `exposure_rate`: a policy that is merely out of range keeps
+        this high, one that is using ruins pulls it down. None when
+        `track_exposure` is off or the board has no terrain.
+        """
+        return self._exposure_tracker.terrain_proximity
 
     def _make_is_blocking(
         self, x0: int, y0: int, x1: int, y1: int
@@ -376,6 +424,7 @@ class WargameEnv(gym.Env):
         self.last_reward_breakdown = {}
         self.episode_reward_breakdown = {}
         self.episode_reward_steps = 0
+        self._exposure_tracker.reset()
 
         self._battle.reset_for_episode()
         self.phase_manager.reset_episode()
@@ -519,7 +568,7 @@ class WargameEnv(gym.Env):
             np.array([m.location for m in self.wargame_models]),
             opp_alive,
             alive_mask_for(self.wargame_models),
-            max_weapon_ranges(self.config.opponent_models, len(self.opponent_models)),
+            self._opponent_max_ranges,
             self.has_line_of_sight_between_cells,
             player_advanced=np.array(
                 [m.advanced_this_turn for m in self.opponent_models]
@@ -528,11 +577,41 @@ class WargameEnv(gym.Env):
         )
         return mask
 
+    def _record_exposure(self, opp_alive: np.ndarray) -> None:
+        """Sample how many player models an enemy could see and shoot right now.
+
+        Deliberately ignores the engagement-range and advanced gating that
+        `_opponent_action_mask` applies. A shooter in base contact cannot fire at
+        all, so counting that as safety would score a headlong charge as if it
+        were cover — and cover is the thing being measured.
+        """
+        player_alive = alive_mask_for(self.wargame_models)
+        if not player_alive.any() or not opp_alive.any():
+            return
+        player_positions = np.array([m.location for m in self.wargame_models])
+        visible = compute_shooting_masks(
+            np.array([m.location for m in self.opponent_models]),
+            player_positions,
+            opp_alive,
+            player_alive,
+            self._opponent_max_ranges,
+            self.has_line_of_sight_between_cells,
+        )
+        self._exposure_tracker.record(
+            exposed=np.asarray(visible.any(axis=0)),
+            alive=player_alive,
+            terrain_distances=distances_to_nearest_footprint(
+                player_positions, self.terrain.footprints
+            ),
+        )
+
     def _apply_opponent_action(self) -> None:
         if self._opponent_policy is None or not self.opponent_models:
             return
         phase = self._game_clock.state.phase or BattlePhase.movement
         opp_alive = alive_mask_for(self.opponent_models)
+        if self.config.track_exposure and phase == BattlePhase.shooting:
+            self._record_exposure(opp_alive)
         opp_mask = self._opponent_action_mask(phase, opp_alive)
         opp_action = self._opponent_policy.select_action(
             self.opponent_models, self, action_mask=opp_mask

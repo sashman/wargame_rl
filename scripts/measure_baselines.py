@@ -20,6 +20,7 @@ from pydantic_yaml import parse_yaml_raw_as
 
 from wargame_rl.wargame.envs.baseline.evaluate import (
     evaluate_baseline,
+    format_optional_metric,
     record_baseline_episode,
 )
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
@@ -66,9 +67,13 @@ def main() -> None:
     seeds = [seed_base + i for i in range(n_episodes)]
 
     print(f"\n{config_path}  ({n_episodes} episodes, seeds {seeds[0]}-{seeds[-1]})\n")
-    header = f"{'baseline':<18}{'on_obj':>9}{'win':>8}{'player_vp':>11}"
-    print(f"{header}{'opp_vp':>9}{'cohesion_gap':>14}")
-    print("-" * 69)
+    header = (
+        f"{'baseline':<18}{'on_obj':>9}{'win':>8}{'player_vp':>11}"
+        f"{'opp_vp':>9}{'cohesion_gap':>14}{'alive':>8}{'exposure':>10}"
+        f"{'terrain_d':>11}"
+    )
+    print(header)
+    print("-" * len(header))
 
     recorded: list[Path] = []
     for name in BASELINES:
@@ -81,6 +86,9 @@ def main() -> None:
             f"{result.player_vp:>11.1f}"
             f"{result.opponent_vp:>9.1f}"
             f"{result.worst_cohesion_gap:>14.1f}"
+            f"{result.final_fraction_alive:>8.3f}"
+            f"{format_optional_metric(result.exposure_rate):>10}"
+            f"{format_optional_metric(result.terrain_proximity, 1):>11}"
         )
         if record:
             recorded.append(

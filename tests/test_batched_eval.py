@@ -57,7 +57,11 @@ def test_batched_evaluation_matches_sequential() -> None:
     with torch.no_grad():
         batched = module._run_episodes_batched(N_EPISODES, seeds)
     assert batched is not None
-    _rewards, steps, _successes, player_vps, opponent_vps = batched
+    steps, player_vps, opponent_vps = (
+        batched.steps,
+        batched.player_vps,
+        batched.opponent_vps,
+    )
 
     env = module.env
     sequential_vps: list[float] = []

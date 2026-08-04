@@ -8,6 +8,8 @@ import numpy as np
 
 from wargame_rl.wargame.envs.domain.battle import Battle
 from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
+from wargame_rl.wargame.envs.domain.terrain_placement import generate_terrain
+from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions
 from wargame_rl.wargame.envs.types.config import (
     ModelConfig,
     ObjectiveConfig,
@@ -172,11 +174,23 @@ def place_for_episode(
     config: WargameEnvConfig,
     rng: Generator,
 ) -> None:
-    """Place all player models, objectives, and opponent models for a new episode.
+    """Place terrain, player models, objectives, and opponent models for an episode.
 
     Uses fixed positions from config when available, otherwise random placement
     within deployment zones.
     """
+    # Terrain first: it is the board the rest is placed onto. Models and
+    # objectives may sit inside a footprint, exactly as they may with a fixed
+    # layout — a model in a ruin can still see out and be seen.
+    if config.random_terrain is not None:
+        battle.set_terrain(
+            generate_terrain(
+                config.random_terrain,
+                BoardDimensions(width=battle.board_width, height=battle.board_height),
+                rng,
+            )
+        )
+
     # Place player models
     if config.has_fixed_model_positions and config.models is not None:
         fixed_wargame_model_placement(battle.player_models, config.models)

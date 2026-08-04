@@ -25,6 +25,7 @@ from wargame_rl.wargame.envs.baseline.evaluate import (
     ActionSelector,
     BaselineResult,
     evaluate_selector,
+    format_optional_metric,
     record_episode,
 )
 from wargame_rl.wargame.envs.types import (
@@ -85,7 +86,9 @@ def format_result(result: BaselineResult) -> str:
         f"{result.name:<28}{result.final_fraction_at_objectives:>10.3f}"
         f"{result.win_rate:>9.2f}{result.player_vp:>12.1f}"
         f"{result.opponent_vp:>10.1f}{result.vp_margin:>11.1f}"
-        f"{result.worst_cohesion_gap:>11.1f}"
+        f"{result.worst_cohesion_gap:>11.1f}{result.final_fraction_alive:>8.3f}"
+        f"{format_optional_metric(result.exposure_rate):>10}"
+        f"{format_optional_metric(result.terrain_proximity, 1):>11}"
     )
 
 
@@ -113,7 +116,8 @@ def main() -> None:
     print(f"{config_path}  ({n_episodes} episodes, seeds {seeds[0]}-{seeds[-1]})\n")
     header = (
         f"{'policy':<28}{'on obj':>10}{'win':>9}{'player VP':>12}"
-        f"{'opp VP':>10}{'VP margin':>11}{'cohesion':>11}"
+        f"{'opp VP':>10}{'VP margin':>11}{'cohesion':>11}{'alive':>8}"
+        f"{'exposure':>10}{'terrain_d':>11}"
     )
     print(header)
     print("-" * len(header))

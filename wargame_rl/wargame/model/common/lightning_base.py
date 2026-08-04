@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
@@ -9,15 +10,23 @@ import torch.nn as nn
 from loguru import logger
 from pytorch_lightning import LightningModule
 
-from wargame_rl.wargame.envs.baseline.evaluate import evaluate_baseline
+from wargame_rl.wargame.envs.baseline.evaluate import (
+    evaluate_baseline,
+    format_optional_metric,
+    mean_of_measured,
+)
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
+from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.agent_base import BaseAgent
 
-# The bar to beat (`squad_march`) and the floor (`random`). The middle rungs
-# live in scripts/measure_baselines.py; logging two keeps run pages readable.
-BASELINE_POLICIES = ("random", "squad_march")
+# The floor (`random`), the movement-only bar (`squad_march`) and the real bar
+# (`squad_march_shoot`, the only baseline that fires). Against an opponent that
+# shoots back the movement-only bar is not just weak but misleading, so the
+# shooting one is logged even though it costs a third baseline sweep. The
+# middle rungs live in scripts/measure_baselines.py.
+BASELINE_POLICIES = ("random", "squad_march", "squad_march_shoot")
 BASELINE_EPISODES = 20
 # Held out from ROLLOUT_SEED_BASE so baselines never share training layouts.
 BASELINE_SEED_BASE = 10_000
@@ -29,6 +38,40 @@ EVAL_SEED_BASE = 500_000
 # `max_turns` steps, so a wave costs `max_turns` batched forward passes instead
 # of `wave_size * max_turns` sequential ones.
 EVAL_WAVE_SIZE = 16
+
+
+@dataclass
+class _EvalStats:
+    """One entry per evaluation episode, filled by both eval paths.
+
+    Batched evaluation steps a pool of envs and sequential evaluation steps
+    `self.env`; collecting through one recorder keeps the two from drifting
+    apart on what they measure.
+    """
+
+    rewards: list[float] = field(default_factory=list)
+    steps: list[int] = field(default_factory=list)
+    successes: list[bool] = field(default_factory=list)
+    player_vps: list[float] = field(default_factory=list)
+    opponent_vps: list[float] = field(default_factory=list)
+    survivals: list[float] = field(default_factory=list)
+    exposures: list[float | None] = field(default_factory=list)
+    proximities: list[float | None] = field(default_factory=list)
+
+    def record(self, env: WargameEnv, reward: float, steps: int) -> None:
+        """Record the finished episode held in `env`."""
+        self.rewards.append(reward)
+        self.steps.append(steps)
+        self.player_vps.append(float(env.player_vp))
+        self.opponent_vps.append(float(env.opponent_vp))
+        self.survivals.append(float(alive_mask_for(env.wargame_models).mean()))
+        # None unless the config sets `track_exposure`.
+        self.exposures.append(env.exposure_rate)
+        self.proximities.append(env.terrain_proximity)
+        if env.last_step_context is not None:
+            self.successes.append(
+                env.phase_manager.check_success(env, env.last_step_context)
+            )
 
 
 class WargameLightningBase(LightningModule, ABC):
@@ -80,12 +123,23 @@ class WargameLightningBase(LightningModule, ABC):
                     f"eval/baseline_{name}_at_objectives",
                     result.final_fraction_at_objectives,
                 )
+                self.log(
+                    f"eval/baseline_{name}_fraction_alive",
+                    result.final_fraction_alive,
+                )
+                # The scale for the agent's own exposure. Without it a learned
+                # exposure of 0.6 says nothing about whether cover was used.
+                if result.exposure_rate is not None:
+                    self.log(f"eval/baseline_{name}_exposure", result.exposure_rate)
                 logger.info(
-                    "Baseline {}: win_rate={:.2f} vp_margin={:.1f} at_objectives={:.3f}",
+                    "Baseline {}: win_rate={:.2f} vp_margin={:.1f} "
+                    "at_objectives={:.3f} alive={:.3f} exposure={}",
                     name,
                     result.win_rate,
                     result.vp_margin,
                     result.final_fraction_at_objectives,
+                    result.final_fraction_alive,
+                    format_optional_metric(result.exposure_rate),
                 )
         finally:
             baseline_env.close()
@@ -145,7 +199,7 @@ class WargameLightningBase(LightningModule, ABC):
 
     def _run_episodes_batched(
         self, total_episodes: int, seeds: list[int]
-    ) -> tuple[list[float], list[int], list[bool], list[float], list[float]] | None:
+    ) -> _EvalStats | None:
         """Run evaluation episodes in lockstep waves, batching the forward pass.
 
         Returns None when the subclass cannot score a batch, so the caller can
@@ -158,11 +212,7 @@ class WargameLightningBase(LightningModule, ABC):
         )
 
         device = self._policy_model_device()
-        rewards: list[float] = []
-        steps: list[int] = []
-        successes: list[bool] = []
-        player_vps: list[float] = []
-        opponent_vps: list[float] = []
+        stats = _EvalStats()
 
         for start in range(0, total_episodes, EVAL_WAVE_SIZE):
             wave = min(EVAL_WAVE_SIZE, total_episodes - start)
@@ -196,21 +246,34 @@ class WargameLightningBase(LightningModule, ABC):
                     done[env_index] = bool(terminated or truncated)
 
             for i, env in enumerate(envs):
-                rewards.append(wave_rewards[i])
-                steps.append(wave_steps[i])
-                player_vps.append(float(env.player_vp))
-                opponent_vps.append(float(env.opponent_vp))
-                if env.last_step_context is not None:
-                    successes.append(
-                        env.phase_manager.check_success(env, env.last_step_context)
-                    )
+                stats.record(env, wave_rewards[i], wave_steps[i])
 
-        return rewards, steps, successes, player_vps, opponent_vps
+        return stats
 
     def _policy_model_device(self) -> torch.device:
         """Device the policy model's parameters live on."""
         parameter = next(self._policy_model().parameters(), None)
         return parameter.device if parameter is not None else torch.device("cpu")
+
+    def _log_cover_metrics(self, stats: _EvalStats, prefix: str) -> None:
+        """Log survival, and cover metrics when the config measures them.
+
+        `exposure_rate` and `terrain_proximity` are None unless the config sets
+        `track_exposure`, so their keys are omitted entirely rather than filled
+        with a placeholder — a key that only appears on runs that measure it is
+        easier to read than one that is mostly zeros.
+        """
+        self.log(
+            f"eval/{prefix}fraction_alive",
+            float(np.mean(stats.survivals)),
+            prog_bar=False,
+        )
+        exposure = mean_of_measured(stats.exposures)
+        if exposure is not None:
+            self.log(f"eval/{prefix}exposure_rate", exposure, prog_bar=False)
+        proximity = mean_of_measured(stats.proximities)
+        if proximity is not None:
+            self.log(f"eval/{prefix}terrain_proximity", proximity, prog_bar=False)
 
     def _evaluate_episodes(
         self,
@@ -224,11 +287,6 @@ class WargameLightningBase(LightningModule, ABC):
         Returns the success rate as a fraction in [0, 1].
         """
         total_episodes = self.n_episodes if n_episodes is None else n_episodes
-        steps_s: list[int] = []
-        episode_rewards: list[float] = []
-        episode_successes: list[bool] = []
-        player_vps: list[float] = []
-        opponent_vps: list[float] = []
 
         self._set_policy_mode(True)
 
@@ -244,31 +302,22 @@ class WargameLightningBase(LightningModule, ABC):
                 else None
             )
             if batched is not None:
-                (
-                    episode_rewards,
-                    steps_s,
-                    episode_successes,
-                    player_vps,
-                    opponent_vps,
-                ) = batched
+                stats = batched
             else:
                 # Sequential fallback: exploration-epsilon evaluation, or a
                 # subclass that cannot score a batch.
+                stats = _EvalStats()
                 for _ in range(total_episodes):
                     reward, steps = self._run_episode_eval(epsilon)
-                    episode_rewards.append(reward)
-                    steps_s.append(steps)
-                    player_vps.append(float(self.env.player_vp))
-                    opponent_vps.append(float(self.env.opponent_vp))
-
-                    if self.env.last_step_context is not None:
-                        success = self.env.phase_manager.check_success(
-                            self.env, self.env.last_step_context
-                        )
-                        episode_successes.append(success)
+                    stats.record(self.env, reward, steps)
 
         self._set_policy_mode(False)
 
+        episode_rewards = stats.rewards
+        steps_s = stats.steps
+        episode_successes = stats.successes
+        player_vps = stats.player_vps
+        opponent_vps = stats.opponent_vps
         self.mean_episode_reward = sum(episode_rewards) / len(episode_rewards)
 
         if self.do_log:
@@ -313,6 +362,7 @@ class WargameLightningBase(LightningModule, ABC):
                 / len(player_vps),
                 prog_bar=False,
             )
+            self._log_cover_metrics(stats, prefix)
 
         # TODO(metrics-trap-A): this fallback publishes a different definition
         # under the same `success_rate` key — "episode ended early" instead of

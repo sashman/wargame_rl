@@ -5,6 +5,10 @@ from wargame_rl.wargame.envs.env_components.distance_cache import (
     DistanceCache,
     compute_distances,
 )
+from wargame_rl.wargame.envs.env_components.exposure import (
+    ExposureTracker,
+    distances_to_nearest_footprint,
+)
 from wargame_rl.wargame.envs.env_components.game_clock import GameClock, GameClockError
 from wargame_rl.wargame.envs.env_components.observation_builder import (
     build_info,
@@ -29,12 +33,14 @@ from wargame_rl.wargame.envs.env_components.termination import (
 __all__ = [
     "ActionHandler",
     "DistanceCache",
+    "ExposureTracker",
     "GameClock",
     "GameClockError",
     "build_info",
     "build_observation",
     "compute_distances",
     "compute_shooting_masks",
+    "distances_to_nearest_footprint",
     "max_weapon_ranges",
     "update_distances_to_objectives",
     "wargame_model_placement",

@@ -61,6 +61,11 @@ def _normalise_rect(r: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
     return (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
 
 
+# Rejection sampling for random terrain slows sharply as the board fills, so
+# layouts are rejected at config load well before that point.
+_MAX_TERRAIN_PACKING_FRACTION = 0.5
+
+
 def _rects_overlap(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
     ax0, ay0, ax1, ay1 = a
     bx0, by0, bx1, by1 = b
@@ -166,6 +171,56 @@ class TerrainPieceConfig(BaseModel):
     )
 
 
+class RandomTerrainConfig(BaseModel):
+    """Regenerate terrain footprints randomly at the start of every episode.
+
+    The piece *count* is fixed while size and position vary. This is a hard
+    constraint, not a simplification: `observations_to_tensor_batch` stacks the
+    terrain arrays of a whole batch with `np.stack`, and `MLPNetwork` flattens
+    terrain into a fixed-width input, so a batch containing episodes with
+    different piece counts cannot be collated.
+
+    Randomising terrain is what makes a cover result falsifiable. With a fixed
+    layout a policy can memorise a handful of rectangles; with a fresh layout
+    every episode it has to read the terrain tokens in the observation.
+    """
+
+    count: int = Field(
+        gt=0,
+        default=7,
+        description="Number of terrain pieces. Constant across episodes.",
+    )
+    min_size: int = Field(
+        gt=0, default=5, description="Minimum footprint side length in cells."
+    )
+    max_size: int = Field(
+        gt=0, default=7, description="Maximum footprint side length in cells."
+    )
+    mirror: bool = Field(
+        default=True,
+        description="Mirror the layout across the vertical centre line. Deployment "
+        "zones are fixed to the left and right of the board, so an asymmetric "
+        "random layout would systematically favour one side.",
+    )
+    edge_margin: int = Field(
+        ge=0, default=2, description="Keep footprints this far from the board edge."
+    )
+    min_gap: int = Field(
+        ge=0,
+        default=1,
+        description="Minimum clear cells between two footprints. 0 lets them touch.",
+    )
+
+    @model_validator(mode="after")
+    def sizes_ordered(self) -> "RandomTerrainConfig":
+        """Reject an inverted size range."""
+        if self.min_size > self.max_size:
+            raise ValueError(
+                f"min_size ({self.min_size}) must not exceed max_size ({self.max_size})"
+            )
+        return self
+
+
 class ObjectiveConfig(BaseModel):
     """Per-objective configuration (position, radius, etc.).
 
@@ -239,6 +294,17 @@ class WargameEnvConfig(BaseModel):
         default=None,
         description="Terrain pieces that block LOS. Each piece is an axis-aligned "
         "rectangle defined by a (x0, y0, x1, y1) footprint. None = no terrain.",
+    )
+    random_terrain: RandomTerrainConfig | None = Field(
+        default=None,
+        description="Regenerate terrain randomly each episode instead of using a "
+        "fixed `terrain` list. Mutually exclusive with `terrain`. None = fixed.",
+    )
+    track_exposure: bool = Field(
+        default=False,
+        description="Accumulate line-of-sight exposure and terrain-proximity "
+        "statistics during shooting phases. Measurement only — it does not affect "
+        "the game, but it costs an extra shooting-mask build per shooting phase.",
     )
     render_mode: str | None = Field(
         default=None, description="Rendering mode for the environment"
@@ -471,6 +537,51 @@ class WargameEnvConfig(BaseModel):
             for j in range(i + 1, len(normalised)):
                 if _rects_overlap(normalised[i], normalised[j]):
                     raise ValueError(f"terrain[{i}] overlaps terrain[{j}]")
+        return self
+
+    @model_validator(mode="after")
+    def validate_random_terrain(self) -> "WargameEnvConfig":
+        """Reject a random-terrain spec that cannot be satisfied.
+
+        Generation is rejection sampling, so an over-packed board would fail
+        deep inside a training run rather than at load. Everything checkable
+        from the config is checked here instead.
+        """
+        spec = self.random_terrain
+        if spec is None:
+            return self
+        if self.terrain is not None:
+            raise ValueError(
+                "random_terrain and terrain are mutually exclusive: "
+                "terrain is either fixed or regenerated each episode, not both"
+            )
+
+        usable_width = self.board_width - 2 * spec.edge_margin
+        usable_height = self.board_height - 2 * spec.edge_margin
+        if spec.max_size > usable_width or spec.max_size > usable_height:
+            raise ValueError(
+                f"random_terrain.max_size ({spec.max_size}) does not fit inside the "
+                f"board minus edge_margin ({usable_width}x{usable_height})"
+            )
+        if spec.mirror and 2 * (spec.max_size + spec.min_gap) > usable_width:
+            raise ValueError(
+                "random_terrain.mirror needs room for a footprint and its mirror "
+                f"image: 2 x (max_size + min_gap) = "
+                f"{2 * (spec.max_size + spec.min_gap)} exceeds the usable width "
+                f"({usable_width})"
+            )
+
+        # Rejection sampling degrades badly well before the board is full, so
+        # the ceiling is a packing fraction rather than a strict area fit.
+        required = spec.count * (spec.max_size + spec.min_gap) ** 2
+        usable = usable_width * usable_height
+        if required > _MAX_TERRAIN_PACKING_FRACTION * usable:
+            raise ValueError(
+                f"random_terrain packs too tightly: {spec.count} pieces of up to "
+                f"{spec.max_size}x{spec.max_size} (plus {spec.min_gap} gap) need "
+                f"{required} cells, more than "
+                f"{_MAX_TERRAIN_PACKING_FRACTION:.0%} of the usable {usable}"
+            )
         return self
 
     @model_validator(mode="after")

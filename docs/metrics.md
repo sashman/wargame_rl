@@ -127,12 +127,14 @@ the two are equal; prefer `_epoch`.
 | `eval/vp_player`, `eval/vp_opponent`, `eval/vp_margin` | **The phase-invariant scoreboard.** `success_rate` changes definition at every phase boundary and reward changes with the calculator set, so neither is comparable across a run or between runs. VP is the game's own measure and never changes meaning. |
 | `eval/win_rate` | **0–100**, like `success_rate` — percent of eval episodes ending ahead on VP, not a fraction |
 | `eval/baseline_squad_march_*` | Whole squads marched onto objectives by a scripted heuristic. Movement-only — **not** the bar, see below |
+| `eval/baseline_squad_march_shoot_*` | The bar: the only baseline that fires |
 | `eval/baseline_random_*` | The floor |
 
-Each baseline emits three keys: `_win_rate` (0–100), `_vp_margin` and
-`_at_objectives` (a fraction). Only `random` and `squad_march` are logged during
-training (`lightning_base.py:20`); the other rungs live in
-`scripts/measure_baselines.py`.
+Each baseline emits `_win_rate` (0–100), `_vp_margin`, `_at_objectives` (a
+fraction), `_fraction_alive` (a fraction), and `_exposure` when the config sets
+`track_exposure`. `random`, `squad_march` and `squad_march_shoot` are logged
+during training (`lightning_base.py:BASELINE_POLICIES`); the remaining rungs
+live in `scripts/measure_baselines.py`.
 
 **Always read a number against the baselines.** Measured once per run at
 `on_train_start` over 20 held-out seeds, and constant thereafter. Every
@@ -142,8 +144,7 @@ progress. Reproduce or extend with `just measure-baselines <env_config> [n] reco
 
 **The bar is `squad_march_shoot`, not `squad_march`.** Every other baseline is
 movement-only, so their ~0.78 win rate is the ceiling of a policy class the
-agent is not in — it gets a shooting decision every other step. This matters
-most because the baseline a run *logs* is the movement-only one: clearing
+agent is not in — it gets a shooting decision every other step. Clearing
 `eval/baseline_squad_march_win_rate` is clearing 0.78, not 1.00. Measured on
 25v25 over 40 held-out episodes:
 
@@ -154,6 +155,58 @@ most because the baseline a run *logs* is the movement-only one: clearing
 | split_evenly | 1.000 | 0.78 | 148.4 | 104.8 |
 | squad_march | 1.000 | 0.78 | 147.9 | 102.9 |
 | **squad_march_shoot** | **1.000** | **1.00** | **176.0** | **46.5** |
+
+### Cover metrics
+
+Emitted only when the env config sets `track_exposure: true`. Terrain blocks line
+of sight and nothing else, so "using cover" means exactly one thing: positioning
+where no enemy can see you.
+
+| Key | Meaning |
+|---|---|
+| `eval/exposure_rate` | Fraction of alive model-shooting-phases where at least one alive enemy had **line of sight and weapon range** to that model |
+| `eval/terrain_proximity` | Mean distance from an alive model to the nearest terrain footprint (0 inside) |
+| `eval/fraction_alive` | Fraction of player models still alive at episode end. Logged always, not just when tracking exposure |
+
+Same numbers appear as `exposure` / `terrain_d` / `alive` columns in
+`just measure-baselines` and `just measure-checkpoint`, produced by the same
+`evaluate_selector` path, so an agent row is directly comparable to a baseline row.
+
+**Reading rules — this metric has three traps.**
+
+1. **It is a mean over *alive* models, so casualties push it down on their own.**
+   Survivors are disproportionately the models that were out of sight or out of
+   range, so a policy that loses half its army scores lower exposure without ever
+   choosing a covered position. Never compare `exposure_rate` across configs with
+   different mortality. Measured on the 25v25 stochastic-terrain configs, 10 seeds:
+
+   | baseline | vs shooting opponent | vs movement-only opponent |
+   |---|---|---|
+   | | exposure / alive | exposure / alive |
+   | greedy_nearest | 0.234 / 0.496 | 0.452 / 1.000 |
+   | squad_march | 0.276 / 0.232 | 0.640 / 1.000 |
+   | squad_march_shoot | 0.211 / 0.404 | 0.433 / 1.000 |
+
+   The left column is not "these policies took more cover". It is mostly that the
+   exposed models died. **Compare policies within one config**, where every arm
+   faces the same fire.
+
+2. **Low exposure is not good play.** `random` scores 0.024 exposure against the
+   shooting opponent — the best number in the table — by wandering off and never
+   closing to weapon range, for 12.5 VP against 166.0. Exposure only means
+   something read beside `eval/vp_margin`: the claim worth making is *lower
+   exposure at equal or better VP*.
+
+3. **It is not the same quantity as the shooting mask.** `exposure_rate`
+   deliberately ignores the engagement-range and advanced gating that
+   `compute_shooting_masks` applies for real shots. A shooter within
+   `ENGAGEMENT_RANGE` of any enemy cannot fire at all, so including that gate
+   would score a headlong charge as cover.
+
+`terrain_proximity` is the check against reading 2 backwards: a policy that is
+merely out of range keeps proximity high, one that is actually using ruins pulls
+it down. Both are `None` — printed as `-`, key omitted in Wandb — when unmeasured,
+never `0.0`, which would read as "never exposed".
 
 ## 3. Trace metrics (`just analyze`, `just analyze-compare`)
 

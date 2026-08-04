@@ -72,6 +72,15 @@ class Battle:
     def terrain(self) -> Terrain:
         return self._terrain
 
+    def set_terrain(self, terrain: Terrain) -> None:
+        """Replace the terrain layout — used to regenerate it between episodes.
+
+        Every LOS query resolves terrain through this aggregate at call time
+        (there is no precomputed blocking cache), so a replacement takes effect
+        immediately.
+        """
+        self._terrain = terrain
+
     @property
     def player_vp(self) -> int:
         return self._player_vp
