@@ -130,7 +130,12 @@ reward_phases:
     # a run of 10 consecutive readings >= 0.7 needs a true rate near 0.85, so the
     # nominal 0.7 was silently a 0.85 gate. Launch with --n-eval-episodes 30 and
     # a run of 3, which puts the effective bar back near the nominal value.
-    success_threshold: 0.6
+    #
+    # Thresholds across this ladder are set from measurement: the best observed
+    # phase-0 rate at min_fraction 0.2 is ~45% across four runs. A gate above
+    # that never opens, and a curriculum phase that cannot be passed is worse
+    # than one passed at moderate competence.
+    success_threshold: 0.45
     min_epochs: 0
     min_epochs_above_threshold: 3
 
@@ -153,8 +158,8 @@ reward_phases:
         params: { group_max_distance: 5.0, violation_penalty: -0.1 }
     success_criteria:
       type: fraction_at_objectives
-      params: { min_fraction: 0.4 }
-    success_threshold: 0.5
+      params: { min_fraction: 0.35 }
+    success_threshold: 0.35
     min_epochs: 20
     min_epochs_above_threshold: 3
 
@@ -187,8 +192,8 @@ reward_phases:
         params: { bonus_killing_opponent: 5.0 }
     success_criteria:
       type: player_vp_min
-      params: { fraction_of_max: 0.4 }
-    success_threshold: 0.6
+      params: { fraction_of_max: 0.3 }
+    success_threshold: 0.45
     min_epochs: 20
     min_epochs_above_threshold: 3
 
