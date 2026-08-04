@@ -15,35 +15,46 @@ wrong conclusions. Those traps are called out inline and collected in
 
 ## 1. Where metrics come from
 
-Two independent emission paths, on two different step counters. **No single W&B step carries
-both**, which is why history rows look ragged.
+Two recurring emission paths, on two different step counters. **No single W&B step carries
+both**, which is why history rows look ragged. A third path runs once, at `on_train_start`.
 
 ```
-                   on_train_epoch_end (lightning_base.py:155)
+                   on_train_epoch_end (lightning_base.py:372)
                               │
       ┌───────────────────────┴───────────────────────┐
       │                                               │
   run_episodes(n_episodes)                    _advance_reward_phase(sr)
   → _evaluate_episodes                        → reward_phase
   → success_rate, mean_episode_steps,           phase_advanced_at_epoch
-    reward/{mean,max,min}_episode_reward
+    reward/{mean,max,min}_episode_reward,
+    eval/{vp_player,vp_opponent,vp_margin,win_rate}
 
-                   PPO training step (ppo/lightning.py:400)
+                   PPO training step (ppo/lightning.py:450)
                               │
-                  loss/*, reward/components/*
+              loss/*, train/*, reward/components/*
+
+                   on_train_start (lightning_base.py:59), once per run
+                              │
+                        eval/baseline_*
 ```
 
 Evaluation episodes are **separate rollouts** run under `torch.no_grad()` with the policy in
-eval mode (`lightning_base.py:71–85`). They are not the training rollouts. So
+eval mode (`lightning_base.py:233–270`). They are not the training rollouts. So
 `reward/mean_episode_reward` (eval) and `reward/components/*` (training rollout) describe
 different episodes and need not agree.
 
 ### Episode count
 
-`n_episodes` defaults to **10** for PPO (`ppo/config.py:33`) and **20** for DQN
+`n_episodes` defaults to **10** for PPO (`ppo/config.py:59`) and **20** for DQN
 (`dqn/config.py:22`). This sets the resolution of `success_rate`: with 10 episodes it can only
 ever be a multiple of 10. **A change from 80% to 90% is one episode.** Do not read
 single-epoch movements as signal; require a trend across epochs.
+
+Eval seeds are **fixed across epochs** (`EVAL_SEED_BASE`, `lightning_base.py:27`), and held out
+from both the training and baseline seed ranges. So an epoch-to-epoch move is attributable to
+the policy rather than to which maps were drawn — but the absolute level belongs to those
+`n_episodes` layouts, not to the scenario. Two runs are comparable on it; a run and a
+differently-seeded measurement are not.
 
 ---
 
@@ -53,31 +64,36 @@ single-epoch movements as signal; require a trend across epochs.
 
 | Key | Source | Units / range | Meaning |
 |---|---|---|---|
-| `success_rate` | `lightning_base.py:119` | **0–100** | Percent of eval episodes where the current phase's `success_criteria` held on the final step. See trap Ⓐ. |
-| `mean_episode_steps` | `lightning_base.py:96` | steps | Mean eval episode length. Compare against `max_turns`; equality means episodes never terminate early. |
-| `reward/mean_episode_reward` | `lightning_base.py:91` | reward units | Mean total (undiscounted, summed) reward per eval episode. This is the checkpoint selection metric (`checkpoint_callback.py:28`). |
-| `reward/max_episode_reward` | `lightning_base.py:101` | reward units | Best single eval episode. Gap vs. mean indicates variance across seeds/placements. |
-| `reward/min_episode_reward` | `lightning_base.py:106` | reward units | Worst single eval episode. Persistently negative alongside a healthy mean signals a failure mode not captured by `success_rate`. |
+| `success_rate` | `lightning_base.py:331` | **0–100** | Percent of eval episodes where the current phase's `success_criteria` held on the final step. See trap Ⓐ. |
+| `mean_episode_steps` | `lightning_base.py:281` | steps | Mean eval episode length. Compare against `max_turns`; equality means episodes never terminate early. |
+| `reward/mean_episode_reward` | `lightning_base.py:276` | reward units | Mean total (undiscounted, summed) reward per eval episode. This is the checkpoint selection metric (`checkpoint_callback.py:28`). |
+| `reward/max_episode_reward` | `lightning_base.py:286` | reward units | Best single eval episode. Gap vs. mean indicates variance across seeds/placements. |
+| `reward/min_episode_reward` | `lightning_base.py:291` | reward units | Worst single eval episode. Persistently negative alongside a healthy mean signals a failure mode not captured by `success_rate`. |
 
 ### Curriculum
 
 | Key | Source | Units / range | Meaning |
 |---|---|---|---|
-| `reward_phase` | `lightning_base.py:127` and `:136` | index, 0-based | Index into `reward_phases`. Emitted twice on two step counters — see trap Ⓒ. |
-| `phase_advanced_at_epoch` | `lightning_base.py:140` | epoch | Logged **only on the epoch an advance happens.** Absent for the whole run means the agent never cleared phase 0. |
+| `reward_phase` | `lightning_base.py:339` and `:353` | index, 0-based | Index into `reward_phases`. Emitted twice on two step counters — see trap Ⓒ. |
+| `phase_advanced_at_epoch` | `lightning_base.py:357` | epoch | Logged **only on the epoch an advance happens.** Absent for the whole run means the agent never cleared phase 0. |
 
-Advancement requires all three of (`phase_manager.py:211–240`): `success_rate/100 >=
+Advancement requires all three of (`phase_manager.py:284–326`): `success_rate/100 >=
 success_threshold`, at least `min_epochs` spent in the phase, and the threshold held for
 `min_epochs_above_threshold` **consecutive** epochs (any miss resets the counter to 0).
+
+The index lives in a `CurriculumPosition` (`phase_manager.py:40`) shared by the training env,
+every rollout env and every eval env, so one advance moves all of them. Before that sharing
+existed the rollout envs stayed on phase 0 for every run to date while `reward_phase` reported
+otherwise — which is what `train/rollout_phase_index` below exists to make visible.
 
 ### Losses (per epoch, mean over the epoch's optimizer updates)
 
 | Key | Source | Sign convention |
 |---|---|---|
-| `loss/train_loss` | `ppo/lightning.py:401` | Total: policy + `vf_coef`·value + `ent_coef`·entropy. Routinely negative — the entropy term is negative. **Negative is not an error.** |
-| `loss/policy_loss` | `ppo/lightning.py:408` | Clipped surrogate. Near zero at convergence; magnitude says how much the update moved. |
-| `loss/value_loss` | `ppo/lightning.py:415` | Critic MSE. The one loss that should fall monotonically. The clearest single convergence signal. |
-| `loss/entropy_loss` | `ppo/lightning.py:422` | **`-ent_coef × entropy`, not entropy.** Divide by `ent_coef` before reading it as nats. Rising *toward zero* = policy sharpening. |
+| `loss/train_loss` | `ppo/lightning.py:451` | Total: policy + `vf_coef`·value + `ent_coef`·entropy. Routinely negative — the entropy term is negative. **Negative is not an error.** |
+| `loss/policy_loss` | `ppo/lightning.py:458` | Clipped surrogate. Near zero at convergence; magnitude says how much the update moved. |
+| `loss/value_loss` | `ppo/lightning.py:465` | Critic MSE. The one loss that should fall monotonically. The clearest single convergence signal. |
+| `loss/entropy_loss` | `ppo/lightning.py:472` | **`-ent_coef × entropy`, not entropy.** Divide by `ent_coef` before reading it as nats. Rising *toward zero* = policy sharpening. |
 
 Lightning suffixes these `_step` and `_epoch`. With `on_epoch=True` and one log call per epoch
 the two are equal; prefer `_epoch`.
@@ -86,8 +102,8 @@ the two are equal; prefer `_epoch`.
 > loss term. A past experiment read `-1.79 → -0.59` as an entropy drop and
 > concluded `ent_coef` had sharpened the policy; dividing by the respective
 > coefficients (0.03, 0.01) gives 59.7 and 59.0 nats — a 3× coefficient change
-> moved entropy by ~1%. Read `train/entropy_movement` and
-> `train/entropy_shooting` instead: raw nats, already per model, split by
+> moved entropy by ~1%. Read `train/entropy/movement` and
+> `train/entropy/shooting` instead: raw nats, already per model, split by
 > phase. The aggregate mixes a heavily-masked shooting phase with a wide-open
 > movement phase and is uninterpretable either way.
 
@@ -95,13 +111,13 @@ the two are equal; prefer `_epoch`.
 
 | Key | Meaning | Healthy range |
 |---|---|---|
-| `train/entropy_movement` | Mean per-model entropy in the movement phase, raw nats | Well below `ln(n_movement_actions)`. At 97 actions the ceiling is 4.575; sitting at ~4.5 means the policy is still uniform |
-| `train/entropy_shooting` | Same, shooting phase. Naturally low — masking often leaves 1–2 valid targets | — |
+| `train/entropy/movement` | Mean per-model entropy in the movement phase, raw nats. One key per battle phase actually stepped, named from `BattlePhase` | Well below `ln(n_movement_actions)`. At 97 actions the ceiling is 4.575; sitting at ~4.5 means the policy is still uniform |
+| `train/entropy/shooting` | Same, shooting phase. Naturally low — masking often leaves 1–2 valid targets | — |
 | `train/clip_fraction` | Fraction of samples outside the PPO trust region | 0.1–0.3. Above ~0.4 the objective is saturating and much of each minibatch contributes no gradient |
 | `train/approx_kl` | Policy movement per update | ~0.01–0.03 |
 | `train/explained_variance` | How much of the return the critic explains | Rising toward 1. Near 0 means it is no better than predicting the mean |
 | `train/rollout_phase_index` | The **rollout** env's reward phase | Must track `reward_phase`. If they diverge, training and evaluation are on different reward functions |
-| `train/distinct_layouts_seen` | Distinct objective layouts in the last rollout | Should vary between epochs. A constant value means training is replaying fixed maps |
+| `train/distinct_layouts_seen` | Distinct objective layouts seen **cumulatively across the run**, not within one rollout | Must keep climbing. Flat means training is replaying the same maps — the within-rollout count it replaced read a constant env count and hid exactly that |
 | `train/num_rollout_envs_resolved` | Rollout envs actually used | `num_rollout_envs` defaults to 0 = auto-detect, so the config never showed which path ran |
 
 ### Baselines and the scoreboard
@@ -109,19 +125,26 @@ the two are equal; prefer `_epoch`.
 | Key | Meaning |
 |---|---|
 | `eval/vp_player`, `eval/vp_opponent`, `eval/vp_margin` | **The phase-invariant scoreboard.** `success_rate` changes definition at every phase boundary and reward changes with the calculator set, so neither is comparable across a run or between runs. VP is the game's own measure and never changes meaning. |
-| `eval/win_rate` | Fraction of eval episodes ending ahead on VP |
-| `eval/baseline_squad_march_*` | The bar to beat: whole squads marched onto objectives by a scripted heuristic |
+| `eval/win_rate` | **0–100**, like `success_rate` — percent of eval episodes ending ahead on VP, not a fraction |
+| `eval/baseline_squad_march_*` | Whole squads marched onto objectives by a scripted heuristic. Movement-only — **not** the bar, see below |
 | `eval/baseline_random_*` | The floor |
 
+Each baseline emits three keys: `_win_rate` (0–100), `_vp_margin` and
+`_at_objectives` (a fraction). Only `random` and `squad_march` are logged during
+training (`lightning_base.py:20`); the other rungs live in
+`scripts/measure_baselines.py`.
+
 **Always read a number against the baselines.** Measured once per run at
-`on_train_start` and constant thereafter. Every `success_rate` in `reports/`
-predating them was quoted with no floor and no ceiling — which is how a policy
-scoring 17% against an 80% heuristic was read as progress. Reproduce or extend
-with `just measure-baselines <env_config> [n] record`.
+`on_train_start` over 20 held-out seeds, and constant thereafter. Every
+`success_rate` in `reports/` predating them was quoted with no floor and no
+ceiling — which is how a policy scoring 17% against an 80% heuristic was read as
+progress. Reproduce or extend with `just measure-baselines <env_config> [n] record`.
 
 **The bar is `squad_march_shoot`, not `squad_march`.** Every other baseline is
 movement-only, so their ~0.78 win rate is the ceiling of a policy class the
-agent is not in — it gets a shooting decision every other step. Measured on
+agent is not in — it gets a shooting decision every other step. This matters
+most because the baseline a run *logs* is the movement-only one: clearing
+`eval/baseline_squad_march_win_rate` is clearing 0.78, not 1.00. Measured on
 25v25 over 40 held-out episodes:
 
 | baseline | on obj | win | player VP | opp VP |
@@ -148,48 +171,57 @@ is added.
 | `target_selection_optimality` | Only defined when shooting happens — `N/A` for every movement-only policy |
 | `idle_rate` | **Ignore.** Structurally ~50%+: it counts every `Stay` regardless of phase, and half of all steps are the shooting phase where `Stay` is often the only legal action |
 | `objective_approach_rate` | **Inverted.** Falls once models *arrive* and stop approaching, so competent policies score 13–15% and random scores 24% |
-| `tactical_score` | **Ignore.** Composed from `idle_rate` and `objective_approach_rate`, so it penalises competent play — it scored random 50/100 and every scripted policy 30/100 |
+| `tactical_score` | **Ignore.** A 50-point start with ±5–15 adjustments, two of which are `idle_rate` and `objective_approach_rate` — enough to penalise competent play: it scored random 50/100 and every scripted policy 30/100 |
 
 Two of these were fixed rather than documented: `mean_group_distance` used to be
 an all-pairs army-wide mean (so concentration read as cohesion), and
 `oscillation_rate` counted a stationary model as oscillating every step, scoring
 holding policies at ~70% against random's 5%.
 
-### Reward components (per epoch, from training rollouts)
+## 4. Reward components (per epoch, from training rollouts)
 
-`reward/components/<calculator>` and `reward/components/<calculator>/<sub_component>`.
+`reward/components/<calculator>` and `reward/components/<calculator>/<sub_component>`. A phase
+that lists the same calculator type twice yields `<type>` and `<type>_2`
+(`phase_manager.py:96–100`), so a missing key may be a second instance rather than a disabled
+term.
 
-Every value is a **per-step mean over the rollout**, built by four successive divisions:
+Every value is a **per-step mean over the rollout**:
 
-1. `phase_manager.py:152–204` — per-model calculators summed, divided by `n_alive` (`:170`); sub-breakdowns keyed `<name>/<component>`, also divided by `n_alive` (`:172`); global calculators added flat (`:178`).
-2. `wargame.py:577–581` — `step()` accumulates each key across the episode.
-3. `agent_base.py:113–117` — divided by `episode_reward_steps`.
-4. `ppo/lightning.py:600–618` — step-weighted across rollout episodes, rescaled if the rollout is truncated to `n_steps`, divided by `total_steps`.
+1. `phase_manager.py:176–278` — per-model calculators summed, divided by `n_alive` (`:210`); sub-breakdowns keyed `<name>/<component>`, also divided by `n_alive` (`:212`); global calculators added flat (`:218`). Terminal bonuses enter the same dict once per episode — trap Ⓑ.
+2. `wargame.py:688–693` — `step()` publishes the step's breakdown and accumulates it across the episode.
+3. The last division depends on which rollout path ran:
+   - `num_rollout_envs > 1` (the default; 0 means auto-detect): `ppo/lightning.py:664–691` sums each key over every env-step and divides once by `total_steps`.
+   - `num_rollout_envs == 1`: `agent_base.py:116–120` divides by `episode_reward_steps`, then `ppo/lightning.py:754–769` re-weights by episode length, rescales if the rollout is truncated to `n_steps`, and divides by `total_steps`.
 
-So `reward/components/vp_gain = -0.10` means **the player loses 0.10 normalized net VP on
-every step**, not once per episode. Read all these keys as per-step rates.
+Both paths land on the same units. So `reward/components/vp_gain = -0.10` means **the player
+loses 0.10 normalized net VP on every step**, not once per episode. Read all these keys as
+per-step rates.
 
-#### Calculator semantics
+### Calculator semantics
 
 | Component | Kind | Formula / meaning | Healthy direction |
 |---|---|---|---|
-| `vp_gain` | global | `(player_vp_delta - opponent_vp_delta) / cap_per_turn` (`vp_gain.py:33`). Signed: **negative means the opponent is out-scoring you.** | → positive |
+| `vp_gain` | global | `(player_vp_delta - opponent_vp_delta) / cap_per_turn` (`vp_gain.py:34`). Signed: **negative means the opponent is out-scoring you.** | → positive |
 | `objective_coverage` | global | Fraction of objectives the player controls, paid every step. Rewards spreading across *distinct* objectives. | ↑ toward 1 |
+| `models_at_objectives` | global | Fraction of alive models inside some objective radius. Saturates at 1.00 for every competent policy, so it ranks nothing — see the trace-metric note above. | ↑ toward 1 |
 | `closest_objective` | per-model | Distance-shaping toward the nearest objective. Sub-keys: `progress`, `distance_delta`, `base_penalty`, `best_distance_bonus`. | `progress` ↑ |
-| `closest_objective_v2` | per-model | As above plus de-stacking. Extra sub-keys: `target_obj_idx`, `target_switched`, `overstack_penalty`. High `target_switched` (≳0.3) means the policy is dithering between targets. | `target_switched` ↓ |
+| `closest_objective_v2` | per-model | As above plus de-stacking. Extra sub-keys: `target_obj_idx`, `target_switched`, `overstack_penalty`. High `target_switched` (≳0.3) means the policy is dithering between targets. Every sub-key is weight-scaled and averaged over alive models like the rest, so `target_obj_idx` is a mean of indices and means nothing as an index. | `target_switched` ↓ |
+| `objective_hold` | per-model | Value of the objective a model occupies, keyed on control state (`player`/`contested`/`opponent`; 0 off-objective and 0 on a neutral one). The only term paying a model that is standing still, so it is the per-model signal that survives after arrival. | ↑ |
+| `model_kills` | per-model | `bonus_per_kill` per opponent killed **by that model**. Credits the shooter; `killing` does not. | ↑ |
 | `group_cohesion` | per-model | Penalty proportional to distance beyond `group_max_distance` from the nearest same-group model. 0 when in range or alone in group. **Exactly 0 for a whole run means disabled or never violated — not "good cohesion".** | 0 or ↑ |
-| `killing` | global | `bonus_killing_opponent` per newly killed opponent. | context-dependent |
+| `killing` | global | `bonus_killing_opponent` per newly killed opponent, paid identically to every model. | context-dependent |
 | `objective_flip_bonus` | global | Change in an objective-control potential, summed over objectives. At `loss_penalty_scale == 1.0` it is a pure potential (farming-proof). | ↑ |
-| `terminal_success_bonus` | terminal | Awarded on one terminating step when criteria hold, scaled by remaining-turns fraction (`phase_manager.py:190–193`). See trap Ⓑ. | ↑ |
+| `terminal_success_bonus` | terminal | Awarded on one terminating step when criteria hold (`phase_manager.py:243–262`), scaled by remaining-turns fraction **only when the phase sets `terminate_on_success: true`**; delivered at full value otherwise. See trap Ⓑ. | ↑ |
 | `terminal_vp_bonus` | terminal | Awarded at episode end when player VP clears the phase threshold. Same dilution caveat as above. | ↑ |
 
-#### Success criteria
+### Success criteria
 
 `success_rate` means something different per phase, depending on the configured criteria:
 
 | Criteria | Succeeds when |
 |---|---|
 | `all_at_objectives` | Every alive model is within an objective radius |
+| `fraction_at_objectives` | At least `min_fraction` of **alive** models are within an objective radius |
 | `all_models_grouped` | Every model is within `max_distance` of a same-group member (sole members count as grouped) |
 | `player_vp_min` | Player VP ≥ a threshold derived from mission, objective count and round count |
 | `player_ahead_on_vp` | `player_vp > opponent_vp` |
@@ -199,7 +231,7 @@ A 90% success rate under `all_at_objectives` says nothing about whether the play
 
 ---
 
-## 3. Reading rules
+## 5. Reading rules
 
 Traps that produce confidently wrong conclusions.
 
@@ -207,37 +239,41 @@ Traps that produce confidently wrong conclusions.
 `TODO(metrics-trap-A|B|C)` at the site where the fix belongs — grep for `metrics-trap` to find
 them. Ⓓ, Ⓔ and Ⓕ are correct by design; this document is their only fix.
 
-**Ⓐ `success_rate` silently changes definition.** `lightning_base.py:112–115`: when
-`episode_successes` is empty — which happens if `env.last_step_context` is `None` — it falls
-back to `(steps < max_turns).mean()`, i.e. "episode ended early" rather than "criteria met".
-Same key, different meaning, no warning. If `mean_episode_steps == max_turns` *and*
-`success_rate == 0`, suspect the fallback rather than a failing policy.
+**Ⓐ `success_rate` silently changes definition.** `lightning_base.py:324–327`: when
+`episode_successes` is empty it falls back to `(steps < max_turns).mean()`, i.e. "episode ended
+early" rather than "criteria met". Same key, different meaning, no warning. A success is
+recorded per episode only when `env.last_step_context` is set, so the fallback now needs *every*
+eval episode to have run zero steps — latent rather than active, but a consumer still cannot
+tell from the value which definition produced it.
 
 **Ⓑ `terminal_success_bonus` is not comparable to the other components.** It is paid once per
-episode but divided by every step (stages 3–4 above), so its magnitude scales inversely with
+episode but divided by every step (stage 3 above), so its magnitude scales inversely with
 episode length. It moves when episode length moves, with no change in policy quality. Never
 compare it across runs with different `mean_episode_steps`, and never read its value as the
 configured bonus.
 
-**Ⓒ `reward_phase` is double-logged** — through Lightning at `:127` and again through raw
-`wandb.log(step=self.global_step)` at `:136`, on different step counters. Prefer the value on
+**Ⓒ `reward_phase` is double-logged** — through Lightning at `:339` and again through raw
+`wandb.log(step=self.global_step)` at `:353`, on different step counters. Prefer the value on
 the epoch-aligned row.
 
-**Ⓓ Percent vs. fraction.** The logged `success_rate` is `sr * 100` (`:119`) but
+**Ⓓ Percent vs. fraction.** The logged `success_rate` is `sr * 100` (`:331`) but
 `success_threshold` in config is a fraction in `[0, 1]`. Divide the metric by 100 before
-comparing.
+comparing. `eval/win_rate` and `eval/baseline_*_win_rate` are percentages too, while every win
+rate quoted in `reports/` and in the baseline table above is a fraction.
 
 **Ⓔ Eval and training rollouts are different episodes.** `reward/mean_episode_reward` (eval,
 greedy) and `reward/components/*` (training, exploratory) will not reconcile. Do not compute
 one from the other.
 
 **Ⓕ Components are means over alive models.** Per-model calculators divide by `n_alive`
-(`phase_manager.py:170`). As models die, the same per-survivor behaviour yields a different
-component value. Cross-check against casualties before attributing a shift to policy change.
+(`phase_manager.py:210`) — note this is the *logged* component only; the reward the policy is
+trained on keeps a per-model vector (`last_per_model_reward`) that is never averaged. As models
+die, the same per-survivor behaviour yields a different component value. Cross-check against
+casualties before attributing a shift to policy change.
 
 ---
 
-## 4. Evaluation procedure
+## 6. Evaluation procedure
 
 A recommended order of operations for an agent asked to assess a run.
 
@@ -291,7 +327,7 @@ project". If a red flag depends on a trap above, say which.
 
 ---
 
-## 5. Programmatic access
+## 7. Programmatic access
 
 Via the W&B MCP server (see the `wandb` entry in `~/.claude.json`):
 

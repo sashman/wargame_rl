@@ -32,7 +32,7 @@ Reinforcement learning model for playing table top wargames.
 ### Infrastructure
 
 - 🛫 Pre-commit hooks
-- 🐳 Docker support with multi-stage builds and distroless images
+- 🐳 Docker support with multi-stage builds and slim images
 - 🔄 GitHub Actions CI/CD pipeline
 
 
@@ -66,7 +66,7 @@ just install-hooks
 
 ### Formatting, Linting and Testing
 
-You can configure Ruff by editing the `.ruff.toml` file. It is currently set to the default configuration.
+You can configure Ruff by editing the `ruff.toml` file (line length 88, double quotes).
 
 Format your code:
 
@@ -152,8 +152,4 @@ just dockerize
 
 ### Github Actions
 
-The template includes two Github Actions workflows.
-
-The first one runs tests and linters on every push on the main and dev branches. You can find the workflow file in `.github/workflows/main-list-test.yml`.
-
-The second one is triggered on every tag push and can also be triggered manually. It builds the distribution and uploads it to PyPI. You can find the workflow file in `.github/workflows/publish.yaml`.
+There is one Github Actions workflow: it runs formatting, linting and tests on every push to `main` and on every pull request. You can find the workflow file in `.github/workflows/main-validate.yaml`.

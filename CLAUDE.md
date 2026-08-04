@@ -29,13 +29,13 @@ Reinforcement learning project that trains agents (DQN, PPO) to play tabletop wa
 wargame_rl/
 ├── wargame_rl/                    # Main package
 │   ├── __init__.py                # Registers Gymnasium env
-│   ├── plotting/                  # Training visualization
 │   └── wargame/
 │       ├── envs/                  # Gymnasium environment, reward, rendering
 │       │   ├── wargame.py         # WargameEnv — facade, implements BattleView
 │       │   ├── domain/            # Battle aggregate, BattleView, clock, placement,
 │       │   │                      #   termination, LOS, shooting, terrain, turn execution
 │       │   ├── env_components/    # Adapters: actions, distance cache, observation builder
+│       │   ├── baseline/          # Scripted baseline policies + registry + evaluate
 │       │   ├── reward/            # Phase manager, calculators, criteria
 │       │   ├── mission/           # VP calculators + registry
 │       │   ├── opponent/          # Opponent policies + registry
@@ -44,17 +44,22 @@ wargame_rl/
 │       │   └── renders/           # Pygame renderer
 │       ├── model/                 # RL algorithms
 │       │   ├── net.py             # RL_Network base, MLPNetwork, TransformerNetwork
-│       │   ├── common/            # Shared: factory, observation, dataset, device, wandb, callbacks
+│       │   ├── common/            # Shared: lightning_base (eval + baselines + phase
+│       │   │                      #   advancement), factory, observation, dataset, callbacks
 │       │   ├── dqn/               # DQN: agent, lightning module, replay buffer, config
 │       │   └── ppo/               # PPO: actor-critic, lightning module, agent, config
 │       └── types.py               # Experience, ExperienceBatch
 ├── examples/env_config/           # YAML environment configurations
 ├── tests/                         # Pytest suite with conftest.py fixtures
-├── docs/                          # Design docs (movement, reward phases, missions-and-vp, roadmap, rules)
+├── docs/                          # Design docs (movement, reward phases, missions-and-vp,
+│                                  #   roadmap, rules, metrics, shooting, terrain)
 ├── reports/                       # Experiment findings, kept for retrospection
-├── scripts/                       # Run-inspection tooling (run_summary, measure_phase_gates)
+├── scripts/                       # Run-inspection tooling (run_summary, measure_phase_gates,
+│                                  #   measure_baselines, measure_checkpoint)
 ├── train.py                       # Training entry point (Typer CLI)
 ├── simulate.py                    # Inference/simulation entry point
+├── replay_events.py               # Replay / narrate a match event log
+├── analyze_events.py              # Analyse / compare match event logs
 └── main.py                        # Legacy entry (env test with random actions)
 ```
 
@@ -73,13 +78,15 @@ wargame_rl/
 | Train multiple configs in parallel | `just train-multi config1.yaml config2.yaml` |
 | Ship (branch → commit → push → PR) | `just ship <branch> "<message>"` |
 | Simulate latest | `just simulate-latest` |
+| Simulate / record a checkpoint | `just simulate <ckpt> <config.yaml>` · `just record-sim <ckpt> <config.yaml>` |
 | Test env (random) | `just test-env` |
 | Record a match event log | `just record <config.yaml>` |
 | Replay / narrate a log | `just replay <file>` · `just replay-summary <file>` |
 | Analyse a log | `just analyze <file>` · `just analyze-compare <files...>` |
 | Inspect a Wandb run | `just run-summary <run_id> [bucket]` |
 | Measure reward-phase gates | `just measure-phase-gates <ckpt> <config.yaml> [n_episodes]` |
-| Scripted baselines (floor + bar) | `just measure-baselines <config.yaml> [n_episodes] [record]` |
+| Scripted baselines (floor + bar) | `just measure-baselines <config.yaml> [n_episodes] [record] [seed_base]` |
+| Score a checkpoint (baseline-comparable) | `just measure-checkpoint <ckpt> <config.yaml> [n_episodes] [record]` |
 | Profile | `just profile <config.yaml> [model] [max_epochs]` |
 | Clean | `just clean` |
 
@@ -113,7 +120,7 @@ Snapshot/event pipeline for recording and inspecting matches — `GameStateSnaps
 
 - Environment configs live in `examples/env_config/`
 - Algorithm configs: `DQNConfig`, `PPOConfig` in respective `config.py` files
-- Training config: `TrainingConfig` in `wargame_rl/wargame/model/dqn/config.py`
+- Training config: `DQNTrainingConfig` (`model/dqn/config.py`) · `PPOTrainingConfig` (`model/ppo/config.py`)
 
 ### Directory-scoped guidance
 
@@ -214,7 +221,9 @@ Detailed patterns live next to the code they govern — read them when working i
 - Env configs live in `examples/env_config/` — copy an existing one to create new scenarios
 - Training logs to Wandb automatically; checkpoints saved to `checkpoints/`. Reward phase index and phase advancement are logged (`reward_phase`, `phase_advanced_at_epoch`) so curriculum runs show phase transitions in the dashboard
 - **Reading run metrics:** see [docs/metrics.md](docs/metrics.md) for what each Wandb key means and the procedure for evaluating a run. Several metrics are means-of-means or change definition silently — check the reading rules there before drawing conclusions from `success_rate`, `terminal_success_bonus`, or any `reward/components/*` value
-- **Always quote a result against a baseline:** `just measure-baselines <env_config> [n] record` gives the floor (`random`, 0.00) and the bar (`squad_march_shoot`, **1.00** on 25v25). Training logs `eval/baseline_*` automatically. A `success_rate` with no floor and no ceiling is how a policy scoring 17% against an 80% heuristic was read as progress. Note the bar is the *shooting* baseline: the movement-only ones cap at 0.78, which is the ceiling of a policy class the agent is not in
+- **Always quote a result against a baseline:** `just measure-baselines <env_config> [n] record` gives the floor (`random`, 0.00) and the bar (`squad_march_shoot`, **1.00** on 25v25). A `success_rate` with no floor and no ceiling is how a policy scoring 17% against an 80% heuristic was read as progress. Note the bar is the *shooting* baseline: the movement-only ones cap at 0.78, which is the ceiling of a policy class the agent is not in
+- **Training does not log the bar.** `eval/baseline_*` covers only `random` and `squad_march` (`BASELINE_POLICIES` in `model/common/lightning_base.py`), so the auto-logged reference is the movement-only 0.78 — beating it is not beating `squad_march_shoot`. Run `just measure-baselines` for the real ceiling
+- **The 1.00 bar is an artefact of an opponent that never fires.** Every 25v25 config uses `scripted_advance_to_objective`, which does not shoot, and no config uses the `scripted_advance_and_shoot` policy — against it `squad_march_shoot` falls to 0.60 and `squad_march` 0.80 → 0.24. Switching a config's opponent invalidates every baseline and agent score measured on it — re-measure both. See [docs/opponent-policies.md](docs/opponent-policies.md)
 - **Read the traces, not just the aggregates:** `record` also writes reference traces to `recordings/`, so `just analyze-compare <agent> <baseline>` puts them side by side. Only `vp_per_step` ranks policy quality — occupancy saturates for anything competent, and `idle_rate`, `objective_approach_rate` and `tactical_score` are structurally misleading here. See [docs/metrics.md](docs/metrics.md) § Trace metrics
 - **Training configs:** `examples/env_config/25v25_single_phase.yaml` (control) and `25v25_curriculum.yaml` (two rungs). They share a scenario and a final phase, so comparing them isolates the curriculum. Every phase must keep `vp_gain` and at least one per-model calculator — `tests/test_curriculum_configs.py` enforces both
 - **Past experiments:** [reports/](reports/README.md) records findings from previous runs, including refuted hypotheses. **Start with [the correction](reports/2026-08-04-correction-what-was-actually-broken.md)** — it retracts most pre-2026-08-04 conclusions, including the earlier claims that `gamma` 0.99 and `ent_coef` 0.01 were refuted (they were measured under a training loop that never applied the reward being tuned)

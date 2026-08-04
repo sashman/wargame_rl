@@ -13,33 +13,40 @@ Both expose `policy_from_env(env)` and `from_checkpoint(env, path)` class method
 ## DQN (`model/dqn/`)
 
 - `DQNLightning` — PyTorch Lightning module: training loop, epsilon-greedy exploration, target network sync, experience replay
-- `DQNConfig` / `TrainingConfig` — Pydantic config models
-- `ReplayBuffer` — experience replay with `Experience` named tuples
-- `RLDataset` — PyTorch `IterableDataset` wrapping the replay buffer
+- `DQNConfig` / `DQNTrainingConfig` — Pydantic config models
+- `ReplayBuffer` (`experience_replay.py`) — experience replay with `Experience` named tuples
 - `Agent` — runs episodes with epsilon-greedy policy
+- `layers.py` — `Block`, `LayerNorm`, `SelfAttention`, `MLP` shared by `TransformerNetwork`
 
 ## PPO (`model/ppo/`)
 
 - `PPOLightning` — PyTorch Lightning module: actor-critic training, GAE, clipped surrogate objective
-- `PPOConfig` — Pydantic config (lr, gamma, GAE lambda, clip epsilon, etc.)
+- `PPOConfig` / `PPOTrainingConfig` — Pydantic config (lr, gamma, GAE lambda, clip epsilon, etc.)
 - `PPO_Transformer` — actor-critic model with shared transformer backbone, separate policy and value heads
 - `PPOModel` — wraps policy net + value net
 - PPO only supports `TransformerNetwork` (no MLP variant)
 
 ## Shared (`model/common/`)
 
-- `create_environment()` — factory for `WargameEnv` from config
+- `create_environment()` — factory for `WargameEnv` from config (optionally with `state_exporters`)
 - `observation_to_tensor` / `observations_to_tensor_batch` — observation conversion
-- `RLDataset` — generic RL dataset
+- `WargameLightningBase` (`lightning_base.py`) — base for `DQNLightning` / `PPOLightning`: evaluation, baseline logging, reward-phase advancement
+- `RLDataset` (`dataset.py`) — generic RL `IterableDataset`
+- `BaseAgent` (`agent_base.py`) — shared episode-running agent interface
 - `TransformerConfig` — shared transformer hyperparameters
 - `Device` / `get_device()` — device management
 - Wandb integration in `wandb.py` — all logging goes through Lightning logger
 
+### Evaluation is batched, not sequential
+
+`WargameLightningBase._run_episodes_batched` runs eval episodes in **lockstep waves**: it holds a reusable pool of eval envs (`_ensure_eval_envs`), steps them together, and scores each wave with one batched forward pass via `_batch_greedy_actions`. Every episode is `max_turns` steps, so a wave costs `max_turns` forward passes rather than `max_turns × n_episodes`. Subclasses that cannot score a batch return `None` from `_batch_greedy_actions` and fall back to the sequential `_run_episode_eval` path (also used for epsilon > 0).
+
 ## Callbacks
 
-- `CheckpointCallback` — saves model checkpoints
+- `get_checkpoint_callback()` — builds the Lightning `ModelCheckpoint` for a run
 - `RecordEpisodeCallback` — records MP4 episodes during training
 - `EnvConfigCallback` — persists env YAML config alongside checkpoints
+- `EventLogCallback` — records a match event log during training (`--record-events`)
 
 ## Observation Tensor Pipeline
 

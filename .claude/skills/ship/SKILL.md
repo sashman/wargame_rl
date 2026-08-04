@@ -20,8 +20,9 @@ When the user invokes this skill, run the full ship workflow: **branch only from
      ```bash
      just ship <branch> "<commit message>"
      ```
-   - This checks out `main`, pulls latest, creates the new branch from `main`, stages all changes, commits with the message as both title and body, pushes, and runs `gh pr create --fill` so the PR title and description are populated from the commit.
-   - If you're not on `main`, the recipe runs `git checkout main` and `git pull` first so the new branch is always created from up-to-date `main`.
+   - This stashes the working tree (`git stash -u`), checks out `main`, pulls latest, creates the new branch from `main`, restores the stash, stages all changes, commits with the message as both title and body, pushes, and runs `gh pr create --fill` so the PR title and description are populated from the commit.
+   - The checkout-and-pull of `main` happens unconditionally, so the new branch is always created from up-to-date `main`.
+   - **If the branch already exists**, the recipe silently checks it out instead of creating it — so the "always from main" guarantee does not hold for a name you have used before. Pick a fresh name for each PR.
 
 3. **Set PR description from branch changes**
    - After the PR is created, generate a short description from the changes in the branch (vs `main`).
@@ -40,7 +41,15 @@ When the user invokes this skill, run the full ship workflow: **branch only from
    - Verify it applied: `gh api "repos/$REPO/pulls/$PR" --jq '.body | length'` should match the body you wrote, not the shorter commit-derived one.
    - Using a heredoc file rather than an inline `--body` string also avoids shell-quoting damage to markdown tables, backticks, and emoji.
 
-4. **If something fails**
+4. **If the PR shows `BEHIND`**
+   - `main` moved between the branch point and the push. Merge it in and push again:
+     ```bash
+     git fetch origin && git merge origin/main -m "Merge branch 'main' into <branch>"
+     git push
+     ```
+   - This re-runs CI on the merge commit. Do not rebase a pushed branch.
+
+5. **If something fails**
    - If pre-commit or commit fails, suggest running `just validate` first and fixing any issues, then try again.
    - If the user has nothing staged and doesn't want to commit everything, suggest staging with `git add <paths>` then running `just ship` again (note: `just ship` runs `git add -A`, so they may prefer to run the git/gh steps manually for partial commits).
 

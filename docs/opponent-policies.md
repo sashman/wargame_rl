@@ -76,11 +76,14 @@ Each entry in `opponent_models` uses `ModelConfig`, the same schema as player mo
 | `x` | int | `null` | X coordinate. If `null`, placed randomly in opponent deployment zone. |
 | `y` | int | `null` | Y coordinate. Must be set together with `x` or both omitted. |
 | `group_id` | int | `0` | Group this model belongs to. |
-| `max_wounds` | int | `100` | Maximum wound pool for this model. |
+| `max_wounds` | int | `1` | Maximum wound pool for this model. |
+| `toughness` | int | `3` | Compared against attacker strength on the wound roll. |
+| `save` | int (2–7) | `4` | Base armour save (`4` means 4+, `7` means no armour). |
+| `weapons` | list | `[]` | `WeaponProfile` entries (see [shooting.md](shooting.md)). Empty = cannot shoot. |
 
 ## Turn Order
 
-Each `env.step()` call advances the player through **one battle phase** (command, movement, shooting, charge, or fight). After the player completes their turn, the opponent's entire turn (all five phases) is auto-executed before the observation is returned. By default, non-movement phases are skipped (`skip_phases` config), so the player takes 1 step per round. Set `skip_phases: []` for full per-phase stepping (5 steps per round).
+Each `env.step()` call advances the player through **one battle phase** (command, movement, shooting, charge, or fight). After the player completes their turn, the opponent's entire turn is auto-executed before the observation is returned: the clock runs through all five phases, but the policy is invoked only in the phases the player also plays (skipped phases advance the clock without an opponent action, so the opponent gets exactly as many decisions per round as the player). By default, non-movement phases are skipped (`skip_phases` config), so the player takes 1 step per round. Set `skip_phases: []` for full per-phase stepping (5 steps per round).
 
 The `turn_order` field controls which side takes the first turn each round:
 
@@ -94,7 +97,7 @@ The `turn_order` field controls which side takes the first turn each round:
 
 ### `random`
 
-Each opponent model selects a uniformly random action from the action space (stay, or any angle/speed combination).
+Each opponent model selects a uniformly random action from the ones its action mask allows. In the movement phase that is stay or any angle/speed combination; in the shooting phase it is stay or any valid target, so `random` **does shoot back** when the shooting phase is active (it declares `shoots = True`).
 
 ```yaml
 opponent_policy:
@@ -105,16 +108,19 @@ opponent_policy:
 
 **Use case:** Baseline opponent for initial training. Provides unpredictable but non-strategic opposition, useful for verifying the environment works before introducing smarter opponents.
 
+**Note:** this policy samples with the global `np.random`, not `env.np_random`, so its choices are *not* reproducible from an episode seed.
+
 ### `scripted_advance_to_objective`
 
-Each opponent model moves toward the nearest objective. The policy computes the angle from each model to its closest objective and selects the polar-coordinate action with the best matching direction. Step length is capped by distance to the objective boundary so models reduce speed when close and do not overshoot.
+Each opponent model moves toward the nearest objective while keeping the group together. Each model's desired direction is a weighted blend of the vector to its closest objective and the vector to the centroid of the alive models; the polar-coordinate action with the best matching direction is selected. Step length is capped by distance to the objective boundary so models reduce speed when close and do not overshoot. A model already inside an objective's radius stays put.
 
 ```yaml
 opponent_policy:
   type: scripted_advance_to_objective
+  params: { cohesion_weight: 0.3 }   # optional
 ```
 
-**Parameters:** none.
+**Parameters:** `cohesion_weight` (0–1, default `0.3`) — 0 is pure objective seeking, 1 is pure flocking toward the centroid.
 
 **Use case:** Provides goal-directed opposition that competes for the same objectives as the player. Good for training agents that need to learn to reach objectives before the opponent does.
 
@@ -134,13 +140,13 @@ opponent_policy:
 
 Target choice is uniform rather than nearest-first. Nearest-first would concentrate fire and make the opponent a sharper threat than "returns fire" warrants; uniform keeps it a plain two-sided-game fixture whose damage output is easy to reason about. Targets are drawn from `env.np_random`, so a seeded episode replays exactly.
 
-**Use case:** the only opponent that makes the game two-sided. Every other policy leaves the player facing an enemy that cannot answer, which is why the `squad_march_shoot` baseline scores 1.00 on 25v25 — a bar set against a defenceless opponent. **Adopting this policy in a config invalidates any baseline or agent score measured on it; re-run `just measure-baselines` before reading a result.**
+**Use case:** the only *goal-directed* opponent that makes the game two-sided (`random` also fires, but wanders). `scripted_advance_to_objective` leaves the player facing an enemy that cannot answer, which is why the `squad_march_shoot` baseline scores 1.00 on 25v25 — a bar set against a defenceless opponent. **Adopting this policy in a config invalidates any baseline or agent score measured on it; re-run `just measure-baselines` before reading a result.**
 
 Requires the shooting phase to be active (`skip_phases` must not contain `shooting`) and `opponent_models` entries to carry `weapons`.
 
 ## Planned Policies (Not Yet Implemented)
 
-The following policies are designed in the architecture but raise `NotImplementedError` if used:
+The following policies are designed in the architecture but have no class and are not registered — naming one in YAML raises `ValueError: Unknown opponent policy type` from `build_opponent_policy`:
 
 | Type key | Description |
 |----------|-------------|
@@ -181,6 +187,7 @@ def _auto_register():
     for mod in (
         "wargame_rl.wargame.envs.opponent.random_policy",
         "wargame_rl.wargame.envs.opponent.scripted_advance_to_objective_policy",
+        "wargame_rl.wargame.envs.opponent.scripted_advance_and_shoot_policy",
         "wargame_rl.wargame.envs.opponent.scripted_hold_position_policy",  # new
     ):
         importlib.import_module(mod)
@@ -193,7 +200,7 @@ opponent_policy:
   type: scripted_hold_position
 ```
 
-The `select_action` method receives the list of opponent `WargameModel` instances, the full `WargameEnv`, and optionally `action_mask` (phase-aware valid actions), giving access to objectives, board dimensions, the action handler's `best_action_toward()` helper, and any other env state needed to compute actions.
+The `select_action` method receives the list of opponent `WargameModel` instances, the full `WargameEnv`, and optionally `action_mask` (phase-aware valid actions), giving access to objectives, board dimensions, and any other env state needed to compute actions. Reach the opponent's handler through the public `env.opponent_action_handler` property — it exposes `best_action_toward()` and `shooting_slice`. `env.last_player_shooting_results` / `env.last_opponent_shooting_results` expose the shots resolved in the most recent step, for a policy that wants to react to incoming fire.
 
 ### Policies that shoot
 

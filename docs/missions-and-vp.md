@@ -16,7 +16,7 @@ mission:
 ```
 
 - **type**: Selects the VP calculator. `default` scores VP for controlled objectives at end of command phase from a given round. `none` disables VP (always 0).
-- **params**: Passed to the calculator. For `default`, common params are `vp_per_objective`, `cap_per_turn`, and `min_round`. Omit for built-in defaults.
+- **params**: Passed to the calculator. For `default`, the params are `vp_per_objective` (default 5), `cap_per_turn` (default 15) and `min_round` (default 2). Omit for built-in defaults. Note these are read outside the mission too: `vp_gain` divides by `cap_per_turn`, and `player_vp_min` derives its threshold from all three — so changing them rescales the reward and moves phase gates.
 
 If you omit `mission` entirely, the default mission is used (VP per controlled objective, cap per turn, scoring from round 2).
 
@@ -26,11 +26,11 @@ For the default mission, VP are scored **at the end of the command phase** for e
 
 ## Objective control
 
-An objective is **controlled** by the side with the **greater Level of Control** within range — the number of that side's models within the objective’s radius (each model contributes its Objective Control value, currently 1). The side with **strictly more** models in range controls the objective and scores it; **equal totals (including zero) mean the objective is contested/uncontrolled** and neither side scores. Control is re-evaluated each time VP are scored. This matches the tabletop OC rule — see [tabletop-rules-reference.md](tabletop-rules-reference.md).
+An objective is **controlled** by the side with the **greater Level of Control** within range — the number of that side's **alive** models within the objective’s radius (each model contributes its Objective Control value, currently 1; dead models are excluded from the count). The side with **strictly more** models in range controls the objective and scores it; **equal totals (including zero) mean the objective is contested/uncontrolled** and neither side scores. Control is re-evaluated each time VP are scored. This matches the tabletop OC rule — see [tabletop-rules-reference.md](tabletop-rules-reference.md).
 
 ## Env state and observation
 
-- **Battle state**: `player_vp` and `opponent_vp` are cumulative; `player_vp_delta` and `opponent_vp_delta` are the VP added during the current env step (for display).
+- **Battle state**: `player_vp` and `opponent_vp` are cumulative; `player_vp_delta` and `opponent_vp_delta` are the VP added during the current env step (reset at the start of each step, and read by the `vp_gain` reward as well as by the renderer).
 - **Info**: Each step’s info dict includes `player_vp`, `opponent_vp`, `player_vp_delta`, and `opponent_vp_delta`.
 - **Observation**: The agent observation includes `player_vp`, `opponent_vp`, and `player_vp_delta` in the game-feature vector so the policy can condition on score and step-wise VP gain. For VP-based reward shaping and phase success (e.g. `vp_gain` calculator, `player_vp_min` criteria, optional `terminal_vp_bonus`), see [reward-phases.md](reward-phases.md).
 
