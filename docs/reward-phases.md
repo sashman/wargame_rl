@@ -57,7 +57,7 @@ reward_phases:
 | `success_threshold` | float | `0.8` | Fraction of evaluation episodes (0--1) that must succeed to advance |
 | `min_epochs` | int | `0` | Minimum epochs spent in this phase before advancement is eligible |
 | `min_epochs_above_threshold` | int | `5` | Success rate must be ≥ success_threshold for this many consecutive epochs before advancing |
-| `terminal_success_bonus` | float | `0.0` | Bonus added at episode end **when the phase's `success_criteria` is met** (previously hardcoded to all-models-at-objectives). Scaled by remaining-turn fraction so faster success gets higher reward. |
+| `terminal_success_bonus` | float | `0.0` | Bonus added at episode end **when the phase's `success_criteria` is met** (previously hardcoded to all-models-at-objectives). Scaled by remaining-turn fraction **only when `terminate_on_success` is true** — see below. |
 | `terminal_vp_bonus` | float | `0.0` | Bonus added at episode end when player VP meets the phase's VP threshold (for VP-based success criteria). |
 | `terminate_on_success` | bool | `true` | Whether to end the episode as soon as all models are at objectives. Set `false` in VP phases when you want to keep scoring. |
 
@@ -133,6 +133,30 @@ advance if:
 When advancement triggers, the `RewardPhaseManager` moves to the next phase and logs the transition. The new phase's reward calculators take effect immediately for subsequent episodes.
 
 The `reward_phase` metric (phase index, 0-based) is logged to wandb every epoch, making phase transitions visible in the training dashboard.
+
+### Size `min_epochs_above_threshold` against `n_episodes`
+
+Each epoch's `success_rate` is an `n_episodes`-sample binomial, not a measurement of the policy's true rate. Requiring *consecutive* epochs above the bar multiplies that noise, so the effective gate sits well above the nominal `success_threshold`:
+
+| True rate | P(one epoch ≥ 0.7) at `n_episodes=10` | P(10 consecutive) |
+|---|---|---|
+| 0.6 | 0.38 | 0.0001 |
+| 0.7 | 0.65 | 0.013 |
+| 0.8 | 0.88 | 0.28 |
+| 0.9 | 0.99 | 0.88 |
+
+At `n_episodes=10`, `min_epochs_above_threshold: 10` turns a nominal 0.7 threshold into an effective bar near 0.85. Prefer **more evaluation episodes and a shorter run** — `--n-eval-episodes 30` with `min_epochs_above_threshold: 3` keeps the effective bar close to the nominal one for roughly the same eval cost.
+
+### `terminal_success_bonus` and the remaining-turn scale
+
+The bonus is multiplied by the fraction of turns left when the episode ends — a speed incentive that presumes success *ends* the episode. It is therefore applied **only when `terminate_on_success` is true**.
+
+With `terminate_on_success: false` every episode runs to `max_turns`, which would leave a scale of `1/max_turns`. Note `max_turns = number_of_battle_rounds × (5 - len(skip_phases))`, so a 20-round config with three skipped phases has `max_turns = 40` and would shrink the bonus 40-fold. The bonus is delivered at full value in that case instead.
+
+Two consequences worth checking when a phase will not advance:
+
+- **Weigh the terminal bonus against the dense calculators, per episode.** A dense calculator emitting 0.08/step over 40 steps contributes 3.2, so a terminal bonus of 5.0 is comparable — but one of 0.5 is noise. `reward/components/*` are per-step means (see [metrics.md](metrics.md)), so multiply by `mean_episode_steps` before comparing.
+- **Check `gamma` covers the episode.** The bonus lands on the last step, so its value at t=0 is `bonus × gamma^max_turns`. The `PPOConfig` default `gamma=0.9` discounts a 40-step episode by 0.015, making any terminal signal invisible to early actions; use `--gamma 0.99` for episodes this long.
 
 ## Reward Aggregation
 
