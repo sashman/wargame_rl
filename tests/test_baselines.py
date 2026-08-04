@@ -2,18 +2,32 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
+import torch
 
-from wargame_rl.wargame.envs.baseline.evaluate import evaluate_baseline
+from wargame_rl.wargame.envs.baseline.evaluate import (
+    evaluate_baseline,
+    evaluate_selector,
+    record_episode,
+    selector_for,
+)
 from wargame_rl.wargame.envs.baseline.registry import (
     build_baseline_policy,
     get_registry,
 )
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
-from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.envs.types import (
+    WargameEnvAction,
+    WargameEnvConfig,
+    WargameEnvObservation,
+)
 from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.model.common.observation import observation_to_tensor
+from wargame_rl.wargame.model.net import TransformerNetwork
 
 BASELINE_NAMES = ("random", "greedy_nearest", "split_evenly", "squad_march")
 
@@ -120,3 +134,53 @@ def test_evaluate_baseline_is_deterministic_for_a_seed_set() -> None:
     first = evaluate_baseline(build_baseline_policy("squad_march"), env, seeds)
     second = evaluate_baseline(build_baseline_policy("squad_march"), env, seeds)
     assert first == second
+
+
+def test_a_learned_policy_scores_through_the_same_path_as_a_baseline() -> None:
+    """A network-driven selector is scored by the identical code as a baseline.
+
+    This is what makes "agent 0.95 vs squad_march_shoot 1.00" a comparison
+    rather than two numbers from two loops that can drift apart. Uses an
+    untrained network — the point is the plumbing, not the score.
+    """
+    env = _make_env()
+    policy_net = TransformerNetwork.policy_from_env(env)
+    policy_net.eval()
+
+    def select(
+        observation: WargameEnvObservation, _env: WargameEnv
+    ) -> WargameEnvAction:
+        with torch.no_grad():
+            logits = policy_net(observation_to_tensor(observation, policy_net.device))
+        actions = logits.argmax(dim=-1).flatten().tolist()
+        return WargameEnvAction(actions=[int(a) for a in actions])
+
+    result = evaluate_selector(select, env, [0, 1], name="untrained")
+
+    assert result.name == "untrained"
+    assert result.n_episodes == 2
+    assert 0.0 <= result.final_fraction_at_objectives <= 1.0
+    assert result.vp_margin == result.player_vp - result.opponent_vp
+
+
+def test_recorded_episode_is_written_for_a_selector(tmp_path: Path) -> None:
+    """`record_episode` accepts any selector, so agent traces are comparable.
+
+    The reference traces `just analyze-compare` reads are only meaningful if the
+    agent's trace is produced by the same recorder as the baseline's.
+    """
+    env_config = WargameEnvConfig(
+        render_mode=None,
+        number_of_wargame_models=4,
+        number_of_objectives=2,
+        number_of_battle_rounds=4,
+    )
+    policy = build_baseline_policy("squad_march")
+    output = tmp_path / "trace.jsonl"
+
+    written = record_episode(
+        selector_for(policy), env_config, seed=3, output_path=output
+    )
+
+    assert written.exists()
+    assert written.stat().st_size > 0

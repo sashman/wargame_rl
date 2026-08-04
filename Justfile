@@ -139,6 +139,11 @@ measure-phase-gates checkpoint env_config n_episodes='30':
 measure-baselines env_config n_episodes='25' record='':
 	@uv run python -m scripts.measure_baselines {{env_config}} {{n_episodes}} {{record}}
 
+# Score a checkpoint on held-out seeds through the same code path as the baselines,
+# so the two are directly comparable. Pass `record` as the fourth argument for a trace.
+measure-checkpoint checkpoint env_config n_episodes='30' record='':
+	@uv run python -m scripts.measure_checkpoint {{checkpoint}} {{env_config}} {{n_episodes}} {{record}}
+
 # Analyze a recorded match for training evaluation
 analyze file:
 	uv run analyze_events.py report {{file}}

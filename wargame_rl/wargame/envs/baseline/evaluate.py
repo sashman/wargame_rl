@@ -6,20 +6,32 @@ next to a learned policy is produced by exactly the same code path.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeAlias
 
 import numpy as np
 
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.state import EventLogExporter, JsonMatchCodec
-from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.envs.types import (
+    WargameEnvAction,
+    WargameEnvConfig,
+    WargameEnvObservation,
+)
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.baseline.policy import BaselinePolicy
+
+# Anything that can drive the player's models for one step. Scripted baselines
+# and learned checkpoints both reduce to this, so they can be scored and
+# recorded by identical code rather than by two loops that drift apart.
+ActionSelector: TypeAlias = Callable[
+    [WargameEnvObservation, WargameEnv], WargameEnvAction
+]
 
 
 @dataclass(frozen=True)
@@ -56,8 +68,19 @@ def _worst_cohesion_gap(env: WargameEnv) -> float:
     return float(distances[alive].max())
 
 
-def record_baseline_episode(
-    policy: BaselinePolicy,
+def selector_for(policy: BaselinePolicy) -> ActionSelector:
+    """Adapt a scripted baseline to the `ActionSelector` calling convention."""
+
+    def select(observation: WargameEnvObservation, env: WargameEnv) -> WargameEnvAction:
+        return policy.select_action(
+            env.wargame_models, env, action_mask=observation.action_mask
+        )
+
+    return select
+
+
+def record_episode(
+    select: ActionSelector,
     config: WargameEnvConfig,
     seed: int,
     output_path: Path,
@@ -77,9 +100,7 @@ def record_baseline_episode(
         observation, _ = env.reset(seed=seed)
         terminated = truncated = False
         while not (terminated or truncated):
-            action = policy.select_action(
-                env.wargame_models, env, action_mask=observation.action_mask
-            )
+            action = select(observation, env)
             observation, _reward, terminated, truncated, _info = env.step(action)
     finally:
         env.close()
@@ -89,18 +110,39 @@ def record_baseline_episode(
     return output_path
 
 
+def record_baseline_episode(
+    policy: BaselinePolicy,
+    config: WargameEnvConfig,
+    seed: int,
+    output_path: Path,
+) -> Path:
+    """Record one episode driven by a scripted baseline."""
+    return record_episode(selector_for(policy), config, seed, output_path)
+
+
 def evaluate_baseline(
     policy: BaselinePolicy,
     env: WargameEnv,
     seeds: list[int],
 ) -> BaselineResult:
-    """Run `policy` on `env` once per seed and aggregate the outcome.
+    """Run a scripted baseline on `env` once per seed and aggregate the outcome."""
+    return evaluate_selector(selector_for(policy), env, seeds, type(policy).__name__)
 
-    Episodes are seeded so two baselines are compared on identical layouts —
+
+def evaluate_selector(
+    select: ActionSelector,
+    env: WargameEnv,
+    seeds: list[int],
+    name: str,
+) -> BaselineResult:
+    """Run `select` on `env` once per seed and aggregate the outcome.
+
+    Episodes are seeded so two policies are compared on identical layouts —
     objective placement dominates episode variance, so resampling would make
-    the comparison mostly a question of which maps each policy drew.
+    the comparison mostly a question of which maps each policy drew. A learned
+    checkpoint scored through here is therefore directly comparable to the
+    baseline table, because it is the same code.
     """
-    name = type(policy).__name__
     fractions: list[float] = []
     wins: list[float] = []
     player_vps: list[float] = []
@@ -114,9 +156,7 @@ def evaluate_baseline(
             # The observation's mask already encodes range, line of sight,
             # target-alive and engagement-range validity, so a shooting
             # baseline plays by exactly the rules the learned policy does.
-            action = policy.select_action(
-                env.wargame_models, env, action_mask=observation.action_mask
-            )
+            action = select(observation, env)
             observation, _reward, terminated, truncated, _info = env.step(action)
 
         alive = alive_mask_for(env.wargame_models)
