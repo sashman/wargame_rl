@@ -36,6 +36,28 @@ class RewardPhase:
 
 
 @dataclass
+class CurriculumPosition:
+    """How far the curriculum has advanced.
+
+    Split out of `RewardPhaseManager` so several environments can share one
+    position. Training runs many rollout envs alongside the eval env; each
+    needs its *own* calculators, because those carry per-episode state
+    (`closest_objective`'s previous distance, `objective_flip_bonus`'s
+    potential) that one env resetting would corrupt for the others. But they
+    must all reward the phase the curriculum has actually reached.
+
+    Sharing the position rather than propagating an index means there is no
+    synchronisation step for a future code path to forget — which is exactly
+    how the rollout envs came to train on phase 0 for every run to date while
+    `reward_phase` reported otherwise.
+    """
+
+    index: int = 0
+    epoch_entered: int = 0
+    consecutive_epochs_above_threshold: int = 0
+
+
+@dataclass
 class RewardPhaseManager:
     """Manages reward phase progression during training.
 
@@ -45,14 +67,19 @@ class RewardPhaseManager:
     """
 
     phases: list[RewardPhase]
-    _current_idx: int = field(default=0, init=False)
-    _epoch_entered: int = field(default=0, init=False)
-    _consecutive_epochs_above_threshold: int = field(default=0, init=False)
+    position: CurriculumPosition = field(default_factory=CurriculumPosition)
     last_reward_breakdown: dict[str, float] = field(default_factory=dict, init=False)
 
     @classmethod
-    def from_configs(cls, configs: list[RewardPhaseConfig]) -> RewardPhaseManager:
-        """Build a manager from a list of phase configs."""
+    def from_configs(
+        cls,
+        configs: list[RewardPhaseConfig],
+        position: CurriculumPosition | None = None,
+    ) -> RewardPhaseManager:
+        """Build a manager from a list of phase configs.
+
+        Pass `position` to share curriculum progress with another manager.
+        """
         if not configs:
             raise ValueError("reward_phases must contain at least one phase")
 
@@ -92,7 +119,10 @@ class RewardPhaseManager:
                 )
             )
 
-        return cls(phases=phases)
+        return cls(
+            phases=phases,
+            position=position if position is not None else CurriculumPosition(),
+        )
 
     def reset_episode(self) -> None:
         """Reset per-episode state of all calculators across all phases."""
@@ -106,7 +136,7 @@ class RewardPhaseManager:
 
     @property
     def current_phase(self) -> RewardPhase:
-        return self.phases[self._current_idx]
+        return self.phases[self.position.index]
 
     @property
     def current_phase_name(self) -> str:
@@ -114,11 +144,11 @@ class RewardPhaseManager:
 
     @property
     def current_phase_index(self) -> int:
-        return self._current_idx
+        return self.position.index
 
     @property
     def is_final_phase(self) -> bool:
-        return self._current_idx >= len(self.phases) - 1
+        return self.position.index >= len(self.phases) - 1
 
     @property
     def terminate_on_success(self) -> bool:
@@ -241,23 +271,27 @@ class RewardPhaseManager:
             return False
 
         phase = self.current_phase
-        epochs_in_phase = current_epoch - self._epoch_entered
+        position = self.position
+        epochs_in_phase = current_epoch - position.epoch_entered
 
         if success_rate < phase.success_threshold:
-            self._consecutive_epochs_above_threshold = 0
+            position.consecutive_epochs_above_threshold = 0
             return False
 
-        self._consecutive_epochs_above_threshold += 1
+        position.consecutive_epochs_above_threshold += 1
 
         if epochs_in_phase < phase.min_epochs:
             return False
 
-        if self._consecutive_epochs_above_threshold < phase.min_epochs_above_threshold:
+        if (
+            position.consecutive_epochs_above_threshold
+            < phase.min_epochs_above_threshold
+        ):
             return False
 
-        self._current_idx += 1
-        self._epoch_entered = current_epoch
-        self._consecutive_epochs_above_threshold = 0
+        position.index += 1
+        position.epoch_entered = current_epoch
+        position.consecutive_epochs_above_threshold = 0
         new_phase = self.current_phase
         logger.info(
             "Reward phase advanced: '{}' -> '{}' (success_rate={:.2f}, epoch={})",

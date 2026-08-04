@@ -23,6 +23,11 @@ from wargame_rl.wargame.types import Experience
 if TYPE_CHECKING:
     from wargame_rl.wargame.model.ppo.ppo import PPOModel
 
+# Rollout envs are seeded once from this base, then left to run their own RNG
+# stream. Kept well below the evaluation seed space so training and evaluation
+# never draw the same layouts.
+ROLLOUT_SEED_BASE = 0
+
 
 class _NoOpProgress:
     """No-op progress object when inner progress bars are disabled."""
@@ -164,6 +169,10 @@ class PPOLightning(WargameLightningBase):
             self.num_rollout_envs = self._auto_detect_num_rollout_envs()
         else:
             self.num_rollout_envs = num_rollout_envs
+        # Built once, on first use, and kept for the whole run. See
+        # _ensure_rollout_envs for why rebuilding them per step was a bug.
+        self._rollout_envs: list[WargameEnv] | None = None
+        self._rollout_obs: list[Any] = []
         self.n_epochs = n_epochs
         self.max_grad_norm = max_grad_norm
 
@@ -432,6 +441,47 @@ class PPOLightning(WargameLightningBase):
                 )
             self.log("env_steps", self.global_step, logger=False, prog_bar=True)
 
+    def _ensure_rollout_envs(self) -> list[WargameEnv]:
+        """Build the rollout environments once and keep them for the whole run.
+
+        Two bugs came from rebuilding them on every `training_step`:
+
+        - A fresh `WargameEnv` builds its own `RewardPhaseManager` starting at
+          phase 0, while phase advancement only ever mutated the eval env. So
+          training reward always came from phase 0 no matter what
+          `reward_phase` reported. Sharing the eval env's `CurriculumPosition`
+          removes the possibility rather than papering over it.
+        - Each fresh env was re-seeded to its own index, so every epoch
+          replayed an identical handful of layouts while eval drew random
+          ones. Seeding once and letting `reset()` continue the stream gives
+          each env a distinct, non-repeating sequence.
+        """
+        if self._rollout_envs is not None:
+            return self._rollout_envs
+
+        envs = [
+            WargameEnv(
+                self.env.config,
+                renderer=None,
+                phase_position=self.env.phase_manager.position,
+            )
+            for _ in range(self.num_rollout_envs)
+        ]
+        self._rollout_obs = []
+        for env_idx, env in enumerate(envs):
+            observation, _ = env.reset(seed=ROLLOUT_SEED_BASE + env_idx)
+            self._rollout_obs.append(observation)
+        self._rollout_envs = envs
+        return envs
+
+    def on_train_end(self) -> None:
+        """Close the rollout environments held for the duration of the run."""
+        if self._rollout_envs is not None:
+            for env in self._rollout_envs:
+                env.close()
+            self._rollout_envs = None
+            self._rollout_obs = []
+
     def _collect_rollout_parallel(
         self,
     ) -> tuple[
@@ -464,112 +514,102 @@ class PPOLightning(WargameLightningBase):
         t_steps = self.n_steps // n_envs
         device = self.ppo_model.device
 
-        envs: list[WargameEnv] = [
-            WargameEnv(self.env.config, renderer=None) for _ in range(n_envs)
-        ]
-        obs_list: list[Any] = []
-        try:
-            for env_idx, env in enumerate(envs):
-                obs, _ = env.reset(seed=env_idx)
-                obs_list.append(obs)
+        envs = self._ensure_rollout_envs()
+        obs_list = self._rollout_obs
+        # Store state_tensors for PPO updates in flattened (T * n_envs) form.
+        # The returned order matches a row-major flatten of the 2D rollout arrays.
+        state_tensors_per_feature: list[list[Tensor]] = [[] for _ in range(6)]
+        n_models = self.env.config.number_of_wargame_models
 
-            # Store state_tensors for PPO updates in flattened (T * n_envs) form.
-            # The returned order matches a row-major flatten of the 2D rollout arrays.
-            state_tensors_per_feature: list[list[Tensor]] = [[] for _ in range(6)]
-            n_models = self.env.config.number_of_wargame_models
+        actions_2d_np = np.zeros((t_steps, n_envs, n_models), dtype=np.int64)
+        rewards_2d_np = np.zeros((t_steps, n_envs), dtype=np.float32)
+        dones_2d_np = np.zeros((t_steps, n_envs), dtype=np.float32)
+        old_log_probs_2d_np = np.zeros((t_steps, n_envs), dtype=np.float32)
+        values_2d_np = np.zeros((t_steps, n_envs), dtype=np.float32)
 
-            actions_2d_np = np.zeros((t_steps, n_envs, n_models), dtype=np.int64)
-            rewards_2d_np = np.zeros((t_steps, n_envs), dtype=np.float32)
-            dones_2d_np = np.zeros((t_steps, n_envs), dtype=np.float32)
-            old_log_probs_2d_np = np.zeros((t_steps, n_envs), dtype=np.float32)
-            values_2d_np = np.zeros((t_steps, n_envs), dtype=np.float32)
-
-            pbar_ctx = (
-                tqdm(
-                    total=self.n_steps,
-                    desc="Rollout",
-                    unit="step",
-                    leave=False,
+        pbar_ctx = (
+            tqdm(
+                total=self.n_steps,
+                desc="Rollout",
+                unit="step",
+                leave=False,
+            )
+            if self.show_inner_progress
+            else nullcontext(_NoOpProgress())
+        )
+        breakdown_sums: dict[str, float] = {}
+        total_steps = 0
+        with pbar_ctx as pbar:
+            for t in range(t_steps):
+                state_tensors_batch = observations_to_tensor_batch(
+                    obs_list, device=device
                 )
-                if self.show_inner_progress
-                else nullcontext(_NoOpProgress())
-            )
-            breakdown_sums: dict[str, float] = {}
-            total_steps = 0
-            with pbar_ctx as pbar:
-                for t in range(t_steps):
-                    state_tensors_batch = observations_to_tensor_batch(
-                        obs_list, device=device
+                for feat_idx, feat_tensor in enumerate(state_tensors_batch):
+                    state_tensors_per_feature[feat_idx].append(feat_tensor)
+
+                with torch.no_grad():
+                    logits, state_values = self.ppo_model(state_tensors_batch)
+                    dist = Categorical(logits=logits)
+                    actions = dist.sample()  # (n_envs, n_models)
+                    joint_log_prob = dist.log_prob(actions).sum(dim=-1)  # (n_envs,)
+
+                actions_np = actions.detach().cpu().numpy()
+                values_np = state_values.detach().cpu().numpy()
+                log_probs_np = joint_log_prob.detach().cpu().numpy()
+
+                actions_2d_np[t] = actions_np
+                values_2d_np[t] = values_np
+                old_log_probs_2d_np[t] = log_probs_np
+
+                for env_i, env in enumerate(envs):
+                    env_action = WargameEnvAction(
+                        actions=[int(a) for a in actions_2d_np[t, env_i]]
                     )
-                    for feat_idx, feat_tensor in enumerate(state_tensors_batch):
-                        state_tensors_per_feature[feat_idx].append(feat_tensor)
+                    next_obs, reward, done, _, _ = env.step(env_action)
+                    rewards_2d_np[t, env_i] = float(reward)
+                    dones_2d_np[t, env_i] = 1.0 if done else 0.0
+                    for key, value in env.last_reward_breakdown.items():
+                        breakdown_sums[key] = breakdown_sums.get(key, 0.0) + value
+                    total_steps += 1
 
-                    with torch.no_grad():
-                        logits, state_values = self.ppo_model(state_tensors_batch)
-                        dist = Categorical(logits=logits)
-                        actions = dist.sample()  # (n_envs, n_models)
-                        joint_log_prob = dist.log_prob(actions).sum(dim=-1)  # (n_envs,)
+                    if done:
+                        next_obs, _ = env.reset()
+                    obs_list[env_i] = next_obs
 
-                    actions_np = actions.detach().cpu().numpy()
-                    values_np = state_values.detach().cpu().numpy()
-                    log_probs_np = joint_log_prob.detach().cpu().numpy()
+                pbar.update(n_envs)
 
-                    actions_2d_np[t] = actions_np
-                    values_2d_np[t] = values_np
-                    old_log_probs_2d_np[t] = log_probs_np
+        state_tensors_flat = [
+            torch.cat(chunks, dim=0) for chunks in state_tensors_per_feature
+        ]
+        actions_flat = torch.from_numpy(actions_2d_np.reshape(-1, n_models)).to(
+            device=device
+        )
 
-                    for env_i, env in enumerate(envs):
-                        env_action = WargameEnvAction(
-                            actions=[int(a) for a in actions_2d_np[t, env_i]]
-                        )
-                        next_obs, reward, done, _, _ = env.step(env_action)
-                        rewards_2d_np[t, env_i] = float(reward)
-                        dones_2d_np[t, env_i] = 1.0 if done else 0.0
-                        for key, value in env.last_reward_breakdown.items():
-                            breakdown_sums[key] = breakdown_sums.get(key, 0.0) + value
-                        total_steps += 1
+        rewards_2d = torch.from_numpy(rewards_2d_np).to(device=device)
+        dones_2d = torch.from_numpy(dones_2d_np).to(device=device)
+        old_log_probs_2d = torch.from_numpy(old_log_probs_2d_np).to(device=device)
+        values_2d = torch.from_numpy(values_2d_np).to(device=device)
 
-                        if done:
-                            next_obs, _ = env.reset()
-                        obs_list[env_i] = next_obs
+        last_state_tensors = observations_to_tensor_batch(obs_list, device=device)
+        with torch.no_grad():
+            _, last_values = self.ppo_model(last_state_tensors)
 
-                    pbar.update(n_envs)
-
-            state_tensors_flat = [
-                torch.cat(chunks, dim=0) for chunks in state_tensors_per_feature
-            ]
-            actions_flat = torch.from_numpy(actions_2d_np.reshape(-1, n_models)).to(
-                device=device
-            )
-
-            rewards_2d = torch.from_numpy(rewards_2d_np).to(device=device)
-            dones_2d = torch.from_numpy(dones_2d_np).to(device=device)
-            old_log_probs_2d = torch.from_numpy(old_log_probs_2d_np).to(device=device)
-            values_2d = torch.from_numpy(values_2d_np).to(device=device)
-
-            last_state_tensors = observations_to_tensor_batch(obs_list, device=device)
-            with torch.no_grad():
-                _, last_values = self.ppo_model(last_state_tensors)
-
-            last_values = last_values.detach()
-            breakdown_mean = (
-                {key: (value / total_steps) for key, value in breakdown_sums.items()}
-                if total_steps > 0
-                else {}
-            )
-            return (
-                state_tensors_flat,
-                actions_flat,
-                rewards_2d,
-                dones_2d,
-                old_log_probs_2d,
-                values_2d,
-                last_values,
-                breakdown_mean,
-            )
-        finally:
-            for env in envs:
-                env.close()
+        last_values = last_values.detach()
+        breakdown_mean = (
+            {key: (value / total_steps) for key, value in breakdown_sums.items()}
+            if total_steps > 0
+            else {}
+        )
+        return (
+            state_tensors_flat,
+            actions_flat,
+            rewards_2d,
+            dones_2d,
+            old_log_probs_2d,
+            values_2d,
+            last_values,
+            breakdown_mean,
+        )
 
     def _collect_experiences(self) -> tuple[list[Experience], dict[str, float]]:
         """Run episodes until n_steps transitions are collected (can span multiple episodes)."""
