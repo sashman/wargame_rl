@@ -212,3 +212,14 @@ class DQNLightning(WargameLightningBase):
 
     def _policy_model(self) -> RL_Network:
         return self.policy_net
+
+    def _batch_greedy_actions(self, state_tensors: list[Tensor]) -> Tensor:
+        """Greedy per-model actions for a batch of observations.
+
+        Unlike the PPO net, the Q-network does not mask internally, so the
+        env-provided mask (tensor slot 5) is applied here.
+        """
+        q_values = self.policy_net(state_tensors[:5])
+        q_values = apply_action_mask(q_values, state_tensors[5])
+        actions: Tensor = q_values.argmax(dim=-1)
+        return actions
