@@ -178,6 +178,81 @@ def test_step_adds_terminal_success_bonus_when_all_models_at_objective() -> None
     assert reward >= 12.5
 
 
+def _fraction_termination_config(
+    *, min_fraction: float, terminate_on_success: bool
+) -> WargameEnvConfig:
+    """Two models, one on an objective and one far away -> fraction is exactly 0.5."""
+    return WargameEnvConfig(
+        render_mode=None,
+        board_width=10,
+        board_height=10,
+        number_of_wargame_models=2,
+        number_of_objectives=1,
+        objective_radius_size=1,
+        models=[
+            {"x": 4, "y": 4, "group_id": 0},  # type: ignore[list-item]
+            {"x": 9, "y": 9, "group_id": 0},  # type: ignore[list-item]
+        ],
+        objectives=[{"x": 4, "y": 4}],  # type: ignore[list-item]
+        reward_phases=[
+            RewardPhaseConfig(
+                name="reach",
+                reward_calculators=[
+                    RewardCalculatorConfig(type="closest_objective", weight=1.0),
+                ],
+                success_criteria=SuccessCriteriaConfig(
+                    type="fraction_at_objectives",
+                    params={"min_fraction": min_fraction},
+                ),
+                terminate_on_success=terminate_on_success,
+            ),
+        ],
+    )
+
+
+def test_terminates_on_success_of_configured_fraction_criteria() -> None:
+    """Termination consults the phase's criteria, not a hardcoded all-at-objectives.
+
+    With 1 of 2 models on the objective the fraction is 0.5, which satisfies a
+    0.5 criteria but never satisfies all-at-objectives -- so this episode could
+    not end early before termination honoured the configured criteria.
+    """
+    env = WargameEnv(
+        config=_fraction_termination_config(min_fraction=0.5, terminate_on_success=True)
+    )
+    env.reset(seed=42)
+
+    _, _, terminated, _, _ = env.step(WargameEnvAction(actions=[0, 0]))
+
+    assert terminated is True
+
+
+def test_does_not_terminate_when_fraction_criteria_unmet() -> None:
+    """A fraction the state does not reach must not end the episode."""
+    env = WargameEnv(
+        config=_fraction_termination_config(min_fraction=1.0, terminate_on_success=True)
+    )
+    env.reset(seed=42)
+
+    _, _, terminated, _, _ = env.step(WargameEnvAction(actions=[0, 0]))
+
+    assert terminated is False
+
+
+def test_terminate_on_success_false_keeps_episode_running_on_success() -> None:
+    """`terminate_on_success: false` must suppress success termination entirely."""
+    env = WargameEnv(
+        config=_fraction_termination_config(
+            min_fraction=0.5, terminate_on_success=False
+        )
+    )
+    env.reset(seed=42)
+
+    _, _, terminated, _, _ = env.step(WargameEnvAction(actions=[0, 0]))
+
+    assert terminated is False
+
+
 def test_step_invalid_action_raises(env: WargameEnv) -> None:
     """Action out of bounds for a model raises ValueError."""
     env.reset(seed=42)

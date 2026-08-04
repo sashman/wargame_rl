@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from wargame_rl.wargame.envs.state import (
@@ -19,6 +21,7 @@ from wargame_rl.wargame.envs.state import (
 )
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.model.common.event_log_callback import EventLogCallback
 
 
 @pytest.fixture
@@ -337,3 +340,73 @@ class TestEnvIntegration:
 
         assert len(exp1.log) == 6
         assert len(exp2.log) == 6
+
+
+class TestEventLogCallback:
+    """The callback must persist a log mid-run, not only after fit() returns."""
+
+    @staticmethod
+    def _populated_exporter() -> EventLogExporter:
+        exporter = EventLogExporter(anchor_interval=5)
+        cfg = WargameEnvConfig(
+            board_width=10,
+            board_height=10,
+            number_of_wargame_models=1,
+            number_of_objectives=1,
+            number_of_battle_rounds=3,
+        )
+        env = WargameEnv(config=cfg, state_exporters=[exporter])
+        env.reset(seed=1)
+        for _ in range(3):
+            env.step(WargameEnvAction(actions=env.action_space.sample()))
+        return exporter
+
+    def test_epoch_start_writes_a_decodable_log(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A killed run must still leave a readable recording behind."""
+        monkeypatch.chdir(tmp_path)
+        exporter = self._populated_exporter()
+        callback = EventLogCallback("test-run", exporter)
+
+        callback.on_train_epoch_start(None, None)  # type: ignore[arg-type]
+
+        assert callback.output_path.exists()
+        decoded = JsonMatchCodec().decode(callback.output_path.read_bytes())
+        assert len(decoded) == len(exporter.log)
+
+    def test_write_is_a_noop_before_any_episode(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An epoch that recorded nothing must not leave an empty file."""
+        monkeypatch.chdir(tmp_path)
+        callback = EventLogCallback("test-run", EventLogExporter())
+
+        assert callback.write() is False
+        assert not callback.output_path.exists()
+
+    def test_reset_only_log_is_not_written(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A just-reset episode must not overwrite a usable recording.
+
+        Regression: writing at this moment produced a 1-event file that decoded
+        fine but contained no steps to analyse.
+        """
+        monkeypatch.chdir(tmp_path)
+        exporter = EventLogExporter(anchor_interval=5)
+        cfg = WargameEnvConfig(
+            board_width=10,
+            board_height=10,
+            number_of_wargame_models=1,
+            number_of_objectives=1,
+            number_of_battle_rounds=3,
+        )
+        env = WargameEnv(config=cfg, state_exporters=[exporter])
+        env.reset(seed=1)
+
+        callback = EventLogCallback("test-run", exporter)
+
+        assert len(exporter.log) == 1
+        assert callback.write() is False
+        assert not callback.output_path.exists()

@@ -79,7 +79,7 @@ def test_is_battle_over_all_eliminated() -> None:
         clock=clock,
         current_turn=0,
         max_turns=100,
-        all_models_at_objectives_flag=False,
+        success_flag=False,
         all_eliminated=True,
     )
     assert result is True
@@ -91,7 +91,7 @@ def test_is_battle_over_without_elimination() -> None:
         clock=clock,
         current_turn=0,
         max_turns=100,
-        all_models_at_objectives_flag=False,
+        success_flag=False,
         all_eliminated=False,
     )
     assert result is False

@@ -1,6 +1,5 @@
 import os
 from enum import Enum
-from pathlib import Path
 from typing import Any, cast
 
 import torch
@@ -11,7 +10,7 @@ from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import Callback
 from typer.models import OptionInfo
 
-from wargame_rl.wargame.envs.state import EventLogExporter, JsonMatchCodec
+from wargame_rl.wargame.envs.state import EventLogExporter
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.common import (
     EnvConfigCallback,
@@ -19,6 +18,7 @@ from wargame_rl.wargame.model.common import (
     get_logger,
     init_wandb,
 )
+from wargame_rl.wargame.model.common.event_log_callback import EventLogCallback
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.common.record_episode_callback import (
     RecordEpisodeCallback,
@@ -194,6 +194,14 @@ def train(
         None,
         help="Override number of evaluation episodes per epoch (defaults to config value)",
     ),
+    gamma: float | None = typer.Option(
+        None,
+        help="Override PPO discount factor (defaults to PPOConfig value)",
+    ),
+    ent_coef: float | None = typer.Option(
+        None,
+        help="Override PPO entropy coefficient (defaults to PPOConfig value)",
+    ),
     resume_ckpt_path: str | None = typer.Option(
         None,
         help="Resume full training state (model, optimizer, epoch/step) from a Lightning checkpoint.",
@@ -281,6 +289,8 @@ def train(
                 [env_config_callback]
                 + get_checkpoint_callback(run.name, filename_prefix="dqn"),
             )
+            if event_exporter is not None:
+                dqn_callbacks.append(EventLogCallback(run_name_base, event_exporter))
             if training_config.record_during_training:
                 dqn_callbacks.append(
                     RecordEpisodeCallback(
@@ -313,6 +323,10 @@ def train(
             ppo_config.n_steps = n_steps
         if n_eval_episodes is not None:
             ppo_config.n_episodes = n_eval_episodes
+        if gamma is not None:
+            ppo_config.gamma = gamma
+        if ent_coef is not None:
+            ppo_config.ent_coef = ent_coef
         ppo_training_config = PPOTrainingConfig(
             record_during_training=record_during_training,
             record_after_epoch=record_after_epoch,
@@ -346,6 +360,8 @@ def train(
                 [env_config_callback]
                 + get_checkpoint_callback(run.name, filename_prefix="ppo"),
             )
+            if event_exporter is not None:
+                ppo_callbacks.append(EventLogCallback(run_name_base, event_exporter))
             if ppo_training_config.record_during_training:
                 ppo_callbacks.append(
                     RecordEpisodeCallback(
@@ -376,13 +392,16 @@ def train(
 
 
 def _write_event_log(exporter: EventLogExporter, run_name: str) -> None:
-    """Serialise the last recorded episode to a JSONL file in recordings/."""
-    recordings_dir = Path("recordings")
-    recordings_dir.mkdir(exist_ok=True)
-    out_path = recordings_dir / f"{run_name}_events.jsonl"
-    codec = JsonMatchCodec()
-    out_path.write_bytes(codec.encode(exporter.log))
-    log.info(f"Event log written to {out_path} ({len(exporter.log)} events)")
+    """Serialise the last recorded episode to a JSONL file in recordings/.
+
+    Shares its implementation with the per-epoch `EventLogCallback` so both
+    write the same path, and this final call simply supersedes the last one.
+    """
+    callback = EventLogCallback(run_name, exporter)
+    if callback.write():
+        log.info(
+            f"Event log written to {callback.output_path} ({len(exporter.log)} events)"
+        )
 
 
 if __name__ == "__main__":

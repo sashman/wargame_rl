@@ -1,0 +1,241 @@
+config_name: 25v25_scripted_advance_random_objectives_3_reward_phases_terrain
+number_of_wargame_models: 25
+number_of_opponent_models: 25
+number_of_objectives: 3
+objective_radius_size: 3
+board_width: 60
+board_height: 44
+max_groups: 5
+turn_order: random
+number_of_battle_rounds: 20
+skip_phases:
+  - command
+  - charge
+  - fight
+
+deployment_zone: [0, 0, 20, 44]
+opponent_deployment_zone: [40, 0, 60, 44]
+
+opponent_policy:
+  type: scripted_advance_to_objective
+
+# Terrain blocks line-of-sight only (models can still move through it).
+# Symmetric layout: a central ruin plus mirrored mid-field and flank ruins,
+# so neither side gets a clean firing lane into the objective band.
+terrain:
+  - { footprint: [28, 19, 34, 25] } # centre
+  - { footprint: [26, 8, 32, 14] } # mid-field north
+  - { footprint: [26, 30, 32, 36] } # mid-field south
+  - { footprint: [16, 18, 22, 24] } # player-side approach
+  - { footprint: [38, 18, 44, 24] } # opponent-side approach
+  - { footprint: [30, 0, 36, 4] } # north flank
+  - { footprint: [30, 40, 36, 43] } # south flank
+
+# 5 groups of 5. `weapons` is required for shooting to resolve at all — with an
+# empty list a model cannot shoot, which also makes terrain LOS inert.
+# range 12 on a 60x44 board puts the engagement band at a scale where a ~6-cell
+# ruin actually breaks a firing lane.
+models:
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+
+opponent_models:
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+
+# No `objectives:` block -> the 3 objectives (number_of_objectives) are placed
+# randomly outside both deployment zones at the start of every episode.
+
+reward_phases:
+  # `all_at_objectives` is unreachable at this army size: with per-model accuracy
+  # p, success needs p**25. A 25v25 run held success_rate at exactly 0 for 330
+  # epochs while the policy was otherwise learning well. Split into a two-step
+  # fraction ladder instead. Thresholds are measured, not guessed — evaluating
+  # that run's best checkpoint over 80 episodes gives a 48% success rate at
+  # min_fraction 0.2 and 20% at 0.4, so each phase starts with real signal
+  # (unlike the 0% of all_at_objectives) and needs a genuine gain to advance.
+  #
+  # Only calculators that move models onto objectives belong in these phases;
+  # vp_gain and killing were removed because neither advances the criteria and
+  # both outweighed the shaping term.
+  # `models_at_objectives` is the dense counterpart of the fraction criteria.
+  # Without it the phase was gated on a model fraction that nothing paid for:
+  # `objective_coverage` saturates once the player out-counts the opponent (~2
+  # models a point) and `closest_objective` pays for approaching, not staying.
+  # A run with the terminal bonus alone behind the criteria stalled at 34% —
+  # a sparse binary signal says whether the episode succeeded, not which way to
+  # move, so it cannot replace dense shaping.
+  - name: approach_objectives
+    terminal_success_bonus: 3.0
+    terminate_on_success: false
+    reward_calculators:
+      - type: closest_objective
+        weight: 1.0
+        params: { progress_scale: 10.0 }
+      # Weighted above objective_coverage because occupancy, not control, is
+      # what the criteria measures. Recorded matches show the policy reaching
+      # objectives then leaving them (peak 3/4 -> final 1/4): `closest_objective`
+      # with progress_scale is a potential, so a round trip away and back sums
+      # to zero and nothing opposes drift. Only a per-step occupancy term makes
+      # holding strictly better than oscillating.
+      - type: models_at_objectives
+        weight: 1.0
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: fraction_at_objectives
+      params: { min_fraction: 0.15 }
+    # `min_epochs_above_threshold` demands *consecutive* epochs above the bar, and
+    # each epoch's success_rate is an n_episodes-sample binomial. At n_episodes=10
+    # a run of 10 consecutive readings >= 0.7 needs a true rate near 0.85, so the
+    # nominal 0.7 was silently a 0.85 gate. Launch with --n-eval-episodes 30 and
+    # a run of 3, which puts the effective bar back near the nominal value.
+    #
+    # Rungs are sized from measurement (see measure_phase_gates.py), against the
+    # *live* per-epoch success_rate the gate actually reads — not against a
+    # best-checkpoint sweep. Best checkpoints are selected on reward, so they run
+    # 10-15 points optimistic; sizing rungs from them puts every gate out of
+    # reach of the thing that opens it.
+    #
+    # Live rates observed: min_fraction 0.15 -> ~36%, 0.20 -> ~25%, 0.25 -> ~17%.
+    #
+    # The gate needs `min_epochs_above_threshold` *consecutive* epochs above the
+    # bar, each an n_episodes-sample binomial, so it only fires when the live
+    # mean sits near the threshold. At a live mean of 0.174 against a 0.35 bar,
+    # P(one epoch passes) is 0.003 and P(three running) is 2e-8 — never, at any
+    # epoch budget. Phase 0 at a 0.365 mean against 0.45 gives ~0.008 per
+    # attempt and duly advanced after 38 epochs.
+    #
+    # The ladder must also stay monotonic: an earlier version had
+    # mass_on_objectives at min_fraction 0.35 measuring 0.20, harder than
+    # win_only_by_vp and harder than the final win_at_the_end criteria.
+    success_threshold: 0.45
+    min_epochs: 0
+    min_epochs_above_threshold: 3
+
+  # Massing enough models to hold a point. objective_coverage is weighted up
+  # because reaching 40% across 3 objectives requires spreading, not stacking;
+  # group_cohesion is live now that groups have 5 members each.
+  - name: mass_on_objectives
+    terminal_success_bonus: 3.0
+    terminate_on_success: false
+    reward_calculators:
+      - type: closest_objective
+        weight: 0.5
+        params: { progress_scale: 10.0 }
+      - type: models_at_objectives
+        weight: 1.5
+      - type: objective_coverage
+        weight: 0.8
+      - type: group_cohesion
+        weight: 0.5
+        params: { group_max_distance: 5.0, violation_penalty: -0.1 }
+    success_criteria:
+      type: fraction_at_objectives
+      params: { min_fraction: 0.2 }
+    success_threshold: 0.25
+    min_epochs: 20
+    min_epochs_above_threshold: 3
+
+  - name: win_only_by_vp
+    terminal_success_bonus: 3.0
+    terminate_on_success: false
+    reward_calculators:
+      - type: vp_gain
+        weight: 1.0
+      - type: objective_flip_bonus
+        weight: 1.0
+        params:
+          {
+            bonus_capture_first: 2.0,
+            bonus_flip_to_contested: 1.0,
+            bonus_contested_to_controlled: 2.0,
+            loss_penalty_scale: 1.0,
+          }
+      - type: closest_objective_v2
+        weight: 0.3
+        params: { progress_scale: 10.0 }
+      # Retained from the earlier phases so the objective-holding behaviour is
+      # not forgotten the moment the dense shaping switches to VP.
+      - type: models_at_objectives
+        weight: 0.3
+      - type: objective_coverage
+        weight: 0.1
+      - type: killing
+        weight: 1.0
+        params: { bonus_killing_opponent: 5.0 }
+    success_criteria:
+      type: player_vp_min
+      params: { fraction_of_max: 0.3 }
+    success_threshold: 0.25
+    min_epochs: 20
+    min_epochs_above_threshold: 3
+
+  - name: win_at_the_end
+    terminal_success_bonus: 3.0
+    terminate_on_success: false
+    reward_calculators:
+      - type: vp_gain
+        weight: 1.0
+      - type: models_at_objectives
+        weight: 0.2
+      - type: objective_flip_bonus
+        weight: 0.5
+        params:
+          {
+            bonus_capture_first: 2.0,
+            bonus_flip_to_contested: 1.0,
+            bonus_contested_to_controlled: 2.0,
+            loss_penalty_scale: 1.0,
+          }
+    success_criteria:
+      type: player_ahead_on_vp
+      params: {}
+    success_threshold: 0.8
+    min_epochs: 20

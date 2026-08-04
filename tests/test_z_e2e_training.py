@@ -34,4 +34,9 @@ def test_training_smoke() -> None:
         no_wandb=True,
         n_steps=64,
         n_eval_episodes=1,
+        # train() is called directly rather than through typer, so every override
+        # must be passed explicitly — an unset one arrives as a typer OptionInfo
+        # and fails the `is not None` guard.
+        gamma=None,
+        ent_coef=None,
     )

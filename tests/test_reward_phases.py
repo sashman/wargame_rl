@@ -20,6 +20,9 @@ from wargame_rl.wargame.envs.reward.calculators.closest_objective_v2 import (
 from wargame_rl.wargame.envs.reward.calculators.group_cohesion import (
     GroupCohesionCalculator,
 )
+from wargame_rl.wargame.envs.reward.calculators.models_at_objectives import (
+    ModelsAtObjectivesCalculator,
+)
 from wargame_rl.wargame.envs.reward.calculators.objective_coverage import (
     ObjectiveCoverageCalculator,
 )
@@ -684,6 +687,78 @@ class TestObjectiveCoverageCalculator:
         calc = build_calculator("objective_coverage", weight=1.0, params={})
         assert isinstance(calc, ObjectiveCoverageCalculator)
         assert calc.weight == 1.0
+
+
+class TestModelsAtObjectivesCalculator:
+    @staticmethod
+    def _env() -> WargameEnv:
+        env = WargameEnv(
+            config=WargameEnvConfig(
+                render_mode=None,
+                board_width=20,
+                board_height=20,
+                number_of_wargame_models=4,
+                number_of_objectives=2,
+                objective_radius_size=2,
+            )
+        )
+        env.reset()
+        env.objectives[0].location = np.array([5, 5])
+        env.objectives[1].location = np.array([15, 15])
+        return env
+
+    def test_fraction_of_models_on_objectives(self) -> None:
+        env = self._env()
+        env.wargame_models[0].location = np.array([5, 5])  # on obj0
+        env.wargame_models[1].location = np.array([15, 15])  # on obj1
+        env.wargame_models[2].location = np.array([0, 0])
+        env.wargame_models[3].location = np.array([0, 19])
+        calc = ModelsAtObjectivesCalculator(weight=1.0)
+
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
+        assert calc.calculate(env, ctx) == pytest.approx(0.5)  # 2 of 4
+
+    def test_stacking_one_objective_still_counts_every_model(self) -> None:
+        """Unlike objective_coverage, this does not saturate at one model a point.
+
+        That non-saturation is the whole reason the calculator exists: it is the
+        dense counterpart of the fraction_at_objectives criteria.
+        """
+        env = self._env()
+        for model in env.wargame_models:
+            model.location = np.array([5, 5])
+        calc = ModelsAtObjectivesCalculator(weight=1.0)
+
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
+        assert calc.calculate(env, ctx) == pytest.approx(1.0)
+
+    def test_dead_models_leave_the_denominator(self) -> None:
+        env = self._env()
+        env.wargame_models[0].location = np.array([5, 5])  # on obj0
+        for model in env.wargame_models[1:]:
+            model.location = np.array([0, 0])
+        calc = ModelsAtObjectivesCalculator(weight=1.0)
+
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
+        assert calc.calculate(env, ctx) == pytest.approx(0.25)  # 1 of 4
+
+        env.wargame_models[1].take_damage(env.wargame_models[1].stats["max_wounds"])
+        env.wargame_models[2].take_damage(env.wargame_models[2].stats["max_wounds"])
+        ctx = _make_step_context(
+            env, compute_distances(env.wargame_models, env.objectives)
+        )
+        assert calc.calculate(env, ctx) == pytest.approx(0.5)  # 1 of 2 alive
+
+    def test_build_models_at_objectives(self) -> None:
+        calc = build_calculator("models_at_objectives", weight=0.5, params={})
+        assert isinstance(calc, ModelsAtObjectivesCalculator)
+        assert calc.weight == 0.5
 
 
 def test_reward_breakdown_matches_total(simple_env: WargameEnv) -> None:

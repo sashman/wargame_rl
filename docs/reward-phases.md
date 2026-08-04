@@ -57,9 +57,9 @@ reward_phases:
 | `success_threshold` | float | `0.8` | Fraction of evaluation episodes (0--1) that must succeed to advance |
 | `min_epochs` | int | `0` | Minimum epochs spent in this phase before advancement is eligible |
 | `min_epochs_above_threshold` | int | `5` | Success rate must be ≥ success_threshold for this many consecutive epochs before advancing |
-| `terminal_success_bonus` | float | `0.0` | Bonus added at episode end **when the phase's `success_criteria` is met** (previously hardcoded to all-models-at-objectives). Scaled by remaining-turn fraction so faster success gets higher reward. |
+| `terminal_success_bonus` | float | `0.0` | Bonus added at episode end **when the phase's `success_criteria` is met** (previously hardcoded to all-models-at-objectives). Scaled by remaining-turn fraction **only when `terminate_on_success` is true** — see below. |
 | `terminal_vp_bonus` | float | `0.0` | Bonus added at episode end when player VP meets the phase's VP threshold (for VP-based success criteria). |
-| `terminate_on_success` | bool | `true` | Whether to end the episode as soon as all models are at objectives. Set `false` in VP phases when you want to keep scoring. |
+| `terminate_on_success` | bool | `true` | Whether to end the episode as soon as **this phase's `success_criteria`** is met. Set `false` in VP phases when you want to keep scoring — and read the warning below, because this flag changes what `success_rate` measures. |
 
 ### Reward calculator fields
 
@@ -86,15 +86,38 @@ reward_phases:
 | `vp_gain` | global | *(none)* | Reward = weight × ((player_vp_delta - opponent_vp_delta) / cap_per_turn). `cap_per_turn` is read from mission config (default 15), so net VP swings are normalized to turn cap scale. Use in a "Win the game" phase. |
 | `objective_flip_bonus` | global | `bonus_capture_first` (float, default 5.0), `bonus_flip_to_contested` (float, default 3.0), `bonus_contested_to_controlled` (float, default 5.0), `loss_penalty_scale` (float, default 1.0) | Symmetric control-state potential under the same OC/count rule as VP scoring. Gaining control adds value (neutral→player = `bonus_capture_first`; opponent→contested = `bonus_flip_to_contested`; contested→player = `bonus_contested_to_controlled`); losing control subtracts the mirror value × `loss_penalty_scale`. At `loss_penalty_scale=1.0` it is a pure (farming-proof) potential. Returns unweighted. |
 | `objective_coverage` | global | *(none)* | Dense reward = (number of player-controlled objectives) / (number of objectives), using the same OC/count rule as VP scoring. Paid every step, so it rewards spreading models to hold *multiple distinct* objectives rather than over-stacking one. Returns unweighted. |
+| `models_at_objectives` | global | *(none)* | Dense reward = (alive models within some objective radius) / (alive models). The step-wise counterpart of the `fraction_at_objectives` criteria — unlike `objective_coverage` it does **not** saturate once a point is controlled, so it keeps paying as more models arrive. Dead models leave both numerator and denominator. Returns unweighted. |
 
 ## Available Success Criteria
 
 | Type key | Parameters | Description |
 |----------|------------|-------------|
-| `all_at_objectives` | *(none)* | Succeeds when every model is within the radius of at least one objective. |
+| `all_at_objectives` | *(none)* | Succeeds when every model is within the radius of at least one objective. Dead models count as satisfied. **Scales badly with army size** — see the note below; prefer `fraction_at_objectives` beyond a handful of models. |
+| `fraction_at_objectives` | `min_fraction` (float in (0, 1], default 0.5) | Succeeds when at least `min_fraction` of **alive** models are within the radius of an objective. Dead models are excluded from numerator and denominator alike, unlike `all_at_objectives`. |
 | `all_models_grouped` | `max_distance` (float, default 10.0) | Succeeds when every model is within `max_distance` of at least one same-group member. Models alone in their group are considered grouped. |
 | `player_vp_min` | `fraction_of_max` (float, e.g. 0.33), `min_vp` (int, default 0) | Succeeds when player VP at episode end ≥ threshold. Threshold = max(min_vp, round(fraction_of_max × theoretical_max)). Theoretical max depends on `number_of_battle_rounds`, objectives, and mission params, so the same fraction gives a higher VP bar when episodes have more rounds. |
 | `player_ahead_on_vp` | *(none)* | Succeeds when `player_vp > opponent_vp` at evaluation time (a win-rate signal; use with `terminate_on_success: false`). |
+
+### Choosing an at-objectives criteria
+
+`all_at_objectives` requires **every** alive model inside a radius on the same
+step. If each model independently has probability `p` of being on an objective,
+success needs `p**n_models` — which collapses as the army grows:
+
+| per-model accuracy | 4 models | 25 models |
+|---|---|---|
+| 0.90 | 0.66 | 0.07 |
+| 0.95 | 0.81 | 0.28 |
+| 0.99 | 0.96 | 0.78 |
+
+A 25v25 run held `success_rate` at exactly 0 for 330 epochs while every other
+metric improved. Lowering `success_threshold` does not help: that tunes how many
+*episodes* must succeed, not how many *models* must arrive. Use
+`fraction_at_objectives` and raise `min_fraction` across phases instead.
+
+**Set `min_fraction` from measurement, not intuition.** Success is evaluated on
+the episode's final step, so measure the final-step fraction your current policy
+reaches and pick a bar just above it.
 
 ## How Advancement Works
 
@@ -111,6 +134,43 @@ advance if:
 When advancement triggers, the `RewardPhaseManager` moves to the next phase and logs the transition. The new phase's reward calculators take effect immediately for subsequent episodes.
 
 The `reward_phase` metric (phase index, 0-based) is logged to wandb every epoch, making phase transitions visible in the training dashboard.
+
+### Size `min_epochs_above_threshold` against `n_episodes`
+
+Each epoch's `success_rate` is an `n_episodes`-sample binomial, not a measurement of the policy's true rate. Requiring *consecutive* epochs above the bar multiplies that noise, so the effective gate sits well above the nominal `success_threshold`:
+
+| True rate | P(one epoch ≥ 0.7) at `n_episodes=10` | P(10 consecutive) |
+|---|---|---|
+| 0.6 | 0.38 | 0.0001 |
+| 0.7 | 0.65 | 0.013 |
+| 0.8 | 0.88 | 0.28 |
+| 0.9 | 0.99 | 0.88 |
+
+At `n_episodes=10`, `min_epochs_above_threshold: 10` turns a nominal 0.7 threshold into an effective bar near 0.85. Prefer **more evaluation episodes and a shorter run** — `--n-eval-episodes 30` with `min_epochs_above_threshold: 3` keeps the effective bar close to the nominal one for roughly the same eval cost.
+
+### `terminate_on_success` silently changes what `success_rate` means
+
+The flag consults the phase's configured `success_criteria` (it was previously hardcoded to all-models-at-objectives, so fraction- and VP-gated phases could never end early). Switching it on is not a neutral speed optimisation — it redefines the metric every gate is calibrated against:
+
+| `terminate_on_success` | `success_rate` measures |
+|---|---|
+| `false` | the criteria **holds at the final step** |
+| `true` | the criteria was **ever met** — episodes that achieve it stop there, so it is true at the last step by construction |
+
+Recorded matches show peak occupancy running ~3x final occupancy, so flipping this raises `success_rate` by roughly that factor without the policy improving at all. Every threshold in a ladder calibrated under one setting is wrong under the other.
+
+For VP phases it is also semantically wrong: `win_at_the_end` must mean ahead *at the end*, not ahead at some point. Keep it `false` there.
+
+### `terminal_success_bonus` and the remaining-turn scale
+
+The bonus is multiplied by the fraction of turns left when the episode ends — a speed incentive that presumes success *ends* the episode. It is therefore applied **only when `terminate_on_success` is true**.
+
+With `terminate_on_success: false` every episode runs to `max_turns`, which would leave a scale of `1/max_turns`. Note `max_turns = number_of_battle_rounds × (5 - len(skip_phases))`, so a 20-round config with three skipped phases has `max_turns = 40` and would shrink the bonus 40-fold. The bonus is delivered at full value in that case instead.
+
+Two consequences worth checking when a phase will not advance:
+
+- **Weigh the terminal bonus against the dense calculators, per episode.** A dense calculator emitting 0.08/step over 40 steps contributes 3.2, so a terminal bonus of 5.0 is comparable — but one of 0.5 is noise. `reward/components/*` are per-step means (see [metrics.md](metrics.md)), so multiply by `mean_episode_steps` before comparing.
+- **Check `gamma` covers the episode.** The bonus lands on the last step, so its value at t=0 is `bonus × gamma^max_turns`. The `PPOConfig` default `gamma=0.9` discounts a 40-step episode by 0.015, making any terminal signal invisible to early actions; use `--gamma 0.99` for episodes this long.
 
 ## Reward Aggregation
 
@@ -165,6 +225,7 @@ wargame_rl/wargame/envs/reward/
     closest_objective.py           # Closest-objective reward
     closest_objective_v2.py        # OC/count-margin closest-objective reward
     group_cohesion.py              # Group cohesion penalty
+    models_at_objectives.py        # Dense fraction-of-models-on-objectives reward
     objective_coverage.py          # Dense fraction-of-objectives-controlled reward
     objective_flip_bonus.py        # Symmetric objective control-state potential
     vp_gain.py                     # VP gain reward (global)
@@ -172,6 +233,7 @@ wargame_rl/wargame/envs/reward/
   criteria/
     base.py                        # SuccessCriteria ABC
     all_at_objectives.py           # All models at objectives
+    fraction_at_objectives.py      # A fraction of alive models at objectives
     all_models_grouped.py          # All models within group distance
     player_ahead_on_vp.py          # Player ahead on VP (win-rate) criteria
     player_vp_min.py               # Player VP min success criteria
