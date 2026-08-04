@@ -55,6 +55,11 @@ class PairedShootingResult:
     attacker_idx: int
     target_idx: int
     result: ShootingResult
+    # Whether this shot is what took the target to zero wounds. Recorded at
+    # resolution time because it cannot be recovered afterwards: several
+    # attackers may fire on the same target in one phase, and only one of them
+    # made the kill.
+    killed: bool = False
 
 
 def wound_roll_threshold(strength: int, toughness: int) -> int:

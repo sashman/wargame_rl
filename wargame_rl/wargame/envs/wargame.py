@@ -425,11 +425,18 @@ class WargameEnv(gym.Env):
                 save=target.stats["save"],
             )
             result = resolve_shooting(w, defender, self._combat_rng)
+            killed = False
             if result.damage_dealt > 0:
                 targets[target_idx].take_damage(result.damage_dealt)
+                # The target was alive at the range check above, so a dead
+                # target here means this shot made the kill.
+                killed = not targets[target_idx].is_alive
             results.append(
                 PairedShootingResult(
-                    attacker_idx=i, target_idx=target_idx, result=result
+                    attacker_idx=i,
+                    target_idx=target_idx,
+                    result=result,
+                    killed=killed,
                 )
             )
         return results
@@ -564,6 +571,12 @@ class WargameEnv(gym.Env):
             and player_alive_before[i]
             and not m.is_alive
         )
+        # Attribute each kill to the model that fired it, so shooting reward
+        # lands on that model's advantage rather than being shared flat.
+        p_kills_by_model = np.zeros(len(self.wargame_models), dtype=np.int64)
+        for shot in self._last_player_shooting_results:
+            if shot.killed and shot.attacker_idx < len(p_kills_by_model):
+                p_kills_by_model[shot.attacker_idx] += 1
 
         # Built before termination is known because the phase's success criteria
         # need a context to evaluate against. No criteria reads `is_terminated`,
@@ -582,6 +595,7 @@ class WargameEnv(gym.Env):
             opponent_damage_dealt=o_dmg,
             player_models_killed=p_kills,
             opponent_models_killed=o_kills,
+            player_kills_by_model=p_kills_by_model,
         )
 
         # Consults the *configured* criteria for the active phase rather than a
