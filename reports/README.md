@@ -34,7 +34,7 @@ quantity as the per-epoch `success_rate` a gate reads. See
 just run-summary <run_id> [bucket_size]
 
 # Per-phase criteria rates and the whole min_fraction curve for a checkpoint
-uv run measure_phase_gates.py <checkpoint> <env_config> 40
+just measure-phase-gates <checkpoint> <env_config> 40
 
 # Behavioural analysis of a recorded match
 just replay-summary <file>

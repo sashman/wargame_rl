@@ -277,7 +277,8 @@ Temporary Items
 [Ll]ib
 [Ll]ib64
 [Ll]ocal
-[Ss]cripts
+# Only the Windows virtualenv dir (capital S); `scripts/` holds project tooling
+Scripts
 pyvenv.cfg
 pip-selfcheck.json
 

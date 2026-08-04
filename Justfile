@@ -31,7 +31,7 @@ format:
 # Run ruff linting and mypy type checking
 lint:
 	uv run ruff check --fix
-	uv run mypy --ignore-missing-imports --install-types --non-interactive wargame_rl/ tests/
+	uv run mypy --ignore-missing-imports --install-types --non-interactive wargame_rl/ tests/ scripts/
 
 # Run tests using pytest with coverage (parallel via xdist)
 test:
@@ -128,7 +128,11 @@ replay-summary file:
 
 # Compact rolling-mean summary of a Wandb training run. Use: just run-summary <run_id> [bucket]
 run-summary run_id bucket='50':
-	@uv run run_summary.py {{run_id}} {{bucket}}
+	@uv run scripts/run_summary.py {{run_id}} {{bucket}}
+
+# Measure every reward phase's criteria against a checkpoint, plus the min_fraction curve
+measure-phase-gates checkpoint env_config n_episodes='30':
+	@uv run scripts/measure_phase_gates.py {{checkpoint}} {{env_config}} {{n_episodes}}
 
 # Analyze a recorded match for training evaluation
 analyze file:

@@ -51,6 +51,8 @@ wargame_rl/
 ├── examples/env_config/           # YAML environment configurations
 ├── tests/                         # Pytest suite with conftest.py fixtures
 ├── docs/                          # Design docs (movement, reward phases, missions-and-vp, roadmap, rules)
+├── reports/                       # Experiment findings, kept for retrospection
+├── scripts/                       # Run-inspection tooling (run_summary, measure_phase_gates)
 ├── train.py                       # Training entry point (Typer CLI)
 ├── simulate.py                    # Inference/simulation entry point
 └── main.py                        # Legacy entry (env test with random actions)
@@ -75,6 +77,8 @@ wargame_rl/
 | Record a match event log | `just record <config.yaml>` |
 | Replay / narrate a log | `just replay <file>` · `just replay-summary <file>` |
 | Analyse a log | `just analyze <file>` · `just analyze-compare <files...>` |
+| Inspect a Wandb run | `just run-summary <run_id> [bucket]` |
+| Measure reward-phase gates | `just measure-phase-gates <ckpt> <config.yaml> [n_episodes]` |
 | Profile | `just profile <config.yaml> [model] [max_epochs]` |
 | Clean | `just clean` |
 
@@ -210,7 +214,7 @@ Detailed patterns live next to the code they govern — read them when working i
 - Training logs to Wandb automatically; checkpoints saved to `checkpoints/`. Reward phase index and phase advancement are logged (`reward_phase`, `phase_advanced_at_epoch`) so curriculum runs show phase transitions in the dashboard
 - **Reading run metrics:** see [docs/metrics.md](docs/metrics.md) for what each Wandb key means and the procedure for evaluating a run. Several metrics are means-of-means or change definition silently — check the reading rules there before drawing conclusions from `success_rate`, `terminal_success_bonus`, or any `reward/components/*` value
 - **Past experiments:** [reports/](reports/README.md) records findings from previous runs, including refuted hypotheses. Check it before re-testing a hyperparameter — `gamma` 0.99 and `ent_coef` 0.01 have both been tried at 25v25 and both made results worse
-- **Inspecting a run:** `just run-summary <run_id> [bucket]` for rolling means (single-epoch `success_rate` is an `n_episodes`-sample binomial — never read a point value); `uv run measure_phase_gates.py <ckpt> <env_config> 40` for per-phase criteria rates and the whole `min_fraction` curve
+- **Inspecting a run:** `just run-summary <run_id> [bucket]` for rolling means (single-epoch `success_rate` is an `n_episodes`-sample binomial — never read a point value); `just measure-phase-gates <ckpt> <env_config> 40` for per-phase criteria rates and the whole `min_fraction` curve
 - Key CLI options: `--record-during-training`, `--max-epochs`, `--render-mode`, `--algorithm`, `--no-wandb`, `--run-suffix`, `--wandb-group`
 - Profile a run: `just profile <config.yaml> [model] [max_epochs]` generates `profile.html`
 - Simulate latest checkpoint: `just simulate-latest [network_type]` · Clean up: `just clean` removes `checkpoints/` and `wandb/`

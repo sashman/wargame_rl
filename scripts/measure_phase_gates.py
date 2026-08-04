@@ -4,7 +4,7 @@ Answers "is the ladder ahead passable?" before a run reaches those phases, using
 the same evaluation path training uses: run the episode to its end, then check
 each phase's criteria against `env.last_step_context`.
 
-Usage: uv run measure_phase_gates.py <checkpoint> <env_config> [n_episodes]
+Usage: just measure-phase-gates <checkpoint> <env_config> [n_episodes]
 """
 
 from __future__ import annotations

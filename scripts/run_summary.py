@@ -1,6 +1,6 @@
 """Print a compact training-run summary from Wandb history.
 
-Usage: uv run scripts/run_summary.py <run_id> [bucket_size]
+Usage: just run-summary <run_id> [bucket_size]
 
 Single-epoch `success_rate` is an n_episodes-sample binomial, so this reports
 rolling means over epoch buckets rather than point readings. See docs/metrics.md.
