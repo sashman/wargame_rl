@@ -785,3 +785,9 @@ class PPOLightning(WargameLightningBase):
 
     def _policy_model(self) -> PPOModel:
         return self.ppo_model
+
+    def _batch_greedy_actions(self, state_tensors: list[Tensor]) -> Tensor:
+        """Greedy per-model actions for a batch. The net masks internally."""
+        logits, _values = self.ppo_model(state_tensors)
+        actions: Tensor = logits.argmax(dim=-1)
+        return actions

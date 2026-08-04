@@ -39,11 +39,27 @@ class MatchAnalysis(BaseModel):
 
     # Tactical quality
     mean_group_distance: float = Field(
-        default=0.0, description="Average pairwise distance between player models"
+        default=0.0,
+        description="Average distance from a model to its nearest same-group model",
     )
     time_to_first_objective: int | None = Field(
         default=None,
         description="First step where any player model reaches an objective",
+    )
+    final_fraction_at_objectives: float = Field(
+        default=0.0,
+        description="Fraction of alive models on an objective at the final step",
+    )
+    peak_fraction_at_objectives: float = Field(
+        default=0.0,
+        description="Highest fraction of alive models on an objective in any step",
+    )
+    objective_drift_ratio: float = Field(
+        default=1.0,
+        description=(
+            "peak / final occupancy. 1.0 means models held what they took; "
+            "higher means they reached objectives and then left"
+        ),
     )
     vp_per_step: float = Field(
         default=0.0, description="Total VP gained divided by episode steps"
@@ -97,6 +113,9 @@ class MatchAnalysis(BaseModel):
             f"  Mean group distance:     {self.mean_group_distance:.1f}",
             f"  Time to first objective: {self.time_to_first_objective or 'never'}",
             f"  VP per step:             {self.vp_per_step:.3f}",
+            f"  On objectives (final):   {self.final_fraction_at_objectives:.2f}",
+            f"  On objectives (peak):    {self.peak_fraction_at_objectives:.2f}",
+            f"  Objective drift ratio:   {self.objective_drift_ratio:.2f}",
             f"  Target selection opt.:   {_fmt_opt(self.target_selection_optimality)}",
             "",
             "RULE COMPLIANCE",
@@ -226,6 +245,9 @@ def analyze_match(
         time_to_first_objective=tactical.time_to_first_objective,
         vp_per_step=tactical.vp_per_step,
         target_selection_optimality=tactical.target_selection_optimality,
+        final_fraction_at_objectives=tactical.final_fraction_at_objectives,
+        peak_fraction_at_objectives=tactical.peak_fraction_at_objectives,
+        objective_drift_ratio=tactical.objective_drift_ratio,
         movement_violations=rules.movement_violations,
         bounds_violations=rules.bounds_violations,
         action_entropy=degenerate.action_entropy,
@@ -253,6 +275,17 @@ class _TacticalMetrics(BaseModel):
     time_to_first_objective: int | None = None
     vp_per_step: float = 0.0
     target_selection_optimality: float | None = None
+    final_fraction_at_objectives: float = 0.0
+    peak_fraction_at_objectives: float = 0.0
+    objective_drift_ratio: float = 1.0
+
+
+def _fraction_at_objectives(snapshot: GameStateSnapshot) -> float:
+    """Fraction of alive player models standing on any objective."""
+    alive = [m for m in snapshot.player_models if m.alive]
+    if not alive:
+        return 0.0
+    return sum(1 for m in alive if any(m.at_objective)) / len(alive)
 
 
 class _RuleMetrics(BaseModel):
@@ -345,16 +378,26 @@ def _analyze_tactical(snapshots: list[GameStateSnapshot]) -> _TacticalMetrics:
     total_attacks = 0
 
     for snap in snapshots:
+        # Distance to the nearest *same-group* model, matching the definition
+        # `group_cohesion` uses. An all-pairs army-wide mean measures dispersion
+        # rather than cohesion, and ranks the two backwards: a policy that piles
+        # every model onto one objective scores better than one that correctly
+        # splits squads across three.
         alive_models = [m for m in snap.player_models if m.alive]
-        if len(alive_models) >= 2:
-            pairwise = []
-            for i in range(len(alive_models)):
-                for j in range(i + 1, len(alive_models)):
-                    dx = alive_models[i].location[0] - alive_models[j].location[0]
-                    dy = alive_models[i].location[1] - alive_models[j].location[1]
-                    pairwise.append(math.sqrt(dx * dx + dy * dy))
-            if pairwise:
-                group_distances.append(sum(pairwise) / len(pairwise))
+        nearest_same_group: list[float] = []
+        for model in alive_models:
+            squadmates = [
+                other
+                for other in alive_models
+                if other is not model and other.group_id == model.group_id
+            ]
+            if not squadmates:
+                continue
+            nearest_same_group.append(
+                min(math.dist(model.location, other.location) for other in squadmates)
+            )
+        if nearest_same_group:
+            group_distances.append(sum(nearest_same_group) / len(nearest_same_group))
 
         # Time to first objective
         if time_to_first_obj is None:
@@ -386,6 +429,14 @@ def _analyze_tactical(snapshots: list[GameStateSnapshot]) -> _TacticalMetrics:
     vp_gained = last.player_vp - first.player_vp
     vp_per_step = vp_gained / n_steps if n_steps > 0 else 0.0
 
+    # Occupancy over the episode. The drift ratio is the signal that started
+    # this project's reward redesign: recorded matches showed the policy
+    # reaching objectives and then leaving them, which every episode-level
+    # metric reported as success because occupancy is judged at the last step.
+    occupancy = [_fraction_at_objectives(s) for s in snapshots]
+    final_occupancy = occupancy[-1] if occupancy else 0.0
+    peak_occupancy = max(occupancy) if occupancy else 0.0
+
     return _TacticalMetrics(
         mean_group_distance=(
             sum(group_distances) / len(group_distances) if group_distances else 0.0
@@ -394,6 +445,11 @@ def _analyze_tactical(snapshots: list[GameStateSnapshot]) -> _TacticalMetrics:
         vp_per_step=vp_per_step,
         target_selection_optimality=(
             total_optimal / total_attacks if total_attacks > 0 else None
+        ),
+        final_fraction_at_objectives=final_occupancy,
+        peak_fraction_at_objectives=peak_occupancy,
+        objective_drift_ratio=(
+            peak_occupancy / final_occupancy if final_occupancy > 0 else float("inf")
         ),
     )
 
@@ -453,7 +509,12 @@ def _analyze_degenerate(snapshots: list[GameStateSnapshot]) -> _DegenerateMetric
             if p > 0:
                 entropy -= p * math.log2(p)
 
-    # Oscillation detection (model returns to a position within 3 steps)
+    # Oscillation: a model *leaves* a cell and comes back within 3 steps.
+    #
+    # The `pos != previous` guard is what makes this measure oscillation rather
+    # than stationarity. Without it, a model holding an objective — the exact
+    # behaviour the reward is designed to produce — matched its own previous
+    # position every step and scored ~70%, while a random walk scored ~5%.
     oscillation_events = 0
     total_model_steps = 0
     for m_idx in range(len(snapshots[0].player_models)):
@@ -466,7 +527,9 @@ def _analyze_degenerate(snapshots: list[GameStateSnapshot]) -> _DegenerateMetric
                 continue
             pos = (m.location[0], m.location[1])
             total_model_steps += 1
-            if pos in recent_positions[:-1]:
+            previous = recent_positions[-1] if recent_positions else None
+            returned = pos in recent_positions[:-1] and pos != previous
+            if returned:
                 oscillation_events += 1
             recent_positions.append(pos)
             if len(recent_positions) > 4:

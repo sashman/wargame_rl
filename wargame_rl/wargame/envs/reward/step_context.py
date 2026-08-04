@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 if TYPE_CHECKING:
@@ -30,3 +32,8 @@ class StepContext:
     opponent_damage_dealt: int = 0
     player_models_killed: int = 0
     opponent_models_killed: int = 0
+    # Kills made by each player model this step, shape (n_player_models,).
+    # `player_models_killed` is its sum; the vector exists so shooting can be
+    # credited to the model that actually fired rather than shared flat across
+    # the army. None when no shooting has been resolved this step.
+    player_kills_by_model: np.ndarray | None = None

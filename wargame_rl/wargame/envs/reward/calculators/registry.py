@@ -16,6 +16,7 @@ from wargame_rl.wargame.envs.reward.calculators.group_cohesion import (
     GroupCohesionCalculator,
 )
 from wargame_rl.wargame.envs.reward.calculators.killing import KillingReward
+from wargame_rl.wargame.envs.reward.calculators.model_kills import ModelKillsCalculator
 from wargame_rl.wargame.envs.reward.calculators.models_at_objectives import (
     ModelsAtObjectivesCalculator,
 )
@@ -25,6 +26,9 @@ from wargame_rl.wargame.envs.reward.calculators.objective_coverage import (
 from wargame_rl.wargame.envs.reward.calculators.objective_flip_bonus import (
     ObjectiveFlipBonusCalculator,
 )
+from wargame_rl.wargame.envs.reward.calculators.objective_hold import (
+    ObjectiveHoldCalculator,
+)
 from wargame_rl.wargame.envs.reward.calculators.vp_gain import VPGainCalculator
 
 RewardCalculatorType = PerModelRewardCalculator | GlobalRewardCalculator
@@ -33,9 +37,11 @@ CALCULATOR_REGISTRY: dict[str, type[RewardCalculatorType]] = {
     "closest_objective": ClosestObjectiveCalculator,
     "closest_objective_v2": ClosestObjectiveV2Calculator,
     "group_cohesion": GroupCohesionCalculator,
+    "model_kills": ModelKillsCalculator,
     "models_at_objectives": ModelsAtObjectivesCalculator,
     "objective_coverage": ObjectiveCoverageCalculator,
     "objective_flip_bonus": ObjectiveFlipBonusCalculator,
+    "objective_hold": ObjectiveHoldCalculator,
     "vp_gain": VPGainCalculator,
     "killing": KillingReward,
 }

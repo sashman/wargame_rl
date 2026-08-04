@@ -11,6 +11,7 @@ was asked, what was measured, and what the measurement does and does not support
 | [2026-08-04 — reward-phase curriculum](2026-08-04-reward-phase-curriculum.md) | Why does the 25v25 curriculum never leave phase 0, and can it reach `win_at_the_end`? | ⚠️ Substantially retracted — training reward never left phase 0, so no cross-run conclusion holds |
 | [2026-08-04 — mechanism defects](2026-08-04-mechanism-defects.md) | Detailed evidence for each defect found | D1/D2/D4 survive (arithmetic); D3/D5's numbers measured a near-random policy |
 | [2026-08-04 — objective drift](2026-08-04-objective-drift.md) | What does the agent actually do during an episode? | Drift is real; ⚠️ its explanation is superseded — a uniform policy produces the same trace |
+| [2026-08-04 — reward calculation changes](2026-08-04-reward-calculation-changes.md) | What changed in the reward, and what does the evidence support? | Reward became per-model; two calculators added, three dropped, one arithmetic bug fixed. Win 0.17 → 0.93–0.97 vs a 0.67 movement bar — but **confounded** with the PPO fixes that shipped alongside |
 
 ## Conventions
 
