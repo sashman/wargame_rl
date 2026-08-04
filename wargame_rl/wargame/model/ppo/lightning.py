@@ -175,6 +175,7 @@ class PPOLightning(WargameLightningBase):
         self._rollout_envs: list[WargameEnv] | None = None
         self._rollout_obs: list[Any] = []
         self._rollout_diagnostics: dict[str, float] = {}
+        self._layouts_seen: set[tuple[tuple[int, int], ...]] = set()
         self.n_epochs = n_epochs
         self.max_grad_norm = max_grad_norm
 
@@ -702,15 +703,16 @@ class PPOLightning(WargameLightningBase):
         self._rollout_diagnostics["rollout_phase_index"] = float(
             envs[0].phase_manager.current_phase_index
         )
+        # Cumulative distinct layouts across the whole run, not within one
+        # rollout: the within-rollout count is trivially the env count and
+        # would have read a constant 8 even while every epoch replayed the
+        # same 8 maps. This number must keep climbing.
+        self._layouts_seen.update(
+            tuple((int(o.location[0]), int(o.location[1])) for o in env.objectives)
+            for env in envs
+        )
         self._rollout_diagnostics["distinct_layouts_seen"] = float(
-            len(
-                {
-                    tuple(
-                        (int(o.location[0]), int(o.location[1])) for o in env.objectives
-                    )
-                    for env in envs
-                }
-            )
+            len(self._layouts_seen)
         )
         return (
             state_tensors_flat,

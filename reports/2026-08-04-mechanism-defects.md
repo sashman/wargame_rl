@@ -3,6 +3,15 @@
 **Date:** 2026-08-04
 **Context:** [reward-phase curriculum experiment](2026-08-04-reward-phase-curriculum.md)
 
+> **Partially superseded, 2026-08-04.** D1, D2 and D4's method lesson survive — they are
+> arithmetic and independent of policy quality. **D3 and D5's numbers do not**: they were
+> measured against a policy whose movement head sat at 98.6% of maximum entropy, i.e.
+> effectively untrained. A scripted heuristic saturates the `fraction_at_objectives`
+> criteria (1.00) and would clear every rung on episode 1, so "this rung is harder than
+> the final goal" describes the policy, not the ladder. Four further defects (D6–D9) were
+> found later and are recorded in
+> [the correction](2026-08-04-correction-what-was-actually-broken.md).
+
 Four defects in the reward-phase advancement mechanism. Three of them (D1, D2, D4) make
 advancement impossible or near-impossible **independently of how well the agent plays**,
 which is why several hundred epochs of visible learning produced no phase transition.

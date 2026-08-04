@@ -138,22 +138,15 @@ def test_training_sees_new_layouts_across_rollouts() -> None:
     env = _two_phase_env()
     module = _make_module(env, num_rollout_envs=2)
 
-    def layouts_seen() -> set[tuple[tuple[int, int], ...]]:
-        seen: set[tuple[tuple[int, int], ...]] = set()
-        for _ in range(6):
-            module._collect_rollout_parallel()
-            for rollout_env in module._rollout_envs or []:
-                seen.add(
-                    tuple(
-                        (int(o.location[0]), int(o.location[1]))
-                        for o in rollout_env.objectives
-                    )
-                )
-        return seen
+    module._collect_rollout_parallel()
+    after_first = module._rollout_diagnostics["distinct_layouts_seen"]
+    for _ in range(5):
+        module._collect_rollout_parallel()
+    after_more = module._rollout_diagnostics["distinct_layouts_seen"]
 
-    first = layouts_seen()
-    second = layouts_seen()
-    assert first != second
+    # The count is cumulative across the run, so it must keep climbing. It
+    # stayed flat when every rollout replayed the same seeded layouts.
+    assert after_more > after_first
 
 
 def test_on_train_end_closes_rollout_envs() -> None:

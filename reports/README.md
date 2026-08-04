@@ -7,9 +7,10 @@ was asked, what was measured, and what the measurement does and does not support
 
 | Report | Question | Outcome |
 |---|---|---|
-| [2026-08-04 — reward-phase curriculum](2026-08-04-reward-phase-curriculum.md) | Why does the 25v25 curriculum never leave phase 0, and can it reach `win_at_the_end`? | Reached `win_at_the_end`; cause was four mechanism defects, not policy quality |
-| [2026-08-04 — mechanism defects](2026-08-04-mechanism-defects.md) | Detailed evidence for each defect found | Four confirmed, all fixed |
-| [2026-08-04 — objective drift](2026-08-04-objective-drift.md) | What does the agent actually do during an episode? | Reaches objectives, then abandons them; peak occupancy ~3x final |
+| **[2026-08-04 — correction: what was actually broken](2026-08-04-correction-what-was-actually-broken.md)** | **Read this first.** Is the policy learning at all? | **No.** The movement head never left initialisation; a 12-line heuristic beats 945 epochs of training 80% to 17%. Four further defects found; most conclusions below retracted |
+| [2026-08-04 — reward-phase curriculum](2026-08-04-reward-phase-curriculum.md) | Why does the 25v25 curriculum never leave phase 0, and can it reach `win_at_the_end`? | ⚠️ Substantially retracted — training reward never left phase 0, so no cross-run conclusion holds |
+| [2026-08-04 — mechanism defects](2026-08-04-mechanism-defects.md) | Detailed evidence for each defect found | D1/D2/D4 survive (arithmetic); D3/D5's numbers measured a near-random policy |
+| [2026-08-04 — objective drift](2026-08-04-objective-drift.md) | What does the agent actually do during an episode? | Drift is real; ⚠️ its explanation is superseded — a uniform policy produces the same trace |
 
 ## Conventions
 
@@ -27,9 +28,20 @@ hyperparameters. Reports say which of the two they support.
 quantity as the per-epoch `success_rate` a gate reads. See
 [mechanism defects, D4](2026-08-04-mechanism-defects.md#d4--rungs-calibrated-against-the-wrong-distribution).
 
+**Quote every number against a floor and a bar.** A `success_rate` alone says nothing —
+17% read as progress until a scripted baseline scored 80% on the same board. Run
+`just measure-baselines <env_config>` before interpreting any result; training logs
+`eval/baseline_*` automatically.
+
+**Verify the thing you are tuning is the thing being trained.** Seven runs tuned reward
+phases whose rewards never reached the gradient.
+
 ## Reproducing
 
 ```bash
+# Scripted baseline scores -- the floor and the bar. Run this before reading any result.
+just measure-baselines <env_config> [n_episodes]
+
 # Rolling-mean metrics for a run (point readings are n-sample binomials -- do not trust them)
 just run-summary <run_id> [bucket_size]
 
