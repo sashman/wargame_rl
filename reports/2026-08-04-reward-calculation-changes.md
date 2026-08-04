@@ -1,5 +1,34 @@
 # 2026-08-04 — how the reward calculation changed
 
+## TL;DR
+
+Imagine coaching 25 players but only ever shouting one score at the whole team. Nobody
+learns what *they* did right. That was the reward: 25 models, one number, averaged.
+
+Five things changed:
+
+1. **Everyone gets their own score now.** Each model is paid for what it did; team-wide
+   things (like winning) are still shouted to everyone equally.
+2. **Added "hold the point you're standing on."** Every other reward went quiet once
+   models stopped moving, so for most of the game all 25 got identical scores again.
+3. **Added "you personally shot someone."** Shooting is half the decisions and previously
+   paid every model the same whether it fired, missed, or napped.
+4. **Deleted rewards everyone already maxed out.** "Models on objectives" scored a perfect
+   1.000 for good *and* mediocre policies, so it taught nothing — and it was 83% of the
+   early reward.
+5. **Fixed a genuine bug: the agent was paid when its own models died.** The code read
+   "models killed by the opponent" where it meant "killed by us", and double-counted on top.
+
+**Result:** win rate went from 17% to 93–97%, against a hand-written baseline that scores
+67%. **But** these changes shipped together with a batch of PPO fixes, so we cannot say
+which one earned it.
+
+**Still wrong:** the agent leaves ~1 model per episode stranded away from its squad, gives
+up some ground to chase kills, and — oddly — wiping out the enemy *ends the game early and
+costs it points*.
+
+---
+
 **Question:** the 25v25 agent was being paid a single number for the joint behaviour of 25
 models, and most of what it was paid for did not distinguish a good policy from a mediocre
 one. What changed in the reward calculation, and what does the evidence support?
