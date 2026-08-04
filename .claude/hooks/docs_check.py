@@ -41,16 +41,43 @@ LIVE_DOC_GLOBS = ("docs/*.md",)
 # never reported as drift.
 FROZEN_PREFIXES = ("reports/", ".planning/", "examples/")
 
-# Names too generic to implicate a doc on their own -- they appear in prose.
+# Names too generic to implicate a doc on their own -- they appear in prose,
+# or are language literals that survive the CamelCase test in
+# `documented_symbols` (`True`, `False`, `None`) and would match every doc.
 NOISE_SYMBOLS = frozenset(
     {
         "main", "run", "test", "setup", "config", "step", "reset", "name",
         "value", "data", "state", "model", "models", "env", "self", "type",
         "build", "apply", "select", "close", "render", "seed", "info",
+        "true", "false", "none", "cls", "args", "kwargs", "list", "dict",
+        "note", "text", "path", "file", "line", "lines", "case", "used",
+        "justfile", "python", "bash", "json", "yaml",
     }
 )  # fmt: skip
 
 MIN_SYMBOL_LENGTH = 4
+
+# Commands that mean "a PR just went up". `just ship` runs `gh pr create`
+# inside the recipe, so the command text Claude ran is `just ship ...` and
+# matching only on `gh` would miss every PR made the documented way.
+#
+# This filtering is done here rather than left to the `if` predicate in
+# settings.json because that predicate was observed not to gate: every
+# registered handler ran on every Bash call, firing the report on unrelated
+# commands and firing it once per handler.
+TRIGGER_PATTERN = re.compile(r"\bgh\s+pr\s+create\b|\bjust\s+ship\b")
+
+# Backtick spans, `#` comments and quoted strings inside source are prose, not
+# code. Without stripping them a comment explaining `n_episodes='25'` counts as
+# "this branch touched n_episodes" and implicates three unrelated docs.
+PROSE_IN_SOURCE = re.compile(
+    r"`[^`]*`|#.*$|'''.*?'''|\"\"\".*?\"\"\"|'[^']*'|\"[^\"]*\""
+)
+
+
+def strip_prose(line: str) -> str:
+    """Remove comment, string and backtick content from a line of source."""
+    return PROSE_IN_SOURCE.sub(" ", line)
 
 
 def git(*args: str) -> str:
@@ -200,7 +227,9 @@ def touched_identifiers(commit_range: str) -> set[str]:
     """
     identifiers: set[str] = set()
     for line in added_removed_lines(commit_range, "*.py", ":(exclude)tests/*"):
-        identifiers.update(re.findall(r"[A-Za-z_][A-Za-z0-9_]{3,}", line))
+        for name in re.findall(r"[A-Za-z_][A-Za-z0-9_]{3,}", strip_prose(line)):
+            if name.lower() not in NOISE_SYMBOLS:
+                identifiers.add(name)
     return identifiers
 
 
@@ -353,18 +382,33 @@ def format_report(findings: dict[str, list[str]], already: set[str]) -> str:
     return "\n".join(lines)
 
 
+def triggered_by_stdin() -> bool:
+    """True when the hook payload describes a PR-creating Bash command.
+
+    Reads the `PostToolUse` payload and matches `tool_input.command`. Anything
+    unreadable or unmatched means stay quiet -- a docs reminder that fires on
+    unrelated commands is worse than one that occasionally misses.
+    """
+    try:
+        payload = json.loads(sys.stdin.read() or "{}")
+    except (OSError, ValueError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    tool_input = payload.get("tool_input")
+    if not isinstance(tool_input, dict):
+        return False
+    command = tool_input.get("command")
+    return isinstance(command, str) and TRIGGER_PATTERN.search(command) is not None
+
+
 def main() -> int:
     """Emit `additionalContext` naming live docs this branch may have staled."""
     args = [a for a in sys.argv[1:] if a != "--dry-run"]
     dry_run = "--dry-run" in sys.argv[1:]
 
-    if not sys.stdin.isatty() and not dry_run:
-        # Drain the hook payload; the `if` filter in settings.json has already
-        # matched the command, so nothing in it is needed here.
-        try:
-            sys.stdin.read()
-        except OSError:
-            pass
+    if not dry_run and not triggered_by_stdin():
+        return 0
 
     root = repo_root()
     if root is None:

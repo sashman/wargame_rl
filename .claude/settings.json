@@ -7,14 +7,6 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Bash(gh pr create*)",
-            "command": "python3",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/docs_check.py"],
-            "timeout": 30
-          },
-          {
-            "type": "command",
-            "if": "Bash(just ship*)",
             "command": "python3",
             "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/docs_check.py"],
             "timeout": 30
