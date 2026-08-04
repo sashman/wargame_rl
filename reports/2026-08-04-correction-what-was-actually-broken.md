@@ -74,48 +74,72 @@ per-model credit assignment in place. Predictions were registered before the run
 
 | | prediction | **A: `ent_coef` 0.75** | **B: `ent_coef` 0.03** |
 |---|---|---|---|
-| movement entropy | falls below 4.3 | 4.520 → **4.519** ✗ | 4.524 → **4.08** ✓ |
-| `clip_fraction` | 0.1–0.3 (was 0.45–0.55) | 0.23 → **0.05** ✓ | 0.27 → **0.11** ✓ |
+| movement entropy (ceiling 4.575) | falls below 4.3 | 4.520 → **4.519** ✗ | 4.524 → **3.952** ✓ |
+| `clip_fraction` | 0.1–0.3 (was 0.45–0.55) | 0.23 → **0.05** ✓ | 0.27 → **0.14** ✓ |
 | `explained_variance` | rising | −0.05 → **0.44** ✓ | −0.03 → 0.17 ✓ |
-| `eval/win_rate` | — | **0%** | **10% → ~55%** |
-| `eval/vp_margin` | — | −163 → −91 | −107 → **≈ 0** |
+| `success_rate` (phase criteria) | — | noisy 0–90, ends ~30 | 13 → **~80, sustained** |
+| `eval/win_rate`, 10-epoch means | — | **0 / 0 / 0** | **21 → 62 → 47** |
+| `eval/vp_margin`, 10-epoch means | — | −163 → −91 | −62 → **+10** → −4 |
 
 Arm A holds the *pre-change* entropy pressure constant (0.03 summed over 25 models ≈ 0.75
 on the mean), so it isolates credit assignment alone. Arm B additionally uses the
-scale-free conventional coefficient.
+scale-free conventional coefficient. Nothing else differs between them.
 
 ### What this establishes
 
 1. **The joint-ratio pathology was real and is fixed.** `clip_fraction` fell from a
    measured 0.45–0.55 to 0.05–0.19 in both arms.
 2. **Per-model credit assignment alone is not sufficient.** Arm A's movement entropy is
-   flat at 4.52 across all 30 epochs (slope +0.0004/epoch) and it wins 0% of episodes.
+   flat at 4.52 across all 30 epochs (slope +0.0004/epoch) and it wins **0%** of episodes.
    By the pre-registered criterion — *"refuted if entropy is still above 4.45 with clip
    fraction in the healthy band"* — **H-A is refuted as a sufficient explanation.**
-3. **The entropy coefficient was the binding constraint.** The two arms differ in nothing
-   else. At 0.03 the movement head finally concentrates, monotonically, with no plateau
-   inside 30 epochs, and win rate goes from 10% to ~55%.
+3. **The entropy coefficient was the binding constraint.** At 0.03 the movement head
+   concentrates monotonically (4.52 → 3.95, flattening near 3.92), the phase criteria go
+   from 13% to a sustained ~80%, and VP margin crosses from −107 to positive.
 
 So the original H5 was directionally right for a reason nobody had measured: entropy
 pressure *was* pinning the policy — but not at the nominal coefficient. It was pinned by
 the loss summing entropy over 25 models, which no change to `ent_coef` in the tested range
-could overcome.
+could have overcome.
+
+**The B1 fix is verified in a live run.** `train/rollout_phase_index` now tracks
+`reward_phase` with a one-epoch lag (the rollout logs before the epoch-end evaluation
+advances the phase). Previously it would have stayed at 0 forever.
+
+### The win-rate decline is informative, not noise
+
+Arm B's win rate peaks at 62% (epochs 10–19) then falls to 47% (epochs 20–29) while
+`success_rate` *holds at ~80%*. The two diverge at exactly the epoch the curriculum
+advances to `mass_on_objectives`.
+
+That phase rewards `models_at_objectives` (1.5) and `objective_coverage` (0.8) and
+contains **no VP term at all**. The agent did what it was paid to do: it optimised
+occupancy, and occupancy is not winning — control requires *strictly more* models than the
+opponent on a point, and VP accrue per round.
+
+This is the first time any phase past the first has actually influenced a gradient, so it
+is also the first evidence about whether the ladder's shape is right. On this evidence it
+is not: an intermediate rung that drops the VP signal entirely trains away from the goal.
+That is now a testable question rather than a speculative one.
 
 ## Limitations
 
 **Not a like-for-like comparison with the 17%.** These runs also fix the 4×-speed
 opponent, so the opponent is weaker than in every earlier run. The honest framing is
 against the baseline measured on the *same* code: `squad_march` scores 85% there, so the
-agent went from **17% against an 80% bar** to **~55% against an 85% bar**. Arm A vs arm B
-is the only clean single-variable comparison, and it isolates `ent_coef`, not the bug
-fixes.
+agent went from **17% against an 80% bar** to a peak of **62% against an 85% bar**, ending
+the run at 47%. Arm A vs arm B is the only clean single-variable comparison, and it
+isolates `ent_coef`, not the bug fixes.
 
 **Necessity of per-model credit assignment is untested.** Both arms have it. Establishing
 whether it is needed *alongside* the entropy fix requires a third arm with the old joint
 ratio and `ent_coef` 0.03.
 
-**30 epochs, one seed per arm.** Arm B had not plateaued when measured — entropy was still
-falling and win rate still climbing. These runs show a direction, not a converged result.
+**30 epochs, one seed per arm.** Arm B's win rate peaked mid-run and fell back; with 30
+eval episodes an epoch's win rate has a binomial standard deviation of ~9 points, so
+single-epoch readings mean little and even the 10-epoch means carry real uncertainty.
+These runs show a direction, not a converged result, and the phase-1 explanation for the
+decline is inferred from the reward composition rather than tested by ablation.
 
 **The curriculum remains untested.** It has now trained for the first time, but no run has
 compared it against a single-phase reward. Every threshold in the config is uncalibrated;
@@ -133,3 +157,16 @@ the commentary recording the old measurements has been replaced with a warning.
    Reading it as entropy produced a confident, wrong conclusion that stood for four runs.
 4. **Instrument the optimiser.** `clip_fraction` and `approx_kl` are two lines each and
    would have shown the objective was degenerate at any point in those 945 epochs.
+5. **A coefficient applied to a sum over N is not a coefficient.** `ent_coef` and the PPO
+   clip both silently scaled with army size. Any hyperparameter whose effective magnitude
+   depends on `n_models` will be mis-tuned at one scale and untunable at another.
+
+## Next
+
+- **Re-derive the ladder.** Every threshold in the config is a placeholder. Now that the
+  phases actually train, size them from live rates against the baselines.
+- **Test the ladder against a single-phase reward.** Never done. The phase-1 decline is
+  direct evidence that at least one rung trains away from the goal.
+- **Third arm:** old joint ratio with `ent_coef` 0.03, to establish whether per-model
+  credit assignment is *necessary* alongside the entropy fix or merely sufficient.
+- **Longer runs, ≥3 seeds** before any hyperparameter claim.
