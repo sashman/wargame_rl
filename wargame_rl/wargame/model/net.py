@@ -564,14 +564,21 @@ class TransformerNetwork(RL_Network):
         return logits
 
     def value_from_encoded(self, state: EncodedState) -> torch.Tensor:
-        """Apply value head to encoded tokens."""
+        """Apply the value head per model, returning ``(batch, n_models)``.
+
+        One value per player token rather than a single scalar off the game
+        token: with 25 models sharing one estimate, that estimate's residual
+        was the advantage noise floor for all 25 policy factors at once. Each
+        player latent already attends over the whole board, so it can express
+        both the shared game state and that model's own situation.
+        """
         if self.is_policy:
             raise ValueError("Value head requested from a policy network.")
         if self.value_head is None:
             raise ValueError("Value head is not initialized.")
-        # Use the global game token (first token) as the critic summary.
-        game_token = state.encoded[:, 0, :]
-        value: torch.Tensor = self.value_head(game_token)
+        n_prefix = state.n_prefix
+        player_latents = state.encoded[:, n_prefix : n_prefix + state.n_wargame_models]
+        value: torch.Tensor = self.value_head(player_latents)
         return value.squeeze(-1)
 
     def share_backbone_with(self, backbone_source: "TransformerNetwork") -> None:

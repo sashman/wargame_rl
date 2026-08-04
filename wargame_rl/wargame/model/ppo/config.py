@@ -20,9 +20,19 @@ class PPOConfig(BaseModel):
     )
     # Value loss dominates → reduce this
     # Value underfits → increase this
-    ent_coef: float = (
-        0.03  # entropy coefficient (increase to explore more) -- default is 0.01
-    )
+    # Entropy coefficient, applied to the *mean* per-model entropy.
+    #
+    # It used to multiply the entropy *summed* over models, so its effective
+    # magnitude scaled with army size: 0.03 at 25 models was an effective 0.75,
+    # which is ~25x a conventional setting and is why a measured 3x change in
+    # this value moved total policy entropy by ~1%. 0.75 is set here to hold
+    # the pre-change pressure constant at 25 models, so that switching to
+    # per-model credit assignment is the only variable under test.
+    #
+    # 0.03 is the scale-free conventional value and the obvious second arm:
+    # `--ent-coef 0.03`. Expect it to matter, since the movement head has been
+    # measured sitting at 98.6% of maximum entropy after 945 epochs.
+    ent_coef: float = 0.75
     max_grad_norm: float = 0.5  # Gradient Stabilization (prevent exploding gradients)
     n_epochs: int = 5
     n_steps: int = 2048

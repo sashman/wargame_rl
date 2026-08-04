@@ -160,6 +160,11 @@ class WargameEnv(gym.Env):
         # Last reward from step(); None until first step after reset
         self.last_reward: float | None = None
         self.last_reward_breakdown: dict[str, float] = {}
+        # Per-model decomposition of `last_reward`, for algorithms that credit
+        # each model's own action rather than a single army-wide scalar.
+        self.last_per_model_reward: np.ndarray = np.zeros(
+            config.number_of_wargame_models, dtype=np.float64
+        )
         self.episode_reward_breakdown: dict[str, float] = {}
         self.episode_reward_steps: int = 0
 
@@ -605,6 +610,7 @@ class WargameEnv(gym.Env):
 
         self.last_reward = reward
         self.last_reward_breakdown = dict(self.phase_manager.last_reward_breakdown)
+        self.last_per_model_reward = self.phase_manager.last_per_model_reward.copy()
         for key, value in self.last_reward_breakdown.items():
             self.episode_reward_breakdown[key] = (
                 self.episode_reward_breakdown.get(key, 0.0) + value

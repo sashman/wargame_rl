@@ -37,7 +37,9 @@ def test_ppo_model_forward_single_observation_returns_correct_shapes(
 
     # Assert
     assert logits.shape == (1, n_models, n_actions)
-    assert values.shape == (1,)
+    # One value per model: the critic scores each player token, not a single
+    # game-token summary shared by the whole army.
+    assert values.shape == (1, n_models)
 
 
 def test_ppo_model_forward_batch_returns_correct_shapes(
@@ -56,7 +58,7 @@ def test_ppo_model_forward_batch_returns_correct_shapes(
 
     # Assert
     assert logits.shape == (batch_size, n_models, n_actions)
-    assert values.shape == (batch_size,)
+    assert values.shape == (batch_size, n_models)
 
 
 def test_ppo_model_forward_shared_transformer_returns_correct_shapes(
@@ -78,7 +80,7 @@ def test_ppo_model_forward_shared_transformer_returns_correct_shapes(
 
     # Assert
     assert logits.shape == (batch_size, n_models, n_actions)
-    assert values.shape == (batch_size,)
+    assert values.shape == (batch_size, n_models)
 
 
 def test_ppo_from_env_with_shared_transformer_shares_backbone_modules(
@@ -158,7 +160,8 @@ def test_ppo_get_action_returns_one_valid_action_per_model(
     assert isinstance(env_action, WargameEnvAction)
     assert len(env_action.actions) == n_models
     assert all(0 <= a < n_actions for a in env_action.actions)
-    assert log_prob.shape == torch.Size([])  # scalar
+    # Per-model log-probs, left unsummed so PPO can clip each model's ratio.
+    assert log_prob.shape == torch.Size([n_models])
 
 
 def test_ppo_get_action_deterministic_always_returns_same_action(
@@ -202,8 +205,8 @@ def test_ppo_evaluate_actions_returns_correct_shapes(
 
     # Assert
     assert logits.shape == (batch_size, n_models, n_actions)
-    assert log_probs.shape == (batch_size,)
-    assert entropy.shape == (batch_size,)
+    assert log_probs.shape == (batch_size, n_models)
+    assert entropy.shape == (batch_size, n_models)
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +232,7 @@ def test_ppo_agent_run_episode_returns_correct_types(
     assert len(collected_experiences) > 0
 
 
-def test_ppo_agent_experiences_contain_scalar_log_prob(
+def test_ppo_agent_experiences_contain_per_model_log_prob(
     env: WargameEnv, ppo_net: PPO_Transformer
 ) -> None:
     # Arrange
@@ -242,7 +245,7 @@ def test_ppo_agent_experiences_contain_scalar_log_prob(
     # Assert
     assert isinstance(first, Experience)
     assert first.log_prob is not None
-    assert first.log_prob.shape == torch.Size([])  # scalar
+    assert first.log_prob.shape == torch.Size([env.config.number_of_wargame_models])
 
 
 def test_ppo_agent_run_episode_without_saving_steps_returns_empty_experiences(

@@ -222,11 +222,14 @@ class PPOLightning(WargameLightningBase):
             Computed returns
         """
         # Compute advantages using GAE.
-        # Supports both:
-        # - rewards/dones/values with shape (T,)
-        # - rewards/dones/values with shape (T, num_envs)
+        # Supports rewards/values with shape (T,), (T, num_envs) or
+        # (T, num_envs, n_models). `dones` carries one flag per env, so it is
+        # broadcast across the trailing model axis when present.
         advantages = torch.zeros_like(rewards)
         gae = torch.zeros_like(rewards[0])
+
+        if dones.dim() < rewards.dim():
+            dones = dones.unsqueeze(-1).expand_as(rewards)
 
         time_steps = rewards.shape[0]
         for t in reversed(range(time_steps)):
@@ -277,11 +280,14 @@ class PPOLightning(WargameLightningBase):
                 dtype=torch.long,
                 device=device,
             )
-            rewards = torch.tensor(
-                [exp.reward for exp in experiences],
-                dtype=torch.float32,
-                device=device,
-            )
+            # (T, n_models): each model is credited with its own contribution
+            # plus the shared global terms, rather than an army-wide mean.
+            rewards = torch.stack(
+                [
+                    exp.per_model_reward.to(device)  # type: ignore[union-attr]
+                    for exp in experiences
+                ]
+            ).float()
             dones = torch.tensor(
                 [exp.done for exp in experiences],
                 dtype=torch.float32,
@@ -295,7 +301,7 @@ class PPOLightning(WargameLightningBase):
 
             last_done = bool(experiences[-1].done)
             if last_done:
-                last_value = torch.tensor(0.0, device=device, dtype=torch.float32)
+                last_value = torch.zeros_like(state_values[0])
             else:
                 last_state_tensors = observations_to_tensor_batch(
                     [experiences[-1].new_state], device=device
@@ -332,9 +338,10 @@ class PPOLightning(WargameLightningBase):
             ).detach()
             advantages_2d = (returns_2d - values_2d).detach()
 
-            returns = returns_2d.reshape(-1)
-            advantages = advantages_2d.reshape(-1)
-            old_log_probs = old_log_probs_2d.reshape(-1).detach()
+            n_models = actions.shape[-1]
+            returns = returns_2d.reshape(-1, n_models)
+            advantages = advantages_2d.reshape(-1, n_models)
+            old_log_probs = old_log_probs_2d.reshape(-1, n_models).detach()
             n_steps = actions.shape[0]
 
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
@@ -371,7 +378,12 @@ class PPOLightning(WargameLightningBase):
 
                     new_logits, new_state_values = self.ppo_model(mb_state_tensors)
                     new_dist = Categorical(logits=new_logits)
-                    new_log_probs = new_dist.log_prob(mb_actions).sum(dim=-1)
+                    # Per-model log-probs, deliberately not summed. Summing
+                    # them made one importance ratio for the whole 25-model
+                    # joint action, so `eps_clip=0.2` was breached at 0.0073
+                    # nats of change per model and roughly half of every
+                    # minibatch was clipped flat.
+                    new_log_probs = new_dist.log_prob(mb_actions)
 
                     ratio = torch.exp(new_log_probs - mb_old_log_probs)
 
@@ -386,7 +398,10 @@ class PPOLightning(WargameLightningBase):
                         self.value_loss_fn(new_state_values, mb_returns) * self.vf_coef
                     )
 
-                    entropy = new_dist.entropy().sum(dim=-1).mean()
+                    # Mean over models, not sum: with a sum, `ent_coef` was
+                    # effectively multiplied by the model count, which is why
+                    # a 3x change in the coefficient moved total entropy ~1%.
+                    entropy = new_dist.entropy().mean()
                     entropy_loss = -entropy * self.ent_coef
 
                     loss = policy_loss + value_loss + entropy_loss
@@ -522,10 +537,12 @@ class PPOLightning(WargameLightningBase):
         n_models = self.env.config.number_of_wargame_models
 
         actions_2d_np = np.zeros((t_steps, n_envs, n_models), dtype=np.int64)
-        rewards_2d_np = np.zeros((t_steps, n_envs), dtype=np.float32)
+        # Rewards, values and log-probs carry a per-model axis; `dones` is one
+        # flag per env and is broadcast across models in `compute_returns`.
+        rewards_2d_np = np.zeros((t_steps, n_envs, n_models), dtype=np.float32)
         dones_2d_np = np.zeros((t_steps, n_envs), dtype=np.float32)
-        old_log_probs_2d_np = np.zeros((t_steps, n_envs), dtype=np.float32)
-        values_2d_np = np.zeros((t_steps, n_envs), dtype=np.float32)
+        old_log_probs_2d_np = np.zeros((t_steps, n_envs, n_models), dtype=np.float32)
+        values_2d_np = np.zeros((t_steps, n_envs, n_models), dtype=np.float32)
 
         pbar_ctx = (
             tqdm(
@@ -551,11 +568,11 @@ class PPOLightning(WargameLightningBase):
                     logits, state_values = self.ppo_model(state_tensors_batch)
                     dist = Categorical(logits=logits)
                     actions = dist.sample()  # (n_envs, n_models)
-                    joint_log_prob = dist.log_prob(actions).sum(dim=-1)  # (n_envs,)
+                    log_probs = dist.log_prob(actions)  # (n_envs, n_models)
 
                 actions_np = actions.detach().cpu().numpy()
                 values_np = state_values.detach().cpu().numpy()
-                log_probs_np = joint_log_prob.detach().cpu().numpy()
+                log_probs_np = log_probs.detach().cpu().numpy()
 
                 actions_2d_np[t] = actions_np
                 values_2d_np[t] = values_np
@@ -566,7 +583,7 @@ class PPOLightning(WargameLightningBase):
                         actions=[int(a) for a in actions_2d_np[t, env_i]]
                     )
                     next_obs, reward, done, _, _ = env.step(env_action)
-                    rewards_2d_np[t, env_i] = float(reward)
+                    rewards_2d_np[t, env_i] = env.last_per_model_reward
                     dones_2d_np[t, env_i] = 1.0 if done else 0.0
                     for key, value in env.last_reward_breakdown.items():
                         breakdown_sums[key] = breakdown_sums.get(key, 0.0) + value

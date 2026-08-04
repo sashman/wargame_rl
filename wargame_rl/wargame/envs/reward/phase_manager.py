@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+import numpy as np
 from loguru import logger
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
@@ -69,6 +70,9 @@ class RewardPhaseManager:
     phases: list[RewardPhase]
     position: CurriculumPosition = field(default_factory=CurriculumPosition)
     last_reward_breakdown: dict[str, float] = field(default_factory=dict, init=False)
+    last_per_model_reward: np.ndarray = field(
+        default_factory=lambda: np.zeros(0, dtype=np.float64), init=False
+    )
 
     @classmethod
     def from_configs(
@@ -174,18 +178,24 @@ class RewardPhaseManager:
 
         Per-model rewards are weighted, summed per model, then averaged
         across all models.  Global rewards are weighted and added on top.
+
+        Also records `last_per_model_reward`, the same quantities kept
+        undivided per model. The scalar returned here is unchanged; the vector
+        exists because averaging 25 models into one number leaves each model's
+        action explaining ~4% of the signal it is credited with.
         """
         phase = self.current_phase
         alive_models = [(i, m) for i, m in enumerate(view.player_models) if m.is_alive]
         n_alive = len(alive_models)
 
+        per_model_rewards = np.zeros(len(view.player_models), dtype=np.float64)
         per_model_sums = {name: 0.0 for name, _calc in phase.per_model_calculators}
         per_model_component_sums: dict[str, float] = {}
         for i, model in alive_models:
             for name, pm_calc in phase.per_model_calculators:
-                per_model_sums[name] += pm_calc.weight * pm_calc.calculate(
-                    i, model, view, ctx
-                )
+                contribution = pm_calc.weight * pm_calc.calculate(i, model, view, ctx)
+                per_model_sums[name] += contribution
+                per_model_rewards[i] += contribution
                 breakdown: dict[str, float] = pm_calc.get_last_breakdown(i)
                 if breakdown:
                     for component_name, value in breakdown.items():
@@ -208,6 +218,11 @@ class RewardPhaseManager:
             global_sums[name] += gl_calc.weight * gl_calc.calculate(view, ctx)
 
         global_total = sum(global_sums.values())
+
+        # Global terms are broadcast whole to each model rather than split
+        # between them: they are the part of the outcome that genuinely is not
+        # attributable to one model, so every model should see the same signal.
+        shared_reward = global_total
 
         reward = avg_per_model + global_total
         breakdown = {}
@@ -242,6 +257,7 @@ class RewardPhaseManager:
                     speed_scale = 1.0
                 bonus = phase.terminal_success_bonus * speed_scale
                 reward += bonus
+                shared_reward += bonus
                 if bonus != 0.0:
                     breakdown["terminal_success_bonus"] = bonus
         if ctx.is_terminated and phase.terminal_vp_bonus != 0.0:
@@ -249,8 +265,15 @@ class RewardPhaseManager:
             if vp_threshold is not None and view.player_vp >= vp_threshold:
                 bonus = phase.terminal_vp_bonus
                 reward += bonus
+                shared_reward += bonus
                 if bonus != 0.0:
                     breakdown["terminal_vp_bonus"] = bonus
+
+        if shared_reward != 0.0:
+            for i, _model in alive_models:
+                per_model_rewards[i] += shared_reward
+
+        self.last_per_model_reward = per_model_rewards
         self.last_reward_breakdown = breakdown
         return reward
 

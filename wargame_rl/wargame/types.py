@@ -12,6 +12,9 @@ class Experience(NamedTuple):
     done: bool
     new_state: WargameEnvObservation
     log_prob: torch.Tensor | None
+    # Per-model decomposition of `reward`, shape (n_models,). PPO credits each
+    # model's own action with it; DQN ignores it. None when unavailable.
+    per_model_reward: torch.Tensor | None = None
 
 
 class ExperienceBatch(NamedTuple):

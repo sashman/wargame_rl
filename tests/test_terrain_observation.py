@@ -185,7 +185,7 @@ class TestNetworkTerrainIntegration:
         tensors = observation_to_tensor(obs, net.device)
         with torch.no_grad():
             value = net(tensors)
-        assert value.shape == (1,)
+        assert value.shape == (1, env.config.number_of_wargame_models)
 
     def test_mlp_forward_with_terrain(self) -> None:
         """MLP forward pass works with terrain tokens."""
