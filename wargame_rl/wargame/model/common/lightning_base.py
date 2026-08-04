@@ -5,10 +5,20 @@ from abc import ABC, abstractmethod
 import numpy as np
 import torch
 import torch.nn as nn
+from loguru import logger
 from pytorch_lightning import LightningModule
 
+from wargame_rl.wargame.envs.baseline.evaluate import evaluate_baseline
+from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.agent_base import BaseAgent
+
+# The bar to beat (`squad_march`) and the floor (`random`). The middle rungs
+# live in scripts/measure_baselines.py; logging two keeps run pages readable.
+BASELINE_POLICIES = ("random", "squad_march")
+BASELINE_EPISODES = 20
+# Held out from ROLLOUT_SEED_BASE so baselines never share training layouts.
+BASELINE_SEED_BASE = 10_000
 
 
 class WargameLightningBase(LightningModule, ABC):
@@ -33,6 +43,40 @@ class WargameLightningBase(LightningModule, ABC):
     @abstractmethod
     def _policy_model(self) -> nn.Module:
         """Return the policy model used for evaluation."""
+
+    def on_train_start(self) -> None:
+        """Measure the scripted baselines once and log them as a fixed bar.
+
+        Without a floor and a reference, a `success_rate` or a reward number
+        says nothing: a 945-epoch policy scored 17% where a squad-marching
+        heuristic scores 80% on the same env. The baselines are pure numpy, so
+        measuring them once per run is nearly free, and they do not change
+        during training — hence once at the start rather than every epoch.
+        """
+        if not self.do_log:
+            return
+        seeds = [BASELINE_SEED_BASE + i for i in range(BASELINE_EPISODES)]
+        baseline_env = WargameEnv(self.env.config, renderer=None)
+        try:
+            for name in BASELINE_POLICIES:
+                result = evaluate_baseline(
+                    build_baseline_policy(name), baseline_env, seeds
+                )
+                self.log(f"eval/baseline_{name}_win_rate", result.win_rate * 100)
+                self.log(f"eval/baseline_{name}_vp_margin", result.vp_margin)
+                self.log(
+                    f"eval/baseline_{name}_at_objectives",
+                    result.final_fraction_at_objectives,
+                )
+                logger.info(
+                    "Baseline {}: win_rate={:.2f} vp_margin={:.1f} at_objectives={:.3f}",
+                    name,
+                    result.win_rate,
+                    result.vp_margin,
+                    result.final_fraction_at_objectives,
+                )
+        finally:
+            baseline_env.close()
 
     def _run_episode_eval(self, epsilon: float) -> tuple[float, int]:
         """Run a single evaluation episode and return (reward, steps)."""
@@ -67,6 +111,8 @@ class WargameLightningBase(LightningModule, ABC):
         steps_s: list[int] = []
         episode_rewards: list[float] = []
         episode_successes: list[bool] = []
+        player_vps: list[float] = []
+        opponent_vps: list[float] = []
 
         self._set_policy_mode(True)
 
@@ -75,6 +121,8 @@ class WargameLightningBase(LightningModule, ABC):
                 reward, steps = self._run_episode_eval(epsilon)
                 episode_rewards.append(reward)
                 steps_s.append(steps)
+                player_vps.append(float(self.env.player_vp))
+                opponent_vps.append(float(self.env.opponent_vp))
 
                 if self.env.last_step_context is not None:
                     success = self.env.phase_manager.check_success(
@@ -106,6 +154,26 @@ class WargameLightningBase(LightningModule, ABC):
             self.log(
                 f"reward/{prefix}min_episode_reward",
                 min(episode_rewards),
+                prog_bar=False,
+            )
+            # The phase-invariant scoreboard. `success_rate` changes definition
+            # at every phase boundary, and reward changes with the calculator
+            # set, so neither is comparable across a run or between runs. VP is
+            # the game's own measure of winning and never changes meaning.
+            mean_player_vp = sum(player_vps) / len(player_vps)
+            mean_opponent_vp = sum(opponent_vps) / len(opponent_vps)
+            self.log(f"eval/{prefix}vp_player", mean_player_vp, prog_bar=False)
+            self.log(f"eval/{prefix}vp_opponent", mean_opponent_vp, prog_bar=False)
+            self.log(
+                f"eval/{prefix}vp_margin",
+                mean_player_vp - mean_opponent_vp,
+                prog_bar=False,
+            )
+            self.log(
+                f"eval/{prefix}win_rate",
+                100.0
+                * sum(1.0 for p, o in zip(player_vps, opponent_vps) if p > o)
+                / len(player_vps),
                 prog_bar=False,
             )
 

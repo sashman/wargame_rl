@@ -39,4 +39,5 @@ def test_training_smoke() -> None:
         # and fails the `is not None` guard.
         gamma=None,
         ent_coef=None,
+        num_rollout_envs=None,
     )

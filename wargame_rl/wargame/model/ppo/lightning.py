@@ -8,6 +8,7 @@ import gymnasium as gym
 import numpy as np
 import torch
 import torch.nn as nn
+from loguru import logger
 from torch import Tensor, optim
 from torch.distributions import Categorical
 from torch.utils.data import DataLoader, Dataset
@@ -173,6 +174,7 @@ class PPOLightning(WargameLightningBase):
         # _ensure_rollout_envs for why rebuilding them per step was a bug.
         self._rollout_envs: list[WargameEnv] | None = None
         self._rollout_obs: list[Any] = []
+        self._rollout_diagnostics: dict[str, float] = {}
         self.n_epochs = n_epochs
         self.max_grad_norm = max_grad_norm
 
@@ -344,12 +346,25 @@ class PPOLightning(WargameLightningBase):
             old_log_probs = old_log_probs_2d.reshape(-1, n_models).detach()
             n_steps = actions.shape[0]
 
+        # How much of the return the critic actually explains. 0 means it is no
+        # better than predicting the mean; negative means worse. `advantages`
+        # is `returns - values`, i.e. the residual, and must be read here
+        # before it is normalised below.
+        return_variance = float(returns.var())
+        explained_variance = (
+            1.0 - float(advantages.var()) / return_variance
+            if return_variance > 0.0
+            else 0.0
+        )
+
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         total_loss_float = 0.0
         n_updates = 0
         epoch_policy_loss = 0.0
         epoch_value_loss = 0.0
         epoch_entropy_loss = 0.0
+        epoch_clip_fraction = 0.0
+        epoch_approx_kl = 0.0
 
         n_minibatches = (n_steps + self.batch_size - 1) // self.batch_size
         total_updates = self.n_epochs * n_minibatches
@@ -386,6 +401,16 @@ class PPOLightning(WargameLightningBase):
                     new_log_probs = new_dist.log_prob(mb_actions)
 
                     ratio = torch.exp(new_log_probs - mb_old_log_probs)
+
+                    with torch.no_grad():
+                        # The two numbers that say whether the update is
+                        # working at all. Their absence is why a degenerate
+                        # objective went undiagnosed across seven runs.
+                        log_ratio = new_log_probs - mb_old_log_probs
+                        epoch_clip_fraction += float(
+                            ((ratio - 1.0).abs() > self.eps_clip).float().mean()
+                        )
+                        epoch_approx_kl += float(((ratio - 1.0) - log_ratio).mean())
 
                     surr1 = ratio * mb_advantages
                     surr2 = (
@@ -450,6 +475,16 @@ class PPOLightning(WargameLightningBase):
                 logger=True,
                 on_epoch=True,
             )
+            # Update health. clip_fraction above ~0.3 means the trust region is
+            # being saturated and much of each minibatch contributes nothing.
+            for name, value in (
+                ("train/clip_fraction", epoch_clip_fraction / n_updates),
+                ("train/approx_kl", epoch_approx_kl / n_updates),
+                ("train/explained_variance", explained_variance),
+            ):
+                self.log(name, value, prog_bar=False, logger=True, on_epoch=True)
+            for name, value in self._rollout_diagnostics.items():
+                self.log(f"train/{name}", value, prog_bar=False, logger=True)
             for name, value in rollout_reward_breakdown.items():
                 self.log(
                     f"reward/components/{name}", value, prog_bar=False, logger=True
@@ -488,6 +523,27 @@ class PPOLightning(WargameLightningBase):
             self._rollout_obs.append(observation)
         self._rollout_envs = envs
         return envs
+
+    def on_train_start(self) -> None:
+        """Record the resolved rollout-env count before the first epoch.
+
+        `num_rollout_envs` defaults to 0, meaning auto-detect, so the config
+        never showed which collection path actually ran — and the parallel
+        path was the one carrying two bugs.
+        """
+        super().on_train_start()
+        logger.info(
+            "PPO rollout: num_rollout_envs={} (config requested {}), ent_coef={}",
+            self.num_rollout_envs,
+            self.hparams.get("num_rollout_envs"),
+            self.ent_coef,
+        )
+        if self.do_log:
+            self.log(
+                "train/num_rollout_envs_resolved",
+                float(self.num_rollout_envs),
+                prog_bar=False,
+            )
 
     def on_train_end(self) -> None:
         """Close the rollout environments held for the duration of the run."""
@@ -555,6 +611,12 @@ class PPOLightning(WargameLightningBase):
             else nullcontext(_NoOpProgress())
         )
         breakdown_sums: dict[str, float] = {}
+        # Policy entropy split by battle phase, in raw nats. The aggregate
+        # `loss/entropy_loss` is `-ent_coef * entropy`, which was misread as
+        # entropy itself; and mixing a heavily-masked shooting phase with an
+        # open movement phase makes the average uninterpretable either way.
+        entropy_sums: dict[str, float] = {}
+        entropy_counts: dict[str, int] = {}
         total_steps = 0
         with pbar_ctx as pbar:
             for t in range(t_steps):
@@ -564,11 +626,23 @@ class PPOLightning(WargameLightningBase):
                 for feat_idx, feat_tensor in enumerate(state_tensors_batch):
                     state_tensors_per_feature[feat_idx].append(feat_tensor)
 
+                # Read before stepping, so entropy is bucketed by the phase the
+                # action was actually chosen in.
+                step_phases = [env.game_clock_state.phase for env in envs]
+
                 with torch.no_grad():
                     logits, state_values = self.ppo_model(state_tensors_batch)
                     dist = Categorical(logits=logits)
                     actions = dist.sample()  # (n_envs, n_models)
                     log_probs = dist.log_prob(actions)  # (n_envs, n_models)
+                    step_entropy = dist.entropy()  # (n_envs, n_models)
+
+                for env_i, phase in enumerate(step_phases):
+                    key = phase.value if phase is not None else "unknown"
+                    entropy_sums[key] = entropy_sums.get(key, 0.0) + float(
+                        step_entropy[env_i].mean()
+                    )
+                    entropy_counts[key] = entropy_counts.get(key, 0) + 1
 
                 actions_np = actions.detach().cpu().numpy()
                 values_np = state_values.detach().cpu().numpy()
@@ -616,6 +690,27 @@ class PPOLightning(WargameLightningBase):
             {key: (value / total_steps) for key, value in breakdown_sums.items()}
             if total_steps > 0
             else {}
+        )
+        self._rollout_diagnostics = {
+            f"entropy/{phase}": entropy_sums[phase] / entropy_counts[phase]
+            for phase in entropy_sums
+            if entropy_counts[phase] > 0
+        }
+        # The rollout's own phase index. Logged next to the eval env's
+        # `reward_phase` so the two diverging is visible in one chart rather
+        # than inferred from which reward component keys appear.
+        self._rollout_diagnostics["rollout_phase_index"] = float(
+            envs[0].phase_manager.current_phase_index
+        )
+        self._rollout_diagnostics["distinct_layouts_seen"] = float(
+            len(
+                {
+                    tuple(
+                        (int(o.location[0]), int(o.location[1])) for o in env.objectives
+                    )
+                    for env in envs
+                }
+            )
         )
         return (
             state_tensors_flat,

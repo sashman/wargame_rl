@@ -202,6 +202,13 @@ def train(
         None,
         help="Override PPO entropy coefficient (defaults to PPOConfig value)",
     ),
+    num_rollout_envs: int | None = typer.Option(
+        None,
+        help=(
+            "Override the number of parallel rollout envs. <=0 auto-detects "
+            "from hardware (defaults to PPOConfig value)"
+        ),
+    ),
     resume_ckpt_path: str | None = typer.Option(
         None,
         help="Resume full training state (model, optimizer, epoch/step) from a Lightning checkpoint.",
@@ -327,6 +334,8 @@ def train(
             ppo_config.gamma = gamma
         if ent_coef is not None:
             ppo_config.ent_coef = ent_coef
+        if num_rollout_envs is not None:
+            ppo_config.num_rollout_envs = num_rollout_envs
         ppo_training_config = PPOTrainingConfig(
             record_during_training=record_during_training,
             record_after_epoch=record_after_epoch,
