@@ -131,15 +131,24 @@ reward_phases:
     # nominal 0.7 was silently a 0.85 gate. Launch with --n-eval-episodes 30 and
     # a run of 3, which puts the effective bar back near the nominal value.
     #
-    # Every rung below is sized from a measured min_fraction curve rather than
-    # intuition (see measure_phase_gates.py). At epoch 288 of a gamma=0.95 run
-    # the deterministic policy scored: 0.15 -> 0.47, 0.20 -> 0.35, 0.25 -> 0.30,
-    # 0.35 -> 0.20, 0.50 -> 0.05, with a median final fraction of 0.12.
+    # Rungs are sized from measurement (see measure_phase_gates.py), against the
+    # *live* per-epoch success_rate the gate actually reads — not against a
+    # best-checkpoint sweep. Best checkpoints are selected on reward, so they run
+    # 10-15 points optimistic; sizing rungs from them puts every gate out of
+    # reach of the thing that opens it.
     #
-    # The previous ladder was NOT monotonic: mass_on_objectives at min_fraction
-    # 0.35 measured 0.20, harder than win_only_by_vp (~0.40) and harder than the
-    # final win_at_the_end criteria (~0.30). An intermediate rung stricter than
-    # the destination stalls the curriculum for no benefit.
+    # Live rates observed: min_fraction 0.15 -> ~36%, 0.20 -> ~25%, 0.25 -> ~17%.
+    #
+    # The gate needs `min_epochs_above_threshold` *consecutive* epochs above the
+    # bar, each an n_episodes-sample binomial, so it only fires when the live
+    # mean sits near the threshold. At a live mean of 0.174 against a 0.35 bar,
+    # P(one epoch passes) is 0.003 and P(three running) is 2e-8 — never, at any
+    # epoch budget. Phase 0 at a 0.365 mean against 0.45 gives ~0.008 per
+    # attempt and duly advanced after 38 epochs.
+    #
+    # The ladder must also stay monotonic: an earlier version had
+    # mass_on_objectives at min_fraction 0.35 measuring 0.20, harder than
+    # win_only_by_vp and harder than the final win_at_the_end criteria.
     success_threshold: 0.45
     min_epochs: 0
     min_epochs_above_threshold: 3
@@ -163,8 +172,8 @@ reward_phases:
         params: { group_max_distance: 5.0, violation_penalty: -0.1 }
     success_criteria:
       type: fraction_at_objectives
-      params: { min_fraction: 0.25 }
-    success_threshold: 0.35
+      params: { min_fraction: 0.2 }
+    success_threshold: 0.25
     min_epochs: 20
     min_epochs_above_threshold: 3
 
@@ -198,7 +207,7 @@ reward_phases:
     success_criteria:
       type: player_vp_min
       params: { fraction_of_max: 0.3 }
-    success_threshold: 0.35
+    success_threshold: 0.25
     min_epochs: 20
     min_epochs_above_threshold: 3
 
