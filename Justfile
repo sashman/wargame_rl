@@ -75,16 +75,23 @@ train-multi-epochs max_epochs *configs:
 # carries an error bar. Needed because the dice alone contribute more outcome
 # spread than the scenario does (`just measure-noise-floor`), which makes any
 # single-seed difference under ~10pp unreadable.
+#
+# One seed group at a time. A PPO transformer run holds ~3.8 GB of VRAM, so
+# eight at once overflows a 24 GB card and the losers die on a 12 MiB
+# allocation partway through training -- not at startup, where it would be
+# obvious. Keep the concurrent count equal to the number of configs.
+#
 # Use: just train-multi-seeds 1000 2 config1.yaml config2.yaml   (-> 4 runs)
 train-multi-seeds max_epochs n_seeds *configs:
 	@trap 'kill 0' INT TERM && \
 	group="train-multi-$(date +%Y-%m-%d-%H-%M-%S)" && \
 	for s in $(seq 1 {{n_seeds}}); do \
+		echo "=== seed $s of {{n_seeds}} ===" && \
 		for c in {{configs}}; do \
 			uv run train.py --record-during-training --env-config-path "$c" --algorithm ppo --network-type transformer --max-epochs {{max_epochs}} --seed "$s" --run-suffix "s$s" --wandb-group "$group" & \
 		done; \
-	done && \
-	wait
+		wait; \
+	done
 
 # Run multiple env configs in parallel. Each run gets a unique --run-suffix and shared --wandb-group.
 # Uses PPO + transformer. Use: just train-multi config1.yaml config2.yaml
