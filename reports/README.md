@@ -7,6 +7,7 @@ was asked, what was measured, and what the measurement does and does not support
 
 | Report | Question | Outcome |
 |---|---|---|
+| [2026-08-05 — stochastic terrain and cover](2026-08-05-stochastic-terrain-and-cover.md) | Does the agent break line of sight when the opponent shoots back? | Return fire cuts exposure 4.7x (0.463 → 0.099) while survival *rises*, so it is not survivorship — and `on_obj` 0.882 says it is not standing off. But `terrain_proximity` never moves, so **terrain is not established as the mechanism**. Reward curriculum refuted. Objective-placement defect found: 25% of episodes had overlapping objectives |
 | **[2026-08-04 — correction: what was actually broken](2026-08-04-correction-what-was-actually-broken.md)** | **Read this first.** Is the policy learning at all? | **No.** The movement head never left initialisation; a 12-line heuristic beats 945 epochs of training 80% to 17%. Four further defects found; most conclusions below retracted |
 | [2026-08-04 — reward-phase curriculum](2026-08-04-reward-phase-curriculum.md) | Why does the 25v25 curriculum never leave phase 0, and can it reach `win_at_the_end`? | ⚠️ Substantially retracted — training reward never left phase 0, so no cross-run conclusion holds |
 | [2026-08-04 — mechanism defects](2026-08-04-mechanism-defects.md) | Detailed evidence for each defect found | D1/D2/D4 survive (arithmetic); D3/D5's numbers measured a near-random policy |
