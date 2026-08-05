@@ -55,7 +55,8 @@ wargame_rl/
 │                                  #   roadmap, rules, metrics, shooting, terrain)
 ├── reports/                       # Experiment findings, kept for retrospection
 ├── scripts/                       # Run-inspection tooling (run_summary, measure_phase_gates,
-│                                  #   measure_baselines, measure_checkpoint)
+│                                  #   measure_baselines, measure_checkpoint, measure_terrain,
+│                                  #   measure_noise_floor)
 ├── train.py                       # Training entry point (Typer CLI)
 ├── simulate.py                    # Inference/simulation entry point
 ├── replay_events.py               # Replay / narrate a match event log
