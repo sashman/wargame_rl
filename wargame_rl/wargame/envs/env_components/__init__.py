@@ -23,6 +23,7 @@ from wargame_rl.wargame.envs.env_components.placement import (
 )
 from wargame_rl.wargame.envs.env_components.shooting_masks import (
     compute_shooting_masks,
+    compute_threat_counts,
     max_weapon_ranges,
 )
 from wargame_rl.wargame.envs.env_components.termination import (
@@ -40,6 +41,7 @@ __all__ = [
     "build_observation",
     "compute_distances",
     "compute_shooting_masks",
+    "compute_threat_counts",
     "distances_to_nearest_footprint",
     "max_weapon_ranges",
     "update_distances_to_objectives",

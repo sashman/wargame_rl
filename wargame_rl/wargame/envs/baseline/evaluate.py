@@ -50,6 +50,10 @@ class BaselineResult:
     # is merely out of range keeps proximity high, one using ruins pulls it down.
     exposure_rate: float | None
     terrain_proximity: float | None
+    # (enemies we can shoot) - (our models they can shoot), per shooting phase.
+    # The exchange-ratio measure: exposure alone cannot tell manoeuvre from
+    # hiding, because both lower it.
+    firepower_advantage: float | None
 
     @property
     def vp_margin(self) -> float:
@@ -149,9 +153,16 @@ def evaluate_baseline(
     policy: BaselinePolicy,
     env: WargameEnv,
     seeds: list[int],
+    combat_seeds: list[int] | None = None,
 ) -> BaselineResult:
     """Run a scripted baseline on `env` once per seed and aggregate the outcome."""
-    return evaluate_selector(selector_for(policy), env, seeds, type(policy).__name__)
+    return evaluate_selector(
+        selector_for(policy),
+        env,
+        seeds,
+        type(policy).__name__,
+        combat_seeds=combat_seeds,
+    )
 
 
 def evaluate_selector(
@@ -159,6 +170,7 @@ def evaluate_selector(
     env: WargameEnv,
     seeds: list[int],
     name: str,
+    combat_seeds: list[int] | None = None,
 ) -> BaselineResult:
     """Run `select` on `env` once per seed and aggregate the outcome.
 
@@ -167,7 +179,16 @@ def evaluate_selector(
     the comparison mostly a question of which maps each policy drew. A learned
     checkpoint scored through here is therefore directly comparable to the
     baseline table, because it is the same code.
+
+    `combat_seeds` (same length as `seeds`) drives the dice independently of the
+    layout, so a fixed set of maps can be replayed under different rolls. That
+    is the only way to tell a policy's spread apart from the dice's.
     """
+    if combat_seeds is not None and len(combat_seeds) != len(seeds):
+        raise ValueError(
+            f"combat_seeds must match seeds in length: "
+            f"{len(combat_seeds)} != {len(seeds)}"
+        )
     fractions: list[float] = []
     wins: list[float] = []
     player_vps: list[float] = []
@@ -176,9 +197,11 @@ def evaluate_selector(
     survivals: list[float] = []
     exposures: list[float | None] = []
     proximities: list[float | None] = []
+    firepower: list[float | None] = []
 
-    for seed in seeds:
-        observation, _ = env.reset(seed=seed)
+    for index, seed in enumerate(seeds):
+        options = None if combat_seeds is None else {"combat_seed": combat_seeds[index]}
+        observation, _ = env.reset(seed=seed, options=options)
         terminated = truncated = False
         while not (terminated or truncated):
             # The observation's mask already encodes range, line of sight,
@@ -202,6 +225,7 @@ def evaluate_selector(
         survivals.append(float(alive.mean()))
         exposures.append(env.exposure_rate)
         proximities.append(env.terrain_proximity)
+        firepower.append(env.firepower_advantage)
 
     return BaselineResult(
         name=name,
@@ -216,4 +240,5 @@ def evaluate_selector(
         # metric to a number would invent data.
         exposure_rate=mean_of_measured(exposures),
         terrain_proximity=mean_of_measured(proximities),
+        firepower_advantage=mean_of_measured(firepower),
     )

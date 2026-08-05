@@ -49,6 +49,7 @@ from wargame_rl.wargame.envs.env_components.exposure import (
 )
 from wargame_rl.wargame.envs.env_components.shooting_masks import (
     compute_shooting_masks,
+    compute_threat_counts,
     max_weapon_ranges,
 )
 from wargame_rl.wargame.envs.mission import build_vp_calculator
@@ -213,6 +214,9 @@ class WargameEnv(gym.Env):
         self._opponent_max_ranges = max_weapon_ranges(
             config.opponent_models, config.number_of_opponent_models
         )
+        self._player_max_ranges = max_weapon_ranges(
+            config.models, config.number_of_wargame_models
+        )
 
         # --- Opponent setup ---
         if config.number_of_opponent_models > 0:
@@ -294,6 +298,17 @@ class WargameEnv(gym.Env):
         `track_exposure` is off or the board has no terrain.
         """
         return self._exposure_tracker.terrain_proximity
+
+    @property
+    def firepower_advantage(self) -> float | None:
+        """Mean (enemies we can shoot) − (our models they can shoot) per phase.
+
+        The exchange-ratio measure: positive means the army brings more guns to
+        bear than it exposes. Prefer it to `exposure_rate` when the question is
+        whether the policy is *choosing* its fights — low exposure alone cannot
+        tell manoeuvre apart from hiding. None when `track_exposure` is off.
+        """
+        return self._exposure_tracker.firepower_advantage
 
     def _make_is_blocking(
         self, x0: int, y0: int, x1: int, y1: int
@@ -391,6 +406,15 @@ class WargameEnv(gym.Env):
         """Build the list of objectives from config."""
         return _create_objectives(config)
 
+    @property
+    def observation(self) -> WargameEnvObservation:
+        """The observation for the current state, rebuilt on access.
+
+        `reset` and `step` already return this; the property exists for callers
+        that mutate state directly and need to re-read it without stepping.
+        """
+        return self._get_obs()
+
     def _get_obs(
         self, distance_cache: DistanceCache | None = None
     ) -> WargameEnvObservation:
@@ -407,10 +431,27 @@ class WargameEnv(gym.Env):
     def reset(
         self, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[WargameEnvObservation, dict[str, Any]]:
+        """Start a new episode.
+
+        `options["combat_seed"]` seeds the dice independently of `seed`, which
+        otherwise drives both the layout and the rolls. Varying one with the
+        other held fixed is what separates "this scenario is hard" from "the
+        dice went badly", and the two are indistinguishable while a single seed
+        controls both. Absent, the combat seed is derived from `seed` as before.
+        """
         super().reset(seed=seed)
 
-        combat_seed = self.np_random.integers(0, 2**31)
-        self._combat_rng = np.random.default_rng(int(combat_seed))
+        # The draw happens either way. Skipping it when a combat seed is given
+        # would shift every later draw from `np_random`, so the layout would
+        # change too and the two sources of variance would still be entangled --
+        # the exact thing this option exists to separate.
+        derived_combat_seed = int(self.np_random.integers(0, 2**31))
+        explicit_combat_seed = (options or {}).get("combat_seed")
+        self._combat_rng = np.random.default_rng(
+            derived_combat_seed
+            if explicit_combat_seed is None
+            else int(explicit_combat_seed)
+        )
         self._last_player_shooting_results = []
         self._last_opponent_shooting_results = []
         self._last_player_action = None
@@ -578,31 +619,36 @@ class WargameEnv(gym.Env):
         return mask
 
     def _record_exposure(self, opp_alive: np.ndarray) -> None:
-        """Sample how many player models an enemy could see and shoot right now.
+        """Sample both sides of the shooting exchange right now.
 
         Deliberately ignores the engagement-range and advanced gating that
         `_opponent_action_mask` applies. A shooter in base contact cannot fire at
         all, so counting that as safety would score a headlong charge as if it
         were cover — and cover is the thing being measured.
+
+        One scan yields both directions, so `firepower_advantage` costs nothing
+        on top of `exposure_rate`.
         """
         player_alive = alive_mask_for(self.wargame_models)
         if not player_alive.any() or not opp_alive.any():
             return
         player_positions = np.array([m.location for m in self.wargame_models])
-        visible = compute_shooting_masks(
-            np.array([m.location for m in self.opponent_models]),
+        threat_to_player, threat_to_opponent = compute_threat_counts(
             player_positions,
-            opp_alive,
+            np.array([m.location for m in self.opponent_models]),
             player_alive,
+            opp_alive,
+            self._player_max_ranges,
             self._opponent_max_ranges,
             self.has_line_of_sight_between_cells,
         )
         self._exposure_tracker.record(
-            exposed=np.asarray(visible.any(axis=0)),
+            exposed=threat_to_player > 0,
             alive=player_alive,
             terrain_distances=distances_to_nearest_footprint(
                 player_positions, self.terrain.footprints
             ),
+            opponents_engaged=int(((threat_to_opponent > 0) & opp_alive).sum()),
         )
 
     def _apply_opponent_action(self) -> None:

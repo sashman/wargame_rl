@@ -6,7 +6,7 @@ import torch
 import typer
 from loguru import logger as log
 from pydantic_yaml import parse_yaml_raw_as
-from pytorch_lightning import LightningModule, Trainer
+from pytorch_lightning import LightningModule, Trainer, seed_everything
 from pytorch_lightning.callbacks import Callback
 from typer.models import OptionInfo
 
@@ -233,8 +233,19 @@ def train(
         False,
         help="Record the last training episode as a JSON event log (written to recordings/)",
     ),
+    seed: int | None = typer.Option(
+        None,
+        help="Seed weight init, rollout and eval. Omitted, runs are seeded from OS "
+        "entropy: replicates still differ, but neither is reproducible. Set it "
+        "whenever running several seeds per arm, so a result can be re-run.",
+    ),
 ) -> None:
     """Train the agent."""
+    if seed is not None:
+        # Covers torch, numpy and python's RNGs in one call. Without it nothing
+        # in the training path seeds anything, so a run cannot be reproduced.
+        seed_everything(seed, workers=True)
+        log.info("Seeded run with {}", seed)
     render_mode = _resolve_optional_str(render_mode)
     env_config_path = _resolve_optional_str(env_config_path)
     run_name = _resolve_optional_str(run_name)

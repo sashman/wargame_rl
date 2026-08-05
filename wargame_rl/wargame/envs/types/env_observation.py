@@ -29,6 +29,11 @@ class WargameEnvObservation:
     player_vp: int = 0
     opponent_vp: int = 0
     player_vp_delta: int = 0
+    # Single source of truth for whether the threat column is present. Deriving
+    # it from `wargame_models[0].threat_count` would disagree with
+    # `opponent_models` whenever one of the two lists is empty, and the two
+    # feature matrices must always share a width.
+    threat_features_enabled: bool = False
 
     @property
     def size_wargame_models(self) -> list[int]:

@@ -71,6 +71,21 @@ train-multi-epochs max_epochs *configs:
 	done && \
 	wait
 
+# Like train-multi-epochs, but runs every config at each of N seeds, so an arm
+# carries an error bar. Needed because the dice alone contribute more outcome
+# spread than the scenario does (`just measure-noise-floor`), which makes any
+# single-seed difference under ~10pp unreadable.
+# Use: just train-multi-seeds 1000 2 config1.yaml config2.yaml   (-> 4 runs)
+train-multi-seeds max_epochs n_seeds *configs:
+	@trap 'kill 0' INT TERM && \
+	group="train-multi-$(date +%Y-%m-%d-%H-%M-%S)" && \
+	for s in $(seq 1 {{n_seeds}}); do \
+		for c in {{configs}}; do \
+			uv run train.py --record-during-training --env-config-path "$c" --algorithm ppo --network-type transformer --max-epochs {{max_epochs}} --seed "$s" --run-suffix "s$s" --wandb-group "$group" & \
+		done; \
+	done && \
+	wait
+
 # Run multiple env configs in parallel. Each run gets a unique --run-suffix and shared --wandb-group.
 # Uses PPO + transformer. Use: just train-multi config1.yaml config2.yaml
 # Trap INT/TERM so Ctrl+C kills all background train.py processes.
@@ -157,6 +172,18 @@ measure-baselines env_config n_episodes='25' record='' seed_base='':
 # so the two are directly comparable. Pass `record` as the fourth argument for a trace.
 measure-checkpoint checkpoint env_config n_episodes='30' record='':
 	@uv run python -m scripts.measure_checkpoint {{checkpoint}} {{env_config}} {{n_episodes}} {{record}}
+
+# How much of a config's outcome spread is dice rather than policy. Holds the
+# layouts fixed and varies only the combat seed, so the within-layout spread is
+# the noise floor any arm-to-arm difference has to clear.
+measure-noise-floor env_config n_layouts='10' n_combat_seeds='10' policy='':
+	@uv run python -m scripts.measure_noise_floor {{env_config}} {{n_layouts}} {{n_combat_seeds}} "{{policy}}"
+
+# Terrain-layout statistics for a random_terrain config: coverage, how often a
+# sightline is blocked, and how much of the board is genuinely out of sight.
+# Tune a terrain profile here, not after a thousand epochs of training.
+measure-terrain env_config n_layouts='200':
+	@uv run python -m scripts.measure_terrain {{env_config}} {{n_layouts}}
 
 # Analyze a recorded match for training evaluation
 analyze file:

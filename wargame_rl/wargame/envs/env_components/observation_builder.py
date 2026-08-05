@@ -15,6 +15,7 @@ from wargame_rl.wargame.envs.domain.shooting import ENGAGEMENT_RANGE
 from wargame_rl.wargame.envs.env_components.actions import ActionRegistry
 from wargame_rl.wargame.envs.env_components.shooting_masks import (
     compute_shooting_masks,
+    compute_threat_counts,
     max_weapon_ranges,
 )
 from wargame_rl.wargame.envs.types import (
@@ -56,6 +57,7 @@ def _models_to_obs(
     models: list[WargameModel],
     max_groups: int,
     model_configs: list[ModelConfig] | None = None,
+    threat_counts: np.ndarray | None = None,
 ) -> list[WargameModelObservation]:
     result: list[WargameModelObservation] = []
     for i, m in enumerate(models):
@@ -93,6 +95,9 @@ def _models_to_obs(
                 weapon_damage=w_dmg,
                 toughness=toughness,
                 save_stat=save,
+                threat_count=(
+                    None if threat_counts is None else float(threat_counts[i])
+                ),
             )
         )
     return result
@@ -120,6 +125,38 @@ def _terrain_to_obs(
         )
         result.append(WargameTerrainObservation(footprint=footprint_norm))
     return result
+
+
+def _threat_counts(view: BattleView) -> tuple[np.ndarray, np.ndarray] | None:
+    """Per-model fraction of the opposing force able to see and reach it.
+
+    Returns ``(player, opponent)`` arrays in [0, 1], or None when
+    ``observe_threat_count`` is off.
+
+    Normalised by the configured force size rather than the currently-alive
+    count: an alive-count divisor makes the scalar jump (1/2 to 1/1) when an
+    enemy dies, which is not comparable across timesteps.
+    """
+    if not view.config.observe_threat_count:
+        return None
+
+    n_player = len(view.player_models)
+    n_opponent = len(view.opponent_models)
+    if n_player == 0 or n_opponent == 0:
+        # Emit the column anyway. Skipping it would leave the player and
+        # opponent feature matrices disagreeing on width.
+        return np.zeros(n_player), np.zeros(n_opponent)
+
+    threat_to_player, threat_to_opponent = compute_threat_counts(
+        np.array([m.location for m in view.player_models]),
+        np.array([m.location for m in view.opponent_models]),
+        alive_mask_for(view.player_models),
+        alive_mask_for(view.opponent_models),
+        max_weapon_ranges(view.config.models, n_player),
+        max_weapon_ranges(view.config.opponent_models, n_opponent),
+        view.has_line_of_sight_between_cells,
+    )
+    return threat_to_player / n_opponent, threat_to_opponent / n_player
 
 
 def build_observation(
@@ -180,18 +217,31 @@ def build_observation(
         WargameEnvObjectiveObservation(location=obj.location) for obj in view.objectives
     ]
     terrain_obs = _terrain_to_obs(view)
+    # Computed here, on every observation build, rather than cached during the
+    # opponent's turn. With the usual `skip_phases`, movement advances to
+    # shooting with the same side still active, so the opponent hook does not
+    # run on that step -- a cached value would describe pre-movement positions
+    # and tell the agent it is safe in the cell it just left.
+    threats = _threat_counts(view)
     return WargameEnvObservation(
         current_turn=view.current_turn,
         wargame_models=_models_to_obs(
-            view.player_models, max_groups, model_configs=view.config.models
+            view.player_models,
+            max_groups,
+            model_configs=view.config.models,
+            threat_counts=None if threats is None else threats[0],
         ),
         objectives=objectives_obs,
         board_width=view.board_width,
         board_height=view.board_height,
         opponent_models=_models_to_obs(
-            view.opponent_models, max_groups, model_configs=view.config.opponent_models
+            view.opponent_models,
+            max_groups,
+            model_configs=view.config.opponent_models,
+            threat_counts=None if threats is None else threats[1],
         ),
         terrain=terrain_obs,
+        threat_features_enabled=view.config.observe_threat_count,
         action_mask=action_mask,
         battle_round=battle_round,
         battle_phase_index=battle_phase_index,

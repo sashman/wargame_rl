@@ -46,6 +46,11 @@ CONFIG_PATHS = [
     CONFIG_ROOT / "25v25_noterrain_range12.yaml",
     CONFIG_ROOT / "25v25_terrain_range24.yaml",
     CONFIG_ROOT / "25v25_terrain_range12_clear_objectives.yaml",
+    # Batch-3 cover arms: a 2x2 over (line-of-sight signal x price on losses).
+    CONFIG_ROOT / "25v25_cover_control.yaml",
+    CONFIG_ROOT / "25v25_cover_signal.yaml",
+    CONFIG_ROOT / "25v25_cover_reason.yaml",
+    CONFIG_ROOT / "25v25_cover_full.yaml",
 ]
 
 # A one-objective stack caps at 19 scoring rounds x 5 VP = 95 of a 285
@@ -251,3 +256,96 @@ def test_batch_two_objectives_cannot_overlap() -> None:
         assert config.objective_min_separation >= 2 * config.objective_radius_size, (
             path.stem
         )
+
+
+# Batch-3 arms: a 2x2 over (line-of-sight signal x price on losses), all sharing
+# one denser terrain profile. The factorial only reads if nothing else moves.
+BATCH_THREE_CONTROL = CONFIG_ROOT / "25v25_cover_control.yaml"
+BATCH_THREE_ARMS = {
+    CONFIG_ROOT / "25v25_cover_signal.yaml": (True, False),
+    CONFIG_ROOT / "25v25_cover_reason.yaml": (False, True),
+    CONFIG_ROOT / "25v25_cover_full.yaml": (True, True),
+}
+
+
+def _has_models_lost(config: WargameEnvConfig) -> bool:
+    return any(
+        calculator.type == "models_lost"
+        for phase in config.reward_phases
+        for calculator in phase.reward_calculators
+    )
+
+
+def test_batch_three_is_a_clean_two_by_two() -> None:
+    """Each arm sets exactly the cells the factorial says it does.
+
+    A drifted flag turns the design from "which lever moved it" into an
+    uninterpretable four-way comparison, and nothing at runtime would say so.
+    """
+    control = _load(BATCH_THREE_CONTROL)
+    assert not control.observe_threat_count
+    assert not _has_models_lost(control)
+
+    for path, (signal, reason) in BATCH_THREE_ARMS.items():
+        arm = _load(path)
+        assert arm.observe_threat_count is signal, path.stem
+        assert _has_models_lost(arm) is reason, path.stem
+
+
+@pytest.mark.parametrize("arm_path", list(BATCH_THREE_ARMS), ids=lambda p: p.stem)
+def test_batch_three_arms_share_their_controls_world(arm_path: Path) -> None:
+    """Only the two factorial axes may differ — the world is held fixed.
+
+    Terrain in particular: the profile is what makes cover physically available
+    at all, so an arm drawing a different one is not testing the same question.
+    """
+    control = _load(BATCH_THREE_CONTROL)
+    arm = _load(arm_path)
+
+    assert arm.random_terrain == control.random_terrain
+    assert arm.opponent_policy == control.opponent_policy
+    assert arm.objective_min_separation == control.objective_min_separation
+    assert arm.number_of_opponent_models == control.number_of_opponent_models
+    assert (arm.board_width, arm.board_height) == (
+        control.board_width,
+        control.board_height,
+    )
+    assert arm.track_exposure and control.track_exposure
+
+
+def test_batch_three_terrain_is_denser_than_batch_two() -> None:
+    """The profile change is the point, so pin it rather than trusting a comment.
+
+    Batch 2's 7 pieces left 5.8% of the board hidden from a squad that could
+    shoot it — cover was not available to decline, which is why arm F's collapse
+    at range 24 does not show the agent ignoring a working alternative.
+    """
+    batch_two = _load(BATCH_TWO_CONTROL)
+    batch_three = _load(BATCH_THREE_CONTROL)
+
+    assert batch_two.random_terrain is not None
+    assert batch_three.random_terrain is not None
+    assert batch_three.random_terrain.count > 3 * batch_two.random_terrain.count
+
+
+def test_batch_three_prices_losses_against_kills() -> None:
+    """An even trade must net to roughly zero, or the reward is not a trade.
+
+    `model_kills` is per-model and divided by the alive count; `models_lost` is
+    global and broadcast whole. Comparing raw weights would be wrong — the two
+    reach the step reward through different arithmetic.
+    """
+    config = _load(CONFIG_ROOT / "25v25_cover_full.yaml")
+    phase = config.reward_phases[-1]
+    calculators = {c.type: c for c in phase.reward_calculators}
+
+    kills = calculators["model_kills"]
+    losses = calculators["models_lost"]
+
+    n_alive_typical = config.number_of_wargame_models
+    per_kill = kills.weight * kills.params["bonus_per_kill"] / n_alive_typical
+    per_loss = losses.weight * losses.params["penalty_per_loss"]
+
+    assert 0.5 <= per_loss / per_kill <= 2.0, (
+        f"trade is lopsided: {per_kill:.3f} per kill vs {per_loss:.3f} per loss"
+    )

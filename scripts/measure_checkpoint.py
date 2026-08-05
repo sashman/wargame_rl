@@ -89,6 +89,7 @@ def format_result(result: BaselineResult) -> str:
         f"{result.worst_cohesion_gap:>11.1f}{result.final_fraction_alive:>8.3f}"
         f"{format_optional_metric(result.exposure_rate):>10}"
         f"{format_optional_metric(result.terrain_proximity, 1):>11}"
+        f"{format_optional_metric(result.firepower_advantage, 2):>12}"
     )
 
 
@@ -117,7 +118,7 @@ def main() -> None:
     header = (
         f"{'policy':<28}{'on obj':>10}{'win':>9}{'player VP':>12}"
         f"{'opp VP':>10}{'VP margin':>11}{'cohesion':>11}{'alive':>8}"
-        f"{'exposure':>10}{'terrain_d':>11}"
+        f"{'exposure':>10}{'terrain_d':>11}{'firepower':>12}"
     )
     print(header)
     print("-" * len(header))

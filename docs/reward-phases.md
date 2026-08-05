@@ -90,6 +90,16 @@ reward_phases:
 | `objective_hold` | **per-model** | `player_value` (float, default 1.0), `contested_value` (float, default 0.5), `opponent_value` (float, default 0.25) | Value of the objective this model occupies, keyed on control state under the same OC/count rule as VP scoring; 0 when off every objective, and 0 on a neutral one since holding a point nobody contests is worth nothing. The **only calculator that pays a model while it is stationary** — `closest_objective`'s progress is a potential that exhausts on arrival and is exactly 0 on shooting steps, and `group_cohesion` returns 0 inside its limit, so without this all models share an identical reward for most of an episode. Pays for *controlling* rather than standing, and supplies a gradient across `neutral → contested → player`, which `objective_coverage` and `vp_gain` are both flat across because control is a strict count comparison. |
 | `model_kills` | **per-model** | `bonus_per_kill` (float, default 2.0) | Bonus for each opponent **this model** killed this step. The per-model counterpart of `killing`: under that global term every model is paid the same whether it fired, missed, or stood still, leaving the shooting head — half the agent's decisions — with no credit path. Note the scale difference: `killing` broadcasts its bonus to all N models per kill, so its default 5.0 makes a 25-model wipe worth 125 per model. |
 | `killing` | global | `bonus_killing_opponent` (float, default 5.0) | Bonus × opponent models killed this step. **Prefer `model_kills`:** this spreads kill credit flat across the army, and at the default bonus it is easily the largest term in a phase. |
+| `models_lost` | global | `penalty_per_loss` (float, default 1.0) | Negative reward × **player** models lost this step (reads `ctx.opponent_models_killed`, where `opponent_` means "by the opponent"). The cost side of the shooting trade: `model_kills` pays for kills made and nothing charged for the models they cost, so exposing a model was free and declining a bad exchange could never look better than charging. **Global on purpose** — `RewardPhaseManager` runs per-model calculators over alive models only, and with `max_wounds: 1` every damaged model dies, so a per-model damage penalty would be identically zero. Calibrate against `model_kills` (see below). |
+
+**Pricing the trade.** `model_kills` is per-model and divided by the alive count;
+`models_lost` is global and broadcast whole. Comparing raw weights is therefore wrong — the
+two reach the step reward through different arithmetic. At `model_kills` weight 1.0 / bonus
+2.0 with ~20 models alive, a kill contributes ≈ 0.10, so `models_lost` weight 0.1 / penalty
+1.0 matches it. Measured on `25v25_cover_full` with `squad_march_shoot` over 8 episodes, that
+gives +1.44 per episode from kills against −1.60 from losses: an even exchange nets to
+roughly zero and only *favourable* exchanges pay. Verify any change the same way, by summing
+`env.last_reward_breakdown` over a baseline's episodes rather than by guessing.
 
 ### Choosing calculators
 

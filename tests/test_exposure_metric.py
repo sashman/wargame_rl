@@ -45,12 +45,17 @@ def _make_env(
     weapon_range: int = 12,
     terrain: list[TerrainPieceConfig] | None = None,
     track_exposure: bool = True,
+    arm_player: bool = False,
 ) -> WargameEnv:
     """Two player models facing two armed opponents across open ground.
 
     The objective sits on the opponents so `scripted_advance_and_shoot` keeps
     them still, and the player is given `STAY` every step, which holds the whole
     geometry fixed for the episode.
+
+    The player is unarmed by default — `exposure_rate` only measures what the
+    *opponent* can do, so player weapons are irrelevant to it. `arm_player`
+    exists for `firepower_advantage`, which measures both directions.
     """
     config = WargameEnvConfig(
         board_width=40,
@@ -63,7 +68,13 @@ def _make_env(
         skip_phases=[BattlePhase.command, BattlePhase.charge, BattlePhase.fight],
         # High wounds so nobody dies and the alive-model denominator is constant.
         models=[
-            ModelConfig(x=PLAYER_X, y=18 + i, max_wounds=50) for i in range(N_MODELS)
+            ModelConfig(
+                x=PLAYER_X,
+                y=18 + i,
+                max_wounds=50,
+                weapons=[WeaponProfile(range=weapon_range)] if arm_player else [],
+            )
+            for i in range(N_MODELS)
         ],
         opponent_models=[
             ModelConfig(
@@ -172,3 +183,65 @@ def test_tracker_ignores_dead_models() -> None:
 
     assert tracker.exposure_rate == pytest.approx(0.5)
     assert tracker.terrain_proximity == pytest.approx(3.0)
+
+
+def test_firepower_advantage_is_the_difference_in_engaged_models() -> None:
+    """Positive means more of their guns are exposed to us than ours to them."""
+    tracker = ExposureTracker()
+    # 1 of our 2 alive models exposed; 4 of theirs we can shoot.
+    tracker.record(
+        exposed=np.array([True, False, True]),
+        alive=np.array([True, True, False]),
+        terrain_distances=np.array([2.0, 4.0, 99.0]),
+        opponents_engaged=4,
+    )
+    tracker.record(
+        exposed=np.array([True, True, False]),
+        alive=np.array([True, True, False]),
+        terrain_distances=np.array([2.0, 4.0, 99.0]),
+        opponents_engaged=0,
+    )
+
+    assert tracker.firepower_advantage == pytest.approx((4 - 1 + 0 - 2) / 2)
+
+
+def test_firepower_advantage_is_unmeasured_when_not_supplied() -> None:
+    """None, not 0.0 — 0.0 is a real reading meaning 'an even exchange'."""
+    tracker = ExposureTracker()
+    tracker.record(
+        exposed=np.array([True]),
+        alive=np.array([True]),
+        terrain_distances=np.array([2.0]),
+    )
+
+    assert tracker.firepower_advantage is None
+
+
+def test_unarmed_force_in_the_open_is_maximally_disadvantaged() -> None:
+    """This fixture's player models carry no weapons, only the opponents do.
+
+    Both of ours are visible and shootable, none of theirs is reachable by us —
+    an exchange we lose 0:2. The sign is the point: `exposure_rate` reads 1.0
+    here and cannot say who is winning the trade.
+    """
+    env = _make_env()
+    try:
+        exposure, _proximity = _run_episode(env)
+        firepower = env.firepower_advantage
+    finally:
+        env.close()
+
+    assert exposure == 1.0
+    assert firepower == pytest.approx(-2.0)
+
+
+def test_armed_mirror_match_in_the_open_is_an_even_exchange() -> None:
+    """Same geometry, both sides armed: two exposed each way nets to zero."""
+    env = _make_env(arm_player=True)
+    try:
+        _exposure, _proximity = _run_episode(env)
+        firepower = env.firepower_advantage
+    finally:
+        env.close()
+
+    assert firepower == pytest.approx(0.0)

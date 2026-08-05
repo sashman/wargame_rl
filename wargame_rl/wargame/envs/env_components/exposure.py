@@ -59,12 +59,15 @@ class ExposureTracker:
         self._sampled_models = 0
         self._distance_sum = 0.0
         self._distance_samples = 0
+        self._firepower_sum = 0
+        self._firepower_samples = 0
 
     def record(
         self,
         exposed: np.ndarray,
         alive: np.ndarray,
         terrain_distances: np.ndarray,
+        opponents_engaged: int | None = None,
     ) -> None:
         """Record one shooting phase.
 
@@ -72,13 +75,20 @@ class ExposureTracker:
             exposed: per player model, True if any enemy has LOS and range to it.
             alive: per player model alive mask; dead models are not counted.
             terrain_distances: per player model distance to the nearest footprint.
+            opponents_engaged: how many alive opponents at least one alive player
+                model can see and reach. None skips the firepower measure.
         """
-        self._exposed_models += int((exposed & alive).sum())
+        models_exposed = int((exposed & alive).sum())
+        self._exposed_models += models_exposed
         self._sampled_models += int(alive.sum())
 
         finite = np.isfinite(terrain_distances) & alive
         self._distance_sum += float(terrain_distances[finite].sum())
         self._distance_samples += int(finite.sum())
+
+        if opponents_engaged is not None:
+            self._firepower_sum += int(opponents_engaged) - models_exposed
+            self._firepower_samples += 1
 
     @property
     def exposure_rate(self) -> float | None:
@@ -102,3 +112,19 @@ class ExposureTracker:
         if self._distance_samples == 0:
             return None
         return self._distance_sum / self._distance_samples
+
+    @property
+    def firepower_advantage(self) -> float | None:
+        """Mean (enemies we can shoot) − (our models they can shoot) per phase.
+
+        Positive means the army brings more guns to bear than it exposes, which
+        is the exchange ratio cover is actually for. `exposure_rate` cannot say
+        this: it counts only our side of the trade, so hiding and declining a
+        bad fight look identical to hiding and taking a good one.
+
+        A count difference rather than a ratio, so it stays defined when either
+        side has nobody engaged. None when nothing was sampled.
+        """
+        if self._firepower_samples == 0:
+            return None
+        return self._firepower_sum / self._firepower_samples
