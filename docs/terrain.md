@@ -28,6 +28,93 @@ Footprint corners are normalised (so `x0 ≤ x1`, `y0 ≤ y1`) at config load. T
 
 Overlap with deployment zones and objectives is explicitly allowed.
 
+## Random terrain
+
+Setting `random_terrain` instead of `terrain` regenerates the layout at the start of every
+episode, from the environment's seeded RNG. The two keys are mutually exclusive.
+
+```yaml
+random_terrain:
+  count: 7        # number of pieces -- constant across episodes (see below)
+  min_size: 5     # footprint side length, inclusive
+  max_size: 7
+  mirror: true    # reflect the layout across the vertical centre line
+  edge_margin: 2  # keep footprints this far from the board edge
+  min_gap: 1      # minimum clear cells between two footprints
+```
+
+**Why randomise.** A fixed layout makes any claim about terrain use unfalsifiable: a policy
+that appears to take cover may only have memorised a handful of rectangles, and the two
+produce identical numbers. A fresh layout each episode leaves only one way to score — read
+the terrain tokens in the observation.
+
+**`count` is fixed on purpose.** `observations_to_tensor_batch` stacks the terrain arrays of
+a whole batch with `np.stack`, and `MLPNetwork` flattens terrain into a fixed-width input, so
+a batch containing episodes with different piece counts cannot be collated. Only size and
+position vary. `tests/test_random_terrain.py` asserts this directly.
+
+**`mirror` keeps the sides even.** Deployment zones are fixed to the left and right of the
+board and `turn_order` only swaps who moves first, so an asymmetric draw would hand one side
+better approaches for a whole run. With an odd `count`, one piece straddles the centre line
+and is its own reflection.
+
+Generation is rejection sampling. Specs that pack the board too tightly, or whose `max_size`
+cannot fit inside the margins, are rejected at config load rather than failing partway
+through a run.
+
+## Objectives and terrain
+
+Objective placement is independent of terrain by default, and independent of the other
+objectives. Both defaults have measurable consequences on a 60x44 board with 3 objectives
+of radius 3 and 7 random ruins (400 episodes):
+
+| | frequency |
+|---|---|
+| two objective discs overlap (centres < `2 x radius`) | **25% of episodes** |
+| an objective centre inside another objective's disc | 7.8% of episodes |
+| an objective inside a ruin | **11% of objectives** |
+
+Overlapping discs quietly turn a three-objective mission into a two-objective one, which
+matters because a single stack already saturates every occupancy metric. An objective
+inside a ruin is not covered ground either — the see-out / see-into rule means a model
+standing there can still be seen and shot by anything outside the ruin, so the ruin
+protects nobody while still blocking that lane for everyone else.
+
+Two config keys constrain the draw. Both default to `None` (the historical behaviour) and
+are applied by rejection sampling in `objective_placement`:
+
+```yaml
+objective_min_separation: 6     # >= 2 x objective_radius_size keeps discs disjoint
+objective_terrain_clearance: 5  # keeps the contested ground out of ruins
+```
+
+Placement is best-effort: if the retry budget is exhausted the last candidate is used, on
+the grounds that a crowded layout beats a failed episode. Enabling either key changes the
+scenario distribution, so runs measured with and without them are **not** comparable.
+
+## Measuring cover use
+
+Terrain blocks line of sight and nothing else, so "taking cover" means exactly one thing:
+positioning so no enemy has line of sight to you. Two metrics measure it, both gated behind
+`track_exposure: true` (default off; it costs one extra shooting-mask build per shooting
+phase, measured at ~4% of step time on the 25v25 configs).
+
+| Metric | Meaning |
+|---|---|
+| `exposure_rate` | Fraction of alive model-shooting-phases where at least one alive enemy has **line of sight and weapon range** to that model |
+| `terrain_proximity` | Mean distance from an alive model to the nearest footprint (0 inside) |
+
+Both surface as `eval/*` keys during training and as columns in `just measure-baselines` and
+`just measure-checkpoint`. Both are `None` — printed as `-` — when unmeasured, never `0.0`,
+which would read as "never exposed".
+
+`exposure_rate` deliberately **ignores** the engagement-range and advanced gating that the
+real shooting mask applies. A shooter within `ENGAGEMENT_RANGE` of any enemy cannot fire at
+all, so folding that in would score a headlong charge as if it were cover.
+
+See [metrics.md](metrics.md#cover-metrics) for the reading rules — in particular that
+`exposure_rate` is a mean over *alive* models, which makes it fall when models die.
+
 ### No-Terrain Default
 
 When `terrain` is omitted or `null`, the environment behaves exactly as before — no terrain objects are created, no observation tokens are added, and pre-terrain checkpoints continue to load and infer correctly.
@@ -184,4 +271,4 @@ The following terrain features are deferred to later milestones:
 | Difficult terrain | Movement speed penalty |
 | Impassable terrain | Models cannot move through |
 | Elevation | Height advantage (+AP from elevated positions) |
-| Procedural placement | Board templates and random terrain for training variety |
+| Board templates | Named layouts (a corridor, a courtyard) rather than uniform random rectangles |

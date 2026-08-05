@@ -45,11 +45,36 @@ class BaselineResult:
     player_vp: float
     opponent_vp: float
     worst_cohesion_gap: float
+    final_fraction_alive: float
+    # None unless the config sets `track_exposure`. Read together: a policy that
+    # is merely out of range keeps proximity high, one using ruins pulls it down.
+    exposure_rate: float | None
+    terrain_proximity: float | None
 
     @property
     def vp_margin(self) -> float:
         """Mean VP lead over the opponent — the phase-invariant scoreboard."""
         return self.player_vp - self.opponent_vp
+
+
+def format_optional_metric(value: float | None, decimals: int = 3) -> str:
+    """Render a metric that may not have been measured.
+
+    `exposure_rate` and `terrain_proximity` are None unless the config sets
+    `track_exposure`. Printing them as `0.000` would read as "never exposed",
+    so an unmeasured value is shown as a dash instead.
+    """
+    if value is None:
+        return "-"
+    return f"{value:.{decimals}f}"
+
+
+def mean_of_measured(values: list[float | None]) -> float | None:
+    """Mean over the episodes that measured the metric, or None if none did."""
+    measured = [value for value in values if value is not None]
+    if not measured:
+        return None
+    return float(np.mean(measured))
 
 
 def _worst_cohesion_gap(env: WargameEnv) -> float:
@@ -148,6 +173,9 @@ def evaluate_selector(
     player_vps: list[float] = []
     opponent_vps: list[float] = []
     cohesion_gaps: list[float] = []
+    survivals: list[float] = []
+    exposures: list[float | None] = []
+    proximities: list[float | None] = []
 
     for seed in seeds:
         observation, _ = env.reset(seed=seed)
@@ -171,6 +199,9 @@ def evaluate_selector(
         player_vps.append(float(env.player_vp))
         opponent_vps.append(float(env.opponent_vp))
         cohesion_gaps.append(_worst_cohesion_gap(env))
+        survivals.append(float(alive.mean()))
+        exposures.append(env.exposure_rate)
+        proximities.append(env.terrain_proximity)
 
     return BaselineResult(
         name=name,
@@ -180,4 +211,9 @@ def evaluate_selector(
         player_vp=float(np.mean(player_vps)),
         opponent_vp=float(np.mean(opponent_vps)),
         worst_cohesion_gap=float(np.mean(cohesion_gaps)),
+        final_fraction_alive=float(np.mean(survivals)),
+        # Stays None when the config did not measure it — averaging an unmeasured
+        # metric to a number would invent data.
+        exposure_rate=mean_of_measured(exposures),
+        terrain_proximity=mean_of_measured(proximities),
     )

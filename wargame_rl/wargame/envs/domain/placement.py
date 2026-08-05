@@ -8,6 +8,9 @@ import numpy as np
 
 from wargame_rl.wargame.envs.domain.battle import Battle
 from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
+from wargame_rl.wargame.envs.domain.terrain import Terrain
+from wargame_rl.wargame.envs.domain.terrain_placement import generate_terrain
+from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions
 from wargame_rl.wargame.envs.types.config import (
     ModelConfig,
     ObjectiveConfig,
@@ -132,18 +135,92 @@ def objective_placement(
     board_height: int,
     rng: Generator,
     opponent_deployment_zone: np.ndarray | None = None,
+    min_separation: int | None = None,
+    terrain: Terrain | None = None,
+    terrain_clearance: int | None = None,
 ) -> None:
-    """Place each objective at a random cell outside both deployment zones."""
+    """Place each objective at a random cell outside both deployment zones.
+
+    `min_separation` keeps objective centres apart; without it each is drawn
+    independently and the discs overlap in about a quarter of episodes, which
+    quietly turns a three-objective mission into a two-objective one.
+    `terrain_clearance` keeps them out of ruins.
+
+    Both constraints are satisfied by rejection sampling and are best-effort:
+    if a draw cannot be placed within the retry budget the last candidate is
+    used, because a slightly crowded layout is better than a failed episode.
+    """
     x_min = int(deployment_zone[2])
     x_max = (
         int(opponent_deployment_zone[0])
         if opponent_deployment_zone is not None
         else board_width
     )
+    placed: list[np.ndarray] = []
     for objective in objectives:
-        objective_x = rng.integers(x_min, x_max, dtype=np.int32)
-        objective_y = rng.integers(0, board_height, dtype=np.int32)
-        objective.location = np.array([objective_x, objective_y], dtype=np.int32)
+        location = _sample_objective_location(
+            x_min,
+            x_max,
+            board_height,
+            rng,
+            placed,
+            min_separation,
+            terrain,
+            terrain_clearance,
+        )
+        objective.location = location
+        placed.append(location)
+
+
+def _sample_objective_location(
+    x_min: int,
+    x_max: int,
+    board_height: int,
+    rng: Generator,
+    placed: list[np.ndarray],
+    min_separation: int | None,
+    terrain: Terrain | None,
+    terrain_clearance: int | None,
+) -> np.ndarray:
+    """Draw one objective location satisfying the separation constraints."""
+    candidate = np.zeros(2, dtype=np.int32)
+    for _ in range(_MAX_PLACEMENT_RETRIES):
+        candidate = np.array(
+            [
+                rng.integers(x_min, x_max, dtype=np.int32),
+                rng.integers(0, board_height, dtype=np.int32),
+            ],
+            dtype=np.int32,
+        )
+        if min_separation is not None and any(
+            float(np.linalg.norm(candidate - other)) < min_separation
+            for other in placed
+        ):
+            continue
+        if (
+            terrain_clearance is not None
+            and terrain is not None
+            and _distance_to_terrain(candidate, terrain) < terrain_clearance
+        ):
+            continue
+        return candidate
+    return candidate
+
+
+def _distance_to_terrain(location: np.ndarray, terrain: Terrain) -> float:
+    """Euclidean distance from a cell to the nearest footprint, 0 inside one."""
+    x, y = float(location[0]), float(location[1])
+    if not terrain.footprints:
+        return float("inf")
+    return min(
+        float(
+            np.hypot(
+                max(f.x0 - x, x - f.x1, 0.0),
+                max(f.y0 - y, y - f.y1, 0.0),
+            )
+        )
+        for f in terrain.footprints
+    )
 
 
 def fixed_wargame_model_placement(
@@ -172,11 +249,23 @@ def place_for_episode(
     config: WargameEnvConfig,
     rng: Generator,
 ) -> None:
-    """Place all player models, objectives, and opponent models for a new episode.
+    """Place terrain, player models, objectives, and opponent models for an episode.
 
     Uses fixed positions from config when available, otherwise random placement
     within deployment zones.
     """
+    # Terrain first: it is the board the rest is placed onto. Models and
+    # objectives may sit inside a footprint, exactly as they may with a fixed
+    # layout — a model in a ruin can still see out and be seen.
+    if config.random_terrain is not None:
+        battle.set_terrain(
+            generate_terrain(
+                config.random_terrain,
+                BoardDimensions(width=battle.board_width, height=battle.board_height),
+                rng,
+            )
+        )
+
     # Place player models
     if config.has_fixed_model_positions and config.models is not None:
         fixed_wargame_model_placement(battle.player_models, config.models)
@@ -199,6 +288,9 @@ def place_for_episode(
             battle.board_height,
             rng,
             battle.opponent_deployment_zone,
+            min_separation=config.objective_min_separation,
+            terrain=battle.terrain,
+            terrain_clearance=config.objective_terrain_clearance,
         )
 
     # Place opponent models

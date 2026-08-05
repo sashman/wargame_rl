@@ -1,0 +1,187 @@
+config_name: 25v25_noterrain_range12
+#
+# ARM E -- no terrain at all. The decisive control for batch 1's open question.
+#
+# ARM A drove exposure from 0.372 to 0.096 while survival ROSE, but
+# terrain_proximity never moved, so it is unclear whether it was breaking line of
+# sight or simply fighting at standoff range. With zero ruins the only ways to
+# lower exposure are range and mortality. If E reaches A's exposure anyway,
+# terrain was doing nothing and the batch-1 drop was standoff.
+#
+# terrain_proximity is undefined here and its key is omitted -- expected.
+#
+number_of_wargame_models: 25
+number_of_opponent_models: 25
+number_of_objectives: 3
+objective_radius_size: 3
+board_width: 60
+board_height: 44
+max_groups: 5
+turn_order: random
+number_of_battle_rounds: 20
+skip_phases:
+  - command
+  - charge
+  - fight
+
+deployment_zone: [0, 0, 20, 44]
+opponent_deployment_zone: [40, 0, 60, 44]
+
+# Shoots back. Every other opponent policy is movement-only, which leaves
+# terrain constraining only the player's own shooting and gives cover no value
+# whatsoever. Note this invalidates every baseline and agent score previously
+# measured against the movement-only opponent.
+opponent_policy:
+  type: scripted_advance_and_shoot
+
+# No terrain at all -- see header.
+track_exposure: true
+
+# 5 groups of 5. `weapons` is required for shooting to resolve at all — with an
+# empty list a model cannot shoot, which also makes terrain LOS inert.
+# range 12 on a 60x44 board puts the engagement band at a scale where a ~6-cell
+# ruin actually breaks a firing lane.
+# Objectives are drawn independently by default, which puts two of three discs
+# on top of each other in ~25% of episodes -- silently turning a three-objective
+# mission into a two-objective one. 6 = 2 x objective_radius_size, the smallest
+# separation that keeps the discs disjoint.
+objective_min_separation: 6
+
+models:
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+
+opponent_models:
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+
+# No `objectives:` block -> the 3 objectives (number_of_objectives) are placed
+# randomly outside both deployment zones at the start of every episode.
+
+
+# ---------------------------------------------------------------------------
+# Single reward phase. Against ARM B
+# (25v25_stochastic_terrain_shooting_curriculum) this is the control for "does
+# the reward curriculum help when the opponent shoots back?"; against ARM C
+# (25v25_stochastic_terrain_control) it is the treatment for "does return fire
+# change how the policy positions?".
+#
+# Read eval/win_rate and eval/vp_margin against eval/baseline_* — never
+# success_rate, which changes definition across a ladder and is therefore not
+# comparable between this config and ARM B.
+#
+# Design rules, each traceable to a measurement:
+#   * Every phase keeps vp_gain. Nothing here trains away from the goal.
+#   * Every phase carries per-model terms. Only 3 of 8 calculators are
+#     per-model, and a phase built purely from global ones hands all 25 models
+#     a bit-identical reward, undoing per-model credit assignment by config.
+#   * No term integrates far above ~10 over an episode. The entire gap between
+#     a 0.53-win policy and a 0.78-win policy is worth ~3 reward units, so a
+#     large shaping term drowns the thing being taught.
+#   * models_at_objectives and objective_flip_bonus are deliberately absent:
+#     every competent baseline saturates the former at 1.000, making it unable
+#     to rank policies, and objective_hold covers the latter's contested-state
+#     gradient continuously rather than as a one-shot potential.
+# ---------------------------------------------------------------------------
+reward_phases:
+  - name: win
+    # Required for the terminal bonus to be delivered at full strength; with
+    # terminate_on_success true it is scaled by the remaining-turn fraction.
+    terminate_on_success: false
+    terminal_success_bonus: 2.0
+    reward_calculators:
+      # ---- per-model ----
+      # Potential-based, so policy-invariant: it can bias nothing and never
+      # needs decaying. fallback_to_nearest matters here because each objective
+      # is assigned to at most one group, and 5 groups over 3 objectives leaves
+      # two groups unassigned and unshaped without it.
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          # The anti-stack knob. Objective radius 3 holds 29 cells and models
+          # do not collide, so 25 models on one point is legal and scores 1.00
+          # on every occupancy metric.
+          overstack_penalty_per_extra: 0.01
+      # The only term that pays a model while it is stationary, and the only
+      # per-model path to the central behaviour. Scaled by control state, so it
+      # pays for holding a point rather than merely standing on one.
+      - type: objective_hold
+        weight: 0.25
+      # Credits the model that actually fired. Shooting is half the agent's
+      # decisions; under the global `killing` term every model was paid the
+      # same whether it fired, missed, or stood still.
+      - type: model_kills
+        weight: 1.0
+        params: { bonus_per_kill: 2.0 }
+      # Coherency. Limit 6.0, not 5.0: squad_march measures 3.8 as a mean of
+      # per-episode maxima. Penalty -0.05, not -0.2: at -0.2 a strung-out model
+      # loses ~26 per episode, enough to rank split_evenly (148 VP) below
+      # greedy_nearest (126 VP).
+      - type: group_cohesion
+        weight: 0.3
+        params: { group_max_distance: 6.0, violation_penalty: -0.05 }
+      # ---- global (broadcast whole to each model, not divided by 25) ----
+      # The actual objective. Largest weight because its realistic dynamic
+      # range is the smallest.
+      - type: vp_gain
+        weight: 2.0
+      # Equals player coverage, where vp_gain is player minus opponent
+      # coverage. Paid every step against vp_gain's ~19 scoring events, so this
+      # weight keeps VP dominant while giving a per-step spreading gradient.
+      - type: objective_coverage
+        weight: 0.3
+    # Final phase: success_threshold, min_epochs and min_epochs_above_threshold
+    # are never read, because try_advance returns at is_final_phase. The
+    # criteria still selects terminal-bonus eligibility and defines the logged
+    # success_rate.
+    success_criteria:
+      type: player_ahead_on_vp
+      params: {}

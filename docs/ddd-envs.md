@@ -29,6 +29,7 @@ wargame_rl/wargame/envs/
 │   ├── termination.py         # is_battle_over, check_max_turns_reached
 │   ├── los.py                 # Grid Bresenham LOS, injectable blocking (terrain)
 │   ├── terrain.py             # Footprint, Terrain (LOS-blocking geometry)
+│   ├── terrain_placement.py   # generate_terrain: random per-episode layouts
 │   ├── shooting.py            # Attack sequence: hit → wound → save → damage
 │   └── turn_execution.py      # run_until_player_phase, run_after_player_action
 ├── env_components/            # Adapters: actions, observation, distances, shooting masks
@@ -85,6 +86,8 @@ Add a frozen dataclass (or Pydantic model) in `domain/value_objects.py`. Use it 
 ### Adding or changing placement rules
 
 Placement is in `domain/placement.py`. To add a new strategy (e.g. by scenario name), extend `place_for_episode` or add a helper that it calls, using `Battle` and config only. The env continues to call `place_for_episode(_battle, config, rng)` after `_battle.reset_for_episode()` and clock reset. Do not put placement logic in `wargame.py`.
+
+Terrain follows the same pattern: `place_for_episode` calls `generate_terrain` from `domain/terrain_placement.py` and installs the result via `Battle.set_terrain` when the config sets `random_terrain`. LOS resolves terrain through the aggregate on every query, so a replacement takes effect immediately with no cache to invalidate.
 
 ### Adding termination conditions
 

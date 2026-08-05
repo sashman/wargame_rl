@@ -1,0 +1,210 @@
+config_name: 25v25_stochastic_terrain_shooting_curriculum
+#
+# ARM B of the cover experiment: shooting opponent, two-rung reward curriculum.
+#
+# Same scenario and same final phase as ARM A
+# (25v25_stochastic_terrain_shooting); the only difference is the rung before
+# it. The pair therefore isolates whether the reward curriculum helps against an
+# opponent that shoots back.
+#
+# This is deliberately a *reward* curriculum, not an opponent curriculum. Reward
+# phases cannot vary the opponent — it is a top-level env field — and a two-stage
+# opponent curriculum needs no new machinery anyway: train against
+# 25v25_stochastic_terrain_control and warm-start from that checkpoint with
+# `--warm-start-ckpt-path`.
+#
+number_of_wargame_models: 25
+number_of_opponent_models: 25
+number_of_objectives: 3
+objective_radius_size: 3
+board_width: 60
+board_height: 44
+max_groups: 5
+turn_order: random
+number_of_battle_rounds: 20
+skip_phases:
+  - command
+  - charge
+  - fight
+
+deployment_zone: [0, 0, 20, 44]
+opponent_deployment_zone: [40, 0, 60, 44]
+
+# Shoots back. Every other opponent policy is movement-only, which leaves
+# terrain constraining only the player's own shooting and gives cover no value
+# whatsoever. Note this invalidates every baseline and agent score previously
+# measured against the movement-only opponent.
+opponent_policy:
+  type: scripted_advance_and_shoot
+
+# Terrain blocks line-of-sight only (models can still move through it), and is
+# regenerated every episode rather than fixed.
+#
+# Randomising it is what makes a cover result falsifiable. With the seven fixed
+# ruins this config used to carry, "the policy learned to use cover" and "the
+# policy memorised seven rectangles" produce the same numbers. A fresh layout
+# each episode leaves only one way to score: read the terrain tokens in the
+# observation.
+#
+# `count` is fixed while size and position vary — observation batching stacks
+# the terrain arrays of a whole batch, so the piece count cannot differ between
+# episodes. `mirror` keeps the two deployment zones on equal ground; they are
+# fixed to the left and right of the board, so an asymmetric draw would hand one
+# side better approaches for a whole run.
+random_terrain:
+  count: 7
+  min_size: 5
+  max_size: 7
+  mirror: true
+  edge_margin: 2
+  min_gap: 1
+
+# Accumulate line-of-sight exposure and terrain proximity during shooting
+# phases. Measurement only — it does not change the game. Without it the
+# question this config exists to answer cannot be read off a run at all.
+track_exposure: true
+
+# 5 groups of 5. `weapons` is required for shooting to resolve at all — with an
+# empty list a model cannot shoot, which also makes terrain LOS inert.
+# range 12 on a 60x44 board puts the engagement band at a scale where a ~6-cell
+# ruin actually breaks a firing lane.
+models:
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+
+opponent_models:
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+
+# No `objectives:` block -> the 3 objectives (number_of_objectives) are placed
+# randomly outside both deployment zones at the start of every episode.
+
+
+# ---------------------------------------------------------------------------
+# Two-rung curriculum — the ARM under test against
+# 25v25_stochastic_terrain_shooting.yaml.
+#
+# Two rungs, not four. The previous ladder's rungs were each stack-passable,
+# redundant, or inert, and one of them measurably trained away from the goal:
+# win rate fell 62% -> 47% on advancing to a phase with no VP term.
+#
+# The rungs share a calculator set and differ only in weighting, so advancing
+# is a handover rather than a change of task. Every rung keeps vp_gain and at
+# least one per-model term. See 25v25_stochastic_terrain_shooting.yaml for why
+# each calculator
+# is present, absent, and weighted as it is.
+# ---------------------------------------------------------------------------
+reward_phases:
+  # R0 — establish control. Shaping leads while the policy learns to arrive and
+  # hold; the goal signal is present but not yet dominant.
+  - name: establish_control
+    terminate_on_success: false
+    terminal_success_bonus: 2.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.01
+      - type: objective_hold
+        weight: 0.4
+      - type: model_kills
+        weight: 0.5
+        params: { bonus_per_kill: 2.0 }
+      - type: group_cohesion
+        weight: 0.3
+        params: { group_max_distance: 6.0, violation_penalty: -0.05 }
+      - type: vp_gain
+        weight: 1.0
+      - type: objective_coverage
+        weight: 0.4
+    # 0.40 x 285 = 114 VP. A stack on one objective caps at 19 scoring rounds
+    # x 5 VP = 95 VP = 0.3333 of the theoretical max, so this is the smallest
+    # bar a one-objective stack provably cannot clear. That bound is
+    # arithmetic, not measurement, so it survives any future policy.
+    success_criteria:
+      type: player_vp_min
+      params: { fraction_of_max: 0.40 }
+    # Measured: a 30-epoch policy clears 114 VP on 0.47 of eval episodes, and
+    # scores 112.7 +- 35.7 VP. At n_eval_episodes=30 and k=3 the gate costs
+    # ~12 epochs when the true rate equals the threshold and ~5 at +0.05, and
+    # stalls below -0.07 — so this sits just under the measured rate.
+    success_threshold: 0.40
+    min_epochs: 15
+    min_epochs_above_threshold: 3
+
+  # R1 — win. Identical to 25v25_stochastic_terrain_shooting.yaml's only phase,
+  # so the two configs converge on the same reward and differ only in how they
+  # get there.
+  - name: win
+    terminate_on_success: false
+    terminal_success_bonus: 2.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.01
+      - type: objective_hold
+        weight: 0.25
+      - type: model_kills
+        weight: 1.0
+        params: { bonus_per_kill: 2.0 }
+      - type: group_cohesion
+        weight: 0.3
+        params: { group_max_distance: 6.0, violation_penalty: -0.05 }
+      - type: vp_gain
+        weight: 2.0
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: player_ahead_on_vp
+      params: {}

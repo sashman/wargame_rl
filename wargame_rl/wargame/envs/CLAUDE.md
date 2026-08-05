@@ -16,6 +16,14 @@ Applies to everything under `wargame_rl/wargame/envs/`.
 - `skip_phases`: list of battle phases to auto-advance (default: all non-movement). `max_turns = n_rounds × (5 - len(skip_phases))`; default is 1 step per round (movement only). Set `skip_phases: []` for full per-phase stepping (5 steps per round).
 - After the player's turn, the opponent's full turn is auto-executed before the next observation. Turn order: `turn_order` (player / opponent / random).
 
+## Terrain and cover measurement
+
+- `terrain` (fixed list) and `random_terrain` (regenerated each reset) are mutually exclusive. Generation lives in `domain/terrain_placement.py`, called from `place_for_episode`
+- **`random_terrain.count` is fixed while size and position vary** — `observations_to_tensor_batch` stacks terrain, so a varying piece count cannot be collated. `mirror: true` keeps the two fixed deployment zones on equal ground
+- `track_exposure: true` accumulates `env.exposure_rate` and `env.terrain_proximity` (`env_components/exposure.py`). Both are `None`, never `0.0`, when unmeasured — 0.0 would read as "never exposed". Costs one extra shooting-mask build per shooting phase (~4% of step time on 25v25)
+- `exposure_rate` deliberately ignores engagement-range gating, and averages over *alive* models so casualties lower it on their own. See [docs/metrics.md](../../../docs/metrics.md) § Cover metrics before comparing it across configs
+- `objective_min_separation` / `objective_terrain_clearance` constrain random objective placement (rejection sampling in `objective_placement`, best-effort). Both default to `None` = the historical draw, which overlaps discs in 25% of episodes and puts 11% of objectives inside a ruin. **Enabling either changes the scenario distribution — runs with and without are not comparable**
+
 ## Placement (`ModelConfig`/`ObjectiveConfig` in YAML)
 
 - No key → full auto · Key without x/y → random + config attrs · Key with x/y → fixed
