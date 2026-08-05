@@ -325,6 +325,22 @@ class WargameEnvConfig(BaseModel):
         default=None,
         description="Per-objective configuration (attributes, and optionally positions). Length must match number_of_objectives.",
     )
+    objective_min_separation: int | None = Field(
+        default=None,
+        ge=0,
+        description="Minimum distance between two objective centres when placed "
+        "randomly. None (default) places each independently, which lets discs "
+        "overlap — measured at 25% of episodes on a 60x44 board with 3 objectives "
+        "of radius 3. Set to 2 x objective_radius_size for disjoint discs.",
+    )
+    objective_terrain_clearance: int | None = Field(
+        default=None,
+        ge=0,
+        description="Minimum distance from an objective centre to any terrain "
+        "footprint. None (default) allows objectives inside ruins. Set it to keep "
+        "the contested ground in the open, so terrain is cover on the approach "
+        "rather than something standing on the prize.",
+    )
     group_max_distance: float = Field(
         gt=0,
         default=10.0,

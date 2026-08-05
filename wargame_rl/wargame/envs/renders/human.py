@@ -350,24 +350,70 @@ class HumanRender(Renderer):
 
         # Row 2: victory points and delta this step
         center_y_row2 = panel_y + self.PANEL_HEIGHT + self.PANEL_HEIGHT // 2
-        player_delta_str = (
-            f" (+{view.player_vp_delta})" if view.player_vp_delta > 0 else ""
+        self._draw_vp_readout(
+            font,
+            "Player VP:",
+            view.player_vp,
+            view.player_vp_delta,
+            window_w // 4,
+            center_y_row2,
+            text_color,
         )
-        opponent_delta_str = (
-            f" (+{view.opponent_vp_delta})" if view.opponent_vp_delta > 0 else ""
+        self._draw_vp_readout(
+            font,
+            "Opponent VP:",
+            view.opponent_vp,
+            view.opponent_vp_delta,
+            3 * window_w // 4,
+            center_y_row2,
+            text_color,
         )
-        player_vp_text = f"Player VP: {view.player_vp}{player_delta_str}"
-        opponent_vp_text = f"Opponent VP: {view.opponent_vp}{opponent_delta_str}"
-        player_vp_surface = font.render(player_vp_text, True, text_color)
-        opponent_vp_surface = font.render(opponent_vp_text, True, text_color)
-        player_vp_rect = player_vp_surface.get_rect(
-            center=(window_w // 4, center_y_row2)
+
+    def _draw_vp_readout(
+        self,
+        font: "pygame.font.Font",
+        label: str,
+        value: int,
+        delta: int,
+        center_x: int,
+        center_y: int,
+        color: tuple[int, int, int],
+    ) -> None:
+        """Draw "<label> <value> (+delta)" with every part at a fixed position.
+
+        The delta appears for one step every few rounds. Rendering the line as a
+        single centred string made the label and the number jump sideways each
+        time it did, which is unreadable in a recording. So the layout reserves
+        room for the widest number and the widest delta whether or not they are
+        drawn: the label is left-anchored, the number is right-anchored inside a
+        fixed field so it grows leftward as it gains digits, and the delta is
+        left-anchored past that field. Nothing moves when the delta appears.
+        """
+        if self.window is None:
+            return
+        gap = font.size(" ")[0]
+        value_field = font.size("000")[0]
+        delta_field = font.size("(+00)")[0]
+
+        label_surface = font.render(label, True, color)
+        value_surface = font.render(str(value), True, color)
+
+        total_width = label_surface.get_width() + gap + value_field + gap + delta_field
+        left = center_x - total_width // 2
+
+        self.window.blit(
+            label_surface, label_surface.get_rect(midleft=(left, center_y))
         )
-        opponent_vp_rect = opponent_vp_surface.get_rect(
-            center=(3 * window_w // 4, center_y_row2)
+        value_right = left + label_surface.get_width() + gap + value_field
+        self.window.blit(
+            value_surface, value_surface.get_rect(midright=(value_right, center_y))
         )
-        self.window.blit(player_vp_surface, player_vp_rect)
-        self.window.blit(opponent_vp_surface, opponent_vp_rect)
+        if delta > 0:
+            delta_surface = font.render(f"(+{delta})", True, color)
+            self.window.blit(
+                delta_surface,
+                delta_surface.get_rect(midleft=(value_right + gap, center_y)),
+            )
 
     def _get_model_index_at(self, view: BattleView, mx: int, my: int) -> int | None:
         """Return the index of the wargame model at window position (mx, my), or None."""

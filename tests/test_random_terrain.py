@@ -14,6 +14,9 @@ import pytest
 
 from wargame_rl.wargame.envs.domain.terrain_placement import generate_terrain
 from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions
+from wargame_rl.wargame.envs.env_components.exposure import (
+    distances_to_nearest_footprint,
+)
 from wargame_rl.wargame.envs.types import (
     ModelConfig,
     RandomTerrainConfig,
@@ -171,3 +174,75 @@ def test_terrain_is_stable_without_random_terrain() -> None:
         env.close()
 
     assert first == second
+
+
+def _objective_env(**overrides: object) -> WargameEnv:
+    """25v25-shaped board with three objectives and seven random ruins."""
+    config = WargameEnvConfig(
+        board_width=60,
+        board_height=44,
+        number_of_wargame_models=2,
+        number_of_objectives=3,
+        objective_radius_size=3,
+        deployment_zone=(0, 0, 20, 44),
+        opponent_deployment_zone=(40, 0, 60, 44),
+        random_terrain=RandomTerrainConfig(),
+        **overrides,  # type: ignore[arg-type]
+    )
+    return WargameEnv(config, renderer=None)
+
+
+def _min_objective_separation(env: WargameEnv) -> float:
+    locations = [o.location.astype(float) for o in env.objectives]
+    return min(
+        float(np.linalg.norm(a - b))
+        for i, a in enumerate(locations)
+        for b in locations[i + 1 :]
+    )
+
+
+def test_objectives_overlap_without_a_separation_constraint() -> None:
+    """Pins the default so the fix below is measured against something real.
+
+    Independent draws put two of three objective discs on top of each other in
+    roughly a quarter of episodes, which turns a three-objective mission into a
+    two-objective one without any signal that it happened.
+    """
+    env = _objective_env()
+    try:
+        overlapping = sum(
+            _min_objective_separation(_reset(env, seed)) < 6 for seed in range(200)
+        )
+    finally:
+        env.close()
+
+    assert overlapping > 20
+
+
+def _reset(env: WargameEnv, seed: int) -> WargameEnv:
+    env.reset(seed=seed)
+    return env
+
+
+def test_min_separation_keeps_objective_discs_disjoint() -> None:
+    """With the constraint set to 2x the radius, no two discs can intersect."""
+    env = _objective_env(objective_min_separation=6)
+    try:
+        for seed in range(200):
+            assert _min_objective_separation(_reset(env, seed)) >= 6
+    finally:
+        env.close()
+
+
+def test_terrain_clearance_keeps_objectives_out_of_ruins() -> None:
+    """Contested ground stays in the open, so terrain is cover on the approach."""
+    env = _objective_env(objective_terrain_clearance=4)
+    try:
+        for seed in range(100):
+            _reset(env, seed)
+            footprints = env.terrain.footprints
+            locations = np.array([o.location for o in env.objectives])
+            distances = distances_to_nearest_footprint(locations, footprints)
+            assert distances.min() >= 4
+    finally:
+        env.close()

@@ -62,6 +62,36 @@ Generation is rejection sampling. Specs that pack the board too tightly, or whos
 cannot fit inside the margins, are rejected at config load rather than failing partway
 through a run.
 
+## Objectives and terrain
+
+Objective placement is independent of terrain by default, and independent of the other
+objectives. Both defaults have measurable consequences on a 60x44 board with 3 objectives
+of radius 3 and 7 random ruins (400 episodes):
+
+| | frequency |
+|---|---|
+| two objective discs overlap (centres < `2 x radius`) | **25% of episodes** |
+| an objective centre inside another objective's disc | 7.8% of episodes |
+| an objective inside a ruin | **11% of objectives** |
+
+Overlapping discs quietly turn a three-objective mission into a two-objective one, which
+matters because a single stack already saturates every occupancy metric. An objective
+inside a ruin is not covered ground either — the see-out / see-into rule means a model
+standing there can still be seen and shot by anything outside the ruin, so the ruin
+protects nobody while still blocking that lane for everyone else.
+
+Two config keys constrain the draw. Both default to `None` (the historical behaviour) and
+are applied by rejection sampling in `objective_placement`:
+
+```yaml
+objective_min_separation: 6     # >= 2 x objective_radius_size keeps discs disjoint
+objective_terrain_clearance: 5  # keeps the contested ground out of ruins
+```
+
+Placement is best-effort: if the retry budget is exhausted the last candidate is used, on
+the grounds that a crowded layout beats a failed episode. Enabling either key changes the
+scenario distribution, so runs measured with and without them are **not** comparable.
+
 ## Measuring cover use
 
 Terrain blocks line of sight and nothing else, so "taking cover" means exactly one thing:
