@@ -1,15 +1,18 @@
 # 2026-08-05 — Does the agent break line of sight when the opponent shoots back?
 
-**Question.** When the enemy returns fire and the ruins move every episode, does the
-policy do anything beyond rushing forward and out-shooting it? "Cover" here means one
-thing only: deliberately breaking line of sight. There is no cover save in this game —
-terrain blocks LOS and nothing else.
+**Question.** When the enemy returns fire and the ruins move every episode, does the policy
+do anything beyond rushing forward and out-shooting it? "Cover" here means one thing only:
+deliberately breaking line of sight. There is no cover save in this game — terrain blocks
+LOS and nothing else.
 
-**Outcome.** Return fire changes positioning by ~4.7x, and the effect is not survivorship.
-The agent ends up **less exposed and more alive than any policy that contests objectives**,
-including the shooting baseline — but it does *not* out-score that baseline, and there is
-**no positive evidence yet that terrain is the mechanism**. A no-terrain control (batch 2,
-arm E) is running to settle that. The reward curriculum was refuted.
+**Answer: no.** The agent does not use terrain. It learns **range management** — it fights
+at the edge of the weapon band, where most enemies cannot reach it. Deleting every ruin
+from the board changes its exposure by 10%, against a 4.7x effect from return fire alone.
+The reward curriculum was also refuted.
+
+This is a negative result on the headline question and a positive one on the mechanism: the
+policy *does* learn a real, non-obvious defensive behaviour in response to being shot at.
+It is just not the behaviour we went looking for.
 
 ## What had to be built first
 
@@ -23,16 +26,18 @@ The question was unanswerable as the repo stood:
   might only have memorised seven rectangles; the two are indistinguishable in the numbers.
 
 PR #135 added per-episode random terrain (fixed piece count — observation batching stacks
-terrain, so the count cannot vary), `exposure_rate` / `terrain_proximity` /
-`fraction_alive`, and added `squad_march_shoot` to the auto-logged baselines.
+terrain, so the count cannot vary), the `exposure_rate` / `terrain_proximity` /
+`fraction_alive` metrics, and `squad_march_shoot` to the auto-logged baselines.
 
 ## Setup
 
-Three arms, PPO + transformer, 1000 epochs each, one seed per arm, Wandb group
-`train-multi-2026-08-05-00-36-25`. 25v25 on 60x44, 3 random objectives, 7 mirrored random
-ruins regenerated per episode, weapon range 12, 20 battle rounds, movement + shooting
-phases. All three share one reward (six calculators, `vp_gain` weight 2.0); arms A and C
-are single-phase, arm B is the two-rung ladder.
+PPO + transformer, 1000 epochs per arm, one seed per arm. 25v25 on 60x44, 3 random
+objectives, 7 mirrored random ruins regenerated per episode, 20 battle rounds, movement +
+shooting phases. Every arm shares one reward (six calculators, `vp_gain` weight 2.0) except
+the curriculum arm, whose final rung is identical to the others'.
+
+**Batch 1** (`train-multi-2026-08-05-00-36-25`), weapon range 12, objectives drawn
+independently:
 
 | arm | run | opponent | reward |
 |---|---|---|---|
@@ -40,22 +45,33 @@ are single-phase, arm B is the two-rung ladder.
 | B | `rhizvkte` | `scripted_advance_and_shoot` | 2-rung curriculum |
 | C | `2fgj1zny` | `scripted_advance_to_objective` | single phase |
 
-## Measured — training curves
+**Batch 2** (`train-multi-2026-08-05-05-52-10`), all with `objective_min_separation: 6`:
 
-Rolling means over 1040 eval points; last 100 epochs in bold.
+| arm | run | varies from D |
+|---|---|---|
+| D | `59sqxio7` | — (matched control) |
+| E | `pwg97xnv` | **no terrain at all** |
+| F | `2ooomh5i` | weapon range 12 → 24 |
+| G | `2r5mkd4d` | objectives >= 5 cells from any ruin |
+
+Batch 2 fixed an objective-placement defect (below), which changes the scenario
+distribution — **batch 1 and batch 2 numbers are not comparable to each other.** Each batch
+carries its own control.
+
+## Measured — batch 1, converged (last 100 of 1000 epochs)
 
 | arm | exposure | terrain_d | alive | vp_margin | win |
 |---|---|---|---|---|---|
-| A, first 174 epochs | 0.220 | 5.98 | 0.455 | −45.1 | 28.7 |
-| **A, last 100** | **0.099** | **5.85** | **0.706** | **+13.6** | **53.9** |
-| **B, last 100** | **0.089** | **5.76** | **0.727** | **+8.6** | **52.7** |
-| C, first 174 epochs | 0.544 | 6.12 | 1.000 | +57.0 | 81.1 |
-| **C, last 100** | **0.463** | **5.99** | **1.000** | **+115.7** | **100.0** |
+| A shooting / single | 0.099 | 5.85 | 0.706 | +13.6 | 53.9 |
+| B shooting / curriculum | 0.089 | 5.76 | 0.727 | +8.6 | 52.7 |
+| C control, no return fire | 0.463 | 5.99 | 1.000 | +115.7 | 100.0 |
 
-## Measured — held-out evaluation
+Arm A over training: exposure 0.220 → 0.099 while survival **rose** 0.455 → 0.706.
 
-Arm A's best checkpoint (`ppo-927`) and every scripted baseline on **identical layouts**,
-seeds 700000–700029, scored through the same `evaluate_selector` path.
+## Measured — batch 1 held-out evaluation
+
+Arm A's best checkpoint and every scripted baseline on **identical layouts**, seeds
+700000-700029, scored through the same `evaluate_selector` path.
 
 | policy | on_obj | win | player VP | opp VP | alive | exposure | terrain_d |
 |---|---|---|---|---|---|---|---|
@@ -66,51 +82,66 @@ seeds 700000–700029, scored through the same `evaluate_selector` path.
 | **squad_march_shoot** (the bar) | 1.000 | **0.63** | 130.8 | 109.8 | 0.388 | 0.220 | 5.0 |
 | **agent (arm A)** | 0.882 | 0.53 | 111.0 | 117.5 | **0.660** | **0.127** | 4.6 |
 
-## What this supports
+## Measured — batch 2 (mean of last 150 epochs; F completed 1000, D/E/G at 926-950)
 
-**1. Return fire changes positioning, by a lot.** Arms A and C differ in exactly one
-thing — whether the enemy can shoot. Same reward, same terrain generator, same board. With
-return fire the policy converges to 0.099 exposure; without it, 0.463. That is not a
-general "stay hidden" prior; it is a response to being shot at. *Measured.*
+| arm | exposure | terrain_d | alive | vp_margin | win |
+|---|---|---|---|---|---|
+| D terrain, range 12 | 0.116 | 5.86 | 0.651 | −1.0 | 45.5 |
+| **E no terrain, range 12** | **0.120** | n/a | 0.653 | −11.5 | 43.8 |
+| F terrain, range 24 | 0.429 | 5.62 | **0.156** | −75.5 | **6.8** |
+| G terrain, clear objectives | 0.179 | 6.58 | 0.531 | −34.6 | 28.3 |
 
-**2. The survivorship confound is ruled out, in the right direction.** `exposure_rate`
-averages over alive models, so casualties depress it on their own. In arm A exposure fell
-0.220 → 0.099 while survival **rose** 0.455 → 0.706. The confound predicts exposure falling
-when mortality *rises*; the opposite happened. *Measured.*
+## Conclusions
 
-**3. It is not standing off.** `on_obj` 0.882 against the bar's 1.000 — the agent is on the
-objectives, not hiding at the board edge. The `random` failure mode (exposure 0.016 for
-10.8 VP) is decisively not what this is. *Measured.*
+### 1. Terrain is not the mechanism. Range is.
 
-**4. The agent dominates every movement-only baseline and trades against the shooting
-one.** Win 0.53 vs 0.23–0.27 for the movement-only baselines. Against `squad_march_shoot`
-it takes 42% less exposure and 70% more survivors for 15% less VP and 0.10 less win rate.
-*Measured.* That it is a deliberate trade rather than a partial failure is *inferred*.
+**D vs E is the decisive comparison**: identical configs, differing only in whether ruins
+exist. Deleting all seven changed exposure 0.116 → 0.120, survival 0.651 → 0.653, win
+45.5 → 43.8. Everything is within noise. *Measured.*
 
-**5. The reward curriculum is refuted for this scenario.** Arm B reached rung 1 and
-converged to the same place as arm A (win 52.7 vs 53.9, VP +8.6 vs +13.6, exposure 0.089
-vs 0.099). It is not better and it is not worse; it is the same policy reached more slowly.
-*Measured, one seed.*
+Set that against the 4.7x exposure gap between arms A and C, which differ only in whether
+the enemy can shoot. Return fire drives essentially the whole effect; terrain contributes
+at most marginally. *Measured.*
 
-## What this does NOT support
+This retroactively resolves batch 1's open question. Every batch-1 signature — exposure
+collapsing, survival rising, `on_obj` staying at 0.882, `terrain_proximity` never
+moving — is explained by a policy that manages **distance**, not line of sight.
 
-**Terrain is not established as the mechanism.** `terrain_proximity` is flat at 5.76–6.03
-across *all three arms* and across the whole of training, and sits inside the baselines'
-range (4.6–6.9). Nothing in the data shows the policy moving toward ruins. Its held-out
-5.4→4.6 edge over the bar is within the spread of the movement-only baselines.
+### 2. Arm F is the corroboration, and the most informative single arm
 
-Proximity is a weak proxy — a ruin can break a sightline from 15 cells away, so this does
-not *refute* cover. But there is currently no positive evidence for it. Two hypotheses
-remain live and the data cannot separate them:
+Doubling weapon range to 24 should be where cover pays off: distance stops working across
+a 60x44 board, LOS becomes the only remaining lever, and there are seven ruins available.
+Instead the agent collapses — exposure 0.429, survival 0.156, win 6.8%. It has no answer
+once distance is removed, which is exactly what a distance-only strategy predicts.
+*Measured; the causal reading is inferred.*
 
-- **Cover**: the policy positions so ruins fall on enemy sightlines.
-- **Range management**: the policy fights at the edge of the 12-cell band, where most
-  enemies simply cannot reach it, and terrain is incidental.
+### 3. What the policy actually learned is still worth having
 
-There is a third contributor either way: **killing the enemy also lowers exposure**, since a
-dead opponent is one fewer model with line of sight. The agent's opponent VP of 117.5 says
-it is not thinning the enemy as hard as the bar does (109.8), so this is unlikely to be the
-whole story, but it is not zero.
+It is not a null result about learning. Against the movement-only baselines on held-out
+seeds the agent wins 0.53 to their 0.23-0.27. Against `squad_march_shoot` it takes **42%
+less exposure and 70% more survivors for 15% less VP**. That is a coherent
+survivability-for-offence trade, discovered without being rewarded for it — no calculator
+pays for staying alive, and none charges for losing a model. The incentive is entirely
+indirect (dead models stop earning `objective_hold`, `closest_objective_v2` and `vp_gain`).
+
+### 4. The reward curriculum is refuted for this scenario
+
+Arm B reached rung 1 and converged to the same place as arm A: win 52.7 vs 53.9, VP +8.6
+vs +13.6, exposure 0.089 vs 0.099. Not better, not worse — the same policy reached more
+slowly. *Measured, one seed.*
+
+An **opponent** curriculum is also unnecessary: arm A clears the `squad_march` bar
+comfortably without one. The pre-registered fallback (train against the movement-only
+opponent, then `--warm-start-ckpt-path` into the shooting one) was never needed and
+remains untested.
+
+### 5. Objectives clear of terrain make the task harder
+
+Arm G scores worse than its control on every axis (win 28.3 vs 45.5, VP −34.6 vs −1.0,
+survival 0.531 vs 0.651) and is *more* exposed, at 0.179 vs 0.116. Given conclusion 1, the
+likely cause is not lost cover but geometry: forcing objectives >= 5 cells from any of
+seven ruins pushes them into the open middle of the board, further from the deployment
+zone and from each other. *Measured; the explanation is inferred and untested.*
 
 ## Defect found and fixed during the experiment
 
@@ -124,36 +155,48 @@ Objective placement drew each objective independently, with no separation constr
 | an objective inside a ruin | **11% of objectives** |
 
 A quarter of episodes were silently running as a two-objective mission. An objective inside
-a ruin is also not covered ground — the see-out / see-into rule means its occupant is still
+a ruin is also not covered ground — the see-out / see-into rule means its occupant stays
 visible to everything outside, so the ruin protects nobody while still blocking that lane.
 
-`objective_min_separation` and `objective_terrain_clearance` now constrain the draw. **Both
-default to the old behaviour, and every number above was measured without them** — so
-batch-2 results are not comparable to this report's.
-
-## Open — batch 2
-
-Four arms, all with `objective_min_separation: 6`, each varying one thing from a matched
-control (`25v25_terrain_range12`):
-
-| arm | varies | decides |
-|---|---|---|
-| E `noterrain_range12` | no terrain at all | **the open question.** With zero ruins the only ways to lower exposure are range and mortality. If E still reaches ~0.10, terrain was doing nothing |
-| F `terrain_range24` | weapon range 12 → 24 | at range 12 most of the board is out of range, so range is what keeps a model safe. Doubling it makes range nearly free and leaves LOS as the only lever |
-| G `terrain_range12_clear_objectives` | objectives ≥5 from any ruin | whether un-coverable objectives were suppressing cover use |
+`objective_min_separation` and `objective_terrain_clearance` now constrain the draw, both
+defaulting to the old behaviour. The cost of the fix is visible: batch-2 arm D wins 45.5
+where batch-1 arm A won 53.9 on the same scenario with overlapping objectives. Three
+genuinely separate objectives is a harder mission.
 
 ## Confounds and limits
 
-- **One seed per arm.** Adequate to establish the 4.7x A-vs-C gap, which is far outside
-  epoch-to-epoch noise; inadequate to rank A against B, whose difference is within it.
+- **One seed per arm.** Adequate for the A-vs-C gap (4.7x) and the F collapse (win 6.8 vs
+  45.5), both far outside epoch-to-epoch noise. **Inadequate for D vs E**: that comparison
+  concludes *no difference*, and a single seed can only bound the effect as small, not show
+  it is zero. The honest claim is "terrain contributes far less than range", not "terrain
+  contributes nothing".
 - **`exposure_rate` has four documented traps** — see [docs/metrics.md](../docs/metrics.md)
-  § Cover metrics. Absolute levels are not comparable between arms with different mortality;
-  arm C loses nobody, so its 0.463 and arm A's 0.099 are not a like-for-like ratio. The
-  *direction of change within* arm A is the load-bearing evidence, not the cross-arm ratio.
-- **Terrain is stochastic, so memorisation is excluded** — this is the one confound the
-  experiment was designed to remove, and it is removed.
-- Arm A's win rate was still drifting upward in the last bucket (51.8 → 56.5). It has not
-  provably converged.
+  § Cover metrics. It averages over alive models, so absolute levels are not comparable
+  between arms with different mortality. Arm C loses nobody, so its 0.463 against arm A's
+  0.099 is not a like-for-like ratio; the load-bearing evidence is the *direction of change
+  within* arm A, where exposure fell as survival rose.
+- **`terrain_proximity` is a weak proxy for cover.** A ruin can break a sightline from far
+  away. It is arm E, not the flat proximity, that carries conclusion 1.
+- **D, E and G stopped at 926-950 of 1000 epochs**, read as means of their last 150. All
+  three were flat across their final three buckets.
+- **Terrain is stochastic, so memorisation is excluded** — the confound the experiment was
+  designed to remove is removed.
+
+## What would actually test cover
+
+The experiment shows the policy has no reason and no signal to use terrain. Two candidate
+follow-ups, in order of expected value:
+
+1. **Give it the signal.** The observation carries terrain rectangles but never says whether
+   an enemy can see you: the shooting mask is computed only during the shooting phase and
+   only masks logits — it never enters the encoder (`net.py:491`), so at *movement* time the
+   policy has zero LOS information. A per-model "enemies with LOS to me" feature is the
+   smallest change with the largest expected effect.
+2. **Give it a reason.** No calculator charges for losing a model. A `damage_taken` penalty
+   would make survival a direct objective rather than an emergent side-effect.
+
+Arm F is the setting to test both in: it is the only configuration where distance does not
+work, so a policy that improves there must have found something else.
 
 ## Reproducing
 
