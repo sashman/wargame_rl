@@ -52,10 +52,22 @@ def _build_default_run_base_name(
     network_type: NetworkType,
     env_config: WargameEnvConfig,
 ) -> str:
-    """Build a descriptive run name base from training and env metadata."""
+    """Build a descriptive run name base from training and env metadata.
+
+    `config_name` leads when set, because everything after it describes the
+    *scenario* — board size, force sizes, phase count, opponent — and arms of an
+    experiment deliberately share all of those. Four configs differing only in
+    an observation flag or one reward term produced byte-identical names, so
+    every arm in a batch wrote its checkpoints into one directory and scored
+    whichever process happened to save last.
+    """
     parts = [
         algorithm.value,
         network_type.value,
+    ]
+    if env_config.config_name:
+        parts.append(env_config.config_name)
+    parts += [
         f"m{env_config.number_of_wargame_models}",
         f"opp{env_config.number_of_opponent_models}",
         f"obj{env_config.number_of_objectives}",
