@@ -181,8 +181,8 @@ reward_phases:
     min_epochs_above_threshold: 3
 
   # R1 — win. Identical to 25v25_stochastic_terrain_shooting.yaml's only phase,
-  # so the two
-  # configs converge on the same reward and differ only in how they get there.
+  # so the two configs converge on the same reward and differ only in how they
+  # get there.
   - name: win
     terminate_on_success: false
     terminal_success_bonus: 2.0
