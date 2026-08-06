@@ -93,6 +93,19 @@ train-multi-seeds max_epochs n_seeds *configs:
 		wait; \
 	done
 
+# Run every config once at a single seed, in an existing wandb group. For
+# re-running one seed group of a train-multi-seeds batch that died partway --
+# passing the original group keeps the reruns next to their siblings in the UI,
+# which train-multi-seeds cannot do because it always mints a fresh group and
+# always starts from seed 1.
+# Use: just train-seed 1000 2 train-multi-2026-08-05-12-06-29 config1.yaml config2.yaml
+train-seed max_epochs seed group *configs:
+	@trap 'kill 0' INT TERM && \
+	for c in {{configs}}; do \
+		uv run train.py --record-during-training --env-config-path "$c" --algorithm ppo --network-type transformer --max-epochs {{max_epochs}} --seed {{seed}} --run-suffix "s{{seed}}" --wandb-group "{{group}}" & \
+	done; \
+	wait
+
 # Run multiple env configs in parallel. Each run gets a unique --run-suffix and shared --wandb-group.
 # Uses PPO + transformer. Use: just train-multi config1.yaml config2.yaml
 # Trap INT/TERM so Ctrl+C kills all background train.py processes.
@@ -191,6 +204,13 @@ measure-noise-floor env_config n_layouts='10' n_combat_seeds='10' policy='':
 # Tune a terrain profile here, not after a thousand epochs of training.
 measure-terrain env_config n_layouts='200':
 	@uv run python -m scripts.measure_terrain {{env_config}} {{n_layouts}}
+
+# Delete all but the newest `keep` model artifacts in Wandb. Training no longer
+# uploads checkpoints (nothing read them back, and at ~148 MB each they filled
+# the storage quota), so this clears the historical backlog. Pass a second
+# argument (e.g. `dry`) to list what would go without deleting it.
+prune-artifacts keep='5' dry_run='':
+	@uv run python -m scripts.prune_wandb_artifacts {{keep}} "{{dry_run}}"
 
 # Analyze a recorded match for training evaluation
 analyze file:
