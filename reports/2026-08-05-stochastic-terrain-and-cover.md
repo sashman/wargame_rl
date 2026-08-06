@@ -230,6 +230,13 @@ already suspected. Batch 3 runs two seeds per arm.
 
 ## Reproducing
 
+**The arm configs were deleted once this experiment closed.** Restore them first —
+they are tagged, not lost:
+
+```bash
+git checkout batch-1-2-configs -- examples/env_config/
+```
+
 ```bash
 just measure-baselines examples/env_config/25v25_stochastic_terrain_shooting.yaml 30 "" 700000
 just measure-checkpoint <ckpt> examples/env_config/25v25_stochastic_terrain_shooting.yaml 30 record

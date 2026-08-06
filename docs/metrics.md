@@ -228,7 +228,9 @@ Same numbers appear as `exposure` / `terrain_d` / `alive` columns in
 
 3. **Killing the enemy lowers it too.** A dead opponent is one fewer model with
    line of sight to you, so exposure falls for shooting well as much as for
-   hiding well. On `25v25_stochastic_terrain_shooting`, 25 seeds:
+   hiding well. On `25v25_stochastic_terrain_shooting` (a batch-1 config, since
+   deleted; restore with `git checkout batch-1-2-configs -- examples/env_config/`),
+   25 seeds:
 
    | baseline | exposure | alive | opp VP |
    |---|---|---|---|

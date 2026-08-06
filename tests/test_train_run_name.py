@@ -78,15 +78,6 @@ ARM_GROUPS = [
         ],
         id="batch3",
     ),
-    pytest.param(
-        [
-            "25v25_terrain_range12.yaml",
-            "25v25_noterrain_range12.yaml",
-            "25v25_terrain_range24.yaml",
-            "25v25_terrain_range12_clear_objectives.yaml",
-        ],
-        id="batch2",
-    ),
 ]
 
 
