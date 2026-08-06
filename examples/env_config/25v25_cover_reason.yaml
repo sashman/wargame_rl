@@ -2,10 +2,16 @@ config_name: 25v25_cover_reason
 #
 # BATCH 3, ARM J -- reason only. Identical to ARM H except the `models_lost` term.
 #
-# Isolates the reward change: does pricing losses change behaviour while the
-# policy still has no line-of-sight information at movement time? The prior is
-# that it cannot, because no reward fixes a missing input. This arm is what
-# makes that falsifiable rather than assumed.
+# Isolated the reward change: does pricing losses change behaviour while the
+# policy has no line-of-sight information at movement time? The prior was that
+# it cannot, because no reward fixes a missing input. This arm is what made that
+# falsifiable rather than assumed -- and it refuted it. Pricing losses is worth
+# roughly +7 vp_margin over ARM H, on both seeds; adding the line-of-sight input
+# on top of it added nothing, so that input was removed.
+#
+# It did NOT buy caution: this arm keeps fewer models alive than the control
+# (0.636 vs 0.686) and exposes more. Whatever the penalty does, "decline bad
+# trades" is not it. See reports/2026-08-06-cover-signal-reason-geometry.md.
 #
 number_of_wargame_models: 25
 number_of_opponent_models: 25

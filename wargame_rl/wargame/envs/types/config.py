@@ -306,15 +306,6 @@ class WargameEnvConfig(BaseModel):
         "statistics during shooting phases. Measurement only — it does not affect "
         "the game, but it costs an extra shooting-mask build per shooting phase.",
     )
-    observe_threat_count: bool = Field(
-        default=False,
-        description="Add a per-model 'enemies with line of sight and weapon range "
-        "to me' scalar to the observation. Without it the policy has no "
-        "line-of-sight information at movement time, when the decision is made. "
-        "Changes the observation width, so checkpoints do not transfer across a "
-        "flip of this flag -- loading one raises a shape mismatch. Costs one "
-        "extra line-of-sight scan per step.",
-    )
     render_mode: str | None = Field(
         default=None, description="Rendering mode for the environment"
     )

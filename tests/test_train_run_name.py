@@ -74,9 +74,7 @@ ARM_GROUPS = [
     pytest.param(
         [
             "25v25_cover_control.yaml",
-            "25v25_cover_signal.yaml",
             "25v25_cover_reason.yaml",
-            "25v25_cover_full.yaml",
         ],
         id="batch3",
     ),

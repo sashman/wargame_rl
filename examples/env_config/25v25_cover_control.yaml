@@ -6,14 +6,17 @@ config_name: 25v25_cover_control
 # That was measured in a world where cover could not work (5.8% of the board
 # hidden from a squad that could shoot it), could not be seen (no line-of-sight
 # input at movement time) and was worth nothing (no cost for losing a model).
-# Batch 3 fixes all three and re-asks the question as a 2x2 over signal x reason:
+# Batch 3 fixed all three and re-asked the question as a 2x2 over signal x
+# reason. It ran, and the answer was still no -- exposure 0.092-0.110 across
+# every arm. See reports/2026-08-06-cover-signal-reason-geometry.md.
 #
-#   H  this file      no threat input, no loss penalty
-#   I  _cover_signal  threat input only
-#   J  _cover_reason  loss penalty only
-#   K  _cover_full    both
+#   H  this file      no loss penalty
+#   J  _cover_reason  loss penalty -- the only lever that moved anything
 #
-# All four share this terrain profile, so H is the arm the others are compared
+# The signal axis (a per-model line-of-sight input) measured null on both seeds
+# and has been removed along with its two arms.
+#
+# Both share this terrain profile, so H is the arm the other is compared
 # against. The profile changed from batch 2, so NO batch-3 number is comparable
 # to batch 1 or batch 2, and the baselines must be re-measured.
 #

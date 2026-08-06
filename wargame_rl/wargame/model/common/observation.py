@@ -94,7 +94,6 @@ def _models_to_features(
     max_dist: float,
     max_groups: int,
     feature_dim: int,
-    include_threat: bool = False,
 ) -> np.ndarray:
     """Convert a list of model observations to a feature matrix.
 
@@ -104,8 +103,8 @@ def _models_to_features(
     The last three columns are: ``alive`` (0–1), normalized current wounds,
     and normalized max wounds (÷ 100), per Phase 2 observation contract.
 
-    The optional threat column goes inside ``core``, ahead of ``alive``, not on
-    the end. ``TransformerNetwork._alive_feature_index`` locates ``alive`` by
+    Any new per-model column belongs inside ``core``, ahead of ``alive``, never
+    on the end. ``TransformerNetwork._alive_feature_index`` locates ``alive`` by
     counting backwards from the last column, so appending anywhere after it
     shifts that index and makes the key-padding mask read ``wound_ratio`` as
     ``alive`` — silently, with no exception.
@@ -125,16 +124,6 @@ def _models_to_features(
         _group_ids_to_one_hot(group_ids, max_groups),
         _same_group_closest_distance(locs, group_ids, max_dist),
     ]
-    if include_threat:
-        core_parts.append(
-            np.array(
-                [
-                    [0.0 if m.threat_count is None else float(m.threat_count)]
-                    for m in models
-                ],
-                dtype=np.float32,
-            )
-        )
     core = np.hstack(core_parts)
     alive_col = np.array([[m.alive] for m in models], dtype=np.float32)
     cw = np.array([[float(m.current_wounds)] for m in models], dtype=np.float32)
@@ -206,14 +195,7 @@ def _observation_to_numpy(
 
     n_spatial = 2 + n_objectives * 2  # location + distances-to-objectives
     n_group = max_groups + 1  # one-hot group + closest same-group distance
-    include_threat = state.threat_features_enabled
-    base_feature_dim = (
-        n_spatial
-        + n_group
-        + (1 if include_threat else 0)
-        + N_WOUND_FEATURES
-        + N_COMBAT_STATS
-    )
+    base_feature_dim = n_spatial + n_group + N_WOUND_FEATURES + N_COMBAT_STATS
 
     model_features = _models_to_features(
         models,
@@ -222,7 +204,6 @@ def _observation_to_numpy(
         max_dist,
         max_groups,
         base_feature_dim,
-        include_threat=include_threat,
     )
     opponent_features = _models_to_features(
         state.opponent_models,
@@ -231,7 +212,6 @@ def _observation_to_numpy(
         max_dist,
         max_groups,
         base_feature_dim,
-        include_threat=include_threat,
     )
 
     n_player = len(models)
@@ -328,8 +308,7 @@ def observation_to_tensor(
 
     feature_dim = base + n_opponent, where base includes normalized location,
     distances to objectives, group_id one-hot, closest same-group distance,
-    an optional threat_count column (only when the observation sets
-    threat_features_enabled), wound features (alive, wound_ratio,
+    wound features (alive, wound_ratio,
     max_wounds_norm), and combat stats (attacks, bs, strength, ap, damage,
     toughness, save — each divided by its NORM_* constant). The final
     n_opponent columns are expected damage per target (player models) or

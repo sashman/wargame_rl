@@ -46,11 +46,10 @@ CONFIG_PATHS = [
     CONFIG_ROOT / "25v25_noterrain_range12.yaml",
     CONFIG_ROOT / "25v25_terrain_range24.yaml",
     CONFIG_ROOT / "25v25_terrain_range12_clear_objectives.yaml",
-    # Batch-3 cover arms: a 2x2 over (line-of-sight signal x price on losses).
+    # Batch-3 cover arms. The 2x2's signal axis was removed after it measured
+    # null, leaving the control and the arm that priced model losses.
     CONFIG_ROOT / "25v25_cover_control.yaml",
-    CONFIG_ROOT / "25v25_cover_signal.yaml",
     CONFIG_ROOT / "25v25_cover_reason.yaml",
-    CONFIG_ROOT / "25v25_cover_full.yaml",
 ]
 
 # A one-objective stack caps at 19 scoring rounds x 5 VP = 95 of a 285
@@ -258,13 +257,11 @@ def test_batch_two_objectives_cannot_overlap() -> None:
         )
 
 
-# Batch-3 arms: a 2x2 over (line-of-sight signal x price on losses), all sharing
-# one denser terrain profile. The factorial only reads if nothing else moves.
+# Batch-3 arms, sharing one denser terrain profile. The comparison only reads if
+# the price on losses is the single thing that moves between them.
 BATCH_THREE_CONTROL = CONFIG_ROOT / "25v25_cover_control.yaml"
 BATCH_THREE_ARMS = {
-    CONFIG_ROOT / "25v25_cover_signal.yaml": (True, False),
-    CONFIG_ROOT / "25v25_cover_reason.yaml": (False, True),
-    CONFIG_ROOT / "25v25_cover_full.yaml": (True, True),
+    CONFIG_ROOT / "25v25_cover_reason.yaml": True,
 }
 
 
@@ -276,20 +273,16 @@ def _has_models_lost(config: WargameEnvConfig) -> bool:
     )
 
 
-def test_batch_three_is_a_clean_two_by_two() -> None:
-    """Each arm sets exactly the cells the factorial says it does.
+def test_batch_three_varies_only_the_price_on_losses() -> None:
+    """The control must not price losses and the arm must, or nothing is isolated.
 
-    A drifted flag turns the design from "which lever moved it" into an
-    uninterpretable four-way comparison, and nothing at runtime would say so.
+    A drifted flag turns the comparison from "this lever moved it" into an
+    uninterpretable pair, and nothing at runtime would say so.
     """
-    control = _load(BATCH_THREE_CONTROL)
-    assert not control.observe_threat_count
-    assert not _has_models_lost(control)
+    assert not _has_models_lost(_load(BATCH_THREE_CONTROL))
 
-    for path, (signal, reason) in BATCH_THREE_ARMS.items():
-        arm = _load(path)
-        assert arm.observe_threat_count is signal, path.stem
-        assert _has_models_lost(arm) is reason, path.stem
+    for path, reason in BATCH_THREE_ARMS.items():
+        assert _has_models_lost(_load(path)) is reason, path.stem
 
 
 @pytest.mark.parametrize("arm_path", list(BATCH_THREE_ARMS), ids=lambda p: p.stem)
@@ -335,7 +328,7 @@ def test_batch_three_prices_losses_against_kills() -> None:
     global and broadcast whole. Comparing raw weights would be wrong — the two
     reach the step reward through different arithmetic.
     """
-    config = _load(CONFIG_ROOT / "25v25_cover_full.yaml")
+    config = _load(CONFIG_ROOT / "25v25_cover_reason.yaml")
     phase = config.reward_phases[-1]
     calculators = {c.type: c for c in phase.reward_calculators}
 
