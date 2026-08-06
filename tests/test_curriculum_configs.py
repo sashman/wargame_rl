@@ -257,68 +257,9 @@ def test_batch_two_objectives_cannot_overlap() -> None:
         )
 
 
-# Batch-3 arms, sharing one denser terrain profile. The comparison only reads if
-# the price on losses is the single thing that moves between them.
-BATCH_THREE_CONTROL = CONFIG_ROOT / "25v25_cover_control.yaml"
-BATCH_THREE_ARMS = {
-    CONFIG_ROOT / "25v25_cover_reason.yaml": True,
-}
-
-
-def _has_models_lost(config: WargameEnvConfig) -> bool:
-    return any(
-        calculator.type == "models_lost"
-        for phase in config.reward_phases
-        for calculator in phase.reward_calculators
-    )
-
-
-def test_batch_three_varies_only_the_price_on_losses() -> None:
-    """The control must not price losses and the arm must, or nothing is isolated.
-
-    A drifted flag turns the comparison from "this lever moved it" into an
-    uninterpretable pair, and nothing at runtime would say so.
-    """
-    assert not _has_models_lost(_load(BATCH_THREE_CONTROL))
-
-    for path, reason in BATCH_THREE_ARMS.items():
-        assert _has_models_lost(_load(path)) is reason, path.stem
-
-
-@pytest.mark.parametrize("arm_path", list(BATCH_THREE_ARMS), ids=lambda p: p.stem)
-def test_batch_three_arms_share_their_controls_world(arm_path: Path) -> None:
-    """Only the two factorial axes may differ — the world is held fixed.
-
-    Terrain in particular: the profile is what makes cover physically available
-    at all, so an arm drawing a different one is not testing the same question.
-    """
-    control = _load(BATCH_THREE_CONTROL)
-    arm = _load(arm_path)
-
-    assert arm.random_terrain == control.random_terrain
-    assert arm.opponent_policy == control.opponent_policy
-    assert arm.objective_min_separation == control.objective_min_separation
-    assert arm.number_of_opponent_models == control.number_of_opponent_models
-    assert (arm.board_width, arm.board_height) == (
-        control.board_width,
-        control.board_height,
-    )
-    assert arm.track_exposure and control.track_exposure
-
-
-def test_batch_three_terrain_is_denser_than_batch_two() -> None:
-    """The profile change is the point, so pin it rather than trusting a comment.
-
-    Batch 2's 7 pieces left 5.8% of the board hidden from a squad that could
-    shoot it — cover was not available to decline, which is why arm F's collapse
-    at range 24 does not show the agent ignoring a working alternative.
-    """
-    batch_two = _load(BATCH_TWO_CONTROL)
-    batch_three = _load(BATCH_THREE_CONTROL)
-
-    assert batch_two.random_terrain is not None
-    assert batch_three.random_terrain is not None
-    assert batch_three.random_terrain.count > 3 * batch_two.random_terrain.count
+# The batch-3 cover experiment is closed (see the 2026-08-06 report), so its
+# design invariants are gone with it. This one stays: it encodes the arithmetic
+# any future reward calculator has to get right.
 
 
 def test_batch_three_prices_losses_against_kills() -> None:

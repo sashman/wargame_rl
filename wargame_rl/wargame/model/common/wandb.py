@@ -6,11 +6,6 @@ from typing import Any, Generator
 from pytorch_lightning.loggers import CSVLogger, WandbLogger
 
 import wandb
-from wargame_rl.wargame.model.common.artifact_retention import (
-    DEFAULT_KEEP,
-    MODEL_ARTIFACT_TYPE,
-    prune_model_artifacts,
-)
 
 # mypy: disable-error-code=attr-defined
 
@@ -92,32 +87,3 @@ def get_logger(run: Any = None, *, disabled: bool = False) -> WandbLogger | CSVL
     if disabled:
         return CSVLogger(save_dir="logs")
     return WandbLogger(log_model=False, run=run)
-
-
-def _model_artifact_collections() -> list[Any]:
-    """Return every `model`-type artifact collection in the project."""
-    api = wandb.Api()
-    project = api.project(name=PROJECT_NAME, entity=ENTITY)
-    return [
-        collection
-        for artifact_type in project.artifacts_types()
-        if artifact_type.name == MODEL_ARTIFACT_TYPE
-        for collection in artifact_type.collections()
-    ]
-
-
-def prune_wandb_model_artifacts(
-    keep: int = DEFAULT_KEEP,
-    *,
-    dry_run: bool = False,
-) -> list[str]:
-    """Delete all but the `keep` most recent model artifacts in the project.
-
-    Args:
-        keep: How many of the most recent runs' checkpoints to retain.
-        dry_run: Report what would be deleted without deleting it.
-
-    Returns:
-        The names that were deleted (or would have been, under `dry_run`).
-    """
-    return prune_model_artifacts(_model_artifact_collections(), keep, dry_run=dry_run)

@@ -56,7 +56,7 @@ wargame_rl/
 ├── reports/                       # Experiment findings, kept for retrospection
 ├── scripts/                       # Run-inspection tooling (run_summary, measure_phase_gates,
 │                                  #   measure_baselines, measure_checkpoint, measure_terrain,
-│                                  #   measure_noise_floor, prune_wandb_artifacts)
+│                                  #   measure_noise_floor)
 ├── train.py                       # Training entry point (Typer CLI)
 ├── simulate.py                    # Inference/simulation entry point
 ├── replay_events.py               # Replay / narrate a match event log
@@ -89,7 +89,6 @@ wargame_rl/
 | Scripted baselines (floor + bar) | `just measure-baselines <config.yaml> [n_episodes] [record] [seed_base]` |
 | Score a checkpoint (baseline-comparable) | `just measure-checkpoint <ckpt> <config.yaml> [n_episodes] [record]` |
 | Dice-vs-scenario noise floor | `just measure-noise-floor <config.yaml> [n_layouts] [n_combat_seeds] [policy]` |
-| Prune Wandb model artifacts | `just prune-artifacts [keep] [dry]` |
 | Terrain-profile statistics | `just measure-terrain <config.yaml> [n_layouts]` |
 | Profile | `just profile <config.yaml> [model] [max_epochs]` |
 | Clean | `just clean` |
@@ -224,7 +223,7 @@ Detailed patterns live next to the code they govern — read them when working i
 - **Multiple configs in parallel**: `just train-multi config1.yaml config2.yaml` runs one training per config concurrently (PPO + transformer); each run gets a unique `--run-suffix` and shared `--wandb-group` so they appear grouped in the Wandb UI
 - Env configs live in `examples/env_config/` — copy an existing one to create new scenarios
 - Training logs to Wandb automatically; checkpoints saved to `checkpoints/`. Reward phase index and phase advancement are logged (`reward_phase`, `phase_advanced_at_epoch`) so curriculum runs show phase transitions in the dashboard
-- **Checkpoints are not uploaded to Wandb** (`log_model=False` in `model/common/wandb.py`). Nothing in the repo ever read a model artifact back — `simulate`, `record-sim`, `measure-checkpoint`, `measure-phase-gates`, `--resume-ckpt-path` and `--warm-start-ckpt-path` all take a local path under `checkpoints/` — while each run uploaded ~591 MB (4 × 148 MB), which filled the storage quota. Metrics, history and videos still log normally. `just prune-artifacts [keep] [dry]` clears the historical backlog. **`checkpoints/` is now the only copy of the weights, so `just clean` is destructive**
+- **Checkpoints are not uploaded to Wandb** (`log_model=False` in `model/common/wandb.py`). Nothing in the repo ever read a model artifact back — `simulate`, `record-sim`, `measure-checkpoint`, `measure-phase-gates`, `--resume-ckpt-path` and `--warm-start-ckpt-path` all take a local path under `checkpoints/` — while each run uploaded ~591 MB (4 × 148 MB), which filled the storage quota. Metrics, history and videos still log normally. **`checkpoints/` is now the only copy of the weights, so `just clean` is destructive**
 - **Reading run metrics:** see [docs/metrics.md](docs/metrics.md) for what each Wandb key means and the procedure for evaluating a run. Several metrics are means-of-means or change definition silently — check the reading rules there before drawing conclusions from `success_rate`, `terminal_success_bonus`, or any `reward/components/*` value
 - **Always quote a result against a baseline:** `just measure-baselines <env_config> [n] record` gives the floor (`random`, 0.00) and the bar (`squad_march_shoot`, **1.00** on 25v25). A `success_rate` with no floor and no ceiling is how a policy scoring 17% against an 80% heuristic was read as progress. Note the bar is the *shooting* baseline: the movement-only ones cap at 0.78, which is the ceiling of a policy class the agent is not in
 - **Training logs the bar.** `eval/baseline_*` covers `random`, `squad_march` and `squad_march_shoot` (`BASELINE_POLICIES` in `model/common/lightning_base.py`). Read `eval/baseline_squad_march_shoot_win_rate`, not the movement-only one — beating 0.78 is not beating 1.00. `just measure-baselines` adds the middle rungs

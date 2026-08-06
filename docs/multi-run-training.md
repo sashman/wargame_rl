@@ -27,7 +27,7 @@ Seed groups run sequentially, not all at once: a PPO transformer run holds ~3.8 
 
 ### Checkpoints are not uploaded to Wandb
 
-`get_logger` sets `log_model=False`. Nothing in the repo reads a model artifact back — every consumer (`simulate`, `record-sim`, `measure-checkpoint`, `measure-phase-gates`, `--resume-ckpt-path`, `--warm-start-ckpt-path`) takes a local path under `checkpoints/` — while each run uploaded roughly 591 MB, which exhausted the project's storage quota. Metrics, history and recorded videos still log normally. `just prune-artifacts [keep] [dry]` clears the historical backlog.
+`get_logger` sets `log_model=False`. Nothing in the repo reads a model artifact back — every consumer (`simulate`, `record-sim`, `measure-checkpoint`, `measure-phase-gates`, `--resume-ckpt-path`, `--warm-start-ckpt-path`) takes a local path under `checkpoints/` — while each run uploaded roughly 591 MB, which exhausted the project's storage quota. Metrics, history and recorded videos still log normally.
 
 **`checkpoints/` is therefore the only copy of any trained weights**, which makes `just clean` destructive rather than merely inconvenient.
 

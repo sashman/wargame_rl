@@ -205,13 +205,6 @@ measure-noise-floor env_config n_layouts='10' n_combat_seeds='10' policy='':
 measure-terrain env_config n_layouts='200':
 	@uv run python -m scripts.measure_terrain {{env_config}} {{n_layouts}}
 
-# Delete all but the newest `keep` model artifacts in Wandb. Training no longer
-# uploads checkpoints (nothing read them back, and at ~148 MB each they filled
-# the storage quota), so this clears the historical backlog. Pass a second
-# argument (e.g. `dry`) to list what would go without deleting it.
-prune-artifacts keep='5' dry_run='':
-	@uv run python -m scripts.prune_wandb_artifacts {{keep}} "{{dry_run}}"
-
 # Analyze a recorded match for training evaluation
 analyze file:
 	uv run analyze_events.py report {{file}}
