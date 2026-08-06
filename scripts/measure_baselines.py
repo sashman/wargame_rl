@@ -89,7 +89,7 @@ def main() -> None:
             f"{result.final_fraction_alive:>8.3f}"
             f"{format_optional_metric(result.exposure_rate):>10}"
             f"{format_optional_metric(result.terrain_proximity, 1):>11}"
-            f"{format_optional_metric(result.firepower_advantage, 2):>12}"
+            f"{format_optional_metric(result.firepower_ratio, 2):>12}"
         )
         if record:
             recorded.append(

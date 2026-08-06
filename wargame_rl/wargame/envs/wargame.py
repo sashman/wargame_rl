@@ -300,15 +300,16 @@ class WargameEnv(gym.Env):
         return self._exposure_tracker.terrain_proximity
 
     @property
-    def firepower_advantage(self) -> float | None:
-        """Mean (enemies we can shoot) − (our models they can shoot) per phase.
+    def firepower_ratio(self) -> float | None:
+        """(enemies we can shoot) / (our models they can shoot) over the episode.
 
-        The exchange-ratio measure: positive means the army brings more guns to
-        bear than it exposes. Prefer it to `exposure_rate` when the question is
+        The exchange-ratio measure: above 1.0 the army brings more guns to bear
+        than it exposes. Prefer it to `exposure_rate` when the question is
         whether the policy is *choosing* its fights — low exposure alone cannot
-        tell manoeuvre apart from hiding. None when `track_exposure` is off.
+        tell manoeuvre apart from hiding. None when `track_exposure` is off, or
+        when our side was never exposed at all.
         """
-        return self._exposure_tracker.firepower_advantage
+        return self._exposure_tracker.firepower_ratio
 
     def _make_is_blocking(
         self, x0: int, y0: int, x1: int, y1: int
@@ -626,14 +627,14 @@ class WargameEnv(gym.Env):
         all, so counting that as safety would score a headlong charge as if it
         were cover — and cover is the thing being measured.
 
-        One scan yields both directions, so `firepower_advantage` costs nothing
-        on top of `exposure_rate`.
+        One scan yields every direction, so `firepower_ratio` costs nothing on
+        top of `exposure_rate`.
         """
         player_alive = alive_mask_for(self.wargame_models)
         if not player_alive.any() or not opp_alive.any():
             return
         player_positions = np.array([m.location for m in self.wargame_models])
-        threat_to_player, threat_to_opponent = compute_threat_counts(
+        threats = compute_threat_counts(
             player_positions,
             np.array([m.location for m in self.opponent_models]),
             player_alive,
@@ -643,12 +644,13 @@ class WargameEnv(gym.Env):
             self.has_line_of_sight_between_cells,
         )
         self._exposure_tracker.record(
-            exposed=threat_to_player > 0,
+            exposed=threats.threat_to_player > 0,
             alive=player_alive,
             terrain_distances=distances_to_nearest_footprint(
                 player_positions, self.terrain.footprints
             ),
-            opponents_engaged=int(((threat_to_opponent > 0) & opp_alive).sum()),
+            our_shooters=int((threats.player_can_shoot & player_alive).sum()),
+            their_shooters=int((threats.opponent_can_shoot & opp_alive).sum()),
         )
 
     def _apply_opponent_action(self) -> None:

@@ -55,7 +55,7 @@ def _make_env(
 
     The player is unarmed by default — `exposure_rate` only measures what the
     *opponent* can do, so player weapons are irrelevant to it. `arm_player`
-    exists for `firepower_advantage`, which measures both directions.
+    exists for `firepower_ratio`, which measures both directions.
     """
     config = WargameEnvConfig(
         board_width=40,
@@ -185,28 +185,34 @@ def test_tracker_ignores_dead_models() -> None:
     assert tracker.terrain_proximity == pytest.approx(3.0)
 
 
-def test_firepower_advantage_is_the_difference_in_engaged_models() -> None:
-    """Positive means more of their guns are exposed to us than ours to them."""
+def test_firepower_ratio_divides_totals_not_per_phase_ratios() -> None:
+    """Above 1.0 means more of our guns bear on them than theirs on us.
+
+    Totals, not a mean of per-phase ratios: the busy phase should dominate. The
+    per-phase ratios here are 4/1 and 1/2, which would average to 2.25; the
+    totals give 5/3.
+    """
     tracker = ExposureTracker()
-    # 1 of our 2 alive models exposed; 4 of theirs we can shoot.
     tracker.record(
         exposed=np.array([True, False, True]),
         alive=np.array([True, True, False]),
         terrain_distances=np.array([2.0, 4.0, 99.0]),
-        opponents_engaged=4,
+        our_shooters=4,
+        their_shooters=1,
     )
     tracker.record(
         exposed=np.array([True, True, False]),
         alive=np.array([True, True, False]),
         terrain_distances=np.array([2.0, 4.0, 99.0]),
-        opponents_engaged=0,
+        our_shooters=1,
+        their_shooters=2,
     )
 
-    assert tracker.firepower_advantage == pytest.approx((4 - 1 + 0 - 2) / 2)
+    assert tracker.firepower_ratio == pytest.approx(5 / 3)
 
 
-def test_firepower_advantage_is_unmeasured_when_not_supplied() -> None:
-    """None, not 0.0 — 0.0 is a real reading meaning 'an even exchange'."""
+def test_firepower_ratio_is_unmeasured_when_not_supplied() -> None:
+    """None, not 0.0 — 0.0 is a real reading meaning 'none of ours could fire'."""
     tracker = ExposureTracker()
     tracker.record(
         exposed=np.array([True]),
@@ -214,34 +220,67 @@ def test_firepower_advantage_is_unmeasured_when_not_supplied() -> None:
         terrain_distances=np.array([2.0]),
     )
 
-    assert tracker.firepower_advantage is None
+    assert tracker.firepower_ratio is None
+
+
+def test_firepower_ratio_is_none_when_the_enemy_could_never_fire() -> None:
+    """The ratio is unbounded there, and the case is degenerate, not perfect."""
+    tracker = ExposureTracker()
+    tracker.record(
+        exposed=np.array([False, False]),
+        alive=np.array([True, True]),
+        terrain_distances=np.array([2.0, 4.0]),
+        our_shooters=2,
+        their_shooters=0,
+    )
+
+    assert tracker.firepower_ratio is None
 
 
 def test_unarmed_force_in_the_open_is_maximally_disadvantaged() -> None:
     """This fixture's player models carry no weapons, only the opponents do.
 
-    Both of ours are visible and shootable, none of theirs is reachable by us —
-    an exchange we lose 0:2. The sign is the point: `exposure_rate` reads 1.0
-    here and cannot say who is winning the trade.
+    Both of ours are visible and shootable, none of ours can fire back — we
+    bring zero guns to their two. `exposure_rate` reads 1.0 here and cannot say
+    who is winning the trade.
     """
     env = _make_env()
     try:
         exposure, _proximity = _run_episode(env)
-        firepower = env.firepower_advantage
+        firepower = env.firepower_ratio
     finally:
         env.close()
 
     assert exposure == 1.0
-    assert firepower == pytest.approx(-2.0)
+    assert firepower == pytest.approx(0.0)
 
 
 def test_armed_mirror_match_in_the_open_is_an_even_exchange() -> None:
-    """Same geometry, both sides armed: two exposed each way nets to zero."""
+    """Same geometry, both sides armed: two shooters each way is 1.0."""
     env = _make_env(arm_player=True)
     try:
         _exposure, _proximity = _run_episode(env)
-        firepower = env.firepower_advantage
+        firepower = env.firepower_ratio
     finally:
         env.close()
 
-    assert firepower == pytest.approx(0.0)
+    assert firepower == pytest.approx(1.0)
+
+
+def test_a_concentrated_force_outguns_what_it_exposes() -> None:
+    """The case the metric exists for, and the one the old form got backwards.
+
+    Twelve of ours in line of sight of three of theirs is twelve shots out for
+    three back. `exposure_rate` cannot see it, and the original count difference
+    scored it 3 - 12 = -9, as though concentration were a liability.
+    """
+    tracker = ExposureTracker()
+    tracker.record(
+        exposed=np.ones(12, dtype=bool),
+        alive=np.ones(12, dtype=bool),
+        terrain_distances=np.full(12, 5.0),
+        our_shooters=12,
+        their_shooters=3,
+    )
+
+    assert tracker.firepower_ratio == pytest.approx(4.0)

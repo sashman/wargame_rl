@@ -53,9 +53,9 @@ removed each:
    the old profile despite double the coverage, while **29 pieces of 3-7 reaches 19.8%**.
 2. **The decision could not be seen.** The shooting mask is built only during the shooting
    phase and only masks logits; at *movement* time, when the choice is made, the policy had
-   no LOS information at all. New `observe_threat_count` adds a per-model scalar — alive
-   enemies with LOS and range to this model — computed inside `build_observation`, which is
-   the only site that is decision-time by construction.
+   no LOS information at all. `observe_threat_count` added a per-model scalar — alive
+   enemies with LOS and range to this model — computed inside `build_observation`, the only
+   site that is decision-time by construction. (Removed after this batch; see below.)
 3. **The trade had no cost side.** `model_kills` paid for kills; nothing charged for
    losses. New global `models_lost` calculator. It must be global: `phase_manager` iterates
    *alive* models, so with `max_wounds: 1` a per-model damage penalty is identically zero.
@@ -86,9 +86,14 @@ profile changed, so **no batch-3 number is comparable to batch 1 or 2**.
 | J | `25v25_cover_reason.yaml` | off | **on** | `ybztgjym` | `u1pf5n7y` |
 | K | `25v25_cover_full.yaml` | **on** | **on** | `nhbk7wl5` | `25b0bmkr` |
 
-Wandb group `train-multi-2026-08-05-12-06-29`. The group also holds eight crashed runs —
-one seed-2 attempt killed at epoch ~840 by an unrelated process teardown, and one redundant
-relaunch stopped at epoch ~90. Neither contributed to any number here.
+`25v25_cover_signal.yaml` and `25v25_cover_full.yaml` no longer exist — they were deleted
+with the feature after it measured null. The rows are kept here because they are what was
+run.
+
+Wandb group `train-multi-2026-08-05-12-06-29`, which holds the eight runs above and nothing
+else. It also held eight crashed runs — a seed-2 attempt killed at epoch ~840 by an
+unrelated process teardown, and a redundant relaunch stopped at epoch ~90 — neither of which
+contributed to any number here; both have since been deleted.
 
 **Two seeds were mandatory, not cautious.** `just measure-noise-floor` (new) holds layouts
 fixed and varies only `reset(options={"combat_seed": ...})`. On the batch-3 control,
@@ -136,6 +141,12 @@ seeds, on vp_margin.
 **`observe_threat_count` is null.** I sits on top of H on every metric (win 54.3 vs 54.8,
 vp +3.5 vs +4.0, exposure 0.094 vs 0.092). K is marginally *below* J (58.5 vs 59.5 win,
 +10.8 vs +11.5 vp). The interaction is absent or slightly negative.
+
+**The feature and its two arms have since been removed** — the observation column, the
+config flag, and `25v25_cover_{signal,full}.yaml`. A measured-null feature kept "in case"
+is dead configuration, and this one carried a live footgun: the column had to sit inside
+`core` before `alive`, because `TransformerNetwork._alive_feature_index` counts backwards
+from the last column. `compute_threat_counts` itself stays; the exposure metrics use it.
 
 This refutes the pre-registered prior in both directions. The plan predicted "the signal is
 necessary and the reason alone does nothing." The reason alone does everything; the signal

@@ -92,7 +92,7 @@ with 5.8% of the board hidden, the agent was not declining to use cover, there w
 none to use. Tune a profile here, in seconds, rather than after a thousand epochs.
 
 The cost is sequence length: terrain is one transformer token per piece, so 29 pieces plus
-the threat feature measured 2.66 -> 3.13 ms/step on 25v25 (+18%).
+the (since-removed) threat feature measured 2.66 -> 3.13 ms/step on 25v25 (+18%).
 
 ## Objectives and terrain
 
@@ -133,7 +133,7 @@ phase, measured at ~4% of step time on the 25v25 configs).
 
 | Metric | Meaning |
 |---|---|
-| `firepower_advantage` | **Prefer this one.** Per shooting phase, (alive enemies at least one of our models can see and reach) − (our alive models at least one of theirs can) |
+| `firepower_ratio` | **Prefer this one.** Over the episode, (our alive models with a reachable target) ÷ (theirs with one). 1.0 is an even exchange |
 | `exposure_rate` | Fraction of alive model-shooting-phases where at least one alive enemy has **line of sight and weapon range** to that model |
 | `terrain_proximity` | Mean distance from an alive model to the nearest footprint (0 inside) |
 
@@ -142,7 +142,7 @@ All three surface as `eval/*` keys during training and as columns in
 when unmeasured, never `0.0`, which would read as "never exposed".
 
 `exposure_rate` counts only *our* side of the exchange, so it falls both when a policy
-manoeuvres into a good fight and when it hides from every fight. `firepower_advantage` is the
+manoeuvres into a good fight and when it hides from every fight. `firepower_ratio` is the
 difference between the two sides and separates them. Line of sight is exactly symmetric here,
 but symmetry is *pairwise* — it does not equalise the counts, which is precisely what makes
 cover worth using: it lets you choose the exchange ratio.
@@ -154,27 +154,35 @@ that in would score a headlong charge as if it were cover.
 See [metrics.md](metrics.md#cover-metrics) for the reading rules — in particular that
 `exposure_rate` is a mean over *alive* models, which makes it fall when models die.
 
-## Seeing terrain at decision time
+## Seeing terrain at decision time — the policy cannot
 
-`observe_threat_count: true` adds a per-model scalar to the observation: the fraction of the
-opposing force with line of sight **and** weapon range to that model, on player and opponent
-tokens alike, from one line-of-sight scan per step.
+The policy has **no line-of-sight information at movement time at all**, which is when the
+decision is made. The shooting mask is built only during the shooting phase and only masks
+logits, so it never reaches the encoder. Terrain rectangles and enemy positions are both in
+the observation, so exposure is derivable in principle — by the network learning to ray-cast
+over 625 pairs internally, which it will not.
 
-Without it the policy has **no line-of-sight information at movement time at all**. The
-shooting mask is built only during the shooting phase and only masks logits, so it never
-reaches the encoder. Terrain rectangles and enemy positions are both in the observation, so
-exposure is derivable in principle — by the network learning to ray-cast over 625 pairs
-internally, which it will not. No reward fixes a missing input.
+`observe_threat_count` supplied one: a per-model scalar giving the fraction of the opposing
+force with line of sight **and** weapon range to that model. Batch 3 ran it as one axis of a
+2x2 across two seeds and it measured **null** — no effect alone, and slightly negative when
+combined with the loss penalty. It was removed rather than kept as dead configuration. See
+[the report](../reports/2026-08-06-cover-signal-reason-geometry.md).
 
-It is computed inside `build_observation`, so the value always describes where a model is
-*now*. Caching it during the opponent's turn would be stale within the round: with the usual
-`skip_phases`, movement advances to shooting with the same side still active, so the opponent
-hook never runs on a movement step and the cached value would describe the cell the model
-just left.
+The reading that survives is about the *encoding*, not the idea. A threat **count** says how
+many guns bear on a model but not from where, so it cannot support the decision cover
+actually requires: "step two cells left and the wall covers me". A directional or per-sector
+encoding is untested.
 
-The flag changes the observation width, so **checkpoints do not transfer across a flip of
-it** — loading one raises a shape mismatch, which is the intended loud failure. Default off,
-so every existing config and checkpoint is unaffected.
+Two implementation notes worth keeping if one is ever built:
+
+- **Compute it inside `build_observation`**, so the value describes where a model is *now*.
+  Caching it during the opponent's turn is stale within the round: with the usual
+  `skip_phases`, movement advances to shooting with the same side still active, so the
+  opponent hook never runs on a movement step and the cached value describes the cell the
+  model just left.
+- **The new column goes inside `core`, before `alive`.** `TransformerNetwork._alive_feature_index`
+  counts backwards from the last column, so appending after the combat stats makes the
+  key-padding mask read `wound_ratio` as `alive` — silently, with no exception.
 
 ### No-Terrain Default
 

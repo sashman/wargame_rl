@@ -69,7 +69,7 @@ class _EvalStats:
         # None unless the config sets `track_exposure`.
         self.exposures.append(env.exposure_rate)
         self.proximities.append(env.terrain_proximity)
-        self.firepower.append(env.firepower_advantage)
+        self.firepower.append(env.firepower_ratio)
         if env.last_step_context is not None:
             self.successes.append(
                 env.phase_manager.check_success(env, env.last_step_context)
@@ -133,10 +133,10 @@ class WargameLightningBase(LightningModule, ABC):
                 # exposure of 0.6 says nothing about whether cover was used.
                 if result.exposure_rate is not None:
                     self.log(f"eval/baseline_{name}_exposure", result.exposure_rate)
-                if result.firepower_advantage is not None:
+                if result.firepower_ratio is not None:
                     self.log(
-                        f"eval/baseline_{name}_firepower_advantage",
-                        result.firepower_advantage,
+                        f"eval/baseline_{name}_firepower_ratio",
+                        result.firepower_ratio,
                     )
                 logger.info(
                     "Baseline {}: win_rate={:.2f} vp_margin={:.1f} "
@@ -147,7 +147,7 @@ class WargameLightningBase(LightningModule, ABC):
                     result.final_fraction_at_objectives,
                     result.final_fraction_alive,
                     format_optional_metric(result.exposure_rate),
-                    format_optional_metric(result.firepower_advantage, decimals=2),
+                    format_optional_metric(result.firepower_ratio, decimals=2),
                 )
         finally:
             baseline_env.close()
@@ -287,7 +287,7 @@ class WargameLightningBase(LightningModule, ABC):
         # this can.
         firepower = mean_of_measured(stats.firepower)
         if firepower is not None:
-            self.log(f"eval/{prefix}firepower_advantage", firepower, prog_bar=False)
+            self.log(f"eval/{prefix}firepower_ratio", firepower, prog_bar=False)
 
     def _evaluate_episodes(
         self,

@@ -53,7 +53,7 @@ class BaselineResult:
     # (enemies we can shoot) - (our models they can shoot), per shooting phase.
     # The exchange-ratio measure: exposure alone cannot tell manoeuvre from
     # hiding, because both lower it.
-    firepower_advantage: float | None
+    firepower_ratio: float | None
 
     @property
     def vp_margin(self) -> float:
@@ -225,7 +225,7 @@ def evaluate_selector(
         survivals.append(float(alive.mean()))
         exposures.append(env.exposure_rate)
         proximities.append(env.terrain_proximity)
-        firepower.append(env.firepower_advantage)
+        firepower.append(env.firepower_ratio)
 
     return BaselineResult(
         name=name,
@@ -240,5 +240,5 @@ def evaluate_selector(
         # metric to a number would invent data.
         exposure_rate=mean_of_measured(exposures),
         terrain_proximity=mean_of_measured(proximities),
-        firepower_advantage=mean_of_measured(firepower),
+        firepower_ratio=mean_of_measured(firepower),
     )

@@ -164,29 +164,36 @@ where no enemy can see you.
 
 | Key | Meaning |
 |---|---|
-| `eval/firepower_advantage` | ⚠️ **Broken as specified — do not read it.** Mean per shooting phase of (alive enemies at least one of our models can see and reach) − (our alive models at least one of theirs can). See the warning below |
+| `eval/firepower_ratio` | **Prefer this one.** Over the episode, (alive enemies at least one of our models can see and reach) ÷ (our alive models at least one of theirs can). 1.0 is an even exchange; above 1.0 we bring more guns to bear than we expose |
 | `eval/exposure_rate` | Fraction of alive model-shooting-phases where at least one alive enemy had **line of sight and weapon range** to that model |
 | `eval/terrain_proximity` | Mean distance from an alive model to the nearest terrain footprint (0 inside) |
 | `eval/fraction_alive` | Fraction of player models still alive at episode end. Logged always, not just when tracking exposure |
 
-⚠️ **`firepower_advantage` does not work and neither metric currently ranks cover.**
-It was introduced as the batch-3 headline on the reasoning below, and batch 3
-falsified it: `random` — a policy that wins **zero** games — scores **1.78**,
-above every trained arm (1.03–1.29), and the best-equipped arm scores *below*
-control. As a raw count *difference* it is dominated by how much engagement
-happens at all rather than by who wins the exchange. Fix it to a ratio, or
-normalise by total engagement, before letting any result turn on it. See
-[the batch-3 report](../reports/2026-08-06-cover-signal-reason-geometry.md).
-
-The reasoning that motivated it still holds and is why `exposure_rate` is also
-inadequate: exposure counts only our side of the exchange, so it falls both when
-a policy manoeuvres into a good fight and when it merely hides from every fight —
-it cannot rank the two, and all four traps below are consequences of that. Line
-of sight is exactly symmetric in this engine (`wargame.py` sorts the endpoints to
+**Prefer `firepower_ratio` to `exposure_rate` for any question about cover.**
+Exposure counts only our side of the exchange, so it falls both when a policy
+manoeuvres into a good fight and when it merely hides from every fight — it
+cannot rank the two, and all four traps below are consequences of that. Line of
+sight is exactly symmetric in this engine (`wargame.py` sorts the endpoints to
 guarantee it), but symmetry is *pairwise*: it does not equalise the counts. Ten
 models behind a wall while twelve fire on three is twelve shots out for three
-back. Capturing that difference is the right idea; a bare subtraction is the
-wrong implementation of it.
+back, and that is what the ratio reports.
+
+⚠️ **It was a count difference (`firepower_advantage`) until 2026-08-06, and in
+that form it did not work.** Batch 3 falsified it: `random` — a policy that wins
+**zero** games — scored **1.78**, above every trained arm (1.03–1.29). A
+difference is dominated by how much engagement happens at all rather than by who
+wins it, so a policy that scatters into contact everywhere scores well while
+losing. **`eval/firepower_advantage` values logged before that date are not
+comparable to `eval/firepower_ratio` and should not be read.** The key was
+renamed rather than redefined in place, precisely so old history stays
+identifiable. See [the batch-3
+report](../reports/2026-08-06-cover-signal-reason-geometry.md).
+
+The ratio divides **totals over the episode**, not a mean of per-phase ratios: a
+phase with 20 models engaged says more about the exchange than one with 2, and
+averaging ratios would weight them equally. It is `None` when our side was never
+exposed in any sampled phase, since the ratio is unbounded there — a degenerate
+case, not a perfect one.
 
 Same numbers appear as `exposure` / `terrain_d` / `alive` columns in
 `just measure-baselines` and `just measure-checkpoint`, produced by the same
@@ -246,32 +253,39 @@ it down. All three are `None` — printed as `-`, key omitted in Wandb — when
 unmeasured, never `0.0`, which would read as "never exposed" (or, for firepower,
 as a genuinely even exchange).
 
-**`firepower_advantage` avoids traps 1–3** because it is a difference between the
-two sides measured in the same phase: casualties, disengagement and kills all
-move both terms. Its own trap turned out to be fatal: it is a **count difference,
-not a ratio**, so +3 means the same absolute edge whether 4 models are engaged or
-24. That was accepted deliberately (a ratio is undefined when either side has
-nobody engaged) on the assumption that engagement volume would be roughly
-comparable across policies. It is not — a flailing policy that scatters into
-contact everywhere racks up a large difference while losing every game, which is
-precisely how `random` scores 1.78 against a winning arm's 1.03. Any fix has to
-handle the undefined case explicitly (e.g. a ratio reported as `None` when either
-side has nobody engaged) rather than fall back to subtraction.
+**`firepower_ratio` avoids traps 1–3** because both terms are measured in the
+same phase: casualties, disengagement and kills all move both. It counts
+**shooters, not targets** — models with at least one reachable enemy, on each
+side — which is what actually sets how many shots are fired.
 
-Reference values on `25v25_cover_control`, 20 seeds:
+Getting that right took two attempts, and the failure is instructive. The
+original `firepower_advantage` was `(enemies we can see) − (our models they can
+see)`. Both halves were wrong. The arithmetic was wrong because a difference is
+dominated by how much engagement happens rather than by who wins it. The
+*direction* was wrong because line of sight is symmetric: a model that is
+exposed is exactly a model that can fire, so "enemies we can see" is **their**
+shooter count, not ours. One of our models walking into view of twenty scored
+twenty, which is how `random` topped the table.
 
-| baseline | win | firepower | exposure | alive |
+Reference values on `25v25_cover_control`, 25 seeds:
+
+| baseline | win | firepower_ratio | exposure | alive |
 |---|---|---|---|---|
-| random | 0.00 | +1.48 | 0.021 | 0.796 |
-| greedy_nearest | 0.20 | −1.09 | 0.384 | 0.386 |
-| split_evenly | 0.05 | +2.66 | 0.338 | 0.214 |
-| squad_march | 0.15 | +2.99 | 0.357 | 0.252 |
-| **squad_march_shoot** (the bar) | **0.45** | +2.74 | 0.199 | 0.392 |
+| random | 0.00 | 0.23 | 0.019 | 0.822 |
+| greedy_nearest | 0.20 | 1.51 | 0.398 | 0.389 |
+| split_evenly | 0.08 | 0.70 | 0.360 | 0.205 |
+| squad_march | 0.20 | 0.68 | 0.391 | 0.262 |
+| **squad_march_shoot** (the bar) | **0.56** | 0.49 | 0.193 | 0.406 |
 
-Note firepower does not rank policies on its own either — `squad_march` scores
-highest and wins 0.15. It is a *behavioural* measure, and like exposure it means
-something only read beside `vp_margin`: the claim worth making is **higher
-firepower advantage at equal or better VP**.
+**It does not rank policies, and is not supposed to.** It measures the
+*firefight*, and a policy can win on objectives while being outgunned — which is
+exactly what the bar does: `squad_march_shoot` wins 0.56 at a ratio of 0.49,
+holding ground with roughly half the guns bearing. Read it beside `vp_margin`;
+the claim worth making is **higher firepower ratio at equal or better VP**.
+
+What it *can* do, which the old form could not, is tell a competent policy from
+a flailing one: `random` sits at 0.23, outgunned four to one, last on the table
+rather than first.
 
 ### The noise floor
 
