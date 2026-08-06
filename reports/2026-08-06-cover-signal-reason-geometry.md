@@ -6,8 +6,17 @@ We wanted the little soldiers to hide behind walls. Three times now they have re
 
 Last time we could not blame them. There was almost nothing to hide behind, they could not
 see who was aiming at them, and dying cost them nothing. So this time we gave them all
-three: lots more walls, a sense that says "three enemies can shoot you right now", and a
-penalty for losing soldiers.
+three, and those three are what the arm names mean:
+
+- **geometry** — lots more walls, so hiding is actually *possible*
+- **signal** — a sense that says "three enemies can shoot you right now", so being in danger
+  is *noticeable*
+- **reason** — a penalty for losing soldiers, so staying safe is *worth something*
+
+Everyone got the walls. Then we ran four versions: one with neither of the other two
+(**control**), one with only the sense (**signal**), one with only the penalty
+(**reason**), and one with both (**full**). Comparing them tells you which of the two
+actually mattered.
 
 **They still did not hide.** But one of the three changes made them win a lot more anyway —
 the penalty for losing soldiers. And here is the strange part: after we started punishing
@@ -76,15 +85,39 @@ PPO + transformer, 1000 epochs, **two seeds per arm**. 25v25 on 60x44, 3 objecti
 `objective_min_separation: 6`, weapon range 12, opponent `scripted_advance_and_shoot`,
 29 mirrored ruins of size 3-7 regenerated every episode, `track_exposure: true`.
 
-A 2x2 factorial over (signal x reason). Batch 3 carries its own control: the terrain
-profile changed, so **no batch-3 number is comparable to batch 1 or 2**.
+### What the arm names mean
 
-| arm | config | `observe_threat_count` | `models_lost` | run s1 | run s2 |
-|---|---|---|---|---|---|
-| H | `25v25_cover_control.yaml` | off | off | `kra8wkr0` | `j10eupjr` |
-| I | `25v25_cover_signal.yaml` | **on** | off | `0ezq9h2a` | `35uq0e25` |
-| J | `25v25_cover_reason.yaml` | off | **on** | `ybztgjym` | `u1pf5n7y` |
-| K | `25v25_cover_full.yaml` | **on** | **on** | `nhbk7wl5` | `25b0bmkr` |
+For an agent to take cover, three separate things all have to be true. It has to be
+**possible**, it has to be **perceivable**, and it has to be **worth doing**. Batch 1/2
+had none of them, which is why its null result could not be trusted. The arm names are
+those three conditions:
+
+| name | the condition | the question it answers | how it was supplied |
+|---|---|---|---|
+| **geometry** | Cover is *possible* | Is there anything to hide behind that actually breaks every sightline? | 29 ruins of 3-7, 19.8% of the board hidden (was 5.8%) |
+| **signal** | Cover is *perceivable* | Can the policy tell, at the moment it chooses a move, that it is exposed? | `observe_threat_count` — a per-model count of enemies with LOS and range to it |
+| **reason** | Cover is *worth doing* | Does anything bad happen if it walks into the open and dies? | `models_lost` — a reward penalty per model lost, priced against `model_kills` |
+
+**Geometry is not an axis — it is a precondition.** Every arm gets the new terrain, because
+an arm without it tests nothing: it cannot distinguish "declined to use cover" from "had no
+cover available", which is exactly the confound that invalidated batch 1/2 and arm F.
+
+Signal and reason *are* axes, crossed into a 2x2. The design question was which of the two
+is the binding constraint — and, because a 2x2 gives the interaction for free, whether
+either only works in the presence of the other. My pre-registered prior was that the signal
+is necessary and the reason alone does nothing, on the reasoning that no reward can fix a
+missing input.
+
+| arm | config | signal | reason | reads as | run s1 | run s2 |
+|---|---|---|---|---|---|---|
+| H | `25v25_cover_control.yaml` | off | off | can see nothing, cares about nothing | `kra8wkr0` | `j10eupjr` |
+| I | `25v25_cover_signal.yaml` | **on** | off | knows it is exposed, has no reason to mind | `0ezq9h2a` | `35uq0e25` |
+| J | `25v25_cover_reason.yaml` | off | **on** | pays for dying, cannot see it coming | `ybztgjym` | `u1pf5n7y` |
+| K | `25v25_cover_full.yaml` | **on** | **on** | "full" — both, the arm cover should be easiest for | `nhbk7wl5` | `25b0bmkr` |
+
+Read as differences: **I − H** isolates the signal, **J − H** isolates the reason, and
+**K − (I + J − H)** is the interaction. Batch 3 carries its own control (H) because the
+terrain profile changed, so **no batch-3 number is comparable to batch 1 or 2**.
 
 `25v25_cover_signal.yaml` and `25v25_cover_full.yaml` no longer exist — they were deleted
 with the feature after it measured null. The rows are kept here because they are what was
@@ -135,12 +168,22 @@ non-overlapping ranges. The claim supported is "the loss penalty moved vp_margin
 
 ## What the 2x2 says
 
-**`models_lost` is real.** Both arms containing it beat both arms without it, on both
-seeds, on vp_margin.
+Taking the three differences the design was built to give:
 
-**`observe_threat_count` is null.** I sits on top of H on every metric (win 54.3 vs 54.8,
-vp +3.5 vs +4.0, exposure 0.094 vs 0.092). K is marginally *below* J (58.5 vs 59.5 win,
-+10.8 vs +11.5 vp). The interaction is absent or slightly negative.
+| contrast | isolates | result |
+|---|---|---|
+| **I − H** | the signal alone | nothing (vp +3.5 vs +4.0) |
+| **J − H** | the reason alone | **+7.5 vp margin** |
+| **K − (I + J − H)** | the interaction | absent, if anything slightly negative |
+
+**The reason is real.** Both arms carrying `models_lost` (J, K) beat both arms without it
+(H, I), on both seeds, on vp_margin.
+
+**The signal is null.** I sits on top of H on every metric (win 54.3 vs 54.8, vp +3.5 vs
++4.0, exposure 0.094 vs 0.092). And it does not become useful once there is a reason to use
+it: K is marginally *below* J (58.5 vs 59.5 win, +10.8 vs +11.5 vp). That second point is
+what the fourth arm was for — without K, "the signal needs a motive to matter" would still
+be open.
 
 **The feature and its two arms have since been removed** — the observation column, the
 config flag, and `25v25_cover_{signal,full}.yaml`. A measured-null feature kept "in case"
