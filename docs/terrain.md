@@ -60,7 +60,39 @@ and is its own reflection.
 
 Generation is rejection sampling. Specs that pack the board too tightly, or whose `max_size`
 cannot fit inside the margins, are rejected at config load rather than failing partway
-through a run.
+through a run. The packing bound is on the **expected** footprint,
+`count x ((min_size + max_size) / 2 + min_gap)^2` against half the usable area. Bounding the
+worst case instead — every piece at `max_size` — rejects exactly the specs that produce
+wall-shaped pieces, which need a large `max_size` beside a small `min_size`; sides are drawn
+independently and uniformly, so an all-max layout is vanishingly unlikely.
+`_MAX_LAYOUT_ATTEMPTS` in `terrain_placement.py` is the real backstop and raises with a clear
+message if a draw genuinely cannot be placed.
+
+### Choosing a profile: count dominates size
+
+`just measure-terrain <config> [n_layouts]` samples layouts and reports what a profile is
+actually worth. The number that matters is **not coverage** but *cells hidden from a squad*:
+the fraction of board cells from which no member of a squad-sized enemy group in weapon range
+has line of sight. Exposure is "at least one enemy can see me", so terrain that breaks a few
+sightlines out of twenty-five buys nothing — hiding means breaking every one at once.
+
+Measured on 60x44 with weapon range 12:
+
+| profile | coverage | sightlines blocked | **cells hidden from a squad** |
+|---|---|---|---|
+| 7 x 5-7 (batches 1-2) | 0.096 | 0.045 | **0.058** |
+| 15 x 3-10 | 0.212 | 0.103 | 0.114 |
+| 11 x 3-12 | 0.199 | 0.080 | 0.101 |
+| 25 x 3-8 | 0.244 | 0.159 | 0.168 |
+| **29 x 3-7 (batch 3)** | 0.251 | 0.179 | **0.198** |
+
+At equal coverage, **many small pieces beat few large ones** — hiding needs ruins in many
+directions, not one big one. This is why batches 1-2 could not answer the cover question:
+with 5.8% of the board hidden, the agent was not declining to use cover, there was almost
+none to use. Tune a profile here, in seconds, rather than after a thousand epochs.
+
+The cost is sequence length: terrain is one transformer token per piece, so 29 pieces plus
+the (since-removed) threat feature measured 2.66 -> 3.13 ms/step on 25v25 (+18%).
 
 ## Objectives and terrain
 
@@ -101,19 +133,56 @@ phase, measured at ~4% of step time on the 25v25 configs).
 
 | Metric | Meaning |
 |---|---|
+| `firepower_ratio` | **Prefer this one.** Over the episode, (our alive models with a reachable target) ÷ (theirs with one). 1.0 is an even exchange |
 | `exposure_rate` | Fraction of alive model-shooting-phases where at least one alive enemy has **line of sight and weapon range** to that model |
 | `terrain_proximity` | Mean distance from an alive model to the nearest footprint (0 inside) |
 
-Both surface as `eval/*` keys during training and as columns in `just measure-baselines` and
-`just measure-checkpoint`. Both are `None` — printed as `-` — when unmeasured, never `0.0`,
-which would read as "never exposed".
+All three surface as `eval/*` keys during training and as columns in
+`just measure-baselines` and `just measure-checkpoint`. All are `None` — printed as `-` —
+when unmeasured, never `0.0`, which would read as "never exposed".
 
-`exposure_rate` deliberately **ignores** the engagement-range and advanced gating that the
-real shooting mask applies. A shooter within `ENGAGEMENT_RANGE` of any enemy cannot fire at
-all, so folding that in would score a headlong charge as if it were cover.
+`exposure_rate` counts only *our* side of the exchange, so it falls both when a policy
+manoeuvres into a good fight and when it hides from every fight. `firepower_ratio` is the
+difference between the two sides and separates them. Line of sight is exactly symmetric here,
+but symmetry is *pairwise* — it does not equalise the counts, which is precisely what makes
+cover worth using: it lets you choose the exchange ratio.
+
+Both deliberately **ignore** the engagement-range and advanced gating that the real shooting
+mask applies. A shooter within `ENGAGEMENT_RANGE` of any enemy cannot fire at all, so folding
+that in would score a headlong charge as if it were cover.
 
 See [metrics.md](metrics.md#cover-metrics) for the reading rules — in particular that
 `exposure_rate` is a mean over *alive* models, which makes it fall when models die.
+
+## Seeing terrain at decision time — the policy cannot
+
+The policy has **no line-of-sight information at movement time at all**, which is when the
+decision is made. The shooting mask is built only during the shooting phase and only masks
+logits, so it never reaches the encoder. Terrain rectangles and enemy positions are both in
+the observation, so exposure is derivable in principle — by the network learning to ray-cast
+over 625 pairs internally, which it will not.
+
+`observe_threat_count` supplied one: a per-model scalar giving the fraction of the opposing
+force with line of sight **and** weapon range to that model. Batch 3 ran it as one axis of a
+2x2 across two seeds and it measured **null** — no effect alone, and slightly negative when
+combined with the loss penalty. It was removed rather than kept as dead configuration. See
+[the report](../reports/2026-08-06-cover-signal-reason-geometry.md).
+
+The reading that survives is about the *encoding*, not the idea. A threat **count** says how
+many guns bear on a model but not from where, so it cannot support the decision cover
+actually requires: "step two cells left and the wall covers me". A directional or per-sector
+encoding is untested.
+
+Two implementation notes worth keeping if one is ever built:
+
+- **Compute it inside `build_observation`**, so the value describes where a model is *now*.
+  Caching it during the opponent's turn is stale within the round: with the usual
+  `skip_phases`, movement advances to shooting with the same side still active, so the
+  opponent hook never runs on a movement step and the cached value describes the cell the
+  model just left.
+- **The new column goes inside `core`, before `alive`.** `TransformerNetwork._alive_feature_index`
+  counts backwards from the last column, so appending after the combat stats makes the
+  key-padding mask read `wound_ratio` as `alive` — silently, with no exception.
 
 ### No-Terrain Default
 

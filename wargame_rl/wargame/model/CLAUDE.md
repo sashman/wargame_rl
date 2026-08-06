@@ -63,6 +63,8 @@ Both expose `policy_from_env(env)` and `from_checkpoint(env, path)` class method
 
 `feature_dim = base + n_opponent`, where base covers normalized location, distances to objectives, group_id one-hot, closest same-group distance, wound features (alive, wound_ratio, max_wounds_norm), and combat stats (attacks, bs, strength, ap, damage, toughness, save — each divided by its `NORM_*` constant). The trailing `n_opponent` columns are expected damage per target (player models) or zero-padding (opponent models).
 
+**Any new per-model column goes inside `core`, before `alive` — never on the end.** `TransformerNetwork._alive_feature_index` locates `alive` by counting *backwards* from the last column. A column appended after the combat stats shifts that index, and the key-padding mask then reads `wound_ratio` as `alive`: dead models stay attendable and live ones drop out. Nothing raises, so nothing tells you. This bit the one feature that was added here (`observe_threat_count`, since removed) and will bite the next one.
+
 The docstring on `observation_to_tensor` is the source of truth — keep it, this table, and `docs/opponent-policies.md` (Observation Impact) in sync when tensor count or shapes change.
 
 To add a new entity:
@@ -79,4 +81,5 @@ To add a new entity:
 - Default algorithm is PPO; DQN is available but not the primary focus
 - Device management via `device.py` utility
 - Wandb integration in `wandb.py` — all logging goes through Lightning logger
+- **`get_logger` sets `log_model=False`** — checkpoints are never uploaded. Nothing reads a model artifact back (every consumer takes a local `checkpoints/` path), and the uploads filled the storage quota at ~591 MB per run. `checkpoints/` is therefore the only copy of any trained weights
 - When changing the observation tuple length, expect unpacking errors in tests (`test_state.py`, `test_dqn.py`) — fix them as part of the same change

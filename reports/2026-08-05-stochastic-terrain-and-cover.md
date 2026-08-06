@@ -115,6 +115,19 @@ Instead the agent collapses — exposure 0.429, survival 0.156, win 6.8%. It has
 once distance is removed, which is exactly what a distance-only strategy predicts.
 *Measured; the causal reading is inferred.*
 
+> **Correction (2026-08-05, later).** "There are seven ruins available" overstates what arm F
+> offered. `just measure-terrain` (added afterwards) reports that this profile — 7 pieces of
+> 5-7 — leaves only **5.8% of the board hidden** from a squad in weapon range, against 19.8%
+> for a 29-piece profile at similar total coverage. Cover was therefore not a working
+> alternative in arm F either, so the arm shows that **range was the agent's only lever**, not
+> that it ignored a working one. The distinction matters: the original wording reads as
+> evidence the policy declined to use cover, which arm F cannot support.
+>
+> This also weakens conclusion 1 slightly in the same direction. D-vs-E remains a clean
+> measurement — deleting seven ruins changed nothing — but it establishes that *this* terrain
+> did nothing, not that terrain cannot. Batch 3 re-runs the question on a profile where cover
+> is physically available.
+
 ### 3. What the policy actually learned is still worth having
 
 It is not a null result about learning. Against the movement-only baselines on held-out
@@ -184,21 +197,45 @@ genuinely separate objectives is a harder mission.
 
 ## What would actually test cover
 
-The experiment shows the policy has no reason and no signal to use terrain. Two candidate
-follow-ups, in order of expected value:
+The experiment shows the policy has no reason and no signal to use terrain — and, per the
+correction above, nowhere much to use it either. **Batch 3 addresses all three**, as a 2x2
+over (signal x reason) on a terrain profile where cover is physically available:
 
-1. **Give it the signal.** The observation carries terrain rectangles but never says whether
+1. **Give it somewhere to hide.** 29 pieces of 3-7 instead of 7 of 5-7 raises cells hidden
+   from a squad from 5.8% to 19.8%. Count dominates size: hiding means breaking *every*
+   sightline at once, which needs ruins in many directions rather than one big one.
+2. **Give it the signal.** The observation carries terrain rectangles but never says whether
    an enemy can see you: the shooting mask is computed only during the shooting phase and
    only masks logits — it never enters the encoder (`net.py:491`), so at *movement* time the
-   policy has zero LOS information. A per-model "enemies with LOS to me" feature is the
-   smallest change with the largest expected effect.
-2. **Give it a reason.** No calculator charges for losing a model. A `damage_taken` penalty
-   would make survival a direct objective rather than an emergent side-effect.
+   policy has zero LOS information. `observe_threat_count` adds a per-model "fraction of the
+   enemy with LOS and range to me" scalar.
+3. **Give it a reason.** No calculator charged for losing a model, so exposing one was free.
+   The `models_lost` global calculator prices losses to match `model_kills`, making an even
+   exchange net to zero and only favourable ones pay.
 
-Arm F is the setting to test both in: it is the only configuration where distance does not
-work, so a policy that improves there must have found something else.
+**Correcting the framing this report used.** It treats cover as an alternative to shooting.
+It is better understood as choosing the *exchange ratio*: line of sight is exactly symmetric
+in this engine, but symmetry is pairwise and does not equalise the counts — ten models behind
+a wall while twelve fire on three is twelve shots out for three back, and Lanchester's square
+law compounds that. Hence `firepower_advantage`, which measures the difference directly;
+`exposure_rate` counts only our side and cannot tell manoeuvre from hiding.
+
+**Also newly measurable: the noise floor.** `reset(options={"combat_seed": ...})` now varies
+the dice independently of the layout. On the batch-3 control, `squad_march_shoot` has a
+vp_margin sd of 50.6 *within* a fixed layout against 45.0 between layouts — the dice
+contribute more spread than the scenario. That does not invalidate anything above (all the
+numbers here are means over the last 100-150 epochs, which averages it down), but it does
+mean the D-vs-E gap of 1.7pp was never readable at one seed, exactly as the confounds section
+already suspected. Batch 3 runs two seeds per arm.
 
 ## Reproducing
+
+**The arm configs were deleted once this experiment closed.** Restore them first —
+they are tagged, not lost:
+
+```bash
+git checkout batch-1-2-configs -- examples/env_config/
+```
 
 ```bash
 just measure-baselines examples/env_config/25v25_stochastic_terrain_shooting.yaml 30 "" 700000

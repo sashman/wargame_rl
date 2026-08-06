@@ -21,9 +21,9 @@ Applies to everything under `tests/`. General testing philosophy lives in the ro
 
 **Env & clock** — `test_env` (reset/step) · `test_clock_integration` (phases, skip_phases, rounds) · `test_game_clock` (clock unit) · `test_turn_execution_fairness` · `test_fixed_placement` (config/placement) · `test_rollout_env_lifecycle` · `test_objective_control_distance_cache`
 
-**Rules & combat** — `test_shooting_action` · `test_shooting_resolution` · `test_shooting_opponent` · `test_shooting_baseline` · `test_action_masking` · `test_los` · `test_wounds` · `test_killing_reward` · `test_terrain` · `test_terrain_observation` · `test_terrain_render`
+**Rules & combat** — `test_shooting_action` · `test_shooting_resolution` · `test_shooting_opponent` · `test_shooting_baseline` · `test_action_masking` · `test_los` · `test_wounds` · `test_killing_reward` · `test_terrain` · `test_terrain_observation` · `test_terrain_render` · `test_random_terrain` · `test_exposure_metric` (exposure, terrain proximity, `firepower_ratio` — including that a concentrated force outguns what it exposes, the case the metric's first version got backwards)
 
-**Reward & mission** — `test_reward_phases` · `test_new_per_model_calculators` · `test_per_model_credit` · `test_player_ahead_on_vp_criteria` · `test_mission_vp` · `test_curriculum_configs` (the two 25v25 configs must keep `vp_gain` + a per-model calculator)
+**Reward & mission** — `test_reward_phases` · `test_new_per_model_calculators` · `test_per_model_credit` · `test_player_ahead_on_vp_criteria` · `test_mission_vp` · `test_killing_reward` · `test_models_lost_reward` (the loss penalty must be global — per-model is identically zero on one-wound models) · `test_curriculum_configs` (every 25v25 config must keep `vp_gain` + a per-model calculator; also pins the batch-2 and batch-3 arm factorials)
 
 **Model & training** — `test_dqn` (networks/loss/training) · `test_ppo` · `test_agent` (actions/episodes) · `test_state` (obs/batch tensors) · `test_transformer_shooting_policy` (shooting head, dead-token masking) · `test_batched_eval` (lockstep eval waves) · `test_training_diagnostics` · `test_train_resume` · `test_train_run_name` · `test_simulate` · `test_z_e2e_training`
 

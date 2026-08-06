@@ -59,12 +59,16 @@ class ExposureTracker:
         self._sampled_models = 0
         self._distance_sum = 0.0
         self._distance_samples = 0
+        self._our_shooters = 0
+        self._their_shooters = 0
 
     def record(
         self,
         exposed: np.ndarray,
         alive: np.ndarray,
         terrain_distances: np.ndarray,
+        our_shooters: int | None = None,
+        their_shooters: int | None = None,
     ) -> None:
         """Record one shooting phase.
 
@@ -72,6 +76,9 @@ class ExposureTracker:
             exposed: per player model, True if any enemy has LOS and range to it.
             alive: per player model alive mask; dead models are not counted.
             terrain_distances: per player model distance to the nearest footprint.
+            our_shooters: alive player models with at least one reachable target.
+            their_shooters: alive opponents with at least one reachable target.
+                Both are needed for the firepower measure; None skips it.
         """
         self._exposed_models += int((exposed & alive).sum())
         self._sampled_models += int(alive.sum())
@@ -79,6 +86,13 @@ class ExposureTracker:
         finite = np.isfinite(terrain_distances) & alive
         self._distance_sum += float(terrain_distances[finite].sum())
         self._distance_samples += int(finite.sum())
+
+        if our_shooters is not None and their_shooters is not None:
+            # Totals, not per-phase ratios: a phase with 20 models firing says
+            # more about the exchange than one with 2, and averaging ratios
+            # would weight them equally.
+            self._our_shooters += int(our_shooters)
+            self._their_shooters += int(their_shooters)
 
     @property
     def exposure_rate(self) -> float | None:
@@ -102,3 +116,30 @@ class ExposureTracker:
         if self._distance_samples == 0:
             return None
         return self._distance_sum / self._distance_samples
+
+    @property
+    def firepower_ratio(self) -> float | None:
+        """(our models that can fire) / (theirs that can), over the episode.
+
+        1.0 is an even exchange; above 1.0 the army brings more guns to bear
+        than the enemy does, which is the exchange ratio cover is actually for.
+        `exposure_rate` cannot say this: it counts only our side of the trade,
+        so hiding and declining a bad fight look identical to hiding and taking
+        a good one.
+
+        This counts **shooters**, not targets. The metric began as
+        `firepower_advantage`, a difference between the models each side could
+        *see*, and that got the direction wrong as well as the arithmetic: line
+        of sight is symmetric, so a model that is exposed is exactly a model
+        that can fire, and "enemies we can see" is their shooter count, not
+        ours. One of our models walking into view of twenty scored twenty --
+        which is how `random`, a policy that wins no games, topped the table.
+        See the 2026-08-06 report.
+
+        None when nothing was sampled, and when the enemy could never fire at
+        all — the ratio is unbounded there, a degenerate case rather than a
+        perfect one.
+        """
+        if self._their_shooters == 0:
+            return None
+        return self._our_shooters / self._their_shooters

@@ -105,6 +105,34 @@ def test_unsatisfiable_spec_is_rejected_at_config_load() -> None:
         )
 
 
+def test_wide_size_range_is_accepted_and_generates() -> None:
+    """A wide min-to-max spread must load, and actually place.
+
+    The packing bound used worst-case-square area, which rejected exactly the
+    specs that produce wall-shaped pieces — a large `max_size` beside a small
+    `min_size`. Sides are drawn independently and uniformly, so an all-max
+    layout is vanishingly unlikely; the bound is on the expected footprint and
+    `_MAX_LAYOUT_ATTEMPTS` is the real backstop.
+    """
+    spec = RandomTerrainConfig(count=29, min_size=3, max_size=7)
+    WargameEnvConfig(board_width=60, board_height=44, random_terrain=spec)
+
+    board = BoardDimensions(width=60, height=44)
+    for seed in range(5):
+        terrain = generate_terrain(spec, board, np.random.default_rng(seed))
+        assert len(terrain.footprints) == 29
+
+
+def test_over_packed_spec_is_still_rejected() -> None:
+    """Relaxing the bound must not turn it off — it still has to catch the real thing."""
+    with pytest.raises(ValueError, match="packs too tightly"):
+        WargameEnvConfig(
+            board_width=60,
+            board_height=44,
+            random_terrain=RandomTerrainConfig(count=27, min_size=3, max_size=8),
+        )
+
+
 def test_fixed_and_random_terrain_are_mutually_exclusive() -> None:
     """Terrain is either fixed or regenerated — silently ignoring one is worse."""
     with pytest.raises(ValueError, match="mutually exclusive"):

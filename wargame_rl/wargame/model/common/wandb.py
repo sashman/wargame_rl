@@ -75,6 +75,15 @@ def init_wandb(
 
 
 def get_logger(run: Any = None, *, disabled: bool = False) -> WandbLogger | CSVLogger:
+    """Return the Lightning logger for a run.
+
+    `log_model` is off: nothing in this repo ever reads a model artifact back.
+    Every checkpoint consumer -- `simulate`, `record-sim`, `measure-checkpoint`,
+    `measure-phase-gates`, `--resume-ckpt-path`, `--warm-start-ckpt-path` --
+    takes a local path under `checkpoints/`. Uploading was write-only, and at
+    ~148 MB a checkpoint and four kept per run it filled the storage quota.
+    Metrics, history and recorded videos still go to Wandb.
+    """
     if disabled:
         return CSVLogger(save_dir="logs")
-    return WandbLogger(log_model=True, run=run)
+    return WandbLogger(log_model=False, run=run)

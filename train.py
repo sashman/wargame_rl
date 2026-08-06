@@ -6,7 +6,7 @@ import torch
 import typer
 from loguru import logger as log
 from pydantic_yaml import parse_yaml_raw_as
-from pytorch_lightning import LightningModule, Trainer
+from pytorch_lightning import LightningModule, Trainer, seed_everything
 from pytorch_lightning.callbacks import Callback
 from typer.models import OptionInfo
 
@@ -52,10 +52,22 @@ def _build_default_run_base_name(
     network_type: NetworkType,
     env_config: WargameEnvConfig,
 ) -> str:
-    """Build a descriptive run name base from training and env metadata."""
+    """Build a descriptive run name base from training and env metadata.
+
+    `config_name` leads when set, because everything after it describes the
+    *scenario* — board size, force sizes, phase count, opponent — and arms of an
+    experiment deliberately share all of those. Four configs differing only in
+    an observation flag or one reward term produced byte-identical names, so
+    every arm in a batch wrote its checkpoints into one directory and scored
+    whichever process happened to save last.
+    """
     parts = [
         algorithm.value,
         network_type.value,
+    ]
+    if env_config.config_name:
+        parts.append(env_config.config_name)
+    parts += [
         f"m{env_config.number_of_wargame_models}",
         f"opp{env_config.number_of_opponent_models}",
         f"obj{env_config.number_of_objectives}",
@@ -147,6 +159,18 @@ def _resolve_optional_str(value: str | OptionInfo | None) -> str | None:
     return value
 
 
+def _resolve_optional_int(value: int | OptionInfo | None) -> int | None:
+    """Unwrap a Typer default for callers that invoke `train()` directly.
+
+    Typer only substitutes real values when it parses argv. Called as a plain
+    function -- from tests, or any other Python caller -- the parameter still
+    holds the `OptionInfo` sentinel, which is truthy and is not `None`.
+    """
+    if isinstance(value, OptionInfo):
+        return None
+    return value
+
+
 @app.command()
 def train(
     render_mode: str | None = typer.Option(
@@ -233,8 +257,20 @@ def train(
         False,
         help="Record the last training episode as a JSON event log (written to recordings/)",
     ),
+    seed: int | None = typer.Option(
+        None,
+        help="Seed weight init, rollout and eval. Omitted, runs are seeded from OS "
+        "entropy: replicates still differ, but neither is reproducible. Set it "
+        "whenever running several seeds per arm, so a result can be re-run.",
+    ),
 ) -> None:
     """Train the agent."""
+    resolved_seed = _resolve_optional_int(seed)
+    if resolved_seed is not None:
+        # Covers torch, numpy and python's RNGs in one call. Without it nothing
+        # in the training path seeds anything, so a run cannot be reproduced.
+        seed_everything(resolved_seed, workers=True)
+        log.info("Seeded run with {}", resolved_seed)
     render_mode = _resolve_optional_str(render_mode)
     env_config_path = _resolve_optional_str(env_config_path)
     run_name = _resolve_optional_str(run_name)

@@ -164,9 +164,36 @@ where no enemy can see you.
 
 | Key | Meaning |
 |---|---|
+| `eval/firepower_ratio` | **Prefer this one.** Over the episode, (alive enemies at least one of our models can see and reach) ÷ (our alive models at least one of theirs can). 1.0 is an even exchange; above 1.0 we bring more guns to bear than we expose |
 | `eval/exposure_rate` | Fraction of alive model-shooting-phases where at least one alive enemy had **line of sight and weapon range** to that model |
 | `eval/terrain_proximity` | Mean distance from an alive model to the nearest terrain footprint (0 inside) |
 | `eval/fraction_alive` | Fraction of player models still alive at episode end. Logged always, not just when tracking exposure |
+
+**Prefer `firepower_ratio` to `exposure_rate` for any question about cover.**
+Exposure counts only our side of the exchange, so it falls both when a policy
+manoeuvres into a good fight and when it merely hides from every fight — it
+cannot rank the two, and all four traps below are consequences of that. Line of
+sight is exactly symmetric in this engine (`wargame.py` sorts the endpoints to
+guarantee it), but symmetry is *pairwise*: it does not equalise the counts. Ten
+models behind a wall while twelve fire on three is twelve shots out for three
+back, and that is what the ratio reports.
+
+⚠️ **It was a count difference (`firepower_advantage`) until 2026-08-06, and in
+that form it did not work.** Batch 3 falsified it: `random` — a policy that wins
+**zero** games — scored **1.78**, above every trained arm (1.03–1.29). A
+difference is dominated by how much engagement happens at all rather than by who
+wins it, so a policy that scatters into contact everywhere scores well while
+losing. **`eval/firepower_advantage` values logged before that date are not
+comparable to `eval/firepower_ratio` and should not be read.** The key was
+renamed rather than redefined in place, precisely so old history stays
+identifiable. See [the batch-3
+report](../reports/2026-08-06-cover-signal-reason-geometry.md).
+
+The ratio divides **totals over the episode**, not a mean of per-phase ratios: a
+phase with 20 models engaged says more about the exchange than one with 2, and
+averaging ratios would weight them equally. It is `None` when our side was never
+exposed in any sampled phase, since the ratio is unbounded there — a degenerate
+case, not a perfect one.
 
 Same numbers appear as `exposure` / `terrain_d` / `alive` columns in
 `just measure-baselines` and `just measure-checkpoint`, produced by the same
@@ -201,7 +228,9 @@ Same numbers appear as `exposure` / `terrain_d` / `alive` columns in
 
 3. **Killing the enemy lowers it too.** A dead opponent is one fewer model with
    line of sight to you, so exposure falls for shooting well as much as for
-   hiding well. On `25v25_stochastic_terrain_shooting`, 25 seeds:
+   hiding well. On `25v25_stochastic_terrain_shooting` (a batch-1 config, since
+   deleted; restore with `git checkout batch-1-2-configs -- examples/env_config/`),
+   25 seeds:
 
    | baseline | exposure | alive | opp VP |
    |---|---|---|---|
@@ -222,8 +251,69 @@ Same numbers appear as `exposure` / `terrain_d` / `alive` columns in
 
 `terrain_proximity` is the check against reading 2 backwards: a policy that is
 merely out of range keeps proximity high, one that is actually using ruins pulls
-it down. Both are `None` — printed as `-`, key omitted in Wandb — when unmeasured,
-never `0.0`, which would read as "never exposed".
+it down. All three are `None` — printed as `-`, key omitted in Wandb — when
+unmeasured, never `0.0`, which would read as "never exposed" (or, for firepower,
+as a genuinely even exchange).
+
+**`firepower_ratio` avoids traps 1–3** because both terms are measured in the
+same phase: casualties, disengagement and kills all move both. It counts
+**shooters, not targets** — models with at least one reachable enemy, on each
+side — which is what actually sets how many shots are fired.
+
+Getting that right took two attempts, and the failure is instructive. The
+original `firepower_advantage` was `(enemies we can see) − (our models they can
+see)`. Both halves were wrong. The arithmetic was wrong because a difference is
+dominated by how much engagement happens rather than by who wins it. The
+*direction* was wrong because line of sight is symmetric: a model that is
+exposed is exactly a model that can fire, so "enemies we can see" is **their**
+shooter count, not ours. One of our models walking into view of twenty scored
+twenty, which is how `random` topped the table.
+
+Reference values on `25v25_cover_control`, 25 seeds:
+
+| baseline | win | firepower_ratio | exposure | alive |
+|---|---|---|---|---|
+| random | 0.00 | 0.23 | 0.019 | 0.822 |
+| greedy_nearest | 0.20 | 1.51 | 0.398 | 0.389 |
+| split_evenly | 0.08 | 0.70 | 0.360 | 0.205 |
+| squad_march | 0.20 | 0.68 | 0.391 | 0.262 |
+| **squad_march_shoot** (the bar) | **0.56** | 0.49 | 0.193 | 0.406 |
+
+**It does not rank policies, and is not supposed to.** It measures the
+*firefight*, and a policy can win on objectives while being outgunned — which is
+exactly what the bar does: `squad_march_shoot` wins 0.56 at a ratio of 0.49,
+holding ground with roughly half the guns bearing. Read it beside `vp_margin`;
+the claim worth making is **higher firepower ratio at equal or better VP**.
+
+What it *can* do, which the old form could not, is tell a competent policy from
+a flailing one: `random` sits at 0.23, outgunned four to one, last on the table
+rather than first.
+
+### The noise floor
+
+`just measure-noise-floor <config> [n_layouts] [n_combat_seeds]` holds the
+layouts fixed and varies only the dice (`reset(options={"combat_seed": ...})`),
+separating the two sources of variance. On `25v25_cover_control` with
+`squad_march_shoot`, 8 layouts x 8 combat seeds:
+
+```
+vp_margin sd within a layout     50.6   <- the dice
+vp_margin sd between layouts     45.0   <- the scenario
+```
+
+**The dice contribute more spread than the scenario does.** The same scripted
+policy on the same map wins 0.00 on one layout and 1.00 on another. Two
+consequences:
+
+- A single-epoch `success_rate` is worthless, as already documented — but so is a
+  point comparison between two arms. Only converged rolling means over hundreds
+  of epochs average this down.
+- It bounds nothing about **run-to-run policy variance**, which this measurement
+  does not touch at all. Batch 2's D-vs-E gap of 1.7pp on rolling means is well
+  inside what two seeds of the same config could produce, which is why that
+  comparison could only bound the effect as small rather than show it was zero.
+
+Run at least two seeds per arm before reading a difference smaller than ~10pp.
 
 ## 3. Trace metrics (`just analyze`, `just analyze-compare`)
 

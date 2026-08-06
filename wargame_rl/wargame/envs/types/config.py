@@ -589,13 +589,22 @@ class WargameEnvConfig(BaseModel):
 
         # Rejection sampling degrades badly well before the board is full, so
         # the ceiling is a packing fraction rather than a strict area fit.
-        required = spec.count * (spec.max_size + spec.min_gap) ** 2
+        #
+        # Bounds the *expected* footprint, not the worst case. Sides are drawn
+        # independently and uniformly from [min_size, max_size], so an all-
+        # max_size layout is vanishingly unlikely, and bounding it rejects
+        # perfectly generatable specs -- notably any spec wide enough to produce
+        # walls, whose whole point is a large max_size next to a small min_size.
+        # `_MAX_LAYOUT_ATTEMPTS` in terrain_placement.py is the real backstop:
+        # it raises with a clear message if a draw genuinely cannot be placed.
+        mean_size = (spec.min_size + spec.max_size) / 2
+        required = spec.count * (mean_size + spec.min_gap) ** 2
         usable = usable_width * usable_height
         if required > _MAX_TERRAIN_PACKING_FRACTION * usable:
             raise ValueError(
-                f"random_terrain packs too tightly: {spec.count} pieces of up to "
-                f"{spec.max_size}x{spec.max_size} (plus {spec.min_gap} gap) need "
-                f"{required} cells, more than "
+                f"random_terrain packs too tightly: {spec.count} pieces averaging "
+                f"{mean_size:g}x{mean_size:g} (plus {spec.min_gap} gap) need "
+                f"{required:g} cells, more than "
                 f"{_MAX_TERRAIN_PACKING_FRACTION:.0%} of the usable {usable}"
             )
         return self

@@ -183,13 +183,17 @@ def build_observation(
     return WargameEnvObservation(
         current_turn=view.current_turn,
         wargame_models=_models_to_obs(
-            view.player_models, max_groups, model_configs=view.config.models
+            view.player_models,
+            max_groups,
+            model_configs=view.config.models,
         ),
         objectives=objectives_obs,
         board_width=view.board_width,
         board_height=view.board_height,
         opponent_models=_models_to_obs(
-            view.opponent_models, max_groups, model_configs=view.config.opponent_models
+            view.opponent_models,
+            max_groups,
+            model_configs=view.config.opponent_models,
         ),
         terrain=terrain_obs,
         action_mask=action_mask,

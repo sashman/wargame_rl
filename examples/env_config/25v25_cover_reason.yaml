@@ -1,8 +1,17 @@
-config_name: 25v25_terrain_range12
+config_name: 25v25_cover_reason
 #
-# ARM D -- batch 2 matched control. Identical to ARM A except that objectives no
-# longer overlap. Every batch-2 arm carries that fix, so D is the only arm the
-# others should be compared against; batch-1 numbers are not comparable.
+# BATCH 3, ARM J -- reason only. Identical to ARM H except the `models_lost` term.
+#
+# Isolated the reward change: does pricing losses change behaviour while the
+# policy has no line-of-sight information at movement time? The prior was that
+# it cannot, because no reward fixes a missing input. This arm is what made that
+# falsifiable rather than assumed -- and it refuted it. Pricing losses is worth
+# roughly +7 vp_margin over ARM H, on both seeds; adding the line-of-sight input
+# on top of it added nothing, so that input was removed.
+#
+# It did NOT buy caution: this arm keeps fewer models alive than the control
+# (0.636 vs 0.686) and exposes more. Whatever the penalty does, "decline bad
+# trades" is not it. See reports/2026-08-06-cover-signal-reason-geometry.md.
 #
 number_of_wargame_models: 25
 number_of_opponent_models: 25
@@ -31,20 +40,26 @@ opponent_policy:
 # Terrain blocks line-of-sight only (models can still move through it), and is
 # regenerated every episode rather than fixed.
 #
-# Randomising it is what makes a cover result falsifiable. With the seven fixed
-# ruins this config used to carry, "the policy learned to use cover" and "the
-# policy memorised seven rectangles" produce the same numbers. A fresh layout
-# each episode leaves only one way to score: read the terrain tokens in the
-# observation.
+# Randomising it is what makes a cover result falsifiable. With a fixed layout,
+# "the policy learned to use cover" and "the policy memorised the rectangles"
+# produce the same numbers. A fresh layout each episode leaves only one way to
+# score: read the terrain tokens in the observation.
 #
-# `count` is fixed while size and position vary — observation batching stacks
+# 29 pieces of 3-7, not batch 2's 7 pieces of 5-7. Measured with
+# `just measure-terrain`, the old profile left only 5.8% of the board hidden
+# from a squad that could shoot it; this one leaves 18.6%. Count dominates size
+# for this: hiding means breaking *every* sightline at once, which needs ruins
+# in many directions rather than one big one. At 5.8% the batch-1/2 agent was
+# not declining to use cover -- there was almost none to use.
+#
+# `count` is fixed while size and position vary -- observation batching stacks
 # the terrain arrays of a whole batch, so the piece count cannot differ between
 # episodes. `mirror` keeps the two deployment zones on equal ground; they are
 # fixed to the left and right of the board, so an asymmetric draw would hand one
 # side better approaches for a whole run.
 random_terrain:
-  count: 7
-  min_size: 5
+  count: 29
+  min_size: 3
   max_size: 7
   mirror: true
   edge_margin: 2
@@ -186,6 +201,21 @@ reward_phases:
       - type: group_cohesion
         weight: 0.3
         params: { group_max_distance: 6.0, violation_penalty: -0.05 }
+      # The cost side of the trade. `model_kills` pays for kills made and
+      # nothing charged for the models they cost, so exposing a model was free
+      # and declining a bad exchange could never look better than charging.
+      #
+      # Global, not per-model: the phase manager runs per-model calculators over
+      # alive models only, and every model here has one wound, so a per-model
+      # damage penalty would be identically zero -- the model that took the
+      # damage is already dead when the loop runs.
+      #
+      # weight x penalty = 0.1, matched to `model_kills`: bonus 2.0 paid to one
+      # model and divided by ~20 alive is ~0.10 per kill, so an even trade nets
+      # to roughly zero and only favourable exchanges pay.
+      - type: models_lost
+        weight: 0.1
+        params: { penalty_per_loss: 1.0 }
       # ---- global (broadcast whole to each model, not divided by 25) ----
       # The actual objective. Largest weight because its realistic dynamic
       # range is the smallest.
