@@ -159,6 +159,18 @@ def _resolve_optional_str(value: str | OptionInfo | None) -> str | None:
     return value
 
 
+def _resolve_optional_int(value: int | OptionInfo | None) -> int | None:
+    """Unwrap a Typer default for callers that invoke `train()` directly.
+
+    Typer only substitutes real values when it parses argv. Called as a plain
+    function -- from tests, or any other Python caller -- the parameter still
+    holds the `OptionInfo` sentinel, which is truthy and is not `None`.
+    """
+    if isinstance(value, OptionInfo):
+        return None
+    return value
+
+
 @app.command()
 def train(
     render_mode: str | None = typer.Option(
@@ -253,11 +265,12 @@ def train(
     ),
 ) -> None:
     """Train the agent."""
-    if seed is not None:
+    resolved_seed = _resolve_optional_int(seed)
+    if resolved_seed is not None:
         # Covers torch, numpy and python's RNGs in one call. Without it nothing
         # in the training path seeds anything, so a run cannot be reproduced.
-        seed_everything(seed, workers=True)
-        log.info("Seeded run with {}", seed)
+        seed_everything(resolved_seed, workers=True)
+        log.info("Seeded run with {}", resolved_seed)
     render_mode = _resolve_optional_str(render_mode)
     env_config_path = _resolve_optional_str(env_config_path)
     run_name = _resolve_optional_str(run_name)
