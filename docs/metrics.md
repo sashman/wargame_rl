@@ -164,19 +164,29 @@ where no enemy can see you.
 
 | Key | Meaning |
 |---|---|
-| `eval/firepower_advantage` | **The headline.** Mean per shooting phase of (alive enemies at least one of our models can see and reach) − (our alive models at least one of theirs can). Positive means we bring more guns to bear than we expose |
+| `eval/firepower_advantage` | ⚠️ **Broken as specified — do not read it.** Mean per shooting phase of (alive enemies at least one of our models can see and reach) − (our alive models at least one of theirs can). See the warning below |
 | `eval/exposure_rate` | Fraction of alive model-shooting-phases where at least one alive enemy had **line of sight and weapon range** to that model |
 | `eval/terrain_proximity` | Mean distance from an alive model to the nearest terrain footprint (0 inside) |
 | `eval/fraction_alive` | Fraction of player models still alive at episode end. Logged always, not just when tracking exposure |
 
-**Prefer `firepower_advantage` to `exposure_rate` for any question about cover.**
-Exposure counts only our side of the exchange, so it falls both when a policy
-manoeuvres into a good fight and when it merely hides from every fight — it
-cannot rank the two, and all four traps below are consequences of that. Line of
-sight is exactly symmetric in this engine (`wargame.py` sorts the endpoints to
+⚠️ **`firepower_advantage` does not work and neither metric currently ranks cover.**
+It was introduced as the batch-3 headline on the reasoning below, and batch 3
+falsified it: `random` — a policy that wins **zero** games — scores **1.78**,
+above every trained arm (1.03–1.29), and the best-equipped arm scores *below*
+control. As a raw count *difference* it is dominated by how much engagement
+happens at all rather than by who wins the exchange. Fix it to a ratio, or
+normalise by total engagement, before letting any result turn on it. See
+[the batch-3 report](../reports/2026-08-06-cover-signal-reason-geometry.md).
+
+The reasoning that motivated it still holds and is why `exposure_rate` is also
+inadequate: exposure counts only our side of the exchange, so it falls both when
+a policy manoeuvres into a good fight and when it merely hides from every fight —
+it cannot rank the two, and all four traps below are consequences of that. Line
+of sight is exactly symmetric in this engine (`wargame.py` sorts the endpoints to
 guarantee it), but symmetry is *pairwise*: it does not equalise the counts. Ten
 models behind a wall while twelve fire on three is twelve shots out for three
-back, and that difference is what the metric reports.
+back. Capturing that difference is the right idea; a bare subtraction is the
+wrong implementation of it.
 
 Same numbers appear as `exposure` / `terrain_d` / `alive` columns in
 `just measure-baselines` and `just measure-checkpoint`, produced by the same
@@ -238,10 +248,15 @@ as a genuinely even exchange).
 
 **`firepower_advantage` avoids traps 1–3** because it is a difference between the
 two sides measured in the same phase: casualties, disengagement and kills all
-move both terms. It has one trap of its own — it is a **count difference, not a
-ratio**, so +3 means the same absolute edge whether 4 models are engaged or 24.
-That is deliberate (a ratio is undefined when either side has nobody engaged),
-but it means it should be read beside `fraction_alive`.
+move both terms. Its own trap turned out to be fatal: it is a **count difference,
+not a ratio**, so +3 means the same absolute edge whether 4 models are engaged or
+24. That was accepted deliberately (a ratio is undefined when either side has
+nobody engaged) on the assumption that engagement volume would be roughly
+comparable across policies. It is not — a flailing policy that scatters into
+contact everywhere racks up a large difference while losing every game, which is
+precisely how `random` scores 1.78 against a winning arm's 1.03. Any fix has to
+handle the undefined case explicitly (e.g. a ratio reported as `None` when either
+side has nobody engaged) rather than fall back to subtraction.
 
 Reference values on `25v25_cover_control`, 20 seeds:
 

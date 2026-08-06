@@ -14,6 +14,23 @@ just train-multi config1.yaml config2.yaml config3.yaml
 
 Each process calls `wandb.init()` independently; Wandb supports multiple concurrent runs and assigns each a unique run ID. No SDK changes are required for concurrency.
 
+### Variants
+
+| Recipe | Use |
+|---|---|
+| `just train-multi <configs...>` | One run per config, no epoch cap |
+| `just train-multi-epochs <max_epochs> <configs...>` | Same, but every arm stops at the same epoch so the arms stay comparable |
+| `just train-multi-seeds <max_epochs> <n_seeds> <configs...>` | Every config at each of N seeds, **one seed group at a time**. An arm without an error bar is unreadable: measured within-arm seed spread on win rate is 6–7pp on the 25v25 configs |
+| `just train-seed <max_epochs> <seed> <group> <configs...>` | Every config once at one specific seed, into an **existing** Wandb group. For re-running a seed group that died partway — `train-multi-seeds` always mints a fresh group and always starts from seed 1 |
+
+Seed groups run sequentially, not all at once: a PPO transformer run holds ~3.8 GB of VRAM, so eight concurrent runs overflow a 24 GB card. They fail *after* startup, on a small allocation partway through training, which is easy to mistake for a clean launch.
+
+### Checkpoints are not uploaded to Wandb
+
+`get_logger` sets `log_model=False`. Nothing in the repo reads a model artifact back — every consumer (`simulate`, `record-sim`, `measure-checkpoint`, `measure-phase-gates`, `--resume-ckpt-path`, `--warm-start-ckpt-path`) takes a local path under `checkpoints/` — while each run uploaded roughly 591 MB, which exhausted the project's storage quota. Metrics, history and recorded videos still log normally. `just prune-artifacts [keep] [dry]` clears the historical backlog.
+
+**`checkpoints/` is therefore the only copy of any trained weights**, which makes `just clean` destructive rather than merely inconvenient.
+
 ## Optional CLI options (single-run)
 
 Pass these to `uv run train.py` directly, or as trailing extra arguments to `just train`
@@ -23,8 +40,11 @@ Pass these to `uv run train.py` directly, or as trailing extra arguments to `jus
 - **`--run-name`** — Override the base run name explicitly.
 - **`--run-suffix`** — Appended to the run name so checkpoint dirs stay unique (e.g. when scripting parallel jobs yourself).
 - **`--wandb-group`** — Group name in the Wandb UI for organizing related runs.
+- **`--seed`** — Seeds weight init, rollout and eval via `seed_everything`. Omitted, runs are seeded from OS entropy: replicates still differ, but neither is reproducible.
 
-If `--run-name` is not provided, the base name is generated from training/env metadata (algorithm, network type, model/objective counts, board size, phase count, and opponent policy type when present), then timestamp/suffix are appended.
+If `--run-name` is not provided, the base name is generated from training/env metadata: the env config's **`config_name` first**, then algorithm, network type, model/objective counts, board size, phase count, and opponent policy type when present; timestamp and suffix are appended.
+
+**`config_name` leads the name because everything after it describes the *scenario*, which the arms of an experiment deliberately share.** Four configs differing only in an observation flag once produced byte-identical run names, so every arm wrote checkpoints into one directory and `measure-checkpoint` scored whichever process saved last. `tests/test_train_run_name.py` asserts the arms of a batch stay distinct.
 
 ## Hyperparameter search (future)
 

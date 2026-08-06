@@ -81,4 +81,5 @@ To add a new entity:
 - Default algorithm is PPO; DQN is available but not the primary focus
 - Device management via `device.py` utility
 - Wandb integration in `wandb.py` — all logging goes through Lightning logger
+- **`get_logger` sets `log_model=False`** — checkpoints are never uploaded. Nothing reads a model artifact back (every consumer takes a local `checkpoints/` path), and the uploads filled the storage quota at ~591 MB per run. `artifact_retention.py` + `just prune-artifacts` clear the historical backlog; they are a cleanup tool, not a live retention policy
 - When changing the observation tuple length, expect unpacking errors in tests (`test_state.py`, `test_dqn.py`) — fix them as part of the same change
