@@ -43,7 +43,7 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
         if not objectives:
             return WargameEnvAction(actions=actions)
 
-        max_step = float(env.config.max_move_speed)
+        max_step = env.rules_quantities.max_move_speed
         group_ids = sorted({model.group_id for model in models})
 
         for squad_index, group_id in enumerate(group_ids):

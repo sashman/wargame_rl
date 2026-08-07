@@ -64,9 +64,11 @@ def test_layout_is_legal(seed: int) -> None:
     """
     rects = _layout(seed, edge_margin=2)
 
+    # Footprint corners are continuous and half-open on the far side, so a piece
+    # ending flush against the margin has x1 == width - edge_margin.
     for x0, y0, x1, y1 in rects:
-        assert 2 <= x0 <= x1 < BOARD.width - 2
-        assert 2 <= y0 <= y1 < BOARD.height - 2
+        assert 2 <= x0 < x1 <= BOARD.width - 2
+        assert 2 <= y0 < y1 <= BOARD.height - 2
 
     for i, a in enumerate(rects):
         for b in rects[i + 1 :]:
@@ -82,8 +84,11 @@ def test_mirrored_layout_is_symmetric(seed: int) -> None:
     whole run.
     """
     rects = _layout(seed, mirror=True)
+    # Reflection is about the board's centre line. With half-open corners that is
+    # `width - x`, not `width - 1 - x`: the latter is the last-cell-index convention
+    # from when the board was a lattice.
     reflected = sorted(
-        (BOARD.width - 1 - x1, y0, BOARD.width - 1 - x0, y1) for x0, y0, x1, y1 in rects
+        (BOARD.width - x1, y0, BOARD.width - x0, y1) for x0, y0, x1, y1 in rects
     )
     assert reflected == rects
 

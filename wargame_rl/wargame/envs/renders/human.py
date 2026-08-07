@@ -426,8 +426,8 @@ class HumanRender(Renderer):
         canvas_y = float(my - self._canvas_offset_y)
         hit_radius = max(self.pix_square_size / 2, 12.0)
         for i, model in enumerate(view.player_models):
-            center_x = (model.location[0] + 0.5) * self.pix_square_size
-            center_y = (model.location[1] + 0.5) * self.pix_square_size
+            center_x = model.location[0] * self.pix_square_size
+            center_y = model.location[1] * self.pix_square_size
             dist_sq = (canvas_x - center_x) ** 2 + (canvas_y - center_y) ** 2
             if dist_sq <= hit_radius**2:
                 return i
@@ -444,12 +444,8 @@ class HumanRender(Renderer):
             return
         model = view.player_models[model_index]
         # Model center in window coords (canvas may be offset when window is resized)
-        center_x = (
-            self._canvas_offset_x + (model.location[0] + 0.5) * self.pix_square_size
-        )
-        center_y = (
-            self._canvas_offset_y + (model.location[1] + 0.5) * self.pix_square_size
-        )
+        center_x = self._canvas_offset_x + model.location[0] * self.pix_square_size
+        center_y = self._canvas_offset_y + model.location[1] * self.pix_square_size
         latest = (
             model.model_rewards_history[-1] if model.model_rewards_history else None
         )
@@ -634,8 +630,8 @@ class HumanRender(Renderer):
         for fp in view.terrain.footprints:
             x = fp.x0 * self.pix_square_size
             y = fp.y0 * self.pix_square_size
-            w = (fp.x1 - fp.x0 + 1) * self.pix_square_size
-            h = (fp.y1 - fp.y0 + 1) * self.pix_square_size
+            w = (fp.x1 - fp.x0) * self.pix_square_size
+            h = (fp.y1 - fp.y0) * self.pix_square_size
             fill_surf = pygame.Surface((int(w), int(h)), pygame.SRCALPHA)
             fill_surf.fill((*fill_color, 90))
             canvas.blit(fill_surf, (x, y))
@@ -682,8 +678,8 @@ class HumanRender(Renderer):
 
         base_width = max(2, int(round(self.pix_square_size / 8)))
         for i, objective in enumerate(objectives):
-            cx = int(round(float(objective.location[0] + 0.5) * self.pix_square_size))
-            cy = int(round(float(objective.location[1] + 0.5) * self.pix_square_size))
+            cx = int(round(float(objective.location[0]) * self.pix_square_size))
+            cy = int(round(float(objective.location[1]) * self.pix_square_size))
 
             radius_px = max(
                 1,
@@ -722,9 +718,9 @@ class HumanRender(Renderer):
         for model in wargame_models:
             if not model.is_alive:
                 grey = (180, 180, 180)
-                cx = float(model.location[0] + 0.5) * self.pix_square_size
-                cy = float(model.location[1] + 0.5) * self.pix_square_size
-                r = self.pix_square_size / 3
+                cx = float(model.location[0]) * self.pix_square_size
+                cy = float(model.location[1]) * self.pix_square_size
+                r = max(2.0, model.base_radius * self.pix_square_size)
                 pygame.draw.circle(canvas, grey, (cx, cy), r)
                 xr = self.pix_square_size / 4
                 pygame.draw.line(
@@ -747,10 +743,10 @@ class HumanRender(Renderer):
                 canvas,
                 color,
                 (
-                    float(model.location[0] + 0.5) * self.pix_square_size,
-                    float(model.location[1] + 0.5) * self.pix_square_size,
+                    float(model.location[0]) * self.pix_square_size,
+                    float(model.location[1]) * self.pix_square_size,
                 ),
-                self.pix_square_size / 3,
+                max(2.0, model.base_radius * self.pix_square_size),
             )
 
     def _draw_opponent_models(
@@ -758,9 +754,9 @@ class HumanRender(Renderer):
     ) -> None:
         """Draw opponent models as downward-pointing triangles."""
         for model in opponent_models:
-            cx = float(model.location[0] + 0.5) * self.pix_square_size
-            cy = float(model.location[1] + 0.5) * self.pix_square_size
-            r = self.pix_square_size / 3
+            cx = float(model.location[0]) * self.pix_square_size
+            cy = float(model.location[1]) * self.pix_square_size
+            r = max(2.0, model.base_radius * self.pix_square_size)
             if not model.is_alive:
                 grey = (180, 180, 180)
                 top_left = (cx - r, cy - r * 0.6)
@@ -810,12 +806,12 @@ class HumanRender(Renderer):
             faded = tuple(c + (255 - c) // 2 for c in color)
 
             prev_px = (
-                float(prev[0] + 0.5) * self.pix_square_size,
-                float(prev[1] + 0.5) * self.pix_square_size,
+                float(prev[0]) * self.pix_square_size,
+                float(prev[1]) * self.pix_square_size,
             )
             curr_px = (
-                float(curr[0] + 0.5) * self.pix_square_size,
-                float(curr[1] + 0.5) * self.pix_square_size,
+                float(curr[0]) * self.pix_square_size,
+                float(curr[1]) * self.pix_square_size,
             )
 
             line_width = max(3, int(self.pix_square_size / 4))

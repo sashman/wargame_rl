@@ -13,7 +13,6 @@ from wargame_rl.wargame.envs.domain.game_clock import GameClock, GameClockError
 from wargame_rl.wargame.envs.domain.los import has_line_of_sight, iter_los_cells
 from wargame_rl.wargame.envs.domain.placement import place_for_episode
 from wargame_rl.wargame.envs.domain.shooting import (
-    ENGAGEMENT_RANGE,
     DefenderStats,
     ShootingResult,
     WeaponStats,
@@ -52,7 +51,6 @@ __all__ = [
     "run_after_player_action",
     "run_until_player_phase",
     "DefenderStats",
-    "ENGAGEMENT_RANGE",
     "ShootingResult",
     "WeaponStats",
     "expected_damage",

@@ -1,8 +1,8 @@
 """Action space and application for the wargame environment.
 
-Polar coordinate movement: each model picks an (angle, speed) pair or stays
-still.  The continuous displacement is rounded to the nearest integer cell so
-that locations remain on the discrete grid.
+Polar coordinate movement: each model picks an (angle, speed) pair or stays still. The
+displacement is applied exactly -- a speed-1 move travels 1.0 in every direction, and
+each angle bin produces a distinct outcome.
 
 The ``ActionRegistry`` partitions the flat action space into contiguous slices
 (stay, movement, and future phase-specific slices) and provides phase-aware
@@ -17,6 +17,8 @@ from typing import Any
 import numpy as np
 from gymnasium import spaces
 
+from wargame_rl.wargame.envs.domain.movement import blockers_for, resolve_move
+from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
@@ -138,7 +140,7 @@ class ActionHandler:
         )
         n_angles = config.n_movement_angles
         n_speeds = config.n_speed_bins
-        max_speed = config.max_move_speed
+        max_speed = resolve_rules_quantities(config).max_move_speed
 
         angles = np.linspace(0, 2 * np.pi, n_angles, endpoint=False)
         speeds = np.linspace(max_speed / n_speeds, max_speed, n_speeds)
@@ -148,13 +150,14 @@ class ActionHandler:
         )  # (n_angles, 2)
         self._speeds = speeds  # (n_speeds,)
 
-        # Pre-compute the integer displacement for every (angle, speed) pair.
-        # _displacements[angle_idx, speed_idx] -> (dx, dy) as int
-        raw = (
+        # Pre-compute the exact displacement for every (angle, speed) pair.
+        # _displacements[angle_idx, speed_idx] -> (dx, dy) as float.
+        # These are used as-is: rounding them to a lattice used to collapse distinct
+        # angles onto the same offset and stretch the diagonals past the speed bin.
+        self._displacements: np.ndarray = (
             self._unit_directions[:, np.newaxis, :]
             * self._speeds[np.newaxis, :, np.newaxis]
         )  # (n_angles, n_speeds, 2)
-        self._displacements: np.ndarray = np.rint(raw).astype(int)
 
         self._n_move_actions = n_angles * n_speeds
         self._n_speed_bins = n_speeds
@@ -203,9 +206,9 @@ class ActionHandler:
         )
 
     def _decode_action(self, action: int) -> np.ndarray:
-        """Return the integer (dx, dy) displacement for *action*."""
+        """Return the (dx, dy) displacement for *action*."""
         if action == STAY_ACTION:
-            return np.array([0, 0], dtype=int)
+            return np.zeros(2, dtype=float)
         move_idx = action - 1
         angle_idx = move_idx // self._n_speed_bins
         speed_idx = move_idx % self._n_speed_bins
@@ -259,15 +262,21 @@ class ActionHandler:
         action_space: spaces.Tuple,
         *,
         phase: BattlePhase = BattlePhase.movement,
+        enemy_models: list[Any] | None = None,
     ) -> None:
         """Apply the action tuple to the wargame models (mutates locations).
 
         Dead models are skipped — they do not move regardless of the action.
-        Shooting-slice actions are no-ops (Phase 5 adds resolution).
+        Shooting-slice actions are no-ops (resolved separately).
         Models displace only in the movement phase: the action mask already
         enforces that for a learned policy, but scripted policies bypass the
         mask, so honouring `phase` here keeps them on the same footing.
+
+        Bases cannot overlap, so each move is swept against the other models rather
+        than teleporting to the target — see :mod:`domain.movement`. Models are
+        resolved in list order against everyone's current position.
         """
+        enemies = enemy_models or []
         for i, act in enumerate(action.actions):
             model = wargame_models[i]
             if not model.is_alive:
@@ -284,9 +293,11 @@ class ActionHandler:
             ):
                 continue
             model.previous_location = model.location.copy()
-            displacement = self._decode_action(act)
-            model.location = np.clip(
-                model.location + displacement,
-                [0, 0],
-                [board_width - 1, board_height - 1],
+            model.location = resolve_move(
+                model.location,
+                self._decode_action(act),
+                model.base_radius,
+                blockers_for(model, wargame_models, enemies),
+                board_width,
+                board_height,
             )

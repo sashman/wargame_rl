@@ -14,14 +14,14 @@ from wargame_rl.wargame.envs.types.game_timing import NON_MOVEMENT_PHASES, Battl
 
 
 class _HasCoords(Protocol):
-    x: int | None
-    y: int | None
+    x: float | None
+    y: float | None
 
 
 _CoordsT = TypeVar("_CoordsT", bound=_HasCoords)
 
 
-def _validate_coords_both_or_neither(x: int | None, y: int | None) -> None:
+def _validate_coords_both_or_neither(x: float | None, y: float | None) -> None:
     """Raise if exactly one of x, y is None."""
     if (x is None) != (y is None):
         raise ValueError("x and y must both be set or both be None")
@@ -108,7 +108,13 @@ class MissionConfig(BaseModel):
 class WeaponProfile(BaseModel):
     """Weapon stat block with range and resolution stats."""
 
-    range: int = Field(gt=0, description="Maximum range in grid cells")
+    range: float | None = Field(
+        default=None,
+        gt=0,
+        description="Maximum range in INCHES. None takes the default of 24in. "
+        "Scenarios that deliberately shorten it make terrain matter more, because a "
+        "shorter engagement band lets a ruin actually break a firing lane.",
+    )
     attacks: int = Field(
         default=2, gt=0, description="Number of hit rolls per shooting action"
     )
@@ -133,15 +139,20 @@ class ModelConfig(BaseModel):
     otherwise it is placed randomly in the deployment zone.
     """
 
-    x: int | None = Field(
+    x: float | None = Field(
         default=None,
         ge=0,
-        description="X coordinate on the board. If None, placed randomly.",
+        description="X coordinate on the board, in UNITS. If None, placed randomly.",
     )
-    y: int | None = Field(
+    y: float | None = Field(
         default=None,
         ge=0,
-        description="Y coordinate on the board. If None, placed randomly.",
+        description="Y coordinate on the board, in UNITS. If None, placed randomly.",
+    )
+    base_radius: float | None = Field(
+        default=None,
+        gt=0,
+        description="Base radius in INCHES. None takes the env-wide value.",
     )
     group_id: int = Field(default=0, ge=0, description="Group this model belongs to")
     max_wounds: int = Field(default=1, gt=0)
@@ -228,20 +239,21 @@ class ObjectiveConfig(BaseModel):
     otherwise it is placed randomly outside the deployment zone.
     """
 
-    x: int | None = Field(
+    x: float | None = Field(
         default=None,
         ge=0,
-        description="X coordinate on the board. If None, placed randomly.",
+        description="X coordinate on the board, in UNITS. If None, placed randomly.",
     )
-    y: int | None = Field(
+    y: float | None = Field(
         default=None,
         ge=0,
-        description="Y coordinate on the board. If None, placed randomly.",
+        description="Y coordinate on the board, in UNITS. If None, placed randomly.",
     )
-    radius_size: int | None = Field(
+    radius_size: float | None = Field(
         default=None,
         gt=0,
-        description="Override the global objective_radius_size for this objective",
+        description="Override the env-wide objective radius for this objective, "
+        "in INCHES.",
     )
 
     @model_validator(mode="after")
@@ -273,14 +285,37 @@ class WargameEnvConfig(BaseModel):
     )
     number_of_wargame_models: int = 2  # Number of wargame models in the environment
     number_of_objectives: int = 2  # Number of objectives in the environment
-    objective_radius_size: int = Field(
-        gt=0, default=1, description="Radius of the objective in the environment"
+    inches_per_unit: float = Field(
+        gt=0,
+        default=1.0,
+        description="How many rules inches one board coordinate unit spans. Board "
+        "dimensions, positions and terrain footprints are in units; every rules "
+        "distance below is in inches and is converted by this. At the default of 1.0 "
+        "the two coincide, so a 60x44 board is 60 by 44 inches.",
+    )
+    base_radius: float | None = Field(
+        default=None,
+        gt=0,
+        description="Model base radius in INCHES. None takes the rules default (half "
+        "of a 32mm base, about 0.63in). Per-model overrides live on ModelConfig.",
+    )
+    engagement_range: float | None = Field(
+        default=None,
+        ge=0,
+        description="Engagement range in INCHES, measured base to base. None takes "
+        "the rules value of 2in.",
+    )
+    objective_radius_size: float | None = Field(
+        default=None,
+        gt=0,
+        description="Objective radius in INCHES. None takes the rules value of 3in. "
+        "A model controls an objective while its base edge is within this.",
     )
     board_width: int = Field(
-        gt=0, default=50, description="Width of the grid (x dimension)"
+        gt=0, default=50, description="Board width in coordinate UNITS (x dimension)"
     )
     board_height: int = Field(
-        gt=0, default=50, description="Height of the grid (y dimension)"
+        gt=0, default=50, description="Board height in coordinate UNITS (y dimension)"
     )
     blocking_mask: list[list[bool]] | None = Field(
         default=None,
@@ -299,6 +334,14 @@ class WargameEnvConfig(BaseModel):
         default=None,
         description="Regenerate terrain randomly each episode instead of using a "
         "fixed `terrain` list. Mutually exclusive with `terrain`. None = fixed.",
+    )
+    los_sample_step: float = Field(
+        gt=0,
+        default=0.25,
+        description="Spacing, in UNITS, at which a line of sight is sampled. A "
+        "terrain feature thinner than this could fall between two samples and fail "
+        "to block, so thinner footprints are rejected at load. Smaller is more "
+        "accurate and slower.",
     )
     track_exposure: bool = Field(
         default=False,
@@ -325,26 +368,28 @@ class WargameEnvConfig(BaseModel):
         default=None,
         description="Per-objective configuration (attributes, and optionally positions). Length must match number_of_objectives.",
     )
-    objective_min_separation: int | None = Field(
+    objective_min_separation: float | None = Field(
         default=None,
         ge=0,
         description="Minimum distance between two objective centres when placed "
-        "randomly. None (default) places each independently, which lets discs "
-        "overlap — measured at 25% of episodes on a 60x44 board with 3 objectives "
-        "of radius 3. Set to 2 x objective_radius_size for disjoint discs.",
+        "randomly, in UNITS. None (default) places each independently, which lets "
+        "discs overlap — measured at 25% of episodes on a 60x44 board with 3 "
+        "objectives of radius 3. Set to 2 x the objective radius for disjoint discs.",
     )
-    objective_terrain_clearance: int | None = Field(
+    objective_terrain_clearance: float | None = Field(
         default=None,
         ge=0,
         description="Minimum distance from an objective centre to any terrain "
-        "footprint. None (default) allows objectives inside ruins. Set it to keep "
-        "the contested ground in the open, so terrain is cover on the approach "
-        "rather than something standing on the prize.",
+        "footprint, in UNITS. None (default) allows objectives inside ruins. Set it "
+        "to keep the contested ground in the open, so terrain is cover on the "
+        "approach rather than something standing on the prize.",
     )
-    group_max_distance: float = Field(
+    group_max_distance: float | None = Field(
+        default=None,
         gt=0,
-        default=10.0,
-        description="Max distance (L2) for group-aware placement on reset: models in the same group spawn within this distance. Reward phases use their own group_cohesion params.",
+        description="Group-aware placement distance in INCHES: models in the same "
+        "group spawn within this of their group anchor. None takes the rules "
+        "coherency bound of 9in. Reward phases use their own group_cohesion params.",
     )
     max_groups: int = Field(
         gt=0,
@@ -361,10 +406,11 @@ class WargameEnvConfig(BaseModel):
         default=6,
         description="Number of discrete speed levels from 1 to max_move_speed.",
     )
-    max_move_speed: float = Field(
+    max_move_speed: float | None = Field(
+        default=None,
         gt=0,
-        default=6.0,
-        description="Maximum distance a model can move in a single step.",
+        description="Maximum distance a model can move in a single step, in INCHES. "
+        "None takes the default infantry Move of 6in.",
     )
     reward_phases: list[RewardPhaseConfig] = Field(
         default_factory=_default_reward_phases,
@@ -548,6 +594,15 @@ class WargameEnvConfig(BaseModel):
                 raise ValueError(
                     f"terrain[{i}] {self.terrain[i].footprint} is outside "
                     f"the board ({self.board_width}x{self.board_height})"
+                )
+            # Line of sight is traced by sampling, so a feature narrower than the
+            # sample step can fall between two samples and silently fail to block.
+            thinnest = min(x1 - x0, y1 - y0) + 1  # corner-inclusive cells
+            if thinnest <= self.los_sample_step:
+                raise ValueError(
+                    f"terrain[{i}] {self.terrain[i].footprint} is {thinnest} across at "
+                    f"its narrowest, which is not thicker than los_sample_step "
+                    f"({self.los_sample_step}); line of sight would leak through it"
                 )
         for i in range(len(normalised)):
             for j in range(i + 1, len(normalised)):

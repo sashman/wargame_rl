@@ -122,6 +122,7 @@ def generate_terrain(
     spec: RandomTerrainConfig,
     board: BoardDimensions,
     rng: Generator,
+    blocking_mask: list[list[bool]] | None = None,
 ) -> Terrain:
     """Generate a random, optionally mirrored terrain layout.
 
@@ -136,7 +137,10 @@ def generate_terrain(
     for _ in range(_MAX_LAYOUT_ATTEMPTS):
         placed = _attempt_layout(spec, board, rng)
         if placed is not None and len(placed) == spec.count:
-            return Terrain([Footprint.from_corners(*rect) for rect in placed])
+            return Terrain(
+                [Footprint.from_cell_rect(*rect) for rect in placed],
+                blocking_mask=blocking_mask,
+            )
 
     raise RuntimeError(
         f"could not place {spec.count} terrain pieces of up to "

@@ -15,6 +15,9 @@ from typing import Any
 import pytest
 import yaml
 
+from wargame_rl.wargame.envs.domain import rules_constants
+from wargame_rl.wargame.envs.domain.rules_quantities import RulesQuantities
+from wargame_rl.wargame.envs.domain.scale import Scale
 from wargame_rl.wargame.envs.domain.shooting import wound_roll_threshold
 
 CONSTANTS_PATH = (
@@ -88,3 +91,77 @@ def test_critical_hit_and_wound_results_are_the_documented_ones(
     assert constants["attack"]["critical_hit_on"] == 6
     assert constants["attack"]["critical_wound_on"] == 6
     assert constants["attack"]["unmodified_1_always_fails"] is True
+
+
+# Each runtime constant in domain/rules_constants.py, and the path to the value it
+# mirrors in docs/rules/constants.yaml. The runtime module is what the environment
+# reads; the YAML is the specification. Neither may drift from the other.
+MIRRORED_CONSTANTS = [
+    ("ENGAGEMENT_RANGE_IN", ("engagement", "horizontal_in")),
+    ("COHERENCY_NEAREST_IN", ("coherency", "nearest_in")),
+    ("COHERENCY_FURTHEST_IN", ("coherency", "furthest_in")),
+    ("MODEL_BASE_DIAMETER_MM", ("models", "base_diameter_mm")),
+    ("COVER_RANGED_SKILL_PENALTY", ("cover", "ranged_skill_penalty")),
+    ("DETECTION_RANGE_IN", ("visibility", "detection_range_in")),
+    ("OBJECTIVE_MARKER_RANGE_IN", ("objectives", "marker_range_in")),
+    ("BATTLE_ROUNDS", ("battle", "rounds")),
+]
+
+
+@pytest.mark.parametrize(("name", "path"), MIRRORED_CONSTANTS)
+def test_runtime_constant_matches_the_specification(
+    constants: dict[str, Any], name: str, path: tuple[str, ...]
+) -> None:
+    """Every runtime rules constant equals the value documented for it."""
+    expected: Any = constants
+    for key in path:
+        expected = expected[key]
+
+    assert getattr(rules_constants, name) == expected
+
+
+def test_base_radius_is_half_the_base_diameter() -> None:
+    """The base radius is derived, not authored, so it cannot disagree with the size."""
+    assert rules_constants.MODEL_BASE_RADIUS_IN == pytest.approx(
+        rules_constants.MODEL_BASE_DIAMETER_MM / 25.4 / 2.0
+    )
+    # A 32mm base is a little over an inch and a quarter across.
+    assert rules_constants.MODEL_BASE_RADIUS_IN == pytest.approx(0.6299, abs=1e-4)
+
+
+def test_default_scale_makes_units_and_inches_coincide() -> None:
+    """At one inch per unit every rules distance passes through unchanged."""
+    quantities = RulesQuantities.resolve(Scale())
+
+    assert quantities.engagement_range == rules_constants.ENGAGEMENT_RANGE_IN
+    assert quantities.objective_radius == rules_constants.OBJECTIVE_MARKER_RANGE_IN
+    assert quantities.group_max_distance == rules_constants.COHERENCY_FURTHEST_IN
+
+
+def test_scale_converts_every_distance_together() -> None:
+    """Halving the inches per unit doubles every distance in units, uniformly."""
+    baseline = RulesQuantities.resolve(Scale(inches_per_unit=1.0))
+    halved = RulesQuantities.resolve(Scale(inches_per_unit=0.5))
+
+    assert halved.base_radius == pytest.approx(2 * baseline.base_radius)
+    assert halved.engagement_range == pytest.approx(2 * baseline.engagement_range)
+    assert halved.objective_radius == pytest.approx(2 * baseline.objective_radius)
+    assert halved.max_move_speed == pytest.approx(2 * baseline.max_move_speed)
+    assert halved.default_weapon_range == pytest.approx(
+        2 * baseline.default_weapon_range
+    )
+
+
+def test_overrides_replace_the_rules_value() -> None:
+    """A scenario that deviates does so visibly, through an override in inches."""
+    quantities = RulesQuantities.resolve(Scale(), default_weapon_range_in=12.0)
+
+    assert quantities.default_weapon_range == 12.0
+    # An override touches only what it names.
+    assert quantities.engagement_range == rules_constants.ENGAGEMENT_RANGE_IN
+
+
+def test_non_positive_scale_is_rejected() -> None:
+    """A zero or negative scale would make every conversion meaningless."""
+    with pytest.raises(ValueError, match="inches_per_unit"):
+        Scale(inches_per_unit=0.0)

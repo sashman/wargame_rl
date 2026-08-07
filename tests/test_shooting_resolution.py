@@ -9,10 +9,12 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
+from wargame_rl.wargame.envs.domain import rules_constants
 from wargame_rl.wargame.envs.domain.battle_factory import _build_models
 from wargame_rl.wargame.envs.domain.entities import WargameModel
+from wargame_rl.wargame.envs.domain.rules_quantities import RulesQuantities
+from wargame_rl.wargame.envs.domain.scale import Scale
 from wargame_rl.wargame.envs.domain.shooting import (
-    ENGAGEMENT_RANGE,
     DefenderStats,
     ShootingResult,
     expected_damage,
@@ -252,8 +254,11 @@ class TestResolveShooting:
         if r.unsaved > 0:
             assert r.damage_dealt == r.unsaved * 3
 
-    def test_engagement_range_constant(self) -> None:
-        assert ENGAGEMENT_RANGE == 1
+    def test_engagement_range_comes_from_the_rules(self) -> None:
+        """Engagement is a rules distance in inches, not a bare grid-cell constant."""
+        quantities = RulesQuantities.resolve(Scale())
+
+        assert quantities.engagement_range == rules_constants.ENGAGEMENT_RANGE_IN
 
 
 # ---------------------------------------------------------------------------
@@ -331,28 +336,31 @@ class TestEntityExtensions:
 # ---------------------------------------------------------------------------
 
 
+_QUANTITIES = RulesQuantities.resolve(Scale())
+
+
 class TestBattleFactoryStats:
     """_build_models wires toughness and save from ModelConfig."""
 
     def test_custom_stats(self) -> None:
         models = _build_models(
-            1, [ModelConfig(toughness=5, save=3)], n_objectives=1, max_groups=100
+            1, [ModelConfig(toughness=5, save=3)], 1, 100, _QUANTITIES
         )
         assert models[0].stats["toughness"] == 5
         assert models[0].stats["save"] == 3
 
     def test_default_stats_no_config(self) -> None:
-        models = _build_models(1, None, n_objectives=1, max_groups=100)
+        models = _build_models(1, None, 1, 100, _QUANTITIES)
         assert models[0].stats["toughness"] == 3
         assert models[0].stats["save"] == 4
 
     def test_default_stats_with_default_config(self) -> None:
-        models = _build_models(1, [ModelConfig()], n_objectives=1, max_groups=100)
+        models = _build_models(1, [ModelConfig()], 1, 100, _QUANTITIES)
         assert models[0].stats["toughness"] == 3
         assert models[0].stats["save"] == 4
 
     def test_stats_keys(self) -> None:
-        models = _build_models(1, [ModelConfig()], n_objectives=1, max_groups=100)
+        models = _build_models(1, [ModelConfig()], 1, 100, _QUANTITIES)
         expected_keys = {"max_wounds", "current_wounds", "toughness", "save"}
         assert set(models[0].stats.keys()) == expected_keys
 

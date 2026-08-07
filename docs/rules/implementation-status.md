@@ -13,12 +13,16 @@ Status values:
 Every **divergent** row is a deliberate simplification, and saying so is the point: this
 table is the roadmap for the next implementation phase.
 
+Updated 2026-08-07 for continuous positions and model bases — see
+[the report](../../reports/2026-08-07-continuous-space-and-model-bases.md). Rows not
+touched by that work still describe the environment accurately.
+
 ## Board and timing
 
 | Rule | Status | Owner / note |
 |---|---|---|
-| [Distances in inches](README.md#conventions) | **divergent** | The environment is a discrete grid of cells with no fixed inches-per-cell. Every distance in `constants.yaml` must be converted before use. This is the single largest source of divergence below. |
-| [Board 44" × 60"](15-missions-and-scoring.md#setting-up-a-battle) | **divergent** | `board_width` / `board_height` in `envs/types/config.py`, default `50 × 50`. |
+| [Distances in inches](README.md#conventions) | implemented | `domain/scale.py` defines `inches_per_unit` (default 1.0) and `domain/rules_quantities.py` resolves every rules distance into board units once at construction. Coordinates are in units; rules distances are authored in inches. |
+| [Board 44" × 60"](15-missions-and-scoring.md#setting-up-a-battle) | **divergent** | `board_width` / `board_height` are in units, default `50 × 50`; the shipped scenarios use `60 × 44`. At the default scale that is 60" × 44" — the right area, landscape rather than portrait. |
 | [Five battle rounds](07-battle-round.md) | **divergent** | `number_of_battle_rounds` defaults to **100**. Episodes are sized for training, not for the tabletop. |
 | [Round → turn → five phases](07-battle-round.md#player-turns) | implemented | `envs/types/game_timing.py` (`BattlePhase`), `envs/domain/game_clock.py`. |
 | [Phase order](07-battle-round.md#player-turns) | implemented | `BATTLE_PHASE_ORDER`. |
@@ -35,7 +39,7 @@ table is the roadmap for the next implementation phase.
 | [Toughness, Save, Wounds](02-unit-profiles.md#model-characteristics) | implemented | `ModelConfig` → `WargameModel.stats` (`toughness`, `save`, `max_wounds`, `current_wounds`) via `envs/domain/battle_factory.py`. |
 | [Invulnerable save (InSv)](02-unit-profiles.md#model-characteristics) | absent | No field on `ModelConfig`; `resolve_shooting` checks one save only. |
 | [Resolve (Rv)](02-unit-profiles.md#model-characteristics) | absent | — |
-| [Control Value (CV)](02-unit-profiles.md#model-characteristics) | **divergent** | Control is a headcount of alive models in range; CV is implicitly 1 for everyone. `env_components/distance_cache.py`. |
+| [Control Value (CV)](02-unit-profiles.md#model-characteristics) | **divergent** | Control is a headcount of alive models in range; CV is implicitly 1 for everyone. Range is now measured from the base **edge** (`distance_cache.py`, `model_obj_norms_offset`). |
 | [Weapon profile](02-unit-profiles.md#weapon-characteristics) | partial | `WeaponProfile` carries `range`, `attacks`, `ballistic_skill`, `strength`, `ap`, `damage`. No `melee_skill`, no multiple profiles. |
 | [Modifier order and clamps](02-unit-profiles.md#modifiers) | absent | Nothing modifies a characteristic at runtime, so nothing needs clamping. Pydantic bounds on `ModelConfig`/`WeaponProfile` are validation, not the rules' clamps. |
 | [Random characteristics](02-unit-profiles.md#random-characteristics) | absent | Every characteristic is a fixed integer. |
@@ -46,11 +50,11 @@ table is the roadmap for the next implementation phase.
 
 | Rule | Status | Owner / note |
 |---|---|---|
-| [Move as a distance budget](03-moving.md#making-a-move) | **divergent** | Polar encoding — one (angle × speed) displacement per model per step. See `docs/movement.md`. |
+| [Move as a distance budget](03-moving.md#making-a-move) | partial | Polar encoding — one (angle × speed) displacement per model per step, now applied **exactly** rather than rounded to a lattice. A model never travels further than its Move, including when collision response redirects it. |
 | [Cannot cross the board edge](03-moving.md#making-a-move) | implemented | Positions are clipped to the board. |
-| [Cannot move through enemy models](03-moving.md#making-a-move) | absent | Movement ignores occupancy entirely. |
-| [Coherency (2" / 9")](03-moving.md#coherency) | **divergent** | Approximated by `group_max_distance` (default 10.0 cells) and the `group_cohesion` reward calculator. Nothing enforces it, and nothing destroys models for breaking it. |
-| [Engagement range 2" / 5"](03-moving.md#engagement) | **divergent** | `ENGAGEMENT_RANGE = 1` in `envs/domain/shooting.py`, in grid cells. Used only to gate shooting. |
+| [Cannot move through enemy models](03-moving.md#making-a-move) | implemented | `domain/movement.py` sweeps the base and stops it short of the first enemy base on the path. Friendly bases may be passed through but not ended on, per the rules. |
+| [Coherency (2" / 9")](03-moving.md#coherency) | **divergent** | `group_max_distance` now derives from the 9" bound, but it only shapes placement and the `group_cohesion` reward. The 2" nearest-neighbour rule has no consumer, nothing enforces coherency, and nothing destroys models for breaking it. |
+| [Engagement range 2"](03-moving.md#engagement) | partial | Derived from the rules and measured **base to base** (`shooting_masks.py`, `base_separation`). Horizontal only — the board has no height, so the 5" vertical term has no analogue. Still used only to gate shooting. |
 | [Remain stationary](09-movement-phase.md#remain-stationary) | implemented | The `"stay"` action slice, `STAY_ACTION = 0`. |
 | [Normal move](09-movement-phase.md#normal-move) | implemented | The `"movement"` action slice. |
 | [Advance move](09-movement-phase.md#advance-move) | absent | `WargameModel.advanced_this_turn` exists and is read by the shooting mask, but nothing ever sets it. Dead until the advance move lands. |
@@ -97,12 +101,12 @@ table is the roadmap for the next implementation phase.
 
 | Rule | Status | Owner / note |
 |---|---|---|
-| [Line of sight](06-visibility-and-damage.md#visibility) | partial | `envs/domain/los.py` traces a Bresenham line between cell centres. Model extent is ignored, so there is no *visible* / *fully visible* distinction. |
+| [Line of sight](06-visibility-and-damage.md#visibility) | implemented | `domain/visibility.py` samples the segment between two models and tests every blocker vectorised. Three rays — centre to centre and the two outer tangents — give the full *hidden* / *visible* / *fully visible* split. |
 | [Terrain categories](13-terrain.md#terrain-categories) | **divergent** | One category. `Footprint` (`envs/domain/terrain.py`) is an axis-aligned rectangle that blocks line of sight. |
 | [Terrain and movement](13-terrain.md#terrain-and-movement) | absent | Movement ignores terrain completely — models pass through footprints freely. |
 | [Solid: see out of and into a feature](13-terrain.md#solid) | partial | `Terrain.blocking_footprints_for_endpoints` excludes any footprint containing either endpoint, which reproduces the see-out and see-into behaviour in two dimensions. No height, so the 3" threshold has no analogue. |
 | [Obscuring](13-terrain.md#obscuring) | **divergent** | Achieved by the same footprint blocking, keyed off the feature rather than an enclosing terrain area. |
-| [Cover (−1 RS)](13-terrain.md#cover) | absent | `resolve_shooting` has no cover term. Cover is *measured* — `env_components/exposure.py` reports `eval/exposure_rate` — but it never changes an outcome. |
+| [Cover (−1 RS)](13-terrain.md#cover) | implemented | A target that is visible but not *fully* visible has cover, and `resolve_shooting` worsens the attack's hit target by 1. Applies to the player's shooting; the opponent's resolution path does not yet check it. |
 | [Hidden and detection range](13-terrain.md#hidden) | absent | — |
 | [Elevated fire](16-ability-reference.md#elevated-fire) | absent | The board has no height. |
 
@@ -110,7 +114,7 @@ table is the roadmap for the next implementation phase.
 
 | Rule | Status | Owner / note |
 |---|---|---|
-| [Objective markers, within 3"](14-objectives.md#what-an-objective-is) | **divergent** | `objective_radius_size` in grid cells, default 1. |
+| [Objective markers, within 3"](14-objectives.md#what-an-objective-is) | implemented | `objective_radius_size` is authored in inches and defaults to the rules value of 3". |
 | [Terrain objectives](14-objectives.md#what-an-objective-is) | absent | Objectives are points, not terrain areas. `objective_terrain_clearance` deliberately pushes them *away* from terrain. |
 | [Level of control](14-objectives.md#level-of-control) | implemented | `env_components/distance_cache.py:objective_ownership_from_norms_offset` — strictly greater count controls, ties are uncontrolled. |
 | [Control re-evaluated at the end of every phase](14-objectives.md#level-of-control) | **divergent** | Evaluated only when VP are scored, on leaving the command phase (`wargame.py:_on_before_advance`). |

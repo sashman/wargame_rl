@@ -13,13 +13,19 @@ if TYPE_CHECKING:
 
 class WargameModel:
     """
-    Wargame model (unit) on the board.
+    Wargame model on the board.
+
+    A model occupies space: its base is a circle of ``base_radius`` centred on
+    ``location``, and the base is part of the model for all rules purposes. Distances
+    are measured to and from the closest part of it, so a model reaches ``base_radius``
+    further than its centre suggests.
 
     Args:
-        location: Location of the model in the grid.
+        location: Continuous position of the model's centre, in board units.
         stats: Statistics (e.g. wounds). Not used currently.
         distances_to_objectives: Distances to all objectives.
         group_id: Group ID; models in the same group are encouraged to stay close.
+        base_radius: Radius of the model's base, in board units.
         previous_closest_objective_distance: Used for reward shaping.
     """
 
@@ -29,11 +35,13 @@ class WargameModel:
         stats: dict[str, int],
         distances_to_objectives: np.ndarray,
         group_id: int,
+        base_radius: float = 0.0,
         previous_closest_objective_distance: float | None = None,
         best_closest_objective_distance: float | None = None,
     ):
-        self.location = location
+        self.location = np.asarray(location, dtype=float)
         self.previous_location: np.ndarray | None = None
+        self.base_radius = base_radius
         self.stats = stats
         self.distances_to_objectives = distances_to_objectives
         self.group_id = group_id
@@ -81,17 +89,17 @@ class WargameModel:
     ) -> spaces.Dict:
         """Gymnasium observation space for one model (used by the env facade)."""
         location_space = spaces.Box(
-            low=np.array([0, 0], dtype=np.int32),
-            high=np.array([board_width - 1, board_height - 1], dtype=np.int32),
+            low=np.array([0.0, 0.0], dtype=np.float32),
+            high=np.array([board_width, board_height], dtype=np.float32),
             shape=(2,),
-            dtype=np.int32,
+            dtype=np.float32,
         )
-        max_dx = max(board_width, board_height) - 1
+        max_dx = float(max(board_width, board_height))
         distances_to_objectives_space = spaces.Box(
             low=-max_dx,
             high=max_dx,
             shape=(number_of_objectives, 2),
-            dtype=np.int32,
+            dtype=np.float32,
         )
         stats_space = spaces.Dict(
             {
@@ -127,9 +135,9 @@ def alive_mask_for(models: list[WargameModel]) -> np.ndarray:
 class WargameObjective:
     """Objective (capture target) on the board."""
 
-    def __init__(self, location: np.ndarray, radius_size: int):
-        self.location = location  # numpy array of shape (2,)
-        self.radius_size = radius_size  # Radius of the objective in the environment
+    def __init__(self, location: np.ndarray, radius_size: float):
+        self.location = np.asarray(location, dtype=float)
+        self.radius_size = float(radius_size)  # Radius in board units
 
     def __repr__(self) -> str:
         return f"WargameObjective(location={self.location}, radius_size={self.radius_size})"
@@ -140,10 +148,10 @@ class WargameObjective:
         return spaces.Dict(
             {
                 "location": spaces.Box(
-                    low=np.array([0, 0], dtype=np.int32),
-                    high=np.array([board_width - 1, board_height - 1], dtype=np.int32),
+                    low=np.array([0.0, 0.0], dtype=np.float32),
+                    high=np.array([board_width, board_height], dtype=np.float32),
                     shape=(2,),
-                    dtype=np.int32,
+                    dtype=np.float32,
                 )
             }
         )

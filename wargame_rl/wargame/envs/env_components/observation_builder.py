@@ -11,7 +11,6 @@ import numpy as np
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
-from wargame_rl.wargame.envs.domain.shooting import ENGAGEMENT_RANGE
 from wargame_rl.wargame.envs.env_components.actions import ActionRegistry
 from wargame_rl.wargame.envs.env_components.shooting_masks import (
     compute_shooting_masks,
@@ -38,9 +37,13 @@ def update_distances_to_objectives(
     objectives: list[WargameObjective],
     distance_cache: DistanceCache | None = None,
 ) -> None:
-    """Update each model's distances_to_objectives from current locations. Mutates models."""
+    """Update each model's distances_to_objectives from current locations. Mutates models.
+
+    The deltas stay continuous. Truncating them used to quantise the vector towards an
+    objective -- the single most informative feature the policy has -- to whole units.
+    """
     if distance_cache is not None:
-        deltas = distance_cache.model_obj_deltas.astype(int)
+        deltas = distance_cache.model_obj_deltas
         for i, model in enumerate(wargame_models):
             model.distances_to_objectives = deltas[i]
         return
@@ -48,7 +51,7 @@ def update_distances_to_objectives(
     for model in wargame_models:
         model.distances_to_objectives = np.array(
             [model.location - obj.location for obj in objectives],
-            dtype=int,
+            dtype=float,
         )
 
 
@@ -151,8 +154,9 @@ def build_observation(
             opponent_alive = alive_mask_for(view.opponent_models)
             player_positions = np.array([m.location for m in view.player_models])
             opponent_positions = np.array([m.location for m in view.opponent_models])
+            quantities = view.rules_quantities
             player_ranges = max_weapon_ranges(
-                view.config.models, len(view.player_models)
+                view.config.models, len(view.player_models), quantities
             )
             player_advanced = np.array(
                 [m.advanced_this_turn for m in view.player_models]
@@ -165,7 +169,8 @@ def build_observation(
                 player_ranges,
                 view.has_line_of_sight_between_cells,
                 player_advanced=player_advanced,
-                engagement_range=float(ENGAGEMENT_RANGE),
+                engagement_range=quantities.engagement_range,
+                base_separation=2 * quantities.base_radius,
             )
             action_mask[:, shooting_slice.start : shooting_slice.end] &= (
                 shooting_validity

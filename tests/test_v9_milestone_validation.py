@@ -327,7 +327,7 @@ class TestRequirementSpotChecks:
         env = WargameEnv(config=small_env_config)
         env.reset(seed=1)
         snap = env.to_snapshot()
-        assert snap.schema_version == "1.2"
+        assert snap.schema_version == "2.0"
         schema = GameStateSnapshot.model_json_schema()
         assert "properties" in schema
 

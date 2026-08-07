@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 import numpy as np
 from pydantic import BaseModel, Field
 
+from wargame_rl.wargame.envs.domain.rules_quantities import DEFAULT_WEAPON_RANGE_IN
 from wargame_rl.wargame.envs.domain.shooting import (
     DefenderStats,
     PairedShootingResult,
@@ -38,7 +39,7 @@ if TYPE_CHECKING:
 class WeaponSnapshot(BaseModel):
     """Weapon stat block (mirrors WeaponProfile with native types)."""
 
-    weapon_range: int = Field(validation_alias="range")
+    weapon_range: float = Field(validation_alias="range")
     attacks: int
     ballistic_skill: int
     strength: int
@@ -49,10 +50,11 @@ class WeaponSnapshot(BaseModel):
 
 
 class ModelSnapshot(BaseModel):
-    """State of a single model (unit) on the board."""
+    """State of a single model on the board."""
 
-    location: list[int]
-    previous_location: list[int] | None
+    location: list[float]
+    previous_location: list[float] | None
+    base_radius: float = 0.0
     group_id: int
     alive: bool
     current_wounds: int
@@ -70,8 +72,8 @@ class ModelSnapshot(BaseModel):
 class ObjectiveSnapshot(BaseModel):
     """State of an objective marker."""
 
-    location: list[int]
-    radius_size: int
+    location: list[float]
+    radius_size: float
     player_models_in_range: list[int]
     opponent_models_in_range: list[int]
 
@@ -117,7 +119,7 @@ class GameStateSnapshot(BaseModel):
     attributing ``player_actions`` to a phase.
     """
 
-    schema_version: str = "1.2"
+    schema_version: str = "2.0"
     step: int
     max_steps: int
     clock: ClockSnapshot
@@ -128,8 +130,8 @@ class GameStateSnapshot(BaseModel):
     player_models: list[ModelSnapshot]
     opponent_models: list[ModelSnapshot]
     objectives: list[ObjectiveSnapshot]
-    deployment_zone: list[int]
-    opponent_deployment_zone: list[int]
+    deployment_zone: list[float]
+    opponent_deployment_zone: list[float]
     player_vp: int
     opponent_vp: int
     player_vp_delta: int
@@ -168,7 +170,11 @@ def _model_to_snapshot(
         for w in config.weapons:
             weapons.append(
                 WeaponSnapshot(
-                    weapon_range=w.range,
+                    # The config authors range in inches; a weapon that omits it
+                    # takes the default profile range.
+                    weapon_range=(
+                        DEFAULT_WEAPON_RANGE_IN if w.range is None else w.range
+                    ),
                     attacks=w.attacks,
                     ballistic_skill=w.ballistic_skill,
                     strength=w.strength,
@@ -193,6 +199,7 @@ def _model_to_snapshot(
             if model.previous_location is not None
             else None
         ),
+        base_radius=model.base_radius,
         group_id=model.group_id,
         alive=model.is_alive,
         current_wounds=model.stats["current_wounds"],
@@ -517,8 +524,8 @@ def build_snapshot(
     if opponent_action is not None and hasattr(opponent_action, "actions"):
         o_actions = list(opponent_action.actions)
 
-    dz: list[int] = deployment_zone.tolist()
-    odz: list[int] = opponent_deployment_zone.tolist()
+    dz: list[float] = deployment_zone.tolist()
+    odz: list[float] = opponent_deployment_zone.tolist()
 
     p_alive = sum(1 for m in player_models if m.is_alive)
     o_alive = sum(1 for m in opponent_models if m.is_alive)
