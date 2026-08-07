@@ -64,6 +64,19 @@ the current one finishes.
 | v7.0 | Adversarial play & self-play (two-agent, Elo, opponent pool) | HIGH |
 | v8.0 | Scale, missions & polish (10+ models, web replay) | LOWEST |
 
+#### Phase 03 — Continuous space & model geometry [PLANNED · HIGH]
+
+Planned, not started: `.planning/phases/03-continuous-space-and-geometry/03-PLAN.md`.
+Makes the board continuous and gives models, terrain and objectives real geometry —
+float positions, circular bases that cannot overlap and that block sight, polygon
+footprints and terrain objectives, and a working cover rule. **Precedes v3.0**, whose
+advance and fall-back moves are distance budgets that need this underneath them.
+
+Built and measured first as a throwaway prototype
+(`feature/continuous-positions-and-bases`); findings in
+`reports/2026-08-07-continuous-space-and-model-bases.md`. Note that it invalidates every
+baseline recorded before it.
+
 #### v9.0 — Structured game state & event streaming [✅ SHIPPED 2026-06-19]
 
 Complete — see `.planning/milestones/v9-ROADMAP.md`. All 14 SGS-* requirements verified with
