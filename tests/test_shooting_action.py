@@ -8,6 +8,8 @@ from gymnasium import spaces
 from pydantic import ValidationError
 
 from wargame_rl.wargame.envs.domain.entities import WargameModel
+from wargame_rl.wargame.envs.domain.rules_quantities import RulesQuantities
+from wargame_rl.wargame.envs.domain.scale import Scale
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION, ActionHandler
 from wargame_rl.wargame.envs.env_components.shooting_masks import (
     compute_shooting_masks,
@@ -304,20 +306,38 @@ class TestShootingMaskFunction:
 # ---------------------------------------------------------------------------
 
 
+_QUANTITIES = RulesQuantities.resolve(Scale())
+
+
 class TestMaxWeaponRanges:
     def test_with_weapons(self) -> None:
         mc = ModelConfig(weapons=[WeaponProfile(range=24), WeaponProfile(range=12)])
-        r = max_weapon_ranges([mc], 1)
+        r = max_weapon_ranges([mc], 1, _QUANTITIES)
         assert r[0] == 24.0
 
     def test_no_weapons(self) -> None:
         mc = ModelConfig()
-        r = max_weapon_ranges([mc], 1)
+        r = max_weapon_ranges([mc], 1, _QUANTITIES)
         assert r[0] == 0.0
 
     def test_none_configs(self) -> None:
-        r = max_weapon_ranges(None, 3)
+        r = max_weapon_ranges(None, 3, _QUANTITIES)
         np.testing.assert_array_equal(r, [0.0, 0.0, 0.0])
+
+    def test_weapon_without_a_range_takes_the_default(self) -> None:
+        """Range is optional in config; omitting it means the default profile range."""
+        mc = ModelConfig(weapons=[WeaponProfile()])
+        r = max_weapon_ranges([mc], 1, _QUANTITIES)
+        assert r[0] == _QUANTITIES.default_weapon_range
+
+    def test_ranges_are_converted_from_inches_to_units(self) -> None:
+        """A weapon's range is authored in inches and lands in board units."""
+        quantities = RulesQuantities.resolve(Scale(inches_per_unit=0.5))
+        mc = ModelConfig(weapons=[WeaponProfile(range=12)])
+
+        r = max_weapon_ranges([mc], 1, quantities)
+
+        assert r[0] == 24.0
 
 
 # ---------------------------------------------------------------------------

@@ -38,7 +38,7 @@
 |--------|-----------|-------------|
 | `__init__` | `(footprints: list[Footprint])` | Wrap a list of footprints |
 | `footprints` | `@property -> list[Footprint]` | All terrain footprints |
-| `blocking_footprints_for_endpoints` | `(x0, y0, x1, y1) -> list[Footprint]` | Footprints containing NEITHER endpoint (10e filter) |
+| `blocking_footprints_for_endpoints` | `(x0, y0, x1, y1) -> list[Footprint]` | Footprints containing NEITHER endpoint (see-out filter) |
 
 ## Tests Added
 

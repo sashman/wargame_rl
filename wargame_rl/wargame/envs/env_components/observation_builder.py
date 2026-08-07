@@ -11,7 +11,6 @@ import numpy as np
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
-from wargame_rl.wargame.envs.domain.shooting import ENGAGEMENT_RANGE
 from wargame_rl.wargame.envs.env_components.actions import ActionRegistry
 from wargame_rl.wargame.envs.env_components.shooting_masks import (
     compute_shooting_masks,
@@ -25,6 +24,7 @@ from wargame_rl.wargame.envs.types import (
     WargameTerrainObservation,
 )
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
+from wargame_rl.wargame.envs.types.terrain_observation import MAX_TERRAIN_VERTICES
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.env_components.distance_cache import DistanceCache
@@ -38,9 +38,13 @@ def update_distances_to_objectives(
     objectives: list[WargameObjective],
     distance_cache: DistanceCache | None = None,
 ) -> None:
-    """Update each model's distances_to_objectives from current locations. Mutates models."""
+    """Update each model's distances_to_objectives from current locations. Mutates models.
+
+    The deltas stay continuous. Truncating them used to quantise the vector towards an
+    objective -- the single most informative feature the policy has -- to whole units.
+    """
     if distance_cache is not None:
-        deltas = distance_cache.model_obj_deltas.astype(int)
+        deltas = distance_cache.model_obj_deltas
         for i, model in enumerate(wargame_models):
             model.distances_to_objectives = deltas[i]
         return
@@ -48,7 +52,7 @@ def update_distances_to_objectives(
     for model in wargame_models:
         model.distances_to_objectives = np.array(
             [model.location - obj.location for obj in objectives],
-            dtype=int,
+            dtype=float,
         )
 
 
@@ -103,22 +107,22 @@ def _terrain_to_obs(
 ) -> list[WargameTerrainObservation]:
     """Build terrain observations from BattleView terrain footprints.
 
-    Each footprint's corners are normalized to [-1, 1] using board half-dimensions.
+    Each outline is padded to a fixed vertex budget and normalized to [-1, 1] using
+    board half-dimensions. Terrain used to reach the network as a bounding box, which
+    made an L-shaped ruin and a solid block of the same extent indistinguishable; the
+    vertices are the first encoding that carries the shape itself.
     """
-    half_w = view.board_width / 2.0
-    half_h = view.board_height / 2.0
+    half = np.array([view.board_width / 2.0, view.board_height / 2.0], dtype=np.float32)
     result: list[WargameTerrainObservation] = []
     for fp in view.terrain.footprints:
-        footprint_norm = np.array(
-            [
-                (fp.x0 - half_w) / half_w,
-                (fp.y0 - half_h) / half_h,
-                (fp.x1 - half_w) / half_w,
-                (fp.y1 - half_h) / half_h,
-            ],
-            dtype=np.float32,
+        padded = fp.polygon.padded_vertices(MAX_TERRAIN_VERTICES)
+        normalised = ((padded - half) / half).astype(np.float32).reshape(-1)
+        vertex_fraction = np.float32(
+            min(len(fp.vertices), MAX_TERRAIN_VERTICES) / MAX_TERRAIN_VERTICES
         )
-        result.append(WargameTerrainObservation(footprint=footprint_norm))
+        result.append(
+            WargameTerrainObservation(footprint=np.append(normalised, vertex_fraction))
+        )
     return result
 
 
@@ -151,8 +155,9 @@ def build_observation(
             opponent_alive = alive_mask_for(view.opponent_models)
             player_positions = np.array([m.location for m in view.player_models])
             opponent_positions = np.array([m.location for m in view.opponent_models])
+            quantities = view.rules_quantities
             player_ranges = max_weapon_ranges(
-                view.config.models, len(view.player_models)
+                view.config.models, len(view.player_models), quantities
             )
             player_advanced = np.array(
                 [m.advanced_this_turn for m in view.player_models]
@@ -165,7 +170,8 @@ def build_observation(
                 player_ranges,
                 view.has_line_of_sight_between_cells,
                 player_advanced=player_advanced,
-                engagement_range=float(ENGAGEMENT_RANGE),
+                engagement_range=quantities.engagement_range,
+                base_separation=2 * quantities.base_radius,
             )
             action_mask[:, shooting_slice.start : shooting_slice.end] &= (
                 shooting_validity

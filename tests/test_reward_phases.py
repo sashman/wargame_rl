@@ -414,7 +414,9 @@ class TestClosestObjectiveV2Calculator:
         env.objectives[0].location = np.array([10, 10])
         env.wargame_models[0].group_id = 0
         env.wargame_models[1].group_id = 1
-        env.wargame_models[0].location = np.array([8, 8])  # closer group 0
+        # Well clear of the objective: a model is in range once its base *edge* is,
+        # so positions a base-width from the disc would already count as inside.
+        env.wargame_models[0].location = np.array([5, 5])  # closer group 0
         env.wargame_models[1].location = np.array([0, 0])  # farther group 1
 
         calc = ClosestObjectiveV2Calculator(
@@ -427,7 +429,7 @@ class TestClosestObjectiveV2Calculator:
         assert calc.calculate(1, env.wargame_models[1], env, ctx) == 0.0
 
         env.wargame_models[0].location = np.array(
-            [9, 8]
+            [6, 6]
         )  # group 0 progresses, still outside radius
         env.wargame_models[1].location = np.array([1, 1])  # group 1 also progresses
         cache = compute_distances(env.wargame_models, env.objectives)

@@ -11,17 +11,18 @@ from wargame_rl.wargame.envs.reward.phase import (
     SuccessCriteriaConfig,
 )
 from wargame_rl.wargame.envs.types.game_timing import NON_MOVEMENT_PHASES, BattlePhase
+from wargame_rl.wargame.envs.types.geometry import Polygon
 
 
 class _HasCoords(Protocol):
-    x: int | None
-    y: int | None
+    x: float | None
+    y: float | None
 
 
 _CoordsT = TypeVar("_CoordsT", bound=_HasCoords)
 
 
-def _validate_coords_both_or_neither(x: int | None, y: int | None) -> None:
+def _validate_coords_both_or_neither(x: float | None, y: float | None) -> None:
     """Raise if exactly one of x, y is None."""
     if (x is None) != (y is None):
         raise ValueError("x and y must both be set or both be None")
@@ -64,6 +65,13 @@ def _normalise_rect(r: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
 # Rejection sampling for random terrain slows sharply as the board fills, so
 # layouts are rejected at config load well before that point.
 _MAX_TERRAIN_PACKING_FRACTION = 0.5
+
+# Pieces are polygons inscribed in their size box rather than filling it, so a piece
+# of nominal size N takes up appreciably less than N^2. Estimating from the box alone
+# rejected profiles the sampler places without trouble. This is a bound on the
+# expected footprint, not the worst case -- `_MAX_LAYOUT_ATTEMPTS` remains the real
+# backstop.
+_POLYGON_FILL_FRACTION = 0.7
 
 
 def _rects_overlap(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
@@ -108,7 +116,13 @@ class MissionConfig(BaseModel):
 class WeaponProfile(BaseModel):
     """Weapon stat block with range and resolution stats."""
 
-    range: int = Field(gt=0, description="Maximum range in grid cells")
+    range: float | None = Field(
+        default=None,
+        gt=0,
+        description="Maximum range in INCHES. None takes the default of 24in. "
+        "Scenarios that deliberately shorten it make terrain matter more, because a "
+        "shorter engagement band lets a ruin actually break a firing lane.",
+    )
     attacks: int = Field(
         default=2, gt=0, description="Number of hit rolls per shooting action"
     )
@@ -133,15 +147,20 @@ class ModelConfig(BaseModel):
     otherwise it is placed randomly in the deployment zone.
     """
 
-    x: int | None = Field(
+    x: float | None = Field(
         default=None,
         ge=0,
-        description="X coordinate on the board. If None, placed randomly.",
+        description="X coordinate on the board, in UNITS. If None, placed randomly.",
     )
-    y: int | None = Field(
+    y: float | None = Field(
         default=None,
         ge=0,
-        description="Y coordinate on the board. If None, placed randomly.",
+        description="Y coordinate on the board, in UNITS. If None, placed randomly.",
+    )
+    base_radius: float | None = Field(
+        default=None,
+        gt=0,
+        description="Base radius in INCHES. None takes the env-wide value.",
     )
     group_id: int = Field(default=0, ge=0, description="Group this model belongs to")
     max_wounds: int = Field(default=1, gt=0)
@@ -164,11 +183,45 @@ class ModelConfig(BaseModel):
 
 
 class TerrainPieceConfig(BaseModel):
-    """Configuration for a single terrain piece (axis-aligned rectangle)."""
+    """Configuration for a single terrain piece.
 
-    footprint: tuple[int, int, int, int] = Field(
-        description="Bounding rectangle (x0, y0, x1, y1) in grid cells."
+    Either a corner-inclusive rectangle of whole cells, or an explicit outline.
+    Exactly one of the two.
+
+    The outline is the piece's *footprint*. Walls inside a ruin -- the structures that
+    break sight within a single piece -- are a separate feature that does not exist
+    yet, so a concave footprint is not a way to express one.
+    """
+
+    footprint: tuple[int, int, int, int] | None = Field(
+        default=None,
+        description="Bounding rectangle (x0, y0, x1, y1) in whole cells, "
+        "corner-inclusive.",
     )
+    polygon: list[tuple[float, float]] | None = Field(
+        default=None,
+        description="Outline as (x, y) vertices in UNITS, in order around the shape. "
+        "At least 3.",
+    )
+
+    @model_validator(mode="after")
+    def exactly_one_shape(self) -> "TerrainPieceConfig":
+        """A piece is a rectangle or an outline, never both and never neither."""
+        if (self.footprint is None) == (self.polygon is None):
+            raise ValueError("a terrain piece needs exactly one of footprint, polygon")
+        if self.polygon is not None and len(self.polygon) < 3:
+            raise ValueError(
+                f"a terrain polygon needs at least 3 vertices, got {len(self.polygon)}"
+            )
+        return self
+
+
+def _terrain_piece_polygon(piece: "TerrainPieceConfig") -> Polygon:
+    """The outline of a terrain piece, however it was authored."""
+    if piece.polygon is not None:
+        return Polygon.from_points(piece.polygon)
+    assert piece.footprint is not None  # guaranteed by exactly_one_shape
+    return Polygon.from_cell_rect(*piece.footprint)
 
 
 class RandomTerrainConfig(BaseModel):
@@ -228,20 +281,27 @@ class ObjectiveConfig(BaseModel):
     otherwise it is placed randomly outside the deployment zone.
     """
 
-    x: int | None = Field(
+    x: float | None = Field(
         default=None,
         ge=0,
-        description="X coordinate on the board. If None, placed randomly.",
+        description="X coordinate on the board, in UNITS. If None, placed randomly.",
     )
-    y: int | None = Field(
+    y: float | None = Field(
         default=None,
         ge=0,
-        description="Y coordinate on the board. If None, placed randomly.",
+        description="Y coordinate on the board, in UNITS. If None, placed randomly.",
     )
-    radius_size: int | None = Field(
+    radius_size: float | None = Field(
         default=None,
         gt=0,
-        description="Override the global objective_radius_size for this objective",
+        description="Override the env-wide objective radius for this objective, "
+        "in INCHES. Ignored when `polygon` is set.",
+    )
+    polygon: list[tuple[float, float]] | None = Field(
+        default=None,
+        description="Make this a terrain objective: the area itself is the objective, "
+        "given as (x, y) vertices in UNITS. A model is in range while its base "
+        "overlaps the area. When set, x/y/radius_size are ignored.",
     )
 
     @model_validator(mode="after")
@@ -273,14 +333,37 @@ class WargameEnvConfig(BaseModel):
     )
     number_of_wargame_models: int = 2  # Number of wargame models in the environment
     number_of_objectives: int = 2  # Number of objectives in the environment
-    objective_radius_size: int = Field(
-        gt=0, default=1, description="Radius of the objective in the environment"
+    inches_per_unit: float = Field(
+        gt=0,
+        default=1.0,
+        description="How many rules inches one board coordinate unit spans. Board "
+        "dimensions, positions and terrain footprints are in units; every rules "
+        "distance below is in inches and is converted by this. At the default of 1.0 "
+        "the two coincide, so a 60x44 board is 60 by 44 inches.",
+    )
+    base_radius: float | None = Field(
+        default=None,
+        gt=0,
+        description="Model base radius in INCHES. None takes the rules default (half "
+        "of a 32mm base, about 0.63in). Per-model overrides live on ModelConfig.",
+    )
+    engagement_range: float | None = Field(
+        default=None,
+        ge=0,
+        description="Engagement range in INCHES, measured base to base. None takes "
+        "the rules value of 2in.",
+    )
+    objective_radius_size: float | None = Field(
+        default=None,
+        gt=0,
+        description="Objective radius in INCHES. None takes the rules value of 3in. "
+        "A model controls an objective while its base edge is within this.",
     )
     board_width: int = Field(
-        gt=0, default=50, description="Width of the grid (x dimension)"
+        gt=0, default=50, description="Board width in coordinate UNITS (x dimension)"
     )
     board_height: int = Field(
-        gt=0, default=50, description="Height of the grid (y dimension)"
+        gt=0, default=50, description="Board height in coordinate UNITS (y dimension)"
     )
     blocking_mask: list[list[bool]] | None = Field(
         default=None,
@@ -299,6 +382,14 @@ class WargameEnvConfig(BaseModel):
         default=None,
         description="Regenerate terrain randomly each episode instead of using a "
         "fixed `terrain` list. Mutually exclusive with `terrain`. None = fixed.",
+    )
+    los_sample_step: float = Field(
+        gt=0,
+        default=0.25,
+        description="Spacing, in UNITS, at which a line of sight is sampled. A "
+        "terrain feature thinner than this could fall between two samples and fail "
+        "to block, so thinner footprints are rejected at load. Smaller is more "
+        "accurate and slower.",
     )
     track_exposure: bool = Field(
         default=False,
@@ -325,26 +416,28 @@ class WargameEnvConfig(BaseModel):
         default=None,
         description="Per-objective configuration (attributes, and optionally positions). Length must match number_of_objectives.",
     )
-    objective_min_separation: int | None = Field(
+    objective_min_separation: float | None = Field(
         default=None,
         ge=0,
         description="Minimum distance between two objective centres when placed "
-        "randomly. None (default) places each independently, which lets discs "
-        "overlap — measured at 25% of episodes on a 60x44 board with 3 objectives "
-        "of radius 3. Set to 2 x objective_radius_size for disjoint discs.",
+        "randomly, in UNITS. None (default) places each independently, which lets "
+        "discs overlap — measured at 25% of episodes on a 60x44 board with 3 "
+        "objectives of radius 3. Set to 2 x the objective radius for disjoint discs.",
     )
-    objective_terrain_clearance: int | None = Field(
+    objective_terrain_clearance: float | None = Field(
         default=None,
         ge=0,
         description="Minimum distance from an objective centre to any terrain "
-        "footprint. None (default) allows objectives inside ruins. Set it to keep "
-        "the contested ground in the open, so terrain is cover on the approach "
-        "rather than something standing on the prize.",
+        "footprint, in UNITS. None (default) allows objectives inside ruins. Set it "
+        "to keep the contested ground in the open, so terrain is cover on the "
+        "approach rather than something standing on the prize.",
     )
-    group_max_distance: float = Field(
+    group_max_distance: float | None = Field(
+        default=None,
         gt=0,
-        default=10.0,
-        description="Max distance (L2) for group-aware placement on reset: models in the same group spawn within this distance. Reward phases use their own group_cohesion params.",
+        description="Group-aware placement distance in INCHES: models in the same "
+        "group spawn within this of their group anchor. None takes the rules "
+        "coherency bound of 9in. Reward phases use their own group_cohesion params.",
     )
     max_groups: int = Field(
         gt=0,
@@ -361,10 +454,11 @@ class WargameEnvConfig(BaseModel):
         default=6,
         description="Number of discrete speed levels from 1 to max_move_speed.",
     )
-    max_move_speed: float = Field(
+    max_move_speed: float | None = Field(
+        default=None,
         gt=0,
-        default=6.0,
-        description="Maximum distance a model can move in a single step.",
+        description="Maximum distance a model can move in a single step, in INCHES. "
+        "None takes the default infantry Move of 6in.",
     )
     reward_phases: list[RewardPhaseConfig] = Field(
         default_factory=_default_reward_phases,
@@ -480,9 +574,13 @@ class WargameEnvConfig(BaseModel):
 
     @property
     def has_fixed_objective_positions(self) -> bool:
-        """True when every objective entry specifies x/y coordinates."""
+        """True when every objective entry pins its own position.
+
+        A polygon objective counts: the area *is* the objective, so its position is
+        given by its outline rather than by x/y.
+        """
         return self.objectives is not None and all(
-            o.x is not None for o in self.objectives
+            o.x is not None or o.polygon is not None for o in self.objectives
         )
 
     @property
@@ -537,21 +635,33 @@ class WargameEnvConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_terrain(self) -> "WargameEnvConfig":
-        """Validate terrain footprints are in-bounds and non-overlapping."""
+        """Validate terrain outlines are in-bounds, thick enough and disjoint."""
         if self.terrain is None:
             return self
-        normalised: list[tuple[int, int, int, int]] = [
-            _normalise_rect(t.footprint) for t in self.terrain
-        ]
-        for i, (x0, y0, x1, y1) in enumerate(normalised):
-            if x0 < 0 or y0 < 0 or x1 >= self.board_width or y1 >= self.board_height:
+
+        shapes = [_terrain_piece_polygon(piece) for piece in self.terrain]
+        for i, shape in enumerate(shapes):
+            described = self.terrain[i].footprint or self.terrain[i].polygon
+            x0, y0, x1, y1 = shape.bounds
+            if x0 < 0 or y0 < 0 or x1 > self.board_width or y1 > self.board_height:
                 raise ValueError(
-                    f"terrain[{i}] {self.terrain[i].footprint} is outside "
+                    f"terrain[{i}] {described} is outside "
                     f"the board ({self.board_width}x{self.board_height})"
                 )
-        for i in range(len(normalised)):
-            for j in range(i + 1, len(normalised)):
-                if _rects_overlap(normalised[i], normalised[j]):
+            # Line of sight is traced by sampling, so a feature narrower than the
+            # sample step can fall between two samples and silently fail to block.
+            # Area over the longer side bounds the narrowest width of any outline.
+            longest = max(x1 - x0, y1 - y0)
+            thinnest = shape.area / longest if longest > 0 else 0.0
+            if thinnest <= self.los_sample_step:
+                raise ValueError(
+                    f"terrain[{i}] {described} is about {thinnest:.3g} across at "
+                    f"its narrowest, which is not thicker than los_sample_step "
+                    f"({self.los_sample_step}); line of sight would leak through it"
+                )
+        for i in range(len(shapes)):
+            for j in range(i + 1, len(shapes)):
+                if shapes[i].intersects(shapes[j]):
                     raise ValueError(f"terrain[{i}] overlaps terrain[{j}]")
         return self
 
@@ -598,13 +708,13 @@ class WargameEnvConfig(BaseModel):
         # `_MAX_LAYOUT_ATTEMPTS` in terrain_placement.py is the real backstop:
         # it raises with a clear message if a draw genuinely cannot be placed.
         mean_size = (spec.min_size + spec.max_size) / 2
-        required = spec.count * (mean_size + spec.min_gap) ** 2
+        required = spec.count * (mean_size + spec.min_gap) ** 2 * _POLYGON_FILL_FRACTION
         usable = usable_width * usable_height
         if required > _MAX_TERRAIN_PACKING_FRACTION * usable:
             raise ValueError(
                 f"random_terrain packs too tightly: {spec.count} pieces averaging "
                 f"{mean_size:g}x{mean_size:g} (plus {spec.min_gap} gap) need "
-                f"{required:g} cells, more than "
+                f"{required:g} units of area, more than "
                 f"{_MAX_TERRAIN_PACKING_FRACTION:.0%} of the usable {usable}"
             )
         return self

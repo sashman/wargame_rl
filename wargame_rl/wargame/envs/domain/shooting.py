@@ -7,7 +7,8 @@ from typing import Protocol, runtime_checkable
 
 import numpy as np
 
-ENGAGEMENT_RANGE = 1  # grid-cell distance for engagement (v3.0 stub)
+# Engagement range now comes from the rules via RulesQuantities, so that it is measured
+# base to base in board units rather than being a bare grid-cell constant.
 
 
 @runtime_checkable
@@ -83,18 +84,21 @@ def resolve_shooting(
     weapon: WeaponStats,
     defender: DefenderStats,
     rng: np.random.Generator,
+    ranged_skill_penalty: int = 0,
 ) -> ShootingResult:
     """Resolve one model's shooting against one target (full attack sequence).
 
     Rolls D6s for hits, wounds, and saves using the provided RNG.
     Unmodified 1 always fails, unmodified 6 always succeeds.
+
+    ``ranged_skill_penalty`` worsens the hit target -- this is how cover applies. It
+    cannot make an unmodified 6 miss, because a 6 always hits whatever the skill
+    characteristic says.
     """
+    hit_target = weapon.ballistic_skill + ranged_skill_penalty
     hit_rolls = rng.integers(1, 7, size=weapon.attacks)
     hits = int(
-        np.sum(
-            (hit_rolls != 1)
-            & ((hit_rolls >= weapon.ballistic_skill) | (hit_rolls == 6))
-        )
+        np.sum((hit_rolls != 1) & ((hit_rolls >= hit_target) | (hit_rolls == 6)))
     )
 
     if hits == 0:

@@ -69,7 +69,7 @@ def test_opponent_moves_once_per_round() -> None:
     env.step(WargameEnvAction(actions=[STAY]))
 
     closed = before - _opponent_distance(env)
-    assert closed <= env.config.max_move_speed + 1e-6
+    assert closed <= env.rules_quantities.max_move_speed + 1e-6
 
 
 def test_opponent_cannot_reach_the_objective_faster_than_one_move_a_round() -> None:
@@ -84,7 +84,9 @@ def test_opponent_cannot_reach_the_objective_faster_than_one_move_a_round() -> N
     env.reset(seed=0)
     distance = _opponent_distance(env)
     radius = float(env.objectives[0].radius_size)
-    fewest_moves = int(np.ceil((distance - radius) / env.config.max_move_speed))
+    fewest_moves = int(
+        np.ceil((distance - radius) / env.rules_quantities.max_move_speed)
+    )
 
     rounds = 0
     terminated = truncated = False

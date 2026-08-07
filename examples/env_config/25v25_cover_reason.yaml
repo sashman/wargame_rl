@@ -57,10 +57,13 @@ opponent_policy:
 # episodes. `mirror` keeps the two deployment zones on equal ground; they are
 # fixed to the left and right of the board, so an asymmetric draw would hand one
 # side better approaches for a whole run.
+# Re-tuned for polygon pieces: convex outlines cover less ground than the
+# rectangles they replaced, so the same nominal size hid less of the board.
+# 4-8 restores 'cells hidden from a squad' to roughly what 3-7 gave with rects.
 random_terrain:
   count: 29
-  min_size: 3
-  max_size: 7
+  min_size: 4
+  max_size: 8
   mirror: true
   edge_margin: 2
   min_gap: 1

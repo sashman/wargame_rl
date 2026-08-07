@@ -24,7 +24,10 @@ from wargame_rl.wargame.envs.types import (
     WargameEnvConfig,
 )
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.common.observation import observations_to_tensor_batch
+from wargame_rl.wargame.model.common.observation import (
+    TERRAIN_FEATURE_DIM,
+    observations_to_tensor_batch,
+)
 
 BOARD = BoardDimensions(width=60, height=44)
 
@@ -64,9 +67,11 @@ def test_layout_is_legal(seed: int) -> None:
     """
     rects = _layout(seed, edge_margin=2)
 
+    # Footprint corners are continuous and half-open on the far side, so a piece
+    # ending flush against the margin has x1 == width - edge_margin.
     for x0, y0, x1, y1 in rects:
-        assert 2 <= x0 <= x1 < BOARD.width - 2
-        assert 2 <= y0 <= y1 < BOARD.height - 2
+        assert 2 <= x0 < x1 <= BOARD.width - 2
+        assert 2 <= y0 < y1 <= BOARD.height - 2
 
     for i, a in enumerate(rects):
         for b in rects[i + 1 :]:
@@ -82,10 +87,15 @@ def test_mirrored_layout_is_symmetric(seed: int) -> None:
     whole run.
     """
     rects = _layout(seed, mirror=True)
+    # Reflection is about the board's centre line. With half-open corners that is
+    # `width - x`, not `width - 1 - x`: the latter is the last-cell-index convention
+    # from when the board was a lattice.
     reflected = sorted(
-        (BOARD.width - 1 - x1, y0, BOARD.width - 1 - x0, y1) for x0, y0, x1, y1 in rects
+        (BOARD.width - x1, y0, BOARD.width - x0, y1) for x0, y0, x1, y1 in rects
     )
-    assert reflected == rects
+    # Corners are continuous now, so reflecting and back is exact only up to
+    # floating-point round-off.
+    np.testing.assert_allclose(np.array(reflected), np.array(rects), atol=1e-9)
 
 
 @pytest.mark.parametrize("count,mirror", [(7, True), (6, True), (7, False), (1, True)])
@@ -124,13 +134,32 @@ def test_wide_size_range_is_accepted_and_generates() -> None:
 
 
 def test_over_packed_spec_is_still_rejected() -> None:
-    """Relaxing the bound must not turn it off — it still has to catch the real thing."""
+    """Relaxing the bound must not turn it off — it still has to catch the real thing.
+
+    Sized against what the sampler can actually do. Pieces are polygons inscribed in
+    their size box rather than filling it, so they pack tighter than the rectangles
+    this bound was first calibrated for: 27 pieces of 3-8 used to be over-packed and
+    now places on every seed. 40 of 5-9 fails on every seed, so that is the case the
+    validator has to catch.
+    """
     with pytest.raises(ValueError, match="packs too tightly"):
         WargameEnvConfig(
             board_width=60,
             board_height=44,
-            random_terrain=RandomTerrainConfig(count=27, min_size=3, max_size=8),
+            random_terrain=RandomTerrainConfig(count=40, min_size=5, max_size=9),
         )
+
+
+def test_a_spec_the_sampler_can_place_is_not_rejected() -> None:
+    """The other half of the bound: it must not reject what actually works."""
+    config = WargameEnvConfig(
+        board_width=60,
+        board_height=44,
+        random_terrain=RandomTerrainConfig(count=27, min_size=3, max_size=8),
+    )
+
+    assert config.random_terrain is not None
+    generate_terrain(config.random_terrain, BOARD, np.random.default_rng(0))
 
 
 def test_fixed_and_random_terrain_are_mutually_exclusive() -> None:
@@ -187,7 +216,7 @@ def test_observations_from_different_episodes_batch() -> None:
         env.close()
 
     tensors = observations_to_tensor_batch(observations)
-    assert tuple(tensors[4].shape) == (4, 5, 4)
+    assert tuple(tensors[4].shape) == (4, 5, TERRAIN_FEATURE_DIM)
 
 
 def test_terrain_is_stable_without_random_terrain() -> None:

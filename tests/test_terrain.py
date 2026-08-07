@@ -7,7 +7,7 @@ from wargame_rl.wargame.envs.domain.terrain import Footprint, Terrain
 
 def test_footprint_contains_inclusive_of_corners() -> None:
     """Corners and interior cells are contained; cells outside are not."""
-    fp = Footprint(0, 0, 2, 2)
+    fp = Footprint.from_corners(0, 0, 2, 2)
     assert fp.contains(0, 0) is True
     assert fp.contains(2, 2) is True
     assert fp.contains(1, 1) is True
@@ -30,7 +30,7 @@ def test_blocking_footprints_for_endpoints_excludes_footprint_containing_endpoin
     None
 ):
     """Footprint containing an endpoint is excluded from blocking candidates."""
-    fp = Footprint(5, 5, 10, 10)
+    fp = Footprint.from_corners(5, 5, 10, 10)
     terrain = Terrain([fp])
 
     # Observer inside footprint → excluded

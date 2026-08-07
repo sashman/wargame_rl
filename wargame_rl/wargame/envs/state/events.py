@@ -25,8 +25,8 @@ class ModelDelta(BaseModel):
     """Per-model state change within a single step."""
 
     idx: int
-    location: list[int] | None = None
-    previous_location: list[int] | None = None
+    location: list[float] | None = None
+    previous_location: list[float] | None = None
     alive: bool | None = None
     current_wounds: int | None = None
     advanced_this_turn: bool | None = None

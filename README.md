@@ -5,7 +5,7 @@ Reinforcement learning model for playing table top wargames.
 ## Documentation
 
 - [Goals & Roadmap](docs/goals-and-roadmap.md) — Project vision, current status, and phased development plan
-- [Tabletop Rules Reference](docs/tabletop-rules-reference.md) — Condensed reference of the tabletop wargame mechanics we're modelling
+- [Rules Reference](docs/rules/README.md) — The full rules specification for the game we're modelling, plus a per-rule map of what the environment implements
 - [Movement System](docs/movement.md) — How polar coordinate movement works (action encoding, direction, speed, configuration)
 - [DDD in wargame/envs](docs/ddd-envs.md) — Domain-driven design motivation and how to extend the environment
 - [Metrics Reference](docs/metrics.md) — Semantics of every Wandb metric, plus an evaluation procedure for assessing runs

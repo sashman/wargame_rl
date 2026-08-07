@@ -1,6 +1,6 @@
 # Wargame RL
 
-Reinforcement learning project that trains agents (DQN, PPO) to play tabletop wargames on a discrete grid. Agents control multiple models (units) using polar-coordinate movement to capture objectives.
+Reinforcement learning project that trains agents (DQN, PPO) to play tabletop wargames on a continuous board. Agents control multiple models using polar-coordinate movement to capture objectives. Models occupy space: each has a circular base that cannot overlap another and that blocks line of sight.
 
 ## Tech Stack
 
@@ -52,7 +52,8 @@ wargame_rl/
 ├── examples/env_config/           # YAML environment configurations
 ├── tests/                         # Pytest suite with conftest.py fixtures
 ├── docs/                          # Design docs (movement, reward phases, missions-and-vp,
-│                                  #   roadmap, rules, metrics, shooting, terrain)
+│                                  #   roadmap, metrics, shooting, terrain)
+│   └── rules/                     # Rules specification + constants.yaml + gap map
 ├── reports/                       # Experiment findings, kept for retrospection
 ├── scripts/                       # Run-inspection tooling (run_summary, measure_phase_gates,
 │                                  #   measure_baselines, measure_checkpoint, measure_terrain,
@@ -98,12 +99,15 @@ wargame_rl/
 ### Environment
 
 - `WargameEnv` — Gymnasium env with configurable board, models, objectives
-- **Polar movement** — actions encoded as (angle × speed) per model
+- **Polar movement** — actions encoded as (angle × speed) per model, applied exactly. Positions are continuous floats
+- **Model bases** — every model is a circle of `base_radius`. Bases cannot overlap, are measured from for objective range and engagement, and block line of sight (`domain/movement.py`, `domain/visibility.py`)
+- **Inch ↔ unit scale** — rules distances are authored in inches and resolved into board units once at construction by `RulesQuantities` (`domain/rules_quantities.py`). Coordinates are in units; rules distances are in inches
 - **Reward phases** — curriculum learning with phased reward configs
 - **VP reward and success** — `vp_gain` calculator, `player_vp_min` success criteria, optional terminal VP bonus; observation includes `player_vp_delta` for step-wise VP signal
 - **Deployment zones** — configurable spawn areas for player and opponent
 - **Group cohesion** — optional penalty for unit separation
 - **DDD layering** — `domain/` owns the rules (Battle aggregate, clock, placement, termination, LOS, shooting); `wargame.py` is a facade; reward/renders depend only on the `BattleView` protocol. See [docs/ddd-envs.md](docs/ddd-envs.md)
+- **Rules specification** — [docs/rules/](docs/rules/README.md) is the game's rules authority: a self-contained spec written for this project, with `constants.yaml` (every number, in inches) and [implementation-status.md](docs/rules/implementation-status.md) (per-rule: implemented / partial / divergent / absent). Before implementing a mechanic, read its chapter and its gap-map row. `tests/test_no_ip_references.py` keeps the repo free of references to the commercial product the rules derive from — the spec names no product, publisher, edition or faction, and neither should anything else
 
 ### Game State I/O (`envs/state/`)
 
@@ -192,7 +196,7 @@ Detailed patterns live next to the code they govern — read them when working i
 - Parameterize shared infrastructure (e.g. `ActionHandler(n_models=...)`) rather than duplicating it
 - Always default new config fields to the no-op value so existing YAML configs keep working (e.g. `number_of_opponent_models=0`)
 - Full checklist: config types → env state → observation types → observation builder → tensor pipeline → DQN networks → renderer → tests → backward compat tests
-- When adding config that changes step semantics or episode length, update docs (`docs/reward-phases.md`, `docs/tabletop-rules-reference.md`, `docs/opponent-policies.md`, `docs/goals-and-roadmap.md`) and any tests that assume steps-per-round or phase order
+- When adding config that changes step semantics or episode length, update docs (`docs/reward-phases.md`, `docs/rules/implementation-status.md`, `docs/opponent-policies.md`, `docs/goals-and-roadmap.md`) and any tests that assume steps-per-round or phase order
 - When adding new reward calculators or success criteria, register them and document in `docs/reward-phases.md` (tables and file layout)
 - When changing the environment, domain, reward, or rendering, follow [docs/ddd-envs.md](docs/ddd-envs.md): keep domain logic in `domain/`, use `BattleView` for read-only state, and preserve dependency direction (domain → types only; reward/renders → BattleView)
 
@@ -225,6 +229,7 @@ Detailed patterns live next to the code they govern — read them when working i
 - Training logs to Wandb automatically; checkpoints saved to `checkpoints/`. Reward phase index and phase advancement are logged (`reward_phase`, `phase_advanced_at_epoch`) so curriculum runs show phase transitions in the dashboard
 - **Checkpoints are not uploaded to Wandb** (`log_model=False` in `model/common/wandb.py`). Nothing in the repo ever read a model artifact back — `simulate`, `record-sim`, `measure-checkpoint`, `measure-phase-gates`, `--resume-ckpt-path` and `--warm-start-ckpt-path` all take a local path under `checkpoints/` — while each run uploaded ~591 MB (4 × 148 MB), which filled the storage quota. Metrics, history and videos still log normally. **`checkpoints/` is now the only copy of the weights, so `just clean` is destructive**
 - **Reading run metrics:** see [docs/metrics.md](docs/metrics.md) for what each Wandb key means and the procedure for evaluating a run. Several metrics are means-of-means or change definition silently — check the reading rules there before drawing conclusions from `success_rate`, `terminal_success_bonus`, or any `reward/components/*` value
+- **Every baseline measured before 2026-08-07 is void.** Continuous positions and model bases changed the dynamics enough that no earlier score transfers — on `25v25_cover_control.yaml` the `squad_march_shoot` bar moved from **0.45 to 1.00** at the same weapon range. The numbers quoted in the bullets below and in `reports/` before that date describe the lattice environment and are kept for the reasoning, not the values. Re-measure before comparing anything. See [the report](reports/2026-08-07-continuous-space-and-model-bases.md)
 - **Always quote a result against a baseline:** `just measure-baselines <env_config> [n] record` gives the floor (`random`, 0.00) and the bar (`squad_march_shoot`, **1.00** on 25v25). A `success_rate` with no floor and no ceiling is how a policy scoring 17% against an 80% heuristic was read as progress. Note the bar is the *shooting* baseline: the movement-only ones cap at 0.78, which is the ceiling of a policy class the agent is not in
 - **Training logs the bar.** `eval/baseline_*` covers `random`, `squad_march` and `squad_march_shoot` (`BASELINE_POLICIES` in `model/common/lightning_base.py`). Read `eval/baseline_squad_march_shoot_win_rate`, not the movement-only one — beating 0.78 is not beating 1.00. `just measure-baselines` adds the middle rungs
 - **The 1.00 bar is an artefact of an opponent that never fires.** The original 25v25 configs use `scripted_advance_to_objective`, which does not shoot — against `scripted_advance_and_shoot` on the same fixed terrain, `squad_march_shoot` falls to 0.60 and `squad_march` 0.80 → 0.24. The cover-experiment configs all use the shooting opponent. Switching a config's opponent invalidates every baseline and agent score measured on it — re-measure both. See [docs/opponent-policies.md](docs/opponent-policies.md)

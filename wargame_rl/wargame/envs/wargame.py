@@ -18,10 +18,10 @@ from wargame_rl.wargame.envs.domain.battle_factory import (
 )
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.game_clock import GameClock
-from wargame_rl.wargame.envs.domain.los import has_line_of_sight, iter_los_cells
+from wargame_rl.wargame.envs.domain.los import iter_los_cells
 from wargame_rl.wargame.envs.domain.placement import place_for_episode
+from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
 from wargame_rl.wargame.envs.domain.shooting import (
-    ENGAGEMENT_RANGE,
     DefenderStats,
     PairedShootingResult,
     ShootingResult,
@@ -35,6 +35,10 @@ from wargame_rl.wargame.envs.domain.turn_execution import (
     run_until_player_phase,
 )
 from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions
+from wargame_rl.wargame.envs.domain.visibility import Visibility
+from wargame_rl.wargame.envs.domain.visibility import (
+    visibility_between as _visibility_between,
+)
 from wargame_rl.wargame.envs.env_components import (
     ActionHandler,
     DistanceCache,
@@ -92,6 +96,10 @@ from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 __all__ = ["WargameEnv", "WargameObjective"]
 
 _auto_register()
+
+# Empty occluder arrays, shaped so numpy broadcasting still works.
+_NO_CENTRES = np.zeros((0, 2), dtype=float)
+_NO_RADII = np.zeros(0, dtype=float)
 
 
 class WargameEnv(gym.Env):
@@ -151,6 +159,9 @@ class WargameEnv(gym.Env):
         self._player_side = self._initial_player_side()
         self._game_clock = GameClock(n_rounds=config.number_of_battle_rounds)
 
+        # Every rules distance resolved from inches into board units, once.
+        self.rules_quantities = resolve_rules_quantities(config)
+
         self._battle = _battle_from_config(config)
         # Random terrain is regenerated on every reset, but a layout has to
         # exist before the first one: network sizing reads an observation, and
@@ -164,6 +175,7 @@ class WargameEnv(gym.Env):
                         height=self._battle.board_height,
                     ),
                     self.np_random,
+                    blocking_mask=config.blocking_mask,
                 )
             )
         self.wargame_models = self._battle.player_models
@@ -212,10 +224,12 @@ class WargameEnv(gym.Env):
         # once here rather than on every shooting phase.
         self._exposure_tracker = ExposureTracker()
         self._opponent_max_ranges = max_weapon_ranges(
-            config.opponent_models, config.number_of_opponent_models
+            config.opponent_models,
+            config.number_of_opponent_models,
+            self.rules_quantities,
         )
         self._player_max_ranges = max_weapon_ranges(
-            config.models, config.number_of_wargame_models
+            config.models, config.number_of_wargame_models, self.rules_quantities
         )
 
         # --- Opponent setup ---
@@ -312,10 +326,13 @@ class WargameEnv(gym.Env):
         return self._exposure_tracker.firepower_ratio
 
     def _make_is_blocking(
-        self, x0: int, y0: int, x1: int, y1: int
+        self, x0: float, y0: float, x1: float, y1: float
     ) -> Callable[[int, int], bool]:
-        """Per-query blocking predicate: static blocking_mask OR membership of any
-        footprint that contains NEITHER endpoint (10e see-out / see-into rule)."""
+        """Per-query blocking predicate over the legacy raster ``blocking_mask``.
+
+        Retained for the renderer's debug overlay and for configs that still use a
+        board-sized mask. Terrain footprints go through :mod:`domain.visibility`.
+        """
         mask = self.config.blocking_mask
         active = self._battle.terrain.blocking_footprints_for_endpoints(x0, y0, x1, y1)
 
@@ -326,20 +343,66 @@ class WargameEnv(gym.Env):
 
         return is_blocking
 
-    def has_line_of_sight_between_cells(
-        self, x0: int, y0: int, x1: int, y1: int
-    ) -> bool:
-        """True if LOS is clear between two cells (symmetric: canonical ordering)."""
-        (ax, ay), (bx, by) = sorted([(x0, y0), (x1, y1)])
-        return has_line_of_sight(
-            ax,
-            ay,
-            bx,
-            by,
-            self.board_width,
-            self.board_height,
-            self._make_is_blocking(ax, ay, bx, by),
+    def _occluders_excluding(
+        self, observer_group: int | None, target_group: int | None
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Live model bases that block sight, as ``(centres, radii)``.
+
+        Per the rules a model ignores others in its own unit and in the target's unit
+        when tracing sight, so those two groups are excluded. ``group_id`` stands in
+        for the unit.
+        """
+        centres: list[np.ndarray] = []
+        radii: list[float] = []
+        for model in self.wargame_models + self.opponent_models:
+            if not model.is_alive:
+                continue
+            if model.group_id in (observer_group, target_group):
+                continue
+            centres.append(model.location)
+            radii.append(model.base_radius)
+        if not centres:
+            return _NO_CENTRES, _NO_RADII
+        return np.asarray(centres, dtype=float), np.asarray(radii, dtype=float)
+
+    def visibility_between(
+        self,
+        observer: np.ndarray,
+        target: np.ndarray,
+        observer_radius: float = 0.0,
+        target_radius: float = 0.0,
+        observer_group: int | None = None,
+        target_group: int | None = None,
+    ) -> Visibility:
+        """How much of *target* is visible from *observer*: hidden, visible, or fully.
+
+        Symmetric by construction -- the sampled ray does not depend on which end it
+        starts from, unlike the Bresenham trace this replaced, which needed its
+        endpoints sorted into a canonical order to guarantee it.
+        """
+        terrain = self._battle.terrain
+        centres, radii = self._occluders_excluding(observer_group, target_group)
+        return _visibility_between(
+            observer,
+            target,
+            observer_radius,
+            target_radius,
+            terrain.blocking_vertices_for_endpoints(
+                observer[0], observer[1], target[0], target[1]
+            ),
+            terrain.mask_rectangles,
+            centres,
+            radii,
+            step=self.config.los_sample_step,
         )
+
+    def has_line_of_sight_between_cells(
+        self, x0: float, y0: float, x1: float, y1: float
+    ) -> bool:
+        """True if any line of sight is clear between two points."""
+        return self.visibility_between(
+            np.array([x0, y0], dtype=float), np.array([x1, y1], dtype=float)
+        ).is_visible
 
     def iter_los_cells_between_cells(
         self, x0: int, y0: int, x1: int, y1: int
@@ -540,7 +603,21 @@ class WargameEnv(gym.Env):
                 toughness=target.stats["toughness"],
                 save=target.stats["save"],
             )
-            result = resolve_shooting(w, defender, self._combat_rng)
+            # A target that can be seen, but not in full, has cover against the shot.
+            seen = self.visibility_between(
+                attacker.location,
+                target.location,
+                attacker.base_radius,
+                target.base_radius,
+                attacker.group_id,
+                target.group_id,
+            )
+            penalty = (
+                self.rules_quantities.cover_ranged_skill_penalty
+                if seen.has_cover
+                else 0
+            )
+            result = resolve_shooting(w, defender, self._combat_rng, penalty)
             killed = False
             if result.damage_dealt > 0:
                 targets[target_idx].take_damage(result.damage_dealt)
@@ -578,6 +655,7 @@ class WargameEnv(gym.Env):
                 self.board_height,
                 self._action_handler.action_space,
                 phase=phase,
+                enemy_models=self.opponent_models,
             )
 
     def _opponent_action_mask(
@@ -615,7 +693,8 @@ class WargameEnv(gym.Env):
             player_advanced=np.array(
                 [m.advanced_this_turn for m in self.opponent_models]
             ),
-            engagement_range=float(ENGAGEMENT_RANGE),
+            engagement_range=self.rules_quantities.engagement_range,
+            base_separation=2 * self.rules_quantities.base_radius,
         )
         return mask
 
@@ -681,6 +760,7 @@ class WargameEnv(gym.Env):
                 self.board_height,
                 self._opponent_action_handler.action_space,
                 phase=phase,
+                enemy_models=self.wargame_models,
             )
 
     def _initial_player_side(self) -> PlayerSide:
@@ -892,9 +972,9 @@ class WargameEnv(gym.Env):
         # Player models
         for i, ms in enumerate(snapshot.player_models):
             m = self.wargame_models[i]
-            m.location = np.array(ms.location, dtype=np.int32)
+            m.location = np.array(ms.location, dtype=float)
             m.previous_location = (
-                np.array(ms.previous_location, dtype=np.int32)
+                np.array(ms.previous_location, dtype=float)
                 if ms.previous_location is not None
                 else None
             )
@@ -907,9 +987,9 @@ class WargameEnv(gym.Env):
         # Opponent models
         for i, ms in enumerate(snapshot.opponent_models):
             m = self.opponent_models[i]
-            m.location = np.array(ms.location, dtype=np.int32)
+            m.location = np.array(ms.location, dtype=float)
             m.previous_location = (
-                np.array(ms.previous_location, dtype=np.int32)
+                np.array(ms.previous_location, dtype=float)
                 if ms.previous_location is not None
                 else None
             )
@@ -921,13 +1001,16 @@ class WargameEnv(gym.Env):
 
         # Objectives
         for i, os_ in enumerate(snapshot.objectives):
-            self.objectives[i].location = np.array(os_.location, dtype=np.int32)
+            self.objectives[i].location = np.array(os_.location, dtype=float)
 
-        # VP
+        # VP. The deltas are restored, not zeroed: they are part of the state a
+        # snapshot captures, the `vp_gain` reward reads them, and zeroing them made
+        # `to_snapshot -> load_state -> to_snapshot` lossy whenever a VP had just been
+        # scored.
         self._battle._player_vp = snapshot.player_vp
         self._battle._opponent_vp = snapshot.opponent_vp
-        self._battle._player_vp_delta = 0
-        self._battle._opponent_vp_delta = 0
+        self._battle._player_vp_delta = snapshot.player_vp_delta
+        self._battle._opponent_vp_delta = snapshot.opponent_vp_delta
 
         # Env counters
         self.current_turn = snapshot.step

@@ -7,6 +7,7 @@ from typing import Any, Protocol, runtime_checkable
 import numpy as np
 
 from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
+from wargame_rl.wargame.envs.domain.rules_quantities import RulesQuantities
 from wargame_rl.wargame.envs.domain.terrain import Terrain
 from wargame_rl.wargame.envs.types.config import WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import GameState
@@ -27,6 +28,8 @@ class BattleView(Protocol):
     def board_height(self) -> int: ...
     @property
     def config(self) -> WargameEnvConfig: ...
+    @property
+    def rules_quantities(self) -> RulesQuantities: ...
     @property
     def metadata(self) -> dict[str, Any]: ...
     @property
@@ -59,5 +62,5 @@ class BattleView(Protocol):
     def opponent_vp_delta(self) -> int: ...
 
     def has_line_of_sight_between_cells(
-        self, x0: int, y0: int, x1: int, y1: int
+        self, x0: float, y0: float, x1: float, y1: float
     ) -> bool: ...

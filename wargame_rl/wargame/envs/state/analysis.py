@@ -509,12 +509,17 @@ def _analyze_degenerate(snapshots: list[GameStateSnapshot]) -> _DegenerateMetric
             if p > 0:
                 entropy -= p * math.log2(p)
 
-    # Oscillation: a model *leaves* a cell and comes back within 3 steps.
+    # Oscillation: a model *leaves* a square of the board and comes back within 3
+    # steps.
     #
     # The `pos != previous` guard is what makes this measure oscillation rather
     # than stationarity. Without it, a model holding an objective — the exact
     # behaviour the reward is designed to produce — matched its own previous
     # position every step and scored ~70%, while a random walk scored ~5%.
+    #
+    # Positions are continuous, so they are quantised to whole units before being
+    # compared. Exact equality on floats would never match, and the metric would
+    # silently report that nothing ever oscillates.
     oscillation_events = 0
     total_model_steps = 0
     for m_idx in range(len(snapshots[0].player_models)):
@@ -525,7 +530,7 @@ def _analyze_degenerate(snapshots: list[GameStateSnapshot]) -> _DegenerateMetric
             m = snap.player_models[m_idx]
             if not m.alive:
                 continue
-            pos = (m.location[0], m.location[1])
+            pos = (int(m.location[0]), int(m.location[1]))
             total_model_steps += 1
             previous = recent_positions[-1] if recent_positions else None
             returned = pos in recent_positions[:-1] and pos != previous

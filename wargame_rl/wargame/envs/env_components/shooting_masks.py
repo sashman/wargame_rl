@@ -11,6 +11,8 @@ from typing import NamedTuple
 
 import numpy as np
 
+from wargame_rl.wargame.envs.domain.rules_quantities import RulesQuantities
+
 
 def compute_shooting_masks(
     player_positions: np.ndarray,
@@ -18,10 +20,11 @@ def compute_shooting_masks(
     player_alive: np.ndarray,
     opponent_alive: np.ndarray,
     player_max_ranges: np.ndarray,
-    has_los_fn: Callable[[int, int, int, int], bool],
+    has_los_fn: Callable[[float, float, float, float], bool],
     *,
     player_advanced: np.ndarray | None = None,
     engagement_range: float = 0.0,
+    base_separation: float = 0.0,
 ) -> np.ndarray:
     """Per-model shooting validity: ``(n_player, n_opponent)`` bool mask.
 
@@ -34,6 +37,10 @@ def compute_shooting_masks(
     - has_los_fn(Mx, My, Kx, Ky) is True
 
     Models with player_max_ranges <= 0 (no weapons) cannot shoot anyone.
+
+    ``base_separation`` is the combined radius of two bases. Engagement is measured
+    base to base, so it is subtracted from the centre distance before the range is
+    checked: two models whose bases touch are 0 apart, not one base-width apart.
     """
     n_player = len(player_positions)
     n_opponent = len(opponent_positions)
@@ -50,15 +57,16 @@ def compute_shooting_masks(
             continue
         if player_advanced is not None and player_advanced[m]:
             continue
-        if engagement_range > 0 and float(distances[m].min()) <= engagement_range:
+        closest_edge_gap = float(distances[m].min()) - base_separation
+        if engagement_range > 0 and closest_edge_gap <= engagement_range:
             continue
-        mx, my = int(player_positions[m, 0]), int(player_positions[m, 1])
+        mx, my = player_positions[m, 0], player_positions[m, 1]
         for k in range(n_opponent):
             if not opponent_alive[k]:
                 continue
             if distances[m, k] > player_max_ranges[m]:
                 continue
-            kx, ky = int(opponent_positions[k, 0]), int(opponent_positions[k, 1])
+            kx, ky = opponent_positions[k, 0], opponent_positions[k, 1]
             if has_los_fn(mx, my, kx, ky):
                 mask[m, k] = True
     return mask
@@ -87,7 +95,7 @@ def compute_threat_counts(
     opponent_alive: np.ndarray,
     player_max_ranges: np.ndarray,
     opponent_max_ranges: np.ndarray,
-    has_los_fn: Callable[[int, int, int, int], bool],
+    has_los_fn: Callable[[float, float, float, float], bool],
 ) -> ThreatCounts:
     """Mutual threat counts and per-side "has a target" masks.
 
@@ -129,7 +137,7 @@ def compute_threat_counts(
     for m in range(n_player):
         if not player_alive[m]:
             continue
-        mx, my = int(player_positions[m, 0]), int(player_positions[m, 1])
+        mx, my = player_positions[m, 0], player_positions[m, 1]
         for k in range(n_opponent):
             if not opponent_alive[k]:
                 continue
@@ -145,7 +153,7 @@ def compute_threat_counts(
             )
             if not (player_reaches or opponent_reaches):
                 continue
-            kx, ky = int(opponent_positions[k, 0]), int(opponent_positions[k, 1])
+            kx, ky = opponent_positions[k, 0], opponent_positions[k, 1]
             if not has_los_fn(mx, my, kx, ky):
                 continue
             if opponent_reaches:
@@ -166,16 +174,22 @@ def compute_threat_counts(
 def max_weapon_ranges(
     model_configs: list | None,
     n_models: int,
+    quantities: RulesQuantities,
 ) -> np.ndarray:
-    """Max weapon range per model from config. 0.0 for models with no weapons.
+    """Max weapon range per model, in board units. 0.0 for models with no weapons.
 
     Uses the longest-ranged weapon per model since a target is "in range"
-    if any weapon can reach it.
+    if any weapon can reach it. Weapon ranges are authored in inches and converted
+    here; a weapon that does not state one takes the default profile range.
     """
     ranges = np.zeros(n_models, dtype=float)
     if model_configs is None:
         return ranges
+    default_range = quantities.default_weapon_range
     for i, mc in enumerate(model_configs):
         if mc.weapons:
-            ranges[i] = max(w.range for w in mc.weapons)
+            ranges[i] = max(
+                default_range if w.range is None else quantities.scale.to_units(w.range)
+                for w in mc.weapons
+            )
     return ranges

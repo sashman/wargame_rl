@@ -70,16 +70,28 @@ def test_baseline_emits_one_legal_action_per_model(name: str) -> None:
         observation, _reward, terminated, truncated, _info = env.step(action)
 
 
-@pytest.mark.parametrize("name", ("greedy_nearest", "split_evenly", "squad_march"))
-def test_objective_seeking_baselines_reach_objectives(name: str) -> None:
-    """The scripted baselines end the episode with every model on an objective.
+@pytest.mark.parametrize(
+    ("name", "floor"),
+    (("greedy_nearest", 0.65), ("split_evenly", 0.8), ("squad_march", 1.0)),
+)
+def test_objective_seeking_baselines_reach_objectives(name: str, floor: float) -> None:
+    """The scripted baselines end the episode with nearly every model on an objective.
 
-    This is the property that makes them a usable bar: they saturate the
-    occupancy criteria, so a learned policy below them is unambiguously worse.
+    This is the property that makes them a usable bar: they come close to saturating
+    the occupancy criteria, so a learned policy well below them is unambiguously
+    worse.
+
+    They no longer saturate it exactly. Models have bases that cannot overlap, so a
+    squad has to flow into an objective rather than stacking on its centre, and a
+    policy that sends every model at the same point leaves a few orbiting the cluster
+    — `greedy_nearest` plateaus around 0.7 however long the episode runs. The disc
+    has room for roughly thirty of these bases, so this is a pathfinding limit, not a
+    capacity one. `squad_march`, which spreads a squad across a frontage, still
+    reaches every model in.
     """
     env = _make_env()
     result = evaluate_baseline(build_baseline_policy(name), env, seeds=[0, 1, 2])
-    assert result.final_fraction_at_objectives == pytest.approx(1.0)
+    assert result.final_fraction_at_objectives >= floor
 
 
 def test_random_baseline_is_the_floor() -> None:

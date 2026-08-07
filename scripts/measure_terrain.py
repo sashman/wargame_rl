@@ -25,6 +25,7 @@ import numpy as np
 from pydantic_yaml import parse_yaml_raw_as
 
 from wargame_rl.wargame.envs.domain.los import has_line_of_sight
+from wargame_rl.wargame.envs.domain.rules_quantities import DEFAULT_WEAPON_RANGE_IN
 from wargame_rl.wargame.envs.domain.terrain import Terrain
 from wargame_rl.wargame.envs.domain.terrain_placement import generate_terrain
 from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions
@@ -38,7 +39,12 @@ def _weapon_range(config: WargameEnvConfig) -> float:
     """Longest player weapon range, which sets the scale a ruin has to work at."""
     if not config.models:
         return 12.0
-    ranges = [w.range for m in config.models if m.weapons for w in m.weapons]
+    ranges = [
+        DEFAULT_WEAPON_RANGE_IN if w.range is None else w.range
+        for m in config.models
+        if m.weapons
+        for w in m.weapons
+    ]
     return float(max(ranges)) if ranges else 12.0
 
 
@@ -53,9 +59,9 @@ def _blocking_predicate(terrain: Terrain, x0: int, y0: int, x1: int, y1: int):  
 
 
 def _coverage(terrain: Terrain, board: BoardDimensions) -> float:
-    """Fraction of board cells inside some footprint (footprints never overlap)."""
-    cells = sum((fp.x1 - fp.x0 + 1) * (fp.y1 - fp.y0 + 1) for fp in terrain.footprints)
-    return cells / (board.width * board.height)
+    """Fraction of the board inside some footprint (footprints never overlap)."""
+    area = sum(fp.polygon.area for fp in terrain.footprints)
+    return area / (board.width * board.height)
 
 
 def _blocked_fraction(

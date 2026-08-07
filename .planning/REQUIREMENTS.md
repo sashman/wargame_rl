@@ -7,14 +7,14 @@
 
 ## Milestone Scope
 
-Terrain (Ruins) that blocks **line of sight only**, using the canonical Warhammer 40k 10e **Ruins
+Terrain (Ruins) that blocks **line of sight only**, using the canonical **Ruins
 abstraction**: a terrain piece is a **footprint rectangle** and the *footprint itself* is the LOS
 blocker. A ruin blocks the line between two models only when its footprint lies between them and
 **both** models are outside it; a model inside the footprint can **see out** and be **seen into**
 (see-into / see-out exceptions). Walls have **no LOS role** this milestone and are deferred. Movement
 is unaffected. Terrain is encoded in the observation so the agent can reason about it. The
 footprint-based blocking predicate plugs into the existing single LOS seam (`domain/los.py`
-Bresenham unchanged). See `01-terrain-los-blocking/01-CONTEXT.md` and the 10e Ruins rules cited
+Bresenham unchanged). See `01-terrain-los-blocking/01-CONTEXT.md` and the Ruins rules cited
 there; note the research `SUMMARY.md`'s wall-rasterisation recommendation is **superseded** by this
 footprint-based decision.
 
@@ -30,7 +30,7 @@ Each requirement maps to exactly one roadmap phase.
 
 ### Line of Sight
 
-- [ ] **TERR-04**: A ruin footprint blocks line of sight when it lies between two models that are **both outside** it; a model inside a footprint can see out of it and be seen into (10e see-out / see-into exceptions, evaluated per ruin)
+- [ ] **TERR-04**: A ruin footprint blocks line of sight when it lies between two models that are **both outside** it; a model inside a footprint can see out of it and be seen into (see-out / see-into exceptions, evaluated per ruin)
 - [ ] **TERR-05**: Terrain does not affect movement — models traverse and may occupy footprint cells freely
 - [ ] **TERR-06**: Footprint LOS blocking flows through the single LOS service (an endpoint-aware blocking predicate) so shooting masks, action masks, resolution, and rendering all agree on the same blocking
 - [ ] **TERR-07**: LOS is symmetric (A sees B iff B sees A) and deterministic on known board configurations
@@ -62,7 +62,7 @@ Deferred to a later terrain milestone (tracked, not in this roadmap):
 
 | Feature | Reason |
 |---------|--------|
-| Walls as LOS blockers this milestone | 10e abstracts ruin LOS to the footprint (can't see through even via windows/doors); walls deferred to a later milestone for rendering/movement/finer LOS |
+| Walls as LOS blockers this milestone | The reference rules abstract ruin LOS to the footprint (can't see through even via windows/doors); walls deferred to a later milestone for rendering/movement/finer LOS |
 | Footprint gameplay effects beyond LOS (cover, dense visibility, difficult ground) | This milestone is LOS-blocking only; cover/visibility effects deferred to a later terrain milestone |
 | Terrain affecting movement (impassable, difficult) | Milestone is LOS-only; movement untouched |
 | Elevation / 3D / height | Discrete 2D grid only this milestone |
