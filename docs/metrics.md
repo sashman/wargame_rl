@@ -192,6 +192,40 @@ deficit read off `on_obj` at n=30 (0.925 against 1.000). At n=100 that gap is 0.
 0.960 — mostly measurement noise — while the real deficit was always in `held`, which was not
 being measured. Diagnose with `held`.
 
+### Splitting `held` by *why* — `just measure-objective-split`
+
+`held` says a policy controls 1.42 of 3 objectives. It does not say whether the missing ones
+were abandoned, contested and narrowly lost, or lost by a mile — and those call for different
+fixes. `scripts/measure_objective_split.py` reports, at episode end, the per-objective
+`(player, opponent)` counts ranked by player occupancy within each episode, the outcome class,
+and the **redistribution ceiling**: how many objectives the same survivors would hold if every
+model surplus to `opponent_count + 1` on an already-held point moved to the cheapest point the
+policy lost.
+
+The ceiling is deliberately optimistic — it ignores travel time and return fire, both of which
+only lower it. So a ceiling near the current `held` **rules re-allocation out**, while a large
+one does not rule it in. It costs minutes and can retire a reward-shaping idea before it is
+trained.
+
+Measured at n=100, seeds 700000+, on the batch-3 scenario:
+
+| | trained agent (1000ep) | `squad_march_shoot` |
+|---|---|---|
+| models alive at end | 15.8 | 9.8 |
+| busiest objective, player v opponent | **12.89 v 0.25** | 6.95 v 0.25 |
+| second objective, player v opponent | 2.72 v 4.22 | 2.68 v 3.04 |
+| second objective held rate | 0.48 | 0.64 |
+| surplus models on held points | **14.13** | 7.93 |
+| `objectives_held` | 1.42 | 1.64 |
+| **redistribution ceiling** | **2.06** | 1.88 |
+
+The agent parks 12.9 models on a point defended by a quarter of a model and loses the second by
+a model and a half. Nothing is missing but allocation: it survives 60% better than the bar and
+out-guns it 2.7×, and moving the surplus would take it past the bar without gaining a single
+model or kill. Note also that neither policy contests the third objective — the opponent stacks
+~12 models there and flipping it costs 13 — so this scenario is effectively a two-objective
+mission, and `held` is bounded near 2.
+
 ## Cover metrics
 
 Emitted only when the env config sets `track_exposure: true`. Terrain blocks line

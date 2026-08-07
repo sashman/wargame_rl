@@ -231,6 +231,14 @@ measure-baselines env_config n_episodes='100' record='' seed_base='':
 measure-checkpoint checkpoint env_config n_episodes='100' record='' distinct='':
 	@uv run python -m scripts.measure_checkpoint {{checkpoint}} {{env_config}} {{n_episodes}} "{{record}}" "{{distinct}}"
 
+# Why an objective was not held: abandoned, narrowly lost, or lost by a mile.
+# `held` alone cannot separate those, and they call for different fixes. Also
+# reports the redistribution ceiling -- what any pure re-allocation lever could
+# buy at best -- so a reward-shaping idea can be ruled out before it is trained.
+# Takes a baseline name or a checkpoint path.
+measure-objective-split policy env_config n_episodes='100' distinct='':
+	@uv run python -m scripts.measure_objective_split {{policy}} {{env_config}} {{n_episodes}} "{{distinct}}"
+
 # How much of a config's outcome spread is dice rather than policy. Holds the
 # layouts fixed and varies only the combat seed, so the within-layout spread is
 # the noise floor any arm-to-arm difference has to clear.

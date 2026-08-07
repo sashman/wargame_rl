@@ -48,6 +48,11 @@ CONFIG_PATHS = [
     # discount that measured null without it.
     CONFIG_ROOT / "25v25_beat_observe.yaml",
     CONFIG_ROOT / "25v25_beat_observe_surplus.yaml",
+    # Round 4: pay an objective a pot rather than every occupant a wage. Both
+    # build on the observe arm, because the crowd size they price is only in the
+    # observation when `observe_objective_control` is on.
+    CONFIG_ROOT / "25v25_beat_share.yaml",
+    CONFIG_ROOT / "25v25_beat_share_soft.yaml",
 ]
 
 # A one-objective stack caps at 19 scoring rounds x 5 VP = 95 of a 285

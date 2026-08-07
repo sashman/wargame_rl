@@ -24,6 +24,8 @@ DEFAULT_OPPONENT_VALUE = 0.25
 # 1.0 = surplus models are paid exactly like the ones holding the point, which
 # is the historical behaviour every existing config and checkpoint assumes.
 DEFAULT_SURPLUS_VALUE = 1.0
+# 0.0 = an objective pays every occupant in full, the historical behaviour.
+DEFAULT_CROWDING_EXPONENT = 0.0
 
 
 class ObjectiveHoldCalculator(PerModelRewardCalculator):
@@ -44,6 +46,36 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
     ``neutral -> contested -> player`` region that ``objective_coverage`` and
     ``vp_gain`` are both flat across, since control is a strict count
     comparison.
+
+    ``crowding_exponent`` divides an objective's value by ``occupants ** a``, so
+    the point pays a *pot* rather than a per-head wage. This is the answer to a
+    measured failure and not a guess: at 1000 epochs the agent ends with 15.8
+    models alive, of which **12.9 stand on an objective defended by 0.25
+    opponents** while the second objective is lost 4.2 to 2.7. Roughly 14 models
+    are surplus to control, and re-allocating them would take ``objectives_held``
+    from 1.42 to 2.06 -- past the 1.64 of ``squad_march_shoot``. See
+    ``scripts/measure_objective_split.py``.
+
+    The flat default cannot express that: the thirteenth model on a point is paid
+    exactly like the first, so no model ever has a private reason to leave.
+
+    **Why this rather than ``surplus_value``**, which was aimed at the same
+    thing and measured null-to-negative:
+
+    * ``surplus_value`` is a *cliff* keyed on a hidden rank (distance to centre)
+      that no model can observe about itself. This is smooth and keyed only on
+      the occupant count, which ``observe_objective_control`` puts directly in
+      the observation -- so the policy can attribute it.
+    * ``surplus_value`` strictly *lowers* total objective income, so the policy
+      experiences it as "objectives pay less" and does less of them, which is
+      what both occupancy experiments actually measured. At ``a = 1`` the pot is
+      conserved: total pay across a point's occupants is its value regardless of
+      how many stand there, so spreading onto a second point strictly *raises*
+      total income. The gradient points at the behaviour rather than away from
+      objectives.
+
+    The two compose (surplus scaling first, then crowding), but they are
+    alternative answers to one question and were not intended to be stacked.
     """
 
     def __init__(
@@ -53,14 +85,26 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         contested_value: float = DEFAULT_CONTESTED_VALUE,
         opponent_value: float = DEFAULT_OPPONENT_VALUE,
         surplus_value: float = DEFAULT_SURPLUS_VALUE,
+        crowding_exponent: float = DEFAULT_CROWDING_EXPONENT,
     ) -> None:
         super().__init__(weight=weight)
         self.player_value = player_value
         self.contested_value = contested_value
         self.opponent_value = opponent_value
         self.surplus_value = surplus_value
+        if crowding_exponent < 0.0:
+            raise ValueError(
+                f"crowding_exponent must be >= 0, got {crowding_exponent}: a "
+                "negative exponent would pay *more* for crowding."
+            )
+        self.crowding_exponent = crowding_exponent
         self._cached_ctx: StepContext | None = None
         self._cached_values: np.ndarray | None = None
+        # Occupancy changes every step and is read by every model, so it gets
+        # the same treat-the-context-as-the-key caching as the values do, and
+        # its own key for the same reason `_within_quota` needs one.
+        self._cached_occupancy_ctx: StepContext | None = None
+        self._cached_occupancy: np.ndarray | None = None
         # Its own cache key: `_objective_values` runs first and stamps
         # `_cached_ctx`, so sharing that key would freeze the quota after
         # step one and pay the same models for the whole episode.
@@ -73,6 +117,18 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         self._cached_values = None
         self._cached_quota_ctx = None
         self._cached_within_quota = None
+        self._cached_occupancy_ctx = None
+        self._cached_occupancy = None
+
+    def _player_occupancy(self, ctx: StepContext) -> np.ndarray:
+        """``(n_objectives,)`` count of live player models inside each disc."""
+        if ctx is self._cached_occupancy_ctx and self._cached_occupancy is not None:
+            return self._cached_occupancy
+        cache = ctx.distance_cache
+        occupancy = (cache.model_obj_norms_offset <= cache.obj_radii).sum(axis=0)
+        self._cached_occupancy = np.atleast_1d(occupancy).astype(np.float64)
+        self._cached_occupancy_ctx = ctx
+        return self._cached_occupancy
 
     def _within_quota(self, view: BattleView, ctx: StepContext) -> np.ndarray:
         """``(n_models, n_objectives)`` bool: is this model *needed* to hold that point?
@@ -172,13 +228,16 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
             return 0.0
         values = self._objective_values(view, ctx)
 
-        if self.surplus_value == 1.0:
-            return float(np.max(values[inside]))
+        scaled = values
+        if self.surplus_value != 1.0:
+            if ctx is not self._cached_quota_ctx or self._cached_within_quota is None:
+                self._cached_within_quota = self._within_quota(view, ctx)
+                self._cached_quota_ctx = ctx
+            within = self._cached_within_quota[model_idx]
+            scaled = np.where(within, values, values * self.surplus_value)
 
-        if ctx is not self._cached_quota_ctx or self._cached_within_quota is None:
-            self._cached_within_quota = self._within_quota(view, ctx)
-            self._cached_quota_ctx = ctx
-        within = self._cached_within_quota[model_idx]
+        if self.crowding_exponent != 0.0:
+            occupancy = np.maximum(self._player_occupancy(ctx), 1.0)
+            scaled = scaled / occupancy**self.crowding_exponent
 
-        scaled = np.where(within, values, values * self.surplus_value)
         return float(np.max(scaled[inside]))
