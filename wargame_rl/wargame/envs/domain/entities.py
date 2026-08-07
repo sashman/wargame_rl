@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 from gymnasium import spaces
 
+from wargame_rl.wargame.envs.types.geometry import Polygon
+
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.reward.types.model_rewards import ModelRewards
 
@@ -133,14 +135,34 @@ def alive_mask_for(models: list[WargameModel]) -> np.ndarray:
 
 
 class WargameObjective:
-    """Objective (capture target) on the board."""
+    """Objective (capture target) on the board.
 
-    def __init__(self, location: np.ndarray, radius_size: float):
+    Two kinds, per the rules. A **marker** objective is a point with a radius: a model
+    is in range while its base edge is within ``radius_size`` of ``location``. A
+    **terrain** objective sets ``area``, and the region itself is the objective: a
+    model is in range while its base overlaps that area. ``location`` is then the
+    area's centroid, so anything that steers toward an objective still has a point to
+    aim at.
+    """
+
+    def __init__(
+        self,
+        location: np.ndarray,
+        radius_size: float,
+        area: Polygon | None = None,
+    ):
         self.location = np.asarray(location, dtype=float)
         self.radius_size = float(radius_size)  # Radius in board units
+        self.area = area
+
+    @property
+    def is_area(self) -> bool:
+        """True when the objective is a region rather than a marker."""
+        return self.area is not None
 
     def __repr__(self) -> str:
-        return f"WargameObjective(location={self.location}, radius_size={self.radius_size})"
+        shape = "area" if self.is_area else f"radius_size={self.radius_size}"
+        return f"WargameObjective(location={self.location}, {shape})"
 
     @staticmethod
     def to_space(board_width: int, board_height: int) -> spaces.Dict:

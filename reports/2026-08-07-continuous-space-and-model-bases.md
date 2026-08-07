@@ -139,6 +139,77 @@ deliberate per-scenario choice rather than something the refactor forced.
 
 ---
 
+## Polygon outlines (follow-on)
+
+Terrain footprints and objectives became polygons rather than axis-aligned rectangles
+and circles. Objectives keep the circular marker as the default and gain an optional
+outline, which is the rules' second kind of objective: the terrain area *is* the
+objective. Footprints are outlines only — the L- and U-shaped structures inside a ruin
+are **walls**, a separate feature that does not exist yet, and a concave footprint is
+not a stand-in for one.
+
+### 10. Vectorise across shapes, not just across samples
+
+The obvious implementation — loop over pieces, test each one's samples — cost **70.2
+ms/step against 24.2**, a 3x regression. Line of sight runs hundreds of queries per
+phase, and the loop turned each into dozens of tiny numpy calls whose overhead dwarfed
+the arithmetic.
+
+Padding every outline to a common vertex count and testing rays, samples, polygons and
+edges in **one pass** brought it to **30.0 ms**. Padding is free because repeated
+vertices make zero-length edges, which never straddle a sample and so contribute no
+crossings.
+
+| | ms/step |
+|---|---|
+| Bresenham, no occlusion (original chessboard) | 22.2 |
+| Rectangles, sampled ray + occlusion | 24.2 |
+| Polygons, per-piece loop | 70.2 |
+| Polygons, one vectorised pass | **30.0** |
+
+A ray-bounding-box pre-filter on top bought almost nothing (30.8 → 30.0): the cost is
+the geometry, not the candidate count. **35% over the chessboard baseline** is the
+honest price of exact polygon sight with model occlusion and cover.
+
+### 11. Polygons pack tighter than the boxes that bounded them
+
+Two calibrations broke, in opposite directions, and both were silent:
+
+- **Terrain profile.** At the same nominal size, convex outlines hide less board than
+  the rectangles they replaced — *cells hidden from a squad* fell from 0.198 to 0.174.
+  The cover configs were re-tuned from `min_size: 3, max_size: 7` to `4, 8`, which
+  restores 0.183.
+- **Packing validator.** It estimated each piece as filling its size box, which is
+  true of a rectangle and not of an inscribed polygon, so it began rejecting profiles
+  the sampler places on every seed. 27 pieces of 3–8 went from "over-packed" to 10/10
+  placements. A fill factor fixes the estimate; the case that genuinely fails is now
+  40 pieces of 5–9.
+
+### 12. Enlarging the objective disc exposed a latent state bug
+
+`load_state` zeroed `player_vp_delta` and `opponent_vp_delta` instead of restoring
+them, so a snapshot round-trip was lossy — but only on a step that actually scored.
+While the objective radius was 1 unit, models were rarely in range on a small test
+board and it never showed. At the rules' 3" it surfaced as an intermittent failure
+that passed in isolation and failed in the full suite, which read like flakiness.
+
+Worth generalising: **a change that makes an event more frequent is a change that finds
+bugs conditioned on it.** The bug predates all of this work.
+
+### 13. Baselines shifted again
+
+Same config, six seeds, polygon terrain against the rectangles measured earlier:
+
+| policy | win | vp_margin | | win (rect) | vp_margin (rect) |
+|---|---:|---:|---|---:|---:|
+| `random` | 0.00 | −209.2 | | 0.00 | −190.0 |
+| `squad_march` | **0.83** | **+50.0** | | 0.50 | +4.2 |
+| `squad_march_shoot` | 1.00 | +107.5 | | 1.00 | +99.2 |
+
+The movement-only policy is the one that moved — 0.50 → 0.83. Rounded outlines are
+easier to walk around than boxes, and a policy that never shoots lives or dies on
+whether it reaches the objective.
+
 ## What this says for the real implementation
 
 1. **Keep:** the inch ↔ unit scale as a single resolved-at-startup object. It cost
@@ -151,7 +222,13 @@ deliberate per-scenario choice rather than something the refactor forced.
 4. **Redesign:** `group_id` as the unit proxy. The rules say a model ignores others in
    its own unit when tracing sight, but the default config gives every model its own
    group, so squads occlude themselves. Units need to be a real entity.
-5. **Watch:** the corner-inclusive convention. It is the one change here that is silent
+5. **Keep:** padding shapes to a fixed vertex budget for the observation. It is the
+   first encoding that lets the policy tell an outline from its bounding box, and it
+   costs one widened token.
+6. **Watch:** any calibration that assumed a rectangle. The terrain profile and the
+   packing validator both silently mis-estimated once pieces stopped being boxes, in
+   opposite directions.
+7. **Watch:** the corner-inclusive convention. It is the one change here that is silent
    in every direction — no exception, no failing test, just terrain a unit smaller than
    the config asked for.
 

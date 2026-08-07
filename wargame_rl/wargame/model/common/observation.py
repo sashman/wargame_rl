@@ -6,6 +6,7 @@ from torch import Tensor
 
 from wargame_rl.wargame.envs.domain.shooting import DefenderStats, expected_damage
 from wargame_rl.wargame.envs.types import WargameEnvObservation
+from wargame_rl.wargame.envs.types.terrain_observation import MAX_TERRAIN_VERTICES
 from wargame_rl.wargame.model.common import Device, get_device
 
 # ---------------------------------------------------------------------------
@@ -24,7 +25,8 @@ NORM_EXPECTED_DAMAGE = 10.0
 N_WOUND_FEATURES = 3  # alive, wound_ratio, max_wounds_norm
 N_COMBAT_STATS = 7  # attacks, bs, strength, ap, damage, toughness, save
 N_BATTLE_PHASES = 5  # command, movement, shooting, charge, fight
-TERRAIN_FEATURE_DIM = 4  # x0_norm, y0_norm, x1_norm, y1_norm
+# Padded outline vertices plus the true vertex count as a fraction of the budget.
+TERRAIN_FEATURE_DIM = 2 * MAX_TERRAIN_VERTICES + 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -302,7 +304,7 @@ def observation_to_tensor(
         3. tensor_wargame_models: shape (num_models, feature_dim)
         4. tensor_opponent_models: shape (num_opponent_models, feature_dim)
            (0 rows when no opponents)
-        5. tensor_terrain: shape (n_terrain, 4), normalized footprint corners
+        5. tensor_terrain: shape (n_terrain, TERRAIN_FEATURE_DIM), padded outline
            (0 rows when no terrain)
         6. tensor_action_mask: shape (n_models, n_actions), bool
 

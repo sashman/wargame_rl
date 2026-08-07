@@ -286,8 +286,14 @@ def fixed_objective_placement(
     objectives: list[WargameObjective],
     objective_configs: list[ObjectiveConfig],
 ) -> None:
-    """Place objectives at the exact positions specified in *objective_configs*."""
+    """Place objectives at the exact positions specified in *objective_configs*.
+
+    An area objective is not placed: the outline *is* its position, and its location
+    is already the area's centroid.
+    """
     for objective, cfg in zip(objectives, objective_configs):
+        if objective.is_area:
+            continue
         assert cfg.x is not None and cfg.y is not None
         objective.location = np.array([cfg.x, cfg.y], dtype=float)
 

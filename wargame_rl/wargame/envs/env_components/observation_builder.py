@@ -24,6 +24,7 @@ from wargame_rl.wargame.envs.types import (
     WargameTerrainObservation,
 )
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
+from wargame_rl.wargame.envs.types.terrain_observation import MAX_TERRAIN_VERTICES
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.env_components.distance_cache import DistanceCache
@@ -106,22 +107,22 @@ def _terrain_to_obs(
 ) -> list[WargameTerrainObservation]:
     """Build terrain observations from BattleView terrain footprints.
 
-    Each footprint's corners are normalized to [-1, 1] using board half-dimensions.
+    Each outline is padded to a fixed vertex budget and normalized to [-1, 1] using
+    board half-dimensions. Terrain used to reach the network as a bounding box, which
+    made an L-shaped ruin and a solid block of the same extent indistinguishable; the
+    vertices are the first encoding that carries the shape itself.
     """
-    half_w = view.board_width / 2.0
-    half_h = view.board_height / 2.0
+    half = np.array([view.board_width / 2.0, view.board_height / 2.0], dtype=np.float32)
     result: list[WargameTerrainObservation] = []
     for fp in view.terrain.footprints:
-        footprint_norm = np.array(
-            [
-                (fp.x0 - half_w) / half_w,
-                (fp.y0 - half_h) / half_h,
-                (fp.x1 - half_w) / half_w,
-                (fp.y1 - half_h) / half_h,
-            ],
-            dtype=np.float32,
+        padded = fp.polygon.padded_vertices(MAX_TERRAIN_VERTICES)
+        normalised = ((padded - half) / half).astype(np.float32).reshape(-1)
+        vertex_fraction = np.float32(
+            min(len(fp.vertices), MAX_TERRAIN_VERTICES) / MAX_TERRAIN_VERTICES
         )
-        result.append(WargameTerrainObservation(footprint=footprint_norm))
+        result.append(
+            WargameTerrainObservation(footprint=np.append(normalised, vertex_fraction))
+        )
     return result
 
 

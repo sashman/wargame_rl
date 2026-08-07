@@ -379,6 +379,28 @@ class TestRequirementSpotChecks:
         snap_b = env.to_snapshot()
         assert snap_a == snap_b
 
+    def test_sgs09_round_trip_preserves_a_scored_vp_delta(
+        self, small_env_config: WargameEnvConfig
+    ) -> None:
+        """Regression: the VP deltas are state, and load_state used to zero them.
+
+        It only showed on a step that actually scored, so it stayed hidden while
+        objectives were small enough that models were rarely in range.
+        """
+        env = WargameEnv(config=small_env_config)
+        for seed in range(40):
+            env.reset(seed=seed)
+            env.step(WargameEnvAction(actions=env.action_space.sample()))
+            snap = env.to_snapshot()
+            if snap.player_vp_delta or snap.opponent_vp_delta:
+                break
+        else:
+            pytest.skip("no seed scored a VP in one step")
+
+        env.load_state(snap)
+
+        assert env.to_snapshot() == snap
+
     def test_sgs10_describe_action(self) -> None:
         """SGS-10: describe_action() produces readable text."""
         stay = describe_action(

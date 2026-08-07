@@ -11,6 +11,7 @@ from wargame_rl.wargame.envs.reward.phase import (
     SuccessCriteriaConfig,
 )
 from wargame_rl.wargame.envs.types.game_timing import NON_MOVEMENT_PHASES, BattlePhase
+from wargame_rl.wargame.envs.types.geometry import Polygon
 
 
 class _HasCoords(Protocol):
@@ -64,6 +65,13 @@ def _normalise_rect(r: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
 # Rejection sampling for random terrain slows sharply as the board fills, so
 # layouts are rejected at config load well before that point.
 _MAX_TERRAIN_PACKING_FRACTION = 0.5
+
+# Pieces are polygons inscribed in their size box rather than filling it, so a piece
+# of nominal size N takes up appreciably less than N^2. Estimating from the box alone
+# rejected profiles the sampler places without trouble. This is a bound on the
+# expected footprint, not the worst case -- `_MAX_LAYOUT_ATTEMPTS` remains the real
+# backstop.
+_POLYGON_FILL_FRACTION = 0.7
 
 
 def _rects_overlap(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
@@ -175,11 +183,45 @@ class ModelConfig(BaseModel):
 
 
 class TerrainPieceConfig(BaseModel):
-    """Configuration for a single terrain piece (axis-aligned rectangle)."""
+    """Configuration for a single terrain piece.
 
-    footprint: tuple[int, int, int, int] = Field(
-        description="Bounding rectangle (x0, y0, x1, y1) in grid cells."
+    Either a corner-inclusive rectangle of whole cells, or an explicit outline.
+    Exactly one of the two.
+
+    The outline is the piece's *footprint*. Walls inside a ruin -- the structures that
+    break sight within a single piece -- are a separate feature that does not exist
+    yet, so a concave footprint is not a way to express one.
+    """
+
+    footprint: tuple[int, int, int, int] | None = Field(
+        default=None,
+        description="Bounding rectangle (x0, y0, x1, y1) in whole cells, "
+        "corner-inclusive.",
     )
+    polygon: list[tuple[float, float]] | None = Field(
+        default=None,
+        description="Outline as (x, y) vertices in UNITS, in order around the shape. "
+        "At least 3.",
+    )
+
+    @model_validator(mode="after")
+    def exactly_one_shape(self) -> "TerrainPieceConfig":
+        """A piece is a rectangle or an outline, never both and never neither."""
+        if (self.footprint is None) == (self.polygon is None):
+            raise ValueError("a terrain piece needs exactly one of footprint, polygon")
+        if self.polygon is not None and len(self.polygon) < 3:
+            raise ValueError(
+                f"a terrain polygon needs at least 3 vertices, got {len(self.polygon)}"
+            )
+        return self
+
+
+def _terrain_piece_polygon(piece: "TerrainPieceConfig") -> Polygon:
+    """The outline of a terrain piece, however it was authored."""
+    if piece.polygon is not None:
+        return Polygon.from_points(piece.polygon)
+    assert piece.footprint is not None  # guaranteed by exactly_one_shape
+    return Polygon.from_cell_rect(*piece.footprint)
 
 
 class RandomTerrainConfig(BaseModel):
@@ -253,7 +295,13 @@ class ObjectiveConfig(BaseModel):
         default=None,
         gt=0,
         description="Override the env-wide objective radius for this objective, "
-        "in INCHES.",
+        "in INCHES. Ignored when `polygon` is set.",
+    )
+    polygon: list[tuple[float, float]] | None = Field(
+        default=None,
+        description="Make this a terrain objective: the area itself is the objective, "
+        "given as (x, y) vertices in UNITS. A model is in range while its base "
+        "overlaps the area. When set, x/y/radius_size are ignored.",
     )
 
     @model_validator(mode="after")
@@ -526,9 +574,13 @@ class WargameEnvConfig(BaseModel):
 
     @property
     def has_fixed_objective_positions(self) -> bool:
-        """True when every objective entry specifies x/y coordinates."""
+        """True when every objective entry pins its own position.
+
+        A polygon objective counts: the area *is* the objective, so its position is
+        given by its outline rather than by x/y.
+        """
         return self.objectives is not None and all(
-            o.x is not None for o in self.objectives
+            o.x is not None or o.polygon is not None for o in self.objectives
         )
 
     @property
@@ -583,30 +635,33 @@ class WargameEnvConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_terrain(self) -> "WargameEnvConfig":
-        """Validate terrain footprints are in-bounds and non-overlapping."""
+        """Validate terrain outlines are in-bounds, thick enough and disjoint."""
         if self.terrain is None:
             return self
-        normalised: list[tuple[int, int, int, int]] = [
-            _normalise_rect(t.footprint) for t in self.terrain
-        ]
-        for i, (x0, y0, x1, y1) in enumerate(normalised):
-            if x0 < 0 or y0 < 0 or x1 >= self.board_width or y1 >= self.board_height:
+
+        shapes = [_terrain_piece_polygon(piece) for piece in self.terrain]
+        for i, shape in enumerate(shapes):
+            described = self.terrain[i].footprint or self.terrain[i].polygon
+            x0, y0, x1, y1 = shape.bounds
+            if x0 < 0 or y0 < 0 or x1 > self.board_width or y1 > self.board_height:
                 raise ValueError(
-                    f"terrain[{i}] {self.terrain[i].footprint} is outside "
+                    f"terrain[{i}] {described} is outside "
                     f"the board ({self.board_width}x{self.board_height})"
                 )
             # Line of sight is traced by sampling, so a feature narrower than the
             # sample step can fall between two samples and silently fail to block.
-            thinnest = min(x1 - x0, y1 - y0) + 1  # corner-inclusive cells
+            # Area over the longer side bounds the narrowest width of any outline.
+            longest = max(x1 - x0, y1 - y0)
+            thinnest = shape.area / longest if longest > 0 else 0.0
             if thinnest <= self.los_sample_step:
                 raise ValueError(
-                    f"terrain[{i}] {self.terrain[i].footprint} is {thinnest} across at "
+                    f"terrain[{i}] {described} is about {thinnest:.3g} across at "
                     f"its narrowest, which is not thicker than los_sample_step "
                     f"({self.los_sample_step}); line of sight would leak through it"
                 )
-        for i in range(len(normalised)):
-            for j in range(i + 1, len(normalised)):
-                if _rects_overlap(normalised[i], normalised[j]):
+        for i in range(len(shapes)):
+            for j in range(i + 1, len(shapes)):
+                if shapes[i].intersects(shapes[j]):
                     raise ValueError(f"terrain[{i}] overlaps terrain[{j}]")
         return self
 
@@ -653,13 +708,13 @@ class WargameEnvConfig(BaseModel):
         # `_MAX_LAYOUT_ATTEMPTS` in terrain_placement.py is the real backstop:
         # it raises with a clear message if a draw genuinely cannot be placed.
         mean_size = (spec.min_size + spec.max_size) / 2
-        required = spec.count * (mean_size + spec.min_gap) ** 2
+        required = spec.count * (mean_size + spec.min_gap) ** 2 * _POLYGON_FILL_FRACTION
         usable = usable_width * usable_height
         if required > _MAX_TERRAIN_PACKING_FRACTION * usable:
             raise ValueError(
                 f"random_terrain packs too tightly: {spec.count} pieces averaging "
                 f"{mean_size:g}x{mean_size:g} (plus {spec.min_gap} gap) need "
-                f"{required:g} cells, more than "
+                f"{required:g} units of area, more than "
                 f"{_MAX_TERRAIN_PACKING_FRACTION:.0%} of the usable {usable}"
             )
         return self

@@ -123,6 +123,21 @@ def compute_distances(
         -1, 1
     )
     norms_offset = norms - base_radii
+
+    # A terrain objective is a region, not a point: a model is in range while its base
+    # overlaps the area. That is folded into the same comparison by measuring to the
+    # area's edge and giving it a radius of zero, so every downstream
+    # `norms_offset <= obj_radii` test is unchanged and needs no branch of its own.
+    for j, objective in enumerate(objectives):
+        area = getattr(objective, "area", None)
+        if area is None:
+            continue
+        obj_radii[j] = 0.0
+        for i, model in enumerate(wargame_models):
+            norms_offset[i, j] = (
+                area.distance_to_point(model.location) - model.base_radius
+            )
+
     if alive_mask is not None:
         norms_offset[~alive_mask] = np.inf
 

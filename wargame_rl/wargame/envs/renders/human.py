@@ -628,17 +628,27 @@ class HumanRender(Renderer):
         outline_color = (100, 80, 60)
         label_color = (60, 50, 40)
         for fp in view.terrain.footprints:
-            x = fp.x0 * self.pix_square_size
-            y = fp.y0 * self.pix_square_size
-            w = (fp.x1 - fp.x0) * self.pix_square_size
-            h = (fp.y1 - fp.y0) * self.pix_square_size
-            fill_surf = pygame.Surface((int(w), int(h)), pygame.SRCALPHA)
-            fill_surf.fill((*fill_color, 90))
-            canvas.blit(fill_surf, (x, y))
-            pygame.draw.rect(canvas, outline_color, pygame.Rect(x, y, w, h), width=2)
+            # Outlines are polygons, so the piece is drawn as one rather than as its
+            # bounding box -- which would misrepresent any non-rectangular piece.
+            points = [
+                (float(vx) * self.pix_square_size, float(vy) * self.pix_square_size)
+                for vx, vy in fp.vertices
+            ]
+            fill_surf = pygame.Surface(
+                (self.canvas_width, self.canvas_height), pygame.SRCALPHA
+            )
+            pygame.draw.polygon(fill_surf, (*fill_color, 90), points)
+            canvas.blit(fill_surf, (0, 0))
+            pygame.draw.polygon(canvas, outline_color, points, width=2)
             font = pygame.font.Font(None, max(16, int(self.pix_square_size * 0.8)))
             text = font.render("Ruin", True, label_color)
-            text_rect = text.get_rect(center=(x + w / 2, y + h / 2))
+            centre = fp.polygon.centroid
+            text_rect = text.get_rect(
+                center=(
+                    float(centre[0]) * self.pix_square_size,
+                    float(centre[1]) * self.pix_square_size,
+                )
+            )
             canvas.blit(text, text_rect)
 
     def _draw_target(

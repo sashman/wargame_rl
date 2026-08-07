@@ -66,18 +66,76 @@ def _sample_points(
     return points, n_samples
 
 
-def _blocked_by_rectangles(points: np.ndarray, rectangles: np.ndarray) -> np.ndarray:
-    """``(n_rays,)`` bool: does any sample of each ray fall inside any rectangle."""
-    if rectangles.size == 0:
-        return np.zeros(points.shape[0], dtype=bool)
+def _inside_rectangles(points: np.ndarray, rectangles: np.ndarray) -> np.ndarray:
+    """``(n_rays, n_samples, n_rects)`` bool: which samples fall in which rectangle."""
     px = points[:, :, 0][:, :, None]
     py = points[:, :, 1][:, :, None]
-    inside = (
+    inside: np.ndarray = (
         (px >= rectangles[:, 0])
         & (px <= rectangles[:, 2])
         & (py >= rectangles[:, 1])
         & (py <= rectangles[:, 3])
     )
+    return inside
+
+
+def _blocked_by_rectangles(points: np.ndarray, rectangles: np.ndarray) -> np.ndarray:
+    """``(n_rays,)`` bool: does any sample of each ray fall inside any rectangle."""
+    if rectangles.size == 0:
+        return np.zeros(points.shape[0], dtype=bool)
+    blocked: np.ndarray = np.atleast_1d(
+        _inside_rectangles(points, rectangles).any(axis=(1, 2))
+    )
+    return blocked
+
+
+def _blocked_by_polygons(points: np.ndarray, padded_vertices: np.ndarray) -> np.ndarray:
+    """``(n_rays,)`` bool: does any sample of each ray fall inside any polygon.
+
+    ``padded_vertices`` is ``(n_polygons, n_vertices, 2)``, every outline padded to a
+    common vertex count by repeating its last vertex. Padding adds zero-length edges,
+    which never straddle a sample's y and so contribute no crossings -- that is what
+    lets outlines of different vertex counts share one array.
+
+    Every ray, sample, polygon and edge is evaluated in a single pass. A per-polygon
+    Python loop here cost three times the whole step: line of sight runs hundreds of
+    queries per phase, and the loop turned each one into dozens of tiny numpy calls
+    whose overhead dwarfed the arithmetic.
+    """
+    n_rays = points.shape[0]
+    if padded_vertices.size == 0:
+        return np.zeros(n_rays, dtype=bool)
+
+    # A polygon can only block if it holds a sample, so anything whose bounding box
+    # misses the samples' bounding box is dropped first. A weapon-range ray crosses a
+    # small part of the board, so this usually discards most of the layout and shrinks
+    # the array the crossing test below has to build.
+    low = points.reshape(-1, 2).min(axis=0)
+    high = points.reshape(-1, 2).max(axis=0)
+    poly_low = padded_vertices.min(axis=1)
+    poly_high = padded_vertices.max(axis=1)
+    near = ~(
+        (poly_high[:, 0] < low[0])
+        | (poly_low[:, 0] > high[0])
+        | (poly_high[:, 1] < low[1])
+        | (poly_low[:, 1] > high[1])
+    )
+    padded_vertices = padded_vertices[near]
+    if padded_vertices.size == 0:
+        return np.zeros(n_rays, dtype=bool)
+
+    px = points[:, :, None, None, 0]  # (rays, samples, 1, 1)
+    py = points[:, :, None, None, 1]
+    ax = padded_vertices[None, None, :, :, 0]  # (1, 1, polys, verts)
+    ay = padded_vertices[None, None, :, :, 1]
+    bx = np.roll(ax, -1, axis=3)
+    by = np.roll(ay, -1, axis=3)
+
+    straddles = (ay > py) != (by > py)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        x_at_py = (bx - ax) * (py - ay) / (by - ay) + ax
+    crossings = straddles & (px < x_at_py)
+    inside = (crossings.sum(axis=3) % 2) == 1  # (rays, samples, polys)
     blocked: np.ndarray = np.atleast_1d(inside.any(axis=(1, 2)))
     return blocked
 
@@ -120,6 +178,7 @@ def visibility_between(
     target: np.ndarray,
     observer_radius: float,
     target_radius: float,
+    polygon_vertices: np.ndarray,
     rectangles: np.ndarray,
     occluder_centres: np.ndarray,
     occluder_radii: np.ndarray,
@@ -127,11 +186,13 @@ def visibility_between(
 ) -> Visibility:
     """Classify how much of *target* is visible from *observer*.
 
-    ``rectangles`` is an ``(n, 4)`` array of ``(x0, y0, x1, y1)`` terrain footprints
-    that can block this query -- the caller filters out any the endpoints stand in, so
-    a model inside a ruin still sees out of it. ``occluder_centres`` and
-    ``occluder_radii`` are the bases of other models that block sight; per the rules
-    the caller excludes models in the observer's own unit and in the target's.
+    ``polygon_vertices`` are the padded terrain outlines that can block this query --
+    the caller filters out any the endpoints stand in, so a model inside a ruin still
+    sees out of it. ``rectangles`` is the
+    legacy board-sized blocking mask, which is opaque matter rather than shelter and so
+    is never filtered. ``occluder_centres`` and ``occluder_radii`` are the bases of
+    other models that block sight; per the rules the caller excludes models in the
+    observer's own unit and in the target's.
     """
     direction = target - observer
     length = float(np.linalg.norm(direction))
@@ -164,8 +225,10 @@ def visibility_between(
     )
 
     points, _ = _sample_points(starts, ends, step)
-    blocked = _blocked_by_rectangles(points, rectangles) | _blocked_by_discs(
-        points, centres, radii
+    blocked = (
+        _blocked_by_rectangles(points, rectangles)
+        | _blocked_by_polygons(points, polygon_vertices)
+        | _blocked_by_discs(points, centres, radii)
     )
 
     if not blocked.any():

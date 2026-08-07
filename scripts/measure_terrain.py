@@ -59,9 +59,9 @@ def _blocking_predicate(terrain: Terrain, x0: int, y0: int, x1: int, y1: int):  
 
 
 def _coverage(terrain: Terrain, board: BoardDimensions) -> float:
-    """Fraction of board cells inside some footprint (footprints never overlap)."""
-    cells = sum((fp.x1 - fp.x0 + 1) * (fp.y1 - fp.y0 + 1) for fp in terrain.footprints)
-    return cells / (board.width * board.height)
+    """Fraction of the board inside some footprint (footprints never overlap)."""
+    area = sum(fp.polygon.area for fp in terrain.footprints)
+    return area / (board.width * board.height)
 
 
 def _blocked_fraction(

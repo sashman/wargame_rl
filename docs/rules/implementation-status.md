@@ -101,8 +101,9 @@ touched by that work still describe the environment accurately.
 
 | Rule | Status | Owner / note |
 |---|---|---|
+| Terrain **walls** (structures inside a piece) | absent | A footprint is an outline only. The L- and U-shaped walls that break sight *within* a ruin are not modelled; a concave footprint is not a stand-in for one. |
 | [Line of sight](06-visibility-and-damage.md#visibility) | implemented | `domain/visibility.py` samples the segment between two models and tests every blocker vectorised. Three rays — centre to centre and the two outer tangents — give the full *hidden* / *visible* / *fully visible* split. |
-| [Terrain categories](13-terrain.md#terrain-categories) | **divergent** | One category. `Footprint` (`envs/domain/terrain.py`) is an axis-aligned rectangle that blocks line of sight. |
+| [Terrain categories](13-terrain.md#terrain-categories) | **divergent** | One category. `Footprint` (`envs/domain/terrain.py`) is a polygon outline that blocks line of sight. |
 | [Terrain and movement](13-terrain.md#terrain-and-movement) | absent | Movement ignores terrain completely — models pass through footprints freely. |
 | [Solid: see out of and into a feature](13-terrain.md#solid) | partial | `Terrain.blocking_footprints_for_endpoints` excludes any footprint containing either endpoint, which reproduces the see-out and see-into behaviour in two dimensions. No height, so the 3" threshold has no analogue. |
 | [Obscuring](13-terrain.md#obscuring) | **divergent** | Achieved by the same footprint blocking, keyed off the feature rather than an enclosing terrain area. |
@@ -115,7 +116,7 @@ touched by that work still describe the environment accurately.
 | Rule | Status | Owner / note |
 |---|---|---|
 | [Objective markers, within 3"](14-objectives.md#what-an-objective-is) | implemented | `objective_radius_size` is authored in inches and defaults to the rules value of 3". |
-| [Terrain objectives](14-objectives.md#what-an-objective-is) | absent | Objectives are points, not terrain areas. `objective_terrain_clearance` deliberately pushes them *away* from terrain. |
+| [Terrain objectives](14-objectives.md#what-an-objective-is) | implemented | An objective may be given a `polygon`: the area itself is the objective, and a model is in range while its base overlaps it. Marker objectives remain the default. |
 | [Level of control](14-objectives.md#level-of-control) | implemented | `env_components/distance_cache.py:objective_ownership_from_norms_offset` — strictly greater count controls, ties are uncontrolled. |
 | [Control re-evaluated at the end of every phase](14-objectives.md#level-of-control) | **divergent** | Evaluated only when VP are scored, on leaving the command phase (`wargame.py:_on_before_advance`). |
 | [Suppression zeroes Control Value](01-core-concepts.md#suppression) | absent | No suppression. |

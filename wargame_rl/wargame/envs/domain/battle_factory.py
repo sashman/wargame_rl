@@ -7,6 +7,8 @@ from typing import Any
 import numpy as np
 
 from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.envs.types.config import _terrain_piece_polygon
+from wargame_rl.wargame.envs.types.geometry import Polygon
 
 from .battle import Battle
 from .entities import WargameModel, WargameObjective
@@ -68,12 +70,21 @@ def _build_models(
 def _build_objectives(
     config: WargameEnvConfig, quantities: RulesQuantities
 ) -> list[WargameObjective]:
-    """Build the list of objectives from config."""
+    """Build the list of objectives from config.
+
+    An objective is either a marker -- a point with a radius -- or a terrain
+    objective, where the area itself is the objective and a model is in range while
+    its base overlaps that area.
+    """
     result: list[WargameObjective] = []
     for i in range(config.number_of_objectives):
-        override = (
-            config.objectives[i].radius_size if config.objectives is not None else None
-        )
+        entry = config.objectives[i] if config.objectives is not None else None
+
+        area: Polygon | None = None
+        if entry is not None and entry.polygon is not None:
+            area = Polygon.from_points(entry.polygon)
+
+        override = entry.radius_size if entry is not None else None
         radius = (
             quantities.objective_radius
             if override is None
@@ -82,8 +93,11 @@ def _build_objectives(
 
         result.append(
             WargameObjective(
-                location=np.zeros(2, dtype=float),
+                location=(
+                    area.centroid if area is not None else np.zeros(2, dtype=float)
+                ),
                 radius_size=radius,
+                area=area,
             )
         )
     return result
@@ -137,7 +151,7 @@ def from_config(config: WargameEnvConfig) -> Battle:
         )
 
     footprints = [
-        Footprint.from_cell_rect(*tp.footprint) for tp in (config.terrain or [])
+        Footprint(_terrain_piece_polygon(piece)) for piece in (config.terrain or [])
     ]
     terrain = Terrain(footprints, blocking_mask=config.blocking_mask)
 

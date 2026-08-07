@@ -380,16 +380,17 @@ class WargameEnv(gym.Env):
         starts from, unlike the Bresenham trace this replaced, which needed its
         endpoints sorted into a canonical order to guarantee it.
         """
-        rectangles = self._battle.terrain.blocking_rectangles_for_endpoints(
-            observer[0], observer[1], target[0], target[1]
-        )
+        terrain = self._battle.terrain
         centres, radii = self._occluders_excluding(observer_group, target_group)
         return _visibility_between(
             observer,
             target,
             observer_radius,
             target_radius,
-            rectangles,
+            terrain.blocking_vertices_for_endpoints(
+                observer[0], observer[1], target[0], target[1]
+            ),
+            terrain.mask_rectangles,
             centres,
             radii,
             step=self.config.los_sample_step,
@@ -1002,11 +1003,14 @@ class WargameEnv(gym.Env):
         for i, os_ in enumerate(snapshot.objectives):
             self.objectives[i].location = np.array(os_.location, dtype=float)
 
-        # VP
+        # VP. The deltas are restored, not zeroed: they are part of the state a
+        # snapshot captures, the `vp_gain` reward reads them, and zeroing them made
+        # `to_snapshot -> load_state -> to_snapshot` lossy whenever a VP had just been
+        # scored.
         self._battle._player_vp = snapshot.player_vp
         self._battle._opponent_vp = snapshot.opponent_vp
-        self._battle._player_vp_delta = 0
-        self._battle._opponent_vp_delta = 0
+        self._battle._player_vp_delta = snapshot.player_vp_delta
+        self._battle._opponent_vp_delta = snapshot.opponent_vp_delta
 
         # Env counters
         self.current_turn = snapshot.step

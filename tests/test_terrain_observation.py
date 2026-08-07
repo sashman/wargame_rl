@@ -6,10 +6,12 @@ shape change, no-terrain byte-identical).
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import TerrainPieceConfig
+from wargame_rl.wargame.envs.types.terrain_observation import MAX_TERRAIN_VERTICES
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.observation import (
     TERRAIN_FEATURE_DIM,
@@ -54,13 +56,33 @@ class TestTerrainObservation:
         assert len(obs.terrain) == 2
 
     def test_terrain_obs_carries_normalised_geometry(self) -> None:
-        """Footprint corners normalised to [-1, 1]."""
+        """Outline vertices normalised to [-1, 1], padded to the vertex budget."""
         env = WargameEnv(config=_make_terrain_config())
         obs, _ = env.reset(seed=42)
         for t in obs.terrain:
-            assert t.footprint.shape == (4,)
+            assert t.footprint.shape == (TERRAIN_FEATURE_DIM,)
             assert t.footprint.min() >= -1.0
             assert t.footprint.max() <= 1.0
+
+    def test_terrain_obs_reports_the_true_vertex_count(self) -> None:
+        """The trailing entry says how much of the padded outline is real."""
+        env = WargameEnv(config=_make_terrain_config())
+        obs, _ = env.reset(seed=42)
+        for observed, footprint in zip(obs.terrain, env.terrain.footprints):
+            expected = len(footprint.vertices) / MAX_TERRAIN_VERTICES
+            assert observed.footprint[-1] == pytest.approx(expected)
+
+    def test_padding_repeats_the_last_vertex(self) -> None:
+        """Padding must be geometrically inert, not a shape the policy could read."""
+        env = WargameEnv(config=_make_terrain_config())
+        obs, _ = env.reset(seed=42)
+        for observed, footprint in zip(obs.terrain, env.terrain.footprints):
+            n_real = len(footprint.vertices)
+            if n_real >= MAX_TERRAIN_VERTICES:
+                continue
+            xy = observed.footprint[:-1].reshape(MAX_TERRAIN_VERTICES, 2)
+            for padded in xy[n_real:]:
+                assert padded == pytest.approx(xy[n_real - 1])
 
     def test_terrain_tensor_shape(self) -> None:
         """Terrain tensor has shape (n_terrain, TERRAIN_FEATURE_DIM)."""

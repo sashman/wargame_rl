@@ -344,6 +344,7 @@ def test_terrain_los_symmetry(
         assume(fx1 < board_w and fy1 < board_h)
         # Reject if overlaps any previous footprint
         for prev in footprints:
+            assert prev.footprint is not None
             px0, py0, px1, py1 = prev.footprint
             if fx <= px1 and fx1 >= px0 and fy <= py1 and fy1 >= py0:
                 assume(False)
