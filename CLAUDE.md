@@ -77,6 +77,7 @@ wargame_rl/
 | Train (PPO, default) | `just train <config.yaml>` |
 | Train (DQN) | `just train <config.yaml> dqn` |
 | Train multiple configs in parallel | `just train-multi config1.yaml config2.yaml` |
+| Train an arm (config × training flags) | `just train-arm <max_epochs> <n_seeds> <group> <tag> <flags> <configs...>` |
 | Ship (branch → commit → push → PR) | `just ship <branch> "<message>"` |
 | Simulate latest | `just simulate-latest` |
 | Simulate / record a checkpoint | `just simulate <ckpt> <config.yaml>` · `just record-sim <ckpt> <config.yaml>` |
@@ -87,7 +88,7 @@ wargame_rl/
 | Inspect a Wandb run | `just run-summary <run_id> [bucket]` |
 | Measure reward-phase gates | `just measure-phase-gates <ckpt> <config.yaml> [n_episodes]` |
 | Scripted baselines (floor + bar) | `just measure-baselines <config.yaml> [n_episodes] [record] [seed_base]` |
-| Score a checkpoint (baseline-comparable) | `just measure-checkpoint <ckpt> <config.yaml> [n_episodes] [record]` |
+| Score a checkpoint (baseline-comparable) | `just measure-checkpoint <ckpt> <config.yaml> [n_episodes] [record] [distinct]` |
 | Dice-vs-scenario noise floor | `just measure-noise-floor <config.yaml> [n_layouts] [n_combat_seeds] [policy]` |
 | Terrain-profile statistics | `just measure-terrain <config.yaml> [n_layouts]` |
 | Profile | `just profile <config.yaml> [model] [max_epochs]` |
@@ -246,7 +247,7 @@ Detailed patterns live next to the code they govern — read them when working i
 - **Training configs:** `examples/env_config/25v25_single_phase.yaml` (control) and `25v25_curriculum.yaml` (two rungs). They share a scenario and a final phase, so comparing them isolates the curriculum. Every phase must keep `vp_gain` and at least one per-model calculator — `tests/test_curriculum_configs.py` enforces both
 - **Past experiments:** [reports/](reports/README.md) records findings from previous runs, including refuted hypotheses. **Start with [the correction](reports/2026-08-04-correction-what-was-actually-broken.md)** — it retracts most pre-2026-08-04 conclusions, including the earlier claims that `gamma` 0.99 and `ent_coef` 0.01 were refuted (they were measured under a training loop that never applied the reward being tuned)
 - **Inspecting a run:** `just run-summary <run_id> [bucket]` for rolling means (single-epoch `success_rate` is an `n_episodes`-sample binomial — never read a point value); `just measure-phase-gates <ckpt> <env_config> 40` for per-phase criteria rates and the whole `min_fraction` curve
-- Key CLI options: `--record-during-training`, `--max-epochs`, `--render-mode`, `--algorithm`, `--no-wandb`, `--run-suffix`, `--wandb-group`
+- Key CLI options: `--record-during-training`, `--max-epochs`, `--render-mode`, `--algorithm`, `--no-wandb`, `--run-suffix`, `--wandb-group`, `--n-eval-episodes`, `--seed`, `--distinct-shooting-targets`
 - Profile a run: `just profile <config.yaml> [model] [max_epochs]` generates `profile.html`
 - Simulate latest checkpoint: `just simulate-latest [network_type]` · Clean up: `just clean` removes `checkpoints/` and `wandb/`
 
