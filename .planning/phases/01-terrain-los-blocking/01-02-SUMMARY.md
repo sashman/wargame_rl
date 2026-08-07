@@ -22,7 +22,7 @@ WargameEnv.terrain  →  delegates to self._battle.terrain
 `_make_is_blocking(x0, y0, x1, y1)` builds a per-query blocking predicate:
 
 1. Asks `Terrain.blocking_footprints_for_endpoints(x0, y0, x1, y1)` for the
-   "active" footprints — those containing **neither** endpoint (10e see-out /
+   "active" footprints — those containing **neither** endpoint (see-out /
    see-into rule, evaluated per ruin independently).
 2. A cell is blocking if `config.blocking_mask[y][x]` is True **OR** the cell
    is contained by any active footprint.

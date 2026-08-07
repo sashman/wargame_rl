@@ -255,13 +255,13 @@ def test_terrain_los_blocked_between_outside_models() -> None:
 
 
 def test_terrain_los_see_into_target_inside() -> None:
-    """Target inside footprint -> LOS clear (10e see-into rule)."""
+    """Target inside footprint -> LOS clear (see-into rule)."""
     env = _terrain_env([TerrainPieceConfig(footprint=(8, 4, 12, 6))])
     assert env.has_line_of_sight_between_cells(0, 5, 10, 5) is True
 
 
 def test_terrain_los_see_out_observer_inside() -> None:
-    """Observer inside footprint -> LOS clear (10e see-out rule)."""
+    """Observer inside footprint -> LOS clear (see-out rule)."""
     env = _terrain_env([TerrainPieceConfig(footprint=(8, 4, 12, 6))])
     assert env.has_line_of_sight_between_cells(10, 5, 19, 5) is True
 

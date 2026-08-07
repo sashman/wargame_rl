@@ -52,7 +52,8 @@ wargame_rl/
 ├── examples/env_config/           # YAML environment configurations
 ├── tests/                         # Pytest suite with conftest.py fixtures
 ├── docs/                          # Design docs (movement, reward phases, missions-and-vp,
-│                                  #   roadmap, rules, metrics, shooting, terrain)
+│                                  #   roadmap, metrics, shooting, terrain)
+│   └── rules/                     # Rules specification + constants.yaml + gap map
 ├── reports/                       # Experiment findings, kept for retrospection
 ├── scripts/                       # Run-inspection tooling (run_summary, measure_phase_gates,
 │                                  #   measure_baselines, measure_checkpoint, measure_terrain,
@@ -104,6 +105,7 @@ wargame_rl/
 - **Deployment zones** — configurable spawn areas for player and opponent
 - **Group cohesion** — optional penalty for unit separation
 - **DDD layering** — `domain/` owns the rules (Battle aggregate, clock, placement, termination, LOS, shooting); `wargame.py` is a facade; reward/renders depend only on the `BattleView` protocol. See [docs/ddd-envs.md](docs/ddd-envs.md)
+- **Rules specification** — [docs/rules/](docs/rules/README.md) is the game's rules authority: a self-contained spec written for this project, with `constants.yaml` (every number, in inches) and [implementation-status.md](docs/rules/implementation-status.md) (per-rule: implemented / partial / divergent / absent). Before implementing a mechanic, read its chapter and its gap-map row. `tests/test_no_ip_references.py` keeps the repo free of references to the commercial product the rules derive from — the spec names no product, publisher, edition or faction, and neither should anything else
 
 ### Game State I/O (`envs/state/`)
 
@@ -192,7 +194,7 @@ Detailed patterns live next to the code they govern — read them when working i
 - Parameterize shared infrastructure (e.g. `ActionHandler(n_models=...)`) rather than duplicating it
 - Always default new config fields to the no-op value so existing YAML configs keep working (e.g. `number_of_opponent_models=0`)
 - Full checklist: config types → env state → observation types → observation builder → tensor pipeline → DQN networks → renderer → tests → backward compat tests
-- When adding config that changes step semantics or episode length, update docs (`docs/reward-phases.md`, `docs/tabletop-rules-reference.md`, `docs/opponent-policies.md`, `docs/goals-and-roadmap.md`) and any tests that assume steps-per-round or phase order
+- When adding config that changes step semantics or episode length, update docs (`docs/reward-phases.md`, `docs/rules/implementation-status.md`, `docs/opponent-policies.md`, `docs/goals-and-roadmap.md`) and any tests that assume steps-per-round or phase order
 - When adding new reward calculators or success criteria, register them and document in `docs/reward-phases.md` (tables and file layout)
 - When changing the environment, domain, reward, or rendering, follow [docs/ddd-envs.md](docs/ddd-envs.md): keep domain logic in `domain/`, use `BattleView` for read-only state, and preserve dependency direction (domain → types only; reward/renders → BattleView)
 

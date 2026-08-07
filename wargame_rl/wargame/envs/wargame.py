@@ -315,7 +315,8 @@ class WargameEnv(gym.Env):
         self, x0: int, y0: int, x1: int, y1: int
     ) -> Callable[[int, int], bool]:
         """Per-query blocking predicate: static blocking_mask OR membership of any
-        footprint that contains NEITHER endpoint (10e see-out / see-into rule)."""
+        footprint that contains NEITHER endpoint (the see-out / see-into rule,
+        docs/rules/13-terrain.md)."""
         mask = self.config.blocking_mask
         active = self._battle.terrain.blocking_footprints_for_endpoints(x0, y0, x1, y1)
 

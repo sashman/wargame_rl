@@ -9,7 +9,7 @@
 ## Overview
 
 This milestone adds terrain (Ruins) that blocks **line of sight only** to the existing PPO/DQN
-wargame env, using the canonical Warhammer 40k 10e **Ruins abstraction**: a terrain piece is a
+wargame env, using the canonical **Ruins abstraction**: a terrain piece is a
 **footprint rectangle** and the *footprint itself* is the LOS blocker. A ruin blocks the line between
 two models only when its footprint lies between them and **both** are outside it; a model inside the
 footprint can **see out** and be **seen into** (per-ruin see-into/see-out exceptions). Walls have **no
@@ -27,7 +27,7 @@ Bresenham core in `domain/los.py` stays untouched. The central backward-compat g
 ⇒ zero terrain tokens ⇒ byte-identical behaviour and pre-terrain checkpoints still load.**
 
 > **LOS model note:** An earlier draft assumed thin walls rasterised to blocking cells. Phase 1
-> discussion reset to the source 10e Ruins rules, which abstract LOS to the **footprint** (you cannot
+> discussion reset to the source Ruins rules, which abstract LOS to the **footprint** (you cannot
 > see through a ruin even via windows). Walls are deferred. See `01-terrain-los-blocking/01-CONTEXT.md`.
 
 > **Phase directory naming:** This milestone uses unprefixed directories
@@ -49,7 +49,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### Phase 1: Terrain in the Simulation (LOS-Blocking)
 **Goal**: Ruin footprints authored in YAML block line of sight through the single LOS service (with
-10e see-into/see-out exceptions) while movement is unaffected; configs with no terrain behave exactly
+see-into/see-out exceptions) while movement is unaffected; configs with no terrain behave exactly
 as today.
 **Directory**: `01-terrain-los-blocking`
 **Depends on**: Nothing (first phase; depends only on the existing domain/LOS layer)
