@@ -244,6 +244,16 @@ def _observation_to_numpy(
 
     obj_locs = np.array([o.location for o in state.objectives], dtype=np.float32)
     obj_features = _normalize(obj_locs, half_board)
+    # Control state widens the objective token 2 -> 5 when `observe_objective_
+    # control` is set. There is no column-index trap here: unlike the per-model
+    # tensor, `TransformerNetwork.from_env` reads `objective_size` straight off
+    # `tensors[1].shape[-1]`, so the embedding resizes on its own.
+    if state.objectives and state.objectives[0].player_count is not None:
+        control = np.array(
+            [[o.player_count, o.opponent_count, o.radius] for o in state.objectives],
+            dtype=np.float32,
+        )
+        obj_features = np.hstack([obj_features, control])
 
     normalized_round = state.battle_round / max(state.n_rounds, 1)
     normalized_phase = state.battle_phase_index / max(N_BATTLE_PHASES - 1, 1)

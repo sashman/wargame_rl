@@ -132,7 +132,9 @@ def test_train_forwards_resume_ckpt_to_trainer(
     monkeypatch.setattr(
         train_module,
         "PPO_Transformer",
-        type("X", (), {"from_env": staticmethod(lambda env: object())}),
+        # Takes the PPO config too: it decides whether the model is built with a
+        # shooting slice, and therefore whether it decodes targets autoregressively.
+        type("X", (), {"from_env": staticmethod(lambda env, config=None: object())}),
     )
     monkeypatch.setattr(train_module, "PPOLightning", lambda **kwargs: DummyModel())
 

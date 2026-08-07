@@ -21,6 +21,9 @@ if TYPE_CHECKING:
 DEFAULT_PLAYER_VALUE = 1.0
 DEFAULT_CONTESTED_VALUE = 0.5
 DEFAULT_OPPONENT_VALUE = 0.25
+# 1.0 = surplus models are paid exactly like the ones holding the point, which
+# is the historical behaviour every existing config and checkpoint assumes.
+DEFAULT_SURPLUS_VALUE = 1.0
 
 
 class ObjectiveHoldCalculator(PerModelRewardCalculator):
@@ -49,18 +52,67 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         player_value: float = DEFAULT_PLAYER_VALUE,
         contested_value: float = DEFAULT_CONTESTED_VALUE,
         opponent_value: float = DEFAULT_OPPONENT_VALUE,
+        surplus_value: float = DEFAULT_SURPLUS_VALUE,
     ) -> None:
         super().__init__(weight=weight)
         self.player_value = player_value
         self.contested_value = contested_value
         self.opponent_value = opponent_value
+        self.surplus_value = surplus_value
         self._cached_ctx: StepContext | None = None
         self._cached_values: np.ndarray | None = None
+        # Its own cache key: `_objective_values` runs first and stamps
+        # `_cached_ctx`, so sharing that key would freeze the quota after
+        # step one and pay the same models for the whole episode.
+        self._cached_quota_ctx: StepContext | None = None
+        self._cached_within_quota: np.ndarray | None = None
 
     def reset_episode(self) -> None:
         """Drop the per-step control-state cache."""
         self._cached_ctx = None
         self._cached_values = None
+        self._cached_quota_ctx = None
+        self._cached_within_quota = None
+
+    def _within_quota(self, view: BattleView, ctx: StepContext) -> np.ndarray:
+        """``(n_models, n_objectives)`` bool: is this model *needed* to hold that point?
+
+        Control is a strict count comparison, so an objective needs
+        ``opponent_count + 1`` models and every model beyond that changes
+        nothing about who scores it. The models nearest the centre are counted
+        as the holders; the rest are surplus.
+
+        This is what makes "take a second objective" pay more than "add a
+        sixteenth model to the first". Without it the calculator is indifferent
+        between 15 models on one point and 8/7 across two -- both pay
+        ``15 x player_value`` -- while VP is worth double for the second.
+        """
+        cache = ctx.distance_cache
+        inside = cache.model_obj_norms_offset <= cache.obj_radii
+
+        if view.opponent_models:
+            opponent_alive = alive_mask_for(view.opponent_models)
+            opponent_norms = compute_distances(
+                view.opponent_models, view.objectives, alive_mask=opponent_alive
+            ).model_obj_norms_offset
+            opponent_counts = (opponent_norms <= cache.obj_radii).sum(axis=0)
+        else:
+            opponent_counts = np.zeros(len(view.objectives), dtype=int)
+
+        within = np.zeros_like(inside, dtype=bool)
+        for obj_idx in range(inside.shape[1]):
+            occupants = np.flatnonzero(inside[:, obj_idx])
+            if occupants.size == 0:
+                continue
+            quota = int(opponent_counts[obj_idx]) + 1
+            # Nearest to the centre are the holders. Any deterministic rule
+            # works -- what matters is that the same models keep the full value
+            # from step to step, or the reward would flicker between them.
+            nearest = occupants[
+                np.argsort(cache.model_obj_norms_offset[occupants, obj_idx])
+            ]
+            within[nearest[:quota], obj_idx] = True
+        return within
 
     def _value_for_state(self, state: str) -> float:
         if state == "player":
@@ -119,4 +171,14 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         if not bool(np.any(inside)):
             return 0.0
         values = self._objective_values(view, ctx)
-        return float(np.max(values[inside]))
+
+        if self.surplus_value == 1.0:
+            return float(np.max(values[inside]))
+
+        if ctx is not self._cached_quota_ctx or self._cached_within_quota is None:
+            self._cached_within_quota = self._within_quota(view, ctx)
+            self._cached_quota_ctx = ctx
+        within = self._cached_within_quota[model_idx]
+
+        scaled = np.where(within, values, values * self.surplus_value)
+        return float(np.max(scaled[inside]))

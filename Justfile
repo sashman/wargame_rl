@@ -88,7 +88,7 @@ train-multi-seeds max_epochs n_seeds *configs:
 	for s in $(seq 1 {{n_seeds}}); do \
 		echo "=== seed $s of {{n_seeds}} ===" && \
 		for c in {{configs}}; do \
-			uv run train.py --record-during-training --env-config-path "$c" --algorithm ppo --network-type transformer --max-epochs {{max_epochs}} --seed "$s" --run-suffix "s$s" --wandb-group "$group" & \
+			uv run train.py --record-during-training --env-config-path "$c" --algorithm ppo --network-type transformer --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" --run-suffix "s$s" --wandb-group "$group" & \
 		done; \
 		wait; \
 	done
@@ -102,9 +102,33 @@ train-multi-seeds max_epochs n_seeds *configs:
 train-seed max_epochs seed group *configs:
 	@trap 'kill 0' INT TERM && \
 	for c in {{configs}}; do \
-		uv run train.py --record-during-training --env-config-path "$c" --algorithm ppo --network-type transformer --max-epochs {{max_epochs}} --seed {{seed}} --run-suffix "s{{seed}}" --wandb-group "{{group}}" & \
+		uv run train.py --record-during-training --env-config-path "$c" --algorithm ppo --network-type transformer --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed {{seed}} --run-suffix "s{{seed}}" --wandb-group "{{group}}" & \
 	done; \
 	wait
+
+# One arm of a screen: every config at each of N seeds, with an explicit run-name
+# tag and extra train.py flags appended. `train-multi-seeds` cannot do this --
+# it mints its own group and passes no flags, so a 2x2 over (config x flag)
+# needs the flag axis driven from outside.
+#
+# `tag` is appended to the run suffix, so arms sharing a config still land in
+# distinct checkpoint directories and are distinguishable in the Wandb UI.
+# Pass an empty `flags` for the no-flag arm; keep `group` the same across arms
+# so the whole screen groups together.
+#
+# One seed group at a time, same as train-multi-seeds: a PPO transformer run
+# holds ~3.8 GB of VRAM, so keep the concurrent count equal to the config count.
+#
+# Use: just train-arm 1000 2 beat-2026-08-06 decode "--distinct-shooting-targets" a.yaml b.yaml
+train-arm max_epochs n_seeds group tag flags *configs:
+	@trap 'kill 0' INT TERM && \
+	for s in $(seq 1 {{n_seeds}}); do \
+		echo "=== seed $s of {{n_seeds}} ({{tag}}) ===" && \
+		for c in {{configs}}; do \
+			uv run train.py --record-during-training --env-config-path "$c" --algorithm ppo --network-type transformer --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" --run-suffix "s$s{{tag}}" --wandb-group "{{group}}" {{flags}} & \
+		done; \
+		wait; \
+	done
 
 # Run multiple env configs in parallel. Each run gets a unique --run-suffix and shared --wandb-group.
 # Uses PPO + transformer. Use: just train-multi config1.yaml config2.yaml
@@ -185,13 +209,27 @@ measure-phase-gates checkpoint env_config n_episodes='30':
 # Scripted baseline scores for an env config -- the floor and bar for any learned policy.
 # Pass `record` as the third argument to also write reference traces to recordings/.
 # Pass `seed_base` (e.g. 700000) to score on the same layouts as measure-checkpoint.
-measure-baselines env_config n_episodes='25' record='' seed_base='':
+#
+# n=100 to match measure-checkpoint's default: an agent row and a baseline row
+# must be drawn from the same layout set *and* the same number of episodes, or
+# the comparison inherits the larger of the two error bars.
+measure-baselines env_config n_episodes='100' record='' seed_base='':
 	@uv run python -m scripts.measure_baselines {{env_config}} {{n_episodes}} "{{record}}" "{{seed_base}}"
 
 # Score a checkpoint on held-out seeds through the same code path as the baselines,
 # so the two are directly comparable. Pass `record` as the fourth argument for a trace.
-measure-checkpoint checkpoint env_config n_episodes='30' record='':
-	@uv run python -m scripts.measure_checkpoint {{checkpoint}} {{env_config}} {{n_episodes}} {{record}}
+# Pass `distinct` as the fifth for a checkpoint trained with
+# `--distinct-shooting-targets` -- that setting is not recoverable from the weights,
+# and scoring without it sends every model at the same target.
+#
+# n=100, not 30. Per-episode vp_margin sd is ~45-50 on the 25v25 configs, so the
+# standard error on the mean is ~8-9 at n=30 -- larger than most arm differences
+# ever measured here (4-10 vp), which made the authoritative measurement unable
+# to resolve what it was measuring. n=100 halves that to ~4.5 and costs minutes
+# against the hours a training run costs. Scoring was the cheap half being
+# under-sampled while the expensive half was over-sampled.
+measure-checkpoint checkpoint env_config n_episodes='100' record='' distinct='':
+	@uv run python -m scripts.measure_checkpoint {{checkpoint}} {{env_config}} {{n_episodes}} "{{record}}" "{{distinct}}"
 
 # How much of a config's outcome spread is dice rather than policy. Holds the
 # layouts fixed and varies only the combat seed, so the within-layout spread is

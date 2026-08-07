@@ -49,6 +49,22 @@ Two side findings, both stronger than the headline:
 - **The line-of-sight observation is null.** Not weak — null, on both seeds, on every
   metric. Adding it on top of the loss penalty makes the arm marginally worse.
 
+> **CORRECTIONS (2026-08-06, same day).** Both bullets above overstate what was measured,
+> and one headline claim further down is simply wrong. Read the inline corrections before
+> using any number from this report:
+>
+> 1. **"All four arms clear the bar" is false.** Agent and baseline were scored on
+>    different layout sets. On matched seeds the bar is 0.77 win / +39.4 VP and the best
+>    arm is 0.67 / +16.3 — the agent is *below* the scripted heuristic, not above it.
+> 2. **The `models_lost` +7 does not survive.** It is window-dependent and reverses on
+>    held-out layouts. Its sign is unestablished.
+> 3. **"Null" overstates the signal result.** The data bound the effect at roughly
+>    |Δ| ≲ 5pp win / ≲ 2 VP with a ±6.5pp paired swing. That is "not detected", not "null".
+>    Deleting the feature was a defensible engineering call presented as a finding.
+>
+> The follow-up that found all three, and what actually closes the gap, is
+> [2026-08-06-beat-the-shooting-opponent.md](2026-08-06-beat-the-shooting-opponent.md).
+
 ## What had to be built first
 
 The prior batch could not answer the question, for three measurable reasons. PR #136
@@ -148,6 +164,52 @@ Floor and bar on this terrain, measured with `just measure-baselines`: `random` 
 `squad_march_shoot` **0.45** (down from 0.63 on the batch-1/2 profile — changing the
 terrain invalidated the old bar). All four arms clear the bar.
 
+> **CORRECTION (2026-08-06, same day).** The two sentences above are wrong, and the
+> conclusion they support — that the agent is ahead of the scripted heuristic — is the
+> opposite of the truth.
+>
+> **The `0.45` has the wrong provenance.** It is not what `just measure-baselines
+> examples/env_config/25v25_cover_control.yaml 30` returns; that command returns **0.53**.
+> `0.45` is 9/20, the in-run `eval/baseline_squad_march_shoot_win_rate`, which uses
+> `BASELINE_EPISODES = 20` on seeds 10000-10019. The Reproducing section below was never
+> actually run — `recordings/` contains no batch-3 baseline trace.
+>
+> **The comparison was never apples-to-apples.** Each arm's `eval/win_rate` comes from the
+> 10 fixed layouts at `EVAL_SEED_BASE` (`train-multi-seeds` passes no `--n-eval-episodes`,
+> so PPO's default of 10 applies). The bar came from a different layout set entirely, and
+> `docs/metrics.md` states the rule this breaks: a run and a differently-seeded measurement
+> are not comparable.
+>
+> **The bar is not a number, it is a distribution over layout sets.** Same policy, same
+> config:
+>
+> | seeds | n | `squad_march_shoot` win | vp_margin |
+> |---|---|---|---|
+> | 10000-10019 (the in-run baseline) | 20 | 0.45 | −15 |
+> | 10000-10029 (`measure-baselines … 30`) | 30 | 0.53 | −4.3 |
+> | 700000-700029 (`measure-checkpoint`'s held-out set) | 30 | **0.77** | **+39.4** |
+>
+> A 32-point swing on a deterministic scripted policy, purely from which maps you draw.
+>
+> **On matched layouts the agent is below the bar.** Scored through `measure-checkpoint`
+> on seeds 700000-700029, the same 30 layouts as the bar's 0.77 row:
+>
+> | policy | on obj | win | vp margin |
+> |---|---|---|---|
+> | `squad_march_shoot` (bar) | **1.000** | **0.77** | **+39.4** |
+> | H control s1 | 0.925 | 0.67 | +16.3 |
+> | H control s2 | 0.924 | 0.57 | +11.2 |
+> | J reason s1 | 0.877 | 0.57 | +8.7 |
+> | J reason s2 | 0.933 | 0.57 | +4.5 |
+>
+> The agent trails by ~10pp on win rate and **23 VP** on margin. Note also that the control
+> beats the treatment on both seeds here, which is the reverse of the `models_lost` finding
+> below — see the correction attached to it.
+>
+> The occupancy shortfall is not models failing to arrive. It is models **piling onto one
+> objective**: measured final counts from H, e.g. `player [0,15,0]` against
+> `opp [6,0,14]`. See [the 2026-08-06 follow-up](2026-08-06-beat-the-shooting-opponent.md).
+
 ### Win rate cannot answer this; vp_margin can
 
 The **within-arm seed spread on win rate is 6.0–7.3pp**, and the largest between-arm gap is
@@ -165,6 +227,37 @@ vp_margin separates cleanly:
 Inferred, not measured: with two seeds there is no confidence interval, only
 non-overlapping ranges. The claim supported is "the loss penalty moved vp_margin by roughly
 +7 in both replicates"; the claim *not* supported is any precise effect size.
+
+> **CORRECTION (2026-08-06, same day).** The non-overlap above is an artefact of the window
+> it was measured in, and the effect does not survive a held-out check. The honest status of
+> `models_lost` is **unestablished — including its sign**.
+>
+> **It is window-dependent.** The same rolling mean over the *previous* 100-epoch block:
+>
+> | arm | last 100 | previous 100 |
+> |---|---|---|
+> | H control s1 / s2 | +5.12 / +2.85 | +4.29 / +1.12 |
+> | I signal s1 / s2 | +4.06 / +3.02 | +6.24 / **+8.79** |
+> | J reason s1 / s2 | +14.72 / +8.22 | +10.93 / +13.87 |
+> | K full s1 / s2 | +15.06 / +6.63 | +12.34 / **−2.66** |
+>
+> In the preceding block the ranges overlap outright — a no-penalty run (I s2, +8.79) beats
+> a penalty run (K s2, −2.66). Within-run block-to-block swings are ±6 VP, the same size as
+> the claimed effect. Batch 2 verified its arms were flat across their final buckets; batch
+> 3 skipped that check, and five of eight runs move by more than 3 VP between the last two
+> blocks. **Whether 1000 epochs converges on this config is unestablished.**
+>
+> **It reverses on held-out layouts.** Scored through `measure-checkpoint` on seeds
+> 700000-700029, the control beats the treatment on *both* seeds: H at +16.3 / +11.2 against
+> J at +8.7 / +4.5. With a per-episode VP sd of ~45–50 the standard error on a 30-episode
+> mean is ~8–9, so this reversal is itself inside noise — which is the point. Both the +7
+> and its reversal are inside the measurement noise.
+>
+> **What the data does support** is weaker and was never stated: the runs are seed-paired
+> (`train-multi-seeds` gives every config the same `--seed`), and paired J−H is +9.6 and
+> +5.4, paired K−H is +10.0 and +3.8. Four positive paired differences is better evidence
+> than the non-overlap argument actually made — but it bounds the magnitude only to
+> somewhere in 4–10, on the training layouts, and it does not survive the held-out set.
 
 ## What the 2x2 says
 

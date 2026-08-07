@@ -25,9 +25,11 @@ Applies to everything under `tests/`. General testing philosophy lives in the ro
 
 **Reward & mission** — `test_reward_phases` · `test_new_per_model_calculators` · `test_per_model_credit` · `test_player_ahead_on_vp_criteria` · `test_mission_vp` · `test_killing_reward` · `test_models_lost_reward` (the loss penalty must be global — per-model is identically zero on one-wound models) · `test_curriculum_configs` (every 25v25 config must keep `vp_gain` + a per-model calculator; also pins the batch-2 and batch-3 arm factorials)
 
-**Model & training** — `test_dqn` (networks/loss/training) · `test_ppo` · `test_agent` (actions/episodes) · `test_state` (obs/batch tensors) · `test_transformer_shooting_policy` (shooting head, dead-token masking) · `test_batched_eval` (lockstep eval waves) · `test_training_diagnostics` · `test_train_resume` · `test_train_run_name` · `test_simulate` · `test_z_e2e_training`
+**Model & training** — `test_dqn` (networks/loss/training) · `test_ppo` · `test_agent` (actions/episodes) · `test_state` (obs/batch tensors) · `test_transformer_shooting_policy` (shooting head, dead-token masking) · `test_distinct_shooting_targets` (autoregressive target decode; pins that `evaluate_actions` rebuilds exactly the conditionals the rollout sampled under, or PPO's importance ratio is silently wrong) · `test_batched_eval` (lockstep eval waves) · `test_training_diagnostics` · `test_train_resume` · `test_train_run_name` · `test_simulate` · `test_z_e2e_training`
 
-**Baselines & opponents** — `test_baselines` (scripted reference policies) · `test_opponents` (opponent system)
+**Observation** — `test_objective_control_observation` (`observe_objective_control`: token width off/on, counts exclude dead models, recomputed each step, batching, and that the transformer resizes its objective embedding on its own)
+
+**Baselines & opponents** — `test_baselines` (scripted reference policies) · `test_opponents` (opponent system) · `test_contest_and_spread_baseline` (opponent-aware allocation + de-duplicated fire; records a *refuted* hypothesis — it loses to `squad_march_shoot`, because concentration is why that bar wins)
 
 **State I/O** — `test_snapshot` · `test_state_injection` · `test_event_stream` · `test_narrator`
 

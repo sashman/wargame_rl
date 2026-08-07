@@ -39,6 +39,15 @@ CONFIG_PATHS = [
     # and the arm that priced model losses.
     CONFIG_ROOT / "25v25_cover_control.yaml",
     CONFIG_ROOT / "25v25_cover_reason.yaml",
+    # Batch-4 prototypes, both targeting the same over-stacking defect: one
+    # prices concentration itself, the other discounts only surplus models.
+    CONFIG_ROOT / "25v25_beat_spread.yaml",
+    CONFIG_ROOT / "25v25_beat_surplus.yaml",
+    CONFIG_ROOT / "25v25_beat_surplus0.yaml",
+    # Round 3: the control-state observation, alone and under the surplus
+    # discount that measured null without it.
+    CONFIG_ROOT / "25v25_beat_observe.yaml",
+    CONFIG_ROOT / "25v25_beat_observe_surplus.yaml",
 ]
 
 # A one-objective stack caps at 19 scoring rounds x 5 VP = 95 of a 285
