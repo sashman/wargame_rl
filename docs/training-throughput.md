@@ -12,6 +12,12 @@ is now 3.8 s. The 80-gradient-step PPO update is 2.8 s beside it — so with the
 environment fixed, neither half caps the epoch on its own, and the GPU levers
 matter more than an earlier draft of this page predicted.
 
+**A ranked plan for what to do next lives in
+[reports/2026-08-08-throughput-review.md](../reports/2026-08-08-throughput-review.md).**
+It also records five premises this page previously got wrong, including two that
+invert conclusions drawn from historical run timings — every wandb record predates
+the environment work above and was produced under a ~5x slower environment.
+
 `RewardPhaseManager` calls every per-model calculator once per model. Two
 calculators were recomputing a quantity that does not depend on the model being
 scored, so each was doing 25× the necessary work — together ~80% of a 25v25 step.
@@ -108,8 +114,22 @@ obs -> numpy               0.54 ms
 
 ## Epoch budget on the training GPU (RTX 4090, sm_89)
 
+**Do not combine this table with the step budget above it — they are from
+different machines.** The step budget is dev-box scale; deriving "the forward is
+X% of rollout" from the two together yields a negative number.
+
+**`perf/epoch_s` excludes evaluation**, and the eval figure below used the
+`PPOConfig` default of 10 episodes. Every seeded recipe passes
+`--n-eval-episodes 30` (`Justfile:91,105,128`), and `max_turns` = 20 rounds x 2
+active phases = 40 — so a real experiment epoch runs **1200 eval env steps against
+2048 rollout steps** and costs **~8.4 s, of which eval is ~22%**. Percentages
+quoted against 6.55 s are optimistic by about a quarter.
+
 Measured on `25v25_shooting_opponent.yaml`, median of six epochs, 2048 rollout
-steps and 80 minibatches:
+steps and 80 minibatches. Sequence length is **T = 83** on this config (1 game + 3
+objectives + 25 player + 25 opponent + **29 terrain**) — the "61-token" figure
+quoted elsewhere belongs to `25v25_single_phase.yaml`, which has 7 fixed terrain
+pieces. Terrain is 35% of the token budget here, and trunk cost is linear in T:
 
 | | fp32 (`--no-tf32`) | **TF32 (default)** | TF32 + `bf16-mixed` |
 |---|---|---|---|
@@ -161,18 +181,30 @@ ratio of 1 and train on nothing, at full speed, with no metric saying so.
 `tests/test_precision.py` pins both the cast and the quantisation that motivates
 it.
 
-### `torch.compile` is measured but blocked
+### `torch.compile` is measured but not wired
 
-1.42x on the update alone, **3.26x** stacked with bf16 (14.0 ms per minibatch) —
-the largest single number on this page. It is not wired up because
-`torch.compile` prefixes every `state_dict` key with `_orig_mod.`, and
-`_apply_warm_start_weights` loads with `strict=False`. A checkpoint written by a
-compiled run would therefore load into `simulate`, `record-sim`,
-`measure-checkpoint` or a warm start by matching **no keys at all** and raising
-nothing — a randomly initialised network scored as a trained one. Strip the
-prefix on save, or assert a non-empty key intersection on load, before enabling
-this. It is the same silent-`strict=False` trap already flagged for
-`share_transformer` below.
+1.42x on the update alone, **3.26x** stacked with bf16 (14.0 ms per minibatch).
+
+**Corrected 2026-08-08 — an earlier version of this section overstated the
+blocker.** It claimed a compiled checkpoint would silently load as nothing in
+`simulate`, `measure-checkpoint` and warm starts alike. In fact
+`convert_state_dict` (`net.py:677-678`) already strips `_orig_mod.` and raises
+`ValueError` when no key matches, so `simulate`, `record-sim`,
+`measure-checkpoint` and `measure-phase-gates` are safe and fail loudly, and
+`trainer.fit(ckpt_path=...)` is strict by default. **Only
+`_apply_warm_start_weights` (`train.py:139`, `strict=False`) is silently holed.**
+
+And the problem is avoidable rather than fixable: **`torch.compile(model.forward)`
+— the bound method rather than the module — leaves `state_dict` byte-identical**
+(verified: compiling a module yields `_orig_mod.0.weight`; compiling its
+`forward` yields `0.weight`). Wire it that way and no checkpoint consumer is
+touched at all.
+
+Worth doing only on top of bf16: the gain is 2.8% of an epoch at TF32 but 7.5% at
+bf16, because eager dispatch only starts to bind once the minibatch is down to
+~19 ms. Use `mode="max-autotune-no-cudagraphs"`, explicitly **not**
+`"reduce-overhead"` — CUDA graphs target launch overhead, and this loop is
+bandwidth-bound, not launch-bound.
 
 ## What is left, ranked
 
