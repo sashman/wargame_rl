@@ -95,6 +95,53 @@ redistribute reward, not destroy it.** Ask of any shaping term whether the behav
 pays *more* in total than the behaviour it is replacing. If it does not, the policy will read
 it as a tax on the whole activity.
 
+## 2b. The confound control: the weight alone does not explain it
+
+The two arms above moved two knobs together — the exponent, and the weight calibrated to keep
+5 occupants paying today's 0.25/step. Total objective income rose with it (episode integrals
+under the bar's play: 7.09 control, 7.73 `share_soft`, 9.13 `share`). So two explanations fit
+every number in §1:
+
+* **A** — crowding is priced and models redistribute to the second objective.
+* **B** — objectives simply pay ~30% more and the exponent is incidental.
+
+`25v25_beat_flat.yaml` is B: `share`'s weight 1.25 with `crowding_exponent` back to 0.0. It
+differs from `25v25_beat_share.yaml` by exactly one value and from the control by exactly one
+value. Two seeds, 1000 epochs, scored at n=100 on the same seeds.
+
+| arm | exponent | weight | on_obj | win | **vp margin** | held | busiest objective | alive | firepower |
+|---|---|---|---|---|---|---|---|---|---|
+| control | 0.0 | 0.25 | 0.912 | 0.535 | **+3.25** | 1.43 | 12.89 v 0.25 | 0.62 | 1.38 |
+| **`flat`** | **0.0** | **1.25** | 0.955 | **0.29** | **−40.4** | **1.055** | **20.16 v 0.29** | **0.83** | 3.85 |
+| `share` | 1.0 | 1.25 | 0.935 | 0.685 | **+28.4** | 1.59 | 10.05 v 0.22 | 0.59 | 1.64 |
+
+**B is refuted, and not narrowly — it inverts.** Raising the weight with flat pricing is
+*catastrophically* worse than leaving it alone: −40.4 against the control's +3.25, the worst
+trained arm ever measured on this scenario. At a fixed weight of 1.25 the exponent alone is
+worth **68 vp_margin**.
+
+The failure is legible in one number: **20.2 of 20.8 survivors end on a single objective.**
+`on_obj` 0.955 is the highest of any trained arm, the second objective is abandoned 0.6 to
+10.4, and `alive` 0.83 is the highest ever recorded here because the policy is barely
+fighting. Standing still on the nearest point pays 1.25/step — ~50 over an episode against
+this config's ~10-per-term budget — so the policy does that and nothing else, losing 99 VP to
+140 while winning every firefight it bothers to have. It is a clean live demonstration of the
+magnitude rule the configs already state and this arm deliberately broke.
+
+*The asymmetry favours the refuted explanation, so the conclusion is stronger than the table
+looks:* `flat` was scored at a true epoch 1000, while `share`'s two checkpoints were epochs
+970 and 692 — the `last.ckpt` bug in §5 was only fixed after `share` had run.
+
+**One nuance, stated because it is not separable here.** The exponent does two things at once
+by construction: it prices crowding, *and* it auto-regulates magnitude, since dividing by ~10
+occupants brings `share`'s effective pay to ~0.125/step, near the control's 0.25. "Crowding is
+priced" and "the term stays inside its budget" are the same mechanism rather than two
+competing ones — but no experiment here separates them, and a reader wanting only the
+magnitude story is not contradicted by this data.
+
+**The 2x2 still has an empty cell**: `a` = 1.0 at weight 0.25. That is a magnitude question,
+not a validity one, and it is the natural companion to any sweep over `a`.
+
 ## 3. The exponent barely matters; the mechanism does
 
 At 300 epochs the two arms were indistinguishable (+12.3 and +10.4 over the control, against a
