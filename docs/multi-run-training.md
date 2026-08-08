@@ -42,6 +42,7 @@ Pass these to `uv run train.py` directly, or as trailing extra arguments to `jus
 - **`--run-suffix`** — Appended to the run name so checkpoint dirs stay unique (e.g. when scripting parallel jobs yourself).
 - **`--wandb-group`** — Group name in the Wandb UI for organizing related runs.
 - **`--seed`** — Seeds weight init, rollout and eval via `seed_everything`. Omitted, runs are seeded from OS entropy: replicates still differ, but neither is reproducible.
+- **`--lr`** / **`--max-grad-norm`** — Override the PPO learning rate and the gradient-clipping threshold. Measured on `25v25_shooting_opponent.yaml`: clipping binds on **100% of minibatches** at the 0.5 default for a whole run, so `max_grad_norm` — not `lr` — currently sets the effective step size. See [training-throughput.md](training-throughput.md) and `train/grad_clipped_fraction`.
 - **`--no-tf32`** — Keep matmuls at full fp32. TF32 is on by default on sm_80+, and reproducing a run requires matching this flag as well as the seed. See [docs/training-throughput.md](training-throughput.md).
 - **`--precision`** — Lightning precision, default `32-true`. `bf16-mixed` is 2.4x on the PPO update but its effect on learning is unmeasured; arms must not mix settings.
 
