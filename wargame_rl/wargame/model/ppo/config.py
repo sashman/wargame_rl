@@ -57,6 +57,11 @@ class PPOConfig(BaseModel):
     # When set to <= 0, an automatic hardware-based selection is used.
     num_rollout_envs: int = 0
     n_episodes: int = 10
+    # Evaluation is a per-epoch tax outside `perf/epoch_s`: at the 30 episodes
+    # the seeded recipes pass, it is 1200 env steps against the rollout's 2048,
+    # i.e. ~22% of a real epoch. 1 keeps the historical every-epoch behaviour.
+    # Rejected at construction on curriculum configs -- see `WargameLightningBase`.
+    eval_every_n_epochs: int = 1
 
     # Network parameters
     hidden_size: int = 128
