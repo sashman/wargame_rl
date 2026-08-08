@@ -9,10 +9,11 @@ has a private reason to leave.
 `crowding_exponent=0.0` is the default and must stay bit-identical, because every
 existing config and checkpoint assumes it.
 
-The property that separates this from `surplus_value` — and the reason to expect
-a different result — is **pot conservation at a = 1**: total pay across a point's
-occupants is its value no matter how many stand there, so spreading onto a second
-point raises total income rather than lowering it.
+The property that separates this from the two earlier levers at the same defect —
+an overstack penalty and a surplus discount, both since removed — is **pot
+conservation at a = 1**: total pay across a point's occupants is its value no
+matter how many stand there, so spreading onto a second point raises total income
+rather than lowering it. Both of those lowered it, and both collapsed occupancy.
 """
 
 from __future__ import annotations
@@ -143,12 +144,12 @@ def test_full_sharing_divides_the_value_by_the_occupant_count(
 
 @pytest.mark.parametrize("occupants", [1, 2, 3, 5])
 def test_the_pot_is_conserved_at_full_sharing(occupants: int) -> None:
-    """The property that distinguishes this from `surplus_value`.
+    """The property that distinguishes this from the levers that failed.
 
     Total pay across a point's occupants is its value regardless of how many
-    stand there — so unlike a discount, crowding moves reward *between* models
-    rather than destroying it, and holding a second point strictly raises the
-    total.
+    stand there — so unlike a penalty or a discount, crowding moves reward
+    *between* models rather than destroying it, and holding a second point
+    strictly raises the total.
     """
     rewards = _rewards(crowding_exponent=1.0, n_on_a=occupants)
 

@@ -15,7 +15,7 @@ will close it.
 Accepts either a scripted baseline name or a checkpoint path, so the agent and
 the bar are measured by one code path on identical layouts.
 
-Usage: just measure-objective-split <policy|ckpt> <env_config> [n_episodes] [distinct]
+Usage: just measure-objective-split <policy|ckpt> <env_config> [n_episodes]
 """
 
 from __future__ import annotations
@@ -108,7 +108,6 @@ def main() -> None:
     policy_name = sys.argv[1]
     config_path = sys.argv[2]
     n_episodes = int(sys.argv[3]) if len(sys.argv) > 3 else 100
-    distinct = len(sys.argv) > 4 and sys.argv[4].lower() in {"distinct", "true", "1"}
 
     with open(config_path) as handle:
         env_config = parse_yaml_raw_as(WargameEnvConfig, handle.read())
@@ -122,7 +121,7 @@ def main() -> None:
         select = selector_for(build_baseline_policy(policy_name))
         label = policy_name
     else:
-        select, _net = build_selector(policy_name, env, distinct)
+        select, _net = build_selector(policy_name, env)
         label = policy_name.split("/")[-2] if "/" in policy_name else policy_name
 
     seeds = [HELDOUT_SEED_BASE + i for i in range(n_episodes)]

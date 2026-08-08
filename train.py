@@ -171,18 +171,6 @@ def _resolve_optional_int(value: int | OptionInfo | None) -> int | None:
     return value
 
 
-def _resolve_flag(value: bool | OptionInfo) -> bool:
-    """Unwrap a Typer boolean default for callers that invoke `train()` directly.
-
-    Needed for the same reason as `_resolve_optional_int`, and more sharply: an
-    `OptionInfo` is truthy, so `bool(flag)` on an unparsed default silently
-    turns every flag *on* rather than leaving it off.
-    """
-    if isinstance(value, OptionInfo):
-        return False
-    return bool(value)
-
-
 @app.command()
 def train(
     render_mode: str | None = typer.Option(
@@ -243,13 +231,6 @@ def train(
         help=(
             "Override the number of parallel rollout envs. <=0 auto-detects "
             "from hardware (defaults to PPOConfig value)"
-        ),
-    ),
-    distinct_shooting_targets: bool = typer.Option(
-        False,
-        help=(
-            "Decode the shooting phase autoregressively so no two models pick "
-            "the same target. Off by default, matching every existing run."
         ),
     ),
     resume_ckpt_path: str | None = typer.Option(
@@ -391,7 +372,6 @@ def train(
             ppo_config.ent_coef = ent_coef
         if num_rollout_envs is not None:
             ppo_config.num_rollout_envs = num_rollout_envs
-        ppo_config.distinct_shooting_targets = _resolve_flag(distinct_shooting_targets)
         ppo_training_config = PPOTrainingConfig(
             record_during_training=record_during_training,
             record_after_epoch=record_after_epoch,

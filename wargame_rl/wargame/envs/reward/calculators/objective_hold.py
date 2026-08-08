@@ -21,9 +21,6 @@ if TYPE_CHECKING:
 DEFAULT_PLAYER_VALUE = 1.0
 DEFAULT_CONTESTED_VALUE = 0.5
 DEFAULT_OPPONENT_VALUE = 0.25
-# 1.0 = surplus models are paid exactly like the ones holding the point, which
-# is the historical behaviour every existing config and checkpoint assumes.
-DEFAULT_SURPLUS_VALUE = 1.0
 # 0.0 = an objective pays every occupant in full, the historical behaviour.
 DEFAULT_CROWDING_EXPONENT = 0.0
 
@@ -59,23 +56,24 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
     The flat default cannot express that: the thirteenth model on a point is paid
     exactly like the first, so no model ever has a private reason to leave.
 
-    **Why this rather than ``surplus_value``**, which was aimed at the same
-    thing and measured null-to-negative:
+    **Two earlier levers at this same defect failed**, and the property they
+    lacked is the one to preserve in anything that replaces this. An overstack
+    penalty and a surplus discount (both since removed) each *lowered total
+    objective income*, so the policy experienced them as "objectives pay less"
+    and did fewer of them -- occupancy 0.925 -> 0.520 and 0.784 -> 0.284. At
+    ``a = 1`` the pot is instead conserved: total pay across a point's occupants
+    is its value however many stand there, so spreading onto a second point
+    strictly *raises* income. The gradient points at the behaviour rather than
+    away from objectives.
 
-    * ``surplus_value`` is a *cliff* keyed on a hidden rank (distance to centre)
-      that no model can observe about itself. This is smooth and keyed only on
-      the occupant count, which ``observe_objective_control`` puts directly in
-      the observation -- so the policy can attribute it.
-    * ``surplus_value`` strictly *lowers* total objective income, so the policy
-      experiences it as "objectives pay less" and does less of them, which is
-      what both occupancy experiments actually measured. At ``a = 1`` the pot is
-      conserved: total pay across a point's occupants is its value regardless of
-      how many stand there, so spreading onto a second point strictly *raises*
-      total income. The gradient points at the behaviour rather than away from
-      objectives.
+    Do not read the win as "objectives should pay more". The confound was
+    controlled: the same weight with ``a = 0`` scores **-40.4 vp_margin**
+    against this term's +28.4, piling 20 of 21 survivors onto one point. At
+    fixed weight the exponent alone is worth 68 vp_margin.
 
-    The two compose (surplus scaling first, then crowding), but they are
-    alternative answers to one question and were not intended to be stacked.
+    ``a`` also auto-regulates magnitude -- dividing by ~10 occupants keeps the
+    effective pay near the flat term's -- and no experiment separates that from
+    the crowding price. Raising the weight without the exponent is what breaks.
     """
 
     def __init__(
@@ -84,14 +82,12 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         player_value: float = DEFAULT_PLAYER_VALUE,
         contested_value: float = DEFAULT_CONTESTED_VALUE,
         opponent_value: float = DEFAULT_OPPONENT_VALUE,
-        surplus_value: float = DEFAULT_SURPLUS_VALUE,
         crowding_exponent: float = DEFAULT_CROWDING_EXPONENT,
     ) -> None:
         super().__init__(weight=weight)
         self.player_value = player_value
         self.contested_value = contested_value
         self.opponent_value = opponent_value
-        self.surplus_value = surplus_value
         if crowding_exponent < 0.0:
             raise ValueError(
                 f"crowding_exponent must be >= 0, got {crowding_exponent}: a "
@@ -101,22 +97,17 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         self._cached_ctx: StepContext | None = None
         self._cached_values: np.ndarray | None = None
         # Occupancy changes every step and is read by every model, so it gets
-        # the same treat-the-context-as-the-key caching as the values do, and
-        # its own key for the same reason `_within_quota` needs one.
+        # the same treat-the-context-as-the-key caching as the values do -- and
+        # its own key, because `_objective_values` runs first and stamps
+        # `_cached_ctx`, so sharing that key would freeze occupancy at step one
+        # and price the whole episode at the opening crowd.
         self._cached_occupancy_ctx: StepContext | None = None
         self._cached_occupancy: np.ndarray | None = None
-        # Its own cache key: `_objective_values` runs first and stamps
-        # `_cached_ctx`, so sharing that key would freeze the quota after
-        # step one and pay the same models for the whole episode.
-        self._cached_quota_ctx: StepContext | None = None
-        self._cached_within_quota: np.ndarray | None = None
 
     def reset_episode(self) -> None:
         """Drop the per-step control-state cache."""
         self._cached_ctx = None
         self._cached_values = None
-        self._cached_quota_ctx = None
-        self._cached_within_quota = None
         self._cached_occupancy_ctx = None
         self._cached_occupancy = None
 
@@ -129,46 +120,6 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         self._cached_occupancy = np.atleast_1d(occupancy).astype(np.float64)
         self._cached_occupancy_ctx = ctx
         return self._cached_occupancy
-
-    def _within_quota(self, view: BattleView, ctx: StepContext) -> np.ndarray:
-        """``(n_models, n_objectives)`` bool: is this model *needed* to hold that point?
-
-        Control is a strict count comparison, so an objective needs
-        ``opponent_count + 1`` models and every model beyond that changes
-        nothing about who scores it. The models nearest the centre are counted
-        as the holders; the rest are surplus.
-
-        This is what makes "take a second objective" pay more than "add a
-        sixteenth model to the first". Without it the calculator is indifferent
-        between 15 models on one point and 8/7 across two -- both pay
-        ``15 x player_value`` -- while VP is worth double for the second.
-        """
-        cache = ctx.distance_cache
-        inside = cache.model_obj_norms_offset <= cache.obj_radii
-
-        if view.opponent_models:
-            opponent_alive = alive_mask_for(view.opponent_models)
-            opponent_norms = compute_distances(
-                view.opponent_models, view.objectives, alive_mask=opponent_alive
-            ).model_obj_norms_offset
-            opponent_counts = (opponent_norms <= cache.obj_radii).sum(axis=0)
-        else:
-            opponent_counts = np.zeros(len(view.objectives), dtype=int)
-
-        within = np.zeros_like(inside, dtype=bool)
-        for obj_idx in range(inside.shape[1]):
-            occupants = np.flatnonzero(inside[:, obj_idx])
-            if occupants.size == 0:
-                continue
-            quota = int(opponent_counts[obj_idx]) + 1
-            # Nearest to the centre are the holders. Any deterministic rule
-            # works -- what matters is that the same models keep the full value
-            # from step to step, or the reward would flicker between them.
-            nearest = occupants[
-                np.argsort(cache.model_obj_norms_offset[occupants, obj_idx])
-            ]
-            within[nearest[:quota], obj_idx] = True
-        return within
 
     def _value_for_state(self, state: str) -> float:
         if state == "player":
@@ -229,13 +180,6 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         values = self._objective_values(view, ctx)
 
         scaled = values
-        if self.surplus_value != 1.0:
-            if ctx is not self._cached_quota_ctx or self._cached_within_quota is None:
-                self._cached_within_quota = self._within_quota(view, ctx)
-                self._cached_quota_ctx = ctx
-            within = self._cached_within_quota[model_idx]
-            scaled = np.where(within, values, values * self.surplus_value)
-
         if self.crowding_exponent != 0.0:
             occupancy = np.maximum(self._player_occupancy(ctx), 1.0)
             scaled = scaled / occupancy**self.crowding_exponent

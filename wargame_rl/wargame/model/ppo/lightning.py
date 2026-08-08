@@ -787,13 +787,7 @@ class PPOLightning(WargameLightningBase):
         return self.ppo_model
 
     def _batch_greedy_actions(self, state_tensors: list[Tensor]) -> Tensor:
-        """Greedy per-model actions for a batch. The net masks internally.
-
-        Routes through the same autoregressive decode as rollout when it is
-        enabled, or eval would score a policy the agent never played: a plain
-        argmax lets every model name the target with the highest logit, which is
-        the duplicate-target behaviour the decode exists to prevent.
-        """
+        """Greedy per-model actions for a batch. The net masks internally."""
         logits, _values = self.ppo_model(state_tensors)
-        actions: Tensor = self.ppo_model.greedy_actions_from_logits(logits)
+        actions: Tensor = logits.argmax(dim=-1)
         return actions

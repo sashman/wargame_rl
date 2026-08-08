@@ -57,31 +57,6 @@ class PPOConfig(BaseModel):
     # When set to <= 0, an automatic hardware-based selection is used.
     num_rollout_envs: int = 0
     n_episodes: int = 10
-    # PROTOTYPE (2026-08-06). Decode the shooting phase autoregressively over
-    # models, forbidding a target another model has already picked this step.
-    #
-    # The default policy is factorized: one Categorical over the whole
-    # (n_models, n_actions) tensor, every row sampled independently. Combined
-    # with a permutation-equivariant backbone (`TransformerNetwork` has no
-    # positional embedding) and greedy evaluation, models in the same squad
-    # *must* emit the same argmax. Measured consequence on the batch-3 control:
-    # 7.7 shooters converge on 2.86 targets while 11.1 are available, and
-    # 36-40% of ordered shots are discarded because `_resolve_shooting_action`
-    # drops a shot whose target died earlier in the same phase.
-    #
-    # The waste is fully accounted for by overkill: feeding the observed
-    # shots-per-target histogram through 1-(1-0.2963)^n predicts 0.368 against
-    # 0.364 observed. "Every model picks a different target" is a *joint*
-    # constraint, which no per-model feature can express -- a "friendly
-    # shooters already bearing on this target" input was tested and made things
-    # worse, because the least-covered target is the most isolated enemy, i.e.
-    # the one furthest from the objectives.
-    #
-    # Re-decoding the trained control's own logits this way, movement
-    # untouched, moved vp_margin -27.0 -> -18.2 with no retraining, so the
-    # preference structure is already in the network and the decoder discards
-    # it. Training under the decoder is what this flag measures.
-    distinct_shooting_targets: bool = False
 
     # Network parameters
     hidden_size: int = 128

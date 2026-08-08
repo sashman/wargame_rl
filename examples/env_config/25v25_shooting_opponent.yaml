@@ -1,55 +1,59 @@
-config_name: 25v25_beat_observe
+config_name: 25v25_shooting_opponent
 #
-# BATCH 4 ROUND 3, ARM "OBSERVE" -- PROTOTYPE.
+# 25v25 against an opponent that shoots back. THE SHOOTING-OPPONENT CONFIG.
 #
-# Identical to 25v25_cover_control.yaml except for `observe_objective_control`
-# at the foot of this file. One thing varies.
+# This is the scenario the beat-the-bar work was done on, and this config is the
+# configuration that won it. It is NOT interchangeable with
+# 25v25_single_phase.yaml or 25v25_curriculum.yaml: those face
+# `scripted_advance_to_objective`, which never fires, on fixed terrain with no
+# objective separation constraint. Switching opponent invalidates every baseline
+# and agent score measured on a config, so numbers do not transfer either way.
 #
-# Why this arm exists. Two reward levers keyed on per-objective model counts
-# were tested and both collapsed objective occupancy on both seeds:
+# WHAT IT SCORES. n=100, seeds 700000-700099, identical layouts, against the
+# scripted baselines measured on this same config:
 #
-#   round 1  overstack_penalty_per_extra 0.01 -> 0.05   on_obj 0.925 -> 0.520
-#   round 2  objective_hold.surplus_value 1.0 -> 0.25   on_obj 0.784 -> 0.284
-#                                          and -> 0.0   on_obj 0.784 -> 0.250
+#   policy                       win    vp_margin   held
+#   random (the floor)           0.00     -164.6    0.09
+#   squad_march                  0.22      -58.9    0.99
+#   squad_march_shoot (the bar)  0.65      +17.0    1.64
+#   THIS CONFIG, 1000 epochs     0.685     +28.4    1.59
 #
-# The two are mechanically different -- one is a penalty, one is a discount --
-# and they failed identically, which points at something they share rather than
-# at either design. What they share is that **the agent cannot see the counts
-# they are keyed on**. An objective reaches the network as nothing but an (x, y)
-# location: no radius, no control state, no friendly or enemy count. So a
-# reward that pays differently depending on "how many of us are already here"
-# is unattributable, and the policy can only experience it as "standing on
-# objectives pays less" -- which is exactly the behaviour both rounds measured.
+# Both seeds clear the bar independently (+30.1 and +26.6). Reproduce with
+# `just measure-baselines examples/env_config/25v25_shooting_opponent.yaml 100 "" 700000`
+# and `just measure-checkpoint <ckpt> examples/env_config/25v25_shooting_opponent.yaml 100`.
 #
-# VP is scored on `player_count > opponent_count` per objective, so this is the
-# quantity the whole mission turns on and it was never an input.
+# THE TWO THINGS THAT MAKE IT WIN, both off by default elsewhere:
 #
-# This arm adds the observation and changes no reward. If occupancy rises on
-# its own, the signal was the missing piece. If it does nothing, the pairing
-# with 25v25_beat_observe_surplus.yaml still separates "the reward needed the
-# signal" from "the signal is inert".
+#   observe_objective_control     per-objective player/opponent counts on the
+#                                 objective token (2 -> 5 dims). Worth little
+#                                 alone (+1.55 +/- 4.5), but the reward below
+#                                 keys on a quantity that has to be observable.
+#   objective_hold                weight 1.25, crowding_exponent 1.0. The point
+#                                 pays a fixed pot split among its occupants
+#                                 rather than paying every occupant a wage.
+#
+# DO NOT RAISE THE WEIGHT WITHOUT THE EXPONENT. Measured: weight 1.25 at
+# crowding_exponent 0.0 scores -40.4 vp_margin, worse than the 0.25 default's
+# +3.25, and ends with 20 of 21 survivors stacked on a single objective. Flat pay
+# at 1.25/step integrates to ~50 an episode against this file's ~10-per-term
+# budget, so standing still out-earns everything else. At fixed weight the
+# exponent is worth 68 vp_margin.
+#
+# Weight is calibrated so the occupancy that actually holds the contested
+# objective -- 5 models, against the measured 4.22 defenders -- pays the
+# 0.25/step the flat term paid. Changing one of the pair without the other
+# changes the price of correct play, not just the price of crowding.
+#
+# See reports/2026-08-08-paying-the-pot-beats-the-bar.md. Note the scenario is
+# effectively a TWO-objective mission: both this policy and the bar concede the
+# third point in nearly every episode (the opponent stacks ~13 there and
+# flipping it costs 14), so `objectives_held` is bounded near 2.
 #
 # ---------------------------------------------------------------------------
-# Inherited from BATCH 3, ARM H -- the control.
-#
-# Batch 1/2 established that the agent manages range rather than using terrain.
-# That was measured in a world where cover could not work (5.8% of the board
-# hidden from a squad that could shoot it), could not be seen (no line-of-sight
-# input at movement time) and was worth nothing (no cost for losing a model).
-# Batch 3 fixed all three and re-asked the question as a 2x2 over signal x
-# reason. It ran, and the answer was still no -- exposure 0.092-0.110 across
-# every arm. See reports/2026-08-06-cover-signal-reason-geometry.md.
-#
-#   H  this file      no loss penalty
-#   J  _cover_reason  loss penalty -- the only lever that moved anything
-#
-# The signal axis (a per-model line-of-sight input) measured null on both seeds
-# and has been removed along with its two arms.
-#
-# Both share this terrain profile, so H is the arm the other is compared
-# against. The profile changed from batch 2, so NO batch-3 number is comparable
-# to batch 1 or batch 2, and the baselines must be re-measured.
-#
+# Scenario. Terrain is regenerated every episode rather than fixed, which is
+# what makes a positioning result falsifiable: with a fixed layout, "learned to
+# use the terrain" and "memorised the rectangles" produce the same numbers.
+# ---------------------------------------------------------------------------
 number_of_wargame_models: 25
 number_of_opponent_models: 25
 number_of_objectives: 3
@@ -223,8 +227,9 @@ reward_phases:
       # The only term that pays a model while it is stationary, and the only
       # per-model path to the central behaviour. Scaled by control state, so it
       # pays for holding a point rather than merely standing on one.
-      - type: objective_hold
-        weight: 0.25
+      - type: objective_hold  # POT-SHARING ARM: see header
+        weight: 1.25
+        params: { crowding_exponent: 1.0 }
       # Credits the model that actually fired. Shooting is half the agent's
       # decisions; under the global `killing` term every model was paid the
       # same whether it fired, missed, or stood still.

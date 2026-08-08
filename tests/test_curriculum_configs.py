@@ -34,28 +34,13 @@ CONFIG_PAIRS = [
 
 CONFIG_PATHS = [
     *(path for pair in CONFIG_PAIRS for path in pair),
-    # Batch-3 cover arms, single-phase and with no ladder to pair with. The
-    # 2x2's signal axis was removed after it measured null, leaving the control
-    # and the arm that priced model losses.
+    # The shooting-opponent scenario: the control it was developed against, and
+    # the configuration that beat the scripted bar on it. Both single-phase,
+    # with no ladder to pair with. The closed experiment arms around them were
+    # deleted once their questions were answered -- `git log` on
+    # examples/env_config/ restores any of them.
     CONFIG_ROOT / "25v25_cover_control.yaml",
-    CONFIG_ROOT / "25v25_cover_reason.yaml",
-    # Batch-4 prototypes, both targeting the same over-stacking defect: one
-    # prices concentration itself, the other discounts only surplus models.
-    CONFIG_ROOT / "25v25_beat_spread.yaml",
-    CONFIG_ROOT / "25v25_beat_surplus.yaml",
-    CONFIG_ROOT / "25v25_beat_surplus0.yaml",
-    # Round 3: the control-state observation, alone and under the surplus
-    # discount that measured null without it.
-    CONFIG_ROOT / "25v25_beat_observe.yaml",
-    CONFIG_ROOT / "25v25_beat_observe_surplus.yaml",
-    # Round 4: pay an objective a pot rather than every occupant a wage. Both
-    # build on the observe arm, because the crowd size they price is only in the
-    # observation when `observe_objective_control` is on.
-    CONFIG_ROOT / "25v25_beat_share.yaml",
-    CONFIG_ROOT / "25v25_beat_share_soft.yaml",
-    # Round 5: the missing cell of the round-4 2x2 -- `share`'s weight with a
-    # flat exponent, to tell "crowding is priced" from "objectives pay more".
-    CONFIG_ROOT / "25v25_beat_flat.yaml",
+    CONFIG_ROOT / "25v25_shooting_opponent.yaml",
 ]
 
 # A one-objective stack caps at 19 scoring rounds x 5 VP = 95 of a 285
@@ -217,32 +202,4 @@ def test_paired_configs_share_a_scenario(control_path: Path, ladder_path: Path) 
     assert (single.board_width, single.board_height) == (
         curriculum.board_width,
         curriculum.board_height,
-    )
-
-
-# The batch-3 cover experiment is closed (see the 2026-08-06 report), so its
-# design invariants are gone with it. This one stays: it encodes the arithmetic
-# any future reward calculator has to get right.
-
-
-def test_batch_three_prices_losses_against_kills() -> None:
-    """An even trade must net to roughly zero, or the reward is not a trade.
-
-    `model_kills` is per-model and divided by the alive count; `models_lost` is
-    global and broadcast whole. Comparing raw weights would be wrong — the two
-    reach the step reward through different arithmetic.
-    """
-    config = _load(CONFIG_ROOT / "25v25_cover_reason.yaml")
-    phase = config.reward_phases[-1]
-    calculators = {c.type: c for c in phase.reward_calculators}
-
-    kills = calculators["model_kills"]
-    losses = calculators["models_lost"]
-
-    n_alive_typical = config.number_of_wargame_models
-    per_kill = kills.weight * kills.params["bonus_per_kill"] / n_alive_typical
-    per_loss = losses.weight * losses.params["penalty_per_loss"]
-
-    assert 0.5 <= per_loss / per_kill <= 2.0, (
-        f"trade is lopsided: {per_kill:.3f} per kill vs {per_loss:.3f} per loss"
     )

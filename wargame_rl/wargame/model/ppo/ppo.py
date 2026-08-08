@@ -33,23 +33,10 @@ class PPO_Transformer(PPOModel):
         policy_network = TransformerNetwork.from_env(env=env, is_policy=True)
         value_network = TransformerNetwork.from_env(env=env, is_policy=False)
 
-        # Only hand the slice over when the flag is on, so `shooting_slice`
-        # being set is by itself the switch the decode path tests.
-        shooting_slice: tuple[int, int] | None = None
-        if config.distinct_shooting_targets:
-            env_slice = env.player_action_handler.shooting_slice
-            if env_slice is None:
-                raise ValueError(
-                    "distinct_shooting_targets requires a config whose models "
-                    "carry weapons; this env registered no shooting actions."
-                )
-            shooting_slice = (env_slice.start, env_slice.end)
-
         net = cls(
             policy_network=policy_network,
             value_network=value_network,
             device=env.device if hasattr(env, "device") else None,
             share_transformer=config.share_transformer,
-            shooting_slice=shooting_slice,
         )
         return cast(PPO_Transformer, net.to(net.device))

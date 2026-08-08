@@ -119,7 +119,7 @@ train-seed max_epochs seed group *configs:
 # One seed group at a time, same as train-multi-seeds: a PPO transformer run
 # holds ~3.8 GB of VRAM, so keep the concurrent count equal to the config count.
 #
-# Use: just train-arm 1000 2 beat-2026-08-06 decode "--distinct-shooting-targets" a.yaml b.yaml
+# Use: just train-arm 1000 2 my-screen tag "--some-flag" a.yaml b.yaml
 train-arm max_epochs n_seeds group tag flags *configs:
 	@trap 'kill 0' INT TERM && \
 	for s in $(seq 1 {{n_seeds}}); do \
@@ -218,9 +218,6 @@ measure-baselines env_config n_episodes='100' record='' seed_base='':
 
 # Score a checkpoint on held-out seeds through the same code path as the baselines,
 # so the two are directly comparable. Pass `record` as the fourth argument for a trace.
-# Pass `distinct` as the fifth for a checkpoint trained with
-# `--distinct-shooting-targets` -- that setting is not recoverable from the weights,
-# and scoring without it sends every model at the same target.
 #
 # n=100, not 30. Per-episode vp_margin sd is ~45-50 on the 25v25 configs, so the
 # standard error on the mean is ~8-9 at n=30 -- larger than most arm differences
@@ -228,16 +225,16 @@ measure-baselines env_config n_episodes='100' record='' seed_base='':
 # to resolve what it was measuring. n=100 halves that to ~4.5 and costs minutes
 # against the hours a training run costs. Scoring was the cheap half being
 # under-sampled while the expensive half was over-sampled.
-measure-checkpoint checkpoint env_config n_episodes='100' record='' distinct='':
-	@uv run python -m scripts.measure_checkpoint {{checkpoint}} {{env_config}} {{n_episodes}} "{{record}}" "{{distinct}}"
+measure-checkpoint checkpoint env_config n_episodes='100' record='':
+	@uv run python -m scripts.measure_checkpoint {{checkpoint}} {{env_config}} {{n_episodes}} "{{record}}"
 
 # Why an objective was not held: abandoned, narrowly lost, or lost by a mile.
 # `held` alone cannot separate those, and they call for different fixes. Also
 # reports the redistribution ceiling -- what any pure re-allocation lever could
 # buy at best -- so a reward-shaping idea can be ruled out before it is trained.
 # Takes a baseline name or a checkpoint path.
-measure-objective-split policy env_config n_episodes='100' distinct='':
-	@uv run python -m scripts.measure_objective_split {{policy}} {{env_config}} {{n_episodes}} "{{distinct}}"
+measure-objective-split policy env_config n_episodes='100':
+	@uv run python -m scripts.measure_objective_split {{policy}} {{env_config}} {{n_episodes}}
 
 # How much of a config's outcome spread is dice rather than policy. Holds the
 # layouts fixed and varies only the combat seed, so the within-layout spread is
