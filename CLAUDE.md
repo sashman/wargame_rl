@@ -52,7 +52,8 @@ wargame_rl/
 ├── examples/env_config/           # YAML environment configurations
 ├── tests/                         # Pytest suite with conftest.py fixtures
 ├── docs/                          # Design docs (movement, reward phases, missions-and-vp,
-│                                  #   roadmap, rules, metrics, shooting, terrain)
+│                                  #   roadmap, rules, metrics, shooting, terrain,
+│                                  #   training-throughput)
 ├── reports/                       # Experiment findings, kept for retrospection
 ├── scripts/                       # Run-inspection tooling (run_summary, measure_phase_gates,
 │                                  #   measure_baselines, measure_checkpoint, measure_terrain,
@@ -260,7 +261,7 @@ Detailed patterns live next to the code they govern — read them when working i
 - **Inspecting a run:** `just run-summary <run_id> [bucket]` for rolling means (single-epoch `success_rate` is an `n_episodes`-sample binomial — never read a point value); `just measure-phase-gates <ckpt> <env_config> 40` for per-phase criteria rates and the whole `min_fraction` curve
 - Key CLI options: `--record-during-training`, `--max-epochs`, `--render-mode`, `--algorithm`, `--no-wandb`, `--run-suffix`, `--wandb-group`, `--n-eval-episodes`, `--seed`
 - Profile a run: `just profile <config.yaml> [model] [max_epochs]` generates `profile.html` (`--no-wandb`, capped at 5 epochs by default)
-- **Training speed is an environment problem, not a GPU problem.** `just measure-throughput <config>` gives the per-section and per-reward-calculator split of `env.step()`; every run also logs `perf/rollout_s`, `perf/update_s`, `perf/eval_s`, `perf/env_steps_per_s` and `perf/update_ms_per_minibatch`, so a slowdown shows up beside the reward curves. Two calculators were ~80% of a 25v25 step because each recomputed a model-independent quantity once per model; memoising them took the step from 10.0 ms to 1.9 ms. Any change to the reward pipeline must keep `tests/test_reward_golden.py` **bit-identical** — it pins per-step reward, per-model reward, breakdown, VP and positions, and is verified to catch a one-ULP change. Add `engaged` to quote the line-of-sight ceiling: LOS is 0.6% of a step and 10 queries under random play, 24% and 151 queries when everything is in range, and it has no cache
+- **Training speed is an environment problem, not a GPU problem.** See [docs/training-throughput.md](docs/training-throughput.md). `just measure-throughput <config>` gives the per-section and per-reward-calculator split of `env.step()`; every run also logs `perf/rollout_s`, `perf/update_s`, `perf/eval_s`, `perf/env_steps_per_s` and `perf/update_ms_per_minibatch`, so a slowdown shows up beside the reward curves. Two calculators were ~80% of a 25v25 step because each recomputed a model-independent quantity once per model; memoising them plus three smaller repeats took the rollout step from 11.34 ms to 2.26 ms (23.2 s → 4.6 s of env time per epoch). Any change to the reward pipeline must keep `tests/test_reward_golden.py` **bit-identical** — it pins per-step reward, per-model reward, breakdown, VP and positions, and is verified to catch a one-ULP change
 - Simulate latest checkpoint: `just simulate-latest [network_type]` · Clean up: `just clean` removes `checkpoints/` and `wandb/`
 
 ## Git Workflow
