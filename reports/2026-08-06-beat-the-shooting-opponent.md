@@ -1,7 +1,24 @@
 # Beating the shooting opponent: what was actually in the way
 
-**Status: in progress.** The audit and the no-retraining measurements below are complete.
-The 2x2 training screen they motivated is running; its results are not in this report yet.
+**Status: closed 2026-08-08, goal achieved — but not by anything in this report.**
+Every lever tried here measured null or negative. The audit and the corrections below stand
+and are what made the eventual answer findable; the answer itself is in
+**[2026-08-08 — paying the pot beats the bar](2026-08-08-paying-the-pot-beats-the-bar.md)**,
+which takes the agent to **+28.4 vp_margin against the bar's +17.0 on both seeds**.
+
+Two conclusions asserted below were subsequently **refuted by measurement** — Part 5's
+lowered prior on anti-stacking, and Part 8's diagnosis that the levers failed because the
+agent could not *see* occupancy. Both carry inline corrections. Read those before reusing
+either.
+
+⚠️ **Every number in this report was scored through `last.ckpt`, which at the time was not
+the last epoch.** `get_checkpoint_callback` carried `monitor` and `save_last=True` on one
+`ModelCheckpoint`, so `last.ckpt` held the last epoch that *entered the top-k by training
+reward* — measured across one later batch, epochs 970, 692, 948 and 998. Any figure here
+labelled "at 300 epochs" or "at 1000 epochs" is really "at whatever epoch that run last
+improved", a spread worth ~13 vp_margin. It is not a common rule across arms either, since
+each arm's training reward is a different function. Fixed 2026-08-08; the ordering-based
+conclusions survive, the point estimates are softer than stated.
 
 ## TL;DR, in plain terms
 
@@ -32,6 +49,21 @@ Making the models pick targets one at a time, each forbidden from taking one alr
 claimed, recovers most of it. On the **existing trained network, with no retraining at all**,
 that single change moved the score from +16.3 to **+26.8**, closing about half the gap to the
 scripted bar.
+
+**How it actually ended (added 2026-08-08).** Neither of those two findings is what won.
+Trained *under* the decode the agent did worse, and every anti-stacking lever tried here made
+occupancy collapse. The stacking diagnosis in Part 2 was right; every attempted cure was
+wrong, in one specific way it took a third round to see:
+
+> **A lever against over-concentration must redistribute reward, not destroy it.** The
+> overstack penalty and the surplus discount both *lower* total objective income, so the
+> policy never learns "spread out" — it learns "objectives pay badly" and does fewer of them.
+> Paying each objective a fixed pot split among its occupants conserves the income: `k` models
+> on one point earn its value once, `k/2` on each of two earn it twice. Spreading then
+> strictly *raises* total pay.
+
+That is `objective_hold.crowding_exponent`, and it clears the bar. See the
+[2026-08-08 report](2026-08-08-paying-the-pot-beats-the-bar.md).
 
 ## ⚠️ The shooting rules are going to change
 
@@ -283,6 +315,17 @@ others" and "concentrating enough to win the objectives you contest" are differe
 and a blunt per-model price cannot distinguish them. **Prior on the `spread` arm lowered
 accordingly.** The control is in the 2x2 precisely so this can come out either way.
 
+> **Correction (2026-08-08) — the reasoning here is sound and the conclusion drawn from it
+> was too broad.** "A blunt per-model price cannot distinguish them" is exactly right, and
+> the `spread` arm did fail. But the inference drawn was that anti-stacking was a poor bet,
+> and that was wrong: a *non-blunt* price clears the bar. `crowding_exponent` prices the
+> **marginal** occupant rather than concentration as such, so it leaves a 5-model contest
+> alone while making the thirteenth model on an undefended point nearly worthless. Measured
+> per-objective at episode end, the bar sits at 6.95/2.68 models and the failing agent at
+> 12.89/2.72 — this section's "concentration is why the bar wins" is true, and the agent's
+> problem was never concentration but concentration *in the wrong ratio*. `just
+> measure-objective-split` is the instrument that separates the two; it did not exist yet.
+
 *Measured. Note also that a separate scratch-harness measurement put a similar policy at
 0.90 / +53.2 on seeds 10000-10029. That did not reproduce through
 `evaluate_selector`, and is not claimed here.*
@@ -399,14 +442,56 @@ turns on, and it was never an input.
 *Measured for the collapse; inferred for the mechanism. Round 3 tests the inference directly
 by adding the observation and changing no reward.*
 
+> **Correction (2026-08-08) — the inference was tested and does not hold up.** Round 3 added
+> the observation (`observe_objective_control`) and changed no reward. It looked like +9.1
+> vp_margin at 300 epochs and was **+1.55 ± 4.5 at 1000** — indistinguishable from zero. So
+> unobservability is **not sufficient** to explain the collapse, and "an observation defect
+> wearing a reward defect's clothes" overstates it.
+>
+> The shared property is simpler and was hiding in this section's own words. Both levers made
+> *standing on objectives pay less on average* — not as a misattribution, but literally: a
+> penalty and a discount each reduce total objective income, so the policy correctly learns
+> the activity is worth less and does less of it. The fix is to hold income constant while
+> changing who receives it. `crowding_exponent` at a = 1 conserves the pot exactly, and it
+> clears the bar.
+>
+> **What is not established:** the winning arm carries the observation too, so income
+> conservation was never tested *without* it. Observability is not sufficient; whether it is
+> necessary is untested. The honest reading is that the reward mattered more than the
+> observation, not that the observation is inert.
+
 **Secondary: the 300-epoch screen worked, and its limits are visible.** The 300-epoch control
 scores −7.8 / 0.784 against the 1000-epoch control's +13.8 / 0.925, so 300 epochs is
 emphatically not converged — exactly as Part 6 predicted. But a screen measures *ordering*,
 and the ordering separated cleanly on both seeds at **3.4 hours instead of 14**.
 
-## What is running
+## What ran, and where it ended
 
-A 2x2, two seeds each, 1000 epochs, group `beat-2026-08-06`:
+**Every lever in this report measured null or negative.** The scoreboard, all at n=100 on
+seeds 700000+ with the baselines re-measured on identical layouts:
+
+| lever | outcome |
+|---|---|
+| `models_lost` penalty | sign unestablished; reverses on held-out layouts |
+| `observe_threat_count` | null on both seeds; removed |
+| `overstack_penalty_per_extra` 0.01 → 0.05 | occupancy 0.925 → 0.520 |
+| distinct-target decode | +10.5 post-hoc on one checkpoint, **−3.9 trained under**, ~7% slower |
+| `objective_hold.surplus_value` 0.25 / 0.0 | occupancy 0.784 → 0.284 / 0.250 |
+| `observe_objective_control` | +9.1 at 300 epochs, **+1.55 ± 4.5 at 1000** |
+| **`objective_hold.crowding_exponent`** (round 4) | **+28.4 vs the bar's +17.0, both seeds** |
+
+Round 4 is written up separately:
+[2026-08-08 — paying the pot beats the bar](2026-08-08-paying-the-pot-beats-the-bar.md).
+
+What this report contributed to that outcome was not a lever but the corrections in Part 1 —
+without matched-seed scoring and n=100, the deficit being chased was mostly measurement
+noise, and three rounds were aimed at it. The instrument that finally located the defect
+(`just measure-objective-split`) was built afterwards, in ~20 minutes, and answered in
+minutes what seven training runs had not.
+
+### The original 2x2
+
+Two seeds each, 1000 epochs, group `beat-2026-08-06`:
 
 | arm | config | decode |
 |---|---|---|
