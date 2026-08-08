@@ -1,15 +1,16 @@
 # Training throughput
 
 Where a training epoch's wall-clock goes, how to measure it, and what is left to
-do. Everything here is measured, not modelled — except where it says otherwise,
-which is only the GPU section.
+do. Everything here is measured, not modelled.
 
 ## The short version
 
-**Training speed is an environment problem, not a GPU problem.** The network is
-12.86M parameters over a 61-token sequence; on a modern GPU the whole 80-gradient-step
-PPO update is a couple of seconds. Environment stepping is 2048 sequential Python
-`env.step()` calls, and it used to cost 23 s per epoch.
+**Training speed *was* an environment problem. On the 4090 it is now split
+roughly evenly between the environment and the update.** Environment stepping is
+2048 sequential Python `env.step()` calls and used to cost 23 s per epoch; that
+is now 3.8 s. The 80-gradient-step PPO update is 2.8 s beside it — so with the
+environment fixed, neither half caps the epoch on its own, and the GPU levers
+matter more than an earlier draft of this page predicted.
 
 `RewardPhaseManager` calls every per-model calculator once per model. Two
 calculators were recomputing a quantity that does not depend on the model being
@@ -105,6 +106,74 @@ env.step()                 1.72 ms
 obs -> numpy               0.54 ms
 ```
 
+## Epoch budget on the training GPU (RTX 4090, sm_89)
+
+Measured on `25v25_shooting_opponent.yaml`, median of six epochs, 2048 rollout
+steps and 80 minibatches:
+
+| | fp32 (`--no-tf32`) | **TF32 (default)** | TF32 + `bf16-mixed` |
+|---|---|---|---|
+| `perf/rollout_s` | 3.86 | 3.75 | 4.02 |
+| `perf/update_s` | 3.66 | **2.76** | 1.55 |
+| `perf/update_ms_per_minibatch` | 45.7 | **34.5** | 19.3 |
+| `perf/epoch_s` | 7.57 | **6.55** | 5.61 |
+
+**Correction to the section below, which was written on the dev box: the update
+is not a small share of the epoch here — it was 49% of it.** That was a
+projection from a machine where the update ran on a CPU, and it under-rated
+every GPU lever. Rollout and update are now within ~35% of each other, so
+neither one alone caps the epoch.
+
+Note bf16 makes the *rollout* slightly slower (3.75 → 4.02 s). Rollout forwards
+are one observation at a time; at that size the cast costs more than the tensor
+cores return. The gain is entirely in the batched update.
+
+### TF32 is on by default
+
+`configure_matmul_precision` (`model/common/performance.py`) is called once from
+`train.py`, before any model is built, and enables TF32 wherever the device is
+sm_80 or newer. `--no-tf32` restores full fp32.
+
+This drops matmul mantissa precision from 24 bits to 11, so a run before this
+change and a run after are not bit-identical. That is well below anything this
+project can resolve — win rate cannot separate differences under ~7pp, and
+`vp_margin` under ~10 — and the environment and reward are untouched, being numpy
+on the CPU. But it does mean "training is deterministic given seed + config +
+code" holds only within one setting of this flag.
+
+### bf16 is opt-in, and its effect on *learning* is unmeasured
+
+`--precision bf16-mixed` is 2.4x on the update and 1.35x on the epoch. It is not
+the default because only its **speed** has been measured. Before trusting a run
+under it, A/B it over two seeds per `just measure-noise-floor` — this project has
+a standing rule that no single-seed difference under ~7pp win rate is readable,
+and a precision change is exactly the kind of thing that would move results
+without moving throughput metrics.
+
+One guard already landed with the flag, and the A/B is not valid without it:
+`PPOModel.forward` casts both heads back to float32. PPO's importance ratio is
+`exp(new_log_prob − old_log_prob)`, resolving per-model changes of ~0.007 nats,
+and these log-probs sit near −4.8 where bf16 spaces values 0.0156 apart. That
+change does not survive the round trip at all — it collapses to exactly zero for
+70% of base values and inflates to a whole step for the rest, never landing
+within 10% of its true size. Left in bf16, the surrogate objective would read a
+ratio of 1 and train on nothing, at full speed, with no metric saying so.
+`tests/test_precision.py` pins both the cast and the quantisation that motivates
+it.
+
+### `torch.compile` is measured but blocked
+
+1.42x on the update alone, **3.26x** stacked with bf16 (14.0 ms per minibatch) —
+the largest single number on this page. It is not wired up because
+`torch.compile` prefixes every `state_dict` key with `_orig_mod.`, and
+`_apply_warm_start_weights` loads with `strict=False`. A checkpoint written by a
+compiled run would therefore load into `simulate`, `record-sim`,
+`measure-checkpoint` or a warm start by matching **no keys at all** and raising
+nothing — a randomly initialised network scored as a trained one. Strip the
+prefix on save, or assert a non-empty key intersection on load, before enabling
+this. It is the same silent-`strict=False` trap already flagged for
+`share_transformer` below.
+
 ## What is left, ranked
 
 ### 1. Parallel rollout — the largest remaining win
@@ -130,23 +199,28 @@ in the parent. Keep evaluation in-process — it is ~400 steps against the
 rollout's 2048, so it is not worth the risk, and its fixed seeding and env-0
 `StateExporter` then need no changes at all.
 
-### 2. GPU settings — measure on the 4090, do not port findings from the dev box
+### 2. GPU settings — done, see the epoch budget above
 
-The dev workstation is a GTX 1080 Ti (sm_61), where TF32, bf16, Flash attention
-and `torch.compile` are **all unavailable**. On sm_89 they are all real. Untested
-here, in rough order of expected value:
+Measured on the 4090. TF32 shipped on by default, bf16 shipped opt-in pending a
+learning A/B, `torch.compile` measured at 3.26x and blocked on the `state_dict`
+prefix. `cudnn.benchmark` remains a no-op: the model has zero convolutions.
 
-- `torch.set_float32_matmul_precision("high")` — TF32, needs sm_80+.
-- bf16 autocast — supported on Ada, unlike Pascal.
-- `torch.compile` — Triton requires compute capability ≥ 7.
-- `dqn/layers.py` passes an explicit **bool** `attn_mask` to
-  `scaled_dot_product_attention`, which disqualifies the Flash backend. Converting
-  it to an additive float mask is ~5 lines. It is worth ~1% on the dev box; it may
-  be worth real time on a 4090. It cannot simply be dropped — it is the
-  dead-model key-padding mask.
-- `cudnn.benchmark` is a no-op regardless: the model has zero convolutions.
+**The attention-mask item was wrong on both counts and is closed.** The claim was
+that the explicit **bool** `attn_mask` in `dqn/layers.py` disqualifies the Flash
+backend and that an additive float mask would recover it. Flash supports **no
+`attn_mask` at all** — the dispatcher says so directly ("Flash Attention does not
+support non-null attn_mask"), so the mask's *dtype* was never what excluded it.
+Both forms dispatch to exactly the same backends (`EFFICIENT_ATTENTION` and
+`MATH` in fp32, plus `CUDNN_ATTENTION` in bf16).
 
-Take a `perf/*` baseline on the 4090 *before* changing any of these.
+The float mask *is* faster in isolation — 77.1 → 68.8 µs per call in fp32 and
+34.5 → 26.0 µs in bf16, at the real `(B, 1, 1, T)` broadcast shape. It measured
+**zero** at model level: 34.24 vs 34.17 ms per minibatch. At 61 tokens and 256
+embedding dims the projections and MLP dominate, and attention is too small a
+share for a 25% saving on it to appear. Do not spend the ~5 lines.
+
+The dev workstation is a GTX 1080 Ti (sm_61) where none of this is available, so
+its numbers still do not transfer in the other direction.
 
 ### 3. `share_transformer` — an experiment, not a speedup
 

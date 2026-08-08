@@ -23,7 +23,7 @@ Both expose `policy_from_env(env)` and `from_checkpoint(env, path)` class method
 - `PPOLightning` — PyTorch Lightning module: actor-critic training, GAE, clipped surrogate objective
 - `PPOConfig` / `PPOTrainingConfig` — Pydantic config (lr, gamma, GAE lambda, clip epsilon, etc.)
 - `PPO_Transformer` — actor-critic model with shared transformer backbone, separate policy and value heads
-- `PPOModel` — wraps policy net + value net
+- `PPOModel` — wraps policy net + value net. **`forward` casts both heads to float32** (a no-op at default precision). Under `--precision bf16-mixed` the importance ratio `exp(new_log_prob − old_log_prob)` must resolve ~0.007 nats around a log-prob of −4.8, where bf16 steps 0.0156 — the change would round away entirely and every ratio would read exactly 1, training on nothing at full speed. Keep the cast at the head, not at each `Categorical`: there are four construction sites and the value loss besides
 - PPO only supports `TransformerNetwork` (no MLP variant)
 
 ## Shared (`model/common/`)
