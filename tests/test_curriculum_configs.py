@@ -53,6 +53,9 @@ CONFIG_PATHS = [
     # observation when `observe_objective_control` is on.
     CONFIG_ROOT / "25v25_beat_share.yaml",
     CONFIG_ROOT / "25v25_beat_share_soft.yaml",
+    # Round 5: the missing cell of the round-4 2x2 -- `share`'s weight with a
+    # flat exponent, to tell "crowding is priced" from "objectives pay more".
+    CONFIG_ROOT / "25v25_beat_flat.yaml",
 ]
 
 # A one-objective stack caps at 19 scoring rounds x 5 VP = 95 of a 285
