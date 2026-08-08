@@ -9,7 +9,10 @@ changes definition with the reward phase, and it is a per-epoch binomial over
 Pass `record` as a fourth argument to also write an event log to `recordings/`,
 which `just analyze-compare <agent> <baseline>` reads.
 
-Usage: just measure-checkpoint <checkpoint> <env_config> [n_episodes] [record]
+Pass `distinct` as a fifth argument for a checkpoint trained with
+`distinct_shooting_targets` -- the setting is not recoverable from the weights.
+
+Usage: just measure-checkpoint <checkpoint> <env_config> [n_episodes] [record] [distinct]
 """
 
 from __future__ import annotations
@@ -37,6 +40,7 @@ from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.common.observation import observation_to_tensor
 from wargame_rl.wargame.model.net import TransformerNetwork
+from wargame_rl.wargame.model.ppo.networks import greedy_actions
 
 # Disjoint from ROLLOUT_SEED_BASE (0), the training eval base (500_000) and the
 # baseline base (10_000), so a checkpoint is scored on layouts it never trained
@@ -45,16 +49,33 @@ HELDOUT_SEED_BASE = 700_000
 
 
 def build_selector(
-    checkpoint_path: str, env: WargameEnv
+    checkpoint_path: str,
+    env: WargameEnv,
+    distinct_targets: bool = False,
 ) -> tuple[ActionSelector, TransformerNetwork]:
     """Load a policy network and wrap it as an `ActionSelector`.
 
     Greedy (argmax) rather than sampled: this measures the policy the agent
     would play, not the exploration distribution around it. The network applies
     the action mask internally, so illegal actions cannot be selected.
+
+    `distinct_targets` must match the `distinct_shooting_targets` setting the
+    checkpoint trained under. It is not recoverable from the weights, and
+    getting it wrong scores a policy the agent never played -- a plain argmax
+    over a decode-trained network sends every model at the same target.
     """
     policy_net = TransformerNetwork.from_checkpoint(env, checkpoint_path)
     policy_net.eval()
+
+    shooting_slice: tuple[int, int] | None = None
+    if distinct_targets:
+        env_slice = env.player_action_handler.shooting_slice
+        if env_slice is None:
+            raise ValueError(
+                "distinct targets requested but this env registers no shooting "
+                "actions -- the models carry no weapons."
+            )
+        shooting_slice = (env_slice.start, env_slice.end)
 
     def select(
         observation: WargameEnvObservation, env_: WargameEnv
@@ -62,7 +83,7 @@ def build_selector(
         with torch.no_grad():
             state = observation_to_tensor(observation, policy_net.device)
             logits = policy_net(state)
-            actions = logits.argmax(dim=-1)
+            actions = greedy_actions(logits, shooting_slice)
         return WargameEnvAction(actions=[int(a) for a in actions.flatten().tolist()])
 
     return select, policy_net
@@ -86,7 +107,7 @@ def format_result(result: BaselineResult) -> str:
         f"{result.name:<28}{result.final_fraction_at_objectives:>10.3f}"
         f"{result.win_rate:>9.2f}{result.player_vp:>12.1f}"
         f"{result.opponent_vp:>10.1f}{result.vp_margin:>11.1f}"
-        f"{result.worst_cohesion_gap:>11.1f}{result.final_fraction_alive:>8.3f}"
+        f"{result.objectives_held:>7.2f}{result.final_fraction_alive:>8.3f}"
         f"{format_optional_metric(result.exposure_rate):>10}"
         f"{format_optional_metric(result.terrain_proximity, 1):>11}"
         f"{format_optional_metric(result.firepower_ratio, 2):>12}"
@@ -103,13 +124,18 @@ def main() -> None:
     config_path = sys.argv[2]
     n_episodes = int(sys.argv[3]) if len(sys.argv) > 3 else 30
     record = len(sys.argv) > 4 and sys.argv[4].lower() in {"record", "true", "1"}
+    distinct_targets = len(sys.argv) > 5 and sys.argv[5].lower() in {
+        "distinct",
+        "true",
+        "1",
+    }
 
     with open(config_path) as handle:
         env_config = parse_yaml_raw_as(WargameEnvConfig, handle.read())
     env_config.render_mode = None
 
     env = create_environment(env_config=env_config)
-    select, _policy_net = build_selector(checkpoint_path, env)
+    select, _policy_net = build_selector(checkpoint_path, env, distinct_targets)
     seeds = [HELDOUT_SEED_BASE + i for i in range(n_episodes)]
 
     name = label_for(checkpoint_path)
@@ -117,7 +143,7 @@ def main() -> None:
     print(f"{config_path}  ({n_episodes} episodes, seeds {seeds[0]}-{seeds[-1]})\n")
     header = (
         f"{'policy':<28}{'on obj':>10}{'win':>9}{'player VP':>12}"
-        f"{'opp VP':>10}{'VP margin':>11}{'cohesion':>11}{'alive':>8}"
+        f"{'opp VP':>10}{'VP margin':>11}{'held':>7}{'alive':>8}"
         f"{'exposure':>10}{'terrain_d':>11}{'firepower':>12}"
     )
     print(header)

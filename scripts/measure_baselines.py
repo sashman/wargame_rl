@@ -28,14 +28,21 @@ from wargame_rl.wargame.envs.types.config import WargameEnvConfig
 from wargame_rl.wargame.model.common.factory import create_environment
 
 # Ordered weakest to strongest so the printed table reads as a scale.
-# `squad_march_shoot` is the only one that fires, and therefore the only bar
-# set by the policy class the learned agent is actually in.
+# `squad_march_shoot` and `contest_and_spread` are the only ones that fire, and
+# therefore the only bars set by the policy class the learned agent is in.
+#
+# `contest_and_spread` is here because `squad_march_shoot` proved to be a weak
+# ceiling, not a strong one: it allocates squads `k % n_objectives` and fires
+# nearest-first, ignoring both an opponent that stops moving by round 9 and the
+# fact that a second shot on a one-wound target is usually discarded. Quoting a
+# learned policy only against the weaker bar overstates it.
 BASELINES = (
     "random",
     "greedy_nearest",
     "split_evenly",
     "squad_march",
     "squad_march_shoot",
+    "contest_and_spread",
 )
 
 # Held out from the training seed space so baselines stay a genuine reference.
@@ -69,7 +76,7 @@ def main() -> None:
     print(f"\n{config_path}  ({n_episodes} episodes, seeds {seeds[0]}-{seeds[-1]})\n")
     header = (
         f"{'baseline':<18}{'on_obj':>9}{'win':>8}{'player_vp':>11}"
-        f"{'opp_vp':>9}{'cohesion_gap':>14}{'alive':>8}{'exposure':>10}"
+        f"{'opp_vp':>9}{'held':>7}{'alive':>8}{'exposure':>10}"
         f"{'terrain_d':>11}{'firepower':>12}"
     )
     print(header)
@@ -85,7 +92,7 @@ def main() -> None:
             f"{result.win_rate:>8.2f}"
             f"{result.player_vp:>11.1f}"
             f"{result.opponent_vp:>9.1f}"
-            f"{result.worst_cohesion_gap:>14.1f}"
+            f"{result.objectives_held:>7.2f}"
             f"{result.final_fraction_alive:>8.3f}"
             f"{format_optional_metric(result.exposure_rate):>10}"
             f"{format_optional_metric(result.terrain_proximity, 1):>11}"

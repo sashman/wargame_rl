@@ -122,6 +122,52 @@ def _terrain_to_obs(
     return result
 
 
+def _objectives_to_obs(
+    view: BattleView, with_control: bool
+) -> list[WargameEnvObjectiveObservation]:
+    """Objective observations, optionally carrying per-objective control state.
+
+    Counts are of *alive* models inside each disc, normalised by the static
+    army sizes so the feature stays O(1) rather than shrinking with force size.
+    Both sides use their own establishment as the divisor, which keeps
+    "half my army is here" and "half of theirs is here" on the same scale.
+    """
+    if not with_control:
+        return [
+            WargameEnvObjectiveObservation(location=obj.location)
+            for obj in view.objectives
+        ]
+
+    player_locations = np.array(
+        [m.location for m in view.player_models if m.is_alive], dtype=float
+    )
+    opponent_locations = np.array(
+        [m.location for m in view.opponent_models if m.is_alive], dtype=float
+    )
+    n_player = max(1, view.config.number_of_wargame_models)
+    n_opponent = max(1, view.config.number_of_opponent_models)
+    board_diagonal = float(np.hypot(view.board_width, view.board_height)) or 1.0
+
+    def inside(locations: np.ndarray, centre: np.ndarray, radius: float) -> int:
+        if locations.size == 0:
+            return 0
+        return int((np.linalg.norm(locations - centre, axis=1) <= radius).sum())
+
+    observations = []
+    for objective in view.objectives:
+        centre = np.asarray(objective.location, dtype=float)
+        radius = float(objective.radius_size)
+        observations.append(
+            WargameEnvObjectiveObservation(
+                location=objective.location,
+                player_count=inside(player_locations, centre, radius) / n_player,
+                opponent_count=inside(opponent_locations, centre, radius) / n_opponent,
+                radius=radius / board_diagonal,
+            )
+        )
+    return observations
+
+
 def build_observation(
     view: BattleView,
     distance_cache: DistanceCache | None = None,
@@ -176,9 +222,7 @@ def build_observation(
     battle_phase_index = list(BattlePhase).index(phase)
     battle_round = clock.battle_round if clock.battle_round is not None else 1
     max_groups = view.config.max_groups
-    objectives_obs = [
-        WargameEnvObjectiveObservation(location=obj.location) for obj in view.objectives
-    ]
+    objectives_obs = _objectives_to_obs(view, view.config.observe_objective_control)
     terrain_obs = _terrain_to_obs(view)
     return WargameEnvObservation(
         current_turn=view.current_turn,

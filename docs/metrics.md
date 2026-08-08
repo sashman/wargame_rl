@@ -156,7 +156,77 @@ agent is not in — it gets a shooting decision every other step. Clearing
 | squad_march | 1.000 | 0.78 | 147.9 | 102.9 |
 | **squad_march_shoot** | **1.000** | **1.00** | **176.0** | **46.5** |
 
-### Cover metrics
+### `objectives_held` — the metric that ranks policies
+
+**Mean count of objectives the player controls at episode end**, under the same strict count
+comparison VP scores on (`player_count > opponent_count` among alive models inside the disc).
+Reported by `measure-baselines` and `measure-checkpoint` as `held`.
+
+**Prefer this to `on_obj` for any occupancy question.** `final_fraction_at_objectives` is the
+fraction of *alive* models standing on *any* objective, so it cannot distinguish 15 models on
+one point from 5 each on three — the first scores 5 VP a round, the second 15, and both read
+~0.95. Measured on 25v25 at n=100, seeds 700000+:
+
+| policy | on_obj | **held** | vp margin |
+|---|---|---|---|
+| `random` | 0.003 | 0.05 | −164.3 |
+| `greedy_nearest` | 0.790 | 0.84 | −66.4 |
+| `split_evenly` | 0.760 | 0.83 | −64.8 |
+| `squad_march` | 0.870 | 0.99 | −58.9 |
+| trained control (1000ep) | 0.945 | 1.42 | +1.7 |
+| `contest_and_spread` | 0.963 | 1.61 | +16.9 |
+| `squad_march_shoot` | 0.960 | 1.64 | +17.0 |
+
+**Ordered by `held` the VP column is perfectly monotonic; ordered by `on_obj` it is not** —
+`contest_and_spread` outranks the bar on `on_obj` while scoring below it, and `on_obj` cannot
+separate the trained agent from the bar at all (0.945 against 0.960) though they differ by
+15 VP.
+
+The arithmetic is direct: an objective held pays 5 VP across ~19 scoring rounds, so a gap of
+0.22 objectives is worth ~21 VP. That is the whole measured deficit between the trained
+control and the bar — while the agent keeps **50% more models alive** and has *more* models
+on objectives in absolute terms. More survivors, more firepower, fewer objectives.
+
+**Historical note.** Three experimental rounds were designed against an apparent occupancy
+deficit read off `on_obj` at n=30 (0.925 against 1.000). At n=100 that gap is 0.945 against
+0.960 — mostly measurement noise — while the real deficit was always in `held`, which was not
+being measured. Diagnose with `held`.
+
+### Splitting `held` by *why* — `just measure-objective-split`
+
+`held` says a policy controls 1.42 of 3 objectives. It does not say whether the missing ones
+were abandoned, contested and narrowly lost, or lost by a mile — and those call for different
+fixes. `scripts/measure_objective_split.py` reports, at episode end, the per-objective
+`(player, opponent)` counts ranked by player occupancy within each episode, the outcome class,
+and the **redistribution ceiling**: how many objectives the same survivors would hold if every
+model surplus to `opponent_count + 1` on an already-held point moved to the cheapest point the
+policy lost.
+
+The ceiling is deliberately optimistic — it ignores travel time and return fire, both of which
+only lower it. So a ceiling near the current `held` **rules re-allocation out**, while a large
+one does not rule it in. It costs minutes and can retire a reward-shaping idea before it is
+trained.
+
+Measured at n=100, seeds 700000+, on the batch-3 scenario:
+
+| | trained agent (1000ep) | `squad_march_shoot` |
+|---|---|---|
+| models alive at end | 15.8 | 9.8 |
+| busiest objective, player v opponent | **12.89 v 0.25** | 6.95 v 0.25 |
+| second objective, player v opponent | 2.72 v 4.22 | 2.68 v 3.04 |
+| second objective held rate | 0.48 | 0.64 |
+| surplus models on held points | **14.13** | 7.93 |
+| `objectives_held` | 1.42 | 1.64 |
+| **redistribution ceiling** | **2.06** | 1.88 |
+
+The agent parks 12.9 models on a point defended by a quarter of a model and loses the second by
+a model and a half. Nothing is missing but allocation: it survives 60% better than the bar and
+out-guns it 2.7×, and moving the surplus would take it past the bar without gaining a single
+model or kill. Note also that neither policy contests the third objective — the opponent stacks
+~12 models there and flipping it costs 13 — so this scenario is effectively a two-objective
+mission, and `held` is bounded near 2.
+
+## Cover metrics
 
 Emitted only when the env config sets `track_exposure: true`. Terrain blocks line
 of sight and nothing else, so "using cover" means exactly one thing: positioning
