@@ -59,20 +59,25 @@ class DistanceCache:
         Dead models are excluded from same-group calculations. A live model
         whose group members are all dead gets 0 (alone in group = no penalty).
         Requires model_model_norms to be set.
+
+        Vectorised, and bit-identical to the per-row loop it replaces: filling
+        non-candidates with ``inf`` and taking a row-wise ``min`` *selects* the
+        same element as masking the row and taking ``min`` of the subset. No
+        arithmetic happens, so there is no float reassociation. The loop version
+        ran once per model from ``group_cohesion``, making the whole term O(n^3)
+        and 55% of ``env.step()`` on the 25v25 configs.
         """
         if self.model_model_norms is None:
             raise ValueError("model_model_norms is required")
-        n = len(group_ids)
-        out = np.zeros(n, dtype=np.float64)
-        for i in range(n):
-            same = (np.arange(n) != i) & (group_ids == group_ids[i])
-            if alive_mask is not None:
-                same = same & alive_mask
-            if not same.any():
-                out[i] = 0.0
-            else:
-                out[i] = float(self.model_model_norms[i, same].min())
-        return out
+        same = group_ids[:, np.newaxis] == group_ids[np.newaxis, :]
+        np.fill_diagonal(same, False)
+        if alive_mask is not None:
+            same = same & alive_mask[np.newaxis, :]
+        out: np.ndarray = np.where(same, self.model_model_norms, np.inf).min(axis=1)
+        # A model alone in its group has no candidates at all; `min` over an
+        # all-inf row would give inf and read as "infinitely scattered".
+        out = np.where(same.any(axis=1), out, 0.0)
+        return np.atleast_1d(out).astype(np.float64, copy=False)
 
     def all_models_within_group_distance(
         self,

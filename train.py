@@ -20,6 +20,7 @@ from wargame_rl.wargame.model.common import (
 )
 from wargame_rl.wargame.model.common.event_log_callback import EventLogCallback
 from wargame_rl.wargame.model.common.factory import create_environment
+from wargame_rl.wargame.model.common.performance import configure_matmul_precision
 from wargame_rl.wargame.model.common.record_episode_callback import (
     RecordEpisodeCallback,
 )
@@ -210,6 +211,22 @@ def train(
         False,
         help="Disable rollout/PPO tqdm progress bars (e.g. for CI or log redirection)",
     ),
+    no_tf32: bool = typer.Option(
+        False,
+        help=(
+            "Keep matmuls at full fp32 precision. TF32 is on by default where "
+            "the GPU supports it (1.34x on the PPO update on an RTX 4090)"
+        ),
+    ),
+    precision: str = typer.Option(
+        "32-true",
+        help=(
+            "Lightning precision. '32-true' is the default and the only setting "
+            "any published result was trained under. 'bf16-mixed' is 2.4x on the "
+            "PPO update on an RTX 4090 but its effect on learning is unmeasured "
+            "-- A/B it over two seeds before trusting a run"
+        ),
+    ),
     n_steps: int | None = typer.Option(
         None,
         help="Override PPO rollout steps (defaults to PPOConfig value)",
@@ -280,6 +297,10 @@ def train(
     warm_start_ckpt_path = _resolve_optional_str(warm_start_ckpt_path)
 
     _validate_checkpoint_mode(resume_ckpt_path, warm_start_ckpt_path)
+
+    # Process-wide, so it is set before any model is constructed.
+    configure_matmul_precision(enabled=not no_tf32)
+    resolved_precision = _resolve_optional_str(precision) or "32-true"
 
     env_config = get_env_config(env_config_path, render_mode)
 
@@ -352,6 +373,7 @@ def train(
                 val_check_interval=training_config.val_check_interval,
                 logger=logger,
                 callbacks=dqn_callbacks,
+                precision=resolved_precision,  # type: ignore[arg-type]
             )
 
             if warm_start_ckpt_path is not None:
@@ -428,6 +450,7 @@ def train(
                 logger=logger,
                 callbacks=ppo_callbacks,
                 log_every_n_steps=1,
+                precision=resolved_precision,  # type: ignore[arg-type]
             )
 
             if warm_start_ckpt_path is not None:

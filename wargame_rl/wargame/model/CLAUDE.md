@@ -23,12 +23,13 @@ Both expose `policy_from_env(env)` and `from_checkpoint(env, path)` class method
 - `PPOLightning` — PyTorch Lightning module: actor-critic training, GAE, clipped surrogate objective
 - `PPOConfig` / `PPOTrainingConfig` — Pydantic config (lr, gamma, GAE lambda, clip epsilon, etc.)
 - `PPO_Transformer` — actor-critic model with shared transformer backbone, separate policy and value heads
-- `PPOModel` — wraps policy net + value net
+- `PPOModel` — wraps policy net + value net. **`forward` casts both heads to float32** (a no-op at default precision). Under `--precision bf16-mixed` the importance ratio `exp(new_log_prob − old_log_prob)` must resolve ~0.007 nats around a log-prob of −4.8, where bf16 steps 0.0156 — the change would round away entirely and every ratio would read exactly 1, training on nothing at full speed. Keep the cast at the head, not at each `Categorical`: there are four construction sites and the value loss besides
 - PPO only supports `TransformerNetwork` (no MLP variant)
 
 ## Shared (`model/common/`)
 
 - `create_environment()` — factory for `WargameEnv` from config (optionally with `state_exporters`)
+- **Rollout and eval envs are built with `build_info=False`.** The Gymnasium info dict costs ~0.2 ms of every step — 50 dataclasses, a Pydantic model and a `model_dump()` — and both loops discard it. Anything reading `info` on the training path will get `{}`; read the env's properties instead
 - `observation_to_tensor` / `observations_to_tensor_batch` — observation conversion
 - `WargameLightningBase` (`lightning_base.py`) — base for `DQNLightning` / `PPOLightning`: evaluation, baseline logging, reward-phase advancement
 - `RLDataset` (`dataset.py`) — generic RL `IterableDataset`
@@ -62,6 +63,8 @@ Both expose `policy_from_env(env)` and `from_checkpoint(env, path)` class method
 | 5 | action mask | `(n_models, n_actions)`, bool |
 
 `feature_dim = base + n_opponent`, where base covers normalized location, distances to objectives, group_id one-hot, closest same-group distance, wound features (alive, wound_ratio, max_wounds_norm), and combat stats (attacks, bs, strength, ap, damage, toughness, save — each divided by its `NORM_*` constant). The trailing `n_opponent` columns are expected damage per target (player models) or zero-padding (opponent models).
+
+The expected-damage block comes from `domain.shooting.expected_damage_matrix`, which calls the scalar `expected_damage` once per **distinct** stat pair rather than once per model pair. Every input is static YAML (no wound-based degradation — `take_damage` writes only `current_wounds`, which `expected_damage` never reads), so an army from one profile has a single distinct pair and a 25×25 block costs one call instead of 625. Keep the zero-toughness guard: `wound_roll_threshold` takes the `2 * toughness <= strength` branch at T=0 and returns 2, so padding rows would otherwise report the highest expected damage on the board.
 
 **The objective token has no such trap.** `TransformerNetwork.from_env` reads `objective_size` straight off `tensors[1].shape[-1]`, so widening it resizes the embedding automatically and leaves `_alive_feature_index` untouched. That is why `observe_objective_control` adds three columns there rather than to the per-model block.
 

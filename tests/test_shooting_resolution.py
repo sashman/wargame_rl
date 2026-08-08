@@ -16,6 +16,7 @@ from wargame_rl.wargame.envs.domain.shooting import (
     DefenderStats,
     ShootingResult,
     expected_damage,
+    expected_damage_matrix,
     resolve_shooting,
     wound_roll_threshold,
 )
@@ -305,6 +306,78 @@ class TestExpectedDamage:
     ) -> None:
         ed = expected_damage(weapon, defender)
         assert abs(ed - expected_approx) < 1e-10
+
+
+class TestExpectedDamageMatrix:
+    """The batched form must equal the scalar one, entry for entry.
+
+    The observation pipeline built this matrix with a Python double loop over
+    every player x opponent pair, constructing two dataclasses per pair — 625
+    `expected_damage` calls per observation on a 25v25 config, roughly 1.5M per
+    training epoch, all recomputing a matrix that is constant for the whole run
+    because every input comes from static YAML.
+    """
+
+    @pytest.mark.parametrize("seed", [0, 1, 2])
+    def test_matches_the_scalar_loop(self, seed: int) -> None:
+        """Bit-identical against a per-pair evaluation, mixed stat lines."""
+        rng = np.random.default_rng(seed)
+        attackers = np.column_stack(
+            [
+                rng.integers(0, 4, size=7),  # attacks, including 0 = "no weapon"
+                rng.integers(2, 7, size=7),  # ballistic skill
+                rng.integers(1, 11, size=7),  # strength
+                rng.integers(0, 4, size=7),  # ap
+                rng.integers(1, 4, size=7),  # damage
+            ]
+        )
+        defenders = np.column_stack(
+            [
+                rng.integers(0, 9, size=5),  # toughness, including 0 = "no model"
+                rng.integers(2, 8, size=5),  # save
+            ]
+        )
+
+        expected = np.zeros((7, 5), dtype=np.float32)
+        for i, attacker in enumerate(attackers):
+            if attacker[0] == 0:
+                continue
+            for j, defender in enumerate(defenders):
+                if defender[0] == 0:
+                    continue
+                expected[i, j] = expected_damage(
+                    _wp(
+                        attacks=int(attacker[0]),
+                        bs=int(attacker[1]),
+                        strength=int(attacker[2]),
+                        ap=int(attacker[3]),
+                        damage=int(attacker[4]),
+                    ),
+                    _ds(toughness=int(defender[0]), save=int(defender[1])),
+                )
+
+        actual = expected_damage_matrix(attackers, defenders)
+
+        np.testing.assert_array_equal(actual, expected)
+
+    def test_zero_toughness_scores_zero_rather_than_wounding_on_two(self) -> None:
+        """A toughness of 0 means "no such model", not an infinitely soft one.
+
+        Dropping the guard would be silent: `wound_roll_threshold` takes the
+        `2 * toughness <= strength` branch and returns 2, so padding rows would
+        report the *highest* expected damage on the board.
+        """
+        attackers = np.array([[2, 3, 4, 1, 1]])
+        defenders = np.array([[0, 4]])
+
+        assert expected_damage_matrix(attackers, defenders)[0, 0] == 0.0
+
+    def test_empty_sides_give_an_empty_matrix(self) -> None:
+        """Configs with no opponents must still produce a known-width block."""
+        attackers = np.zeros((0, 5), dtype=np.int64)
+        defenders = np.array([[4, 3]])
+
+        assert expected_damage_matrix(attackers, defenders).shape == (0, 1)
 
 
 # ---------------------------------------------------------------------------

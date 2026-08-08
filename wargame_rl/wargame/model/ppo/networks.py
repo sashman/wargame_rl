@@ -12,6 +12,22 @@ from wargame_rl.wargame.model.common import Device, get_device
 from wargame_rl.wargame.model.net import RL_Network, TransformerNetwork
 
 
+def _as_float32(tensor: Tensor) -> Tensor:
+    """Return `tensor` in float32, as a no-op when it already is.
+
+    Under `--precision bf16-mixed` the heads emit bfloat16, which has 8 mantissa
+    bits. PPO's importance ratio is `exp(new_log_prob - old_log_prob)`, and the
+    per-model log-prob changes it must resolve are ~0.007 nats. These log-probs
+    sit near -4.8 (a 122-way categorical), where bf16 spaces values 0.0156
+    apart -- so that change does not survive the round trip at all: it collapses
+    to zero for most base values and is inflated to a whole step for the rest.
+    Casting at the head keeps the trunk's matmuls in bfloat16,
+    where the speed is, and the objective in float32, where the precision is
+    needed. `tests/test_precision.py` pins both halves.
+    """
+    return tensor.float()
+
+
 class PPOModel(nn.Module):
     """PPO Model combining policy and value networks."""
 
@@ -57,7 +73,8 @@ class PPOModel(nn.Module):
 
         Returns:
             (action_logits, state_values) where action_logits has shape
-            (batch, n_models, n_actions) and state_values has shape (batch,).
+            (batch, n_models, n_actions) and state_values has shape (batch,)
+            — always float32, whatever precision the trunk ran at.
         """
         if self.share_transformer:
             policy_network = cast(TransformerNetwork, self.policy_network)
@@ -65,11 +82,11 @@ class PPOModel(nn.Module):
             encoded_state = policy_network.encode_state(x)
             action_logits = policy_network.policy_from_encoded(encoded_state)
             state_values = value_network.value_from_encoded(encoded_state)
-            return action_logits, state_values
+            return _as_float32(action_logits), _as_float32(state_values)
 
         action_logits = self.policy_network(x)
         state_values = self.value_network(x)
-        return action_logits, state_values
+        return _as_float32(action_logits), _as_float32(state_values)
 
     def get_action(
         self, state_tensors: list[torch.Tensor], deterministic: bool = False

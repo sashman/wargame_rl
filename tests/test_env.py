@@ -84,6 +84,39 @@ def test_reset_info_contains_expected_keys(env: WargameEnv) -> None:
     assert info["opponent_vp"] == 0
 
 
+def test_build_info_false_empties_the_dict_without_touching_the_episode(
+    env_config: WargameEnvConfig,
+) -> None:
+    """Disabling info changes only the info dict — never reward or game state.
+
+    The rollout and evaluation pools run with `build_info=False` because the
+    dict costs ~0.2 ms of every step and they discard it. If that flag could
+    perturb anything else it would silently change what training optimises, so
+    the two envs are stepped in lockstep and compared.
+    """
+    with_info = WargameEnv(config=env_config, build_info=True)
+    without_info = WargameEnv(config=env_config, build_info=False)
+
+    _, info = with_info.reset(seed=42, options={"combat_seed": 7})
+    _, empty = without_info.reset(seed=42, options={"combat_seed": 7})
+    assert info != {}
+    assert empty == {}
+
+    for _ in range(10):
+        action = WargameEnvAction(actions=with_info.action_space.sample())
+        _, reward, terminated, _, info = with_info.step(action)
+        _, other_reward, other_terminated, _, empty = without_info.step(action)
+
+        assert empty == {}
+        assert other_reward == reward
+        assert other_terminated == terminated
+        assert without_info.player_vp == with_info.player_vp
+        for left, right in zip(without_info.wargame_models, with_info.wargame_models):
+            assert (left.location == right.location).all()
+        if terminated:
+            break
+
+
 def test_reset_sets_internal_state(env: WargameEnv) -> None:
     """After reset, env current_turn is 0 and last_reward is None."""
     env.reset(seed=42)

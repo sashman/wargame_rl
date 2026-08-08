@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
@@ -199,6 +200,9 @@ class WargameLightningBase(LightningModule, ABC):
                 # exactly the failure EventLogCallback was written to fix.
                 # Recording every env would interleave episodes into one log.
                 state_exporters=self.env.state_exporters if index == 0 else None,
+                # The eval loop discards the info dict; the snapshot exporter on
+                # env 0 reads game state directly, not through info.
+                build_info=False,
             )
             for index in range(wave_size)
         ]
@@ -435,6 +439,17 @@ class WargameLightningBase(LightningModule, ABC):
 
     def on_train_epoch_end(self) -> None:
         if self.do_log:
+            start = time.perf_counter()
             sr = self.run_episodes(self.n_episodes)
+            # Evaluation is a fixed per-epoch tax that grows with `n_episodes`
+            # and army size, and it is invisible in `perf/epoch_s` because it
+            # runs outside `training_step`. Log it so the total is honest.
+            self.log(
+                "perf/eval_s",
+                time.perf_counter() - start,
+                prog_bar=False,
+                logger=True,
+                on_epoch=True,
+            )
             self._advance_reward_phase(sr)
         super().on_train_epoch_end()

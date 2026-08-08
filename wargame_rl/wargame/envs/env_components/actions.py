@@ -159,6 +159,9 @@ class ActionHandler:
         self._n_move_actions = n_angles * n_speeds
         self._n_speed_bins = n_speeds
         self._n_angles = n_angles
+        # Built lazily rather than here: `n_actions` depends on the registry,
+        # which is populated below.
+        self._action_space: spaces.Tuple | None = None
 
         self._registry = ActionRegistry()
         self._registry.register("stay", 1, ALL_BATTLE_PHASES)
@@ -198,9 +201,20 @@ class ActionHandler:
 
     @property
     def action_space(self) -> spaces.Tuple:
-        return spaces.Tuple(
-            [spaces.Discrete(self.n_actions) for _ in range(self._n_models)]
-        )
+        """The per-model action space. Built once; the shape never changes.
+
+        This used to construct ``n_models`` fresh ``Discrete`` spaces on every
+        access, and `apply` reads it once per movement application for both
+        armies — 25 `Discrete.__init__` calls per step purely to run
+        `.contains()`. Handing out one shared instance is safe because nothing
+        samples from it: `WargameEnv.action_space` is a separate object and is
+        the only one `.sample()` is called on, so no RNG stream is shared.
+        """
+        if self._action_space is None:
+            self._action_space = spaces.Tuple(
+                [spaces.Discrete(self.n_actions) for _ in range(self._n_models)]
+            )
+        return self._action_space
 
     def _decode_action(self, action: int) -> np.ndarray:
         """Return the integer (dx, dy) displacement for *action*."""

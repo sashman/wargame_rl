@@ -52,11 +52,13 @@ wargame_rl/
 ├── examples/env_config/           # YAML environment configurations
 ├── tests/                         # Pytest suite with conftest.py fixtures
 ├── docs/                          # Design docs (movement, reward phases, missions-and-vp,
-│                                  #   roadmap, rules, metrics, shooting, terrain)
+│                                  #   roadmap, rules, metrics, shooting, terrain,
+│                                  #   training-throughput)
 ├── reports/                       # Experiment findings, kept for retrospection
 ├── scripts/                       # Run-inspection tooling (run_summary, measure_phase_gates,
 │                                  #   measure_baselines, measure_checkpoint, measure_terrain,
-│                                  #   measure_noise_floor, measure_objective_split)
+│                                  #   measure_noise_floor, measure_objective_split,
+│                                  #   measure_throughput)
 ├── train.py                       # Training entry point (Typer CLI)
 ├── simulate.py                    # Inference/simulation entry point
 ├── replay_events.py               # Replay / narrate a match event log
@@ -92,6 +94,7 @@ wargame_rl/
 | Why an objective was not held | `just measure-objective-split <policy\|ckpt> <config.yaml> [n_episodes] [distinct]` |
 | Dice-vs-scenario noise floor | `just measure-noise-floor <config.yaml> [n_layouts] [n_combat_seeds] [policy]` |
 | Terrain-profile statistics | `just measure-terrain <config.yaml> [n_layouts]` |
+| Where epoch time goes | `just measure-throughput <config.yaml> [n_steps] [engaged]` |
 | Profile | `just profile <config.yaml> [model] [max_epochs]` |
 | Clean | `just clean` |
 
@@ -256,8 +259,10 @@ Detailed patterns live next to the code they govern — read them when working i
 - **Training configs:** `examples/env_config/25v25_single_phase.yaml` (control) and `25v25_curriculum.yaml` (two rungs). They share a scenario and a final phase, so comparing them isolates the curriculum. Every phase must keep `vp_gain` and at least one per-model calculator — `tests/test_curriculum_configs.py` enforces both. **`25v25_shooting_opponent.yaml` is a different scenario and is not comparable to either** — it faces `scripted_advance_and_shoot` on regenerated terrain with `objective_min_separation`, where those two face the non-shooting `scripted_advance_to_objective` on fixed terrain. `crowding_exponent` has only ever been measured on the shooting scenario, so do not port it into the other two without measuring there
 - **Past experiments:** [reports/](reports/README.md) records findings from previous runs, including refuted hypotheses. **Start with [the correction](reports/2026-08-04-correction-what-was-actually-broken.md)** — it retracts most pre-2026-08-04 conclusions, including the earlier claims that `gamma` 0.99 and `ent_coef` 0.01 were refuted (they were measured under a training loop that never applied the reward being tuned)
 - **Inspecting a run:** `just run-summary <run_id> [bucket]` for rolling means (single-epoch `success_rate` is an `n_episodes`-sample binomial — never read a point value); `just measure-phase-gates <ckpt> <env_config> 40` for per-phase criteria rates and the whole `min_fraction` curve
-- Key CLI options: `--record-during-training`, `--max-epochs`, `--render-mode`, `--algorithm`, `--no-wandb`, `--run-suffix`, `--wandb-group`, `--n-eval-episodes`, `--seed`
-- Profile a run: `just profile <config.yaml> [model] [max_epochs]` generates `profile.html`
+- Key CLI options: `--record-during-training`, `--max-epochs`, `--render-mode`, `--algorithm`, `--no-wandb`, `--run-suffix`, `--wandb-group`, `--n-eval-episodes`, `--seed`, `--no-tf32`, `--precision`
+- Profile a run: `just profile <config.yaml> [model] [max_epochs]` generates `profile.html` (`--no-wandb`, capped at 5 epochs by default)
+- **Training speed was an environment problem; on the 4090 it is now split evenly with the update.** See [docs/training-throughput.md](docs/training-throughput.md). `just measure-throughput <config>` gives the per-section and per-reward-calculator split of `env.step()`; every run also logs `perf/rollout_s`, `perf/update_s`, `perf/eval_s`, `perf/env_steps_per_s` and `perf/update_ms_per_minibatch`, so a slowdown shows up beside the reward curves. Two calculators were ~80% of a 25v25 step because each recomputed a model-independent quantity once per model; memoising them plus three smaller repeats took the rollout step from 11.34 ms to 2.26 ms (23.2 s → 4.6 s of env time per epoch). Any change to the reward pipeline must keep `tests/test_reward_golden.py` **bit-identical** — it pins per-step reward, per-model reward, breakdown, VP and positions, and is verified to catch a one-ULP change
+- **TF32 is on by default and changes trained results.** `configure_matmul_precision` (`model/common/performance.py`) enables it on sm_80+ before any model is built; it is worth 1.34x on the PPO update (45.7 → 34.5 ms/minibatch on a 4090) and drops matmul mantissa from 24 bits to 11. That is far below the ~7pp win-rate / ~10 vp resolution limits, and the env and reward are untouched numpy on the CPU — but "training is deterministic given seed + config + code" now holds only *within* one setting of `--no-tf32`. **`--precision bf16-mixed` is another 1.8x on the update and is opt-in because only its speed has been measured** — A/B it over two seeds before trusting a run under it. `torch.compile` measures 3.26x stacked and is deliberately not wired: it prefixes every `state_dict` key with `_orig_mod.`, and `_apply_warm_start_weights` uses `strict=False`, so such a checkpoint would load as *nothing at all* and score a random network as a trained one
 - Simulate latest checkpoint: `just simulate-latest [network_type]` · Clean up: `just clean` removes `checkpoints/` and `wandb/`
 
 ## Git Workflow
