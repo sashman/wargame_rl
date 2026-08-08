@@ -29,6 +29,7 @@ Both expose `policy_from_env(env)` and `from_checkpoint(env, path)` class method
 ## Shared (`model/common/`)
 
 - `create_environment()` — factory for `WargameEnv` from config (optionally with `state_exporters`)
+- **Rollout and eval envs are built with `build_info=False`.** The Gymnasium info dict costs ~0.2 ms of every step — 50 dataclasses, a Pydantic model and a `model_dump()` — and both loops discard it. Anything reading `info` on the training path will get `{}`; read the env's properties instead
 - `observation_to_tensor` / `observations_to_tensor_batch` — observation conversion
 - `WargameLightningBase` (`lightning_base.py`) — base for `DQNLightning` / `PPOLightning`: evaluation, baseline logging, reward-phase advancement
 - `RLDataset` (`dataset.py`) — generic RL `IterableDataset`
