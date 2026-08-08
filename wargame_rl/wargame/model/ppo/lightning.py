@@ -418,6 +418,8 @@ class PPOLightning(WargameLightningBase):
         epoch_entropy_loss = 0.0
         epoch_clip_fraction = 0.0
         epoch_approx_kl = 0.0
+        epoch_grad_norm = 0.0
+        epoch_grad_clipped = 0.0
 
         n_minibatches = (n_steps + self.batch_size - 1) // self.batch_size
         total_updates = self.n_epochs * n_minibatches
@@ -487,12 +489,22 @@ class PPOLightning(WargameLightningBase):
                     optimizer.zero_grad()  # type: ignore[union-attr]
                     self.manual_backward(loss)
 
-                    torch.nn.utils.clip_grad_norm_(
+                    # The return value is the norm *before* clipping, and it is
+                    # the missing half of the update diagnostics: `max_grad_norm`
+                    # is applied to the joint norm across both networks, so if it
+                    # binds on most minibatches then it — not `lr` — is setting
+                    # the effective step size, and `vf_coef` acts only by taking
+                    # a share of that fixed budget. Discarding it left no way to
+                    # tell that apart from a genuinely small gradient.
+                    grad_norm = torch.nn.utils.clip_grad_norm_(
                         self.ppo_model.parameters(), self.max_grad_norm
                     )
                     optimizer.step()  # type: ignore[union-attr]
 
                     total_loss_float += loss.item()
+                    grad_norm_float = float(grad_norm)
+                    epoch_grad_norm += grad_norm_float
+                    epoch_grad_clipped += float(grad_norm_float > self.max_grad_norm)
                     n_updates += 1
                     epoch_policy_loss += policy_loss.item()
                     epoch_value_loss += value_loss.item()
@@ -533,11 +545,18 @@ class PPOLightning(WargameLightningBase):
                 on_epoch=True,
             )
             # Update health. clip_fraction above ~0.3 means the trust region is
-            # being saturated and much of each minibatch contributes nothing.
+            # being saturated and much of each minibatch contributes nothing;
+            # at the bottom of the band it is not binding at all and the step
+            # size has headroom. `grad_clipped_fraction` disambiguates the
+            # second case: near 1.0 the gradient is being clipped on nearly
+            # every minibatch, so `max_grad_norm` is the effective step size and
+            # raising `lr` alone will change little.
             for name, value in (
                 ("train/clip_fraction", epoch_clip_fraction / n_updates),
                 ("train/approx_kl", epoch_approx_kl / n_updates),
                 ("train/explained_variance", explained_variance),
+                ("train/grad_norm", epoch_grad_norm / n_updates),
+                ("train/grad_clipped_fraction", epoch_grad_clipped / n_updates),
             ):
                 self.log(name, value, prog_bar=False, logger=True, on_epoch=True)
             for name, value in self._rollout_diagnostics.items():

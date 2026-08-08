@@ -311,6 +311,18 @@ Movement entropy flatlines at ~2.24 nats from epoch 100 to 1000 and never moves 
 That reads as a policy taking roughly half the step PPO would permit, then idling
 under a constant LR and constant entropy bonus for 900 epochs.
 
+**MEASURED 2026-08-09 — the diagnostic is now logged and the answer is yes.**
+`train/grad_clipped_fraction` is **1.0 on every epoch**, with pre-clip norms of
+6.5-21.6 against `max_grad_norm = 0.5`. Clipping binds on **100% of minibatches**,
+13x to 43x over the threshold — so the gradient the optimiser sees is always a
+renormalised direction, never a magnitude. `max_grad_norm`, not `lr`, is setting
+the step size.
+
+Caveat, and it is a real one: this is six epochs from a fresh initialisation, where
+gradients are largest. It has not yet been read at epoch 300+, and it must be before
+anyone acts on it. But it is consistent with `approx_kl` sitting flat at 0.008-0.020
+across a full 1000-epoch run, which is what prompted the question.
+
 **The one-line diagnostic that settles it, at zero training cost:**
 `clip_grad_norm_` (`ppo/lightning.py:490`) **returns** the pre-clip total norm and the
 return value is discarded. Log it. `max_grad_norm=0.5` is applied to the *joint* norm

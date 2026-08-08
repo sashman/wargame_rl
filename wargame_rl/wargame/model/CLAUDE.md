@@ -44,7 +44,7 @@ Both expose `policy_from_env(env)` and `from_checkpoint(env, path)` class method
 
 ## Callbacks
 
-- `get_checkpoint_callback()` — builds the Lightning `ModelCheckpoint` for a run
+- `get_checkpoint_callback()` — builds two callbacks for a run: a monitored `ModelCheckpoint` keeping the top-3 by training reward, and a `PeriodicLastCheckpoint` owning `last.ckpt`. They are separate because one `ModelCheckpoint` cannot do both jobs — with `monitor` set, `save_last=True` fires only on epochs that enter the top-k, so `last.ckpt` silently becomes `best.ckpt`. And an *unmonitored* `ModelCheckpoint(save_top_k=0, save_last=True)` writes only at `on_train_end`, which leaves a killed run with no `last.ckpt` at all
 - `RecordEpisodeCallback` — records MP4 episodes during training
 - `EnvConfigCallback` — persists env YAML config alongside checkpoints
 - `EventLogCallback` — records a match event log during training (`--record-events`)
