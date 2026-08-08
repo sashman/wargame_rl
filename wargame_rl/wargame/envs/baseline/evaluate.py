@@ -54,6 +54,17 @@ class BaselineResult:
     # The exchange-ratio measure: exposure alone cannot tell manoeuvre from
     # hiding, because both lower it.
     firepower_ratio: float | None
+    # Mean count of objectives the player *controls* at episode end -- strictly
+    # more player models than opponent models inside the disc, the same rule VP
+    # scores on.
+    #
+    # This is not derivable from `final_fraction_at_objectives`, which is the
+    # fraction of *alive* models standing on *any* objective and therefore
+    # cannot tell 15 models on one point from 5 each on three. Both read ~0.95
+    # while one scores 5 VP a round and the other 15. Measuring occupancy
+    # without this is how three experimental rounds were aimed at a deficit that
+    # was mostly measurement noise.
+    objectives_held: float
 
     @property
     def vp_margin(self) -> float:
@@ -198,6 +209,7 @@ def evaluate_selector(
     exposures: list[float | None] = []
     proximities: list[float | None] = []
     firepower: list[float | None] = []
+    held: list[float] = []
 
     for index, seed in enumerate(seeds):
         options = None if combat_seeds is None else {"combat_seed": combat_seeds[index]}
@@ -227,6 +239,21 @@ def evaluate_selector(
         proximities.append(env.terrain_proximity)
         firepower.append(env.firepower_ratio)
 
+        # Control is a strict count comparison, so an objective with equal
+        # numbers on it scores for nobody.
+        opponent_alive = alive_mask_for(env.opponent_models)
+        if env.opponent_models:
+            opponent_norms = compute_distances(
+                env.opponent_models, env.objectives, alive_mask=opponent_alive
+            ).model_obj_norms_offset
+            opponent_counts = (opponent_norms <= cache.obj_radii).sum(axis=0)
+        else:
+            opponent_counts = np.zeros(len(env.objectives), dtype=int)
+        player_counts = (cache.model_obj_norms_offset[alive] <= cache.obj_radii).sum(
+            axis=0
+        )
+        held.append(float((player_counts > opponent_counts).sum()))
+
     return BaselineResult(
         name=name,
         n_episodes=len(seeds),
@@ -241,4 +268,5 @@ def evaluate_selector(
         exposure_rate=mean_of_measured(exposures),
         terrain_proximity=mean_of_measured(proximities),
         firepower_ratio=mean_of_measured(firepower),
+        objectives_held=float(np.mean(held)),
     )

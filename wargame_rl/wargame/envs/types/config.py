@@ -306,6 +306,18 @@ class WargameEnvConfig(BaseModel):
         "statistics during shooting phases. Measurement only — it does not affect "
         "the game, but it costs an extra shooting-mask build per shooting phase.",
     )
+    observe_objective_control: bool = Field(
+        default=False,
+        description="Put per-objective control state (player count, opponent "
+        "count, radius) on the objective token, widening it from 2 to 5. VP is "
+        "scored on `player_count > opponent_count` per objective, but an "
+        "objective otherwise reaches the network as nothing but a location, so "
+        "the agent is asked to optimise a strict count comparison it cannot "
+        "observe. Any reward keyed on those counts is likewise unattributable. "
+        "Default False keeps the tensor byte-identical; turning it on changes "
+        "the objective embedding shape, so existing checkpoints will fail to "
+        "load — which is the intended loud failure.",
+    )
     render_mode: str | None = Field(
         default=None, description="Rendering mode for the environment"
     )

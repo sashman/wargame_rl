@@ -1,18 +1,59 @@
-config_name: 25v25_cover_reason
+config_name: 25v25_shooting_opponent
 #
-# BATCH 3, ARM J -- reason only. Identical to ARM H except the `models_lost` term.
+# 25v25 against an opponent that shoots back. THE SHOOTING-OPPONENT CONFIG.
 #
-# Isolated the reward change: does pricing losses change behaviour while the
-# policy has no line-of-sight information at movement time? The prior was that
-# it cannot, because no reward fixes a missing input. This arm is what made that
-# falsifiable rather than assumed -- and it refuted it. Pricing losses is worth
-# roughly +7 vp_margin over ARM H, on both seeds; adding the line-of-sight input
-# on top of it added nothing, so that input was removed.
+# This is the scenario the beat-the-bar work was done on, and this config is the
+# configuration that won it. It is NOT interchangeable with
+# 25v25_single_phase.yaml or 25v25_curriculum.yaml: those face
+# `scripted_advance_to_objective`, which never fires, on fixed terrain with no
+# objective separation constraint. Switching opponent invalidates every baseline
+# and agent score measured on a config, so numbers do not transfer either way.
 #
-# It did NOT buy caution: this arm keeps fewer models alive than the control
-# (0.636 vs 0.686) and exposes more. Whatever the penalty does, "decline bad
-# trades" is not it. See reports/2026-08-06-cover-signal-reason-geometry.md.
+# WHAT IT SCORES. n=100, seeds 700000-700099, identical layouts, against the
+# scripted baselines measured on this same config:
 #
+#   policy                       win    vp_margin   held
+#   random (the floor)           0.00     -164.6    0.09
+#   squad_march                  0.22      -58.9    0.99
+#   squad_march_shoot (the bar)  0.65      +17.0    1.64
+#   THIS CONFIG, 1000 epochs     0.685     +28.4    1.59
+#
+# Both seeds clear the bar independently (+30.1 and +26.6). Reproduce with
+# `just measure-baselines examples/env_config/25v25_shooting_opponent.yaml 100 "" 700000`
+# and `just measure-checkpoint <ckpt> examples/env_config/25v25_shooting_opponent.yaml 100`.
+#
+# THE TWO THINGS THAT MAKE IT WIN, both off by default elsewhere:
+#
+#   observe_objective_control     per-objective player/opponent counts on the
+#                                 objective token (2 -> 5 dims). Worth little
+#                                 alone (+1.55 +/- 4.5), but the reward below
+#                                 keys on a quantity that has to be observable.
+#   objective_hold                weight 1.25, crowding_exponent 1.0. The point
+#                                 pays a fixed pot split among its occupants
+#                                 rather than paying every occupant a wage.
+#
+# DO NOT RAISE THE WEIGHT WITHOUT THE EXPONENT. Measured: weight 1.25 at
+# crowding_exponent 0.0 scores -40.4 vp_margin, worse than the 0.25 default's
+# +3.25, and ends with 20 of 21 survivors stacked on a single objective. Flat pay
+# at 1.25/step integrates to ~50 an episode against this file's ~10-per-term
+# budget, so standing still out-earns everything else. At fixed weight the
+# exponent is worth 68 vp_margin.
+#
+# Weight is calibrated so the occupancy that actually holds the contested
+# objective -- 5 models, against the measured 4.22 defenders -- pays the
+# 0.25/step the flat term paid. Changing one of the pair without the other
+# changes the price of correct play, not just the price of crowding.
+#
+# See reports/2026-08-08-paying-the-pot-beats-the-bar.md. Note the scenario is
+# effectively a TWO-objective mission: both this policy and the bar concede the
+# third point in nearly every episode (the opponent stacks ~13 there and
+# flipping it costs 14), so `objectives_held` is bounded near 2.
+#
+# ---------------------------------------------------------------------------
+# Scenario. Terrain is regenerated every episode rather than fixed, which is
+# what makes a positioning result falsifiable: with a fixed layout, "learned to
+# use the terrain" and "memorised the rectangles" produce the same numbers.
+# ---------------------------------------------------------------------------
 number_of_wargame_models: 25
 number_of_opponent_models: 25
 number_of_objectives: 3
@@ -186,8 +227,9 @@ reward_phases:
       # The only term that pays a model while it is stationary, and the only
       # per-model path to the central behaviour. Scaled by control state, so it
       # pays for holding a point rather than merely standing on one.
-      - type: objective_hold
-        weight: 0.25
+      - type: objective_hold  # POT-SHARING ARM: see header
+        weight: 1.25
+        params: { crowding_exponent: 1.0 }
       # Credits the model that actually fired. Shooting is half the agent's
       # decisions; under the global `killing` term every model was paid the
       # same whether it fired, missed, or stood still.
@@ -201,21 +243,6 @@ reward_phases:
       - type: group_cohesion
         weight: 0.3
         params: { group_max_distance: 6.0, violation_penalty: -0.05 }
-      # The cost side of the trade. `model_kills` pays for kills made and
-      # nothing charged for the models they cost, so exposing a model was free
-      # and declining a bad exchange could never look better than charging.
-      #
-      # Global, not per-model: the phase manager runs per-model calculators over
-      # alive models only, and every model here has one wound, so a per-model
-      # damage penalty would be identically zero -- the model that took the
-      # damage is already dead when the loop runs.
-      #
-      # weight x penalty = 0.1, matched to `model_kills`: bonus 2.0 paid to one
-      # model and divided by ~20 alive is ~0.10 per kill, so an even trade nets
-      # to roughly zero and only favourable exchanges pay.
-      - type: models_lost
-        weight: 0.1
-        params: { penalty_per_loss: 1.0 }
       # ---- global (broadcast whole to each model, not divided by 25) ----
       # The actual objective. Largest weight because its realistic dynamic
       # range is the smallest.
@@ -233,3 +260,6 @@ reward_phases:
     success_criteria:
       type: player_ahead_on_vp
       params: {}
+
+# See the header comment: this arm observes per-objective control state.
+observe_objective_control: true

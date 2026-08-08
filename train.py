@@ -381,7 +381,9 @@ def train(
             ppo_training_config.max_epochs = max_epochs
 
         if network_type == NetworkType.TRANSFORMER:
-            ppo_net = PPO_Transformer.from_env(env)
+            # The config decides whether the model gets a shooting slice, and
+            # therefore whether it decodes targets autoregressively.
+            ppo_net = PPO_Transformer.from_env(env, ppo_config)
         else:
             raise NotImplementedError("We will probably never do this.")
         ppo_model = PPOLightning(env=env, ppo_model=ppo_net, **ppo_config.model_dump())

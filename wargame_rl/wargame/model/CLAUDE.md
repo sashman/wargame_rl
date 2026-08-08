@@ -55,13 +55,15 @@ Both expose `policy_from_env(env)` and `from_checkpoint(env, path)` class method
 | # | Tensor | Shape |
 |---|---|---|
 | 0 | game features | `(6,)` — placeholder, normalized_round, normalized_phase, player_vp, opponent_vp, player_vp_delta |
-| 1 | objectives | `(n_objectives, 2)`, normalized to `[-1, 1]` |
+| 1 | objectives | `(n_objectives, 2)` normalized to `[-1, 1]`, or `(n_objectives, 5)` with `observe_objective_control` — location plus normalized player count, opponent count and radius |
 | 2 | player models | `(n_models, feature_dim)` |
 | 3 | opponent models | `(n_opponent_models, feature_dim)` — 0 rows when no opponents |
 | 4 | terrain | `(n_terrain, 4)` normalized footprint corners — 0 rows when no terrain |
 | 5 | action mask | `(n_models, n_actions)`, bool |
 
 `feature_dim = base + n_opponent`, where base covers normalized location, distances to objectives, group_id one-hot, closest same-group distance, wound features (alive, wound_ratio, max_wounds_norm), and combat stats (attacks, bs, strength, ap, damage, toughness, save — each divided by its `NORM_*` constant). The trailing `n_opponent` columns are expected damage per target (player models) or zero-padding (opponent models).
+
+**The objective token has no such trap.** `TransformerNetwork.from_env` reads `objective_size` straight off `tensors[1].shape[-1]`, so widening it resizes the embedding automatically and leaves `_alive_feature_index` untouched. That is why `observe_objective_control` adds three columns there rather than to the per-model block.
 
 **Any new per-model column goes inside `core`, before `alive` — never on the end.** `TransformerNetwork._alive_feature_index` locates `alive` by counting *backwards* from the last column. A column appended after the combat stats shifts that index, and the key-padding mask then reads `wound_ratio` as `alive`: dead models stay attendable and live ones drop out. Nothing raises, so nothing tells you. This bit the one feature that was added here (`observe_threat_count`, since removed) and will bite the next one.
 

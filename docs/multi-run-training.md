@@ -22,6 +22,7 @@ Each process calls `wandb.init()` independently; Wandb supports multiple concurr
 | `just train-multi-epochs <max_epochs> <configs...>` | Same, but every arm stops at the same epoch so the arms stay comparable |
 | `just train-multi-seeds <max_epochs> <n_seeds> <configs...>` | Every config at each of N seeds, **one seed group at a time**. An arm without an error bar is unreadable: measured within-arm seed spread on win rate is 6–7pp on the 25v25 configs |
 | `just train-seed <max_epochs> <seed> <group> <configs...>` | Every config once at one specific seed, into an **existing** Wandb group. For re-running a seed group that died partway — `train-multi-seeds` always mints a fresh group and always starts from seed 1 |
+| `just train-arm <max_epochs> <n_seeds> <group> <tag> <flags> <configs...>` | Like `train-multi-seeds`, but passes extra `train.py` flags through and stamps `tag` into the run suffix. For arms that vary a *training* flag (e.g. a PPO override) rather than a config field, which would otherwise collide on run name and checkpoint directory |
 
 Seed groups run sequentially, not all at once: a PPO transformer run holds ~3.8 GB of VRAM, so eight concurrent runs overflow a 24 GB card. They fail *after* startup, on a small allocation partway through training, which is easy to mistake for a clean launch.
 
