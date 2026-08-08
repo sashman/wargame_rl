@@ -150,6 +150,12 @@ active phases = 40 — so a real experiment epoch runs **1200 eval env steps aga
 2048 rollout steps** and costs **~8.4 s, of which eval is ~22%**. Percentages
 quoted against 6.55 s are optimistic by about a quarter.
 
+`--eval-every-n-epochs N` reclaims most of that: measured 89.0 s → 74.6 s over 8
+epochs at N=4 (**16.2%**), with training time unchanged to the tenth of a second
+and the same final `eval/vp_margin`, since the last epoch always evaluates. It
+raises on curriculum configs, where a coarser cadence would move phase
+advancement.
+
 Measured on `25v25_shooting_opponent.yaml`, median of six epochs, 2048 rollout
 steps and 80 minibatches. Sequence length is **T = 83** on this config (1 game + 3
 objectives + 25 player + 25 opponent + **29 terrain**) — the "61-token" figure
