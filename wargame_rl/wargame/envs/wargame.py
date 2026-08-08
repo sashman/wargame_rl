@@ -103,13 +103,22 @@ class WargameEnv(gym.Env):
         renderer: renderer.Renderer | None = None,
         state_exporters: list[StateExporter] | None = None,
         phase_position: CurriculumPosition | None = None,
+        build_info: bool = True,
     ):
         """Build the environment.
 
         `phase_position` shares curriculum progress with another environment.
         Training passes the eval env's position to every rollout env so they
         reward the phase the curriculum has actually reached.
+
+        `build_info=False` returns an empty info dict from `reset` and `step`.
+        The dict costs ~0.19 ms a step -- 50 dataclasses, a Pydantic model and a
+        `model_dump()` -- and every caller on the training path discards it, so
+        rollout and evaluation envs turn it off. It stays on by default because
+        it is part of the Gymnasium contract and `simulate.py`, the baselines
+        and the tests all read it.
         """
+        self._build_info = build_info
         self.board_width = config.board_width
         self.board_height = config.board_height
         self.window_size = 1024  # The size of the PyGame window
@@ -280,6 +289,15 @@ class WargameEnv(gym.Env):
         return self._battle.terrain
 
     @property
+    def player_max_ranges(self) -> np.ndarray:
+        """Longest weapon range per player model, resolved once from config.
+
+        Exposed on `BattleView` so the observation builder stops recomputing it
+        from config on every step — the values are static for the whole run.
+        """
+        return self._player_max_ranges
+
+    @property
     def exposure_rate(self) -> float | None:
         """Fraction of alive model-shooting-phases an enemy could see and shoot.
 
@@ -429,6 +447,13 @@ class WargameEnv(gym.Env):
     def _get_info(self) -> WargameEnvInfo:
         return build_info(self)
 
+    def _info_dict(self) -> dict[str, Any]:
+        """The Gymnasium info mapping, or an empty one when info is disabled."""
+        if not self._build_info:
+            return {}
+        dumped: dict[str, Any] = self._get_info().model_dump()
+        return dumped
+
     def reset(
         self, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[WargameEnvObservation, dict[str, Any]]:
@@ -488,7 +513,7 @@ class WargameEnv(gym.Env):
 
         cache = compute_distances(self.wargame_models, self.objectives)
         observation = self._get_obs(cache)
-        info: WargameEnvInfo = self._get_info()
+        info = self._info_dict()
 
         if self.renderer is not None:
             self.renderer.setup(self)
@@ -499,7 +524,7 @@ class WargameEnv(gym.Env):
             for exporter in self._state_exporters:
                 exporter.on_reset(snapshot)
 
-        return observation, info.model_dump()
+        return observation, info
 
     def _resolve_shooting_action(
         self,
@@ -809,7 +834,7 @@ class WargameEnv(gym.Env):
         reward = self.phase_manager.calculate_reward(self, ctx)
 
         observation = self._get_obs(cache)
-        info = self._get_info()
+        info = self._info_dict()
 
         self.last_reward = reward
         self.last_reward_breakdown = dict(self.phase_manager.last_reward_breakdown)
@@ -825,7 +850,7 @@ class WargameEnv(gym.Env):
             for exporter in self._state_exporters:
                 exporter.on_step(snapshot)
 
-        return observation, reward, is_terminated, False, info.model_dump()
+        return observation, reward, is_terminated, False, info
 
     def to_snapshot(self) -> GameStateSnapshot:
         """Build a serialisable snapshot of the current game state."""
@@ -989,9 +1014,9 @@ class WargameEnv(gym.Env):
         # Recompute distances and build observation
         cache = compute_distances(self.wargame_models, self.objectives)
         observation = self._get_obs(cache)
-        info = self._get_info()
+        info = self._info_dict()
 
-        return observation, info.model_dump()
+        return observation, info
 
     def render(self) -> None:
         if self.renderer is not None:

@@ -99,7 +99,6 @@ def _instrument(env: WargameEnv, timings: _Timings) -> None:
     """
     timings.wrap(env.phase_manager, "calculate_reward", "reward")
     timings.wrap(env, "_get_obs", "observation build")
-    timings.wrap(env, "_get_info", "info build (discarded)")
     timings.wrap(env, "_apply_opponent_action", "opponent turn")
     _instrument_line_of_sight(env, timings)
 
@@ -140,7 +139,9 @@ def _run(
     config_path: Path, n_steps: int, engaged: bool
 ) -> tuple[float, float, _Timings, WargameEnv, Any]:
     config = parse_yaml_raw_as(WargameEnvConfig, config_path.read_text())
-    env = WargameEnv(config=config)
+    # Matches the rollout and evaluation pools, which discard the info dict.
+    # Measuring with it on would overstate the per-epoch cost by ~0.2 ms a step.
+    env = WargameEnv(config=config, build_info=False)
     timings = _Timings()
 
     observation, _ = env.reset(seed=SEED, options={"combat_seed": COMBAT_SEED})
@@ -204,7 +205,7 @@ def _print_report(
         f"max_turns {env.max_turns}"
     )
     print(f"mode            {'engaged (LOS ceiling)' if engaged else 'random play'}")
-    print(f"steps           {n_steps}")
+    print(f"steps           {n_steps}   (build_info=False, as training runs)")
     print()
     print(f"env.step()      {mean_step * 1000:8.3f} ms   ({1.0 / mean_step:6.0f} /s)")
     print(f"env.reset()     {mean_reset * 1000:8.3f} ms")

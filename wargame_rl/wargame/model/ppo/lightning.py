@@ -571,6 +571,9 @@ class PPOLightning(WargameLightningBase):
                 self.env.config,
                 renderer=None,
                 phase_position=self.env.phase_manager.position,
+                # `_collect_rollout_parallel` discards the info dict; building
+                # it costs ~0.19 ms of every one of the 2048 steps in an epoch.
+                build_info=False,
             )
             for _ in range(self.num_rollout_envs)
         ]

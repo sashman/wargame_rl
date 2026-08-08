@@ -200,6 +200,9 @@ class WargameLightningBase(LightningModule, ABC):
                 # exactly the failure EventLogCallback was written to fix.
                 # Recording every env would interleave episodes into one log.
                 state_exporters=self.env.state_exporters if index == 0 else None,
+                # The eval loop discards the info dict; the snapshot exporter on
+                # env 0 reads game state directly, not through info.
+                build_info=False,
             )
             for index in range(wave_size)
         ]
