@@ -1,10 +1,8 @@
-from dataclasses import dataclass
-
 import numpy as np
 import torch
 from torch import Tensor
 
-from wargame_rl.wargame.envs.domain.shooting import DefenderStats, expected_damage
+from wargame_rl.wargame.envs.domain.shooting import expected_damage_matrix
 from wargame_rl.wargame.envs.types import WargameEnvObservation
 from wargame_rl.wargame.model.common import Device, get_device
 
@@ -25,17 +23,6 @@ N_WOUND_FEATURES = 3  # alive, wound_ratio, max_wounds_norm
 N_COMBAT_STATS = 7  # attacks, bs, strength, ap, damage, toughness, save
 N_BATTLE_PHASES = 5  # command, movement, shooting, charge, fight
 TERRAIN_FEATURE_DIM = 4  # x0_norm, y0_norm, x1_norm, y1_norm
-
-
-@dataclass(frozen=True, slots=True)
-class _ObsWeaponStats:
-    """Bridges observation's ``weapon_*`` fields to the ``WeaponStats`` protocol."""
-
-    attacks: int
-    ballistic_skill: int
-    strength: int
-    ap: int
-    damage: int
 
 
 def apply_action_mask(q_values: Tensor, mask: Tensor) -> Tensor:
@@ -216,24 +203,25 @@ def _observation_to_numpy(
 
     n_player = len(models)
     if n_player > 0 and n_opponent > 0:
-        ed_matrix = np.zeros((n_player, n_opponent), dtype=np.float32)
-        for pi in range(n_player):
-            pm = models[pi]
-            if pm.weapon_attacks == 0:
-                continue
-            for oi in range(n_opponent):
-                om = state.opponent_models[oi]
-                if om.toughness == 0:
-                    continue
-                weapon = _ObsWeaponStats(
-                    attacks=pm.weapon_attacks,
-                    ballistic_skill=pm.weapon_ballistic_skill,
-                    strength=pm.weapon_strength,
-                    ap=pm.weapon_ap,
-                    damage=pm.weapon_damage,
-                )
-                defender = DefenderStats(toughness=om.toughness, save=om.save_stat)
-                ed_matrix[pi, oi] = expected_damage(weapon, defender)
+        ed_matrix = expected_damage_matrix(
+            np.array(
+                [
+                    (
+                        m.weapon_attacks,
+                        m.weapon_ballistic_skill,
+                        m.weapon_strength,
+                        m.weapon_ap,
+                        m.weapon_damage,
+                    )
+                    for m in models
+                ],
+                dtype=np.int64,
+            ),
+            np.array(
+                [(m.toughness, m.save_stat) for m in state.opponent_models],
+                dtype=np.int64,
+            ),
+        )
         ed_normalized = np.clip(ed_matrix / NORM_EXPECTED_DAMAGE, 0.0, 1.0)
         model_features = np.hstack([model_features, ed_normalized])
         opp_padding = np.zeros((n_opponent, n_opponent), dtype=np.float32)
