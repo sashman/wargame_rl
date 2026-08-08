@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
 
@@ -254,6 +255,53 @@ class PPOLightning(WargameLightningBase):
         returns = advantages + values
         return returns
 
+    def _elapsed_since(self, start: float) -> float:
+        """Seconds since `start`, with CUDA work actually finished.
+
+        Without the synchronise, a GPU timing measures how long it took to
+        *queue* the kernels, not to run them — which reads as "the update is
+        free" and sends the next optimisation at the wrong target.
+        """
+        if self.ppo_model.device.type == "cuda":
+            torch.cuda.synchronize(self.ppo_model.device)
+        return time.perf_counter() - start
+
+    def _log_throughput(
+        self,
+        rollout_seconds: float,
+        update_seconds: float,
+        n_steps: int,
+        n_updates: int,
+    ) -> None:
+        """Log where the epoch's wall-clock went.
+
+        Logged every epoch, not just when profiling, so a performance
+        regression shows up on the same dashboard as a reward regression. The
+        GPU spent five months unusable on one machine without anything in the
+        metrics saying so.
+        """
+        metrics = {
+            "perf/rollout_s": rollout_seconds,
+            "perf/update_s": update_seconds,
+            "perf/epoch_s": rollout_seconds + update_seconds,
+        }
+        if rollout_seconds > 0.0:
+            metrics["perf/env_steps_per_s"] = n_steps / rollout_seconds
+        if n_updates > 0:
+            metrics["perf/update_ms_per_minibatch"] = update_seconds / n_updates * 1000
+        for name, value in metrics.items():
+            # on_step=False so each timing is one series. PPO runs exactly one
+            # `training_step` per epoch, so the default step/epoch pair would be
+            # two identical columns.
+            self.log(
+                name,
+                value,
+                prog_bar=False,
+                logger=True,
+                on_step=False,
+                on_epoch=True,
+            )
+
     def training_step(self, batch: Any, batch_idx: int) -> None:
         """Carry out a single training step.
 
@@ -270,6 +318,7 @@ class PPOLightning(WargameLightningBase):
         """
         device = self.ppo_model.device
         optimizer = self.optimizers()
+        rollout_start = time.perf_counter()
 
         rollout_reward_breakdown: dict[str, float] = {}
         if self.num_rollout_envs == 1:
@@ -346,6 +395,9 @@ class PPOLightning(WargameLightningBase):
             advantages = advantages_2d.reshape(-1, n_models)
             old_log_probs = old_log_probs_2d.reshape(-1, n_models).detach()
             n_steps = actions.shape[0]
+
+        rollout_seconds = self._elapsed_since(rollout_start)
+        update_start = time.perf_counter()
 
         # How much of the return the critic actually explains. 0 means it is no
         # better than predicting the mean; negative means worse. `advantages`
@@ -446,6 +498,10 @@ class PPOLightning(WargameLightningBase):
                     epoch_value_loss += value_loss.item()
                     epoch_entropy_loss += entropy_loss.item()
                     pbar.update(1)
+
+        update_seconds = self._elapsed_since(update_start)
+        if self.do_log:
+            self._log_throughput(rollout_seconds, update_seconds, n_steps, n_updates)
 
         if self.do_log and n_updates > 0:
             self.log(

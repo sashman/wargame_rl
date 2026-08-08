@@ -177,14 +177,23 @@ clean-wandb:
 clean: clean-checkpoints clean-wandb
 
 # Profile training with pyinstrument (HTML output, no recording)
+# --no-wandb because profiling should not open a live run and log a fake experiment.
 # Use it like: just profile path/to/config.yaml
 # Or with network type: just profile path/to/config.yaml mlp
 # Or with max epochs: just profile path/to/config.yaml '' 10
-profile env_config_path model='' max_epochs='':
+profile env_config_path model='' max_epochs='5':
 	uv run pyinstrument -r html -o profile.html train.py \
+		--no-wandb \
 		--env-config-path {{env_config_path}} \
 		{{ if model != "" { "--network-type " + model } else { "" } }} \
 		{{ if max_epochs != "" { "--max-epochs " + max_epochs } else { "" } }}
+
+# Where an epoch's wall-clock goes: per-section and per-reward-calculator env.step cost.
+# Pass `engaged` as the third argument to force full engagement and quote the
+# line-of-sight ceiling rather than the cost under a policy that never closes.
+# Use it like: just measure-throughput examples/env_config/25v25_single_phase.yaml
+measure-throughput env_config n_steps='400' engaged='':
+	@uv run python -m scripts.measure_throughput {{env_config}} {{n_steps}} {{engaged}}
 
 # Record a short training run with event logging (E2E demo: 1 epoch, no wandb)
 record env_config_path='examples/env_config/4_models_2_objectives_fixed.yaml':
