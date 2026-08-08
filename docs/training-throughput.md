@@ -84,6 +84,31 @@ reference copy of the code it replaced. The golden trajectories only cover the
 states they happen to reach; the reference tests cover all-dead groups, singleton
 groups and every objective control-state count pair.
 
+`tests/test_reward_golden.py` does **not** pin the network's input — it covers
+reward, per-model reward, breakdown, VP and positions, and the action mask only
+indirectly (actions are drawn from it, so a mask change moves `positions`). A
+wrong per-model *feature* column would pass it and every other test in the repo.
+`tests/test_observation_golden.py` closes that: it pins the six observation
+arrays bit-identically, checks the batch and single conversion paths agree, and
+asserts the alive column is where `_alive_feature_index` looks — that last one
+anchored to the env's own truth, so it survives a deliberate regeneration of the
+golden files. Regenerate with:
+
+```
+uv run python -m tests.test_observation_golden --regenerate
+```
+
+**Both gates are verified sensitive**, by injecting the two failures they exist
+to catch: a one-ULP change to a single feature, and an appended per-model column.
+Each fails on all three configs.
+
+One thing that check turned up and which any future work here must preserve: the
+column immediately after `alive` is `wound_ratio`, and every config in this repo
+runs `max_wounds: 1`, where `wound_ratio` is 1.0 or 0.0 and therefore
+**bit-identical to `alive`**. An off-by-one column read is invisible on this
+scenario unless some model is *wounded but alive* — so the test deliberately
+creates one. Without it, appending a per-model column passes.
+
 ## Rules for the reward hot path
 
 - **Anything a per-model calculator computes that does not depend on `model_idx`

@@ -225,11 +225,15 @@ Four `env.step` hoists, all bit-identical by construction:
   operands are already ctx-cached; the division is not. Use a **third** ctx key field —
   sharing `_cached_ctx` would freeze it at step one, the trap that file documents.
 
-**Prerequisite, and it is the single most valuable test to add for this workstream:**
-`tests/test_reward_golden.py` does **not** pin the observation feature arrays. It pins
-reward, per-model reward, breakdown, VP and positions. A wrong feature column would
-pass every test in the repo and silently degrade learning. Add an observation-tensor
-golden (`assert_array_equal`, never `assert_allclose`) **before** touching either area.
+**Prerequisite — DONE (2026-08-09).** `tests/test_reward_golden.py` does not pin the
+observation feature arrays, so a wrong feature column would have passed every test in
+the repo. `tests/test_observation_golden.py` now pins them, verified sensitive against
+a one-ULP change and an appended column.
+
+It also turned up something that changes how the column trap must be tested: the
+column after `alive` is `wound_ratio`, and at `max_wounds: 1` the two are
+**bit-identical**, so an off-by-one read is invisible unless a model is wounded but
+alive. The first version of that test passed with the trap injected.
 
 ### 7. The 29 terrain tokens
 
