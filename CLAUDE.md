@@ -56,7 +56,8 @@ wargame_rl/
 ├── reports/                       # Experiment findings, kept for retrospection
 ├── scripts/                       # Run-inspection tooling (run_summary, measure_phase_gates,
 │                                  #   measure_baselines, measure_checkpoint, measure_terrain,
-│                                  #   measure_noise_floor, measure_objective_split)
+│                                  #   measure_noise_floor, measure_objective_split,
+│                                  #   measure_throughput)
 ├── train.py                       # Training entry point (Typer CLI)
 ├── simulate.py                    # Inference/simulation entry point
 ├── replay_events.py               # Replay / narrate a match event log
@@ -92,6 +93,7 @@ wargame_rl/
 | Why an objective was not held | `just measure-objective-split <policy\|ckpt> <config.yaml> [n_episodes] [distinct]` |
 | Dice-vs-scenario noise floor | `just measure-noise-floor <config.yaml> [n_layouts] [n_combat_seeds] [policy]` |
 | Terrain-profile statistics | `just measure-terrain <config.yaml> [n_layouts]` |
+| Where epoch time goes | `just measure-throughput <config.yaml> [n_steps] [engaged]` |
 | Profile | `just profile <config.yaml> [model] [max_epochs]` |
 | Clean | `just clean` |
 
@@ -257,7 +259,8 @@ Detailed patterns live next to the code they govern — read them when working i
 - **Past experiments:** [reports/](reports/README.md) records findings from previous runs, including refuted hypotheses. **Start with [the correction](reports/2026-08-04-correction-what-was-actually-broken.md)** — it retracts most pre-2026-08-04 conclusions, including the earlier claims that `gamma` 0.99 and `ent_coef` 0.01 were refuted (they were measured under a training loop that never applied the reward being tuned)
 - **Inspecting a run:** `just run-summary <run_id> [bucket]` for rolling means (single-epoch `success_rate` is an `n_episodes`-sample binomial — never read a point value); `just measure-phase-gates <ckpt> <env_config> 40` for per-phase criteria rates and the whole `min_fraction` curve
 - Key CLI options: `--record-during-training`, `--max-epochs`, `--render-mode`, `--algorithm`, `--no-wandb`, `--run-suffix`, `--wandb-group`, `--n-eval-episodes`, `--seed`
-- Profile a run: `just profile <config.yaml> [model] [max_epochs]` generates `profile.html`
+- Profile a run: `just profile <config.yaml> [model] [max_epochs]` generates `profile.html` (`--no-wandb`, capped at 5 epochs by default)
+- **Training speed is an environment problem, not a GPU problem.** `just measure-throughput <config>` gives the per-section and per-reward-calculator split of `env.step()`; every run also logs `perf/rollout_s`, `perf/update_s`, `perf/eval_s`, `perf/env_steps_per_s` and `perf/update_ms_per_minibatch`, so a slowdown shows up beside the reward curves. Two calculators were ~80% of a 25v25 step because each recomputed a model-independent quantity once per model; memoising them took the step from 10.0 ms to 1.9 ms. Any change to the reward pipeline must keep `tests/test_reward_golden.py` **bit-identical** — it pins per-step reward, per-model reward, breakdown, VP and positions, and is verified to catch a one-ULP change. Add `engaged` to quote the line-of-sight ceiling: LOS is 0.6% of a step and 10 queries under random play, 24% and 151 queries when everything is in range, and it has no cache
 - Simulate latest checkpoint: `just simulate-latest [network_type]` · Clean up: `just clean` removes `checkpoints/` and `wandb/`
 
 ## Git Workflow

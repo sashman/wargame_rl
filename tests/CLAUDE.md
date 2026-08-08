@@ -33,6 +33,8 @@ Applies to everything under `tests/`. General testing philosophy lives in the ro
 
 **State I/O** — `test_snapshot` · `test_state_injection` · `test_event_stream` · `test_narrator`
 
+**Performance** — `test_reward_golden` (bit-identical gate: per-step reward, per-model reward, breakdown, VP and positions against recorded trajectories in `tests/data/`; use `assert_array_equal`, never `assert_allclose` — these values feed published reports, and a tolerance hides exactly the float-reassociation regression a vectorisation introduces. Regenerate only deliberately: `uv run python -m tests.test_reward_golden --regenerate`) · `test_reward_memoisation` (the two hot-path rewrites against reference copies of the code they replaced — the golden trajectories only cover the states they happen to reach)
+
 **Cross-cutting** — `test_integration` (backward compat) · `test_v9_milestone_validation` · `test_imports` · `test_interactive_demo`
 
 ## New Features

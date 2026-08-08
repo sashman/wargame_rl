@@ -71,6 +71,7 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         self._cached_player_counts: np.ndarray | None = None
         self._cached_opponent_counts: np.ndarray | None = None
         self._cached_group_assignment: dict[int, int] | None = None
+        self._cached_candidate_mask: np.ndarray | None = None
 
     @staticmethod
     def _normalized_distance(ctx: StepContext, distance_to_objective: float) -> float:
@@ -113,6 +114,7 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         self._cached_player_counts = None
         self._cached_opponent_counts = None
         self._cached_group_assignment = None
+        self._cached_candidate_mask = None
 
     def _objective_presence_masks(
         self,
@@ -122,6 +124,7 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         step_key = (ctx.current_turn, id(ctx.distance_cache))
         if self._cached_step_key != step_key:
             self._cached_group_assignment = None
+            self._cached_candidate_mask = None
         if (
             self._cached_step_key == step_key
             and self._cached_player_in_range is not None
@@ -216,6 +219,45 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         self._cached_group_assignment = assignment
         return assignment
 
+    def _candidate_mask(
+        self,
+        player_in_range: np.ndarray,
+        player_counts: np.ndarray,
+        opponent_counts: np.ndarray,
+        step_key: tuple[int, int],
+    ) -> np.ndarray:
+        """``(n_models, n_objectives)``: would this model's arrival improve control?
+
+        The mask does not depend on which model is being scored, so it is built
+        once per step rather than once per model. Each row was previously
+        ``idx_outside & idx_positive`` where ``idx_positive[obj]`` is only ever
+        set where ``idx_outside[obj]`` holds, and ``_is_positive_transition``
+        reads only the two objective-level counts — so the whole thing reduces
+        to ``(~player_in_range) & positive_transition``, evaluated per objective.
+
+        That the mask is model-independent is not a new assumption: the group
+        assignment derived from it is already memoised per step, which is only
+        correct because the mask is the same for every model.
+        """
+        if (
+            self._cached_step_key == step_key
+            and self._cached_candidate_mask is not None
+        ):
+            return self._cached_candidate_mask
+
+        positive_transition = np.array(
+            [
+                self._is_positive_transition(
+                    int(player_counts[obj_idx]), int(opponent_counts[obj_idx])
+                )
+                for obj_idx in range(player_in_range.shape[1])
+            ],
+            dtype=bool,
+        )
+        mask: np.ndarray = (~player_in_range) & positive_transition[np.newaxis, :]
+        self._cached_candidate_mask = mask
+        return mask
+
     def _overstack_penalty(
         self,
         model_idx: int,
@@ -247,34 +289,12 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         opponent_counts: np.ndarray,
     ) -> int | None:
         model_distances = cache.model_obj_norms_offset[model_idx]
-        model_outside = ~player_in_range[model_idx]
         n_obj = model_distances.shape[0]
-        positive_transition = np.zeros(n_obj, dtype=bool)
-        for obj_idx in range(n_obj):
-            if not bool(model_outside[obj_idx]):
-                continue
-            positive_transition[obj_idx] = self._is_positive_transition(
-                int(player_counts[obj_idx]),
-                int(opponent_counts[obj_idx]),
-            )
-        candidate_mask = np.zeros_like(player_in_range, dtype=bool)
-        candidate_mask[model_idx] = model_outside & positive_transition
-
-        # Objective-to-group assignment: one objective can reward only one group.
-        # Build assignment from all model candidates, not only this model.
-        for idx, _m in enumerate(view.player_models):
-            if idx == model_idx:
-                continue
-            idx_outside = ~player_in_range[idx]
-            idx_positive = np.zeros(n_obj, dtype=bool)
-            for obj_idx in range(n_obj):
-                if not bool(idx_outside[obj_idx]):
-                    continue
-                idx_positive[obj_idx] = self._is_positive_transition(
-                    int(player_counts[obj_idx]),
-                    int(opponent_counts[obj_idx]),
-                )
-            candidate_mask[idx] = idx_outside & idx_positive
+        # Objective-to-group assignment: one objective can reward only one group,
+        # so the mask covers every model, not just this one.
+        candidate_mask = self._candidate_mask(
+            player_in_range, player_counts, opponent_counts, step_key
+        )
 
         assignment = self._compute_group_assignment(
             view, cache, candidate_mask, step_key
