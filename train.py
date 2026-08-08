@@ -160,6 +160,13 @@ def _resolve_optional_str(value: str | OptionInfo | None) -> str | None:
     return value
 
 
+def _resolve_optional_float(value: float | OptionInfo | None) -> float | None:
+    """Unwrap a Typer default, as `_resolve_optional_int` does for ints."""
+    if isinstance(value, OptionInfo):
+        return None
+    return value
+
+
 def _resolve_optional_int(value: int | OptionInfo | None) -> int | None:
     """Unwrap a Typer default for callers that invoke `train()` directly.
 
@@ -242,6 +249,19 @@ def train(
     ent_coef: float | None = typer.Option(
         None,
         help="Override PPO entropy coefficient (defaults to PPOConfig value)",
+    ),
+    lr: float | None = typer.Option(
+        None,
+        help="Override PPO learning rate (defaults to PPOConfig value)",
+    ),
+    max_grad_norm: float | None = typer.Option(
+        None,
+        help=(
+            "Override the gradient-clipping threshold. Measured as the binding "
+            "constraint on this scenario -- train/grad_clipped_fraction is 1.0 "
+            "for the whole run at the 0.5 default -- so it, not --lr, is what "
+            "currently sets the effective step size"
+        ),
     ),
     num_rollout_envs: int | None = typer.Option(
         None,
@@ -392,6 +412,15 @@ def train(
             ppo_config.gamma = gamma
         if ent_coef is not None:
             ppo_config.ent_coef = ent_coef
+        # Resolved rather than compared to None: called as a plain function the
+        # parameter still holds Typer's `OptionInfo` sentinel, which is not None
+        # and would otherwise be assigned straight into the config.
+        resolved_lr = _resolve_optional_float(lr)
+        if resolved_lr is not None:
+            ppo_config.lr = resolved_lr
+        resolved_max_grad_norm = _resolve_optional_float(max_grad_norm)
+        if resolved_max_grad_norm is not None:
+            ppo_config.max_grad_norm = resolved_max_grad_norm
         if num_rollout_envs is not None:
             ppo_config.num_rollout_envs = num_rollout_envs
         ppo_training_config = PPOTrainingConfig(
