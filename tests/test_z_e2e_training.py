@@ -15,8 +15,7 @@ def test_training_smoke() -> None:
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
-    from train import AlgorithmType, train
-    from wargame_rl.wargame.model.dqn.config import NetworkType
+    from train import train
 
     env_config_path = os.path.join(
         project_root, "examples", "env_config", "ci_smoke.yaml"
@@ -25,8 +24,6 @@ def test_training_smoke() -> None:
     train(
         render_mode=None,
         env_config_path=env_config_path,
-        algorithm=AlgorithmType.PPO,
-        network_type=NetworkType.TRANSFORMER,
         record_during_training=False,
         record_after_epoch=10,
         record_every_n_epochs=20,

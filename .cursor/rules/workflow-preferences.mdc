@@ -10,8 +10,7 @@ alwaysApply: true
 - **Always start from the Justfile.** Before running any project operation (format, lint, test, train, validate, sync, simulate, etc.), check `Justfile` for an existing recipe and use `just <recipe>` — never invoke `uv run` (or other tool wrappers) directly when a recipe exists
 - If no recipe exists for what you need, prefer adding one to the Justfile over running ad-hoc `uv run` commands; only fall back to `uv run` when a one-off is clearly not worth a recipe
 - Discover recipes with `just` / `just --list` when unsure of the name or arguments
-- Default algorithm is PPO; do not default to DQN unless explicitly asked
-- Default network type is transformer; do not default to MLP unless explicitly asked
+- PPO on a `TransformerNetwork` is the only combination that trains; there is no algorithm or network to choose
 
 ## Naming & Design
 
@@ -30,7 +29,7 @@ alwaysApply: true
 - Mirror existing entity patterns: reuse the same model class (`WargameModel`), same config schema (`ModelConfig`), same placement logic
 - Parameterize shared infrastructure (e.g. `ActionHandler(n_models=...)`) rather than duplicating it
 - Always default new config fields to the no-op value so existing YAML configs keep working (e.g. `number_of_opponent_models=0`)
-- Full checklist: config types → env state → observation types → observation builder → tensor pipeline → DQN networks → renderer → tests → backward compat tests
+- Full checklist: config types → env state → observation types → observation builder → tensor pipeline → networks → renderer → tests → backward compat tests
 - When adding config that changes step semantics or episode length, update docs (`docs/reward-phases.md`, `docs/tabletop-rules-reference.md`, `docs/opponent-policies.md`, `docs/goals-and-roadmap.md`) and any tests that assume steps-per-round or phase order
 - When adding new reward calculators or success criteria, register them and document in `docs/reward-phases.md` (tables and file layout)
 

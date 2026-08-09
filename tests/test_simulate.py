@@ -10,7 +10,6 @@ from pydantic_yaml import to_yaml_str
 
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.common.factory import create_environment
-from wargame_rl.wargame.model.dqn.config import NetworkType
 from wargame_rl.wargame.model.net import TransformerNetwork
 
 _repo_root = Path(__file__).resolve().parent.parent
@@ -53,7 +52,7 @@ def test_simulate_latest_discovers_checkpoint_and_runs_episode(
     lightning_state = {
         f"policy_net._orig_mod.{k}": v.clone() for k, v in net.state_dict().items()
     }
-    torch.save({"state_dict": lightning_state}, run_dir / "dqn-epoch0.ckpt")
+    torch.save({"state_dict": lightning_state}, run_dir / "ppo-epoch0.ckpt")
     (run_dir / "env_config.yaml").write_text(to_yaml_str(cfg))
     env.close()
 
@@ -65,7 +64,6 @@ def test_simulate_latest_discovers_checkpoint_and_runs_episode(
             num_episodes=1,
             render=False,
             env_config_path=None,
-            network_type=NetworkType.TRANSFORMER,
         )
     finally:
         os.chdir(orig_cwd)

@@ -6,12 +6,12 @@ Applies to everything under `tests/`. General testing philosophy lives in the ro
 ## Setup
 
 - Pytest + shared fixtures in `conftest.py`; run via `just test`; coverage → `coverage.xml`
-- Fixtures: `n_steps`, `env`, `experiences`, `replay_buffer`, `policy_net` (parametrized MLP+Transformer), `dqn_mlp_net`, `dqn_transformer_net`, `ppo_net`, `ppo_transformer_net`
+- Fixtures: `n_steps`, `env`, `experiences`, `policy_net` (a bare `TransformerNetwork`), `transformer_net`, `ppo_net`, `ppo_transformer_net`
 
 ## Rules
 
 - No `@lru_cache` on fixtures — use `scope="module"`/`scope="session"` instead
-- Use `RL_Network` (not `MLPNetwork`) when accepting parametrized `policy_net`
+- Annotate the `policy_net` fixture as `RL_Network`, not as the concrete network class
 - Prefer integration tests; test through public APIs (add properties rather than accessing `_private` attrs)
 - Type-annotate fixtures and test functions
 - `wargame_rl/wargame/envs/interactive_demo.py` is NOT a test
@@ -25,7 +25,7 @@ Applies to everything under `tests/`. General testing philosophy lives in the ro
 
 **Reward & mission** — `test_reward_phases` · `test_new_per_model_calculators` · `test_per_model_credit` · `test_player_ahead_on_vp_criteria` · `test_mission_vp` · `test_killing_reward` · `test_models_lost_reward` (the loss penalty must be global — per-model is identically zero on one-wound models) · `test_objective_hold_crowding` (`crowding_exponent`: the flat default stays bit-identical, and at a = 1 the pot is conserved — total pay across a point's occupants is its value however many stand there, which is the property `surplus_value` lacks) · `test_curriculum_configs` (every 25v25 config must keep `vp_gain` + a per-model calculator; also pins the batch-2 and batch-3 arm factorials)
 
-**Model & training** — `test_dqn` (networks/loss/training) · `test_ppo` · `test_agent` (actions/episodes) · `test_state` (obs/batch tensors) · `test_transformer_shooting_policy` (shooting head, dead-token masking) · `test_batched_eval` (lockstep eval waves) · `test_training_diagnostics` · `test_train_resume` · `test_train_run_name` · `test_simulate` · `test_z_e2e_training`
+**Model & training** — `test_ppo` · `test_agent` (actions/episodes) · `test_state` (obs/batch tensors) · `test_transformer_shooting_policy` (shooting head, dead-token masking) · `test_batched_eval` (lockstep eval waves) · `test_training_diagnostics` · `test_train_resume` · `test_train_run_name` · `test_simulate` · `test_z_e2e_training`
 
 **Observation** — `test_objective_control_observation` (`observe_objective_control`: token width off/on, counts exclude dead models, recomputed each step, batching, and that the transformer resizes its objective embedding on its own)
 
@@ -35,10 +35,10 @@ Applies to everything under `tests/`. General testing philosophy lives in the ro
 
 **Performance** — `test_reward_golden` (bit-identical gate: per-step reward, per-model reward, breakdown, VP and positions against recorded trajectories in `tests/data/`; use `assert_array_equal`, never `assert_allclose` — these values feed published reports, and a tolerance hides exactly the float-reassociation regression a vectorisation introduces. Regenerate only deliberately: `uv run python -m tests.test_reward_golden --regenerate`) · `test_reward_memoisation` (the two hot-path rewrites against reference copies of the code they replaced — the golden trajectories only cover the states they happen to reach) · `test_observation_golden` (the network's *input*, which `test_reward_golden` does not pin: the six observation arrays bit-identical across three configs, the batch and single conversion paths agreeing, and — anchored to env truth rather than a recorded file — that the alive column is still where `_alive_feature_index` looks. **Both gates are verified sensitive**: a one-ULP feature change and an appended per-model column each fail them on all three configs. The alive check deliberately leaves one model *wounded but alive*, because at `max_wounds: 1` `wound_ratio` is bit-identical to `alive` and an off-by-one column read is otherwise undetectable — verified, it passes without that) · `test_precision` (TF32 gated on sm_80+ and restored after; `PPOModel.forward` returns float32 under bf16 autocast, and the quantisation that makes that guard necessary — a 0.007 nat log-prob change does not survive a bf16 round trip at these magnitudes)
 
-**Cross-cutting** — `test_integration` (backward compat) · `test_v9_milestone_validation` · `test_imports` · `test_interactive_demo`
+**Cross-cutting** — `test_checkpoint_module_alias` (a moved module silently un-loads every existing checkpoint — Lightning pickles `PPO_Transformer` into `hyper_parameters`, so checkpoints carry import *paths*; verified sensitive by deleting the alias) · `test_integration` (backward compat) · `test_v9_milestone_validation` · `test_imports` · `test_interactive_demo`
 
 ## New Features
 
-Cover: config validation · env integration · obs/info · tensor shapes · DQN forward · backward compat
+Cover: config validation · env integration · obs/info · tensor shapes · network forward · backward compat
 
 Run `just validate` before pushing.

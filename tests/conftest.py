@@ -5,8 +5,7 @@ import pytest
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
-from wargame_rl.wargame.model.net import MLPNetwork, RL_Network, TransformerNetwork
+from wargame_rl.wargame.model.net import RL_Network, TransformerNetwork
 from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
 from wargame_rl.wargame.types import Experience
 
@@ -47,39 +46,16 @@ def experiences(_session_env: WargameEnv) -> list[Experience]:
     return output
 
 
-@pytest.fixture(scope="session")
-def replay_buffer(experiences: list[Experience]) -> ReplayBuffer:
-    buffer = ReplayBuffer(256)
-    for experience in experiences:
-        buffer.append(experience)
-    return buffer
-
-
 @pytest.fixture
 @lru_cache(maxsize=1)
-def dqn_mlp_net(env: WargameEnv) -> MLPNetwork:
-    return MLPNetwork.policy_from_env(env=env)
-
-
-@pytest.fixture
-@lru_cache(maxsize=1)
-def dqn_transformer_net(env: WargameEnv) -> TransformerNetwork:
+def transformer_net(env: WargameEnv) -> TransformerNetwork:
     return TransformerNetwork.policy_from_env(env=env)
 
 
-@pytest.fixture(
-    params=[
-        pytest.param("dqn_mlp_net", id="mlp"),
-        pytest.param("dqn_transformer_net", id="transformer"),
-    ]
-)
-def policy_net(request: pytest.FixtureRequest, env: WargameEnv) -> RL_Network:
-    """Parametrized fixture for both dqn_mlp_net and dqn_transformer_net."""
-    if request.param == "dqn_mlp_net":
-        return MLPNetwork.policy_from_env(env=env)
-    else:
-        assert request.param == "dqn_transformer_net"
-        return TransformerNetwork.policy_from_env(env=env)
+@pytest.fixture
+def policy_net(env: WargameEnv) -> RL_Network:
+    """A bare policy network, for tests that take any `RL_Network`."""
+    return TransformerNetwork.policy_from_env(env=env)
 
 
 @pytest.fixture

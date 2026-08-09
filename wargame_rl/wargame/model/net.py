@@ -10,12 +10,12 @@ from wargame_rl.wargame.envs.types import WargameEnvObservation
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common import Device, get_device
 from wargame_rl.wargame.model.common.config import TransformerConfig
+from wargame_rl.wargame.model.common.layers import Block, LayerNorm
 from wargame_rl.wargame.model.common.observation import (
     N_COMBAT_STATS,
     N_WOUND_FEATURES,
     observation_to_tensor,
 )
-from wargame_rl.wargame.model.dqn.layers import Block, LayerNorm
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,70 +90,6 @@ class RL_Network(nn.Module, ABC):
         net = cls.from_env(env, is_policy=is_policy)
         net.load_state_dict(state_dict)
         return net
-
-
-class MLPNetwork(RL_Network):
-    def __init__(
-        self,
-        state_dim: int,
-        action_dim: int,
-        n_wargame_models: int,
-        device: Device | None = None,
-        hidden_dim: int = 128,
-        num_layers: int = 2,
-        is_policy: bool = True,
-    ) -> None:
-        super().__init__()
-
-        self.is_policy = is_policy
-        self.layers = nn.ModuleList()
-        self.layers.append(nn.Linear(state_dim, hidden_dim))
-        self.action_dim = action_dim
-        for _ in range(num_layers - 1):
-            self.layers.append(nn.Linear(hidden_dim, hidden_dim))
-        if self.is_policy:
-            self.output_dim = n_wargame_models * action_dim
-        else:
-            self.output_dim = 1
-
-        self.output = nn.Linear(hidden_dim, self.output_dim)
-        self.activation = nn.GELU()
-        self.to(get_device(device))
-        self.n_wargame_models = n_wargame_models
-
-    def forward(self, xs: list[torch.Tensor]) -> torch.Tensor:
-        # Exclude the action mask tensor (last element) — it's used
-        # externally for action selection, not as network input.
-        state_tensors = xs[:5]
-        if self.is_batched(xs):
-            x = torch.cat([x.flatten(start_dim=1) for x in state_tensors], dim=1)
-        else:
-            x = torch.cat(
-                [x.flatten(start_dim=0) for x in state_tensors], dim=0
-            ).unsqueeze(0)
-
-        assert len(x.shape) == 2
-
-        batch_size = x.shape[0]
-        for layer in self.layers:
-            x = self.activation(layer(x))
-        x = self.output(x)
-        if self.is_policy:
-            x = x.reshape(batch_size, self.n_wargame_models, self.action_dim)
-        return cast(torch.Tensor, x)
-
-    @classmethod
-    def from_env(cls, env: WargameEnv, is_policy: bool) -> Self:
-        observation: WargameEnvObservation
-        observation, _ = env.reset()
-        tensors = observation_to_tensor(observation)
-        obs_size = sum(t.numel() for t in tensors[:5])
-        n_wargame_models: int = observation.n_wargame_models
-        n_actions: int = env._action_handler.n_actions
-        print(
-            f"Creating MLP network with obs_size: {obs_size}, n_wargame_models: {n_wargame_models}, n_actions: {n_actions}, is_policy: {is_policy}"
-        )
-        return cls(obs_size, n_actions, n_wargame_models, is_policy=is_policy)
 
 
 class TransformerNetwork(RL_Network):
@@ -659,13 +595,16 @@ class TransformerNetwork(RL_Network):
         )
 
 
-# Lightning wraps the policy network differently per algorithm; the first prefix
-# that matches any key wins. Order matters only in that each is unambiguous.
+# PPO wraps the policy network as `ppo_model.policy_network`. `policy_net.` is
+# the prefix the removed DQN Lightning module used; it stays so checkpoints
+# trained before that removal still load — the weights are a `TransformerNetwork`
+# either way, so they simulate and score exactly as they did.
+# The first prefix that matches any key wins; each is unambiguous.
 POLICY_NET_PREFIXES = ("policy_net.", "ppo_model.policy_network.")
 
 
 def convert_state_dict(state_dict: dict) -> dict:
-    """Normalize state_dict keys (Lightning DQN/PPO wrappers, torch.compile).
+    """Normalize state_dict keys (Lightning wrappers, torch.compile).
 
     Raises:
         ValueError: If no known policy-network prefix matches any key.

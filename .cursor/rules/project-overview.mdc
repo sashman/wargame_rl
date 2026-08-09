@@ -5,14 +5,14 @@ alwaysApply: true
 
 # wargame_rl
 
-Reinforcement learning project that trains agents (DQN, PPO) to play tabletop wargames on a discrete grid. Agents control multiple models (units) using polar-coordinate movement to capture objectives.
+Reinforcement learning project that trains agents (PPO) to play tabletop wargames on a discrete grid. Agents control multiple models (units) using polar-coordinate movement to capture objectives.
 
 **Stack**: Python 3.12+ · UV · Gymnasium 1.x · PyTorch + Lightning · Wandb · Pydantic + pydantic-yaml · Typer · Loguru · Pygame
 **Tooling**: Just · Ruff (fmt/lint, 88 cols) · Mypy (strict) · isort · autoflake · Pytest · Pre-commit
 
 - **Python 3.13** (UV package manager, `uv.lock`)
 - **Gymnasium 1.x** — RL environment (`WargameEnv`)
-- **PyTorch + PyTorch Lightning** — DQN and PPO training
+- **PyTorch + PyTorch Lightning** — PPO training
 - **Wandb** — experiment tracking & video recording
 - **Pydantic + pydantic-yaml** — config & type models
 - **Typer** — CLI (`train.py`, `simulate.py`)
@@ -39,19 +39,17 @@ Reinforcement learning project that trains agents (DQN, PPO) to play tabletop wa
 | Lint | `just lint` |
 | Test | `just test` |
 | Full validation | `just validate` |
-| Train (PPO, default) | `just train <config.yaml>` |
-| Train (DQN) | `just train <config.yaml> dqn` |
+| Train | `just train <config.yaml> [max_epochs]` |
 | Train multiple configs in parallel | `just train-multi config1.yaml config2.yaml` |
 | Simulate | `just simulate-latest` |
 
 ## Project Layout
 
 - `wargame_rl/wargame/envs/` — Gymnasium environment, reward (phases, calculators e.g. closest_objective, group_cohesion, vp_gain; success criteria e.g. all_at_objectives, player_vp_min — see [docs/reward-phases.md](docs/reward-phases.md)), rendering, types (see [docs/ddd-envs.md](docs/ddd-envs.md) for DDD structure and extension)
-- `wargame_rl/wargame/model/dqn/` — DQN agent, Lightning module, replay buffer, config
 - `wargame_rl/wargame/model/ppo/` — PPO actor-critic, Lightning module, agent, config
-- `wargame_rl/wargame/model/common/` — Shared: factory, observation, dataset, device, wandb, callbacks
-- `wargame_rl/wargame/model/net.py` — RL_Network base, MLPNetwork, TransformerNetwork
-- `wargame_rl/wargame/types.py` — `Experience` / `ExperienceBatch`
+- `wargame_rl/wargame/model/common/` — Shared: factory, observation, layers, argmax agent, device, wandb, callbacks
+- `wargame_rl/wargame/model/net.py` — RL_Network base, TransformerNetwork
+- `wargame_rl/wargame/types.py` — `Experience`
 - `examples/env_config/` — YAML env configs
 - `tests/` — Pytest suite, fixtures in `conftest.py`
 - `docs/` — design docs (DDD in envs: `docs/ddd-envs.md`)

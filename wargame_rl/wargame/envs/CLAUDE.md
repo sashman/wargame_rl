@@ -61,7 +61,7 @@ Applies to everything under `wargame_rl/wargame/envs/`.
 2. Logic → `env_components/`
 3. Obs → `env_observation.py`/`env_info.py` + obs builder
 4. Tensor → `model/common/observation.py`
-5. Networks → both `MLPNetwork` and `TransformerNetwork` in `model/net.py`
+5. Network → `TransformerNetwork` in `model/net.py`
 6. Reward if signals change · Renderer if visual · Tests + backward compat
 
 ## Design

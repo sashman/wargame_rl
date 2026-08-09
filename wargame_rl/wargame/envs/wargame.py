@@ -88,7 +88,7 @@ from wargame_rl.wargame.envs.types.game_timing import (
 from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
-# Re-export for backward compatibility (tests, dqn import from here)
+# Re-export for backward compatibility (tests import from here)
 __all__ = ["WargameEnv", "WargameObjective"]
 
 _auto_register()

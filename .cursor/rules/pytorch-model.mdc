@@ -1,5 +1,5 @@
 ---
-description: PyTorch RL model patterns (DQN and PPO)
+description: PyTorch RL model patterns (PPO)
 globs: "wargame_rl/wargame/model/**/*.py"
 alwaysApply: false
 ---
@@ -10,14 +10,14 @@ alwaysApply: false
 
 Two network variants implementing `RL_Network` protocol (in `net.py`):
 - `TransformerNetwork` — NanoGPT-style self-attention (default, actively developed)
-- `MLPNetwork` — standard feed-forward (legacy, will be dropped)
+- DQN and `MLPNetwork` were removed on 2026-08-09; `git log -- wargame_rl/wargame/model/dqn` restores them
 
 Both expose `policy_from_env(env)` and `from_checkpoint(env, path)` class methods.
 
-## DQN (`model/dqn/`)
+## Layers (`model/common/layers.py`)
 
-- `DQNLightning` — PyTorch Lightning module: training loop, epsilon-greedy exploration, target network sync, experience replay
-- `DQNConfig` / `TrainingConfig` — Pydantic config models
+- `Block`, `LayerNorm`, `SelfAttention`, `MLP` (the feed-forward half of a transformer block, unrelated to the removed `MLPNetwork`)
+- Ends with a `sys.modules` alias for the module's pre-2026-08-09 path. Lightning pickles `PPO_Transformer` into every checkpoint's `hyper_parameters`, so a checkpoint carries the *import path* of these classes and `torch.load` raises `ModuleNotFoundError` without it
 - `ReplayBuffer` — experience replay with `Experience` named tuples
 - `RLDataset` — PyTorch `IterableDataset` wrapping the replay buffer
 - `Agent` — runs episodes with epsilon-greedy policy
@@ -28,7 +28,7 @@ Both expose `policy_from_env(env)` and `from_checkpoint(env, path)` class method
 - `PPOConfig` — Pydantic config (lr, gamma, GAE lambda, clip epsilon, etc.)
 - `PPO_Transformer` — actor-critic model with shared transformer backbone, separate policy and value heads
 - `PPOModel` — wraps policy net + value net
-- PPO only supports `TransformerNetwork` (no MLP variant)
+- PPO runs on `TransformerNetwork`
 
 ## Shared (`model/common/`)
 
@@ -54,13 +54,13 @@ To add a new entity:
 2. Extend `_observation_to_numpy` tuple
 3. Update `observation_to_tensor` / `observations_to_tensor_batch`
 4. Update **both** networks' `forward()` — Transformer needs dedicated embedding + updated token ordering; player tokens must stay extractable for per-model action heads
-5. Fix unpacking in tests (`test_state.py`, `test_dqn.py`)
+5. Fix unpacking in tests (`test_state.py`)
 
 ## Conventions
 
 - Use `torch.Tensor` for all neural network operations
 - Observation tensors built by `observation.py` from `WargameEnvObservation`
-- Default algorithm is PPO; DQN is available but not the primary focus
+- PPO is the only algorithm
 - Device management via `device.py` utility
 - Wandb integration in `wandb.py` — all logging goes through Lightning logger
-- When changing the observation tuple length, expect unpacking errors in tests (`test_state.py`, `test_dqn.py`) — fix them as part of the same change
+- When changing the observation tuple length, expect unpacking errors in tests (`test_state.py`) — fix them as part of the same change

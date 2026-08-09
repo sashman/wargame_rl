@@ -45,8 +45,7 @@ different episodes and need not agree.
 
 ### Episode count
 
-`n_episodes` defaults to **10** for PPO (`ppo/config.py:59`) and **20** for DQN
-(`dqn/config.py:22`). This sets the resolution of `success_rate`: with 10 episodes it can only
+`n_episodes` defaults to **10** (`ppo/config.py:59`). This sets the resolution of `success_rate`: with 10 episodes it can only
 ever be a multiple of 10. **A change from 80% to 90% is one episode.** Do not read
 single-epoch movements as signal; require a trend across epochs.
 

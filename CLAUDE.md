@@ -1,12 +1,12 @@
 # Wargame RL
 
-Reinforcement learning project that trains agents (DQN, PPO) to play tabletop wargames on a discrete grid. Agents control multiple models (units) using polar-coordinate movement to capture objectives.
+Reinforcement learning project that trains agents (PPO) to play tabletop wargames on a discrete grid. Agents control multiple models (units) using polar-coordinate movement to capture objectives.
 
 ## Tech Stack
 
 - **Python 3.13** — UV package manager (`uv.lock`)
 - **Gymnasium 1.x** — RL environment (`WargameEnv`)
-- **PyTorch + PyTorch Lightning** — DQN and PPO training
+- **PyTorch + PyTorch Lightning** — PPO training
 - **Wandb** — experiment tracking & video recording
 - **Pydantic + pydantic-yaml** — config & type models
 - **Typer** — CLI (`train.py`, `simulate.py`)
@@ -43,12 +43,11 @@ wargame_rl/
 │       │   ├── types/             # Config, observations, actions, info
 │       │   └── renders/           # Pygame renderer
 │       ├── model/                 # RL algorithms
-│       │   ├── net.py             # RL_Network base, MLPNetwork, TransformerNetwork
+│       │   ├── net.py             # RL_Network base, TransformerNetwork
 │       │   ├── common/            # Shared: lightning_base (eval + baselines + phase
-│       │   │                      #   advancement), factory, observation, dataset, callbacks
-│       │   ├── dqn/               # DQN: agent, lightning module, replay buffer, config
+│       │   │                      #   advancement), factory, observation, layers, callbacks
 │       │   └── ppo/               # PPO: actor-critic, lightning module, agent, config
-│       └── types.py               # Experience, ExperienceBatch
+│       └── types.py               # Experience
 ├── examples/env_config/           # YAML environment configurations
 ├── tests/                         # Pytest suite with conftest.py fixtures
 ├── docs/                          # Design docs (movement, reward phases, missions-and-vp,
@@ -76,8 +75,7 @@ wargame_rl/
 | Lint | `just lint` |
 | Test | `just test` |
 | Full validation | `just validate` |
-| Train (PPO, default) | `just train <config.yaml>` |
-| Train (DQN) | `just train <config.yaml> dqn` |
+| Train | `just train <config.yaml> [max_epochs]` |
 | Train multiple configs in parallel | `just train-multi config1.yaml config2.yaml` |
 | Train an arm (config × training flags) | `just train-arm <max_epochs> <n_seeds> <group> <tag> <flags> <configs...>` |
 | Ship (branch → commit → push → PR) | `just ship <branch> "<message>"` |
@@ -95,7 +93,7 @@ wargame_rl/
 | Dice-vs-scenario noise floor | `just measure-noise-floor <config.yaml> [n_layouts] [n_combat_seeds] [policy]` |
 | Terrain-profile statistics | `just measure-terrain <config.yaml> [n_layouts]` |
 | Where epoch time goes | `just measure-throughput <config.yaml> [n_steps] [engaged]` |
-| Profile | `just profile <config.yaml> [model] [max_epochs]` |
+| Profile | `just profile <config.yaml> [max_epochs]` |
 | Clean | `just clean` |
 
 ## Key Components
@@ -114,28 +112,28 @@ wargame_rl/
 
 Snapshot/event pipeline for recording and inspecting matches — `GameStateSnapshot`, event-log deltas, `StateExporter` (wired into `step()`), replay, narration, and `analyze_match` metrics. Driven by `replay_events.py` / `analyze_events.py` and the `record` · `replay` · `analyze` · `analyze-compare` recipes. See [docs/game-state-io.md](docs/game-state-io.md)
 
-### RL Algorithms
+### RL Algorithm
 
-- **DQN** — epsilon-greedy agent, replay buffer, DQN Lightning module
 - **PPO** — actor-critic with GAE, clipped surrogate objective, PPO Lightning module
 
 ### Networks
 
-- **TransformerNetwork** — NanoGPT-style transformer (default, actively developed)
-- **MLPNetwork** — simple MLP (legacy, will be dropped)
+- **TransformerNetwork** — NanoGPT-style transformer, the only network. DQN and
+  `MLPNetwork` were removed once neither had been trained in months; `git log --
+  wargame_rl/wargame/model/dqn` restores them
 
 ### Configuration
 
 - Environment configs live in `examples/env_config/`
-- Algorithm configs: `DQNConfig`, `PPOConfig` in respective `config.py` files
-- Training config: `DQNTrainingConfig` (`model/dqn/config.py`) · `PPOTrainingConfig` (`model/ppo/config.py`)
+- Algorithm config: `PPOConfig` (`model/ppo/config.py`)
+- Training config: `PPOTrainingConfig` (`model/ppo/config.py`)
 
 ### Directory-scoped guidance
 
 Detailed patterns live next to the code they govern — read them when working in these areas:
 
 - `wargame_rl/wargame/envs/CLAUDE.md` — Gymnasium env, phases, placement, opponents, rendering
-- `wargame_rl/wargame/model/CLAUDE.md` — networks, DQN/PPO, observation tensor pipeline
+- `wargame_rl/wargame/model/CLAUDE.md` — networks, PPO, observation tensor pipeline
 - `tests/CLAUDE.md` — fixtures, test file map, per-feature coverage checklist
 
 ---
@@ -196,7 +194,7 @@ Detailed patterns live next to the code they govern — read them when working i
 - Mirror existing entity patterns: reuse the same model class (`WargameModel`), same config schema (`ModelConfig`), same placement logic
 - Parameterize shared infrastructure (e.g. `ActionHandler(n_models=...)`) rather than duplicating it
 - Always default new config fields to the no-op value so existing YAML configs keep working (e.g. `number_of_opponent_models=0`)
-- Full checklist: config types → env state → observation types → observation builder → tensor pipeline → DQN networks → renderer → tests → backward compat tests
+- Full checklist: config types → env state → observation types → observation builder → tensor pipeline → networks → renderer → tests → backward compat tests
 - When adding config that changes step semantics or episode length, update docs (`docs/reward-phases.md`, `docs/tabletop-rules-reference.md`, `docs/opponent-policies.md`, `docs/goals-and-roadmap.md`) and any tests that assume steps-per-round or phase order
 - When adding new reward calculators or success criteria, register them and document in `docs/reward-phases.md` (tables and file layout)
 - When changing the environment, domain, reward, or rendering, follow [docs/ddd-envs.md](docs/ddd-envs.md): keep domain logic in `domain/`, use `BattleView` for read-only state, and preserve dependency direction (domain → types only; reward/renders → BattleView)
@@ -222,9 +220,8 @@ Detailed patterns live next to the code they govern — read them when working i
 
 ## Training Runs
 
-- Default algorithm is **PPO**; do not default to DQN unless explicitly asked
-- Default network type is **transformer**; do not default to MLP unless explicitly asked
-- Start training: `just train <env_config.yaml>` · DQN: `just train <env_config.yaml> dqn` · DQN + network: `just train <env_config.yaml> dqn transformer`
+- PPO on a `TransformerNetwork` is the only thing that trains — there is no algorithm or network to choose. `just train` and `train.py` used to take `--algorithm` and `--network-type`; both are gone, so `just train <config> 800` now means 800 *epochs*
+- Start training: `just train <env_config.yaml>` · with an epoch cap: `just train <env_config.yaml> 800`
 - **Multiple configs in parallel**: `just train-multi config1.yaml config2.yaml` runs one training per config concurrently (PPO + transformer); each run gets a unique `--run-suffix` and shared `--wandb-group` so they appear grouped in the Wandb UI
 - Env configs live in `examples/env_config/` — copy an existing one to create new scenarios
 - Training logs to Wandb automatically; checkpoints saved to `checkpoints/`. Reward phase index and phase advancement are logged (`reward_phase`, `phase_advanced_at_epoch`) so curriculum runs show phase transitions in the dashboard
@@ -259,12 +256,12 @@ Detailed patterns live next to the code they govern — read them when working i
 - **Training configs:** `examples/env_config/25v25_single_phase.yaml` (control) and `25v25_curriculum.yaml` (two rungs). They share a scenario and a final phase, so comparing them isolates the curriculum. Every phase must keep `vp_gain` and at least one per-model calculator — `tests/test_curriculum_configs.py` enforces both. **`25v25_shooting_opponent.yaml` is a different scenario and is not comparable to either** — it faces `scripted_advance_and_shoot` on regenerated terrain with `objective_min_separation`, where those two face the non-shooting `scripted_advance_to_objective` on fixed terrain. `crowding_exponent` has only ever been measured on the shooting scenario, so do not port it into the other two without measuring there
 - **Past experiments:** [reports/](reports/README.md) records findings from previous runs, including refuted hypotheses. **Start with [the correction](reports/2026-08-04-correction-what-was-actually-broken.md)** — it retracts most pre-2026-08-04 conclusions, including the earlier claims that `gamma` 0.99 and `ent_coef` 0.01 were refuted (they were measured under a training loop that never applied the reward being tuned)
 - **Inspecting a run:** `just run-summary <run_id> [bucket]` for rolling means (single-epoch `success_rate` is an `n_episodes`-sample binomial — never read a point value); `just measure-phase-gates <ckpt> <env_config> 40` for per-phase criteria rates and the whole `min_fraction` curve
-- Key CLI options: `--record-during-training`, `--max-epochs`, `--render-mode`, `--algorithm`, `--no-wandb`, `--run-suffix`, `--wandb-group`, `--n-eval-episodes`, `--seed`, `--no-tf32`, `--precision`, `--eval-every-n-epochs`, `--lr`, `--max-grad-norm`
+- Key CLI options: `--record-during-training`, `--max-epochs`, `--render-mode`, `--no-wandb`, `--run-suffix`, `--wandb-group`, `--n-eval-episodes`, `--seed`, `--no-tf32`, `--precision`, `--eval-every-n-epochs`, `--lr`, `--max-grad-norm`
 - **Evaluation is ~22% of a real epoch and is not counted in `perf/epoch_s`.** At the `--n-eval-episodes 30` every seeded recipe passes, it is 1200 env steps against the rollout's 2048. `--eval-every-n-epochs 4` cuts total wall-clock ~16% (measured: 89.0 s → 74.6 s over 8 epochs, with training time and the final score unchanged — the last epoch always evaluates). **Single-phase configs only**: it raises on a curriculum config, because `try_advance` counts *consecutive* epochs above threshold, so a coarser cadence changes which epoch a phase advances on and therefore what the run trains
-- Profile a run: `just profile <config.yaml> [model] [max_epochs]` generates `profile.html` (`--no-wandb`, capped at 5 epochs by default)
+- Profile a run: `just profile <config.yaml> [max_epochs]` generates `profile.html` (`--no-wandb`, capped at 5 epochs by default)
 - **Training speed was an environment problem; on the 4090 it is now split evenly with the update.** See [docs/training-throughput.md](docs/training-throughput.md). `just measure-throughput <config>` gives the per-section and per-reward-calculator split of `env.step()`; every run also logs `perf/rollout_s`, `perf/update_s`, `perf/eval_s`, `perf/env_steps_per_s` and `perf/update_ms_per_minibatch`, so a slowdown shows up beside the reward curves. Two calculators were ~80% of a 25v25 step because each recomputed a model-independent quantity once per model; memoising them plus three smaller repeats took the rollout step from 11.34 ms to 2.26 ms (23.2 s → 4.6 s of env time per epoch). Any change to the reward pipeline must keep `tests/test_reward_golden.py` **bit-identical** — it pins per-step reward, per-model reward, breakdown, VP and positions, and is verified to catch a one-ULP change
 - **TF32 is on by default and changes trained results.** `configure_matmul_precision` (`model/common/performance.py`) enables it on sm_80+ before any model is built; it is worth 1.34x on the PPO update (45.7 → 34.5 ms/minibatch on a 4090) and drops matmul mantissa from 24 bits to 11. That is far below the ~7pp win-rate / ~10 vp resolution limits, and the env and reward are untouched numpy on the CPU — but "training is deterministic given seed + config + code" now holds only *within* one setting of `--no-tf32`. **`--precision bf16-mixed` is another 1.8x on the update and is opt-in because only its speed has been measured** — A/B it over two seeds before trusting a run under it. `torch.compile` measures 3.26x stacked and is deliberately not wired: it prefixes every `state_dict` key with `_orig_mod.`, and `_apply_warm_start_weights` uses `strict=False`, so such a checkpoint would load as *nothing at all* and score a random network as a trained one
-- Simulate latest checkpoint: `just simulate-latest [network_type]` · Clean up: `just clean` removes `checkpoints/` and `wandb/`
+- Simulate latest checkpoint: `just simulate-latest` · Clean up: `just clean` removes `checkpoints/` and `wandb/`
 
 ## Git Workflow
 

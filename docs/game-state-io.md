@@ -281,10 +281,10 @@ The analysis output is available as:
 | `just analyze-compare f1 f2` | Side-by-side metric comparison |
 
 Training and simulation also support `--record-events` for production use. The
-`train` recipe takes it as its fifth *positional* argument, not as a flag:
+`train` recipe takes it as its third *positional* argument, not as a flag:
 ```bash
 just train config.yaml                            # normal training
-just train config.yaml ppo transformer '' true    # + event log
+just train config.yaml '' true                    # + event log
 uv run train.py --env-config-path config.yaml --record-events
 ```
 

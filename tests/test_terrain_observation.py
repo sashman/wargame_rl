@@ -16,7 +16,7 @@ from wargame_rl.wargame.model.common.observation import (
     observation_to_tensor,
     observations_to_tensor_batch,
 )
-from wargame_rl.wargame.model.net import MLPNetwork, TransformerNetwork
+from wargame_rl.wargame.model.net import TransformerNetwork
 
 
 def _make_terrain_config() -> WargameEnvConfig:
@@ -186,17 +186,6 @@ class TestNetworkTerrainIntegration:
         with torch.no_grad():
             value = net(tensors)
         assert value.shape == (1, env.config.number_of_wargame_models)
-
-    def test_mlp_forward_with_terrain(self) -> None:
-        """MLP forward pass works with terrain tokens."""
-        env = WargameEnv(config=_make_terrain_config())
-        net = MLPNetwork.from_env(env, is_policy=True)
-        obs, _ = env.reset(seed=42)
-        tensors = observation_to_tensor(obs, net.device)
-        with torch.no_grad():
-            logits = net(tensors)
-        n_models = env.config.number_of_wargame_models
-        assert logits.shape == (1, n_models, env._action_handler.n_actions)
 
     def test_transformer_no_terrain_forward_unchanged(self) -> None:
         """No-terrain config: transformer forward is unaffected by the pipeline change."""

@@ -151,7 +151,7 @@ The following policies are designed in the architecture but have no class and ar
 | Type key | Description |
 |----------|-------------|
 | `human` | Read actions from the renderer (keyboard/mouse input). Enables human-vs-agent play. |
-| `model` | Load a pre-trained DQN checkpoint and use it as the opponent. Enables self-play and agent-vs-agent evaluation. |
+| `model` | Load a pre-trained checkpoint and use it as the opponent. Enables self-play and agent-vs-agent evaluation. |
 
 ## Adding a New Policy
 
@@ -225,7 +225,7 @@ When opponents are present, the player agent's observation includes opponent mod
 | 4 | Terrain | `(n_terrain, 4)` — normalized footprint corners |
 | 5 | Action mask | `(n_models, n_actions)` — bool, valid actions per model |
 
-When there are no opponents, tensor 3 has shape `(0, features)`; likewise tensor 4 is `(0, 4)` with no terrain. The networks handle both gracefully (empty sequence for the Transformer, zero-width concatenation for the MLP).
+When there are no opponents, tensor 3 has shape `(0, features)`; likewise tensor 4 is `(0, 4)` with no terrain. The transformer handles both gracefully, as an empty token sequence.
 
 ## File Layout
 

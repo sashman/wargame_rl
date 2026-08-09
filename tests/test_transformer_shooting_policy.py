@@ -174,7 +174,7 @@ def test_transformer_value_path_runs_with_masking() -> None:
 def test_self_attention_key_mask_ignores_masked_positions() -> None:
     """A key-padding mask makes masked-out tokens invisible to other queries."""
     from wargame_rl.wargame.model.common.config import TransformerConfig
-    from wargame_rl.wargame.model.dqn.layers import Block
+    from wargame_rl.wargame.model.common.layers import Block
 
     config = TransformerConfig()
     block = Block(config).eval()

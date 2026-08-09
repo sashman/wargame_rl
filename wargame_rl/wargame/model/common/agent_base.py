@@ -7,7 +7,6 @@ import torch
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvObservation
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.types import Experience
 
 
@@ -18,7 +17,6 @@ class BaseAgent(ABC):
         self.env = env
         self.observation: WargameEnvObservation | None = None
         self._last_log_prob: torch.Tensor | None = None
-        self.replay_buffer: ReplayBuffer | None = None
         self.last_episode_reward_breakdown: dict[str, float] = {}
 
     def reset(self) -> None:
@@ -37,11 +35,6 @@ class BaseAgent(ABC):
         self, policy: Any, observation: WargameEnvObservation, epsilon: float
     ) -> WargameEnvAction:
         """Select an action."""
-
-    def _record_experience(self, exp: Experience) -> None:
-        """Hook for agents that store experiences (e.g., replay buffer)."""
-        if self.replay_buffer is not None:
-            self.replay_buffer.append(exp)
 
     @torch.no_grad()
     def play_step(
@@ -69,7 +62,6 @@ class BaseAgent(ABC):
                     self.env.last_per_model_reward, dtype=torch.float32
                 ),
             )
-            self._record_experience(exp)
 
         self.observation = new_state
         return float(reward), bool(done), exp

@@ -49,7 +49,7 @@ produce identical numbers. A fresh layout each episode leaves only one way to sc
 the terrain tokens in the observation.
 
 **`count` is fixed on purpose.** `observations_to_tensor_batch` stacks the terrain arrays of
-a whole batch with `np.stack`, and `MLPNetwork` flattens terrain into a fixed-width input, so
+a whole batch with `np.stack`, so
 a batch containing episodes with different piece counts cannot be collated. Only size and
 position vary. `tests/test_random_terrain.py` asserts this directly.
 
@@ -290,8 +290,6 @@ With no terrain configured, the terrain tensor has shape `(0, 4)` — zero rows,
 Token sequence: `[game, objectives..., players..., opponents..., terrain...]`
 
 Player and opponent token positions are unchanged by the presence of terrain, so per-model action heads and the critic token are unaffected.
-
-**MLPNetwork**: Terrain features are included in the flat concatenation of all state tensors. With no terrain the terrain tensor contributes zero elements.
 
 ## Rendering
 

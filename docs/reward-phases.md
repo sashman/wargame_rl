@@ -158,7 +158,7 @@ reaches and pick a bar just above it.
 
 ## How Advancement Works
 
-At the end of each training epoch, the training loop runs evaluation episodes (controlled by `n_episodes` in the active algorithm config — `PPOConfig` for the default PPO, or `DQNConfig` for DQN; overridable via `--n-eval-episodes`). For each episode, the active phase's success criteria is checked. The resulting success rate is compared against the phase's `success_threshold`:
+At the end of each training epoch, the training loop runs evaluation episodes (controlled by `n_episodes` in `PPOConfig`; overridable via `--n-eval-episodes`). For each episode, the active phase's success criteria is checked. The resulting success rate is compared against the phase's `success_threshold`:
 
 ```
 advance if:

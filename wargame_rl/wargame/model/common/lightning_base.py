@@ -194,9 +194,8 @@ class WargameLightningBase(LightningModule, ABC):
         """Greedy actions `(batch, n_models)` for a batch of observations.
 
         Returning None disables batched evaluation and falls back to the
-        sequential path. Subclasses that can score a whole batch override it;
-        DQN and PPO differ in where the action mask is applied, so this cannot
-        be written once here.
+        sequential path. Subclasses that can score a whole batch override it,
+        since where the action mask is applied is algorithm-specific.
         """
         return None
 

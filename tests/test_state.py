@@ -2,7 +2,6 @@ import numpy as np
 import torch
 
 from wargame_rl.wargame.envs.types import WargameEnvConfig, WargameEnvObservation
-from wargame_rl.wargame.model.common.dataset import experience_list_to_batch
 from wargame_rl.wargame.model.common.observation import (
     observation_to_tensor,
     observations_to_tensor_batch,
@@ -55,10 +54,14 @@ def test_observation_to_tensor(experiences: list[Experience]) -> None:
     assert torch.allclose(state_wargame_models, state_wargame_models_2)
 
 
-def test_experience_to_batch(experiences: list[Experience]) -> None:
+def test_observation_size_bookkeeping(experiences: list[Experience]) -> None:
+    """The per-entity sizes an observation reports must add up to its own `size`.
+
+    Nothing in the tensor path reads these; they are the observation's
+    self-description, and a feature added to one entity without updating them
+    goes unnoticed until something sizes a network off the wrong number.
+    """
     wargame_config: WargameEnvConfig = WargameEnvConfig()
-    batch_size = len(experiences)
-    # get one state
     state = experiences[0].state
     n_objectives = state.n_objectives
 
@@ -72,11 +75,10 @@ def test_experience_to_batch(experiences: list[Experience]) -> None:
     n_wargame_models = state.n_wargame_models
     size_objectives = state.size_objectives
     size_wargame_models = state.size_wargame_models
-    state_size = state.size
+    game_size = state.size_game_observation
     assert wargame_config.number_of_wargame_models == n_wargame_models
     assert wargame_config.number_of_objectives == n_objectives
-    game_size = state.size_game_observation
-    assert state_size == sum(size_objectives) + sum(size_wargame_models) + game_size
+    assert state.size == sum(size_objectives) + sum(size_wargame_models) + game_size
 
     np.testing.assert_array_equal(
         size_objectives, np.array([dim_location] * n_objectives)
@@ -84,20 +86,3 @@ def test_experience_to_batch(experiences: list[Experience]) -> None:
     np.testing.assert_array_equal(
         size_wargame_models, np.array([dim_model] * n_wargame_models)
     )
-
-    batch = experience_list_to_batch(experiences)
-    assert batch.actions.shape == (batch_size, n_wargame_models)
-    assert batch.rewards.shape == (batch_size,)
-    assert batch.dones.shape == (batch_size,)
-    state_turn, state_objectives, state_wargame_models, _state_opp, _terrain = (
-        batch.state_tensors
-    )
-    new_state_turn, new_state_objectives, new_state_wargame_models, _new_opp, _new_t = (
-        batch.new_state_tensors
-    )
-    assert state_turn.shape == (batch_size, game_size)
-    assert state_objectives.shape == (batch_size, n_objectives, dim_location)
-    assert state_wargame_models.shape == (batch_size, n_wargame_models, dim_model)
-    assert new_state_turn.shape == (batch_size, game_size)
-    assert new_state_objectives.shape == (batch_size, n_objectives, dim_location)
-    assert new_state_wargame_models.shape == (batch_size, n_wargame_models, dim_model)

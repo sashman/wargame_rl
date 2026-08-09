@@ -11,6 +11,7 @@ https://github.com/huggingface/transformers/blob/main/src/transformers/models/gp
 """
 
 import math
+import sys
 
 import torch
 import torch.nn as nn
@@ -118,6 +119,12 @@ class SelfAttention(nn.Module):
 
 
 class MLP(nn.Module):
+    """The position-wise feed-forward half of a transformer block.
+
+    Named for its role inside `Block`, following nanoGPT. Unrelated to the
+    standalone `MLPNetwork` policy that used to live in `net.py`.
+    """
+
     def __init__(self, config: TransformerConfig):
         super().__init__()
         self.c_fc = nn.Linear(
@@ -151,3 +158,15 @@ class Block(nn.Module):
         x = x + self.attn(self.ln_1(x), attn_mask=attn_mask)
         x = x + self.mlp(self.ln_2(x))
         return x
+
+
+# These layers lived at `wargame_rl.wargame.model.dqn.layers` until 2026-08-09,
+# when DQN was removed and they moved here — they were always the transformer's,
+# not DQN's. That rename is not free: Lightning pickles the whole
+# `PPO_Transformer` into every checkpoint's `hyper_parameters`, so every
+# checkpoint written before the move names the old path for `Block` and
+# `LayerNorm`. Without this alias `torch.load` raises `ModuleNotFoundError` and
+# NO previously trained checkpoint can be scored, simulated or resumed —
+# including the one that beats the shooting bar, and `checkpoints/` is the only
+# copy of those weights. `tests/test_checkpoint_module_alias.py` pins it.
+sys.modules.setdefault("wargame_rl.wargame.model.dqn.layers", sys.modules[__name__])

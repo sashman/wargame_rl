@@ -35,8 +35,8 @@ Seed groups run sequentially, not all at once: a PPO transformer run holds ~3.8 
 ## Optional CLI options (single-run)
 
 Pass these to `uv run train.py` directly, or as trailing extra arguments to `just train`
-(they come after the recipe's five positional arguments — e.g.
-`just train config.yaml ppo transformer '' '' --run-name my-run`):
+(they come after the recipe's three positional arguments — e.g.
+`just train config.yaml '' '' --run-name my-run`):
 
 - **`--run-name`** — Override the base run name explicitly.
 - **`--run-suffix`** — Appended to the run name so checkpoint dirs stay unique (e.g. when scripting parallel jobs yourself).

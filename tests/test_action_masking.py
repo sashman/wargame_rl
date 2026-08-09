@@ -194,25 +194,3 @@ class TestTensorPipeline:
         batch = observations_to_tensor_batch([obs1, obs2])
         assert len(batch) == 6
         assert batch[5].shape[0] == 2  # batch dim (mask)
-
-
-# ---------------------------------------------------------------------------
-# Experience batch with masks
-# ---------------------------------------------------------------------------
-
-
-class TestExperienceBatch:
-    def test_batch_has_next_state_masks(self) -> None:
-        from wargame_rl.wargame.model.common.dataset import experience_list_to_batch
-        from wargame_rl.wargame.types import Experience
-
-        env = WargameEnv(config=WargameEnvConfig())
-        obs, _ = env.reset()
-        action = WargameEnvAction(actions=list(env.action_space.sample()))
-        new_obs, reward, done, _, _ = env.step(action)
-        exp = Experience(obs, action, reward, done, new_obs, log_prob=None)
-        batch = experience_list_to_batch([exp])
-        assert batch.next_state_masks is not None
-        assert batch.next_state_masks.shape[0] == 1  # batch of 1
-        assert len(batch.state_tensors) == 5
-        assert len(batch.new_state_tensors) == 5
