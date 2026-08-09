@@ -122,7 +122,15 @@ def test_transformer_shooting_scores_land_in_correct_opponent_columns() -> None:
 
 
 def test_transformer_policy_batched_matches_single_obs() -> None:
-    """Batched forward (variable alive counts) equals stacked single forwards."""
+    """Batched forward (variable alive counts) equals stacked single forwards.
+
+    Seeded because the network is otherwise randomly initialised, and a failure
+    from weights nobody can reproduce is a failure nobody can diagnose. The
+    tolerance has ~40x of headroom at full float32 precision -- the measured
+    batched-vs-single difference is around 1.3e-7 against an `atol` of 1e-5 --
+    so a failure here means something real changed, not that the bound is tight.
+    """
+    torch.manual_seed(0)
     env = WargameEnv(config=_shooting_env_config())
     net = TransformerNetwork.policy_from_env(env)
     net.eval()

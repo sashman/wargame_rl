@@ -1,13 +1,42 @@
+from collections.abc import Iterator
 from functools import lru_cache
 from typing import cast
 
 import pytest
+import torch
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.net import RL_Network, TransformerNetwork
 from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
 from wargame_rl.wargame.types import Experience
+
+
+@pytest.fixture(autouse=True)
+def full_float32_precision() -> Iterator[None]:
+    """Run every test at full float32 precision, whatever ran before it.
+
+    `torch.set_float32_matmul_precision` is *process-wide* and sticky, so one
+    test enabling TF32 silently changes the arithmetic of every test that
+    follows it in the same worker. That is not hypothetical: with TF32 on,
+    `test_transformer_shooting_policy.py::test_transformer_policy_batched_matches_single_obs`
+    fails **25 times out of 25** — it compares a batched forward against single
+    forwards at `atol=1e-5`, and TF32's 11 mantissa bits cannot hold that. It
+    presented as a once-per-16-runs flake, which reads like numerical noise and
+    is not.
+
+    Pinned per test rather than per session so that a test which changes the
+    setting deliberately -- `test_precision.py` does, and restores it -- cannot
+    leave the rest of the suite running under different arithmetic if its own
+    restore ever regresses.
+
+    Tests that need another mode set it themselves; this only decides the
+    starting point. TF32 is off in training too, and for the same reason it
+    matters here: it costs ~8.5 vp_margin. See
+    reports/2026-08-09-tf32-costs-eight-vp.md.
+    """
+    torch.set_float32_matmul_precision("highest")
+    yield
 
 
 @pytest.fixture
