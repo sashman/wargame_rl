@@ -91,7 +91,7 @@ Move from single-agent objective capture to adversarial gameplay.
 Layer in the remaining tabletop systems.
 
 - [ ] **Melee combat** — Close-range attacks when models are adjacent; higher damage, no LOS requirement.
-- [ ] **Morale / battleshock** — Models that take casualties test morale; failures cause debuffs or retreat.
+- [ ] **Morale / suppression** — Units that take casualties test their nerve; failures cost them objective control. See [rules/01-core-concepts.md](rules/01-core-concepts.md#suppression).
 - [ ] **Command abilities** — Special per-model actions (e.g. buff nearby allies, call in support) to increase tactical depth.
 - [x] **Multi-phase turns** — Each `env.step()` advances one battle phase (command → movement → shooting → charge → fight). The opponent's full turn is auto-executed after the player completes theirs. Non-movement phases are skipped by default (`skip_phases` config) until their mechanics are implemented; set `skip_phases: []` for full per-phase stepping. Only movement has real actions currently; other phases allow only "stay".
 

@@ -40,8 +40,9 @@ def blocking_predicate_for_query(
 
     Terrain is filtered per query rather than globally, because a piece
     containing either endpoint does not block — a model can see out of the ruin
-    it stands in, and can be seen when standing in one. The static
-    `blocking_mask` is opaque matter and gets no such exemption.
+    it stands in, and can be seen when standing in one (the see-out / see-into
+    rule, `docs/rules/13-terrain.md`). The static `blocking_mask` is opaque
+    matter and gets no such exemption.
     """
     active = terrain.blocking_footprints_for_endpoints(x0, y0, x1, y1)
 

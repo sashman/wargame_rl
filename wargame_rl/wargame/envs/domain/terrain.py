@@ -25,7 +25,7 @@ class Footprint:
 
 
 class Terrain:
-    """Read-only collection of ruin footprints with the 10e endpoint filter."""
+    """Read-only collection of ruin footprints with the see-out endpoint filter."""
 
     def __init__(self, footprints: list[Footprint]) -> None:
         self._footprints = footprints

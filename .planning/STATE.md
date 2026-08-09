@@ -23,7 +23,7 @@ last_activity: 2026-07-26
 ## Decisions
 
 Key v2 decisions (from `phases/01-terrain-los-blocking/01-CONTEXT.md`):
-- **Footprint-based 10e Ruins LOS** — no walls this milestone
+- **Footprint-based Ruins LOS** — no walls this milestone
 - Blocking is **endpoint-aware** (per-query predicate, not a static grid)
 - See-into/see-out exceptions evaluated **per ruin**
 - `domain/los.py` Bresenham core stays **untouched**

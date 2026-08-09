@@ -31,7 +31,9 @@ dev = [
     "pytest-cov>=7.0.0",
     "pytest-rerunfailures>=14.0",
     "pytest-xdist>=3.8.0",
+    "pyyaml>=6.0.3",
     "ruff>=0.9.5",
+    "types-pyyaml>=6.0.12.20260724",
 ]
 
 [tool.mypy]
