@@ -57,7 +57,7 @@ During the shooting phase, a per-model target validity mask is overlaid on the b
 
 1. **Model M is alive** — dead models get `STAY_ACTION` only
 2. **M did not advance this turn** — `advanced_this_turn` gate. Dormant: nothing in the env ever sets the flag True (only `load_state` restores it from a snapshot), so today this never masks anything. See [rules/09-movement-phase.md](rules/09-movement-phase.md#advance-move) for the rule it will enforce.
-3. **M is not locked in engagement** — masked out entirely if the nearest enemy is within `ENGAGEMENT_RANGE` (1 cell, `domain/shooting.py`)
+3. **M is not locked in engagement** — masked out entirely if the nearest enemy is within `engagement_range` (config, authored in inches and resolved into board units by `domain/rules_quantities.py`; defaults to 1, against the rules' 2 — see `docs/rules/implementation-status.md`)
 4. **Opponent K is alive** — dead targets are masked out
 5. **In range** — Euclidean distance from M to K ≤ max weapon range of M
 6. **Line of sight** — `has_line_of_sight` from M's cell to K's cell returns True
