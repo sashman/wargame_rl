@@ -29,9 +29,10 @@
 > - `types/` is documented as the shared kernel and **`types/geometry.py` is the agreed
 >   home for `Polygon`** — see `docs/ddd-envs.md`. WP-7 no longer needs to decide this.
 >
-> One thing preparation deliberately did *not* fix, because it is a behaviour change:
-> a position is int32 from placement and **int64 once it has moved**, since the
-> displacement table is int64 and numpy promotes. WP-0 owns that line.
+> The int32/int64 position drift preparation left open has since been fixed on `main`
+> too, as a dtype correction with the rounding left in place. **WP-0 is not that fix** —
+> see the correction on WP-0 below, which also records why it is not the independent
+> first rung this plan claimed.
 
 ---
 
@@ -102,19 +103,46 @@ their own.
 
 ### WP-0 — Delete the two quantisations
 
-**Independent. Highest value per line in the whole phase. Do it first and alone.**
+~~**Independent. Highest value per line in the whole phase. Do it first and alone.**~~
+**Not independent — corrected 2026-08-09. Fold this into WP-3.**
 
 - `env_components/actions.py` — `self._displacements = raw`, deleting `np.rint(...).astype(int)`.
 - `env_components/observation_builder.py` — drop `.astype(int)` / `dtype=int` on the
   objective deltas.
 
 `n_actions` is unchanged, so checkpoints keep loading and the shooting head is untouched.
-Measure before and after: distinct displacements should go 80 → 96, and speed-bin-0 moves
-should all have length 1.0.
 
-> **Ship this separately and train on it.** It is the one change here that improves the
-> environment without changing the dynamics, so it is the only one whose effect on learning
-> can be measured cleanly. Everything after this shifts the baselines.
+**The quantisation loss is real.** Measured on `configs/golden/25v25_shooting_opponent.yaml`
+(16 angles × 6 speeds): 96 movement actions collapse to **80 distinct outcomes**, 16 of them
+duplicates, and speed-bin-0 lengths run 1.000–1.414, so a "speed 1" diagonal travels 41%
+further than a speed 1 orthogonal move. That much of this work package stands.
+
+> **Three claims here did not survive being checked.**
+>
+> 1. **The observation half is a no-op today.** `distance_cache.model_obj_deltas` is already
+>    `int32`, so `.astype(int)` changes no value — max difference 0. It cannot be "restoring
+>    the most informative feature from truncation" while positions are integers; it only
+>    starts mattering once they are floats, which is WP-3.
+>
+> 2. **The displacement half does not stand alone.** Exact displacements make locations
+>    `float64` on the first move, and immediately: `to_snapshot` raises a `ValidationError`
+>    (`ModelSnapshot.location` is `list[int]`), the Gym `Box` still declares `int32` so the
+>    space and the observation disagree, and the line-of-sight seam takes `int` arguments —
+>    `shooting_masks` does `int(positions[...])`, so every sight query would silently
+>    truncate coordinates back to the grid. It drags WP-3, the snapshot part of WP-11, and
+>    the `BattleView` signature along with it.
+>
+> 3. **It changes the dynamics.** A diagonal going from 1.41 to 1.0 changes how far models
+>    move, so baselines shift here too — not only "after this", as the original note said.
+>
+> So there is no cheap first rung. The honest minimum unit is WP-0 + WP-3 + the snapshot
+> schema + the LOS signature.
+
+**Already landed separately, and not to be confused with this:** locations were `int32` from
+placement and `int64` from the first move, because the displacement table, the STAY
+displacement and `np.clip`'s python-list bounds were all int64. That is a *dtype* correction
+with the rounding left in place, is verified value-identical, and is fixed on `main` with a
+regression test. It is not WP-0.
 
 ### WP-1 — Rules specification and the IP guard
 
