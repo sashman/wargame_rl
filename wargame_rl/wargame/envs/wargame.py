@@ -948,11 +948,16 @@ class WargameEnv(gym.Env):
         for i, os_ in enumerate(snapshot.objectives):
             self.objectives[i].location = np.array(os_.location, dtype=np.int32)
 
-        # VP
+        # VP. The deltas are restored, not zeroed: `player_vp_delta` is a
+        # feature of the observation the policy acts on (game features, index
+        # 5), so zeroing it here made a loaded state disagree with the live
+        # state it was captured from, and `to_snapshot` round-tripped it to a
+        # different snapshot. Every snapshot carries both, so there is nothing
+        # to reconstruct.
         self._battle._player_vp = snapshot.player_vp
         self._battle._opponent_vp = snapshot.opponent_vp
-        self._battle._player_vp_delta = 0
-        self._battle._opponent_vp_delta = 0
+        self._battle._player_vp_delta = snapshot.player_vp_delta
+        self._battle._opponent_vp_delta = snapshot.opponent_vp_delta
 
         # Env counters
         self.current_turn = snapshot.step
