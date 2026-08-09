@@ -31,7 +31,7 @@ from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
 DATA_DIR = Path(__file__).parent / "data"
-CONFIG_DIR = Path(__file__).parents[1] / "examples" / "env_config"
+CONFIG_DIR = Path(__file__).parents[1] / "configs"
 
 LAYOUT_SEED = 1234
 COMBAT_SEED = 99
@@ -42,10 +42,12 @@ N_STEPS = 120
 # actually being trained (its `crowding_exponent` and `observe_objective_control`
 # are both new and both read per step), and a curriculum config so phase
 # advancement is covered too.
+# Paths are relative to `configs/`; the `.npz` key is the stem, so the
+# directory prefix does not leak into the fixture filenames.
 GOLDEN_CONFIGS = [
-    "25v25_single_phase.yaml",
-    "25v25_shooting_opponent.yaml",
-    "4v4_scripted_opponent_fixed_objectives_2_reward_phases.yaml",
+    "golden/25v25_single_phase.yaml",
+    "golden/25v25_shooting_opponent.yaml",
+    "dev/4v4_two_phases.yaml",
 ]
 
 

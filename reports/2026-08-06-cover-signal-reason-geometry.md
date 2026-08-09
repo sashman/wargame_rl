@@ -169,7 +169,7 @@ terrain invalidated the old bar). All four arms clear the bar.
 > opposite of the truth.
 >
 > **The `0.45` has the wrong provenance.** It is not what `just measure-baselines
-> examples/env_config/25v25_cover_control.yaml 30` returns; that command returns **0.53**.
+> configs/golden/25v25_cover_control.yaml 30` returns; that command returns **0.53**.
 > `0.45` is 9/20, the in-run `eval/baseline_squad_march_shoot_win_rate`, which uses
 > `BASELINE_EPISODES = 20` on seeds 10000-10019. The Reproducing section below was never
 > actually run — `recordings/` contains no batch-3 baseline trace.
@@ -349,17 +349,17 @@ our side of the exchange, so it falls both when a policy manoeuvres well and whe
 
 ```bash
 # Floor and bar on this terrain -- the batch-1/2 baselines do not transfer
-just measure-baselines examples/env_config/25v25_cover_control.yaml 30 record
+just measure-baselines configs/golden/25v25_cover_control.yaml 30 record
 
 # The terrain profile: fraction of board hidden from a squad in weapon range
-just measure-terrain examples/env_config/25v25_cover_control.yaml 200
+just measure-terrain configs/golden/25v25_cover_control.yaml 200
 
 # The noise floor that made two seeds mandatory
-just measure-noise-floor examples/env_config/25v25_cover_control.yaml
+just measure-noise-floor configs/golden/25v25_cover_control.yaml
 
 # Rolling means for any run above (point readings are n-sample binomials)
 just run-summary kra8wkr0 50
 
 # Re-run one seed group into an existing wandb group
-just train-seed 1000 2 <group> examples/env_config/25v25_cover_control.yaml ...
+just train-seed 1000 2 <group> configs/golden/25v25_cover_control.yaml ...
 ```

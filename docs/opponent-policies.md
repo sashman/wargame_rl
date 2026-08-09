@@ -238,8 +238,7 @@ wargame_rl/wargame/envs/opponent/
   scripted_advance_to_objective_policy.py        # ScriptedAdvanceToObjectivePolicy
   scripted_advance_and_shoot_policy.py           # ScriptedAdvanceAndShootPolicy
 
-examples/env_config/with_opponents/
-  4v4_random_opponent.yaml                      # 4v4 with random opponent
-  4v4_scripted_opponent.yaml                    # 4v4 with scripted opponent, random turn order
-  2v2_fixed_positions.yaml                      # 2v2 with fixed positions for all entities
+configs/golden/
+  25v25_shooting_opponent.yaml                  # vs scripted_advance_and_shoot
+  25v25_single_phase.yaml                       # vs scripted_advance_to_objective
 ```

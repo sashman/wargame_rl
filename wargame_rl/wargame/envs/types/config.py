@@ -171,6 +171,23 @@ class TerrainPieceConfig(BaseModel):
     )
 
 
+class TerrainMapConfig(BaseModel):
+    """A named fixed terrain layout, stored on its own in `configs/evaluation/maps/`.
+
+    Kept out of `WargameEnvConfig` deliberately. A map is meant to be swapped
+    onto an *existing* scenario — `just measure-maps` overrides `terrain` on the
+    golden config once per map — so that final evaluation runs the same reward,
+    opponent and force composition the agent was trained under. A config per map
+    would duplicate a 13 KB scenario N times and let evaluation drift from
+    training the first time a reward term changed.
+    """
+
+    name: str = Field(description="Map identifier, used as the row label.")
+    terrain: list[TerrainPieceConfig] = Field(
+        description="The layout's pieces. Replaces the scenario's own terrain."
+    )
+
+
 class RandomTerrainConfig(BaseModel):
     """Regenerate terrain footprints randomly at the start of every episode.
 

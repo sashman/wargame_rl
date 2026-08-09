@@ -98,22 +98,22 @@ just validate
 
 PPO on a transformer policy is the only configuration:
 ```bash
-just train examples/env_config/example.yaml
+just train configs/golden/25v25_shooting_opponent.yaml
 ```
 
 Cap the run at a number of epochs:
 ```bash
-just train examples/env_config/example.yaml 800
+just train configs/golden/25v25_shooting_opponent.yaml 800
 ```
 
 Resume full training state (model + optimizer + epoch/step) from an existing checkpoint:
 ```bash
-uv run train.py --env-config-path examples/env_config/ci_smoke.yaml --resume-ckpt-path checkpoints/<run>/last.ckpt
+uv run train.py --env-config-path configs/dev/ci_smoke.yaml --resume-ckpt-path checkpoints/<run>/last.ckpt
 ```
 
 Warm start from checkpoint weights only (fresh optimizer and training counters):
 ```bash
-uv run train.py --env-config-path examples/env_config/ci_smoke.yaml --warm-start-ckpt-path checkpoints/<run>/last.ckpt
+uv run train.py --env-config-path configs/dev/ci_smoke.yaml --warm-start-ckpt-path checkpoints/<run>/last.ckpt
 ```
 
 #### Running a simulation

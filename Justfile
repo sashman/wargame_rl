@@ -47,7 +47,7 @@ dockerize:
 # Use it like: just train path/to/config.yaml
 # Or with an epoch cap: just train path/to/config.yaml 800
 # Or with a match event log for analysis: just train path/to/config.yaml 800 true
-train env_config_path='examples/env_config/4v4_scripted_opponent_fixed_objectives_2_reward_phases.yaml' max_epochs='' record_events='' *extra='':
+train env_config_path='configs/dev/4v4_two_phases.yaml' max_epochs='' record_events='' *extra='':
 	@uv run train.py --record-during-training \
 		--env-config-path {{env_config_path}} \
 		{{ if max_epochs != "" { "--max-epochs " + max_epochs } else { "" } }} \
@@ -146,7 +146,7 @@ simulate checkpoint env_config_path:
 	uv run simulate.py --checkpoint-path {{checkpoint}} --env-config-path {{env_config_path}}
 
 # Record a match event log from a trained checkpoint (no rendering) for analysis.
-# Use it like: just record-sim checkpoints/<run>/best.ckpt examples/env_config/foo.yaml
+# Use it like: just record-sim checkpoints/<run>/best.ckpt configs/golden/25v25_shooting_opponent.yaml
 record-sim checkpoint env_config_path num_episodes='1':
 	@uv run simulate.py \
 		--checkpoint-path {{checkpoint}} \
@@ -176,12 +176,12 @@ profile env_config_path max_epochs='5':
 # Where an epoch's wall-clock goes: per-section and per-reward-calculator env.step cost.
 # Pass `engaged` as the third argument to force full engagement and quote the
 # line-of-sight ceiling rather than the cost under a policy that never closes.
-# Use it like: just measure-throughput examples/env_config/25v25_single_phase.yaml
+# Use it like: just measure-throughput configs/golden/25v25_single_phase.yaml
 measure-throughput env_config n_steps='400' engaged='':
 	@uv run python -m scripts.measure_throughput {{env_config}} {{n_steps}} {{engaged}}
 
 # Record a short training run with event logging (E2E demo: 1 epoch, no wandb)
-record env_config_path='examples/env_config/4_models_2_objectives_fixed.yaml':
+record env_config_path='configs/dev/tiny.yaml':
 	uv run train.py --record-events --max-epochs 1 --no-wandb --env-config-path {{env_config_path}}
 
 # Replay a recorded match event log (narrate all steps)
@@ -221,6 +221,16 @@ measure-baselines env_config n_episodes='100' record='' seed_base='':
 # under-sampled while the expensive half was over-sampled.
 measure-checkpoint checkpoint env_config n_episodes='100' record='':
 	@uv run python -m scripts.measure_checkpoint {{checkpoint}} {{env_config}} {{n_episodes}} "{{record}}"
+
+# Final evaluation: score a policy on the real table layouts, one row per map.
+# Training uses `random_terrain`, so this is the only thing that asks how the
+# policy does on the boards the game is actually played on. It runs the golden
+# scenario unchanged and swaps only `terrain`, so evaluation cannot drift from
+# what was trained. Takes a baseline name or a checkpoint, like
+# measure-objective-split.
+# Use it like: just measure-maps <ckpt> configs/golden/25v25_shooting_opponent.yaml
+measure-maps policy env_config n_episodes='100' maps_dir='':
+	@uv run python -m scripts.measure_maps {{policy}} {{env_config}} {{n_episodes}} {{maps_dir}}
 
 # Why an objective was not held: abandoned, narrowly lost, or lost by a mile.
 # `held` alone cannot separate those, and they call for different fixes. Also

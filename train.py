@@ -165,7 +165,7 @@ def train(
         None, help="Render mode for the environment"
     ),
     env_config_path: str | None = typer.Option(
-        "examples/env_config/4_models_2_objectives_fixed.yaml",
+        "configs/dev/tiny.yaml",
         help="Path to the environment config file",
     ),
     record_during_training: bool = typer.Option(

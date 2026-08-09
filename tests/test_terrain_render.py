@@ -44,7 +44,7 @@ def test_terrain_los_demo_config_loads() -> None:
 
     cfg = parse_yaml_file_as(
         WargameEnvConfig,
-        "examples/env_config/terrain_los_demo.yaml",
+        "configs/dev/terrain_los_demo.yaml",
     )
     env = WargameEnv(cfg)
     assert len(env.terrain.footprints) == 2

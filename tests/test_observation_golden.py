@@ -47,7 +47,7 @@ from wargame_rl.wargame.model.common.observation import (
 from wargame_rl.wargame.model.net import TransformerNetwork
 
 DATA_DIR = Path(__file__).parent / "data"
-CONFIG_DIR = Path(__file__).parents[1] / "examples" / "env_config"
+CONFIG_DIR = Path(__file__).parents[1] / "configs"
 
 # Deliberately the same seeds as `test_reward_golden`, so a divergence can be
 # read across both files as the same trajectory.
@@ -56,10 +56,12 @@ COMBAT_SEED = 99
 ACTION_SEED = 7
 N_STEPS = 60
 
+# Paths are relative to `configs/`; the `.npz` key is the stem, so the
+# directory prefix does not leak into the fixture filenames.
 GOLDEN_CONFIGS = [
-    "25v25_single_phase.yaml",
-    "25v25_shooting_opponent.yaml",
-    "4v4_scripted_opponent_fixed_objectives_2_reward_phases.yaml",
+    "golden/25v25_single_phase.yaml",
+    "golden/25v25_shooting_opponent.yaml",
+    "dev/4v4_two_phases.yaml",
 ]
 
 ARRAY_NAMES = (

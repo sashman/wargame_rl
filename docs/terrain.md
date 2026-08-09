@@ -297,7 +297,7 @@ The renderer draws terrain footprints as translucent brown rectangles with an ou
 
 ## YAML Example
 
-A complete config with terrain (`examples/env_config/terrain_los_demo.yaml`):
+A complete config with terrain (`configs/dev/terrain_los_demo.yaml`):
 
 ```yaml
 config_name: terrain_los_demo
