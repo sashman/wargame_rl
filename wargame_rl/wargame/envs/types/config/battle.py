@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TurnOrder(str, Enum):
@@ -19,6 +19,8 @@ class TurnOrder(str, Enum):
 class OpponentPolicyConfig(BaseModel):
     """Configuration for the opponent policy engine."""
 
+    model_config = ConfigDict(extra="forbid")
+
     type: str = Field(
         description="Policy engine identifier, e.g. 'random', 'scripted_advance_to_objective'."
     )
@@ -30,6 +32,8 @@ class OpponentPolicyConfig(BaseModel):
 
 class MissionConfig(BaseModel):
     """Configuration for the mission (victory point scoring rules)."""
+
+    model_config = ConfigDict(extra="forbid")
 
     type: str = Field(
         default="default",

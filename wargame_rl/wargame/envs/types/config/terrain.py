@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class TerrainPieceConfig(BaseModel):
     """Configuration for a single terrain piece (axis-aligned rectangle)."""
+
+    model_config = ConfigDict(extra="forbid")
 
     footprint: tuple[int, int, int, int] = Field(
         description="Bounding rectangle (x0, y0, x1, y1) in grid cells."
@@ -23,6 +25,8 @@ class TerrainMapConfig(BaseModel):
     would duplicate a 13 KB scenario N times and let evaluation drift from
     training the first time a reward term changed.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     name: str = Field(description="Map identifier, used as the row label.")
     terrain: list[TerrainPieceConfig] = Field(
@@ -42,6 +46,8 @@ class RandomTerrainConfig(BaseModel):
     layout a policy can memorise a handful of rectangles; with a fresh layout
     every episode it has to read the terrain tokens in the observation.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     count: int = Field(
         gt=0,

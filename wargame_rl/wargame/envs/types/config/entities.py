@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from wargame_rl.wargame.envs.types.config._validation import (
     _validate_coords_both_or_neither,
@@ -11,6 +11,8 @@ from wargame_rl.wargame.envs.types.config._validation import (
 
 class WeaponProfile(BaseModel):
     """Weapon stat block with range and resolution stats."""
+
+    model_config = ConfigDict(extra="forbid")
 
     range: int = Field(gt=0, description="Maximum range in grid cells")
     attacks: int = Field(
@@ -36,6 +38,8 @@ class ModelConfig(BaseModel):
     When *x* and *y* are provided the model is placed at that exact cell;
     otherwise it is placed randomly in the deployment zone.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     x: int | None = Field(
         default=None,
@@ -73,6 +77,8 @@ class ObjectiveConfig(BaseModel):
     When *x* and *y* are provided the objective is placed at that exact cell;
     otherwise it is placed randomly outside the deployment zone.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     x: int | None = Field(
         default=None,

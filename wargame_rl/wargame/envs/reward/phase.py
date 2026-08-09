@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SuccessCriteriaConfig(BaseModel):
     """YAML-serialisable description of a success criteria."""
+
+    model_config = ConfigDict(extra="forbid")
 
     type: str = Field(
         description="Registry key, e.g. 'all_at_objectives', 'all_models_grouped'"
@@ -19,6 +21,8 @@ class SuccessCriteriaConfig(BaseModel):
 
 class RewardCalculatorConfig(BaseModel):
     """YAML-serialisable description of a single reward calculator."""
+
+    model_config = ConfigDict(extra="forbid")
 
     type: str = Field(
         description="Registry key, e.g. 'closest_objective', 'group_cohesion'"
@@ -34,6 +38,8 @@ class RewardCalculatorConfig(BaseModel):
 
 class RewardPhaseConfig(BaseModel):
     """Configuration for a single reward phase in the curriculum."""
+
+    model_config = ConfigDict(extra="forbid")
 
     name: str = Field(description="Human-readable phase name")
     reward_calculators: list[RewardCalculatorConfig] = Field(
