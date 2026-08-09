@@ -44,11 +44,10 @@ from wargame_rl.wargame.envs.env_components import (
 )
 from wargame_rl.wargame.envs.env_components.exposure import (
     ExposureTracker,
-    distances_to_nearest_footprint,
+    record_shooting_phase,
 )
 from wargame_rl.wargame.envs.env_components.shooting_masks import (
     compute_shooting_masks,
-    compute_threat_counts,
     max_weapon_ranges,
 )
 from wargame_rl.wargame.envs.mission import build_vp_calculator
@@ -595,37 +594,16 @@ class WargameEnv(gym.Env):
         return mask
 
     def _record_exposure(self, opp_alive: np.ndarray) -> None:
-        """Sample both sides of the shooting exchange right now.
-
-        Deliberately ignores the engagement-range and advanced gating that
-        `_opponent_action_mask` applies. A shooter in base contact cannot fire at
-        all, so counting that as safety would score a headlong charge as if it
-        were cover — and cover is the thing being measured.
-
-        One scan yields every direction, so `firepower_ratio` costs nothing on
-        top of `exposure_rate`.
-        """
-        player_alive = alive_mask_for(self.wargame_models)
-        if not player_alive.any() or not opp_alive.any():
-            return
-        player_positions = np.array([m.location for m in self.wargame_models])
-        threats = compute_threat_counts(
-            player_positions,
-            np.array([m.location for m in self.opponent_models]),
-            player_alive,
+        """Sample both sides of the shooting exchange into the exposure tracker."""
+        record_shooting_phase(
+            self._exposure_tracker,
+            self.wargame_models,
+            self.opponent_models,
             opp_alive,
             self._player_max_ranges,
             self._opponent_max_ranges,
+            self.terrain.footprints,
             self.has_line_of_sight_between_cells,
-        )
-        self._exposure_tracker.record(
-            exposed=threats.threat_to_player > 0,
-            alive=player_alive,
-            terrain_distances=distances_to_nearest_footprint(
-                player_positions, self.terrain.footprints
-            ),
-            our_shooters=int((threats.player_can_shoot & player_alive).sum()),
-            their_shooters=int((threats.opponent_can_shoot & opp_alive).sum()),
         )
 
     def _apply_opponent_action(self) -> None:
