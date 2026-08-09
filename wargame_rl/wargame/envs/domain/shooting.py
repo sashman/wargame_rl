@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 import numpy as np
+
+from wargame_rl.wargame.envs.domain.entities import WargameModel
 
 ENGAGEMENT_RANGE = 1  # grid-cell distance for engagement (v3.0 stub)
 
@@ -121,6 +124,69 @@ def resolve_shooting(
     return ShootingResult(
         hits=hits, wounds=wounds, unsaved=unsaved, damage_dealt=damage_dealt
     )
+
+
+def resolve_shooting_phase(
+    shots: Sequence[tuple[int, int]],
+    attackers: Sequence[WargameModel],
+    targets: Sequence[WargameModel],
+    attacker_weapons: Sequence[Sequence[WeaponStats]],
+    rng: np.random.Generator,
+) -> list[PairedShootingResult]:
+    """Resolve every shot declared this phase, applying damage to the targets.
+
+    Args:
+        shots: ``(attacker_idx, target_idx)`` pairs already decoded from the
+            action space. Decoding is the adapter's job; this function only
+            knows the rules.
+        attackers: Models on the firing side, indexed by ``attacker_idx``.
+        targets: Models on the receiving side, indexed by ``target_idx``.
+        attacker_weapons: Weapon list per attacker, positionally aligned with
+            *attackers*. A shorter sequence, or an empty entry, means that
+            attacker cannot fire.
+        rng: Dice source. Consumed only for shots that pass every check, so the
+            random stream depends on how many shots resolve.
+
+    Returns:
+        One result per shot that actually resolved, in *shots* order.
+
+    A dead attacker does not fire and a dead target cannot be fired at, so both
+    are filtered here rather than by the caller — they are rules, not encoding.
+    """
+    results: list[PairedShootingResult] = []
+    for attacker_idx, target_idx in shots:
+        if not attackers[attacker_idx].is_alive:
+            continue
+        if target_idx >= len(targets) or not targets[target_idx].is_alive:
+            continue
+        weapons = (
+            attacker_weapons[attacker_idx]
+            if attacker_idx < len(attacker_weapons)
+            else ()
+        )
+        if not weapons:
+            continue
+        target = targets[target_idx]
+        defender = DefenderStats(
+            toughness=target.stats["toughness"],
+            save=target.stats["save"],
+        )
+        result = resolve_shooting(weapons[0], defender, rng)
+        killed = False
+        if result.damage_dealt > 0:
+            target.take_damage(result.damage_dealt)
+            # The target was alive at the check above, so a dead target here
+            # means this shot made the kill.
+            killed = not target.is_alive
+        results.append(
+            PairedShootingResult(
+                attacker_idx=attacker_idx,
+                target_idx=target_idx,
+                result=result,
+                killed=killed,
+            )
+        )
+    return results
 
 
 def expected_damage(

@@ -18,6 +18,7 @@ from wargame_rl.wargame.envs.domain.shooting import (
     expected_damage,
     expected_damage_matrix,
     resolve_shooting,
+    resolve_shooting_phase,
     wound_roll_threshold,
 )
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
@@ -255,6 +256,100 @@ class TestResolveShooting:
 
     def test_engagement_range_constant(self) -> None:
         assert ENGAGEMENT_RANGE == 1
+
+
+# ---------------------------------------------------------------------------
+# Whole-phase resolution
+# ---------------------------------------------------------------------------
+
+
+class TestResolveShootingPhase:
+    """The phase-level service, exercised without building a Gym env.
+
+    That it can be tested this way at all is the point of it living in the
+    domain: the attack sequence used to be a private method on `WargameEnv`,
+    so reaching it meant constructing a board, a clock and an action space.
+    """
+
+    def _weapons(self, count: int) -> list[list[_TestWeapon]]:
+        return [[_TestWeapon()] for _ in range(count)]
+
+    def test_a_dead_attacker_does_not_fire(self) -> None:
+        attackers = [_make_model(), _make_model()]
+        targets = [_make_model(max_wounds=10)]
+        attackers[0].take_damage(1)
+
+        results = resolve_shooting_phase(
+            shots=[(0, 0), (1, 0)],
+            attackers=attackers,
+            targets=targets,
+            attacker_weapons=self._weapons(2),
+            rng=np.random.default_rng(0),
+        )
+
+        assert [r.attacker_idx for r in results] == [1]
+
+    def test_a_dead_target_cannot_be_fired_at(self) -> None:
+        attackers = [_make_model()]
+        targets = [_make_model()]
+        targets[0].take_damage(1)
+
+        results = resolve_shooting_phase(
+            shots=[(0, 0)],
+            attackers=attackers,
+            targets=targets,
+            attacker_weapons=self._weapons(1),
+            rng=np.random.default_rng(0),
+        )
+
+        assert results == []
+
+    def test_an_unarmed_attacker_does_not_consume_dice(self) -> None:
+        """No weapon means no roll, so the next shooter gets the first dice.
+
+        Order of RNG consumption is the property that makes a refactor of this
+        function safe to compare bit-for-bit against the previous one.
+        """
+        attackers = [_make_model(), _make_model()]
+        targets = [_make_model(max_wounds=10)]
+
+        armed_second = resolve_shooting_phase(
+            shots=[(0, 0), (1, 0)],
+            attackers=attackers,
+            targets=targets,
+            attacker_weapons=[[], [_TestWeapon()]],
+            rng=np.random.default_rng(7),
+        )
+
+        targets = [_make_model(max_wounds=10)]
+        alone = resolve_shooting_phase(
+            shots=[(1, 0)],
+            attackers=attackers,
+            targets=targets,
+            attacker_weapons=[[], [_TestWeapon()]],
+            rng=np.random.default_rng(7),
+        )
+
+        assert [r.result for r in armed_second] == [r.result for r in alone]
+
+    def test_kill_is_attributed_to_the_shot_that_landed_it(self) -> None:
+        """`killed` cannot be recovered afterwards when several shots share a target."""
+        attackers = [_make_model() for _ in range(6)]
+        targets = [_make_model(max_wounds=1, save=7)]
+
+        results = resolve_shooting_phase(
+            shots=[(i, 0) for i in range(6)],
+            attackers=attackers,
+            targets=targets,
+            attacker_weapons=self._weapons(6),
+            rng=np.random.default_rng(3),
+        )
+
+        assert not targets[0].is_alive
+        # Exactly one shot may claim the kill, and it is the last one resolved:
+        # every later shot is filtered out by the dead-target check.
+        assert sum(r.killed for r in results) == 1
+        assert results[-1].killed
 
 
 # ---------------------------------------------------------------------------

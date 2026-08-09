@@ -22,10 +22,9 @@ from wargame_rl.wargame.envs.domain.los import has_line_of_sight, iter_los_cells
 from wargame_rl.wargame.envs.domain.placement import place_for_episode
 from wargame_rl.wargame.envs.domain.shooting import (
     ENGAGEMENT_RANGE,
-    DefenderStats,
     PairedShootingResult,
     ShootingResult,
-    resolve_shooting,
+    resolve_shooting_phase,
 )
 from wargame_rl.wargame.envs.domain.termination import is_battle_over
 from wargame_rl.wargame.envs.domain.terrain import Terrain
@@ -42,7 +41,6 @@ from wargame_rl.wargame.envs.env_components import (
     build_observation,
     compute_distances,
 )
-from wargame_rl.wargame.envs.env_components.actions import ActionSlice
 from wargame_rl.wargame.envs.env_components.exposure import (
     ExposureTracker,
     distances_to_nearest_footprint,
@@ -531,56 +529,20 @@ class WargameEnv(gym.Env):
         action: WargameEnvAction,
         attackers: list[WargameModel],
         targets: list[WargameModel],
-        shooting_slice: ActionSlice | None,
+        action_handler: ActionHandler,
         attacker_configs: list[ModelConfig] | None,
     ) -> list[PairedShootingResult]:
-        """Resolve shooting for each model in the action against targets.
+        """Decode the action into shots, then let the domain resolve them.
 
         Returns one PairedShootingResult per model that actually fired.
         """
-        results: list[PairedShootingResult] = []
-        if shooting_slice is None:
-            return results
-        for i, act in enumerate(action.actions):
-            if i >= len(attackers):
-                continue
-            attacker = attackers[i]
-            if not attacker.is_alive:
-                continue
-            if not (shooting_slice.start <= act < shooting_slice.end):
-                continue
-            target_idx = act - shooting_slice.start
-            if target_idx >= len(targets) or not targets[target_idx].is_alive:
-                continue
-            weapons = (
-                attacker_configs[i].weapons
-                if attacker_configs and i < len(attacker_configs)
-                else []
-            )
-            if not weapons:
-                continue
-            w = weapons[0]
-            target = targets[target_idx]
-            defender = DefenderStats(
-                toughness=target.stats["toughness"],
-                save=target.stats["save"],
-            )
-            result = resolve_shooting(w, defender, self._combat_rng)
-            killed = False
-            if result.damage_dealt > 0:
-                targets[target_idx].take_damage(result.damage_dealt)
-                # The target was alive at the range check above, so a dead
-                # target here means this shot made the kill.
-                killed = not targets[target_idx].is_alive
-            results.append(
-                PairedShootingResult(
-                    attacker_idx=i,
-                    target_idx=target_idx,
-                    result=result,
-                    killed=killed,
-                )
-            )
-        return results
+        return resolve_shooting_phase(
+            shots=action_handler.decode_shooting_targets(action, len(attackers)),
+            attackers=attackers,
+            targets=targets,
+            attacker_weapons=[cfg.weapons for cfg in attacker_configs or []],
+            rng=self._combat_rng,
+        )
 
     def _apply_player_action(self, action: WargameEnvAction) -> None:
         phase = self._game_clock.state.phase or BattlePhase.movement
@@ -592,7 +554,7 @@ class WargameEnv(gym.Env):
                 action,
                 self.wargame_models,
                 self.opponent_models,
-                self._action_handler.shooting_slice,
+                self._action_handler,
                 self.config.models,
             )
         else:
@@ -695,7 +657,7 @@ class WargameEnv(gym.Env):
                 opp_action,
                 self.opponent_models,
                 self.wargame_models,
-                self._opponent_action_handler.shooting_slice,
+                self._opponent_action_handler,
                 self.config.opponent_models,
             )
         else:

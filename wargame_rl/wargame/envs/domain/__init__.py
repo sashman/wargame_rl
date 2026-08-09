@@ -19,6 +19,7 @@ from wargame_rl.wargame.envs.domain.shooting import (
     WeaponStats,
     expected_damage,
     resolve_shooting,
+    resolve_shooting_phase,
     wound_roll_threshold,
 )
 from wargame_rl.wargame.envs.domain.termination import (
@@ -57,5 +58,6 @@ __all__ = [
     "WeaponStats",
     "expected_damage",
     "resolve_shooting",
+    "resolve_shooting_phase",
     "wound_roll_threshold",
 ]
