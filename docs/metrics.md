@@ -326,7 +326,7 @@ Same numbers appear as `exposure` / `terrain_d` / `alive` columns in
 4. **It is not the same quantity as the shooting mask.** `exposure_rate`
    deliberately ignores the engagement-range and advanced gating that
    `compute_shooting_masks` applies for real shots. A shooter within
-   `ENGAGEMENT_RANGE` of any enemy cannot fire at all, so including that gate
+   `engagement_range` of any enemy cannot fire at all, so including that gate
    would score a headlong charge as cover.
 
 `terrain_proximity` is the check against reading 2 backwards: a policy that is

@@ -194,7 +194,7 @@ def _make_shooting_env() -> WargameEnv:
 
     Weapons are required (`ModelConfig.weapons` defaults to empty, which means
     a model cannot shoot at all), and the two sides must be more than
-    `ENGAGEMENT_RANGE` apart or the shooting mask forbids firing.
+    `engagement_range` apart or the shooting mask forbids firing.
     """
     weapon = WeaponProfile(range=12, attacks=2)
     config = WargameEnvConfig(
