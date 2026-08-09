@@ -94,6 +94,25 @@ none to use. Tune a profile here, in seconds, rather than after a thousand epoch
 The cost is sequence length: terrain is one transformer token per piece, so 29 pieces plus
 the (since-removed) threat feature measured 2.66 -> 3.13 ms/step on 25v25 (+18%).
 
+## Real table layouts
+
+Training uses `random_terrain`; the boards the game is actually played on are
+fixed. Those live in `configs/evaluation/maps/` as terrain-only files:
+
+```yaml
+name: table_01
+terrain:
+  - { footprint: [12, 8, 18, 14] }
+```
+
+`just measure-maps <policy|ckpt> <config> [n] [maps_dir]` runs the scenario
+unchanged and swaps only `terrain`, one row per map plus the spread across
+them. The map replaces `terrain` *and* clears `random_terrain` — the two are
+mutually exclusive, and a surviving generator would regenerate a layout at
+reset and discard the map.
+
+There is no config per map by design: see [configs/README.md](../configs/README.md).
+
 ## Objectives and terrain
 
 Objective placement is independent of terrain by default, and independent of the other
