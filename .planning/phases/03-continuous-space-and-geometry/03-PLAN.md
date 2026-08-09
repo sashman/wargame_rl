@@ -9,6 +9,30 @@
 **Prototype:** `feature/continuous-positions-and-bases`, three commits off `0704272`
 (`168f036`, `db4a4dd`, `3c7812e`) — 85 files, +5541/−631, 841 tests passing.
 
+> **Preparation landed separately (2026-08-09), and it moves some of the code this plan
+> points at.** `refactor/prepare-for-continuous-space` is seven behaviour-preserving
+> commits, each verified bit-identical against `main` over eight seeded episodes. Read the
+> work packages below against these locations, not the prototype's:
+>
+> - Coordinates are built through `position()` / `zero_position()` and `POSITION_DTYPE` in
+>   `domain/value_objects.py`. **WP-3 is now a change to that one constant plus whatever
+>   mypy then reports**, rather than a hunt through ~12 literal `dtype=np.int32` sites.
+> - The attack sequence is `domain.shooting.resolve_shooting_phase`, not a private method
+>   on the env. **WP-8's cover penalty enters it as a parameter.** Action decoding split
+>   off to `ActionHandler.decode_shooting_targets`.
+> - "Can A see B?" is `domain/sight.py`. **WP-8 replaces that module's internals**; the
+>   `BattleView` signature is still the grid one and is the seam to change.
+> - The snapshot read path is `state/restore.py` and VP restore is
+>   `Battle.restore_victory_points`. **WP-11's schema change lands there.**
+> - Config is the package `types/config/` (`battle` · `entities` · `terrain` · `env` ·
+>   `_validation`), re-exported so import paths are unchanged.
+> - `types/` is documented as the shared kernel and **`types/geometry.py` is the agreed
+>   home for `Polygon`** — see `docs/ddd-envs.md`. WP-7 no longer needs to decide this.
+>
+> One thing preparation deliberately did *not* fix, because it is a behaviour change:
+> a position is int32 from placement and **int64 once it has moved**, since the
+> displacement table is int64 and numpy promotes. WP-0 owns that line.
+
 ---
 
 ## What this is
@@ -152,13 +176,21 @@ placement; the renderer drawing circles at the real radius and dropping the cell
 **This is the largest correction the prototype produced, and it gates WP-8.**
 
 The rules say a model ignores others *in its own unit* and *in the target's unit* when
-tracing sight. The prototype used `group_id` as the unit proxy — but the default config
-assigns every model its own `group_id`, so a squad occluded itself and "open ground is
-fully exposed" became false.
+tracing sight. The prototype used `group_id` as the unit proxy, and `group_id` does not
+mean what the sight rule needs.
 
-`group_id` is also overloaded: it drives cohesion rewards, placement clustering and
-baseline squad assignment. Give units a real identity before anything depends on unit
-membership for correctness.
+> **Symptom corrected 2026-08-09.** This paragraph previously read "the default config
+> assigns every model its own `group_id`, so a squad occluded itself". That is backwards.
+> `ModelConfig.group_id` defaults to **0 for every model**, so under the default the whole
+> 25-model army is one unit and nothing occludes anything — the opposite failure. The
+> shipped 25v25 configs do set 5 groups of 5 (`configs/golden/25v25_cover_control.yaml`,
+> `max_groups: 5`), which is squad-correct by luck of authoring, not by design. So the
+> occlusion rule's behaviour depends entirely on how a config happens to number groups,
+> which is the actual reason this cannot ship on `group_id`.
+
+`group_id` is also overloaded: 17 modules read it, across cohesion rewards, placement
+clustering, baseline squad assignment and the observation encoding. Give units a real
+identity before anything depends on unit membership for correctness.
 
 Scope check while you are here: `WargameModel`'s own docstring conflates model and unit,
 there is no `Unit` class, and `docs/rules/` is written throughout in terms of units. This
@@ -238,8 +270,12 @@ Other traps:
   Reject them at config load.
 - **The legacy `blocking_mask` is opaque matter, not shelter.** The see-out endpoint filter
   must not apply to it, or a model standing near a masked cell sees through it.
-- **Cover is only wired into the player's shooting path in the prototype.** The opponent's
-  resolution does not check it. Close that here.
+- ~~**Cover is only wired into the player's shooting path in the prototype.** The opponent's
+  resolution does not check it. Close that here.~~ **Wrong — corrected 2026-08-09.** Cover is
+  already symmetric. `_resolve_shooting_action` (`wargame.py:567`) is shared: it applies the
+  penalty at `:620` and is called for the player at `:643` and the opponent at `:748`. There
+  is no gap to close. Left struck through rather than deleted, because "go and check the
+  opponent path" is a reasonable instinct and this records that it was checked.
 
 ### WP-9 — Polygon terrain and objectives
 
