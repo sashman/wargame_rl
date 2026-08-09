@@ -20,8 +20,8 @@ During each step, the environment generates a `(n_models, n_actions)` boolean ma
 
 - Attached to the observation (`WargameEnvObservation.action_mask`).
 - Threaded through the observation tensor pipeline as tensor 5, a `torch.bool` tensor (`model/common/observation.py`).
-- Applied by **PPO** inside `TransformerNetwork.policy_from_encoded`, which fills masked logits with `-inf` before the categorical distribution is formed — so sampling, log-probs, and entropy all see only legal actions. (`MLPNetwork` does not consume the mask; it is DQN-only.)
-- Applied by **DQN** during greedy selection (invalid Q-values set to `-inf` before argmax), during random exploration (sampling restricted to valid indices), and in the loss to mask target Q-values for next-state value estimation.
+- Applied by **PPO** inside `TransformerNetwork.policy_from_encoded`, which fills masked logits with `-inf` before the categorical distribution is formed — so sampling, log-probs, and entropy all see only legal actions.
+- Applied by `ArgmaxAgent` (`model/common/argmax_agent.py`) during greedy selection, which sets invalid logits to `-inf` before the argmax, and restricts random exploration to valid indices. This is the path `simulate.py` and `measure-phase-gates` take.
 
 ### Extending with New Phases
 
@@ -127,4 +127,4 @@ max_move_speed: 6.0
 
 ## Future: Per-Model Speed
 
-The system is designed so that `max_move_speed` can become a per-model attribute. In that case, speed bins would represent **fractions** of each model's individual max speed rather than absolute values. The action space stays uniform across all models — "speed bin 3 of 6" means "move at 50% of my max speed" regardless of the model's actual maximum. This keeps the DQN architecture unchanged while allowing heterogeneous unit speeds.
+The system is designed so that `max_move_speed` can become a per-model attribute. In that case, speed bins would represent **fractions** of each model's individual max speed rather than absolute values. The action space stays uniform across all models — "speed bin 3 of 6" means "move at 50% of my max speed" regardless of the model's actual maximum. This keeps the network architecture unchanged while allowing heterogeneous unit speeds.

@@ -176,9 +176,8 @@ class RandomTerrainConfig(BaseModel):
 
     The piece *count* is fixed while size and position vary. This is a hard
     constraint, not a simplification: `observations_to_tensor_batch` stacks the
-    terrain arrays of a whole batch with `np.stack`, and `MLPNetwork` flattens
-    terrain into a fixed-width input, so a batch containing episodes with
-    different piece counts cannot be collated.
+    terrain arrays of a whole batch with `np.stack`, so a batch containing
+    episodes with different piece counts cannot be collated.
 
     Randomising terrain is what makes a cover result falsifiable. With a fixed
     layout a policy can memorise a handful of rectangles; with a fresh layout

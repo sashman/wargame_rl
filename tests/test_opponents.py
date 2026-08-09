@@ -21,7 +21,7 @@ from wargame_rl.wargame.envs.types import (
 from wargame_rl.wargame.envs.types.config import ModelConfig, ObjectiveConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.observation import observation_to_tensor
-from wargame_rl.wargame.model.net import MLPNetwork, TransformerNetwork
+from wargame_rl.wargame.model.net import TransformerNetwork
 
 
 def _make_opponent_config(**overrides: object) -> WargameEnvConfig:
@@ -460,32 +460,14 @@ class TestObservationTensors:
 
 
 # ---------------------------------------------------------------------------
-# DQN networks with opponents
+# Networks with opponents
 # ---------------------------------------------------------------------------
 
 
-class TestDQNWithOpponents:
-    def test_mlp_forward_with_opponents(self) -> None:
-        env = WargameEnv(config=_make_opponent_config())
-        net = MLPNetwork.policy_from_env(env)
-        obs, _ = env.reset(seed=42)
-        tensors = observation_to_tensor(obs, net.device)
-        q_values = net(tensors)
-        assert q_values.shape[0] == 1  # batch
-        assert q_values.shape[1] == env.config.number_of_wargame_models
-
+class TestNetworkWithOpponents:
     def test_transformer_forward_with_opponents(self) -> None:
         env = WargameEnv(config=_make_opponent_config())
         net = TransformerNetwork.policy_from_env(env)
-        obs, _ = env.reset(seed=42)
-        tensors = observation_to_tensor(obs, net.device)
-        q_values = net(tensors)
-        assert q_values.shape[0] == 1
-        assert q_values.shape[1] == env.config.number_of_wargame_models
-
-    def test_mlp_forward_without_opponents(self) -> None:
-        env = WargameEnv(config=_make_no_opponent_config())
-        net = MLPNetwork.policy_from_env(env)
         obs, _ = env.reset(seed=42)
         tensors = observation_to_tensor(obs, net.device)
         q_values = net(tensors)

@@ -3,17 +3,16 @@ import pytest
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.dqn.agent import Agent
-from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
+from wargame_rl.wargame.model.common.argmax_agent import ArgmaxAgent
 from wargame_rl.wargame.model.net import RL_Network
 
 
 @pytest.fixture
-def agent(env: WargameEnv, replay_buffer: ReplayBuffer) -> Agent:
-    return Agent(env, replay_buffer)
+def agent(env: WargameEnv) -> ArgmaxAgent:
+    return ArgmaxAgent(env)
 
 
-def test_agent(agent: Agent, policy_net: RL_Network) -> None:
+def test_agent(agent: ArgmaxAgent, policy_net: RL_Network) -> None:
     wargame_config = WargameEnvConfig()
     n_wargame_models = wargame_config.number_of_wargame_models
     agent.reset()
@@ -32,7 +31,7 @@ def test_agent(agent: Agent, policy_net: RL_Network) -> None:
     assert isinstance(done, bool)
 
 
-def test_run_episode(agent: Agent, policy_net: RL_Network) -> None:
+def test_run_episode(agent: ArgmaxAgent, policy_net: RL_Network) -> None:
     """run_episode completes and returns (total_reward, steps)."""
     total_reward, steps = agent.run_episode(policy_net, epsilon=0.5, save_steps=False)
     assert isinstance(total_reward, float)
@@ -40,7 +39,7 @@ def test_run_episode(agent: Agent, policy_net: RL_Network) -> None:
     assert steps >= 1
 
 
-def test_episode_reward_breakdown(agent: Agent, policy_net: RL_Network) -> None:
+def test_episode_reward_breakdown(agent: ArgmaxAgent, policy_net: RL_Network) -> None:
     """Episode reward breakdown should be tracked and averaged per step."""
     _total_reward, steps = agent.run_episode(policy_net, epsilon=0.5, save_steps=False)
     env = agent.env

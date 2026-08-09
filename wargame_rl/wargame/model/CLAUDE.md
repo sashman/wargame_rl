@@ -4,19 +4,27 @@ Applies to everything under `wargame_rl/wargame/model/`.
 
 ## Networks
 
-Two network variants implementing `RL_Network` protocol (in `net.py`):
-- `TransformerNetwork` — NanoGPT-style self-attention (default, actively developed)
-- `MLPNetwork` — standard feed-forward (legacy, will be dropped)
+`TransformerNetwork` (in `net.py`) is the only network implementing the `RL_Network`
+protocol. It exposes `policy_from_env(env)` and `from_checkpoint(env, path)`.
 
-Both expose `policy_from_env(env)` and `from_checkpoint(env, path)` class methods.
+DQN and `MLPNetwork` were removed once neither had been trained in months. Two
+things survived that removal because the transformer needs them: `common/layers.py`
+(`Block`, `LayerNorm`, `SelfAttention`, and `MLP` — the *feed-forward half of a
+transformer block*, unrelated to the deleted `MLPNetwork`), and `common/argmax_agent.py`.
+`net.convert_state_dict` still strips the DQN Lightning prefix `policy_net.`, so
+checkpoints trained before the removal still load — the weights are a
+`TransformerNetwork` either way. `git log -- wargame_rl/wargame/model/dqn` restores
+the rest.
 
-## DQN (`model/dqn/`)
-
-- `DQNLightning` — PyTorch Lightning module: training loop, epsilon-greedy exploration, target network sync, experience replay
-- `DQNConfig` / `DQNTrainingConfig` — Pydantic config models
-- `ReplayBuffer` (`experience_replay.py`) — experience replay with `Experience` named tuples
-- `Agent` — runs episodes with epsilon-greedy policy
-- `layers.py` — `Block`, `LayerNorm`, `SelfAttention`, `MLP` shared by `TransformerNetwork`
+**Moving a module that a checkpoint pickles breaks every checkpoint.** Lightning
+stores the whole `PPO_Transformer` in `hyper_parameters`, so a checkpoint records
+the *import path* of `Block` and `LayerNorm` as of the day it was written — and
+`torch.load` then raises `ModuleNotFoundError`, not a warning. `common/layers.py`
+ends with a `sys.modules` alias for its old path for exactly this reason;
+`tests/test_checkpoint_module_alias.py` pins it, and it was found only by scoring
+a real trained run, since nothing in the suite loaded a pre-move checkpoint.
+Anything reachable from a Lightning module's constructor args carries the same
+hazard.
 
 ## PPO (`model/ppo/`)
 
@@ -24,16 +32,16 @@ Both expose `policy_from_env(env)` and `from_checkpoint(env, path)` class method
 - `PPOConfig` / `PPOTrainingConfig` — Pydantic config (lr, gamma, GAE lambda, clip epsilon, etc.)
 - `PPO_Transformer` — actor-critic model with shared transformer backbone, separate policy and value heads
 - `PPOModel` — wraps policy net + value net. **`forward` casts both heads to float32** (a no-op at default precision). Under `--precision bf16-mixed` the importance ratio `exp(new_log_prob − old_log_prob)` must resolve ~0.007 nats around a log-prob of −4.8, where bf16 steps 0.0156 — the change would round away entirely and every ratio would read exactly 1, training on nothing at full speed. Keep the cast at the head, not at each `Categorical`: there are four construction sites and the value loss besides
-- PPO only supports `TransformerNetwork` (no MLP variant)
+- PPO runs on `TransformerNetwork`
 
 ## Shared (`model/common/`)
 
 - `create_environment()` — factory for `WargameEnv` from config (optionally with `state_exporters`)
 - **Rollout and eval envs are built with `build_info=False`.** The Gymnasium info dict costs ~0.2 ms of every step — 50 dataclasses, a Pydantic model and a `model_dump()` — and both loops discard it. Anything reading `info` on the training path will get `{}`; read the env's properties instead
 - `observation_to_tensor` / `observations_to_tensor_batch` — observation conversion
-- `WargameLightningBase` (`lightning_base.py`) — base for `DQNLightning` / `PPOLightning`: evaluation, baseline logging, reward-phase advancement
-- `RLDataset` (`dataset.py`) — generic RL `IterableDataset`
+- `WargameLightningBase` (`lightning_base.py`) — base for `PPOLightning`: evaluation, baseline logging, reward-phase advancement
 - `BaseAgent` (`agent_base.py`) — shared episode-running agent interface
+- `ArgmaxAgent` (`argmax_agent.py`) — plays the best valid action of a bare `RL_Network`. `simulate.py` and `scripts/measure_phase_gates.py` load weights into a `TransformerNetwork` rather than a `PPOModel`, so they cannot use `ppo/agent.py`
 - `TransformerConfig` — shared transformer hyperparameters
 - `Device` / `get_device()` — device management
 - Wandb integration in `wandb.py` — all logging goes through Lightning logger
@@ -76,15 +84,15 @@ To add a new entity:
 1. Add to `WargameEnvObservation` + obs builder
 2. Extend `_observation_to_numpy` tuple
 3. Update `observation_to_tensor` / `observations_to_tensor_batch`
-4. Update **both** networks' `forward()` — Transformer needs dedicated embedding + updated token ordering; player tokens must stay extractable for per-model action heads
-5. Fix unpacking in tests (`test_state.py`, `test_dqn.py`)
+4. Update `TransformerNetwork.forward()` — a dedicated embedding plus updated token ordering; player tokens must stay extractable for per-model action heads
+5. Fix unpacking in tests (`test_state.py`)
 
 ## Conventions
 
 - Use `torch.Tensor` for all neural network operations
 - Observation tensors built by `observation.py` from `WargameEnvObservation`
-- Default algorithm is PPO; DQN is available but not the primary focus
+- PPO is the only algorithm
 - Device management via `device.py` utility
 - Wandb integration in `wandb.py` — all logging goes through Lightning logger
 - **`get_logger` sets `log_model=False`** — checkpoints are never uploaded. Nothing reads a model artifact back (every consumer takes a local `checkpoints/` path), and the uploads filled the storage quota at ~591 MB per run. `checkpoints/` is therefore the only copy of any trained weights
-- When changing the observation tuple length, expect unpacking errors in tests (`test_state.py`, `test_dqn.py`) — fix them as part of the same change
+- When changing the observation tuple length, expect unpacking errors in tests (`test_state.py`) — fix them as part of the same change

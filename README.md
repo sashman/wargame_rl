@@ -96,29 +96,24 @@ just validate
 
 #### Training
 
-Default algorithm is PPO:
+PPO on a transformer policy is the only configuration:
 ```bash
 just train examples/env_config/example.yaml
 ```
 
-Train with DQN instead:
+Cap the run at a number of epochs:
 ```bash
-just train examples/env_config/example.yaml dqn
-```
-
-Train with DQN and a specific network type:
-```bash
-just train examples/env_config/example.yaml dqn transformer
+just train examples/env_config/example.yaml 800
 ```
 
 Resume full training state (model + optimizer + epoch/step) from an existing checkpoint:
 ```bash
-uv run train.py --env-config-path examples/env_config/ci_smoke.yaml --algorithm ppo --resume-ckpt-path checkpoints/<run>/last.ckpt
+uv run train.py --env-config-path examples/env_config/ci_smoke.yaml --resume-ckpt-path checkpoints/<run>/last.ckpt
 ```
 
 Warm start from checkpoint weights only (fresh optimizer and training counters):
 ```bash
-uv run train.py --env-config-path examples/env_config/ci_smoke.yaml --algorithm dqn --warm-start-ckpt-path checkpoints/<run>/last.ckpt
+uv run train.py --env-config-path examples/env_config/ci_smoke.yaml --warm-start-ckpt-path checkpoints/<run>/last.ckpt
 ```
 
 #### Running a simulation
@@ -131,7 +126,7 @@ just simulate-latest
 
 Specific checkpoint:
 ```bash
-just simulate checkpoints/policy-dqn-env-v2-2025-10-24-22-50-54/last.ckpt checkpoints/policy-dqn-env-v2-2025-10-24-22-50-54/env_config.yaml
+just simulate checkpoints/ppo-transformer-25v25-2026-08-09-10-30-00/last.ckpt checkpoints/ppo-transformer-25v25-2026-08-09-10-30-00/env_config.yaml
 ```
 
 #### Testing Env

@@ -269,7 +269,7 @@ learning A/B, `torch.compile` measured at 3.26x and blocked on the `state_dict`
 prefix. `cudnn.benchmark` remains a no-op: the model has zero convolutions.
 
 **The attention-mask item was wrong on both counts and is closed.** The claim was
-that the explicit **bool** `attn_mask` in `dqn/layers.py` disqualifies the Flash
+that the explicit **bool** `attn_mask` in `common/layers.py` disqualifies the Flash
 backend and that an additive float mask would recover it. Flash supports **no
 `attn_mask` at all** — the dispatcher says so directly ("Flash Attention does not
 support non-null attn_mask"), so the mask's *dtype* was never what excluded it.

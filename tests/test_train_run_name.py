@@ -12,9 +12,8 @@ from pathlib import Path
 import pytest
 from pydantic_yaml import parse_yaml_raw_as
 
-from train import AlgorithmType, _build_default_run_base_name
+from train import _build_default_run_base_name
 from wargame_rl.wargame.envs.types import OpponentPolicyConfig, WargameEnvConfig
-from wargame_rl.wargame.model.dqn.config import NetworkType
 
 
 def test_build_default_run_base_name_without_opponent_policy() -> None:
@@ -26,9 +25,7 @@ def test_build_default_run_base_name_without_opponent_policy() -> None:
         board_height=44,
     )
 
-    run_base_name = _build_default_run_base_name(
-        AlgorithmType.PPO, NetworkType.TRANSFORMER, env_config
-    )
+    run_base_name = _build_default_run_base_name(env_config)
 
     assert run_base_name == "ppo-transformer-m4-opp0-obj2-b60x44-ph1"
 
@@ -43,9 +40,7 @@ def test_build_default_run_base_name_with_opponent_policy() -> None:
         opponent_policy=OpponentPolicyConfig(type="scripted_advance_to_objective"),
     )
 
-    run_base_name = _build_default_run_base_name(
-        AlgorithmType.PPO, NetworkType.TRANSFORMER, env_config
-    )
+    run_base_name = _build_default_run_base_name(env_config)
 
     assert (
         run_base_name
@@ -63,9 +58,7 @@ def test_config_name_leads_the_run_name_when_set() -> None:
         board_height=44,
     )
 
-    run_base_name = _build_default_run_base_name(
-        AlgorithmType.PPO, NetworkType.TRANSFORMER, env_config
-    )
+    run_base_name = _build_default_run_base_name(env_config)
 
     assert run_base_name == "ppo-transformer-my_arm-m4-opp0-obj2-b60x44-ph1"
 
@@ -91,9 +84,7 @@ def test_arms_of_one_batch_get_distinct_run_names(config_names: list[str]) -> No
     root = Path("examples/env_config")
     names = {
         _build_default_run_base_name(
-            AlgorithmType.PPO,
-            NetworkType.TRANSFORMER,
-            parse_yaml_raw_as(WargameEnvConfig, (root / name).read_text()),
+            parse_yaml_raw_as(WargameEnvConfig, (root / name).read_text())
         )
         for name in config_names
     }

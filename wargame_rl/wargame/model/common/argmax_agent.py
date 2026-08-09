@@ -8,23 +8,24 @@ from wargame_rl.wargame.model.common.observation import (
     apply_action_mask,
     observation_to_tensor,
 )
-from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
 from wargame_rl.wargame.model.net import RL_Network
 
 
-class Agent(BaseAgent):
-    def __init__(
-        self, env: WargameEnv, replay_buffer: ReplayBuffer | None = None
-    ) -> None:
-        """Base Agent class handling the interaction with the environment.
+class ArgmaxAgent(BaseAgent):
+    """Agent that plays the highest-scoring valid action of any `RL_Network`.
 
-        Args:
-            env: training environment
-            replay_buffer: replay buffer storing experiences
+    Takes a bare policy network rather than a PPO actor-critic, which is what
+    `simulate.py` and the measurement scripts have: they load weights straight
+    into a `TransformerNetwork`. Greedy argmax over the logits is the same
+    action `PPOModel.get_action(deterministic=True)` would pick, so a checkpoint
+    scores the same through either path.
+    """
 
+    def __init__(self, env: WargameEnv) -> None:
+        """Args:
+        env: environment to interact with.
         """
         super().__init__(env)
-        self.replay_buffer = replay_buffer
         self.reset()
 
     def get_action(
@@ -50,11 +51,11 @@ class Agent(BaseAgent):
                 tensors = observation_to_tensor(observation, policy_net.device)
                 mask_tensor = tensors[5]  # (n_models, n_actions)
                 state = tensors[:5]
-                q_values = policy_net(state)
-                assert q_values.shape[0] == 1
-                assert len(q_values.shape) == 3
-                q_values = apply_action_mask(q_values, mask_tensor.unsqueeze(0))
-                _, action_indexes = q_values.max(dim=-1)
+                logits = policy_net(state)
+                assert logits.shape[0] == 1
+                assert len(logits.shape) == 3
+                logits = apply_action_mask(logits, mask_tensor.unsqueeze(0))
+                _, action_indexes = logits.max(dim=-1)
                 action = WargameEnvAction(actions=action_indexes.flatten().tolist())
 
         self._last_log_prob = None

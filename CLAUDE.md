@@ -1,12 +1,12 @@
 # Wargame RL
 
-Reinforcement learning project that trains agents (DQN, PPO) to play tabletop wargames on a discrete grid. Agents control multiple models (units) using polar-coordinate movement to capture objectives.
+Reinforcement learning project that trains agents (PPO) to play tabletop wargames on a discrete grid. Agents control multiple models (units) using polar-coordinate movement to capture objectives.
 
 ## Tech Stack
 
 - **Python 3.13** — UV package manager (`uv.lock`)
 - **Gymnasium 1.x** — RL environment (`WargameEnv`)
-- **PyTorch + PyTorch Lightning** — DQN and PPO training
+- **PyTorch + PyTorch Lightning** — PPO training
 - **Wandb** — experiment tracking & video recording
 - **Pydantic + pydantic-yaml** — config & type models
 - **Typer** — CLI (`train.py`, `simulate.py`)
@@ -43,12 +43,11 @@ wargame_rl/
 │       │   ├── types/             # Config, observations, actions, info
 │       │   └── renders/           # Pygame renderer
 │       ├── model/                 # RL algorithms
-│       │   ├── net.py             # RL_Network base, MLPNetwork, TransformerNetwork
+│       │   ├── net.py             # RL_Network base, TransformerNetwork
 │       │   ├── common/            # Shared: lightning_base (eval + baselines + phase
-│       │   │                      #   advancement), factory, observation, dataset, callbacks
-│       │   ├── dqn/               # DQN: agent, lightning module, replay buffer, config
+│       │   │                      #   advancement), factory, observation, layers, callbacks
 │       │   └── ppo/               # PPO: actor-critic, lightning module, agent, config
-│       └── types.py               # Experience, ExperienceBatch
+│       └── types.py               # Experience
 ├── examples/env_config/           # YAML environment configurations
 ├── tests/                         # Pytest suite with conftest.py fixtures
 ├── docs/                          # Design docs (movement, reward phases, missions-and-vp,
@@ -76,8 +75,7 @@ wargame_rl/
 | Lint | `just lint` |
 | Test | `just test` |
 | Full validation | `just validate` |
-| Train (PPO, default) | `just train <config.yaml>` |
-| Train (DQN) | `just train <config.yaml> dqn` |
+| Train | `just train <config.yaml> [max_epochs]` |
 | Train multiple configs in parallel | `just train-multi config1.yaml config2.yaml` |
 | Train an arm (config × training flags) | `just train-arm <max_epochs> <n_seeds> <group> <tag> <flags> <configs...>` |
 | Ship (branch → commit → push → PR) | `just ship <branch> "<message>"` |
@@ -114,28 +112,28 @@ wargame_rl/
 
 Snapshot/event pipeline for recording and inspecting matches — `GameStateSnapshot`, event-log deltas, `StateExporter` (wired into `step()`), replay, narration, and `analyze_match` metrics. Driven by `replay_events.py` / `analyze_events.py` and the `record` · `replay` · `analyze` · `analyze-compare` recipes. See [docs/game-state-io.md](docs/game-state-io.md)
 
-### RL Algorithms
+### RL Algorithm
 
-- **DQN** — epsilon-greedy agent, replay buffer, DQN Lightning module
 - **PPO** — actor-critic with GAE, clipped surrogate objective, PPO Lightning module
 
 ### Networks
 
-- **TransformerNetwork** — NanoGPT-style transformer (default, actively developed)
-- **MLPNetwork** — simple MLP (legacy, will be dropped)
+- **TransformerNetwork** — NanoGPT-style transformer, the only network. DQN and
+  `MLPNetwork` were removed once neither had been trained in months; `git log --
+  wargame_rl/wargame/model/dqn` restores them
 
 ### Configuration
 
 - Environment configs live in `examples/env_config/`
-- Algorithm configs: `DQNConfig`, `PPOConfig` in respective `config.py` files
-- Training config: `DQNTrainingConfig` (`model/dqn/config.py`) · `PPOTrainingConfig` (`model/ppo/config.py`)
+- Algorithm config: `PPOConfig` (`model/ppo/config.py`)
+- Training config: `PPOTrainingConfig` (`model/ppo/config.py`)
 
 ### Directory-scoped guidance
 
 Detailed patterns live next to the code they govern — read them when working in these areas:
 
 - `wargame_rl/wargame/envs/CLAUDE.md` — Gymnasium env, phases, placement, opponents, rendering
-- `wargame_rl/wargame/model/CLAUDE.md` — networks, DQN/PPO, observation tensor pipeline
+- `wargame_rl/wargame/model/CLAUDE.md` — networks, PPO, observation tensor pipeline
 - `tests/CLAUDE.md` — fixtures, test file map, per-feature coverage checklist
 
 ---
@@ -196,7 +194,7 @@ Detailed patterns live next to the code they govern — read them when working i
 - Mirror existing entity patterns: reuse the same model class (`WargameModel`), same config schema (`ModelConfig`), same placement logic
 - Parameterize shared infrastructure (e.g. `ActionHandler(n_models=...)`) rather than duplicating it
 - Always default new config fields to the no-op value so existing YAML configs keep working (e.g. `number_of_opponent_models=0`)
-- Full checklist: config types → env state → observation types → observation builder → tensor pipeline → DQN networks → renderer → tests → backward compat tests
+- Full checklist: config types → env state → observation types → observation builder → tensor pipeline → networks → renderer → tests → backward compat tests
 - When adding config that changes step semantics or episode length, update docs (`docs/reward-phases.md`, `docs/tabletop-rules-reference.md`, `docs/opponent-policies.md`, `docs/goals-and-roadmap.md`) and any tests that assume steps-per-round or phase order
 - When adding new reward calculators or success criteria, register them and document in `docs/reward-phases.md` (tables and file layout)
 - When changing the environment, domain, reward, or rendering, follow [docs/ddd-envs.md](docs/ddd-envs.md): keep domain logic in `domain/`, use `BattleView` for read-only state, and preserve dependency direction (domain → types only; reward/renders → BattleView)
@@ -222,9 +220,8 @@ Detailed patterns live next to the code they govern — read them when working i
 
 ## Training Runs
 
-- Default algorithm is **PPO**; do not default to DQN unless explicitly asked
-- Default network type is **transformer**; do not default to MLP unless explicitly asked
-- Start training: `just train <env_config.yaml>` · DQN: `just train <env_config.yaml> dqn` · DQN + network: `just train <env_config.yaml> dqn transformer`
+- PPO on a `TransformerNetwork` is the only thing that trains — there is no algorithm or network to choose. `just train` and `train.py` used to take `--algorithm` and `--network-type`; both are gone, so `just train <config> 800` now means 800 *epochs*
+- Start training: `just train <env_config.yaml>` · with an epoch cap: `just train <env_config.yaml> 800`
 - **Multiple configs in parallel**: `just train-multi config1.yaml config2.yaml` runs one training per config concurrently (PPO + transformer); each run gets a unique `--run-suffix` and shared `--wandb-group` so they appear grouped in the Wandb UI
 - Env configs live in `examples/env_config/` — copy an existing one to create new scenarios
 - Training logs to Wandb automatically; checkpoints saved to `checkpoints/`. Reward phase index and phase advancement are logged (`reward_phase`, `phase_advanced_at_epoch`) so curriculum runs show phase transitions in the dashboard

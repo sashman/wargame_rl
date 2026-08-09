@@ -45,15 +45,11 @@ dockerize:
 	docker build -t warghame-rl .
 
 # Use it like: just train path/to/config.yaml
-# Or with algorithm: just train path/to/config.yaml ppo
-# Or with algorithm and network: just train path/to/config.yaml dqn transformer
-# Or with an epoch cap: just train path/to/config.yaml ppo transformer 800
-# Or with a match event log for analysis: just train path/to/config.yaml ppo transformer 800 true
-train env_config_path='examples/env_config/4v4_scripted_opponent_fixed_objectives_2_reward_phases.yaml' algorithm='ppo' model='transformer' max_epochs='' record_events='' *extra='':
+# Or with an epoch cap: just train path/to/config.yaml 800
+# Or with a match event log for analysis: just train path/to/config.yaml 800 true
+train env_config_path='examples/env_config/4v4_scripted_opponent_fixed_objectives_2_reward_phases.yaml' max_epochs='' record_events='' *extra='':
 	@uv run train.py --record-during-training \
 		--env-config-path {{env_config_path}} \
-		--algorithm {{algorithm}} \
-		{{ if model != "" { "--network-type " + model } else { "" } }} \
 		{{ if max_epochs != "" { "--max-epochs " + max_epochs } else { "" } }} \
 		{{ if record_events != "" { "--record-events" } else { "" } }} \
 		{{extra}}
@@ -66,7 +62,7 @@ train-multi-epochs max_epochs *configs:
 	group="train-multi-$(date +%Y-%m-%d-%H-%M-%S)" && \
 	i=1 && \
 	for c in {{configs}}; do \
-		uv run train.py --record-during-training --env-config-path "$c" --algorithm ppo --network-type transformer --max-epochs {{max_epochs}} --run-suffix "$i" --wandb-group "$group" & \
+		uv run train.py --record-during-training --env-config-path "$c" --max-epochs {{max_epochs}} --run-suffix "$i" --wandb-group "$group" & \
 		i=$((i+1)); \
 	done && \
 	wait
@@ -88,7 +84,7 @@ train-multi-seeds max_epochs n_seeds *configs:
 	for s in $(seq 1 {{n_seeds}}); do \
 		echo "=== seed $s of {{n_seeds}} ===" && \
 		for c in {{configs}}; do \
-			uv run train.py --record-during-training --env-config-path "$c" --algorithm ppo --network-type transformer --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" --run-suffix "s$s" --wandb-group "$group" & \
+			uv run train.py --record-during-training --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" --run-suffix "s$s" --wandb-group "$group" & \
 		done; \
 		wait; \
 	done
@@ -102,7 +98,7 @@ train-multi-seeds max_epochs n_seeds *configs:
 train-seed max_epochs seed group *configs:
 	@trap 'kill 0' INT TERM && \
 	for c in {{configs}}; do \
-		uv run train.py --record-during-training --env-config-path "$c" --algorithm ppo --network-type transformer --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed {{seed}} --run-suffix "s{{seed}}" --wandb-group "{{group}}" & \
+		uv run train.py --record-during-training --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed {{seed}} --run-suffix "s{{seed}}" --wandb-group "{{group}}" & \
 	done; \
 	wait
 
@@ -125,7 +121,7 @@ train-arm max_epochs n_seeds group tag flags *configs:
 	for s in $(seq 1 {{n_seeds}}); do \
 		echo "=== seed $s of {{n_seeds}} ({{tag}}) ===" && \
 		for c in {{configs}}; do \
-			uv run train.py --record-during-training --env-config-path "$c" --algorithm ppo --network-type transformer --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" --run-suffix "s$s{{tag}}" --wandb-group "{{group}}" {{flags}} & \
+			uv run train.py --record-during-training --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" --run-suffix "s$s{{tag}}" --wandb-group "{{group}}" {{flags}} & \
 		done; \
 		wait; \
 	done
@@ -138,32 +134,23 @@ train-multi *configs:
 	group="train-multi-$(date +%Y-%m-%d-%H-%M-%S)" && \
 	i=1 && \
 	for c in {{configs}}; do \
-		uv run train.py --record-during-training --env-config-path "$c" --algorithm ppo --network-type transformer --run-suffix "$i" --wandb-group "$group" & \
+		uv run train.py --record-during-training --env-config-path "$c" --run-suffix "$i" --wandb-group "$group" & \
 		i=$((i+1)); \
 	done && \
 	wait
 
-simulate-latest network_type='':
-	@if [ -z "{{network_type}}" ]; then \
-		uv run simulate.py; \
-	else \
-		uv run simulate.py --network-type {{network_type}}; \
-	fi
+simulate-latest:
+	uv run simulate.py
 
-simulate checkpoint env_config_path network_type='':
-	@if [ -z "{{network_type}}" ]; then \
-		uv run simulate.py --checkpoint-path {{checkpoint}} --env-config-path {{env_config_path}}; \
-	else \
-		uv run simulate.py --checkpoint-path {{checkpoint}} --env-config-path {{env_config_path}} --network-type {{network_type}}; \
-	fi
+simulate checkpoint env_config_path:
+	uv run simulate.py --checkpoint-path {{checkpoint}} --env-config-path {{env_config_path}}
 
 # Record a match event log from a trained checkpoint (no rendering) for analysis.
 # Use it like: just record-sim checkpoints/<run>/best.ckpt examples/env_config/foo.yaml
-record-sim checkpoint env_config_path num_episodes='1' network_type='transformer':
+record-sim checkpoint env_config_path num_episodes='1':
 	@uv run simulate.py \
 		--checkpoint-path {{checkpoint}} \
 		--env-config-path {{env_config_path}} \
-		--network-type {{network_type}} \
 		--num-episodes {{num_episodes}} \
 		--no-render \
 		--record-events
@@ -179,13 +166,11 @@ clean: clean-checkpoints clean-wandb
 # Profile training with pyinstrument (HTML output, no recording)
 # --no-wandb because profiling should not open a live run and log a fake experiment.
 # Use it like: just profile path/to/config.yaml
-# Or with network type: just profile path/to/config.yaml mlp
-# Or with max epochs: just profile path/to/config.yaml '' 10
-profile env_config_path model='' max_epochs='5':
+# Or with max epochs: just profile path/to/config.yaml 10
+profile env_config_path max_epochs='5':
 	uv run pyinstrument -r html -o profile.html train.py \
 		--no-wandb \
 		--env-config-path {{env_config_path}} \
-		{{ if model != "" { "--network-type " + model } else { "" } }} \
 		{{ if max_epochs != "" { "--max-epochs " + max_epochs } else { "" } }}
 
 # Where an epoch's wall-clock goes: per-section and per-reward-calculator env.step cost.

@@ -8,7 +8,7 @@ Train reinforcement learning agents that learn to play tabletop wargames — nav
 
 1. **Faithful environment modelling** — Encode the core mechanics of miniature wargames (movement, shooting, melee, morale, terrain) as a Gymnasium environment so RL agents can interact with them through a standard API.
 
-2. **Scalable training pipeline** — Maintain a training loop (PPO by default, DQN alongside it) that handles multi-unit action spaces, per-model credit assignment, and experiment tracking via Wandb.
+2. **Scalable training pipeline** — Maintain a PPO training loop that handles multi-unit action spaces, per-model credit assignment, and experiment tracking via Wandb.
 
 3. **Emergent tactical behaviour** — Through reward shaping and environment design, encourage agents to learn recognisable tactics: advancing on objectives, maintaining unit cohesion, using cover, focusing fire, and retreating when outmatched.
 
@@ -25,8 +25,8 @@ Train reinforcement learning agents that learn to play tabletop wargames — nav
 | Multi-unit control | Done — independent actions per model |
 | Group cohesion | Done — reward penalty when units stray from group |
 | Objective capture | Done — distance-based reward + termination on capture |
-| DQN (MLP) | Done |
-| DQN (Transformer) | Done — NanoGPT-style, default architecture |
+| DQN (MLP) | Removed 2026-08-09 — unused for months |
+| DQN (Transformer) | Removed 2026-08-09 — the NanoGPT-style network stayed, PPO trains it |
 | Training pipeline | Done — Lightning, replay buffer, epsilon decay |
 | Experiment tracking | Done — Wandb integration |
 | Human rendering | Done — Pygame with tooltips, arrows, panels |

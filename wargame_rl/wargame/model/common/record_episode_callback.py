@@ -27,7 +27,6 @@ def _run_recording(
     epoch: int,
     env_config: WargameEnvConfig,
     policy_state_dict_path: str,
-    policy_net_class_name: str,
     checkpoint_dir: str,
     render_fps: int,
     filename_prefix: str,
@@ -44,7 +43,7 @@ def _run_recording(
     from wargame_rl.wargame.envs.renders.human import HumanRender
     from wargame_rl.wargame.envs.types import WargameEnvAction
     from wargame_rl.wargame.model.common.factory import create_environment
-    from wargame_rl.wargame.model.net import MLPNetwork, RL_Network, TransformerNetwork
+    from wargame_rl.wargame.model.net import TransformerNetwork
 
     # Build env with human renderer (same config as training)
     renderer = HumanRender()
@@ -57,10 +56,7 @@ def _run_recording(
         policy_state_dict_path, map_location="cpu", weights_only=True
     )
     try:
-        if policy_net_class_name in {"DQN_Transformer", "TransformerNetwork"}:
-            policy_net: RL_Network = TransformerNetwork.policy_from_env(env)
-        else:
-            policy_net = MLPNetwork.policy_from_env(env)
+        policy_net = TransformerNetwork.policy_from_env(env)
         policy_net.load_state_dict(policy_state_dict)
         policy_net.eval()
     finally:
@@ -125,7 +121,7 @@ class RecordEpisodeCallback(Callback):
         record_during_training: bool = True,
         record_after_epoch: int = 20,
         record_every_n_epochs: int = 20,
-        filename_prefix: str = "dqn",
+        filename_prefix: str = "ppo",
     ) -> None:
         self.run_name = run_name
         self.env_config = env_config
@@ -183,7 +179,6 @@ class RecordEpisodeCallback(Callback):
             logger.debug("Skipping recording — previous recording still in progress")
             return
 
-        # Detect the policy network to record (supports both DQN and PPO Lightning modules).
         env = getattr(pl_module, "env", None)
         if env is None or not hasattr(env, "metadata"):
             logger.warning(
@@ -192,23 +187,18 @@ class RecordEpisodeCallback(Callback):
             return
 
         policy_module: nn.Module | None = None
-        if hasattr(pl_module, "policy_net"):
-            # DQNLightning-style module
-            policy_module = cast(nn.Module, getattr(pl_module, "policy_net"))
-        else:
-            # PPO-style module: expect pl_module.ppo_model.policy_network
-            ppo_model = getattr(pl_module, "ppo_model", None)
-            policy_network = (
-                getattr(ppo_model, "policy_network", None)
-                if ppo_model is not None
-                else None
-            )
-            if isinstance(policy_network, nn.Module):
-                policy_module = policy_network
+        ppo_model = getattr(pl_module, "ppo_model", None)
+        policy_network = (
+            getattr(ppo_model, "policy_network", None)
+            if ppo_model is not None
+            else None
+        )
+        if isinstance(policy_network, nn.Module):
+            policy_module = policy_network
 
         if policy_module is None:
             logger.warning(
-                "RecordEpisodeCallback: pl_module has no policy_net or ppo_model.policy_network; skipping recording"
+                "RecordEpisodeCallback: pl_module has no ppo_model.policy_network; skipping recording"
             )
             return
 
@@ -221,7 +211,6 @@ class RecordEpisodeCallback(Callback):
         orig_net: nn.Module = getattr(policy_module, "_orig_mod", policy_module)
         torch.save(orig_net.state_dict(), policy_state_dict_path)
 
-        policy_net_class_name = type(orig_net).__name__
         run_name = self.run_name
         env_config = self.env_config
         checkpoint_dir = self._checkpoint_dir
@@ -242,7 +231,6 @@ class RecordEpisodeCallback(Callback):
                 "epoch": epoch,
                 "env_config": env_config,
                 "policy_state_dict_path": policy_state_dict_path,
-                "policy_net_class_name": policy_net_class_name,
                 "checkpoint_dir": checkpoint_dir,
                 "render_fps": render_fps,
                 "filename_prefix": filename_prefix,

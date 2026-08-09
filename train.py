@@ -1,5 +1,4 @@
 import os
-from enum import Enum
 from typing import Any, cast
 
 import torch
@@ -24,13 +23,6 @@ from wargame_rl.wargame.model.common.performance import configure_matmul_precisi
 from wargame_rl.wargame.model.common.record_episode_callback import (
     RecordEpisodeCallback,
 )
-from wargame_rl.wargame.model.dqn.config import (
-    DQNConfig,
-    DQNTrainingConfig,
-    NetworkType,
-)
-from wargame_rl.wargame.model.dqn.lightning import DQNLightning
-from wargame_rl.wargame.model.net import MLPNetwork, RL_Network, TransformerNetwork
 from wargame_rl.wargame.model.ppo.config import PPOConfig, PPOTrainingConfig
 from wargame_rl.wargame.model.ppo.lightning import PPOLightning
 from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
@@ -40,19 +32,14 @@ from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
+# PPO on a transformer is the only combination this trains, but the pair stays in
+# the run name: it is the prefix every wandb run and checkpoint directory has
+# carried, and dropping it would split the naming scheme across the point where
+# DQN and the MLP policy were removed.
+RUN_NAME_PREFIX_PARTS = ("ppo", "transformer")
 
-class AlgorithmType(str, Enum):
-    """Type of algorithm to train."""
 
-    DQN = "dqn"
-    PPO = "ppo"
-
-
-def _build_default_run_base_name(
-    algorithm: AlgorithmType,
-    network_type: NetworkType,
-    env_config: WargameEnvConfig,
-) -> str:
+def _build_default_run_base_name(env_config: WargameEnvConfig) -> str:
     """Build a descriptive run name base from training and env metadata.
 
     `config_name` leads when set, because everything after it describes the
@@ -62,10 +49,7 @@ def _build_default_run_base_name(
     every arm in a batch wrote its checkpoints into one directory and scored
     whichever process happened to save last.
     """
-    parts = [
-        algorithm.value,
-        network_type.value,
-    ]
+    parts = list(RUN_NAME_PREFIX_PARTS)
     if env_config.config_name:
         parts.append(env_config.config_name)
     parts += [
@@ -137,10 +121,6 @@ def _apply_warm_start_weights(
         )
     state_dict = _extract_state_dict(loaded)
     model.load_state_dict(state_dict, strict=False)
-    if isinstance(model, DQNLightning):
-        # Keep online/target aligned when warm-starting from online weights only.
-        model.target_net.load_state_dict(model.policy_net.state_dict())
-        model.target_net.eval()
 
 
 def _fit_with_optional_resume(
@@ -187,12 +167,6 @@ def train(
     env_config_path: str | None = typer.Option(
         "examples/env_config/4_models_2_objectives_fixed.yaml",
         help="Path to the environment config file",
-    ),
-    algorithm: AlgorithmType = typer.Option(
-        AlgorithmType.PPO, help="Algorithm to use for training"
-    ),
-    network_type: NetworkType = typer.Option(
-        NetworkType.TRANSFORMER, help="Network type to use"
     ),
     record_during_training: bool = typer.Option(
         False,
@@ -333,7 +307,7 @@ def train(
 
     env_config = get_env_config(env_config_path, render_mode)
 
-    default_run_name = _build_default_run_base_name(algorithm, network_type, env_config)
+    default_run_name = _build_default_run_base_name(env_config)
     run_name_base = run_name if run_name else default_run_name
 
     event_exporter: EventLogExporter | None = None
@@ -345,161 +319,93 @@ def train(
         state_exporters=[event_exporter] if event_exporter else None,
     )
 
-    if algorithm == AlgorithmType.DQN:
-        dqn_config = DQNConfig()
-        if n_eval_episodes is not None:
-            dqn_config.n_episodes = n_eval_episodes
-        training_config = DQNTrainingConfig(
-            record_during_training=record_during_training,
-            record_after_epoch=record_after_epoch,
-            record_every_n_epochs=record_every_n_epochs,
+    ppo_config = PPOConfig()
+    if no_inner_progress:
+        ppo_config.show_inner_progress = False
+    if n_steps is not None:
+        ppo_config.n_steps = n_steps
+    if n_eval_episodes is not None:
+        ppo_config.n_episodes = n_eval_episodes
+    # Resolved rather than compared to None directly: called as a plain
+    # function the parameter still holds Typer's `OptionInfo` sentinel,
+    # which is not None and would be assigned straight into the config.
+    resolved_eval_interval = _resolve_optional_int(eval_every_n_epochs)
+    if resolved_eval_interval is not None:
+        ppo_config.eval_every_n_epochs = resolved_eval_interval
+    if gamma is not None:
+        ppo_config.gamma = gamma
+    if ent_coef is not None:
+        ppo_config.ent_coef = ent_coef
+    # Resolved rather than compared to None: called as a plain function the
+    # parameter still holds Typer's `OptionInfo` sentinel, which is not None
+    # and would otherwise be assigned straight into the config.
+    resolved_lr = _resolve_optional_float(lr)
+    if resolved_lr is not None:
+        ppo_config.lr = resolved_lr
+    resolved_max_grad_norm = _resolve_optional_float(max_grad_norm)
+    if resolved_max_grad_norm is not None:
+        ppo_config.max_grad_norm = resolved_max_grad_norm
+    if num_rollout_envs is not None:
+        ppo_config.num_rollout_envs = num_rollout_envs
+    ppo_training_config = PPOTrainingConfig(
+        record_during_training=record_during_training,
+        record_after_epoch=record_after_epoch,
+        record_every_n_epochs=record_every_n_epochs,
+    )
+    if max_epochs is not None:
+        ppo_training_config.max_epochs = max_epochs
+
+    # The config decides whether the model gets a shooting slice, and
+    # therefore whether it decodes targets autoregressively.
+    ppo_net = PPO_Transformer.from_env(env, ppo_config)
+    ppo_model = PPOLightning(env=env, ppo_model=ppo_net, **ppo_config.model_dump())
+
+    config = {
+        "wargame": env_config.model_dump(),
+        "ppo": ppo_config.model_dump(),
+        "training": ppo_training_config.model_dump(),
+    }
+
+    with init_wandb(
+        config=config,
+        name=run_name_base,
+        disabled=no_wandb,
+        group=wandb_group,
+        run_suffix=run_suffix,
+    ) as run:
+        env_config_callback = EnvConfigCallback(run.name, env_config)
+        ppo_callbacks = cast(
+            list[Callback],
+            [env_config_callback]
+            + get_checkpoint_callback(run.name, filename_prefix="ppo"),
         )
-        if max_epochs is not None:
-            training_config.max_epochs = max_epochs
-
-        if network_type == NetworkType.TRANSFORMER:
-            net: RL_Network = TransformerNetwork.policy_from_env(env)
-        else:
-            net = MLPNetwork.policy_from_env(env)
-        model = DQNLightning(env=env, policy_net=net, **dqn_config.model_dump())
-
-        config = {
-            "wargame": env_config.model_dump(),
-            "dqn": dqn_config.model_dump(),
-            "training": training_config.model_dump(),
-        }
-
-        with init_wandb(
-            config=config,
-            name=run_name_base,
-            disabled=no_wandb,
-            group=wandb_group,
-            run_suffix=run_suffix,
-        ) as run:
-            env_config_callback = EnvConfigCallback(run.name, env_config)
-            dqn_callbacks = cast(
-                list[Callback],
-                [env_config_callback]
-                + get_checkpoint_callback(run.name, filename_prefix="dqn"),
-            )
-            if event_exporter is not None:
-                dqn_callbacks.append(EventLogCallback(run_name_base, event_exporter))
-            if training_config.record_during_training:
-                dqn_callbacks.append(
-                    RecordEpisodeCallback(
-                        run.name,
-                        env_config,
-                        record_during_training=training_config.record_during_training,
-                        record_after_epoch=training_config.record_after_epoch,
-                        record_every_n_epochs=training_config.record_every_n_epochs,
-                        filename_prefix="dqn",
-                    )
+        if event_exporter is not None:
+            ppo_callbacks.append(EventLogCallback(run_name_base, event_exporter))
+        if ppo_training_config.record_during_training:
+            ppo_callbacks.append(
+                RecordEpisodeCallback(
+                    run.name,
+                    env_config,
+                    record_during_training=ppo_training_config.record_during_training,
+                    record_after_epoch=ppo_training_config.record_after_epoch,
+                    record_every_n_epochs=ppo_training_config.record_every_n_epochs,
+                    filename_prefix="ppo",
                 )
-            logger = get_logger(run, disabled=no_wandb)
-            trainer = Trainer(
-                accelerator="auto",
-                max_epochs=training_config.max_epochs,
-                val_check_interval=training_config.val_check_interval,
-                logger=logger,
-                callbacks=dqn_callbacks,
-                precision=resolved_precision,  # type: ignore[arg-type]
             )
-
-            if warm_start_ckpt_path is not None:
-                _apply_warm_start_weights(model, warm_start_ckpt_path)
-            _fit_with_optional_resume(trainer, model, resume_ckpt_path)
-
-    elif algorithm == AlgorithmType.PPO:
-        ppo_config = PPOConfig()
-        if no_inner_progress:
-            ppo_config.show_inner_progress = False
-        if n_steps is not None:
-            ppo_config.n_steps = n_steps
-        if n_eval_episodes is not None:
-            ppo_config.n_episodes = n_eval_episodes
-        # Resolved rather than compared to None directly: called as a plain
-        # function the parameter still holds Typer's `OptionInfo` sentinel,
-        # which is not None and would be assigned straight into the config.
-        resolved_eval_interval = _resolve_optional_int(eval_every_n_epochs)
-        if resolved_eval_interval is not None:
-            ppo_config.eval_every_n_epochs = resolved_eval_interval
-        if gamma is not None:
-            ppo_config.gamma = gamma
-        if ent_coef is not None:
-            ppo_config.ent_coef = ent_coef
-        # Resolved rather than compared to None: called as a plain function the
-        # parameter still holds Typer's `OptionInfo` sentinel, which is not None
-        # and would otherwise be assigned straight into the config.
-        resolved_lr = _resolve_optional_float(lr)
-        if resolved_lr is not None:
-            ppo_config.lr = resolved_lr
-        resolved_max_grad_norm = _resolve_optional_float(max_grad_norm)
-        if resolved_max_grad_norm is not None:
-            ppo_config.max_grad_norm = resolved_max_grad_norm
-        if num_rollout_envs is not None:
-            ppo_config.num_rollout_envs = num_rollout_envs
-        ppo_training_config = PPOTrainingConfig(
-            record_during_training=record_during_training,
-            record_after_epoch=record_after_epoch,
-            record_every_n_epochs=record_every_n_epochs,
+        logger = get_logger(run, disabled=no_wandb)
+        trainer = Trainer(
+            accelerator="auto",
+            max_epochs=ppo_training_config.max_epochs,
+            val_check_interval=ppo_training_config.val_check_interval,
+            logger=logger,
+            callbacks=ppo_callbacks,
+            log_every_n_steps=1,
+            precision=resolved_precision,  # type: ignore[arg-type]
         )
-        if max_epochs is not None:
-            ppo_training_config.max_epochs = max_epochs
 
-        if network_type == NetworkType.TRANSFORMER:
-            # The config decides whether the model gets a shooting slice, and
-            # therefore whether it decodes targets autoregressively.
-            ppo_net = PPO_Transformer.from_env(env, ppo_config)
-        else:
-            raise NotImplementedError("We will probably never do this.")
-        ppo_model = PPOLightning(env=env, ppo_model=ppo_net, **ppo_config.model_dump())
-
-        config = {
-            "wargame": env_config.model_dump(),
-            "ppo": ppo_config.model_dump(),
-            "training": ppo_training_config.model_dump(),
-        }
-
-        with init_wandb(
-            config=config,
-            name=run_name_base,
-            disabled=no_wandb,
-            group=wandb_group,
-            run_suffix=run_suffix,
-        ) as run:
-            env_config_callback = EnvConfigCallback(run.name, env_config)
-            ppo_callbacks = cast(
-                list[Callback],
-                [env_config_callback]
-                + get_checkpoint_callback(run.name, filename_prefix="ppo"),
-            )
-            if event_exporter is not None:
-                ppo_callbacks.append(EventLogCallback(run_name_base, event_exporter))
-            if ppo_training_config.record_during_training:
-                ppo_callbacks.append(
-                    RecordEpisodeCallback(
-                        run.name,
-                        env_config,
-                        record_during_training=ppo_training_config.record_during_training,
-                        record_after_epoch=ppo_training_config.record_after_epoch,
-                        record_every_n_epochs=ppo_training_config.record_every_n_epochs,
-                        filename_prefix="ppo",
-                    )
-                )
-            logger = get_logger(run, disabled=no_wandb)
-            trainer = Trainer(
-                accelerator="auto",
-                max_epochs=ppo_training_config.max_epochs,
-                val_check_interval=ppo_training_config.val_check_interval,
-                logger=logger,
-                callbacks=ppo_callbacks,
-                log_every_n_steps=1,
-                precision=resolved_precision,  # type: ignore[arg-type]
-            )
-
-            if warm_start_ckpt_path is not None:
-                _apply_warm_start_weights(ppo_model, warm_start_ckpt_path)
-            _fit_with_optional_resume(trainer, ppo_model, resume_ckpt_path)
+        if warm_start_ckpt_path is not None:
+            _apply_warm_start_weights(ppo_model, warm_start_ckpt_path)
+        _fit_with_optional_resume(trainer, ppo_model, resume_ckpt_path)
 
     if event_exporter and len(event_exporter.log) > 0:
         _write_event_log(event_exporter, run_name_base)

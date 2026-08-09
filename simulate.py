@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simulation script for running trained DQN agents in the Wargame environment.
+Simulation script for running trained agents in the Wargame environment.
 
 Usage:
     python simulate.py --checkpoint path/to/checkpoint.ckpt \
@@ -17,10 +17,9 @@ from pydantic_yaml import parse_yaml_raw_as
 from wargame_rl.wargame.envs.renders.human import HumanRender, QuitRequested
 from wargame_rl.wargame.envs.state import EventLogExporter, JsonMatchCodec
 from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.model.common.argmax_agent import ArgmaxAgent
 from wargame_rl.wargame.model.common.factory import create_environment
-from wargame_rl.wargame.model.dqn.agent import Agent
-from wargame_rl.wargame.model.dqn.config import NetworkType
-from wargame_rl.wargame.model.net import MLPNetwork, RL_Network, TransformerNetwork
+from wargame_rl.wargame.model.net import TransformerNetwork
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
@@ -46,7 +45,6 @@ def simulate(
     num_episodes: int = 10,
     render: bool = True,
     env_config_path: str | None = None,
-    network_type: NetworkType = NetworkType.TRANSFORMER,
     record_events: bool = False,
 ) -> None:
     """Run simulation with trained agent.
@@ -79,15 +77,11 @@ def simulate(
     logging.info(f"Observation space: {env.observation_space}")
     logging.info(f"Running {num_episodes} episodes...")
 
-    agent = Agent(env)
+    agent = ArgmaxAgent(env)
     logging.info(f"Agent created: {agent}")
 
     try:
-        policy_net: RL_Network
-        if network_type == NetworkType.TRANSFORMER:
-            policy_net = TransformerNetwork.from_checkpoint(env, checkpoint_path)
-        else:
-            policy_net = MLPNetwork.from_checkpoint(env, checkpoint_path)
+        policy_net = TransformerNetwork.from_checkpoint(env, checkpoint_path)
         logging.info(f"Loaded model from checkpoint: {checkpoint_path} successfully!")
     except RuntimeError as e:
         if "size mismatch" in str(e):
@@ -175,7 +169,7 @@ def get_latest_checkpoint() -> str:
     checkpoint_files = []
     for root, dirs, files in os.walk("checkpoints"):
         for file in files:
-            if file.startswith("dqn-") and file.endswith(".ckpt"):
+            if file.endswith(".ckpt"):
                 full_path = os.path.join(root, file)
                 checkpoint_files.append(full_path)
 
@@ -210,9 +204,6 @@ def main(
         None,
         help="Path to the environment config file, defaults to env_config.yaml from checkpoint directory.",
     ),
-    network_type: NetworkType = typer.Option(
-        NetworkType.TRANSFORMER, help="Network type to use"
-    ),
     record_events: bool = typer.Option(
         False,
         help="Record the last episode as a JSON event log (written to recordings/)",
@@ -230,7 +221,6 @@ def main(
         num_episodes,
         render,
         env_config_path,
-        network_type,
         record_events=record_events,
     )
 

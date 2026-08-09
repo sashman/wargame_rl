@@ -1,13 +1,8 @@
 """Lean integration tests covering gaps identified in the test-suite audit."""
 
-import itertools
-
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import ModelConfig, ObjectiveConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.common.dataset import RLDataset
-from wargame_rl.wargame.model.dqn.experience_replay import ReplayBuffer
-from wargame_rl.wargame.types import Experience
 
 # ---------------------------------------------------------------------------
 # Phased reward (default single phase)
@@ -64,44 +59,6 @@ def test_termination_when_all_at_objective() -> None:
     action = WargameEnvAction(actions=[0, 0])  # stay
     _, _, terminated, _, _ = env.step(action)
     assert terminated is True
-
-
-# ---------------------------------------------------------------------------
-# ReplayBuffer
-# ---------------------------------------------------------------------------
-
-
-def test_replay_buffer_capacity_overflow(experiences: list[Experience]) -> None:
-    """Buffer evicts oldest items when capacity is exceeded."""
-    capacity = 3
-    buffer = ReplayBuffer(capacity)
-    for exp in experiences:
-        buffer.append(exp)
-    assert len(buffer) == capacity
-
-
-def test_replay_buffer_sample_batch_larger_than_buffer(
-    experiences: list[Experience],
-) -> None:
-    """sample_batch returns all items when batch_size > buffer length."""
-    buffer = ReplayBuffer(100)
-    for exp in experiences[:5]:
-        buffer.append(exp)
-    batch = buffer.sample_batch(999)
-    assert len(batch) == 5
-
-
-# ---------------------------------------------------------------------------
-# RLDataset
-# ---------------------------------------------------------------------------
-
-
-def test_rl_dataset_empty_buffer_yields_nothing() -> None:
-    """An empty ReplayBuffer means the dataset iterator yields nothing."""
-    buffer = ReplayBuffer(100)
-    dataset = RLDataset(buffer, sample_size=10)
-    items = list(itertools.islice(dataset, 1))
-    assert items == []
 
 
 # ---------------------------------------------------------------------------

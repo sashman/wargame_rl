@@ -17,8 +17,8 @@ from pydantic_yaml import parse_yaml_raw_as
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.reward.criteria.registry import build_criteria
 from wargame_rl.wargame.envs.types.config import WargameEnvConfig
+from wargame_rl.wargame.model.common.argmax_agent import ArgmaxAgent
 from wargame_rl.wargame.model.common.factory import create_environment
-from wargame_rl.wargame.model.dqn.agent import Agent
 from wargame_rl.wargame.model.net import TransformerNetwork
 
 
@@ -31,7 +31,7 @@ def main() -> None:
         env_config = parse_yaml_raw_as(WargameEnvConfig, handle.read())
 
     env = create_environment(env_config=env_config)
-    agent = Agent(env)
+    agent = ArgmaxAgent(env)
     net = TransformerNetwork.from_checkpoint(env, checkpoint_path)
     net.eval()
 

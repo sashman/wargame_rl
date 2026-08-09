@@ -3,6 +3,10 @@
 > **Status: implemented.** Lives in `TransformerNetwork` (`wargame_rl/wargame/model/net.py`),
 > covered by `tests/test_transformer_shooting_policy.py`. This document describes the
 > shipped design, not a plan.
+>
+> The scope below was written when DQN and `MLPNetwork` still existed; both were
+> removed on 2026-08-09. The "explicitly unchanged" carve-outs are kept as a record
+> of what this change did and did not touch — they no longer name live code.
 
 ## 1. Problem Statement and Scope
 

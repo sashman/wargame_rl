@@ -14,8 +14,6 @@ from train import (
 )
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.dqn.lightning import DQNLightning
-from wargame_rl.wargame.model.net import MLPNetwork
 from wargame_rl.wargame.model.ppo.lightning import PPOLightning
 from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
 
@@ -81,29 +79,6 @@ def test_warm_start_loads_ppo_weights_only(tmp_path: Path) -> None:
     env.close()
 
 
-def test_warm_start_loads_dqn_weights_and_syncs_target(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(DQNLightning, "populate", lambda self: None)
-    env = _make_env()
-    source_net = MLPNetwork.policy_from_env(env)
-    target_net = MLPNetwork.policy_from_env(env)
-    source = DQNLightning(env=env, policy_net=source_net)
-    target = DQNLightning(env=env, policy_net=target_net)
-    _set_all_params(source.policy_net, 0.5678)
-
-    ckpt_path = tmp_path / "dqn.ckpt"
-    torch.save({"state_dict": source.state_dict()}, ckpt_path)
-    _apply_warm_start_weights(target, str(ckpt_path))
-
-    policy_param = next(target.policy_net.parameters()).detach().clone()
-    source_param = next(source.policy_net.parameters()).detach().clone()
-    target_param = next(target.target_net.parameters()).detach().clone()
-    assert torch.allclose(policy_param, source_param)
-    assert torch.allclose(target_param, policy_param)
-    env.close()
-
-
 def test_train_forwards_resume_ckpt_to_trainer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -140,8 +115,6 @@ def test_train_forwards_resume_ckpt_to_trainer(
 
     train_module.train(
         env_config_path=None,
-        algorithm=train_module.AlgorithmType.PPO,
-        network_type=train_module.NetworkType.TRANSFORMER,
         no_wandb=True,
         record_during_training=False,
         record_after_epoch=10,

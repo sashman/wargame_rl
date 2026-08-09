@@ -105,7 +105,7 @@ def get_checkpoint_callback(
 
     Args:
         name: Run name (used for checkpoint directory).
-        filename_prefix: Prefix for checkpoint filenames (e.g. 'dqn' or 'ppo').
+        filename_prefix: Prefix for checkpoint filenames (e.g. 'ppo').
 
     Returns:
         The best-by-reward callback and the last-epoch callback.

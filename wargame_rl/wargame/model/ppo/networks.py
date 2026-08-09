@@ -91,7 +91,7 @@ class PPOModel(nn.Module):
     def get_action(
         self, state_tensors: list[torch.Tensor], deterministic: bool = False
     ) -> Tuple[WargameEnvAction, Tensor]:
-        """Select one action per model, mirroring how DQN selects per-model actions.
+        """Select one action per model, one factor of the joint action per model.
 
         Args:
             state_tensors: Observation converted to tensors (single observation, not batched).
