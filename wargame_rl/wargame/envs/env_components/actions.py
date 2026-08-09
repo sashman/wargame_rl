@@ -17,6 +17,7 @@ from typing import Any
 import numpy as np
 from gymnasium import spaces
 
+from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
 from wargame_rl.wargame.envs.domain.value_objects import (
     POSITION_DTYPE,
     position,
@@ -143,7 +144,9 @@ class ActionHandler:
         )
         n_angles = config.n_movement_angles
         n_speeds = config.n_speed_bins
-        max_speed = config.max_move_speed
+        # Through the resolver rather than off the config, so that a board using
+        # a scale other than 1 inch per unit moves models the right distance.
+        max_speed = resolve_rules_quantities(config).max_move_speed
 
         angles = np.linspace(0, 2 * np.pi, n_angles, endpoint=False)
         speeds = np.linspace(max_speed / n_speeds, max_speed, n_speeds)

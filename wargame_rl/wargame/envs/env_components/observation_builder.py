@@ -11,7 +11,6 @@ import numpy as np
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
-from wargame_rl.wargame.envs.domain.shooting import ENGAGEMENT_RANGE
 from wargame_rl.wargame.envs.env_components.actions import ActionRegistry
 from wargame_rl.wargame.envs.env_components.shooting_masks import compute_shooting_masks
 from wargame_rl.wargame.envs.types import (
@@ -206,7 +205,7 @@ def build_observation(
                 player_ranges,
                 view.has_line_of_sight_between_cells,
                 player_advanced=player_advanced,
-                engagement_range=float(ENGAGEMENT_RANGE),
+                engagement_range=view.rules_quantities.engagement_range,
             )
             action_mask[:, shooting_slice.start : shooting_slice.end] &= (
                 shooting_validity
