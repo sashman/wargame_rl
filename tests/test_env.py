@@ -2,6 +2,8 @@
 
 import pytest
 
+from wargame_rl.wargame.envs.domain.value_objects import POSITION_DTYPE
+from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.reward.phase import (
     RewardCalculatorConfig,
     RewardPhaseConfig,
@@ -359,3 +361,42 @@ def test_terrain_movement_through_footprint() -> None:
             break
     # Verify env didn't crash — terrain does not block movement
     assert env.current_turn >= 1
+
+
+def test_positions_keep_the_declared_dtype_through_a_whole_episode() -> None:
+    """A location must stay `POSITION_DTYPE` from placement to the last move.
+
+    This is the invariant that makes the board's coordinate type editable in one
+    place, and it is invisible when broken: numpy silently widens on
+    `location + displacement`, so a location was int32 from placement and int64
+    from its first move onward while the observation space still advertised
+    int32. Nothing raised, no test failed, and every value was correct — which
+    is exactly why it survived.
+
+    Three sources conspire and all three are checked: the displacement table,
+    the STAY displacement, and `np.clip`'s bounds (python-list bounds become
+    int64 arrays and widen the result regardless of the inputs).
+    """
+    env = WargameEnv(config=WargameEnvConfig(number_of_battle_rounds=100))
+    n_models = env.config.number_of_wargame_models
+
+    env.reset(seed=0)
+    assert env.wargame_models[0].location.dtype == POSITION_DTYPE
+    assert env.objectives[0].location.dtype == POSITION_DTYPE
+
+    # Movement actions: exercises the displacement table and the clip bounds.
+    for step in range(6):
+        env.step(WargameEnvAction(actions=[step + 1] * n_models))
+    moved = env.wargame_models[0]
+    assert moved.location.dtype == POSITION_DTYPE
+    assert moved.previous_location is not None
+    assert moved.previous_location.dtype == POSITION_DTYPE
+
+    # STAY takes a different branch and had its own literal dtype.
+    env.reset(seed=1)
+    for _ in range(3):
+        env.step(WargameEnvAction(actions=[STAY_ACTION] * n_models))
+    assert env.wargame_models[0].location.dtype == POSITION_DTYPE
+
+    space = env.observation_space["wargame_models"][0]["location"]  # type: ignore[index]
+    assert space.dtype == POSITION_DTYPE
