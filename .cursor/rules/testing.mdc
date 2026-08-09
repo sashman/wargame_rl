@@ -9,12 +9,12 @@ alwaysApply: false
 ## Setup
 
 - Pytest + shared fixtures in `conftest.py`; run via `just test`; coverage → `coverage.xml`
-- Fixtures: `env`, `experiences`, `replay_buffer`, `dqn_net` (parametrized MLP+Transformer), `dqn_mlp_net`, `dqn_transformer_net`
+- Fixtures: `env`, `experiences`, `policy_net` (a bare `TransformerNetwork`), `transformer_net`, `ppo_net`, `ppo_transformer_net`
 
 ## Rules
 
 - No `@lru_cache` on fixtures — use `scope="module"`/`scope="session"` instead
-- Use `RL_Network` (not `DQN_MLP`) when accepting parametrized `dqn_net`
+- Annotate the `policy_net` fixture as `RL_Network`, not as the concrete network class
 - Prefer integration tests; test through public APIs (add properties rather than accessing `_private` attrs)
 - Type-annotate fixtures and test functions
 - `wargame_rl/wargame/envs/interactive_demo.py` is NOT a test
@@ -22,10 +22,10 @@ alwaysApply: false
 
 ## Test Files
 
-`test_env` (reset/step) · `test_clock_integration` (phases, skip_phases, rounds) · `test_fixed_placement` (config/placement) · `test_dqn` (networks/loss/training) · `test_agent` (actions/episodes) · `test_state` (obs/batch tensors) · `test_opponents` (opponent system) · `test_reward_phases` (reward) · `test_integration` (cross-cutting, backward compat)
+`test_env` (reset/step) · `test_clock_integration` (phases, skip_phases, rounds) · `test_fixed_placement` (config/placement) · `test_ppo` (networks/loss/training) · `test_agent` (actions/episodes) · `test_state` (obs/batch tensors) · `test_opponents` (opponent system) · `test_reward_phases` (reward) · `test_integration` (cross-cutting, backward compat)
 
 ## New Features
 
-Cover: config validation · env integration · obs/info · tensor shapes · DQN forward · backward compat
+Cover: config validation · env integration · obs/info · tensor shapes · network forward · backward compat
 
 Run `just validate` before pushing.
