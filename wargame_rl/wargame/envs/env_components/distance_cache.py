@@ -96,6 +96,21 @@ def compute_distances(
     compute_model_model: bool = False,
     alive_mask: np.ndarray | None = None,
 ) -> DistanceCache:
+    """Model-to-objective (and optionally model-to-model) distances for one step.
+
+    Each model's own `base_radius` shortens its objective distance, so "within
+    range of the marker" is measured from the base *edge* — a model whose base
+    touches the disc is in range, which is the rules' reading and what the
+    renderer draws. It enters as an offset rather than as a branch in every
+    consumer, so `norms_offset <= obj_radii` keeps working unchanged across the
+    reward, VP and criteria layers.
+
+    The radius is read off the models rather than passed in **because there are
+    seventeen call sites**, and a parameter one of them forgot would silently
+    fall back to dimensionless models in that one place — no exception, no
+    failing test, just a reward or a VP score measured under different rules
+    than the rest of the step.
+    """
     model_locs = np.array([m.location for m in wargame_models])  # (n_models, 2)
     obj_locs = np.array([o.location for o in objectives])  # (n_objectives, 2)
     obj_radii = np.array([o.radius_size for o in objectives], dtype=float)  # (n_obj,)
@@ -105,6 +120,14 @@ def compute_distances(
 
     # (n_models, n_objectives)
     norms = np.linalg.norm(deltas, axis=2, ord=2)
+    base_radii = np.array(
+        [m.base_radius for m in wargame_models], dtype=float
+    )  # (n_models,)
+    norms_offset = (
+        np.maximum(norms - base_radii[:, np.newaxis], 0.0)
+        if base_radii.any()
+        else norms
+    )
 
     model_model = None
     if compute_model_model:
@@ -115,6 +138,8 @@ def compute_distances(
         dead = ~alive_mask
         norms = norms.copy()
         norms[dead] = np.inf
+        norms_offset = norms_offset.copy()
+        norms_offset[dead] = np.inf
         if model_model is not None:
             model_model = model_model.copy()
             model_model[dead, :] = np.inf
@@ -123,9 +148,10 @@ def compute_distances(
     return DistanceCache(
         model_obj_deltas=deltas,
         model_obj_norms=norms,
-        # "offset" is kept in the field name for backward-compat, but we now
-        # define it as the straight Euclidean distance to the objective center.
-        model_obj_norms_offset=norms,
+        # Distance to the objective centre from the model's base edge. With no
+        # base it is the plain centre-to-centre distance, which is what the
+        # field held before models had one.
+        model_obj_norms_offset=norms_offset,
         obj_radii=obj_radii,
         model_model_norms=model_model,
     )

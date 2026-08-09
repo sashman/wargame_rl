@@ -1,8 +1,8 @@
 """Action space and application for the wargame environment.
 
 Polar coordinate movement: each model picks an (angle, speed) pair or stays
-still. The continuous displacement is rounded to the nearest integer cell so
-that locations remain on the discrete grid.
+still. The displacement is applied exactly — the board is continuous, so a
+speed bin means the distance it says in every direction.
 
 The ``ActionRegistry`` partitions the flat action space into contiguous slices
 (stay, movement, and future phase-specific slices) and provides phase-aware
@@ -146,7 +146,10 @@ class ActionHandler:
         n_speeds = config.n_speed_bins
         # Through the resolver rather than off the config, so that a board using
         # a scale other than 1 inch per unit moves models the right distance.
-        max_speed = resolve_rules_quantities(config).max_move_speed
+        quantities = resolve_rules_quantities(config)
+        max_speed = quantities.max_move_speed
+        # A model with a base cannot stand with half of it off the table.
+        self._base_radius = quantities.base_radius
 
         angles = np.linspace(0, 2 * np.pi, n_angles, endpoint=False)
         speeds = np.linspace(max_speed / n_speeds, max_speed, n_speeds)
@@ -156,19 +159,23 @@ class ActionHandler:
         )  # (n_angles, 2)
         self._speeds = speeds  # (n_speeds,)
 
-        # Pre-compute the integer displacement for every (angle, speed) pair.
+        # Pre-compute the exact displacement for every (angle, speed) pair.
         # _displacements[angle_idx, speed_idx] -> (dx, dy) as POSITION_DTYPE.
         #
-        # The dtype matters as much as the rounding. A displacement is added to
-        # a location, so a wider one silently widens every location on the
-        # board: this was `dtype=int` (int64), which made a model's position
-        # int32 from placement and int64 from its first move onward, disagreeing
-        # with the int32 the observation space advertises.
+        # This used to be `np.rint(raw)`, snapping each move to a whole cell,
+        # which was destroying information rather than approximating it: on the
+        # 25v25 action space the 96 movement actions collapsed to **80 distinct
+        # outcomes**, and a "speed 1" diagonal travelled 1.414 against an
+        # orthogonal one's 1.000 -- 41% further for the same nominal speed.
+        #
+        # The dtype still matters as much as the rounding did. A displacement is
+        # added to a location, so a wider one silently widens every location on
+        # the board.
         raw = (
             self._unit_directions[:, np.newaxis, :]
             * self._speeds[np.newaxis, :, np.newaxis]
         )  # (n_angles, n_speeds, 2)
-        self._displacements: np.ndarray = np.rint(raw).astype(POSITION_DTYPE)
+        self._displacements: np.ndarray = raw.astype(POSITION_DTYPE)
 
         self._n_move_actions = n_angles * n_speeds
         self._n_speed_bins = n_speeds
@@ -253,7 +260,7 @@ class ActionHandler:
         return self._action_space
 
     def _decode_action(self, action: int) -> np.ndarray:
-        """Return the integer (dx, dy) displacement for *action*."""
+        """Return the (dx, dy) displacement for *action*."""
         if action == STAY_ACTION:
             return zero_position()
         move_idx = action - 1
@@ -320,8 +327,10 @@ class ActionHandler:
         """
         # Hoisted, and typed: python-list bounds become int64 arrays, so passing
         # them to `np.clip` would widen the result whatever the inputs are.
-        lower = zero_position()
-        upper = position(board_width - 1, board_height - 1)
+        lower = position(self._base_radius, self._base_radius)
+        upper = position(
+            board_width - self._base_radius, board_height - self._base_radius
+        )
         for i, act in enumerate(action.actions):
             model = wargame_models[i]
             if not model.is_alive:

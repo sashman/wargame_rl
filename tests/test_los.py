@@ -1,95 +1,99 @@
-"""Line-of-sight domain: Bresenham trace and blocking predicate."""
+"""Line-of-sight domain: the sampled ray and the blocking composition."""
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
-from wargame_rl.wargame.envs.domain.los import has_line_of_sight, iter_los_cells
+from wargame_rl.wargame.envs.domain.los import segments_are_clear
 from wargame_rl.wargame.envs.types import TerrainPieceConfig, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
-
-def test_los_same_cell_true_even_if_blocking_everywhere() -> None:
-    """Interior is empty; is_blocking must not be consulted for the lone cell."""
-
-    def always_block(_x: int, _y: int) -> bool:
-        return True
-
-    assert has_line_of_sight(3, 3, 3, 3, 10, 10, always_block) is True
+_STEP = 0.25
 
 
-def test_los_clear_horizontal() -> None:
-    def never_block(_x: int, _y: int) -> bool:
-        return False
-
-    assert has_line_of_sight(0, 0, 5, 0, 10, 10, never_block) is True
-
-
-def test_los_blocked_mid_horizontal() -> None:
-    blocked = {(3, 0)}
-
-    def is_b(x: int, y: int) -> bool:
-        return (x, y) in blocked
-
-    assert has_line_of_sight(0, 0, 5, 0, 10, 10, is_b) is False
-
-
-def test_los_diagonal_clear_and_blocked() -> None:
-    def never_block(_x: int, _y: int) -> bool:
-        return False
-
-    assert has_line_of_sight(0, 0, 4, 4, 10, 10, never_block) is True
-
-    def block_center(x: int, y: int) -> bool:
-        return (x, y) == (2, 2)
-
-    assert has_line_of_sight(0, 0, 4, 4, 10, 10, block_center) is False
+def _trace(
+    segments: list[tuple[float, float, float, float]],
+    blockers: list[tuple[float, float, float, float]],
+    *,
+    exempt: np.ndarray | None = None,
+    opaque_cells: np.ndarray | None = None,
+) -> np.ndarray:
+    """Trace a handful of segments against a handful of rectangles."""
+    starts = np.array([[s[0], s[1]] for s in segments], dtype=float)
+    ends = np.array([[s[2], s[3]] for s in segments], dtype=float)
+    rects = np.array(blockers, dtype=float).reshape(-1, 4)
+    return segments_are_clear(
+        starts,
+        ends,
+        rects,
+        sample_step=_STEP,
+        blocker_exempt=exempt,
+        opaque_cells=opaque_cells,
+    )
 
 
-def test_los_out_of_bounds_returns_false_and_empty_iter() -> None:
-    """OOB endpoints: no trace, no LOS."""
-    assert iter_los_cells(-1, 0, 5, 0, 10, 10) == []
+def test_a_zero_length_segment_is_clear_through_solid_matter() -> None:
+    """Only the strict interior is sampled, and a point has none.
 
-    def never_block_oob(_x: int, _y: int) -> bool:
-        return False
-
-    assert has_line_of_sight(-1, 0, 5, 0, 10, 10, never_block_oob) is False
-    assert iter_los_cells(0, 0, 5, 10, 10, 10) == []
-    assert has_line_of_sight(0, 0, 5, 10, 10, 10, never_block_oob) is False
+    A model standing inside a ruin has to be able to see itself, or the see-out
+    rule has nothing to build on.
+    """
+    assert _trace([(3.0, 3.0, 3.0, 3.0)], [(0.0, 0.0, 10.0, 10.0)]).tolist() == [True]
 
 
-def test_los_iter_consistency_manual_interior_scan() -> None:
-    cells = iter_los_cells(0, 0, 5, 0, 10, 10)
-    assert len(cells) >= 2
-    interior = cells[1:-1]
-    blocked: set[tuple[int, int]] = set()
-
-    def is_b(x: int, y: int) -> bool:
-        return (x, y) in blocked
-
-    manual = not any(is_b(x, y) for x, y in interior)
-    assert has_line_of_sight(0, 0, 5, 0, 10, 10, is_b) == manual
+def test_a_rectangle_astride_the_line_blocks_and_one_beside_it_does_not() -> None:
+    clear = _trace(
+        [(0.0, 5.0, 19.0, 5.0), (0.0, 5.0, 19.0, 5.0)],
+        [(8.0, 4.0, 12.0, 6.0), (8.0, 14.0, 12.0, 18.0)],
+        exempt=np.array([[False, False], [True, True]]),
+    )
+    assert clear.tolist() == [False, True]
 
 
-def test_los_golden_trace_zero_three_one() -> None:
-    assert iter_los_cells(0, 0, 3, 1, 10, 10) == [
-        (0, 0),
-        (1, 0),
-        (2, 1),
-        (3, 1),
-    ]
+def test_endpoints_are_never_sampled() -> None:
+    """A blocker covering only an endpoint cannot block.
+
+    The see-out / see-into rule is expressed as an *exemption* rather than by
+    trimming the ray, so the ray itself must not consult its own endpoints —
+    otherwise a model standing on a ruin's edge blocks its own sight.
+    """
+    # Sitting on the target end and reaching away from the segment: no sample.
+    assert _trace([(0.0, 0.0, 2.0, 0.0)], [(2.0, -0.5, 2.5, 0.5)]).tolist() == [True]
+    # Sitting on the observer end, likewise.
+    assert _trace([(0.0, 0.0, 2.0, 0.0)], [(-0.5, -0.5, 0.0, 0.5)]).tolist() == [True]
+    # Reaching back far enough to cover interior ground: now it blocks.
+    assert _trace([(0.0, 0.0, 2.0, 0.0)], [(1.5, -0.5, 2.5, 0.5)]).tolist() == [False]
 
 
-def test_los_interior_only_blocking_ignores_endpoint_blocker() -> None:
-    """Blocker on target cell is not in cells[1:-1] for a 3-cell horizontal line."""
-    # (0,0) -> (2,0): interior is [(1, 0)] only; blocking (2,0) must not block LOS.
+def test_an_exempt_blocker_is_ignored_even_when_the_ray_crosses_it() -> None:
+    segments = [(0.0, 5.0, 19.0, 5.0)]
+    blockers = [(8.0, 4.0, 12.0, 6.0)]
+    assert _trace(segments, blockers).tolist() == [False]
+    assert _trace(segments, blockers, exempt=np.array([[True]])).tolist() == [True]
 
-    def block_target(x: int, y: int) -> bool:
-        return (x, y) == (2, 0)
 
-    assert has_line_of_sight(0, 0, 2, 0, 10, 10, block_target) is True
+def test_the_sample_step_is_the_resolution_guarantee() -> None:
+    """A blocker thinner than the step can be missed. This is why configs bound it.
+
+    Documented as a limit rather than hidden: the failure is silent otherwise,
+    and "terrain that does not block" reads as a terrain-tuning problem rather
+    than a sampling one.
+    """
+    fat = _trace([(0.0, 0.5, 10.0, 0.5)], [(5.0, 0.0, 5.0 + _STEP, 1.0)])
+    thin = _trace([(0.0, 0.5, 10.0, 0.5)], [(5.001, 0.0, 5.002, 1.0)])
+    assert fat.tolist() == [False]
+    assert thin.tolist() == [True]
+
+
+def test_the_opaque_cell_grid_blocks_by_cell_index() -> None:
+    """The legacy `blocking_mask` is a raster and stays one, indexed [y][x]."""
+    cells = np.zeros((10, 10), dtype=bool)
+    cells[0, 3] = True
+    clear = _trace([(0.0, 0.5, 6.0, 0.5), (0.0, 5.5, 6.0, 5.5)], [], opaque_cells=cells)
+    assert clear.tolist() == [False, True]
 
 
 def test_blocking_mask_yaml_default_none_on_fixture_config() -> None:
@@ -116,23 +120,8 @@ def test_wargame_env_los_uses_config_mask() -> None:
     )
     env = WargameEnv(cfg)
     # opposite corners, line passes through (1,1)
-    assert env.has_line_of_sight_between_cells(0, 0, 2, 2) is False
-    assert env.has_line_of_sight_between_cells(0, 0, 2, 0) is True
-
-
-def test_iter_los_cells_between_cells_matches_domain() -> None:
-    cfg = WargameEnvConfig(
-        board_width=5,
-        board_height=5,
-        number_of_wargame_models=1,
-        number_of_objectives=1,
-        render_mode=None,
-        number_of_battle_rounds=1,
-    )
-    env = WargameEnv(cfg)
-    assert env.iter_los_cells_between_cells(0, 0, 2, 1) == iter_los_cells(
-        0, 0, 2, 1, 5, 5
-    )
+    assert env.has_line_of_sight_between_points(0, 0, 2, 2) is False
+    assert env.has_line_of_sight_between_points(0, 0, 2, 0) is True
 
 
 def test_blocking_mask_invalid_shape_raises() -> None:
@@ -251,19 +240,19 @@ def test_terrain_los_blocked_between_outside_models() -> None:
     """Both models outside footprint between them -> LOS blocked."""
     # Footprint at columns 8-12 on row 5; observer (0,5), target (19,5)
     env = _terrain_env([TerrainPieceConfig(footprint=(8, 4, 12, 6))])
-    assert env.has_line_of_sight_between_cells(0, 5, 19, 5) is False
+    assert env.has_line_of_sight_between_points(0, 5, 19, 5) is False
 
 
 def test_terrain_los_see_into_target_inside() -> None:
     """Target inside footprint -> LOS clear (see-into rule)."""
     env = _terrain_env([TerrainPieceConfig(footprint=(8, 4, 12, 6))])
-    assert env.has_line_of_sight_between_cells(0, 5, 10, 5) is True
+    assert env.has_line_of_sight_between_points(0, 5, 10, 5) is True
 
 
 def test_terrain_los_see_out_observer_inside() -> None:
     """Observer inside footprint -> LOS clear (see-out rule)."""
     env = _terrain_env([TerrainPieceConfig(footprint=(8, 4, 12, 6))])
-    assert env.has_line_of_sight_between_cells(10, 5, 19, 5) is True
+    assert env.has_line_of_sight_between_points(10, 5, 19, 5) is True
 
 
 def test_terrain_los_per_ruin_other_ruin_still_blocks() -> None:
@@ -274,20 +263,20 @@ def test_terrain_los_per_ruin_other_ruin_still_blocks() -> None:
             TerrainPieceConfig(footprint=(8, 4, 12, 6)),  # ruin B (between)
         ]
     )
-    assert env.has_line_of_sight_between_cells(2, 5, 19, 5) is False
+    assert env.has_line_of_sight_between_points(2, 5, 19, 5) is False
 
 
 def test_terrain_los_off_line_footprint_unaffected() -> None:
     """Footprint not on the LOS line -> LOS clear."""
     env = _terrain_env([TerrainPieceConfig(footprint=(8, 14, 12, 18))])
-    assert env.has_line_of_sight_between_cells(0, 5, 19, 5) is True
+    assert env.has_line_of_sight_between_points(0, 5, 19, 5) is True
 
 
 def test_terrain_los_interior_only_endpoint_footprint_does_not_block() -> None:
     """A footprint cell coinciding with an endpoint doesn't block (endpoint excluded)."""
     # Footprint at (5,5)-(5,5), target at (5,5)
     env = _terrain_env([TerrainPieceConfig(footprint=(5, 5, 5, 5))])
-    assert env.has_line_of_sight_between_cells(0, 5, 5, 5) is True
+    assert env.has_line_of_sight_between_points(0, 5, 5, 5) is True
 
 
 def test_terrain_los_blocking_mask_and_footprint_coexist() -> None:
@@ -299,11 +288,11 @@ def test_terrain_los_blocking_mask_and_footprint_coexist() -> None:
         blocking_mask=mask,
     )
     # Blocked by footprint
-    assert env.has_line_of_sight_between_cells(0, 5, 19, 5) is False
+    assert env.has_line_of_sight_between_points(0, 5, 19, 5) is False
     # Blocked by mask cell (15, 5) — line from (13, 5) to (19, 5) passes through (15, 5)
-    assert env.has_line_of_sight_between_cells(13, 5, 19, 5) is False
+    assert env.has_line_of_sight_between_points(13, 5, 19, 5) is False
     # Clear line that avoids both
-    assert env.has_line_of_sight_between_cells(0, 0, 5, 0) is True
+    assert env.has_line_of_sight_between_points(0, 0, 5, 0) is True
 
 
 @given(
@@ -334,7 +323,12 @@ def test_terrain_los_symmetry(
     x1: int,
     y1: int,
 ) -> None:
-    """has_los(A,B) == has_los(B,A) over random boards/footprints/endpoints."""
+    """has_los(A,B) == has_los(B,A) over random boards/footprints/endpoints.
+
+    Symmetry is not decorative: `firepower_ratio` reads an exposed model as one
+    that can also fire, so an asymmetric trace would make that metric count
+    different populations in each direction.
+    """
     assume(x0 < board_w and y0 < board_h and x1 < board_w and y1 < board_h)
 
     footprints: list[TerrainPieceConfig] = []
@@ -350,6 +344,6 @@ def test_terrain_los_symmetry(
         footprints.append(TerrainPieceConfig(footprint=(fx, fy, fx1, fy1)))
 
     env = _terrain_env(footprints, board_width=board_w, board_height=board_h)
-    forward = env.has_line_of_sight_between_cells(x0, y0, x1, y1)
-    backward = env.has_line_of_sight_between_cells(x1, y1, x0, y0)
+    forward = env.has_line_of_sight_between_points(x0, y0, x1, y1)
+    backward = env.has_line_of_sight_between_points(x1, y1, x0, y0)
     assert forward == backward

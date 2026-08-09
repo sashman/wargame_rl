@@ -125,11 +125,11 @@ def test_every_shot_is_in_range_and_in_line_of_sight() -> None:
             )
         )
         assert distance <= WEAPON_RANGE
-        assert env.has_line_of_sight_between_cells(
-            int(attacker.location[0]),
-            int(attacker.location[1]),
-            int(target.location[0]),
-            int(target.location[1]),
+        assert env.has_line_of_sight_between_points(
+            float(attacker.location[0]),
+            float(attacker.location[1]),
+            float(target.location[0]),
+            float(target.location[1]),
         )
 
 

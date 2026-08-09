@@ -17,7 +17,6 @@ from wargame_rl.wargame.envs.domain.battle_factory import (
 )
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.game_clock import GameClock
-from wargame_rl.wargame.envs.domain.los import iter_los_cells
 from wargame_rl.wargame.envs.domain.placement import place_for_episode
 from wargame_rl.wargame.envs.domain.rules_quantities import (
     RulesQuantities,
@@ -28,7 +27,8 @@ from wargame_rl.wargame.envs.domain.shooting import (
     resolve_shooting_phase,
 )
 from wargame_rl.wargame.envs.domain.sight import (
-    has_line_of_sight_between_cells as resolve_line_of_sight,
+    has_line_of_sight_between_points,
+    line_of_sight_matrix,
 )
 from wargame_rl.wargame.envs.domain.termination import is_battle_over
 from wargame_rl.wargame.envs.domain.terrain import Terrain
@@ -340,26 +340,39 @@ class WargameEnv(gym.Env):
         """
         return self._exposure_tracker.firepower_ratio
 
-    def has_line_of_sight_between_cells(
-        self, x0: int, y0: int, x1: int, y1: int
+    def has_line_of_sight_between_points(
+        self, x0: float, y0: float, x1: float, y1: float
     ) -> bool:
-        """True if LOS is clear between two cells (symmetric: canonical ordering)."""
-        return resolve_line_of_sight(
+        """True if sight is clear between two board points.
+
+        Single-pair convenience for the renderer and for tests. Anything asking
+        about many pairs should take `line_of_sight_matrix` instead.
+        """
+        return has_line_of_sight_between_points(
             x0,
             y0,
             x1,
             y1,
-            self.board_width,
-            self.board_height,
             self._battle.terrain,
             self.config.blocking_mask,
+            sample_step=self._rules_quantities.los_sample_step,
         )
 
-    def iter_los_cells_between_cells(
-        self, x0: int, y0: int, x1: int, y1: int
-    ) -> list[tuple[int, int]]:
-        """Inclusive Bresenham cells between endpoints; empty if an endpoint is out of bounds."""
-        return iter_los_cells(x0, y0, x1, y1, self.board_width, self.board_height)
+    def line_of_sight_matrix(
+        self,
+        origins: np.ndarray,
+        targets: np.ndarray,
+        candidates: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """``(P, Q)`` sight between two sets of points, traced in one pass."""
+        return line_of_sight_matrix(
+            origins,
+            targets,
+            self._battle.terrain,
+            self.config.blocking_mask,
+            sample_step=self._rules_quantities.los_sample_step,
+            candidates=candidates,
+        )
 
     # BattleView protocol (read-only battle state for renderers and reward)
     @property
@@ -596,11 +609,12 @@ class WargameEnv(gym.Env):
             opp_alive,
             alive_mask_for(self.wargame_models),
             self._opponent_max_ranges,
-            self.has_line_of_sight_between_cells,
+            self.line_of_sight_matrix,
             player_advanced=np.array(
                 [m.advanced_this_turn for m in self.opponent_models]
             ),
             engagement_range=self._rules_quantities.engagement_range,
+            base_diameter=2.0 * self._rules_quantities.base_radius,
         )
         return mask
 
@@ -614,7 +628,7 @@ class WargameEnv(gym.Env):
             self._player_max_ranges,
             self._opponent_max_ranges,
             self.terrain.footprints,
-            self.has_line_of_sight_between_cells,
+            self.line_of_sight_matrix,
         )
 
     def _apply_opponent_action(self) -> None:

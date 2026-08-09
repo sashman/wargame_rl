@@ -16,9 +16,10 @@ optimisation at the wrong place.
 Usage: just measure-throughput <env_config> [n_steps] [engaged]
 
 `engaged` forces every model within weapon range of every opponent before
-stepping. Line of sight is only ~0.5% of a step under random play, but it is
-O(n^2 * line_length * n_terrain) with no cache, so it grows toward ~32 ms/step as
-a policy learns to close. That mode quotes the ceiling rather than today's floor.
+stepping. Sight barely registers under random play because range gating rules
+almost every pair out before it is traced; engaged, every pair is a candidate
+and it becomes the largest single section. That mode quotes the ceiling rather
+than today's floor.
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ from typing import Any
 import numpy as np
 from pydantic_yaml import parse_yaml_raw_as
 
-from wargame_rl.wargame.envs.domain import sight
+from wargame_rl.wargame.envs.domain.value_objects import position
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
@@ -63,36 +64,22 @@ class _Timings:
         setattr(owner, method, timed)
 
 
-def _instrument_line_of_sight(timings: _Timings) -> None:
-    """Time whole LOS queries, not just the predicate's construction.
+def _instrument_line_of_sight(timings: _Timings, env: WargameEnv) -> None:
+    """Time whole LOS passes.
 
-    `blocking_predicate_for_query` returns a closure that is then called once per
-    cell along the Bresenham line, so timing the factory alone would miss almost
-    all of the cost. Wrapping the returned closure as well makes "line of sight"
-    the real per-query total, and its call count is `los_queries_per_step` — the
-    number that says whether the quadratic LOS scan is worth optimising yet.
+    One `line_of_sight_matrix` call traces every requested pair in a single
+    vectorised sweep, so the call *is* the query — there is no inner per-cell
+    closure left to wrap. Its call count is now *passes* per step rather than
+    pairs per step; read the total, not the count, when judging whether sight is
+    worth optimising.
 
-    Patched on the `sight` module rather than on the env, because the resolver
-    looks the factory up by module-global name at call time.
+    Wrapped on the env instance, not on the `sight` module. This used to patch
+    the module because the composition called its own factory by global name at
+    call time; the facade now binds the function at import, so a module patch
+    would take no effect and the split would silently report no sight cost at
+    all — which reads as "sight is free" rather than "sight was not measured".
     """
-    original = sight.blocking_predicate_for_query
-
-    def timed_factory(*args: Any, **kwargs: Any) -> Any:
-        start = time.perf_counter()
-        predicate = original(*args, **kwargs)
-        timings.total["line of sight"] += time.perf_counter() - start
-        timings.calls["line of sight"] += 1
-
-        def timed_predicate(x: int, y: int) -> bool:
-            inner = time.perf_counter()
-            try:
-                return bool(predicate(x, y))
-            finally:
-                timings.total["line of sight"] += time.perf_counter() - inner
-
-        return timed_predicate
-
-    sight.blocking_predicate_for_query = timed_factory  # type: ignore[assignment]
+    timings.wrap(env, "line_of_sight_matrix", "line of sight")
 
 
 def _instrument(env: WargameEnv, timings: _Timings) -> None:
@@ -104,7 +91,7 @@ def _instrument(env: WargameEnv, timings: _Timings) -> None:
     timings.wrap(env.phase_manager, "calculate_reward", "reward")
     timings.wrap(env, "_get_obs", "observation build")
     timings.wrap(env, "_apply_opponent_action", "opponent turn")
-    _instrument_line_of_sight(timings)
+    _instrument_line_of_sight(timings, env)
 
     for phase in env.phase_manager.phases:
         calculators = list(phase.per_model_calculators) + list(phase.global_calculators)
@@ -130,13 +117,9 @@ def _force_engagement(env: WargameEnv) -> None:
     centre_x = env.config.board_width // 2
     centre_y = env.config.board_height // 2
     for index, model in enumerate(env.wargame_models):
-        model.location = np.array(
-            [centre_x + index % 3, centre_y + index // 3 % 3], dtype=np.int64
-        )
+        model.location = position(centre_x + index % 3, centre_y + index // 3 % 3)
     for index, model in enumerate(env.opponent_models):
-        model.location = np.array(
-            [centre_x + 2 + index % 3, centre_y + index // 3 % 3], dtype=np.int64
-        )
+        model.location = position(centre_x + 2 + index % 3, centre_y + index // 3 % 3)
 
 
 def _run(

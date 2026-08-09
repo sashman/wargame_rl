@@ -11,6 +11,7 @@ import numpy as np
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.value_objects import POSITION_DTYPE
 from wargame_rl.wargame.envs.env_components.actions import ActionRegistry
 from wargame_rl.wargame.envs.env_components.shooting_masks import compute_shooting_masks
 from wargame_rl.wargame.envs.types import (
@@ -35,8 +36,11 @@ def update_distances_to_objectives(
     distance_cache: DistanceCache | None = None,
 ) -> None:
     """Update each model's distances_to_objectives from current locations. Mutates models."""
+    # No `.astype(int)` here. The vector to the objective is the single most
+    # informative feature the policy has, and truncating it to whole units threw
+    # away sub-unit steering on a board where a move is now any real length.
     if distance_cache is not None:
-        deltas = distance_cache.model_obj_deltas.astype(int)
+        deltas = distance_cache.model_obj_deltas.astype(POSITION_DTYPE)
         for i, model in enumerate(wargame_models):
             model.distances_to_objectives = deltas[i]
         return
@@ -44,7 +48,7 @@ def update_distances_to_objectives(
     for model in wargame_models:
         model.distances_to_objectives = np.array(
             [model.location - obj.location for obj in objectives],
-            dtype=int,
+            dtype=POSITION_DTYPE,
         )
 
 
@@ -203,9 +207,10 @@ def build_observation(
                 player_alive,
                 opponent_alive,
                 player_ranges,
-                view.has_line_of_sight_between_cells,
+                view.line_of_sight_matrix,
                 player_advanced=player_advanced,
                 engagement_range=view.rules_quantities.engagement_range,
+                base_diameter=2.0 * view.rules_quantities.base_radius,
             )
             action_mask[:, shooting_slice.start : shooting_slice.end] &= (
                 shooting_validity

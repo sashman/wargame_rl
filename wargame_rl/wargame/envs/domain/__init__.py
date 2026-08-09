@@ -10,7 +10,7 @@ from wargame_rl.wargame.envs.domain.battle_factory import (
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
 from wargame_rl.wargame.envs.domain.game_clock import GameClock, GameClockError
-from wargame_rl.wargame.envs.domain.los import has_line_of_sight, iter_los_cells
+from wargame_rl.wargame.envs.domain.los import points_inside_rects, segments_are_clear
 from wargame_rl.wargame.envs.domain.placement import place_for_episode
 from wargame_rl.wargame.envs.domain.shooting import (
     DefenderStats,
@@ -22,8 +22,9 @@ from wargame_rl.wargame.envs.domain.shooting import (
     wound_roll_threshold,
 )
 from wargame_rl.wargame.envs.domain.sight import (
-    blocking_predicate_for_query,
-    has_line_of_sight_between_cells,
+    footprint_bounds,
+    has_line_of_sight_between_points,
+    line_of_sight_matrix,
 )
 from wargame_rl.wargame.envs.domain.termination import (
     check_max_turns_reached,
@@ -39,10 +40,11 @@ __all__ = [
     "Battle",
     "BoardDimensions",
     "BattleView",
-    "has_line_of_sight",
-    "blocking_predicate_for_query",
-    "has_line_of_sight_between_cells",
-    "iter_los_cells",
+    "segments_are_clear",
+    "points_inside_rects",
+    "footprint_bounds",
+    "has_line_of_sight_between_points",
+    "line_of_sight_matrix",
     "WargameModel",
     "WargameObjective",
     "DeploymentZone",

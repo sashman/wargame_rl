@@ -1,17 +1,20 @@
-"""Whether one cell can see another: what blocks sight, composed with how it is traced.
+"""Whether one point can see another: what blocks sight, composed with how it is traced.
 
 This is deliberately separate from `los.py`. That module is the geometry
-primitive — a Bresenham ray and an injectable predicate — and knows nothing
+primitive — a sampled ray against axis-aligned rectangles — and knows nothing
 about terrain or the game's blocking rules. This module is the *answer*, built
 by handing that primitive the two things that actually block a shot: the static
 `blocking_mask` from config, and the terrain footprints that do not contain
 either endpoint.
 
 Keeping the composition here rather than on the env facade gives the question
-"can A see B?" a single home in the domain. It is also the seam that changes
-most when the board stops being a grid: continuous coordinates, a three-state
-answer for cover, and endpoints that carry a base radius all land on these two
-functions rather than on every caller.
+"can A see B?" a single home in the domain.
+
+**The batch entry point is the real one.** `line_of_sight_matrix` traces every
+requested pair in one vectorised pass; `has_line_of_sight_between_points` is a
+convenience wrapper for the renderer and for tests. Calling the single-pair form
+in a loop is the shape that measured a 3x regression, so the shooting mask and
+the exposure scan take the matrix.
 
 Terrain is read at call time, never cached. `Battle.set_terrain` replaces the
 layout between episodes and a cache here would need invalidating; the footprint
@@ -20,65 +23,108 @@ scan is cheap next to the ray.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import numpy as np
 
-from wargame_rl.wargame.envs.domain.los import has_line_of_sight
+from wargame_rl.wargame.envs.domain.los import points_inside_rects, segments_are_clear
 from wargame_rl.wargame.envs.domain.terrain import Terrain
 
 BlockingMask = list[list[bool]]
 
 
-def blocking_predicate_for_query(
-    x0: int,
-    y0: int,
-    x1: int,
-    y1: int,
+def footprint_bounds(terrain: Terrain) -> np.ndarray:
+    """``(M, 4)`` array of footprint rectangles, for the vectorised ray."""
+    if not terrain.footprints:
+        return np.zeros((0, 4), dtype=float)
+    return np.array([(f.x0, f.y0, f.x1, f.y1) for f in terrain.footprints], dtype=float)
+
+
+def opaque_cell_grid(blocking_mask: BlockingMask | None) -> np.ndarray | None:
+    """Convert the config's nested-list blocking mask into a ``[y][x]`` array."""
+    if blocking_mask is None:
+        return None
+    return np.asarray(blocking_mask, dtype=bool)
+
+
+def line_of_sight_matrix(
+    origins: np.ndarray,
+    targets: np.ndarray,
     terrain: Terrain,
     blocking_mask: BlockingMask | None,
-) -> Callable[[int, int], bool]:
-    """Build the per-query predicate: is this cell opaque for *this* sight line?
+    *,
+    sample_step: float,
+    candidates: np.ndarray | None = None,
+) -> np.ndarray:
+    """``(P, Q)`` — True where origin p can see target q.
 
-    Terrain is filtered per query rather than globally, because a piece
-    containing either endpoint does not block — a model can see out of the ruin
-    it stands in, and can be seen when standing in one (the see-out / see-into
-    rule, `docs/rules/13-terrain.md`). The static `blocking_mask` is opaque
-    matter and gets no such exemption.
+    Args:
+        origins: ``(P, 2)`` observer positions.
+        targets: ``(Q, 2)`` observed positions.
+        candidates: optional ``(P, Q)`` bool mask of pairs worth tracing. Pairs
+            outside it come back False without being traced at all, which is
+            what keeps the cost proportional to the pairs a caller can actually
+            use — range gating already rules most of them out.
+
+    Symmetry is exact by construction: the pair (a, b) and the pair (b, a) sample
+    the same parametric positions on the same segment, so the same blockers are
+    tested. Several metrics depend on that — `firepower_ratio` reads an exposed
+    model as one that can also fire.
     """
-    active = terrain.blocking_footprints_for_endpoints(x0, y0, x1, y1)
+    n_origins, n_targets = len(origins), len(targets)
+    result = np.zeros((n_origins, n_targets), dtype=bool)
+    if n_origins == 0 or n_targets == 0:
+        return result
 
-    def is_blocking(x: int, y: int) -> bool:
-        if blocking_mask is not None and blocking_mask[y][x]:
-            return True
-        return any(footprint.contains(x, y) for footprint in active)
+    if candidates is None:
+        grid_rows, grid_cols = np.meshgrid(
+            np.arange(n_origins), np.arange(n_targets), indexing="ij"
+        )
+        rows, cols = grid_rows.ravel(), grid_cols.ravel()
+    else:
+        rows, cols = np.nonzero(candidates)
+    if len(rows) == 0:
+        return result
 
-    return is_blocking
+    starts = np.asarray(origins, dtype=float)[rows]
+    ends = np.asarray(targets, dtype=float)[cols]
 
+    blockers = footprint_bounds(terrain)
+    exempt: np.ndarray | None = None
+    if len(blockers):
+        # The see-out / see-into rule (`docs/rules/13-terrain.md`): a piece
+        # containing either endpoint does not block, because a model can see out
+        # of the ruin it stands in and can be seen while standing in one.
+        exempt = points_inside_rects(starts, blockers) | points_inside_rects(
+            ends, blockers
+        )
 
-def has_line_of_sight_between_cells(
-    x0: int,
-    y0: int,
-    x1: int,
-    y1: int,
-    board_width: int,
-    board_height: int,
-    terrain: Terrain,
-    blocking_mask: BlockingMask | None,
-) -> bool:
-    """True when sight is clear between two cells.
-
-    Endpoints are sorted into a canonical order first, which makes the answer
-    exactly symmetric: A sees B if and only if B sees A. Several metrics depend
-    on that — `firepower_ratio` reads an exposed model as one that can also
-    fire — and a Bresenham ray is not otherwise guaranteed to trace the same
-    cells in both directions.
-    """
-    (ax, ay), (bx, by) = sorted([(x0, y0), (x1, y1)])
-    return has_line_of_sight(
-        ax,
-        ay,
-        bx,
-        by,
-        board_width,
-        board_height,
-        blocking_predicate_for_query(ax, ay, bx, by, terrain, blocking_mask),
+    clear = segments_are_clear(
+        starts,
+        ends,
+        blockers,
+        sample_step=sample_step,
+        blocker_exempt=exempt,
+        opaque_cells=opaque_cell_grid(blocking_mask),
     )
+    result[rows, cols] = clear
+    return result
+
+
+def has_line_of_sight_between_points(
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+    terrain: Terrain,
+    blocking_mask: BlockingMask | None,
+    *,
+    sample_step: float,
+) -> bool:
+    """True when sight is clear between two points. Single-pair convenience."""
+    matrix = line_of_sight_matrix(
+        np.array([[x0, y0]], dtype=float),
+        np.array([[x1, y1]], dtype=float),
+        terrain,
+        blocking_mask,
+        sample_step=sample_step,
+    )
+    return bool(matrix[0, 0])

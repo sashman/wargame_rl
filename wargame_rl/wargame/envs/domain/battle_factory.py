@@ -10,8 +10,14 @@ from wargame_rl.wargame.envs.types import WargameEnvConfig
 
 from .battle import Battle
 from .entities import WargameModel, WargameObjective
+from .rules_quantities import resolve_rules_quantities
 from .terrain import Footprint, Terrain
-from .value_objects import BoardDimensions, DeploymentZone, zero_position
+from .value_objects import (
+    POSITION_DTYPE,
+    BoardDimensions,
+    DeploymentZone,
+    zero_position,
+)
 
 
 def _build_models(
@@ -19,6 +25,7 @@ def _build_models(
     model_configs: list[Any] | None,
     n_objectives: int,
     max_groups: int,
+    base_radius: float = 0.0,
 ) -> list[WargameModel]:
     """Build a list of WargameModel instances (player or opponent)."""
     result: list[WargameModel] = []
@@ -45,7 +52,10 @@ def _build_models(
                     "save": save,
                 },
                 group_id=group_id,
-                distances_to_objectives=np.zeros([n_objectives, 2], dtype=int),
+                base_radius=base_radius,
+                distances_to_objectives=np.zeros(
+                    [n_objectives, 2], dtype=POSITION_DTYPE
+                ),
             )
         )
     return result
@@ -81,17 +91,20 @@ def from_config(config: WargameEnvConfig) -> Battle:
     board_height = config.board_height
     n_objectives = config.number_of_objectives
 
+    base_radius = resolve_rules_quantities(config).base_radius
     player_models = _build_models(
         config.number_of_wargame_models,
         config.models,
         n_objectives,
         config.max_groups,
+        base_radius,
     )
     opponent_models = _build_models(
         config.number_of_opponent_models,
         config.opponent_models,
         n_objectives,
         config.max_groups,
+        base_radius,
     )
     objectives = _build_objectives(config)
 
@@ -116,8 +129,10 @@ def from_config(config: WargameEnvConfig) -> Battle:
             y_max=board_height,
         )
 
+    # Config authors terrain as inclusive cell rectangles, so this is the other
+    # boundary where the corner-inclusive convention is resolved.
     footprints = [
-        Footprint.from_corners(*tp.footprint) for tp in (config.terrain or [])
+        Footprint.from_cell_rect(*tp.footprint) for tp in (config.terrain or [])
     ]
     terrain = Terrain(footprints)
 
@@ -139,6 +154,7 @@ def create_wargame_models(config: WargameEnvConfig) -> list[WargameModel]:
         config.models,
         config.number_of_objectives,
         config.max_groups,
+        resolve_rules_quantities(config).base_radius,
     )
 
 
@@ -149,6 +165,7 @@ def create_opponent_models(config: WargameEnvConfig) -> list[WargameModel]:
         config.opponent_models,
         config.number_of_objectives,
         config.max_groups,
+        resolve_rules_quantities(config).base_radius,
     )
 
 

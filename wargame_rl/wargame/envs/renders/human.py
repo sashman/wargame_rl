@@ -6,7 +6,6 @@ import pygame
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
-from wargame_rl.wargame.envs.domain.los import iter_los_cells
 from wargame_rl.wargame.envs.env_components.distance_cache import (
     compute_distances,
     objective_ownership_from_norms_offset,
@@ -17,10 +16,10 @@ from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
 
 def los_line_color(
-    view: BattleView, x0: int, y0: int, x1: int, y1: int
+    view: BattleView, x0: float, y0: float, x1: float, y1: float
 ) -> tuple[int, int, int]:
     """Return green if LOS clear, red if blocked."""
-    if view.has_line_of_sight_between_cells(x0, y0, x1, y1):
+    if view.has_line_of_sight_between_points(x0, y0, x1, y1):
         return (80, 200, 80)
     return (255, 80, 80)
 
@@ -495,9 +494,13 @@ class HumanRender(Renderer):
             self.window.blit(s, (rect.x + padding, rect.y + padding + j * line_height))
 
     def _draw_debug_los_line(self, view: BattleView) -> None:
-        """Draw LOS polyline using domain ``iter_los_cells`` (first alive player -> opponent).
+        """Draw the sight line from the first alive player model to the first opponent.
 
-        Line colour reflects LOS verdict: green if clear, red if blocked.
+        A straight segment, because that is now literally what is traced: the
+        board is continuous and sight is sampled along the line rather than
+        walked cell by cell, so a stepped polyline would draw a ray the domain
+        no longer casts. Colour reflects the verdict: green if clear, red if
+        blocked.
         """
         if self.canvas is None:
             return
@@ -515,21 +518,17 @@ class HumanRender(Renderer):
             return
         pm = view.player_models[p_idx]
         om = view.opponent_models[o_idx]
-        x0, y0 = int(pm.location[0]), int(pm.location[1])
-        x1, y1 = int(om.location[0]), int(om.location[1])
-        cells = iter_los_cells(
-            x0, y0, x1, y1, view.config.board_width, view.config.board_height
-        )
-        if len(cells) < 2:
-            return
+        x0, y0 = float(pm.location[0]), float(pm.location[1])
+        x1, y1 = float(om.location[0]), float(om.location[1])
         color = los_line_color(view, x0, y0, x1, y1)
         w = max(1, int(self.pix_square_size * 0.08))
-        for i in range(len(cells) - 1):
-            ax = (cells[i][0] + 0.5) * self.pix_square_size
-            ay = (cells[i][1] + 0.5) * self.pix_square_size
-            bx = (cells[i + 1][0] + 0.5) * self.pix_square_size
-            by = (cells[i + 1][1] + 0.5) * self.pix_square_size
-            pygame.draw.line(self.canvas, color, (ax, ay), (bx, by), width=w)
+        pygame.draw.line(
+            self.canvas,
+            color,
+            (x0 * self.pix_square_size, y0 * self.pix_square_size),
+            (x1 * self.pix_square_size, y1 * self.pix_square_size),
+            width=w,
+        )
 
     def _process_events(self, view: BattleView) -> None:
         """Process pygame events for pause (Space), quit (Esc), resize, and click-to-pin tooltip."""

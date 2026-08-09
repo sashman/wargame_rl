@@ -51,8 +51,8 @@ class WeaponSnapshot(BaseModel):
 class ModelSnapshot(BaseModel):
     """State of a single model (unit) on the board."""
 
-    location: list[int]
-    previous_location: list[int] | None
+    location: list[float]
+    previous_location: list[float] | None
     group_id: int
     alive: bool
     current_wounds: int
@@ -70,8 +70,8 @@ class ModelSnapshot(BaseModel):
 class ObjectiveSnapshot(BaseModel):
     """State of an objective marker."""
 
-    location: list[int]
-    radius_size: int
+    location: list[float]
+    radius_size: float
     player_models_in_range: list[int]
     opponent_models_in_range: list[int]
 
@@ -117,7 +117,7 @@ class GameStateSnapshot(BaseModel):
     attributing ``player_actions`` to a phase.
     """
 
-    schema_version: str = "1.2"
+    schema_version: str = "2.0"
     step: int
     max_steps: int
     clock: ClockSnapshot
@@ -602,10 +602,13 @@ def validate_snapshot(
     ]:
         for i, m in enumerate(models):
             x, y = m.location
-            if x < 0 or x >= bw or y < 0 or y >= bh:
+            # Inclusive on both ends: the board is continuous, so `bw` is a
+            # coordinate a model on the far edge legitimately has, not one past
+            # the last cell index.
+            if x < 0 or x > bw or y < 0 or y > bh:
                 errors.append(
                     f"{side} model {i} location ({x}, {y}) out of bounds "
-                    f"[0, {bw}) x [0, {bh})"
+                    f"[0, {bw}] x [0, {bh}]"
                 )
             if m.current_wounds < 0 or m.current_wounds > m.max_wounds:
                 errors.append(
@@ -615,9 +618,9 @@ def validate_snapshot(
 
     for i, o in enumerate(snapshot.objectives):
         x, y = o.location
-        if x < 0 or x >= bw or y < 0 or y >= bh:
+        if x < 0 or x > bw or y < 0 or y > bh:
             errors.append(
-                f"objective {i} location ({x}, {y}) out of bounds [0, {bw}) x [0, {bh})"
+                f"objective {i} location ({x}, {y}) out of bounds [0, {bw}] x [0, {bh}]"
             )
 
     clock = snapshot.clock

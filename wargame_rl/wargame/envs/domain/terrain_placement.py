@@ -136,7 +136,9 @@ def generate_terrain(
     for _ in range(_MAX_LAYOUT_ATTEMPTS):
         placed = _attempt_layout(spec, board, rng)
         if placed is not None and len(placed) == spec.count:
-            return Terrain([Footprint.from_corners(*rect) for rect in placed])
+            # The sampler works in cells, so the conversion to the continuous
+            # rectangle happens once, here, at the boundary.
+            return Terrain([Footprint.from_cell_rect(*rect) for rect in placed])
 
     raise RuntimeError(
         f"could not place {spec.count} terrain pieces of up to "

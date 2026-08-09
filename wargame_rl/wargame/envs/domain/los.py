@@ -1,77 +1,133 @@
-"""Grid line-of-sight: integer Bresenham ray and injectable blocking predicate.
+"""Line-of-sight geometry: sampled rays against axis-aligned blockers.
 
-Coordinates match the env: x spans ``0 .. width-1``, y spans ``0 .. height-1``.
-``is_blocking(x, y)`` is evaluated only for **strictly interior** cells along the
-segment (endpoints excluded), per phase context.
+The board is continuous, so sight is traced by sampling points along the segment
+rather than by walking cells. ``sample_step`` is the spacing guarantee: a blocker
+thinner than it can fall between two samples and leak sight, which is why the
+config validator rejects terrain narrower than the step.
 
-Algorithm: standard 2D Bresenham line (error-term loop), inclusive of both endpoints
-in ``iter_los_cells``; see e.g. Wikipedia "Bresenham's line algorithm".
+**Everything here is vectorised over segments *and* over blockers, and that is
+not a micro-optimisation.** Sight is the hottest thing in the environment — a
+25v25 shooting phase asks about hundreds of pairs — and a per-blocker python loop
+turns each query into dozens of tiny numpy calls whose overhead dwarfs the
+arithmetic. The prototype measured that shape at 70.2 ms/step against a single
+vectorised pass at 30.0 ms.
+
+This module is the geometry primitive and knows nothing about terrain or the
+game's blocking rules. `sight.py` composes it with them.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import numpy as np
+
+# Cap on the (segments x samples x blockers) working set of one pass, in
+# elements. Segments are processed in chunks small enough to respect it, so
+# memory stays flat as the army or the layout grows.
+_MAX_WORKING_ELEMENTS = 4_000_000
 
 
-def _bresenham_line(x0: int, y0: int, x1: int, y1: int) -> list[tuple[int, int]]:
-    """Return all grid cells on the line from (x0,y0) to (x1,y1), inclusive."""
-    points: list[tuple[int, int]] = []
-    dx = abs(x1 - x0)
-    dy = -abs(y1 - y0)
-    sx = 1 if x0 < x1 else -1
-    sy = 1 if y0 < y1 else -1
-    err = dx + dy
-    x, y = x0, y0
-    while True:
-        points.append((x, y))
-        if x == x1 and y == y1:
-            break
-        e2 = 2 * err
-        if e2 >= dy:
-            err += dy
-            x += sx
-        if e2 <= dx:
-            err += dx
-            y += sy
-    return points
+def _interior_sample_offsets(max_length: float, sample_step: float) -> np.ndarray:
+    """Parametric positions in (0, 1) at which to test each segment.
+
+    One shared set of offsets is used for every segment in the batch, sized from
+    the *longest* one. Shorter segments are therefore oversampled, which costs a
+    little arithmetic and can never miss a blocker.
+
+    Endpoints are excluded: a model standing on a blocker is handled by the
+    see-out rule in `sight.py`, not by the ray.
+    """
+    if sample_step <= 0:
+        raise ValueError(f"sample_step must be positive, got {sample_step}")
+    n_intervals = max(1, int(np.ceil(max_length / sample_step)))
+    return np.linspace(0.0, 1.0, n_intervals + 1)[1:-1]
 
 
-def _in_bounds(x: int, y: int, width: int, height: int) -> bool:
-    return 0 <= x < width and 0 <= y < height
+def segments_are_clear(
+    starts: np.ndarray,
+    ends: np.ndarray,
+    blockers: np.ndarray,
+    *,
+    sample_step: float,
+    blocker_exempt: np.ndarray | None = None,
+    opaque_cells: np.ndarray | None = None,
+) -> np.ndarray:
+    """Trace ``N`` segments at once. Returns ``(N,)`` — True where sight is clear.
+
+    Args:
+        starts: ``(N, 2)`` segment origins.
+        ends: ``(N, 2)`` segment endpoints.
+        blockers: ``(M, 4)`` axis-aligned rectangles as ``(x0, y0, x1, y1)``.
+        sample_step: maximum spacing between consecutive samples, in board units.
+        blocker_exempt: ``(N, M)`` — True where that blocker does not block that
+            segment. This is how the see-out rule enters: it is *per query*,
+            because whether a piece blocks depends on where the endpoints are.
+        opaque_cells: ``(height, width)`` static mask of impassable-to-sight
+            cells, indexed ``[y][x]``. Gets no exemption — it is opaque matter
+            rather than shelter, so standing beside it does not let you see
+            through it.
+    """
+    n_segments = len(starts)
+    clear = np.ones(n_segments, dtype=bool)
+    if n_segments == 0:
+        return clear
+
+    deltas = ends - starts
+    max_length = float(np.linalg.norm(deltas, axis=1).max())
+    offsets = _interior_sample_offsets(max_length, sample_step)
+    n_samples = len(offsets)
+    if n_samples == 0:
+        return clear
+
+    n_blockers = len(blockers)
+    per_segment = max(1, n_samples * max(1, n_blockers))
+    chunk = max(1, _MAX_WORKING_ELEMENTS // per_segment)
+
+    for lo in range(0, n_segments, chunk):
+        hi = min(lo + chunk, n_segments)
+        # (n, samples, 2)
+        points = (
+            starts[lo:hi, np.newaxis, :]
+            + deltas[lo:hi, np.newaxis, :] * offsets[:, None]
+        )
+        blocked = np.zeros(hi - lo, dtype=bool)
+
+        if n_blockers:
+            px = points[:, :, 0, np.newaxis]
+            py = points[:, :, 1, np.newaxis]
+            inside = (
+                (px >= blockers[:, 0])
+                & (px <= blockers[:, 2])
+                & (py >= blockers[:, 1])
+                & (py <= blockers[:, 3])
+            )  # (n, samples, blockers)
+            if blocker_exempt is not None:
+                inside &= ~blocker_exempt[lo:hi, np.newaxis, :]
+            blocked |= inside.any(axis=(1, 2))
+
+        if opaque_cells is not None:
+            height, width = opaque_cells.shape
+            ix = np.clip(points[:, :, 0].astype(np.intp), 0, width - 1)
+            iy = np.clip(points[:, :, 1].astype(np.intp), 0, height - 1)
+            blocked |= opaque_cells[iy, ix].any(axis=1)
+
+        clear[lo:hi] = ~blocked
+
+    return clear
 
 
-def iter_los_cells(
-    x0: int,
-    y0: int,
-    x1: int,
-    y1: int,
-    width: int,
-    height: int,
-) -> list[tuple[int, int]]:
-    """Cells along the Bresenham segment, inclusive. Empty if an endpoint is OOB."""
-    if not _in_bounds(x0, y0, width, height):
-        return []
-    if not _in_bounds(x1, y1, width, height):
-        return []
-    return _bresenham_line(x0, y0, x1, y1)
+def points_inside_rects(points: np.ndarray, rects: np.ndarray) -> np.ndarray:
+    """``(P, M)`` membership of ``(P, 2)`` points in ``(M, 4)`` rectangles.
 
-
-def has_line_of_sight(
-    x0: int,
-    y0: int,
-    x1: int,
-    y1: int,
-    width: int,
-    height: int,
-    is_blocking: Callable[[int, int], bool],
-) -> bool:
-    """True if every strictly-interior cell on the LOS segment is non-blocking."""
-    cells = iter_los_cells(x0, y0, x1, y1, width, height)
-    if not cells:
-        return False
-    if len(cells) == 1:
-        return True
-    for x, y in cells[1:-1]:
-        if is_blocking(x, y):
-            return False
-    return True
+    Edge-inclusive, matching `Footprint.contains`: a model standing exactly on a
+    ruin's edge is standing *in* the ruin, and so can see out of it.
+    """
+    if len(rects) == 0:
+        return np.zeros((len(points), 0), dtype=bool)
+    px = points[:, 0, np.newaxis]
+    py = points[:, 1, np.newaxis]
+    return (
+        (px >= rects[:, 0])
+        & (px <= rects[:, 2])
+        & (py >= rects[:, 1])
+        & (py <= rects[:, 3])
+    )

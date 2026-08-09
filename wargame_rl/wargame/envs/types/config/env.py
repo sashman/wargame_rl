@@ -182,6 +182,30 @@ class WargameEnvConfig(BaseModel):
             "are legal. See docs/rules/implementation-status.md."
         ),
     )
+    base_radius: float = Field(
+        ge=0,
+        default=0.0,
+        description=(
+            "Radius of a model's base, in inches. Gives a model a physical "
+            "extent: bases may not overlap at placement, objective range is "
+            "measured from the base edge rather than its centre, and the "
+            "renderer draws it at this size. 0.0 (the default) keeps models "
+            "dimensionless points, which is what every result measured before "
+            "continuous space assumed. The rules' infantry base is 32mm across "
+            "-- a radius of about 0.63in."
+        ),
+    )
+    los_sample_step: float = Field(
+        gt=0,
+        default=0.25,
+        description=(
+            "Spacing, in inches, between the points a sight line is tested at. "
+            "The board is continuous, so sight is sampled rather than walked "
+            "cell by cell, and this is the resolution guarantee: a blocker "
+            "thinner than this can fall between two samples and leak sight. "
+            "Smaller is more faithful and slower — cost is linear in it."
+        ),
+    )
     reward_phases: list[RewardPhaseConfig] = Field(
         default_factory=_default_reward_phases,
         min_length=1,

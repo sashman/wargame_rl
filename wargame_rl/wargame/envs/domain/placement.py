@@ -8,6 +8,7 @@ import numpy as np
 
 from wargame_rl.wargame.envs.domain.battle import Battle
 from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
+from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
 from wargame_rl.wargame.envs.domain.terrain import Terrain
 from wargame_rl.wargame.envs.domain.terrain_placement import generate_terrain
 from wargame_rl.wargame.envs.domain.value_objects import (
@@ -28,42 +29,65 @@ if TYPE_CHECKING:
 _MAX_PLACEMENT_RETRIES = 1000
 
 
+def _is_clear(
+    candidate: tuple[float, float],
+    occupied: list[tuple[float, float]],
+    min_separation: float,
+) -> bool:
+    """True when *candidate* keeps its distance from every model already placed.
+
+    `min_separation` is the base *diameter*: two bases of radius r overlap
+    exactly when their centres are closer than 2r apart. At radius 0 this is
+    vacuously true, which is what keeps dimensionless models placeable anywhere.
+    """
+    if min_separation <= 0.0:
+        return True
+    threshold_sq = min_separation * min_separation
+    cx, cy = candidate
+    for ox, oy in occupied:
+        dx, dy = cx - ox, cy - oy
+        if dx * dx + dy * dy < threshold_sq:
+            return False
+    return True
+
+
 def _sample_unoccupied(
-    x_min: int,
-    y_min: int,
-    x_max: int,
-    y_max: int,
-    occupied: set[tuple[int, int]],
+    x_min: float,
+    y_min: float,
+    x_max: float,
+    y_max: float,
+    occupied: list[tuple[float, float]],
+    min_separation: float,
     rng: Generator,
-) -> tuple[int, int]:
-    """Return a random unoccupied cell within the given bounds."""
+) -> tuple[float, float]:
+    """Return a random point in the zone whose base clears every placed base."""
     for _ in range(_MAX_PLACEMENT_RETRIES):
-        x = int(rng.integers(x_min, x_max))
-        y = int(rng.integers(y_min, y_max))
-        if (x, y) not in occupied:
-            return (x, y)
+        candidate = (float(rng.uniform(x_min, x_max)), float(rng.uniform(y_min, y_max)))
+        if _is_clear(candidate, occupied, min_separation):
+            return candidate
     raise RuntimeError(
-        "Could not find an unoccupied cell in deployment zone "
-        f"[{x_min},{y_min})x[{x_max},{y_max})"
+        f"Could not fit a base of diameter {min_separation} in deployment zone "
+        f"[{x_min},{y_min})x[{x_max},{y_max}) alongside {len(occupied)} others. "
+        "The zone is too small for the army at this base size."
     )
 
 
 def _sample_near_anchor(
     anchor: np.ndarray,
     max_dist: float,
-    x_min: int,
-    y_min: int,
-    x_max: int,
-    y_max: int,
-    occupied: set[tuple[int, int]],
+    x_min: float,
+    y_min: float,
+    x_max: float,
+    y_max: float,
+    occupied: list[tuple[float, float]],
+    min_separation: float,
     rng: Generator,
-) -> tuple[int, int]:
-    """Return a random unoccupied cell within *max_dist* (L2) of *anchor*,
-    clamped to the deployment zone."""
-    lo_x = max(x_min, int(anchor[0] - max_dist))
-    hi_x = min(x_max, int(anchor[0] + max_dist) + 1)
-    lo_y = max(y_min, int(anchor[1] - max_dist))
-    hi_y = min(y_max, int(anchor[1] + max_dist) + 1)
+) -> tuple[float, float]:
+    """Return a random point within *max_dist* (L2) of *anchor*, inside the zone."""
+    lo_x = max(x_min, float(anchor[0]) - max_dist)
+    hi_x = min(x_max, float(anchor[0]) + max_dist)
+    lo_y = max(y_min, float(anchor[1]) - max_dist)
+    hi_y = min(y_max, float(anchor[1]) + max_dist)
 
     if lo_x >= hi_x or lo_y >= hi_y:
         raise RuntimeError(
@@ -73,11 +97,13 @@ def _sample_near_anchor(
 
     max_dist_sq = max_dist * max_dist
     for _ in range(_MAX_PLACEMENT_RETRIES):
-        x = int(rng.integers(lo_x, hi_x))
-        y = int(rng.integers(lo_y, hi_y))
-        dx = x - anchor[0]
-        dy = y - anchor[1]
-        if (x, y) not in occupied and (dx * dx + dy * dy) <= max_dist_sq:
+        x = float(rng.uniform(lo_x, hi_x))
+        y = float(rng.uniform(lo_y, hi_y))
+        dx = x - float(anchor[0])
+        dy = y - float(anchor[1])
+        if (dx * dx + dy * dy) <= max_dist_sq and _is_clear(
+            (x, y), occupied, min_separation
+        ):
             return (x, y)
     raise RuntimeError(
         f"Could not place model near anchor {anchor} within distance {max_dist}"
@@ -89,15 +115,27 @@ def wargame_model_placement(
     deployment_zone: np.ndarray,
     group_max_distance: float,
     rng: Generator,
+    base_radius: float = 0.0,
 ) -> None:
-    """Place models randomly inside the deployment zone, group-aware."""
-    occupied: set[tuple[int, int]] = set()
-    x_min, y_min, x_max, y_max = (
-        int(deployment_zone[0]),
-        int(deployment_zone[1]),
-        int(deployment_zone[2]),
-        int(deployment_zone[3]),
-    )
+    """Place models randomly inside the deployment zone, group-aware.
+
+    Bases may not overlap, so the zone has to be big enough to hold the army at
+    the configured base size. It fails loudly with the numbers rather than
+    quietly stacking models: a 5x5 board's zone is 1 unit wide and a 32mm base
+    is 1.26 across, so small demo configs have to grow.
+    """
+    occupied: list[tuple[float, float]] = []
+    min_separation = 2.0 * base_radius
+    # A base has to fit *within* the zone too, not just avoid its neighbours.
+    x_min = float(deployment_zone[0]) + base_radius
+    y_min = float(deployment_zone[1]) + base_radius
+    x_max = float(deployment_zone[2]) - base_radius
+    y_max = float(deployment_zone[3]) - base_radius
+    if x_min >= x_max or y_min >= y_max:
+        raise ValueError(
+            f"Deployment zone {tuple(deployment_zone)} is smaller than one base of "
+            f"radius {base_radius}: it leaves no room to stand in."
+        )
 
     groups: dict[int, list[WargameModel]] = {}
     for model in wargame_models:
@@ -113,7 +151,9 @@ def wargame_model_placement(
 
         for model in group:
             if not placed:
-                loc = _sample_unoccupied(x_min, y_min, x_max, y_max, occupied, rng)
+                loc = _sample_unoccupied(
+                    x_min, y_min, x_max, y_max, occupied, min_separation, rng
+                )
             else:
                 anchor = placed[int(rng.integers(len(placed)))]
                 loc = _sample_near_anchor(
@@ -124,12 +164,13 @@ def wargame_model_placement(
                     x_max,
                     y_max,
                     occupied,
+                    min_separation,
                     rng,
                 )
 
             model.location = position(*loc)
             model.reset_for_episode()
-            occupied.add(loc)
+            occupied.append(loc)
             placed.append(model)
 
 
@@ -140,11 +181,11 @@ def objective_placement(
     board_height: int,
     rng: Generator,
     opponent_deployment_zone: np.ndarray | None = None,
-    min_separation: int | None = None,
+    min_separation: float | None = None,
     terrain: Terrain | None = None,
-    terrain_clearance: int | None = None,
+    terrain_clearance: float | None = None,
 ) -> None:
-    """Place each objective at a random cell outside both deployment zones.
+    """Place each objective at a random point outside both deployment zones.
 
     `min_separation` keeps objective centres apart; without it each is drawn
     independently and the discs overlap in about a quarter of episodes, which
@@ -155,11 +196,11 @@ def objective_placement(
     if a draw cannot be placed within the retry budget the last candidate is
     used, because a slightly crowded layout is better than a failed episode.
     """
-    x_min = int(deployment_zone[2])
+    x_min = float(deployment_zone[2])
     x_max = (
-        int(opponent_deployment_zone[0])
+        float(opponent_deployment_zone[0])
         if opponent_deployment_zone is not None
-        else board_width
+        else float(board_width)
     )
     placed: list[Position] = []
     for objective in objectives:
@@ -178,23 +219,21 @@ def objective_placement(
 
 
 def _sample_objective_location(
-    x_min: int,
-    x_max: int,
+    x_min: float,
+    x_max: float,
     board_height: int,
     rng: Generator,
     placed: list[Position],
-    min_separation: int | None,
+    min_separation: float | None,
     terrain: Terrain | None,
-    terrain_clearance: int | None,
+    terrain_clearance: float | None,
 ) -> Position:
     """Draw one objective location satisfying the separation constraints."""
     candidate = zero_position()
     for _ in range(_MAX_PLACEMENT_RETRIES):
-        # Each draw's dtype is part of the random stream rather than the storage
-        # format, so changing it changes which layouts a given seed produces.
         candidate = position(
-            rng.integers(x_min, x_max, dtype=np.int32),
-            rng.integers(0, board_height, dtype=np.int32),
+            rng.uniform(x_min, x_max),
+            rng.uniform(0.0, board_height),
         )
         if min_separation is not None and any(
             float(np.linalg.norm(candidate - other)) < min_separation
@@ -258,6 +297,7 @@ def place_for_episode(
     Uses fixed positions from config when available, otherwise random placement
     within deployment zones.
     """
+    base_radius = resolve_rules_quantities(config).base_radius
     # Terrain first: it is the board the rest is placed onto. Models and
     # objectives may sit inside a footprint, exactly as they may with a fixed
     # layout — a model in a ruin can still see out and be seen.
@@ -279,6 +319,7 @@ def place_for_episode(
             battle.deployment_zone,
             config.group_max_distance,
             rng,
+            base_radius=base_radius,
         )
 
     # Place objectives
@@ -309,4 +350,5 @@ def place_for_episode(
                 battle.opponent_deployment_zone,
                 config.group_max_distance,
                 rng,
+                base_radius=base_radius,
             )
