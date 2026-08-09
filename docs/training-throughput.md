@@ -179,18 +179,47 @@ Note bf16 makes the *rollout* slightly slower (3.75 → 4.02 s). Rollout forward
 are one observation at a time; at that size the cast costs more than the tensor
 cores return. The gain is entirely in the batched update.
 
-### TF32 is on by default
+### TF32 is off by default — it costs ~8.5 vp_margin
 
 `configure_matmul_precision` (`model/common/performance.py`) is called once from
-`train.py`, before any model is built, and enables TF32 wherever the device is
-sm_80 or newer. `--no-tf32` restores full fp32.
+`train.py`, before any model is built. It enables TF32 only when `--tf32` is
+passed; the default is full fp32.
 
-This drops matmul mantissa precision from 24 bits to 11, so a run before this
-change and a run after are not bit-identical. That is well below anything this
-project can resolve — win rate cannot separate differences under ~7pp, and
-`vp_margin` under ~10 — and the environment and reward are untouched, being numpy
-on the CPU. But it does mean "training is deterministic given seed + config +
-code" holds only within one setting of this flag.
+**It shipped on by default on 2026-08-08 and was reverted on 2026-08-09 after
+being measured against a trained result for the first time.** On
+`configs/golden/25v25_shooting_opponent.yaml`, two seeds, n=100 on identical
+layouts, scored at epoch 1000 on both sides:
+
+| seed | TF32 off | TF32 on | delta |
+|---|---|---|---|
+| 1 | +30.8 | +21.2 | −9.6 |
+| 2 | +27.4 | +19.9 | −7.5 |
+
+Against the `squad_march_shoot` bar of +17.0 that is the difference between
+beating the bar by 12.1 and by 3.6. The `--no-tf32` control reproduced the
+pre-TF32 run **bit-identically** — 222/222 tensors, max abs diff 0.0, on both
+seeds — so TF32 is the whole of the difference, and every other change in the
+window (env hot-path memoisation, DQN removal, the config restructure) altered
+training by nothing at all.
+
+This section previously claimed the effect was "well below anything this project
+can resolve". That was inferred from the mantissa drop (24 bits to 11) and the
+speedup benchmark, never measured. Two lessons worth keeping:
+
+- **A precision setting is a reward-affecting change, not a perf setting.** It
+  earned the same scrutiny as a shaping term and did not get it.
+- **Win rate would have missed it** (0.705 → 0.65, inside the ~7pp limit) while
+  `vp_margin` separated cleanly on both seeds. This is the standing
+  "prefer `vp_margin`" rule paying out.
+
+The speed is also smaller than the update benchmark suggests: 1.34x on the PPO
+update is **17.8% of an epoch** end to end (12.95 → 10.99 s/epoch, same
+measurement), because the update is only part of an epoch. 18% wall clock for
+8.5 vp is a bad trade. Pass `--tf32` for smoke, profiling and throughput runs,
+where the result is not the point.
+
+"Training is deterministic given seed + config + code" holds only within one
+setting of this flag — which is exactly how the regression was caught.
 
 ### bf16 is opt-in, and its effect on *learning* is unmeasured
 

@@ -126,6 +126,22 @@ train-arm max_epochs n_seeds group tag flags *configs:
 		wait; \
 	done
 
+# One seed of each config, with an explicit tag and extra train.py flags, in an
+# existing wandb group. `train-arm` covers the same ground but runs its seeds
+# sequentially, so a two-seed arm costs two full training windows; invoking this
+# twice in parallel puts both seeds in one. Use it when the seeds must land
+# together -- a control measured against an existing run, where waiting out a
+# second window buys nothing.
+#
+# Keep the concurrent count equal to the number of runs: each holds ~3.8 GB.
+# Use: just train-seed-flags 1000 1 my-group -notf32 "--no-tf32" a.yaml
+train-seed-flags max_epochs seed group tag flags *configs:
+	@trap 'kill 0' INT TERM && \
+	for c in {{configs}}; do \
+		uv run train.py --record-during-training --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed {{seed}} --run-suffix "s{{seed}}{{tag}}" --wandb-group "{{group}}" {{flags}} & \
+	done; \
+	wait
+
 # Run multiple env configs in parallel. Each run gets a unique --run-suffix and shared --wandb-group.
 # Uses PPO + transformer. Use: just train-multi config1.yaml config2.yaml
 # Trap INT/TERM so Ctrl+C kills all background train.py processes.
