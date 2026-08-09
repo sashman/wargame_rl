@@ -23,7 +23,8 @@ wargame_rl/wargame/envs/
 │   ├── battle_view.py         # Protocol: read-only battle state
 │   ├── battle_factory.py      # Builds Battle from config
 │   ├── entities.py            # WargameModel, WargameObjective
-│   ├── value_objects.py       # BoardDimensions, DeploymentZone
+│   ├── value_objects.py       # Position + POSITION_DTYPE, BoardDimensions,
+│   │                          #   DeploymentZone
 │   ├── game_clock.py          # Turn/phase/round logic
 │   ├── placement.py           # place_for_episode, placement helpers
 │   ├── termination.py         # is_battle_over, check_max_turns_reached
