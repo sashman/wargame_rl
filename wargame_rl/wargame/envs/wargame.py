@@ -19,8 +19,11 @@ from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.game_clock import GameClock
 from wargame_rl.wargame.envs.domain.los import iter_los_cells
 from wargame_rl.wargame.envs.domain.placement import place_for_episode
+from wargame_rl.wargame.envs.domain.rules_quantities import (
+    RulesQuantities,
+    resolve_rules_quantities,
+)
 from wargame_rl.wargame.envs.domain.shooting import (
-    ENGAGEMENT_RANGE,
     PairedShootingResult,
     resolve_shooting_phase,
 )
@@ -149,6 +152,9 @@ class WargameEnv(gym.Env):
         )
         self.action_space = self._action_handler.action_space
         self._skip_phases = frozenset(config.skip_phases)
+        # Resolved once, never per call: runtime reads plain floats off this and
+        # never divides by the scale.
+        self._rules_quantities = resolve_rules_quantities(config)
 
         self.renderer = renderer
         self._state_exporters: list[StateExporter] = state_exporters or []
@@ -287,6 +293,11 @@ class WargameEnv(gym.Env):
     def terrain(self) -> "Terrain":
         """Read-only access to terrain footprints."""
         return self._battle.terrain
+
+    @property
+    def rules_quantities(self) -> RulesQuantities:
+        """Rules distances in board units, resolved once at construction."""
+        return self._rules_quantities
 
     @property
     def player_max_ranges(self) -> np.ndarray:
@@ -589,7 +600,7 @@ class WargameEnv(gym.Env):
             player_advanced=np.array(
                 [m.advanced_this_turn for m in self.opponent_models]
             ),
-            engagement_range=float(ENGAGEMENT_RANGE),
+            engagement_range=self._rules_quantities.engagement_range,
         )
         return mask
 

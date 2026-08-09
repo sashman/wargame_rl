@@ -10,7 +10,10 @@ import numpy as np
 
 from wargame_rl.wargame.envs.domain.entities import WargameModel
 
-ENGAGEMENT_RANGE = 1  # grid-cell distance for engagement (v3.0 stub)
+# Engagement range is no longer a constant here: it is authored in inches on the
+# config and resolved into board units by `domain.rules_quantities`, so a
+# scenario can state its own and the scale applies to it like any other rules
+# distance. Read it from `BattleView.rules_quantities.engagement_range`.
 
 
 @runtime_checkable

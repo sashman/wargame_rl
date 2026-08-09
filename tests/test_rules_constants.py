@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 import yaml
 
+from wargame_rl.wargame.envs.domain import rules_constants
 from wargame_rl.wargame.envs.domain.shooting import wound_roll_threshold
 
 CONSTANTS_PATH = (
@@ -88,3 +89,42 @@ def test_critical_hit_and_wound_results_are_the_documented_ones(
     assert constants["attack"]["critical_hit_on"] == 6
     assert constants["attack"]["critical_wound_on"] == 6
     assert constants["attack"]["unmodified_1_always_fails"] is True
+
+
+def test_runtime_constants_match_the_specification(constants: dict[str, Any]) -> None:
+    """`domain/rules_constants.py` is the runtime mirror of this YAML.
+
+    The YAML is documentation and is never read at runtime -- no file IO on a hot
+    path, and no packaging problem shipping a data file. The cost of that choice
+    is two copies of every number, so this test is what stops them drifting.
+
+    A value appears in the runtime module only once something reads it. Adding a
+    constant there without adding it here is how the two quietly diverge.
+    """
+    assert (
+        rules_constants.ENGAGEMENT_RANGE_IN == constants["engagement"]["horizontal_in"]
+    )
+    assert rules_constants.COHERENCY_NEAREST_IN == constants["coherency"]["nearest_in"]
+    assert (
+        rules_constants.COHERENCY_FURTHEST_IN == constants["coherency"]["furthest_in"]
+    )
+    assert (
+        rules_constants.MODEL_BASE_DIAMETER_MM
+        == constants["models"]["base_diameter_mm"]
+    )
+    assert (
+        rules_constants.OBJECTIVE_MARKER_RANGE_IN
+        == constants["objectives"]["marker_range_in"]
+    )
+    assert (
+        rules_constants.COVER_RANGED_SKILL_PENALTY
+        == constants["cover"]["ranged_skill_penalty"]
+    )
+    assert rules_constants.BATTLE_ROUNDS == constants["battle"]["rounds"]
+
+
+def test_base_radius_is_half_the_diameter_in_inches() -> None:
+    """The one derived constant, so the derivation cannot rot silently."""
+    expected = rules_constants.MODEL_BASE_DIAMETER_MM / rules_constants.MM_PER_INCH / 2
+    assert rules_constants.MODEL_BASE_RADIUS_IN == expected
+    assert 0.6 < rules_constants.MODEL_BASE_RADIUS_IN < 0.65

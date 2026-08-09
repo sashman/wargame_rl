@@ -9,10 +9,11 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
+from wargame_rl.wargame.envs.domain import rules_constants
 from wargame_rl.wargame.envs.domain.battle_factory import _build_models
 from wargame_rl.wargame.envs.domain.entities import WargameModel
+from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
 from wargame_rl.wargame.envs.domain.shooting import (
-    ENGAGEMENT_RANGE,
     DefenderStats,
     ShootingResult,
     expected_damage,
@@ -254,8 +255,23 @@ class TestResolveShooting:
         if r.unsaved > 0:
             assert r.damage_dealt == r.unsaved * 3
 
-    def test_engagement_range_constant(self) -> None:
-        assert ENGAGEMENT_RANGE == 1
+    def test_engagement_range_default_is_the_env_value_not_the_rules_value(
+        self,
+    ) -> None:
+        """Engagement range moved from a constant to config, at its old value.
+
+        The rules say 2" (`docs/rules/constants.yaml`, `engagement.horizontal_in`)
+        and the environment uses 1. Keeping 1 as the default is what makes the
+        scale mechanism a no-op: every baseline and trained result in the repo
+        was measured at 1, and raising it changes which shots are legal. Adopting
+        the rules value is a scenario change to be measured, not a tidy-up.
+        """
+        config = WargameEnvConfig()
+        assert config.engagement_range == 1.0
+        assert rules_constants.ENGAGEMENT_RANGE_IN == 2.0
+
+        quantities = resolve_rules_quantities(config)
+        assert quantities.engagement_range == 1.0
 
 
 # ---------------------------------------------------------------------------
