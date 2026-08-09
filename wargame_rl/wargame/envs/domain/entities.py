@@ -7,6 +7,13 @@ from typing import TYPE_CHECKING
 import numpy as np
 from gymnasium import spaces
 
+from wargame_rl.wargame.envs.domain.value_objects import (
+    POSITION_DTYPE,
+    Position,
+    position,
+    zero_position,
+)
+
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.reward.types.model_rewards import ModelRewards
 
@@ -25,7 +32,7 @@ class WargameModel:
 
     def __init__(
         self,
-        location: np.ndarray,
+        location: Position,
         stats: dict[str, int],
         distances_to_objectives: np.ndarray,
         group_id: int,
@@ -33,7 +40,7 @@ class WargameModel:
         best_closest_objective_distance: float | None = None,
     ):
         self.location = location
-        self.previous_location: np.ndarray | None = None
+        self.previous_location: Position | None = None
         self.stats = stats
         self.distances_to_objectives = distances_to_objectives
         self.group_id = group_id
@@ -81,10 +88,10 @@ class WargameModel:
     ) -> spaces.Dict:
         """Gymnasium observation space for one model (used by the env facade)."""
         location_space = spaces.Box(
-            low=np.array([0, 0], dtype=np.int32),
-            high=np.array([board_width - 1, board_height - 1], dtype=np.int32),
+            low=zero_position(),
+            high=position(board_width - 1, board_height - 1),
             shape=(2,),
-            dtype=np.int32,
+            dtype=POSITION_DTYPE,
         )
         max_dx = max(board_width, board_height) - 1
         distances_to_objectives_space = spaces.Box(
@@ -127,8 +134,8 @@ def alive_mask_for(models: list[WargameModel]) -> np.ndarray:
 class WargameObjective:
     """Objective (capture target) on the board."""
 
-    def __init__(self, location: np.ndarray, radius_size: int):
-        self.location = location  # numpy array of shape (2,)
+    def __init__(self, location: Position, radius_size: int):
+        self.location = location
         self.radius_size = radius_size  # Radius of the objective in the environment
 
     def __repr__(self) -> str:
@@ -140,10 +147,10 @@ class WargameObjective:
         return spaces.Dict(
             {
                 "location": spaces.Box(
-                    low=np.array([0, 0], dtype=np.int32),
-                    high=np.array([board_width - 1, board_height - 1], dtype=np.int32),
+                    low=zero_position(),
+                    high=position(board_width - 1, board_height - 1),
                     shape=(2,),
-                    dtype=np.int32,
+                    dtype=POSITION_DTYPE,
                 )
             }
         )

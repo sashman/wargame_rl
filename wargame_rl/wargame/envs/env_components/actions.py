@@ -185,6 +185,28 @@ class ActionHandler:
         """Shooting action slice, or None when no shoot targets are registered."""
         return self._shooting_slice
 
+    def decode_shooting_targets(
+        self, action: WargameEnvAction, n_attackers: int
+    ) -> list[tuple[int, int]]:
+        """Read the action tuple as ``(attacker_idx, target_idx)`` shot declarations.
+
+        Only the action *encoding* is interpreted here: entries outside the
+        shooting slice are not shots, and entries past the end of the army have
+        no attacker. Whether a declared shot can actually resolve — the attacker
+        is alive, the target is alive, the model carries a weapon — is a rule,
+        and belongs to `domain.shooting.resolve_shooting_phase`.
+
+        Returns an empty list when this handler registered no shooting slice.
+        """
+        if self._shooting_slice is None:
+            return []
+        start, end = self._shooting_slice.start, self._shooting_slice.end
+        return [
+            (i, act - start)
+            for i, act in enumerate(action.actions)
+            if i < n_attackers and start <= act < end
+        ]
+
     @property
     def registry(self) -> ActionRegistry:
         return self._registry

@@ -58,7 +58,7 @@ Applies to everything under `wargame_rl/wargame/envs/`.
 
 ## Adding Features
 
-1. Config → `WargameEnvConfig` in `types/`
+1. Config → `types/config/` (`entities.py` per-entity, `terrain.py` terrain, `battle.py` turn order/opponent/mission, `env.py` scenario-level). `__init__.py` re-exports, so importers still use `types.config`
 2. Logic → `env_components/`
 3. Obs → `env_observation.py`/`env_info.py` + obs builder
 4. Tensor → `model/common/observation.py`
@@ -67,7 +67,8 @@ Applies to everything under `wargame_rl/wargame/envs/`.
 
 ## Design
 
-- Integer locations; pre-compute expensive ops at `__init__` (numpy vectorized)
+- Integer locations, built through `position()` / `zero_position()` from `domain/value_objects.py` — never a literal `dtype=np.int32`. `POSITION_DTYPE` is the single declaration, so making the board continuous is one edit rather than a hunt; a missed site would truncate silently with no exception and no failing test. (Known drift documented there: a position is int32 from placement and int64 once it has moved, because the displacement table is int64 and numpy promotes.)
+- Pre-compute expensive ops at `__init__` (numpy vectorized)
 - Track rendering state (e.g. `previous_location`) in same change
 - New entities mirror existing patterns; always backward compatible
 - Follow [docs/ddd-envs.md](../../../docs/ddd-envs.md): keep domain logic in `domain/`, use `BattleView` for read-only state, and preserve dependency direction (domain → types only; reward/renders → BattleView)

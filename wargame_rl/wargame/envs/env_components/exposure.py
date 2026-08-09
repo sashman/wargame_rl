@@ -8,9 +8,13 @@ can see you, and in how far the army stays from the nearest ruin.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
+
 import numpy as np
 
+from wargame_rl.wargame.envs.domain.entities import WargameModel, alive_mask_for
 from wargame_rl.wargame.envs.domain.terrain import Footprint
+from wargame_rl.wargame.envs.env_components.shooting_masks import compute_threat_counts
 
 
 def distances_to_nearest_footprint(
@@ -143,3 +147,46 @@ class ExposureTracker:
         if self._their_shooters == 0:
             return None
         return self._our_shooters / self._their_shooters
+
+
+def record_shooting_phase(
+    tracker: ExposureTracker,
+    player_models: Sequence[WargameModel],
+    opponent_models: Sequence[WargameModel],
+    opponent_alive: np.ndarray,
+    player_max_ranges: np.ndarray,
+    opponent_max_ranges: np.ndarray,
+    footprints: list[Footprint],
+    has_los_fn: Callable[[int, int, int, int], bool],
+) -> None:
+    """Sample both sides of the shooting exchange and feed *tracker*.
+
+    Deliberately ignores the engagement-range and advanced gating that the
+    opponent's action mask applies. A shooter in base contact cannot fire at
+    all, so counting that as safety would score a headlong charge as if it were
+    cover -- and cover is the thing being measured.
+
+    One scan yields every direction, so `firepower_ratio` costs nothing on top
+    of `exposure_rate`. Does nothing when either side has no one left alive:
+    there is no exchange to sample, and an empty one would drag the averages.
+    """
+    player_alive = alive_mask_for(list(player_models))
+    if not player_alive.any() or not opponent_alive.any():
+        return
+    player_positions = np.array([m.location for m in player_models])
+    threats = compute_threat_counts(
+        player_positions,
+        np.array([m.location for m in opponent_models]),
+        player_alive,
+        opponent_alive,
+        player_max_ranges,
+        opponent_max_ranges,
+        has_los_fn,
+    )
+    tracker.record(
+        exposed=threats.threat_to_player > 0,
+        alive=player_alive,
+        terrain_distances=distances_to_nearest_footprint(player_positions, footprints),
+        our_shooters=int((threats.player_can_shoot & player_alive).sum()),
+        their_shooters=int((threats.opponent_can_shoot & opponent_alive).sum()),
+    )

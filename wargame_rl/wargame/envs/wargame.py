@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 import gymnasium as gym
@@ -18,14 +17,15 @@ from wargame_rl.wargame.envs.domain.battle_factory import (
 )
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.game_clock import GameClock
-from wargame_rl.wargame.envs.domain.los import has_line_of_sight, iter_los_cells
+from wargame_rl.wargame.envs.domain.los import iter_los_cells
 from wargame_rl.wargame.envs.domain.placement import place_for_episode
 from wargame_rl.wargame.envs.domain.shooting import (
     ENGAGEMENT_RANGE,
-    DefenderStats,
     PairedShootingResult,
-    ShootingResult,
-    resolve_shooting,
+    resolve_shooting_phase,
+)
+from wargame_rl.wargame.envs.domain.sight import (
+    has_line_of_sight_between_cells as resolve_line_of_sight,
 )
 from wargame_rl.wargame.envs.domain.termination import is_battle_over
 from wargame_rl.wargame.envs.domain.terrain import Terrain
@@ -42,14 +42,12 @@ from wargame_rl.wargame.envs.env_components import (
     build_observation,
     compute_distances,
 )
-from wargame_rl.wargame.envs.env_components.actions import ActionSlice
 from wargame_rl.wargame.envs.env_components.exposure import (
     ExposureTracker,
-    distances_to_nearest_footprint,
+    record_shooting_phase,
 )
 from wargame_rl.wargame.envs.env_components.shooting_masks import (
     compute_shooting_masks,
-    compute_threat_counts,
     max_weapon_ranges,
 )
 from wargame_rl.wargame.envs.mission import build_vp_calculator
@@ -65,6 +63,12 @@ from wargame_rl.wargame.envs.reward.phase_manager import (
 )
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.state.exporter import StateExporter
+from wargame_rl.wargame.envs.state.restore import (
+    restore_clock,
+    restore_models,
+    restore_objectives,
+    restore_shooting_results,
+)
 from wargame_rl.wargame.envs.state.snapshot import (
     GameStateSnapshot,
     build_snapshot,
@@ -80,11 +84,7 @@ from wargame_rl.wargame.envs.types import (
     WargameEnvObservation,
 )
 from wargame_rl.wargame.envs.types.config import ModelConfig
-from wargame_rl.wargame.envs.types.game_timing import (
-    BATTLE_PHASE_ORDER,
-    GamePhase,
-    GameState,
-)
+from wargame_rl.wargame.envs.types.game_timing import BATTLE_PHASE_ORDER, GameState
 from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
@@ -329,34 +329,19 @@ class WargameEnv(gym.Env):
         """
         return self._exposure_tracker.firepower_ratio
 
-    def _make_is_blocking(
-        self, x0: int, y0: int, x1: int, y1: int
-    ) -> Callable[[int, int], bool]:
-        """Per-query blocking predicate: static blocking_mask OR membership of any
-        footprint that contains NEITHER endpoint (10e see-out / see-into rule)."""
-        mask = self.config.blocking_mask
-        active = self._battle.terrain.blocking_footprints_for_endpoints(x0, y0, x1, y1)
-
-        def is_blocking(x: int, y: int) -> bool:
-            if mask is not None and mask[y][x]:
-                return True
-            return any(fp.contains(x, y) for fp in active)
-
-        return is_blocking
-
     def has_line_of_sight_between_cells(
         self, x0: int, y0: int, x1: int, y1: int
     ) -> bool:
         """True if LOS is clear between two cells (symmetric: canonical ordering)."""
-        (ax, ay), (bx, by) = sorted([(x0, y0), (x1, y1)])
-        return has_line_of_sight(
-            ax,
-            ay,
-            bx,
-            by,
+        return resolve_line_of_sight(
+            x0,
+            y0,
+            x1,
+            y1,
             self.board_width,
             self.board_height,
-            self._make_is_blocking(ax, ay, bx, by),
+            self._battle.terrain,
+            self.config.blocking_mask,
         )
 
     def iter_los_cells_between_cells(
@@ -531,56 +516,20 @@ class WargameEnv(gym.Env):
         action: WargameEnvAction,
         attackers: list[WargameModel],
         targets: list[WargameModel],
-        shooting_slice: ActionSlice | None,
+        action_handler: ActionHandler,
         attacker_configs: list[ModelConfig] | None,
     ) -> list[PairedShootingResult]:
-        """Resolve shooting for each model in the action against targets.
+        """Decode the action into shots, then let the domain resolve them.
 
         Returns one PairedShootingResult per model that actually fired.
         """
-        results: list[PairedShootingResult] = []
-        if shooting_slice is None:
-            return results
-        for i, act in enumerate(action.actions):
-            if i >= len(attackers):
-                continue
-            attacker = attackers[i]
-            if not attacker.is_alive:
-                continue
-            if not (shooting_slice.start <= act < shooting_slice.end):
-                continue
-            target_idx = act - shooting_slice.start
-            if target_idx >= len(targets) or not targets[target_idx].is_alive:
-                continue
-            weapons = (
-                attacker_configs[i].weapons
-                if attacker_configs and i < len(attacker_configs)
-                else []
-            )
-            if not weapons:
-                continue
-            w = weapons[0]
-            target = targets[target_idx]
-            defender = DefenderStats(
-                toughness=target.stats["toughness"],
-                save=target.stats["save"],
-            )
-            result = resolve_shooting(w, defender, self._combat_rng)
-            killed = False
-            if result.damage_dealt > 0:
-                targets[target_idx].take_damage(result.damage_dealt)
-                # The target was alive at the range check above, so a dead
-                # target here means this shot made the kill.
-                killed = not targets[target_idx].is_alive
-            results.append(
-                PairedShootingResult(
-                    attacker_idx=i,
-                    target_idx=target_idx,
-                    result=result,
-                    killed=killed,
-                )
-            )
-        return results
+        return resolve_shooting_phase(
+            shots=action_handler.decode_shooting_targets(action, len(attackers)),
+            attackers=attackers,
+            targets=targets,
+            attacker_weapons=[cfg.weapons for cfg in attacker_configs or []],
+            rng=self._combat_rng,
+        )
 
     def _apply_player_action(self, action: WargameEnvAction) -> None:
         phase = self._game_clock.state.phase or BattlePhase.movement
@@ -592,7 +541,7 @@ class WargameEnv(gym.Env):
                 action,
                 self.wargame_models,
                 self.opponent_models,
-                self._action_handler.shooting_slice,
+                self._action_handler,
                 self.config.models,
             )
         else:
@@ -645,37 +594,16 @@ class WargameEnv(gym.Env):
         return mask
 
     def _record_exposure(self, opp_alive: np.ndarray) -> None:
-        """Sample both sides of the shooting exchange right now.
-
-        Deliberately ignores the engagement-range and advanced gating that
-        `_opponent_action_mask` applies. A shooter in base contact cannot fire at
-        all, so counting that as safety would score a headlong charge as if it
-        were cover — and cover is the thing being measured.
-
-        One scan yields every direction, so `firepower_ratio` costs nothing on
-        top of `exposure_rate`.
-        """
-        player_alive = alive_mask_for(self.wargame_models)
-        if not player_alive.any() or not opp_alive.any():
-            return
-        player_positions = np.array([m.location for m in self.wargame_models])
-        threats = compute_threat_counts(
-            player_positions,
-            np.array([m.location for m in self.opponent_models]),
-            player_alive,
+        """Sample both sides of the shooting exchange into the exposure tracker."""
+        record_shooting_phase(
+            self._exposure_tracker,
+            self.wargame_models,
+            self.opponent_models,
             opp_alive,
             self._player_max_ranges,
             self._opponent_max_ranges,
+            self.terrain.footprints,
             self.has_line_of_sight_between_cells,
-        )
-        self._exposure_tracker.record(
-            exposed=threats.threat_to_player > 0,
-            alive=player_alive,
-            terrain_distances=distances_to_nearest_footprint(
-                player_positions, self.terrain.footprints
-            ),
-            our_shooters=int((threats.player_can_shoot & player_alive).sum()),
-            their_shooters=int((threats.opponent_can_shoot & opp_alive).sum()),
         )
 
     def _apply_opponent_action(self) -> None:
@@ -695,7 +623,7 @@ class WargameEnv(gym.Env):
                 opp_action,
                 self.opponent_models,
                 self.wargame_models,
-                self._opponent_action_handler.shooting_slice,
+                self._opponent_action_handler,
                 self.config.opponent_models,
             )
         else:
@@ -902,62 +830,16 @@ class WargameEnv(gym.Env):
                 "Invalid snapshot:\n" + "\n".join(f"  - {e}" for e in errors)
             )
 
-        # Clock
-        clock = snapshot.clock
-        self._game_clock.set_state(
-            GamePhase(clock.game_phase),
-            battle_round=clock.battle_round,
-            active_player=(
-                PlayerSide(clock.active_player) if clock.active_player else None
-            ),
-            phase=BattlePhase(clock.battle_phase) if clock.battle_phase else None,
-            total_steps=snapshot.step,
+        restore_clock(self._game_clock, snapshot.clock, snapshot.step)
+        restore_models(self.wargame_models, snapshot.player_models)
+        restore_models(self.opponent_models, snapshot.opponent_models)
+        restore_objectives(self.objectives, snapshot.objectives)
+        self._battle.restore_victory_points(
+            player_vp=snapshot.player_vp,
+            opponent_vp=snapshot.opponent_vp,
+            player_vp_delta=snapshot.player_vp_delta,
+            opponent_vp_delta=snapshot.opponent_vp_delta,
         )
-
-        # Player models
-        for i, ms in enumerate(snapshot.player_models):
-            m = self.wargame_models[i]
-            m.location = np.array(ms.location, dtype=np.int32)
-            m.previous_location = (
-                np.array(ms.previous_location, dtype=np.int32)
-                if ms.previous_location is not None
-                else None
-            )
-            m.stats["current_wounds"] = ms.current_wounds
-            m.advanced_this_turn = ms.advanced_this_turn
-            m.previous_closest_objective_distance = None
-            m.best_closest_objective_distance = None
-            m.model_rewards_history.clear()
-
-        # Opponent models
-        for i, ms in enumerate(snapshot.opponent_models):
-            m = self.opponent_models[i]
-            m.location = np.array(ms.location, dtype=np.int32)
-            m.previous_location = (
-                np.array(ms.previous_location, dtype=np.int32)
-                if ms.previous_location is not None
-                else None
-            )
-            m.stats["current_wounds"] = ms.current_wounds
-            m.advanced_this_turn = ms.advanced_this_turn
-            m.previous_closest_objective_distance = None
-            m.best_closest_objective_distance = None
-            m.model_rewards_history.clear()
-
-        # Objectives
-        for i, os_ in enumerate(snapshot.objectives):
-            self.objectives[i].location = np.array(os_.location, dtype=np.int32)
-
-        # VP. The deltas are restored, not zeroed: `player_vp_delta` is a
-        # feature of the observation the policy acts on (game features, index
-        # 5), so zeroing it here made a loaded state disagree with the live
-        # state it was captured from, and `to_snapshot` round-tripped it to a
-        # different snapshot. Every snapshot carries both, so there is nothing
-        # to reconstruct.
-        self._battle._player_vp = snapshot.player_vp
-        self._battle._opponent_vp = snapshot.opponent_vp
-        self._battle._player_vp_delta = snapshot.player_vp_delta
-        self._battle._opponent_vp_delta = snapshot.opponent_vp_delta
 
         # Env counters
         self.current_turn = snapshot.step
@@ -981,33 +863,12 @@ class WargameEnv(gym.Env):
         else:
             self._last_opponent_action = None
 
-        # Reconstruct combat results as PairedShootingResult stubs
-        self._last_player_shooting_results = [
-            PairedShootingResult(
-                attacker_idx=cr.attacker_idx,
-                target_idx=cr.target_idx,
-                result=ShootingResult(
-                    hits=cr.hits,
-                    wounds=cr.wounds,
-                    unsaved=cr.unsaved,
-                    damage_dealt=cr.damage_dealt,
-                ),
-            )
-            for cr in snapshot.player_combat_results
-        ]
-        self._last_opponent_shooting_results = [
-            PairedShootingResult(
-                attacker_idx=cr.attacker_idx,
-                target_idx=cr.target_idx,
-                result=ShootingResult(
-                    hits=cr.hits,
-                    wounds=cr.wounds,
-                    unsaved=cr.unsaved,
-                    damage_dealt=cr.damage_dealt,
-                ),
-            )
-            for cr in snapshot.opponent_combat_results
-        ]
+        self._last_player_shooting_results = restore_shooting_results(
+            snapshot.player_combat_results
+        )
+        self._last_opponent_shooting_results = restore_shooting_results(
+            snapshot.opponent_combat_results
+        )
 
         # Reward
         self.last_reward = snapshot.reward.total

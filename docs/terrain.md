@@ -242,7 +242,7 @@ For a query from cell `(x0, y0)` to cell `(x1, y1)`:
    - The cell is contained by any active footprint.
 3. Endpoint order is canonicalised (`sorted([(x0,y0),(x1,y1)])`) before the call to `has_line_of_sight`, guaranteeing **symmetry**: `has_los(A, B) == has_los(B, A)`.
 
-The Bresenham core in `domain/los.py` is **untouched** — all terrain logic lives in the seam layer (`wargame.py`) and the domain model (`terrain.py`).
+The Bresenham core in `domain/los.py` is **untouched** — it takes an injectable predicate and knows nothing about terrain. Steps 1–3 above are `domain/sight.py`, which composes that primitive with the domain model (`terrain.py`) and the static mask. `WargameEnv.has_line_of_sight_between_cells` is a one-line delegation to it.
 
 ### See-Into / See-Out Rules
 

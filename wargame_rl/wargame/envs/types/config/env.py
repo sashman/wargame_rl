@@ -1,7 +1,6 @@
-from __future__ import annotations
+"""The environment configuration: the whole scenario in one model."""
 
-from enum import Enum
-from typing import Any, Protocol, TypeVar
+from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -10,260 +9,23 @@ from wargame_rl.wargame.envs.reward.phase import (
     RewardPhaseConfig,
     SuccessCriteriaConfig,
 )
+from wargame_rl.wargame.envs.types.config._validation import (
+    _MAX_TERRAIN_PACKING_FRACTION,
+    _normalise_rect,
+    _rects_overlap,
+    _validate_entity_configs,
+)
+from wargame_rl.wargame.envs.types.config.battle import (
+    MissionConfig,
+    OpponentPolicyConfig,
+    TurnOrder,
+)
+from wargame_rl.wargame.envs.types.config.entities import ModelConfig, ObjectiveConfig
+from wargame_rl.wargame.envs.types.config.terrain import (
+    RandomTerrainConfig,
+    TerrainPieceConfig,
+)
 from wargame_rl.wargame.envs.types.game_timing import NON_MOVEMENT_PHASES, BattlePhase
-
-
-class _HasCoords(Protocol):
-    x: int | None
-    y: int | None
-
-
-_CoordsT = TypeVar("_CoordsT", bound=_HasCoords)
-
-
-def _validate_coords_both_or_neither(x: int | None, y: int | None) -> None:
-    """Raise if exactly one of x, y is None."""
-    if (x is None) != (y is None):
-        raise ValueError("x and y must both be set or both be None")
-
-
-def _validate_entity_configs(
-    count: int,
-    configs: list[_CoordsT] | None,
-    board_width: int,
-    board_height: int,
-    entity_name: str,
-) -> None:
-    """Validate entity list length, all-or-none coords, and in-bounds for fixed positions."""
-    if configs is None:
-        return
-    if len(configs) != count:
-        raise ValueError(
-            f"{entity_name} has {len(configs)} entries but expected {count}"
-        )
-    has_coords = [c.x is not None for c in configs]
-    if any(has_coords) and not all(has_coords):
-        raise ValueError(f"Either all {entity_name} must have x/y coordinates or none")
-    for i, c in enumerate(configs):
-        if (
-            c.x is not None
-            and c.y is not None
-            and (c.x >= board_width or c.y >= board_height)
-        ):
-            raise ValueError(
-                f"{entity_name}[{i}] ({c.x}, {c.y}) is outside "
-                f"the board ({board_width}x{board_height})"
-            )
-
-
-def _normalise_rect(r: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
-    x0, y0, x1, y1 = r
-    return (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
-
-
-# Rejection sampling for random terrain slows sharply as the board fills, so
-# layouts are rejected at config load well before that point.
-_MAX_TERRAIN_PACKING_FRACTION = 0.5
-
-
-def _rects_overlap(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
-    ax0, ay0, ax1, ay1 = a
-    bx0, by0, bx1, by1 = b
-    return ax0 <= bx1 and bx0 <= ax1 and ay0 <= by1 and by0 <= ay1
-
-
-class TurnOrder(str, Enum):
-    """Who moves first each turn."""
-
-    player = "player"
-    opponent = "opponent"
-    random = "random"
-
-
-class OpponentPolicyConfig(BaseModel):
-    """Configuration for the opponent policy engine."""
-
-    type: str = Field(
-        description="Policy engine identifier, e.g. 'random', 'scripted_advance_to_objective'."
-    )
-    params: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Policy-specific parameters forwarded to the policy constructor.",
-    )
-
-
-class MissionConfig(BaseModel):
-    """Configuration for the mission (victory point scoring rules)."""
-
-    type: str = Field(
-        default="default",
-        description="Mission type identifier; selects the VP calculator (e.g. 'default', 'none').",
-    )
-    params: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Mission-specific parameters (e.g. vp_per_objective, cap_per_turn, min_round).",
-    )
-
-
-class WeaponProfile(BaseModel):
-    """Weapon stat block with range and resolution stats."""
-
-    range: int = Field(gt=0, description="Maximum range in grid cells")
-    attacks: int = Field(
-        default=2, gt=0, description="Number of hit rolls per shooting action"
-    )
-    ballistic_skill: int = Field(
-        default=3, ge=2, le=6, description="D6 roll needed to hit (e.g. 3 means 3+)"
-    )
-    strength: int = Field(
-        default=4, gt=0, description="For wound roll comparison vs target toughness"
-    )
-    ap: int = Field(
-        default=1,
-        ge=0,
-        description="Armour penetration (worsens target save by this amount)",
-    )
-    damage: int = Field(default=1, gt=0, description="Wounds inflicted per failed save")
-
-
-class ModelConfig(BaseModel):
-    """Per-model configuration (position, group, stats, etc.).
-
-    When *x* and *y* are provided the model is placed at that exact cell;
-    otherwise it is placed randomly in the deployment zone.
-    """
-
-    x: int | None = Field(
-        default=None,
-        ge=0,
-        description="X coordinate on the board. If None, placed randomly.",
-    )
-    y: int | None = Field(
-        default=None,
-        ge=0,
-        description="Y coordinate on the board. If None, placed randomly.",
-    )
-    group_id: int = Field(default=0, ge=0, description="Group this model belongs to")
-    max_wounds: int = Field(default=1, gt=0)
-    toughness: int = Field(default=3, gt=0, description="Wound roll comparison stat")
-    save: int = Field(
-        default=4,
-        ge=2,
-        le=7,
-        description="Base armour save (e.g. 4 means 4+, 7 means no armour)",
-    )
-    weapons: list[WeaponProfile] = Field(
-        default_factory=list,
-        description="Weapon profiles. Empty = cannot shoot.",
-    )
-
-    @model_validator(mode="after")
-    def coords_both_or_neither(self) -> "ModelConfig":
-        _validate_coords_both_or_neither(self.x, self.y)
-        return self
-
-
-class TerrainPieceConfig(BaseModel):
-    """Configuration for a single terrain piece (axis-aligned rectangle)."""
-
-    footprint: tuple[int, int, int, int] = Field(
-        description="Bounding rectangle (x0, y0, x1, y1) in grid cells."
-    )
-
-
-class TerrainMapConfig(BaseModel):
-    """A named fixed terrain layout, stored on its own in `configs/evaluation/maps/`.
-
-    Kept out of `WargameEnvConfig` deliberately. A map is meant to be swapped
-    onto an *existing* scenario — `just measure-maps` overrides `terrain` on the
-    golden config once per map — so that final evaluation runs the same reward,
-    opponent and force composition the agent was trained under. A config per map
-    would duplicate a 13 KB scenario N times and let evaluation drift from
-    training the first time a reward term changed.
-    """
-
-    name: str = Field(description="Map identifier, used as the row label.")
-    terrain: list[TerrainPieceConfig] = Field(
-        description="The layout's pieces. Replaces the scenario's own terrain."
-    )
-
-
-class RandomTerrainConfig(BaseModel):
-    """Regenerate terrain footprints randomly at the start of every episode.
-
-    The piece *count* is fixed while size and position vary. This is a hard
-    constraint, not a simplification: `observations_to_tensor_batch` stacks the
-    terrain arrays of a whole batch with `np.stack`, so a batch containing
-    episodes with different piece counts cannot be collated.
-
-    Randomising terrain is what makes a cover result falsifiable. With a fixed
-    layout a policy can memorise a handful of rectangles; with a fresh layout
-    every episode it has to read the terrain tokens in the observation.
-    """
-
-    count: int = Field(
-        gt=0,
-        default=7,
-        description="Number of terrain pieces. Constant across episodes.",
-    )
-    min_size: int = Field(
-        gt=0, default=5, description="Minimum footprint side length in cells."
-    )
-    max_size: int = Field(
-        gt=0, default=7, description="Maximum footprint side length in cells."
-    )
-    mirror: bool = Field(
-        default=True,
-        description="Mirror the layout across the vertical centre line. Deployment "
-        "zones are fixed to the left and right of the board, so an asymmetric "
-        "random layout would systematically favour one side.",
-    )
-    edge_margin: int = Field(
-        ge=0, default=2, description="Keep footprints this far from the board edge."
-    )
-    min_gap: int = Field(
-        ge=0,
-        default=1,
-        description="Minimum clear cells between two footprints. 0 lets them touch.",
-    )
-
-    @model_validator(mode="after")
-    def sizes_ordered(self) -> "RandomTerrainConfig":
-        """Reject an inverted size range."""
-        if self.min_size > self.max_size:
-            raise ValueError(
-                f"min_size ({self.min_size}) must not exceed max_size ({self.max_size})"
-            )
-        return self
-
-
-class ObjectiveConfig(BaseModel):
-    """Per-objective configuration (position, radius, etc.).
-
-    When *x* and *y* are provided the objective is placed at that exact cell;
-    otherwise it is placed randomly outside the deployment zone.
-    """
-
-    x: int | None = Field(
-        default=None,
-        ge=0,
-        description="X coordinate on the board. If None, placed randomly.",
-    )
-    y: int | None = Field(
-        default=None,
-        ge=0,
-        description="Y coordinate on the board. If None, placed randomly.",
-    )
-    radius_size: int | None = Field(
-        default=None,
-        gt=0,
-        description="Override the global objective_radius_size for this objective",
-    )
-
-    @model_validator(mode="after")
-    def coords_both_or_neither(self) -> "ObjectiveConfig":
-        _validate_coords_both_or_neither(self.x, self.y)
-        return self
 
 
 def _default_reward_phases() -> list[RewardPhaseConfig]:
