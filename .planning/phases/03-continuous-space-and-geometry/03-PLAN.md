@@ -56,8 +56,11 @@ it:
 - `np.rint` on the displacement table collapsed **96 movement actions to 80 distinct
   outcomes**, and made a "speed 1" diagonal move travel 1.41 — 41% further than a speed 1
   orthogonal one.
-- `.astype(int)` in the observation builder truncated the vector-to-objective — the single
-  most informative feature the policy has — to whole units.
+- `.astype(int)` in the observation builder truncates the vector-to-objective — the single
+  most informative feature the policy has — to whole units. *Note (2026-08-09): this costs
+  nothing while positions are integers, because the deltas are already `int32`. It becomes
+  a real loss only once positions are continuous, so it is a consequence of WP-3 rather
+  than an independent defect.*
 
 And the long-running cover question ("can the agent use terrain?") was never fairly asked:
 until this work there was no cover rule at all, and terrain reached the network as a
@@ -98,8 +101,8 @@ Lift these approaches directly — they were measured, not assumed.
 
 ## Work packages
 
-Ordered by dependency. WP-0 and WP-1 are independent of everything else and can ship on
-their own.
+Ordered by dependency. **WP-1 is independent and can ship on its own; WP-0 is not** —
+see the correction under it.
 
 ### WP-0 — Delete the two quantisations
 
