@@ -76,6 +76,13 @@ reward_phases:
 | `type` | string | *required* | Registry key identifying the criteria class |
 | `params` | dict | `{}` | Keyword arguments forwarded to the criteria constructor |
 
+> **A misspelled field is an error, not a default.** Every config model sets
+> `extra="forbid"`, so `wieght: 1.0` fails to load rather than quietly leaving the
+> weight at 1.0 — which is how an arm ends up not measuring what its config says.
+> The strictness stops at `params`: its contents are free-form by design, because
+> each registry entry defines its own keys, and they are validated by the
+> calculator that receives them.
+
 ## Available Reward Calculators
 
 | Type key | Scope | Parameters | Description |
