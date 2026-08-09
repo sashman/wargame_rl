@@ -22,19 +22,42 @@ def tf32_is_available() -> bool:
     return bool(torch.cuda.get_device_capability() >= _TF32_MIN_CAPABILITY)
 
 
-def configure_matmul_precision(*, enabled: bool = True) -> bool:
+def configure_matmul_precision(*, enabled: bool = False) -> bool:
     """Enable TF32 matmuls when the device supports them. Returns what was set.
 
-    Worth 1.34x on the PPO update on an RTX 4090 (45.8 -> 34.2 ms per
-    minibatch), measured with `scripts/measure_throughput.py`'s methodology on
-    the real network.
+    **Off by default: TF32 costs ~8.5 vp_margin on 25v25.** Measured 2026-08-09
+    on `configs/golden/25v25_shooting_opponent.yaml`, two seeds, n=100 on
+    identical layouts, scored at epoch 1000 on both sides:
 
-    This lowers matmul mantissa precision from 24 bits to 11, so trained results
-    move slightly. That is below every effect size this project can resolve --
-    win rate cannot separate differences under ~7pp and `vp_margin` under
-    ~10 -- but it does mean a run before this setting and a run after are not
-    bit-identical. Environment and reward arithmetic are untouched: they are
-    numpy on the CPU and never reach a tensor core.
+    | seed | TF32 off | TF32 on | delta |
+    |------|----------|---------|-------|
+    | 1    | +30.8    | +21.2   | -9.6  |
+    | 2    | +27.4    | +19.9   | -7.5  |
+
+    Against a `squad_march_shoot` bar of +17.0, that is the difference between
+    beating the bar by 12.1 and beating it by 3.6. The `--no-tf32` control
+    reproduced the pre-TF32 run **bit-identically** (222/222 tensors, max abs
+    diff 0.0, both seeds), so TF32 is the whole of the difference and nothing
+    else in the intervening code touched training.
+
+    This docstring previously claimed the effect was "below every effect size
+    this project can resolve". That was reasoned from the mantissa drop (24 bits
+    to 11) and the speedup benchmark, never measured against a trained result.
+    It is wrong: 8.5 vp is at the resolution limit, not beneath it, and it is
+    signed the same way on both seeds. Note win rate *would* have missed it
+    (0.705 -> 0.65, inside the ~7pp win-rate limit) -- read `vp_margin`.
+
+    The speed it buys is also smaller than the update benchmark implies: 1.34x
+    on the PPO update alone (45.8 -> 34.2 ms per minibatch) is only **17.8%** of
+    an epoch end to end (12.95 -> 10.99 s/epoch, same measurement), because the
+    update is one part of an epoch. 18% wall clock for 8.5 vp is a bad trade,
+    which is why this defaults off rather than merely being documented.
+
+    Pass `--tf32` to opt in when throughput matters more than the result --
+    a smoke test, a profiling run, a throughput measurement. Runs differing in
+    this setting are not comparable: reproducing a run requires matching it as
+    well as the seed. Environment and reward arithmetic are untouched either
+    way: they are numpy on the CPU and never reach a tensor core.
     """
     if not enabled or not tf32_is_available():
         return False

@@ -192,11 +192,12 @@ def train(
         False,
         help="Disable rollout/PPO tqdm progress bars (e.g. for CI or log redirection)",
     ),
-    no_tf32: bool = typer.Option(
+    tf32: bool = typer.Option(
         False,
         help=(
-            "Keep matmuls at full fp32 precision. TF32 is on by default where "
-            "the GPU supports it (1.34x on the PPO update on an RTX 4090)"
+            "Trade result quality for speed: TF32 matmuls are 17.8% faster end "
+            "to end but cost ~8.5 vp_margin on 25v25 (measured, two seeds). Off "
+            "by default; use for smoke and profiling runs, not for results"
         ),
     ),
     precision: str = typer.Option(
@@ -302,7 +303,7 @@ def train(
     _validate_checkpoint_mode(resume_ckpt_path, warm_start_ckpt_path)
 
     # Process-wide, so it is set before any model is constructed.
-    configure_matmul_precision(enabled=not no_tf32)
+    configure_matmul_precision(enabled=tf32)
     resolved_precision = _resolve_optional_str(precision) or "32-true"
 
     env_config = get_env_config(env_config_path, render_mode)
