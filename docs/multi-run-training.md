@@ -44,6 +44,7 @@ Pass these to `uv run train.py` directly, or as trailing extra arguments to `jus
 - **`--seed`** — Seeds weight init, rollout and eval via `seed_everything`. Omitted, runs are seeded from OS entropy: replicates still differ, but neither is reproducible.
 - **`--lr`** / **`--max-grad-norm`** — Override the PPO learning rate and the gradient-clipping threshold. Measured on `25v25_shooting_opponent.yaml`: clipping binds on **100% of minibatches** at the 0.5 default for a whole run, so `max_grad_norm` — not `lr` — currently sets the effective step size. See [training-throughput.md](training-throughput.md) and `train/grad_clipped_fraction`.
 - **`--no-tf32`** — Keep matmuls at full fp32. TF32 is on by default on sm_80+, and reproducing a run requires matching this flag as well as the seed. See [docs/training-throughput.md](training-throughput.md).
+- **`--eval-every-n-epochs`** — Evaluate every Nth epoch instead of every one; ~16% of wall-clock at N=4. Single-phase configs only (raises on a curriculum config). Arms being compared must share the value.
 - **`--precision`** — Lightning precision, default `32-true`. `bf16-mixed` is 2.4x on the PPO update but its effect on learning is unmeasured; arms must not mix settings.
 
 If `--run-name` is not provided, the base name is generated from training/env metadata: the env config's **`config_name` first**, then algorithm, network type, model/objective counts, board size, phase count, and opponent policy type when present; timestamp and suffix are appended.

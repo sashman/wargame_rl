@@ -87,11 +87,30 @@ class WargameLightningBase(LightningModule, ABC):
         do_log: bool = True,
         n_episodes: int = 10,
         eval_log_prefix: str = "",
+        eval_every_n_epochs: int = 1,
     ):
         super().__init__()
         self.env = env
         self.do_log = do_log
         self.n_episodes = n_episodes
+        if eval_every_n_epochs < 1:
+            raise ValueError(
+                f"eval_every_n_epochs must be >= 1, got {eval_every_n_epochs}"
+            )
+        # Rejected at construction rather than clamped, because a silently
+        # ignored flag would leave a curriculum run looking like it had been
+        # sped up when it had not. `try_advance` counts *consecutive* epochs
+        # above the success threshold, so evaluating every Nth epoch does not
+        # merely coarsen the curve -- it changes which epoch a phase advances
+        # on, and therefore what the run trains.
+        if eval_every_n_epochs > 1 and len(env.phase_manager.phases) > 1:
+            raise ValueError(
+                "eval_every_n_epochs > 1 changes reward-phase advancement on a "
+                f"curriculum config ({len(env.phase_manager.phases)} phases), "
+                "because try_advance counts consecutive epochs above the "
+                "success threshold. Use it only on single-phase configs."
+            )
+        self.eval_every_n_epochs = eval_every_n_epochs
         self.agent = agent
         self.eval_log_prefix = eval_log_prefix
         self.mean_episode_reward = 0.0
@@ -437,8 +456,24 @@ class WargameLightningBase(LightningModule, ABC):
             log_prefix=self.eval_log_prefix,
         )
 
+    def _should_evaluate(self) -> bool:
+        """Whether to run evaluation at the end of the current epoch.
+
+        The final epoch always evaluates, whatever the cadence. Two reasons: a
+        run must not end on a stale score, and `reward/mean_episode_reward` --
+        which `get_checkpoint_callback` monitors -- is only logged from the
+        evaluation path, so the top-k callback needs at least the last epoch to
+        have produced it.
+        """
+        if self.eval_every_n_epochs <= 1:
+            return True
+        max_epochs = getattr(self.trainer, "max_epochs", None)
+        if max_epochs is not None and self.current_epoch + 1 >= max_epochs:
+            return True
+        return bool((self.current_epoch + 1) % self.eval_every_n_epochs == 0)
+
     def on_train_epoch_end(self) -> None:
-        if self.do_log:
+        if self.do_log and self._should_evaluate():
             start = time.perf_counter()
             sr = self.run_episodes(self.n_episodes)
             # Evaluation is a fixed per-epoch tax that grows with `n_episodes`

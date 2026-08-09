@@ -242,6 +242,15 @@ def train(
         None,
         help="Override number of evaluation episodes per epoch (defaults to config value)",
     ),
+    eval_every_n_epochs: int | None = typer.Option(
+        None,
+        help=(
+            "Evaluate every Nth epoch instead of every one. At the 30 episodes "
+            "the seeded recipes use, evaluation is ~22% of a real epoch. "
+            "Single-phase configs only — raises on a curriculum config, where "
+            "it would change reward-phase advancement"
+        ),
+    ),
     gamma: float | None = typer.Option(
         None,
         help="Override PPO discount factor (defaults to PPOConfig value)",
@@ -408,6 +417,12 @@ def train(
             ppo_config.n_steps = n_steps
         if n_eval_episodes is not None:
             ppo_config.n_episodes = n_eval_episodes
+        # Resolved rather than compared to None directly: called as a plain
+        # function the parameter still holds Typer's `OptionInfo` sentinel,
+        # which is not None and would be assigned straight into the config.
+        resolved_eval_interval = _resolve_optional_int(eval_every_n_epochs)
+        if resolved_eval_interval is not None:
+            ppo_config.eval_every_n_epochs = resolved_eval_interval
         if gamma is not None:
             ppo_config.gamma = gamma
         if ent_coef is not None:

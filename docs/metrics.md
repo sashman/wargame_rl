@@ -50,6 +50,15 @@ different episodes and need not agree.
 ever be a multiple of 10. **A change from 80% to 90% is one episode.** Do not read
 single-epoch movements as signal; require a trend across epochs.
 
+### Episode cadence
+
+Evaluation runs every epoch by default. `--eval-every-n-epochs N` runs it every Nth
+instead, which is worth ~16% of wall-clock at N=4 because evaluation is ~22% of a real
+epoch and sits outside `perf/epoch_s`. Two consequences for reading the curves: every
+`eval/*` series becomes N times sparser, and the final epoch always evaluates
+regardless of cadence, so the last point is never stale. It is rejected on curriculum
+configs — see [reward-phases.md](reward-phases.md) § Advancement.
+
 Eval seeds are **fixed across epochs** (`EVAL_SEED_BASE`, `lightning_base.py:27`), and held out
 from both the training and baseline seed ranges. So an epoch-to-epoch move is attributable to
 the policy rather than to which maps were drawn — but the absolute level belongs to those
