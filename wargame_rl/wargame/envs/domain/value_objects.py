@@ -16,11 +16,13 @@ import numpy.typing as npt
 # into an int one truncates *silently*, with no exception and no failing test,
 # so a missed site would be invisible.
 #
-# Known drift, deliberately left alone: a position is int32 when placement
-# builds it and int64 once it has moved, because the displacement table in
-# `env_components/actions.py` is int64 and numpy promotes. Values are
-# unaffected (coordinates are small) and the observation is float downstream.
-# Fixing it belongs with the change that makes displacements exact, not here.
+# Construction is not the only way to get the dtype wrong -- *arithmetic* is.
+# A position was int32 from placement and int64 from its first move onward,
+# because three things in `env_components/actions.py` widened it: an int64
+# displacement table, an int64 STAY displacement, and `np.clip` bounds passed
+# as python lists. Anything combined with a position has to carry this dtype
+# too, and `test_positions_keep_the_declared_dtype_through_a_whole_episode`
+# pins the result across a whole episode.
 POSITION_DTYPE: Final = np.int32
 
 # A board coordinate pair, shape (2,).

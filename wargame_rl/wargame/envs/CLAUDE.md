@@ -67,7 +67,7 @@ Applies to everything under `wargame_rl/wargame/envs/`.
 
 ## Design
 
-- Integer locations, built through `position()` / `zero_position()` from `domain/value_objects.py` — never a literal `dtype=np.int32`. `POSITION_DTYPE` is the single declaration, so making the board continuous is one edit rather than a hunt; a missed site would truncate silently with no exception and no failing test. (Known drift documented there: a position is int32 from placement and int64 once it has moved, because the displacement table is int64 and numpy promotes.)
+- Integer locations, built through `position()` / `zero_position()` from `domain/value_objects.py` — never a literal `dtype=np.int32`. `POSITION_DTYPE` is the single declaration, so making the board continuous is one edit rather than a hunt; a missed site would truncate silently with no exception and no failing test. **Arithmetic widens too** — anything added to or clipped against a position must carry `POSITION_DTYPE`. A location used to become int64 on its first move via three separate int64 sources in `actions.py` (displacement table, STAY displacement, python-list `np.clip` bounds); `test_positions_keep_the_declared_dtype_through_a_whole_episode` now pins it
 - Pre-compute expensive ops at `__init__` (numpy vectorized)
 - Track rendering state (e.g. `previous_location`) in same change
 - New entities mirror existing patterns; always backward compatible

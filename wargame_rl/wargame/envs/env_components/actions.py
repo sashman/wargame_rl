@@ -1,7 +1,7 @@
 """Action space and application for the wargame environment.
 
 Polar coordinate movement: each model picks an (angle, speed) pair or stays
-still.  The continuous displacement is rounded to the nearest integer cell so
+still. The continuous displacement is rounded to the nearest integer cell so
 that locations remain on the discrete grid.
 
 The ``ActionRegistry`` partitions the flat action space into contiguous slices
@@ -17,6 +17,11 @@ from typing import Any
 import numpy as np
 from gymnasium import spaces
 
+from wargame_rl.wargame.envs.domain.value_objects import (
+    POSITION_DTYPE,
+    position,
+    zero_position,
+)
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
@@ -149,12 +154,18 @@ class ActionHandler:
         self._speeds = speeds  # (n_speeds,)
 
         # Pre-compute the integer displacement for every (angle, speed) pair.
-        # _displacements[angle_idx, speed_idx] -> (dx, dy) as int
+        # _displacements[angle_idx, speed_idx] -> (dx, dy) as POSITION_DTYPE.
+        #
+        # The dtype matters as much as the rounding. A displacement is added to
+        # a location, so a wider one silently widens every location on the
+        # board: this was `dtype=int` (int64), which made a model's position
+        # int32 from placement and int64 from its first move onward, disagreeing
+        # with the int32 the observation space advertises.
         raw = (
             self._unit_directions[:, np.newaxis, :]
             * self._speeds[np.newaxis, :, np.newaxis]
         )  # (n_angles, n_speeds, 2)
-        self._displacements: np.ndarray = np.rint(raw).astype(int)
+        self._displacements: np.ndarray = np.rint(raw).astype(POSITION_DTYPE)
 
         self._n_move_actions = n_angles * n_speeds
         self._n_speed_bins = n_speeds
@@ -241,7 +252,7 @@ class ActionHandler:
     def _decode_action(self, action: int) -> np.ndarray:
         """Return the integer (dx, dy) displacement for *action*."""
         if action == STAY_ACTION:
-            return np.array([0, 0], dtype=int)
+            return zero_position()
         move_idx = action - 1
         angle_idx = move_idx // self._n_speed_bins
         speed_idx = move_idx % self._n_speed_bins
@@ -304,6 +315,10 @@ class ActionHandler:
         enforces that for a learned policy, but scripted policies bypass the
         mask, so honouring `phase` here keeps them on the same footing.
         """
+        # Hoisted, and typed: python-list bounds become int64 arrays, so passing
+        # them to `np.clip` would widen the result whatever the inputs are.
+        lower = zero_position()
+        upper = position(board_width - 1, board_height - 1)
         for i, act in enumerate(action.actions):
             model = wargame_models[i]
             if not model.is_alive:
@@ -321,8 +336,4 @@ class ActionHandler:
                 continue
             model.previous_location = model.location.copy()
             displacement = self._decode_action(act)
-            model.location = np.clip(
-                model.location + displacement,
-                [0, 0],
-                [board_width - 1, board_height - 1],
-            )
+            model.location = np.clip(model.location + displacement, lower, upper)
