@@ -34,7 +34,7 @@ On the control config that is **23.2 s → 4.6 s** of environment time per
 ## Measuring
 
 ```
-just measure-throughput examples/env_config/25v25_single_phase.yaml [n_steps] [engaged]
+just measure-throughput configs/golden/25v25_single_phase.yaml [n_steps] [engaged]
 ```
 
 Reports the per-section and per-calculator split of `env.step()`, `reset()`, and

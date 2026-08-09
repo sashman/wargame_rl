@@ -208,12 +208,12 @@ The bug is conservative here: s2 at a true epoch 1000 would if anything score hi
 ## 7. Reproducing
 
 ```
-just measure-baselines examples/env_config/25v25_beat_share.yaml 100 "" 700000
-just measure-checkpoint <ckpt> examples/env_config/25v25_beat_share.yaml 100
-just measure-objective-split <ckpt> examples/env_config/25v25_beat_share.yaml 100
-just train-seed 1000 1 <group> examples/env_config/25v25_beat_share.yaml
+just measure-baselines configs/25v25_beat_share.yaml 100 "" 700000
+just measure-checkpoint <ckpt> configs/25v25_beat_share.yaml 100
+just measure-objective-split <ckpt> configs/25v25_beat_share.yaml 100
+just train-seed 1000 1 <group> configs/25v25_beat_share.yaml
 ```
 
-Arms: `examples/env_config/25v25_beat_{share,share_soft}.yaml`, both one line different from
+Arms: `configs/25v25_beat_{share,share_soft}.yaml`, both one line different from
 `25v25_beat_observe.yaml`. Control: the `observe` runs, not retrained (training is
 deterministic given seed + config + code).

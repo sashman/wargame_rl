@@ -5,7 +5,7 @@ Applies to everything under `wargame_rl/wargame/envs/`.
 ## Structure
 
 - `WargameEnv` extends `gymnasium.Env`; typed obs/action/info/config (all Pydantic)
-- Config: `WargameEnvConfig` (pydantic-yaml) from `examples/env_config/`
+- Config: `WargameEnvConfig` (pydantic-yaml) from `configs/`
 - Actions: polar (angle, speed) pairs per model via `ActionHandler(config, n_models=..., n_shoot_targets=...)`; a `shooting` slice is registered only when `n_shoot_targets > 0`
   - `ActionHandler.best_action_toward(dx, dy, max_step_length=None)` for scripted policies; never hardcode action counts — use `ActionHandler.n_actions`
 - `DistanceCache` pre-computes model-objective distances each step; `min_distances_to_same_group` is vectorised and its `.min()` is a *selection*, so a `where(..., inf).min(axis=1)` rewrite stays bit-identical

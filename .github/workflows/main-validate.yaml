@@ -26,7 +26,7 @@ jobs:
               - 'uv.lock'
               - '.github/workflows/**'
               - 'Justfile'
-              - 'examples/env_config/**'
+              - 'configs/**'
 
   lint:
     needs: changes

@@ -17,9 +17,7 @@ def test_training_smoke() -> None:
         sys.path.insert(0, project_root)
     from train import train
 
-    env_config_path = os.path.join(
-        project_root, "examples", "env_config", "ci_smoke.yaml"
-    )
+    env_config_path = os.path.join(project_root, "configs", "dev", "ci_smoke.yaml")
 
     train(
         render_mode=None,

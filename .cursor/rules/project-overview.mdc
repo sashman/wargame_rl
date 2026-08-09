@@ -50,7 +50,7 @@ Reinforcement learning project that trains agents (PPO) to play tabletop wargame
 - `wargame_rl/wargame/model/common/` — Shared: factory, observation, layers, argmax agent, device, wandb, callbacks
 - `wargame_rl/wargame/model/net.py` — RL_Network base, TransformerNetwork
 - `wargame_rl/wargame/types.py` — `Experience`
-- `examples/env_config/` — YAML env configs
+- `configs/` — YAML env configs
 - `tests/` — Pytest suite, fixtures in `conftest.py`
 - `docs/` — design docs (DDD in envs: `docs/ddd-envs.md`)
 - `train.py` / `simulate.py` / `main.py` — entry points

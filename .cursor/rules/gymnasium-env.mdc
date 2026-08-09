@@ -9,7 +9,7 @@ alwaysApply: false
 ## Structure
 
 - `WargameEnv` extends `gymnasium.Env`; typed obs/action/info/config (all Pydantic)
-- Config: `WargameEnvConfig` (pydantic-yaml) from `examples/env_config/`
+- Config: `WargameEnvConfig` (pydantic-yaml) from `configs/`
 - Actions: polar (angle, speed) pairs per model via `ActionHandler(n_models=...)`
   - `ActionHandler.best_action_toward(dx, dy)` for scripted policies; never hardcode action counts — use `ActionHandler.n_actions`
 - `DistanceCache` pre-computes model-objective distances each step

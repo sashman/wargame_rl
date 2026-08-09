@@ -39,7 +39,7 @@ LIVE_DOC_GLOBS = ("docs/*.md",)
 # `reports/` and `.planning/` are dated records of what was believed at the
 # time. Editing them to match new code destroys their only value, so they are
 # never reported as drift.
-FROZEN_PREFIXES = ("reports/", ".planning/", "examples/")
+FROZEN_PREFIXES = ("reports/", ".planning/", "configs/")
 
 # Names too generic to implicate a doc on their own -- they appear in prose,
 # or are language literals that survive the CamelCase test in

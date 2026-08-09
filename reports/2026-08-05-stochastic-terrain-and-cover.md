@@ -234,11 +234,11 @@ already suspected. Batch 3 runs two seeds per arm.
 they are tagged, not lost:
 
 ```bash
-git checkout batch-1-2-configs -- examples/env_config/
+git checkout batch-1-2-configs -- configs/
 ```
 
 ```bash
-just measure-baselines examples/env_config/25v25_stochastic_terrain_shooting.yaml 30 "" 700000
-just measure-checkpoint <ckpt> examples/env_config/25v25_stochastic_terrain_shooting.yaml 30 record
+just measure-baselines configs/25v25_stochastic_terrain_shooting.yaml 30 "" 700000
+just measure-checkpoint <ckpt> configs/25v25_stochastic_terrain_shooting.yaml 30 record
 just run-summary ttmerrnr 50
 ```

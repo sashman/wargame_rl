@@ -1,0 +1,7 @@
+The real table layouts go here, one file per map:
+
+    name: table_01
+    terrain:
+      - { footprint: [12, 8, 18, 14] }
+
+Read by `just measure-maps`. See ../../README.md.

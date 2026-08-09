@@ -81,7 +81,7 @@ def test_arms_of_one_batch_get_distinct_run_names(config_names: list[str]) -> No
     Nothing raises: both processes write to the same path, and whichever saves
     last owns the "best" checkpoint for every arm in the batch.
     """
-    root = Path("examples/env_config")
+    root = Path("configs") / "golden"
     names = {
         _build_default_run_base_name(
             parse_yaml_raw_as(WargameEnvConfig, (root / name).read_text())

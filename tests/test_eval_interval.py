@@ -25,9 +25,9 @@ from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.ppo.lightning import PPOLightning
 from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
 
-CONFIG_DIR = Path(__file__).parents[1] / "examples" / "env_config"
-SINGLE_PHASE = "25v25_shooting_opponent.yaml"
-CURRICULUM = "4v4_scripted_opponent_fixed_objectives_2_reward_phases.yaml"
+CONFIG_DIR = Path(__file__).parents[1] / "configs"
+SINGLE_PHASE = "golden/25v25_shooting_opponent.yaml"
+CURRICULUM = "dev/4v4_two_phases.yaml"
 
 
 def _env(config_name: str) -> WargameEnv:

@@ -23,7 +23,7 @@
 > `win_at_the_end` meant anything about play.
 
 **Date:** 2026-08-04
-**Config:** `examples/env_config/25v25_scripted_opponent_random_objectives_3_reward_phases_terrain.yaml`
+**Config:** `configs/25v25_scripted_opponent_random_objectives_3_reward_phases_terrain.yaml`
 **Algorithm:** PPO + TransformerNetwork (6.51M params), 25v25, 3 random objectives, 20 rounds
 (`max_turns = 40`), 7 terrain pieces, scripted advancing opponent
 **Branch / PR:** `feature/25v25-terrain-config` — [#127](https://github.com/sashman/wargame_rl/pull/127)
