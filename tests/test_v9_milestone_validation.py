@@ -106,6 +106,7 @@ class TestEndToEndPipeline:
 
         # 1. Reset and capture initial snapshot
         env.reset(seed=42)
+        env.action_space.seed(42)
         initial_snap = env.to_snapshot()
         assert isinstance(initial_snap, GameStateSnapshot)
 
@@ -183,6 +184,7 @@ class TestEndToEndPipeline:
         )
         env = WargameEnv(config=cfg, state_exporters=[exporter])
         env.reset(seed=7)
+        env.action_space.seed(7)
 
         snapshots: list[GameStateSnapshot] = [env.to_snapshot()]
         for _ in range(15):
@@ -216,6 +218,7 @@ class TestAnalyzeMatch:
     ) -> list[GameStateSnapshot]:
         env = WargameEnv(config=small_env_config)
         env.reset(seed=42)
+        env.action_space.seed(42)
         snaps: list[GameStateSnapshot] = [env.to_snapshot()]
         for _ in range(10):
             action = WargameEnvAction(actions=env.action_space.sample())
@@ -297,6 +300,7 @@ class TestAnalyzeMatch:
     ) -> None:
         env = WargameEnv(config=small_env_config)
         env.reset(seed=1)
+        env.action_space.seed(1)
         result = analyze_match([env.to_snapshot()])
         assert result.steps == 0
 
@@ -313,6 +317,7 @@ class TestRequirementSpotChecks:
         """SGS-01: GameStateSnapshot contains board, entities, clock, VP."""
         env = WargameEnv(config=small_env_config)
         env.reset(seed=1)
+        env.action_space.seed(1)
         snap = env.to_snapshot()
         assert snap.board_width == 20
         assert snap.board_height == 20
@@ -326,6 +331,7 @@ class TestRequirementSpotChecks:
         """SGS-02: Schema version and JSON Schema are available."""
         env = WargameEnv(config=small_env_config)
         env.reset(seed=1)
+        env.action_space.seed(1)
         snap = env.to_snapshot()
         assert snap.schema_version == "1.2"
         schema = GameStateSnapshot.model_json_schema()
@@ -335,6 +341,7 @@ class TestRequirementSpotChecks:
         """SGS-04: JSON encoding and codec registry work."""
         env = WargameEnv(config=small_env_config)
         env.reset(seed=1)
+        env.action_space.seed(1)
         snap = env.to_snapshot()
         json_str = snap.model_dump_json()
         parsed = json.loads(json_str)
@@ -363,6 +370,7 @@ class TestRequirementSpotChecks:
         """SGS-08: load_state() makes env ready for step()."""
         env = WargameEnv(config=small_env_config)
         env.reset(seed=1)
+        env.action_space.seed(1)
         snap = env.to_snapshot()
         env.load_state(snap)
         action = WargameEnvAction(actions=env.action_space.sample())
@@ -373,6 +381,7 @@ class TestRequirementSpotChecks:
         """SGS-09: to_snapshot → load_state → to_snapshot is identical."""
         env = WargameEnv(config=small_env_config)
         env.reset(seed=1)
+        env.action_space.seed(1)
         env.step(WargameEnvAction(actions=env.action_space.sample()))
         snap_a = env.to_snapshot()
         env.load_state(snap_a)
@@ -402,6 +411,7 @@ class TestRequirementSpotChecks:
         """SGS-13: StepNarrator produces text with expected sections."""
         env = WargameEnv(config=small_env_config)
         env.reset(seed=1)
+        env.action_space.seed(1)
         env.step(WargameEnvAction(actions=env.action_space.sample()))
         snap = env.to_snapshot()
         narrator = StepNarrator()
@@ -412,6 +422,7 @@ class TestRequirementSpotChecks:
         """SGS-14: Reward breakdown and phase name in snapshot."""
         env = WargameEnv(config=small_env_config)
         env.reset(seed=1)
+        env.action_space.seed(1)
         env.step(WargameEnvAction(actions=env.action_space.sample()))
         snap = env.to_snapshot()
         assert snap.reward.phase_name is not None
@@ -423,6 +434,7 @@ class TestRequirementSpotChecks:
         """SGS-03: Delta encoding with anchors exists in event log."""
         env, exporter = pipeline_env
         env.reset(seed=42)
+        env.action_space.seed(42)
         for _ in range(8):
             action = WargameEnvAction(actions=env.action_space.sample())
             _, _, t, tr, _ = env.step(action)
@@ -441,6 +453,7 @@ class TestRequirementSpotChecks:
         """SGS-05: Events are append-only and ordered."""
         env, exporter = pipeline_env
         env.reset(seed=42)
+        env.action_space.seed(42)
         prev_len = len(exporter.log)
         for _ in range(5):
             action = WargameEnvAction(actions=env.action_space.sample())
@@ -456,6 +469,7 @@ class TestRequirementSpotChecks:
         """SGS-06: Replay reconstructs any historical state."""
         env, exporter = pipeline_env
         env.reset(seed=42)
+        env.action_space.seed(42)
         live: list[GameStateSnapshot] = [env.to_snapshot()]
         for _ in range(6):
             action = WargameEnvAction(actions=env.action_space.sample())
@@ -474,6 +488,7 @@ class TestRequirementSpotChecks:
         """Validation catches out-of-bounds locations."""
         env = WargameEnv(config=small_env_config)
         env.reset(seed=1)
+        env.action_space.seed(1)
         snap = env.to_snapshot()
         bad = snap.model_copy(deep=True)
         bad.player_models[0].location = [999, 999]
