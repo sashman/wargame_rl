@@ -32,6 +32,7 @@ reward/     renders/     state/         env_components/
 wargame_rl/wargame/envs/state/
 ├── __init__.py         # Public API re-exports
 ├── snapshot.py         # GameStateSnapshot model, build_snapshot(), validation, SnapshotEncoder
+├── restore.py          # The read direction: rebuild clock, models, objectives, combat results
 ├── events.py           # StateDelta, ResetEvent, StepEvent, compute_delta(), apply_delta()
 ├── event_log.py        # EventLog: append-only accumulator with anchor snapshots
 ├── exporter.py         # StateExporter protocol, EventLogExporter
