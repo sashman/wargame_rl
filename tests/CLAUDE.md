@@ -7,6 +7,7 @@ Applies to everything under `tests/`. General testing philosophy lives in the ro
 
 - Pytest + shared fixtures in `conftest.py`; run via `just test`; coverage → `coverage.xml`
 - Fixtures: `n_steps`, `env`, `experiences`, `policy_net` (a bare `TransformerNetwork`), `transformer_net`, `ppo_net`, `ppo_transformer_net`
+- **`full_float32_precision` is autouse and pins `set_float32_matmul_precision("highest")` before every test.** That setting is process-wide and sticky, so one test enabling TF32 changes the arithmetic of everything after it in the same worker — which surfaced as a once-per-16-runs "flake" in `test_transformer_shooting_policy` that is actually a deterministic 25/25 failure under TF32. A test needing another mode sets it itself; the fixture only decides the starting point
 
 ## Rules
 
@@ -16,6 +17,8 @@ Applies to everything under `tests/`. General testing philosophy lives in the ro
 - Type-annotate fixtures and test functions
 - `wargame_rl/wargame/envs/interactive_demo.py` is NOT a test
 - When env default config changes stepping (e.g. `skip_phases`), tests that rely on per-phase or all-phase behaviour must set config explicitly (e.g. `skip_phases=[]` in a shared `_make_env` or in the test)
+- **A randomly-initialised network counts as randomness.** `TransformerNetwork.policy_from_env` seeds nothing, so a test asserting on its outputs needs `torch.manual_seed` — otherwise a failure arrives with weights nobody can reproduce
+- **Before calling a test flaky, check what global state ran before it.** Process-wide torch settings survive across tests in a worker, so an intermittent *numerical* failure is more often a leak than noise. Rank hypotheses by what you can make fail on demand: thread oversubscription was the intuitive answer to the one flake seen here and gave 0 failures in 960 executions, while TF32 reproduced 25/25
 
 ## Test Files
 
