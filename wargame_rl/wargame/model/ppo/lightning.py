@@ -132,6 +132,7 @@ class PPOLightning(WargameLightningBase):
         n_steps: int = 2048,
         num_rollout_envs: int = 0,
         n_episodes: int = 10,
+        eval_every_n_epochs: int = 1,
         show_inner_progress: bool = True,
         **kwargs: Any,
     ) -> None:
@@ -155,9 +156,17 @@ class PPOLightning(WargameLightningBase):
                 collection (must be >= 1). When set to 1, rollout collection is
                 unchanged.
             n_episodes: Number of episodes to run for evaluation
+            eval_every_n_epochs: Evaluate every Nth epoch instead of every one.
+                Single-phase configs only; raises on a curriculum config.
             show_inner_progress: Whether to show tqdm for rollout and PPO minibatch updates
         """
-        super().__init__(env=env, agent=Agent(env), do_log=log, n_episodes=n_episodes)
+        super().__init__(
+            env=env,
+            agent=Agent(env),
+            do_log=log,
+            n_episodes=n_episodes,
+            eval_every_n_epochs=eval_every_n_epochs,
+        )
         self.automatic_optimization = False
         self.save_hyperparameters()
 
