@@ -112,6 +112,31 @@ class Battle:
         self._player_vp_delta = 0
         self._opponent_vp_delta = 0
 
+    def restore_victory_points(
+        self,
+        *,
+        player_vp: int,
+        opponent_vp: int,
+        player_vp_delta: int,
+        opponent_vp_delta: int,
+    ) -> None:
+        """Set victory points outright, for restoring a snapshot.
+
+        Distinct from `add_player_vp` because loading a state is not scoring:
+        the totals are known and must land exactly, not accumulate onto
+        whatever the aggregate happened to hold.
+
+        The deltas are restored rather than zeroed. `player_vp_delta` is a
+        feature of the observation the policy acts on, so zeroing it would make
+        a loaded state disagree with the live state it was captured from and
+        round-trip to a different snapshot. Both are always in the snapshot, so
+        there is nothing to reconstruct.
+        """
+        self._player_vp = player_vp
+        self._opponent_vp = opponent_vp
+        self._player_vp_delta = player_vp_delta
+        self._opponent_vp_delta = opponent_vp_delta
+
     def reset_for_episode(self) -> None:
         """Clear episode state on all models before new placement."""
         self._player_vp = 0

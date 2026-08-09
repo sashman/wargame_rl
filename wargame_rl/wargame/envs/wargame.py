@@ -22,7 +22,6 @@ from wargame_rl.wargame.envs.domain.placement import place_for_episode
 from wargame_rl.wargame.envs.domain.shooting import (
     ENGAGEMENT_RANGE,
     PairedShootingResult,
-    ShootingResult,
     resolve_shooting_phase,
 )
 from wargame_rl.wargame.envs.domain.sight import (
@@ -65,6 +64,12 @@ from wargame_rl.wargame.envs.reward.phase_manager import (
 )
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.state.exporter import StateExporter
+from wargame_rl.wargame.envs.state.restore import (
+    restore_clock,
+    restore_models,
+    restore_objectives,
+    restore_shooting_results,
+)
 from wargame_rl.wargame.envs.state.snapshot import (
     GameStateSnapshot,
     build_snapshot,
@@ -80,11 +85,7 @@ from wargame_rl.wargame.envs.types import (
     WargameEnvObservation,
 )
 from wargame_rl.wargame.envs.types.config import ModelConfig
-from wargame_rl.wargame.envs.types.game_timing import (
-    BATTLE_PHASE_ORDER,
-    GamePhase,
-    GameState,
-)
+from wargame_rl.wargame.envs.types.game_timing import BATTLE_PHASE_ORDER, GameState
 from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
@@ -851,62 +852,16 @@ class WargameEnv(gym.Env):
                 "Invalid snapshot:\n" + "\n".join(f"  - {e}" for e in errors)
             )
 
-        # Clock
-        clock = snapshot.clock
-        self._game_clock.set_state(
-            GamePhase(clock.game_phase),
-            battle_round=clock.battle_round,
-            active_player=(
-                PlayerSide(clock.active_player) if clock.active_player else None
-            ),
-            phase=BattlePhase(clock.battle_phase) if clock.battle_phase else None,
-            total_steps=snapshot.step,
+        restore_clock(self._game_clock, snapshot.clock, snapshot.step)
+        restore_models(self.wargame_models, snapshot.player_models)
+        restore_models(self.opponent_models, snapshot.opponent_models)
+        restore_objectives(self.objectives, snapshot.objectives)
+        self._battle.restore_victory_points(
+            player_vp=snapshot.player_vp,
+            opponent_vp=snapshot.opponent_vp,
+            player_vp_delta=snapshot.player_vp_delta,
+            opponent_vp_delta=snapshot.opponent_vp_delta,
         )
-
-        # Player models
-        for i, ms in enumerate(snapshot.player_models):
-            m = self.wargame_models[i]
-            m.location = np.array(ms.location, dtype=np.int32)
-            m.previous_location = (
-                np.array(ms.previous_location, dtype=np.int32)
-                if ms.previous_location is not None
-                else None
-            )
-            m.stats["current_wounds"] = ms.current_wounds
-            m.advanced_this_turn = ms.advanced_this_turn
-            m.previous_closest_objective_distance = None
-            m.best_closest_objective_distance = None
-            m.model_rewards_history.clear()
-
-        # Opponent models
-        for i, ms in enumerate(snapshot.opponent_models):
-            m = self.opponent_models[i]
-            m.location = np.array(ms.location, dtype=np.int32)
-            m.previous_location = (
-                np.array(ms.previous_location, dtype=np.int32)
-                if ms.previous_location is not None
-                else None
-            )
-            m.stats["current_wounds"] = ms.current_wounds
-            m.advanced_this_turn = ms.advanced_this_turn
-            m.previous_closest_objective_distance = None
-            m.best_closest_objective_distance = None
-            m.model_rewards_history.clear()
-
-        # Objectives
-        for i, os_ in enumerate(snapshot.objectives):
-            self.objectives[i].location = np.array(os_.location, dtype=np.int32)
-
-        # VP. The deltas are restored, not zeroed: `player_vp_delta` is a
-        # feature of the observation the policy acts on (game features, index
-        # 5), so zeroing it here made a loaded state disagree with the live
-        # state it was captured from, and `to_snapshot` round-tripped it to a
-        # different snapshot. Every snapshot carries both, so there is nothing
-        # to reconstruct.
-        self._battle._player_vp = snapshot.player_vp
-        self._battle._opponent_vp = snapshot.opponent_vp
-        self._battle._player_vp_delta = snapshot.player_vp_delta
-        self._battle._opponent_vp_delta = snapshot.opponent_vp_delta
 
         # Env counters
         self.current_turn = snapshot.step
@@ -930,33 +885,12 @@ class WargameEnv(gym.Env):
         else:
             self._last_opponent_action = None
 
-        # Reconstruct combat results as PairedShootingResult stubs
-        self._last_player_shooting_results = [
-            PairedShootingResult(
-                attacker_idx=cr.attacker_idx,
-                target_idx=cr.target_idx,
-                result=ShootingResult(
-                    hits=cr.hits,
-                    wounds=cr.wounds,
-                    unsaved=cr.unsaved,
-                    damage_dealt=cr.damage_dealt,
-                ),
-            )
-            for cr in snapshot.player_combat_results
-        ]
-        self._last_opponent_shooting_results = [
-            PairedShootingResult(
-                attacker_idx=cr.attacker_idx,
-                target_idx=cr.target_idx,
-                result=ShootingResult(
-                    hits=cr.hits,
-                    wounds=cr.wounds,
-                    unsaved=cr.unsaved,
-                    damage_dealt=cr.damage_dealt,
-                ),
-            )
-            for cr in snapshot.opponent_combat_results
-        ]
+        self._last_player_shooting_results = restore_shooting_results(
+            snapshot.player_combat_results
+        )
+        self._last_opponent_shooting_results = restore_shooting_results(
+            snapshot.opponent_combat_results
+        )
 
         # Reward
         self.last_reward = snapshot.reward.total
