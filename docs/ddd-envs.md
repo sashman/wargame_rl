@@ -40,7 +40,8 @@ wargame_rl/wargame/envs/
 ├── state/                     # Snapshots, event log, replay, narration, analysis
 ├── reward/                    # Reward phases, calculators, criteria (use BattleView)
 ├── renders/                   # Pygame etc. (use BattleView)
-├── types/                     # Config, observation/info types, game timing types
+├── types/                     # Shared kernel: config, observation/info types,
+│                              #   game timing, and geometry (see below)
 └── wargame.py                 # WargameEnv: facade that implements BattleView
 ```
 
@@ -76,7 +77,7 @@ The env calls these; it does not reimplement their logic.
 ### Adding a new entity type
 
 1. **Define the entity** in `domain/entities.py` (or a new file under `domain/` if you prefer). Follow the same pattern as `WargameModel` / `WargameObjective`: attributes, `reset_for_episode` if it has episode state, and optionally a `to_space()` for the Gym observation space if the env needs it.
-2. **Add config** in `types/config.py` (e.g. number of X, list of X configs, deployment). Keep new fields optional or default so existing YAML stays valid.
+2. **Add config** in `types/config/` — `entities.py` for a per-entity model, `terrain.py` for terrain, `battle.py` for turn order / opponent / mission, `env.py` for a scenario-level field. Keep new fields optional or default so existing YAML stays valid. `__init__.py` re-exports everything, so importers use `types.config` either way.
 3. **Wire the factory**: in `domain/battle_factory.py`, create instances from config and attach them to the `Battle` (e.g. new list + property). If the aggregate must expose them for observation or rules, add them to `Battle` and to `BattleView`.
 4. **Observation**: if the new entity appears in the Gym observation, extend the observation types in `types/`, then in `env_components/observation_builder.py` add the mapping from `view` to that part of the observation (using `BattleView` so the builder stays view-based).
 5. **Backward compatibility**: if something used to live at envs root, keep a thin re-export from there that imports from `domain`.
@@ -113,8 +114,34 @@ Action space and phase-aware masking live in `env_components/actions.py` (Action
 
 ## Dependency direction
 
-- **Domain** → types (config, game timing). Domain does not import env_components, reward, or renders.
+- **Domain** → types (config, game timing, geometry). Domain does not import env_components, reward, or renders.
 - **Env** → domain, env_components, reward, renders, types. The env is the only place that ties them together.
 - **Reward / Renders** → `BattleView`, types. They do not import the env class or the aggregate; they receive a view.
 
 This keeps the domain stable and testable in isolation, and makes it clear where to add new behaviour (domain vs adapters vs env wiring).
+
+### `types/` is the shared kernel, not just a bag of DTOs
+
+The name undersells it. `types/` is the one package everything else may depend
+on, and it holds value objects with real behaviour, not only data shapes.
+
+**Geometry belongs in `types/`, as `types/geometry.py`.** This is forced rather
+than chosen: `config` has to *validate* shapes — that a polygon is well formed,
+that a terrain piece is not thinner than the line-of-sight sample step — so it
+needs the geometry type, and `types/` cannot import `domain/` without inverting
+the direction above. Putting `Polygon` in `domain/` and importing it from config
+would invert it; a prototype tried exactly that and had to move the module.
+
+The alternative considered was a standalone dependency-free `geometry/` package
+that both `types/` and `domain/` import. It states the intent more clearly and
+costs one directory. It was not taken because `types/` already plays this role —
+`game_timing` exports `BattlePhase` and phase-ordering constants that the domain
+depends on for correctness, not merely for typing — so a second shared-kernel
+package would split the same concept in two. Revisit if `types/` grows a
+dependency that geometry should not inherit.
+
+Positions are the counter-example worth knowing: `Position`, `POSITION_DTYPE`
+and the constructors live in `domain/value_objects.py`, not in `types/`, because
+nothing in `config` builds one. Config carries plain `x`/`y` integers and
+placement turns them into positions. Keep it that way — the whole point of the
+single dtype declaration is that it has one home.

@@ -204,7 +204,7 @@ The `select_action` method receives the list of opponent `WargameModel` instance
 
 ### Policies that shoot
 
-Set the class attribute `shoots = True` on any policy that emits shooting-slice actions. The env only refines that policy's action mask with range, line-of-sight and engagement-range validity when the flag is set, because doing so costs up to `n_opponent × n_player` line-of-sight walks per shooting phase and most policies never fire. Without the flag the mask allows any target and `_resolve_shooting_action` applies the shot unchecked — a policy could shoot through terrain from across the board.
+Set the class attribute `shoots = True` on any policy that emits shooting-slice actions. The env only refines that policy's action mask with range, line-of-sight and engagement-range validity when the flag is set, because doing so costs up to `n_opponent × n_player` line-of-sight walks per shooting phase and most policies never fire. Without the flag the mask allows any target and `domain.shooting.resolve_shooting_phase` applies the shot unchecked — a policy could shoot through terrain from across the board.
 
 Given the flag, honouring `action_mask` is all a policy needs to do to play by the same rules the player does.
 

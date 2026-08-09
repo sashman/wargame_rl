@@ -72,7 +72,7 @@ The player's overlay is applied in `build_observation` (`env_components/observat
 
 The opponent's overlay is built **only for policies that declare `shoots = True`** (see [opponent-policies.md](opponent-policies.md#policies-that-shoot)). It costs up to `n_opponent × n_player` line-of-sight walks per shooting phase, which is not worth paying for the movement-only policies that most configs run.
 
-This masking is the *only* enforcement of shooting legality. `_resolve_shooting_action` re-checks nothing beyond attacker-alive, target-alive, the attacker carrying at least one weapon, and the action falling inside the shooting slice — it trusts the mask for both sides.
+This masking is the *only* enforcement of shooting legality. Resolution re-checks nothing beyond the action falling inside the shooting slice (`ActionHandler.decode_shooting_targets`) and then attacker-alive, target-alive and the attacker carrying at least one weapon (`domain.shooting.resolve_shooting_phase`) — it trusts the mask for both sides.
 
 ### Range Calculation
 
@@ -84,7 +84,7 @@ max_range = max(w.range for w in model_config.weapons)
 
 Models with no weapons (`weapons: []`) have max range 0 and cannot shoot anyone.
 
-Note the asymmetry with resolution: masking uses the *longest*-ranged weapon, while `_resolve_shooting_action` always fires `weapons[0]`. For a multi-weapon model that makes targets between the first weapon's range and the longest weapon's range selectable but resolved with the wrong profile. Single-weapon models — every current config — are unaffected. Multi-weapon targeting is listed under Future Extensions below.
+Note the asymmetry with resolution: masking uses the *longest*-ranged weapon, while `resolve_shooting_phase` always fires `weapons[0]`. For a multi-weapon model that makes targets between the first weapon's range and the longest weapon's range selectable but resolved with the wrong profile. Single-weapon models — every current config — are unaffected. Multi-weapon targeting is listed under Future Extensions below.
 
 ### Line of Sight
 
@@ -131,7 +131,9 @@ else:
 
 ## Shooting Resolution
 
-`_resolve_shooting_action` runs the full attack sequence per firing model via `resolve_shooting(weapon, defender, rng)` in `domain/shooting.py`:
+`_resolve_shooting_action` is a two-line composition: `ActionHandler.decode_shooting_targets` reads the action tuple into `(attacker_idx, target_idx)` pairs, then `domain.shooting.resolve_shooting_phase` filters and resolves them. The decode is action-space knowledge and the filtering is a rule, which is why they sit either side of the domain boundary.
+
+`resolve_shooting_phase` runs the full attack sequence per firing model via `resolve_shooting(weapon, defender, rng)` in the same module:
 
 1. **Hit** — roll `attacks` D6; a roll ≥ `ballistic_skill` hits, unmodified 6 always hits, unmodified 1 always misses.
 2. **Wound** — one D6 per hit against `wound_roll_threshold(strength, toughness)` (same 1-always-fails / 6-always-succeeds rule).
