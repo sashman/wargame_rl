@@ -22,6 +22,10 @@ from wargame_rl.wargame.envs.domain.shooting import (
     resolve_shooting_phase,
     wound_roll_threshold,
 )
+from wargame_rl.wargame.envs.domain.sight import (
+    blocking_predicate_for_query,
+    has_line_of_sight_between_cells,
+)
 from wargame_rl.wargame.envs.domain.termination import (
     check_max_turns_reached,
     is_battle_over,
@@ -37,6 +41,8 @@ __all__ = [
     "BoardDimensions",
     "BattleView",
     "has_line_of_sight",
+    "blocking_predicate_for_query",
+    "has_line_of_sight_between_cells",
     "iter_los_cells",
     "WargameModel",
     "WargameObjective",

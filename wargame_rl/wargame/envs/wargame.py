@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 import gymnasium as gym
@@ -18,13 +17,16 @@ from wargame_rl.wargame.envs.domain.battle_factory import (
 )
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.game_clock import GameClock
-from wargame_rl.wargame.envs.domain.los import has_line_of_sight, iter_los_cells
+from wargame_rl.wargame.envs.domain.los import iter_los_cells
 from wargame_rl.wargame.envs.domain.placement import place_for_episode
 from wargame_rl.wargame.envs.domain.shooting import (
     ENGAGEMENT_RANGE,
     PairedShootingResult,
     ShootingResult,
     resolve_shooting_phase,
+)
+from wargame_rl.wargame.envs.domain.sight import (
+    has_line_of_sight_between_cells as resolve_line_of_sight,
 )
 from wargame_rl.wargame.envs.domain.termination import is_battle_over
 from wargame_rl.wargame.envs.domain.terrain import Terrain
@@ -327,34 +329,19 @@ class WargameEnv(gym.Env):
         """
         return self._exposure_tracker.firepower_ratio
 
-    def _make_is_blocking(
-        self, x0: int, y0: int, x1: int, y1: int
-    ) -> Callable[[int, int], bool]:
-        """Per-query blocking predicate: static blocking_mask OR membership of any
-        footprint that contains NEITHER endpoint (10e see-out / see-into rule)."""
-        mask = self.config.blocking_mask
-        active = self._battle.terrain.blocking_footprints_for_endpoints(x0, y0, x1, y1)
-
-        def is_blocking(x: int, y: int) -> bool:
-            if mask is not None and mask[y][x]:
-                return True
-            return any(fp.contains(x, y) for fp in active)
-
-        return is_blocking
-
     def has_line_of_sight_between_cells(
         self, x0: int, y0: int, x1: int, y1: int
     ) -> bool:
         """True if LOS is clear between two cells (symmetric: canonical ordering)."""
-        (ax, ay), (bx, by) = sorted([(x0, y0), (x1, y1)])
-        return has_line_of_sight(
-            ax,
-            ay,
-            bx,
-            by,
+        return resolve_line_of_sight(
+            x0,
+            y0,
+            x1,
+            y1,
             self.board_width,
             self.board_height,
-            self._make_is_blocking(ax, ay, bx, by),
+            self._battle.terrain,
+            self.config.blocking_mask,
         )
 
     def iter_los_cells_between_cells(

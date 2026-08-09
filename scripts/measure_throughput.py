@@ -32,6 +32,7 @@ from typing import Any
 import numpy as np
 from pydantic_yaml import parse_yaml_raw_as
 
+from wargame_rl.wargame.envs.domain import sight
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
@@ -62,16 +63,19 @@ class _Timings:
         setattr(owner, method, timed)
 
 
-def _instrument_line_of_sight(env: WargameEnv, timings: _Timings) -> None:
+def _instrument_line_of_sight(timings: _Timings) -> None:
     """Time whole LOS queries, not just the predicate's construction.
 
-    `_make_is_blocking` returns a closure that is then called once per cell along
-    the Bresenham line, so timing the factory alone would miss almost all of the
-    cost. Wrapping the returned closure as well makes "line of sight" the real
-    per-query total, and its call count is `los_queries_per_step` — the number
-    that says whether the quadratic LOS scan is worth optimising yet.
+    `blocking_predicate_for_query` returns a closure that is then called once per
+    cell along the Bresenham line, so timing the factory alone would miss almost
+    all of the cost. Wrapping the returned closure as well makes "line of sight"
+    the real per-query total, and its call count is `los_queries_per_step` — the
+    number that says whether the quadratic LOS scan is worth optimising yet.
+
+    Patched on the `sight` module rather than on the env, because the resolver
+    looks the factory up by module-global name at call time.
     """
-    original = env._make_is_blocking
+    original = sight.blocking_predicate_for_query
 
     def timed_factory(*args: Any, **kwargs: Any) -> Any:
         start = time.perf_counter()
@@ -88,7 +92,7 @@ def _instrument_line_of_sight(env: WargameEnv, timings: _Timings) -> None:
 
         return timed_predicate
 
-    env._make_is_blocking = timed_factory  # type: ignore[method-assign]
+    sight.blocking_predicate_for_query = timed_factory  # type: ignore[assignment]
 
 
 def _instrument(env: WargameEnv, timings: _Timings) -> None:
@@ -100,7 +104,7 @@ def _instrument(env: WargameEnv, timings: _Timings) -> None:
     timings.wrap(env.phase_manager, "calculate_reward", "reward")
     timings.wrap(env, "_get_obs", "observation build")
     timings.wrap(env, "_apply_opponent_action", "opponent turn")
-    _instrument_line_of_sight(env, timings)
+    _instrument_line_of_sight(timings)
 
     for phase in env.phase_manager.phases:
         calculators = list(phase.per_model_calculators) + list(phase.global_calculators)

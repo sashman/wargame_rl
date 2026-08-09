@@ -27,7 +27,8 @@ wargame_rl/wargame/envs/
 │   ├── game_clock.py          # Turn/phase/round logic
 │   ├── placement.py           # place_for_episode, placement helpers
 │   ├── termination.py         # is_battle_over, check_max_turns_reached
-│   ├── los.py                 # Grid Bresenham LOS, injectable blocking (terrain)
+│   ├── los.py                 # Grid Bresenham ray + injectable blocking predicate
+│   ├── sight.py               # "Can A see B?": los + terrain + blocking_mask
 │   ├── terrain.py             # Footprint, Terrain (LOS-blocking geometry)
 │   ├── terrain_placement.py   # generate_terrain: random per-episode layouts
 │   ├── shooting.py            # Attack sequence: hit → wound → save → damage
@@ -64,7 +65,8 @@ wargame_rl/wargame/envs/
 - **GameClock**: advance setup/battle phases, rounds, turns; `is_game_over`.
 - **termination**: `is_battle_over(clock, current_turn, max_turns, success_flag, all_eliminated=False)`.
 - **los / terrain**: Bresenham LOS with an injectable blocking predicate; `Terrain` supplies the footprints that block a given query.
-- **shooting**: `resolve_shooting(weapon, defender, rng)` and `expected_damage`, plus `wound_roll_threshold`.
+- **sight**: `has_line_of_sight_between_cells` composes the two — the Bresenham ray, the terrain footprints that contain neither endpoint (the see-out rule), and the static `blocking_mask`. Kept apart from `los.py` so the geometry primitive stays free of game rules, and so the question "can A see B?" has one home when it gains continuous coordinates and a three-state answer for cover.
+- **shooting**: `resolve_shooting(weapon, defender, rng)` and `expected_damage`, plus `wound_roll_threshold`. `resolve_shooting_phase` resolves a whole phase from already-decoded `(attacker_idx, target_idx)` shots — decoding the action tuple is the adapter's job (`ActionHandler.decode_shooting_targets`), because the action-space slice lives in `env_components/`.
 - **turn_execution**: `run_until_player_phase`, `run_after_player_action` (skip phases, run opponent turn, advance clock).
 
 The env calls these; it does not reimplement their logic.
