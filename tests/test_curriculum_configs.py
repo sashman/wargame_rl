@@ -20,7 +20,7 @@ from pydantic_yaml import parse_yaml_raw_as
 from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
 from wargame_rl.wargame.envs.types.config import WargameEnvConfig
 
-CONFIG_ROOT = Path("examples/env_config")
+CONFIG_ROOT = Path("configs") / "golden"
 
 # Each pair is (single-phase control, matching ladder). The invariants below
 # apply to every config; `test_paired_configs_share_a_final_phase` applies to
@@ -38,7 +38,7 @@ CONFIG_PATHS = [
     # the configuration that beat the scripted bar on it. Both single-phase,
     # with no ladder to pair with. The closed experiment arms around them were
     # deleted once their questions were answered -- `git log` on
-    # examples/env_config/ restores any of them.
+    # configs/ restores any of them.
     CONFIG_ROOT / "25v25_cover_control.yaml",
     CONFIG_ROOT / "25v25_shooting_opponent.yaml",
 ]

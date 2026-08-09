@@ -529,15 +529,15 @@ a decode-trained network with a plain argmax sends every model at the same targe
 
 ```bash
 # The bar, on the layouts measure-checkpoint uses
-just measure-baselines examples/env_config/25v25_cover_control.yaml 30 "" 700000
+just measure-baselines configs/golden/25v25_cover_control.yaml 30 "" 700000
 
 # The agent, same layouts -- with and without the decode
-just measure-checkpoint <ckpt>/last.ckpt examples/env_config/25v25_cover_control.yaml 30
-just measure-checkpoint <ckpt>/last.ckpt examples/env_config/25v25_cover_control.yaml 30 "" distinct
+just measure-checkpoint <ckpt>/last.ckpt configs/golden/25v25_cover_control.yaml 30
+just measure-checkpoint <ckpt>/last.ckpt configs/golden/25v25_cover_control.yaml 30 "" distinct
 
 # The screen
 just train-arm 1000 2 beat-2026-08-06 "" "" \
-  examples/env_config/25v25_cover_control.yaml examples/env_config/25v25_beat_spread.yaml
+  configs/golden/25v25_cover_control.yaml configs/25v25_beat_spread.yaml
 just train-arm 1000 2 beat-2026-08-06 "-dt" "--distinct-shooting-targets" \
-  examples/env_config/25v25_cover_control.yaml examples/env_config/25v25_beat_spread.yaml
+  configs/golden/25v25_cover_control.yaml configs/25v25_beat_spread.yaml
 ```

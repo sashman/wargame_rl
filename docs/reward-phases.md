@@ -123,7 +123,7 @@ Five rules, all learned by measurement rather than taste:
 - **Every phase should keep `vp_gain`.** A rung that drops the goal signal trains away from it: win rate fell 62% → 47% when a curriculum advanced into a phase that rewarded occupancy and had no VP term, while `success_rate` held at ~80%.
 
 `tests/test_curriculum_configs.py` enforces the two mechanical ones — a per-model calculator in
-every phase, and `vp_gain` in every phase — over the two shipped training configs — `examples/env_config/25v25_single_phase.yaml` (the single-phase control) and `25v25_curriculum.yaml` (the two-rung arm, whose final phase is identical to the control's). It also pins three narrower invariants read off past measurements: no phase may use `models_at_objectives`, a `player_vp_min` gate must sit above the 95/285 fraction a one-objective stack reaches unaided, and any phase setting `terminal_success_bonus` must keep `terminate_on_success: false` so the bonus is not scaled away.
+every phase, and `vp_gain` in every phase — over the two shipped training configs — `configs/golden/25v25_single_phase.yaml` (the single-phase control) and `25v25_curriculum.yaml` (the two-rung arm, whose final phase is identical to the control's). It also pins three narrower invariants read off past measurements: no phase may use `models_at_objectives`, a `player_vp_min` gate must sit above the 95/285 fraction a one-objective stack reaches unaided, and any phase setting `terminal_success_bonus` must keep `terminate_on_success: false` so the bonus is not scaled away.
 
 ## Available Success Criteria
 

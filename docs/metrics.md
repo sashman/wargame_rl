@@ -309,7 +309,7 @@ Same numbers appear as `exposure` / `terrain_d` / `alive` columns in
 3. **Killing the enemy lowers it too.** A dead opponent is one fewer model with
    line of sight to you, so exposure falls for shooting well as much as for
    hiding well. On `25v25_stochastic_terrain_shooting` (a batch-1 config, since
-   deleted; restore with `git checkout batch-1-2-configs -- examples/env_config/`),
+   deleted; restore with `git checkout batch-1-2-configs -- configs/`),
    25 seeds:
 
    | baseline | exposure | alive | opp VP |
@@ -559,7 +559,15 @@ Everything past that is wasted compute. Report it as an epoch budget recommendat
 | **Reward/criteria mismatch** | components improve, `success_rate` flat | Optimizing something the criteria do not measure. |
 | **Success without winning** | `success_rate` high, `vp_gain` negative | The criteria do not select for winning. Check whether that is intended. |
 
-### Step 7 — Report
+### Step 7 — Score on the real layouts
+
+Everything above reads a run against `random_terrain`, which is the training
+distribution. `just measure-maps <ckpt> <config>` scores the same scenario on
+the fixed layouts in `configs/evaluation/maps/`. Read it per map, not as the
+mean: the case it exists to find is strong on most tables and broken on one.
+Quote it against a baseline on the same maps, as with every other number here.
+
+### Step 8 — Report
 
 State the verdict, the evidence with metric keys and epochs, and — for every claim — whether
 it rests on a full history or a sampled one. Distinguish "the 5 runs I sampled" from "the

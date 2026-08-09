@@ -56,7 +56,7 @@ outline and "Ruin" label, drawn after deployment zones and before models.
 
 ## Demo Config
 
-`examples/env_config/terrain_los_demo.yaml` — 60×44 board, 4v4, 3 objectives
+`configs/dev/terrain_los_demo.yaml` — 60×44 board, 4v4, 3 objectives
 along the center line, two ruin footprints flanking the middle objective. Good
 for visual validation of LOS blocking and ruin rendering.
 

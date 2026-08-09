@@ -19,8 +19,8 @@ config_name: 25v25_shooting_opponent
 #   THIS CONFIG, 1000 epochs     0.685     +28.4    1.59
 #
 # Both seeds clear the bar independently (+30.1 and +26.6). Reproduce with
-# `just measure-baselines examples/env_config/25v25_shooting_opponent.yaml 100 "" 700000`
-# and `just measure-checkpoint <ckpt> examples/env_config/25v25_shooting_opponent.yaml 100`.
+# `just measure-baselines configs/golden/25v25_shooting_opponent.yaml 100 "" 700000`
+# and `just measure-checkpoint <ckpt> configs/golden/25v25_shooting_opponent.yaml 100`.
 #
 # THE TWO THINGS THAT MAKE IT WIN, both off by default elsewhere:
 #
@@ -121,59 +121,64 @@ track_exposure: true
 # separation that keeps the discs disjoint.
 objective_min_separation: 6
 
+# Five squads of five, all one profile. The anchors single-source that: a
+# weapon change is one edit rather than fifty, and "every model is the same"
+# is visible instead of inferred. YAML resolves them at parse time, so the
+# config the env sees -- and the copy dumped beside each checkpoint -- is
+# unchanged.
 models:
-  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - &squad_0 { group_id: 0, weapons: &rifle [{ range: 12, attacks: 1 }] }
+  - *squad_0
+  - *squad_0
+  - *squad_0
+  - *squad_0
+  - &squad_1 { group_id: 1, weapons: *rifle }
+  - *squad_1
+  - *squad_1
+  - *squad_1
+  - *squad_1
+  - &squad_2 { group_id: 2, weapons: *rifle }
+  - *squad_2
+  - *squad_2
+  - *squad_2
+  - *squad_2
+  - &squad_3 { group_id: 3, weapons: *rifle }
+  - *squad_3
+  - *squad_3
+  - *squad_3
+  - *squad_3
+  - &squad_4 { group_id: 4, weapons: *rifle }
+  - *squad_4
+  - *squad_4
+  - *squad_4
+  - *squad_4
 
 opponent_models:
-  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 1, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 2, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 3, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
-  - { group_id: 4, weapons: [{ range: 12, attacks: 1 }] }
+  - &opp_squad_0 { group_id: 0, weapons: *rifle }
+  - *opp_squad_0
+  - *opp_squad_0
+  - *opp_squad_0
+  - *opp_squad_0
+  - &opp_squad_1 { group_id: 1, weapons: *rifle }
+  - *opp_squad_1
+  - *opp_squad_1
+  - *opp_squad_1
+  - *opp_squad_1
+  - &opp_squad_2 { group_id: 2, weapons: *rifle }
+  - *opp_squad_2
+  - *opp_squad_2
+  - *opp_squad_2
+  - *opp_squad_2
+  - &opp_squad_3 { group_id: 3, weapons: *rifle }
+  - *opp_squad_3
+  - *opp_squad_3
+  - *opp_squad_3
+  - *opp_squad_3
+  - &opp_squad_4 { group_id: 4, weapons: *rifle }
+  - *opp_squad_4
+  - *opp_squad_4
+  - *opp_squad_4
+  - *opp_squad_4
 
 # No `objectives:` block -> the 3 objectives (number_of_objectives) are placed
 # randomly outside both deployment zones at the start of every episode.

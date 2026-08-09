@@ -3,7 +3,7 @@
 **Date:** 2026-08-04
 **Supersedes:** large parts of
 [the reward-phase curriculum report](2026-08-04-reward-phase-curriculum.md)
-**Config:** `examples/env_config/25v25_scripted_opponent_random_objectives_3_reward_phases_terrain.yaml`
+**Config:** `configs/25v25_scripted_opponent_random_objectives_3_reward_phases_terrain.yaml`
 
 ## The measurement that reframes everything
 

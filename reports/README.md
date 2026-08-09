@@ -1,5 +1,11 @@
 # Experiment reports
 
+> **Paths in these reports predate 2026-08-09.** Configs moved from
+> `examples/env_config/` to `configs/{golden,dev,experiments}/`, and most of the
+> configs named here were deleted once their question was answered. The old
+> paths are left as written — a report records what was true when it was run.
+> `git log -- examples/ configs/` finds any of them.
+
 Findings from training experiments, kept for retrospection. Each report records what
 was asked, what was measured, and what the measurement does and does not support.
 
