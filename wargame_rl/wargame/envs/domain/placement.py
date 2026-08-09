@@ -10,7 +10,12 @@ from wargame_rl.wargame.envs.domain.battle import Battle
 from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
 from wargame_rl.wargame.envs.domain.terrain import Terrain
 from wargame_rl.wargame.envs.domain.terrain_placement import generate_terrain
-from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions
+from wargame_rl.wargame.envs.domain.value_objects import (
+    BoardDimensions,
+    Position,
+    position,
+    zero_position,
+)
 from wargame_rl.wargame.envs.types.config import (
     ModelConfig,
     ObjectiveConfig,
@@ -122,7 +127,7 @@ def wargame_model_placement(
                     rng,
                 )
 
-            model.location = np.array(loc, dtype=np.int32)
+            model.location = position(*loc)
             model.reset_for_episode()
             occupied.add(loc)
             placed.append(model)
@@ -156,7 +161,7 @@ def objective_placement(
         if opponent_deployment_zone is not None
         else board_width
     )
-    placed: list[np.ndarray] = []
+    placed: list[Position] = []
     for objective in objectives:
         location = _sample_objective_location(
             x_min,
@@ -177,20 +182,19 @@ def _sample_objective_location(
     x_max: int,
     board_height: int,
     rng: Generator,
-    placed: list[np.ndarray],
+    placed: list[Position],
     min_separation: int | None,
     terrain: Terrain | None,
     terrain_clearance: int | None,
-) -> np.ndarray:
+) -> Position:
     """Draw one objective location satisfying the separation constraints."""
-    candidate = np.zeros(2, dtype=np.int32)
+    candidate = zero_position()
     for _ in range(_MAX_PLACEMENT_RETRIES):
-        candidate = np.array(
-            [
-                rng.integers(x_min, x_max, dtype=np.int32),
-                rng.integers(0, board_height, dtype=np.int32),
-            ],
-            dtype=np.int32,
+        # Each draw's dtype is part of the random stream rather than the storage
+        # format, so changing it changes which layouts a given seed produces.
+        candidate = position(
+            rng.integers(x_min, x_max, dtype=np.int32),
+            rng.integers(0, board_height, dtype=np.int32),
         )
         if min_separation is not None and any(
             float(np.linalg.norm(candidate - other)) < min_separation
@@ -230,7 +234,7 @@ def fixed_wargame_model_placement(
     """Place models at the exact positions specified in *model_configs*."""
     for model, cfg in zip(wargame_models, model_configs):
         assert cfg.x is not None and cfg.y is not None
-        model.location = np.array([cfg.x, cfg.y], dtype=np.int32)
+        model.location = position(cfg.x, cfg.y)
         model.reset_for_episode()
 
 
@@ -241,7 +245,7 @@ def fixed_objective_placement(
     """Place objectives at the exact positions specified in *objective_configs*."""
     for objective, cfg in zip(objectives, objective_configs):
         assert cfg.x is not None and cfg.y is not None
-        objective.location = np.array([cfg.x, cfg.y], dtype=np.int32)
+        objective.location = position(cfg.x, cfg.y)
 
 
 def place_for_episode(

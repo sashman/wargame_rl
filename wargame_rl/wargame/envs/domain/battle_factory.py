@@ -11,7 +11,7 @@ from wargame_rl.wargame.envs.types import WargameEnvConfig
 from .battle import Battle
 from .entities import WargameModel, WargameObjective
 from .terrain import Footprint, Terrain
-from .value_objects import BoardDimensions, DeploymentZone
+from .value_objects import BoardDimensions, DeploymentZone, zero_position
 
 
 def _build_models(
@@ -37,7 +37,7 @@ def _build_models(
             save = 4
         result.append(
             WargameModel(
-                location=np.zeros(2, dtype=int),
+                location=zero_position(),
                 stats={
                     "max_wounds": max_wounds,
                     "current_wounds": max_wounds,
@@ -65,7 +65,7 @@ def _build_objectives(config: WargameEnvConfig) -> list[WargameObjective]:
 
         result.append(
             WargameObjective(
-                location=np.zeros(2, dtype=int),
+                location=zero_position(),
                 radius_size=radius,  # type: ignore[arg-type]
             )
         )
