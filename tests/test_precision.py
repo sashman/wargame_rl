@@ -27,6 +27,27 @@ def restore_matmul_precision() -> Iterator[None]:
     torch.set_float32_matmul_precision(previous)
 
 
+def test_tf32_is_off_when_no_caller_asks_for_it() -> None:
+    """The *default* must be off -- called with no argument, as `train.py` never is.
+
+    Every other test here passes `enabled` explicitly, so none of them would
+    notice the default flipping back to True. That is not hypothetical: TF32
+    shipped on by default on 2026-08-08 and cost **8.5 vp_margin** before it was
+    caught on 2026-08-09 (two seeds, n=100, epoch 1000, on
+    `configs/golden/25v25_shooting_opponent.yaml`; the `--no-tf32` control
+    reproduced the pre-TF32 run bit-identically, so the setting was the whole of
+    the difference). Nothing raises when it regresses, and win rate does not
+    resolve it -- 0.705 to 0.65 is inside the ~7pp limit. Catching it took two
+    full 1000-epoch runs.
+
+    See reports/2026-08-09-tf32-costs-eight-vp.md.
+    """
+    torch.set_float32_matmul_precision("highest")
+
+    assert configure_matmul_precision() is False
+    assert torch.get_float32_matmul_precision() == "highest"
+
+
 def test_disabled_never_touches_the_global_setting() -> None:
     torch.set_float32_matmul_precision("highest")
 
