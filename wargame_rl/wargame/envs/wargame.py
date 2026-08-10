@@ -576,6 +576,7 @@ class WargameEnv(gym.Env):
                 self.board_height,
                 self._action_handler.action_space,
                 phase=phase,
+                enemy_models=self.opponent_models,
             )
 
     def _opponent_action_mask(
@@ -659,6 +660,7 @@ class WargameEnv(gym.Env):
                 self.board_height,
                 self._opponent_action_handler.action_space,
                 phase=phase,
+                enemy_models=self.wargame_models,
             )
 
     def _initial_player_side(self) -> PlayerSide:

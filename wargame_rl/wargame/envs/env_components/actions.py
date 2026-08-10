@@ -17,6 +17,7 @@ from typing import Any
 import numpy as np
 from gymnasium import spaces
 
+from wargame_rl.wargame.envs.domain.movement import resolve_move
 from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
 from wargame_rl.wargame.envs.domain.value_objects import (
     POSITION_DTYPE,
@@ -27,6 +28,22 @@ from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 STAY_ACTION = 0
+
+
+def _base_arrays(models: list[Any] | None) -> tuple[np.ndarray, np.ndarray]:
+    """Centres and radii of the *alive* models in a list, for collision tests.
+
+    Dead models are excluded: a casualty is removed from the table, so its base
+    is not ground anyone has to walk around.
+    """
+    alive = [m for m in (models or []) if m.is_alive]
+    if not alive:
+        return np.zeros((0, 2), dtype=float), np.zeros(0, dtype=float)
+    return (
+        np.array([m.location for m in alive], dtype=float),
+        np.array([m.base_radius for m in alive], dtype=float),
+    )
+
 
 ALL_BATTLE_PHASES: frozenset[BattlePhase] = frozenset(BattlePhase)
 
@@ -316,6 +333,7 @@ class ActionHandler:
         action_space: spaces.Tuple,
         *,
         phase: BattlePhase = BattlePhase.movement,
+        enemy_models: list[Any] | None = None,
     ) -> None:
         """Apply the action tuple to the wargame models (mutates locations).
 
@@ -324,6 +342,12 @@ class ActionHandler:
         Models displace only in the movement phase: the action mask already
         enforces that for a learned policy, but scripted policies bypass the
         mask, so honouring `phase` here keeps them on the same footing.
+
+        With bases, moves are resolved against the other models: `enemy_models`
+        stop a move on contact, the moving army's own models may be passed
+        through but not ended on. Resolution runs in model index order, which
+        gives model 0 a documented right of way — the price of a deterministic
+        board.
         """
         # Hoisted, and typed: python-list bounds become int64 arrays, so passing
         # them to `np.clip` would widen the result whatever the inputs are.
@@ -331,6 +355,16 @@ class ActionHandler:
         upper = position(
             board_width - self._base_radius, board_height - self._base_radius
         )
+        collides = self._base_radius > 0.0
+        blocker_centres, blocker_radii = _base_arrays(
+            enemy_models if collides else None
+        )
+        n_models = len(wargame_models)
+        friendly_buffer = np.zeros((n_models, 2), dtype=float)
+        friendly_radius_buffer = np.array(
+            [m.base_radius for m in wargame_models], dtype=float
+        )
+        friendly_alive = np.array([m.is_alive for m in wargame_models], dtype=bool)
         for i, act in enumerate(action.actions):
             model = wargame_models[i]
             if not model.is_alive:
@@ -348,4 +382,32 @@ class ActionHandler:
                 continue
             model.previous_location = model.location.copy()
             displacement = self._decode_action(act)
-            model.location = np.clip(model.location + displacement, lower, upper)
+            if not collides:
+                model.location = np.clip(model.location + displacement, lower, upper)
+                continue
+            # Read live each iteration: earlier models in this loop have already
+            # moved, and a model must not end on ground another just took. The
+            # arrays are rebuilt from a preallocated buffer rather than a fresh
+            # list comprehension per model -- that shape is O(n^2) in python and
+            # is what made two reward calculators 80% of a step once already.
+            for j, other in enumerate(wargame_models):
+                friendly_buffer[j] = other.location
+            keep = friendly_alive.copy()
+            keep[i] = False
+            friendly_centres = friendly_buffer[keep]
+            friendly_radii = friendly_radius_buffer[keep]
+            # The board edge is clamped into the *displacement*, before
+            # collisions are resolved. Clamping the resolved point afterwards
+            # would slide a model along the edge and back into someone else --
+            # producing exactly the overlap the whole resolution just avoided,
+            # only near a board edge and only sometimes.
+            in_bounds = np.clip(model.location + displacement, lower, upper)
+            model.location = resolve_move(
+                model.location,
+                in_bounds - model.location,
+                model.base_radius,
+                blocker_centres,
+                blocker_radii,
+                friendly_centres,
+                friendly_radii,
+            )
