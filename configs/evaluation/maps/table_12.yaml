@@ -1,0 +1,13 @@
+name: table_12
+terrain:
+  - { footprint: [5, 28, 15, 34] }
+  - { footprint: [7, 6, 17, 12] }
+  - { footprint: [8, 17, 18, 23] }
+  - { footprint: [16, 35, 22, 39] }
+  - { footprint: [21, 5, 33, 13] }
+  - { footprint: [24, 17, 36, 27] }
+  - { footprint: [27, 31, 39, 39] }
+  - { footprint: [38, 5, 44, 9] }
+  - { footprint: [42, 21, 52, 27] }
+  - { footprint: [43, 32, 53, 38] }
+  - { footprint: [45, 10, 55, 16] }

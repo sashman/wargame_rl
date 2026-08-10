@@ -1,0 +1,3 @@
+name: table_07
+terrain:
+  - { footprint: [4, 5, 56, 39] }
