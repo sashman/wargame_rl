@@ -13,6 +13,7 @@ from wargame_rl.wargame.envs.domain.value_objects import (
     position,
     zero_position,
 )
+from wargame_rl.wargame.envs.types.geometry import Polygon
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.reward.types.model_rewards import ModelRewards
@@ -139,13 +140,43 @@ def alive_mask_for(models: list[WargameModel]) -> np.ndarray:
 
 
 class WargameObjective:
-    """Objective (capture target) on the board."""
+    """Objective on the board: either a marker with a radius, or an area.
 
-    def __init__(self, location: Position, radius_size: float):
+    An *area* objective is the rules' terrain objective — the ground itself is
+    the prize, so control is standing inside the outline rather than within a
+    distance of a point. It carries `radius_size = 0` and reports distance to its
+    own edge, which is what lets every downstream `norms_offset <= obj_radii`
+    test keep working with no branch: see `polygons_distance_to_points`.
+
+    An area is not *placed*. Its outline is its position, and `location` is the
+    centroid so anything steering toward an objective still has a point to aim
+    at.
+    """
+
+    def __init__(
+        self,
+        location: Position,
+        radius_size: float,
+        area: Polygon | None = None,
+    ):
         self.location = location
         self.radius_size = radius_size  # Radius of the objective in the environment
+        self.area = area
+
+    @property
+    def is_area(self) -> bool:
+        """True when the objective is a piece of ground rather than a marker."""
+        return self.area is not None
+
+    def set_area(self, area: Polygon) -> None:
+        """Make this an area objective, moving its location to the centroid."""
+        self.area = area
+        self.location = position(*area.centroid)
+        self.radius_size = 0.0
 
     def __repr__(self) -> str:
+        if self.area is not None:
+            return f"WargameObjective(area={self.area.bounds})"
         return f"WargameObjective(location={self.location}, radius_size={self.radius_size})"
 
     @staticmethod

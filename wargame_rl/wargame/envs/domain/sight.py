@@ -25,17 +25,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.los import points_inside_rects, segments_are_clear
+from wargame_rl.wargame.envs.domain.los import segments_are_clear
 from wargame_rl.wargame.envs.domain.terrain import Terrain
+from wargame_rl.wargame.envs.types.geometry import polygons_contain_points
 
 BlockingMask = list[list[bool]]
-
-
-def footprint_bounds(terrain: Terrain) -> np.ndarray:
-    """``(M, 4)`` array of footprint rectangles, for the vectorised ray."""
-    if not terrain.footprints:
-        return np.zeros((0, 4), dtype=float)
-    return np.array([(f.x0, f.y0, f.x1, f.y1) for f in terrain.footprints], dtype=float)
 
 
 def opaque_cell_grid(blocking_mask: BlockingMask | None) -> np.ndarray | None:
@@ -87,20 +81,27 @@ def line_of_sight_matrix(
     starts = np.asarray(origins, dtype=float)[rows]
     ends = np.asarray(targets, dtype=float)[cols]
 
-    blockers = footprint_bounds(terrain)
+    outlines = terrain.outlines
+    vertex_counts = terrain.vertex_counts
     exempt: np.ndarray | None = None
-    if len(blockers):
+    if len(outlines):
         # The see-out / see-into rule (`docs/rules/13-terrain.md`): a piece
         # containing either endpoint does not block, because a model can see out
         # of the ruin it stands in and can be seen while standing in one.
-        exempt = points_inside_rects(starts, blockers) | points_inside_rects(
-            ends, blockers
+        # Edge-inclusive: this is membership deciding a *rule*, so a model
+        # standing exactly on a ruin's edge is standing in it and can see out.
+        # The samples along the ray use the cheap interior-only test.
+        exempt = polygons_contain_points(
+            starts, outlines, vertex_counts, include_boundary=True
+        ) | polygons_contain_points(
+            ends, outlines, vertex_counts, include_boundary=True
         )
 
     clear = segments_are_clear(
         starts,
         ends,
-        blockers,
+        outlines,
+        vertex_counts,
         sample_step=sample_step,
         blocker_exempt=exempt,
         opaque_cells=opaque_cell_grid(blocking_mask),

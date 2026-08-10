@@ -9,7 +9,7 @@ import numpy as np
 from wargame_rl.wargame.envs.domain.battle import Battle
 from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
 from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
-from wargame_rl.wargame.envs.domain.terrain import Terrain
+from wargame_rl.wargame.envs.domain.terrain import Footprint, Terrain
 from wargame_rl.wargame.envs.domain.terrain_placement import generate_terrain
 from wargame_rl.wargame.envs.domain.value_objects import (
     BoardDimensions,
@@ -204,6 +204,11 @@ def objective_placement(
     )
     placed: list[Position] = []
     for objective in objectives:
+        # An area objective is not *placed*: its outline is its position, and
+        # drawing a random centre for it would move the marker off its own
+        # ground while leaving the area where it was.
+        if objective.is_area:
+            continue
         location = _sample_objective_location(
             x_min,
             x_max,
@@ -266,6 +271,86 @@ def _distance_to_terrain(location: np.ndarray, terrain: Terrain) -> float:
     )
 
 
+def objectives_from_terrain(
+    objectives: list[WargameObjective],
+    terrain: Terrain,
+    deployment_zone: np.ndarray,
+    opponent_deployment_zone: np.ndarray,
+    board_width: int,
+    board_height: int,
+) -> None:
+    """Make each objective *be* a terrain piece — the rules' terrain objective.
+
+    The eligible pieces are the ones clear of both deployment zones, and the
+    ones nearest the board centre are chosen. Choosing by distance to the centre
+    is what keeps a mirrored layout fair: a mirrored pair sits at equal distance,
+    so they are taken together, and an odd count takes the symmetric centre piece
+    first. Picking randomly would hand one side the closer prize on some seeds.
+
+    Raises:
+        ValueError: when the layout has fewer eligible pieces than there are
+            objectives. Silently reusing one piece for two objectives would make
+            a three-objective mission a two-objective one without saying so.
+    """
+    player_edge = float(deployment_zone[2])
+    opponent_edge = float(opponent_deployment_zone[0])
+    centre = np.array([board_width / 2.0, board_height / 2.0])
+
+    eligible = [
+        footprint
+        for footprint in terrain.footprints
+        if footprint.x0 >= player_edge and footprint.x1 <= opponent_edge
+    ]
+    if len(eligible) < len(objectives):
+        raise ValueError(
+            f"objectives_on_terrain needs {len(objectives)} terrain pieces clear "
+            f"of both deployment zones, but the layout has {len(eligible)}. "
+            "Raise the piece count, or widen the gap between the zones."
+        )
+
+    chosen = _choose_symmetric_pieces(eligible, len(objectives), centre, board_width)
+    for objective, footprint in zip(objectives, chosen):
+        objective.set_area(footprint.polygon)
+
+
+def _choose_symmetric_pieces(
+    eligible: list[Footprint],
+    n_wanted: int,
+    centre: np.ndarray,
+    board_width: int,
+) -> list[Footprint]:
+    """Pick *n_wanted* pieces nearest the board centre, in mirror-symmetric groups.
+
+    Ordering by distance alone is not enough. A mirrored layout's pieces come in
+    pairs at equal distance, so taking the nearest three can take a whole pair
+    plus *half* of the next one — handing one side a closer prize on that seed,
+    with nothing in any aggregate to show for it.
+
+    So pieces are grouped by their distance ring first, and a group is taken
+    whole or not at all. A ring that would overflow the budget is skipped in
+    favour of the next one that fits; when nothing fits exactly (the count and
+    the rings genuinely disagree) it falls back to nearest-first, because a
+    slightly unfair layout beats a failed episode.
+    """
+    rings: dict[int, list[Footprint]] = {}
+    for piece in eligible:
+        distance = float(np.linalg.norm(piece.polygon.centroid - centre))
+        rings.setdefault(round(distance * 1e6), []).append(piece)
+
+    chosen: list[Footprint] = []
+    for key in sorted(rings):
+        ring = rings[key]
+        if len(chosen) + len(ring) <= n_wanted:
+            chosen.extend(sorted(ring, key=lambda f: float(f.polygon.centroid[0])))
+        if len(chosen) == n_wanted:
+            return chosen
+
+    ordered = sorted(
+        eligible, key=lambda f: float(np.linalg.norm(f.polygon.centroid - centre))
+    )
+    return ordered[:n_wanted]
+
+
 def fixed_wargame_model_placement(
     wargame_models: list[WargameModel],
     model_configs: list[ModelConfig],
@@ -323,7 +408,16 @@ def place_for_episode(
         )
 
     # Place objectives
-    if config.has_fixed_objective_positions and config.objectives is not None:
+    if config.objectives_on_terrain:
+        objectives_from_terrain(
+            battle.objectives,
+            battle.terrain,
+            battle.deployment_zone,
+            battle.opponent_deployment_zone,
+            battle.board_width,
+            battle.board_height,
+        )
+    elif config.has_fixed_objective_positions and config.objectives is not None:
         fixed_objective_placement(battle.objectives, config.objectives)
     else:
         objective_placement(

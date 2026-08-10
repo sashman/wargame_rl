@@ -1,9 +1,10 @@
-"""Line-of-sight geometry: sampled rays against axis-aligned blockers.
+"""Line-of-sight geometry: sampled rays against polygon blockers.
 
 The board is continuous, so sight is traced by sampling points along the segment
-rather than by walking cells. ``sample_step`` is the spacing guarantee: a blocker
-thinner than it can fall between two samples and leak sight, which is why the
-config validator rejects terrain narrower than the step.
+rather than by walking cells, and blockers are *outlines* rather than bounding
+boxes. ``sample_step`` is the spacing guarantee: a blocker thinner than it can
+fall between two samples and leak sight, which is why the config validator
+rejects terrain narrower than the step.
 
 **Everything here is vectorised over segments *and* over blockers, and that is
 not a micro-optimisation.** Sight is the hottest thing in the environment — a
@@ -19,6 +20,8 @@ game's blocking rules. `sight.py` composes it with them.
 from __future__ import annotations
 
 import numpy as np
+
+from wargame_rl.wargame.envs.types.geometry import polygons_contain_points
 
 # Cap on the (segments x samples x blockers) working set of one pass, in
 # elements. Segments are processed in chunks small enough to respect it, so
@@ -45,7 +48,8 @@ def _interior_sample_offsets(max_length: float, sample_step: float) -> np.ndarra
 def segments_are_clear(
     starts: np.ndarray,
     ends: np.ndarray,
-    blockers: np.ndarray,
+    outlines: np.ndarray,
+    vertex_counts: np.ndarray,
     *,
     sample_step: float,
     blocker_exempt: np.ndarray | None = None,
@@ -56,7 +60,9 @@ def segments_are_clear(
     Args:
         starts: ``(N, 2)`` segment origins.
         ends: ``(N, 2)`` segment endpoints.
-        blockers: ``(M, 4)`` axis-aligned rectangles as ``(x0, y0, x1, y1)``.
+        outlines: ``(M, V, 2)`` blocker outlines, padded to a common vertex
+            budget by repeating the last vertex.
+        vertex_counts: ``(M,)`` real vertex count per outline.
         sample_step: maximum spacing between consecutive samples, in board units.
         blocker_exempt: ``(N, M)`` — True where that blocker does not block that
             segment. This is how the see-out rule enters: it is *per query*,
@@ -78,28 +84,28 @@ def segments_are_clear(
     if n_samples == 0:
         return clear
 
-    n_blockers = len(blockers)
-    per_segment = max(1, n_samples * max(1, n_blockers))
+    n_blockers = len(outlines)
+    vertex_budget = outlines.shape[1] if n_blockers else 1
+    # The membership test materialises (points x blockers x edges), so the edge
+    # budget belongs in the chunk size. Leaving it out is how a layout of
+    # many-sided outlines turns a bounded working set into a multi-gigabyte one.
+    per_segment = max(1, n_samples * max(1, n_blockers) * max(1, vertex_budget))
     chunk = max(1, _MAX_WORKING_ELEMENTS // per_segment)
 
     for lo in range(0, n_segments, chunk):
         hi = min(lo + chunk, n_segments)
-        # (n, samples, 2)
+        span = hi - lo
+        # (span, samples, 2)
         points = (
             starts[lo:hi, np.newaxis, :]
             + deltas[lo:hi, np.newaxis, :] * offsets[:, None]
         )
-        blocked = np.zeros(hi - lo, dtype=bool)
+        blocked = np.zeros(span, dtype=bool)
 
         if n_blockers:
-            px = points[:, :, 0, np.newaxis]
-            py = points[:, :, 1, np.newaxis]
-            inside = (
-                (px >= blockers[:, 0])
-                & (px <= blockers[:, 2])
-                & (py >= blockers[:, 1])
-                & (py <= blockers[:, 3])
-            )  # (n, samples, blockers)
+            inside = polygons_contain_points(
+                points.reshape(-1, 2), outlines, vertex_counts
+            ).reshape(span, n_samples, n_blockers)
             if blocker_exempt is not None:
                 inside &= ~blocker_exempt[lo:hi, np.newaxis, :]
             blocked |= inside.any(axis=(1, 2))
@@ -113,21 +119,3 @@ def segments_are_clear(
         clear[lo:hi] = ~blocked
 
     return clear
-
-
-def points_inside_rects(points: np.ndarray, rects: np.ndarray) -> np.ndarray:
-    """``(P, M)`` membership of ``(P, 2)`` points in ``(M, 4)`` rectangles.
-
-    Edge-inclusive, matching `Footprint.contains`: a model standing exactly on a
-    ruin's edge is standing *in* the ruin, and so can see out of it.
-    """
-    if len(rects) == 0:
-        return np.zeros((len(points), 0), dtype=bool)
-    px = points[:, 0, np.newaxis]
-    py = points[:, 1, np.newaxis]
-    return (
-        (px >= rects[:, 0])
-        & (px <= rects[:, 2])
-        & (py >= rects[:, 1])
-        & (py <= rects[:, 3])
-    )

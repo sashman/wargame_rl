@@ -9,6 +9,7 @@ from hypothesis import strategies as st
 
 from wargame_rl.wargame.envs.domain.los import segments_are_clear
 from wargame_rl.wargame.envs.types import TerrainPieceConfig, WargameEnvConfig
+from wargame_rl.wargame.envs.types.geometry import Polygon
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
 _STEP = 0.25
@@ -21,14 +22,21 @@ def _trace(
     exempt: np.ndarray | None = None,
     opaque_cells: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Trace a handful of segments against a handful of rectangles."""
+    """Trace a handful of segments against a handful of rectangular blockers."""
     starts = np.array([[s[0], s[1]] for s in segments], dtype=float)
     ends = np.array([[s[2], s[3]] for s in segments], dtype=float)
-    rects = np.array(blockers, dtype=float).reshape(-1, 4)
+    polygons = [Polygon.from_rect(*rect) for rect in blockers]
+    outlines = (
+        np.stack([p.vertices for p in polygons])
+        if polygons
+        else np.zeros((0, 0, 2), dtype=float)
+    )
+    counts = np.array([p.n_vertices for p in polygons], dtype=np.intp)
     return segments_are_clear(
         starts,
         ends,
-        rects,
+        outlines,
+        counts,
         sample_step=_STEP,
         blocker_exempt=exempt,
         opaque_cells=opaque_cells,
@@ -338,6 +346,7 @@ def test_terrain_los_symmetry(
         assume(fx1 < board_w and fy1 < board_h)
         # Reject if overlaps any previous footprint
         for prev in footprints:
+            assert prev.footprint is not None
             px0, py0, px1, py1 = prev.footprint
             if fx <= px1 and fx1 >= px0 and fy <= py1 and fy1 >= py0:
                 assume(False)

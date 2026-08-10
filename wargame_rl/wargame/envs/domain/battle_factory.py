@@ -65,19 +65,26 @@ def _build_objectives(config: WargameEnvConfig) -> list[WargameObjective]:
     """Build the list of objectives from config."""
     result: list[WargameObjective] = []
     for i in range(config.number_of_objectives):
-        if (
-            config.objectives is not None
-            and config.objectives[i].radius_size is not None
-        ):
-            radius = config.objectives[i].radius_size
-        else:
-            radius = config.objective_radius_size
+        objective_config = (
+            config.objectives[i] if config.objectives is not None else None
+        )
+        area = objective_config.to_polygon() if objective_config is not None else None
+        if area is not None:
+            # An area is not placed: its outline is its position, and its
+            # location is the centroid so anything steering at an objective
+            # still has a point to aim at.
+            objective = WargameObjective(location=zero_position(), radius_size=0.0)
+            objective.set_area(area)
+            result.append(objective)
+            continue
 
+        radius = (
+            objective_config.radius_size
+            if objective_config is not None and objective_config.radius_size is not None
+            else float(config.objective_radius_size)
+        )
         result.append(
-            WargameObjective(
-                location=zero_position(),
-                radius_size=radius,  # type: ignore[arg-type]
-            )
+            WargameObjective(location=zero_position(), radius_size=float(radius))
         )
     return result
 
@@ -129,11 +136,9 @@ def from_config(config: WargameEnvConfig) -> Battle:
             y_max=board_height,
         )
 
-    # Config authors terrain as inclusive cell rectangles, so this is the other
-    # boundary where the corner-inclusive convention is resolved.
-    footprints = [
-        Footprint.from_cell_rect(*tp.footprint) for tp in (config.terrain or [])
-    ]
+    # `to_polygon` is where a config's chosen form -- inclusive cell rectangle or
+    # explicit outline -- becomes the one shape the domain holds.
+    footprints = [Footprint(tp.to_polygon()) for tp in (config.terrain or [])]
     terrain = Terrain(footprints)
 
     return Battle(

@@ -125,9 +125,14 @@ class Polygon:
     def contains(self, x: float, y: float) -> bool:
         """True if the point is inside or exactly on the outline. Edge-inclusive."""
         point = np.array([[x, y]], dtype=VERTEX_DTYPE)
-        if self._points_on_boundary(point)[0]:
-            return True
-        return bool(self.contains_points(point)[0])
+        return bool(
+            polygons_contain_points(
+                point,
+                self.vertices[np.newaxis, :, :],
+                np.array([self.n_vertices]),
+                include_boundary=True,
+            )[0, 0]
+        )
 
     def contains_points(self, points: npt.NDArray[np.float64]) -> npt.NDArray[np.bool_]:
         """``(P,)`` membership for ``(P, 2)`` points, by crossing number.
@@ -142,25 +147,6 @@ class Polygon:
         return polygons_contain_points(
             points, self.vertices[np.newaxis, :, :], np.array([self.n_vertices])
         )[:, 0]
-
-    def _points_on_boundary(
-        self, points: npt.NDArray[np.float64], tolerance: float = 1e-12
-    ) -> npt.NDArray[np.bool_]:
-        """``(P,)`` — True where a point lies on an edge, within *tolerance*."""
-        starts = self.vertices
-        ends = np.roll(self.vertices, -1, axis=0)
-        edge = ends - starts  # (V, 2)
-        offset = points[:, np.newaxis, :] - starts[np.newaxis, :, :]  # (P, V, 2)
-        cross = edge[:, 0] * offset[:, :, 1] - edge[:, 1] * offset[:, :, 0]
-        edge_length_sq = (edge**2).sum(axis=1)
-        # Projection parameter along the edge, guarded for a zero-length edge --
-        # padding to a vertex budget creates those on purpose.
-        safe_length = np.where(edge_length_sq > 0, edge_length_sq, 1.0)
-        along = (offset * edge[np.newaxis, :, :]).sum(axis=2) / safe_length
-        on_segment = (along >= -tolerance) & (along <= 1.0 + tolerance)
-        collinear = np.abs(cross) <= tolerance * np.maximum(1.0, edge_length_sq)
-        result: npt.NDArray[np.bool_] = (collinear & on_segment).any(axis=1)
-        return result
 
     def distance_to_point(self, x: float, y: float) -> float:
         """Distance from the point to the outline; 0.0 anywhere inside it."""
@@ -245,10 +231,60 @@ def _has_separating_axis(
     return bool(separated.any())
 
 
+def polygons_distance_to_points(
+    points: npt.NDArray[np.float64],
+    outlines: npt.NDArray[np.float64],
+    vertex_counts: npt.NDArray[np.intp],
+) -> npt.NDArray[np.float64]:
+    """``(P, N)`` distance from each point to each outline; 0.0 anywhere inside.
+
+    This is what makes an *area* objective work without a branch anywhere
+    downstream. Give the area a radius of 0 and report this as the distance, and
+    every existing ``norms_offset <= obj_radii`` test — in the reward, in VP
+    scoring, in the success criteria — keeps its exact meaning: "close enough to
+    count". No consumer needs to know objectives now have shapes.
+    """
+    n_points = len(points)
+    n_outlines = len(outlines)
+    if n_points == 0 or n_outlines == 0:
+        return np.zeros((n_points, n_outlines), dtype=VERTEX_DTYPE)
+
+    starts = outlines  # (N, V, 2)
+    ends = np.roll(outlines, -1, axis=1)
+    edge = ends - starts  # (N, V, 2)
+    length_sq = (edge**2).sum(axis=2)  # (N, V)
+    safe_length = np.where(length_sq > 0, length_sq, 1.0)
+
+    offset = points[:, np.newaxis, np.newaxis, :] - starts[np.newaxis, :, :, :]
+    along = np.clip(
+        (offset * edge[np.newaxis, :, :, :]).sum(axis=3) / safe_length, 0.0, 1.0
+    )  # (P, N, V)
+    closest = starts[np.newaxis, :, :, :] + along[..., np.newaxis] * edge[np.newaxis]
+    distances = np.linalg.norm(
+        closest - points[:, np.newaxis, np.newaxis, :], axis=3
+    )  # (P, N, V)
+
+    # Padded edges are zero-length duplicates of a real vertex, so they never
+    # give a *smaller* distance than the edges meeting there -- but masking them
+    # explicitly keeps the reasoning local rather than resting on that.
+    edge_index = np.arange(outlines.shape[1])
+    real_edge = edge_index[np.newaxis, :] < vertex_counts[:, np.newaxis]
+    distances = np.where(real_edge[np.newaxis, :, :], distances, np.inf)
+
+    to_edge: npt.NDArray[np.float64] = distances.min(axis=2)
+    inside = polygons_contain_points(
+        points, outlines, vertex_counts, include_boundary=True
+    )
+    return np.where(inside, 0.0, to_edge)
+
+
 def polygons_contain_points(
     points: npt.NDArray[np.float64],
     outlines: npt.NDArray[np.float64],
     vertex_counts: npt.NDArray[np.intp],
+    *,
+    include_boundary: bool = False,
+    tolerance: float = 1e-9,
 ) -> npt.NDArray[np.bool_]:
     """``(P, N)`` membership of ``P`` points in ``N`` padded outlines, in one pass.
 
@@ -259,6 +295,11 @@ def polygons_contain_points(
             edges can be excluded. A padded edge is zero-length and would never
             be crossed anyway; excluding it explicitly costs one comparison and
             removes the need to reason about that.
+        include_boundary: also count points lying exactly on an edge. Off by
+            default because sight *samples* are measure-zero and this doubles the
+            work; on for anything where membership decides a rule, since a
+            crossing-number test gives a boundary point whichever answer its
+            edges happen to produce.
 
     Crossing number, not winding number, and vectorised **across shapes as well
     as points**. That is the whole performance story for sight: a per-piece
@@ -291,4 +332,20 @@ def polygons_contain_points(
     crossing_x = x0 + (py - y0) * (x1 - x0) / denominator
     crosses = straddles & (px < crossing_x) & real_edge[np.newaxis, :, :]
     inside: npt.NDArray[np.bool_] = (crosses.sum(axis=2) % 2) == 1
+
+    if include_boundary:
+        edge_x = x1 - x0
+        edge_y = y1 - y0
+        cross = edge_x * (py - y0) - edge_y * (px - x0)
+        length_sq = edge_x**2 + edge_y**2
+        safe_length = np.where(length_sq > 0, length_sq, 1.0)
+        along = (edge_x * (px - x0) + edge_y * (py - y0)) / safe_length
+        on_edge = (
+            (np.abs(cross) <= tolerance * np.maximum(1.0, length_sq))
+            & (along >= -tolerance)
+            & (along <= 1.0 + tolerance)
+            & real_edge[np.newaxis, :, :]
+        )
+        inside = inside | on_edge.any(axis=2)
+
     return inside

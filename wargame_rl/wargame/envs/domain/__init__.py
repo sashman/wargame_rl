@@ -10,7 +10,7 @@ from wargame_rl.wargame.envs.domain.battle_factory import (
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
 from wargame_rl.wargame.envs.domain.game_clock import GameClock, GameClockError
-from wargame_rl.wargame.envs.domain.los import points_inside_rects, segments_are_clear
+from wargame_rl.wargame.envs.domain.los import segments_are_clear
 from wargame_rl.wargame.envs.domain.placement import place_for_episode
 from wargame_rl.wargame.envs.domain.shooting import (
     DefenderStats,
@@ -22,7 +22,6 @@ from wargame_rl.wargame.envs.domain.shooting import (
     wound_roll_threshold,
 )
 from wargame_rl.wargame.envs.domain.sight import (
-    footprint_bounds,
     has_line_of_sight_between_points,
     line_of_sight_matrix,
 )
@@ -41,8 +40,6 @@ __all__ = [
     "BoardDimensions",
     "BattleView",
     "segments_are_clear",
-    "points_inside_rects",
-    "footprint_bounds",
     "has_line_of_sight_between_points",
     "line_of_sight_matrix",
     "WargameModel",

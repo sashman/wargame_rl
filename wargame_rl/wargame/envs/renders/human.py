@@ -11,6 +11,7 @@ from wargame_rl.wargame.envs.env_components.distance_cache import (
     objective_ownership_from_norms_offset,
 )
 from wargame_rl.wargame.envs.renders.renderer import Renderer
+from wargame_rl.wargame.envs.types.geometry import Polygon
 from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
@@ -425,8 +426,8 @@ class HumanRender(Renderer):
         canvas_y = float(my - self._canvas_offset_y)
         hit_radius = max(self.pix_square_size / 2, 12.0)
         for i, model in enumerate(view.player_models):
-            center_x = (model.location[0] + 0.5) * self.pix_square_size
-            center_y = (model.location[1] + 0.5) * self.pix_square_size
+            center_x = model.location[0] * self.pix_square_size
+            center_y = model.location[1] * self.pix_square_size
             dist_sq = (canvas_x - center_x) ** 2 + (canvas_y - center_y) ** 2
             if dist_sq <= hit_radius**2:
                 return i
@@ -443,12 +444,8 @@ class HumanRender(Renderer):
             return
         model = view.player_models[model_index]
         # Model center in window coords (canvas may be offset when window is resized)
-        center_x = (
-            self._canvas_offset_x + (model.location[0] + 0.5) * self.pix_square_size
-        )
-        center_y = (
-            self._canvas_offset_y + (model.location[1] + 0.5) * self.pix_square_size
-        )
+        center_x = self._canvas_offset_x + model.location[0] * self.pix_square_size
+        center_y = self._canvas_offset_y + model.location[1] * self.pix_square_size
         latest = (
             model.model_rewards_history[-1] if model.model_rewards_history else None
         )
@@ -625,24 +622,54 @@ class HumanRender(Renderer):
             ),
         )
 
+    def _to_pixels(self, vertices: np.ndarray) -> list[tuple[float, float]]:
+        """Board-unit vertices to canvas pixels.
+
+        No `+ 0.5` anywhere. That offset moved a *cell index* to the cell's
+        centre; a continuous coordinate is already the point, and adding half a
+        unit would draw every model and every ruin corner shifted down and right
+        of where the rules put it.
+        """
+        return [
+            (float(x) * self.pix_square_size, float(y) * self.pix_square_size)
+            for x, y in vertices
+        ]
+
     def _draw_terrain(self, canvas: pygame.Surface, view: BattleView) -> None:
-        """Draw terrain footprints as translucent filled rectangles with labels."""
+        """Draw each terrain piece as its translucent outline, not its bounding box.
+
+        Drawing the bounding box would show an L-shaped ruin as a solid square —
+        a picture of terrain the sight trace is not using, which is exactly the
+        confusion polygon terrain was introduced to end.
+        """
         fill_color = (140, 120, 90)
         outline_color = (100, 80, 60)
         label_color = (60, 50, 40)
+        width, height = canvas.get_size()
+        # A piece that is also an objective is labelled as one. Under
+        # `objectives_on_terrain` the prize and the cover are the same ground,
+        # and a board where every piece says "Ruin" hides exactly the thing the
+        # scenario is about.
+        objective_outlines = {
+            objective.area.vertices.tobytes()
+            for objective in view.objectives
+            if objective.area is not None
+        }
         for fp in view.terrain.footprints:
-            x = fp.x0 * self.pix_square_size
-            y = fp.y0 * self.pix_square_size
-            w = (fp.x1 - fp.x0 + 1) * self.pix_square_size
-            h = (fp.y1 - fp.y0 + 1) * self.pix_square_size
-            fill_surf = pygame.Surface((int(w), int(h)), pygame.SRCALPHA)
-            fill_surf.fill((*fill_color, 90))
-            canvas.blit(fill_surf, (x, y))
-            pygame.draw.rect(canvas, outline_color, pygame.Rect(x, y, w, h), width=2)
+            points = self._to_pixels(fp.polygon.vertices)
+            # Filled through a per-piece alpha surface: pygame's polygon fill has
+            # no alpha channel of its own.
+            fill_surf = pygame.Surface((width, height), pygame.SRCALPHA)
+            pygame.draw.polygon(fill_surf, (*fill_color, 90), points)
+            canvas.blit(fill_surf, (0, 0))
+            pygame.draw.polygon(canvas, outline_color, points, width=2)
             font = pygame.font.Font(None, max(16, int(self.pix_square_size * 0.8)))
-            text = font.render("Ruin", True, label_color)
-            text_rect = text.get_rect(center=(x + w / 2, y + h / 2))
-            canvas.blit(text, text_rect)
+            is_objective = fp.polygon.vertices.tobytes() in objective_outlines
+            text = font.render(
+                "OBJECTIVE" if is_objective else "Ruin", True, label_color
+            )
+            centre = fp.polygon.centroid * self.pix_square_size
+            canvas.blit(text, text.get_rect(center=(centre[0], centre[1])))
 
     def _draw_target(
         self,
@@ -681,28 +708,55 @@ class HumanRender(Renderer):
 
         base_width = max(2, int(round(self.pix_square_size / 8)))
         for i, objective in enumerate(objectives):
-            cx = int(round(float(objective.location[0] + 0.5) * self.pix_square_size))
-            cy = int(round(float(objective.location[1] + 0.5) * self.pix_square_size))
+            if player_controls[i]:
+                fill: tuple[int, int, int] | None = player_rim_color
+            elif opponent_controls[i]:
+                fill = opponent_rim_color
+            else:
+                fill = None
 
+            if objective.area is not None:
+                # An area objective IS its terrain piece, so it is drawn on top
+                # of the footprint rather than beside it: same outline, a
+                # translucent ownership wash, and a heavier rim to say the
+                # ground is the prize.
+                self._draw_area_objective(canvas, objective.area, fill, base_rim_color)
+                continue
+
+            cx = int(round(float(objective.location[0]) * self.pix_square_size))
+            cy = int(round(float(objective.location[1]) * self.pix_square_size))
             radius_px = max(
                 1,
                 int(round(float(objective.radius_size) * float(self.pix_square_size))),
             )
-            max_base_width = max(1, radius_px // 2)
-            rim_width = min(base_width, max_base_width)
+            rim_width = min(base_width, max(1, radius_px // 2))
 
             # Fill first, then draw the grey rim so the rim stays constant.
-            if player_controls[i]:
-                pygame.draw.circle(canvas, player_rim_color, (cx, cy), radius_px)
-            elif opponent_controls[i]:
-                pygame.draw.circle(
-                    canvas,
-                    opponent_rim_color,
-                    (cx, cy),
-                    radius_px,
-                )
-
+            if fill is not None:
+                pygame.draw.circle(canvas, fill, (cx, cy), radius_px)
             pygame.draw.circle(canvas, base_rim_color, (cx, cy), radius_px, rim_width)
+
+    def _draw_area_objective(
+        self,
+        canvas: pygame.Surface,
+        area: Polygon,
+        fill: tuple[int, int, int] | None,
+        rim_color: tuple[int, int, int],
+    ) -> None:
+        """Overlay an area objective on the terrain piece it occupies.
+
+        Always washed, even when uncontrolled: a contested point that looked
+        identical to a plain ruin would make the one thing the scenario is about
+        invisible on the board.
+        """
+        points = self._to_pixels(area.vertices)
+        width, height = canvas.get_size()
+        wash = pygame.Surface((width, height), pygame.SRCALPHA)
+        pygame.draw.polygon(wash, (*(fill or rim_color), 120), points)
+        canvas.blit(wash, (0, 0))
+        pygame.draw.polygon(
+            canvas, rim_color, points, width=max(3, int(self.pix_square_size / 6))
+        )
 
     def _color_for_group(self, group_id: int) -> tuple[int, int, int]:
         """Return a distinct color for the given group_id (1-based). Cycles through palette if needed."""
@@ -714,6 +768,18 @@ class HumanRender(Renderer):
         index = group_id % len(self._OPPONENT_COLORS)
         return self._OPPONENT_COLORS[index]
 
+    def _base_radius_px(self, model: WargameModel) -> float:
+        """Pixel radius of a model's base.
+
+        Drawn at the *real* radius when the model has one, so the picture shows
+        the footprint the rules use — bases that cannot overlap, and objective
+        range measured from the edge. A dimensionless model keeps the old
+        third-of-a-cell token, which is a legibility choice and nothing else.
+        """
+        if model.base_radius > 0.0:
+            return float(model.base_radius) * self.pix_square_size
+        return self.pix_square_size / 3
+
     def _draw_agent(
         self, canvas: pygame.Surface, wargame_models: list[WargameModel]
     ) -> None:
@@ -721,9 +787,9 @@ class HumanRender(Renderer):
         for model in wargame_models:
             if not model.is_alive:
                 grey = (180, 180, 180)
-                cx = float(model.location[0] + 0.5) * self.pix_square_size
-                cy = float(model.location[1] + 0.5) * self.pix_square_size
-                r = self.pix_square_size / 3
+                cx = float(model.location[0]) * self.pix_square_size
+                cy = float(model.location[1]) * self.pix_square_size
+                r = self._base_radius_px(model)
                 pygame.draw.circle(canvas, grey, (cx, cy), r)
                 xr = self.pix_square_size / 4
                 pygame.draw.line(
@@ -742,24 +808,25 @@ class HumanRender(Renderer):
                 )
                 continue
             color = self._color_for_group(model.group_id)
-            pygame.draw.circle(
-                canvas,
-                color,
-                (
-                    float(model.location[0] + 0.5) * self.pix_square_size,
-                    float(model.location[1] + 0.5) * self.pix_square_size,
-                ),
-                self.pix_square_size / 3,
+            centre = (
+                float(model.location[0]) * self.pix_square_size,
+                float(model.location[1]) * self.pix_square_size,
             )
+            radius = self._base_radius_px(model)
+            pygame.draw.circle(canvas, color, centre, radius)
+            # A rim, so adjacent bases in a packed squad read as separate models
+            # rather than as one blob -- which is the whole point of drawing the
+            # real radius.
+            pygame.draw.circle(canvas, (30, 30, 30), centre, radius, width=1)
 
     def _draw_opponent_models(
         self, canvas: pygame.Surface, opponent_models: list[WargameModel]
     ) -> None:
         """Draw opponent models as downward-pointing triangles."""
         for model in opponent_models:
-            cx = float(model.location[0] + 0.5) * self.pix_square_size
-            cy = float(model.location[1] + 0.5) * self.pix_square_size
-            r = self.pix_square_size / 3
+            cx = float(model.location[0]) * self.pix_square_size
+            cy = float(model.location[1]) * self.pix_square_size
+            r = self._base_radius_px(model)
             if not model.is_alive:
                 grey = (180, 180, 180)
                 top_left = (cx - r, cy - r * 0.6)
@@ -809,12 +876,12 @@ class HumanRender(Renderer):
             faded = tuple(c + (255 - c) // 2 for c in color)
 
             prev_px = (
-                float(prev[0] + 0.5) * self.pix_square_size,
-                float(prev[1] + 0.5) * self.pix_square_size,
+                float(prev[0]) * self.pix_square_size,
+                float(prev[1]) * self.pix_square_size,
             )
             curr_px = (
-                float(curr[0] + 0.5) * self.pix_square_size,
-                float(curr[1] + 0.5) * self.pix_square_size,
+                float(curr[0]) * self.pix_square_size,
+                float(curr[1]) * self.pix_square_size,
             )
 
             line_width = max(3, int(self.pix_square_size / 4))
