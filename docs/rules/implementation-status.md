@@ -17,8 +17,8 @@ table is the roadmap for the next implementation phase.
 
 | Rule | Status | Owner / note |
 |---|---|---|
-| [Distances in inches](README.md#conventions) | **divergent** | The environment is a discrete grid of cells with no fixed inches-per-cell. Every distance in `constants.yaml` must be converted before use. This is the single largest source of divergence below. |
-| [Board 44" × 60"](15-missions-and-scoring.md#setting-up-a-battle) | **divergent** | `board_width` / `board_height` in `envs/types/config.py`, default `50 × 50`. |
+| [Distances in inches](README.md#conventions) | **partial** | `inches_per_unit` (default `1.0`) and `envs/domain/scale.py` now define the mapping, and `envs/domain/rules_quantities.py` resolves rules distances into board units once at construction. Still divergent in that coordinates are whole cells, so a distance finer than one unit cannot be represented. |
+| [Board 44" × 60"](15-missions-and-scoring.md#setting-up-a-battle) | **divergent** | `board_width` / `board_height` in `envs/types/config/env.py`, default `50 × 50`. |
 | [Five battle rounds](07-battle-round.md) | **divergent** | `number_of_battle_rounds` defaults to **100**. Episodes are sized for training, not for the tabletop. |
 | [Round → turn → five phases](07-battle-round.md#player-turns) | implemented | `envs/types/game_timing.py` (`BattlePhase`), `envs/domain/game_clock.py`. |
 | [Phase order](07-battle-round.md#player-turns) | implemented | `BATTLE_PHASE_ORDER`. |
@@ -50,7 +50,7 @@ table is the roadmap for the next implementation phase.
 | [Cannot cross the board edge](03-moving.md#making-a-move) | implemented | Positions are clipped to the board. |
 | [Cannot move through enemy models](03-moving.md#making-a-move) | absent | Movement ignores occupancy entirely. |
 | [Coherency (2" / 9")](03-moving.md#coherency) | **divergent** | Approximated by `group_max_distance` (default 10.0 cells) and the `group_cohesion` reward calculator. Nothing enforces it, and nothing destroys models for breaking it. |
-| [Engagement range 2" / 5"](03-moving.md#engagement) | **divergent** | `ENGAGEMENT_RANGE = 1` in `envs/domain/shooting.py`, in grid cells. Used only to gate shooting. |
+| [Engagement range 2" / 5"](03-moving.md#engagement) | **divergent** | `engagement_range` in `envs/types/config/env.py`, authored in inches and resolved through the scale. Defaults to **1**, not the rules' 2, because every baseline and trained result in the repo was measured at 1 — adopting the rules value changes which shots are legal and is a scenario change to be measured, not a correction. No vertical component. Used only to gate shooting. |
 | [Remain stationary](09-movement-phase.md#remain-stationary) | implemented | The `"stay"` action slice, `STAY_ACTION = 0`. |
 | [Normal move](09-movement-phase.md#normal-move) | implemented | The `"movement"` action slice. |
 | [Advance move](09-movement-phase.md#advance-move) | absent | `WargameModel.advanced_this_turn` exists and is read by the shooting mask, but nothing ever sets it. Dead until the advance move lands. |

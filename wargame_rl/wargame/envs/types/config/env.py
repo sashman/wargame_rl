@@ -154,7 +154,31 @@ class WargameEnvConfig(BaseModel):
     max_move_speed: float = Field(
         gt=0,
         default=6.0,
-        description="Maximum distance a model can move in a single step.",
+        description="Maximum distance a model can move in a single step, in inches.",
+    )
+    inches_per_unit: float = Field(
+        gt=0,
+        default=1.0,
+        description=(
+            "How many rules inches one board coordinate unit spans. Rules "
+            "distances (move, weapon range, engagement) are authored in inches "
+            "and divided by this to compare against coordinates; positions, "
+            "board size and terrain footprints are already in units. At the "
+            "default of 1.0 the two coincide and every conversion is the "
+            "identity, which is why introducing the scale changed no result."
+        ),
+    )
+    engagement_range: float = Field(
+        gt=0,
+        default=1.0,
+        description=(
+            "How close an enemy must be, in inches, for a model to count as "
+            "engaged and be unable to shoot. Was a hard-coded constant. The "
+            "rules say 2 (docs/rules/constants.yaml, engagement.horizontal_in); "
+            "1 is kept as the default because every baseline and trained result "
+            "in the repo was measured at 1, and raising it changes which shots "
+            "are legal. See docs/rules/implementation-status.md."
+        ),
     )
     reward_phases: list[RewardPhaseConfig] = Field(
         default_factory=_default_reward_phases,
