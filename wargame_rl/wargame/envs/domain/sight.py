@@ -144,7 +144,7 @@ CLEAR = 2
 
 
 class Occluders(NamedTuple):
-    """The model bases that can block a sight line, and who they belong to."""
+    """The model bases that can block a sight line, and whose group they are in."""
 
     centres: np.ndarray
     """``(M, 2)`` base centres."""
@@ -153,27 +153,51 @@ class Occluders(NamedTuple):
     """``(M,)`` base radii. A radius of 0 occludes nothing, which is what makes
     all of this a no-op for configs whose models are dimensionless points."""
 
-    units: np.ndarray
-    """``(M,)`` unit id per occluder, for the ignore-my-own-unit rule."""
+    groups: np.ndarray
+    """``(M,)`` army-qualified group key, for the ignore-my-own-group rule."""
 
 
-def occluders_from(models: Sequence[Any]) -> Occluders:
-    """Build the occluder arrays from a list of models. Dead models are removed.
+def group_keys(models: Sequence[Any], army: int) -> np.ndarray:
+    """``(N,)`` group ids qualified by which army they belong to.
+
+    **Group numbering is per army**, so the raw ids are not comparable across
+    sides: both armies have a group 0, and comparing them directly would make
+    each side's first squad ignore the other's — invisible except as slightly
+    too much shooting. The army index is folded in so a key means one group on
+    one side.
+    """
+    if not models:
+        return np.zeros(0, dtype=np.int64)
+    return np.array([m.group_id for m in models], dtype=np.int64) * 2 + army
+
+
+def occluders_from(*armies: Sequence[Any]) -> Occluders:
+    """Build the occluder arrays from each army in turn. Dead models are removed.
 
     A casualty is off the table, so its base is not something anyone has to see
-    around.
+    around. Armies are passed separately because the group key has to record
+    which side an occluder is on.
     """
-    alive = [m for m in models if m.is_alive]
-    if not alive:
+    centres: list[np.ndarray] = []
+    radii: list[float] = []
+    groups: list[int] = []
+    for army, models in enumerate(armies):
+        alive = [m for m in models if m.is_alive]
+        if not alive:
+            continue
+        centres.extend(np.asarray(m.location, dtype=float) for m in alive)
+        radii.extend(float(m.base_radius) for m in alive)
+        groups.extend(int(key) for key in group_keys(alive, army))
+    if not centres:
         return Occluders(
             np.zeros((0, 2), dtype=float),
             np.zeros(0, dtype=float),
             np.zeros(0, dtype=np.int64),
         )
     return Occluders(
-        np.array([m.location for m in alive], dtype=float),
-        np.array([m.base_radius for m in alive], dtype=float),
-        np.array([m.unit_id for m in alive], dtype=np.int64),
+        np.array(centres, dtype=float),
+        np.array(radii, dtype=float),
+        np.array(groups, dtype=np.int64),
     )
 
 
@@ -186,8 +210,8 @@ def visibility_matrix(
     sample_step: float,
     candidates: np.ndarray | None = None,
     occluders: Occluders | None = None,
-    origin_units: np.ndarray | None = None,
-    target_units: np.ndarray | None = None,
+    origin_groups: np.ndarray | None = None,
+    target_groups: np.ndarray | None = None,
     origin_radii: np.ndarray | None = None,
     target_radii: np.ndarray | None = None,
 ) -> np.ndarray:
@@ -251,7 +275,7 @@ def visibility_matrix(
     clear = _terrain_clear(all_starts, all_ends, terrain, blocking_mask, sample_step)
     if occluders is not None and len(occluders.centres):
         clear &= _model_clear(
-            all_starts, all_ends, occluders, origin_units, target_units, rows, cols
+            all_starts, all_ends, occluders, origin_groups, target_groups, rows, cols
         )
 
     n_clear = clear.reshape(n_rays, len(rows)).sum(axis=0)
@@ -321,23 +345,24 @@ def _model_clear(
     starts: np.ndarray,
     ends: np.ndarray,
     occluders: Occluders,
-    origin_units: np.ndarray | None,
-    target_units: np.ndarray | None,
+    origin_groups: np.ndarray | None,
+    target_groups: np.ndarray | None,
     rows: np.ndarray,
     cols: np.ndarray,
 ) -> np.ndarray:
     """Clear-of-models for a batch of segments, with the unit exemption.
 
-    A model ignores others in its own unit and in its target's unit
-    (`docs/rules/06-visibility-and-damage.md`). Without the first half a model
-    is blocked by the squadmate standing in front of it; without the second, a
-    unit shields itself by presenting its front rank.
+    A model ignores others in its own group and in its target's group
+    (`docs/rules/06-visibility-and-damage.md`, where the rules call a group a
+    unit). Without the first half a model is blocked by the squadmate standing
+    in front of it; without the second, a group shields itself by presenting its
+    front rank.
     """
     exempt = np.zeros((len(rows), len(occluders.centres)), dtype=bool)
-    if origin_units is not None:
-        exempt |= occluders.units[np.newaxis, :] == origin_units[rows][:, np.newaxis]
-    if target_units is not None:
-        exempt |= occluders.units[np.newaxis, :] == target_units[cols][:, np.newaxis]
+    if origin_groups is not None:
+        exempt |= occluders.groups[np.newaxis, :] == origin_groups[rows][:, np.newaxis]
+    if target_groups is not None:
+        exempt |= occluders.groups[np.newaxis, :] == target_groups[cols][:, np.newaxis]
     # A base sitting on either endpoint cannot block that query: the observer's
     # own base is on the start of every ray it casts.
     # A base sitting on either endpoint cannot block that query: the observer's

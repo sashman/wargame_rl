@@ -1,4 +1,4 @@
-"""Domain entities: WargameModel (unit) and WargameObjective (capture target)."""
+"""Domain entities: WargameModel and WargameObjective (capture target)."""
 
 from __future__ import annotations
 
@@ -21,20 +21,17 @@ if TYPE_CHECKING:
 
 class WargameModel:
     """
-    A single model on the board. One *model*, not a unit — see `unit_id`.
+    A single model on the board. One model, not a whole group — see `group_id`.
 
     Args:
         location: Location of the model in the grid.
         stats: Statistics (e.g. wounds). Not used currently.
         distances_to_objectives: Distances to all objectives.
-        group_id: Group ID; models in the same group are encouraged to stay
-            close, spawn together, and share a one-hot in the observation. It is
-            a *training* concept and is read by 18 modules.
-        unit_id: The unit this model belongs to, which is a *rules* concept: a
-            model ignores others in its own unit, and in its target's unit, when
-            tracing line of sight. Kept separate from `group_id` deliberately —
-            one is overloaded and defaults to 0 for everyone, which would make a
-            default config one big unit and silently disable the sight rule.
+        group_id: The group this model belongs to — this project's name for the
+            rules' *unit*. Models in a group stay close, spawn together, share a
+            one-hot in the observation, and ignore each other (and their
+            target's group) when tracing line of sight. Numbering is per army:
+            player group 0 and opponent group 0 are different groups.
         base_radius: Physical radius of the model's base, in board units. 0.0
             makes it a dimensionless point.
         previous_closest_objective_distance: Used for reward shaping.
@@ -49,14 +46,12 @@ class WargameModel:
         previous_closest_objective_distance: float | None = None,
         best_closest_objective_distance: float | None = None,
         base_radius: float = 0.0,
-        unit_id: int = 0,
     ):
         self.location = location
         self.previous_location: Position | None = None
         self.stats = stats
         self.distances_to_objectives = distances_to_objectives
         self.group_id = group_id
-        self.unit_id = unit_id
         self.base_radius = base_radius
 
         self.previous_closest_objective_distance = previous_closest_objective_distance

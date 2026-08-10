@@ -138,61 +138,59 @@ track_exposure: true
 # weapon change is one edit rather than fifty, and "every model is the same"
 # is visible instead of inferred.
 #
-# `unit_id` is declared, not inherited from `group_id`. A unit is a *rules*
-# concept -- a model ignores others in its own unit, and in its target's, when
-# tracing sight -- while `group_id` drives cohesion rewards, spawn clustering
-# and the observation encoding. They happen to coincide here, and saying so
-# explicitly is the point: unset, each model would be its own unit and a squad
-# would be unable to shoot past its own front rank.
+# `group_id` is this project's name for the rules' *unit*, so these five squads
+# are also five units for the sight rule: a model ignores its own group, and its
+# target's group, when tracing. Numbering is per army, so player group 0 and
+# opponent group 0 are different groups.
 models:
-  - &squad_0 { group_id: 0, unit_id: 0, weapons: &rifle [{ range: 12, attacks: 1 }] }
+  - &squad_0 { group_id: 0, weapons: &rifle [{ range: 12, attacks: 1 }] }
   - *squad_0
   - *squad_0
   - *squad_0
   - *squad_0
-  - &squad_1 { group_id: 1, unit_id: 1, weapons: *rifle }
+  - &squad_1 { group_id: 1, weapons: *rifle }
   - *squad_1
   - *squad_1
   - *squad_1
   - *squad_1
-  - &squad_2 { group_id: 2, unit_id: 2, weapons: *rifle }
+  - &squad_2 { group_id: 2, weapons: *rifle }
   - *squad_2
   - *squad_2
   - *squad_2
   - *squad_2
-  - &squad_3 { group_id: 3, unit_id: 3, weapons: *rifle }
+  - &squad_3 { group_id: 3, weapons: *rifle }
   - *squad_3
   - *squad_3
   - *squad_3
   - *squad_3
-  - &squad_4 { group_id: 4, unit_id: 4, weapons: *rifle }
+  - &squad_4 { group_id: 4, weapons: *rifle }
   - *squad_4
   - *squad_4
   - *squad_4
   - *squad_4
 
 opponent_models:
-  - &opp_squad_0 { group_id: 0, unit_id: 0, weapons: *rifle }
+  - &opp_squad_0 { group_id: 0, weapons: *rifle }
   - *opp_squad_0
   - *opp_squad_0
   - *opp_squad_0
   - *opp_squad_0
-  - &opp_squad_1 { group_id: 1, unit_id: 1, weapons: *rifle }
+  - &opp_squad_1 { group_id: 1, weapons: *rifle }
   - *opp_squad_1
   - *opp_squad_1
   - *opp_squad_1
   - *opp_squad_1
-  - &opp_squad_2 { group_id: 2, unit_id: 2, weapons: *rifle }
+  - &opp_squad_2 { group_id: 2, weapons: *rifle }
   - *opp_squad_2
   - *opp_squad_2
   - *opp_squad_2
   - *opp_squad_2
-  - &opp_squad_3 { group_id: 3, unit_id: 3, weapons: *rifle }
+  - &opp_squad_3 { group_id: 3, weapons: *rifle }
   - *opp_squad_3
   - *opp_squad_3
   - *opp_squad_3
   - *opp_squad_3
-  - &opp_squad_4 { group_id: 4, unit_id: 4, weapons: *rifle }
+  - &opp_squad_4 { group_id: 4, weapons: *rifle }
   - *opp_squad_4
   - *opp_squad_4
   - *opp_squad_4

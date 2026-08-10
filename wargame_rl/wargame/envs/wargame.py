@@ -29,6 +29,7 @@ from wargame_rl.wargame.envs.domain.shooting import (
 )
 from wargame_rl.wargame.envs.domain.sight import (
     COVER,
+    group_keys,
     has_line_of_sight_between_points,
     occluders_from,
     visibility_matrix,
@@ -443,6 +444,18 @@ class WargameEnv(gym.Env):
         )
         return visible | (edges >= COVER)
 
+    def _group_keys(self, models: list[WargameModel] | None) -> np.ndarray | None:
+        """Army-qualified group keys for a model list, matching the occluders.
+
+        Which army a list belongs to is decided by identity rather than by a
+        flag, because the two shooting directions pass the same two lists in
+        opposite order and a flag would eventually be threaded through wrong.
+        """
+        if models is None:
+            return None
+        army = 1 if models is self.opponent_models else 0
+        return group_keys(models, army)
+
     def visibility_between(
         self,
         origins: np.ndarray,
@@ -470,11 +483,9 @@ class WargameEnv(gym.Env):
             self.config.blocking_mask,
             sample_step=self._rules_quantities.los_sample_step,
             candidates=candidates,
-            occluders=occluders_from(
-                list(self.wargame_models) + list(self.opponent_models)
-            ),
-            origin_units=_unit_ids(origin_models),
-            target_units=_unit_ids(target_models),
+            occluders=occluders_from(self.wargame_models, self.opponent_models),
+            origin_groups=self._group_keys(origin_models),
+            target_groups=self._group_keys(target_models),
             origin_radii=_base_radii(origin_models),
             target_radii=_base_radii(target_models) if edges else None,
         )
@@ -1055,13 +1066,6 @@ class WargameEnv(gym.Env):
             self.renderer.render(self)
 
         return None
-
-
-def _unit_ids(models: list[WargameModel] | None) -> np.ndarray | None:
-    """Unit id per model, for the ignore-my-own-unit sight rule."""
-    if models is None:
-        return None
-    return np.array([m.unit_id for m in models], dtype=np.int64)
 
 
 def _base_radii(models: list[WargameModel] | None) -> np.ndarray | None:

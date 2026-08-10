@@ -52,22 +52,17 @@ class ModelConfig(BaseModel):
         ge=0,
         description="Y coordinate on the board. If None, placed randomly.",
     )
-    group_id: int = Field(default=0, ge=0, description="Group this model belongs to")
-    unit_id: int | None = Field(
-        default=None,
+    group_id: int = Field(
+        default=0,
         ge=0,
         description=(
-            "The unit this model belongs to. Units matter to the *rules*: a "
-            "model ignores others in its own unit, and in its target's unit, "
-            "when tracing line of sight. **Unset means the model is its own "
-            "unit**, which is the maximally-occluding reading and the safe one. "
-            "It deliberately does NOT fall back to `group_id`: that defaults "
-            "to 0 for every model, so a config that never sets groups would "
-            "become one 25-model unit and switch the sight rule off entirely "
-            "without saying so. `group_id` is also overloaded across 18 modules "
-            "(cohesion reward, placement clustering, baseline squad assignment, "
-            "the observation encoding), so unit membership riding on it would "
-            "couple the sight rule to all of them."
+            "The group this model belongs to -- this project's name for the "
+            "rules' *unit*, chosen to keep the vocabulary its own. It is the "
+            "rules concept wherever one is needed: models in a group ignore "
+            "each other, and their target's group, when tracing line of sight. "
+            "It also drives cohesion rewards, spawn clustering and the "
+            "observation one-hot. Group numbering is per army, so player group "
+            "0 and opponent group 0 are different groups."
         ),
     )
     max_wounds: int = Field(default=1, gt=0)

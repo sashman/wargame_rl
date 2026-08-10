@@ -1,14 +1,15 @@
-"""Units as a real entity, and the sight rules that depend on them.
+"""Model occlusion and cover, and the group rule they depend on.
 
-A model with a base occludes. It ignores others in its own unit and in its
-target's — otherwise a squad shields itself with its own front rank, and no
-model can shoot past the man in front of it. A target only partly visible is
-**in cover**, which worsens the attack by one.
+`group_id` is this project's name for the rules' *unit*, so it is the rules
+concept here too: a model with a base occludes, but ignores others in its own
+group and in its target's group — otherwise a squad shields itself with its own
+front rank and nobody can shoot past the man in front. A target only partly
+visible is **in cover**, which worsens the attack by one.
 
 Every one of these needs `base_radius > 0`. At radius 0 a model occludes
-nothing and the two edge rays coincide with the centre one, so the whole feature
-is a no-op — which is exactly why an earlier version that never applied the unit
-rule at all kept the entire suite green.
+nothing and the edge rays coincide with the centre one, so the whole feature is
+a no-op — which is exactly why an earlier version that never applied the group
+rule on the shooting path kept the entire suite green.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ import pytest
 
 from wargame_rl.wargame.envs.domain import rules_constants
 from wargame_rl.wargame.envs.domain.shooting import DefenderStats, resolve_shooting
-from wargame_rl.wargame.envs.domain.sight import CLEAR, COVER, HIDDEN
+from wargame_rl.wargame.envs.domain.sight import CLEAR, COVER, HIDDEN, group_keys
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import (
     ModelConfig,
@@ -41,54 +42,39 @@ class _Weapon:
         self.damage = 1
 
 
-class TestUnitIdentity:
-    def test_an_unset_unit_makes_each_model_its_own(self) -> None:
-        """Not `group_id`, deliberately.
+class TestGroupKeys:
+    def test_the_two_armies_do_not_share_a_group_numbering(self) -> None:
+        """Both armies have a group 0, and they are different groups.
 
-        `group_id` defaults to 0 for every model, so falling back to it would
-        turn a config that never sets groups into one 25-model unit — silently
-        switching the sight rule off entirely. Own-unit is the
-        maximally-occluding reading and the safe default.
+        Comparing raw ids across sides would make each army's first squad ignore
+        the other's when tracing sight — visible only as slightly too much
+        shooting, on one squad pairing, in a metric nobody reads per-group.
         """
+        player = [ModelConfig(group_id=0), ModelConfig(group_id=1)]
         env = WargameEnv(
             config=WargameEnvConfig(
-                number_of_wargame_models=4,
-                number_of_objectives=1,
                 board_width=30,
                 board_height=30,
-                # Explicit configs, because that is what a real scenario has and
-                # it is where `group_id` collapses to 0 for everyone.
-                models=[ModelConfig() for _ in range(4)],
+                number_of_wargame_models=2,
+                number_of_opponent_models=2,
+                number_of_objectives=1,
+                models=player,
+                opponent_models=[ModelConfig(group_id=0), ModelConfig(group_id=1)],
+                opponent_policy=OpponentPolicyConfig(type="random"),
             )
         )
 
-        assert {m.group_id for m in env.wargame_models} == {0}
-        assert [m.unit_id for m in env.wargame_models] == [0, 1, 2, 3]
+        ours = group_keys(env.wargame_models, 0)
+        theirs = group_keys(env.opponent_models, 1)
 
-    def test_a_declared_unit_is_honoured_and_is_not_the_group(self) -> None:
-        env = WargameEnv(
-            config=WargameEnvConfig(
-                number_of_wargame_models=4,
-                number_of_objectives=1,
-                board_width=30,
-                board_height=30,
-                models=[
-                    ModelConfig(group_id=0, unit_id=7),
-                    ModelConfig(group_id=0, unit_id=7),
-                    ModelConfig(group_id=1, unit_id=9),
-                    ModelConfig(group_id=1),
-                ],
-            )
-        )
-
-        assert [m.unit_id for m in env.wargame_models] == [7, 7, 9, 3]
+        assert not set(ours.tolist()) & set(theirs.tolist())
 
 
 def _sight_env(
     player: list[tuple[float, float, int]],
     opponent: list[tuple[float, float, int]],
 ) -> WargameEnv:
-    """Board with models at fixed spots, each carrying a declared unit."""
+    """Board with models at fixed spots, each carrying a declared group."""
     return WargameEnv(
         config=WargameEnvConfig(
             board_width=60,
@@ -100,12 +86,12 @@ def _sight_env(
             base_radius=RADIUS,
             models=[
                 ModelConfig(
-                    x=int(x), y=int(y), unit_id=u, weapons=[WeaponProfile(range=50)]
+                    x=int(x), y=int(y), group_id=u, weapons=[WeaponProfile(range=50)]
                 )
                 for x, y, u in player
             ],
             opponent_models=[
-                ModelConfig(x=int(x), y=int(y), unit_id=u) for x, y, u in opponent
+                ModelConfig(x=int(x), y=int(y), group_id=u) for x, y, u in opponent
             ],
             opponent_policy=OpponentPolicyConfig(type="random"),
             render_mode=None,
@@ -151,7 +137,7 @@ class TestModelOcclusion:
 
         assert _visibility(env)[0, 3] == HIDDEN
 
-    def test_a_squadmate_screen_does_not_block(self) -> None:
+    def test_a_same_group_screen_does_not_block(self) -> None:
         """Without this a unit shields itself, and the man at the back never fires."""
         other_unit = _sight_env(
             [(5, 20, 0), (20, 19, 1), (20, 20, 1), (20, 21, 1)], [(40, 20, 9)]
@@ -165,7 +151,7 @@ class TestModelOcclusion:
         same_unit.reset(seed=0)
         assert _visibility(same_unit)[0, 0] == CLEAR
 
-    def test_the_targets_own_unit_does_not_block(self) -> None:
+    def test_the_targets_own_group_does_not_block(self) -> None:
         """A unit cannot hide behind its own front rank either."""
         other_unit = _sight_env(
             [(5, 20, 0)], [(20, 19, 1), (20, 20, 1), (20, 21, 1), (40, 20, 2)]
@@ -179,10 +165,10 @@ class TestModelOcclusion:
         same_unit.reset(seed=0)
         assert _visibility(same_unit)[0, 3] == CLEAR
 
-    def test_the_shooting_mask_applies_the_unit_rule(self) -> None:
+    def test_the_shooting_mask_applies_the_group_rule(self) -> None:
         """The regression this file exists for.
 
-        The unit rule was implemented in the sight layer but never reached the
+        The group rule was implemented in the sight layer but never reached the
         shooting mask, which received positions and no models. Every config in
         the suite has `base_radius: 0`, where nothing occludes, so the whole
         suite stayed green while a squad could not shoot past its own front rank.
@@ -254,7 +240,7 @@ class TestCover:
 def test_visibility_is_symmetric(seed: int) -> None:
     """A sees B exactly as well as B sees A.
 
-    Occlusion is symmetric because the unit exemption is symmetric in the pair
+    Occlusion is symmetric because the group exemption is symmetric in the pair
     and the geometry is a segment. `firepower_ratio` reads an exposed model as
     one that can also fire, so an asymmetry here would make that metric count
     two different populations.
