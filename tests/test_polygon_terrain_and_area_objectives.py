@@ -361,3 +361,43 @@ class TestSnapshotRoundTrip:
         snapshot = env.to_snapshot()
 
         assert snapshot.player_models[0].base_radius == pytest.approx(0.63)
+
+
+class TestLayoutSurvivesTheTail:
+    """A layout constraint has to hold on every reset, not on average.
+
+    This is a regression test with a price attached. The shipped profile was
+    checked over 200 layouts and had a *minimum* of five eligible pieces, which
+    read as ample margin — but a training run resets tens of thousands of times,
+    so a draw with a per-episode probability well under 1% is a certainty. It
+    killed a 619-epoch run.
+
+    Terrain is now redrawn until it can host the objectives, so what this pins
+    is that a long run of resets never raises.
+    """
+
+    def test_thousands_of_resets_never_fail_to_place_objectives(self) -> None:
+        config = WargameEnvConfig(
+            board_width=60,
+            board_height=44,
+            number_of_wargame_models=2,
+            number_of_objectives=3,
+            number_of_battle_rounds=1,
+            deployment_zone=(0, 0, 20, 44),
+            opponent_deployment_zone=(40, 0, 60, 44),
+            objectives_on_terrain=True,
+            random_terrain=RandomTerrainConfig(
+                count=37,
+                min_size=3,
+                max_size=6,
+                mirror=True,
+                edge_margin=2,
+                min_gap=1,
+                n_vertices=6,
+            ),
+        )
+        env = WargameEnv(config=config)
+
+        for seed in range(2000):
+            env.reset(seed=seed)
+            assert all(objective.is_area for objective in env.objectives)

@@ -271,6 +271,66 @@ def _distance_to_terrain(location: np.ndarray, terrain: Terrain) -> float:
     )
 
 
+_MAX_TERRAIN_DRAWS = 40
+
+
+def _generate_usable_terrain(
+    config: WargameEnvConfig,
+    board: BoardDimensions,
+    deployment_zone: np.ndarray,
+    opponent_deployment_zone: np.ndarray,
+    rng: Generator,
+) -> Terrain:
+    """Draw a layout, redrawing until it can host the objectives it has to.
+
+    Only `objectives_on_terrain` constrains the layout, and it is a genuine
+    rejection-sampling constraint like every other placement rule here: a draw
+    can leave too few pieces clear of both deployment zones, and the honest
+    response is another draw rather than a failed episode.
+
+    **This was a hard failure and it cost a 619-epoch run.** A profile measured
+    over 200 layouts had a minimum of five eligible pieces, which read as ample
+    -- but a training run resets tens of thousands of times, so a tail event with
+    a per-episode probability of well under 1% is a certainty rather than a
+    risk. Anything sampled per episode needs to survive the tail, not the mean.
+    """
+    assert config.random_terrain is not None
+    spec = config.random_terrain
+    if not config.objectives_on_terrain:
+        return generate_terrain(spec, board, rng)
+
+    terrain = generate_terrain(spec, board, rng)
+    for _ in range(_MAX_TERRAIN_DRAWS):
+        eligible = eligible_objective_pieces(
+            terrain, deployment_zone, opponent_deployment_zone
+        )
+        if len(eligible) >= config.number_of_objectives:
+            return terrain
+        terrain = generate_terrain(spec, board, rng)
+    # Fall through to the placement guard, which names the numbers.
+    return terrain
+
+
+def eligible_objective_pieces(
+    terrain: Terrain,
+    deployment_zone: np.ndarray,
+    opponent_deployment_zone: np.ndarray,
+) -> list[Footprint]:
+    """Terrain pieces that could host an objective: clear of both deployment zones.
+
+    Strict containment, not overlap. A piece straddling a zone edge would put
+    contested ground inside somebody's deployment area, which hands that side
+    the objective before the first move.
+    """
+    player_edge = float(deployment_zone[2])
+    opponent_edge = float(opponent_deployment_zone[0])
+    return [
+        footprint
+        for footprint in terrain.footprints
+        if footprint.x0 >= player_edge and footprint.x1 <= opponent_edge
+    ]
+
+
 def objectives_from_terrain(
     objectives: list[WargameObjective],
     terrain: Terrain,
@@ -292,15 +352,11 @@ def objectives_from_terrain(
             objectives. Silently reusing one piece for two objectives would make
             a three-objective mission a two-objective one without saying so.
     """
-    player_edge = float(deployment_zone[2])
-    opponent_edge = float(opponent_deployment_zone[0])
     centre = np.array([board_width / 2.0, board_height / 2.0])
 
-    eligible = [
-        footprint
-        for footprint in terrain.footprints
-        if footprint.x0 >= player_edge and footprint.x1 <= opponent_edge
-    ]
+    eligible = eligible_objective_pieces(
+        terrain, deployment_zone, opponent_deployment_zone
+    )
     if len(eligible) < len(objectives):
         raise ValueError(
             f"objectives_on_terrain needs {len(objectives)} terrain pieces clear "
@@ -388,9 +444,11 @@ def place_for_episode(
     # layout — a model in a ruin can still see out and be seen.
     if config.random_terrain is not None:
         battle.set_terrain(
-            generate_terrain(
-                config.random_terrain,
+            _generate_usable_terrain(
+                config,
                 BoardDimensions(width=battle.board_width, height=battle.board_height),
+                battle.deployment_zone,
+                battle.opponent_deployment_zone,
                 rng,
             )
         )
