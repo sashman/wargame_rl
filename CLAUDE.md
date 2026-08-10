@@ -228,21 +228,6 @@ Detailed patterns live next to the code they govern — read them when working i
 
 ## Training Runs
 
-> ### ⚠ Every number below this line predates continuous space and is void
->
-> The board stopped being a chessboard on 2026-08-10. Positions are real points,
-> a move covers exactly the distance its speed bin says (a "speed 1" diagonal
-> used to travel 1.41), the vector to the objective is no longer truncated to
-> whole units, sight is a sampled ray rather than a Bresenham walk, and models
-> can carry a base radius. **This changes the dynamics, so every baseline, every
-> `vp_margin` and the `v2.0` milestone (+30.8 / +27.4 against a bar of +17.0) was
-> measured in a different environment.** The *qualitative* lessons still hold —
-> read `held` not `on_obj`, prefer `vp_margin` to win rate, quote against a
-> baseline on identical layouts, check the agent can observe what a reward keys
-> on — and every specific figure needs re-measuring. The two golden gates were
-> regenerated deliberately for this change. Baseline re-measurement is WP-12 of
-> phase 03; until it lands, treat quoted numbers as history, not as targets.
-
 - PPO on a `TransformerNetwork` is the only thing that trains — there is no algorithm or network to choose. `just train` and `train.py` used to take `--algorithm` and `--network-type`; both are gone, so `just train <config> 800` now means 800 *epochs*
 - Start training: `just train <env_config.yaml>` · with an epoch cap: `just train <env_config.yaml> 800`
 - **Multiple configs in parallel**: `just train-multi config1.yaml config2.yaml` runs one training per config concurrently (PPO + transformer); each run gets a unique `--run-suffix` and shared `--wandb-group` so they appear grouped in the Wandb UI

@@ -88,8 +88,6 @@ class TestRulesQuantities:
             "scale",
             "engagement_range",
             "max_move_speed",
-            "los_sample_step",
-            "base_radius",
         }
 
 

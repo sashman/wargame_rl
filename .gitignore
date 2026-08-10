@@ -315,7 +315,3 @@ recordings/
 
 # Claude Code personal overrides (machine-local, not shared)
 .claude/settings.local.json
-
-# External terrain scrape: local intermediate, not committed (also keeps
-# external product/edition markers out of the no-IP guard, which scans untracked files).
-/data/

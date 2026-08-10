@@ -8,7 +8,6 @@ from typing import Protocol, runtime_checkable
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain import rules_constants
 from wargame_rl.wargame.envs.domain.entities import WargameModel
 
 # Engagement range is no longer a constant here: it is authored in inches on the
@@ -90,25 +89,19 @@ def resolve_shooting(
     weapon: WeaponStats,
     defender: DefenderStats,
     rng: np.random.Generator,
-    *,
-    in_cover: bool = False,
 ) -> ShootingResult:
     """Resolve one model's shooting against one target (full attack sequence).
 
     Rolls D6s for hits, wounds, and saves using the provided RNG.
     Unmodified 1 always fails, unmodified 6 always succeeds.
-
-    `in_cover` worsens the Ranged Skill by `COVER_RANGED_SKILL_PENALTY`
-    (`docs/rules/13-terrain.md`): a target only partly visible is harder to hit.
-    The unmodified-6 rule still applies, so cover can never make a shot
-    impossible -- which is what stops it from being an absolute shield when the
-    board gets crowded.
     """
-    skill = weapon.ballistic_skill + (
-        rules_constants.COVER_RANGED_SKILL_PENALTY if in_cover else 0
-    )
     hit_rolls = rng.integers(1, 7, size=weapon.attacks)
-    hits = int(np.sum((hit_rolls != 1) & ((hit_rolls >= skill) | (hit_rolls == 6))))
+    hits = int(
+        np.sum(
+            (hit_rolls != 1)
+            & ((hit_rolls >= weapon.ballistic_skill) | (hit_rolls == 6))
+        )
+    )
 
     if hits == 0:
         return ShootingResult(hits=0, wounds=0, unsaved=0, damage_dealt=0)
@@ -142,7 +135,6 @@ def resolve_shooting_phase(
     targets: Sequence[WargameModel],
     attacker_weapons: Sequence[Sequence[WeaponStats]],
     rng: np.random.Generator,
-    cover: np.ndarray | None = None,
 ) -> list[PairedShootingResult]:
     """Resolve every shot declared this phase, applying damage to the targets.
 
@@ -157,10 +149,6 @@ def resolve_shooting_phase(
             attacker cannot fire.
         rng: Dice source. Consumed only for shots that pass every check, so the
             random stream depends on how many shots resolve.
-        cover: optional ``(n_attackers, n_targets)`` mask of pairs where the
-            target is only partly visible. Passed in rather than computed here
-            because sight is a batch operation over the whole phase, and asking
-            it one pair at a time is a measured 3x regression.
 
     Returns:
         One result per shot that actually resolved, in *shots* order.
@@ -186,8 +174,7 @@ def resolve_shooting_phase(
             toughness=target.stats["toughness"],
             save=target.stats["save"],
         )
-        in_cover = bool(cover[attacker_idx, target_idx]) if cover is not None else False
-        result = resolve_shooting(weapons[0], defender, rng, in_cover=in_cover)
+        result = resolve_shooting(weapons[0], defender, rng)
         killed = False
         if result.damage_dealt > 0:
             target.take_damage(result.damage_dealt)

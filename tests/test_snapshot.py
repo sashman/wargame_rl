@@ -209,7 +209,7 @@ class TestSchemaVersion:
     def test_schema_version(self, shooting_env: WargameEnv) -> None:
         shooting_env.reset(seed=42)
         snap = shooting_env.to_snapshot()
-        assert snap.schema_version == "2.0"
+        assert snap.schema_version == "1.2"
 
 
 class TestEncoder:

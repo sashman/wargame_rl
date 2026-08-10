@@ -67,7 +67,7 @@ hazard.
 | 1 | objectives | `(n_objectives, 2)` normalized to `[-1, 1]`, or `(n_objectives, 5)` with `observe_objective_control` — location plus normalized player count, opponent count and radius |
 | 2 | player models | `(n_models, feature_dim)` |
 | 3 | opponent models | `(n_opponent_models, feature_dim)` — 0 rows when no opponents |
-| 4 | terrain | `(n_terrain, 17)` — `2 * TERRAIN_VERTEX_BUDGET + 1`: normalized outline vertices, padded to 8, plus the real vertex count. 0 rows when no terrain |
+| 4 | terrain | `(n_terrain, 4)` normalized footprint corners — 0 rows when no terrain |
 | 5 | action mask | `(n_models, n_actions)`, bool |
 
 `feature_dim = base + n_opponent`, where base covers normalized location, distances to objectives, group_id one-hot, closest same-group distance, wound features (alive, wound_ratio, max_wounds_norm), and combat stats (attacks, bs, strength, ap, damage, toughness, save — each divided by its `NORM_*` constant). The trailing `n_opponent` columns are expected damage per target (player models) or zero-padding (opponent models).

@@ -204,7 +204,7 @@ The `select_action` method receives the list of opponent `WargameModel` instance
 
 ### Policies that shoot
 
-Set the class attribute `shoots = True` on any policy that emits shooting-slice actions. The env only refines that policy's action mask with range, line-of-sight and engagement-range validity when the flag is set, because doing so costs up to `n_opponent × n_player` line-of-sight traces per shooting phase and most policies never fire. Without the flag the mask allows any target and `domain.shooting.resolve_shooting_phase` applies the shot unchecked — a policy could shoot through terrain from across the board.
+Set the class attribute `shoots = True` on any policy that emits shooting-slice actions. The env only refines that policy's action mask with range, line-of-sight and engagement-range validity when the flag is set, because doing so costs up to `n_opponent × n_player` line-of-sight walks per shooting phase and most policies never fire. Without the flag the mask allows any target and `domain.shooting.resolve_shooting_phase` applies the shot unchecked — a policy could shoot through terrain from across the board.
 
 Given the flag, honouring `action_mask` is all a policy needs to do to play by the same rules the player does.
 
@@ -222,10 +222,10 @@ When opponents are present, the player agent's observation includes opponent mod
 | 1 | Objectives | `(n_objectives, 2)` |
 | 2 | Player models | `(n_player_models, features)` |
 | 3 | Opponent models | `(n_opponent_models, features)` |
-| 4 | Terrain | `(n_terrain, 17)` — normalized outline vertices padded to 8, plus the vertex count |
+| 4 | Terrain | `(n_terrain, 4)` — normalized footprint corners |
 | 5 | Action mask | `(n_models, n_actions)` — bool, valid actions per model |
 
-When there are no opponents, tensor 3 has shape `(0, features)`; likewise tensor 4 is `(0, 17)` with no terrain. The transformer handles both gracefully, as an empty token sequence.
+When there are no opponents, tensor 3 has shape `(0, features)`; likewise tensor 4 is `(0, 4)` with no terrain. The transformer handles both gracefully, as an empty token sequence.
 
 ## File Layout
 

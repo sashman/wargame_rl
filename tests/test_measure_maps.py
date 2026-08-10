@@ -88,10 +88,7 @@ def test_the_env_actually_runs_on_the_map_terrain() -> None:
     """
     base = _scenario_with_random_terrain()
     terrain_map = parse_yaml_raw_as(TerrainMapConfig, MAP_YAML)
-    # The map authors inclusive cell rectangles; the env holds continuous ones,
-    # so the far corner is one further out. `Footprint.from_cell_rect` is the
-    # single boundary where that conversion happens.
-    expected = [(12.0, 8.0, 19.0, 15.0), (27.0, 20.0, 34.0, 27.0)]
+    expected = [(12, 8, 18, 14), (27, 20, 33, 26)]
 
     env = create_environment(env_config=config_for_map(base, terrain_map))
     try:
