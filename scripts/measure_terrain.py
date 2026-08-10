@@ -64,11 +64,14 @@ def _sight_clear(
 def _coverage(terrain: Terrain, board: BoardDimensions) -> float:
     """Fraction of board area inside some footprint (footprints never overlap).
 
-    Areas, not cell counts: a footprint is a continuous rectangle now, so its
-    extent is `x1 - x0` rather than `x1 - x0 + 1`. The `+ 1` moved into
-    `Footprint.from_cell_rect`, where the cell rect is converted.
+    The *polygon's* area, not its bounding box. An inscribed hexagon fills only
+    ~65% of the box it was drawn in, so billing the box overstated real terrain
+    by half — and the 37 x 3-6 profile was tuned against that inflated number,
+    landing at 0.159 actual coverage while its header claimed 0.233. Areas, not
+    cell counts: a footprint is a continuous shape, so its extent is `x1 - x0`
+    rather than `x1 - x0 + 1`; the `+ 1` lives in `Footprint.from_cell_rect`.
     """
-    area = sum((fp.x1 - fp.x0) * (fp.y1 - fp.y0) for fp in terrain.footprints)
+    area = sum(fp.polygon.area for fp in terrain.footprints)
     return area / (board.width * board.height)
 
 
