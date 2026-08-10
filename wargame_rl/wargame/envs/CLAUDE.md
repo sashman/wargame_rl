@@ -58,7 +58,7 @@ Applies to everything under `wargame_rl/wargame/envs/`.
 
 ## Adding Features
 
-1. Config → `types/config/` (`entities.py` per-entity, `terrain.py` terrain, `battle.py` turn order/opponent/mission, `env.py` scenario-level). `__init__.py` re-exports, so importers still use `types.config`
+1. Config → `types/config/` (`entities.py` per-entity, `terrain.py` terrain, `battle.py` turn order/opponent/mission, `env.py` scenario-level). `__init__.py` re-exports, so importers still use `types.config`. **Every config model sets `model_config = ConfigDict(extra="forbid")`** — a new one must too, and `tests/test_config_rejects_unknown_keys.py` enumerates them so it fails if you forget. Pydantic's default *ignores* an unknown key, which turns a typo into a silent no-op: `objective_radius_sze=99` used to give you radius 1 and no warning, i.e. an arm not measuring what its config claims. Strictness stops at the model boundary — `params` dicts on calculators and policies stay free-form, since each registry entry defines its own
 2. Logic → `env_components/`
 3. Obs → `env_observation.py`/`env_info.py` + obs builder
 4. Tensor → `model/common/observation.py`

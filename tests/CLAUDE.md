@@ -42,6 +42,8 @@ Applies to everything under `tests/`. General testing philosophy lives in the ro
 
 **Rules spec** — `test_scale_and_rules_quantities` (the inches↔units `Scale`, and that resolving at the default 1.0 reproduces the exact numbers the code used before the scale existed — that assertion is the no-op guarantee, so a failure means every baseline was measured under a different env; also pins that `RulesQuantities` holds only fields something reads, since a settable-but-inert config field is how a lever silently does nothing) · `test_rules_constants` (pins the domain against `docs/rules/constants.yaml` wherever the env claims fidelity; everywhere else the divergence is recorded in `implementation-status.md` rather than asserted, so a failure here means the code moved away from the spec, not that the spec is aspirational) · `test_no_ip_references` (denylist over tracked **and untracked** files — untracked matters, because a scratch file is exactly how a product reference gets reintroduced)
 
+**Config validation** — `test_config_rejects_unknown_keys` (every config model forbids extras, enumerated so a newly added model fails rather than silently swallowing typos; also pins that the legacy `size`/`width`/`height` aliases are *consumed* by the before-validator rather than left in the dict, and that free-form `params` dicts stay open)
+
 **Cross-cutting** — `test_checkpoint_module_alias` (a moved module silently un-loads every existing checkpoint — Lightning pickles `PPO_Transformer` into `hyper_parameters`, so checkpoints carry import *paths*; verified sensitive by deleting the alias) · `test_integration` (backward compat) · `test_v9_milestone_validation` · `test_imports` · `test_interactive_demo`
 
 ## New Features

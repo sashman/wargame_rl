@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from wargame_rl.wargame.envs.reward.phase import (
     RewardCalculatorConfig,
@@ -45,6 +45,8 @@ class WargameEnvConfig(BaseModel):
     """
     Configuration for the Wargame environment.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     config_name: str | None = Field(
         default=None, description="Name of the environment config"
@@ -275,16 +277,30 @@ class WargameEnvConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def size_to_width_height(cls, data: object) -> object:
-        """Backward compatibility: accept 'size' or 'width'/'height' in YAML/dict."""
+        """Backward compatibility: accept 'size' or 'width'/'height' in YAML/dict.
+
+        The legacy keys are *consumed*, not just copied. They are aliases rather
+        than fields, so leaving them behind would trip `extra="forbid"` — and
+        before that existed they were simply ignored, which is the failure this
+        model now rejects. Works on a copy; the caller's dict is not touched.
+        """
         if not isinstance(data, dict):
             return data
-        if "size" in data and "board_width" not in data and "board_height" not in data:
-            s = data["size"]
-            data = {**data, "board_width": s, "board_height": s}
-        if "width" in data and "board_width" not in data:
-            data = {**data, "board_width": data["width"]}
-        if "height" in data and "board_height" not in data:
-            data = {**data, "board_height": data["height"]}
+        data = dict(data)
+        size = data.pop("size", None)
+        width = data.pop("width", None)
+        height = data.pop("height", None)
+        if (
+            size is not None
+            and "board_width" not in data
+            and "board_height" not in data
+        ):
+            data["board_width"] = size
+            data["board_height"] = size
+        if width is not None and "board_width" not in data:
+            data["board_width"] = width
+        if height is not None and "board_height" not in data:
+            data["board_height"] = height
         return data
 
     @property
