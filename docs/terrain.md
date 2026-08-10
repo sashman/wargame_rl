@@ -308,10 +308,10 @@ The observation tensor pipeline returns 6 tensors:
 | 1 | Objectives | `(n_objectives, 2)` |
 | 2 | Player models | `(n_models, feature_dim)` |
 | 3 | Opponent models | `(n_opponents, feature_dim)` |
-| 4 | **Terrain** | `(n_terrain, 4)` |
+| 4 | **Terrain** | `(n_terrain, 17)` |
 | 5 | Action mask | `(n_models, n_actions)` |
 
-With no terrain configured, the terrain tensor has shape `(0, 4)` — zero rows, fixed width. This ensures no mid-episode observation shape change.
+With no terrain configured, the terrain tensor has shape `(0, 17)` — zero rows, fixed width. This ensures no mid-episode observation shape change.
 
 ### Network Integration
 
