@@ -35,6 +35,20 @@ from wargame_rl.wargame.envs.wargame import WargameEnv, WargameEnvConfig
 from wargame_rl.wargame.model.common.observation import observation_to_tensor
 
 
+def _all_visible(
+    _origins: np.ndarray, _targets: np.ndarray, candidates: np.ndarray
+) -> np.ndarray:
+    """Sight stub: nothing blocks, so every candidate pair is visible."""
+    return candidates
+
+
+def _none_visible(
+    _origins: np.ndarray, _targets: np.ndarray, candidates: np.ndarray
+) -> np.ndarray:
+    """Sight stub: everything blocks."""
+    return np.zeros_like(candidates)
+
+
 @dataclass(frozen=True, slots=True)
 class _TestWeapon:
     """Lightweight weapon satisfying WeaponStats protocol (no Pydantic validation)."""
@@ -683,7 +697,7 @@ class TestShootingMaskExtensions:
         pr = np.array([20.0, 20.0])
         advanced = np.array([True, False])
         m = compute_shooting_masks(
-            pp, op, pa, oa, pr, lambda *_: True, player_advanced=advanced
+            pp, op, pa, oa, pr, _all_visible, player_advanced=advanced
         )
         assert not m[0, 0], "Advanced model should not be able to shoot"
         assert m[1, 0], "Non-advanced model should be able to shoot"
@@ -695,7 +709,7 @@ class TestShootingMaskExtensions:
         oa = np.array([True])
         pr = np.array([50.0, 50.0])
         m = compute_shooting_masks(
-            pp, op, pa, oa, pr, lambda *_: True, engagement_range=2.0
+            pp, op, pa, oa, pr, _all_visible, engagement_range=2.0
         )
         assert not m[0, 0], "Model within engagement range should be masked"
         assert m[1, 0], "Model outside engagement range should shoot"
@@ -706,7 +720,7 @@ class TestShootingMaskExtensions:
         pa = np.array([True])
         oa = np.array([True])
         pr = np.array([20.0])
-        m = compute_shooting_masks(pp, op, pa, oa, pr, lambda *_: True)
+        m = compute_shooting_masks(pp, op, pa, oa, pr, _all_visible)
         assert m[0, 0]
 
 
@@ -918,7 +932,5 @@ def test_terrain_shooting_mask_blocks_through_footprint() -> None:
     pa = np.array([True])
     oa = np.array([True])
     pr = np.array([50.0])
-    mask = compute_shooting_masks(
-        pp, op, pa, oa, pr, env.has_line_of_sight_between_cells
-    )
+    mask = compute_shooting_masks(pp, op, pa, oa, pr, env.line_of_sight_matrix)
     assert not mask[0, 0], "LOS through footprint should block shooting"

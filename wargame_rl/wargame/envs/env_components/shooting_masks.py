@@ -11,6 +11,13 @@ from typing import NamedTuple
 
 import numpy as np
 
+# Trace sight for many pairs at once: given ``(P, 2)`` origins, ``(Q, 2)``
+# targets and a ``(P, Q)`` mask of pairs worth tracing, return ``(P, Q)`` of
+# which are clear. A per-pair callable would be the natural signature and is the
+# wrong one -- sight is the hot path, and asking it one pair at a time turns each
+# query into a handful of tiny numpy calls whose overhead dwarfs the arithmetic.
+LosMatrixFn = Callable[[np.ndarray, np.ndarray, np.ndarray], np.ndarray]
+
 
 def compute_shooting_masks(
     player_positions: np.ndarray,
@@ -18,10 +25,11 @@ def compute_shooting_masks(
     player_alive: np.ndarray,
     opponent_alive: np.ndarray,
     player_max_ranges: np.ndarray,
-    has_los_fn: Callable[[int, int, int, int], bool],
+    los_matrix_fn: LosMatrixFn,
     *,
     player_advanced: np.ndarray | None = None,
     engagement_range: float = 0.0,
+    base_diameter: float = 0.0,
 ) -> np.ndarray:
     """Per-model shooting validity: ``(n_player, n_opponent)`` bool mask.
 
@@ -31,37 +39,44 @@ def compute_shooting_masks(
     - M is not within engagement_range of any opponent
     - K is alive (opponent_alive[K] is True)
     - Euclidean distance(M, K) <= player_max_ranges[M]
-    - has_los_fn(Mx, My, Kx, Ky) is True
+    - sight is clear from M to K
 
     Models with player_max_ranges <= 0 (no weapons) cannot shoot anyone.
+
+    Every cheap condition is applied *before* sight, and the survivors are traced
+    in one batch. Sight is by far the most expensive term, so narrowing the pair
+    set first is what keeps it affordable.
     """
     n_player = len(player_positions)
     n_opponent = len(opponent_positions)
     mask = np.zeros((n_player, n_opponent), dtype=bool)
 
-    if n_opponent == 0:
+    if n_opponent == 0 or n_player == 0:
         return mask
 
     deltas = player_positions[:, np.newaxis, :] - opponent_positions[np.newaxis, :, :]
     distances = np.linalg.norm(deltas, axis=2)  # (n_player, n_opponent)
 
-    for m in range(n_player):
-        if not player_alive[m] or player_max_ranges[m] <= 0:
-            continue
-        if player_advanced is not None and player_advanced[m]:
-            continue
-        if engagement_range > 0 and float(distances[m].min()) <= engagement_range:
-            continue
-        mx, my = int(player_positions[m, 0]), int(player_positions[m, 1])
-        for k in range(n_opponent):
-            if not opponent_alive[k]:
-                continue
-            if distances[m, k] > player_max_ranges[m]:
-                continue
-            kx, ky = int(opponent_positions[k, 0]), int(opponent_positions[k, 1])
-            if has_los_fn(mx, my, kx, ky):
-                mask[m, k] = True
-    return mask
+    shooters = np.asarray(player_alive, dtype=bool) & (player_max_ranges > 0)
+    if player_advanced is not None:
+        shooters &= ~np.asarray(player_advanced, dtype=bool)
+    if engagement_range > 0:
+        # Engagement is measured base to base, not centre to centre: two models
+        # with `r`-radius bases are `2r` closer than their centres suggest.
+        shooters &= distances.min(axis=1) - base_diameter > engagement_range
+
+    candidates = (
+        shooters[:, np.newaxis]
+        & np.asarray(opponent_alive, dtype=bool)[np.newaxis, :]
+        & (distances <= player_max_ranges[:, np.newaxis])
+    )
+    if not candidates.any():
+        return mask
+
+    visible: np.ndarray = candidates & los_matrix_fn(
+        player_positions, opponent_positions, candidates
+    )
+    return visible
 
 
 class ThreatCounts(NamedTuple):
@@ -87,7 +102,7 @@ def compute_threat_counts(
     opponent_alive: np.ndarray,
     player_max_ranges: np.ndarray,
     opponent_max_ranges: np.ndarray,
-    has_los_fn: Callable[[int, int, int, int], bool],
+    los_matrix_fn: LosMatrixFn,
 ) -> ThreatCounts:
     """Mutual threat counts and per-side "has a target" masks.
 
@@ -126,34 +141,39 @@ def compute_threat_counts(
     deltas = player_positions[:, np.newaxis, :] - opponent_positions[np.newaxis, :, :]
     distances = np.linalg.norm(deltas, axis=2)  # (n_player, n_opponent)
 
-    for m in range(n_player):
-        if not player_alive[m]:
-            continue
-        mx, my = int(player_positions[m, 0]), int(player_positions[m, 1])
-        for k in range(n_opponent):
-            if not opponent_alive[k]:
-                continue
-            distance = distances[m, k]
-            # The `> 0` guards matter: an unarmed model has range 0.0, and
-            # `0 <= 0` would make two models on the same cell threaten each
-            # other with weapons neither of them has.
-            player_reaches = (
-                player_max_ranges[m] > 0 and distance <= player_max_ranges[m]
-            )
-            opponent_reaches = (
-                opponent_max_ranges[k] > 0 and distance <= opponent_max_ranges[k]
-            )
-            if not (player_reaches or opponent_reaches):
-                continue
-            kx, ky = int(opponent_positions[k, 0]), int(opponent_positions[k, 1])
-            if not has_los_fn(mx, my, kx, ky):
-                continue
-            if opponent_reaches:
-                threat_to_player[m] += 1
-                opponent_can_shoot[k] = True
-            if player_reaches:
-                threat_to_opponent[k] += 1
-                player_can_shoot[m] = True
+    both_alive = (
+        np.asarray(player_alive, dtype=bool)[:, np.newaxis]
+        & np.asarray(opponent_alive, dtype=bool)[np.newaxis, :]
+    )
+    # The `> 0` guards matter: an unarmed model has range 0.0, and `0 <= 0`
+    # would make two models on the same spot threaten each other with weapons
+    # neither of them has.
+    player_reaches = both_alive & (
+        (player_max_ranges[:, np.newaxis] > 0)
+        & (distances <= player_max_ranges[:, np.newaxis])
+    )
+    opponent_reaches = both_alive & (
+        (opponent_max_ranges[np.newaxis, :] > 0)
+        & (distances <= opponent_max_ranges[np.newaxis, :])
+    )
+
+    candidates = player_reaches | opponent_reaches
+    if not candidates.any():
+        return ThreatCounts(
+            threat_to_player,
+            threat_to_opponent,
+            player_can_shoot,
+            opponent_can_shoot,
+        )
+
+    visible = candidates & los_matrix_fn(
+        player_positions, opponent_positions, candidates
+    )
+
+    threat_to_player = (visible & opponent_reaches).sum(axis=1)
+    threat_to_opponent = (visible & player_reaches).sum(axis=0)
+    opponent_can_shoot = (visible & opponent_reaches).any(axis=0)
+    player_can_shoot = (visible & player_reaches).any(axis=1)
 
     return ThreatCounts(
         threat_to_player,
