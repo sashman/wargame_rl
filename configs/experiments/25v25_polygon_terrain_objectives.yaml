@@ -18,12 +18,19 @@ config_name: 25v25_polygon_terrain_objectives
 # WHAT IT SCORES. n=100, seeds 700000-700099, identical layouts:
 #
 #   policy                       win    vp_margin   held   alive
-#   random (the floor)           0.00     -140.2    0.06   0.826
-#   greedy_nearest               0.41      -12.4    1.03   0.545
-#   squad_march                  0.46      -12.7    1.08   0.384
-#   split_evenly                 0.80      +58.2    1.56   0.556
-#   squad_march_shoot (the bar)  0.85      +81.4    1.72   0.482
-#   contest_and_spread           0.91      +78.9    1.75   0.439
+#   random (the floor)           0.00     -143.2    0.23   0.783
+#   greedy_nearest               0.32      -25.8    0.96   0.571
+#   squad_march                  0.39      -16.0    1.12   0.400
+#   split_evenly                 0.61      +18.9    1.40   0.538
+#   squad_march_shoot (the bar)  0.87      +67.7    1.85   0.508
+#   contest_and_spread           0.88      +70.7    1.89   0.468
+#
+# Measured on the 15 x 3-11 terrain fitted to the real layouts. The earlier
+# table on 37 x 3-6 (bar +81.4) is VOID -- that profile gave more than double
+# the real game's cover and objectives that held 5 models. Two things moved:
+# the bar fell 81.4 -> 67.7, and `split_evenly` collapsed 58.2 -> 18.9, because
+# spreading thin pays far less once an objective is big enough to contest
+# properly. `contest_and_spread` now edges the bar rather than trailing it.
 #
 # Reproduce with:
 #   just measure-baselines configs/experiments/25v25_polygon_terrain_objectives.yaml 100 "" 700000
@@ -32,9 +39,9 @@ config_name: 25v25_polygon_terrain_objectives
 # COVER IS WHY THE BAR IS SO HIGH. Before model occlusion and cover the same
 # config scored the bar at +20.6 with 1.17 held and 0.28 alive; cover roughly
 # doubles survival (0.48), and models that live hold ground. Note also that
-# `split_evenly` and `contest_and_spread` are now genuinely competitive, which
-# they were not on the golden scenario -- spreading is worth more when the
-# objectives are small pieces of terrain rather than radius-3 discs.
+# `contest_and_spread` is now the strongest scripted policy, narrowly ahead of
+# the bar. `split_evenly` is not -- it led on the mis-scaled terrain, where
+# objectives were too small to contest, and fell back once they were not.
 #
 # THE FOUR CHANGES.
 #
@@ -102,48 +109,60 @@ opponent_policy:
 # positioning result falsifiable: with a fixed layout, "learned to use the
 # terrain" and "memorised the shapes" produce the same numbers.
 #
-# 37 pieces of 3-6, RE-DERIVED for outlines rather than ported from the golden
-# config's 29 of 3-7. All four numbers below are `just measure-terrain <file> 40`:
+# 15 pieces of 3-11, FITTED TO THE 45 REAL LAYOUTS in configs/evaluation/maps/
+# rather than tuned against `measure-terrain`. Fitting the metric is what went
+# wrong the first time -- see below.
 #
-#   profile                          cells hidden   coverage
-#   29 x 3-7 rectangles (golden)         0.167        0.247
-#   29 x 3-7 hexagons (ported)           0.158        0.214
-#   37 x 3-6 hexagons  <- this file      0.192        0.233
+#   profile                     pieces   area   aspect   coverage   hidden
+#   real maps (45, measured)      15.5   40.0     1.52      0.235    0.088
+#   15 x 3-11 rects  <- this      15      38.7     1.50      0.223    0.111
+#   37 x 3-6 hexagons (was)       37      11.3     ~1.3      0.159    0.194
 #
-# Two things to carry forward. Convex outlines hide *less* than the rectangles
-# they replace at the same count and size, so porting a rectangle profile
-# quietly loses cover. And more, smaller pieces beat fewer, larger ones at
-# *less* total coverage — the same lesson the rectangle profile taught, because
-# hiding means breaking every sightline at once and that needs ruins in many
-# directions rather than one big one.
+# The 37 x 3-6 profile was wrong on every axis and the errors compounded:
 #
-# The rectangle golden config measures 0.167 here, not the 0.186 recorded for it
-# under the old Bresenham trace. The sight change moved the metric on its own,
-# so terrain numbers from before it are not comparable either.
+#   1. `measure_terrain._coverage` billed each piece's BOUNDING BOX, and an
+#      inscribed hexagon fills ~65% of its box. The old header's "coverage
+#      0.233" was really 0.159. Fixed now -- it measures polygon area.
+#   2. The profile was then tuned to maximise "cells hidden from a squad", and
+#      that metric rewards piece COUNT ("count dominates size" is true and is
+#      exactly the trap). Maximising it drove 37 tiny pieces.
+#   3. The result gave 0.194 hidden against the real game's 0.088 -- more than
+#      DOUBLE the cover a real table offers. Every cover experiment run on it
+#      was asking "does the agent use cover" in a world with twice as much.
 #
-# Raising max_size to 8 to recover the loss the other way is rejected at load:
-# the packing validator bounds the *bounding box*, and placement reserves the
-# whole box whatever shape ends up inside it. That is correct — an inscribed
-# hexagon covers ~65% of its box but still occupies all of it — so trading size
-# for count is the only direction available here.
+# So this profile is fitted to the real layouts and *checked* with
+# `measure-terrain`, never fitted to it. Hidden lands at 0.111 against the real
+# 0.088, inside the real maps' own spread (0.000-0.273).
 #
-# `count` is fixed while size, position and vertex placement vary -- observation
-# batching stacks the terrain arrays of a whole batch, so the piece count cannot
-# differ between episodes. `mirror` keeps the two deployment zones on equal
-# ground.
+# Rectangles, not hexagons: 4-vertex pieces are what the real maps are, and
+# `_sample_piece` draws width and height independently, so a 3-11 range gives a
+# median aspect ratio of 1.50 against the real 1.52. The earlier profile could
+# not express this -- raising min_size to 5 or 6 to get bigger pieces pushes the
+# mean box area up and the packing validator rejects it. A low floor with a high
+# ceiling is what produces real-looking terrain AND loads.
+#
+# Why this matters more than cover: objectives ARE terrain footprints, and
+# models now have a 1.26" base that cannot overlap another. Under 37 x 3-6 an
+# objective held 5.0 models and 48 of 90 could not fit one 5-model squad. Under
+# this profile it is 18.2 models and 4 of 90 -- which restores the regime
+# `objective_hold.crowding_exponent` was tuned in, where stacking is a real
+# choice the reward can price.
+#
+# `count` is fixed while size and position vary -- observation batching stacks
+# the terrain arrays of a whole batch, so the piece count cannot differ between
+# episodes. `mirror` keeps the two deployment zones on equal ground.
 #
 # The count also has to leave at least `number_of_objectives` pieces clear of
-# both deployment zones, or `objectives_on_terrain` fails at reset. Over 200
-# seeds this profile placed every time, with a minimum of 5 eligible pieces and
-# a mean of 9.8.
+# both deployment zones, or `objectives_on_terrain` fails at reset -- which is
+# what killed a run at epoch 619. 2000 consecutive resets on this profile: zero
+# failures.
 random_terrain:
-  count: 37
+  count: 15
   min_size: 3
-  max_size: 6
+  max_size: 11
   mirror: true
   edge_margin: 2
   min_gap: 1
-  n_vertices: 6
 
 # The objectives are the terrain.
 objectives_on_terrain: true
