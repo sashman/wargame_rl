@@ -4,6 +4,7 @@ from torch import Tensor
 
 from wargame_rl.wargame.envs.domain.shooting import expected_damage_matrix
 from wargame_rl.wargame.envs.types import WargameEnvObservation
+from wargame_rl.wargame.envs.types.terrain_observation import TERRAIN_VERTEX_BUDGET
 from wargame_rl.wargame.model.common import Device, get_device
 
 # ---------------------------------------------------------------------------
@@ -22,7 +23,11 @@ NORM_EXPECTED_DAMAGE = 10.0
 N_WOUND_FEATURES = 3  # alive, wound_ratio, max_wounds_norm
 N_COMBAT_STATS = 7  # attacks, bs, strength, ap, damage, toughness, save
 N_BATTLE_PHASES = 5  # command, movement, shooting, charge, fight
-TERRAIN_FEATURE_DIM = 4  # x0_norm, y0_norm, x1_norm, y1_norm
+# Padded outline vertices plus the real vertex count. This was 4 -- a bounding
+# box -- and that is the input every cover experiment in this repo was run
+# against: an L-shaped ruin and a solid block produced identical tokens, so no
+# policy could have distinguished them.
+TERRAIN_FEATURE_DIM = 2 * TERRAIN_VERTEX_BUDGET + 1
 
 
 def apply_action_mask(q_values: Tensor, mask: Tensor) -> Tensor:
@@ -161,7 +166,8 @@ def _observation_to_numpy(
     """Convert a single observation to NumPy arrays.
 
     Returns (game_features, objectives, player_models, opponent_models,
-    terrain, action_mask). ``terrain`` has shape ``(n_terrain, 4)`` (may be
+    terrain, action_mask). ``terrain`` has shape ``(n_terrain,
+    TERRAIN_FEATURE_DIM)`` (may be
     0 rows). ``action_mask`` is ``(n_models, n_actions)`` or None.
     """
     models = state.wargame_models
@@ -259,7 +265,7 @@ def _observation_to_numpy(
 
     if state.terrain:
         terrain_features = np.array(
-            [t.footprint for t in state.terrain], dtype=np.float32
+            [t.outline for t in state.terrain], dtype=np.float32
         )
     else:
         terrain_features = np.zeros((0, TERRAIN_FEATURE_DIM), dtype=np.float32)
@@ -300,8 +306,8 @@ def observation_to_tensor(
         3. tensor_wargame_models: shape (num_models, feature_dim)
         4. tensor_opponent_models: shape (num_opponent_models, feature_dim)
            (0 rows when no opponents)
-        5. tensor_terrain: shape (n_terrain, 4), normalized footprint corners
-           (0 rows when no terrain)
+        5. tensor_terrain: shape (n_terrain, TERRAIN_FEATURE_DIM), normalised
+           outline vertices plus a vertex count (0 rows when no terrain)
         6. tensor_action_mask: shape (n_models, n_actions), bool
 
     feature_dim = base + n_opponent, where base includes normalized location,

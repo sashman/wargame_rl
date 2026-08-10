@@ -22,12 +22,13 @@ from wargame_rl.wargame.envs.types import (
     WargameTerrainObservation,
 )
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
+from wargame_rl.wargame.envs.types.terrain_observation import TERRAIN_VERTEX_BUDGET
 
 if TYPE_CHECKING:
+    from wargame_rl.wargame.envs.domain.entities import WargameObjective
     from wargame_rl.wargame.envs.env_components.distance_cache import DistanceCache
     from wargame_rl.wargame.envs.types.config import ModelConfig
     from wargame_rl.wargame.envs.wargame_model import WargameModel
-    from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
 
 def update_distances_to_objectives(
@@ -101,24 +102,39 @@ def _models_to_obs(
 def _terrain_to_obs(
     view: BattleView,
 ) -> list[WargameTerrainObservation]:
-    """Build terrain observations from BattleView terrain footprints.
+    """Build terrain observations: padded outline vertices, plus a vertex count.
 
-    Each footprint's corners are normalized to [-1, 1] using board half-dimensions.
+    Vertices are normalised to [-1, 1] by the board half-dimensions and padded to
+    `TERRAIN_VERTEX_BUDGET` by repeating the last one, so pieces with different
+    vertex counts stack into one array — which observation batching requires.
+
+    This is the first encoding that can tell an outline from its bounding box,
+    and therefore the first honest test of whether the agent can use terrain: the
+    whole cover line of work was run against four numbers that made an L-shaped
+    ruin and a solid block identical.
+
+    A piece with more vertices than the budget is a config error, not something
+    to silently truncate — dropping vertices would quietly shrink a ruin the
+    sight trace is still using at full size.
     """
     half_w = view.board_width / 2.0
     half_h = view.board_height / 2.0
     result: list[WargameTerrainObservation] = []
     for fp in view.terrain.footprints:
-        footprint_norm = np.array(
-            [
-                (fp.x0 - half_w) / half_w,
-                (fp.y0 - half_h) / half_h,
-                (fp.x1 - half_w) / half_w,
-                (fp.y1 - half_h) / half_h,
-            ],
-            dtype=np.float32,
-        )
-        result.append(WargameTerrainObservation(footprint=footprint_norm))
+        if fp.n_vertices > TERRAIN_VERTEX_BUDGET:
+            raise ValueError(
+                f"terrain piece has {fp.n_vertices} vertices, over the "
+                f"observation budget of {TERRAIN_VERTEX_BUDGET}. Raise "
+                "TERRAIN_VERTEX_BUDGET (which changes the network's input "
+                "width, so existing checkpoints will fail to load) or simplify "
+                "the outline."
+            )
+        padded = fp.polygon.padded_to(TERRAIN_VERTEX_BUDGET)
+        normalised = np.empty(2 * TERRAIN_VERTEX_BUDGET + 1, dtype=np.float32)
+        normalised[0 : 2 * TERRAIN_VERTEX_BUDGET : 2] = (padded[:, 0] - half_w) / half_w
+        normalised[1 : 2 * TERRAIN_VERTEX_BUDGET : 2] = (padded[:, 1] - half_h) / half_h
+        normalised[-1] = fp.n_vertices / TERRAIN_VERTEX_BUDGET
+        result.append(WargameTerrainObservation(outline=normalised))
     return result
 
 
@@ -148,21 +164,41 @@ def _objectives_to_obs(
     n_opponent = max(1, view.config.number_of_opponent_models)
     board_diagonal = float(np.hypot(view.board_width, view.board_height)) or 1.0
 
-    def inside(locations: np.ndarray, centre: np.ndarray, radius: float) -> int:
+    def inside(locations: np.ndarray, objective: WargameObjective) -> int:
+        """Count models controlling this objective, whichever kind it is.
+
+        An area objective has radius 0, so a distance-to-centre test would count
+        only models standing exactly on the centroid — a control feature that
+        reads zero forever while the reward keyed on it pays out. The membership
+        rule has to follow the objective's own shape.
+        """
         if locations.size == 0:
             return 0
-        return int((np.linalg.norm(locations - centre, axis=1) <= radius).sum())
+        if objective.area is not None:
+            return int(objective.area.contains_points(locations).sum())
+        centre = np.asarray(objective.location, dtype=float)
+        return int(
+            (
+                np.linalg.norm(locations - centre, axis=1)
+                <= float(objective.radius_size)
+            ).sum()
+        )
 
     observations = []
     for objective in view.objectives:
-        centre = np.asarray(objective.location, dtype=float)
-        radius = float(objective.radius_size)
+        # An area's "radius" is reported as the radius of a disc with the same
+        # area, so the feature keeps meaning "how big is this objective" across
+        # both kinds rather than collapsing to zero for one of them.
+        if objective.area is not None:
+            extent = float(np.sqrt(objective.area.area / np.pi))
+        else:
+            extent = float(objective.radius_size)
         observations.append(
             WargameEnvObjectiveObservation(
                 location=objective.location,
-                player_count=inside(player_locations, centre, radius) / n_player,
-                opponent_count=inside(opponent_locations, centre, radius) / n_opponent,
-                radius=radius / board_diagonal,
+                player_count=inside(player_locations, objective) / n_player,
+                opponent_count=inside(opponent_locations, objective) / n_opponent,
+                radius=extent / board_diagonal,
             )
         )
     return observations

@@ -24,7 +24,10 @@ from wargame_rl.wargame.envs.types import (
     WargameEnvConfig,
 )
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.common.observation import observations_to_tensor_batch
+from wargame_rl.wargame.model.common.observation import (
+    TERRAIN_FEATURE_DIM,
+    observations_to_tensor_batch,
+)
 
 BOARD = BoardDimensions(width=60, height=44)
 
@@ -191,7 +194,7 @@ def test_observations_from_different_episodes_batch() -> None:
         env.close()
 
     tensors = observations_to_tensor_batch(observations)
-    assert tuple(tensors[4].shape) == (4, 5, 4)
+    assert tuple(tensors[4].shape) == (4, 5, TERRAIN_FEATURE_DIM)
 
 
 def test_terrain_is_stable_without_random_terrain() -> None:
