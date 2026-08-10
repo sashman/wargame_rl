@@ -4,15 +4,47 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from wargame_rl.wargame.envs.types.geometry import Polygon
+
 
 class TerrainPieceConfig(BaseModel):
-    """Configuration for a single terrain piece (axis-aligned rectangle)."""
+    """One terrain piece: either an axis-aligned rectangle or an explicit outline.
+
+    Exactly one of the two. A rectangle is the historical form and is authored in
+    *inclusive cell* coordinates, so `(5, 5, 5, 5)` is one cell; an outline is
+    authored in continuous board units and is taken literally. Mixing the two
+    conventions in one field is how a layout silently comes out a unit small, so
+    they are separate fields with a validator rather than one overloaded one.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    footprint: tuple[int, int, int, int] = Field(
-        description="Bounding rectangle (x0, y0, x1, y1) in grid cells."
+    footprint: tuple[int, int, int, int] | None = Field(
+        default=None,
+        description="Bounding rectangle (x0, y0, x1, y1) in inclusive grid cells.",
     )
+    outline: list[tuple[float, float]] | None = Field(
+        default=None,
+        min_length=3,
+        description="Closed outline as (x, y) vertices in board units. May be "
+        "concave. Mutually exclusive with `footprint`.",
+    )
+
+    @model_validator(mode="after")
+    def exactly_one_shape(self) -> "TerrainPieceConfig":
+        """A piece is a rectangle or an outline, never both and never neither."""
+        if (self.footprint is None) == (self.outline is None):
+            raise ValueError(
+                "a terrain piece needs exactly one of `footprint` or `outline`"
+            )
+        return self
+
+    def to_polygon(self) -> Polygon:
+        """Resolve whichever form was authored into the one shape type."""
+        if self.outline is not None:
+            return Polygon.from_points(self.outline)
+        assert self.footprint is not None
+        return Polygon.from_cell_rect(*self.footprint)
 
 
 class TerrainMapConfig(BaseModel):
@@ -73,6 +105,16 @@ class RandomTerrainConfig(BaseModel):
         ge=0,
         default=1,
         description="Minimum clear cells between two footprints. 0 lets them touch.",
+    )
+    n_vertices: int | None = Field(
+        default=None,
+        ge=3,
+        description="Generate convex n-gons with this many vertices instead of "
+        "axis-aligned rectangles. None (the default) keeps rectangles, which is "
+        "what every terrain profile in the repo was tuned against. Outlines hide "
+        "*less* board than the rectangles they replace at equal size, and pack "
+        "*tighter* — so re-derive a profile with `just measure-terrain` after "
+        "turning this on rather than porting the old numbers.",
     )
 
     @model_validator(mode="after")

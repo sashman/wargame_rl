@@ -5,9 +5,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from wargame_rl.wargame.envs.types.geometry import polygons_distance_to_points
+
 if TYPE_CHECKING:
+    from wargame_rl.wargame.envs.domain.entities import WargameObjective
     from wargame_rl.wargame.envs.wargame_model import WargameModel
-    from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
 
 @dataclass(slots=True)
@@ -96,6 +98,21 @@ def compute_distances(
     compute_model_model: bool = False,
     alive_mask: np.ndarray | None = None,
 ) -> DistanceCache:
+    """Model-to-objective (and optionally model-to-model) distances for one step.
+
+    Each model's own `base_radius` shortens its objective distance, so "within
+    range of the marker" is measured from the base *edge* — a model whose base
+    touches the disc is in range, which is the rules' reading and what the
+    renderer draws. It enters as an offset rather than as a branch in every
+    consumer, so `norms_offset <= obj_radii` keeps working unchanged across the
+    reward, VP and criteria layers.
+
+    The radius is read off the models rather than passed in **because there are
+    seventeen call sites**, and a parameter one of them forgot would silently
+    fall back to dimensionless models in that one place — no exception, no
+    failing test, just a reward or a VP score measured under different rules
+    than the rest of the step.
+    """
     model_locs = np.array([m.location for m in wargame_models])  # (n_models, 2)
     obj_locs = np.array([o.location for o in objectives])  # (n_objectives, 2)
     obj_radii = np.array([o.radius_size for o in objectives], dtype=float)  # (n_obj,)
@@ -105,6 +122,19 @@ def compute_distances(
 
     # (n_models, n_objectives)
     norms = np.linalg.norm(deltas, axis=2, ord=2)
+    base_radii = np.array(
+        [m.base_radius for m in wargame_models], dtype=float
+    )  # (n_models,)
+
+    # An area objective measures to its own edge, not to its centroid. The
+    # deltas keep pointing at the centroid — that is the steering target the
+    # observation carries — while the *range* test uses the area's boundary.
+    to_objective = _distances_to_objectives(model_locs, objectives, norms)
+    norms_offset = (
+        np.maximum(to_objective - base_radii[:, np.newaxis], 0.0)
+        if base_radii.any()
+        else to_objective
+    )
 
     model_model = None
     if compute_model_model:
@@ -115,6 +145,8 @@ def compute_distances(
         dead = ~alive_mask
         norms = norms.copy()
         norms[dead] = np.inf
+        norms_offset = norms_offset.copy()
+        norms_offset[dead] = np.inf
         if model_model is not None:
             model_model = model_model.copy()
             model_model[dead, :] = np.inf
@@ -123,12 +155,40 @@ def compute_distances(
     return DistanceCache(
         model_obj_deltas=deltas,
         model_obj_norms=norms,
-        # "offset" is kept in the field name for backward-compat, but we now
-        # define it as the straight Euclidean distance to the objective center.
-        model_obj_norms_offset=norms,
+        # Distance to the objective centre from the model's base edge. With no
+        # base it is the plain centre-to-centre distance, which is what the
+        # field held before models had one.
+        model_obj_norms_offset=norms_offset,
         obj_radii=obj_radii,
         model_model_norms=model_model,
     )
+
+
+def _distances_to_objectives(
+    model_locs: np.ndarray,
+    objectives: list[WargameObjective],
+    centre_norms: np.ndarray,
+) -> np.ndarray:
+    """``(n_models, n_objectives)`` distance to each objective's *range surface*.
+
+    A marker's is the distance to its centre; an area's is the distance to its
+    outline, zero inside. Returns `centre_norms` untouched when no objective is
+    an area, so the common case allocates nothing and stays bit-identical.
+    """
+    areas = [obj.area for obj in objectives]
+    if not any(area is not None for area in areas):
+        return centre_norms
+
+    distances = centre_norms.copy()
+    for index, area in enumerate(areas):
+        if area is None:
+            continue
+        distances[:, index] = polygons_distance_to_points(
+            model_locs,
+            area.vertices[np.newaxis, :, :],
+            np.array([area.n_vertices]),
+        )[:, 0]
+    return distances
 
 
 def objective_ownership_from_norms_offset(

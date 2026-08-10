@@ -17,7 +17,7 @@ table is the roadmap for the next implementation phase.
 
 | Rule | Status | Owner / note |
 |---|---|---|
-| [Distances in inches](README.md#conventions) | **partial** | `inches_per_unit` (default `1.0`) and `envs/domain/scale.py` now define the mapping, and `envs/domain/rules_quantities.py` resolves rules distances into board units once at construction. Still divergent in that coordinates are whole cells, so a distance finer than one unit cannot be represented. |
+| [Distances in inches](README.md#conventions) | **partial** | `inches_per_unit` (default `1.0`) and `envs/domain/scale.py` now define the mapping, and `envs/domain/rules_quantities.py` resolves rules distances into board units once at construction. Coordinates are continuous, so a distance finer than one unit is representable and a move of speed *s* covers exactly *s* in every direction. |
 | [Board 44" × 60"](15-missions-and-scoring.md#setting-up-a-battle) | **divergent** | `board_width` / `board_height` in `envs/types/config/env.py`, default `50 × 50`. |
 | [Five battle rounds](07-battle-round.md) | **divergent** | `number_of_battle_rounds` defaults to **100**. Episodes are sized for training, not for the tabletop. |
 | [Round → turn → five phases](07-battle-round.md#player-turns) | implemented | `envs/types/game_timing.py` (`BattlePhase`), `envs/domain/game_clock.py`. |
@@ -32,6 +32,7 @@ table is the roadmap for the next implementation phase.
 |---|---|---|
 | [Unit contains models](01-core-concepts.md#armies-units-and-models) | **divergent** | There is no unit entity. `WargameModel` (`envs/domain/entities.py`) is an individual; `group_id` is the closest thing to a unit and carries no rules of its own. |
 | [Move (M)](02-unit-profiles.md#model-characteristics) | **divergent** | Not per-model. One global `max_move_speed` in the config. |
+| [Base sizes](02-unit-profiles.md#bases) | partial | `base_radius` in `envs/types/config/env.py`, authored in inches and resolved through the scale onto `WargameModel.base_radius`. One radius for every model rather than per profile, and it defaults to **0.0** — the dimensionless point every result before continuous space was measured under. Where non-zero it separates models at placement, insets the board clamp, measures objective range from the base edge, and makes engagement base to base. It also occludes sight and blocks movement. |
 | [Toughness, Save, Wounds](02-unit-profiles.md#model-characteristics) | implemented | `ModelConfig` → `WargameModel.stats` (`toughness`, `save`, `max_wounds`, `current_wounds`) via `envs/domain/battle_factory.py`. |
 | [Invulnerable save (InSv)](02-unit-profiles.md#model-characteristics) | absent | No field on `ModelConfig`; `resolve_shooting` checks one save only. |
 | [Resolve (Rv)](02-unit-profiles.md#model-characteristics) | absent | — |
@@ -81,7 +82,7 @@ table is the roadmap for the next implementation phase.
 | [Normal shooting](10-shooting-phase.md#normal-shooting) | implemented | The `"shooting"` action slice; see `docs/shooting.md`. |
 | [Advance blocks normal shooting](10-shooting-phase.md#normal-shooting) | partial | The mask reads `advanced_this_turn`, which is never set — so the gate is dormant, not wrong. |
 | [Run-and-gun / sidearm / indirect shooting](10-shooting-phase.md) | absent | Only one shooting type exists. |
-| [Engaged units cannot shoot](10-shooting-phase.md) | implemented | `compute_shooting_masks` rejects an attacker within `engagement_range` of any opponent. |
+| [Engaged units cannot shoot](10-shooting-phase.md) | implemented | `compute_shooting_masks` rejects an attacker within `engagement_range` of any opponent, measured base to base. |
 | [Engaged large models can be shot at](10-shooting-phase.md#shooting-at-engaged-large-models) | absent | No `MONSTER`/`VEHICLE` distinction. |
 
 ## Charge and fight
@@ -97,12 +98,12 @@ table is the roadmap for the next implementation phase.
 
 | Rule | Status | Owner / note |
 |---|---|---|
-| [Line of sight](06-visibility-and-damage.md#visibility) | partial | `envs/domain/los.py` traces a Bresenham line between cell centres. Model extent is ignored, so there is no *visible* / *fully visible* distinction. |
-| [Terrain categories](13-terrain.md#terrain-categories) | **divergent** | One category. `Footprint` (`envs/domain/terrain.py`) is an axis-aligned rectangle that blocks line of sight. |
+| [Line of sight](06-visibility-and-damage.md#visibility) | partial | `envs/domain/los.py` samples points along the segment at `los_sample_step` (default 0.25") for terrain, and uses an exact segment/circle test for model bases. Three rays per pair give the three-state answer (hidden / cover / visible). The rays are a parallel corridor of the pair's width rather than tangents to the target, so sight stays exactly symmetric — the metrics depend on that. No height, so nothing is *fully* visible by the rules' vertical test. |
+| [Terrain categories](13-terrain.md#terrain-categories) | **divergent** | One category. `Footprint` (`envs/domain/terrain.py`) is a closed outline — concave allowed — that blocks line of sight. |
 | [Terrain and movement](13-terrain.md#terrain-and-movement) | absent | Movement ignores terrain completely — models pass through footprints freely. |
 | [Solid: see out of and into a feature](13-terrain.md#solid) | partial | `Terrain.blocking_footprints_for_endpoints` excludes any footprint containing either endpoint, which reproduces the see-out and see-into behaviour in two dimensions. No height, so the 3" threshold has no analogue. |
 | [Obscuring](13-terrain.md#obscuring) | **divergent** | Achieved by the same footprint blocking, keyed off the feature rather than an enclosing terrain area. |
-| [Cover (−1 RS)](13-terrain.md#cover) | absent | `resolve_shooting` has no cover term. Cover is *measured* — `env_components/exposure.py` reports `eval/exposure_rate` — but it never changes an outcome. |
+| [Cover (−1 RS)](13-terrain.md#cover) | implemented | A target only partly visible along the corridor between the two models is in cover, and `resolve_shooting` worsens the Ranged Skill by `COVER_RANGED_SKILL_PENALTY`. The unmodified 6 still hits, so cover is never an absolute shield. Requires `base_radius > 0`: with dimensionless models the three rays coincide and cover cannot occur. |
 | [Hidden and detection range](13-terrain.md#hidden) | absent | — |
 | [Elevated fire](16-ability-reference.md#elevated-fire) | absent | The board has no height. |
 
@@ -110,7 +111,7 @@ table is the roadmap for the next implementation phase.
 
 | Rule | Status | Owner / note |
 |---|---|---|
-| [Objective markers, within 3"](14-objectives.md#what-an-objective-is) | **divergent** | `objective_radius_size` in grid cells, default 1. |
+| [Objective markers, within 3"](14-objectives.md#what-an-objective-is) | **divergent** | `objective_radius_size` in board units, default 1. Range is measured from the model's base edge, per the rules; the radius itself still defaults below the rules' 3". |
 | [Terrain objectives](14-objectives.md#what-an-objective-is) | absent | Objectives are points, not terrain areas. `objective_terrain_clearance` deliberately pushes them *away* from terrain. |
 | [Level of control](14-objectives.md#level-of-control) | implemented | `env_components/distance_cache.py:objective_ownership_from_norms_offset` — strictly greater count controls, ties are uncontrolled. |
 | [Control re-evaluated at the end of every phase](14-objectives.md#level-of-control) | **divergent** | Evaluated only when VP are scored, on leaving the command phase (`wargame.py:_on_before_advance`). |

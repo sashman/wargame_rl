@@ -341,15 +341,28 @@ mismatch inside a spawned subprocess that swallows the traceback.
 
 ### 4. Line of sight — conditional, watch the trigger
 
-LOS is uncached: every query rebuilds a filtered footprint list and walks the
-Bresenham cells through a Python closure. Under random play it is 3.6% of a step
-and ~10 queries. Run `just measure-throughput <config> 400 engaged` and it becomes
-**24% and ~151 queries**, because a fully engaged 25×25 pays a scan three times per
-step (player mask, opponent mask, and exposure when `track_exposure` is set).
+LOS is uncached, but it is no longer per-query: one `line_of_sight_matrix` call
+traces every candidate pair in a single vectorised pass, and the *count* the
+harness reports is now passes per step rather than pairs per step. Read the
+total, not the count.
 
-So it is cheap now and expensive later, and the trigger is a policy that closes.
-Watch `los_queries_per_step` in the harness against a trained checkpoint. The fix
-is a per-cell **bitset of covering footprints** cached on `Terrain`, not a plain
+Under random play it barely registers, because range gating rules almost every
+pair out before it is traced. Run `just measure-throughput <config> 400 engaged`
+and it becomes the largest single section (~28% on the polygon config), because a
+fully engaged 25x25 pays a scan three times per step (player mask, opponent mask,
+and exposure when `track_exposure` is set).
+
+**The shape of the cost changed with polygon terrain.** Blockers are outlines
+rather than boxes, so the membership test materialises
+`points x outlines x edges` with a division in it — that regressed sight to
+7.9 ms/step (72%) until a bounding-box pre-filter went in front of it. Well under
+1% of (sample, piece) pairs survive four comparisons, and it changes no answer:
+0.98 ms/step after. If sight ever needs optimising again, look for a cheaper
+*filter* before a cleverer inner loop.
+
+The older suggestion below predates all of this and is kept for the reasoning
+rather than the recommendation. The fix it proposes is a per-cell **bitset of
+covering footprints** cached on `Terrain`, not a plain
 boolean grid — the blocking predicate is endpoint-dependent (the see-out rule) and
 a bitset is also exact when footprints overlap, which fixed YAML `terrain:` lists
 do not forbid. Invalidation is free: `Battle.set_terrain` replaces the object on

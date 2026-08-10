@@ -25,8 +25,8 @@ class ModelDelta(BaseModel):
     """Per-model state change within a single step."""
 
     idx: int
-    location: list[int] | None = None
-    previous_location: list[int] | None = None
+    location: list[float] | None = None
+    previous_location: list[float] | None = None
     alive: bool | None = None
     current_wounds: int | None = None
     advanced_this_turn: bool | None = None
@@ -232,6 +232,26 @@ def apply_delta(
 # ---------------------------------------------------------------------------
 
 
+# A position is only "unchanged" to within this, in board units. Exact equality
+# was the right test while positions were whole cells; under continuous
+# coordinates a stationary model still drifts by float noise through the clamp
+# and the distance cache, so every model would emit a delta on every step and
+# the compression the event log exists for would collapse entirely. Well below
+# any distance the rules can distinguish -- a base is ~1.26 across.
+_POSITION_EPSILON = 1e-9
+
+
+def _positions_differ(
+    previous: list[float] | None, current: list[float] | None
+) -> bool:
+    """True when two recorded positions differ by more than float noise."""
+    if previous is None or current is None:
+        return previous is not current
+    if len(previous) != len(current):
+        return True
+    return any(abs(a - b) > _POSITION_EPSILON for a, b in zip(previous, current))
+
+
 def _compute_model_delta(
     idx: int,
     prev: ModelSnapshot,
@@ -239,9 +259,9 @@ def _compute_model_delta(
 ) -> ModelDelta | None:
     """Compute delta for a single model. Returns None if unchanged."""
     changes: dict[str, Any] = {}
-    if cur.location != prev.location:
+    if _positions_differ(prev.location, cur.location):
         changes["location"] = cur.location
-    if cur.previous_location != prev.previous_location:
+    if _positions_differ(prev.previous_location, cur.previous_location):
         changes["previous_location"] = cur.previous_location
     if cur.alive != prev.alive:
         changes["alive"] = cur.alive
