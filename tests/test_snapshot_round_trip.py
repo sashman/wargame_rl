@@ -23,12 +23,9 @@ from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
 LAYOUT_SEED = 42
-# 10 is the first action-space seed that reaches a VP-scoring step within 10
-# moves on this config; it is the case that was failing intermittently. It was
-# 17 before the board became continuous -- which seed scores is a property of
-# the dynamics, and the assertion at the top of the test is what stops a
-# re-pick from quietly making this vacuous.
-SCORING_ACTION_SEED = 10
+# 17 is the first action-space seed that reaches a VP-scoring step within 10
+# moves on this config; it is the case that was failing intermittently.
+SCORING_ACTION_SEED = 17
 
 
 def _env() -> WargameEnv:

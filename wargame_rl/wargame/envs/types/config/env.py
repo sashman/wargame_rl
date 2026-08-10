@@ -11,6 +11,8 @@ from wargame_rl.wargame.envs.reward.phase import (
 )
 from wargame_rl.wargame.envs.types.config._validation import (
     _MAX_TERRAIN_PACKING_FRACTION,
+    _normalise_rect,
+    _rects_overlap,
     _validate_entity_configs,
 )
 from wargame_rl.wargame.envs.types.config.battle import (
@@ -115,16 +117,6 @@ class WargameEnvConfig(BaseModel):
         default=None,
         description="Per-objective configuration (attributes, and optionally positions). Length must match number_of_objectives.",
     )
-    objectives_on_terrain: bool = Field(
-        default=False,
-        description="Make each objective *be* a terrain piece: the pieces "
-        "nearest the board centre, outside both deployment zones, become area "
-        "objectives whose outline is the footprint. This is the rules' terrain "
-        "objective — the ground itself is the prize — and it puts cover and the "
-        "contested ground in the same place, which is the opposite of what "
-        "`objective_terrain_clearance` arranges. Needs enough eligible pieces "
-        "for the objective count, and fails loudly when there are not.",
-    )
     objective_min_separation: int | None = Field(
         default=None,
         ge=0,
@@ -188,30 +180,6 @@ class WargameEnvConfig(BaseModel):
             "1 is kept as the default because every baseline and trained result "
             "in the repo was measured at 1, and raising it changes which shots "
             "are legal. See docs/rules/implementation-status.md."
-        ),
-    )
-    base_radius: float = Field(
-        ge=0,
-        default=0.0,
-        description=(
-            "Radius of a model's base, in inches. Gives a model a physical "
-            "extent: bases may not overlap at placement, objective range is "
-            "measured from the base edge rather than its centre, and the "
-            "renderer draws it at this size. 0.0 (the default) keeps models "
-            "dimensionless points, which is what every result measured before "
-            "continuous space assumed. The rules' infantry base is 32mm across "
-            "-- a radius of about 0.63in."
-        ),
-    )
-    los_sample_step: float = Field(
-        gt=0,
-        default=0.25,
-        description=(
-            "Spacing, in inches, between the points a sight line is tested at. "
-            "The board is continuous, so sight is sampled rather than walked "
-            "cell by cell, and this is the resolution guarantee: a blocker "
-            "thinner than this can fall between two samples and leak sight. "
-            "Smaller is more faithful and slower — cost is linear in it."
         ),
     )
     reward_phases: list[RewardPhaseConfig] = Field(
@@ -399,27 +367,21 @@ class WargameEnvConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_terrain(self) -> "WargameEnvConfig":
-        """Validate terrain outlines are in-bounds and non-overlapping.
-
-        Checked on the resolved shapes rather than on whichever form was
-        authored, so a rectangle and an outline are held to the same rule.
-        Touching is not overlapping — adjacent cell rectangles share an edge once
-        the board is continuous, and rejecting that would reject layouts that are
-        plainly fine.
-        """
+        """Validate terrain footprints are in-bounds and non-overlapping."""
         if self.terrain is None:
             return self
-        polygons = [piece.to_polygon() for piece in self.terrain]
-        for i, polygon in enumerate(polygons):
-            x0, y0, x1, y1 = polygon.bounds
-            if x0 < 0 or y0 < 0 or x1 > self.board_width or y1 > self.board_height:
+        normalised: list[tuple[int, int, int, int]] = [
+            _normalise_rect(t.footprint) for t in self.terrain
+        ]
+        for i, (x0, y0, x1, y1) in enumerate(normalised):
+            if x0 < 0 or y0 < 0 or x1 >= self.board_width or y1 >= self.board_height:
                 raise ValueError(
-                    f"terrain[{i}] {polygon.bounds} is outside "
+                    f"terrain[{i}] {self.terrain[i].footprint} is outside "
                     f"the board ({self.board_width}x{self.board_height})"
                 )
-        for i in range(len(polygons)):
-            for j in range(i + 1, len(polygons)):
-                if polygons[i].overlaps(polygons[j]):
+        for i in range(len(normalised)):
+            for j in range(i + 1, len(normalised)):
+                if _rects_overlap(normalised[i], normalised[j]):
                     raise ValueError(f"terrain[{i}] overlaps terrain[{j}]")
         return self
 
@@ -465,12 +427,6 @@ class WargameEnvConfig(BaseModel):
         # walls, whose whole point is a large max_size next to a small min_size.
         # `_MAX_LAYOUT_ATTEMPTS` in terrain_placement.py is the real backstop:
         # it raises with a clear message if a draw genuinely cannot be placed.
-        # Placement is done on the *bounding box*, whatever shape ends up inside
-        # it, so the box is what has to fit -- an inscribed outline covers only
-        # about 65% of its box but still reserves the whole thing. Using the
-        # outline's own area here would let the sampler be handed specs it
-        # cannot place, which fails deep inside a training run instead of at
-        # load, and that is the failure this validator exists to prevent.
         mean_size = (spec.min_size + spec.max_size) / 2
         required = spec.count * (mean_size + spec.min_gap) ** 2
         usable = usable_width * usable_height

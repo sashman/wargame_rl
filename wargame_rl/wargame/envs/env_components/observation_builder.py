@@ -11,7 +11,6 @@ import numpy as np
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
-from wargame_rl.wargame.envs.domain.value_objects import POSITION_DTYPE
 from wargame_rl.wargame.envs.env_components.actions import ActionRegistry
 from wargame_rl.wargame.envs.env_components.shooting_masks import compute_shooting_masks
 from wargame_rl.wargame.envs.types import (
@@ -22,13 +21,12 @@ from wargame_rl.wargame.envs.types import (
     WargameTerrainObservation,
 )
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
-from wargame_rl.wargame.envs.types.terrain_observation import TERRAIN_VERTEX_BUDGET
 
 if TYPE_CHECKING:
-    from wargame_rl.wargame.envs.domain.entities import WargameObjective
     from wargame_rl.wargame.envs.env_components.distance_cache import DistanceCache
     from wargame_rl.wargame.envs.types.config import ModelConfig
     from wargame_rl.wargame.envs.wargame_model import WargameModel
+    from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
 
 def update_distances_to_objectives(
@@ -37,11 +35,8 @@ def update_distances_to_objectives(
     distance_cache: DistanceCache | None = None,
 ) -> None:
     """Update each model's distances_to_objectives from current locations. Mutates models."""
-    # No `.astype(int)` here. The vector to the objective is the single most
-    # informative feature the policy has, and truncating it to whole units threw
-    # away sub-unit steering on a board where a move is now any real length.
     if distance_cache is not None:
-        deltas = distance_cache.model_obj_deltas.astype(POSITION_DTYPE)
+        deltas = distance_cache.model_obj_deltas.astype(int)
         for i, model in enumerate(wargame_models):
             model.distances_to_objectives = deltas[i]
         return
@@ -49,7 +44,7 @@ def update_distances_to_objectives(
     for model in wargame_models:
         model.distances_to_objectives = np.array(
             [model.location - obj.location for obj in objectives],
-            dtype=POSITION_DTYPE,
+            dtype=int,
         )
 
 
@@ -102,39 +97,24 @@ def _models_to_obs(
 def _terrain_to_obs(
     view: BattleView,
 ) -> list[WargameTerrainObservation]:
-    """Build terrain observations: padded outline vertices, plus a vertex count.
+    """Build terrain observations from BattleView terrain footprints.
 
-    Vertices are normalised to [-1, 1] by the board half-dimensions and padded to
-    `TERRAIN_VERTEX_BUDGET` by repeating the last one, so pieces with different
-    vertex counts stack into one array — which observation batching requires.
-
-    This is the first encoding that can tell an outline from its bounding box,
-    and therefore the first honest test of whether the agent can use terrain: the
-    whole cover line of work was run against four numbers that made an L-shaped
-    ruin and a solid block identical.
-
-    A piece with more vertices than the budget is a config error, not something
-    to silently truncate — dropping vertices would quietly shrink a ruin the
-    sight trace is still using at full size.
+    Each footprint's corners are normalized to [-1, 1] using board half-dimensions.
     """
     half_w = view.board_width / 2.0
     half_h = view.board_height / 2.0
     result: list[WargameTerrainObservation] = []
     for fp in view.terrain.footprints:
-        if fp.n_vertices > TERRAIN_VERTEX_BUDGET:
-            raise ValueError(
-                f"terrain piece has {fp.n_vertices} vertices, over the "
-                f"observation budget of {TERRAIN_VERTEX_BUDGET}. Raise "
-                "TERRAIN_VERTEX_BUDGET (which changes the network's input "
-                "width, so existing checkpoints will fail to load) or simplify "
-                "the outline."
-            )
-        padded = fp.polygon.padded_to(TERRAIN_VERTEX_BUDGET)
-        normalised = np.empty(2 * TERRAIN_VERTEX_BUDGET + 1, dtype=np.float32)
-        normalised[0 : 2 * TERRAIN_VERTEX_BUDGET : 2] = (padded[:, 0] - half_w) / half_w
-        normalised[1 : 2 * TERRAIN_VERTEX_BUDGET : 2] = (padded[:, 1] - half_h) / half_h
-        normalised[-1] = fp.n_vertices / TERRAIN_VERTEX_BUDGET
-        result.append(WargameTerrainObservation(outline=normalised))
+        footprint_norm = np.array(
+            [
+                (fp.x0 - half_w) / half_w,
+                (fp.y0 - half_h) / half_h,
+                (fp.x1 - half_w) / half_w,
+                (fp.y1 - half_h) / half_h,
+            ],
+            dtype=np.float32,
+        )
+        result.append(WargameTerrainObservation(footprint=footprint_norm))
     return result
 
 
@@ -164,41 +144,21 @@ def _objectives_to_obs(
     n_opponent = max(1, view.config.number_of_opponent_models)
     board_diagonal = float(np.hypot(view.board_width, view.board_height)) or 1.0
 
-    def inside(locations: np.ndarray, objective: WargameObjective) -> int:
-        """Count models controlling this objective, whichever kind it is.
-
-        An area objective has radius 0, so a distance-to-centre test would count
-        only models standing exactly on the centroid — a control feature that
-        reads zero forever while the reward keyed on it pays out. The membership
-        rule has to follow the objective's own shape.
-        """
+    def inside(locations: np.ndarray, centre: np.ndarray, radius: float) -> int:
         if locations.size == 0:
             return 0
-        if objective.area is not None:
-            return int(objective.area.contains_points(locations).sum())
-        centre = np.asarray(objective.location, dtype=float)
-        return int(
-            (
-                np.linalg.norm(locations - centre, axis=1)
-                <= float(objective.radius_size)
-            ).sum()
-        )
+        return int((np.linalg.norm(locations - centre, axis=1) <= radius).sum())
 
     observations = []
     for objective in view.objectives:
-        # An area's "radius" is reported as the radius of a disc with the same
-        # area, so the feature keeps meaning "how big is this objective" across
-        # both kinds rather than collapsing to zero for one of them.
-        if objective.area is not None:
-            extent = float(np.sqrt(objective.area.area / np.pi))
-        else:
-            extent = float(objective.radius_size)
+        centre = np.asarray(objective.location, dtype=float)
+        radius = float(objective.radius_size)
         observations.append(
             WargameEnvObjectiveObservation(
                 location=objective.location,
-                player_count=inside(player_locations, objective) / n_player,
-                opponent_count=inside(opponent_locations, objective) / n_opponent,
-                radius=extent / board_diagonal,
+                player_count=inside(player_locations, centre, radius) / n_player,
+                opponent_count=inside(opponent_locations, centre, radius) / n_opponent,
+                radius=radius / board_diagonal,
             )
         )
     return observations
@@ -243,10 +203,9 @@ def build_observation(
                 player_alive,
                 opponent_alive,
                 player_ranges,
-                view.line_of_sight_matrix,
+                view.has_line_of_sight_between_cells,
                 player_advanced=player_advanced,
                 engagement_range=view.rules_quantities.engagement_range,
-                base_diameter=2.0 * view.rules_quantities.base_radius,
             )
             action_mask[:, shooting_slice.start : shooting_slice.end] &= (
                 shooting_validity

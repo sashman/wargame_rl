@@ -22,21 +22,6 @@ from wargame_rl.wargame.envs.types.config import (
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
-
-def _all_visible(
-    _origins: np.ndarray, _targets: np.ndarray, candidates: np.ndarray
-) -> np.ndarray:
-    """Sight stub: nothing blocks, so every candidate pair is visible."""
-    return candidates
-
-
-def _none_visible(
-    _origins: np.ndarray, _targets: np.ndarray, candidates: np.ndarray
-) -> np.ndarray:
-    """Sight stub: everything blocks."""
-    return np.zeros_like(candidates)
-
-
 N_ANGLES = 8
 N_SPEEDS = 3
 N_MOVE_ACTIONS = N_ANGLES * N_SPEEDS  # 24
@@ -263,7 +248,7 @@ class TestShootingMaskFunction:
         pa = np.array([True, True])
         oa = np.array([True, True])
         pr = np.array([20.0, 20.0])
-        m = compute_shooting_masks(pp, op, pa, oa, pr, _all_visible)
+        m = compute_shooting_masks(pp, op, pa, oa, pr, lambda *_: True)
         assert m.shape == (2, 2)
         assert m.all()
 
@@ -273,7 +258,7 @@ class TestShootingMaskFunction:
         pa = np.array([True])
         oa = np.array([True, False])
         pr = np.array([20.0])
-        m = compute_shooting_masks(pp, op, pa, oa, pr, _all_visible)
+        m = compute_shooting_masks(pp, op, pa, oa, pr, lambda *_: True)
         assert m[0, 0]
         assert not m[0, 1]
 
@@ -283,7 +268,7 @@ class TestShootingMaskFunction:
         pa = np.array([True])
         oa = np.array([True])
         pr = np.array([5.0])
-        m = compute_shooting_masks(pp, op, pa, oa, pr, _all_visible)
+        m = compute_shooting_masks(pp, op, pa, oa, pr, lambda *_: True)
         assert not m[0, 0]
 
     def test_no_los_masked(self) -> None:
@@ -292,7 +277,7 @@ class TestShootingMaskFunction:
         pa = np.array([True])
         oa = np.array([True])
         pr = np.array([20.0])
-        m = compute_shooting_masks(pp, op, pa, oa, pr, _none_visible)
+        m = compute_shooting_masks(pp, op, pa, oa, pr, lambda *_: False)
         assert not m[0, 0]
 
     def test_no_weapons_masked(self) -> None:
@@ -301,7 +286,7 @@ class TestShootingMaskFunction:
         pa = np.array([True])
         oa = np.array([True])
         pr = np.array([0.0])
-        m = compute_shooting_masks(pp, op, pa, oa, pr, _all_visible)
+        m = compute_shooting_masks(pp, op, pa, oa, pr, lambda *_: True)
         assert not m[0, 0]
 
     def test_empty_opponents(self) -> None:
@@ -310,7 +295,7 @@ class TestShootingMaskFunction:
         pa = np.array([True, True])
         oa = np.array([], dtype=bool)
         pr = np.array([20.0, 20.0])
-        m = compute_shooting_masks(pp, op, pa, oa, pr, _all_visible)
+        m = compute_shooting_masks(pp, op, pa, oa, pr, lambda *_: True)
         assert m.shape == (2, 0)
 
 

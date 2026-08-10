@@ -10,14 +10,8 @@ from wargame_rl.wargame.envs.types import WargameEnvConfig
 
 from .battle import Battle
 from .entities import WargameModel, WargameObjective
-from .rules_quantities import resolve_rules_quantities
 from .terrain import Footprint, Terrain
-from .value_objects import (
-    POSITION_DTYPE,
-    BoardDimensions,
-    DeploymentZone,
-    zero_position,
-)
+from .value_objects import BoardDimensions, DeploymentZone, zero_position
 
 
 def _build_models(
@@ -25,7 +19,6 @@ def _build_models(
     model_configs: list[Any] | None,
     n_objectives: int,
     max_groups: int,
-    base_radius: float = 0.0,
 ) -> list[WargameModel]:
     """Build a list of WargameModel instances (player or opponent)."""
     result: list[WargameModel] = []
@@ -52,10 +45,7 @@ def _build_models(
                     "save": save,
                 },
                 group_id=group_id,
-                base_radius=base_radius,
-                distances_to_objectives=np.zeros(
-                    [n_objectives, 2], dtype=POSITION_DTYPE
-                ),
+                distances_to_objectives=np.zeros([n_objectives, 2], dtype=int),
             )
         )
     return result
@@ -65,26 +55,19 @@ def _build_objectives(config: WargameEnvConfig) -> list[WargameObjective]:
     """Build the list of objectives from config."""
     result: list[WargameObjective] = []
     for i in range(config.number_of_objectives):
-        objective_config = (
-            config.objectives[i] if config.objectives is not None else None
-        )
-        area = objective_config.to_polygon() if objective_config is not None else None
-        if area is not None:
-            # An area is not placed: its outline is its position, and its
-            # location is the centroid so anything steering at an objective
-            # still has a point to aim at.
-            objective = WargameObjective(location=zero_position(), radius_size=0.0)
-            objective.set_area(area)
-            result.append(objective)
-            continue
+        if (
+            config.objectives is not None
+            and config.objectives[i].radius_size is not None
+        ):
+            radius = config.objectives[i].radius_size
+        else:
+            radius = config.objective_radius_size
 
-        radius = (
-            objective_config.radius_size
-            if objective_config is not None and objective_config.radius_size is not None
-            else float(config.objective_radius_size)
-        )
         result.append(
-            WargameObjective(location=zero_position(), radius_size=float(radius))
+            WargameObjective(
+                location=zero_position(),
+                radius_size=radius,  # type: ignore[arg-type]
+            )
         )
     return result
 
@@ -98,20 +81,17 @@ def from_config(config: WargameEnvConfig) -> Battle:
     board_height = config.board_height
     n_objectives = config.number_of_objectives
 
-    base_radius = resolve_rules_quantities(config).base_radius
     player_models = _build_models(
         config.number_of_wargame_models,
         config.models,
         n_objectives,
         config.max_groups,
-        base_radius,
     )
     opponent_models = _build_models(
         config.number_of_opponent_models,
         config.opponent_models,
         n_objectives,
         config.max_groups,
-        base_radius,
     )
     objectives = _build_objectives(config)
 
@@ -136,9 +116,9 @@ def from_config(config: WargameEnvConfig) -> Battle:
             y_max=board_height,
         )
 
-    # `to_polygon` is where a config's chosen form -- inclusive cell rectangle or
-    # explicit outline -- becomes the one shape the domain holds.
-    footprints = [Footprint(tp.to_polygon()) for tp in (config.terrain or [])]
+    footprints = [
+        Footprint.from_corners(*tp.footprint) for tp in (config.terrain or [])
+    ]
     terrain = Terrain(footprints)
 
     return Battle(
@@ -159,7 +139,6 @@ def create_wargame_models(config: WargameEnvConfig) -> list[WargameModel]:
         config.models,
         config.number_of_objectives,
         config.max_groups,
-        resolve_rules_quantities(config).base_radius,
     )
 
 
@@ -170,7 +149,6 @@ def create_opponent_models(config: WargameEnvConfig) -> list[WargameModel]:
         config.opponent_models,
         config.number_of_objectives,
         config.max_groups,
-        resolve_rules_quantities(config).base_radius,
     )
 
 

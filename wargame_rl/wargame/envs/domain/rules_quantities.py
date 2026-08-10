@@ -47,8 +47,6 @@ class RulesQuantities:
     scale: Scale
     engagement_range: float
     max_move_speed: float
-    los_sample_step: float
-    base_radius: float
 
 
 def resolve_rules_quantities(config: WargameEnvConfig) -> RulesQuantities:
@@ -62,6 +60,4 @@ def resolve_rules_quantities(config: WargameEnvConfig) -> RulesQuantities:
         scale=scale,
         engagement_range=scale.to_units(config.engagement_range),
         max_move_speed=scale.to_units(config.max_move_speed),
-        los_sample_step=scale.to_units(config.los_sample_step),
-        base_radius=scale.to_units(config.base_radius),
     )

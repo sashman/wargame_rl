@@ -63,13 +63,6 @@ class BattleView(Protocol):
     @property
     def opponent_vp_delta(self) -> int: ...
 
-    def has_line_of_sight_between_points(
-        self, x0: float, y0: float, x1: float, y1: float
+    def has_line_of_sight_between_cells(
+        self, x0: int, y0: int, x1: int, y1: int
     ) -> bool: ...
-
-    def line_of_sight_matrix(
-        self,
-        origins: np.ndarray,
-        targets: np.ndarray,
-        candidates: np.ndarray | None = None,
-    ) -> np.ndarray: ...

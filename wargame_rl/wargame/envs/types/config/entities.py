@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from wargame_rl.wargame.envs.types.config._validation import (
     _validate_coords_both_or_neither,
 )
-from wargame_rl.wargame.envs.types.geometry import Polygon
 
 
 class WeaponProfile(BaseModel):
@@ -52,19 +51,7 @@ class ModelConfig(BaseModel):
         ge=0,
         description="Y coordinate on the board. If None, placed randomly.",
     )
-    group_id: int = Field(
-        default=0,
-        ge=0,
-        description=(
-            "The group this model belongs to -- this project's name for the "
-            "rules' *unit*, chosen to keep the vocabulary its own. It is the "
-            "rules concept wherever one is needed: models in a group ignore "
-            "each other, and their target's group, when tracing line of sight. "
-            "It also drives cohesion rewards, spawn clustering and the "
-            "observation one-hot. Group numbering is per army, so player group "
-            "0 and opponent group 0 are different groups."
-        ),
-    )
+    group_id: int = Field(default=0, ge=0, description="Group this model belongs to")
     max_wounds: int = Field(default=1, gt=0)
     toughness: int = Field(default=3, gt=0, description="Wound roll comparison stat")
     save: int = Field(
@@ -103,45 +90,13 @@ class ObjectiveConfig(BaseModel):
         ge=0,
         description="Y coordinate on the board. If None, placed randomly.",
     )
-    radius_size: float | None = Field(
+    radius_size: int | None = Field(
         default=None,
         gt=0,
         description="Override the global objective_radius_size for this objective",
-    )
-    area: list[tuple[float, float]] | None = Field(
-        default=None,
-        min_length=3,
-        description="Make this objective an *area* rather than a marker: the "
-        "outline is the objective, and a model controls it by standing inside. "
-        "Its `location` becomes the outline's centroid so anything steering "
-        "toward an objective still has a point to aim at. Mutually exclusive "
-        "with x/y and with radius_size.",
     )
 
     @model_validator(mode="after")
     def coords_both_or_neither(self) -> "ObjectiveConfig":
         _validate_coords_both_or_neither(self.x, self.y)
         return self
-
-    @model_validator(mode="after")
-    def an_area_is_not_also_a_disc(self) -> "ObjectiveConfig":
-        """An area objective has no centre and no radius to override.
-
-        Accepting both would leave two definitions of "in range" and no way to
-        tell which one a result was measured under.
-        """
-        if self.area is None:
-            return self
-        if self.x is not None or self.y is not None:
-            raise ValueError(
-                "an area objective is positioned by its outline; drop x and y"
-            )
-        if self.radius_size is not None:
-            raise ValueError(
-                "an area objective has no radius; control is standing inside it"
-            )
-        return self
-
-    def to_polygon(self) -> Polygon | None:
-        """The objective's area, or None when it is a marker with a radius."""
-        return None if self.area is None else Polygon.from_points(self.area)

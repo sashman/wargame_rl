@@ -6,13 +6,10 @@ shape change, no-terrain byte-identical).
 
 from __future__ import annotations
 
-import numpy as np
-import pytest
 import torch
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import TerrainPieceConfig
-from wargame_rl.wargame.envs.types.terrain_observation import TERRAIN_VERTEX_BUDGET
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.observation import (
     TERRAIN_FEATURE_DIM,
@@ -56,47 +53,14 @@ class TestTerrainObservation:
         obs, _ = env.reset(seed=42)
         assert len(obs.terrain) == 2
 
-    def test_terrain_obs_carries_normalised_outline_vertices(self) -> None:
-        """Padded outline vertices in [-1, 1], plus the real vertex count.
-
-        The token was the bounding box until 2026-08-10, which is the input
-        every cover experiment in this repo was run against: an L-shaped ruin
-        and a solid block produced identical four-number tokens, so no policy
-        could have distinguished them.
-        """
+    def test_terrain_obs_carries_normalised_geometry(self) -> None:
+        """Footprint corners normalised to [-1, 1]."""
         env = WargameEnv(config=_make_terrain_config())
         obs, _ = env.reset(seed=42)
         for t in obs.terrain:
-            assert t.outline.shape == (2 * TERRAIN_VERTEX_BUDGET + 1,)
-            assert t.outline.min() >= -1.0
-            assert t.outline.max() <= 1.0
-            # These pieces are rectangles, so 4 of the 8 vertex slots are real.
-            assert t.outline[-1] == pytest.approx(4 / TERRAIN_VERTEX_BUDGET)
-
-    def test_an_outline_and_its_bounding_box_produce_different_tokens(self) -> None:
-        """The whole point of the encoding, and it is otherwise unobservable.
-
-        Under the old four-number token these two pieces were byte-identical to
-        the network while blocking completely different sight lines.
-        """
-        ell = [(2.0, 2.0), (8.0, 2.0), (8.0, 4.0), (4.0, 4.0), (4.0, 8.0), (2.0, 8.0)]
-        box = [(2.0, 2.0), (8.0, 2.0), (8.0, 8.0), (2.0, 8.0)]
-
-        def token(outline: list[tuple[float, float]]) -> np.ndarray:
-            config = WargameEnvConfig(
-                board_width=20,
-                board_height=20,
-                number_of_wargame_models=1,
-                number_of_objectives=1,
-                terrain=[TerrainPieceConfig(outline=outline)],
-                render_mode=None,
-                number_of_battle_rounds=1,
-            )
-            env = WargameEnv(config=config)
-            obs, _ = env.reset(seed=0)
-            return obs.terrain[0].outline
-
-        assert not np.array_equal(token(ell), token(box))
+            assert t.footprint.shape == (4,)
+            assert t.footprint.min() >= -1.0
+            assert t.footprint.max() <= 1.0
 
     def test_terrain_tensor_shape(self) -> None:
         """Terrain tensor has shape (n_terrain, TERRAIN_FEATURE_DIM)."""
