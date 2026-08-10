@@ -7,7 +7,7 @@
 ## Phase Boundary
 
 Add terrain pieces (Ruins) that block **line of sight** in the simulation, using the canonical
-Warhammer 40k 10e **Ruins** abstraction: LOS is determined by the terrain **footprint** (a 2D
+**Ruins** abstraction: LOS is determined by the terrain **footprint** (a 2D
 rectangle on the grid), not by wall geometry. Movement is unaffected. Configs with no terrain
 behave exactly as today. (Encoding terrain into the agent observation is Phase 2.)
 
@@ -22,7 +22,7 @@ variable base sizes, terrain in the observation (Phase 2).
 <decisions>
 ## Implementation Decisions
 
-### LOS model — canonical 10e Ruins (footprint-based)
+### LOS model — canonical Ruins (footprint-based)
 - **D-01:** The **footprint** is the LOS primitive. A ruin blocks line of sight between observer O
   and target T **iff** the line O→T passes through that ruin's footprint **AND both O and T are
   outside that footprint**.
@@ -32,7 +32,7 @@ variable base sizes, terrain in the observation (Phase 2).
   models inside the same footprint always see each other.)
 - **D-04:** The exception is **per-ruin**: being inside ruin A's footprint does **not** let you see
   through a *different* ruin B that lies between O and T. Each ruin is evaluated independently.
-- **D-05:** **Walls play NO role in LOS this milestone.** 10e abstracts LOS to the footprint — you
+- **D-05:** **Walls play NO role in LOS this milestone.** The reference rules abstract LOS to the footprint — you
   cannot see through a ruin even via windows/doors/open sides. Walls are deferred (see Deferred).
 - **D-06:** Movement is unaffected — models may move through and occupy footprint cells freely.
 - **D-07:** Implication for the LOS seam: blocking is **endpoint-aware** (depends on which
@@ -84,15 +84,13 @@ variable base sizes, terrain in the observation (Phase 2).
 
 **Downstream agents MUST read these before planning or implementing.**
 
-### Warhammer 40k 10e Ruins rules (authoritative for the LOS model)
-- `https://wahapedia.ru/wh40k10ed/the-rules/core-rules/` — Core Rules → **Terrain Features → Ruins**
-  (FOOTPRINT + VISIBILITY paragraphs). The VISIBILITY rule is the source of D-01..D-06: "Models
-  cannot see over or through this terrain feature ... even through open windows/doors. Models can
-  see into ... and models wholly within can see out of it normally." Also the general "true line of
-  sight" / Model Visible definitions.
-- `https://wahapedia.ru/wh40k10ed/the-rules/chapter-approved-2025-26/` — **Terrain Layouts** section
-  (Use of Ruins: "the natural abstraction of line of sight within the rules for Ruins"; footprint
-  sizes ~6"×4" and 12"×6"; battlefield 44"×60") — reference for the demo scenario scale (D-15).
+### Rules reference (authoritative for the LOS model)
+- `docs/rules/13-terrain.md` — terrain categories, the solid rule and the see-out / see-into
+  behaviour that D-01..D-06 derive from: sight cannot be drawn through an enclosed ground-level
+  gap, but a model inside a feature can see out of it and be seen into.
+- `docs/rules/06-visibility-and-damage.md` — line of sight, *visible* vs *fully visible*.
+- `docs/rules/constants.yaml` — footprint and battlefield dimensions for the demo scenario
+  scale (D-15).
 
 ### Project research (this milestone)
 - Prior research docs (ARCHITECTURE, PITFALLS, SUMMARY) removed during planning compaction.
@@ -104,7 +102,7 @@ variable base sizes, terrain in the observation (Phase 2).
 - `wargame_rl/wargame/envs/types/config.py` — `WargameEnvConfig`, `blocking_mask`, `deployment_zone`,
   `ObjectiveConfig` (schema/validator patterns to mirror).
 - `wargame_rl/wargame/envs/wargame.py` — `_make_is_blocking`, `has_line_of_sight_between_cells` seam.
-- `docs/tabletop-rules-reference.md` — project's terrain/rules reference (update to reflect Ruins LOS).
+- `docs/rules/13-terrain.md` — project's terrain rules reference.
 - `.cursor/rules/gymnasium-env.mdc` — "Adding Features" checklist (config → env_components → obs →
   tensor → networks → renderer → tests + backward compat).
 </canonical_refs>
@@ -136,10 +134,10 @@ variable base sizes, terrain in the observation (Phase 2).
 <specifics>
 ## Specific Ideas
 
-- The LOS interaction must follow the 10e Ruins VISIBILITY rule exactly (see canonical refs). The
+- The LOS interaction must follow the Ruins visibility rule exactly (see canonical refs). The
   user explicitly reset to the source rules to avoid layered assumptions — do not reintroduce
   wall-based blocking or "see through windows" behaviour this milestone.
-- Demo scale reference: 40k uses ~6"×4" / 12"×6" ruins on a 44"×60" board; scale down to the
+- Demo scale reference: the reference rules use ~6"×4" / 12"×6" ruins on a 44"×60" board; scale down to the
   project's board sizes for the example config.
 </specifics>
 
@@ -148,7 +146,7 @@ variable base sizes, terrain in the observation (Phase 2).
 
 - **Walls** (thin L-shaped wall segments within a footprint): revisit in a later milestone for
   rendering realism, movement interaction, and/or finer-grained LOS. Explicitly NOT in this
-  milestone — 10e LOS is footprint-based.
+  milestone — the reference LOS model is footprint-based.
 - **Cover / Benefit of Cover** ("not fully visible because of terrain" → +1 save): maps cleanly onto
   the footprint model later; deferred.
 - **Dense/Woods visibility, difficult/impassable movement, elevation & Plunging Fire, board

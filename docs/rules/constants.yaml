@@ -1,0 +1,126 @@
+# Every number in the rules reference, in one place.
+#
+# Units are INCHES ("_in") unless the key says otherwise. The environment plays on a
+# discrete grid of cells; the cell <-> inch mapping is an environment concern and is
+# recorded in implementation-status.md, not here.
+#
+# This file is the rules' source of truth. Tests assert the domain against it wherever
+# the environment claims fidelity (see tests/test_rules_constants.py); everywhere else
+# the divergence is documented in implementation-status.md rather than asserted.
+
+battlefield:
+  width_in: 44
+  height_in: 60
+
+battle:
+  rounds: 5
+
+# 03-moving.md
+coherency:
+  nearest_in: 2 # every model within this of at least one other model
+  furthest_in: 9 # every model within this of every other model
+  vertical_in: 5
+
+engagement:
+  horizontal_in: 2
+  vertical_in: 5
+
+moves:
+  advance:
+    dice: D6
+    added_to: M
+  charge:
+    dice: 2D6
+    declare_within_in: 12
+    max_result: 12
+  pile_in_in: 3
+  consolidate_in: 3
+  consolidate_engaging_within_in: 3
+  consolidate_objective_within_in: 3
+  vertical_climb_stay_within_in: 0.5
+
+# 05-attack-sequence.md
+attack:
+  critical_hit_on: 6
+  critical_wound_on: 6
+  unmodified_1_always_fails: true
+  hit_wound_modifier_clamp: 1 # hit and wound rolls clamp to +/-1 total
+
+wound_ladder:
+  s_at_least_double_t: 2
+  s_greater_than_t: 3
+  s_equal_t: 4
+  s_less_than_t: 5
+  s_at_most_half_t: 6
+
+# 13-terrain.md
+cover:
+  ranged_skill_penalty: 1
+
+visibility:
+  line_of_sight_width_mm: 1
+  detection_range_in: 15
+  gone_to_ground_reduction_in: 3
+  solid_height_in: 3
+  dense_traverse_max_height_in: 2 # non-infantry may cross dense sections up to this
+
+# 14-objectives.md
+objectives:
+  marker_diameter_mm: 40
+  marker_range_in: 3
+  marker_vertical_in: 5
+
+# 02-unit-profiles.md
+# A model's base is part of it for all rules purposes, and distances are measured to and
+# from the closest part of it (01-core-concepts.md). Real base sizes are per-profile;
+# this is the common infantry base, used as the default when a profile does not say.
+models:
+  base_diameter_mm: 32
+
+# 15-missions-and-scoring.md
+scoring:
+  primary_cap_total: 45
+  primary_cap_per_round: 15
+  secondary_cap_total: 45
+  secondary_cap_per_round: 15
+
+deployment:
+  infiltrate_min_distance_in: 8
+  vanguard_min_distance_in: 8
+
+# 06-visibility-and-damage.md
+backfire:
+  fails_on_max: 2 # a roll of 1-2 fails
+  piercing_damage: 1
+  piercing_damage_large_model: 3
+
+# 02-unit-profiles.md
+characteristic_clamps:
+  move_min_in: 1
+  toughness_min: 1
+  save_best: 2
+  invulnerable_save_best: 2
+  resolve_best: 4
+  resolve_worst: 9
+  control_value_min: 0
+  range_min_in: 1
+  attacks_min: 1
+  ranged_skill_best: 2
+  ranged_skill_worst: 6
+  melee_skill_best: 2
+  melee_skill_worst: 6
+  strength_min: 1
+  armour_penetration_max: 0
+  damage_min: 1
+
+# 16-ability-reference.md
+abilities:
+  scatter_models_per_extra_die: 5
+  sweep_models_per_extra_die: 5
+  elusive_default_range_in: 12
+  elevated_fire_min_height_in: 3
+  elevated_fire_towering_range_in: 12
+  detonation_radius_in: 6
+  detonation_trigger_on: 6
+  colossal_walker_traverse_max_height_in: 4
+  colossal_walker_suppression_on: 1
