@@ -2,7 +2,7 @@
 
 ## Overview
 
-Terrain (Ruins) blocks **line of sight only**: a terrain piece is a **footprint rectangle** and the footprint itself is the LOS blocker. Movement is unaffected — models move through and occupy footprint cells freely.
+Terrain (Ruins) blocks **line of sight only**: a terrain piece is a **closed outline** — a rectangle is just the common case — and the outline itself is the LOS blocker. Movement is unaffected by terrain; models move through and stand inside a footprint freely. (Models do block *each other* once they have bases: see [movement.md](movement.md).)
 
 A ruin blocks the line between two models only when its footprint lies between them and **both** models are outside it. A model inside a ruin can see out and be seen into (see-out / see-into exceptions, evaluated per ruin independently).
 
@@ -85,6 +85,13 @@ Measured on 60x44 with weapon range 12:
 | 11 x 3-12 | 0.199 | 0.080 | 0.101 |
 | 25 x 3-8 | 0.244 | 0.159 | 0.168 |
 | **29 x 3-7 (batch 3)** | 0.251 | 0.179 | **0.198** |
+
+> **These numbers were measured under the Bresenham trace and do not carry over.** Re-measured
+> under the sampled ray, the same 29 x 3-7 rectangle profile scores **0.167**, not 0.198 — the
+> sight change moved the metric on its own. Convex *outlines* hide less again (0.158 at the same
+> count and size), and they pack tighter, so the direction that recovers it is more, smaller
+> pieces: 37 x 3-6 hexagons scores **0.192** at *lower* coverage. Re-derive a profile with
+> `just measure-terrain` rather than porting a row from this table.
 
 At equal coverage, **many small pieces beat few large ones** — hiding needs ruins in many
 directions, not one big one. This is why batches 1-2 could not answer the cover question:
@@ -234,15 +241,17 @@ LOS blocking is **endpoint-aware**: the blocking predicate is evaluated per quer
 
 ### Algorithm
 
-For a query from cell `(x0, y0)` to cell `(x1, y1)`:
+For a query from point `(x0, y0)` to point `(x1, y1)`:
 
-1. Ask `Terrain.blocking_footprints_for_endpoints(x0, y0, x1, y1)` for "active" footprints — those containing **neither** endpoint.
-2. A **strictly interior** cell along the Bresenham ray is blocking if (both endpoints are exempt, and models never occlude — only the static mask and footprints block):
+1. A footprint containing **either** endpoint is exempt for that query — the see-out / see-into rule. Membership here is **edge-inclusive**, so a model standing exactly on a ruin's edge is standing *in* it and is not blocked by its own cover.
+2. A **strictly interior** sample along the ray is blocking if (both endpoints are exempt, and models never occlude — only the static mask and footprints block):
    - `config.blocking_mask[y][x]` is True (legacy static blocking), **OR**
-   - The cell is contained by any active footprint.
-3. Endpoint order is canonicalised (`sorted([(x0,y0),(x1,y1)])`) before the call to `has_line_of_sight`, guaranteeing **symmetry**: `has_los(A, B) == has_los(B, A)`.
+   - The sample lies inside any non-exempt outline. Sample membership is interior-only: it is measure-zero and on the hot path.
+3. Symmetry is exact by construction — the pair (A, B) and the pair (B, A) sample the same parametric positions on the same segment, so the same blockers are tested. `firepower_ratio` depends on it, reading an exposed model as one that can also fire.
 
-The Bresenham core in `domain/los.py` is **untouched** — it takes an injectable predicate and knows nothing about terrain. Steps 1–3 above are `domain/sight.py`, which composes that primitive with the domain model (`terrain.py`) and the static mask. `WargameEnv.has_line_of_sight_between_cells` is a one-line delegation to it.
+The sampled-ray core in `domain/los.py` knows nothing about terrain: it takes padded outlines and traces segments against them, vectorised over segments *and* over shapes. Steps 1–3 above are `domain/sight.py`, which composes that primitive with the domain model (`terrain.py`) and the static mask.
+
+`sample_step` (config: `los_sample_step`, default 0.25") is the resolution guarantee: a blocker thinner than it can fall between two samples and leak sight. `BattleView.line_of_sight_matrix` is the entry point everything hot uses; `has_line_of_sight_between_points` is a single-pair convenience for the renderer and for tests, and calling it in a loop is a measured 3x regression.
 
 ### See-Into / See-Out Rules
 
@@ -268,7 +277,7 @@ Because all LOS queries route through the single `has_line_of_sight_between_cell
 
 ## Movement
 
-Terrain does **not** affect movement. Models can move through and occupy footprint cells freely. This is verified by `test_terrain_movement_through_footprint` in `tests/test_env.py`.
+Terrain does **not** affect movement. Models can move through and stand inside a footprint freely. This is verified by `test_terrain_movement_through_footprint` in `tests/test_env.py`. Other *models* do obstruct, once they have a base — see [movement.md](movement.md).
 
 ## Observation
 
@@ -276,7 +285,9 @@ Terrain footprints are encoded in the agent's observation as **entity tokens** �
 
 ### Token Layout
 
-Each terrain token carries normalised footprint geometry:
+Each terrain token carries the piece's **outline**, not its bounding box: `TERRAIN_VERTEX_BUDGET` vertices padded by repeating the last one, normalised to [-1, 1] by the board half-dimensions, plus the real vertex count. This is the first encoding that can tell an L-shaped ruin from a solid block — every cover experiment before it ran against four numbers that made those identical.
+
+Historically the token was:
 
 | Feature | Description |
 |---------|-------------|

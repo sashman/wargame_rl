@@ -303,3 +303,61 @@ class TestObjectivesOnTerrain:
 
         with pytest.raises(ValueError, match="terrain pieces clear"):
             env.reset(seed=0)
+
+
+class TestSnapshotRoundTrip:
+    """An area objective's outline is episode state, not configuration.
+
+    With `objectives_on_terrain` the outline comes from the layout, so it varies
+    every episode. Reconstructing a board from `location` alone would put a
+    marker where the rules have a shape and score control against a radius of 0
+    — a replay that looks right and scores wrong.
+    """
+
+    def _env(self) -> WargameEnv:
+        return WargameEnv(
+            config=WargameEnvConfig(
+                board_width=60,
+                board_height=44,
+                number_of_wargame_models=4,
+                number_of_objectives=3,
+                number_of_battle_rounds=3,
+                base_radius=0.63,
+                deployment_zone=(0, 0, 20, 44),
+                opponent_deployment_zone=(40, 0, 60, 44),
+                objectives_on_terrain=True,
+                random_terrain=RandomTerrainConfig(
+                    count=29,
+                    min_size=3,
+                    max_size=5,
+                    mirror=True,
+                    edge_margin=2,
+                    min_gap=1,
+                    n_vertices=6,
+                ),
+            )
+        )
+
+    def test_an_area_objective_survives_a_snapshot_round_trip(self) -> None:
+        env = self._env()
+        env.reset(seed=4)
+        before = [o.area.vertices.copy() for o in env.objectives if o.area is not None]
+        assert len(before) == 3
+
+        snapshot = env.to_snapshot()
+        env.reset(seed=9)  # a different layout, so a stale outline would show
+        env.load_state(snapshot)
+
+        after = [o.area.vertices for o in env.objectives if o.area is not None]
+        assert len(after) == 3
+        for original, restored in zip(before, after):
+            assert np.allclose(original, restored)
+
+    def test_a_model_base_is_recorded(self) -> None:
+        """The radius decides control range and collision, so a replay needs it."""
+        env = self._env()
+        env.reset(seed=4)
+
+        snapshot = env.to_snapshot()
+
+        assert snapshot.player_models[0].base_radius == pytest.approx(0.63)

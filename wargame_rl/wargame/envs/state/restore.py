@@ -26,6 +26,7 @@ from wargame_rl.wargame.envs.state.snapshot import (
     ObjectiveSnapshot,
 )
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase, GamePhase, PlayerSide
+from wargame_rl.wargame.envs.types.geometry import Polygon
 
 
 def restore_clock(clock: GameClock, snapshot: ClockSnapshot, total_steps: int) -> None:
@@ -68,8 +69,17 @@ def restore_models(
 def restore_objectives(
     objectives: Sequence[WargameObjective], snapshots: Sequence[ObjectiveSnapshot]
 ) -> None:
-    """Restore each objective's position. Radius is configuration, not state."""
+    """Restore each objective's position, and its outline when it has one.
+
+    A marker's radius is configuration rather than state, but an *area* is not:
+    with `objectives_on_terrain` the outline is drawn from the layout, so it
+    varies per episode and has to come back from the snapshot or the restored
+    board scores control against a radius of 0.
+    """
     for objective, snapshot in zip(objectives, snapshots):
+        if snapshot.area is not None:
+            objective.set_area(Polygon.from_points([(x, y) for x, y in snapshot.area]))
+            continue
         objective.location = position(*snapshot.location)
 
 

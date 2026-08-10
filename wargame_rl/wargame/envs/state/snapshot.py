@@ -53,6 +53,7 @@ class ModelSnapshot(BaseModel):
 
     location: list[float]
     previous_location: list[float] | None
+    base_radius: float = 0.0
     group_id: int
     alive: bool
     current_wounds: int
@@ -74,6 +75,13 @@ class ObjectiveSnapshot(BaseModel):
     radius_size: float
     player_models_in_range: list[int]
     opponent_models_in_range: list[int]
+    area: list[list[float]] | None = None
+    """Outline vertices when the objective *is* a piece of ground.
+
+    Present rather than derived, because an area objective's `location` is only
+    its centroid: a replay reconstructed from the centroid alone would draw a
+    marker where the rules have a shape, and score control by a radius of 0.
+    """
 
 
 class ClockSnapshot(BaseModel):
@@ -188,6 +196,7 @@ def _model_to_snapshot(
 
     return ModelSnapshot(
         location=model.location.tolist(),
+        base_radius=model.base_radius,
         previous_location=(
             model.previous_location.tolist()
             if model.previous_location is not None
@@ -218,6 +227,7 @@ def _objective_to_snapshot(
         radius_size=obj.radius_size,
         player_models_in_range=player_in_range,
         opponent_models_in_range=opponent_in_range,
+        area=obj.area.vertices.tolist() if obj.area is not None else None,
     )
 
 

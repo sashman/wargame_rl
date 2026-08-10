@@ -98,14 +98,54 @@ With the defaults (`max_move_speed=6`, `n_speed_bins=6`), the available speeds a
 
 ## Displacement Calculation
 
-The continuous displacement is computed from the angle and speed, then **rounded to the nearest integer** so that model locations remain on the discrete grid:
+The board is continuous, so the displacement is applied **exactly**:
 
 ```
-dx = round(speed × cos(angle))
-dy = round(speed × sin(angle))
+dx = speed × cos(angle)
+dy = speed × sin(angle)
 ```
 
-All displacements are pre-computed at environment initialization for efficiency. After adding the displacement to the model's current location, the result is **clamped** to the board boundaries `[0, 0]` to `[board_width - 1, board_height - 1]`.
+This used to be `round(...)`, snapping every move to a whole cell, and it was
+destroying information rather than approximating it. On the 25v25 action space
+the 96 movement actions collapsed to **80 distinct outcomes** — 16 pairs the
+policy could not have told apart in the one head that steers — and a "speed 1"
+diagonal travelled 1.414 against an orthogonal move's 1.000, so the cheapest way
+to cover ground was to face diagonally.
+
+All displacements are pre-computed at environment initialization for efficiency.
+The board edge is clamped into the displacement to `[r, r] .. [width - r, height - r]`
+for a model of base radius `r`, **before** collisions are resolved.
+
+## Collision
+
+With `base_radius > 0` a model occupies ground, and moves are resolved against
+the other models (`domain/movement.py`):
+
+| | rule |
+|---|---|
+| enemy base | blocks the path — the move stops at contact |
+| friendly base | may be crossed, but not **ended on** |
+| resolution order | sequential, by model index |
+
+The asymmetry is deliberate: walking through an enemy line is the one thing
+models physically cannot do, while a squad moving as a body would gridlock on
+its own front rank if friendlies blocked too. Sequential resolution gives model 0
+a documented right of way, and that is the price of a board that is the same
+every time the same actions are played.
+
+At `base_radius: 0.0` — the default — none of this applies and movement is
+exactly what was asked for, which is what keeps every result measured before
+models had bases reproducible.
+
+> **A tangential slide was tried and measured worse.** Blocked models otherwise
+> queue radially behind whoever reached the objective first, so a sideways step
+> around the obstruction is the obvious fix. Measured on the polygon scenario at
+> n=30 on identical layouts, `squad_march_shoot` went 0.70 / +20.6 vp_margin to
+> 0.57 / +1.0 with the slide in. A *fully* blocked model has its whole move left
+> to spend, so the slide becomes a full-length swing away from the objective:
+> models drift laterally, stay in the open longer, and are shot. The real fix is
+> on the policy side — distinct target slots around an objective, rather than
+> aiming every model at the centre.
 
 ## Configuration
 
@@ -115,7 +155,8 @@ Movement parameters are set via `WargameEnvConfig`:
 |-----------|---------|-------------|
 | `n_movement_angles` | `16` | Number of angular bins (22.5° apart) |
 | `n_speed_bins` | `6` | Number of discrete speed levels |
-| `max_move_speed` | `6.0` | Maximum cells a model can move per step |
+| `max_move_speed` | `6.0` | Maximum distance a model can move per step, in inches |
+| `base_radius` | `0.0` | Model base radius, in inches. `0.63` is the rules' 32mm infantry base |
 
 These can be overridden in YAML environment config files:
 
@@ -123,6 +164,7 @@ These can be overridden in YAML environment config files:
 n_movement_angles: 16
 n_speed_bins: 6
 max_move_speed: 6.0
+base_radius: 0.63
 ```
 
 ## Future: Per-Model Speed

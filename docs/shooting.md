@@ -88,7 +88,7 @@ Note the asymmetry with resolution: masking uses the *longest*-ranged weapon, wh
 
 ### Line of Sight
 
-LOS uses the Bresenham ray-tracing service from `domain/los.py`. The same `has_line_of_sight_between_cells` method on `BattleView` is used for mask computation and human rendering. See [terrain.md](terrain.md) for LOS semantics (interior-cell-only blocking, no model occlusion).
+LOS uses the sampled-ray service in `domain/los.py`. The shooting mask takes `BattleView.line_of_sight_matrix`, which traces every candidate pair in one vectorised pass; the renderer uses the single-pair `has_line_of_sight_between_points`. See [terrain.md](terrain.md) for LOS semantics (interior-sample-only blocking, no model occlusion).
 
 ## Weapon Configuration
 
