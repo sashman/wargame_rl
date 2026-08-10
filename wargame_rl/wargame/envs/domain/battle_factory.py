@@ -27,16 +27,25 @@ def _build_models(
     max_groups: int,
     base_radius: float = 0.0,
 ) -> list[WargameModel]:
-    """Build a list of WargameModel instances (player or opponent)."""
+    """Build a list of WargameModel instances (player or opponent).
+
+    An unset `unit_id` makes each model **its own unit**, index `i`. That is the
+    maximally-occluding reading of the sight rule and the safe default: falling
+    back to `group_id` would make a config that never sets groups into one
+    25-model unit, which switches the rule off entirely without saying so.
+    """
     result: list[WargameModel] = []
     increment = max(1, n // max_groups)
     for i in range(n):
+        unit_id = i
         if model_configs is not None:
             mc = model_configs[i]
             group_id = mc.group_id
             max_wounds = mc.max_wounds
             toughness = mc.toughness
             save = mc.save
+            if mc.unit_id is not None:
+                unit_id = mc.unit_id
         else:
             group_id = i // increment
             max_wounds = 100
@@ -52,6 +61,7 @@ def _build_models(
                     "save": save,
                 },
                 group_id=group_id,
+                unit_id=unit_id,
                 base_radius=base_radius,
                 distances_to_objectives=np.zeros(
                     [n_objectives, 2], dtype=POSITION_DTYPE

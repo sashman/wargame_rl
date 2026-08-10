@@ -29,20 +29,31 @@ from wargame_rl.wargame.envs.types.geometry import polygons_contain_points
 _MAX_WORKING_ELEMENTS = 4_000_000
 
 
-def _interior_sample_offsets(max_length: float, sample_step: float) -> np.ndarray:
-    """Parametric positions in (0, 1) at which to test each segment.
+def _interior_sample_offsets(
+    lengths: np.ndarray, sample_step: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """``(N, T)`` parametric sample positions per segment, and which are real.
 
-    One shared set of offsets is used for every segment in the batch, sized from
-    the *longest* one. Shorter segments are therefore oversampled, which costs a
-    little arithmetic and can never miss a blocker.
+    Samples sit at **absolute** distances ``k * sample_step`` along each segment,
+    so a pair's answer depends only on that pair. The obvious cheaper scheme --
+    one shared set of parametric offsets sized from the longest segment in the
+    batch -- makes the answer depend on *what else was asked at the same time*:
+    split one batch into two and the sample positions move, so a ray can start
+    or stop being blocked. That was a real defect, and it surfaced as two golden
+    gates failing when a caller began tracing in two passes instead of one.
 
-    Endpoints are excluded: a model standing on a blocker is handled by the
-    see-out rule in `sight.py`, not by the ray.
+    The array is still rectangular, sized by the longest segment, with a mask
+    marking the samples that fall inside each segment. Endpoints are excluded: a
+    model standing on a blocker is handled by the see-out rule in `sight.py`,
+    not by the ray.
     """
     if sample_step <= 0:
         raise ValueError(f"sample_step must be positive, got {sample_step}")
-    n_intervals = max(1, int(np.ceil(max_length / sample_step)))
-    return np.linspace(0.0, 1.0, n_intervals + 1)[1:-1]
+    max_intervals = max(1, int(np.ceil(float(lengths.max()) / sample_step)))
+    steps = np.arange(1, max_intervals, dtype=float) * sample_step  # (T,)
+    safe = np.where(lengths > 0, lengths, 1.0)
+    offsets = steps[np.newaxis, :] / safe[:, np.newaxis]  # (N, T)
+    return offsets, offsets < 1.0
 
 
 def segments_are_clear(
@@ -78,9 +89,9 @@ def segments_are_clear(
         return clear
 
     deltas = ends - starts
-    max_length = float(np.linalg.norm(deltas, axis=1).max())
-    offsets = _interior_sample_offsets(max_length, sample_step)
-    n_samples = len(offsets)
+    lengths = np.linalg.norm(deltas, axis=1)
+    offsets, real_sample = _interior_sample_offsets(lengths, sample_step)
+    n_samples = offsets.shape[1]
     if n_samples == 0:
         return clear
 
@@ -96,9 +107,11 @@ def segments_are_clear(
         hi = min(lo + chunk, n_segments)
         span = hi - lo
         # (span, samples, 2)
+        chunk_offsets = offsets[lo:hi]
+        chunk_real = real_sample[lo:hi]
         points = (
             starts[lo:hi, np.newaxis, :]
-            + deltas[lo:hi, np.newaxis, :] * offsets[:, None]
+            + deltas[lo:hi, np.newaxis, :] * chunk_offsets[:, :, np.newaxis]
         )
         blocked = np.zeros(span, dtype=bool)
 
@@ -106,6 +119,7 @@ def segments_are_clear(
             inside = polygons_contain_points(
                 points.reshape(-1, 2), outlines, vertex_counts
             ).reshape(span, n_samples, n_blockers)
+            inside &= chunk_real[:, :, np.newaxis]
             if blocker_exempt is not None:
                 inside &= ~blocker_exempt[lo:hi, np.newaxis, :]
             blocked |= inside.any(axis=(1, 2))
@@ -114,8 +128,66 @@ def segments_are_clear(
             height, width = opaque_cells.shape
             ix = np.clip(points[:, :, 0].astype(np.intp), 0, width - 1)
             iy = np.clip(points[:, :, 1].astype(np.intp), 0, height - 1)
-            blocked |= opaque_cells[iy, ix].any(axis=1)
+            blocked |= (opaque_cells[iy, ix] & chunk_real).any(axis=1)
 
         clear[lo:hi] = ~blocked
 
     return clear
+
+
+def segments_clear_of_discs(
+    starts: np.ndarray,
+    ends: np.ndarray,
+    centres: np.ndarray,
+    radii: np.ndarray,
+    *,
+    exempt: np.ndarray | None = None,
+) -> np.ndarray:
+    """``(N,)`` — True where no disc blocks the segment. Exact, not sampled.
+
+    Model bases are circles, and a circle has a closed-form segment test: the
+    perpendicular distance from its centre to the segment. So unlike terrain
+    this needs no sampling at all, and carries no `sample_step` caveat — a model
+    thinner than the sample step could never leak sight the way a thin ruin can.
+
+    Args:
+        exempt: ``(N, M)`` — True where that disc does not block that segment.
+            This is where the unit rule enters: a model ignores others in its
+            own unit and in its target's unit.
+    """
+    n_segments = len(starts)
+    clear = np.ones(n_segments, dtype=bool)
+    if n_segments == 0 or len(centres) == 0:
+        return clear
+
+    # Written out in components on purpose. The readable form -- build the
+    # closest point, then `np.linalg.norm` -- allocates two (N, M, 2) arrays and
+    # takes a square root over (N, M), and sight is the hottest thing in the
+    # environment. This compares squared distances and never materialises a
+    # point.
+    # No bounding-box pre-filter here, deliberately. The same trick is worth 8x
+    # on the polygon test, where the inner work is (points x shapes x edges)
+    # with a division in it. A disc test has no edge dimension and no division,
+    # so the filter's own four comparisons cost more than the projection they
+    # avoid: measured 8.18 -> 10.21 ms/step with one in front.
+    delta_x = ends[:, 0] - starts[:, 0]
+    delta_y = ends[:, 1] - starts[:, 1]
+    length_sq = delta_x**2 + delta_y**2
+    safe_length = np.where(length_sq > 0, length_sq, 1.0)
+
+    offset_x = centres[np.newaxis, :, 0] - starts[:, np.newaxis, 0]  # (N, M)
+    offset_y = centres[np.newaxis, :, 1] - starts[:, np.newaxis, 1]
+    along = np.clip(
+        (offset_x * delta_x[:, np.newaxis] + offset_y * delta_y[:, np.newaxis])
+        / safe_length[:, np.newaxis],
+        0.0,
+        1.0,
+    )
+    gap_x = offset_x - along * delta_x[:, np.newaxis]
+    gap_y = offset_y - along * delta_y[:, np.newaxis]
+
+    blocking = (gap_x**2 + gap_y**2) < (radii**2)[np.newaxis, :]
+    if exempt is not None:
+        blocking &= ~exempt
+    unblocked: np.ndarray = ~blocking.any(axis=1)
+    return unblocked

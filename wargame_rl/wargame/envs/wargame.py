@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import gymnasium as gym
@@ -27,8 +28,10 @@ from wargame_rl.wargame.envs.domain.shooting import (
     resolve_shooting_phase,
 )
 from wargame_rl.wargame.envs.domain.sight import (
+    COVER,
     has_line_of_sight_between_points,
-    line_of_sight_matrix,
+    occluders_from,
+    visibility_matrix,
 )
 from wargame_rl.wargame.envs.domain.termination import is_battle_over
 from wargame_rl.wargame.envs.domain.terrain import Terrain
@@ -358,20 +361,122 @@ class WargameEnv(gym.Env):
             sample_step=self._rules_quantities.los_sample_step,
         )
 
+    def sight_between(
+        self,
+        origin_models: list[WargameModel],
+        target_models: list[WargameModel],
+    ) -> Callable[[np.ndarray, np.ndarray, np.ndarray], np.ndarray]:
+        """A `LosMatrixFn` bound to who the two position arrays belong to.
+
+        The mask seam passes *positions*, and the unit rule needs *models*: an
+        occluder is ignored when it shares a unit with the observer or the
+        target, and no array of coordinates can say that. Binding the models
+        here is what carries that through without widening the seam.
+
+        Getting this wrong is silent. The first version passed no models at all,
+        so the unit rule simply did not apply on the shooting path — and every
+        config in the test suite has `base_radius: 0`, where no model occludes
+        anything, so the whole suite stayed green.
+        """
+
+        def sight(
+            origins: np.ndarray, targets: np.ndarray, candidates: np.ndarray
+        ) -> np.ndarray:
+            return self._can_be_shot_at(
+                origins, targets, candidates, origin_models, target_models
+            )
+
+        return sight
+
     def line_of_sight_matrix(
         self,
         origins: np.ndarray,
         targets: np.ndarray,
         candidates: np.ndarray | None = None,
     ) -> np.ndarray:
-        """``(P, Q)`` sight between two sets of points, traced in one pass."""
-        return line_of_sight_matrix(
+        """``(P, Q)`` sight between two sets of points, traced in one pass.
+
+        Boolean: True where the target can be shot at *at all*. A target in
+        cover is visible, just harder to hit -- see `visibility_between`.
+
+        Positions only, so no unit rule applies. Anything on the shooting path
+        should go through `sight_between`, which knows the models.
+        """
+        return self._can_be_shot_at(origins, targets, candidates, None, None)
+
+    def _can_be_shot_at(
+        self,
+        origins: np.ndarray,
+        targets: np.ndarray,
+        candidates: np.ndarray | None,
+        origin_models: list[WargameModel] | None,
+        target_models: list[WargameModel] | None,
+    ) -> np.ndarray:
+        """``(P, Q)`` — True where the target is at least partly visible.
+
+        **Traced lazily, and that is worth ~40% of a step.** Only the centre ray
+        is cast for every candidate pair; the two edge rays are cast only for
+        the pairs whose centre ray was blocked, because those are the only ones
+        where an edge can change the answer from "cannot be shot at" to "can".
+        The full three-state verdict costs three rays for every pair, and this
+        path -- the shooting mask and the exposure scan -- never needs the
+        distinction between clear and in-cover.
+        """
+        centre = self.visibility_between(
+            origins,
+            targets,
+            candidates,
+            origin_models=origin_models,
+            target_models=target_models,
+            edges=False,
+        )
+        visible: np.ndarray = centre >= COVER
+        remaining = ~visible if candidates is None else candidates & ~visible
+        if not remaining.any():
+            return visible
+        edges = self.visibility_between(
+            origins,
+            targets,
+            remaining,
+            origin_models=origin_models,
+            target_models=target_models,
+        )
+        return visible | (edges >= COVER)
+
+    def visibility_between(
+        self,
+        origins: np.ndarray,
+        targets: np.ndarray,
+        candidates: np.ndarray | None = None,
+        *,
+        origin_models: list[WargameModel] | None = None,
+        target_models: list[WargameModel] | None = None,
+        edges: bool = True,
+    ) -> np.ndarray:
+        """``(P, Q)`` of HIDDEN / COVER / CLEAR between two sets of points.
+
+        Model bases occlude, ignoring the observer's own unit and the target's.
+        Every alive model on the board is a potential occluder -- a shot passes
+        over friend and foe alike -- so both armies go in.
+
+        `edges=False` traces only the centre ray, which makes the answer binary
+        (CLEAR or HIDDEN, never COVER). For callers that only need "can this be
+        shot at", that is a third of the work.
+        """
+        return visibility_matrix(
             origins,
             targets,
             self._battle.terrain,
             self.config.blocking_mask,
             sample_step=self._rules_quantities.los_sample_step,
             candidates=candidates,
+            occluders=occluders_from(
+                list(self.wargame_models) + list(self.opponent_models)
+            ),
+            origin_units=_unit_ids(origin_models),
+            target_units=_unit_ids(target_models),
+            origin_radii=_base_radii(origin_models),
+            target_radii=_base_radii(target_models) if edges else None,
         )
 
     # BattleView protocol (read-only battle state for renderers and reward)
@@ -546,14 +651,48 @@ class WargameEnv(gym.Env):
         """Decode the action into shots, then let the domain resolve them.
 
         Returns one PairedShootingResult per model that actually fired.
+
+        Cover is resolved here, once for the whole phase, and handed to the
+        domain as a mask. Sight is a batch operation; asking it per shot would
+        put the environment's most expensive query inside a python loop.
         """
+        shots = action_handler.decode_shooting_targets(action, len(attackers))
         return resolve_shooting_phase(
-            shots=action_handler.decode_shooting_targets(action, len(attackers)),
+            shots=shots,
             attackers=attackers,
             targets=targets,
             attacker_weapons=[cfg.weapons for cfg in attacker_configs or []],
             rng=self._combat_rng,
+            cover=self._cover_mask(shots, attackers, targets),
         )
+
+    def _cover_mask(
+        self,
+        shots: list[tuple[int, int]],
+        attackers: list[WargameModel],
+        targets: list[WargameModel],
+    ) -> np.ndarray | None:
+        """``(n_attackers, n_targets)`` — True where the target is only partly seen.
+
+        Only the declared pairs are traced, which is usually a handful out of the
+        full product. Returns None when nothing was declared, so an empty phase
+        costs nothing at all.
+        """
+        if not shots or not attackers or not targets:
+            return None
+        candidates = np.zeros((len(attackers), len(targets)), dtype=bool)
+        for attacker_idx, target_idx in shots:
+            if target_idx < len(targets):
+                candidates[attacker_idx, target_idx] = True
+        visibility = self.visibility_between(
+            np.array([m.location for m in attackers], dtype=float),
+            np.array([m.location for m in targets], dtype=float),
+            candidates,
+            origin_models=attackers,
+            target_models=targets,
+        )
+        in_cover: np.ndarray = visibility == COVER
+        return in_cover
 
     def _apply_player_action(self, action: WargameEnvAction) -> None:
         phase = self._game_clock.state.phase or BattlePhase.movement
@@ -629,7 +768,7 @@ class WargameEnv(gym.Env):
             self._player_max_ranges,
             self._opponent_max_ranges,
             self.terrain.footprints,
-            self.line_of_sight_matrix,
+            self.sight_between(self.wargame_models, self.opponent_models),
         )
 
     def _apply_opponent_action(self) -> None:
@@ -916,3 +1055,17 @@ class WargameEnv(gym.Env):
             self.renderer.render(self)
 
         return None
+
+
+def _unit_ids(models: list[WargameModel] | None) -> np.ndarray | None:
+    """Unit id per model, for the ignore-my-own-unit sight rule."""
+    if models is None:
+        return None
+    return np.array([m.unit_id for m in models], dtype=np.int64)
+
+
+def _base_radii(models: list[WargameModel] | None) -> np.ndarray | None:
+    """Base radius per model, which sets how wide a target is to look at."""
+    if models is None:
+        return None
+    return np.array([m.base_radius for m in models], dtype=float)

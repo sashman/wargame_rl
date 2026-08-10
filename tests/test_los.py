@@ -356,3 +356,39 @@ def test_terrain_los_symmetry(
     forward = env.has_line_of_sight_between_points(x0, y0, x1, y1)
     backward = env.has_line_of_sight_between_points(x1, y1, x0, y0)
     assert forward == backward
+
+
+def test_a_pair_gets_the_same_answer_however_it_is_batched() -> None:
+    """Sight must be a property of the pair, not of the query it arrived in.
+
+    Samples sit at absolute distances along each segment. The cheaper scheme —
+    one shared set of parametric offsets sized from the longest segment in the
+    batch — makes the sample positions depend on the *other* pairs in the call,
+    so splitting a batch can flip a verdict. That is how it was written first,
+    and it surfaced as two golden gates failing the moment a caller started
+    tracing in two passes instead of one.
+    """
+    rng = np.random.default_rng(0)
+    outlines = np.stack(
+        [
+            Polygon.from_rect(20.0, 10.0, 26.0, 16.0).vertices,
+            Polygon.from_rect(35.0, 20.0, 41.0, 30.0).vertices,
+        ]
+    )
+    counts = np.array([4, 4])
+    starts = rng.uniform(0, 60, (200, 2))
+    ends = rng.uniform(0, 60, (200, 2))
+
+    def trace(first: np.ndarray, second: np.ndarray) -> np.ndarray:
+        return segments_are_clear(first, second, outlines, counts, sample_step=_STEP)
+
+    together = trace(starts, ends)
+    one_at_a_time = np.array(
+        [trace(starts[i : i + 1], ends[i : i + 1])[0] for i in range(len(starts))]
+    )
+    split = np.concatenate(
+        [trace(starts[:100], ends[:100]), trace(starts[100:], ends[100:])]
+    )
+
+    assert (together == one_at_a_time).all()
+    assert (together == split).all()

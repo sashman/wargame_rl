@@ -32,7 +32,7 @@ table is the roadmap for the next implementation phase.
 |---|---|---|
 | [Unit contains models](01-core-concepts.md#armies-units-and-models) | **divergent** | There is no unit entity. `WargameModel` (`envs/domain/entities.py`) is an individual; `group_id` is the closest thing to a unit and carries no rules of its own. |
 | [Move (M)](02-unit-profiles.md#model-characteristics) | **divergent** | Not per-model. One global `max_move_speed` in the config. |
-| [Base sizes](02-unit-profiles.md#bases) | partial | `base_radius` in `envs/types/config/env.py`, authored in inches and resolved through the scale onto `WargameModel.base_radius`. One radius for every model rather than per profile, and it defaults to **0.0** — the dimensionless point every result before continuous space was measured under. Where non-zero it separates models at placement, insets the board clamp, measures objective range from the base edge, and makes engagement base to base. It does *not* yet occlude sight or block movement. |
+| [Base sizes](02-unit-profiles.md#bases) | partial | `base_radius` in `envs/types/config/env.py`, authored in inches and resolved through the scale onto `WargameModel.base_radius`. One radius for every model rather than per profile, and it defaults to **0.0** — the dimensionless point every result before continuous space was measured under. Where non-zero it separates models at placement, insets the board clamp, measures objective range from the base edge, and makes engagement base to base. It also occludes sight and blocks movement. |
 | [Toughness, Save, Wounds](02-unit-profiles.md#model-characteristics) | implemented | `ModelConfig` → `WargameModel.stats` (`toughness`, `save`, `max_wounds`, `current_wounds`) via `envs/domain/battle_factory.py`. |
 | [Invulnerable save (InSv)](02-unit-profiles.md#model-characteristics) | absent | No field on `ModelConfig`; `resolve_shooting` checks one save only. |
 | [Resolve (Rv)](02-unit-profiles.md#model-characteristics) | absent | — |
@@ -98,12 +98,12 @@ table is the roadmap for the next implementation phase.
 
 | Rule | Status | Owner / note |
 |---|---|---|
-| [Line of sight](06-visibility-and-damage.md#visibility) | partial | `envs/domain/los.py` samples points along the segment at `los_sample_step` (default 0.25") and tests them against blocker rectangles, vectorised over segments and blockers at once. Traced centre to centre: model extent does not occlude, so there is still no *visible* / *fully visible* distinction and therefore no cover. |
-| [Terrain categories](13-terrain.md#terrain-categories) | **divergent** | One category. `Footprint` (`envs/domain/terrain.py`) is an axis-aligned rectangle that blocks line of sight. |
+| [Line of sight](06-visibility-and-damage.md#visibility) | partial | `envs/domain/los.py` samples points along the segment at `los_sample_step` (default 0.25") for terrain, and uses an exact segment/circle test for model bases. Three rays per pair give the three-state answer (hidden / cover / visible). The rays are a parallel corridor of the pair's width rather than tangents to the target, so sight stays exactly symmetric — the metrics depend on that. No height, so nothing is *fully* visible by the rules' vertical test. |
+| [Terrain categories](13-terrain.md#terrain-categories) | **divergent** | One category. `Footprint` (`envs/domain/terrain.py`) is a closed outline — concave allowed — that blocks line of sight. |
 | [Terrain and movement](13-terrain.md#terrain-and-movement) | absent | Movement ignores terrain completely — models pass through footprints freely. |
 | [Solid: see out of and into a feature](13-terrain.md#solid) | partial | `Terrain.blocking_footprints_for_endpoints` excludes any footprint containing either endpoint, which reproduces the see-out and see-into behaviour in two dimensions. No height, so the 3" threshold has no analogue. |
 | [Obscuring](13-terrain.md#obscuring) | **divergent** | Achieved by the same footprint blocking, keyed off the feature rather than an enclosing terrain area. |
-| [Cover (−1 RS)](13-terrain.md#cover) | absent | `resolve_shooting` has no cover term. Cover is *measured* — `env_components/exposure.py` reports `eval/exposure_rate` — but it never changes an outcome. |
+| [Cover (−1 RS)](13-terrain.md#cover) | implemented | A target only partly visible along the corridor between the two models is in cover, and `resolve_shooting` worsens the Ranged Skill by `COVER_RANGED_SKILL_PENALTY`. The unmodified 6 still hits, so cover is never an absolute shield. Requires `base_radius > 0`: with dimensionless models the three rays coincide and cover cannot occur. |
 | [Hidden and detection range](13-terrain.md#hidden) | absent | — |
 | [Elevated fire](16-ability-reference.md#elevated-fire) | absent | The board has no height. |
 
