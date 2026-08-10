@@ -24,7 +24,10 @@ from wargame_rl.wargame.envs.types import (
     WargameEnvConfig,
 )
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.common.observation import observations_to_tensor_batch
+from wargame_rl.wargame.model.common.observation import (
+    TERRAIN_FEATURE_DIM,
+    observations_to_tensor_batch,
+)
 
 BOARD = BoardDimensions(width=60, height=44)
 
@@ -65,8 +68,8 @@ def test_layout_is_legal(seed: int) -> None:
     rects = _layout(seed, edge_margin=2)
 
     for x0, y0, x1, y1 in rects:
-        assert 2 <= x0 <= x1 < BOARD.width - 2
-        assert 2 <= y0 <= y1 < BOARD.height - 2
+        assert 2 <= x0 <= x1 <= BOARD.width - 2
+        assert 2 <= y0 <= y1 <= BOARD.height - 2
 
     for i, a in enumerate(rects):
         for b in rects[i + 1 :]:
@@ -82,8 +85,12 @@ def test_mirrored_layout_is_symmetric(seed: int) -> None:
     whole run.
     """
     rects = _layout(seed, mirror=True)
+    # Reflected about `width`, not `width - 1`. Footprints are continuous
+    # rectangles: `width - 1` was the last cell *index*, and reflecting about it
+    # shifts every piece one unit left -- which looks like an asymmetric layout
+    # and is really an off-by-one in the reading.
     reflected = sorted(
-        (BOARD.width - 1 - x1, y0, BOARD.width - 1 - x0, y1) for x0, y0, x1, y1 in rects
+        (BOARD.width - x1, y0, BOARD.width - x0, y1) for x0, y0, x1, y1 in rects
     )
     assert reflected == rects
 
@@ -187,7 +194,7 @@ def test_observations_from_different_episodes_batch() -> None:
         env.close()
 
     tensors = observations_to_tensor_batch(observations)
-    assert tuple(tensors[4].shape) == (4, 5, 4)
+    assert tuple(tensors[4].shape) == (4, 5, TERRAIN_FEATURE_DIM)
 
 
 def test_terrain_is_stable_without_random_terrain() -> None:

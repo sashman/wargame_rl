@@ -1,8 +1,8 @@
 """Action space and application for the wargame environment.
 
 Polar coordinate movement: each model picks an (angle, speed) pair or stays
-still. The continuous displacement is rounded to the nearest integer cell so
-that locations remain on the discrete grid.
+still. The displacement is applied exactly — the board is continuous, so a
+speed bin means the distance it says in every direction.
 
 The ``ActionRegistry`` partitions the flat action space into contiguous slices
 (stay, movement, and future phase-specific slices) and provides phase-aware
@@ -17,6 +17,7 @@ from typing import Any
 import numpy as np
 from gymnasium import spaces
 
+from wargame_rl.wargame.envs.domain.movement import resolve_move
 from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
 from wargame_rl.wargame.envs.domain.value_objects import (
     POSITION_DTYPE,
@@ -27,6 +28,22 @@ from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 STAY_ACTION = 0
+
+
+def _base_arrays(models: list[Any] | None) -> tuple[np.ndarray, np.ndarray]:
+    """Centres and radii of the *alive* models in a list, for collision tests.
+
+    Dead models are excluded: a casualty is removed from the table, so its base
+    is not ground anyone has to walk around.
+    """
+    alive = [m for m in (models or []) if m.is_alive]
+    if not alive:
+        return np.zeros((0, 2), dtype=float), np.zeros(0, dtype=float)
+    return (
+        np.array([m.location for m in alive], dtype=float),
+        np.array([m.base_radius for m in alive], dtype=float),
+    )
+
 
 ALL_BATTLE_PHASES: frozenset[BattlePhase] = frozenset(BattlePhase)
 
@@ -146,7 +163,10 @@ class ActionHandler:
         n_speeds = config.n_speed_bins
         # Through the resolver rather than off the config, so that a board using
         # a scale other than 1 inch per unit moves models the right distance.
-        max_speed = resolve_rules_quantities(config).max_move_speed
+        quantities = resolve_rules_quantities(config)
+        max_speed = quantities.max_move_speed
+        # A model with a base cannot stand with half of it off the table.
+        self._base_radius = quantities.base_radius
 
         angles = np.linspace(0, 2 * np.pi, n_angles, endpoint=False)
         speeds = np.linspace(max_speed / n_speeds, max_speed, n_speeds)
@@ -156,19 +176,23 @@ class ActionHandler:
         )  # (n_angles, 2)
         self._speeds = speeds  # (n_speeds,)
 
-        # Pre-compute the integer displacement for every (angle, speed) pair.
+        # Pre-compute the exact displacement for every (angle, speed) pair.
         # _displacements[angle_idx, speed_idx] -> (dx, dy) as POSITION_DTYPE.
         #
-        # The dtype matters as much as the rounding. A displacement is added to
-        # a location, so a wider one silently widens every location on the
-        # board: this was `dtype=int` (int64), which made a model's position
-        # int32 from placement and int64 from its first move onward, disagreeing
-        # with the int32 the observation space advertises.
+        # This used to be `np.rint(raw)`, snapping each move to a whole cell,
+        # which was destroying information rather than approximating it: on the
+        # 25v25 action space the 96 movement actions collapsed to **80 distinct
+        # outcomes**, and a "speed 1" diagonal travelled 1.414 against an
+        # orthogonal one's 1.000 -- 41% further for the same nominal speed.
+        #
+        # The dtype still matters as much as the rounding did. A displacement is
+        # added to a location, so a wider one silently widens every location on
+        # the board.
         raw = (
             self._unit_directions[:, np.newaxis, :]
             * self._speeds[np.newaxis, :, np.newaxis]
         )  # (n_angles, n_speeds, 2)
-        self._displacements: np.ndarray = np.rint(raw).astype(POSITION_DTYPE)
+        self._displacements: np.ndarray = raw.astype(POSITION_DTYPE)
 
         self._n_move_actions = n_angles * n_speeds
         self._n_speed_bins = n_speeds
@@ -253,7 +277,7 @@ class ActionHandler:
         return self._action_space
 
     def _decode_action(self, action: int) -> np.ndarray:
-        """Return the integer (dx, dy) displacement for *action*."""
+        """Return the (dx, dy) displacement for *action*."""
         if action == STAY_ACTION:
             return zero_position()
         move_idx = action - 1
@@ -309,6 +333,7 @@ class ActionHandler:
         action_space: spaces.Tuple,
         *,
         phase: BattlePhase = BattlePhase.movement,
+        enemy_models: list[Any] | None = None,
     ) -> None:
         """Apply the action tuple to the wargame models (mutates locations).
 
@@ -317,11 +342,29 @@ class ActionHandler:
         Models displace only in the movement phase: the action mask already
         enforces that for a learned policy, but scripted policies bypass the
         mask, so honouring `phase` here keeps them on the same footing.
+
+        With bases, moves are resolved against the other models: `enemy_models`
+        stop a move on contact, the moving army's own models may be passed
+        through but not ended on. Resolution runs in model index order, which
+        gives model 0 a documented right of way — the price of a deterministic
+        board.
         """
         # Hoisted, and typed: python-list bounds become int64 arrays, so passing
         # them to `np.clip` would widen the result whatever the inputs are.
-        lower = zero_position()
-        upper = position(board_width - 1, board_height - 1)
+        lower = position(self._base_radius, self._base_radius)
+        upper = position(
+            board_width - self._base_radius, board_height - self._base_radius
+        )
+        collides = self._base_radius > 0.0
+        blocker_centres, blocker_radii = _base_arrays(
+            enemy_models if collides else None
+        )
+        n_models = len(wargame_models)
+        friendly_buffer = np.zeros((n_models, 2), dtype=float)
+        friendly_radius_buffer = np.array(
+            [m.base_radius for m in wargame_models], dtype=float
+        )
+        friendly_alive = np.array([m.is_alive for m in wargame_models], dtype=bool)
         for i, act in enumerate(action.actions):
             model = wargame_models[i]
             if not model.is_alive:
@@ -339,4 +382,32 @@ class ActionHandler:
                 continue
             model.previous_location = model.location.copy()
             displacement = self._decode_action(act)
-            model.location = np.clip(model.location + displacement, lower, upper)
+            if not collides:
+                model.location = np.clip(model.location + displacement, lower, upper)
+                continue
+            # Read live each iteration: earlier models in this loop have already
+            # moved, and a model must not end on ground another just took. The
+            # arrays are rebuilt from a preallocated buffer rather than a fresh
+            # list comprehension per model -- that shape is O(n^2) in python and
+            # is what made two reward calculators 80% of a step once already.
+            for j, other in enumerate(wargame_models):
+                friendly_buffer[j] = other.location
+            keep = friendly_alive.copy()
+            keep[i] = False
+            friendly_centres = friendly_buffer[keep]
+            friendly_radii = friendly_radius_buffer[keep]
+            # The board edge is clamped into the *displacement*, before
+            # collisions are resolved. Clamping the resolved point afterwards
+            # would slide a model along the edge and back into someone else --
+            # producing exactly the overlap the whole resolution just avoided,
+            # only near a board edge and only sometimes.
+            in_bounds = np.clip(model.location + displacement, lower, upper)
+            model.location = resolve_move(
+                model.location,
+                in_bounds - model.location,
+                model.base_radius,
+                blocker_centres,
+                blocker_radii,
+                friendly_centres,
+                friendly_radii,
+            )

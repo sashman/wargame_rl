@@ -28,7 +28,7 @@ wargame_rl/wargame/envs/
 │   ├── game_clock.py          # Turn/phase/round logic
 │   ├── placement.py           # place_for_episode, placement helpers
 │   ├── termination.py         # is_battle_over, check_max_turns_reached
-│   ├── los.py                 # Grid Bresenham ray + injectable blocking predicate
+│   ├── los.py                 # Sampled ray vs padded polygon blockers (vectorised)
 │   ├── sight.py               # "Can A see B?": los + terrain + blocking_mask
 │   ├── scale.py               # Scale: rules inches <-> board units
 │   ├── rules_constants.py     # Universal rules values, in inches (mirrors
@@ -71,9 +71,9 @@ wargame_rl/wargame/envs/
 - **place_for_episode**: places player models, objectives, and opponent models for a new episode (fixed or random from config).
 - **GameClock**: advance setup/battle phases, rounds, turns; `is_game_over`.
 - **termination**: `is_battle_over(clock, current_turn, max_turns, success_flag, all_eliminated=False)`.
-- **los / terrain**: Bresenham LOS with an injectable blocking predicate; `Terrain` supplies the footprints that block a given query.
+- **los / terrain**: sampled-ray LOS against padded outlines, vectorised over segments and shapes; `Terrain` supplies those outlines and the arrays the trace consumes.
 - **scale / rules_quantities**: `Scale` is the only definition of how many rules inches one board unit spans. `resolve_rules_quantities(config)` converts every rules distance into units **once, at construction**, and the env exposes the result on `BattleView.rules_quantities` — runtime reads plain floats and never divides. `rules_constants.py` holds the rules' own values in inches and mirrors `docs/rules/constants.yaml`, pinned by `tests/test_rules_constants.py`. Note the constants are the *rules'* values, not the env's: where a scenario deviates (engagement range is 1", the rules say 2") the config states it and `implementation-status.md` records it.
-- **sight**: `has_line_of_sight_between_cells` composes the two — the Bresenham ray, the terrain footprints that contain neither endpoint (the see-out rule), and the static `blocking_mask`. Kept apart from `los.py` so the geometry primitive stays free of game rules, and so the question "can A see B?" has one home when it gains continuous coordinates and a three-state answer for cover.
+- **sight**: `line_of_sight_matrix` composes the two — the sampled ray, the terrain outlines that contain neither endpoint (the see-out rule), and the static `blocking_mask`. Kept apart from `los.py` so the geometry primitive stays free of game rules, and so the question "can A see B?" has one home. The batch form is the real entry point: the single-pair `has_line_of_sight_between_points` in a loop is a measured 3x regression.
 - **shooting**: `resolve_shooting(weapon, defender, rng)` and `expected_damage`, plus `wound_roll_threshold`. `resolve_shooting_phase` resolves a whole phase from already-decoded `(attacker_idx, target_idx)` shots — decoding the action tuple is the adapter's job (`ActionHandler.decode_shooting_targets`), because the action-space slice lives in `env_components/`.
 - **turn_execution**: `run_until_player_phase`, `run_after_player_action` (skip phases, run opponent turn, advance clock).
 

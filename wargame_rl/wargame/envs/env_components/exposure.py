@@ -8,13 +8,16 @@ can see you, and in how far the army stays from the nearest ruin.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 
 import numpy as np
 
 from wargame_rl.wargame.envs.domain.entities import WargameModel, alive_mask_for
 from wargame_rl.wargame.envs.domain.terrain import Footprint
-from wargame_rl.wargame.envs.env_components.shooting_masks import compute_threat_counts
+from wargame_rl.wargame.envs.env_components.shooting_masks import (
+    LosMatrixFn,
+    compute_threat_counts,
+)
 
 
 def distances_to_nearest_footprint(
@@ -157,7 +160,7 @@ def record_shooting_phase(
     player_max_ranges: np.ndarray,
     opponent_max_ranges: np.ndarray,
     footprints: list[Footprint],
-    has_los_fn: Callable[[int, int, int, int], bool],
+    los_matrix_fn: LosMatrixFn,
 ) -> None:
     """Sample both sides of the shooting exchange and feed *tracker*.
 
@@ -181,7 +184,7 @@ def record_shooting_phase(
         opponent_alive,
         player_max_ranges,
         opponent_max_ranges,
-        has_los_fn,
+        los_matrix_fn,
     )
     tracker.record(
         exposed=threats.threat_to_player > 0,

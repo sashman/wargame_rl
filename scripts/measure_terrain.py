@@ -24,7 +24,8 @@ import sys
 import numpy as np
 from pydantic_yaml import parse_yaml_raw_as
 
-from wargame_rl.wargame.envs.domain.los import has_line_of_sight
+from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
+from wargame_rl.wargame.envs.domain.sight import line_of_sight_matrix
 from wargame_rl.wargame.envs.domain.terrain import Terrain
 from wargame_rl.wargame.envs.domain.terrain_placement import generate_terrain
 from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions
@@ -42,20 +43,36 @@ def _weapon_range(config: WargameEnvConfig) -> float:
     return float(max(ranges)) if ranges else 12.0
 
 
-def _blocking_predicate(terrain: Terrain, x0: int, y0: int, x1: int, y1: int):  # type: ignore[no-untyped-def]
-    """LOS blocking test for one query, honouring the see-out/see-into rule."""
-    active = terrain.blocking_footprints_for_endpoints(x0, y0, x1, y1)
-
-    def is_blocking(x: int, y: int) -> bool:
-        return any(fp.contains(x, y) for fp in active)
-
-    return is_blocking
+def _sight_clear(
+    terrain: Terrain,
+    starts: np.ndarray,
+    ends: np.ndarray,
+    sample_step: float,
+) -> np.ndarray:
+    """``(N,)`` clear/blocked for N paired sightlines, in one vectorised pass."""
+    matrix = line_of_sight_matrix(
+        starts,
+        ends,
+        terrain,
+        None,
+        sample_step=sample_step,
+        candidates=np.eye(len(starts), dtype=bool),
+    )
+    return np.diagonal(matrix).copy()
 
 
 def _coverage(terrain: Terrain, board: BoardDimensions) -> float:
-    """Fraction of board cells inside some footprint (footprints never overlap)."""
-    cells = sum((fp.x1 - fp.x0 + 1) * (fp.y1 - fp.y0 + 1) for fp in terrain.footprints)
-    return cells / (board.width * board.height)
+    """Fraction of board area inside some footprint (footprints never overlap).
+
+    The *polygon's* area, not its bounding box. An inscribed hexagon fills only
+    ~65% of the box it was drawn in, so billing the box overstated real terrain
+    by half — and the 37 x 3-6 profile was tuned against that inflated number,
+    landing at 0.159 actual coverage while its header claimed 0.233. Areas, not
+    cell counts: a footprint is a continuous shape, so its extent is `x1 - x0`
+    rather than `x1 - x0 + 1`; the `+ 1` lives in `Footprint.from_cell_rect`.
+    """
+    area = sum(fp.polygon.area for fp in terrain.footprints)
+    return area / (board.width * board.height)
 
 
 def _blocked_fraction(
@@ -63,6 +80,7 @@ def _blocked_fraction(
     board: BoardDimensions,
     weapon_range: float,
     rng: np.random.Generator,
+    sample_step: float,
 ) -> float:
     """Fraction of random within-range sightlines that terrain blocks.
 
@@ -70,25 +88,22 @@ def _blocked_fraction(
     within weapon range, which is the population of shots the game actually
     resolves.
     """
-    blocked = 0
-    for _ in range(SAMPLES_PER_LAYOUT):
-        x0 = int(rng.integers(0, board.width))
-        y0 = int(rng.integers(0, board.height))
-        angle = float(rng.uniform(0.0, 2.0 * np.pi))
-        distance = float(rng.uniform(1.0, weapon_range))
-        x1 = int(np.clip(round(x0 + distance * np.cos(angle)), 0, board.width - 1))
-        y1 = int(np.clip(round(y0 + distance * np.sin(angle)), 0, board.height - 1))
-        if not has_line_of_sight(
-            x0,
-            y0,
-            x1,
-            y1,
-            board.width,
-            board.height,
-            _blocking_predicate(terrain, x0, y0, x1, y1),
-        ):
-            blocked += 1
-    return blocked / SAMPLES_PER_LAYOUT
+    starts = np.column_stack(
+        [
+            rng.uniform(0.0, board.width, SAMPLES_PER_LAYOUT),
+            rng.uniform(0.0, board.height, SAMPLES_PER_LAYOUT),
+        ]
+    )
+    angles = rng.uniform(0.0, 2.0 * np.pi, SAMPLES_PER_LAYOUT)
+    distances = rng.uniform(1.0, weapon_range, SAMPLES_PER_LAYOUT)
+    ends = np.column_stack(
+        [
+            np.clip(starts[:, 0] + distances * np.cos(angles), 0.0, board.width),
+            np.clip(starts[:, 1] + distances * np.sin(angles), 0.0, board.height),
+        ]
+    )
+    clear = _sight_clear(terrain, starts, ends, sample_step)
+    return float((~clear).mean())
 
 
 ENEMY_SQUAD_SIZE = 8
@@ -100,6 +115,7 @@ def _hideable_fraction(
     board: BoardDimensions,
     weapon_range: float,
     rng: np.random.Generator,
+    sample_step: float,
 ) -> float:
     """Fraction of cells hidden from every enemy that could shoot them.
 
@@ -121,28 +137,21 @@ def _hideable_fraction(
         band_top = int(rng.integers(0, max(1, board.height - band)))
         enemy_ys = rng.integers(band_top, band_top + band, size=ENEMY_SQUAD_SIZE)
 
-        x = int(rng.integers(0, enemy_x))
-        y = int(rng.integers(0, board.height))
+        x = float(rng.uniform(0.0, enemy_x))
+        y = float(rng.uniform(0.0, board.height))
         in_range = [
-            int(ey)
+            float(ey)
             for ey in enemy_ys
-            if np.hypot(enemy_x - x, int(ey) - y) <= weapon_range
+            if np.hypot(enemy_x - x, float(ey) - y) <= weapon_range
         ]
         if not in_range:
             continue
         samples += 1
-        if all(
-            not has_line_of_sight(
-                x,
-                y,
-                enemy_x,
-                ey,
-                board.width,
-                board.height,
-                _blocking_predicate(terrain, x, y, enemy_x, ey),
-            )
-            for ey in in_range
-        ):
+        starts = np.tile([float(x), float(y)], (len(in_range), 1))
+        ends = np.column_stack(
+            [np.full(len(in_range), float(enemy_x)), np.array(in_range, dtype=float)]
+        )
+        if not _sight_clear(terrain, starts, ends, sample_step).any():
             hidden += 1
     return hidden / samples if samples else 0.0
 
@@ -167,6 +176,7 @@ def main() -> None:
     weapon_range = _weapon_range(config)
     spec = config.random_terrain
     rng = np.random.default_rng(SEED)
+    sample_step = resolve_rules_quantities(config).los_sample_step
 
     coverages: list[float] = []
     blocked: list[float] = []
@@ -176,11 +186,14 @@ def main() -> None:
     for _ in range(n_layouts):
         terrain = generate_terrain(spec, board, rng)
         coverages.append(_coverage(terrain, board))
-        blocked.append(_blocked_fraction(terrain, board, weapon_range, rng))
-        hideable.append(_hideable_fraction(terrain, board, weapon_range, rng))
+        blocked.append(
+            _blocked_fraction(terrain, board, weapon_range, rng, sample_step)
+        )
+        hideable.append(
+            _hideable_fraction(terrain, board, weapon_range, rng, sample_step)
+        )
         aspect_ratios.extend(
-            max(fp.x1 - fp.x0 + 1, fp.y1 - fp.y0 + 1)
-            / min(fp.x1 - fp.x0 + 1, fp.y1 - fp.y0 + 1)
+            max(fp.x1 - fp.x0, fp.y1 - fp.y0) / min(fp.x1 - fp.x0, fp.y1 - fp.y0)
             for fp in terrain.footprints
         )
 
