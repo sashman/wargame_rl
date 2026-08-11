@@ -500,11 +500,25 @@ def _volley_env() -> tuple[WargameEnv, Any]:
     env = WargameEnv(config=config)
     observation, _ = env.reset(seed=4)
     policy = build_baseline_policy("squad_march_shoot")
-    for _ in range(6):
+    # Step until both sides have landed something, rather than a fixed six.
+    # Which round the first damaging volley falls in is a property of the
+    # scenario, and the scenario moves: real bases changed how fast the armies
+    # close and what they can see, and a hardcoded step count silently became
+    # "before anyone had fired" -- a fixture asserting on an empty list.
+    for _ in range(40):
         action = policy.select_action(
             env.player_models, env, action_mask=observation.action_mask
         )
-        observation, _r, _t, _tr, _i = env.step(action)
+        observation, _r, terminated, truncated, _i = env.step(action)
+        both_landed = all(
+            any(shot.result.damage_dealt > 0 for shot in results)
+            for results in (
+                env.last_player_shooting_results,
+                env.last_opponent_shooting_results,
+            )
+        )
+        if both_landed or terminated or truncated:
+            break
     return env, observation
 
 

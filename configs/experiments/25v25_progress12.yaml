@@ -172,17 +172,6 @@ random_terrain:
 # The objectives are the terrain.
 objectives_on_terrain: true
 
-# Choose the eligible pieces that are furthest apart, not the ones nearest the
-# board centre. Nearest-to-centre packed all three objectives into a ~16" circle
-# on this 60x44 board with 47% of pairs inside one weapon range, so holding two
-# was nearly free and there was no travel trade-off to price. Measured as a
-# natural experiment across 60 layouts, the agent's paired margin against the
-# bar improves +36.9 vp (3.6 sigma) going from clustered to spread layouts --
-# and the bar itself falls 79.7 -> 50.8, because marching every squad at the
-# nearest objective is near-optimal only when everything is adjacent.
-#
-# This CHANGES THE SCENARIO. Every baseline measured without it is void.
-objectives_spread_on_terrain: true
 
 # Accumulate line-of-sight exposure and terrain proximity during shooting
 # phases. Measurement only -- it does not change the game.

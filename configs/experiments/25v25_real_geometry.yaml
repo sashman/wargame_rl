@@ -1,0 +1,306 @@
+config_name: 25v25_real_geometry
+#
+# THE SHOOTING SCENARIO ON REAL GEOMETRY.
+#
+# `configs/golden/25v25_shooting_opponent.yaml` with the phase-03 physics
+# actually switched on. That config predates them and never set `base_radius`,
+# so it took the old default of 0.0 -- and at radius 0 the whole of phase 03 is
+# a documented no-op: no disc occludes, the three cover rays coincide so cover
+# cannot occur, models do not collide, and range is centre to centre. It was the
+# pre-geometry scenario running on the post-geometry engine.
+#
+# Four things now come from the code defaults rather than from this file:
+#
+#   base_radius            0.63in  a 32mm base, the rules' infantry base
+#   objectives_on_terrain  true    the objectives ARE the ruins
+#   objective selection    largest middle-section pieces, unclustered
+#   recording renderer     v2
+#
+# What this file still has to say is the terrain profile, because the golden
+# config's is wrong for this: 29 pieces of 3-7 against the real tables' 15.
+#
+# TERRAIN FITTED TO THE 45 REAL LAYOUTS in configs/evaluation/maps/, measured:
+#
+#   pieces per table   15.5 (sd 0.5, min 15, max 16)
+#   piece area         mean 40, median 24, max 112
+#   piece width        mean 7.1   piece height mean 7.2
+#   vertices           mean 4.2 (4-6)
+#   coverage           23.5% of a 60x44 board
+#   middle third       6.4 pieces per table
+#
+# Hence count 15 of 3-11, left as rectangles: the real tables average 4.2
+# vertices, so rectangles are closer to them than hexagons would be.
+#
+# EVERY NUMBER MEASURED ON THE GOLDEN CONFIG IS VOID HERE, including the +6.7
+# bar measured on 2026-08-11 -- that was the physics-off scenario.
+#
+# ---- the config it was copied from ----
+#
+# 25v25 against an opponent that shoots back. THE SHOOTING-OPPONENT CONFIG.
+#
+# This is the scenario the beat-the-bar work was done on, and this config is the
+# configuration that won it. It is NOT interchangeable with
+# 25v25_single_phase.yaml or 25v25_curriculum.yaml: those face
+# `scripted_advance_to_objective`, which never fires, on fixed terrain with no
+# objective separation constraint. Switching opponent invalidates every baseline
+# and agent score measured on a config, so numbers do not transfer either way.
+#
+# WHAT IT SCORES. n=100, seeds 700000-700099, identical layouts, against the
+# scripted baselines measured on this same config:
+#
+#   policy                       win    vp_margin   held
+#   random (the floor)           0.00     -164.6    0.09
+#   squad_march                  0.22      -58.9    0.99
+#   squad_march_shoot (the bar)  0.65      +17.0    1.64
+#   THIS CONFIG, 1000 epochs     0.685     +28.4    1.59
+#
+# Both seeds clear the bar independently (+30.1 and +26.6). Reproduce with
+# `just measure-baselines configs/golden/25v25_shooting_opponent.yaml 100 "" 700000`
+# and `just measure-checkpoint <ckpt> configs/golden/25v25_shooting_opponent.yaml 100`.
+#
+# THE TWO THINGS THAT MAKE IT WIN, both off by default elsewhere:
+#
+#   observe_objective_control     per-objective player/opponent counts on the
+#                                 objective token (2 -> 5 dims). Worth little
+#                                 alone (+1.55 +/- 4.5), but the reward below
+#                                 keys on a quantity that has to be observable.
+#   objective_hold                weight 1.25, crowding_exponent 1.0. The point
+#                                 pays a fixed pot split among its occupants
+#                                 rather than paying every occupant a wage.
+#
+# DO NOT RAISE THE WEIGHT WITHOUT THE EXPONENT. Measured: weight 1.25 at
+# crowding_exponent 0.0 scores -40.4 vp_margin, worse than the 0.25 default's
+# +3.25, and ends with 20 of 21 survivors stacked on a single objective. Flat pay
+# at 1.25/step integrates to ~50 an episode against this file's ~10-per-term
+# budget, so standing still out-earns everything else. At fixed weight the
+# exponent is worth 68 vp_margin.
+#
+# Weight is calibrated so the occupancy that actually holds the contested
+# objective -- 5 models, against the measured 4.22 defenders -- pays the
+# 0.25/step the flat term paid. Changing one of the pair without the other
+# changes the price of correct play, not just the price of crowding.
+#
+# See reports/2026-08-08-paying-the-pot-beats-the-bar.md. Note the scenario is
+# effectively a TWO-objective mission: both this policy and the bar concede the
+# third point in nearly every episode (the opponent stacks ~13 there and
+# flipping it costs 14), so `objectives_held` is bounded near 2.
+#
+# ---------------------------------------------------------------------------
+# Scenario. Terrain is regenerated every episode rather than fixed, which is
+# what makes a positioning result falsifiable: with a fixed layout, "learned to
+# use the terrain" and "memorised the rectangles" produce the same numbers.
+# ---------------------------------------------------------------------------
+number_of_wargame_models: 25
+number_of_opponent_models: 25
+number_of_objectives: 3
+objective_radius_size: 3
+board_width: 60
+board_height: 44
+max_groups: 5
+turn_order: random
+number_of_battle_rounds: 20
+skip_phases:
+  - command
+  - charge
+  - fight
+
+deployment_zone: [0, 0, 20, 44]
+opponent_deployment_zone: [40, 0, 60, 44]
+
+# Shoots back. Every other opponent policy is movement-only, which leaves
+# terrain constraining only the player's own shooting and gives cover no value
+# whatsoever. Note this invalidates every baseline and agent score previously
+# measured against the movement-only opponent.
+opponent_policy:
+  type: scripted_advance_and_shoot
+
+# Terrain blocks line-of-sight only (models can still move through it), and is
+# regenerated every episode rather than fixed.
+#
+# Randomising it is what makes a cover result falsifiable. With a fixed layout,
+# "the policy learned to use cover" and "the policy memorised the rectangles"
+# produce the same numbers. A fresh layout each episode leaves only one way to
+# score: read the terrain tokens in the observation.
+#
+# 29 pieces of 3-7, not batch 2's 7 pieces of 5-7. Measured with
+# `just measure-terrain`, the old profile left only 5.8% of the board hidden
+# from a squad that could shoot it; this one leaves 18.6%. Count dominates size
+# for this: hiding means breaking *every* sightline at once, which needs ruins
+# in many directions rather than one big one. At 5.8% the batch-1/2 agent was
+# not declining to use cover -- there was almost none to use.
+#
+# `count` is fixed while size and position vary -- observation batching stacks
+# the terrain arrays of a whole batch, so the piece count cannot differ between
+# episodes. `mirror` keeps the two deployment zones on equal ground; they are
+# fixed to the left and right of the board, so an asymmetric draw would hand one
+# side better approaches for a whole run.
+random_terrain:
+  count: 15
+  min_size: 3
+  max_size: 11
+  mirror: true
+  edge_margin: 2
+  min_gap: 1
+
+# Accumulate line-of-sight exposure and terrain proximity during shooting
+# phases. Measurement only — it does not change the game. Without it the
+# question this config exists to answer cannot be read off a run at all.
+track_exposure: true
+
+# 5 groups of 5. `weapons` is required for shooting to resolve at all — with an
+# empty list a model cannot shoot, which also makes terrain LOS inert.
+# range 12 on a 60x44 board puts the engagement band at a scale where a ~6-cell
+# ruin actually breaks a firing lane.
+# Objectives are drawn independently by default, which puts two of three discs
+# on top of each other in ~25% of episodes -- silently turning a three-objective
+# mission into a two-objective one. 6 = 2 x objective_radius_size, the smallest
+# separation that keeps the discs disjoint.
+objective_min_separation: 6
+
+# Five squads of five, all one profile. The anchors single-source that: a
+# weapon change is one edit rather than fifty, and "every model is the same"
+# is visible instead of inferred. YAML resolves them at parse time, so the
+# config the env sees -- and the copy dumped beside each checkpoint -- is
+# unchanged.
+models:
+  - &squad_0 { group_id: 0, weapons: &rifle [{ range: 12, attacks: 1 }] }
+  - *squad_0
+  - *squad_0
+  - *squad_0
+  - *squad_0
+  - &squad_1 { group_id: 1, weapons: *rifle }
+  - *squad_1
+  - *squad_1
+  - *squad_1
+  - *squad_1
+  - &squad_2 { group_id: 2, weapons: *rifle }
+  - *squad_2
+  - *squad_2
+  - *squad_2
+  - *squad_2
+  - &squad_3 { group_id: 3, weapons: *rifle }
+  - *squad_3
+  - *squad_3
+  - *squad_3
+  - *squad_3
+  - &squad_4 { group_id: 4, weapons: *rifle }
+  - *squad_4
+  - *squad_4
+  - *squad_4
+  - *squad_4
+
+opponent_models:
+  - &opp_squad_0 { group_id: 0, weapons: *rifle }
+  - *opp_squad_0
+  - *opp_squad_0
+  - *opp_squad_0
+  - *opp_squad_0
+  - &opp_squad_1 { group_id: 1, weapons: *rifle }
+  - *opp_squad_1
+  - *opp_squad_1
+  - *opp_squad_1
+  - *opp_squad_1
+  - &opp_squad_2 { group_id: 2, weapons: *rifle }
+  - *opp_squad_2
+  - *opp_squad_2
+  - *opp_squad_2
+  - *opp_squad_2
+  - &opp_squad_3 { group_id: 3, weapons: *rifle }
+  - *opp_squad_3
+  - *opp_squad_3
+  - *opp_squad_3
+  - *opp_squad_3
+  - &opp_squad_4 { group_id: 4, weapons: *rifle }
+  - *opp_squad_4
+  - *opp_squad_4
+  - *opp_squad_4
+  - *opp_squad_4
+
+# No `objectives:` block -> the 3 objectives (number_of_objectives) are placed
+# randomly outside both deployment zones at the start of every episode.
+
+
+# ---------------------------------------------------------------------------
+# Single reward phase. Against ARM B
+# (25v25_stochastic_terrain_shooting_curriculum) this is the control for "does
+# the reward curriculum help when the opponent shoots back?"; against ARM C
+# (25v25_stochastic_terrain_control) it is the treatment for "does return fire
+# change how the policy positions?".
+#
+# Read eval/win_rate and eval/vp_margin against eval/baseline_* — never
+# success_rate, which changes definition across a ladder and is therefore not
+# comparable between this config and ARM B.
+#
+# Design rules, each traceable to a measurement:
+#   * Every phase keeps vp_gain. Nothing here trains away from the goal.
+#   * Every phase carries per-model terms. Only 3 of 8 calculators are
+#     per-model, and a phase built purely from global ones hands all 25 models
+#     a bit-identical reward, undoing per-model credit assignment by config.
+#   * No term integrates far above ~10 over an episode. The entire gap between
+#     a 0.53-win policy and a 0.78-win policy is worth ~3 reward units, so a
+#     large shaping term drowns the thing being taught.
+#   * models_at_objectives and objective_flip_bonus are deliberately absent:
+#     every competent baseline saturates the former at 1.000, making it unable
+#     to rank policies, and objective_hold covers the latter's contested-state
+#     gradient continuously rather than as a one-shot potential.
+# ---------------------------------------------------------------------------
+reward_phases:
+  - name: win
+    # Required for the terminal bonus to be delivered at full strength; with
+    # terminate_on_success true it is scaled by the remaining-turn fraction.
+    terminate_on_success: false
+    terminal_success_bonus: 2.0
+    reward_calculators:
+      # ---- per-model ----
+      # Potential-based, so policy-invariant: it can bias nothing and never
+      # needs decaying. fallback_to_nearest matters here because each objective
+      # is assigned to at most one group, and 5 groups over 3 objectives leaves
+      # two groups unassigned and unshaped without it.
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          # The anti-stack knob. Objective radius 3 holds 29 cells and models
+          # do not collide, so 25 models on one point is legal and scores 1.00
+          # on every occupancy metric.
+          overstack_penalty_per_extra: 0.01
+      # The only term that pays a model while it is stationary, and the only
+      # per-model path to the central behaviour. Scaled by control state, so it
+      # pays for holding a point rather than merely standing on one.
+      - type: objective_hold  # POT-SHARING ARM: see header
+        weight: 1.25
+        params: { crowding_exponent: 1.0 }
+      # Credits the model that actually fired. Shooting is half the agent's
+      # decisions; under the global `killing` term every model was paid the
+      # same whether it fired, missed, or stood still.
+      - type: model_kills
+        weight: 1.0
+        params: { bonus_per_kill: 2.0 }
+      # Coherency. Limit 6.0, not 5.0: squad_march measures 3.8 as a mean of
+      # per-episode maxima. Penalty -0.05, not -0.2: at -0.2 a strung-out model
+      # loses ~26 per episode, enough to rank split_evenly (148 VP) below
+      # greedy_nearest (126 VP).
+      - type: group_cohesion
+        weight: 0.3
+        params: { group_max_distance: 6.0, violation_penalty: -0.05 }
+      # ---- global (broadcast whole to each model, not divided by 25) ----
+      # The actual objective. Largest weight because its realistic dynamic
+      # range is the smallest.
+      - type: vp_gain
+        weight: 2.0
+      # Equals player coverage, where vp_gain is player minus opponent
+      # coverage. Paid every step against vp_gain's ~19 scoring events, so this
+      # weight keeps VP dominant while giving a per-step spreading gradient.
+      - type: objective_coverage
+        weight: 0.3
+    # Final phase: success_threshold, min_epochs and min_epochs_above_threshold
+    # are never read, because try_advance returns at is_final_phase. The
+    # criteria still selects terminal-bonus eligibility and defines the logged
+    # success_rate.
+    success_criteria:
+      type: player_ahead_on_vp
+      params: {}
+
+# See the header comment: this arm observes per-objective control state.
+observe_objective_control: true

@@ -212,13 +212,20 @@ def test_terrain_is_stable_without_random_terrain() -> None:
 
 
 def _objective_env(**overrides: object) -> WargameEnv:
-    """25v25-shaped board with three objectives and seven random ruins."""
+    """25v25-shaped board with three objectives and seven random ruins.
+
+    `objectives_on_terrain` is switched off explicitly: these tests are about
+    where *discs* are drawn -- overlap, separation, clearance from ruins -- and
+    none of those questions exists once the objectives are the ruins. Left on,
+    the disc placement path they exercise never runs.
+    """
     config = WargameEnvConfig(
         board_width=60,
         board_height=44,
         number_of_wargame_models=2,
         number_of_objectives=3,
         objective_radius_size=3,
+        objectives_on_terrain=False,
         deployment_zone=(0, 0, 20, 44),
         opponent_deployment_zone=(40, 0, 60, 44),
         random_terrain=RandomTerrainConfig(),

@@ -245,7 +245,7 @@ def start_group_on_objective(
 
     **Known limitation, measured, and the reason to keep the probability low.**
     An objective can sit within one weapon range of the opponent's deployment
-    zone -- `objectives_spread_on_terrain` actively pushes them outward -- and
+    zone -- objective selection actively pushes them apart -- and
     `reset` resolves the opponent's whole turn before the agent's first
     observation when the opponent has first turn. At probability 1.0 on the
     spread scenario that puts enemies in range at the first observation in
@@ -433,7 +433,11 @@ def _generate_usable_terrain(
     """
     assert config.random_terrain is not None
     spec = config.random_terrain
-    if not config.objectives_on_terrain:
+    # Redraw for `None` as well as `True`: under the default the objectives
+    # should be the ruins wherever the layout allows it, and a draw that cannot
+    # host them would otherwise quietly fall back to discs and change the
+    # mission for that episode alone.
+    if config.objectives_on_terrain is False:
         return generate_terrain(spec, board, rng)
 
     terrain = generate_terrain(spec, board, rng)
@@ -453,18 +457,25 @@ def eligible_objective_pieces(
     deployment_zone: np.ndarray,
     opponent_deployment_zone: np.ndarray,
 ) -> list[Footprint]:
-    """Terrain pieces that could host an objective: clear of both deployment zones.
+    """Terrain pieces that could host an objective: those in the middle section.
 
-    Strict containment, not overlap. A piece straddling a zone edge would put
-    contested ground inside somebody's deployment area, which hands that side
-    the objective before the first move.
+    A piece belongs to the middle when its **centre** lies between the two
+    deployment edges. Overlap is fine — a ruin may reach across an edge, and on
+    a real table they routinely do. What is excluded is a piece that *sits in* a
+    zone, which would hand that side an objective before the first move.
+
+    This is deliberately laxer than the strict containment it replaces. Requiring
+    the whole footprint to clear both edges rejects exactly the large pieces the
+    selection now wants: on the fitted profile a 14" ruin cannot fit between the
+    edges without touching one, so the widest candidates were being filtered out
+    before the chooser ever saw them.
     """
     player_edge = float(deployment_zone[2])
     opponent_edge = float(opponent_deployment_zone[0])
     return [
         footprint
         for footprint in terrain.footprints
-        if footprint.x0 >= player_edge and footprint.x1 <= opponent_edge
+        if player_edge <= float(footprint.polygon.centroid[0]) <= opponent_edge
     ]
 
 
@@ -475,85 +486,137 @@ def objectives_from_terrain(
     opponent_deployment_zone: np.ndarray,
     board_width: int,
     board_height: int,
-    spread: bool = False,
+    min_separation: float | None = None,
 ) -> None:
     """Make each objective *be* a terrain piece — the rules' terrain objective.
 
-    The eligible pieces are the ones clear of both deployment zones, and the
-    ones nearest the board centre are chosen. Choosing by distance to the centre
-    is what keeps a mirrored layout fair: a mirrored pair sits at equal distance,
-    so they are taken together, and an odd count takes the symmetric centre piece
-    first. Picking randomly would hand one side the closer prize on some seeds.
+    The eligible pieces are the ones whose centre lies in the middle section,
+    and the **largest** of those are chosen: on a real table the objectives sit
+    on the substantial ruins, not on whichever scatter happens to be nearest the
+    middle. Size is also what makes an objective worth fighting over, since an
+    area objective holds as many models as it has room for.
+
+    Two constraints survive from the previous rule and are not negotiable:
+
+    * **The chosen set must mirror onto itself.** Ranking by size alone has the
+      same defect ranking by separation had — a mirrored layout's pieces come in
+      equal-area pairs, so "the three biggest" can take a pair plus *half* of the
+      next, handing one side the closer prize. That was measured at 38 of 200
+      layouts before the constraint existed.
+    * **They must not cluster.** Choosing the biggest pieces says nothing about
+      where they are, and three large ruins in one corner is the failure the
+      spread work was written for: all three inside a ~16" circle, 47% of pairs
+      within one weapon range, so one squad covered two objectives and there was
+      no travel trade-off to make. Separation is therefore the ranking criterion
+      *within* the pool the size filter hands it, not an optional extra --
+      ranking by area with separation as a tiebreak leaves it almost never
+      running, since exact area ties are rare.
+
+    Both are applied as filters ahead of the size ranking, and both fall back
+    rather than fail — a slightly unfair or slightly clustered layout beats a
+    failed episode, which is the same trade the rest of this module makes.
 
     Raises:
         ValueError: when the layout has fewer eligible pieces than there are
             objectives. Silently reusing one piece for two objectives would make
             a three-objective mission a two-objective one without saying so.
     """
-    centre = np.array([board_width / 2.0, board_height / 2.0])
-
     eligible = eligible_objective_pieces(
         terrain, deployment_zone, opponent_deployment_zone
     )
     if len(eligible) < len(objectives):
         raise ValueError(
-            f"objectives_on_terrain needs {len(objectives)} terrain pieces clear "
-            f"of both deployment zones, but the layout has {len(eligible)}. "
-            "Raise the piece count, or widen the gap between the zones."
+            f"objectives_on_terrain needs {len(objectives)} terrain pieces whose "
+            f"centres lie between the deployment zones, but the layout has "
+            f"{len(eligible)}. Raise the piece count, or widen the gap between "
+            "the zones."
         )
 
-    chosen = (
-        _choose_spread_pieces(eligible, len(objectives), board_width)
-        if spread
-        else _choose_symmetric_pieces(eligible, len(objectives), centre, board_width)
+    # A floor derived from the board when the config does not set one. Without
+    # it "not clustered" would silently do nothing on every config that leaves
+    # `objective_min_separation` unset -- which is most of them, and is exactly
+    # the settable-but-inert failure this repo keeps hitting.
+    section_width = float(opponent_deployment_zone[0]) - float(deployment_zone[2])
+    if min_separation is None:
+        min_separation = _DEFAULT_SEPARATION_FRACTION * float(
+            np.hypot(section_width, board_height)
+        )
+
+    chosen = _choose_largest_pieces(
+        eligible,
+        len(objectives),
+        board_width,
+        min_separation=min_separation,
     )
     for objective, footprint in zip(objectives, chosen):
         objective.set_area(footprint.polygon)
 
 
-def _choose_spread_pieces(
+# The non-clustering floor, when the config does not set one, as a fraction of
+# the middle section's diagonal. Derived from the layout rather than tuned: the
+# measured failure was three objectives inside a ~16" circle on a 60x44 board
+# with 47% of pairs within one weapon range, and a quarter of that section's
+# diagonal is ~12" there -- one weapon range, the distance at which a single
+# squad stops being able to cover two objectives.
+_DEFAULT_SEPARATION_FRACTION = 0.25
+
+
+def _choose_largest_pieces(
     eligible: list[Footprint],
     n_wanted: int,
     board_width: int,
+    min_separation: float,
     tolerance: float = 1e-6,
 ) -> list[Footprint]:
-    """Pick the furthest-apart *n_wanted* pieces that still mirror onto themselves.
+    """Pick the largest *n_wanted* pieces that mirror onto themselves and spread.
 
-    Selecting the pieces nearest the board centre packs every objective into the
-    middle: measured on 200 layouts, all three sat inside a ~16" circle on a
-    60x44 board and 47% of objective pairs were within one weapon range, so one
-    squad could shoot at two of them and there was no travel trade-off to make.
+    Three criteria, and the order between them is the design, because they
+    genuinely conflict:
 
-    **Symmetry has to be a constraint, not a consequence.** The first version of
-    this maximised separation unconstrained, on the reasoning that a mirrored
-    layout's mirrored sets score identically so neither side is favoured. That
-    is true and insufficient: it says the mirror image scores the same, not that
-    the winner *is* its own mirror image. Two pieces on one side and one on the
-    other can out-separate any balanced set, and did — 38 of 200 layouts came out
-    2-1, up to 3.67" off centre, handing that side a closer prize.
+    1. **Mirror symmetry**, as a hard constraint. The chosen set must map onto
+       itself under reflection about the board's centre line. This is a fairness
+       guarantee rather than a preference: a mirrored layout's pieces come in
+       equal-area pairs, so "the three biggest" can take a pair plus *half* of
+       the next and hand one side the closer prize. An earlier separation-ranked
+       version had the identical defect and it was measured — 38 of 200 layouts
+       came out 2-1, up to 3.67" off centre. Non-mirrored terrain has no such
+       guarantee to preserve, so there the filter drops out.
+    2. **Not clustered**, as a hard floor on the minimum pairwise separation.
+       Size says nothing about position, so the largest pieces may all sit in one
+       corner — which removes the travel trade-off between objectives and lets
+       one squad cover two.
+    3. **Largest**, as the ranking among whatever survives both. Objectives
+       should sit on the substantial ruins: an area objective holds as many
+       models as it has room for, which is what makes a piece worth contesting.
 
-    So the search runs over sets that map onto themselves under reflection about
-    the board's centre line: every chosen piece's mirror partner is chosen too,
-    or the piece straddles the line and is its own partner. That reproduces what
-    the distance rings guaranteed, without constraining *which* rings are taken.
+    Ranking by size *within* a pool pre-filtered for separation was tried and is
+    wrong — once the pool is fixed, separation becomes the only live criterion
+    and size stops binding at all. One real layout offered areas
+    [40, 40, 28, 27, 27] and that version chose [28, 27, 27], the *smaller*
+    symmetric set, because it was marginally more spread. Size has to be the
+    ranking and separation the constraint, not the other way round.
 
-    Falls back to unconstrained separation when no symmetric set exists, which
-    is the case for non-mirrored terrain — a slightly unfair layout beats a
-    failed episode, and `mirror: false` has no fairness guarantee to preserve.
+    Each filter falls back rather than fails: when nothing clears the separation
+    floor the most separated set is taken anyway, since the layout cannot be made
+    unclustered but can still be made as unclustered as it gets.
 
     Exhaustive over combinations. `n_wanted` is 3 and eligible counts are single
-    digits, so this is a few dozen distance computations per episode.
+    digits, so this is a few dozen area computations per episode.
     """
     if len(eligible) <= n_wanted:
         return list(eligible)
 
     centroids = [f.polygon.centroid for f in eligible]
+    areas = [float(f.polygon.area) for f in eligible]
 
-    def min_separation(indices: tuple[int, ...]) -> float:
+    def min_gap(indices: tuple[int, ...]) -> float:
         return min(
             float(np.linalg.norm(centroids[a] - centroids[b]))
             for a, b in itertools.combinations(indices, 2)
         )
+
+    def total_area(indices: tuple[int, ...]) -> float:
+        return sum(areas[i] for i in indices)
 
     def is_symmetric(indices: tuple[int, ...]) -> bool:
         """True when reflecting the chosen centroids maps the set onto itself."""
@@ -567,51 +630,26 @@ def _choose_spread_pieces(
         return True
 
     combinations = list(itertools.combinations(range(len(eligible)), n_wanted))
-    symmetric = [c for c in combinations if is_symmetric(c)]
-    best = max(symmetric or combinations, key=min_separation)
+    candidates = [c for c in combinations if is_symmetric(c)] or combinations
+
+    spread_enough = [c for c in candidates if min_gap(c) >= min_separation]
+    if not spread_enough:
+        # No set clears the floor, so "largest" would be free to cluster. Rank on
+        # separation instead and take the best available.
+        best_gap = max(candidates, key=min_gap)
+        return sorted(
+            (eligible[i] for i in best_gap),
+            key=lambda f: float(f.polygon.centroid[0]),
+        )
+
+    # Area first, separation as the tiebreak -- equal-area sets are common on
+    # mirrored terrain, and preferring the spread one among them is free.
+    best = max(spread_enough, key=lambda c: (total_area(c), min_gap(c)))
     # Left-to-right so objective index is a stable function of the layout rather
     # than of combination order.
     return sorted(
         (eligible[i] for i in best), key=lambda f: float(f.polygon.centroid[0])
     )
-
-
-def _choose_symmetric_pieces(
-    eligible: list[Footprint],
-    n_wanted: int,
-    centre: np.ndarray,
-    board_width: int,
-) -> list[Footprint]:
-    """Pick *n_wanted* pieces nearest the board centre, in mirror-symmetric groups.
-
-    Ordering by distance alone is not enough. A mirrored layout's pieces come in
-    pairs at equal distance, so taking the nearest three can take a whole pair
-    plus *half* of the next one — handing one side a closer prize on that seed,
-    with nothing in any aggregate to show for it.
-
-    So pieces are grouped by their distance ring first, and a group is taken
-    whole or not at all. A ring that would overflow the budget is skipped in
-    favour of the next one that fits; when nothing fits exactly (the count and
-    the rings genuinely disagree) it falls back to nearest-first, because a
-    slightly unfair layout beats a failed episode.
-    """
-    rings: dict[int, list[Footprint]] = {}
-    for piece in eligible:
-        distance = float(np.linalg.norm(piece.polygon.centroid - centre))
-        rings.setdefault(round(distance * 1e6), []).append(piece)
-
-    chosen: list[Footprint] = []
-    for key in sorted(rings):
-        ring = rings[key]
-        if len(chosen) + len(ring) <= n_wanted:
-            chosen.extend(sorted(ring, key=lambda f: float(f.polygon.centroid[0])))
-        if len(chosen) == n_wanted:
-            return chosen
-
-    ordered = sorted(
-        eligible, key=lambda f: float(np.linalg.norm(f.polygon.centroid - centre))
-    )
-    return ordered[:n_wanted]
 
 
 def fixed_wargame_model_placement(
@@ -633,6 +671,21 @@ def fixed_objective_placement(
     for objective, cfg in zip(objectives, objective_configs):
         assert cfg.x is not None and cfg.y is not None
         objective.location = position(cfg.x, cfg.y)
+
+
+def _can_host_objectives(battle: Battle, config: WargameEnvConfig) -> bool:
+    """True when the layout has enough eligible pieces for every objective.
+
+    Only consulted when `objectives_on_terrain` came from the default rather
+    than from the config, to decide whether to use terrain objectives or fall
+    back to discs.
+    """
+    if not battle.terrain.footprints:
+        return False
+    eligible = eligible_objective_pieces(
+        battle.terrain, battle.deployment_zone, battle.opponent_deployment_zone
+    )
+    return len(eligible) >= len(battle.objectives)
 
 
 def place_for_episode(
@@ -682,8 +735,21 @@ def place_for_episode(
             base_radius=base_radius,
         )
 
-    # Place objectives
-    if config.objectives_on_terrain:
+    # Place objectives.
+    #
+    # `objectives_on_terrain` is tri-state. `True` means the author asked, so a
+    # layout that cannot host the objectives is an error. `None` is the default,
+    # which most configs now get without asking: there it defers, both to a
+    # config that places its own objectives -- doing otherwise moved every fixed
+    # objective onto a ruin and silently changed the scenario -- and to a layout
+    # with nothing to stand on.
+    required = config.objectives_on_terrain is True
+    auto = (
+        config.objectives_on_terrain is None
+        and not config.has_fixed_objective_positions
+        and _can_host_objectives(battle, config)
+    )
+    if required or auto:
         objectives_from_terrain(
             battle.objectives,
             battle.terrain,
@@ -691,7 +757,7 @@ def place_for_episode(
             battle.opponent_deployment_zone,
             battle.board_width,
             battle.board_height,
-            spread=config.objectives_spread_on_terrain,
+            min_separation=config.objective_min_separation,
         )
     elif config.has_fixed_objective_positions and config.objectives is not None:
         fixed_objective_placement(battle.objectives, config.objectives)

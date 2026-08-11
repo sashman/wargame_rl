@@ -37,12 +37,21 @@ def _make_env(
     number_of_objectives: int = 2,
     max_groups: int = 2,
 ) -> WargameEnv:
-    """Small opponent-free env. Squads are contiguous by model index."""
+    """Small opponent-free env. Squads are contiguous by model index.
+
+    The objective radius is set rather than left at the default 1, because bases
+    are real: a 32mm base covers 1.25 square inches and a radius-1 disc is only
+    3.14, so **eight models physically cannot stand on it**. The occupancy these
+    tests assert is a property of the baselines, not of how many models fit on a
+    dot, and at the default radius it measured 0.25 for a policy doing exactly
+    what it should. Radius 3 gives 28 square inches, room enough for the army.
+    """
     return WargameEnv(
         config=WargameEnvConfig(
             render_mode=None,
             number_of_wargame_models=number_of_wargame_models,
             number_of_objectives=number_of_objectives,
+            objective_radius_size=3,
             max_groups=max_groups,
             number_of_battle_rounds=12,
         )
@@ -70,16 +79,44 @@ def test_baseline_emits_one_legal_action_per_model(name: str) -> None:
         observation, _reward, terminated, truncated, _info = env.step(action)
 
 
-@pytest.mark.parametrize("name", ("greedy_nearest", "split_evenly", "squad_march"))
-def test_objective_seeking_baselines_reach_objectives(name: str) -> None:
-    """The scripted baselines end the episode with every model on an objective.
+def test_the_squad_marcher_still_saturates_occupancy() -> None:
+    """`squad_march` ends the episode with every model on an objective.
 
-    This is the property that makes them a usable bar: they saturate the
-    occupancy criteria, so a learned policy below them is unambiguously worse.
+    This is the property that makes it a usable bar: it saturates the occupancy
+    criteria, so a learned policy below it is unambiguously worse. It survives
+    real bases because it moves *squads* with a cohesion limit, which spreads
+    models out on arrival.
+    """
+    env = _make_env()
+    result = evaluate_baseline(
+        build_baseline_policy("squad_march"), env, seeds=[0, 1, 2]
+    )
+    assert result.final_fraction_at_objectives == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("name", ("greedy_nearest", "split_evenly"))
+def test_the_centroid_seekers_jam_on_their_own_bases(name: str) -> None:
+    """A known defect, pinned so it stays visible: they steer at a *point*.
+
+    Both send every model at the objective's centre, so once bases are real the
+    models collide with each other on the way in and the ones behind never
+    arrive. Measured on this fixture, occupancy at the end of the episode:
+
+        base_radius 0.00        greedy_nearest 1.000   split_evenly 1.000
+        base_radius 0.63 (32mm) greedy_nearest 0.375   split_evenly 0.542
+
+    `squad_march` is unaffected at 1.000, which is why the bar
+    (`squad_march_shoot`) still works — though it is understated too, its
+    occupancy on the 25v25 scenario falling 0.89 to 0.62.
+
+    The fix is for a policy to seek free space *within* the objective rather
+    than its centroid, which is not done yet. Until then this asserts the
+    defect, so that fixing it fails here and gets the numbers above updated
+    rather than quietly leaving a weakened bar in place.
     """
     env = _make_env()
     result = evaluate_baseline(build_baseline_policy(name), env, seeds=[0, 1, 2])
-    assert result.final_fraction_at_objectives == pytest.approx(1.0)
+    assert result.final_fraction_at_objectives < 0.95
 
 
 def test_random_baseline_is_the_floor() -> None:

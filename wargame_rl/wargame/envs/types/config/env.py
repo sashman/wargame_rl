@@ -25,6 +25,14 @@ from wargame_rl.wargame.envs.types.config.terrain import (
 )
 from wargame_rl.wargame.envs.types.game_timing import NON_MOVEMENT_PHASES, BattlePhase
 
+# The rules' infantry base is 32mm across, so its radius is 16mm = 0.63".
+#
+# Authored here rather than imported from `domain/rules_constants.py`, which
+# holds the same number: `types/` is the shared kernel and cannot import
+# `domain/` without inverting the dependency direction (see docs/ddd-envs.md).
+# `tests/test_rules_constants.py` pins the two together so they cannot drift.
+INFANTRY_BASE_RADIUS_IN = 32.0 / 25.4 / 2.0
+
 
 def _default_reward_phases() -> list[RewardPhaseConfig]:
     """Single default phase: reach objectives (closest_objective only)."""
@@ -83,18 +91,6 @@ class WargameEnvConfig(BaseModel):
         description="Accumulate line-of-sight exposure and terrain-proximity "
         "statistics during shooting phases. Measurement only — it does not affect "
         "the game, but it costs an extra shooting-mask build per shooting phase.",
-    )
-    objectives_spread_on_terrain: bool = Field(
-        default=False,
-        description=(
-            "With `objectives_on_terrain`, choose the eligible pieces whose "
-            "minimum pairwise separation is largest instead of the ones nearest "
-            "the board centre. Nearest-to-centre packs all three objectives into "
-            "a ~16 inch circle on a 60x44 board, with 47% of pairs inside one "
-            "weapon range, so there is no travel trade-off between them. "
-            "Defaults False: turning it on changes the scenario, so every "
-            "baseline measured without it must be re-measured."
-        ),
     )
     start_on_objective_probability: float = Field(
         default=0.0,
@@ -173,15 +169,33 @@ class WargameEnvConfig(BaseModel):
         default=None,
         description="Per-objective configuration (attributes, and optionally positions). Length must match number_of_objectives.",
     )
-    objectives_on_terrain: bool = Field(
-        default=False,
-        description="Make each objective *be* a terrain piece: the pieces "
-        "nearest the board centre, outside both deployment zones, become area "
+    objectives_on_terrain: bool | None = Field(
+        default=None,
+        description="Make each objective *be* a terrain piece: the **largest** "
+        "pieces whose centre lies in the middle section — between the two "
+        "deployment edges, though a piece may overlap one — become area "
         "objectives whose outline is the footprint. This is the rules' terrain "
-        "objective — the ground itself is the prize — and it puts cover and the "
-        "contested ground in the same place, which is the opposite of what "
-        "`objective_terrain_clearance` arranges. Needs enough eligible pieces "
-        "for the objective count, and fails loudly when there are not.",
+        "objective: the ground itself is the prize, which puts cover and the "
+        "contested ground in the same place. Selection is constrained to be "
+        "mirror-symmetric (fairness) and unclustered, with separation ranking "
+        "within the pool the size filter hands it.\n\n"
+        "Three states, because 'the author asked for this' and 'this is merely "
+        "the default' need different failure behaviour:\n"
+        "  None (default) — use terrain objectives when the layout can host "
+        "them and the config does not place objectives itself; otherwise fall "
+        "back to discs. A board with no ruins has nothing to put an objective "
+        "on, and a config that hand-places its objectives has already said "
+        "where it wants them; failing either would be failing it for a setting "
+        "its author never made.\n"
+        "  True — require them, and raise when the layout cannot deliver. "
+        "Silently placing discs would turn a three-objective terrain mission "
+        "into something else while looking like it worked.\n"
+        "  False — always free-floating discs of `objective_radius_size`, which "
+        "is what every pre-geometry result was measured under.\n\n"
+        "Tri-state rather than a bool plus `model_fields_set`: that was tried "
+        "and is broken, because `model_dump()` round-trips lose which fields "
+        "were set and training dumps the config, so every field came back "
+        "looking explicit. The distinction has to live in the value.",
     )
     objective_min_separation: int | None = Field(
         default=None,
@@ -250,15 +264,20 @@ class WargameEnvConfig(BaseModel):
     )
     base_radius: float = Field(
         ge=0,
-        default=0.0,
+        default=INFANTRY_BASE_RADIUS_IN,
         description=(
             "Radius of a model's base, in inches. Gives a model a physical "
             "extent: bases may not overlap at placement, objective range is "
-            "measured from the base edge rather than its centre, and the "
-            "renderer draws it at this size. 0.0 (the default) keeps models "
-            "dimensionless points, which is what every result measured before "
-            "continuous space assumed. The rules' infantry base is 32mm across "
-            "-- a radius of about 0.63in."
+            "measured from the base edge rather than its centre, models occlude "
+            "sight and block movement, engagement is base to base, and the "
+            "renderer draws it at this size. Defaults to the rules' infantry "
+            "base, 32mm across -- a radius of 16mm, 0.63in. "
+            "0.0 makes models dimensionless points again, which is what every "
+            "result measured before continuous space assumed and what the "
+            "default used to be: at 0.0 no disc occludes, the three cover rays "
+            "coincide so cover cannot occur at all, models do not collide, and "
+            "range is centre to centre. Setting it to 0.0 therefore switches "
+            "off four mechanics at once, silently."
         ),
     )
     los_sample_step: float = Field(
