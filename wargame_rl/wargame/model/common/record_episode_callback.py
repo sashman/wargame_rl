@@ -31,7 +31,7 @@ def _run_recording(
     render_fps: int,
     filename_prefix: str,
     renderer_name: str = "legacy",
-    backend: str = "pygame",
+    backend: str = "pillow",
 ) -> None:
     """Run in a separate process: create env with a renderer, run one episode, save MP4.
     Must set SDL_VIDEODRIVER=dummy before any pygame import to avoid EGL conflicts with PyTorch.

@@ -22,6 +22,7 @@ from wargame_rl.wargame.envs.renders.v2 import build_renderer  # noqa: E402
 from wargame_rl.wargame.envs.renders.v2.control import (  # noqa: E402
     compute_objective_control,
 )
+from wargame_rl.wargame.envs.renders.v2.factory import BACKENDS  # noqa: E402
 from wargame_rl.wargame.envs.renders.v2.scene import (  # noqa: E402
     Control,
     Disc,
@@ -121,8 +122,13 @@ def test_recording_presenter_and_legacy_are_frame_sources() -> None:
 # --- A/B pixel parity vs the untouched legacy renderer ---------------------
 
 
-def _frame(renderer_name: str, config: WargameEnvConfig, seed: int = 0) -> np.ndarray:
-    renderer = build_renderer(renderer_name, "recording")
+def _frame(
+    renderer_name: str,
+    config: WargameEnvConfig,
+    seed: int = 0,
+    backend: str = "pygame",
+) -> np.ndarray:
+    renderer = build_renderer(renderer_name, "recording", backend=backend)
     env = WargameEnv(config=config, renderer=renderer)
     env.reset(seed=seed)
     env.render()
@@ -168,3 +174,24 @@ def test_v2_draws_the_player_in_its_group_colour() -> None:
     patch = v2[py - 3 : py + 3, px - 3 : px + 3].reshape(-1, 3).mean(axis=0)
     # Group 0 is blue (0, 0, 255): blue channel dominates.
     assert patch[2] > patch[0] and patch[2] > patch[1]
+
+
+# --- Per-backend parity (every wired backend draws the same Scene) ----------
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_every_backend_renders_the_player_disc(backend: str) -> None:
+    """Each backend must produce the same-shaped frame with the player's group
+    colour at its board location. Antialiasing differs, so assert channel
+    dominance rather than exact pixels."""
+    config = _ab_config()
+    frame = _frame("v2", config, backend=backend)
+
+    # Same fit as the legacy A/B path: 20-unit board to 1024px under the panel.
+    assert frame.shape == (1132, 1024, 3)
+    scale = 1024 / 20
+    north = 36
+    px = int(5 * scale)
+    py = int(5 * scale) + north
+    patch = frame[py - 3 : py + 3, px - 3 : px + 3].reshape(-1, 3).mean(axis=0)
+    assert patch[2] > patch[0] and patch[2] > patch[1]  # blue group 0 dominates

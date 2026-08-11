@@ -70,7 +70,14 @@ class InteractiveRenderer(BasePresenter):
     def _present(self, frame: Canvas) -> None:
         if self._window is None or self._clock is None:
             return
-        self._window.blit(frame, (0, 0))
+        # Go through the backend's RGB array so the window works for any backend,
+        # not just pygame — a Pillow canvas is not a blittable Surface. `frombuffer`
+        # reads the row-major (H, W, 3) buffer directly, so no transpose is needed.
+        rgb = self._backend.to_rgb_array(frame)
+        surface = pygame.image.frombuffer(
+            rgb.tobytes(), (rgb.shape[1], rgb.shape[0]), "RGB"
+        )
+        self._window.blit(surface, (0, 0))
         pygame.event.pump()
         pygame.display.update()
         self._clock.tick(self._fps)
