@@ -248,6 +248,16 @@ measure-checkpoint checkpoint env_config n_episodes='100' record='':
 measure-maps policy env_config n_episodes='100' maps_dir='':
 	@uv run python -m scripts.measure_maps {{policy}} {{env_config}} {{n_episodes}} {{maps_dir}}
 
+# Which reward calculator actually pays a policy, and how much of the ledger is
+# global. Weights are not shares: a small global term paid to every model on
+# every step is a floor a movement term has to compete with, and a large weight
+# that rarely fires is cheap. Run it before tuning a term, to check the term is
+# a meaningful share at all -- `model_kills` looked like the driver of a
+# range-managing policy and measured 4.5% of income. Takes a baseline name or a
+# checkpoint, like measure-objective-split.
+measure-income-share policy env_config n_episodes='30':
+	@uv run python -m scripts.measure_income_share {{policy}} {{env_config}} {{n_episodes}}
+
 # Why an objective was not held: abandoned, narrowly lost, or lost by a mile.
 # `held` alone cannot separate those, and they call for different fixes. Also
 # reports the redistribution ceiling -- what any pure re-allocation lever could
