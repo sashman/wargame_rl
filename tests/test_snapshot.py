@@ -12,6 +12,7 @@ from wargame_rl.wargame.envs.types import TurnOrder, WargameEnvAction, WargameEn
 from wargame_rl.wargame.envs.types.config import (
     ModelConfig,
     OpponentPolicyConfig,
+    TerrainPieceConfig,
     WeaponProfile,
 )
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
@@ -209,7 +210,7 @@ class TestSchemaVersion:
     def test_schema_version(self, shooting_env: WargameEnv) -> None:
         shooting_env.reset(seed=42)
         snap = shooting_env.to_snapshot()
-        assert snap.schema_version == "2.0"
+        assert snap.schema_version == "2.1"
 
 
 class TestEncoder:
@@ -322,3 +323,52 @@ class TestMissionContext:
 
         assert isinstance(snap.mission_type, str)
         assert isinstance(snap.mission_params, dict)
+
+
+class TestTerrainFootprints:
+    """Schema 2.1: static terrain geometry rides on the full snapshot."""
+
+    @staticmethod
+    def _terrain_env() -> WargameEnv:
+        cfg = WargameEnvConfig(
+            board_width=20,
+            board_height=20,
+            number_of_wargame_models=2,
+            number_of_objectives=1,
+            terrain=[
+                TerrainPieceConfig(footprint=(5, 5, 8, 8)),
+                TerrainPieceConfig(footprint=(12, 12, 15, 16)),
+            ],
+        )
+        return WargameEnv(config=cfg)
+
+    def test_footprints_match_env_terrain(self) -> None:
+        env = self._terrain_env()
+        env.reset(seed=1)
+        snap = env.to_snapshot()
+
+        assert snap.schema_version == "2.1"
+        assert snap.terrain_footprints is not None
+        assert len(snap.terrain_footprints) == len(env.terrain.footprints)
+        for recorded, footprint in zip(snap.terrain_footprints, env.terrain.footprints):
+            assert recorded == footprint.polygon.vertices.tolist()
+
+    def test_footprints_survive_json(self) -> None:
+        env = self._terrain_env()
+        env.reset(seed=1)
+        snap = env.to_snapshot()
+
+        restored = GameStateSnapshot.model_validate(json.loads(snap.model_dump_json()))
+        assert restored.terrain_footprints == snap.terrain_footprints
+
+    def test_none_without_terrain(self) -> None:
+        cfg = WargameEnvConfig(
+            board_width=20,
+            board_height=20,
+            number_of_wargame_models=2,
+            number_of_objectives=1,
+        )
+        env = WargameEnv(config=cfg)
+        env.reset(seed=1)
+
+        assert env.to_snapshot().terrain_footprints is None

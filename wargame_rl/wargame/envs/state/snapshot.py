@@ -27,6 +27,7 @@ from wargame_rl.wargame.envs.types.game_timing import BattlePhase, GameState
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
+    from wargame_rl.wargame.envs.domain.terrain import Terrain
     from wargame_rl.wargame.envs.types.config import ModelConfig
 
 
@@ -125,7 +126,7 @@ class GameStateSnapshot(BaseModel):
     attributing ``player_actions`` to a phase.
     """
 
-    schema_version: str = "2.0"
+    schema_version: str = "2.1"
     step: int
     max_steps: int
     clock: ClockSnapshot
@@ -138,6 +139,13 @@ class GameStateSnapshot(BaseModel):
     objectives: list[ObjectiveSnapshot]
     deployment_zone: list[int]
     opponent_deployment_zone: list[int]
+    terrain_footprints: list[list[list[float]]] | None = None
+    """Outline vertices of each terrain piece, one ``[[x, y], ...]`` per footprint.
+
+    Static per episode, so it is recorded on the reset snapshot and every anchor
+    (never in a delta — see ``build_snapshot``). ``None`` on pre-2.1 recordings,
+    which carried no terrain; a replay of those draws no ruins.
+    """
     player_vp: int
     opponent_vp: int
     player_vp_delta: int
@@ -455,10 +463,20 @@ def build_snapshot(
     shooting_slice_start: int | None = None,
     shooting_slice_end: int | None = None,
     action_phase: str | None = None,
+    terrain: "Terrain | None" = None,
 ) -> GameStateSnapshot:
     """Build a complete game-state snapshot from env internals."""
     player_configs = config.models
     opponent_configs = config.opponent_models
+
+    # Terrain is static for the episode, so it rides on every full snapshot
+    # (reset + anchors) and is intentionally left out of deltas — apply_delta
+    # preserves it from the anchor. Do NOT move this into StateDelta.
+    terrain_footprints: list[list[list[float]]] | None = (
+        [fp.polygon.vertices.tolist() for fp in terrain.footprints]
+        if terrain is not None and terrain.footprints
+        else None
+    )
 
     spatial = _compute_spatial_data(player_models, opponent_models, objectives)
 
@@ -550,6 +568,7 @@ def build_snapshot(
         objectives=obj_snaps,
         deployment_zone=dz,
         opponent_deployment_zone=odz,
+        terrain_footprints=terrain_footprints,
         player_vp=player_vp,
         opponent_vp=opponent_vp,
         player_vp_delta=player_vp_delta,

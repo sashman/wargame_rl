@@ -99,7 +99,7 @@ A complete, serialisable Pydantic model of the game at one point in time. This i
 
 ```python
 class GameStateSnapshot(BaseModel):
-    schema_version: str = "2.0"
+    schema_version: str = "2.1"
     step: int
     max_steps: int
     clock: ClockSnapshot
@@ -112,6 +112,7 @@ class GameStateSnapshot(BaseModel):
     objectives: list[ObjectiveSnapshot]
     deployment_zone: list[int]
     opponent_deployment_zone: list[int]
+    terrain_footprints: list[list[list[float]]] | None = None  # 2.1: outline per ruin
     player_vp: int
     opponent_vp: int
     player_vp_delta: int
@@ -200,7 +201,7 @@ class RewardSnapshot(BaseModel):
 | Group | Fields | Purpose |
 |-------|--------|---------|
 | **Timing** | `step`, `max_steps`, `clock`, `action_phase`, `n_rounds` | Where in the episode and game clock |
-| **Board** | `board_width`, `board_height`, `deployment_zone`, `opponent_deployment_zone` | Static geometry |
+| **Board** | `board_width`, `board_height`, `deployment_zone`, `opponent_deployment_zone`, `terrain_footprints` | Static geometry (terrain footprints recorded on the reset + anchors only, not deltas) |
 | **Units** | `player_models`, `opponent_models` | Full per-model state inc. weapons, wounds, distances |
 | **Objectives** | `objectives`, `objective_control` | Positions, radii, ownership |
 | **Actions** | `player_actions`, `opponent_actions`, `player_action_descriptions` | Raw + decoded actions taken |

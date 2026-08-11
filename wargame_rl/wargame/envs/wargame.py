@@ -992,6 +992,7 @@ class WargameEnv(gym.Env):
             action_phase=(
                 self._last_action_phase.value if self._last_action_phase else None
             ),
+            terrain=self.terrain,
         )
 
     def load_state(
