@@ -16,21 +16,35 @@ The shooting slice is conditionally registered — configs without opponents pro
 
 ## Target Encoding
 
-Each shooting action index maps to a specific opponent model slot:
+**A weapon names an enemy *unit*, never a model** ([rules/04](rules/04-making-attacks.md#2-select-targets)). Each shooting action index is one enemy unit:
 
 ```
-target_idx = action - shooting_slice.start
+target_group = action - shooting_slice.start
 ```
 
-Target index K corresponds to opponent model K in the observation tensor. This positional alignment is a critical invariant: the transformer learns the correspondence between "opponent features at observation position K" and "action index K in the shooting slice."
+**The action index *is* the `group_id`.** That is why the slice is sized by `unit_count()` rather than by a model count or by `max_groups`: it must be wide enough for the highest id in play, and a config whose `ModelConfig`s name their own groups can have fewer units than the count-based split would produce.
 
 | Action | Meaning |
 |--------|---------|
 | `0` | Stay (pass shooting, valid in all phases) |
-| `shooting_slice.start + 0` | Shoot at opponent model 0 |
-| `shooting_slice.start + 1` | Shoot at opponent model 1 |
+| `shooting_slice.start + 0` | Shoot at enemy unit 0 |
+| `shooting_slice.start + 1` | Shoot at enemy unit 1 |
 | ... | ... |
-| `shooting_slice.start + T-1` | Shoot at opponent model T-1 |
+| `shooting_slice.start + U-1` | Shoot at enemy unit U-1 |
+
+On a 25v25 board that is **5 actions, not 25**.
+
+The network keeps opponent tokens per *model* — position, wounds and stats are per model — and pools them into unit tokens only at the shooting head (`TransformerNetwork._pool_opponents_into_units`). **That pooling excludes the dead**: otherwise a destroyed model's latent still leaks into its unit's token, and mutating a corpse moves live logits, defeating the key-padding mask at the very last step.
+
+## Allocation: the defender picks who bleeds
+
+An attack is aimed at a unit; which model takes it is the defender's choice, preferring one that has already lost Wounds ([rules/05](rules/05-attack-sequence.md#4-inflict-damage)). `domain/shooting.py:_allocate_target` is that rule.
+
+**An attack is discarded only when the whole target unit is destroyed** — *"excess attacks against a wiped-out unit are lost"*. Measured at **3.6%** of declared shots. It was **36-40%** while a weapon named a model and a shot at an already-dead one silently evaporated, which is what a squad concentrating fire did to most of its own volley.
+
+Attacking units resolve one at a time in group order, which is the rules' own sequencing (*"shoots with their units one at a time"*). That also makes deferred removal a no-op at `max_wounds: 1`: a destroyed model stops being allocatable the moment it dies, and the next attacking unit sees the board either way. It would become observable with multi-wound models.
+
+Allocation *groups* are not modelled — they split a unit by CHARACTER and by distinct (W, Sv, InSv), and this project has one profile per army and no characters, so every unit is a single group.
 
 ## Phase-Gated Masking
 
@@ -53,22 +67,24 @@ With shooting enabled, each game turn produces two agent decisions: one movement
 
 ## Shooting Mask Computation
 
-During the shooting phase, a per-model target validity mask is overlaid on the base phase mask. A target K is valid for player model M if **all** of:
+During the shooting phase, a per-model **unit**-target validity mask is overlaid on the base phase mask. Enemy unit U is a valid target for player model M if **all** of:
 
 1. **Model M is alive** — dead models get `STAY_ACTION` only
 2. **M did not advance this turn** — `advanced_this_turn` gate. Dormant: nothing in the env ever sets the flag True (only `load_state` restores it from a snapshot), so today this never masks anything. See [rules/09-movement-phase.md](rules/09-movement-phase.md#advance-move) for the rule it will enforce.
 3. **M is not locked in engagement** — masked out entirely if the nearest enemy is within `engagement_range` (config, authored in inches and resolved into board units by `domain/rules_quantities.py`; defaults to 1, against the rules' 2 — see `docs/rules/implementation-status.md`)
-4. **Opponent K is alive** — dead targets are masked out
-5. **In range** — Euclidean distance from M to K ≤ max weapon range of M
-6. **Line of sight** — `has_line_of_sight` from M's cell to K's cell returns True
+4. **Unit U has a living model** — a unit is a legal target while any model in it survives, so killing one model closes nothing
+5. **Some model of U is in range** — Euclidean distance from M ≤ max weapon range of M
+6. **Some model of U is visible** to M
 
-The overlay is computed by `compute_shooting_masks()` (a pure function in `env_components/shooting_masks.py`) and applied via bitwise AND on the shooting slice of the base mask.
+**Conditions 5 and 6 are checked independently and need not be satisfied by the same model** — *"it is enough that some model in the target unit is visible and some model in it is in range"*. Reducing a per-model "visible AND in range" mask over the unit would quietly keep them coupled and reject legal targets.
+
+The overlay is computed by `compute_unit_shooting_masks()` (a pure function in `env_components/shooting_masks.py`) and applied via bitwise AND on the shooting slice of the base mask. Sight is still gated to keep the batch small, but at *unit* granularity: a pair is traced when the target's unit has some model in range, since the visible model need not be the reachable one.
 
 If no targets are valid for a model, only `STAY_ACTION` remains — the model passes its shooting.
 
 ### Both sides are masked
 
-The player's overlay is applied in `build_observation` (`env_components/observation_builder.py`); the opponent's is applied in `WargameEnv._opponent_action_mask`, with the sides swapped. `compute_shooting_masks` is positional despite its `player_`/`opponent_` parameter names, so the same function serves both.
+The player's overlay is applied in `build_observation` (`env_components/observation_builder.py`); the opponent's is applied in `WargameEnv._opponent_action_mask`, with the sides swapped. `compute_unit_shooting_masks` is positional despite its `player_`/`opponent_` parameter names, so the same function serves both.
 
 The opponent's overlay is built **only for policies that declare `shoots = True`** (see [opponent-policies.md](opponent-policies.md#policies-that-shoot)). It costs up to `n_opponent × n_player` line-of-sight walks per shooting phase, which is not worth paying for the movement-only policies that most configs run.
 

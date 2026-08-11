@@ -64,15 +64,16 @@ table is the roadmap for the next implementation phase.
 | Rule | Status | Owner / note |
 |---|---|---|
 | [Select weapons](04-making-attacks.md#1-select-weapons) | **divergent** | `wargame.py:_resolve_shooting_action` fires `weapons[0]` only. A model with two weapons uses one. |
-| [Select targets — visible, in range, unengaged](04-making-attacks.md#2-select-targets) | implemented | `env_components/shooting_masks.py:compute_shooting_masks`. |
+| [Select targets — visible, in range, unengaged](04-making-attacks.md#2-select-targets) | implemented | `env_components/shooting_masks.py:compute_unit_shooting_masks`. A weapon names an enemy **unit**, and visibility and range are checked **independently** across it — some model visible, some model in range, not necessarily the same one. |
 | [Identical attacks / pooling](04-making-attacks.md#identical-attacks) | absent | Each shot is resolved on its own. |
+| [Excess attacks against a wiped unit are lost](05-attack-sequence.md#4-inflict-damage) | implemented | The **only** discard. Measured 3.6% of declared shots; it was 36-40% while a weapon named a model and a shot at a corpse evaporated. |
 | [Hit rolls, critical hit on 6, unmodified 1 fails](05-attack-sequence.md#1-hit-rolls) | implemented | `envs/domain/shooting.py:resolve_shooting`. |
 | [Wound ladder](05-attack-sequence.md#2-wound-rolls) | implemented | `envs/domain/shooting.py:wound_roll_threshold`. Asserted by `tests/test_rules_constants.py`. |
 | [Highest Toughness in a mixed unit](05-attack-sequence.md#mixed-toughness) | absent | Targets are individual models. |
-| [Allocation groups and order](05-attack-sequence.md#3-save-rolls) | absent | Damage is applied to the targeted model directly. |
+| [Allocation groups and order](05-attack-sequence.md#3-save-rolls) | partial | The defender allocates each attack to a model in the target unit, preferring one that has already lost Wounds (`domain/shooting.py:_allocate_target`). The *groups* themselves are absent — they split a unit by CHARACTER and by distinct (W, Sv, InSv), and this project has one profile per army and no characters, so every unit is a single group. |
 | [Save vs AP](05-attack-sequence.md#4-inflict-damage) | implemented | `save + ap`, with an unmodified 1 always failing. |
 | [Excess damage is lost](05-attack-sequence.md#4-inflict-damage) | implemented | `WargameModel.take_damage` clamps at 0. |
-| [Destruction resolves after the attacking unit finishes](05-attack-sequence.md#suffering-damage-and-being-destroyed) | **divergent** | Kills apply immediately, recorded by `PairedShootingResult.killed`. |
+| [Destruction resolves after the attacking unit finishes](05-attack-sequence.md#suffering-damage-and-being-destroyed) | implemented (degenerately) | Attacking units resolve one at a time in group order, so a destroyed model is removed before the *next* unit fires — the rules' own sequencing. Within one unit's sequence, deferring removal is unobservable at `max_wounds: 1`: a destroyed model stops being allocatable the moment it dies either way. It would become observable with multi-wound models. |
 | [Piercing damage](06-visibility-and-damage.md#piercing-damage) | absent | — |
 | [Backfire rolls](06-visibility-and-damage.md#backfire-rolls) | absent | — |
 
