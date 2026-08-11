@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME, RGB, RGBA, Theme
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.domain.battle_view import BattleView
@@ -82,6 +83,29 @@ class Label:
 Primitive = Disc | Poly | Seg | Label
 
 
+# Short labels for the phase chain — five slots that must fit side by side.
+_PHASE_LABELS: dict[BattlePhase, str] = {
+    BattlePhase.command: "CMD",
+    BattlePhase.movement: "MOVE",
+    BattlePhase.shooting: "SHOOT",
+    BattlePhase.charge: "CHRG",
+    BattlePhase.fight: "FIGHT",
+}
+
+
+@dataclass(frozen=True)
+class PhaseChip:
+    """One phase of the round, and how the HUD should render it.
+
+    A skipped phase is auto-advanced by the config, so it never becomes current;
+    showing it dimmed makes `skip_phases` visible rather than implied.
+    """
+
+    label: str
+    is_current: bool
+    is_skipped: bool
+
+
 @dataclass(frozen=True)
 class HudData:
     """Scalar state the presenter draws into the panels."""
@@ -89,13 +113,25 @@ class HudData:
     round: int
     n_rounds: int
     phase: str
+    phase_chips: tuple[PhaseChip, ...]
     step: int
     reward: float | None
-    epoch: int | None
+    episode_reward: float | None
+    # Last step's reward components, in the phase's calculator order.
+    reward_breakdown: tuple[tuple[str, float], ...]
     player_vp: int
     player_vp_delta: int
     opponent_vp: int
     opponent_vp_delta: int
+    # Objective control (one entry per objective) + the held tally.
+    objective_controls: tuple[Control, ...]
+    held_player: int
+    held_opponent: int
+    # Force strength per side (alive of total).
+    player_alive: int
+    player_total: int
+    opponent_alive: int
+    opponent_total: int
 
 
 @dataclass(frozen=True)
@@ -187,6 +223,39 @@ def _draw_models(
             continue
         color = color_of(model.group_id)  # type: ignore[attr-defined]
         prims.append(Disc((cx, cy), radius, (*color, 255), pal.model_rim, 1))
+
+
+def _reward_components(view: "BattleView") -> tuple[tuple[str, float], ...]:
+    """The step's reward components: one entry per calculator, nothing nested.
+
+    Calculators may also report their internals under `parent/child` keys, which
+    sum into the parent — charting both would make a term compete with its own
+    breakdown and double its weight in the composition bar.
+
+    Order is the phase's declaration order, not magnitude: the dict is rebuilt
+    from the same calculator list every step, so keeping it holds each term in
+    the same slot of the bar frame after frame instead of letting segments swap
+    places whenever two components cross.
+    """
+    return tuple(
+        (name, value)
+        for name, value in view.last_reward_breakdown.items()
+        if "/" not in name
+    )
+
+
+def _phase_chips(view: "BattleView") -> tuple[PhaseChip, ...]:
+    """The round's five phases, marking the current one and the skipped ones."""
+    skipped = set(view.config.skip_phases)
+    current = view.game_clock_state.phase
+    return tuple(
+        PhaseChip(
+            label=label,
+            is_current=phase == current,
+            is_skipped=phase in skipped,
+        )
+        for phase, label in _PHASE_LABELS.items()
+    )
 
 
 def build_scene(
@@ -298,17 +367,32 @@ def build_scene(
             )
         )
 
+    controls = tuple(
+        control[i] if i < len(control) else Control.NEUTRAL
+        for i in range(len(view.objectives))
+    )
+    player_models = view.player_models
+    opponent_models = view.opponent_models
     clock = view.game_clock_state
     hud = HudData(
         round=clock.battle_round or 0,
         n_rounds=view.n_rounds,
         phase=clock.phase.value.title() if clock.phase else "—",
+        phase_chips=_phase_chips(view),
         step=view.current_turn,
         reward=view.last_reward,
-        epoch=None,
+        episode_reward=view.episode_reward,
+        reward_breakdown=_reward_components(view),
         player_vp=view.player_vp,
         player_vp_delta=view.player_vp_delta,
         opponent_vp=view.opponent_vp,
         opponent_vp_delta=view.opponent_vp_delta,
+        objective_controls=controls,
+        held_player=sum(1 for c in controls if c is Control.PLAYER),
+        held_opponent=sum(1 for c in controls if c is Control.OPPONENT),
+        player_alive=sum(1 for m in player_models if getattr(m, "is_alive", True)),
+        player_total=len(player_models),
+        opponent_alive=sum(1 for m in opponent_models if getattr(m, "is_alive", True)),
+        opponent_total=len(opponent_models),
     )
     return Scene(board_w, board_h, pal.board_bg, tuple(prims), hud)

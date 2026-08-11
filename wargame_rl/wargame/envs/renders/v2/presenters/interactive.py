@@ -1,9 +1,10 @@
 """Interactive presenter: a resizable pygame window with the legacy controls.
 
 Space pauses, Esc quits (raising `QuitRequested`, as the legacy renderer did),
-L toggles the debug sight line, a left click pins a model's tooltip, and resizing
-refits the board. Pan/zoom is deliberately absent in Phase 1 — the `Camera` is
-where it will slot in later.
+L toggles the debug sight line, a left click pins a model's tooltip, Tab shows
+the key map, and resizing refits the board. The keys themselves are declared once
+in `key_map`, which is what the overlay and the panel's hint both read. Pan/zoom
+is deliberately absent in Phase 1 — the `Camera` is where it will slot in later.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ class InteractiveRenderer(BasePresenter):
         self._should_quit = False
         self._pinned: int | None = None
         self._fps = 5
+        self._show_keys = False
 
     def setup(self, view: BattleView) -> None:
         super().setup(view)
@@ -49,6 +51,14 @@ class InteractiveRenderer(BasePresenter):
     def _is_paused(self) -> bool:
         return self._paused
 
+    def key_map(self) -> tuple[tuple[str, str], ...]:
+        return (
+            ("Space", "pause / resume"),
+            ("L", "line-of-sight debug ray"),
+            ("Click", "pin a model's tooltip"),
+            ("Esc", "quit"),
+        )
+
     def render(self, view: BattleView) -> None:
         self._process_events(view)
         if self._should_quit:
@@ -65,6 +75,8 @@ class InteractiveRenderer(BasePresenter):
         index = self._pinned if self._pinned is not None else self._hovered(view)
         if index is not None:
             self._draw_tooltip(frame, view, index)
+        if self._show_keys:
+            self._draw_key_map(frame)
         return frame
 
     def _present(self, frame: Canvas) -> None:
@@ -97,27 +109,30 @@ class InteractiveRenderer(BasePresenter):
                     self._should_quit = True
                 elif event.key == pygame.K_l:
                     self._debug_los = not self._debug_los
+                elif event.key == pygame.K_TAB:
+                    self._show_keys = not self._show_keys
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 self._pinned = self._model_index_at(view, event.pos[0], event.pos[1])
 
     def _fit_to_window(self, view: BattleView, w: int, h: int) -> None:
-        north = self._theme.north_panel_h
-        south = self._theme.south_panel_rows * north
+        top = 2 * self._theme.north_panel_h  # two-row top HUD
+        south = self._theme.south_panel_rows * self._theme.north_panel_h
         new_w = max(1, w)
-        new_h = max(north + south + 1, h)
+        new_h = max(top + south + 1, h)
         if self._window is not None and (new_w, new_h) == self._window.get_size():
             return
         self._window = pygame.display.set_mode((new_w, new_h), pygame.RESIZABLE)
-        available_h = max(1, new_h - north - south)
+        available_h = max(1, new_h - top - south)
         self._scale = min(new_w / self._board_w, available_h / self._board_h)
         import math
 
         self._canvas_w = math.ceil(self._scale * self._board_w)
         self._canvas_h = math.ceil(self._scale * self._board_h)
+        self._top_h = top
         self._window_w = new_w
         self._window_h = new_h
         self._offset_x = (new_w - self._canvas_w) // 2
-        self._offset_y = north + (available_h - self._canvas_h) // 2
+        self._offset_y = top + (available_h - self._canvas_h) // 2
 
     # -- tooltip -------------------------------------------------------------
 

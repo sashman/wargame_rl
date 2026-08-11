@@ -47,6 +47,7 @@ def _run_recording(
 
     from wargame_rl.wargame.envs.renders.renderer import FrameSource
     from wargame_rl.wargame.envs.renders.v2 import build_renderer
+    from wargame_rl.wargame.envs.renders.v2.presenters.base import BasePresenter
     from wargame_rl.wargame.envs.types import WargameEnvAction
     from wargame_rl.wargame.model.common.factory import create_environment
     from wargame_rl.wargame.model.net import TransformerNetwork
@@ -59,6 +60,10 @@ def _run_recording(
     renderer.setup(env)
     frame_source = cast(FrameSource, renderer)
     frame_source.epoch = epoch
+    # v2 stamps the run into the panel, so a video identifies itself once it has
+    # been downloaded from Wandb. Legacy has no such slot, hence the isinstance.
+    if isinstance(renderer, BasePresenter):
+        renderer.run_label = run_name
 
     # Load snapshot from file (avoids pickling tensors across processes)
     policy_state_dict = torch.load(

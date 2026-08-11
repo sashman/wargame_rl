@@ -71,11 +71,20 @@ class RenderBackend(Protocol):
         size_px: int,
         color: RGB,
         align: str = "center",
+        mono: bool = False,
+        bold: bool = False,
     ) -> None:
-        """Draw text anchored ``center`` / ``midleft`` / ``midright``."""
+        """Draw text anchored ``center`` / ``midleft`` / ``midright``.
+
+        ``mono`` selects a monospace face (for tabular HUD numbers) when one is
+        available; the default proportional face is used otherwise. ``bold``
+        selects the bold weight of the monospace face.
+        """
         ...
 
-    def text_size(self, text: str, size_px: int) -> tuple[int, int]:
+    def text_size(
+        self, text: str, size_px: int, mono: bool = False, bold: bool = False
+    ) -> tuple[int, int]:
         """Rendered ``(width, height)`` of text at a size — for panel layout."""
         ...
 

@@ -19,6 +19,7 @@ from __future__ import annotations
 import numpy as np
 import pygame
 
+from wargame_rl.wargame.envs.renders.v2.fonts import mono_font_path
 from wargame_rl.wargame.envs.renders.v2.theme import RGB, RGBA
 
 Point = tuple[float, float]
@@ -105,15 +106,21 @@ class PygameAABackend:
         size_px: int,
         color: RGB,
         align: str = "center",
+        mono: bool = False,
+        bold: bool = False,
     ) -> None:
-        font = pygame.font.Font(None, max(1, int(size_px) * self._ss))
+        path = mono_font_path(bold) if mono else None
+        font = pygame.font.Font(path, max(1, int(size_px) * self._ss))
         surface = font.render(text, True, color)
         anchor_kw = align if align in _ALIGNS else "center"
         rect = surface.get_rect(**{anchor_kw: self._scale(anchor)})
         canvas.blit(surface, rect)
 
-    def text_size(self, text: str, size_px: int) -> tuple[int, int]:
-        width, height = pygame.font.Font(None, max(1, int(size_px))).size(text)
+    def text_size(
+        self, text: str, size_px: int, mono: bool = False, bold: bool = False
+    ) -> tuple[int, int]:
+        path = mono_font_path(bold) if mono else None
+        width, height = pygame.font.Font(path, max(1, int(size_px))).size(text)
         return (int(width), int(height))
 
     def blit(self, canvas: pygame.Surface, src: pygame.Surface, pos: Point) -> None:

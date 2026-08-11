@@ -21,6 +21,10 @@ class RecordingRenderer(BasePresenter):
         super().__init__(*args, **kwargs)  # type: ignore[arg-type]
         self._last_frame: Canvas | None = None
 
+    def _hotkey_hint(self) -> str | None:
+        """No keys in a video — the context slot uses the room instead."""
+        return None
+
     def _present(self, frame: Canvas) -> None:
         self._last_frame = frame
 

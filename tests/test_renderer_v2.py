@@ -9,6 +9,7 @@ v2 and the untouched legacy renderer headlessly and check they agree.
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -25,6 +26,9 @@ from wargame_rl.wargame.envs.renders.v2.control import (  # noqa: E402
 from wargame_rl.wargame.envs.renders.v2.factory import (  # noqa: E402
     BACKENDS,
     _build_backend,
+)
+from wargame_rl.wargame.envs.renders.v2.presenters.recording import (  # noqa: E402
+    RecordingRenderer,
 )
 from wargame_rl.wargame.envs.renders.v2.replay import (  # noqa: E402
     ReplayPresenter,
@@ -49,6 +53,7 @@ from wargame_rl.wargame.envs.types.config import (  # noqa: E402
     ObjectiveConfig,
     TerrainPieceConfig,
 )
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase  # noqa: E402
 from wargame_rl.wargame.envs.wargame import WargameEnv  # noqa: E402
 
 
@@ -206,28 +211,30 @@ def _ab_config() -> WargameEnvConfig:
     )
 
 
-def test_v2_frame_matches_legacy_shape_and_coverage() -> None:
+def test_v2_board_region_renders_terrain_and_player() -> None:
+    """v2's HUD diverges from legacy (Phase 4b redesign), so whole-frame parity no
+    longer holds; assert the board region itself renders — terrain + a player over
+    a mostly board-background field, below the two-row top panel."""
     config = _ab_config()
-    legacy = _frame("legacy", config)
-    v2 = _frame("v2", config)
-
-    assert v2.shape == legacy.shape
-    legacy_nonwhite = int((legacy != 255).any(axis=2).sum())
-    v2_nonwhite = int((v2 != 255).any(axis=2).sum())
-    # Same board, same primitives: coverage should be within a couple of percent
-    # (fonts and alpha compositing differ by a hair, so not exact).
-    assert abs(v2_nonwhite - legacy_nonwhite) < 0.02 * legacy_nonwhite
+    frame = _frame("v2", config)
+    top = 2 * DEFAULT_THEME.north_panel_h
+    canvas_h = int(round(1024 / 20 * 20))
+    board = frame[top : top + canvas_h]
+    coverage = (board != 255).any(axis=2).mean()
+    # Deployment-zone tints, grid, terrain and a player all mark the board, so it
+    # is substantially non-white but not fully saturated.
+    assert 0.1 < coverage < 0.98
 
 
 def test_v2_draws_the_player_in_its_group_colour() -> None:
     config = _ab_config()
     v2 = _frame("v2", config)
 
-    # Board is 20x20 fit to 1024; the board sits below the 36px north panel.
+    # Board is 20x20 fit to 1024; it sits below the two-row top HUD panel.
     scale = 1024 / 20
-    north = 36
+    top = 2 * DEFAULT_THEME.north_panel_h
     px = int(5 * scale)
-    py = int(5 * scale) + north
+    py = int(5 * scale) + top
     patch = v2[py - 3 : py + 3, px - 3 : px + 3].reshape(-1, 3).mean(axis=0)
     # Group 0 is blue (0, 0, 255): blue channel dominates.
     assert patch[2] > patch[0] and patch[2] > patch[1]
@@ -244,12 +251,14 @@ def test_every_backend_renders_the_player_disc(backend: str) -> None:
     config = _ab_config()
     frame = _frame("v2", config, backend=backend)
 
-    # Same fit as the legacy A/B path: 20-unit board to 1024px under the panel.
-    assert frame.shape == (1132, 1024, 3)
+    # 20-unit board fit to 1024, below the two-row top HUD, above the south panel.
+    north = DEFAULT_THEME.north_panel_h
+    top = 2 * north
+    south = DEFAULT_THEME.south_panel_rows * north
+    assert frame.shape == (1024 + top + south, 1024, 3)
     scale = 1024 / 20
-    north = 36
     px = int(5 * scale)
-    py = int(5 * scale) + north
+    py = int(5 * scale) + top
     patch = frame[py - 3 : py + 3, px - 3 : px + 3].reshape(-1, 3).mean(axis=0)
     assert patch[2] > patch[0] and patch[2] > patch[1]  # blue group 0 dominates
 
@@ -325,3 +334,151 @@ def test_replay_presenter_renders_and_exports(tmp_path: Any) -> None:
     out = tmp_path / "replay.mp4"
     presenter.export_mp4(str(out))
     assert out.exists() and out.stat().st_size > 0
+
+
+# --- South HUD: the reward ledger and a round track that does not grow --------
+
+
+def test_hud_carries_the_reward_ledger_in_calculator_order() -> None:
+    """The composition bar reads `reward_breakdown` positionally, so the order
+    must be the phase's declaration order — sorting by size would make segments
+    swap seats between frames."""
+    env = _env(number_of_wargame_models=2)
+    env.step(WargameEnvAction(actions=[0, 0]))
+    hud = build_scene(env, compute_objective_control(env), scale=51.2).hud
+
+    assert hud.reward_breakdown == tuple(
+        (name, value)
+        for name, value in env.last_reward_breakdown.items()
+        if "/" not in name
+    )
+    assert hud.episode_reward == pytest.approx(env.episode_reward)
+
+
+def test_hud_ledger_excludes_a_calculator_s_own_sub_components() -> None:
+    """`closest_objective` also reports `closest_objective/base_penalty` and
+    friends, which sum into it — charting both would double its weight in the
+    composition bar and inflate the paid/charged counts."""
+    env = _env(number_of_wargame_models=2)
+    env.step(WargameEnvAction(actions=[0, 0]))
+    hud = build_scene(env, compute_objective_control(env), scale=51.2).hud
+
+    assert any("/" in name for name in env.last_reward_breakdown)  # the trap exists
+    assert all("/" not in name for name, _ in hud.reward_breakdown)
+
+
+def test_episode_reward_accumulates_and_resets() -> None:
+    env = _env(number_of_wargame_models=2)
+    for _ in range(3):
+        env.step(WargameEnvAction(actions=[0, 0]))
+    assert env.episode_reward != 0.0
+    env.reset(seed=0)
+    assert env.episode_reward == 0.0
+
+
+@pytest.mark.parametrize(
+    "skipped",
+    [[], [BattlePhase.shooting, BattlePhase.charge], list(BattlePhase)],
+)
+def test_phase_chips_mark_skipped_phases(skipped: list[BattlePhase]) -> None:
+    """Every phase gets a chip; the config's skipped ones are flagged so the HUD
+    can dim them instead of leaving `skip_phases` invisible.
+
+    The clock points at a phase whether or not it is skipped, so exactly one chip
+    is current in every case — including when that chip is also a skipped one.
+    """
+    env = _env(skip_phases=skipped)
+    hud = build_scene(env, compute_objective_control(env), scale=51.2).hud
+
+    assert len(hud.phase_chips) == len(BattlePhase)
+    assert [chip.is_skipped for chip in hud.phase_chips] == [
+        phase in skipped for phase in BattlePhase
+    ]
+    assert sum(chip.is_current for chip in hud.phase_chips) == 1
+
+
+@pytest.mark.parametrize("n_rounds", [1, 5, 30, 200])
+def test_round_track_holds_its_width_at_any_round_count(n_rounds: int) -> None:
+    """A 200-round config must not draw a 3000px track: the panel is fixed width
+    and degrades to a continuous fill once segments get thinner than the gaps."""
+    from wargame_rl.wargame.envs.renders.v2.presenters.base import _TRACK_W
+
+    presenter = RecordingRenderer(_build_backend("pillow"))
+    env = _env(number_of_battle_rounds=n_rounds)
+    presenter.setup(env)
+    frame = presenter._backend.new_canvas(400, 40, (0, 0, 0))
+    presenter._draw_round_track(frame, 10, 20, min(2, n_rounds), n_rounds)
+
+    rgb = presenter._backend.to_rgb_array(frame)
+    painted = np.argwhere(rgb.any(axis=2))
+    assert painted.size > 0
+    assert painted[:, 1].max() <= 10 + _TRACK_W
+
+
+def test_south_panel_renders_with_many_calculators() -> None:
+    """Eleven components is eleven thinner segments, not an overflowing row."""
+    presenter = RecordingRenderer(_build_backend("pillow"))
+    env = _env(number_of_wargame_models=2)
+    presenter.setup(env)
+    env.step(WargameEnvAction(actions=[0, 0]))
+    scene = presenter._scene_for(env)
+    many = {f"calc_{i}": (0.1 if i % 2 else -0.05) for i in range(11)}
+    hud = replace(scene.hud, reward_breakdown=tuple(many.items()))
+
+    frame = presenter._compose_scene(replace(scene, hud=hud))
+    rgb = presenter._backend.to_rgb_array(frame)
+    assert rgb.shape[1] == 1024  # nothing widened the frame
+
+
+# --- Key map behind Tab, and a readout that does not shift -------------------
+
+
+def test_tab_toggles_the_key_map_and_the_panel_only_hints_at_it() -> None:
+    """The panel names exactly one key; the rest live behind it. A recording has
+    no keys at all, so it gets neither the hint nor the overlay."""
+    import pygame
+
+    from wargame_rl.wargame.envs.renders.v2.presenters.interactive import (
+        InteractiveRenderer,
+    )
+
+    env = _env(number_of_wargame_models=2)
+    presenter = InteractiveRenderer(_build_backend("pillow"))
+    presenter.setup(env)
+
+    assert presenter._hotkey_hint() == "[Tab] keys"
+    assert presenter.key_map()  # the overlay has something to show
+    assert RecordingRenderer(_build_backend("pillow"))._hotkey_hint() is None
+
+    plain = presenter._backend.to_rgb_array(presenter._compose_with_tooltip(env))
+    pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_TAB))
+    presenter._process_events(env)
+    assert presenter._show_keys
+    with_keys = presenter._backend.to_rgb_array(presenter._compose_with_tooltip(env))
+    assert not np.array_equal(plain, with_keys)
+
+    pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_TAB))
+    presenter._process_events(env)
+    assert not presenter._show_keys
+
+
+def test_round_readout_holds_its_width_when_the_round_gains_a_digit() -> None:
+    """Round 6 → 10 of 20 must not shove the track along: the round sits in a
+    field as wide as the round count, so the readout is the same width all game."""
+    presenter = RecordingRenderer(_build_backend("pillow"))
+    env = _env(number_of_battle_rounds=20)
+    presenter.setup(env)
+    scene = presenter._scene_for(env)
+
+    def track_right_edge(round_number: int) -> int:
+        hud = replace(scene.hud, round=round_number, n_rounds=20)
+        rgb = presenter._backend.to_rgb_array(
+            presenter._compose_scene(replace(scene, hud=hud))
+        )
+        # The clock row of the south panel, left half only (the reward is centred).
+        row = presenter._window_h - 2 * DEFAULT_THEME.north_panel_h + 18
+        band = rgb[row - 3 : row + 4, : presenter._window_w // 3]
+        painted = np.argwhere((band != DEFAULT_THEME.palette.panel_bg).any(axis=2))
+        return int(painted[:, 1].max())
+
+    assert track_right_edge(6) == track_right_edge(16)
