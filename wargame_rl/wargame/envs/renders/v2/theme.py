@@ -68,6 +68,15 @@ class Palette:
     # group colours are tuned for the board, not the panel).
     hud_player: RGB = (120, 170, 235)
     hud_opponent: RGB = (235, 130, 115)
+    # Tracers. Deliberately not the group colours: a group ramp answers "which
+    # squad", and a shot has to answer "which side" at a glance across a board
+    # with eight of them.
+    shot_player: RGB = (60, 130, 255)
+    shot_opponent: RGB = (230, 60, 50)
+    # A killing shot's impact ring. One colour for both sides: a casualty is an
+    # event on the board, and reading it should not depend on knowing whose
+    # tracer it was — the line already carries the shooter's side.
+    shot_kill: RGB = (255, 240, 120)
 
 
 @dataclass(frozen=True)
@@ -150,6 +159,9 @@ TABLETOP_PALETTE = Palette(
     text=(236, 226, 207),
     hud_player=(139, 178, 232),
     hud_opponent=(231, 148, 112),
+    shot_player=(46, 92, 148),
+    shot_opponent=(176, 48, 38),
+    shot_kill=(206, 138, 47),
 )
 
 TABLETOP_THEME = Theme(palette=TABLETOP_PALETTE)

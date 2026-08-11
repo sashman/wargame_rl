@@ -309,6 +309,11 @@ analyze-compare +files:
 test-env:
 	uv run main.py --env_test
 
+# Watch a scripted policy play in a window — no checkpoint needed. [Tab] lists the keys.
+# Use it like: just play · just play configs/dev/tiny.yaml random · just play <cfg> squad_march tabletop
+play env_config_path='configs/golden/25v25_shooting_opponent.yaml' policy='squad_march_shoot' theme='default':
+	uv run play.py {{env_config_path}} {{policy}} {{theme}}
+
 # One-shot: create branch from main, commit, push, open PR. Use after staging changes.
 # Always branches from main; if not on main, checks out main and pulls first.
 # Example: just ship feature/my-feature "Add reward shaping for distance"

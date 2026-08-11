@@ -106,6 +106,14 @@ class CombatResultSnapshot(BaseModel):
     expected_damage: float
     hit_probability: float
     wound_probability: float
+    killed: bool = False
+    """Whether this shot took the target to zero wounds.
+
+    Added in schema 2.3 so a replay can draw a killing shot as one. It cannot be
+    recovered afterwards -- several attackers may fire on the same target in a
+    phase and only one made the kill -- so it is recorded at resolution time.
+    ``False`` on earlier recordings, where a kill replays as an ordinary hit.
+    """
 
 
 class RewardSnapshot(BaseModel):
@@ -132,7 +140,7 @@ class GameStateSnapshot(BaseModel):
     attributing ``player_actions`` to a phase.
     """
 
-    schema_version: str = "2.2"
+    schema_version: str = "2.3"
     step: int
     max_steps: int
     clock: ClockSnapshot
@@ -293,6 +301,7 @@ def _combat_result_to_snapshot(
     return CombatResultSnapshot(
         attacker_idx=paired.attacker_idx,
         target_idx=paired.target_idx,
+        killed=paired.killed,
         hits=r.hits,
         wounds=r.wounds,
         unsaved=r.unsaved,

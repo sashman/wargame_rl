@@ -23,6 +23,7 @@ from wargame_rl.wargame.envs.renders.v2.scene import (
     HudData,
     Scene,
     build_scene,
+    shot_fade_for_age,
 )
 from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME, RGB, Theme
 
@@ -66,6 +67,11 @@ class BasePresenter(Renderer):
         # config stem, a seed) — set by whoever drives the renderer.
         self.run_label: str | None = None
         self._debug_los = False
+        # Volleys fade over a few frames, so the presenter has to know how long
+        # ago the current results resolved. The env keeps the last results until
+        # the next shooting phase, so age is counted here rather than read off it.
+        self._shot_age = 0
+        self._shot_signature: tuple[object, ...] = ()
         # Board fit + window layout, set in `setup`.
         self._scale = 1.0
         self._board_w = 1
@@ -107,7 +113,29 @@ class BasePresenter(Renderer):
             theme=self._theme,
             debug_los=los,
             show_grid=self._theme.show_grid,
+            shot_fade=shot_fade_for_age(self._age_of_volley(view)),
         )
+
+    def _age_of_volley(self, view: BattleView) -> int:
+        """Frames since the currently-reported shooting results first appeared.
+
+        Identity is not enough — the env hands out a fresh list each call — so
+        the results are compared by content. Two identical volleys in a row would
+        read as one, which costs a re-flash and nothing else.
+        """
+        signature = tuple(
+            (r.attacker_idx, r.target_idx, r.result.damage_dealt, r.killed)
+            for r in (
+                *view.last_player_shooting_results,
+                *view.last_opponent_shooting_results,
+            )
+        )
+        if signature != self._shot_signature:
+            self._shot_signature = signature
+            self._shot_age = 0
+        else:
+            self._shot_age += 1
+        return self._shot_age
 
     def _compose_scene(self, scene: Scene) -> Canvas:
         """Rasterise a Scene onto a window-sized frame with the HUD panels.

@@ -89,6 +89,7 @@ wargame_rl/
 | Simulate latest | `just simulate-latest` |
 | Simulate / record a checkpoint | `just simulate <ckpt> <config.yaml>` · `just record-sim <ckpt> <config.yaml>` |
 | Test env (random) | `just test-env` |
+| Watch a scripted policy play (no checkpoint) | `just play [config.yaml] [policy] [theme]` |
 | Record a match event log | `just record <config.yaml>` |
 | Replay / narrate a log | `just replay <file>` · `just replay-summary <file>` |
 | Replay a log visually (window or MP4) | `just replay-render <file> [out.mp4]` |

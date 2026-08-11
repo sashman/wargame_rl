@@ -173,6 +173,7 @@ def test_pre_2_1_recording_decodes_without_terrain() -> None:
             value.pop("terrain_footprints", None)  # 2.1
             value.pop("skip_phases", None)  # 2.2
             value.pop("episode_total", None)  # 2.2
+            value.pop("killed", None)  # 2.3
             if "schema_version" in value:
                 value["schema_version"] = "2.0"
             for child in value.values():
