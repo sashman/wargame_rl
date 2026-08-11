@@ -15,10 +15,13 @@ import hashlib
 import numpy as np
 import pytest
 
+from wargame_rl.wargame.envs.domain.battle_factory import from_config
+from wargame_rl.wargame.envs.domain.placement import place_for_episode
 from wargame_rl.wargame.envs.types.config import OpponentPolicyConfig, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
 AUGMENT = {"augment_start": True}
+BASE_RADIUS = 0.63
 
 # sha256 of player start positions at seeds 3, 7 and 11 on `_config`, recorded
 # from a git worktree at the commit *before* the augmentation existed. Do not
@@ -128,7 +131,7 @@ def test_augmentation_never_overlaps_bases() -> None:
     """
     # Arrange
     config = _config(1.0)
-    config.base_radius = 0.63
+    config.base_radius = BASE_RADIUS
     env = WargameEnv(config=config)
 
     # Act / Assert
@@ -143,7 +146,7 @@ def test_augmentation_never_overlaps_bases() -> None:
         deltas = points[:, None, :] - points[None, :, :]
         distances = np.linalg.norm(deltas, axis=-1)
         np.fill_diagonal(distances, np.inf)
-        assert distances.min() >= 2.0 * 0.63 - 1e-9, (
+        assert distances.min() >= 2.0 * BASE_RADIUS - 1e-9, (
             f"seed {seed}: bases overlap at {distances.min():.4f}"
         )
 
@@ -226,3 +229,39 @@ def test_partial_probability_produces_both_kinds_of_start() -> None:
     # Assert
     assert any(outcomes), "never fired at probability 0.5"
     assert not all(outcomes), "always fired at probability 0.5"
+
+
+def test_teleported_squad_is_set_up_unengaged() -> None:
+    """No teleported model is placed in base contact or inside engagement range.
+
+    The rules spec requires a unit that is *set up* to be unengaged, and a model
+    within engagement range cannot shoot at all -- deploying one on top of the
+    enemy makes it a free kill that cannot fire back.
+
+    Pinned at placement, which is the only state this function controls. `reset`
+    afterwards resolves the opponent's whole turn before the agent's first
+    observation, and they close back to base contact; that is the opponent's
+    free turn, not this placement, and it is documented on the function.
+    """
+    # Arrange
+    config = _config(1.0)
+    config.base_radius = BASE_RADIUS
+    engagement_range = 1.0
+    required = 2.0 * BASE_RADIUS + engagement_range
+
+    # Act / Assert
+    for seed in range(20):
+        battle = from_config(config)
+        place_for_episode(
+            battle, config, np.random.default_rng(seed), augment_start=True
+        )
+        mine = np.array(
+            [np.asarray(m.location, dtype=float) for m in battle.player_models]
+        )
+        theirs = np.array(
+            [np.asarray(m.location, dtype=float) for m in battle.opponent_models]
+        )
+        closest = float(np.linalg.norm(mine[:, None] - theirs[None], axis=-1).min())
+        assert closest >= required - 1e-9, (
+            f"seed {seed}: set up engaged at {closest:.4f}, need {required:.4f}"
+        )

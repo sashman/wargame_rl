@@ -2,8 +2,14 @@
 # ARM: cut the global share of income, move it into the per-model term.
 #
 # Copied from 25v25_spread_hold.yaml (+49.0 vp_margin, n=100 @ seeds 700000+,
-# epoch 600, against the bar's +58.9). ONE thing changes: `objective_coverage`
-# is removed and `objective_hold` carries the weight instead.
+# epoch 600, against the bar's +58.9). Two values change, in the same
+# direction: the global `objective_coverage` (weight 0.1) is REMOVED, and
+# per-model `objective_hold` goes 2.5 -> 4.0. That more than replaces the
+# 0.1 rather than transferring it -- the point is the global/per-model shift,
+# not the total. The sister arm 25v25_global_cut3.yaml is identical but
+# for `objective_hold` 3.0, so the pair is a two-point dose response: if
+# 4.0 and 3.0 score the same, the dose does not matter and the shift is
+# doing the work; if they differ, the magnitude is a lever in its own right.
 #
 # WHY. The per-calculator ledger on that checkpoint, 12 episodes:
 #
@@ -16,9 +22,18 @@
 #
 # The two global terms are 44% of income and are broadcast whole to every
 # model. That is exactly the measured trough: a model loitering off every
-# objective still earns 0.46/step, of which ~0.49 is the globals it gets for
-# doing nothing, while walking pays 0.26. The floor is most of the reason not
-# to move.
+# objective still earns 0.46/step, of which ~0.24 is globals it gets for doing
+# nothing, while walking pays 0.26.
+#
+# CORRECTED after this arm was launched, and read the correction before
+# quoting it. An earlier draft said ~0.49 of 0.46, which is impossible; the
+# globals are (7.50 + 2.23) / 40 steps = 0.243/step, about half a loiterer's
+# income. More importantly the globals are paid EQUALLY to a model that
+# loiters and one that walks, so they cannot explain the difference between
+# them -- the trough. The surviving argument for this arm is free-riding, not
+# a floor: a loitering model collects vp_gain earned by teammates holding
+# objectives, and moving income to a per-model term prices that. Score the
+# arm against that claim, not the one this header shipped with.
 #
 # This is not a new mechanism -- it is the continuation of the only change that
 # has ever replicated here. `objective_coverage` 0.3 -> 0.1 with

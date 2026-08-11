@@ -185,6 +185,26 @@ class PPOLightning(WargameLightningBase):
             self.num_rollout_envs = self._auto_detect_num_rollout_envs()
         else:
             self.num_rollout_envs = num_rollout_envs
+        # Only the parallel collector passes `augment_start`; the serial path
+        # goes through `BaseAgent.reset()`, which takes no options and is shared
+        # with evaluation, so plumbing it there would risk the leak this feature
+        # is built to prevent. Refuse the combination instead of training the
+        # control while the config and the Wandb record both claim otherwise --
+        # that failure is silent, and it reads as "the augmentation did nothing"
+        # rather than "the augmentation never ran".
+        if (
+            self.num_rollout_envs == 1
+            and self.env.config.start_on_objective_probability > 0.0
+        ):
+            raise ValueError(
+                "start_on_objective_probability="
+                f"{self.env.config.start_on_objective_probability} needs the "
+                "parallel rollout collector, but num_rollout_envs resolved to 1 "
+                "(requested "
+                f"{self.hparams.get('num_rollout_envs')}). The serial path cannot "
+                "apply the start-state augmentation, so this run would silently "
+                "train the un-augmented control. Set num_rollout_envs > 1."
+            )
         # Built once, on first use, and kept for the whole run. See
         # _ensure_rollout_envs for why rebuilding them per step was a bug.
         self._rollout_envs: list[WargameEnv] | None = None

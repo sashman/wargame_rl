@@ -62,6 +62,7 @@ wargame_rl/
 ├── scripts/                       # Run-inspection tooling (run_summary, measure_phase_gates,
 │                                  #   measure_baselines, measure_checkpoint, measure_terrain,
 │                                  #   measure_noise_floor, measure_objective_split,
+│                                  #   measure_income_share, measure_maps,
 │                                  #   measure_throughput)
 ├── train.py                       # Training entry point (Typer CLI)
 ├── simulate.py                    # Inference/simulation entry point

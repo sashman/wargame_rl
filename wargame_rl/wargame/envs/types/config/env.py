@@ -111,7 +111,11 @@ class WargameEnvConfig(BaseModel):
             "the objective the trained agent abandons is worth +3.26 episode "
             "reward against a travel cost of ~0.27, and it still does not go. "
             "Defaults 0.0, which is an exact no-op: the augmentation draws "
-            "nothing from the layout RNG when it does not fire."
+            "nothing from the layout RNG unless it is both requested and "
+            "positive. Note it draws whenever those hold, *including on the "
+            "episodes where it does not fire — so at a probability below 1.0 "
+            "the non-firing episodes are not stream-identical to a control "
+            "run, and must not be treated as a matched within-run control."
         ),
     )
     observe_objective_control: bool = Field(

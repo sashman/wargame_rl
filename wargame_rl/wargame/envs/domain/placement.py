@@ -180,6 +180,8 @@ def _sample_in_objective(
     occupied: list[tuple[float, float]],
     min_separation: float,
     rng: Generator,
+    hostile: list[tuple[float, float]] | None = None,
+    hostile_separation: float = 0.0,
 ) -> tuple[float, float] | None:
     """A random point whose centre is on *objective* and whose base is clear.
 
@@ -202,8 +204,13 @@ def _sample_in_objective(
 
     for _ in range(_MAX_PLACEMENT_RETRIES):
         candidate = (float(rng.uniform(x_min, x_max)), float(rng.uniform(y_min, y_max)))
-        if inside(*candidate) and _is_clear(candidate, occupied, min_separation):
-            return candidate
+        if not inside(*candidate):
+            continue
+        if not _is_clear(candidate, occupied, min_separation):
+            continue
+        if hostile and not _is_clear(candidate, hostile, hostile_separation):
+            continue
+        return candidate
     return None
 
 
@@ -213,6 +220,7 @@ def start_group_on_objective(
     objectives: list[WargameObjective],
     rng: Generator,
     base_radius: float = 0.0,
+    engagement_range: float = 0.0,
 ) -> int | None:
     """Move one whole player group off its deployment position onto an objective.
 
@@ -234,6 +242,19 @@ def start_group_on_objective(
 
     Best-effort by design: a model that cannot be fitted keeps its deployment
     position rather than failing the episode, matching `objective_placement`.
+
+    **Known limitation, measured, and the reason to keep the probability low.**
+    An objective can sit within one weapon range of the opponent's deployment
+    zone -- `objectives_spread_on_terrain` actively pushes them outward -- and
+    `reset` resolves the opponent's whole turn before the agent's first
+    observation when the opponent has first turn. At probability 1.0 on the
+    spread scenario that puts enemies in range at the first observation in
+    123 of 200 episodes and leaves player models already dead in 52 of 200,
+    against zero for the un-augmented start. The squad therefore learns the
+    objective is a kill box as readily as it learns to hold it. The honest fix
+    is to start the squad *part way* along the approach rather than on top of
+    the objective, which would also give the value function a path to propagate
+    along; that is not built.
     """
     if not objectives or not player_models:
         return None
@@ -241,8 +262,6 @@ def start_group_on_objective(
     groups: dict[int, list[WargameModel]] = {}
     for model in player_models:
         groups.setdefault(model.group_id, []).append(model)
-    if not groups:
-        return None
 
     group_ids = sorted(groups)
     chosen_group = int(group_ids[int(rng.integers(len(group_ids)))])
@@ -252,17 +271,37 @@ def start_group_on_objective(
     # The movers vacate their deployment spots, so only the models staying put
     # constrain where they can land.
     staying = [m for m in player_models if m.group_id != chosen_group]
-    occupied = [
-        (float(m.location[0]), float(m.location[1])) for m in staying + opponent_models
-    ]
+    occupied = [(float(m.location[0]), float(m.location[1])) for m in staying]
+    # Enemies need a wider berth than friends. Clearing only the base diameter
+    # sets models up in base contact, and a model within engagement range is
+    # barred from shooting at all (`shooting_masks`), so it would deploy as a
+    # free kill that cannot fire back -- and the rules spec requires a unit that
+    # is *set up* to be unengaged.
+    #
+    # This guarantees the state at *placement* only. `reset` then resolves the
+    # opponent's whole turn before the agent's first observation, and they walk
+    # back into contact: measured, min separation is 2.44 here and 1.26 by the
+    # first observation. Deployment legality is the most this can buy; the
+    # first-observation problem is the opponent's free turn, not the placement.
+    hostile = [(float(m.location[0]), float(m.location[1])) for m in opponent_models]
     min_separation = 2.0 * base_radius
+    hostile_separation = min_separation + engagement_range
 
     moved = 0
     for model in moving:
         spot = _sample_in_objective(
-            objectives[objective_index], occupied, min_separation, rng
+            objectives[objective_index],
+            occupied,
+            min_separation,
+            rng,
+            hostile=hostile,
+            hostile_separation=hostile_separation,
         )
         if spot is None:
+            # A model that could not be fitted keeps its deployment position --
+            # which was left out of `occupied` on the assumption it would move,
+            # so put it back or a later mover can be placed on top of it.
+            occupied.append((float(model.location[0]), float(model.location[1])))
             continue
         model.location = position(*spot)
         model.reset_for_episode()
@@ -684,8 +723,19 @@ def place_for_episode(
                 base_radius=base_radius,
             )
 
-    # Last, so the draws it makes cannot shift anything else in this episode.
-    if augment_start and config.start_on_objective_probability > 0.0:
+    # Last, so its draws cannot shift anything else *placed* this episode. They
+    # do still shift what `reset` draws afterwards -- `run_until_player_phase`
+    # can auto-execute the opponent's first turn, and a scripted policy picks
+    # targets off the same `np_random`. So a firing augmentation changes that
+    # episode's opponent rolls too; harmless, but it is why the non-firing half
+    # of a partial-probability run is not a matched control.
+    # A fixed-placement config exists to pin an exact layout, so the
+    # augmentation must not silently discard it.
+    if (
+        augment_start
+        and config.start_on_objective_probability > 0.0
+        and not config.has_fixed_model_positions
+    ):
         if float(rng.random()) < config.start_on_objective_probability:
             start_group_on_objective(
                 battle.player_models,
@@ -693,4 +743,5 @@ def place_for_episode(
                 battle.objectives,
                 rng,
                 base_radius=base_radius,
+                engagement_range=resolve_rules_quantities(config).engagement_range,
             )

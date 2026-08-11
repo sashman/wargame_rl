@@ -22,7 +22,7 @@ Applies to everything under `tests/`. General testing philosophy lives in the ro
 
 ## Test Files
 
-**Env & clock** — `test_env` (reset/step) · `test_clock_integration` (phases, skip_phases, rounds) · `test_game_clock` (clock unit) · `test_turn_execution_fairness` · `test_fixed_placement` (config/placement) · `test_rollout_env_lifecycle` · `test_objective_control_distance_cache`
+**Env & clock** — `test_env` (reset/step) · `test_clock_integration` (phases, skip_phases, rounds) · `test_game_clock` (clock unit) · `test_turn_execution_fairness` · `test_fixed_placement` (config/placement) · `test_rollout_env_lifecycle` · `test_objective_control_distance_cache` · `test_start_state_augmentation` (the training-time squad teleport; its no-op guarantee is pinned against digests recorded from a worktree at the *parent commit*, because comparing two envs of the current build is vacuous — a stray draw shifts both streams and cancels, and that version passed while the augmentation drew on every reset)
 
 **Rules & combat** — `test_shooting_action` · `test_shooting_resolution` · `test_shooting_opponent` · `test_shooting_baseline` · `test_action_masking` · `test_los` · `test_wounds` · `test_killing_reward` · `test_terrain` · `test_terrain_observation` · `test_terrain_render` · `test_random_terrain` · `test_exposure_metric` (exposure, terrain proximity, `firepower_ratio` — including that a concentrated force outguns what it exposes, the case the metric's first version got backwards)
 

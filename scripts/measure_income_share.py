@@ -66,7 +66,7 @@ def _calculator_kinds(env: WargameEnv) -> dict[str, str]:
     Read off the live phase rather than the config, so a term that is registered
     as global cannot be mislabelled here by a stale reading of the YAML.
     """
-    phase = env.phase_manager.phases[env.phase_manager.position.index]
+    phase = env.phase_manager.current_phase
     kinds = {name: "per-model" for name, _calc in phase.per_model_calculators}
     for name, calculator in phase.global_calculators:
         kinds[name] = "global" if isinstance(calculator, GlobalRewardCalculator) else ""
@@ -100,7 +100,7 @@ def main() -> None:
             observation, _reward, terminated, truncated, _step_info = env.step(action)
             done = terminated or truncated
             steps += 1
-            for key, value in env.phase_manager.last_reward_breakdown.items():
+            for key, value in env.last_reward_breakdown.items():
                 totals[key] += float(value)
 
     named = {name: totals.get(name, 0.0) for name in kinds if name in totals}
