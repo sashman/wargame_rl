@@ -208,6 +208,11 @@ replay file:
 replay-summary file:
 	uv run replay_events.py summary {{file}}
 
+# Replay a recording visually: an interactive window (play/pause/step/scrub) or,
+# with an out path, an MP4. Reads terrain from schema-2.1 recordings.
+replay-render file out='':
+	uv run replay_events.py render {{file}} {{ if out != '' { '--out ' + out } else { '' } }}
+
 # Compact rolling-mean summary of a Wandb training run. Use: just run-summary <run_id> [bucket]
 run-summary run_id bucket='50':
 	@uv run python -m scripts.run_summary {{run_id}} {{bucket}}

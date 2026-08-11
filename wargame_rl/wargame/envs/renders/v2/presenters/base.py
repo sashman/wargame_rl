@@ -18,7 +18,7 @@ from wargame_rl.wargame.envs.renders.v2.control import (
     compute_objective_control,
     probe_debug_los,
 )
-from wargame_rl.wargame.envs.renders.v2.scene import HudData, build_scene
+from wargame_rl.wargame.envs.renders.v2.scene import HudData, Scene, build_scene
 from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME, Theme
 
 GRID_SIZE = 1024  # Longest board side, in pixels, at the fit scale.
@@ -59,11 +59,11 @@ class BasePresenter(Renderer):
         self._offset_x = 0
         self._offset_y = north
 
-    def _compose(self, view: BattleView) -> Canvas:
-        """Render the board and panels into one window-sized frame."""
+    def _scene_for(self, view: BattleView) -> Scene:
+        """Build the Scene for a live view (control + debug LOS from the domain)."""
         control = compute_objective_control(view)
         los = probe_debug_los(view) if self._debug_los else None
-        scene = build_scene(
+        return build_scene(
             view,
             control,
             scale=self._scale,
@@ -72,6 +72,12 @@ class BasePresenter(Renderer):
             show_grid=self._theme.show_grid,
         )
 
+    def _compose_scene(self, scene: Scene) -> Canvas:
+        """Rasterise a Scene onto a window-sized frame with the HUD panels.
+
+        Split from `_compose` so the replay presenter can feed a Scene built from
+        a recorded snapshot through the identical board + panel pipeline.
+        """
         board = self._backend.new_canvas(self._canvas_w, self._canvas_h, scene.board_bg)
         rasterize(self._backend, scene, Camera(self._scale), board)
 
@@ -81,6 +87,10 @@ class BasePresenter(Renderer):
         self._backend.blit(frame, board, (self._offset_x, self._offset_y))
         self._draw_panels(frame, scene.hud)
         return frame
+
+    def _compose(self, view: BattleView) -> Canvas:
+        """Render the board and panels into one window-sized frame."""
+        return self._compose_scene(self._scene_for(view))
 
     # -- panels --------------------------------------------------------------
 

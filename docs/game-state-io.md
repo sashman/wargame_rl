@@ -278,6 +278,7 @@ The analysis output is available as:
 | `just record-sim <ckpt> <config> [n] [net]` | Record N episodes from a trained checkpoint, no rendering |
 | `just replay <file>` | Narrate a recorded match step-by-step |
 | `just replay-summary <file>` | Match metadata overview |
+| `just replay-render <file> [out.mp4]` | Replay visually — interactive window (play/pause/step/scrub) or MP4. Uses the v2 renderer; reads terrain from schema-2.1 recordings (pre-2.1 draw no ruins) |
 | `just analyze <file>` | Full analysis report (text) |
 | `just analyze-json <file>` | Analysis report as JSON |
 | `just analyze-compare f1 f2` | Side-by-side metric comparison |

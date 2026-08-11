@@ -9,12 +9,20 @@ from wargame_rl.wargame.envs.renders.v2.presenters.interactive import (
     InteractiveRenderer,
 )
 from wargame_rl.wargame.envs.renders.v2.presenters.recording import RecordingRenderer
+from wargame_rl.wargame.envs.renders.v2.replay import (
+    ReplayPresenter,
+    ReplaySource,
+    build_scene_from_snapshot,
+)
 from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME, Theme
 
 __all__ = [
     "build_renderer",
     "InteractiveRenderer",
     "RecordingRenderer",
+    "ReplayPresenter",
+    "ReplaySource",
+    "build_scene_from_snapshot",
     "DEFAULT_THEME",
     "Theme",
 ]
