@@ -30,26 +30,40 @@ def _run_recording(
     checkpoint_dir: str,
     render_fps: int,
     filename_prefix: str,
+    renderer_name: str = "legacy",
+    backend: str = "pillow",
+    theme: str = "default",
 ) -> None:
-    """Run in a separate process: create env with human renderer, run one episode, save MP4.
+    """Run in a separate process: create env with a renderer, run one episode, save MP4.
     Must set SDL_VIDEODRIVER=dummy before any pygame import to avoid EGL conflicts with PyTorch.
     """
     os.environ["SDL_VIDEODRIVER"] = "dummy"
+
+    from typing import cast
 
     import imageio  # type: ignore[import-untyped]
     import numpy as np
     import torch
 
-    from wargame_rl.wargame.envs.renders.human import HumanRender
+    from wargame_rl.wargame.envs.renders.renderer import FrameSource
+    from wargame_rl.wargame.envs.renders.v2 import build_renderer
+    from wargame_rl.wargame.envs.renders.v2.presenters.base import BasePresenter
     from wargame_rl.wargame.envs.types import WargameEnvAction
     from wargame_rl.wargame.model.common.factory import create_environment
     from wargame_rl.wargame.model.net import TransformerNetwork
 
-    # Build env with human renderer (same config as training)
-    renderer = HumanRender()
+    # Build env with the chosen renderer in headless recording mode. `setup`/`close`
+    # come from the Renderer base; `epoch`/`get_frame_array` from the FrameSource
+    # protocol both legacy and v2 satisfy.
+    renderer = build_renderer(renderer_name, "recording", backend=backend, theme=theme)
     env = create_environment(env_config=env_config, renderer=renderer)
     renderer.setup(env)
-    renderer.epoch = epoch
+    frame_source = cast(FrameSource, renderer)
+    frame_source.epoch = epoch
+    # v2 stamps the run into the panel, so a video identifies itself once it has
+    # been downloaded from Wandb. Legacy has no such slot, hence the isinstance.
+    if isinstance(renderer, BasePresenter):
+        renderer.run_label = run_name
 
     # Load snapshot from file (avoids pickling tensors across processes)
     policy_state_dict = torch.load(
@@ -79,7 +93,7 @@ def _run_recording(
             observation, _reward, terminated, truncated, _info = env.step(action)
             done = terminated or truncated
             env.render()
-            frame = renderer.get_frame_array()
+            frame = frame_source.get_frame_array()
             frames.append(frame)
 
         out_dir = Path(checkpoint_dir)
@@ -122,6 +136,9 @@ class RecordEpisodeCallback(Callback):
         record_after_epoch: int = 20,
         record_every_n_epochs: int = 20,
         filename_prefix: str = "ppo",
+        renderer_name: str = "legacy",
+        backend: str = "pillow",
+        theme: str = "default",
     ) -> None:
         self.run_name = run_name
         self.env_config = env_config
@@ -129,6 +146,9 @@ class RecordEpisodeCallback(Callback):
         self.record_after_epoch = record_after_epoch
         self.record_every_n_epochs = max(1, record_every_n_epochs)
         self.filename_prefix = filename_prefix
+        self.renderer_name = renderer_name
+        self.backend = backend
+        self.theme = theme
         self._checkpoint_dir = f"./checkpoints/{run_name}"
         self._pending_proc: BaseProcess | None = None
         self._pending_filepath: Path | None = None
@@ -234,6 +254,9 @@ class RecordEpisodeCallback(Callback):
                 "checkpoint_dir": checkpoint_dir,
                 "render_fps": render_fps,
                 "filename_prefix": filename_prefix,
+                "renderer_name": self.renderer_name,
+                "backend": self.backend,
+                "theme": self.theme,
             },
             daemon=True,
         )

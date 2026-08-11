@@ -115,6 +115,12 @@ class RewardSnapshot(BaseModel):
     breakdown: dict[str, float]
     phase_name: str
     phase_index: int
+    episode_total: float | None = None
+    """Running sum of every step's ``total`` so far this episode.
+
+    Added in schema 2.2 so a replay can show the cumulative reward without
+    re-summing the log; ``None`` on earlier recordings.
+    """
 
 
 class GameStateSnapshot(BaseModel):
@@ -126,7 +132,7 @@ class GameStateSnapshot(BaseModel):
     attributing ``player_actions`` to a phase.
     """
 
-    schema_version: str = "2.1"
+    schema_version: str = "2.2"
     step: int
     max_steps: int
     clock: ClockSnapshot
@@ -145,6 +151,12 @@ class GameStateSnapshot(BaseModel):
     Static per episode, so it is recorded on the reset snapshot and every anchor
     (never in a delta — see ``build_snapshot``). ``None`` on pre-2.1 recordings,
     which carried no terrain; a replay of those draws no ruins.
+    """
+    skip_phases: list[str] | None = None
+    """Battle phases the config auto-advances, so a replay can dim them.
+
+    Static per episode, so it rides on the full snapshots exactly as
+    ``terrain_footprints`` does. ``None`` on pre-2.2 recordings.
     """
     player_vp: int
     opponent_vp: int
@@ -464,6 +476,7 @@ def build_snapshot(
     shooting_slice_end: int | None = None,
     action_phase: str | None = None,
     terrain: "Terrain | None" = None,
+    episode_reward: float | None = None,
 ) -> GameStateSnapshot:
     """Build a complete game-state snapshot from env internals."""
     player_configs = config.models
@@ -569,6 +582,7 @@ def build_snapshot(
         deployment_zone=dz,
         opponent_deployment_zone=odz,
         terrain_footprints=terrain_footprints,
+        skip_phases=[phase.value for phase in config.skip_phases],
         player_vp=player_vp,
         opponent_vp=opponent_vp,
         player_vp_delta=player_vp_delta,
@@ -584,6 +598,7 @@ def build_snapshot(
             breakdown=dict(reward_breakdown),
             phase_name=phase_name,
             phase_index=phase_index,
+            episode_total=episode_reward,
         ),
         is_terminated=is_terminated,
         is_truncated=is_truncated,

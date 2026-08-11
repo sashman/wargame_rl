@@ -99,7 +99,7 @@ A complete, serialisable Pydantic model of the game at one point in time. This i
 
 ```python
 class GameStateSnapshot(BaseModel):
-    schema_version: str = "2.1"
+    schema_version: str = "2.2"
     step: int
     max_steps: int
     clock: ClockSnapshot
@@ -113,6 +113,7 @@ class GameStateSnapshot(BaseModel):
     deployment_zone: list[int]
     opponent_deployment_zone: list[int]
     terrain_footprints: list[list[list[float]]] | None = None  # 2.1: outline per ruin
+    skip_phases: list[str] | None = None  # 2.2: phases the config auto-advances
     player_vp: int
     opponent_vp: int
     player_vp_delta: int
@@ -194,6 +195,7 @@ class RewardSnapshot(BaseModel):
     breakdown: dict[str, float]
     phase_name: str
     phase_index: int
+    episode_total: float | None = None  # 2.2: running sum of every step's total
 ```
 
 #### Field summary
@@ -278,6 +280,7 @@ The analysis output is available as:
 | `just record-sim <ckpt> <config> [n] [net]` | Record N episodes from a trained checkpoint, no rendering |
 | `just replay <file>` | Narrate a recorded match step-by-step |
 | `just replay-summary <file>` | Match metadata overview |
+| `just replay-render <file> [out.mp4]` | Replay visually — interactive window (play/pause/step/scrub) or MP4. Uses the v2 renderer; reads terrain from schema-2.1 recordings (pre-2.1 draw no ruins) and the reward ledger + skipped phases from 2.2 (earlier ones show neither) |
 | `just analyze <file>` | Full analysis report (text) |
 | `just analyze-json <file>` | Analysis report as JSON |
 | `just analyze-compare f1 f2` | Side-by-side metric comparison |

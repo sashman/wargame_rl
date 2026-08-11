@@ -212,6 +212,10 @@ class WargameEnv(gym.Env):
         )
         self.episode_reward_breakdown: dict[str, float] = {}
         self.episode_reward_steps: int = 0
+        # Running sum of the per-step totals. Kept beside the breakdown rather
+        # than summed from it on demand, so the HUD and a recording report the
+        # same number even if a phase's total is not exactly its components.
+        self.episode_reward: float = 0.0
 
         # Reward phases (curriculum learning); always used for reward calculation
         self.phase_manager = RewardPhaseManager.from_configs(
@@ -623,6 +627,7 @@ class WargameEnv(gym.Env):
         self.last_reward_breakdown = {}
         self.episode_reward_breakdown = {}
         self.episode_reward_steps = 0
+        self.episode_reward = 0.0
         self._exposure_tracker.reset()
 
         self._battle.reset_for_episode()
@@ -961,6 +966,7 @@ class WargameEnv(gym.Env):
                 self.episode_reward_breakdown.get(key, 0.0) + value
             )
         self.episode_reward_steps += 1
+        self.episode_reward += reward
 
         if self._state_exporters:
             snapshot = self.to_snapshot()
@@ -993,6 +999,7 @@ class WargameEnv(gym.Env):
             opponent_action=self._last_opponent_action,
             last_reward=self.last_reward,
             reward_breakdown=self.last_reward_breakdown,
+            episode_reward=self.episode_reward,
             phase_name=self.phase_manager.current_phase_name,
             phase_index=self.phase_manager.current_phase_index,
             is_terminated=self._last_terminated,
@@ -1065,6 +1072,7 @@ class WargameEnv(gym.Env):
         self.last_reward_breakdown = dict(snapshot.reward.breakdown)
         self.episode_reward_breakdown = {}
         self.episode_reward_steps = 0
+        self.episode_reward = snapshot.reward.episode_total or 0.0
         self.last_step_context = None
 
         # Recompute distances and build observation

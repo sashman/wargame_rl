@@ -91,6 +91,7 @@ wargame_rl/
 | Test env (random) | `just test-env` |
 | Record a match event log | `just record <config.yaml>` |
 | Replay / narrate a log | `just replay <file>` · `just replay-summary <file>` |
+| Replay a log visually (window or MP4) | `just replay-render <file> [out.mp4]` |
 | Analyse a log | `just analyze <file>` · `just analyze-compare <files...>` |
 | Inspect a Wandb run | `just run-summary <run_id> [bucket]` |
 | Measure reward-phase gates | `just measure-phase-gates <ckpt> <config.yaml> [n_episodes]` |

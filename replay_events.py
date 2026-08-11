@@ -5,10 +5,13 @@ Usage:
     python replay_events.py narrate recordings/my_events.jsonl
     python replay_events.py seek recordings/my_events.jsonl --step 5
     python replay_events.py summary recordings/my_events.jsonl
+    python replay_events.py render recordings/my_events.jsonl
+    python replay_events.py render recordings/my_events.jsonl --out match.mp4
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import typer
@@ -63,6 +66,40 @@ def seek(
         raise typer.Exit(1)
 
     print(narrator.narrate(snapshot))
+
+
+@app.command()
+def render(
+    file_path: str = typer.Argument(help="Path to the recorded event log JSONL file"),
+    out: str = typer.Option(
+        "", help="Write an MP4 to this path instead of opening a window"
+    ),
+    backend: str = typer.Option(
+        "pillow", help="v2 drawing backend: 'pillow', 'pygame' or 'pygame_aa'"
+    ),
+    theme: str = typer.Option("default", help="v2 theme: 'default' or 'tabletop'"),
+    fps: int = typer.Option(5, help="Playback / export frames per second"),
+) -> None:
+    """Replay a recording visually — an interactive window, or an MP4 with --out."""
+    # SDL must use the dummy driver before pygame imports when we render headless.
+    if out:
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+
+    from wargame_rl.wargame.envs.renders.v2.factory import _build_backend, resolve_theme
+    from wargame_rl.wargame.envs.renders.v2.replay import ReplayPresenter, ReplaySource
+
+    controller = _load_log(file_path)
+    source = ReplaySource.from_controller(controller)
+    presenter = ReplayPresenter(
+        _build_backend(backend), source, theme=resolve_theme(theme), fps=fps
+    )
+
+    if out:
+        presenter.export_mp4(out, fps=fps)
+        typer.echo(f"Wrote {len(source)} frames to {out}")
+    else:
+        presenter.run()
 
 
 @app.command()
