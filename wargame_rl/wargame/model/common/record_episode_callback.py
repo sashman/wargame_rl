@@ -32,7 +32,7 @@ def _run_recording(
     filename_prefix: str,
     renderer_name: str = "v2",
     backend: str = "pillow",
-    theme: str = "default",
+    theme: str = "tabletop",
 ) -> None:
     """Run in a separate process: create env with a renderer, run one episode, save MP4.
     Must set SDL_VIDEODRIVER=dummy before any pygame import to avoid EGL conflicts with PyTorch.
@@ -138,7 +138,7 @@ class RecordEpisodeCallback(Callback):
         filename_prefix: str = "ppo",
         renderer_name: str = "v2",
         backend: str = "pillow",
-        theme: str = "default",
+        theme: str = "tabletop",
     ) -> None:
         self.run_name = run_name
         self.env_config = env_config
