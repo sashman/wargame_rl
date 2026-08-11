@@ -29,9 +29,26 @@
 # them. Adopting 2"/9", and making coherency an illegal move rather than a
 # priced one, is the next step and its own measurement.
 #
-# MEASURE AGAINST the table in 25v25_spread_hold.yaml, n=100, seeds 700000+.
-# Placement changed, so every baseline on that table is void here until
-# re-measured:
+# WHAT IT SCORES, n=100, seeds 700000-700099, against the same table on
+# 25v25_spread_hold.yaml. Placement changed, so the parent's numbers are void
+# here; these replace them.
+#
+#   policy                 win   vp_margin   held      was (spread_hold)
+#   random                0.00      -137.7   0.32      0.01 / -147.3 / 0.21
+#   greedy_nearest        0.26       -37.9   0.97      0.27 /  -34.2 / 0.95
+#   squad_march           0.38       -12.3   1.23      0.42 /  -17.7 / 1.14
+#   split_evenly          0.41        -8.2   1.25      0.45 /   +0.2 / 1.33
+#   squad_march_shoot     0.82       +63.3   1.77      0.85 /  +58.9 / 1.82
+#   contest_and_spread    0.83       +64.9   1.83      0.84 /  +57.5 / 1.77
+#
+# SPAWNING SQUADS TOGETHER RAISES THE SHOOTING BASELINES. The bar gains
+# +4.4 vp and contest_and_spread +7.4, which is what you would expect --
+# a squad that starts concentrated concentrates its fire. It also flips the
+# order at the top: contest_and_spread now edges the bar, 64.9 to 63.3,
+# where on the parent the bar led. Both movement-only baselines fell
+# slightly. **The bar to beat on this config is +64.9, not +58.9.**
+#
+# Reproduce:
 #   just measure-baselines configs/experiments/25v25_coherent_spawn.yaml 100 "" 700000
 # ---------------------------------------------------------------------------
 config_name: 25v25_coherent_spawn
