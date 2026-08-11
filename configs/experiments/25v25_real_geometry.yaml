@@ -34,6 +34,37 @@ config_name: 25v25_real_geometry
 # EVERY NUMBER MEASURED ON THE GOLDEN CONFIG IS VOID HERE, including the +6.7
 # bar measured on 2026-08-11 -- that was the physics-off scenario.
 #
+# WHAT IT SCORES. n=100, seeds 700000-700099, identical layouts:
+#
+#   policy                       win    vp_margin   held   alive
+#   random (the floor)           0.04     -125.3    0.29   0.592
+#   greedy_nearest               0.13      -57.6    1.00   0.618
+#   split_evenly                 0.26      -49.2    0.96   0.086
+#   squad_march                  0.33      -26.4    1.15   0.363
+#   contest_and_spread           0.64      +18.7    1.48   0.523
+#   squad_march_shoot (the bar)  0.75      +38.0    1.71   0.450
+#
+# For a 300-epoch screen use n=30 on the same seed base, where the bar is
+# +36.2 / 0.70 win / 1.83 held. The two agree here, unlike the physics-off
+# scenario where n=30 read +21.4 against n=100's +6.7 -- but score the agent and
+# the bar at the same n and seed_base regardless.
+#
+# THE BAR ROSE TWICE ON THE WAY TO THAT NUMBER, and both corrections matter:
+#   +6.7   physics off -- base_radius defaulted to 0.0
+#   +27.8  physics on
+#   +38.0  after baselines stopped marching onto the objective's centroid
+# The last was worth +10.2: `step_toward_objective` took a *radius*, and
+# `radius_size` is 0.0 for an area objective by design, so every squad walked
+# onto one point and jammed on its own bases. An agent quoted against +27.8
+# would have been credited ten points it had not earned.
+#
+# THE HEADROOM IS ALLOCATION. `just measure-objective-split`, n=60: the bar
+# parks 6.85 models on a point defended by 0.17, wins the middle 2.95 to 1.52,
+# and leaves the third 0.38 to 4.68. Redistribution ceiling 2.47 against 1.78
+# held. Unlike the physics-off scenario -- where the opponent massed ~10.7 on
+# its own point and nobody could flip it -- this is a genuine three-objective
+# mission.
+#
 # ---- the config it was copied from ----
 #
 # 25v25 against an opponent that shoots back. THE SHOOTING-OPPONENT CONFIG.
