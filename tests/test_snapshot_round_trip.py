@@ -165,11 +165,15 @@ def test_pre_2_1_recording_decodes_without_terrain() -> None:
     log, _ = _terrain_recording()
     data = JsonMatchCodec().encode(log)
 
-    # Simulate an old recording: drop the field and revert the version everywhere.
+    # Simulate an old recording: drop every field added since, and revert the
+    # version everywhere. Each later schema adds its own keys, so scrub by
+    # name rather than by the version that happens to be current.
     def _scrub(value: object) -> None:
         if isinstance(value, dict):
-            value.pop("terrain_footprints", None)
-            if value.get("schema_version") == "2.1":
+            value.pop("terrain_footprints", None)  # 2.1
+            value.pop("skip_phases", None)  # 2.2
+            value.pop("episode_total", None)  # 2.2
+            if "schema_version" in value:
                 value["schema_version"] = "2.0"
             for child in value.values():
                 _scrub(child)

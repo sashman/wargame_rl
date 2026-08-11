@@ -1,9 +1,10 @@
 """Interactive presenter: a resizable pygame window with the legacy controls.
 
 Space pauses, Esc quits (raising `QuitRequested`, as the legacy renderer did),
-L toggles the debug sight line, a left click pins a model's tooltip, and resizing
-refits the board. Pan/zoom is deliberately absent in Phase 1 — the `Camera` is
-where it will slot in later.
+L toggles the debug sight line, a left click pins a model's tooltip, Tab shows
+the key map, and resizing refits the board. The keys themselves are declared once
+in `key_map`, which is what the overlay and the panel's hint both read. Pan/zoom
+is deliberately absent in Phase 1 — the `Camera` is where it will slot in later.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ class InteractiveRenderer(BasePresenter):
         self._should_quit = False
         self._pinned: int | None = None
         self._fps = 5
+        self._show_keys = False
 
     def setup(self, view: BattleView) -> None:
         super().setup(view)
@@ -49,6 +51,14 @@ class InteractiveRenderer(BasePresenter):
     def _is_paused(self) -> bool:
         return self._paused
 
+    def key_map(self) -> tuple[tuple[str, str], ...]:
+        return (
+            ("Space", "pause / resume"),
+            ("L", "line-of-sight debug ray"),
+            ("Click", "pin a model's tooltip"),
+            ("Esc", "quit"),
+        )
+
     def render(self, view: BattleView) -> None:
         self._process_events(view)
         if self._should_quit:
@@ -65,6 +75,8 @@ class InteractiveRenderer(BasePresenter):
         index = self._pinned if self._pinned is not None else self._hovered(view)
         if index is not None:
             self._draw_tooltip(frame, view, index)
+        if self._show_keys:
+            self._draw_key_map(frame)
         return frame
 
     def _present(self, frame: Canvas) -> None:
@@ -97,6 +109,8 @@ class InteractiveRenderer(BasePresenter):
                     self._should_quit = True
                 elif event.key == pygame.K_l:
                     self._debug_los = not self._debug_los
+                elif event.key == pygame.K_TAB:
+                    self._show_keys = not self._show_keys
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 self._pinned = self._model_index_at(view, event.pos[0], event.pos[1])
 

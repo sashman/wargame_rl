@@ -24,6 +24,7 @@ from wargame_rl.wargame.envs.renders.v2.presenters.base import BasePresenter
 from wargame_rl.wargame.envs.renders.v2.scene import Control, Scene, build_scene
 from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME, Theme
 from wargame_rl.wargame.envs.state.snapshot import GameStateSnapshot
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.envs.types.geometry import Polygon
 
 if TYPE_CHECKING:
@@ -42,20 +43,16 @@ Point = tuple[float, float]
 
 
 @dataclass(frozen=True)
-class _PhaseView:
-    value: str
-
-
-@dataclass(frozen=True)
 class _ClockView:
     battle_round: int | None
-    phase: _PhaseView | None
+    phase: BattlePhase | None
 
 
 @dataclass(frozen=True)
 class _ConfigView:
     board_width: int
     board_height: int
+    skip_phases: tuple[BattlePhase, ...]
 
 
 @dataclass(frozen=True)
@@ -96,6 +93,8 @@ class _SnapshotView:
     n_rounds: int
     current_turn: int
     last_reward: float | None
+    last_reward_breakdown: dict[str, float]
+    episode_reward: float | None
     game_clock_state: _ClockView
     player_vp: int
     player_vp_delta: int
@@ -134,7 +133,12 @@ def _snapshot_to_view(snapshot: GameStateSnapshot) -> _SnapshotView:
     )
     phase = snapshot.clock.battle_phase
     return _SnapshotView(
-        config=_ConfigView(snapshot.board_width, snapshot.board_height),
+        config=_ConfigView(
+            snapshot.board_width,
+            snapshot.board_height,
+            # Pre-2.2 recordings did not carry it; no phase is then dimmed.
+            tuple(BattlePhase(p) for p in (snapshot.skip_phases or [])),
+        ),
         deployment_zone=(int(dz[0]), int(dz[1]), int(dz[2]), int(dz[3])),
         opponent_deployment_zone=(
             int(odz[0]),
@@ -156,9 +160,11 @@ def _snapshot_to_view(snapshot: GameStateSnapshot) -> _SnapshotView:
         n_rounds=snapshot.n_rounds,
         current_turn=snapshot.step,
         last_reward=snapshot.reward.total,
+        last_reward_breakdown=dict(snapshot.reward.breakdown),
+        episode_reward=snapshot.reward.episode_total,
         game_clock_state=_ClockView(
             battle_round=snapshot.clock.battle_round,
-            phase=_PhaseView(value=phase) if phase else None,
+            phase=BattlePhase(phase) if phase else None,
         ),
         player_vp=snapshot.player_vp,
         player_vp_delta=snapshot.player_vp_delta,
@@ -234,6 +240,7 @@ class ReplayPresenter(BasePresenter):
         self._fps = fps
         self._index = 0
         self._playing = False
+        self._show_keys = False
         self._timeline_h = theme.north_panel_h
         first = source[0]
         self._board_w = first.board_width
@@ -251,6 +258,15 @@ class ReplayPresenter(BasePresenter):
 
     def _is_paused(self) -> bool:
         return not self._playing
+
+    def key_map(self) -> tuple[tuple[str, str], ...]:
+        return (
+            ("Space", "play / pause (restarts at the end)"),
+            ("<-  ->", "step one frame"),
+            ("Home  End", "first / last frame"),
+            ("Click", "scrub the timeline"),
+            ("Esc  Q", "quit"),
+        )
 
     # -- frame composition ---------------------------------------------------
 
@@ -271,6 +287,8 @@ class ReplayPresenter(BasePresenter):
         )
         self._backend.blit(frame, base, (0, 0))
         self._draw_timeline(frame, index)
+        if self._show_keys:
+            self._draw_key_map(frame)
         return frame
 
     def _draw_timeline(self, frame: Canvas, index: int) -> None:
@@ -297,12 +315,12 @@ class ReplayPresenter(BasePresenter):
         self._backend.draw_disc(
             frame, (cursor_x, track_y), 6, (*pal.player_control, 255), pal.text, 1
         )
-        label = (
-            f"{index + 1}/{len(self._source)}  |  "
-            "Space play/pause  <-/->  step  Home/End  click to scrub  Esc quit"
-        )
+        # The keys moved behind Tab, so the strip carries the position and one hint.
+        label = f"{index + 1}/{len(self._source)}  |  [Tab] keys"
+        # Centred in the strip: anchored near its bottom edge, a 20px face
+        # overflowed the strip and the frame clipped its descenders.
         self._backend.draw_text(
-            frame, label, (width // 2, y0 + h - 8), 20, pal.text, "center"
+            frame, label, (width // 2, y0 + h - 11), 16, pal.text, "center"
         )
 
     def _index_from_click(self, x: int, y: int) -> int | None:
@@ -359,6 +377,9 @@ class ReplayPresenter(BasePresenter):
         last = len(self._source) - 1
         if key in (pygame.K_ESCAPE, pygame.K_q):  # type: ignore[attr-defined]
             return False
+        if key == pygame.K_TAB:  # type: ignore[attr-defined]
+            self._show_keys = not self._show_keys
+            return True
         if key == pygame.K_SPACE:  # type: ignore[attr-defined]
             # Replaying from the end restarts; otherwise toggle.
             if not self._playing and self._index >= last:

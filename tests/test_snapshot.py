@@ -210,7 +210,7 @@ class TestSchemaVersion:
     def test_schema_version(self, shooting_env: WargameEnv) -> None:
         shooting_env.reset(seed=42)
         snap = shooting_env.to_snapshot()
-        assert snap.schema_version == "2.1"
+        assert snap.schema_version == "2.2"
 
 
 class TestEncoder:
@@ -347,7 +347,7 @@ class TestTerrainFootprints:
         env.reset(seed=1)
         snap = env.to_snapshot()
 
-        assert snap.schema_version == "2.1"
+        assert snap.schema_version == "2.2"
         assert snap.terrain_footprints is not None
         assert len(snap.terrain_footprints) == len(env.terrain.footprints)
         for recorded, footprint in zip(snap.terrain_footprints, env.terrain.footprints):

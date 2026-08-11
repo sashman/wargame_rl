@@ -333,7 +333,7 @@ class TestRequirementSpotChecks:
         env.reset(seed=1)
         env.action_space.seed(1)
         snap = env.to_snapshot()
-        assert snap.schema_version == "2.1"
+        assert snap.schema_version == "2.2"
         schema = GameStateSnapshot.model_json_schema()
         assert "properties" in schema
 

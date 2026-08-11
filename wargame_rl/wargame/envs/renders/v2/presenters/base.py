@@ -32,6 +32,27 @@ GRID_SIZE = 1024  # Longest board side, in pixels, at the fit scale.
 _LABEL_SIZE = 13  # Zone captions in the top HUD.
 _VALUE_SIZE = 20  # Zone values (VP, held, forces).
 _MARGIN_SIZE = 26  # The VP margin — the hero number, a size up.
+_CHIP_SIZE = 12  # Phase chain + reward summary, the smallest HUD text.
+_SOUTH_MARGIN = 16  # Inset of the south panel's outer columns.
+# The round track holds this width whatever `number_of_battle_rounds` is: one
+# segment per round while a segment stays wider than the gaps between them,
+# a continuous fill past that. Nothing in the panel scales with the config.
+_TRACK_W = 170
+_TRACK_H = 7
+_TRACK_GAP = 3
+_MIN_SEGMENT = 3
+_COMP_BAR_W = 260  # Reward-composition bar: one segment per calculator.
+_COMP_BAR_H = 9
+_MIN_COMP_SEGMENT = 2  # A tiny non-zero term still has to be visible.
+_KEY_MAP_KEY = "Tab"  # Opens the key map; the only key the panel itself names.
+_KEY_ROW_H = 26
+_KEY_SIZE = 15
+_KEY_TITLE_SIZE = 17
+
+
+def _blend(a: RGB, b: RGB) -> RGB:
+    """The midpoint of two colours."""
+    return ((a[0] + b[0]) // 2, (a[1] + b[1]) // 2, (a[2] + b[2]) // 2)
 
 
 class BasePresenter(Renderer):
@@ -41,6 +62,9 @@ class BasePresenter(Renderer):
         self._backend = backend
         self._theme = theme
         self.epoch: int | None = None
+        # Free-text provenance for the context slot (the training run's name, a
+        # config stem, a seed) — set by whoever drives the renderer.
+        self.run_label: str | None = None
         self._debug_los = False
         # Board fit + window layout, set in `setup`.
         self._scale = 1.0
@@ -124,7 +148,9 @@ class BasePresenter(Renderer):
         self._zone_vp(frame, hud, width // 2, label_y, value_y)
         self._zone_forces(frame, hud, 5 * width // 6, label_y, value_y)
 
-        # South: clock/reward row, then the hotkey hints.
+        # South HUD: the same three columns as the top, but for *time*, *reward*
+        # and *context* — clock left, reward centre, run/pause state right, with
+        # the phase chain and the reward's components on the second row.
         south_h = self._theme.south_panel_rows * north
         panel_y = self._window_h - south_h
         self._backend.fill_rect(frame, (0, panel_y, width, south_h), pal.panel_bg)
@@ -133,46 +159,307 @@ class BasePresenter(Renderer):
         )
 
         row1_y = panel_y + north // 2
-        reward = f"{hud.reward:.3f}" if hud.reward is not None else "—"
-        turn = f"Round: {hud.round} / {hud.n_rounds}  |  {hud.phase}"
-        steps = f"Step: {hud.step}"
-        reward_text = f"Reward: {reward}"
-        fields: tuple[tuple[str, int], ...]
-        if hud.epoch is not None:
-            fields = (
-                (f"Epoch: {hud.epoch}", width // 8),
-                (turn, 3 * width // 8),
-                (steps, 5 * width // 8),
-                (reward_text, 7 * width // 8),
-            )
-        else:
-            # Inset from width/6 so the wider monospace text clears the edges.
-            fields = (
-                (turn, width // 5),
-                (steps, width // 2),
-                (reward_text, 4 * width // 5),
-            )
-        for text, cx in fields:
-            self._text(frame, text, (cx, row1_y), _VALUE_SIZE, pal.text)
-
         row2_y = panel_y + north + north // 2
-        hotkeys = (
-            "PAUSED - Space: Resume | Esc: Quit | L: LOS debug"
-            if self._is_paused()
-            else "Space: Pause | Esc: Quit | L: LOS debug"
+        self._south_clock(frame, hud, _SOUTH_MARGIN, row1_y)
+        self._south_phases(frame, hud, _SOUTH_MARGIN, row2_y)
+        self._south_reward(frame, hud, width // 2, row1_y, row2_y)
+        self._south_context(frame, width - _SOUTH_MARGIN, row1_y)
+        hint = self._hotkey_hint()
+        if hint:
+            self._text(
+                frame,
+                hint,
+                (width - _SOUTH_MARGIN, row2_y),
+                _CHIP_SIZE,
+                self._dim(),
+                "midright",
+            )
+
+    # -- key map overlay -----------------------------------------------------
+
+    def _draw_key_map(self, frame: Canvas) -> None:
+        """The full key list, centred over the frame.
+
+        Lives here rather than in the panel because the list grows with every
+        key added, while the panel's width does not — the same reason the reward
+        ledger is summarised down there instead of enumerated.
+        """
+        keys = self.key_map()
+        if not keys:
+            return
+        pal = self._theme.palette
+        key_col = max(
+            self._tsize(f"[{key}]", _KEY_SIZE, bold=True)[0] for key, _ in keys
         )
-        self._text(frame, hotkeys, (width // 2, row2_y), _LABEL_SIZE + 3, self._dim())
+        action_col = max(self._tsize(action, _KEY_SIZE)[0] for _, action in keys)
+        pad = 22
+        gap = 16
+        width = key_col + gap + action_col + 2 * pad
+        height = (len(keys) + 2) * _KEY_ROW_H + pad
+        x = (self._window_w - width) // 2
+        y = (self._window_h - height) // 2
+
+        # Dim the frame behind it so the map reads as a layer, not as more HUD.
+        self._backend.draw_polygon(
+            frame,
+            [
+                (0, 0),
+                (self._window_w, 0),
+                (self._window_w, self._window_h),
+                (0, self._window_h),
+            ],
+            (*pal.window_bg, 190),
+            None,
+            0,
+        )
+        self._backend.fill_rect(frame, (x - 1, y - 1, width + 2, height + 2), pal.text)
+        self._backend.fill_rect(frame, (x, y, width, height), pal.panel_bg)
+
+        row_y = y + pad + _KEY_ROW_H // 2
+        self._text(
+            frame, "KEYS", (x + pad, row_y), _KEY_TITLE_SIZE, pal.text, "midleft", True
+        )
+        self._text(
+            frame,
+            f"[{_KEY_MAP_KEY}] closes",
+            (x + width - pad, row_y),
+            _CHIP_SIZE,
+            self._dim(),
+            "midright",
+        )
+        row_y += _KEY_ROW_H
+        self._backend.draw_line(
+            frame, (x + pad, row_y), (x + width - pad, row_y), pal.panel_line, 1
+        )
+        for key, action in keys:
+            row_y += _KEY_ROW_H
+            self._text(
+                frame,
+                f"[{key}]",
+                (x + pad, row_y),
+                _KEY_SIZE,
+                pal.hud_player,
+                "midleft",
+                True,
+            )
+            self._text(
+                frame,
+                action,
+                (x + pad + key_col + gap, row_y),
+                _KEY_SIZE,
+                pal.text,
+                "midleft",
+            )
+
+    # -- south HUD zones -----------------------------------------------------
+
+    def _draw_clock_icon(self, frame: Canvas, cx: int, cy: int, color: RGB) -> None:
+        """A clock face drawn from primitives.
+
+        Not a glyph: the resolved monospace face is whatever the system has, and
+        a missing character would render as a box in the one place the HUD says
+        what time it is.
+        """
+        radius = 7
+        self._backend.draw_disc(frame, (cx, cy), radius, None, color, 1)
+        self._backend.draw_line(frame, (cx, cy), (cx, cy - radius + 2), color, 1)
+        self._backend.draw_line(frame, (cx, cy), (cx + radius - 3, cy + 2), color, 1)
+
+    def _south_clock(self, frame: Canvas, hud: HudData, x: int, y: int) -> None:
+        """Clock icon, `R 3/5`, and a track of the rounds played so far.
+
+        The round is right-aligned in a field as wide as the round *count*, so
+        reaching round 10 of 20 neither widens the readout nor shoves the track
+        along — the same fixed-slot rule the top HUD's numbers follow.
+        """
+        pal = self._theme.palette
+        self._draw_clock_icon(frame, x + 7, y, pal.text)
+        text_x = x + 22
+        total = f"/{hud.n_rounds}"
+        prefix_w = self._tsize("R ", _VALUE_SIZE, bold=True)[0]
+        count_w = self._tsize("0" * len(str(hud.n_rounds)), _VALUE_SIZE, bold=True)[0]
+        self._text(frame, "R", (text_x, y), _VALUE_SIZE, pal.text, "midleft", True)
+        self._text(
+            frame,
+            str(hud.round),
+            (text_x + prefix_w + count_w, y),
+            _VALUE_SIZE,
+            pal.text,
+            "midright",
+            True,
+        )
+        self._text(
+            frame,
+            total,
+            (text_x + prefix_w + count_w, y),
+            _VALUE_SIZE,
+            pal.text,
+            "midleft",
+            True,
+        )
+        left = (
+            text_x
+            + prefix_w
+            + count_w
+            + self._tsize(total, _VALUE_SIZE, bold=True)[0]
+            + 12
+        )
+        self._draw_round_track(frame, left, y, hud.round, hud.n_rounds)
+
+    def _draw_round_track(
+        self, frame: Canvas, x: int, y: int, played: int, total: int
+    ) -> None:
+        """Rounds elapsed, in a fixed width however many rounds the config has.
+
+        Segments while they stay wider than the gaps between them; beyond that a
+        continuous fill, which says the same thing without turning into a blur.
+        """
+        pal = self._theme.palette
+        top = int(y - _TRACK_H / 2)
+        rounds = max(1, total)
+        segment_w = (_TRACK_W - _TRACK_GAP * (rounds - 1)) / rounds
+        if segment_w < _MIN_SEGMENT:
+            self._backend.fill_rect(frame, (x, top, _TRACK_W, _TRACK_H), pal.panel_line)
+            filled = int(_TRACK_W * min(1.0, played / rounds))
+            if filled > 0:
+                self._backend.fill_rect(frame, (x, top, filled, _TRACK_H), pal.text)
+            return
+        for index in range(rounds):
+            color = pal.text if index < played else pal.panel_line
+            left = x + int(index * (segment_w + _TRACK_GAP))
+            self._backend.fill_rect(
+                frame, (left, top, max(1, int(segment_w)), _TRACK_H), color
+            )
+
+    def _south_reward(
+        self, frame: Canvas, hud: HudData, cx: int, y: int, bar_y: int
+    ) -> None:
+        """The step's reward as the hero, over its composition and a paid/charged count."""
+        pal = self._theme.palette
+        step_text = f"{hud.reward:+.3f}" if hud.reward is not None else "—"
+        color = (
+            pal.text
+            if not hud.reward
+            else pal.hud_player
+            if hud.reward > 0
+            else pal.hud_opponent
+        )
+        total_text = (
+            f"total {hud.episode_reward:+.1f}" if hud.episode_reward is not None else ""
+        )
+        # Fixed fields so a sign or a digit never shifts the readout.
+        step_field = self._tsize("-00.000", _MARGIN_SIZE, bold=True)[0]
+        total_field = self._tsize("total -000.0", _CHIP_SIZE)[0]
+        gap = 14
+        left = cx - (step_field + gap + total_field) // 2
+        self._text(
+            frame,
+            step_text,
+            (left + step_field, y),
+            _MARGIN_SIZE,
+            color,
+            "midright",
+            True,
+        )
+        if total_text:
+            self._text(
+                frame,
+                total_text,
+                (left + step_field + gap, y),
+                _CHIP_SIZE,
+                self._dim(),
+                "midleft",
+            )
+        self._draw_composition_bar(frame, hud, cx, bar_y)
+        self._draw_income_summary(frame, hud, cx, bar_y)
+
+    def _draw_composition_bar(
+        self, frame: Canvas, hud: HudData, cx: int, y: int
+    ) -> None:
+        """One segment per reward component: width is magnitude, colour is sign.
+
+        This is what makes the panel independent of the reward config — eleven
+        calculators is eleven thinner segments, not a row that overflows.
+        """
+        pal = self._theme.palette
+        parts = [(name, value) for name, value in hud.reward_breakdown if value]
+        left = cx - _COMP_BAR_W // 2
+        top = int(y - _COMP_BAR_H / 2) - 9
+        self._backend.fill_rect(
+            frame, (left, top, _COMP_BAR_W, _COMP_BAR_H), pal.panel_line
+        )
+        if not parts:
+            return
+        magnitude = sum(abs(value) for _, value in parts)
+        gap = 2
+        available = _COMP_BAR_W - gap * (len(parts) - 1)
+        x = left
+        for _, value in parts:
+            # A floor, so a small non-zero term reads as present rather than absent.
+            seg_w = max(_MIN_COMP_SEGMENT, int(available * abs(value) / magnitude))
+            color = pal.hud_player if value > 0 else pal.hud_opponent
+            self._backend.fill_rect(frame, (x, top, seg_w, _COMP_BAR_H), color)
+            x += seg_w + gap
+
+    def _draw_income_summary(
+        self, frame: Canvas, hud: HudData, cx: int, y: int
+    ) -> None:
+        """`+0.43 from 4   -0.05 from 2` — the ledger's two totals, never more."""
+        pal = self._theme.palette
+        paid = [value for _, value in hud.reward_breakdown if value > 0]
+        charged = [value for _, value in hud.reward_breakdown if value < 0]
+        texts = [
+            (f"{sum(values):+.2f} from {len(values)}", color)
+            for values, color in ((paid, pal.hud_player), (charged, pal.hud_opponent))
+            if values
+        ]
+        if not texts:
+            return
+        gap = self._tsize("   ", _CHIP_SIZE)[0]
+        total_w = sum(self._tsize(t, _CHIP_SIZE)[0] for t, _ in texts)
+        total_w += gap * (len(texts) - 1)
+        x = cx - total_w // 2
+        for text, color in texts:
+            self._text(frame, text, (x, y + 8), _CHIP_SIZE, color, "midleft")
+            x += self._tsize(text, _CHIP_SIZE)[0] + gap
+
+    def _south_context(self, frame: Canvas, x: int, y: int) -> None:
+        """Who/what produced this frame: the run label and epoch, or PAUSED.
+
+        Interactively the pause state is what matters; in a recording nobody can
+        press a key, so the slot stamps the video with its own provenance.
+        """
+        pal = self._theme.palette
+        if self._is_paused():
+            self._text(frame, "PAUSED", (x, y), _VALUE_SIZE, pal.text, "midright", True)
+            return
+        parts = [part for part in (self.run_label, self._epoch_text()) if part]
+        if not parts:
+            return
+        self._text(frame, "  ".join(parts), (x, y), _CHIP_SIZE, self._dim(), "midright")
+
+    def _epoch_text(self) -> str:
+        return f"epoch {self.epoch}" if self.epoch is not None else ""
+
+    def _south_phases(self, frame: Canvas, hud: HudData, x: int, y: int) -> None:
+        """The round's phase chain; skipped phases are faint, the current one lit."""
+        pal = self._theme.palette
+        dim = self._dim()
+        faint = _blend(dim, pal.panel_bg)
+        gap = self._tsize(" ", _CHIP_SIZE)[0] * 2
+        for chip in hud.phase_chips:
+            color = pal.text if chip.is_current else faint if chip.is_skipped else dim
+            self._text(
+                frame, chip.label, (x, y), _CHIP_SIZE, color, "midleft", chip.is_current
+            )
+            x += self._tsize(chip.label, _CHIP_SIZE, bold=True)[0] + gap
 
     # -- top HUD zones -------------------------------------------------------
 
     def _dim(self) -> RGB:
         """A caption colour halfway between the panel text and its background."""
         pal = self._theme.palette
-        return (
-            (pal.text[0] + pal.panel_bg[0]) // 2,
-            (pal.text[1] + pal.panel_bg[1]) // 2,
-            (pal.text[2] + pal.panel_bg[2]) // 2,
-        )
+        return _blend(pal.text, pal.panel_bg)
 
     def _text(
         self,
@@ -365,6 +652,18 @@ class BasePresenter(Renderer):
 
     def _is_paused(self) -> bool:
         return False
+
+    def key_map(self) -> tuple[tuple[str, str], ...]:
+        """This presenter's keys as `(key, what it does)`, for the Tab overlay.
+
+        Empty for a presenter nobody can type at, which is also what hides the
+        hint from a recording.
+        """
+        return ()
+
+    def _hotkey_hint(self) -> str | None:
+        """The one hint the panel carries; the rest live behind it."""
+        return f"[{_KEY_MAP_KEY}] keys" if self.key_map() else None
 
     def _present(self, frame: Canvas) -> None:
         raise NotImplementedError
