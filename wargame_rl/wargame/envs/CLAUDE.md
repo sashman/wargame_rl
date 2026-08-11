@@ -58,6 +58,7 @@ Applies to everything under `wargame_rl/wargame/envs/`.
 - `"human"` (Pygame) / `"rgb_array"` (video); renderer injected via constructor
 - Player: blue/green circles · Opponents: red/warm triangles
 - Use a single FPS cap for human rendering; avoid phase-conditional throttle — it breaks when default stepping changes (e.g. skip_phases)
+- **Two renderers**: legacy `renders/human.py` (`HumanRender`, the default) and `renders/v2/` — a `Scene`→`Backend`→`Presenter` split (`build_scene` is domain-free, `control.py` isolates the ownership/LOS domain reads, `PygameBackend` draws, interactive/recording presenters). Pick via `renders.v2.build_renderer(name, mode, backend=...)` (`name="legacy"|"v2"`); `simulate.py` exposes `--renderer/--mode/--backend`, the record callback takes `renderer_name`/`backend`. Both default to `legacy`, so v2 is opt-in and A/B-able. Recording depends on the `FrameSource` protocol (in `renders/renderer.py`), which both satisfy — do **not** add abstract methods to the `Renderer` ABC. Legacy `human.py` is frozen as the A/B baseline (`tests/test_terrain_render.py` depends on it)
 
 ## Adding Features
 

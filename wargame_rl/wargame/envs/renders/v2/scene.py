@@ -1,0 +1,319 @@
+"""The Scene: a backend- and source-independent description of one frame.
+
+Primitives are plain dataclasses holding board-unit *positions* and pixel-space
+*sizes* (stroke widths, radii-in-fallback, font sizes). A backend rasterises
+them; a `Camera` maps positions to pixels. `build_scene` reads only the
+read-only `BattleView` surface, so a snapshot-driven builder (Phase 3) can emit
+the identical `Scene` type without an env.
+
+Sizes are pixels because the legacy renderer's legibility floors (`max(3, ...)`,
+the third-of-a-cell dead token) are pixel decisions; positions and base radii
+stay in board units so the `Camera` owns the board→pixel scale. `build_scene`
+therefore takes the current `scale` to resolve those pixel sizes.
+"""
+
+from __future__ import annotations
+
+import enum
+import math
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME, RGB, RGBA, Theme
+
+if TYPE_CHECKING:
+    from wargame_rl.wargame.envs.domain.battle_view import BattleView
+    from wargame_rl.wargame.envs.renders.v2.control import LosResult
+
+
+class Control(enum.Enum):
+    """Which side holds an objective. Values match snapshot `objective_control`."""
+
+    NEUTRAL = "none"
+    PLAYER = "player"
+    OPPONENT = "opponent"
+
+
+# --- primitives -------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Disc:
+    """Filled/outlined circle. `radius` is in board units; the rest are pixels."""
+
+    center: tuple[float, float]
+    radius: float
+    fill: RGBA | None
+    outline: RGB | None
+    outline_w: int
+
+
+@dataclass(frozen=True)
+class Poly:
+    """Filled/outlined polygon in board-unit vertices."""
+
+    points: tuple[tuple[float, float], ...]
+    fill: RGBA | None
+    outline: RGB | None
+    outline_w: int
+
+
+@dataclass(frozen=True)
+class Seg:
+    """A single line segment, board-unit endpoints, pixel width."""
+
+    a: tuple[float, float]
+    b: tuple[float, float]
+    color: RGB
+    width: int
+
+
+@dataclass(frozen=True)
+class Label:
+    """Centred text at a board-unit anchor, pixel font size."""
+
+    text: str
+    center: tuple[float, float]
+    size: int
+    color: RGB
+
+
+Primitive = Disc | Poly | Seg | Label
+
+
+@dataclass(frozen=True)
+class HudData:
+    """Scalar state the presenter draws into the panels."""
+
+    round: int
+    n_rounds: int
+    phase: str
+    step: int
+    reward: float | None
+    epoch: int | None
+    player_vp: int
+    player_vp_delta: int
+    opponent_vp: int
+    opponent_vp_delta: int
+
+
+@dataclass(frozen=True)
+class Scene:
+    """One frame: board size, background, ordered primitives, HUD data."""
+
+    board_width: int
+    board_height: int
+    board_bg: RGB
+    primitives: tuple[Primitive, ...]
+    hud: HudData
+
+
+# --- builders ---------------------------------------------------------------
+
+
+def _faded(color: RGB) -> RGB:
+    """Legacy movement-arrow fade: halve the distance from each channel to 255."""
+    return (
+        color[0] + (255 - color[0]) // 2,
+        color[1] + (255 - color[1]) // 2,
+        color[2] + (255 - color[2]) // 2,
+    )
+
+
+def _base_radius(model: object, fallback: float = 1.0 / 3.0) -> float:
+    """Board-unit radius: the real base when present, else a third-cell token."""
+    radius = float(getattr(model, "base_radius", 0.0))
+    return radius if radius > 0.0 else fallback
+
+
+def _dead_marker(cx: float, cy: float, color: RGB) -> list[Seg]:
+    """The two-stroke X drawn over a dead model (half-length 0.25 board units)."""
+    xr = 0.25
+    return [
+        Seg((cx - xr, cy - xr), (cx + xr, cy + xr), color, 2),
+        Seg((cx + xr, cy - xr), (cx - xr, cy + xr), color, 2),
+    ]
+
+
+def _arrow(
+    prims: list[Primitive],
+    models: Sequence[object],
+    color_of: Callable[[int], RGB],
+    scale: float,
+) -> None:
+    """Emit a faded shaft + filled head for each model that moved."""
+    for model in models:
+        if not getattr(model, "is_alive", True):
+            continue
+        prev = getattr(model, "previous_location", None)
+        if prev is None:
+            continue
+        curr = model.location  # type: ignore[attr-defined]
+        px, py = float(prev[0]), float(prev[1])
+        cx, cy = float(curr[0]), float(curr[1])
+        if px == cx and py == cy:
+            continue
+        faded = _faded(color_of(model.group_id))  # type: ignore[attr-defined]
+        prims.append(Seg((px, py), (cx, cy), faded, max(3, int(scale / 4))))
+
+        dx, dy = cx - px, cy - py
+        length = math.hypot(dx, dy)
+        if length < 1e-9:
+            continue
+        ux, uy = dx / length, dy / length
+        head_len = min(0.45, length * 0.4)
+        head_w = head_len * 0.5
+        left = (cx - ux * head_len - uy * head_w, cy - uy * head_len + ux * head_w)
+        right = (cx - ux * head_len + uy * head_w, cy - uy * head_len - ux * head_w)
+        prims.append(Poly(((cx, cy), left, right), (*faded, 255), None, 0))
+
+
+def _players(prims: list[Primitive], models: Sequence[object], theme: Theme) -> None:
+    pal = theme.palette
+    for model in models:
+        cx, cy = float(model.location[0]), float(model.location[1])  # type: ignore[attr-defined]
+        radius = _base_radius(model)
+        if not getattr(model, "is_alive", True):
+            prims.append(Disc((cx, cy), radius, (*pal.dead_fill, 255), None, 0))
+            prims.extend(_dead_marker(cx, cy, pal.dead_mark))
+            continue
+        color = theme.player_color(model.group_id)  # type: ignore[attr-defined]
+        prims.append(Disc((cx, cy), radius, (*color, 255), pal.model_rim, 1))
+
+
+def _opponents(prims: list[Primitive], models: Sequence[object], theme: Theme) -> None:
+    pal = theme.palette
+    for model in models:
+        cx, cy = float(model.location[0]), float(model.location[1])  # type: ignore[attr-defined]
+        r = _base_radius(model)
+        triangle = ((cx - r, cy - r * 0.6), (cx + r, cy - r * 0.6), (cx, cy + r * 0.8))
+        if not getattr(model, "is_alive", True):
+            prims.append(Poly(triangle, (*pal.dead_fill, 255), None, 0))
+            prims.extend(_dead_marker(cx, cy, pal.dead_mark))
+            continue
+        color = theme.opponent_color(model.group_id)  # type: ignore[attr-defined]
+        prims.append(Poly(triangle, (*color, 255), None, 0))
+
+
+def build_scene(
+    view: "BattleView",
+    control: Sequence[Control],
+    *,
+    scale: float,
+    theme: Theme = DEFAULT_THEME,
+    debug_los: "LosResult | None" = None,
+    show_grid: bool = True,
+) -> Scene:
+    """Assemble the ordered primitives for one live frame from a `BattleView`."""
+    pal = theme.palette
+    prims: list[Primitive] = []
+    board_w = view.config.board_width
+    board_h = view.config.board_height
+
+    # Deployment zones (drawn first, under everything).
+    for zone, color, label in (
+        (view.deployment_zone, pal.deployment_zone, "Deployment Zone"),
+        (view.opponent_deployment_zone, pal.opponent_zone, "Opponent Zone"),
+    ):
+        x0, y0, x1, y1 = (
+            float(zone[0]),
+            float(zone[1]),
+            float(zone[2]),
+            float(zone[3]),
+        )
+        prims.append(
+            Poly(((x0, y0), (x1, y0), (x1, y1), (x0, y1)), (*color, 255), None, 0)
+        )
+        cx = max(x0 + (x1 - x0) / 2, x0)
+        cy = max(y0 + (y1 - y0) / 2, y0)
+        prims.append(Label(label, (cx, cy), 48, pal.zone_label))
+
+    # Terrain: real outline + translucent fill, "OBJECTIVE" when it is one.
+    objective_outlines = {
+        obj.area.vertices.tobytes() for obj in view.objectives if obj.area is not None
+    }
+    terrain_font = max(16, int(scale * 0.8))
+    for fp in view.terrain.footprints:
+        points = tuple((float(x), float(y)) for x, y in fp.polygon.vertices)
+        prims.append(Poly(points, pal.terrain_fill, pal.terrain_outline, 2))
+        is_objective = fp.polygon.vertices.tobytes() in objective_outlines
+        centroid = fp.polygon.centroid
+        prims.append(
+            Label(
+                "OBJECTIVE" if is_objective else "Ruin",
+                (float(centroid[0]), float(centroid[1])),
+                terrain_font,
+                pal.terrain_label,
+            )
+        )
+
+    # Objectives with ownership fill / wash.
+    base_width = max(2, int(round(scale / 8)))
+    for i, objective in enumerate(view.objectives):
+        ctrl = control[i] if i < len(control) else Control.NEUTRAL
+        fill_rgb = (
+            pal.player_control
+            if ctrl is Control.PLAYER
+            else pal.opponent_control
+            if ctrl is Control.OPPONENT
+            else None
+        )
+        if objective.area is not None:
+            wash = fill_rgb if fill_rgb is not None else pal.objective_rim
+            points = tuple((float(x), float(y)) for x, y in objective.area.vertices)
+            prims.append(
+                Poly(
+                    points,
+                    (*wash, pal.area_wash_alpha),
+                    pal.objective_rim,
+                    max(3, int(scale / 6)),
+                )
+            )
+            continue
+        cx, cy = float(objective.location[0]), float(objective.location[1])
+        radius_board = float(objective.radius_size)
+        radius_px = max(1, int(round(radius_board * scale)))
+        rim_width = min(base_width, max(1, radius_px // 2))
+        fill_rgba = (*fill_rgb, 255) if fill_rgb is not None else None
+        prims.append(
+            Disc((cx, cy), radius_board, fill_rgba, pal.objective_rim, rim_width)
+        )
+
+    # Movement arrows, then models (opponents under players, matching legacy).
+    _arrow(prims, view.player_models, theme.player_color, scale)
+    if view.opponent_models:
+        _arrow(prims, view.opponent_models, theme.opponent_color, scale)
+        _opponents(prims, view.opponent_models, theme)
+    _players(prims, view.player_models, theme)
+
+    if debug_los is not None:
+        prims.append(
+            Seg(
+                debug_los.a,
+                debug_los.b,
+                pal.los_clear if debug_los.clear else pal.los_blocked,
+                max(1, int(scale * 0.08)),
+            )
+        )
+
+    if show_grid:
+        for y in range(board_h + 1):
+            prims.append(Seg((0.0, float(y)), (float(board_w), float(y)), pal.grid, 1))
+        for x in range(board_w + 1):
+            prims.append(Seg((float(x), 0.0), (float(x), float(board_h)), pal.grid, 1))
+
+    clock = view.game_clock_state
+    hud = HudData(
+        round=clock.battle_round or 0,
+        n_rounds=view.n_rounds,
+        phase=clock.phase.value.title() if clock.phase else "—",
+        step=view.current_turn,
+        reward=view.last_reward,
+        epoch=None,
+        player_vp=view.player_vp,
+        player_vp_delta=view.player_vp_delta,
+        opponent_vp=view.opponent_vp,
+        opponent_vp_delta=view.opponent_vp_delta,
+    )
+    return Scene(board_w, board_h, pal.board_bg, tuple(prims), hud)

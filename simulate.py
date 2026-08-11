@@ -14,7 +14,8 @@ from pathlib import Path
 import typer
 from pydantic_yaml import parse_yaml_raw_as
 
-from wargame_rl.wargame.envs.renders.human import HumanRender, QuitRequested
+from wargame_rl.wargame.envs.renders.human import QuitRequested
+from wargame_rl.wargame.envs.renders.v2 import build_renderer
 from wargame_rl.wargame.envs.state import EventLogExporter, JsonMatchCodec
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.common.argmax_agent import ArgmaxAgent
@@ -46,6 +47,8 @@ def simulate(
     render: bool = True,
     env_config_path: str | None = None,
     record_events: bool = False,
+    renderer_name: str = "legacy",
+    backend: str = "pygame",
 ) -> None:
     """Run simulation with trained agent.
 
@@ -54,6 +57,8 @@ def simulate(
         num_episodes: Number of episodes to run
         render: Whether to render the environment
         record_events: Whether to record the last episode as a JSON event log
+        renderer_name: ``legacy`` (HumanRender) or ``v2`` (the new renderer)
+        backend: v2 drawing backend (``pygame``)
     """
 
     if not os.path.exists(checkpoint_path):
@@ -62,7 +67,11 @@ def simulate(
     logging.info(f"Loading model from checkpoint: {checkpoint_path}")
 
     env_config = get_env_config(env_config_path, render)
-    renderer = HumanRender()
+    renderer = (
+        build_renderer(renderer_name, "interactive", backend=backend)
+        if render
+        else None
+    )
 
     event_exporter: EventLogExporter | None = None
     if record_events:
@@ -208,6 +217,12 @@ def main(
         False,
         help="Record the last episode as a JSON event log (written to recordings/)",
     ),
+    renderer: str = typer.Option(
+        "legacy", help="Renderer to use: 'legacy' (HumanRender) or 'v2'"
+    ),
+    backend: str = typer.Option(
+        "pygame", help="v2 drawing backend (only 'pygame' in Phase 1)"
+    ),
 ) -> None:
     # Handle dynamic defaults inside the function
     if checkpoint_path is None:
@@ -222,6 +237,8 @@ def main(
         render,
         env_config_path,
         record_events=record_events,
+        renderer_name=renderer,
+        backend=backend,
     )
 
 
