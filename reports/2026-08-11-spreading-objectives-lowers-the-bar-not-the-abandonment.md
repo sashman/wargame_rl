@@ -245,3 +245,87 @@ holds. The error here was the *second* one — quoting a rate that bundled an
 unavoidable initialisation into a churn measurement, and then designing against
 it. **Bucket a rate by whether the event could have been otherwise before
 building on it.**
+
+---
+
+## Second correction (2026-08-11, after a seven-pass audit): the abandonment is not a local optimum
+
+Everything below retracts claims made earlier the same day. Both were checked by
+independent adversarial review and reproduced here.
+
+### The agent is not leaving reward on the table — it is declining to lose a squad
+
+A probe reported that placing a squad on the abandoned objective gained "+3.26
+episode reward against a ~0.27 travel cost", concluding the policy sat in a local
+optimum paying 12:1. **Both halves are wrong.**
+
+**PPO trains on the per-model reward vector, not the scalar the env returns.**
+The scalar is a *mean over alive models*; each model's gradient comes from its
+own row of `phase_manager.last_per_model_reward`. Correctly paired, n=39:
+
+| | control | teleport | delta | se | wins |
+|---|---|---|---|---|---|
+| episode reward (scalar) | 20.94 | 24.65 | +3.71 | 1.30 | 30/39 |
+| discounted (γ=0.9) | 4.16 | 5.45 | +1.28 | 0.25 | 31/39 |
+| vp_margin | 49.49 | 60.13 | +10.64 | 7.59 | 28/39 |
+| **moved squad's own income** | **83.03** | **53.62** | **−29.41** | 8.27 | **11/39** |
+| **moved squad survivors (of 5)** | **3.03** | **1.33** | **−1.69** | 0.28 | **4/39** |
+
+The deviation is a **team** gain and a **squad** loss, and it is the squad's row
+that produces the squad's gradient. The far peak is a peak for the scalar and a
+trough for the models that have to walk there — a *difference-reward* problem,
+not an exploration failure.
+
+**The 0.27 cost omitted the dominant term.** It priced only the shaping
+differential during the walk. The objective holds 4.91 opponents; the real cost
+is **1.7 of 5 models dead**, and dead models earn nothing for the rest of the
+episode. A benefit priced fully against a cost missing its largest component is
+where "12:1" came from.
+
+### Three measurement defects behind it
+
+1. **The pairing was broken.** The probe appended a control row *before* the
+   `continue` that skips an episode with no abandoned objective and a teleport
+   row *after*, so every pair past the first skip compared control seed *i*
+   against teleport seed *i+k*. The "+21.1 vp_margin" and the "21/29, p ≈ 0.013"
+   were computed on that. Properly paired it is **+10.64 ± 7.59** — 1.4σ, and
+   *not* "more than the entire 9.9 gap to the bar".
+2. **γ is 0.9, not the 0.99 the probe assumed.** The GAE credit window is
+   1/(1−γλ) ≈ **6.9 steps**; the manoeuvre is 6.6–8.7. Every income figure in
+   this report and the last is undiscounted while the agent optimises a
+   discounted return.
+3. **The squad-selection rule never fired.** "The squad with fewest models on any
+   objective" is 0 for every squad at reset, so a strict `<` always returned
+   group 0. The stated rationale was inert in all 39 episodes.
+
+### What this says about the arms it motivated
+
+`25v25_global_cut{3,4}` were killed at epoch ~120. Their premise — that two
+global terms form a *floor* discouraging movement — does not survive: a global
+term is added **identically** to a loitering model and a walking one
+(`phase_manager.py` broadcasts `shared_reward` whole), so removing it subtracts
+the same constant from both and leaves the differential unchanged. The configs
+also removed only `objective_coverage` (10% of gross income) while `vp_gain`
+stayed, and raised `objective_hold` 20–60% at the same time, so no result could
+have been attributed to the cut.
+
+### One contamination worth carrying forward
+
+Every probe in this report classified "on an objective" as *centre inside the
+polygon*. The reward, VP and control rules use `norms_offset <= obj_radii`, and
+an area objective has `radius_size = 0` with the offset measured from the **base
+edge** — so a model up to one base radius *outside* the footprint is paid as a
+holder. That annulus is 11.4% of alive model-steps and a quarter of the
+"off-objective" bucket. Under the reward's own rule the trough is a third
+smaller: loitering **0.360**, transit **0.209**, gap **0.151** (published: 0.488
+/ 0.262 / 0.226).
+
+### And the cover claim needs its evidence swapped
+
+`blocked_share` 0.738 vs 0.735 was measured through an entry point that counts
+**model bases** as occluders with the rules' unit exemption switched off.
+Terrain is only ~23% of that number. Split out, terrain-only blocked share is
+0.176 (agent) vs 0.157 (bar) — not the identity the argument used. **The
+conclusion still holds, on the other half of the evidence**: `threatened` 0.394
+vs 0.679 accounts for the exposure gap almost exactly. Quote that, not
+`blocked_share`.
