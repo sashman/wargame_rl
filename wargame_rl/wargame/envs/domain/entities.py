@@ -79,6 +79,17 @@ class WargameModel:
         """True while the model has wounds remaining."""
         return self.stats["current_wounds"] > 0
 
+    @property
+    def has_lost_wounds(self) -> bool:
+        """True when the model is damaged but not destroyed.
+
+        The allocation rule prefers a model that has *"already lost Wounds"*, so
+        damage concentrates on one model rather than leaving a unit of survivors
+        each one wound from death. Identically False at `max_wounds: 1`, where a
+        model is either whole or gone.
+        """
+        return 0 < self.stats["current_wounds"] < self.stats["max_wounds"]
+
     def take_damage(self, amount: int) -> None:
         """Reduce current wounds by amount, clamped to 0.
 

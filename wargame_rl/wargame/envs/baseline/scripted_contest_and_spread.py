@@ -182,7 +182,18 @@ class ScriptedContestAndSpreadPolicy(BaselinePolicy):
             return WargameEnvAction(actions=actions)
         opponent_locations = np.array([m.location for m in opponents], dtype=float)
 
-        claims: dict[int, int] = {}
+        # **The target-claiming half of this baseline is gone, deliberately.**
+        # It ranked targets by fewest claims so two models would not both fire at
+        # one enemy, because a second shot at an already-dead *model* was thrown
+        # away -- 29.6% of the time, by its own note. Weapons now name a *unit*
+        # and the defender allocates, so a second shot at the same unit is only
+        # wasted once the whole unit is destroyed. Spreading fire across units
+        # would now cost concentration and buy nothing.
+        #
+        # What made this policy distinct survives untouched: its objective
+        # allocation, above. Only the shooting half was rules-dependent, and it
+        # is now the same nearest-unit rule `squad_march_shoot` uses.
+        opponent_groups = np.array([m.group_id for m in opponents], dtype=int)
         for index, model in enumerate(models):
             if not model.is_alive:
                 continue
@@ -194,19 +205,15 @@ class ScriptedContestAndSpreadPolicy(BaselinePolicy):
             )
             if valid.size == 0:
                 continue
-            distances = np.linalg.norm(
-                opponent_locations[valid] - np.asarray(model.location, dtype=float),
-                axis=1,
-            )
-            # Fewest claims first, nearest as the tie-break. When every valid
-            # target is already claimed this still fires -- a second shot is only
-            # wasted if the first one killed, which it does 29.6% of the time.
-            ranked = sorted(
-                range(valid.size),
-                key=lambda k: (claims.get(int(valid[k]), 0), float(distances[k])),
-            )
-            target = int(valid[ranked[0]])
-            claims[target] = claims.get(target, 0) + 1
+            here = np.asarray(model.location, dtype=float)
+            model_distances = np.linalg.norm(opponent_locations - here, axis=1)
+            unit_distances = [
+                model_distances[opponent_groups == unit].min()
+                if (opponent_groups == unit).any()
+                else np.inf
+                for unit in valid
+            ]
+            target = int(valid[int(np.argmin(unit_distances))])
             actions[index] = shooting_slice.start + target
 
         return WargameEnvAction(actions=actions)

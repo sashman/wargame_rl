@@ -79,6 +79,29 @@ def compute_shooting_masks(
     return visible
 
 
+def shooter_range_mask(
+    player_positions: np.ndarray,
+    opponent_positions: np.ndarray,
+    opponent_alive: np.ndarray,
+    player_max_ranges: np.ndarray,
+) -> np.ndarray:
+    """``(n_player, n_opponent)`` where a live target is within weapon range.
+
+    Range alone, with no sight term. The rules check range and visibility
+    independently against the target *unit*, so the two have to stay separable
+    up to the point where they are combined per unit.
+    """
+    n_player, n_opponent = len(player_positions), len(opponent_positions)
+    if n_player == 0 or n_opponent == 0:
+        return np.zeros((n_player, n_opponent), dtype=bool)
+    deltas = player_positions[:, np.newaxis, :] - opponent_positions[np.newaxis, :, :]
+    distances = np.linalg.norm(deltas, axis=2)
+    within: np.ndarray = (distances <= player_max_ranges[:, np.newaxis]) & np.asarray(
+        opponent_alive, dtype=bool
+    )[np.newaxis, :]
+    return within
+
+
 class ThreatCounts(NamedTuple):
     """Who threatens whom, and who has a target, from one line-of-sight scan."""
 
@@ -199,3 +222,120 @@ def max_weapon_ranges(
         if mc.weapons:
             ranges[i] = max(w.range for w in mc.weapons)
     return ranges
+
+
+def group_shooting_masks(
+    model_target_mask: np.ndarray,
+    in_range: np.ndarray,
+    target_groups: np.ndarray,
+    n_groups: int,
+) -> np.ndarray:
+    """Reduce a per-model mask to ``(n_shooters, n_groups)`` unit targetability.
+
+    A weapon names an enemy **unit**, and the rules check its two conditions
+    *independently*:
+
+        "Visibility and range are checked independently and need not be
+        satisfied by the same enemy model -- it is enough that some model in the
+        target unit is visible and some model in it is in range."
+
+    So a unit is a legal target when *any* of its models can be seen **and**
+    *any* of its models is reachable, even when those are different models. That
+    is strictly more permissive than requiring one model to satisfy both, which
+    is what a per-model mask does and what OR-ing a per-model mask over the unit
+    would preserve.
+
+    Args:
+        model_target_mask: ``(n_shooters, n_targets)`` where sight is clear
+            *and* the shooter is eligible to fire at all.
+        in_range: ``(n_shooters, n_targets)`` where the target is within range,
+            regardless of sight.
+        target_groups: ``(n_targets,)`` group id per target model.
+        n_groups: how many units the target army splits into.
+    """
+    n_shooters = model_target_mask.shape[0]
+    mask = np.zeros((n_shooters, n_groups), dtype=bool)
+    if n_shooters == 0 or n_groups == 0 or model_target_mask.shape[1] == 0:
+        return mask
+    for group in range(n_groups):
+        members = target_groups == group
+        if not members.any():
+            continue
+        mask[:, group] = model_target_mask[:, members].any(axis=1) & in_range[
+            :, members
+        ].any(axis=1)
+    return mask
+
+
+def compute_unit_shooting_masks(
+    player_positions: np.ndarray,
+    opponent_positions: np.ndarray,
+    player_alive: np.ndarray,
+    opponent_alive: np.ndarray,
+    player_max_ranges: np.ndarray,
+    los_matrix_fn: LosMatrixFn,
+    target_groups: np.ndarray,
+    n_groups: int,
+    *,
+    player_advanced: np.ndarray | None = None,
+    engagement_range: float = 0.0,
+    base_diameter: float = 0.0,
+) -> np.ndarray:
+    """Which enemy **units** each model may declare against: ``(n_player, n_groups)``.
+
+    The whole shooting-target check in one place, because the rules put its two
+    halves on different models: a unit is targetable when *some* model in it is
+    visible and *some* model in it is in range, and those need not be the same
+    model. Reducing a per-model "visible AND in range" mask over the unit would
+    quietly keep them coupled and reject legal targets.
+
+    Sight is still gated, just at unit granularity: a pair is traced only when
+    the target's unit has *some* model in range of the shooter. That preserves
+    the batching the per-model version exists for -- tracing every pair on the
+    board is the shape that measured a 3x regression -- while no longer letting
+    an out-of-range model hide its unit from a shot the rules allow.
+    """
+    n_player = len(player_positions)
+    mask = np.zeros((n_player, n_groups), dtype=bool)
+    if n_player == 0 or n_groups == 0 or len(opponent_positions) == 0:
+        return mask
+
+    deltas = player_positions[:, np.newaxis, :] - opponent_positions[np.newaxis, :, :]
+    distances = np.linalg.norm(deltas, axis=2)
+    alive_targets = np.asarray(opponent_alive, dtype=bool)
+
+    shooters = np.asarray(player_alive, dtype=bool) & (player_max_ranges > 0)
+    if player_advanced is not None:
+        shooters &= ~np.asarray(player_advanced, dtype=bool)
+    if engagement_range > 0:
+        shooters &= distances.min(axis=1) - base_diameter > engagement_range
+    if not shooters.any():
+        return mask
+
+    in_range = (distances <= player_max_ranges[:, np.newaxis]) & alive_targets
+
+    members = [target_groups == group for group in range(n_groups)]
+    group_in_range = np.zeros((n_player, n_groups), dtype=bool)
+    for group, member in enumerate(members):
+        if member.any():
+            group_in_range[:, group] = in_range[:, member].any(axis=1)
+
+    # Trace only pairs whose *unit* is reachable -- but every model of such a
+    # unit, since the visible model need not be the reachable one.
+    reachable_member = np.zeros_like(in_range)
+    for group, member in enumerate(members):
+        if member.any():
+            reachable_member[:, member] = group_in_range[:, group][:, np.newaxis]
+    candidates = (
+        shooters[:, np.newaxis] & alive_targets[np.newaxis, :] & reachable_member
+    )
+    if not candidates.any():
+        return mask
+
+    visible = candidates & los_matrix_fn(
+        player_positions, opponent_positions, candidates
+    )
+    for group, member in enumerate(members):
+        if member.any():
+            mask[:, group] = visible[:, member].any(axis=1) & group_in_range[:, group]
+    return mask

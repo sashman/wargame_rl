@@ -425,8 +425,10 @@ def describe_action(
         and shooting_slice_end is not None
         and shooting_slice_start <= action < shooting_slice_end
     ):
-        target_idx = action - shooting_slice_start
-        return f"Shoot at opponent {target_idx}"
+        # The index names an enemy *unit*, not a model -- a weapon targets a
+        # unit and the defender allocates which of its models takes the hit.
+        unit_idx = action - shooting_slice_start
+        return f"Shoot at enemy unit {unit_idx}"
     move_idx = action - 1
     angle_idx = move_idx // n_speed_bins
     speed_idx = move_idx % n_speed_bins

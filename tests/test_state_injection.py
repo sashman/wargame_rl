@@ -63,16 +63,21 @@ def env() -> WargameEnv:
                 ],
             ),
         ],
+        # Two opponent UNITS, stated explicitly. Shooting names a unit, and
+        # `ModelConfig.group_id` defaults to 0 -- so without these the pair is
+        # one unit and the shooting slice is a single action wide.
         opponent_models=[
             ModelConfig(
                 x=20,
                 y=5,
+                group_id=0,
                 max_wounds=3,
                 weapons=[WeaponProfile(range=50)],
             ),
             ModelConfig(
                 x=21,
                 y=5,
+                group_id=1,
                 max_wounds=3,
                 weapons=[WeaponProfile(range=50)],
             ),

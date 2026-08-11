@@ -57,9 +57,15 @@ def shooting_env() -> WargameEnv:
                 ],
             ),
         ],
+        # Two opponent UNITS: shooting names a unit, and `group_id` defaults
+        # to 0, so without these the pair collapses into one target.
         opponent_models=[
-            ModelConfig(x=20, y=5, max_wounds=3, weapons=[WeaponProfile(range=50)]),
-            ModelConfig(x=21, y=5, max_wounds=3, weapons=[WeaponProfile(range=50)]),
+            ModelConfig(
+                x=20, y=5, group_id=0, max_wounds=3, weapons=[WeaponProfile(range=50)]
+            ),
+            ModelConfig(
+                x=21, y=5, group_id=1, max_wounds=3, weapons=[WeaponProfile(range=50)]
+            ),
         ],
         opponent_policy=OpponentPolicyConfig(type="random"),
         turn_order=TurnOrder.player,
@@ -149,7 +155,7 @@ class TestDescribeActionPublic:
 
     def test_shoot(self) -> None:
         result = describe_action(25, 8, 3, 25, 27)
-        assert result == "Shoot at opponent 0"
+        assert result == "Shoot at enemy unit 0"
 
     def test_compass_directions_8_angles(self) -> None:
         directions = []

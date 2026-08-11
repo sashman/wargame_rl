@@ -39,6 +39,14 @@ class EncodedState:
     n_wargame_models: int
     n_opponents: int
     player_alive: torch.Tensor
+    opponent_alive: torch.Tensor
+    """``(batch, n_opponents)`` live opponent rows.
+
+    Needed because the shooting head pools opponent tokens into *unit*
+    tokens: a dead model's latent must not leak into its unit's pooled
+    representation, which would defeat the key-padding mask that keeps dead
+    rows from influencing live ones.
+    """
     mask_tensor: torch.Tensor | None
 
 
@@ -402,14 +410,20 @@ class TransformerNetwork(RL_Network):
         # Key-padding mask: prefix + alive players + alive opponents + terrain
         # may be attended to; dead rows are dropped as keys (True = attend).
         player_alive = self._alive_from_features(player_tensor, n_opponents)
+        opponent_alive = torch.ones(
+            batch_size, n_opponents, dtype=torch.bool, device=tokens.device
+        )
         key_mask = torch.ones(
             batch_size, seq_len, dtype=torch.bool, device=tokens.device
         )
         key_mask[:, n_prefix : n_prefix + n_wargame_models] = player_alive
         if opp_embedding is not None and opp_tensor is not None and n_opponents > 0:
-            opp_alive = self._alive_from_features(opp_tensor, n_opponents)
+            # One derivation, two consumers: the key-padding mask below and the
+            # shooting head's unit pooling, which must exclude the dead for the
+            # same reason.
+            opponent_alive = self._alive_from_features(opp_tensor, n_opponents)
             opp_start = n_prefix + n_wargame_models
-            key_mask[:, opp_start : opp_start + n_opponents] = opp_alive
+            key_mask[:, opp_start : opp_start + n_opponents] = opponent_alive
         # Terrain tokens are always attendable (no alive/dead concept).
         attn_mask = key_mask[:, None, None, :]
 
@@ -424,17 +438,62 @@ class TransformerNetwork(RL_Network):
             n_wargame_models=n_wargame_models,
             n_opponents=n_opponents,
             player_alive=player_alive,
+            opponent_alive=opponent_alive,
             mask_tensor=mask_tensor,
         )
 
-    def _shooting_scores(
-        self, player_latents: torch.Tensor, opponent_latents: torch.Tensor
+    @staticmethod
+    def _pool_opponents_into_units(
+        opponent_latents: torch.Tensor, n_units: int, alive: torch.Tensor
     ) -> torch.Tensor:
-        """Compute compact shooting logits from player/opponent latents."""
+        """Mean-pool ``(B, n_opponents, D)`` model tokens into ``(B, n_units, D)``.
+
+        A weapon names an enemy *unit*, so the shooting head scores one logit per
+        unit. Opponent tokens stay per model -- position, wounds and stats are
+        per model and the transformer needs them -- and are pooled only at the
+        head.
+
+        Membership is recovered arithmetically rather than plumbed through the
+        tensor pipeline: `battle_factory` assigns ``group_id = i // span`` with
+        ``span = max(1, n // max_groups)``, so units are contiguous blocks and
+        ``span`` is recoverable from the two sizes the head already knows. A
+        ragged final unit is handled by the count divisor.
+        """
+        batch, n_opponents, dim = opponent_latents.shape
+        span = max(1, math.ceil(n_opponents / n_units))
+        index = torch.div(
+            torch.arange(n_opponents, device=opponent_latents.device),
+            span,
+            rounding_mode="floor",
+        ).clamp_(max=n_units - 1)
+
+        # Dead models contribute nothing and are not counted. Without this a
+        # destroyed model's latent still leaks into its unit's pooled token, and
+        # mutating a corpse would move live logits -- exactly what the key
+        # padding mask exists to prevent, defeated at the head.
+        live = alive.unsqueeze(-1).to(opponent_latents.dtype)
+        summed = torch.zeros(
+            batch,
+            n_units,
+            dim,
+            device=opponent_latents.device,
+            dtype=opponent_latents.dtype,
+        )
+        summed.index_add_(1, index, opponent_latents * live)
+        counts = torch.zeros(
+            batch, n_units, 1, device=opponent_latents.device, dtype=live.dtype
+        )
+        counts.index_add_(1, index, live)
+        return summed / counts.clamp(min=1.0)
+
+    def _shooting_scores(
+        self, player_latents: torch.Tensor, unit_latents: torch.Tensor
+    ) -> torch.Tensor:
+        """Compact shooting logits: one per (player model, enemy unit) pair."""
         if self.shoot_query_proj is None or self.shoot_key_proj is None:
             raise ValueError("Shooting head is not initialized.")
         q = self.shoot_query_proj(player_latents)
-        k = self.shoot_key_proj(opponent_latents)
+        k = self.shoot_key_proj(unit_latents)
         scale = 1.0 / math.sqrt(float(q.shape[-1]))
         scores: torch.Tensor = torch.matmul(q, k.transpose(-2, -1)) * scale
         return scores
@@ -472,10 +531,14 @@ class TransformerNetwork(RL_Network):
         if can_score_shooting:
             opp_start = n_prefix + n_wargame_models
             opponent_latents = encoded[:, opp_start : opp_start + n_opponents, :]
-            shooting_scores = self._shooting_scores(player_latents, opponent_latents)
             start = cast(int, self.shooting_slice_start)
+            n_units = cast(int, self.shooting_slice_end) - start
+            unit_latents = self._pool_opponents_into_units(
+                opponent_latents, n_units, state.opponent_alive
+            )
+            shooting_scores = self._shooting_scores(player_latents, unit_latents)
             base_logits = base_logits.clone()
-            base_logits[:, :, start : start + n_opponents] = shooting_scores
+            base_logits[:, :, start : start + n_units] = shooting_scores
 
         # Dead player rows: keep only ``stay`` (finite) so they sample as stay even
         # if the env mask is absent. Alive rows keep their head/shooting logits.

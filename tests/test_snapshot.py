@@ -60,16 +60,21 @@ def shooting_env() -> WargameEnv:
                 ],
             ),
         ],
+        # Two opponent UNITS, stated explicitly. Shooting names a unit, and
+        # `ModelConfig.group_id` defaults to 0 -- so without these the pair is
+        # one unit and the shooting slice is a single action wide.
         opponent_models=[
             ModelConfig(
                 x=20,
                 y=5,
+                group_id=0,
                 max_wounds=3,
                 weapons=[WeaponProfile(range=50)],
             ),
             ModelConfig(
                 x=21,
                 y=5,
+                group_id=1,
                 max_wounds=3,
                 weapons=[WeaponProfile(range=50)],
             ),
@@ -312,8 +317,9 @@ class TestActionDescriptions:
         snap = shooting_env.to_snapshot()
 
         assert snap.player_action_descriptions is not None
-        assert snap.player_action_descriptions[0] == "Shoot at opponent 0"
-        assert snap.player_action_descriptions[1] == "Shoot at opponent 1"
+        # The index is an enemy *unit*, not a model.
+        assert snap.player_action_descriptions[0] == "Shoot at enemy unit 0"
+        assert snap.player_action_descriptions[1] == "Shoot at enemy unit 1"
 
 
 class TestMissionContext:
