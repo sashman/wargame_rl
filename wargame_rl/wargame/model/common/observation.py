@@ -116,6 +116,12 @@ def _models_to_features(
         _group_ids_to_one_hot(group_ids, max_groups),
         _same_group_closest_distance(locs, group_ids, max_dist),
     ]
+    # Inside `core`, ahead of `alive`, per the rule above. It is already a
+    # fraction in [0, 1], so it needs no NORM_ constant.
+    if models[0].unit_strength is not None:
+        core_parts.append(
+            np.array([[m.unit_strength] for m in models], dtype=np.float32)
+        )
     core = np.hstack(core_parts)
     alive_col = np.array([[m.alive] for m in models], dtype=np.float32)
     cw = np.array([[float(m.current_wounds)] for m in models], dtype=np.float32)
@@ -188,7 +194,14 @@ def _observation_to_numpy(
 
     n_spatial = 2 + n_objectives * 2  # location + distances-to-objectives
     n_group = max_groups + 1  # one-hot group + closest same-group distance
-    base_feature_dim = n_spatial + n_group + N_WOUND_FEATURES + N_COMBAT_STATS
+    # Both armies are built by one builder call, so the flag is on or off for
+    # every token; reading it off whichever list is non-empty keeps the two
+    # widths equal, which the shared `base_feature_dim` requires.
+    probe = models or state.opponent_models
+    n_unit_strength = 1 if probe and probe[0].unit_strength is not None else 0
+    base_feature_dim = (
+        n_spatial + n_group + n_unit_strength + N_WOUND_FEATURES + N_COMBAT_STATS
+    )
 
     model_features = _models_to_features(
         models,

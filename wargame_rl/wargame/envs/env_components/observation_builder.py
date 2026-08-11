@@ -55,11 +55,28 @@ def update_distances_to_objectives(
         )
 
 
+def _unit_strengths(models: list[WargameModel]) -> dict[int, float]:
+    """Fraction of each unit still alive, keyed by ``group_id``.
+
+    A unit whose last model has fallen maps to 0.0 rather than being absent, so
+    the lookup never has to guess. Numbering is per army, so this is only ever
+    called with one army's models.
+    """
+    totals: dict[int, int] = {}
+    alive: dict[int, int] = {}
+    for model in models:
+        totals[model.group_id] = totals.get(model.group_id, 0) + 1
+        alive[model.group_id] = alive.get(model.group_id, 0) + int(model.is_alive)
+    return {gid: alive[gid] / totals[gid] for gid in totals}
+
+
 def _models_to_obs(
     models: list[WargameModel],
     max_groups: int,
     model_configs: list[ModelConfig] | None = None,
+    observe_unit_strength: bool = False,
 ) -> list[WargameModelObservation]:
+    strengths = _unit_strengths(models) if observe_unit_strength else {}
     result: list[WargameModelObservation] = []
     for i, m in enumerate(models):
         w_attacks = 0
@@ -96,6 +113,9 @@ def _models_to_obs(
                 weapon_damage=w_dmg,
                 toughness=toughness,
                 save_stat=save,
+                unit_strength=(
+                    strengths.get(m.group_id, 0.0) if observe_unit_strength else None
+                ),
             )
         )
     return result
@@ -269,6 +289,7 @@ def build_observation(
             view.player_models,
             max_groups,
             model_configs=view.config.models,
+            observe_unit_strength=view.config.observe_unit_strength,
         ),
         objectives=objectives_obs,
         board_width=view.board_width,
@@ -277,6 +298,7 @@ def build_observation(
             view.opponent_models,
             max_groups,
             model_configs=view.config.opponent_models,
+            observe_unit_strength=view.config.observe_unit_strength,
         ),
         terrain=terrain_obs,
         action_mask=action_mask,

@@ -268,6 +268,18 @@ measure-maps policy env_config n_episodes='100' maps_dir='':
 measure-income-share policy env_config n_episodes='30':
 	@uv run python -m scripts.measure_income_share {{policy}} {{env_config}} {{n_episodes}}
 
+# Two scripted policies over the SAME seed list, differenced per episode.
+# `measure-baselines` prints one aggregate row each, and on 25v25 the
+# per-episode vp_margin sd is ~45-90, so two such rows cannot resolve anything
+# under ~10-18 vp at n=100 -- larger than most effects measured here. Pairing
+# removes the layout variance those rows are made of. Written after a
+# target-selection comparison read +8.0 unpaired at n=60 and +1.7 +/- 5.7 paired
+# at n=100; the first number was noise. Read the win count beside the mean -- a
+# positive mean with a losing win count is a heavy tail, not an improvement.
+# Use: just measure-paired squad_march_shoot contest_and_spread <config> 100
+measure-paired policy_a policy_b env_config n_episodes='100' seed_base='700000':
+	@uv run python -m scripts.measure_paired_policies {{policy_a}} {{policy_b}} {{env_config}} {{n_episodes}} {{seed_base}}
+
 # Why an objective was not held: abandoned, narrowly lost, or lost by a mile.
 # `held` alone cannot separate those, and they call for different fixes. Also
 # reports the redistribution ceiling -- what any pure re-allocation lever could

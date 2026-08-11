@@ -130,6 +130,30 @@ class WargameEnvConfig(BaseModel):
         "the objective embedding shape, so existing checkpoints will fail to "
         "load — which is the intended loud failure.",
     )
+    observe_unit_strength: bool = Field(
+        default=False,
+        description="Put each model's *unit* remaining strength (alive members "
+        "/ unit size) on its own token, widening the per-model token by one. "
+        "Shooting names a unit and the defender allocates, so how many models "
+        "a unit has left decides whether a volley finishes it or is thrown at "
+        "a full one — and no input carried it: the shooting head mean-pools "
+        "opponent tokens into one token per unit, and a mean is invariant to "
+        "how many terms it averages. The column is constant across a unit's "
+        "members, so every token states it, with no change to the pooling or "
+        "the projection. Default False keeps the tensor byte-identical; turning "
+        "it on changes the per-model embedding shape, so existing checkpoints "
+        "fail to load — the intended loud failure. "
+        "UNTRAINED, AND ITS CHEAPEST PROXY MEASURED NULL: a scripted policy "
+        "firing at the *weakest* valid unit rather than the nearest scores "
+        "+1.7 +/- 5.7 vp_margin paired over 100 identical layouts (t = 0.30), "
+        "winning 24 of 100. An unpaired 60-episode read of the same comparison "
+        "said +8.0, and that was noise. The choice is not rare — 59.5% of "
+        "shooters see more than one valid unit and 72% of those see units of "
+        "differing strength — it simply does not pay much here, for a reason "
+        "already on record: unit targeting discards only 3.6% of declared "
+        "attacks, which caps what finishing a unit early can reclaim. Turn "
+        "this on only behind a mechanism that is not bounded by that 3.6%.",
+    )
     render_mode: str | None = Field(
         default=None, description="Rendering mode for the environment"
     )
