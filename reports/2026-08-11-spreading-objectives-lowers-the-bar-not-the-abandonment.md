@@ -201,3 +201,47 @@ assignment can change mid-episode.
 The untried repair is therefore to fix the *switching*, not the scale: pin a
 model's target once assigned, which would make the telescoping argument true and
 would also stop 98.4% of models being re-assigned to the ground under their feet.
+
+---
+
+## Correction (2026-08-11, same day): the 0.273 switch rate is an artefact
+
+**The repair proposed immediately above was measured before it was built, and it
+is not worth building.** Two probes on the same checkpoint:
+
+`target_switched` in transit is **0.292** — and **0.063 once each model's first
+step of the episode is excluded**. Of 335 transit switches, **280 are each
+model's single initial assignment**, which lands in the transit bucket because
+every model is walking on step 1. There is exactly one per model per episode and
+no pin can remove it.
+
+| bucket | `target_switched` | after step 1 |
+|---|---|---|
+| on an objective | 0.0230 | 0.0189 |
+| **in transit** | **0.2921** | **0.0634** |
+| loitering | 0.0182 | 0.0182 |
+
+So *"models re-base their target constantly"* is false. Real mid-walk churn is
+one switch per ~16 steps of walking against a walk of ~3.3 rounds — **most walks
+are never interrupted at all**. A switch costs that step's progress (~0.155 at
+`progress_scale` 6.0), so the whole effect is worth **~0.01/step against a
+0.383/step trough: about 2.5%**. Classifying the switches makes it worse for the
+proposal — only **8 of 203** are candidate-to-candidate churn; **96% involve the
+`fallback_to_nearest` selection** on one side or the other, which pinning genuine
+targets would not touch.
+
+**What this means for the arm above.** The refutation stands — `progress_scale`
+12 and 17 really are monotonically worse — but *the farming explanation for it is
+withdrawn*. At 0.063/step the potential is close enough to fixed that telescoping
+approximately holds, so amplifying a farm cannot be what happened. Two candidates
+remain, unseparated: at scale 17 the progress term is worth ~0.44/step against a
+per-term budget of ~10 an episode, so it simply crowds out `objective_hold` and
+`vp_gain`; and it is symmetric, so every repositioning, retreat or lateral
+manoeuvre is penalised at the same amplified rate.
+
+**The general lesson survives intact and is worth more than the arm**: a shaping
+term keyed on an assigned target is only potential-based while the assignment
+holds. The error here was the *second* one — quoting a rate that bundled an
+unavoidable initialisation into a churn measurement, and then designing against
+it. **Bucket a rate by whether the event could have been otherwise before
+building on it.**
