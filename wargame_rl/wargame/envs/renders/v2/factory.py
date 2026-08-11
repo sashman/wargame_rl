@@ -23,9 +23,21 @@ from wargame_rl.wargame.envs.renders.v2.presenters.interactive import (
     InteractiveRenderer,
 )
 from wargame_rl.wargame.envs.renders.v2.presenters.recording import RecordingRenderer
-from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME, Theme
+from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME, THEMES, Theme
 
 BACKENDS = ("pygame", "pygame_aa", "pillow")
+
+
+def resolve_theme(theme: Theme | str) -> Theme:
+    """A `Theme`, or a name from the `THEMES` registry (``default``/``tabletop``)."""
+    if isinstance(theme, Theme):
+        return theme
+    try:
+        return THEMES[theme]
+    except KeyError:
+        raise ValueError(
+            f"unknown theme {theme!r} (available: {', '.join(THEMES)})"
+        ) from None
 
 
 def _build_backend(name: str) -> RenderBackend:
@@ -43,13 +55,14 @@ def build_renderer(
     mode: str = "interactive",
     *,
     backend: str = "pillow",
-    theme: Theme = DEFAULT_THEME,
+    theme: Theme | str = DEFAULT_THEME,
 ) -> Renderer:
     """Construct a renderer.
 
     name: ``legacy`` (the current `HumanRender`) or ``v2``.
     mode: ``interactive`` (window) or ``recording`` (headless frames).
     backend: v2 drawing backend — ``pygame``, ``pygame_aa`` or ``pillow``.
+    theme: a `Theme`, or a registry name (``default`` / ``tabletop``).
     """
     if name == "legacy":
         return HumanRender()
@@ -57,8 +70,9 @@ def build_renderer(
         raise ValueError(f"unknown renderer {name!r} (available: legacy, v2)")
 
     be = _build_backend(backend)
+    resolved = resolve_theme(theme)
     if mode == "interactive":
-        return InteractiveRenderer(be, theme)
+        return InteractiveRenderer(be, resolved)
     if mode == "recording":
-        return RecordingRenderer(be, theme)
+        return RecordingRenderer(be, resolved)
     raise ValueError(f"unknown mode {mode!r} (available: interactive, recording)")

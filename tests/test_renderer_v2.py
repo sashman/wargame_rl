@@ -34,6 +34,8 @@ from wargame_rl.wargame.envs.renders.v2.replay import (  # noqa: E402
 from wargame_rl.wargame.envs.renders.v2.scene import (  # noqa: E402
     Control,
     Disc,
+    Poly,
+    Seg,
     build_scene,
 )
 from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME  # noqa: E402
@@ -104,6 +106,35 @@ def test_build_scene_grid_toggles() -> None:
     assert len(with_grid.primitives) > len(without.primitives)
 
 
+def test_grid_is_drawn_under_terrain_and_models() -> None:
+    """Grid is a substrate — every grid line precedes the terrain and the player
+    token, so it never rasterises on top of either."""
+    pal = DEFAULT_THEME.palette
+    env = _env(
+        models=[ModelConfig(x=7, y=5)],
+        terrain=[TerrainPieceConfig(footprint=(10, 10, 14, 14))],
+    )
+    scene = build_scene(env, compute_objective_control(env), scale=10.0, show_grid=True)
+    grid_idx = [
+        i
+        for i, p in enumerate(scene.primitives)
+        if isinstance(p, Seg) and p.color == pal.grid
+    ]
+    terrain_idx = next(
+        i
+        for i, p in enumerate(scene.primitives)
+        if isinstance(p, Poly) and p.fill == pal.terrain_fill
+    )
+    player_idx = next(
+        i
+        for i, p in enumerate(scene.primitives)
+        if isinstance(p, Disc) and p.center == (7.0, 5.0)
+    )
+    assert grid_idx
+    assert max(grid_idx) < terrain_idx  # grid below terrain
+    assert max(grid_idx) < player_idx  # grid below models
+
+
 # --- Control extraction (behaviour) ----------------------------------------
 
 
@@ -129,6 +160,20 @@ def test_control_length_matches_objectives() -> None:
 def test_recording_presenter_and_legacy_are_frame_sources() -> None:
     assert isinstance(build_renderer("v2", "recording"), FrameSource)
     assert isinstance(HumanRender(), FrameSource)
+
+
+# --- Theme selection --------------------------------------------------------
+
+
+def test_build_renderer_resolves_theme_by_name() -> None:
+    from wargame_rl.wargame.envs.renders.v2.factory import resolve_theme
+    from wargame_rl.wargame.envs.renders.v2.theme import TABLETOP_THEME
+
+    renderer = build_renderer("v2", "recording", theme="tabletop")
+    assert renderer._theme is TABLETOP_THEME  # type: ignore[attr-defined]
+    assert resolve_theme("default") is DEFAULT_THEME
+    with pytest.raises(ValueError):
+        build_renderer("v2", "recording", theme="nope")
 
 
 # --- A/B pixel parity vs the untouched legacy renderer ---------------------

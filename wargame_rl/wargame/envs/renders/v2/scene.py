@@ -169,7 +169,14 @@ def _arrow(
         prims.append(Poly(((cx, cy), left, right), (*faded, 255), None, 0))
 
 
-def _players(prims: list[Primitive], models: Sequence[object], theme: Theme) -> None:
+def _draw_models(
+    prims: list[Primitive],
+    models: Sequence[object],
+    color_of: Callable[[int], RGB],
+    theme: Theme,
+) -> None:
+    """Draw each model as a circular base (real bases are round); the side is the
+    colour, so both players and opponents are discs."""
     pal = theme.palette
     for model in models:
         cx, cy = float(model.location[0]), float(model.location[1])  # type: ignore[attr-defined]
@@ -178,22 +185,8 @@ def _players(prims: list[Primitive], models: Sequence[object], theme: Theme) -> 
             prims.append(Disc((cx, cy), radius, (*pal.dead_fill, 255), None, 0))
             prims.extend(_dead_marker(cx, cy, pal.dead_mark))
             continue
-        color = theme.player_color(model.group_id)  # type: ignore[attr-defined]
+        color = color_of(model.group_id)  # type: ignore[attr-defined]
         prims.append(Disc((cx, cy), radius, (*color, 255), pal.model_rim, 1))
-
-
-def _opponents(prims: list[Primitive], models: Sequence[object], theme: Theme) -> None:
-    pal = theme.palette
-    for model in models:
-        cx, cy = float(model.location[0]), float(model.location[1])  # type: ignore[attr-defined]
-        r = _base_radius(model)
-        triangle = ((cx - r, cy - r * 0.6), (cx + r, cy - r * 0.6), (cx, cy + r * 0.8))
-        if not getattr(model, "is_alive", True):
-            prims.append(Poly(triangle, (*pal.dead_fill, 255), None, 0))
-            prims.extend(_dead_marker(cx, cy, pal.dead_mark))
-            continue
-        color = theme.opponent_color(model.group_id)  # type: ignore[attr-defined]
-        prims.append(Poly(triangle, (*color, 255), None, 0))
 
 
 def build_scene(
@@ -228,6 +221,14 @@ def build_scene(
         cx = max(x0 + (x1 - x0) / 2, x0)
         cy = max(y0 + (y1 - y0) / 2, y0)
         prims.append(Label(label, (cx, cy), 48, pal.zone_label))
+
+    # Grid is a substrate: above the (opaque) zone fills so it shows in the
+    # deployment areas, but below terrain, objectives and models.
+    if show_grid:
+        for y in range(board_h + 1):
+            prims.append(Seg((0.0, float(y)), (float(board_w), float(y)), pal.grid, 1))
+        for x in range(board_w + 1):
+            prims.append(Seg((float(x), 0.0), (float(x), float(board_h)), pal.grid, 1))
 
     # Terrain: real outline + translucent fill, "OBJECTIVE" when it is one.
     objective_outlines = {
@@ -284,8 +285,8 @@ def build_scene(
     _arrow(prims, view.player_models, theme.player_color, scale)
     if view.opponent_models:
         _arrow(prims, view.opponent_models, theme.opponent_color, scale)
-        _opponents(prims, view.opponent_models, theme)
-    _players(prims, view.player_models, theme)
+        _draw_models(prims, view.opponent_models, theme.opponent_color, theme)
+    _draw_models(prims, view.player_models, theme.player_color, theme)
 
     if debug_los is not None:
         prims.append(
@@ -296,12 +297,6 @@ def build_scene(
                 max(1, int(scale * 0.08)),
             )
         )
-
-    if show_grid:
-        for y in range(board_h + 1):
-            prims.append(Seg((0.0, float(y)), (float(board_w), float(y)), pal.grid, 1))
-        for x in range(board_w + 1):
-            prims.append(Seg((float(x), 0.0), (float(x), float(board_h)), pal.grid, 1))
 
     clock = view.game_clock_state
     hud = HudData(
