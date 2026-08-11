@@ -18,6 +18,12 @@ class GroupCohesionCalculator(PerModelRewardCalculator):
     from the closest same-group model.
 
     Returns 0 when the model is within range or is alone in its group.
+
+    ``group_max_distance`` defaults to the scenario's own coherency distance
+    (`BattleView.rules_quantities.coherency_distance`, resolved from
+    `group_max_distance` on the env config) rather than to a literal. Setting it
+    here overrides that, which is what the shipped configs did -- and it is how
+    placement and this term came to enforce different numbers.
     """
 
     def __init__(
@@ -67,8 +73,15 @@ class GroupCohesionCalculator(PerModelRewardCalculator):
             return 0.0
 
         min_dist = float(self._min_distances(view, ctx)[model_idx])
-        max_distance = float(
-            self.group_max_distance if self.group_max_distance is not None else 10.0
+        # Unset means "whatever the scenario calls coherency", which is the same
+        # number placement spawns to. They were independent, and the shipped
+        # configs disagreed: placement scattered squads to 10.0 while this term
+        # fined anything past 6.0, so 199 of 200 episodes began in violation and
+        # every arm ever measured paid a reset-time tax nobody chose.
+        max_distance = (
+            float(self.group_max_distance)
+            if self.group_max_distance is not None
+            else view.rules_quantities.coherency_distance
         )
         if min_dist <= max_distance:
             return 0.0

@@ -178,7 +178,7 @@ class WargameEnvConfig(BaseModel):
     group_max_distance: float = Field(
         gt=0,
         default=10.0,
-        description="Max distance (L2) for group-aware placement on reset: models in the same group spawn within this distance. Reward phases use their own group_cohesion params.",
+        description="The scenario's coherency distance, in inches. Models of a group spawn within it, and `group_cohesion` fines a model past it unless that phase overrides `group_max_distance` explicitly. **One number for one concept**: these were independent, and every shipped config set placement to the 10.0 default while fining anything past 6.0, so 199 of 200 episodes started in violation. The rules' own figures are 2\" chaining and 9\" spread; adopting those is a scenario change and its own measured step.",
     )
     max_groups: int = Field(
         gt=0,

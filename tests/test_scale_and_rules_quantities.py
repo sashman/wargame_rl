@@ -90,6 +90,7 @@ class TestRulesQuantities:
             "max_move_speed",
             "los_sample_step",
             "base_radius",
+            "coherency_distance",
         }
 
 
@@ -105,3 +106,37 @@ def test_movement_distance_follows_the_scale() -> None:
     finer_handler = ActionHandler(WargameEnvConfig(inches_per_unit=0.5), n_models=2)
 
     assert finer_handler._speeds.max() == 2 * default_handler._speeds.max()
+
+
+class TestCoherencyDistanceIsOneNumber:
+    """Placement and `group_cohesion` must enforce the same coherency distance.
+
+    They did not. `group_max_distance` on the env config drove *placement* and
+    defaulted to 10.0, while every shipped config set `group_cohesion`'s own
+    `group_max_distance` to 6.0 — so squads spawned scattered to 10 and were
+    fined from 6, and 199 of 200 episodes began in violation of a rule nobody
+    had chosen to break. The config field's own description used to state the
+    split as intentional.
+    """
+
+    def test_the_calculator_defaults_to_the_scenario_distance(self) -> None:
+        """Unset, the term fines from exactly where placement stops spawning."""
+        # Arrange
+        config = WargameEnvConfig(group_max_distance=6.0)
+
+        # Act
+        quantities = resolve_rules_quantities(config)
+
+        # Assert
+        assert quantities.coherency_distance == 6.0
+
+    def test_it_scales_like_every_other_rules_distance(self) -> None:
+        """Authored in inches, resolved into units once, like the rest."""
+        # Arrange
+        config = WargameEnvConfig(group_max_distance=6.0, inches_per_unit=0.5)
+
+        # Act
+        quantities = resolve_rules_quantities(config)
+
+        # Assert
+        assert quantities.coherency_distance == 12.0
