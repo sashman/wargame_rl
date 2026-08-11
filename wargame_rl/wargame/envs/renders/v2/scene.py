@@ -96,6 +96,15 @@ class HudData:
     player_vp_delta: int
     opponent_vp: int
     opponent_vp_delta: int
+    # Objective control (one entry per objective) + the held tally.
+    objective_controls: tuple[Control, ...]
+    held_player: int
+    held_opponent: int
+    # Force strength per side (alive of total).
+    player_alive: int
+    player_total: int
+    opponent_alive: int
+    opponent_total: int
 
 
 @dataclass(frozen=True)
@@ -298,6 +307,12 @@ def build_scene(
             )
         )
 
+    controls = tuple(
+        control[i] if i < len(control) else Control.NEUTRAL
+        for i in range(len(view.objectives))
+    )
+    player_models = view.player_models
+    opponent_models = view.opponent_models
     clock = view.game_clock_state
     hud = HudData(
         round=clock.battle_round or 0,
@@ -310,5 +325,12 @@ def build_scene(
         player_vp_delta=view.player_vp_delta,
         opponent_vp=view.opponent_vp,
         opponent_vp_delta=view.opponent_vp_delta,
+        objective_controls=controls,
+        held_player=sum(1 for c in controls if c is Control.PLAYER),
+        held_opponent=sum(1 for c in controls if c is Control.OPPONENT),
+        player_alive=sum(1 for m in player_models if getattr(m, "is_alive", True)),
+        player_total=len(player_models),
+        opponent_alive=sum(1 for m in opponent_models if getattr(m, "is_alive", True)),
+        opponent_total=len(opponent_models),
     )
     return Scene(board_w, board_h, pal.board_bg, tuple(prims), hud)

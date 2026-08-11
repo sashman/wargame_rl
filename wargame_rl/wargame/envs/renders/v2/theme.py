@@ -64,6 +64,10 @@ class Palette:
     panel_bg: RGB = (45, 45, 48)
     panel_line: RGB = (80, 80, 84)
     text: RGB = (220, 220, 220)
+    # HUD side accents — bright enough to read on the dark panel (the board
+    # group colours are tuned for the board, not the panel).
+    hud_player: RGB = (120, 170, 235)
+    hud_opponent: RGB = (235, 130, 115)
 
 
 @dataclass(frozen=True)
@@ -144,6 +148,8 @@ TABLETOP_PALETTE = Palette(
     panel_bg=(58, 50, 38),
     panel_line=(87, 73, 58),
     text=(236, 226, 207),
+    hud_player=(139, 178, 232),
+    hud_opponent=(231, 148, 112),
 )
 
 TABLETOP_THEME = Theme(palette=TABLETOP_PALETTE)

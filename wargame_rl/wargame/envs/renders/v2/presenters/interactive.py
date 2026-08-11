@@ -101,23 +101,24 @@ class InteractiveRenderer(BasePresenter):
                 self._pinned = self._model_index_at(view, event.pos[0], event.pos[1])
 
     def _fit_to_window(self, view: BattleView, w: int, h: int) -> None:
-        north = self._theme.north_panel_h
-        south = self._theme.south_panel_rows * north
+        top = 2 * self._theme.north_panel_h  # two-row top HUD
+        south = self._theme.south_panel_rows * self._theme.north_panel_h
         new_w = max(1, w)
-        new_h = max(north + south + 1, h)
+        new_h = max(top + south + 1, h)
         if self._window is not None and (new_w, new_h) == self._window.get_size():
             return
         self._window = pygame.display.set_mode((new_w, new_h), pygame.RESIZABLE)
-        available_h = max(1, new_h - north - south)
+        available_h = max(1, new_h - top - south)
         self._scale = min(new_w / self._board_w, available_h / self._board_h)
         import math
 
         self._canvas_w = math.ceil(self._scale * self._board_w)
         self._canvas_h = math.ceil(self._scale * self._board_h)
+        self._top_h = top
         self._window_w = new_w
         self._window_h = new_h
         self._offset_x = (new_w - self._canvas_w) // 2
-        self._offset_y = north + (available_h - self._canvas_h) // 2
+        self._offset_y = top + (available_h - self._canvas_h) // 2
 
     # -- tooltip -------------------------------------------------------------
 

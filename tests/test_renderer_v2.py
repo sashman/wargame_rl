@@ -206,28 +206,30 @@ def _ab_config() -> WargameEnvConfig:
     )
 
 
-def test_v2_frame_matches_legacy_shape_and_coverage() -> None:
+def test_v2_board_region_renders_terrain_and_player() -> None:
+    """v2's HUD diverges from legacy (Phase 4b redesign), so whole-frame parity no
+    longer holds; assert the board region itself renders — terrain + a player over
+    a mostly board-background field, below the two-row top panel."""
     config = _ab_config()
-    legacy = _frame("legacy", config)
-    v2 = _frame("v2", config)
-
-    assert v2.shape == legacy.shape
-    legacy_nonwhite = int((legacy != 255).any(axis=2).sum())
-    v2_nonwhite = int((v2 != 255).any(axis=2).sum())
-    # Same board, same primitives: coverage should be within a couple of percent
-    # (fonts and alpha compositing differ by a hair, so not exact).
-    assert abs(v2_nonwhite - legacy_nonwhite) < 0.02 * legacy_nonwhite
+    frame = _frame("v2", config)
+    top = 2 * DEFAULT_THEME.north_panel_h
+    canvas_h = int(round(1024 / 20 * 20))
+    board = frame[top : top + canvas_h]
+    coverage = (board != 255).any(axis=2).mean()
+    # Deployment-zone tints, grid, terrain and a player all mark the board, so it
+    # is substantially non-white but not fully saturated.
+    assert 0.1 < coverage < 0.98
 
 
 def test_v2_draws_the_player_in_its_group_colour() -> None:
     config = _ab_config()
     v2 = _frame("v2", config)
 
-    # Board is 20x20 fit to 1024; the board sits below the 36px north panel.
+    # Board is 20x20 fit to 1024; it sits below the two-row top HUD panel.
     scale = 1024 / 20
-    north = 36
+    top = 2 * DEFAULT_THEME.north_panel_h
     px = int(5 * scale)
-    py = int(5 * scale) + north
+    py = int(5 * scale) + top
     patch = v2[py - 3 : py + 3, px - 3 : px + 3].reshape(-1, 3).mean(axis=0)
     # Group 0 is blue (0, 0, 255): blue channel dominates.
     assert patch[2] > patch[0] and patch[2] > patch[1]
@@ -244,12 +246,14 @@ def test_every_backend_renders_the_player_disc(backend: str) -> None:
     config = _ab_config()
     frame = _frame("v2", config, backend=backend)
 
-    # Same fit as the legacy A/B path: 20-unit board to 1024px under the panel.
-    assert frame.shape == (1132, 1024, 3)
+    # 20-unit board fit to 1024, below the two-row top HUD, above the south panel.
+    north = DEFAULT_THEME.north_panel_h
+    top = 2 * north
+    south = DEFAULT_THEME.south_panel_rows * north
+    assert frame.shape == (1024 + top + south, 1024, 3)
     scale = 1024 / 20
-    north = 36
     px = int(5 * scale)
-    py = int(5 * scale) + north
+    py = int(5 * scale) + top
     patch = frame[py - 3 : py + 3, px - 3 : px + 3].reshape(-1, 3).mean(axis=0)
     assert patch[2] > patch[0] and patch[2] > patch[1]  # blue group 0 dominates
 

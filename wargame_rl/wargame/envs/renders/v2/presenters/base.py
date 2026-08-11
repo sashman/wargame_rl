@@ -18,10 +18,20 @@ from wargame_rl.wargame.envs.renders.v2.control import (
     compute_objective_control,
     probe_debug_los,
 )
-from wargame_rl.wargame.envs.renders.v2.scene import HudData, Scene, build_scene
-from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME, Theme
+from wargame_rl.wargame.envs.renders.v2.scene import (
+    Control,
+    HudData,
+    Scene,
+    build_scene,
+)
+from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME, RGB, Theme
 
 GRID_SIZE = 1024  # Longest board side, in pixels, at the fit scale.
+# Sizes match the HUD studio mockup (same frame width): small captions, ~20px
+# values, a slightly larger hero margin.
+_LABEL_SIZE = 13  # Zone captions in the top HUD.
+_VALUE_SIZE = 20  # Zone values (VP, held, forces).
+_MARGIN_SIZE = 26  # The VP margin — the hero number, a size up.
 
 
 class BasePresenter(Renderer):
@@ -41,7 +51,9 @@ class BasePresenter(Renderer):
         self._window_w = 1
         self._window_h = 1
         self._offset_x = 0
-        self._offset_y = theme.north_panel_h
+        # The top HUD is two rows tall (a caption row over a value row).
+        self._top_h = 2 * theme.north_panel_h
+        self._offset_y = self._top_h
 
     def setup(self, view: BattleView) -> None:
         self._board_w = view.config.board_width
@@ -53,11 +65,12 @@ class BasePresenter(Renderer):
         self._canvas_w = math.ceil(self._scale * self._board_w)
         self._canvas_h = math.ceil(self._scale * self._board_h)
         north = self._theme.north_panel_h
+        self._top_h = 2 * north
         south = self._theme.south_panel_rows * north
         self._window_w = self._canvas_w
-        self._window_h = self._canvas_h + north + south
+        self._window_h = self._canvas_h + self._top_h + south
         self._offset_x = 0
-        self._offset_y = north
+        self._offset_y = self._top_h
 
     def _scene_for(self, view: BattleView) -> Scene:
         """Build the Scene for a live view (control + debug LOS from the domain)."""
@@ -99,17 +112,19 @@ class BasePresenter(Renderer):
         north = self._theme.north_panel_h
         width = self._window_w
 
-        # North: hotkey bar.
-        self._backend.fill_rect(frame, (0, 0, width, north), pal.panel_bg)
-        self._backend.draw_line(frame, (0, north), (width, north), pal.panel_line, 1)
-        hotkeys = (
-            "PAUSED - Space: Resume | Esc: Quit | L: LOS debug"
-            if self._is_paused()
-            else "Space: Pause | Esc: Quit | L: LOS debug"
+        # Top HUD: three zones — objectives | victory points | forces. Two rows,
+        # a caption over the value, so the eye lands in the same place each frame.
+        self._backend.fill_rect(frame, (0, 0, width, self._top_h), pal.panel_bg)
+        self._backend.draw_line(
+            frame, (0, self._top_h), (width, self._top_h), pal.panel_line, 1
         )
-        self._backend.draw_text(frame, hotkeys, (width // 2, north // 2), 24, pal.text)
+        label_y = int(self._top_h * 0.34)
+        value_y = int(self._top_h * 0.68)
+        self._zone_objectives(frame, hud, width // 6, label_y, value_y)
+        self._zone_vp(frame, hud, width // 2, label_y, value_y)
+        self._zone_forces(frame, hud, 5 * width // 6, label_y, value_y)
 
-        # South: two info rows.
+        # South: clock/reward row, then the hotkey hints.
         south_h = self._theme.south_panel_rows * north
         panel_y = self._window_h - south_h
         self._backend.fill_rect(frame, (0, panel_y, width, south_h), pal.panel_bg)
@@ -122,67 +137,229 @@ class BasePresenter(Renderer):
         turn = f"Round: {hud.round} / {hud.n_rounds}  |  {hud.phase}"
         steps = f"Step: {hud.step}"
         reward_text = f"Reward: {reward}"
+        fields: tuple[tuple[str, int], ...]
         if hud.epoch is not None:
-            for text, cx in (
+            fields = (
                 (f"Epoch: {hud.epoch}", width // 8),
                 (turn, 3 * width // 8),
                 (steps, 5 * width // 8),
                 (reward_text, 7 * width // 8),
-            ):
-                self._backend.draw_text(frame, text, (cx, row1_y), 24, pal.text)
+            )
         else:
-            for text, cx in (
-                (turn, width // 6),
+            # Inset from width/6 so the wider monospace text clears the edges.
+            fields = (
+                (turn, width // 5),
                 (steps, width // 2),
-                (reward_text, 5 * width // 6),
-            ):
-                self._backend.draw_text(frame, text, (cx, row1_y), 24, pal.text)
+                (reward_text, 4 * width // 5),
+            )
+        for text, cx in fields:
+            self._text(frame, text, (cx, row1_y), _VALUE_SIZE, pal.text)
 
         row2_y = panel_y + north + north // 2
-        self._draw_vp(
-            frame, "Player VP:", hud.player_vp, hud.player_vp_delta, width // 4, row2_y
+        hotkeys = (
+            "PAUSED - Space: Resume | Esc: Quit | L: LOS debug"
+            if self._is_paused()
+            else "Space: Pause | Esc: Quit | L: LOS debug"
         )
-        self._draw_vp(
-            frame,
-            "Opponent VP:",
-            hud.opponent_vp,
-            hud.opponent_vp_delta,
-            3 * width // 4,
-            row2_y,
+        self._text(frame, hotkeys, (width // 2, row2_y), _LABEL_SIZE + 3, self._dim())
+
+    # -- top HUD zones -------------------------------------------------------
+
+    def _dim(self) -> RGB:
+        """A caption colour halfway between the panel text and its background."""
+        pal = self._theme.palette
+        return (
+            (pal.text[0] + pal.panel_bg[0]) // 2,
+            (pal.text[1] + pal.panel_bg[1]) // 2,
+            (pal.text[2] + pal.panel_bg[2]) // 2,
         )
 
-    def _draw_vp(
+    def _text(
         self,
         frame: Canvas,
-        label: str,
-        value: int,
-        delta: int,
-        center_x: int,
-        center_y: int,
+        text: str,
+        anchor: tuple[float, float],
+        size: int,
+        color: RGB,
+        align: str = "center",
+        bold: bool = False,
     ) -> None:
-        """Fixed-field VP readout so nothing shifts when the delta appears."""
-        pal = self._theme.palette
-        gap = self._backend.text_size(" ", 24)[0]
-        value_field = self._backend.text_size("000", 24)[0]
-        delta_field = self._backend.text_size("(+00)", 24)[0]
-        label_w = self._backend.text_size(label, 24)[0]
-
-        total = label_w + gap + value_field + gap + delta_field
-        left = center_x - total // 2
-        self._backend.draw_text(frame, label, (left, center_y), 24, pal.text, "midleft")
-        value_right = left + label_w + gap + value_field
+        """Draw HUD text in the monospace (tabular) face."""
         self._backend.draw_text(
-            frame, str(value), (value_right, center_y), 24, pal.text, "midright"
+            frame, text, anchor, size, color, align, mono=True, bold=bold
         )
-        if delta > 0:
-            self._backend.draw_text(
-                frame,
-                f"(+{delta})",
-                (value_right + gap, center_y),
-                24,
-                pal.text,
-                "midleft",
+
+    def _tsize(self, text: str, size: int, bold: bool = False) -> tuple[int, int]:
+        """Measure HUD text in the monospace face (for fixed-field layout)."""
+        return self._backend.text_size(text, size, mono=True, bold=bold)
+
+    def _draw_bar(
+        self, frame: Canvas, x: int, y: int, w: int, h: int, frac: float, color: RGB
+    ) -> None:
+        pal = self._theme.palette
+        top = int(y - h / 2)
+        self._backend.fill_rect(frame, (x, top, w, h), pal.panel_line)
+        fill_w = max(0, min(w, int(w * frac)))
+        if fill_w > 0:
+            self._backend.fill_rect(frame, (x, top, fill_w, h), color)
+
+    def _zone_objectives(
+        self, frame: Canvas, hud: HudData, cx: int, label_y: int, value_y: int
+    ) -> None:
+        pal = self._theme.palette
+        self._text(frame, "OBJECTIVES", (cx, label_y), _LABEL_SIZE, self._dim())
+        pip_gap = 20
+        pips_w = len(hud.objective_controls) * pip_gap
+        # "Held P-O" with the two counts coloured by side.
+        prefix_w = self._tsize("Held ", _VALUE_SIZE, bold=True)[0]
+        digit_w = self._tsize("0", _VALUE_SIZE, bold=True)[0]
+        dash_w = self._tsize("-", _VALUE_SIZE, bold=True)[0]
+        held_w = prefix_w + digit_w + dash_w + digit_w
+        gap = 16
+        left = cx - (pips_w + gap + held_w) // 2
+        x = left + pip_gap // 2
+        for control in hud.objective_controls:
+            color = (
+                pal.player_control
+                if control is Control.PLAYER
+                else pal.opponent_control
+                if control is Control.OPPONENT
+                else pal.objective_rim
             )
+            self._backend.draw_disc(
+                frame, (x, value_y), 6, (*color, 255), pal.panel_line, 1
+            )
+            x += pip_gap
+        hx = left + pips_w + gap
+        self._text(
+            frame, "Held ", (hx, value_y), _VALUE_SIZE, pal.text, "midleft", True
+        )
+        self._text(
+            frame,
+            str(hud.held_player),
+            (hx + prefix_w, value_y),
+            _VALUE_SIZE,
+            pal.hud_player,
+            "midleft",
+            True,
+        )
+        self._text(
+            frame,
+            "-",
+            (hx + prefix_w + digit_w, value_y),
+            _VALUE_SIZE,
+            pal.text,
+            "midleft",
+            True,
+        )
+        self._text(
+            frame,
+            str(hud.held_opponent),
+            (hx + prefix_w + digit_w + dash_w, value_y),
+            _VALUE_SIZE,
+            pal.hud_opponent,
+            "midleft",
+            True,
+        )
+
+    def _zone_vp(
+        self, frame: Canvas, hud: HudData, cx: int, label_y: int, value_y: int
+    ) -> None:
+        pal = self._theme.palette
+        self._text(frame, "VICTORY POINTS", (cx, label_y), _LABEL_SIZE, self._dim())
+        margin = hud.player_vp - hud.opponent_vp
+        margin_text = f"+{margin}" if margin > 0 else str(margin)
+        margin_color = (
+            pal.hud_player
+            if margin > 0
+            else pal.hud_opponent
+            if margin < 0
+            else pal.text
+        )
+        # Fixed fields so a digit or sign never shifts the readout; the margin is
+        # the hero — a size up and bold.
+        vp_field = self._tsize("00", _VALUE_SIZE, bold=True)[0]
+        margin_field = self._tsize("-00", _MARGIN_SIZE, bold=True)[0]
+        gap = self._tsize("  ", _VALUE_SIZE)[0]
+        left = cx - (vp_field + gap + margin_field + gap + vp_field) // 2
+        self._text(
+            frame,
+            str(hud.player_vp),
+            (left + vp_field, value_y),
+            _VALUE_SIZE,
+            pal.hud_player,
+            "midright",
+            True,
+        )
+        margin_cx = left + vp_field + gap + margin_field // 2
+        self._text(
+            frame,
+            margin_text,
+            (margin_cx, value_y),
+            _MARGIN_SIZE,
+            margin_color,
+            "center",
+            True,
+        )
+        opp_left = left + vp_field + gap + margin_field + gap
+        self._text(
+            frame,
+            str(hud.opponent_vp),
+            (opp_left, value_y),
+            _VALUE_SIZE,
+            pal.hud_opponent,
+            "midleft",
+            True,
+        )
+
+    def _zone_forces(
+        self, frame: Canvas, hud: HudData, cx: int, label_y: int, value_y: int
+    ) -> None:
+        pal = self._theme.palette
+        self._text(frame, "FORCES", (cx, label_y), _LABEL_SIZE, self._dim())
+        player = pal.hud_player
+        opponent = pal.hud_opponent
+        player_text = f"{hud.player_alive}/{hud.player_total}"
+        opp_text = f"{hud.opponent_alive}/{hud.opponent_total}"
+        text_field = self._tsize("00/00", _VALUE_SIZE)[0]
+        bar_w, bar_h, gap, mid = 58, 8, 9, 16
+        left = cx - (2 * text_field + 2 * gap + 2 * bar_w + mid) // 2
+        self._text(
+            frame,
+            player_text,
+            (left + text_field, value_y),
+            _VALUE_SIZE,
+            player,
+            "midright",
+        )
+        bx = left + text_field + gap
+        self._draw_bar(
+            frame,
+            bx,
+            value_y,
+            bar_w,
+            bar_h,
+            hud.player_alive / max(1, hud.player_total),
+            player,
+        )
+        bx2 = bx + bar_w + mid
+        self._draw_bar(
+            frame,
+            bx2,
+            value_y,
+            bar_w,
+            bar_h,
+            hud.opponent_alive / max(1, hud.opponent_total),
+            opponent,
+        )
+        self._text(
+            frame,
+            opp_text,
+            (bx2 + bar_w + gap, value_y),
+            _VALUE_SIZE,
+            opponent,
+            "midleft",
+        )
 
     # -- hooks ---------------------------------------------------------------
 

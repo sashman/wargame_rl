@@ -16,6 +16,7 @@ from typing import cast
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from wargame_rl.wargame.envs.renders.v2.fonts import mono_font_path
 from wargame_rl.wargame.envs.renders.v2.theme import RGB, RGBA
 
 Point = tuple[float, float]
@@ -33,8 +34,8 @@ class PillowBackend:
     """Renders primitives onto `PIL.Image` RGBA canvases."""
 
     def __init__(self) -> None:
-        # Fonts are scalable and reused across draws; cache by pixel size.
-        self._fonts: dict[int, ImageFont.FreeTypeFont] = {}
+        # Fonts are scalable and reused; cache by (pixel size, mono, bold).
+        self._fonts: dict[tuple[int, bool, bool], ImageFont.FreeTypeFont] = {}
 
     def new_canvas(self, width_px: int, height_px: int, bg: RGB) -> Image.Image:
         return Image.new("RGBA", (max(1, width_px), max(1, height_px)), (*bg, 255))
@@ -105,17 +106,21 @@ class PillowBackend:
         size_px: int,
         color: RGB,
         align: str = "center",
+        mono: bool = False,
+        bold: bool = False,
     ) -> None:
         ImageDraw.Draw(canvas).text(
             (anchor[0], anchor[1]),
             text,
-            font=self._font(size_px),
+            font=self._font(size_px, mono, bold),
             fill=(*color, 255),
             anchor=_ANCHORS.get(align, "mm"),
         )
 
-    def text_size(self, text: str, size_px: int) -> tuple[int, int]:
-        left, top, right, bottom = self._font(size_px).getbbox(text)
+    def text_size(
+        self, text: str, size_px: int, mono: bool = False, bold: bool = False
+    ) -> tuple[int, int]:
+        left, top, right, bottom = self._font(size_px, mono, bold).getbbox(text)
         return (int(right - left), int(bottom - top))
 
     def blit(self, canvas: Image.Image, src: Image.Image, pos: Point) -> None:
@@ -142,11 +147,18 @@ class PillowBackend:
             draw.ellipse(geometry, fill=fill)
         canvas.alpha_composite(overlay)
 
-    def _font(self, size_px: int) -> ImageFont.FreeTypeFont:
+    def _font(
+        self, size_px: int, mono: bool = False, bold: bool = False
+    ) -> ImageFont.FreeTypeFont:
         size = max(1, int(size_px))
-        font = self._fonts.get(size)
+        key = (size, mono, bold)
+        font = self._fonts.get(key)
         if font is None:
-            # Pillow 10.1+ returns a scalable FreeTypeFont when given a size.
-            font = cast(ImageFont.FreeTypeFont, ImageFont.load_default(size=size))
-            self._fonts[size] = font
+            path = mono_font_path(bold) if mono else None
+            if path is not None:
+                font = ImageFont.truetype(path, size)
+            else:
+                # Pillow 10.1+ returns a scalable FreeTypeFont when given a size.
+                font = cast(ImageFont.FreeTypeFont, ImageFont.load_default(size=size))
+            self._fonts[key] = font
         return font
