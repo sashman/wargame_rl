@@ -120,3 +120,84 @@ Cheapest probes, in order:
    their *nearest* objective, which is the one they are already standing on.
    Strict de-stacking (`false`) is a one-line arm and directly targets the 9.4
    surplus models.
+
+
+---
+
+## Follow-up: filling the trough with `progress_scale` makes it worse
+
+Two probes on the `spread_hold` agent aimed the next arm, and the arm was
+refuted. Recording both, because the probes were right and the intervention
+drawn from them was wrong.
+
+### Probe 1 — the walk is a trough, and the reward is not mis-weighted
+
+Per-model income by what the model is doing (`phase_manager.last_per_model_reward`,
+n=15 episodes):
+
+| activity | reward/step |
+|---|---|
+| alone on an objective | **1.30** |
+| on a crowded one (8 others) | 0.62 |
+| loitering outside | 0.50 |
+| **in transit** | **0.26** |
+
+Moving toward an objective pays **half of standing still doing nothing**. But the
+crowding gradient itself works — pay falls monotonically 1.30 → 0.36 from one
+occupant to twelve — so arriving at an empty objective roughly *doubles* a
+model's income. Leaving costs 0.383/step over a ~3.3 round walk (~1.26 of certain
+loss), then pays +0.66/step, breaking even ~1.9 rounds after arrival. Over a
+20-round episode, leaving is clearly profitable.
+
+**So the reward is not mis-weighted.** The landscape has a trough between two
+peaks and the policy sits on the smaller one. Crossing needs a *sustained*
+multi-round walk that single-step exploration is punished for starting. That is
+why five weight configurations moved abandonment by 2 points.
+
+### Probe 2 — the assignment confirms the pile
+
+**98.4%** of models standing on an objective have that same objective as their
+assigned target. With `fallback_to_nearest: true` a model on an objective is
+always nearest to it, so `closest_objective_v2` tells it to stay and pays it
+progress for a journey of zero length.
+
+`fallback_to_nearest: false` was the planned fix and was **dropped before
+running**: an unassigned model returns `overstack_penalty` and *zero* progress
+reward, and group assignment gives each objective to one group, so with 5 squads
+and 3 objectives two squads would earn nothing but a penalty. It deepens the
+trough.
+
+### The arm: refuted, monotonically
+
+Transit earned 0.207/step of progress at `progress_scale` 6.0, so covering the
+0.383/step gap calculates to ~17. Two arms, two seeds, scored at epoch ~270,
+n=100:
+
+| arm | `progress_scale` | s1 | s2 | mean |
+|---|---|---|---|---|
+| `spread_hold` (@300) | 6.0 | +46.4 | +47.0 | **+46.7** |
+| `progress12` | 12.0 | +37.7 | +33.1 | **+35.4** |
+| `progress17` | 17.0 | +37.1 | +27.0 | **+32.1** |
+
+**Monotonically worse in the scale**, all four runs below the arm they were built
+on. Killed at ~epoch 280 rather than spend two more hours; last round gained only
++2.3 between epoch 300 and 600, which does not change the ranking.
+
+### The reasoning error, which is the part worth keeping
+
+The arm was justified as safe to push hard because progress is potential-based
+and "telescopes to `scale × (initial − final distance)`, so oscillation cannot
+farm it". **That holds only if the potential function is fixed, and it is not.**
+`target_switched` measured **0.273/step in transit** — models change assigned
+objective constantly, and each switch re-bases the distance the term measures
+against. The shaping is farmable, and raising the scale amplifies the farm rather
+than the intended pull.
+
+The lesson generalises past this arm: *potential-based shaping is safe by
+construction only when the potential is a fixed function of state.* A shaping
+term keyed on an **assigned** target is not potential-based at all if the
+assignment can change mid-episode.
+
+The untried repair is therefore to fix the *switching*, not the scale: pin a
+model's target once assigned, which would make the telescoping argument true and
+would also stop 98.4% of models being re-assigned to the ground under their feet.
