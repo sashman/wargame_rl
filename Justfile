@@ -268,6 +268,11 @@ measure-noise-floor env_config n_layouts='10' n_combat_seeds='10' policy='':
 measure-terrain env_config n_layouts='200':
 	@uv run python -m scripts.measure_terrain {{env_config}} {{n_layouts}}
 
+# Compare the v2 render backends (pygame / pygame_aa / pillow): one Scene through
+# each, PNGs + contact sheets + ms/frame, so the default is picked by evidence.
+render-bakeoff out_dir='bakeoff_out' n_timing='20':
+	@uv run python -m scripts.render_bakeoff {{out_dir}} {{n_timing}}
+
 # Analyze a recorded match for training evaluation
 analyze file:
 	uv run analyze_events.py report {{file}}

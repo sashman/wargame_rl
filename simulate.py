@@ -48,7 +48,7 @@ def simulate(
     env_config_path: str | None = None,
     record_events: bool = False,
     renderer_name: str = "legacy",
-    backend: str = "pygame",
+    backend: str = "pillow",
 ) -> None:
     """Run simulation with trained agent.
 
@@ -58,7 +58,7 @@ def simulate(
         render: Whether to render the environment
         record_events: Whether to record the last episode as a JSON event log
         renderer_name: ``legacy`` (HumanRender) or ``v2`` (the new renderer)
-        backend: v2 drawing backend (``pygame``)
+        backend: v2 drawing backend (``pillow``, ``pygame`` or ``pygame_aa``)
     """
 
     if not os.path.exists(checkpoint_path):
@@ -221,7 +221,7 @@ def main(
         "legacy", help="Renderer to use: 'legacy' (HumanRender) or 'v2'"
     ),
     backend: str = typer.Option(
-        "pygame", help="v2 drawing backend (only 'pygame' in Phase 1)"
+        "pillow", help="v2 drawing backend: 'pillow', 'pygame' or 'pygame_aa'"
     ),
 ) -> None:
     # Handle dynamic defaults inside the function
