@@ -21,16 +21,21 @@ from wargame_rl.wargame.model.net import TransformerNetwork
 def _shooting_env_config() -> WargameEnvConfig:
     return WargameEnvConfig(
         number_of_wargame_models=2,
-        number_of_opponent_models=2,
+        number_of_opponent_models=4,
         board_width=30,
         board_height=30,
         models=[
             ModelConfig(x=5, y=5, weapons=[WeaponProfile(range=24)]),
             ModelConfig(x=10, y=10, weapons=[WeaponProfile(range=24)]),
         ],
+        # Two opponent UNITS of two models each. Shooting names a unit, so a
+        # single-model-per-unit layout cannot distinguish "this model died" from
+        # "this unit died" -- which is the whole rule under test.
         opponent_models=[
-            ModelConfig(x=20, y=5),
-            ModelConfig(x=25, y=10),
+            ModelConfig(x=20, y=5, group_id=0),
+            ModelConfig(x=21, y=6, group_id=0),
+            ModelConfig(x=25, y=10, group_id=1),
+            ModelConfig(x=26, y=11, group_id=1),
         ],
         skip_phases=[BattlePhase.command, BattlePhase.charge, BattlePhase.fight],
         opponent_policy=OpponentPolicyConfig(type="random"),
@@ -58,22 +63,70 @@ def test_transformer_policy_dead_player_row_is_stay_only() -> None:
     assert torch.isneginf(logits[0, 0, 1:]).all()
 
 
-def test_transformer_policy_dead_opponent_shooting_column_is_neginf() -> None:
+def test_transformer_policy_wiped_unit_shooting_column_is_neginf() -> None:
+    """A shooting column closes when the whole enemy *unit* is destroyed.
+
+    Killing one model no longer closes anything, and that is the rule rather
+    than a regression: a weapon names a unit, and a unit stays a legal target
+    while any model in it survives. The predecessor of this test killed a single
+    model and asserted its column went dead, which was only meaningful while a
+    column *was* a model.
+    """
+    # Arrange
     env = WargameEnv(config=_shooting_env_config())
     net = TransformerNetwork.policy_from_env(env)
-
     env.reset(seed=42)
-    env.opponent_models[0].take_damage(env.opponent_models[0].stats["current_wounds"])
-    obs, _, _, _, _ = _advance_to_shooting(env)
 
     shooting_slice = env._action_handler.shooting_slice
     assert shooting_slice is not None
+    doomed = env.opponent_models[0].group_id
+    survivor_group = next(
+        m.group_id for m in env.opponent_models if m.group_id != doomed
+    )
 
+    # Act — wipe one whole unit, leave the other intact.
+    for model in env.opponent_models:
+        if model.group_id == doomed:
+            model.take_damage(model.stats["current_wounds"])
+    obs, _, _, _, _ = _advance_to_shooting(env)
     tensors = observation_to_tensor(obs, net.device)
     logits = net(tensors)
-    dead_target_col = shooting_slice.start
-    assert not tensors[5][:, dead_target_col].any()
-    assert torch.isneginf(logits[0, :, dead_target_col]).all()
+
+    # Assert
+    dead_column = shooting_slice.start + doomed
+    live_column = shooting_slice.start + survivor_group
+    assert not tensors[5][:, dead_column].any()
+    assert torch.isneginf(logits[0, :, dead_column]).all()
+    assert not torch.isneginf(logits[0, :, live_column]).all()
+
+
+def test_killing_one_model_does_not_close_its_units_column() -> None:
+    """The other half of the same rule, stated so a regression cannot hide.
+
+    Under per-model targeting this was the *whole* bug: a shot at a dead model
+    evaporated, measured at a 36-40% discard rate. A unit with survivors must
+    stay shootable.
+    """
+    # Arrange
+    env = WargameEnv(config=_shooting_env_config())
+    net = TransformerNetwork.policy_from_env(env)
+    env.reset(seed=42)
+    shooting_slice = env._action_handler.shooting_slice
+    assert shooting_slice is not None
+
+    victim = env.opponent_models[0]
+    unit = victim.group_id
+    assert sum(m.group_id == unit for m in env.opponent_models) > 1, (
+        "this test needs a unit of more than one model to say anything"
+    )
+
+    # Act
+    victim.take_damage(victim.stats["current_wounds"])
+    obs, _, _, _, _ = _advance_to_shooting(env)
+    logits = net(observation_to_tensor(obs, net.device))
+
+    # Assert
+    assert not torch.isneginf(logits[0, :, shooting_slice.start + unit]).all()
 
 
 def test_transformer_policy_without_shooting_keeps_shoot_head_disabled() -> None:
@@ -83,9 +136,13 @@ def test_transformer_policy_without_shooting_keeps_shoot_head_disabled() -> None
     assert net.shoot_key_proj is None
 
 
-def test_transformer_shooting_scores_land_in_correct_opponent_columns() -> None:
-    """The bilinear head's score for (player i, opponent j) lands in env column
-    ``shooting_slice.start + j`` for the matching player row."""
+def test_transformer_shooting_scores_land_in_correct_unit_columns() -> None:
+    """The head's score for (player i, enemy UNIT u) lands in column ``start + u``.
+
+    The column index is the group id, not the model index -- a weapon names a
+    unit. Getting this off by the wrong quantity would silently aim every shot
+    at the wrong squad while every shape still matched.
+    """
     env = WargameEnv(config=_shooting_env_config())
     net = TransformerNetwork.policy_from_env(env)
     net.eval()
@@ -106,17 +163,21 @@ def test_transformer_shooting_scores_land_in_correct_opponent_columns() -> None:
         assert n_p > 0 and n_o > 0
 
         start = state.n_prefix
+        n_units = shooting_slice.end - shooting_slice.start
         player_latents = state.encoded[:, start : start + n_p, :]
         opp_latents = state.encoded[:, start + n_p : start + n_p + n_o, :]
-        expected = net._shooting_scores(player_latents, opp_latents)  # (1, n_p, n_o)
+        unit_latents = net._pool_opponents_into_units(
+            opp_latents, n_units, state.opponent_alive
+        )
+        expected = net._shooting_scores(player_latents, unit_latents)
 
     checked = 0
     for pi in range(n_p):
-        for oj in range(n_o):
-            col = shooting_slice.start + oj
+        for unit in range(n_units):
+            col = shooting_slice.start + unit
             if not bool(mask[pi, col]):
                 continue  # env masked this target; -inf is expected, skip
-            assert torch.allclose(logits[0, pi, col], expected[0, pi, oj], atol=1e-5)
+            assert torch.allclose(logits[0, pi, col], expected[0, pi, unit], atol=1e-5)
             checked += 1
     assert checked > 0  # the scenario must exercise at least one live target
 

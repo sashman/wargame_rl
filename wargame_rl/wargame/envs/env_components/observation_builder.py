@@ -13,7 +13,9 @@ from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.value_objects import POSITION_DTYPE
 from wargame_rl.wargame.envs.env_components.actions import ActionRegistry
-from wargame_rl.wargame.envs.env_components.shooting_masks import compute_shooting_masks
+from wargame_rl.wargame.envs.env_components.shooting_masks import (
+    compute_unit_shooting_masks,
+)
 from wargame_rl.wargame.envs.types import (
     WargameEnvInfo,
     WargameEnvObjectiveObservation,
@@ -237,13 +239,15 @@ def build_observation(
             player_advanced = np.array(
                 [m.advanced_this_turn for m in view.player_models]
             )
-            shooting_validity = compute_shooting_masks(
+            shooting_validity = compute_unit_shooting_masks(
                 player_positions,
                 opponent_positions,
                 player_alive,
                 opponent_alive,
                 player_ranges,
                 view.line_of_sight_matrix,
+                np.array([m.group_id for m in view.opponent_models], dtype=int),
+                shooting_slice.end - shooting_slice.start,
                 player_advanced=player_advanced,
                 engagement_range=view.rules_quantities.engagement_range,
                 base_diameter=2.0 * view.rules_quantities.base_radius,

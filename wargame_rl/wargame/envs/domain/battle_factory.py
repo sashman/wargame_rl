@@ -20,6 +20,51 @@ from .value_objects import (
 )
 
 
+def group_span(n_models: int, max_groups: int) -> int:
+    """How many models share a group id, given the army size and the cap.
+
+    Mirrors the split `_build_models` performs. Exposed so that anything sized
+    per *unit* -- the shooting action space, its mask -- derives the same number
+    the models were built with rather than assuming one.
+    """
+    return max(1, n_models // max_groups)
+
+
+def n_groups_for(n_models: int, max_groups: int) -> int:
+    """The number of units an army of `n_models` actually splits into.
+
+    **Not `max_groups`.** The split is `group_id = i // (n // max_groups)`, so a
+    7-model army with a cap of 5 gets an increment of 1 and ends up with *seven*
+    units, one per model. Anything sized on the unit count has to ask, not
+    assume: an action space built from `max_groups` would silently be unable to
+    name three of those units.
+    """
+    if n_models <= 0:
+        return 0
+    span = group_span(n_models, max_groups)
+    return (n_models + span - 1) // span
+
+
+def unit_count(
+    n_models: int, max_groups: int, model_configs: list[Any] | None = None
+) -> int:
+    """How many shooting-target slots an army needs.
+
+    **The action index *is* the group id**, so the slice has to be wide enough
+    for the highest id in play, not merely as wide as the number of units. Those
+    differ whenever `model_configs` name their own groups: two models both
+    declared `group_id: 0` are one unit, while the count-based split would have
+    made two.
+
+    Deriving this from the counts alone was a real bug -- a config with explicit
+    per-model groups got a slice sized for a split it does not use, leaving
+    actions that name no unit at all.
+    """
+    if model_configs:
+        return max(int(cfg.group_id) for cfg in model_configs) + 1
+    return n_groups_for(n_models, max_groups)
+
+
 def _build_models(
     n: int,
     model_configs: list[Any] | None,
@@ -29,7 +74,7 @@ def _build_models(
 ) -> list[WargameModel]:
     """Build a list of WargameModel instances (player or opponent)."""
     result: list[WargameModel] = []
-    increment = max(1, n // max_groups)
+    increment = group_span(n, max_groups)
     for i in range(n):
         if model_configs is not None:
             mc = model_configs[i]

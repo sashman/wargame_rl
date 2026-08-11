@@ -49,6 +49,7 @@ class RulesQuantities:
     max_move_speed: float
     los_sample_step: float
     base_radius: float
+    coherency_distance: float
 
 
 def resolve_rules_quantities(config: WargameEnvConfig) -> RulesQuantities:
@@ -64,4 +65,5 @@ def resolve_rules_quantities(config: WargameEnvConfig) -> RulesQuantities:
         max_move_speed=scale.to_units(config.max_move_speed),
         los_sample_step=scale.to_units(config.los_sample_step),
         base_radius=scale.to_units(config.base_radius),
+        coherency_distance=scale.to_units(config.group_max_distance),
     )

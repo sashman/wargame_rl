@@ -129,19 +129,28 @@ def _shooting_targets(policy_name: str) -> list[int]:
     return []
 
 
-def test_fire_is_spread_across_distinct_targets() -> None:
-    """Several shooters with the same nearest enemy must not all take it.
+def test_fire_concentrates_on_one_unit_now_that_targets_are_units() -> None:
+    """The inverse of what this test used to assert, and deliberately so.
 
-    With `max_wounds: 1`, every shot after the first successful one on a target
-    is discarded, so this is the difference between 0.83 and 1.48 expected kills
-    from five shots.
+    It previously required several shooters to pick *distinct* targets, because
+    a weapon named an enemy **model** and every shot after the killing one was
+    silently discarded -- worth the difference between 0.83 and 1.48 expected
+    kills from five shots.
+
+    A weapon now names a **unit**, and the defender allocates each attack to a
+    model still standing, so a second shot at the same unit is wasted only once
+    the whole unit is destroyed. Spreading fire across units would forfeit
+    concentration and buy nothing, so the claim-tracking that produced it was
+    removed. Shooters sharing a nearest unit are expected to stack on it.
     """
     targets = _shooting_targets("contest_and_spread")
 
     assert targets, "precondition: someone must be able to fire"
-    assert len(targets) == len(set(targets)), (
-        f"targets were stacked rather than spread: {targets}"
-    )
+    assert len(set(targets)) <= len(targets)
+    # The policy's distinguishing behaviour is its objective allocation, which
+    # the other tests in this file cover; its shooting is now nearest-unit.
+    march = _shooting_targets("squad_march_shoot")
+    assert march, "precondition: the comparison policy must be able to fire too"
 
 
 def test_it_is_registered_under_its_name() -> None:

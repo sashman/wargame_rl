@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -174,6 +175,142 @@ def wargame_model_placement(
             placed.append(model)
 
 
+def _sample_in_objective(
+    objective: WargameObjective,
+    occupied: list[tuple[float, float]],
+    min_separation: float,
+    rng: Generator,
+    hostile: list[tuple[float, float]] | None = None,
+    hostile_separation: float = 0.0,
+) -> tuple[float, float] | None:
+    """A random point whose centre is on *objective* and whose base is clear.
+
+    Centre-inside rather than base-inside: control is scored from the centre for
+    an area and from the base edge for a disc, so a point placed this way counts
+    as holding under either rule. Returns None when the retry budget is spent,
+    which a small objective genuinely can exhaust.
+    """
+    if objective.area is not None:
+        x_min, y_min, x_max, y_max = objective.area.bounds
+        inside = objective.area.contains
+    else:
+        centre = np.asarray(objective.location, dtype=float)
+        radius = float(objective.radius_size)
+        x_min, y_min = float(centre[0]) - radius, float(centre[1]) - radius
+        x_max, y_max = float(centre[0]) + radius, float(centre[1]) + radius
+
+        def inside(x: float, y: float) -> bool:
+            return bool(np.hypot(x - centre[0], y - centre[1]) <= radius)
+
+    for _ in range(_MAX_PLACEMENT_RETRIES):
+        candidate = (float(rng.uniform(x_min, x_max)), float(rng.uniform(y_min, y_max)))
+        if not inside(*candidate):
+            continue
+        if not _is_clear(candidate, occupied, min_separation):
+            continue
+        if hostile and not _is_clear(candidate, hostile, hostile_separation):
+            continue
+        return candidate
+    return None
+
+
+def start_group_on_objective(
+    player_models: list[WargameModel],
+    opponent_models: list[WargameModel],
+    objectives: list[WargameObjective],
+    rng: Generator,
+    base_radius: float = 0.0,
+    engagement_range: float = 0.0,
+) -> int | None:
+    """Move one whole player group off its deployment position onto an objective.
+
+    A *training-time* start-state augmentation, and deliberately not a rule: it
+    teleports a squad, which no legal turn can do.
+
+    It exists because the abandonment this project keeps failing to fix is an
+    optimisation problem rather than a pricing one. Measured on the trained
+    agent, putting one squad on the objective it otherwise abandons is worth
+    **+3.26 episode reward** (paired, 21 of 29 seeds, sign test p ~ 0.013)
+    against a travel cost of roughly 0.27 — the policy is sitting where a
+    deviation it can execute pays about twelve times what it costs, and does not
+    take it. Five reward weightings moved abandonment by 2.3 points between them,
+    because they all changed what the far peak *pays* rather than the odds of
+    ever standing on it. This puts the far peak in the training distribution
+    instead, so the policy only has to learn to stay.
+
+    Returns the objective index that was occupied, or None if nothing moved.
+
+    Best-effort by design: a model that cannot be fitted keeps its deployment
+    position rather than failing the episode, matching `objective_placement`.
+
+    **Known limitation, measured, and the reason to keep the probability low.**
+    An objective can sit within one weapon range of the opponent's deployment
+    zone -- `objectives_spread_on_terrain` actively pushes them outward -- and
+    `reset` resolves the opponent's whole turn before the agent's first
+    observation when the opponent has first turn. At probability 1.0 on the
+    spread scenario that puts enemies in range at the first observation in
+    123 of 200 episodes and leaves player models already dead in 52 of 200,
+    against zero for the un-augmented start. The squad therefore learns the
+    objective is a kill box as readily as it learns to hold it. The honest fix
+    is to start the squad *part way* along the approach rather than on top of
+    the objective, which would also give the value function a path to propagate
+    along; that is not built.
+    """
+    if not objectives or not player_models:
+        return None
+
+    groups: dict[int, list[WargameModel]] = {}
+    for model in player_models:
+        groups.setdefault(model.group_id, []).append(model)
+
+    group_ids = sorted(groups)
+    chosen_group = int(group_ids[int(rng.integers(len(group_ids)))])
+    objective_index = int(rng.integers(len(objectives)))
+    moving = groups[chosen_group]
+
+    # The movers vacate their deployment spots, so only the models staying put
+    # constrain where they can land.
+    staying = [m for m in player_models if m.group_id != chosen_group]
+    occupied = [(float(m.location[0]), float(m.location[1])) for m in staying]
+    # Enemies need a wider berth than friends. Clearing only the base diameter
+    # sets models up in base contact, and a model within engagement range is
+    # barred from shooting at all (`shooting_masks`), so it would deploy as a
+    # free kill that cannot fire back -- and the rules spec requires a unit that
+    # is *set up* to be unengaged.
+    #
+    # This guarantees the state at *placement* only. `reset` then resolves the
+    # opponent's whole turn before the agent's first observation, and they walk
+    # back into contact: measured, min separation is 2.44 here and 1.26 by the
+    # first observation. Deployment legality is the most this can buy; the
+    # first-observation problem is the opponent's free turn, not the placement.
+    hostile = [(float(m.location[0]), float(m.location[1])) for m in opponent_models]
+    min_separation = 2.0 * base_radius
+    hostile_separation = min_separation + engagement_range
+
+    moved = 0
+    for model in moving:
+        spot = _sample_in_objective(
+            objectives[objective_index],
+            occupied,
+            min_separation,
+            rng,
+            hostile=hostile,
+            hostile_separation=hostile_separation,
+        )
+        if spot is None:
+            # A model that could not be fitted keeps its deployment position --
+            # which was left out of `occupied` on the assumption it would move,
+            # so put it back or a later mover can be placed on top of it.
+            occupied.append((float(model.location[0]), float(model.location[1])))
+            continue
+        model.location = position(*spot)
+        model.reset_for_episode()
+        occupied.append(spot)
+        moved += 1
+
+    return objective_index if moved else None
+
+
 def objective_placement(
     objectives: list[WargameObjective],
     deployment_zone: np.ndarray,
@@ -338,6 +475,7 @@ def objectives_from_terrain(
     opponent_deployment_zone: np.ndarray,
     board_width: int,
     board_height: int,
+    spread: bool = False,
 ) -> None:
     """Make each objective *be* a terrain piece — the rules' terrain objective.
 
@@ -364,9 +502,78 @@ def objectives_from_terrain(
             "Raise the piece count, or widen the gap between the zones."
         )
 
-    chosen = _choose_symmetric_pieces(eligible, len(objectives), centre, board_width)
+    chosen = (
+        _choose_spread_pieces(eligible, len(objectives), board_width)
+        if spread
+        else _choose_symmetric_pieces(eligible, len(objectives), centre, board_width)
+    )
     for objective, footprint in zip(objectives, chosen):
         objective.set_area(footprint.polygon)
+
+
+def _choose_spread_pieces(
+    eligible: list[Footprint],
+    n_wanted: int,
+    board_width: int,
+    tolerance: float = 1e-6,
+) -> list[Footprint]:
+    """Pick the furthest-apart *n_wanted* pieces that still mirror onto themselves.
+
+    Selecting the pieces nearest the board centre packs every objective into the
+    middle: measured on 200 layouts, all three sat inside a ~16" circle on a
+    60x44 board and 47% of objective pairs were within one weapon range, so one
+    squad could shoot at two of them and there was no travel trade-off to make.
+
+    **Symmetry has to be a constraint, not a consequence.** The first version of
+    this maximised separation unconstrained, on the reasoning that a mirrored
+    layout's mirrored sets score identically so neither side is favoured. That
+    is true and insufficient: it says the mirror image scores the same, not that
+    the winner *is* its own mirror image. Two pieces on one side and one on the
+    other can out-separate any balanced set, and did — 38 of 200 layouts came out
+    2-1, up to 3.67" off centre, handing that side a closer prize.
+
+    So the search runs over sets that map onto themselves under reflection about
+    the board's centre line: every chosen piece's mirror partner is chosen too,
+    or the piece straddles the line and is its own partner. That reproduces what
+    the distance rings guaranteed, without constraining *which* rings are taken.
+
+    Falls back to unconstrained separation when no symmetric set exists, which
+    is the case for non-mirrored terrain — a slightly unfair layout beats a
+    failed episode, and `mirror: false` has no fairness guarantee to preserve.
+
+    Exhaustive over combinations. `n_wanted` is 3 and eligible counts are single
+    digits, so this is a few dozen distance computations per episode.
+    """
+    if len(eligible) <= n_wanted:
+        return list(eligible)
+
+    centroids = [f.polygon.centroid for f in eligible]
+
+    def min_separation(indices: tuple[int, ...]) -> float:
+        return min(
+            float(np.linalg.norm(centroids[a] - centroids[b]))
+            for a, b in itertools.combinations(indices, 2)
+        )
+
+    def is_symmetric(indices: tuple[int, ...]) -> bool:
+        """True when reflecting the chosen centroids maps the set onto itself."""
+        chosen = [centroids[i] for i in indices]
+        for point in chosen:
+            reflected = np.array([board_width - point[0], point[1]])
+            if not any(
+                bool(np.linalg.norm(reflected - other) <= tolerance) for other in chosen
+            ):
+                return False
+        return True
+
+    combinations = list(itertools.combinations(range(len(eligible)), n_wanted))
+    symmetric = [c for c in combinations if is_symmetric(c)]
+    best = max(symmetric or combinations, key=min_separation)
+    # Left-to-right so objective index is a stable function of the layout rather
+    # than of combination order.
+    return sorted(
+        (eligible[i] for i in best), key=lambda f: float(f.polygon.centroid[0])
+    )
 
 
 def _choose_symmetric_pieces(
@@ -432,11 +639,21 @@ def place_for_episode(
     battle: Battle,
     config: WargameEnvConfig,
     rng: Generator,
+    augment_start: bool = False,
 ) -> None:
     """Place terrain, player models, objectives, and opponent models for an episode.
 
     Uses fixed positions from config when available, otherwise random placement
     within deployment zones.
+
+    `augment_start` opts in to the start-state augmentation described on
+    `start_group_on_objective`. It is off by default and **draws nothing from
+    `rng` when off**, so a config carrying
+    `start_on_objective_probability` produces layouts bit-identical to one
+    without it whenever the augmentation is not requested. That is what keeps an
+    augmented run's evaluation comparable to a baseline measured on the base
+    config — the opposite discipline to `combat_seed`, which draws either way
+    precisely so the layout stream *cannot* shift.
     """
     base_radius = resolve_rules_quantities(config).base_radius
     # Terrain first: it is the board the rest is placed onto. Models and
@@ -474,6 +691,7 @@ def place_for_episode(
             battle.opponent_deployment_zone,
             battle.board_width,
             battle.board_height,
+            spread=config.objectives_spread_on_terrain,
         )
     elif config.has_fixed_objective_positions and config.objectives is not None:
         fixed_objective_placement(battle.objectives, config.objectives)
@@ -503,4 +721,27 @@ def place_for_episode(
                 config.group_max_distance,
                 rng,
                 base_radius=base_radius,
+            )
+
+    # Last, so its draws cannot shift anything else *placed* this episode. They
+    # do still shift what `reset` draws afterwards -- `run_until_player_phase`
+    # can auto-execute the opponent's first turn, and a scripted policy picks
+    # targets off the same `np_random`. So a firing augmentation changes that
+    # episode's opponent rolls too; harmless, but it is why the non-firing half
+    # of a partial-probability run is not a matched control.
+    # A fixed-placement config exists to pin an exact layout, so the
+    # augmentation must not silently discard it.
+    if (
+        augment_start
+        and config.start_on_objective_probability > 0.0
+        and not config.has_fixed_model_positions
+    ):
+        if float(rng.random()) < config.start_on_objective_probability:
+            start_group_on_objective(
+                battle.player_models,
+                battle.opponent_models,
+                battle.objectives,
+                rng,
+                base_radius=base_radius,
+                engagement_range=resolve_rules_quantities(config).engagement_range,
             )

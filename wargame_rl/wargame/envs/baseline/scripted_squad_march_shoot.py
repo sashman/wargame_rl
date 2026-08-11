@@ -49,6 +49,7 @@ class ScriptedSquadMarchShootPolicy(ScriptedSquadMarchPolicy):
         if not opponents:
             return WargameEnvAction(actions=actions)
         opponent_locations = np.array([m.location for m in opponents], dtype=float)
+        opponent_groups = np.array([m.group_id for m in opponents], dtype=int)
 
         for index, model in enumerate(models):
             if not model.is_alive:
@@ -61,11 +62,18 @@ class ScriptedSquadMarchShootPolicy(ScriptedSquadMarchPolicy):
             )
             if valid.size == 0:
                 continue
-            distances = np.linalg.norm(
-                opponent_locations[valid] - np.asarray(model.location, dtype=float),
-                axis=1,
-            )
-            target = int(valid[int(np.argmin(distances))])
+            # `valid` indexes enemy UNITS, not models: a weapon names a unit.
+            # Nearest unit means the unit whose closest model is closest, which
+            # is also the distance the range check was made against.
+            here = np.asarray(model.location, dtype=float)
+            model_distances = np.linalg.norm(opponent_locations - here, axis=1)
+            unit_distances = [
+                model_distances[opponent_groups == unit].min()
+                if (opponent_groups == unit).any()
+                else np.inf
+                for unit in valid
+            ]
+            target = int(valid[int(np.argmin(unit_distances))])
             actions[index] = shooting_slice.start + target
 
         return WargameEnvAction(actions=actions)

@@ -364,8 +364,16 @@ def _shooting_env_config() -> WargameEnvConfig:
 
 class TestEnvShootingIntegration:
     def test_n_actions_includes_shooting(self) -> None:
+        """The shooting slice is one action per enemy UNIT, not per model.
+
+        `_shooting_env_config` fields two opponents that both take the default
+        `group_id`, so they are a single unit and buy a single action. Sizing
+        this slice per model is the bug the whole unit-targeting change fixes.
+        """
         env = WargameEnv(config=_shooting_env_config())
-        assert env.n_actions == 1 + N_MOVE_ACTIONS + 2
+        n_opponent_units = len({m.group_id for m in env.opponent_models})
+        assert n_opponent_units == 1
+        assert env.n_actions == 1 + N_MOVE_ACTIONS + n_opponent_units
 
     def test_reset_movement_phase_shooting_masked(self) -> None:
         """After reset (movement phase), shooting columns should all be False."""

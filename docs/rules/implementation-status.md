@@ -57,21 +57,23 @@ table is the roadmap for the next implementation phase.
 | [Advance move](09-movement-phase.md#advance-move) | absent | `WargameModel.advanced_this_turn` exists and is read by the shooting mask, but nothing ever sets it. Dead until the advance move lands. |
 | [Fall-back move](09-movement-phase.md#fall-back-move) | absent | — |
 | [Set up / deployment zones](03-moving.md#setting-up) | partial | `envs/domain/placement.py` places models randomly inside a zone; no alternating deployment, no *wholly within* check. |
+| [Set up outside the zone (training only)](03-moving.md#setting-up) | **divergent, deliberate** | `start_on_objective_probability` teleports one group onto an objective at reset — outside its deployment zone, which no legal turn can do. A start-state augmentation for an optimisation failure, not a rule. Off by default and applied only on `reset(options={"augment_start": True})`, which the PPO rollout passes and no evaluation path does. Placement keeps the squad *unengaged* per the spec, but the opponent's free first turn can close to contact before the agent's first observation. |
 
 ## Attacks
 
 | Rule | Status | Owner / note |
 |---|---|---|
 | [Select weapons](04-making-attacks.md#1-select-weapons) | **divergent** | `wargame.py:_resolve_shooting_action` fires `weapons[0]` only. A model with two weapons uses one. |
-| [Select targets — visible, in range, unengaged](04-making-attacks.md#2-select-targets) | implemented | `env_components/shooting_masks.py:compute_shooting_masks`. |
+| [Select targets — visible, in range, unengaged](04-making-attacks.md#2-select-targets) | implemented | `env_components/shooting_masks.py:compute_unit_shooting_masks`. A weapon names an enemy **unit**, and visibility and range are checked **independently** across it — some model visible, some model in range, not necessarily the same one. |
 | [Identical attacks / pooling](04-making-attacks.md#identical-attacks) | absent | Each shot is resolved on its own. |
+| [Excess attacks against a wiped unit are lost](05-attack-sequence.md#4-inflict-damage) | implemented | The **only** discard. Measured 3.6% of declared shots; it was 36-40% while a weapon named a model and a shot at a corpse evaporated. |
 | [Hit rolls, critical hit on 6, unmodified 1 fails](05-attack-sequence.md#1-hit-rolls) | implemented | `envs/domain/shooting.py:resolve_shooting`. |
 | [Wound ladder](05-attack-sequence.md#2-wound-rolls) | implemented | `envs/domain/shooting.py:wound_roll_threshold`. Asserted by `tests/test_rules_constants.py`. |
 | [Highest Toughness in a mixed unit](05-attack-sequence.md#mixed-toughness) | absent | Targets are individual models. |
-| [Allocation groups and order](05-attack-sequence.md#3-save-rolls) | absent | Damage is applied to the targeted model directly. |
+| [Allocation groups and order](05-attack-sequence.md#3-save-rolls) | partial | The defender allocates each attack to a model in the target unit, preferring one that has already lost Wounds (`domain/shooting.py:_allocate_target`). The *groups* themselves are absent — they split a unit by CHARACTER and by distinct (W, Sv, InSv), and this project has one profile per army and no characters, so every unit is a single group. |
 | [Save vs AP](05-attack-sequence.md#4-inflict-damage) | implemented | `save + ap`, with an unmodified 1 always failing. |
 | [Excess damage is lost](05-attack-sequence.md#4-inflict-damage) | implemented | `WargameModel.take_damage` clamps at 0. |
-| [Destruction resolves after the attacking unit finishes](05-attack-sequence.md#suffering-damage-and-being-destroyed) | **divergent** | Kills apply immediately, recorded by `PairedShootingResult.killed`. |
+| [Destruction resolves after the attacking unit finishes](05-attack-sequence.md#suffering-damage-and-being-destroyed) | implemented (degenerately) | Attacking units resolve one at a time in group order, so a destroyed model is removed before the *next* unit fires — the rules' own sequencing. Within one unit's sequence, deferring removal is unobservable at `max_wounds: 1`: a destroyed model stops being allocatable the moment it dies either way. It would become observable with multi-wound models. |
 | [Piercing damage](06-visibility-and-damage.md#piercing-damage) | absent | — |
 | [Backfire rolls](06-visibility-and-damage.md#backfire-rolls) | absent | — |
 
@@ -112,7 +114,7 @@ table is the roadmap for the next implementation phase.
 | Rule | Status | Owner / note |
 |---|---|---|
 | [Objective markers, within 3"](14-objectives.md#what-an-objective-is) | **divergent** | `objective_radius_size` in board units, default 1. Range is measured from the model's base edge, per the rules; the radius itself still defaults below the rules' 3". |
-| [Terrain objectives](14-objectives.md#what-an-objective-is) | absent | Objectives are points, not terrain areas. `objective_terrain_clearance` deliberately pushes them *away* from terrain. |
+| [Terrain objectives](14-objectives.md#what-an-objective-is) | **implemented** | `objectives_on_terrain` makes the objective *be* a terrain footprint — its outline is its area, `radius_size` is 0 and control is standing on the ruin (`entities.py:set_area`, `placement.py:objectives_from_terrain`). The point-and-radius form remains the default, and `objective_terrain_clearance` still pushes *those* away from terrain; the two are alternatives, not a sequence. |
 | [Level of control](14-objectives.md#level-of-control) | implemented | `env_components/distance_cache.py:objective_ownership_from_norms_offset` — strictly greater count controls, ties are uncontrolled. |
 | [Control re-evaluated at the end of every phase](14-objectives.md#level-of-control) | **divergent** | Evaluated only when VP are scored, on leaving the command phase (`wargame.py:_on_before_advance`). |
 | [Suppression zeroes Control Value](01-core-concepts.md#suppression) | absent | No suppression. |

@@ -84,6 +84,40 @@ class WargameEnvConfig(BaseModel):
         "statistics during shooting phases. Measurement only — it does not affect "
         "the game, but it costs an extra shooting-mask build per shooting phase.",
     )
+    objectives_spread_on_terrain: bool = Field(
+        default=False,
+        description=(
+            "With `objectives_on_terrain`, choose the eligible pieces whose "
+            "minimum pairwise separation is largest instead of the ones nearest "
+            "the board centre. Nearest-to-centre packs all three objectives into "
+            "a ~16 inch circle on a 60x44 board, with 47% of pairs inside one "
+            "weapon range, so there is no travel trade-off between them. "
+            "Defaults False: turning it on changes the scenario, so every "
+            "baseline measured without it must be re-measured."
+        ),
+    )
+    start_on_objective_probability: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Probability that a training episode starts with one whole player "
+            "group already standing on a random objective, instead of in the "
+            "deployment zone. A start-state augmentation, not a rule: it "
+            "teleports a squad, and it applies only when the caller asks for it "
+            "via `reset(options={'augment_start': True})`, which the training "
+            "rollout does and no evaluation path does. Aimed at a measured "
+            "optimisation failure rather than a pricing one — putting a squad on "
+            "the objective the trained agent abandons is worth +3.26 episode "
+            "reward against a travel cost of ~0.27, and it still does not go. "
+            "Defaults 0.0, which is an exact no-op: the augmentation draws "
+            "nothing from the layout RNG unless it is both requested and "
+            "positive. Note it draws whenever those hold, *including on the "
+            "episodes where it does not fire — so at a probability below 1.0 "
+            "the non-firing episodes are not stream-identical to a control "
+            "run, and must not be treated as a matched within-run control."
+        ),
+    )
     observe_objective_control: bool = Field(
         default=False,
         description="Put per-objective control state (player count, opponent "
@@ -144,7 +178,7 @@ class WargameEnvConfig(BaseModel):
     group_max_distance: float = Field(
         gt=0,
         default=10.0,
-        description="Max distance (L2) for group-aware placement on reset: models in the same group spawn within this distance. Reward phases use their own group_cohesion params.",
+        description="The scenario's coherency distance, in inches. Models of a group spawn within it, and `group_cohesion` fines a model past it unless that phase overrides `group_max_distance` explicitly. **One number for one concept**: these were independent, and every shipped config set placement to the 10.0 default while fining anything past 6.0, so 199 of 200 episodes started in violation. The rules' own figures are 2\" chaining and 9\" spread; adopting those is a scenario change and its own measured step.",
     )
     max_groups: int = Field(
         gt=0,

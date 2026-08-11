@@ -1,0 +1,397 @@
+# Spreading objectives lowers the bar, not the abandonment
+
+**2026-08-11** · `configs/experiments/25v25_spread_{objectives,hold}.yaml` ·
+wandb group `spread-symmetric` · two arms x two seeds, 600 epochs, `--no-tf32`
+
+## The question
+
+The agent lost to the scripted bar by 17 vp on the clustered scenario, entirely
+by abandoning 38% of objectives. Two hypotheses, in order of what the evidence
+favoured at the time:
+
+1. **Reward weighting.** The income breakdown showed the approach term earning
+   ~zero and a *global* term outpaying the per-model one.
+2. **Scenario geometry.** All three objectives sat inside a ~16" circle with 47%
+   of pairs inside one weapon range, so there was no travel trade-off to price.
+
+## The answer
+
+**Neither fixes the abandonment. One of them is still worth keeping.**
+
+n=100, seeds 700000-700099, epoch 600:
+
+| arm | s1 | s2 | mean | vs bar |
+|---|---|---|---|---|
+| `spread_objectives` (control weights) | +42.0 | +36.3 | **+39.2** | -19.7 |
+| **`spread_hold`** (`objective_hold` 2.5, `objective_coverage` 0.1) | +48.2 | +49.7 | **+49.0** | **-9.9** |
+| `squad_march_shoot` (the bar) | | | **+58.9** | — |
+
+### What replicated
+
+`objective_hold` 1.25 -> 2.5 with `objective_coverage` 0.3 -> 0.1 is worth
+**+9.8 vp**, both seeds, 1.5 apart. On the clustered scenario the same change
+measured +5.2 at ~1.5 sigma — weak. Reproducing it at nearly twice the size on a
+*different scenario* makes it a real result. The mechanism is visible in
+`on_obj`: 0.77-0.82 against the control's 0.64-0.77.
+
+Reading: moving income from a **global** term (broadcast whole, absorbed by the
+value baseline, cannot differentiate one model's choice from another's) to a
+**per-model** one sharpens the gradient. That is the same lesson as
+[the crowding result](2026-08-08-paying-the-pot-beats-the-bar.md), arrived at
+from the opposite direction.
+
+### What was refuted
+
+**`overstack_penalty_per_extra` is not the constraint.** Zeroing it (verified
+logged at exactly 0.0000) scored +49.4 against the control's +50.6 — null. The
+income breakdown that motivated it was read correctly and the conclusion drawn
+from it was wrong: the approach term nets ~zero because the penalty cancels the
+progress reward, but removing the penalty does not make the agent approach.
+
+**Spreading objectives does not fix abandonment.** It was the better-supported
+hypothesis, measured at 3.6 sigma as a natural experiment, and it did not
+transfer to training.
+
+### The gap narrowed, but not the way it was supposed to
+
+| scenario | agent | bar | deficit |
+|---|---|---|---|
+| clustered | +50.6 | +67.7 | -17.1 |
+| spread, symmetric | +49.0 | +58.9 | **-9.9** |
+
+**The bar fell 8.8; the agent did not move.** The natural experiment predicted a
+clustered-trained agent gains ~+37 paired margin on spread layouts, and it does
+— but an agent *trained* on spread layouts gains nothing absolute. Two candidate
+explanations, not separated: the symmetry fix left the contrast smaller than the
+one that produced the effect (10.7" min separation against the spread group's
+11.7"), or transferring-in and training-on are different things here.
+
+## The invariant
+
+| | control | no_overstack | hold_over_coverage | spread_hold |
+|---|---|---|---|---|
+| **abandoned** | 0.380 | — | 0.370 | **0.357** |
+| surplus models on held | 8.58 | — | 9.66 | 9.40 |
+
+Against the bar's **0.147 abandoned** and **3.88 surplus**.
+
+Five weight configurations and a scenario change have moved abandonment by 2.3
+points. The agent is pushed off an objective **1.7%** of the time against the
+bar's **24.7%** — it is not losing fights over objectives, it is not turning up.
+Meanwhile it wins the firefight (firepower 1.59-1.74 against 0.85) and keeps
+0.60-0.63 alive against 0.50.
+
+**That invariance is the most robust finding here**, and it says the cause is
+neither the reward weighting nor the objective spacing.
+
+## What this does not support
+
+- **Not "spreading objectives was wrong".** It makes the scenario match the real
+  layouts, it lowered a bar that was inflated by objectives packed close enough
+  for one squad to cover all of them, and it is where the honest comparison now
+  lives. It just is not the fix for this failure.
+- **Not "the agent cannot learn the scenario".** It beats every movement-only
+  baseline and wins the shooting exchange roughly two to one.
+- **Not a verdict on `crowding_exponent`.** Still never retuned for objectives
+  holding ~18 models. It was the prime suspect and the income breakdown
+  eliminated it before a run was spent on it — at `a=1.0` the pot is conserved,
+  so the ninth model on a point already earns a ninth of a lone model's pay.
+
+## Next, and what to stop
+
+**Stop** tuning reward weights and scenario geometry against the abandonment.
+Three rounds, seven arms, two scenarios, invariant behaviour.
+
+**The untested hypothesis is representational.** An objective reaches the network
+as a location, a control count and a size. Nothing encodes "an objective nobody
+is contesting is worth walking 20 inches for", and the value function must infer
+a multi-round investment from a per-step reward that pays **zero during the
+walk**. That is credit assignment and observability, not weighting — and it is
+consistent with a hand-written heuristic beating a 12.9M-parameter network at
+exactly this one thing while losing every firefight.
+
+Cheapest probes, in order:
+
+1. **Does a model that leaves a crowded objective ever get paid?** Instrument
+   per-model reward along a transit and check the integral against staying. If
+   staying dominates for the whole walk, no weighting fixes it and the answer is
+   a potential-based term on *assigned* objective, not nearest.
+2. **`closest_objective_v2.fallback_to_nearest: true`** sends surplus models to
+   their *nearest* objective, which is the one they are already standing on.
+   Strict de-stacking (`false`) is a one-line arm and directly targets the 9.4
+   surplus models.
+
+
+---
+
+## Follow-up: filling the trough with `progress_scale` makes it worse
+
+Two probes on the `spread_hold` agent aimed the next arm, and the arm was
+refuted. Recording both, because the probes were right and the intervention
+drawn from them was wrong.
+
+### Probe 1 — the walk is a trough, and the reward is not mis-weighted
+
+Per-model income by what the model is doing (`phase_manager.last_per_model_reward`,
+n=15 episodes):
+
+| activity | reward/step |
+|---|---|
+| alone on an objective | **1.30** |
+| on a crowded one (8 others) | 0.62 |
+| loitering outside | 0.50 |
+| **in transit** | **0.26** |
+
+Moving toward an objective pays **half of standing still doing nothing**. But the
+crowding gradient itself works — pay falls monotonically 1.30 → 0.36 from one
+occupant to twelve — so arriving at an empty objective roughly *doubles* a
+model's income. Leaving costs 0.383/step over a ~3.3 round walk (~1.26 of certain
+loss), then pays +0.66/step, breaking even ~1.9 rounds after arrival. Over a
+20-round episode, leaving is clearly profitable.
+
+**So the reward is not mis-weighted.** The landscape has a trough between two
+peaks and the policy sits on the smaller one. Crossing needs a *sustained*
+multi-round walk that single-step exploration is punished for starting. That is
+why five weight configurations moved abandonment by 2 points.
+
+### Probe 2 — the assignment confirms the pile
+
+**98.4%** of models standing on an objective have that same objective as their
+assigned target. With `fallback_to_nearest: true` a model on an objective is
+always nearest to it, so `closest_objective_v2` tells it to stay and pays it
+progress for a journey of zero length.
+
+`fallback_to_nearest: false` was the planned fix and was **dropped before
+running**: an unassigned model returns `overstack_penalty` and *zero* progress
+reward, and group assignment gives each objective to one group, so with 5 squads
+and 3 objectives two squads would earn nothing but a penalty. It deepens the
+trough.
+
+### The arm: refuted, monotonically
+
+Transit earned 0.207/step of progress at `progress_scale` 6.0, so covering the
+0.383/step gap calculates to ~17. Two arms, two seeds, scored at epoch ~270,
+n=100:
+
+| arm | `progress_scale` | s1 | s2 | mean |
+|---|---|---|---|---|
+| `spread_hold` (@300) | 6.0 | +46.4 | +47.0 | **+46.7** |
+| `progress12` | 12.0 | +37.7 | +33.1 | **+35.4** |
+| `progress17` | 17.0 | +37.1 | +27.0 | **+32.1** |
+
+**Monotonically worse in the scale**, all four runs below the arm they were built
+on. Killed at ~epoch 280 rather than spend two more hours; last round gained only
++2.3 between epoch 300 and 600, which does not change the ranking.
+
+### The reasoning error, which is the part worth keeping
+
+The arm was justified as safe to push hard because progress is potential-based
+and "telescopes to `scale × (initial − final distance)`, so oscillation cannot
+farm it". **That holds only if the potential function is fixed, and it is not.**
+`target_switched` measured **0.273/step in transit** — models change assigned
+objective constantly, and each switch re-bases the distance the term measures
+against. The shaping is farmable, and raising the scale amplifies the farm rather
+than the intended pull.
+
+The lesson generalises past this arm: *potential-based shaping is safe by
+construction only when the potential is a fixed function of state.* A shaping
+term keyed on an **assigned** target is not potential-based at all if the
+assignment can change mid-episode.
+
+The untried repair is therefore to fix the *switching*, not the scale: pin a
+model's target once assigned, which would make the telescoping argument true and
+would also stop 98.4% of models being re-assigned to the ground under their feet.
+
+---
+
+## Correction (2026-08-11, same day): the 0.273 switch rate is an artefact
+
+**The repair proposed immediately above was measured before it was built, and it
+is not worth building.** Two probes on the same checkpoint:
+
+`target_switched` in transit is **0.292** — and **0.063 once each model's first
+step of the episode is excluded**. Of 335 transit switches, **280 are each
+model's single initial assignment**, which lands in the transit bucket because
+every model is walking on step 1. There is exactly one per model per episode and
+no pin can remove it.
+
+| bucket | `target_switched` | after step 1 |
+|---|---|---|
+| on an objective | 0.0230 | 0.0189 |
+| **in transit** | **0.2921** | **0.0634** |
+| loitering | 0.0182 | 0.0182 |
+
+So *"models re-base their target constantly"* is false. Real mid-walk churn is
+one switch per ~16 steps of walking against a walk of ~3.3 rounds — **most walks
+are never interrupted at all**. A switch costs that step's progress (~0.155 at
+`progress_scale` 6.0), so the whole effect is worth **~0.01/step against a
+0.383/step trough: about 2.5%**. Classifying the switches makes it worse for the
+proposal — only **8 of 203** are candidate-to-candidate churn; **96% involve the
+`fallback_to_nearest` selection** on one side or the other, which pinning genuine
+targets would not touch.
+
+**What this means for the arm above.** The refutation stands — `progress_scale`
+12 and 17 really are monotonically worse — but *the farming explanation for it is
+withdrawn*. At 0.063/step the potential is close enough to fixed that telescoping
+approximately holds, so amplifying a farm cannot be what happened. Two candidates
+remain, unseparated: at scale 17 the progress term is worth ~0.44/step against a
+per-term budget of ~10 an episode, so it simply crowds out `objective_hold` and
+`vp_gain`; and it is symmetric, so every repositioning, retreat or lateral
+manoeuvre is penalised at the same amplified rate.
+
+**The general lesson survives intact and is worth more than the arm**: a shaping
+term keyed on an assigned target is only potential-based while the assignment
+holds. The error here was the *second* one — quoting a rate that bundled an
+unavoidable initialisation into a churn measurement, and then designing against
+it. **Bucket a rate by whether the event could have been otherwise before
+building on it.**
+
+---
+
+## Second correction (2026-08-11, after a seven-pass audit): the abandonment is not a local optimum
+
+Everything below retracts claims made earlier the same day. Both were checked by
+independent adversarial review and reproduced here.
+
+### The agent is not leaving reward on the table — it is declining to lose a squad
+
+A probe reported that placing a squad on the abandoned objective gained "+3.26
+episode reward against a ~0.27 travel cost", concluding the policy sat in a local
+optimum paying 12:1. **Both halves are wrong.**
+
+**PPO trains on the per-model reward vector, not the scalar the env returns.**
+The scalar is a *mean over alive models*; each model's gradient comes from its
+own row of `phase_manager.last_per_model_reward`. Correctly paired, n=39:
+
+| | control | teleport | delta | se | wins |
+|---|---|---|---|---|---|
+| episode reward (scalar) | 20.94 | 24.65 | +3.71 | 1.30 | 30/39 |
+| discounted (γ=0.9) | 4.16 | 5.45 | +1.28 | 0.25 | 31/39 |
+| vp_margin | 49.49 | 60.13 | +10.64 | 7.59 | 28/39 |
+| **moved squad's own income** | **83.03** | **53.62** | **−29.41** | 8.27 | **11/39** |
+| **moved squad survivors (of 5)** | **3.03** | **1.33** | **−1.69** | 0.28 | **4/39** |
+
+The deviation is a **team** gain and a **squad** loss, and it is the squad's row
+that produces the squad's gradient. The far peak is a peak for the scalar and a
+trough for the models that have to walk there — a *difference-reward* problem,
+not an exploration failure.
+
+**The 0.27 cost omitted the dominant term.** It priced only the shaping
+differential during the walk. The objective holds 4.91 opponents; the real cost
+is **1.7 of 5 models dead**, and dead models earn nothing for the rest of the
+episode. A benefit priced fully against a cost missing its largest component is
+where "12:1" came from.
+
+### Three measurement defects behind it
+
+1. **The pairing was broken.** The probe appended a control row *before* the
+   `continue` that skips an episode with no abandoned objective and a teleport
+   row *after*, so every pair past the first skip compared control seed *i*
+   against teleport seed *i+k*. The "+21.1 vp_margin" and the "21/29, p ≈ 0.013"
+   were computed on that. Properly paired it is **+10.64 ± 7.59** — 1.4σ, and
+   *not* "more than the entire 9.9 gap to the bar".
+2. **γ is 0.9, not the 0.99 the probe assumed.** The GAE credit window is
+   1/(1−γλ) ≈ **6.9 steps**; the manoeuvre is 6.6–8.7. Every income figure in
+   this report and the last is undiscounted while the agent optimises a
+   discounted return.
+3. **The squad-selection rule never fired.** "The squad with fewest models on any
+   objective" is 0 for every squad at reset, so a strict `<` always returned
+   group 0. The stated rationale was inert in all 39 episodes.
+
+### What this says about the arms it motivated
+
+`25v25_global_cut{3,4}` were killed at epoch ~120. Their premise — that two
+global terms form a *floor* discouraging movement — does not survive: a global
+term is added **identically** to a loitering model and a walking one
+(`phase_manager.py` broadcasts `shared_reward` whole), so removing it subtracts
+the same constant from both and leaves the differential unchanged. The configs
+also removed only `objective_coverage` (10% of gross income) while `vp_gain`
+stayed, and raised `objective_hold` 20–60% at the same time, so no result could
+have been attributed to the cut.
+
+### One contamination worth carrying forward
+
+Every probe in this report classified "on an objective" as *centre inside the
+polygon*. The reward, VP and control rules use `norms_offset <= obj_radii`, and
+an area objective has `radius_size = 0` with the offset measured from the **base
+edge** — so a model up to one base radius *outside* the footprint is paid as a
+holder. That annulus is 11.4% of alive model-steps and a quarter of the
+"off-objective" bucket. Under the reward's own rule the trough is a third
+smaller: loitering **0.360**, transit **0.209**, gap **0.151** (published: 0.488
+/ 0.262 / 0.226).
+
+### And the cover claim needs its evidence swapped
+
+`blocked_share` 0.738 vs 0.735 was measured through an entry point that counts
+**model bases** as occluders with the rules' unit exemption switched off.
+Terrain is only ~23% of that number. Split out, terrain-only blocked share is
+0.176 (agent) vs 0.157 (bar) — not the identity the argument used. **The
+conclusion still holds, on the other half of the evidence**: `threatened` 0.394
+vs 0.679 accounts for the exposure gap almost exactly. Quote that, not
+`blocked_share`.
+
+
+---
+
+## Third correction: **there is no trough**. The income table was a phase artefact.
+
+This retracts the measurement that drove every arm on 2026-08-10 and 2026-08-11,
+including the two above and the start-state augmentation.
+
+`skip_phases` leaves movement and shooting, so an episode is **2 steps per round,
+alternating** — and VP is scored on the shooting step. The probe bucketed
+`in_transit` as *closed distance since the last step*, and a model can only close
+distance on a **movement** step. So `in_transit` sampled movement steps
+exclusively while `loitering` collected every off-objective model on the
+shooting steps.
+
+Measured on the same checkpoint, 8 episodes, splitting each bucket by step parity:
+
+| bucket | movement step | shooting step |
+|---|---|---|
+| **in transit** | **0.2621** (n=754) | — (n=0) |
+| **loitering** | **0.1865** (n=700) | 0.6352 (n=1439) |
+| on an objective | 0.3136 (n=1717) | 0.8770 (n=1663) |
+
+**At fixed phase, walking pays 41% more than loitering** — the opposite of the
+published claim. And every `in_transit` run is **exactly one step long** (mean
+1.00, max 1, n=754): the bucket never represented a walk in the first place.
+
+Removing the broadcast globals gives the same verdict on attributable income:
+walking 0.2196/step against loitering 0.1227 — **79% more**, and 74% of what
+standing on an objective pays. The opportunity cost of leaving held ground is
+**0.076/step, not 0.383** — a five-fold overstatement.
+
+**Retracted with it:** "moving toward an objective pays half of standing still
+doing nothing"; "the reward pays zero during the walk"; "the landscape has a
+trough between two peaks and the policy sits on the smaller one"; and the
+`~1.26 of certain loss over a ~3.3 round walk` arithmetic, which also multiplied
+a per-*step* gap by a per-*round* duration (2 steps/round, so it is out by 2x in
+the other direction) and priced a *transfer* as a loss — at
+`crowding_exponent: 1.0` the pot is conserved, so models leaving a crowded point
+hand their share to those who stay.
+
+**The rule this earns:** when an environment alternates phases and reward accrues
+unevenly across them, *any* bucket defined by a phase-specific event silently
+becomes a phase indicator. Split by phase before comparing activities, and
+subtract the broadcast terms — `last_per_model_reward[i]` is own-terms plus
+`shared_reward`, so the split is free.
+
+### Also corrected in the same pass
+
+- **`p ~ 0.013` was the one-sided sign test**, quoted without saying so
+  (two-sided 0.024). And `n` was extended from 11 to 29 *after* seeing a large
+  effect, on nested seeds — that is optional stopping, so the p-value is not a
+  valid fixed-sample one.
+- **"+9.8 vp, both seeds, 1.5 apart" is overstated.** Per-seed the effect is
+  **+6.2 and +13.4** — 7.2 apart, above this repo's own resolution rule. The
+  "1.5" is the spread of the two treatment seeds, not of the effect. s1 alone
+  reproduces the clustered scenario's +5.2; "nearly twice the size" rests on s2's
+  low control.
+- **"pay falls monotonically 1.30 -> 0.36" does not reproduce** — three
+  inversions across occupancy, and the "alone" cell rests on ~75 samples.
+- **`model_kills` is 4.5% of the income *budget*, which does not refute it as a
+  behavioural driver.** A share of the mean bounds nothing about a choice; what
+  moves a gradient is the term's *variation across the actions being compared*.
+  A kill is a lumpy 2.0 in one model's own row against `objective_hold`'s
+  0.15-0.30/step. Weaken that claim wherever it appears.

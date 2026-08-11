@@ -29,6 +29,11 @@ if TYPE_CHECKING:
 # stream. Kept well below the evaluation seed space so training and evaluation
 # never draw the same layouts.
 ROLLOUT_SEED_BASE = 0
+# Rollout envs opt in to the start-state augmentation; every evaluation path
+# leaves it off. Opt-in is the fail-safe direction -- forgetting it here
+# trains the bit-identical control, which is obvious, while forgetting to
+# disable it at eval would score a different scenario and look plausible.
+_AUGMENT_START = {"augment_start": True}
 
 
 class _NoOpProgress:
@@ -180,6 +185,26 @@ class PPOLightning(WargameLightningBase):
             self.num_rollout_envs = self._auto_detect_num_rollout_envs()
         else:
             self.num_rollout_envs = num_rollout_envs
+        # Only the parallel collector passes `augment_start`; the serial path
+        # goes through `BaseAgent.reset()`, which takes no options and is shared
+        # with evaluation, so plumbing it there would risk the leak this feature
+        # is built to prevent. Refuse the combination instead of training the
+        # control while the config and the Wandb record both claim otherwise --
+        # that failure is silent, and it reads as "the augmentation did nothing"
+        # rather than "the augmentation never ran".
+        if (
+            self.num_rollout_envs == 1
+            and self.env.config.start_on_objective_probability > 0.0
+        ):
+            raise ValueError(
+                "start_on_objective_probability="
+                f"{self.env.config.start_on_objective_probability} needs the "
+                "parallel rollout collector, but num_rollout_envs resolved to 1 "
+                "(requested "
+                f"{self.hparams.get('num_rollout_envs')}). The serial path cannot "
+                "apply the start-state augmentation, so this run would silently "
+                "train the un-augmented control. Set num_rollout_envs > 1."
+            )
         # Built once, on first use, and kept for the whole run. See
         # _ensure_rollout_envs for why rebuilding them per step was a bug.
         self._rollout_envs: list[WargameEnv] | None = None
@@ -607,7 +632,9 @@ class PPOLightning(WargameLightningBase):
         ]
         self._rollout_obs = []
         for env_idx, env in enumerate(envs):
-            observation, _ = env.reset(seed=ROLLOUT_SEED_BASE + env_idx)
+            observation, _ = env.reset(
+                seed=ROLLOUT_SEED_BASE + env_idx, options=_AUGMENT_START
+            )
             self._rollout_obs.append(observation)
         self._rollout_envs = envs
         return envs
@@ -752,7 +779,7 @@ class PPOLightning(WargameLightningBase):
                     total_steps += 1
 
                     if done:
-                        next_obs, _ = env.reset()
+                        next_obs, _ = env.reset(options=_AUGMENT_START)
                     obs_list[env_i] = next_obs
 
                 pbar.update(n_envs)

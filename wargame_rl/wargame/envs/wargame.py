@@ -16,6 +16,7 @@ from wargame_rl.wargame.envs.domain.battle_factory import (
 from wargame_rl.wargame.envs.domain.battle_factory import (
     from_config as _battle_from_config,
 )
+from wargame_rl.wargame.envs.domain.battle_factory import unit_count
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.game_clock import GameClock
 from wargame_rl.wargame.envs.domain.placement import place_for_episode
@@ -54,7 +55,7 @@ from wargame_rl.wargame.envs.env_components.exposure import (
     record_shooting_phase,
 )
 from wargame_rl.wargame.envs.env_components.shooting_masks import (
-    compute_shooting_masks,
+    compute_unit_shooting_masks,
     max_weapon_ranges,
 )
 from wargame_rl.wargame.envs.mission import build_vp_calculator
@@ -151,8 +152,15 @@ class WargameEnv(gym.Env):
             }
         )
 
+        # A weapon names an enemy UNIT, not a model, so the shooting slice is
+        # one action per opponent unit -- 5 rather than 25 on a 25v25 board.
         self._action_handler = ActionHandler(
-            config, n_shoot_targets=config.number_of_opponent_models
+            config,
+            n_shoot_targets=unit_count(
+                config.number_of_opponent_models,
+                config.max_groups,
+                config.opponent_models,
+            ),
         )
         self.action_space = self._action_handler.action_space
         self._skip_phases = frozenset(config.skip_phases)
@@ -246,7 +254,11 @@ class WargameEnv(gym.Env):
             self._opponent_action_handler = ActionHandler(
                 config,
                 n_models=config.number_of_opponent_models,
-                n_shoot_targets=config.number_of_wargame_models,
+                n_shoot_targets=unit_count(
+                    config.number_of_wargame_models,
+                    config.max_groups,
+                    config.models,
+                ),
             )
             self._opponent_policy: OpponentPolicy | None = build_opponent_policy(
                 config.opponent_policy,  # type: ignore[arg-type]
@@ -593,6 +605,13 @@ class WargameEnv(gym.Env):
         other held fixed is what separates "this scenario is hard" from "the
         dice went badly", and the two are indistinguishable while a single seed
         controls both. Absent, the combat seed is derived from `seed` as before.
+
+        `options["augment_start"]` opts in to `start_on_objective_probability`,
+        the training-time start-state augmentation. It is **opt-in rather than
+        opt-out on purpose**: a training loop that forgets to ask simply trains
+        the control, which is bit-identical and therefore obvious, whereas an
+        evaluation that forgot to switch it off would score a different scenario
+        and look entirely plausible doing it.
         """
         super().reset(seed=seed)
 
@@ -630,7 +649,12 @@ class WargameEnv(gym.Env):
         self._game_clock.skip_setup()
         # Clock is now at round 1, player_1, command phase
 
-        place_for_episode(self._battle, self.config, self.np_random)
+        place_for_episode(
+            self._battle,
+            self.config,
+            self.np_random,
+            augment_start=bool((options or {}).get("augment_start", False)),
+        )
 
         # If opponent goes first this round, auto-execute their turn and skip to player phase
         run_until_player_phase(
@@ -688,18 +712,33 @@ class WargameEnv(gym.Env):
         attackers: list[WargameModel],
         targets: list[WargameModel],
     ) -> np.ndarray | None:
-        """``(n_attackers, n_targets)`` — True where the target is only partly seen.
+        """``(n_attackers, n_target_units)`` — True where the *unit* has cover.
 
-        Only the declared pairs are traced, which is usually a handful out of the
-        full product. Returns None when nothing was declared, so an empty phase
-        costs nothing at all.
+        Cover is a unit-level, all-or-nothing property in the rules: a unit has
+        it against an attack only when **every** model in it is in a terrain area
+        or not fully visible, so *"one model of a unit standing in the open
+        denies cover to the whole unit"*. Reducing with `all` rather than `any`
+        is that sentence.
+
+        Only the declared (attacker, unit) pairs are traced, expanded to the
+        unit's living models -- a handful out of the full product. Returns None
+        when nothing was declared, so an empty phase costs nothing.
         """
         if not shots or not attackers or not targets:
             return None
+        groups = np.array([m.group_id for m in targets], dtype=int)
+        alive = np.array([m.is_alive for m in targets], dtype=bool)
+        n_groups = int(groups.max()) + 1 if len(groups) else 0
+
         candidates = np.zeros((len(attackers), len(targets)), dtype=bool)
-        for attacker_idx, target_idx in shots:
-            if target_idx < len(targets):
-                candidates[attacker_idx, target_idx] = True
+        declared = np.zeros((len(attackers), n_groups), dtype=bool)
+        for attacker_idx, target_group in shots:
+            if 0 <= target_group < n_groups and attacker_idx < len(attackers):
+                declared[attacker_idx, target_group] = True
+                candidates[attacker_idx, (groups == target_group) & alive] = True
+        if not candidates.any():
+            return None
+
         visibility = self.visibility_between(
             np.array([m.location for m in attackers], dtype=float),
             np.array([m.location for m in targets], dtype=float),
@@ -707,8 +746,19 @@ class WargameEnv(gym.Env):
             origin_models=attackers,
             target_models=targets,
         )
-        in_cover: np.ndarray = visibility == COVER
-        return in_cover
+        model_in_cover = visibility == COVER
+        unit_in_cover = np.zeros((len(attackers), n_groups), dtype=bool)
+        for group in range(n_groups):
+            members = (groups == group) & alive
+            if not members.any():
+                continue
+            # Every living model of the unit must be covered, and only for the
+            # attackers that actually declared against it -- an undeclared pair
+            # was never traced, so its cells are vacuously True under `all`.
+            unit_in_cover[:, group] = (
+                model_in_cover[:, members].all(axis=1) & declared[:, group]
+            )
+        return unit_in_cover
 
     def _apply_player_action(self, action: WargameEnvAction) -> None:
         phase = self._game_clock.state.phase or BattlePhase.movement
@@ -759,18 +809,22 @@ class WargameEnv(gym.Env):
         ):
             return mask
 
-        mask[:, shooting_slice.start : shooting_slice.end] &= compute_shooting_masks(
-            np.array([m.location for m in self.opponent_models]),
-            np.array([m.location for m in self.wargame_models]),
-            opp_alive,
-            alive_mask_for(self.wargame_models),
-            self._opponent_max_ranges,
-            self.line_of_sight_matrix,
-            player_advanced=np.array(
-                [m.advanced_this_turn for m in self.opponent_models]
-            ),
-            engagement_range=self._rules_quantities.engagement_range,
-            base_diameter=2.0 * self._rules_quantities.base_radius,
+        mask[:, shooting_slice.start : shooting_slice.end] &= (
+            compute_unit_shooting_masks(
+                np.array([m.location for m in self.opponent_models]),
+                np.array([m.location for m in self.wargame_models]),
+                opp_alive,
+                alive_mask_for(self.wargame_models),
+                self._opponent_max_ranges,
+                self.line_of_sight_matrix,
+                np.array([m.group_id for m in self.wargame_models], dtype=int),
+                shooting_slice.end - shooting_slice.start,
+                player_advanced=np.array(
+                    [m.advanced_this_turn for m in self.opponent_models]
+                ),
+                engagement_range=self._rules_quantities.engagement_range,
+                base_diameter=2.0 * self._rules_quantities.base_radius,
+            )
         )
         return mask
 
