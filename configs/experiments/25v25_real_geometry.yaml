@@ -49,14 +49,23 @@ config_name: 25v25_real_geometry
 # scenario where n=30 read +21.4 against n=100's +6.7 -- but score the agent and
 # the bar at the same n and seed_base regardless.
 #
-# THE BAR ROSE TWICE ON THE WAY TO THAT NUMBER, and both corrections matter:
+# THE BAR ROSE ON THE WAY TO THAT NUMBER:
 #   +6.7   physics off -- base_radius defaulted to 0.0
 #   +27.8  physics on
 #   +38.0  after baselines stopped marching onto the objective's centroid
-# The last was worth +10.2: `step_toward_objective` took a *radius*, and
-# `radius_size` is 0.0 for an area objective by design, so every squad walked
-# onto one point and jammed on its own bases. An agent quoted against +27.8
-# would have been credited ten points it had not earned.
+#
+# Score against +38.0: it is what the current code measures on these layouts.
+# But do NOT read the last step as "the fix is worth +10.2". That was an
+# unpaired before/after on one seed set. Paired per episode against a worktree
+# at the parent commit, 60 layouts each:
+#
+#   seeds 700000+   pre +18.8  post +35.5   paired +16.7 +/- 6.5  t= 2.56
+#   seeds  10000+   pre +28.6  post +27.0   paired  -1.6 +/- 6.7  t=-0.24
+#   pooled (120)                            paired  +7.5 +/- 4.7  t= 1.60
+#
+# So the *behavioural* defect is fixed and occupancy rises consistently
+# (0.61 -> 0.91 and 0.61 -> 0.87), while the effect on vp_margin is layout-set
+# dependent and pooled is suggestive rather than established.
 #
 # THE HEADROOM IS ALLOCATION. `just measure-objective-split`, n=60: the bar
 # parks 6.85 models on a point defended by 0.17, wins the middle 2.95 to 1.52,
