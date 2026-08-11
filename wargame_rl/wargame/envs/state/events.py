@@ -45,6 +45,9 @@ class StateDelta(BaseModel):
     step: int
     clock: ClockSnapshot | None = None
     action_phase: str | None = None
+    # No terrain field, deliberately: terrain is static for the episode and rides
+    # on the reset/anchor snapshots, so apply_delta preserves it via model_copy.
+    # Adding it here would bloat every step with an unchanging outline set.
     objectives: list[ObjectiveSnapshot] | None = None
     player_model_deltas: list[ModelDelta] = Field(default_factory=list)
     opponent_model_deltas: list[ModelDelta] = Field(default_factory=list)
@@ -223,6 +226,8 @@ def apply_delta(
             o_models[md.idx] = _apply_model_delta(o_models[md.idx], md)
         updates["opponent_models"] = o_models
 
+    # `terrain_footprints` is intentionally absent from `updates`, so it carries
+    # through unchanged from the base snapshot (the anchor) across every delta.
     result: GameStateSnapshot = snapshot.model_copy(update=updates)
     return result
 

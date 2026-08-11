@@ -99,7 +99,7 @@ A complete, serialisable Pydantic model of the game at one point in time. This i
 
 ```python
 class GameStateSnapshot(BaseModel):
-    schema_version: str = "2.0"
+    schema_version: str = "2.1"
     step: int
     max_steps: int
     clock: ClockSnapshot
@@ -112,6 +112,7 @@ class GameStateSnapshot(BaseModel):
     objectives: list[ObjectiveSnapshot]
     deployment_zone: list[int]
     opponent_deployment_zone: list[int]
+    terrain_footprints: list[list[list[float]]] | None = None  # 2.1: outline per ruin
     player_vp: int
     opponent_vp: int
     player_vp_delta: int
