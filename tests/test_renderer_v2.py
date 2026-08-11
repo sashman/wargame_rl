@@ -22,14 +22,26 @@ from wargame_rl.wargame.envs.renders.v2 import build_renderer  # noqa: E402
 from wargame_rl.wargame.envs.renders.v2.control import (  # noqa: E402
     compute_objective_control,
 )
-from wargame_rl.wargame.envs.renders.v2.factory import BACKENDS  # noqa: E402
+from wargame_rl.wargame.envs.renders.v2.factory import (  # noqa: E402
+    BACKENDS,
+    _build_backend,
+)
+from wargame_rl.wargame.envs.renders.v2.replay import (  # noqa: E402
+    ReplayPresenter,
+    ReplaySource,
+    build_scene_from_snapshot,
+)
 from wargame_rl.wargame.envs.renders.v2.scene import (  # noqa: E402
     Control,
     Disc,
     build_scene,
 )
 from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME  # noqa: E402
-from wargame_rl.wargame.envs.types import WargameEnvConfig  # noqa: E402
+from wargame_rl.wargame.envs.state import EventLog, ReplayController  # noqa: E402
+from wargame_rl.wargame.envs.types import (  # noqa: E402
+    WargameEnvAction,
+    WargameEnvConfig,
+)
 from wargame_rl.wargame.envs.types.config import (  # noqa: E402
     ModelConfig,
     ObjectiveConfig,
@@ -195,3 +207,76 @@ def test_every_backend_renders_the_player_disc(backend: str) -> None:
     py = int(5 * scale) + north
     patch = frame[py - 3 : py + 3, px - 3 : px + 3].reshape(-1, 3).mean(axis=0)
     assert patch[2] > patch[0] and patch[2] > patch[1]  # blue group 0 dominates
+
+
+# --- Replay: snapshot -> Scene fidelity and the player -----------------------
+
+
+def _replay_env() -> WargameEnv:
+    env = _env(
+        number_of_wargame_models=3,
+        number_of_objectives=2,
+        base_radius=1.0,
+        models=[ModelConfig(x=5, y=5), ModelConfig(x=6, y=6), ModelConfig(x=7, y=5)],
+        objectives=[ObjectiveConfig(x=10, y=10), ObjectiveConfig(x=14, y=6)],
+        terrain=[TerrainPieceConfig(footprint=(9, 9, 12, 12))],
+    )
+    env.action_space.seed(0)
+    env.step(WargameEnvAction(actions=[int(a) for a in env.action_space.sample()]))
+    return env
+
+
+def test_build_scene_from_snapshot_matches_live() -> None:
+    """A snapshot-built Scene must equal the live one — replay fidelity. Terrain,
+    objective control and the footprint/objective dedup all have to round-trip."""
+    env = _replay_env()
+    scale = 1024 / 20
+    live = build_scene(env, compute_objective_control(env), scale=scale)
+    replay = build_scene_from_snapshot(env.to_snapshot(), scale=scale)
+    assert replay.primitives == live.primitives
+    assert replay.hud == live.hud
+
+
+def test_replay_pre_2_1_snapshot_drops_terrain_without_crashing() -> None:
+    """A pre-2.1 recording has no terrain; the replay just omits the ruins."""
+    env = _replay_env()
+    scale = 1024 / 20
+    with_terrain = build_scene_from_snapshot(env.to_snapshot(), scale=scale)
+    legacy_snap = env.to_snapshot().model_copy(update={"terrain_footprints": None})
+    without = build_scene_from_snapshot(legacy_snap, scale=scale)
+    # Dropping terrain removes at least the ruin polygon + its label.
+    assert len(without.primitives) < len(with_terrain.primitives)
+
+
+def _recording(env: WargameEnv, n_steps: int) -> ReplayController:
+    log = EventLog(anchor_interval=2)
+    log.record_reset(env.to_snapshot())
+    for _ in range(n_steps):
+        env.step(WargameEnvAction(actions=[int(a) for a in env.action_space.sample()]))
+        log.record_step(env.to_snapshot())
+    return ReplayController(log)
+
+
+def test_replay_source_from_controller_flags_reset_and_anchors() -> None:
+    env = _replay_env()
+    source = ReplaySource.from_controller(_recording(env, 5))
+    assert len(source) == 6  # reset + 5 steps
+    assert 0 in source.anchor_indices  # reset is always a full frame
+    assert len(source.anchor_indices) > 1  # anchor_interval=2 crossed
+
+
+def test_replay_presenter_renders_and_exports(tmp_path: Any) -> None:
+    env = _replay_env()
+    source = ReplaySource.from_controller(_recording(env, 4))
+    presenter = ReplayPresenter(_build_backend("pillow"), source)
+
+    frame = presenter.frame_at(0)
+    rgb = presenter._backend.to_rgb_array(frame)
+    # The replay frame is the board+panels plus the timeline strip, so it is
+    # taller than the 1132px live frame at this fit.
+    assert rgb.shape[1] == 1024
+    assert rgb.shape[0] > 1132
+
+    out = tmp_path / "replay.mp4"
+    presenter.export_mp4(str(out))
+    assert out.exists() and out.stat().st_size > 0
