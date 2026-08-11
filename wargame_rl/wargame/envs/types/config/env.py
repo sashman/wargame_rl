@@ -96,6 +96,24 @@ class WargameEnvConfig(BaseModel):
             "baseline measured without it must be re-measured."
         ),
     )
+    start_on_objective_probability: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Probability that a training episode starts with one whole player "
+            "group already standing on a random objective, instead of in the "
+            "deployment zone. A start-state augmentation, not a rule: it "
+            "teleports a squad, and it applies only when the caller asks for it "
+            "via `reset(options={'augment_start': True})`, which the training "
+            "rollout does and no evaluation path does. Aimed at a measured "
+            "optimisation failure rather than a pricing one — putting a squad on "
+            "the objective the trained agent abandons is worth +3.26 episode "
+            "reward against a travel cost of ~0.27, and it still does not go. "
+            "Defaults 0.0, which is an exact no-op: the augmentation draws "
+            "nothing from the layout RNG when it does not fire."
+        ),
+    )
     observe_objective_control: bool = Field(
         default=False,
         description="Put per-objective control state (player count, opponent "

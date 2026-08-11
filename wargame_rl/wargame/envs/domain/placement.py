@@ -175,6 +175,103 @@ def wargame_model_placement(
             placed.append(model)
 
 
+def _sample_in_objective(
+    objective: WargameObjective,
+    occupied: list[tuple[float, float]],
+    min_separation: float,
+    rng: Generator,
+) -> tuple[float, float] | None:
+    """A random point whose centre is on *objective* and whose base is clear.
+
+    Centre-inside rather than base-inside: control is scored from the centre for
+    an area and from the base edge for a disc, so a point placed this way counts
+    as holding under either rule. Returns None when the retry budget is spent,
+    which a small objective genuinely can exhaust.
+    """
+    if objective.area is not None:
+        x_min, y_min, x_max, y_max = objective.area.bounds
+        inside = objective.area.contains
+    else:
+        centre = np.asarray(objective.location, dtype=float)
+        radius = float(objective.radius_size)
+        x_min, y_min = float(centre[0]) - radius, float(centre[1]) - radius
+        x_max, y_max = float(centre[0]) + radius, float(centre[1]) + radius
+
+        def inside(x: float, y: float) -> bool:
+            return bool(np.hypot(x - centre[0], y - centre[1]) <= radius)
+
+    for _ in range(_MAX_PLACEMENT_RETRIES):
+        candidate = (float(rng.uniform(x_min, x_max)), float(rng.uniform(y_min, y_max)))
+        if inside(*candidate) and _is_clear(candidate, occupied, min_separation):
+            return candidate
+    return None
+
+
+def start_group_on_objective(
+    player_models: list[WargameModel],
+    opponent_models: list[WargameModel],
+    objectives: list[WargameObjective],
+    rng: Generator,
+    base_radius: float = 0.0,
+) -> int | None:
+    """Move one whole player group off its deployment position onto an objective.
+
+    A *training-time* start-state augmentation, and deliberately not a rule: it
+    teleports a squad, which no legal turn can do.
+
+    It exists because the abandonment this project keeps failing to fix is an
+    optimisation problem rather than a pricing one. Measured on the trained
+    agent, putting one squad on the objective it otherwise abandons is worth
+    **+3.26 episode reward** (paired, 21 of 29 seeds, sign test p ~ 0.013)
+    against a travel cost of roughly 0.27 — the policy is sitting where a
+    deviation it can execute pays about twelve times what it costs, and does not
+    take it. Five reward weightings moved abandonment by 2.3 points between them,
+    because they all changed what the far peak *pays* rather than the odds of
+    ever standing on it. This puts the far peak in the training distribution
+    instead, so the policy only has to learn to stay.
+
+    Returns the objective index that was occupied, or None if nothing moved.
+
+    Best-effort by design: a model that cannot be fitted keeps its deployment
+    position rather than failing the episode, matching `objective_placement`.
+    """
+    if not objectives or not player_models:
+        return None
+
+    groups: dict[int, list[WargameModel]] = {}
+    for model in player_models:
+        groups.setdefault(model.group_id, []).append(model)
+    if not groups:
+        return None
+
+    group_ids = sorted(groups)
+    chosen_group = int(group_ids[int(rng.integers(len(group_ids)))])
+    objective_index = int(rng.integers(len(objectives)))
+    moving = groups[chosen_group]
+
+    # The movers vacate their deployment spots, so only the models staying put
+    # constrain where they can land.
+    staying = [m for m in player_models if m.group_id != chosen_group]
+    occupied = [
+        (float(m.location[0]), float(m.location[1])) for m in staying + opponent_models
+    ]
+    min_separation = 2.0 * base_radius
+
+    moved = 0
+    for model in moving:
+        spot = _sample_in_objective(
+            objectives[objective_index], occupied, min_separation, rng
+        )
+        if spot is None:
+            continue
+        model.location = position(*spot)
+        model.reset_for_episode()
+        occupied.append(spot)
+        moved += 1
+
+    return objective_index if moved else None
+
+
 def objective_placement(
     objectives: list[WargameObjective],
     deployment_zone: np.ndarray,
@@ -503,11 +600,21 @@ def place_for_episode(
     battle: Battle,
     config: WargameEnvConfig,
     rng: Generator,
+    augment_start: bool = False,
 ) -> None:
     """Place terrain, player models, objectives, and opponent models for an episode.
 
     Uses fixed positions from config when available, otherwise random placement
     within deployment zones.
+
+    `augment_start` opts in to the start-state augmentation described on
+    `start_group_on_objective`. It is off by default and **draws nothing from
+    `rng` when off**, so a config carrying
+    `start_on_objective_probability` produces layouts bit-identical to one
+    without it whenever the augmentation is not requested. That is what keeps an
+    augmented run's evaluation comparable to a baseline measured on the base
+    config — the opposite discipline to `combat_seed`, which draws either way
+    precisely so the layout stream *cannot* shift.
     """
     base_radius = resolve_rules_quantities(config).base_radius
     # Terrain first: it is the board the rest is placed onto. Models and
@@ -573,6 +680,17 @@ def place_for_episode(
                 battle.opponent_models,
                 battle.opponent_deployment_zone,
                 config.group_max_distance,
+                rng,
+                base_radius=base_radius,
+            )
+
+    # Last, so the draws it makes cannot shift anything else in this episode.
+    if augment_start and config.start_on_objective_probability > 0.0:
+        if float(rng.random()) < config.start_on_objective_probability:
+            start_group_on_objective(
+                battle.player_models,
+                battle.opponent_models,
+                battle.objectives,
                 rng,
                 base_radius=base_radius,
             )

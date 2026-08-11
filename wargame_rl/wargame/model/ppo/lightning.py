@@ -29,6 +29,11 @@ if TYPE_CHECKING:
 # stream. Kept well below the evaluation seed space so training and evaluation
 # never draw the same layouts.
 ROLLOUT_SEED_BASE = 0
+# Rollout envs opt in to the start-state augmentation; every evaluation path
+# leaves it off. Opt-in is the fail-safe direction -- forgetting it here
+# trains the bit-identical control, which is obvious, while forgetting to
+# disable it at eval would score a different scenario and look plausible.
+_AUGMENT_START = {"augment_start": True}
 
 
 class _NoOpProgress:
@@ -607,7 +612,9 @@ class PPOLightning(WargameLightningBase):
         ]
         self._rollout_obs = []
         for env_idx, env in enumerate(envs):
-            observation, _ = env.reset(seed=ROLLOUT_SEED_BASE + env_idx)
+            observation, _ = env.reset(
+                seed=ROLLOUT_SEED_BASE + env_idx, options=_AUGMENT_START
+            )
             self._rollout_obs.append(observation)
         self._rollout_envs = envs
         return envs
@@ -752,7 +759,7 @@ class PPOLightning(WargameLightningBase):
                     total_steps += 1
 
                     if done:
-                        next_obs, _ = env.reset()
+                        next_obs, _ = env.reset(options=_AUGMENT_START)
                     obs_list[env_i] = next_obs
 
                 pbar.update(n_envs)

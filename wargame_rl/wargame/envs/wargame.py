@@ -589,6 +589,13 @@ class WargameEnv(gym.Env):
         other held fixed is what separates "this scenario is hard" from "the
         dice went badly", and the two are indistinguishable while a single seed
         controls both. Absent, the combat seed is derived from `seed` as before.
+
+        `options["augment_start"]` opts in to `start_on_objective_probability`,
+        the training-time start-state augmentation. It is **opt-in rather than
+        opt-out on purpose**: a training loop that forgets to ask simply trains
+        the control, which is bit-identical and therefore obvious, whereas an
+        evaluation that forgot to switch it off would score a different scenario
+        and look entirely plausible doing it.
         """
         super().reset(seed=seed)
 
@@ -625,7 +632,12 @@ class WargameEnv(gym.Env):
         self._game_clock.skip_setup()
         # Clock is now at round 1, player_1, command phase
 
-        place_for_episode(self._battle, self.config, self.np_random)
+        place_for_episode(
+            self._battle,
+            self.config,
+            self.np_random,
+            augment_start=bool((options or {}).get("augment_start", False)),
+        )
 
         # If opponent goes first this round, auto-execute their turn and skip to player phase
         run_until_player_phase(
