@@ -450,3 +450,33 @@ def test_spread_selection_beats_centre_selection_on_separation() -> None:
     # Never worse on any individual layout: the spread set is chosen by maximising
     # exactly this quantity, so a regression here means the flag is not wired.
     assert all(s >= c - 1e-9 for s, c in zip(spread, centre))
+
+
+def test_spread_selection_keeps_objectives_mirror_symmetric() -> None:
+    """Spread selection must not hand one side an extra objective.
+
+    Maximising separation *unconstrained* looks fair -- a mirrored layout's
+    mirrored sets score identically -- but that says the mirror image scores the
+    same, not that the winner is its own mirror image. Two pieces on one side and
+    one on the other can out-separate any balanced set, and did: 38 of 200
+    layouts came out 2-1, up to 3.67" off centre.
+    """
+    from pydantic_yaml import parse_yaml_raw_as
+
+    from wargame_rl.wargame.envs.types.config import WargameEnvConfig
+    from wargame_rl.wargame.model.common.factory import create_environment
+
+    with open("configs/experiments/25v25_spread_objectives.yaml") as handle:
+        config = parse_yaml_raw_as(WargameEnvConfig, handle.read())
+    assert config.objectives_spread_on_terrain
+    env = create_environment(env_config=config)
+    middle = config.board_width / 2.0
+
+    for seed in range(700_000, 700_060):
+        env.reset(seed=seed)
+        xs = [float(np.asarray(o.location, dtype=float)[0]) for o in env.objectives]
+        left = sum(1 for x in xs if x < middle - 1e-6)
+        right = sum(1 for x in xs if x > middle + 1e-6)
+        assert left == right, f"seed {seed}: {left} left vs {right} right ({xs})"
+        # The set reflects onto itself, so the mean sits exactly on the centre.
+        assert abs(sum(xs) / len(xs) - middle) < 1e-6, f"seed {seed}: {xs}"

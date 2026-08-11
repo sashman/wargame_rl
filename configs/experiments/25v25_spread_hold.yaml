@@ -18,12 +18,12 @@ config_name: 25v25_spread_hold
 # WHAT IT SCORES. n=100, seeds 700000-700099, identical layouts:
 #
 #   policy                       win    vp_margin   held   alive
-#   random (the floor)           0.00     -148.7    0.18   0.766
-#   greedy_nearest               0.33      -25.3    1.04   0.636
-#   squad_march                  0.45      -11.8    1.22   0.421
-#   split_evenly                 0.50       +4.0    1.37   0.557
-#   squad_march_shoot (the bar)  0.83      +59.4    1.84   0.516
-#   contest_and_spread           0.85      +55.2    1.78   0.505
+#   random (the floor)           0.01     -147.3    0.21   0.787
+#   greedy_nearest               0.27      -34.2    0.95   0.571
+#   squad_march                  0.42      -17.7    1.14   0.384
+#   split_evenly                 0.45       +0.2    1.33   0.533
+#   squad_march_shoot (the bar)  0.85      +58.9    1.82   0.499
+#   contest_and_spread           0.84      +57.5    1.77   0.474
 #
 # Measured WITH objectives_spread_on_terrain. The clustered table (bar +67.7)
 # is void here. Spreading lowers every shooting policy -- the bar 67.7 -> 59.4

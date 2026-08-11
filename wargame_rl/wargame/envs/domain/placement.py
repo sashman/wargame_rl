@@ -367,7 +367,7 @@ def objectives_from_terrain(
         )
 
     chosen = (
-        _choose_spread_pieces(eligible, len(objectives))
+        _choose_spread_pieces(eligible, len(objectives), board_width)
         if spread
         else _choose_symmetric_pieces(eligible, len(objectives), centre, board_width)
     )
@@ -378,19 +378,32 @@ def objectives_from_terrain(
 def _choose_spread_pieces(
     eligible: list[Footprint],
     n_wanted: int,
+    board_width: int,
+    tolerance: float = 1e-6,
 ) -> list[Footprint]:
-    """Pick the *n_wanted* pieces whose minimum pairwise separation is largest.
+    """Pick the furthest-apart *n_wanted* pieces that still mirror onto themselves.
 
     Selecting the pieces nearest the board centre packs every objective into the
     middle: measured on 200 layouts, all three sat inside a ~16" circle on a
     60x44 board and 47% of objective pairs were within one weapon range, so one
     squad could shoot at two of them and there was no travel trade-off to make.
 
-    Maximising the minimum separation is fair without needing distance rings.
-    The rings existed because ordering by distance to the centre can take a
-    mirrored pair plus *half* of the next one; a spread score is a property of
-    the chosen *set*, and a mirrored layout's mirrored sets score identically,
-    so neither side is handed the closer prize.
+    **Symmetry has to be a constraint, not a consequence.** The first version of
+    this maximised separation unconstrained, on the reasoning that a mirrored
+    layout's mirrored sets score identically so neither side is favoured. That
+    is true and insufficient: it says the mirror image scores the same, not that
+    the winner *is* its own mirror image. Two pieces on one side and one on the
+    other can out-separate any balanced set, and did — 38 of 200 layouts came out
+    2-1, up to 3.67" off centre, handing that side a closer prize.
+
+    So the search runs over sets that map onto themselves under reflection about
+    the board's centre line: every chosen piece's mirror partner is chosen too,
+    or the piece straddles the line and is its own partner. That reproduces what
+    the distance rings guaranteed, without constraining *which* rings are taken.
+
+    Falls back to unconstrained separation when no symmetric set exists, which
+    is the case for non-mirrored terrain — a slightly unfair layout beats a
+    failed episode, and `mirror: false` has no fairness guarantee to preserve.
 
     Exhaustive over combinations. `n_wanted` is 3 and eligible counts are single
     digits, so this is a few dozen distance computations per episode.
@@ -406,9 +419,20 @@ def _choose_spread_pieces(
             for a, b in itertools.combinations(indices, 2)
         )
 
-    best = max(
-        itertools.combinations(range(len(eligible)), n_wanted), key=min_separation
-    )
+    def is_symmetric(indices: tuple[int, ...]) -> bool:
+        """True when reflecting the chosen centroids maps the set onto itself."""
+        chosen = [centroids[i] for i in indices]
+        for point in chosen:
+            reflected = np.array([board_width - point[0], point[1]])
+            if not any(
+                bool(np.linalg.norm(reflected - other) <= tolerance) for other in chosen
+            ):
+                return False
+        return True
+
+    combinations = list(itertools.combinations(range(len(eligible)), n_wanted))
+    symmetric = [c for c in combinations if is_symmetric(c)]
+    best = max(symmetric or combinations, key=min_separation)
     # Left-to-right so objective index is a stable function of the layout rather
     # than of combination order.
     return sorted(
