@@ -421,9 +421,15 @@ Two rules it encodes:
   count is a heavy tail, not an improvement — and only one of those two numbers
   says so. The weakest-target arm above was ahead in 24 of 100 episodes.
 
-It takes scripted baseline *names*, so it cannot pair a checkpoint against a
-baseline; for that, score both at the same `n` and `seed_base` and treat the
-comparison as unpaired.
+Either argument may be a baseline name **or a checkpoint path**, so the
+comparison that decides a result — a trained policy against the bar — can be
+paired directly rather than read off two aggregate rows.
+
+**It also pairs two code versions.** Run the same policy from a worktree at an
+earlier commit and difference per episode; that is how the baseline arrival fix
+was resolved from "worth +10.2" (unpaired, one seed set) to +16.7 ± 6.5 on one
+seed set, −1.6 ± 6.7 on another and **+7.5 ± 4.7 pooled** — helping occupancy
+consistently while its effect on `vp_margin` stayed layout-dependent.
 
 ## 3. Trace metrics (`just analyze`, `just analyze-compare`)
 

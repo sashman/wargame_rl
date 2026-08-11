@@ -101,7 +101,7 @@ wargame_rl/
 | Score on the real table layouts | `just measure-maps <policy\|ckpt> <config.yaml> [n_episodes] [maps_dir]` |
 | Why an objective was not held | `just measure-objective-split <policy\|ckpt> <config.yaml> [n_episodes]` |
 | Which calculator pays, and how much is global | `just measure-income-share <policy\|ckpt> <config.yaml> [n_episodes]` |
-| Two policies on identical layouts, paired per episode | `just measure-paired <policy_a> <policy_b> <config.yaml> [n_episodes] [seed_base]` |
+| Two policies on identical layouts, paired per episode | `just measure-paired <policy\|ckpt> <policy\|ckpt> <config.yaml> [n_episodes] [seed_base]` |
 | Dice-vs-scenario noise floor | `just measure-noise-floor <config.yaml> [n_layouts] [n_combat_seeds] [policy]` |
 | Terrain-profile statistics | `just measure-terrain <config.yaml> [n_layouts]` |
 | Where epoch time goes | `just measure-throughput <config.yaml> [n_steps] [engaged]` |
