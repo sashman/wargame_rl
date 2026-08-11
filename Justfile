@@ -258,8 +258,13 @@ measure-maps policy env_config n_episodes='100' maps_dir='':
 # every step is a floor a movement term has to compete with, and a large weight
 # that rarely fires is cheap. Run it before tuning a term, to check the term is
 # a meaningful share at all -- `model_kills` looked like the driver of a
-# range-managing policy and measured 4.5% of income. Takes a baseline name or a
-# checkpoint, like measure-objective-split.
+# range-managing policy and measured 4.5% of income. NOTE the inference this
+# supports is narrow: a share of MEAN income rules a term out as the largest
+# income stream, and does NOT rule it out as the driver of a behaviour. What
+# moves a policy gradient is a term's variation across the actions being
+# compared -- a kill is a lumpy 2.0 in one model's own row against
+# objective_hold's 0.15-0.30/step. Takes a baseline name or a checkpoint,
+# like measure-objective-split.
 measure-income-share policy env_config n_episodes='30':
 	@uv run python -m scripts.measure_income_share {{policy}} {{env_config}} {{n_episodes}}
 

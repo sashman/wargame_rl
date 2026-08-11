@@ -52,6 +52,16 @@
 # exponent at 0.0 scored -40.4 and is the worst arm ever measured here. Do not
 # read this arm as a licence to raise the weight without the exponent.
 # ---------------------------------------------------------------------------
+#
+# RETRACTED (same day, after audit): the "trough" this arm was aimed at does
+# not exist. The income table it rests on is a battle-phase artefact -- the
+# episode is 2 steps per round (movement, then shooting) and VP is scored on the
+# shooting step, while the probe's "in transit" bucket can only ever sample a
+# movement step. Split by phase, walking pays 0.2621/step against loitering's
+# 0.1865 -- 41% MORE, not half -- and every transit "run" was exactly one step
+# long, so the bucket never represented a walk at all. See the third correction
+# in reports/2026-08-11-spreading-objectives-lowers-the-bar-not-the-abandonment.md.
+#
 config_name: 25v25_global_cut4
 #
 # 25v25 on continuous ground, with polygon terrain and objectives that ARE the

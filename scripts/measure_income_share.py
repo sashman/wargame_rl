@@ -18,8 +18,16 @@ Two readings this is for:
 
 - Before training an arm, check the term you are about to tune is actually a
   meaningful share. `model_kills` looked like the driver of a range-managing
-  policy and turned out to be 4.5% of income — refuted for the cost of one run
-  of this script rather than four GPU-hours.
+  policy and turned out to be 4.5% of income.
+
+  **Read that inference narrowly.** A share of *mean* income rules a term out as
+  the largest income stream. It does **not** rule it out as the driver of a
+  behaviour: what moves a policy gradient is a term's *variation across the
+  actions being compared*, not its share of the mean. `objective_hold` is 46% of
+  income and nearly constant across the choices of a model already standing on a
+  point, while `model_kills` is 4.5% but arrives as a lumpy 2.0 in one model's
+  own row. Ruling a term out as a behavioural driver needs a differential, which
+  this script does not produce.
 - When a shaping term is not producing the behaviour it prices, compare its
   share against the global floor before raising its weight.
 
