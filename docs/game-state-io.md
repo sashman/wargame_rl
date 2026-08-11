@@ -201,7 +201,7 @@ class RewardSnapshot(BaseModel):
 | Group | Fields | Purpose |
 |-------|--------|---------|
 | **Timing** | `step`, `max_steps`, `clock`, `action_phase`, `n_rounds` | Where in the episode and game clock |
-| **Board** | `board_width`, `board_height`, `deployment_zone`, `opponent_deployment_zone` | Static geometry |
+| **Board** | `board_width`, `board_height`, `deployment_zone`, `opponent_deployment_zone`, `terrain_footprints` | Static geometry (terrain footprints recorded on the reset + anchors only, not deltas) |
 | **Units** | `player_models`, `opponent_models` | Full per-model state inc. weapons, wounds, distances |
 | **Objectives** | `objectives`, `objective_control` | Positions, radii, ownership |
 | **Actions** | `player_actions`, `opponent_actions`, `player_action_descriptions` | Raw + decoded actions taken |
