@@ -68,15 +68,43 @@ Worth stating plainly, because it is the half that worked:
 - **alive 0.65 / 0.62 against 0.51** — it preserves its force.
 - **exposure 0.245 / 0.257 against 0.438** — it takes *half* the exposure.
 
-That last number matters beyond this run. The standing finding is that **the
+That last number looked like it might overturn the standing finding that **the
 agent does not use terrain for cover, it manages range**
-([2026-08-05](2026-08-05-stochastic-terrain-and-cover.md)). That was established
-on terrain giving 0.194 hidden fraction — more than double the real game's 0.088.
-On terrain fitted to the real layouts, the agent sits at half the bar's exposure.
-**This does not by itself prove cover-seeking** — exposure averages over *alive*
-models and the agent keeps more of them alive, and range management would also
-lower it. It does mean the old conclusion was drawn in an environment that no
-longer exists and should be re-tested rather than cited.
+([2026-08-05](2026-08-05-stochastic-terrain-and-cover.md)), which was established
+on terrain giving 0.194 hidden — more than double the real game's 0.088.
+
+**Re-tested on the corrected terrain, and the old finding stands.** Exposure has
+three possible causes here — cover, range, or simply keeping more models alive —
+so it was split per alive model per shooting phase, n=20 on identical layouts:
+
+| | range_margin | threatened | **blocked_share** |
+|---|---|---|---|
+| agent | **+2.11"** | **0.394** | **0.738** |
+| `squad_march_shoot` | -0.26" | 0.679 | **0.735** |
+| `random` | +13.33" | 0.034 | 0.456 |
+
+`blocked_share` is the cover term and nothing else: of the enemies *within weapon
+range*, the fraction whose sightline terrain breaks. **It is identical for the
+agent and the bar.** Conditional on being in range, the agent is no better
+covered than a policy that marches in a straight line — it gets the incidental
+cover of walking among ruins, no more.
+
+What differs is `threatened`: the agent has an enemy in range 39% of the time
+against the bar's 68%, sitting +2.11" *outside* weapon range where the bar sits
+0.26" inside it. The exposure gap is almost exactly proportional to that —
+0.245/0.438 = 0.56 against 0.394/0.679 = 0.58.
+
+So the halved exposure is **range management, measured directly rather than
+inferred**, and the 2026-08-05 conclusion now holds on terrain matching the real
+game rather than on terrain with twice its cover.
+
+Two things this does *not* say. `hugging ruins` (0.827 agent, 0.704 bar) is not
+evidence either way, because objectives **are** terrain in this scenario, so
+holding one means standing in a ruin. And `random`'s low 0.456 is drawn from the
+3.4% of the time it is threatened at all, so it is noise, not a floor.
+
+Answering this at all needed terrain in the recordings (schema 2.1, #160) —
+before it, random-terrain episodes could not even be replayed.
 
 ## What had to be fixed to ask the question at all
 
@@ -131,7 +159,9 @@ The corrected profile is also **19% faster to train** — 21.3 s/epoch against
   retuned for objectives holding 18 models instead of unlimited point-models. The
   measurement says the current setting is too weak here, not that the mechanism
   is wrong.
-- **Not a cover result.** See the exposure caveat above.
+- **Not a cover result, and now measured as such.** `blocked_share` is
+  identical to the bar's, so the exposure gap is range management, not
+  terrain use. See above.
 
 ## Next
 
