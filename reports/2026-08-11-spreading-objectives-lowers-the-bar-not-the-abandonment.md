@@ -329,3 +329,69 @@ Terrain is only ~23% of that number. Split out, terrain-only blocked share is
 conclusion still holds, on the other half of the evidence**: `threatened` 0.394
 vs 0.679 accounts for the exposure gap almost exactly. Quote that, not
 `blocked_share`.
+
+
+---
+
+## Third correction: **there is no trough**. The income table was a phase artefact.
+
+This retracts the measurement that drove every arm on 2026-08-10 and 2026-08-11,
+including the two above and the start-state augmentation.
+
+`skip_phases` leaves movement and shooting, so an episode is **2 steps per round,
+alternating** — and VP is scored on the shooting step. The probe bucketed
+`in_transit` as *closed distance since the last step*, and a model can only close
+distance on a **movement** step. So `in_transit` sampled movement steps
+exclusively while `loitering` collected every off-objective model on the
+shooting steps.
+
+Measured on the same checkpoint, 8 episodes, splitting each bucket by step parity:
+
+| bucket | movement step | shooting step |
+|---|---|---|
+| **in transit** | **0.2621** (n=754) | — (n=0) |
+| **loitering** | **0.1865** (n=700) | 0.6352 (n=1439) |
+| on an objective | 0.3136 (n=1717) | 0.8770 (n=1663) |
+
+**At fixed phase, walking pays 41% more than loitering** — the opposite of the
+published claim. And every `in_transit` run is **exactly one step long** (mean
+1.00, max 1, n=754): the bucket never represented a walk in the first place.
+
+Removing the broadcast globals gives the same verdict on attributable income:
+walking 0.2196/step against loitering 0.1227 — **79% more**, and 74% of what
+standing on an objective pays. The opportunity cost of leaving held ground is
+**0.076/step, not 0.383** — a five-fold overstatement.
+
+**Retracted with it:** "moving toward an objective pays half of standing still
+doing nothing"; "the reward pays zero during the walk"; "the landscape has a
+trough between two peaks and the policy sits on the smaller one"; and the
+`~1.26 of certain loss over a ~3.3 round walk` arithmetic, which also multiplied
+a per-*step* gap by a per-*round* duration (2 steps/round, so it is out by 2x in
+the other direction) and priced a *transfer* as a loss — at
+`crowding_exponent: 1.0` the pot is conserved, so models leaving a crowded point
+hand their share to those who stay.
+
+**The rule this earns:** when an environment alternates phases and reward accrues
+unevenly across them, *any* bucket defined by a phase-specific event silently
+becomes a phase indicator. Split by phase before comparing activities, and
+subtract the broadcast terms — `last_per_model_reward[i]` is own-terms plus
+`shared_reward`, so the split is free.
+
+### Also corrected in the same pass
+
+- **`p ~ 0.013` was the one-sided sign test**, quoted without saying so
+  (two-sided 0.024). And `n` was extended from 11 to 29 *after* seeing a large
+  effect, on nested seeds — that is optional stopping, so the p-value is not a
+  valid fixed-sample one.
+- **"+9.8 vp, both seeds, 1.5 apart" is overstated.** Per-seed the effect is
+  **+6.2 and +13.4** — 7.2 apart, above this repo's own resolution rule. The
+  "1.5" is the spread of the two treatment seeds, not of the effect. s1 alone
+  reproduces the clustered scenario's +5.2; "nearly twice the size" rests on s2's
+  low control.
+- **"pay falls monotonically 1.30 -> 0.36" does not reproduce** — three
+  inversions across occupancy, and the "alone" cell rests on ~75 samples.
+- **`model_kills` is 4.5% of the income *budget*, which does not refute it as a
+  behavioural driver.** A share of the mean bounds nothing about a choice; what
+  moves a gradient is the term's *variation across the actions being compared*.
+  A kill is a lumpy 2.0 in one model's own row against `objective_hold`'s
+  0.15-0.30/step. Weaken that claim wherever it appears.
