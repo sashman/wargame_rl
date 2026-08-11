@@ -8,6 +8,7 @@ import numpy as np
 
 from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
 from wargame_rl.wargame.envs.domain.rules_quantities import RulesQuantities
+from wargame_rl.wargame.envs.domain.shooting import PairedShootingResult
 from wargame_rl.wargame.envs.domain.terrain import Terrain
 from wargame_rl.wargame.envs.types.config import WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import GameState
@@ -44,6 +45,10 @@ class BattleView(Protocol):
     def current_turn(self) -> int: ...
     @property
     def last_reward(self) -> float | None: ...
+    @property
+    def last_player_shooting_results(self) -> list[PairedShootingResult]: ...
+    @property
+    def last_opponent_shooting_results(self) -> list[PairedShootingResult]: ...
     @property
     def last_reward_breakdown(self) -> dict[str, float]: ...
     @property

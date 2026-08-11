@@ -8,6 +8,7 @@ v2 and the untouched legacy renderer headlessly and check they agree.
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import replace
 from typing import Any
@@ -482,3 +483,124 @@ def test_round_readout_holds_its_width_when_the_round_gains_a_digit() -> None:
         return int(painted[:, 1].max())
 
     assert track_right_edge(6) == track_right_edge(16)
+
+
+# --- Shooting: what landed, on whom, and for how long ------------------------
+
+
+def _volley_env() -> tuple[WargameEnv, Any]:
+    """A 25v25 shooting scenario stepped to a volley that did damage."""
+    from pydantic_yaml import parse_yaml_file_as
+
+    from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
+
+    config = parse_yaml_file_as(
+        WargameEnvConfig, "configs/golden/25v25_shooting_opponent.yaml"
+    )
+    env = WargameEnv(config=config)
+    observation, _ = env.reset(seed=4)
+    policy = build_baseline_policy("squad_march_shoot")
+    for _ in range(6):
+        action = policy.select_action(
+            env.player_models, env, action_mask=observation.action_mask
+        )
+        observation, _r, _t, _tr, _i = env.step(action)
+    return env, observation
+
+
+def test_only_damaging_shots_are_drawn() -> None:
+    """A volley is mostly misses — 21 shots, 4 of them damaging on this seed —
+    and drawing the misses buries the ones that landed."""
+    env, _ = _volley_env()
+    shots = env.last_player_shooting_results + env.last_opponent_shooting_results
+    damaging = [s for s in shots if s.result.damage_dealt > 0]
+    assert len(damaging) < len(shots)  # the seed still has misses to omit
+
+    scene = build_scene(env, compute_objective_control(env), scale=51.2)
+    pal = DEFAULT_THEME.palette
+    tracers = [
+        p
+        for p in scene.primitives
+        if isinstance(p, Seg) and p.color in (pal.shot_player, pal.shot_opponent)
+    ]
+    assert len(tracers) == len(damaging)
+
+
+def test_a_tracer_runs_between_the_two_models_involved() -> None:
+    """The line has to start at the shooter and end at its target, or "who shot
+    whom" is decoration rather than information."""
+    env, _ = _volley_env()
+    scene = build_scene(env, compute_objective_control(env), scale=51.2)
+    pal = DEFAULT_THEME.palette
+
+    hits = [s for s in env.last_opponent_shooting_results if s.result.damage_dealt > 0]
+    assert hits, "seed expected to produce opponent hits"
+    shot = hits[0]
+    attacker = env.opponent_models[shot.attacker_idx].location
+    target = env.player_models[shot.target_idx].location
+
+    tracer = next(
+        p
+        for p in scene.primitives
+        if isinstance(p, Seg)
+        and p.color == pal.shot_opponent
+        and math.isclose(p.a[0], attacker[0], abs_tol=1.0)
+        and math.isclose(p.b[0], target[0], abs_tol=1.0)
+    )
+    assert math.isclose(tracer.a[1], attacker[1], abs_tol=1.0)
+    assert math.isclose(tracer.b[1], target[1], abs_tol=1.0)
+
+
+def test_a_volley_fades_out_over_a_few_frames() -> None:
+    """Shooting results sit on the env until the next volley, so without a fade
+    a movement frame keeps drawing the last firefight at full strength."""
+    from wargame_rl.wargame.envs.renders.v2.scene import (
+        SHOT_FADE_FRAMES,
+        shot_fade_for_age,
+    )
+
+    env, _ = _volley_env()
+    presenter = RecordingRenderer(_build_backend("pillow"))
+    presenter.setup(env)
+    pal = DEFAULT_THEME.palette
+
+    def tracer_colours() -> list[tuple[int, int, int]]:
+        scene = presenter._scene_for(env)
+        return [
+            p.color
+            for p in scene.primitives
+            if isinstance(p, Seg) and p.width >= 3 and p.color != pal.grid
+        ]
+
+    first = presenter._scene_for(env)
+    fresh = [p for p in first.primitives if isinstance(p, Seg)]
+    # Re-rendering the same unchanged results ages the volley out.
+    for _ in range(SHOT_FADE_FRAMES):
+        presenter._scene_for(env)
+    faded = presenter._scene_for(env)
+
+    assert shot_fade_for_age(0) == 1.0
+    assert shot_fade_for_age(SHOT_FADE_FRAMES) == 0.0
+    assert len([p for p in faded.primitives if isinstance(p, Seg)]) < len(fresh)
+    assert tracer_colours() is not None  # colours resolve at every age
+
+
+def test_a_kill_round_trips_through_a_recording() -> None:
+    """`killed` cannot be recovered from a snapshot after the fact — several
+    shooters may hit one model and only one made the kill — so schema 2.3
+    records it, and a replayed killing shot draws as a kill."""
+    env, _ = _volley_env()
+    kills = [
+        s
+        for s in env.last_player_shooting_results + env.last_opponent_shooting_results
+        if s.killed
+    ]
+    assert kills, "seed expected to produce a kill"
+
+    snapshot = env.to_snapshot()
+    recorded = snapshot.player_combat_results + snapshot.opponent_combat_results
+    assert any(r.killed for r in recorded)
+
+    live = build_scene(env, compute_objective_control(env), scale=51.2)
+    replayed = build_scene_from_snapshot(snapshot, scale=51.2)
+    assert replayed.primitives == live.primitives

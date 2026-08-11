@@ -14,6 +14,7 @@ timeline and play/pause, and exports MP4.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -21,7 +22,13 @@ import numpy as np
 
 from wargame_rl.wargame.envs.renders.v2.backend import Canvas, RenderBackend
 from wargame_rl.wargame.envs.renders.v2.presenters.base import BasePresenter
-from wargame_rl.wargame.envs.renders.v2.scene import Control, Scene, build_scene
+from wargame_rl.wargame.envs.renders.v2.scene import (
+    SHOT_FADE_FRAMES,
+    Control,
+    Scene,
+    build_scene,
+    shot_fade_for_age,
+)
 from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME, Theme
 from wargame_rl.wargame.envs.state.snapshot import GameStateSnapshot
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
@@ -72,6 +79,24 @@ class _ObjectiveView:
 
 
 @dataclass(frozen=True)
+class _ShotOutcome:
+    hits: int
+    wounds: int
+    unsaved: int
+    damage_dealt: int
+
+
+@dataclass(frozen=True)
+class _Shot:
+    """A recorded shot, shaped like `PairedShootingResult` for `build_scene`."""
+
+    attacker_idx: int
+    target_idx: int
+    result: _ShotOutcome
+    killed: bool
+
+
+@dataclass(frozen=True)
 class _Footprint:
     polygon: Polygon
 
@@ -93,6 +118,8 @@ class _SnapshotView:
     n_rounds: int
     current_turn: int
     last_reward: float | None
+    last_player_shooting_results: tuple[_Shot, ...]
+    last_opponent_shooting_results: tuple[_Shot, ...]
     last_reward_breakdown: dict[str, float]
     episode_reward: float | None
     game_clock_state: _ClockView
@@ -120,6 +147,28 @@ def _model_view(snap_model: object) -> _ModelView:
             (float(prev[0]), float(prev[1])) if prev is not None else None
         ),
         base_radius=float(m.base_radius),  # type: ignore[attr-defined]
+    )
+
+
+def _shots(recorded: Sequence[object]) -> tuple[_Shot, ...]:
+    """Adapt recorded combat results to the shape `build_scene` draws from.
+
+    `killed` rides on the snapshot from schema 2.3, and defaults to False on
+    older recordings, where a killing shot replays as an ordinary hit.
+    """
+    return tuple(
+        _Shot(
+            attacker_idx=int(entry.attacker_idx),  # type: ignore[attr-defined]
+            target_idx=int(entry.target_idx),  # type: ignore[attr-defined]
+            result=_ShotOutcome(
+                hits=int(entry.hits),  # type: ignore[attr-defined]
+                wounds=int(entry.wounds),  # type: ignore[attr-defined]
+                unsaved=int(entry.unsaved),  # type: ignore[attr-defined]
+                damage_dealt=int(entry.damage_dealt),  # type: ignore[attr-defined]
+            ),
+            killed=bool(getattr(entry, "killed", False)),
+        )
+        for entry in recorded
     )
 
 
@@ -160,6 +209,8 @@ def _snapshot_to_view(snapshot: GameStateSnapshot) -> _SnapshotView:
         n_rounds=snapshot.n_rounds,
         current_turn=snapshot.step,
         last_reward=snapshot.reward.total,
+        last_player_shooting_results=_shots(snapshot.player_combat_results),
+        last_opponent_shooting_results=_shots(snapshot.opponent_combat_results),
         last_reward_breakdown=dict(snapshot.reward.breakdown),
         episode_reward=snapshot.reward.episode_total,
         game_clock_state=_ClockView(
@@ -179,11 +230,19 @@ def build_scene_from_snapshot(
     scale: float,
     theme: Theme = DEFAULT_THEME,
     show_grid: bool = True,
+    shot_fade: float = 1.0,
 ) -> Scene:
     """Build the same `Scene` a live `BattleView` would, from a recorded snapshot."""
     control = tuple(Control(c) for c in snapshot.objective_control)
     view = cast("BattleView", _snapshot_to_view(snapshot))
-    return build_scene(view, control, scale=scale, theme=theme, show_grid=show_grid)
+    return build_scene(
+        view,
+        control,
+        scale=scale,
+        theme=theme,
+        show_grid=show_grid,
+        shot_fade=shot_fade,
+    )
 
 
 # --- random-access source over a recording ----------------------------------
@@ -278,6 +337,7 @@ class ReplayPresenter(BasePresenter):
             scale=self._scale,
             theme=self._theme,
             show_grid=self._theme.show_grid,
+            shot_fade=shot_fade_for_age(self._volley_age(index)),
         )
         base = self._compose_scene(scene)
         frame = self._backend.new_canvas(
@@ -290,6 +350,32 @@ class ReplayPresenter(BasePresenter):
         if self._show_keys:
             self._draw_key_map(frame)
         return frame
+
+    def _volley_age(self, index: int) -> int:
+        """Frames since this frame's shooting results first appeared.
+
+        Computed by walking back from `index` rather than counted as frames go
+        by, because the timeline can be scrubbed: the fade has to be a function
+        of where you are, not of how you got there.
+        """
+
+        def signature(i: int) -> tuple[object, ...]:
+            snapshot = self._source[i]
+            return tuple(
+                (r.attacker_idx, r.target_idx, r.damage_dealt, r.killed)
+                for r in (
+                    *snapshot.player_combat_results,
+                    *snapshot.opponent_combat_results,
+                )
+            )
+
+        current = signature(index)
+        age = 0
+        while index - age > 0 and signature(index - age - 1) == current:
+            age += 1
+            if age >= SHOT_FADE_FRAMES:
+                break
+        return age
 
     def _draw_timeline(self, frame: Canvas, index: int) -> None:
         pal = self._theme.palette

@@ -84,6 +84,11 @@ Primitive = Disc | Poly | Seg | Label
 
 
 # Short labels for the phase chain — five slots that must fit side by side.
+# Frames a volley stays on the board after it resolves. It fades rather than
+# vanishing: at 4fps a single-frame flash is gone before it can be read, and a
+# tracer that persists unchanged makes a movement frame look like a firefight.
+SHOT_FADE_FRAMES = 4
+
 _PHASE_LABELS: dict[BattlePhase, str] = {
     BattlePhase.command: "CMD",
     BattlePhase.movement: "MOVE",
@@ -225,6 +230,75 @@ def _draw_models(
         prims.append(Disc((cx, cy), radius, (*color, 255), pal.model_rim, 1))
 
 
+def _shot_endpoints(
+    attacker: object, target: object
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Base-edge to base-edge, so a line starts and ends at the models, not in
+    them — with 25 shooters the overlap is what makes a volley unreadable."""
+    ax, ay = float(attacker.location[0]), float(attacker.location[1])  # type: ignore[attr-defined]
+    tx, ty = float(target.location[0]), float(target.location[1])  # type: ignore[attr-defined]
+    dx, dy = tx - ax, ty - ay
+    length = math.hypot(dx, dy)
+    if length < 1e-9:
+        return (ax, ay), (tx, ty)
+    ux, uy = dx / length, dy / length
+    start = _base_radius(attacker), _base_radius(target)
+    return (ax + ux * start[0], ay + uy * start[0]), (
+        tx - ux * start[1],
+        ty - uy * start[1],
+    )
+
+
+def _toward(color: RGB, ground: RGB, strength: float) -> RGB:
+    """`color` blended `strength` of the way from the background toward itself."""
+    return (
+        int(ground[0] + (color[0] - ground[0]) * strength),
+        int(ground[1] + (color[1] - ground[1]) * strength),
+        int(ground[2] + (color[2] - ground[2]) * strength),
+    )
+
+
+def _draw_shots(
+    prims: list[Primitive],
+    results: Sequence[object],
+    attackers: Sequence[object],
+    targets: Sequence[object],
+    color: RGB,
+    theme: Theme,
+    scale: float,
+    fade: float,
+) -> None:
+    """A line per shot that did damage, with an impact ring on the target.
+
+    Only damaging shots are drawn. A volley here is 21 shots of which 4 land,
+    and drawing the misses — full length or as stubs — buries the four that
+    matter. What the board answers is "who hit whom, and how hard"; the HUD's
+    reward ledger is where the cost of firing and missing shows up.
+
+    Drawn over the models, so a volley reads as traffic between two bodies
+    rather than as marks on the board.
+    """
+    pal = theme.palette
+    for entry in results:
+        attacker_idx = int(entry.attacker_idx)  # type: ignore[attr-defined]
+        target_idx = int(entry.target_idx)  # type: ignore[attr-defined]
+        if attacker_idx >= len(attackers) or target_idx >= len(targets):
+            continue
+        outcome = entry.result  # type: ignore[attr-defined]
+        damage = int(getattr(outcome, "damage_dealt", 0))
+        if damage <= 0:
+            continue
+        killed = bool(getattr(entry, "killed", False))
+        start, end = _shot_endpoints(attackers[attacker_idx], targets[target_idx])
+        width = max(2, int(scale * 0.10)) if killed else max(1, int(scale * 0.06))
+        ring = pal.shot_kill if killed else color
+        prims.append(Seg(start, end, _toward(color, pal.board_bg, fade), width))
+        # An impact ring scaled by the damage that landed, so focus fire on one
+        # model reads without counting lines.
+        radius = 0.22 + 0.10 * min(damage, 4)
+        prims.append(Disc(end, radius, None, _toward(ring, pal.board_bg, fade), width))
+
+
 def _reward_components(view: "BattleView") -> tuple[tuple[str, float], ...]:
     """The step's reward components: one entry per calculator, nothing nested.
 
@@ -258,6 +332,13 @@ def _phase_chips(view: "BattleView") -> tuple[PhaseChip, ...]:
     )
 
 
+def shot_fade_for_age(age: int) -> float:
+    """How strongly a volley `age` frames old is drawn, 1.0 fresh to 0.0 gone."""
+    if age < 0 or age >= SHOT_FADE_FRAMES:
+        return 0.0
+    return 1.0 - age / SHOT_FADE_FRAMES
+
+
 def build_scene(
     view: "BattleView",
     control: Sequence[Control],
@@ -266,6 +347,7 @@ def build_scene(
     theme: Theme = DEFAULT_THEME,
     debug_los: "LosResult | None" = None,
     show_grid: bool = True,
+    shot_fade: float = 1.0,
 ) -> Scene:
     """Assemble the ordered primitives for one live frame from a `BattleView`."""
     pal = theme.palette
@@ -356,6 +438,30 @@ def build_scene(
         _arrow(prims, view.opponent_models, theme.opponent_color, scale)
         _draw_models(prims, view.opponent_models, theme.opponent_color, theme)
     _draw_models(prims, view.player_models, theme.player_color, theme)
+
+    # Shots last, over the models: a volley is traffic between two bodies, and
+    # under them it would read as marks on the board instead.
+    if shot_fade > 0.0:
+        _draw_shots(
+            prims,
+            view.last_player_shooting_results,
+            view.player_models,
+            view.opponent_models,
+            pal.shot_player,
+            theme,
+            scale,
+            shot_fade,
+        )
+        _draw_shots(
+            prims,
+            view.last_opponent_shooting_results,
+            view.opponent_models,
+            view.player_models,
+            pal.shot_opponent,
+            theme,
+            scale,
+            shot_fade,
+        )
 
     if debug_los is not None:
         prims.append(

@@ -88,10 +88,10 @@ def restore_shooting_results(
 ) -> list[PairedShootingResult]:
     """Rebuild the last phase's shooting results from the snapshot.
 
-    `killed` is not carried by the schema and defaults to False, so these are
-    stubs: they replay what was rolled, not who died of it. Nothing downstream
-    of a restore reads the flag -- it is consumed by the reward calculators in
-    the step that produced it.
+    `killed` has ridden along since schema 2.3 and defaults to False on older
+    recordings, where a kill restores as an ordinary hit. Nothing downstream of a
+    restore acts on the flag -- the reward calculators consumed it in the step
+    that produced it -- but the renderer draws a killing shot differently.
     """
     return [
         PairedShootingResult(
@@ -103,6 +103,7 @@ def restore_shooting_results(
                 unsaved=snapshot.unsaved,
                 damage_dealt=snapshot.damage_dealt,
             ),
+            killed=snapshot.killed,
         )
         for snapshot in snapshots
     ]
