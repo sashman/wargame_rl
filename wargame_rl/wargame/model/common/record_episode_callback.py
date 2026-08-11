@@ -32,6 +32,7 @@ def _run_recording(
     filename_prefix: str,
     renderer_name: str = "legacy",
     backend: str = "pillow",
+    theme: str = "default",
 ) -> None:
     """Run in a separate process: create env with a renderer, run one episode, save MP4.
     Must set SDL_VIDEODRIVER=dummy before any pygame import to avoid EGL conflicts with PyTorch.
@@ -53,7 +54,7 @@ def _run_recording(
     # Build env with the chosen renderer in headless recording mode. `setup`/`close`
     # come from the Renderer base; `epoch`/`get_frame_array` from the FrameSource
     # protocol both legacy and v2 satisfy.
-    renderer = build_renderer(renderer_name, "recording", backend=backend)
+    renderer = build_renderer(renderer_name, "recording", backend=backend, theme=theme)
     env = create_environment(env_config=env_config, renderer=renderer)
     renderer.setup(env)
     frame_source = cast(FrameSource, renderer)
@@ -131,7 +132,8 @@ class RecordEpisodeCallback(Callback):
         record_every_n_epochs: int = 20,
         filename_prefix: str = "ppo",
         renderer_name: str = "legacy",
-        backend: str = "pygame",
+        backend: str = "pillow",
+        theme: str = "default",
     ) -> None:
         self.run_name = run_name
         self.env_config = env_config
@@ -141,6 +143,7 @@ class RecordEpisodeCallback(Callback):
         self.filename_prefix = filename_prefix
         self.renderer_name = renderer_name
         self.backend = backend
+        self.theme = theme
         self._checkpoint_dir = f"./checkpoints/{run_name}"
         self._pending_proc: BaseProcess | None = None
         self._pending_filepath: Path | None = None
@@ -248,6 +251,7 @@ class RecordEpisodeCallback(Callback):
                 "filename_prefix": filename_prefix,
                 "renderer_name": self.renderer_name,
                 "backend": self.backend,
+                "theme": self.theme,
             },
             daemon=True,
         )

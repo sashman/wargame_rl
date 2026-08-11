@@ -49,6 +49,7 @@ def simulate(
     record_events: bool = False,
     renderer_name: str = "legacy",
     backend: str = "pillow",
+    theme: str = "default",
 ) -> None:
     """Run simulation with trained agent.
 
@@ -59,6 +60,7 @@ def simulate(
         record_events: Whether to record the last episode as a JSON event log
         renderer_name: ``legacy`` (HumanRender) or ``v2`` (the new renderer)
         backend: v2 drawing backend (``pillow``, ``pygame`` or ``pygame_aa``)
+        theme: v2 theme name (``default`` or ``tabletop``)
     """
 
     if not os.path.exists(checkpoint_path):
@@ -68,7 +70,7 @@ def simulate(
 
     env_config = get_env_config(env_config_path, render)
     renderer = (
-        build_renderer(renderer_name, "interactive", backend=backend)
+        build_renderer(renderer_name, "interactive", backend=backend, theme=theme)
         if render
         else None
     )
@@ -223,6 +225,7 @@ def main(
     backend: str = typer.Option(
         "pillow", help="v2 drawing backend: 'pillow', 'pygame' or 'pygame_aa'"
     ),
+    theme: str = typer.Option("default", help="v2 theme: 'default' or 'tabletop'"),
 ) -> None:
     # Handle dynamic defaults inside the function
     if checkpoint_path is None:
@@ -239,6 +242,7 @@ def main(
         record_events=record_events,
         renderer_name=renderer,
         backend=backend,
+        theme=theme,
     )
 
 
