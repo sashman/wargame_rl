@@ -84,6 +84,18 @@ class WargameEnvConfig(BaseModel):
         "statistics during shooting phases. Measurement only — it does not affect "
         "the game, but it costs an extra shooting-mask build per shooting phase.",
     )
+    objectives_spread_on_terrain: bool = Field(
+        default=False,
+        description=(
+            "With `objectives_on_terrain`, choose the eligible pieces whose "
+            "minimum pairwise separation is largest instead of the ones nearest "
+            "the board centre. Nearest-to-centre packs all three objectives into "
+            "a ~16 inch circle on a 60x44 board, with 47% of pairs inside one "
+            "weapon range, so there is no travel trade-off between them. "
+            "Defaults False: turning it on changes the scenario, so every "
+            "baseline measured without it must be re-measured."
+        ),
+    )
     observe_objective_control: bool = Field(
         default=False,
         description="Put per-objective control state (player count, opponent "

@@ -401,3 +401,52 @@ class TestLayoutSurvivesTheTail:
         for seed in range(2000):
             env.reset(seed=seed)
             assert all(objective.is_area for objective in env.objectives)
+
+
+def test_spread_selection_beats_centre_selection_on_separation() -> None:
+    """`objectives_spread_on_terrain` picks the furthest-apart eligible pieces.
+
+    Nearest-to-centre packs every objective into the middle of the board, which
+    removes the travel trade-off between them. Pinned on the *outcome* -- the
+    minimum pairwise separation -- rather than on which pieces are chosen, since
+    the selection rule may change but "further apart" is the contract.
+    """
+    import itertools
+
+    from pydantic_yaml import parse_yaml_raw_as
+
+    from wargame_rl.wargame.envs.types.config import WargameEnvConfig
+    from wargame_rl.wargame.model.common.factory import create_environment
+
+    with open("configs/experiments/25v25_polygon_terrain_objectives.yaml") as handle:
+        raw = handle.read()
+
+    def min_separations(config_text: str) -> list[float]:
+        config = parse_yaml_raw_as(WargameEnvConfig, config_text)
+        env = create_environment(env_config=config)
+        out = []
+        for seed in range(700_000, 700_030):
+            env.reset(seed=seed)
+            centres = [np.asarray(o.location, dtype=float) for o in env.objectives]
+            out.append(
+                min(
+                    float(np.linalg.norm(a - b))
+                    for a, b in itertools.combinations(centres, 2)
+                )
+            )
+        return out
+
+    centre = min_separations(raw)
+    spread = min_separations(
+        # Anchored on the newline so the commented example of the same key
+        # further up the file is not also rewritten into a duplicate key.
+        raw.replace(
+            "\nobjectives_on_terrain: true",
+            "\nobjectives_on_terrain: true\nobjectives_spread_on_terrain: true",
+        )
+    )
+
+    assert sum(spread) / len(spread) > sum(centre) / len(centre)
+    # Never worse on any individual layout: the spread set is chosen by maximising
+    # exactly this quantity, so a regression here means the flag is not wired.
+    assert all(s >= c - 1e-9 for s, c in zip(spread, centre))
