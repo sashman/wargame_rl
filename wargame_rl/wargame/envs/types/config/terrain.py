@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from wargame_rl.wargame.envs.types.config.entities import ObjectiveConfig
 from wargame_rl.wargame.envs.types.geometry import Polygon
 
 
@@ -64,6 +65,39 @@ class TerrainMapConfig(BaseModel):
     terrain: list[TerrainPieceConfig] = Field(
         description="The layout's pieces. Replaces the scenario's own terrain."
     )
+    objectives: list[ObjectiveConfig] | None = Field(
+        default=None,
+        description="The layout's objectives, replacing the scenario's own and "
+        "setting `number_of_objectives` to this length. Optional, so a map that "
+        "carries terrain alone keeps scoring under the scenario's own objective "
+        "placement. Every entry must be determined — an `area` outline or x/y — "
+        "since a map's objectives are part of the layout and a randomly placed "
+        "one would make the map's rows differ run to run.",
+    )
+
+    @model_validator(mode="after")
+    def objectives_are_determined(self) -> "TerrainMapConfig":
+        """Reject an objective with neither an area nor coordinates.
+
+        A fixed map exists so a row means the same thing every time it is run.
+        A random objective inside one would reintroduce exactly the variance the
+        map was written to remove, and `place_for_episode` only honours fixed
+        positions when *every* entry has them — so one bare entry would silently
+        randomise all of them.
+        """
+        if self.objectives is None:
+            return self
+        undetermined = [
+            i
+            for i, objective in enumerate(self.objectives)
+            if objective.x is None and objective.area is None
+        ]
+        if undetermined:
+            raise ValueError(
+                f"map '{self.name}': objectives {undetermined} have neither an "
+                "area nor x/y; every objective in a fixed map must be determined"
+            )
+        return self
 
 
 class RandomTerrainConfig(BaseModel):

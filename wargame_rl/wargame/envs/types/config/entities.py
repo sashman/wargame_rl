@@ -42,12 +42,12 @@ class ModelConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    x: int | None = Field(
+    x: float | None = Field(
         default=None,
         ge=0,
         description="X coordinate on the board. If None, placed randomly.",
     )
-    y: int | None = Field(
+    y: float | None = Field(
         default=None,
         ge=0,
         description="Y coordinate on the board. If None, placed randomly.",
@@ -93,12 +93,12 @@ class ObjectiveConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    x: int | None = Field(
+    x: float | None = Field(
         default=None,
         ge=0,
         description="X coordinate on the board. If None, placed randomly.",
     )
-    y: int | None = Field(
+    y: float | None = Field(
         default=None,
         ge=0,
         description="Y coordinate on the board. If None, placed randomly.",

@@ -3,5 +3,10 @@ The real table layouts go here, one file per map:
     name: table_01
     terrain:
       - { footprint: [12, 8, 18, 14] }
+    objectives:
+      - area: [[12, 8], [19, 8], [19, 15], [12, 15]]
 
-Read by `just measure-maps`. See ../../README.md.
+`objectives` is optional. Every entry must be determined — an `area` outline
+(the ground itself is the objective) or x/y for a marker with a radius.
+
+Read by `just measure-maps`, previews by `just render-maps`. See ../../README.md.

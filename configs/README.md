@@ -51,22 +51,60 @@ Final evaluation. Training uses `random_terrain`, which is what makes a
 positioning result falsifiable — but it never asks how the policy does on the
 boards the game is actually played on.
 
-A map is terrain only:
+A map is terrain, and optionally the objectives that go with it:
 
 ```yaml
 name: table_01
 terrain:
   - { footprint: [12, 8, 18, 14] }
   - { footprint: [27, 20, 33, 26] }
+objectives:
+  - area: [[12, 8], [19, 8], [19, 15], [12, 15]]
 ```
 
+Every objective must be *determined* — an `area` outline or x/y — because a
+fixed map exists so a row means the same thing each run, and one undetermined
+entry would silently randomise the lot (`place_for_episode` honours fixed
+positions only when all of them have coordinates).
+
+**On the real layouts the objective is the ground.** Every one of the 270
+markers sits inside exactly one ruin, so each objective is that ruin's outline:
+an area objective, held by standing on it, which is the rules' terrain
+objective rather than an abstract disc floating over the same footprint. The
+layouts print six markers — one home per side, two centre, two in no man's land
+— but on 24 of the 45 the two centre markers share the board's largest ruin,
+and one piece of ground is held once. Those maps carry five objectives; the
+other 21 carry six.
+
 `just measure-maps <ckpt> configs/golden/25v25_shooting_opponent.yaml` runs the
-golden scenario unchanged and swaps only `terrain`, once per map, reporting a
-row each plus the spread. Quote it against the bar on the same maps:
+golden scenario unchanged and swaps only the layout — `terrain`, plus
+`objectives` and `number_of_objectives` where the map has them — once per map,
+reporting a row each plus the spread. **This makes the maps a six-objective
+mission** where the golden config trains on three, so a map score is not
+comparable to a `measure-checkpoint` score; it is comparable across policies on
+the same maps, which is what it is for.
+
+**The bar saturates on six objectives, so the per-map spread no longer finds
+hard layouts.** On `25v25_shooting_opponent.yaml`, `squad_march_shoot` wins
+**every one of the 45 maps** (`held` 3.67, `alive` 0.69); the same maps
+with terrain only and three random objectives win 0.70 with a −70..+100
+vp_margin spread and `alive` 0.40. Dropping the two home objectives does not
+recover it (still win 1.00 on all ten sampled), so this is not the deployment
+zones — `scripted_advance_and_shoot` concentrates and can contest about two
+points, so every objective past that is uncontested. Exposure falls ~5x: the
+armies barely meet. Rank two policies against each other here; do not read a
+row as "this layout is hard". Measured at n=1 per map, so read the win column
+and the `held`/`alive` gap, not a single per-map vp_margin.
+
+Quote it against the bar on the same maps:
 
 ```bash
 just measure-maps squad_march_shoot configs/golden/25v25_shooting_opponent.yaml
 ```
+
+Previews are regenerated with `just render-maps`, which draws each map file
+directly rather than resetting an episode — fifty deployed models cover the
+layout the picture exists to show.
 
 There is deliberately **no config per map**. A 25v25 scenario is ~10 KB, so
 copying it per map means every future reward change must be applied N times —
