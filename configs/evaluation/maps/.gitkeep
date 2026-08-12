@@ -3,5 +3,9 @@ The real table layouts go here, one file per map:
     name: table_01
     terrain:
       - { footprint: [12, 8, 18, 14] }
+    objectives:
+      - { x: 11.86, y: 17.45 }
+
+`objectives` is optional, but every entry in it must have x/y.
 
 Read by `just measure-maps`. See ../../README.md.

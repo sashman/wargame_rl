@@ -28,6 +28,18 @@ terrain:
   - { footprint: [27, 20, 33, 26] }
 """
 
+MAP_WITH_OBJECTIVES_YAML = """
+name: table_02
+terrain:
+  - { footprint: [12, 8, 18, 14] }
+objectives:
+  - { x: 11.86, y: 17.45 }
+  - { x: 24.79, y: 24.08 }
+  - { x: 48.16, y: 26.55 }
+"""
+
+SHIPPED_MAPS = Path(__file__).resolve().parents[1] / "configs" / "evaluation" / "maps"
+
 
 @pytest.fixture
 def maps_dir(tmp_path: Path) -> Path:
@@ -104,7 +116,11 @@ def test_the_env_actually_runs_on_the_map_terrain() -> None:
 
 
 def test_the_scenario_is_otherwise_untouched() -> None:
-    """Only terrain may differ — that is what keeps evaluation comparable."""
+    """Only terrain may differ — that is what keeps evaluation comparable.
+
+    A terrain-only map must leave the objective settings alone too, which is
+    what keeps every map written before objectives existed scoring as it did.
+    """
     base = _scenario_with_random_terrain()
     terrain_map = parse_yaml_raw_as(TerrainMapConfig, MAP_YAML)
 
@@ -114,3 +130,63 @@ def test_the_scenario_is_otherwise_untouched() -> None:
     before = base.model_dump(exclude=ignored)
     after = config.model_dump(exclude=ignored)
     assert before == after
+
+
+def test_a_maps_objectives_replace_the_scenarios() -> None:
+    """A map's objectives are part of the layout, count included."""
+    base = _scenario_with_random_terrain()
+    terrain_map = parse_yaml_raw_as(TerrainMapConfig, MAP_WITH_OBJECTIVES_YAML)
+
+    config = config_for_map(base, terrain_map)
+
+    assert config.number_of_objectives == 3  # the scenario asked for 1
+    assert config.objectives is not None
+    assert [(o.x, o.y) for o in config.objectives] == [
+        (11.86, 17.45),
+        (24.79, 24.08),
+        (48.16, 26.55),
+    ]
+    assert config.has_fixed_objective_positions
+
+
+def test_map_objectives_survive_to_the_board() -> None:
+    """End to end: the env resets objectives onto the map's exact points.
+
+    Sub-inch coordinates are the point of the assertion. The real layouts were
+    measured off the printed boards, and the two centre markers can sit 4in
+    apart — rounding them to whole inches would move an objective by up to a
+    quarter of its own radius and break the layout's rotational symmetry.
+    """
+    base = _scenario_with_random_terrain()
+    terrain_map = parse_yaml_raw_as(TerrainMapConfig, MAP_WITH_OBJECTIVES_YAML)
+
+    env = create_environment(env_config=config_for_map(base, terrain_map))
+    try:
+        env.reset(seed=700_000)
+        placed = [(o.location[0], o.location[1]) for o in env.objectives]
+        assert placed == pytest.approx([(11.86, 17.45), (24.79, 24.08), (48.16, 26.55)])
+    finally:
+        env.close()
+
+
+def test_an_objective_without_coordinates_is_rejected() -> None:
+    """One bare entry would silently randomise every objective on the map."""
+    with pytest.raises(ValueError, match="must be positioned"):
+        parse_yaml_raw_as(
+            TerrainMapConfig,
+            "name: t\nterrain: []\nobjectives:\n  - { x: 5, y: 5 }\n  - {}\n",
+        )
+
+
+def test_every_shipped_map_carries_its_six_objectives() -> None:
+    """The 45 real layouts all have the full marker set, on the board."""
+    maps = load_maps(SHIPPED_MAPS)
+
+    assert len(maps) == 45
+    for terrain_map in maps:
+        assert terrain_map.objectives is not None, terrain_map.name
+        assert len(terrain_map.objectives) == 6, terrain_map.name
+        for objective in terrain_map.objectives:
+            assert objective.x is not None and objective.y is not None
+            assert 0 <= objective.x < 60, terrain_map.name
+            assert 0 <= objective.y < 44, terrain_map.name

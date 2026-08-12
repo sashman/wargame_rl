@@ -10,14 +10,14 @@ from typing import Protocol, TypeVar
 
 
 class _HasCoords(Protocol):
-    x: int | None
-    y: int | None
+    x: float | None
+    y: float | None
 
 
 _CoordsT = TypeVar("_CoordsT", bound=_HasCoords)
 
 
-def _validate_coords_both_or_neither(x: int | None, y: int | None) -> None:
+def _validate_coords_both_or_neither(x: float | None, y: float | None) -> None:
     """Raise if exactly one of x, y is None."""
     if (x is None) != (y is None):
         raise ValueError("x and y must both be set or both be None")

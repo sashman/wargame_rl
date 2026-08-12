@@ -67,17 +67,29 @@ def load_maps(maps_dir: Path) -> list[TerrainMapConfig]:
 def config_for_map(
     base_config: WargameEnvConfig, terrain_map: TerrainMapConfig
 ) -> WargameEnvConfig:
-    """Copy `base_config` with this map's terrain in place of its own.
+    """Copy `base_config` with this map's terrain, and objectives, in place of its own.
 
     `random_terrain` is cleared as well as `terrain` set: the two are mutually
     exclusive, and leaving the generator on would regenerate a layout at reset
     and discard the map entirely — scoring the training distribution while
     printing a map's name.
+
+    A map that carries objectives replaces the scenario's, including its
+    `number_of_objectives`: the real layouts put six on the table, and a map's
+    objectives are as much a part of it as its ruins. The placement constraints
+    are cleared with them, since they govern the random draw this map replaces
+    and the real layouts do not satisfy `objective_min_separation` anyway.
     """
     config = cast(WargameEnvConfig, base_config.model_copy(deep=True))
     config.terrain = list(terrain_map.terrain)
     config.random_terrain = None
     config.render_mode = None
+    if terrain_map.objectives is not None:
+        config.objectives = list(terrain_map.objectives)
+        config.number_of_objectives = len(terrain_map.objectives)
+        config.objectives_on_terrain = False
+        config.objective_min_separation = None
+        config.objective_terrain_clearance = None
     return config
 
 

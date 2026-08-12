@@ -15,3 +15,13 @@ terrain:
   - outline: [[5.21, 4.14], [16.29, 4.14], [16.29, 11.40], [5.21, 11.40]]
   - outline: [[19.30, 39.86], [13.21, 39.86], [13.21, 35.85], [19.30, 35.85]]
   - outline: [[24.13, 17.10], [35.57, 17.10], [35.57, 26.89], [24.13, 26.89]]
+
+# Objective placements recovered from the layout this map was traced from.
+# Six markers: one home per side, two centre, two in no man's land.
+objectives:
+  - { x: 10.82, y: 7.65 }  # home (defender side)
+  - { x: 10.86, y: 30.37 }  # no man's land
+  - { x: 28.61, y: 24.03 }  # centre
+  - { x: 31.39, y: 19.93 }  # centre
+  - { x: 49.14, y: 13.63 }  # no man's land
+  - { x: 49.18, y: 36.35 }  # home (attacker side)

@@ -51,18 +51,43 @@ Final evaluation. Training uses `random_terrain`, which is what makes a
 positioning result falsifiable — but it never asks how the policy does on the
 boards the game is actually played on.
 
-A map is terrain only:
+A map is terrain, and optionally the objectives that go with it:
 
 ```yaml
 name: table_01
 terrain:
   - { footprint: [12, 8, 18, 14] }
   - { footprint: [27, 20, 33, 26] }
+objectives:
+  - { x: 11.86, y: 17.45 }
+  - { x: 24.79, y: 24.08 }
 ```
 
+Every objective in a map must be positioned — a fixed map exists so a row means
+the same thing each run, and `place_for_episode` honours fixed positions only
+when *all* of them have coordinates, so one bare entry would silently randomise
+the lot. All 45 maps carry the six objectives of the layout they were traced
+from: one home per side, two centre, two in no man's land.
+
 `just measure-maps <ckpt> configs/golden/25v25_shooting_opponent.yaml` runs the
-golden scenario unchanged and swaps only `terrain`, once per map, reporting a
-row each plus the spread. Quote it against the bar on the same maps:
+golden scenario unchanged and swaps only the layout — `terrain`, plus
+`objectives` and `number_of_objectives` where the map has them — once per map,
+reporting a row each plus the spread. **This makes the maps a six-objective
+mission** where the golden config trains on three, so a map score is not
+comparable to a `measure-checkpoint` score; it is comparable across policies on
+the same maps, which is what it is for.
+
+**The bar saturates on six objectives, so the per-map spread no longer finds
+hard layouts.** On `25v25_shooting_opponent.yaml`, `squad_march_shoot` scores
+win 1.00 and `held` a flat 4.00 on all 45 maps; the same maps with terrain only
+and three random objectives gave win 0.40 and a −65..+80 vp_margin spread.
+Dropping the two home objectives does not recover it (still win 1.00), so this
+is not the deployment zones — `scripted_advance_and_shoot` concentrates and can
+contest about two points, so every objective past that is uncontested. `alive`
+rises 0.40 → 0.73 and exposure falls ~6x: the armies barely meet. Rank two
+policies against each other here; do not read a row as "this layout is hard".
+
+Quote it against the bar on the same maps:
 
 ```bash
 just measure-maps squad_march_shoot configs/golden/25v25_shooting_opponent.yaml
