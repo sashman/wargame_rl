@@ -53,6 +53,14 @@ a whole batch with `np.stack`, so
 a batch containing episodes with different piece counts cannot be collated. Only size and
 position vary. `tests/test_random_terrain.py` asserts this directly.
 
+**`terrain_budget` is the way round that**, and the reason it exists is the real layouts:
+`configs/evaluation/maps/` carries 15 or 16 pieces depending on the table, which `np.stack`
+refuses. Setting it pads the token *sequence* to a fixed length with all-zero rows, which the
+network drops from attention — no new column is needed to mark them, because a padding row's
+vertex count is zero and no real piece has zero vertices. It defaults to None, which is
+byte-identical to a config without it, and setting it changes the input shape, so existing
+checkpoints fail to load. See `tests/test_observation_budgets.py`.
+
 **`mirror` keeps the sides even.** Deployment zones are fixed to the left and right of the
 board and `turn_order` only swaps who moves first, so an asymmetric draw would hand one side
 better approaches for a whole run. With an odd `count`, one piece straddles the centre line
@@ -286,6 +294,8 @@ Terrain footprints are encoded in the agent's observation as **entity tokens** �
 ### Token Layout
 
 Each terrain token carries the piece's **outline**, not its bounding box: `TERRAIN_VERTEX_BUDGET` vertices padded by repeating the last one, normalised to [-1, 1] by the board half-dimensions, plus the real vertex count. This is the first encoding that can tell an L-shaped ruin from a solid block — every cover experiment before it ran against four numbers that made those identical.
+
+Two paddings, at right angles to each other: `TERRAIN_VERTEX_BUDGET` pads *within* a token so pieces of different vertex counts share a width, and `terrain_budget` pads the *sequence* so layouts of different piece counts share a length. The vertex count column tells both apart from real data — it is fractional on a real piece and zero on a padding row.
 
 Historically the token was:
 
