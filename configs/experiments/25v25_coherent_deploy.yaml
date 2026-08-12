@@ -49,13 +49,34 @@
 # are separate steps and their own measurements -- and per the spec, attrition
 # is a *backstop*: if it fires often, the end-of-move check is wrong.
 #
-# THIS IS A SCENARIO CHANGE. Placement changes, so every position changes, so
-# every baseline and every vp_margin measured on the parent is void here.
-# Re-measure before quoting anything:
+# THE LADDER, RE-MEASURED. n=100, seeds 700000-700099, both configs on
+# identical layouts. vp_margin = player_vp - opp_vp.
+#
+#   policy                 parent    here      delta    win (parent -> here)
+#   random                 -128.4   -122.3      +6.1     0.01 -> 0.03
+#   greedy_nearest          -57.6    -52.2      +5.4     0.13 -> 0.13
+#   split_evenly            -49.2    -41.3      +7.9     0.26 -> 0.26
+#   squad_march             -26.4     -3.6     +22.8     0.33 -> 0.48
+#   squad_march_shoot       +38.0    +58.9     +20.9     0.75 -> 0.82
+#   contest_and_spread      +18.7    +39.3     +20.6     0.64 -> 0.79
+#
+# **THE BAR ON THIS CONFIG IS +58.9, NOT +38.0.** Deploying legally is worth
+# ~+21 vp to every policy that manoeuvres as squads, and ~+6 to the ones that
+# do not -- `random` gains least, which is the control: a policy that scatters
+# immediately cannot keep what the set-up gave it. The mechanism shows up in
+# `alive`, which goes 0.450 -> 0.592 for the bar and 0.363 -> 0.465 for
+# `squad_march`: a squad that starts concentrated concentrates its fire, kills
+# faster, and takes fewer casualties doing it.
+#
+# The ordering does NOT flip here, unlike the one-distance precedent
+# (`25v25_coherent_spawn.yaml`, where contest_and_spread edged the bar). The
+# bar keeps its lead and slightly widens it, 19.3 -> 19.6.
+#
+# Every trained result on the parent is void here, including the agent's
+# +6.08 +/- 3.09 over the bar -- that was measured against +38.0.
+#
+# Reproduce:
 #   just measure-baselines configs/experiments/25v25_coherent_deploy.yaml 100 "" 700000
-# The precedent says to expect a real shift: spawning squads together at one
-# distance moved the bar +58.9 -> +63.3 and flipped the top two baselines
-# (configs/experiments/25v25_coherent_spawn.yaml).
 # ---------------------------------------------------------------------------
 config_name: 25v25_coherent_deploy
 #
