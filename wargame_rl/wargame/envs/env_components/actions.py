@@ -17,6 +17,10 @@ from typing import Any
 import numpy as np
 from gymnasium import spaces
 
+from wargame_rl.wargame.envs.domain.coherency_enforcement import (
+    CoherencyEnforcement,
+    enforce_after_move,
+)
 from wargame_rl.wargame.envs.domain.movement import resolve_move
 from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
 from wargame_rl.wargame.envs.domain.value_objects import (
@@ -167,6 +171,17 @@ class ActionHandler:
         max_speed = quantities.max_move_speed
         # A model with a base cannot stand with half of it off the table.
         self._base_radius = quantities.base_radius
+        # Resolved once, like every other rules distance. The mode is read here
+        # rather than passed per call so scripted policies and the learned one
+        # go through exactly the same enforcement.
+        self._coherency_mode = CoherencyEnforcement(config.coherency.enforce_move)
+        self._coherency_nearest = quantities.scale.to_units(
+            config.coherency.nearest_distance
+        )
+        self._coherency_furthest = quantities.scale.to_units(
+            config.coherency.furthest_distance
+        )
+        self.models_reverted_last_move = 0
 
         angles = np.linspace(0, 2 * np.pi, n_angles, endpoint=False)
         speeds = np.linspace(max_speed / n_speeds, max_speed, n_speeds)
@@ -410,4 +425,15 @@ class ActionHandler:
                 blocker_radii,
                 friendly_centres,
                 friendly_radii,
+            )
+
+        # Every model in the force has now moved, which is the earliest point a
+        # unit-level property of the *completed* move can be judged. Nothing to
+        # do outside the movement phase -- no model displaced.
+        if phase is BattlePhase.movement:
+            self.models_reverted_last_move = enforce_after_move(
+                wargame_models,
+                self._coherency_nearest,
+                self._coherency_furthest,
+                self._coherency_mode,
             )

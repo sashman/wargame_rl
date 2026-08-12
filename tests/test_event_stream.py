@@ -19,6 +19,7 @@ from wargame_rl.wargame.envs.state import (
     build_codec,
     compute_delta,
 )
+from wargame_rl.wargame.envs.state.events import _POSITION_EPSILON
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.event_log_callback import EventLogCallback
@@ -188,6 +189,39 @@ class TestDeltaEncoding:
         assert delta.player_vp is None
 
 
+def assert_snapshots_agree(
+    actual: GameStateSnapshot, expected: GameStateSnapshot
+) -> None:
+    """Assert two snapshots match, allowing positions the encoder's tolerance.
+
+    Everything except model positions is compared exactly. Positions get
+    `_POSITION_EPSILON`, which is the delta encoder's own definition of
+    "unchanged" -- well below any distance the rules can distinguish, since a
+    base is ~1.26 across.
+    """
+    assert actual.step == expected.step
+    for field in ("player_models", "opponent_models"):
+        actual_models = getattr(actual, field)
+        expected_models = getattr(expected, field)
+        assert len(actual_models) == len(expected_models)
+        for got, want in zip(actual_models, expected_models):
+            for position_field in ("location", "previous_location"):
+                a = getattr(got, position_field)
+                b = getattr(want, position_field)
+                if a is None or b is None:
+                    assert a is b
+                    continue
+                assert all(abs(x - y) <= _POSITION_EPSILON for x, y in zip(a, b)), (
+                    f"{field}.{position_field}: {a} vs {b}"
+                )
+            assert got.model_dump(
+                exclude={"location", "previous_location"}
+            ) == want.model_dump(exclude={"location", "previous_location"})
+    assert actual.model_dump(
+        exclude={"player_models", "opponent_models"}
+    ) == expected.model_dump(exclude={"player_models", "opponent_models"})
+
+
 class TestReplay:
     """SGS-06: Deterministic replay from event log."""
 
@@ -209,9 +243,31 @@ class TestReplay:
         self,
         env_with_exporter: tuple[WargameEnv, EventLogExporter],
     ) -> None:
-        """Replay must produce identical state to what was recorded."""
+        """Replay must reproduce recorded state, to the encoder's own tolerance.
+
+        Two things this test used to get wrong, which together made it fail
+        about one run in twenty:
+
+        **The action space has its own RNG.** `env.reset(seed=...)` does not
+        seed it, so every run drew a different action sequence and the test was
+        not deterministic at all. It is seeded here, and seeded to **6**
+        specifically because that sequence walks a model into the board-edge
+        clamp -- the case below.
+
+        **The delta encoder is lossy on purpose.** `_POSITION_EPSILON` (1e-9)
+        exists because under continuous coordinates a stationary model drifts by
+        float noise through the clamp and the distance cache, so exact equality
+        would make every model emit a delta every step and the compression the
+        event log exists for would collapse. Asserting *bit-exact*
+        reconstruction therefore asserted something the format never promised:
+        a model clamped to the board edge lands 1 ULP from where it started,
+        the delta is legitimately dropped, and replay keeps the older value.
+        The contract is agreement to within that epsilon, and that is what is
+        checked -- exactly, on every other field.
+        """
         env, exporter = env_with_exporter
         env.reset(seed=99)
+        env.action_space.seed(6)
         snapshots_direct: list[GameStateSnapshot] = [env.to_snapshot()]
         for _ in range(8):
             action = WargameEnvAction(actions=env.action_space.sample())
@@ -223,7 +279,8 @@ class TestReplay:
         controller = ReplayController(exporter.log)
         for expected in snapshots_direct:
             reconstructed = controller.seek(expected.step)
-            assert reconstructed == expected
+            assert isinstance(reconstructed, GameStateSnapshot)
+            assert_snapshots_agree(reconstructed, expected)
 
     def test_replay_iter_snapshots(self, recorded_log: EventLog) -> None:
         controller = ReplayController(recorded_log)
