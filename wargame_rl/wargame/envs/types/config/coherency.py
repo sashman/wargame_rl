@@ -70,6 +70,23 @@ class CoherencyConfig(BaseModel):
             "force that starts in breach can only ever be caught up with."
         ),
     )
+    enforce_move: str = Field(
+        default="off",
+        pattern="^(off|revert_unit|revert_model)$",
+        description=(
+            "Enforce coherency at the end of a move, which is the rules' "
+            "*primary* consequence (`03-moving.md` § Making a move): a move that "
+            "would end a unit out of coherency cannot be made, and its models "
+            "return to where they started. `revert_unit` is the spec -- one "
+            "model out of place cancels its whole unit's move. `revert_model` "
+            "returns only the models outside their unit's coherent body, which "
+            "diverges from the rule but replaces a 5-model cliff with a "
+            "gradient. Which is better is measured, not argued: the analogous "
+            "movement-geometry choice in `domain/movement.py` cost ~20 vp when "
+            "reasoned about instead. Off by default; either setting is a "
+            "dynamics change that voids the baselines on that config."
+        ),
+    )
     attrition: bool = Field(
         default=False,
         description=(

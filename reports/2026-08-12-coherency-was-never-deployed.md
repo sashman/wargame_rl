@@ -138,6 +138,57 @@ nobody loses models to coherency in a normal game, because the illegal move is
 never made. **If attrition fires often, the end-of-move check is wrong** — which
 is a design constraint, and a test, not a preference.
 
+## Enforcing the move: a tax, and a measurable cliff
+
+Deployment fixed the set-up; the residual ~20% is real manoeuvre breakage. The
+rules' primary consequence is a revert, so both readings of it were built and
+measured — n=100, seeds 700000+, identical layouts:
+
+| policy | deploy only | `revert_unit` | `revert_model` |
+|---|---|---|---|
+| `random` | −122.3 | −123.8 | −122.6 |
+| `greedy_nearest` | −52.2 | −33.9 | −35.7 |
+| **`split_evenly`** | **−41.3** | **−99.8** | **−48.7** |
+| `squad_march` | −3.6 | +0.9 | −0.5 |
+| **`squad_march_shoot` (bar)** | **+58.9** | **+48.9** | **+46.8** |
+| `contest_and_spread` | +39.3 | +39.6 | +33.1 |
+
+**1. Enforcing the move is a tax, where deploying legally was a bonus.** The bar
+gives back ~10–12 of the +20.9 that coherent deployment bought. At n=100
+*unpaired* this config resolves ~10–18 vp, so the direction is clear and the
+magnitude is not — pairing across configs would be needed to quote a number.
+
+**2. The two modes are not distinguishable on the bar.** 48.9 against 46.8 is
+2.1 apart, far inside noise. Reading that as a winner is reading noise.
+
+**3. The undo cliff is real, and it lands exactly where it was predicted to.**
+`split_evenly` sends model *i* to objective *i mod n*, shattering every squad by
+construction. Under `revert_unit` it collapses **−41.3 → −99.8**, far outside
+any noise, and the diagnostics say why: `on_obj` 0.831 → **0.034**, `alive`
+0.101 → **0.959**. Almost nobody arrives and almost nobody dies — **the army is
+frozen**, every move cancelled, standing still. `random` shows the same
+signature (`alive` 0.979, `on_obj` 0.011). Standing still is this project's
+worst measured failure mode (−40.4). `revert_model` halves the damage by letting
+the coherent body keep moving: a 51 vp gap between the modes on one policy.
+
+The modes tie on competent policies and separate sharply on incompetent ones —
+and a *learning* policy starts incompetent. `revert_model` is the safer default
+for training even though `revert_unit` is the faithful rule, because the spec's
+version would spend early training teaching the agent that movement does not
+happen.
+
+**Why they tie where they tie:** the spread condition is collective. Once one
+model exceeds the cap from the rest, no model is within the cap of every other,
+so all are in breach and `revert_model` reverts everyone too. The modes separate
+only while a break is *local*.
+
+**And the residual confirms the spec's own priority.** With the move rule on,
+the player still sits at 0.908 of units coherent rather than 1.000 — units
+broken by **casualties**, where there is no move to undo. That is precisely what
+`03-moving.md` reserves End-of-Turn attrition for, and it is the test the rules
+lawyer named: if attrition ever fires often, the revert is wrong. Here it would
+fire rarely, and only on the cases it exists for.
+
 ## Status
 
 - `domain/coherency.py` — the predicate. Both conditions plus connectivity, base
@@ -151,8 +202,8 @@ is a design constraint, and a test, not a preference.
 Everything is off by default and verified byte-identical when off: both
 bit-identical goldens pass unmodified, and 1169 tests are green.
 
-**Not done, deliberately.** The end-of-move check, attrition, and the
-observation inputs any of it would need. Three separate points are worth
+**Not done, deliberately.** Attrition — the backstop for the ~9% of unit-steps
+broken by casualties rather than by a move. Three separate points are worth
 recording before that work starts:
 
 1. **The observability desk check fails today.** The only cohesion input is a
