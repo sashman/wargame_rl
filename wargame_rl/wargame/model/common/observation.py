@@ -122,6 +122,13 @@ def _models_to_features(
         core_parts.append(
             np.array([[m.unit_strength] for m in models], dtype=np.float32)
         )
+    # Likewise inside `core`. Already 0/1 flags, and they qualify the padded
+    # distance pairs above -- without them a padding slot's zero delta reads as
+    # "standing on that objective".
+    if models[0].objective_present is not None:
+        core_parts.append(
+            np.array([m.objective_present for m in models], dtype=np.float32)
+        )
     core = np.hstack(core_parts)
     alive_col = np.array([[m.alive] for m in models], dtype=np.float32)
     cw = np.array([[float(m.current_wounds)] for m in models], dtype=np.float32)
@@ -199,8 +206,20 @@ def _observation_to_numpy(
     # widths equal, which the shared `base_feature_dim` requires.
     probe = models or state.opponent_models
     n_unit_strength = 1 if probe and probe[0].unit_strength is not None else 0
+    # One flag per objective slot when `objective_budget` pads the block, so the
+    # padded distance pairs above can be told from real ones.
+    n_objective_presence = (
+        len(probe[0].objective_present)
+        if probe and probe[0].objective_present is not None
+        else 0
+    )
     base_feature_dim = (
-        n_spatial + n_group + n_unit_strength + N_WOUND_FEATURES + N_COMBAT_STATS
+        n_spatial
+        + n_group
+        + n_unit_strength
+        + n_objective_presence
+        + N_WOUND_FEATURES
+        + N_COMBAT_STATS
     )
 
     model_features = _models_to_features(
@@ -261,6 +280,13 @@ def _observation_to_numpy(
             dtype=np.float32,
         )
         obj_features = np.hstack([obj_features, control])
+    # `present` goes last so it is at a fixed index whichever width the token
+    # is, which is what `TransformerNetwork` reads to drop padding slots from
+    # attention. A padding slot sits at the board centre with zero control, so
+    # its row is entirely zero once this column is 0 too.
+    if state.objectives and state.objectives[0].present is not None:
+        presence = np.array([[o.present] for o in state.objectives], dtype=np.float32)
+        obj_features = np.hstack([obj_features, presence])
 
     normalized_round = state.battle_round / max(state.n_rounds, 1)
     normalized_phase = state.battle_phase_index / max(N_BATTLE_PHASES - 1, 1)
@@ -330,6 +356,19 @@ def observation_to_tensor(
     toughness, save — each divided by its NORM_* constant). The final
     n_opponent columns are expected damage per target (player models) or
     zero-padding (opponent models).
+
+    Observation budgets
+    -------------------
+
+    `objective_budget` pads num_objectives to a fixed size: the objective token
+    gains a trailing `present` column (1 real, 0 padding) and the per-model block
+    gains one presence flag per slot inside `core`, beside its padded distance
+    pairs. Without those flags a padding slot's zero delta reads as "this model
+    is standing on it". `terrain_budget` pads n_terrain with all-zero rows, which
+    the zero vertex-count column already marks. Both default to None and are
+    then exact no-ops. They exist because objective count is otherwise a hard
+    input dimension — the real layouts carry five or six objectives and 15 or 16
+    pieces, which neither collate into one batch nor share one network.
     """
     device = get_device(device)
     current_turn, obj_features, model_features, opp_features, terrain_features, mask = (

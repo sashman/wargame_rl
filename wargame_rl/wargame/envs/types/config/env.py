@@ -150,6 +150,32 @@ class WargameEnvConfig(BaseModel):
         "attacks, which caps what finishing a unit early can reclaim. Turn "
         "this on only behind a mechanism that is not bounded by that 3.6%.",
     )
+    objective_budget: int | None = Field(
+        default=None,
+        ge=1,
+        description="Pad every objective-derived input to this many slots, so "
+        "scenarios with different objective counts share one network. The "
+        "objective token gains a trailing `present` column (1 real, 0 padding) "
+        "and the per-model block gains one presence column per slot beside its "
+        "padded distance pairs — without them a padding slot's zero distance "
+        "reads as 'this model is standing on it'. Needed because the per-model "
+        "distance block is `2 + n_objectives * 2` wide, which makes objective "
+        "count a hard input dimension: the 45 real layouts carry five or six "
+        "objectives, so one network cannot span them, and none can be scored by "
+        "a checkpoint trained at three. None = no padding, byte-identical to a "
+        "config without the field; setting it changes both embedding shapes, so "
+        "existing checkpoints fail to load — the intended loud failure.",
+    )
+    terrain_budget: int | None = Field(
+        default=None,
+        ge=1,
+        description="Pad the terrain token sequence to this many pieces, so "
+        "layouts with different piece counts collate into one batch. Padding "
+        "rows are all zero, including the vertex-count column, which no real "
+        "piece can be — that is what marks them, and the network drops them from "
+        "attention. The shipped maps carry 15 or 16 pieces, which "
+        "`observations_to_tensor_batch` cannot stack. None = no padding.",
+    )
     render_mode: str | None = Field(
         default=None, description="Rendering mode for the environment"
     )
@@ -558,6 +584,35 @@ class WargameEnvConfig(BaseModel):
                 f"{required:g} cells, more than "
                 f"{_MAX_TERRAIN_PACKING_FRACTION:.0%} of the usable {usable}"
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_observation_budgets(self) -> "WargameEnvConfig":
+        """Reject a budget smaller than what this scenario actually puts on the board.
+
+        A budget that does not fit is worse than none: the padding helpers would
+        have to drop real objectives or real terrain to honour it, and the
+        network would score a board it cannot see all of. Checked here rather
+        than at the first `reset`, since a training run would otherwise fail an
+        hour in.
+        """
+        if (
+            self.objective_budget is not None
+            and self.objective_budget < self.number_of_objectives
+        ):
+            raise ValueError(
+                f"objective_budget ({self.objective_budget}) is below "
+                f"number_of_objectives ({self.number_of_objectives})"
+            )
+        if self.terrain_budget is not None:
+            n_pieces = len(self.terrain) if self.terrain is not None else 0
+            if self.random_terrain is not None:
+                n_pieces = self.random_terrain.count
+            if self.terrain_budget < n_pieces:
+                raise ValueError(
+                    f"terrain_budget ({self.terrain_budget}) is below the "
+                    f"scenario's {n_pieces} terrain pieces"
+                )
         return self
 
     @model_validator(mode="after")

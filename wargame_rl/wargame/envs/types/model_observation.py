@@ -40,9 +40,18 @@ class WargameModelObservation:
     # the input at all, on tokens the head and the trunk both read.
     unit_strength: float | None = None
 
+    # One flag per objective slot, 1.0 real and 0.0 padding, populated only when
+    # `objective_budget` is set. `distances_to_objectives` is padded to the same
+    # budget, and a padding slot's delta is (0, 0) -- which without this column
+    # reads as "this model is standing on that objective", the most emphatic
+    # thing the feature can say. The flags are identical across every model on
+    # the board, but the distance columns they qualify are per model, so this is
+    # where they have to live.
+    objective_present: np.ndarray | None = None
+
     @property
     def size(self) -> int:
-        """Location + distances + group one-hot + same-group distance + alive + wound scalars (3) + combat stats (7), plus unit strength when observed."""
+        """Location + distances + group one-hot + same-group distance + alive + wound scalars (3) + combat stats (7), plus unit strength and objective-presence flags when observed."""
         return int(
             self.location.size
             + self.distances_to_objectives.size
@@ -51,4 +60,5 @@ class WargameModelObservation:
             + 3
             + 7
             + (0 if self.unit_strength is None else 1)
+            + (0 if self.objective_present is None else self.objective_present.size)
         )
