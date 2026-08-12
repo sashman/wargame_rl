@@ -17,6 +17,7 @@ from wargame_rl.wargame.envs.domain.battle_factory import (
     from_config as _battle_from_config,
 )
 from wargame_rl.wargame.envs.domain.battle_factory import unit_count
+from wargame_rl.wargame.envs.domain.coherency_enforcement import apply_attrition
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.game_clock import GameClock
 from wargame_rl.wargame.envs.domain.placement import install_layout, place_for_episode
@@ -188,6 +189,7 @@ class WargameEnv(gym.Env):
         self._battle = _battle_from_config(config)
         # Loaded and checked once: every map parsed, every polygon built, every
         # count held against the observation budgets. A draw is then an index.
+        self._coherency_attrition = config.coherency.attrition
         self._map_pool = MapPool.from_config(config)
         self._map_name: str | None = None
         # A drawn layout, like generated terrain below, has to exist before the
@@ -562,9 +564,45 @@ class WargameEnv(gym.Env):
     def opponent_vp_delta(self) -> int:
         return self._battle.opponent_vp_delta
 
+    def _regain_coherency(self, state: GameState) -> None:
+        """Apply `03-moving.md` § Regaining coherency to the active player's force.
+
+        There is no End of Turn phase on this clock -- `BattlePhase` is the five
+        phases of a turn, and adding a sixth would change `max_turns`, every
+        config's `skip_phases` and therefore episode length, voiding every
+        measured result before coherency did anything. So the last phase's
+        boundary stands in for it: leaving `fight` is the end of that player's
+        turn whether or not the phase was skipped, because skipped phases still
+        tick.
+
+        The casualties are **not** credited to the other side. The rule says
+        they trigger nothing that fires when a model is destroyed, and routing
+        them through the kill counter would pay `model_kills` for deaths nobody
+        caused.
+        """
+        if not self._coherency_attrition:
+            return
+        if state.phase is not BATTLE_PHASE_ORDER[-1] or state.active_player is None:
+            return
+        models = (
+            self.wargame_models
+            if state.active_player == self._player_side
+            else self.opponent_models
+        )
+        apply_attrition(
+            models,
+            self._rules_quantities.scale.to_units(
+                self.config.coherency.nearest_distance
+            ),
+            self._rules_quantities.scale.to_units(
+                self.config.coherency.furthest_distance
+            ),
+        )
+
     def _on_before_advance(self, clock: GameClock) -> None:
-        """Score VP when leaving command phase from round 2 (mission-driven)."""
+        """Score VP when leaving command phase, and regain coherency at end of turn."""
         state = clock.state
+        self._regain_coherency(state)
         if state.phase != BattlePhase.command or state.battle_round is None:
             return
         if state.active_player is None:
