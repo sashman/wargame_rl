@@ -52,7 +52,7 @@ class TestExactDisplacement:
         handler = ActionHandler(_config(), n_shoot_targets=0)
 
         outcomes = {
-            tuple(handler._decode_action(action))
+            tuple(handler.decode_action(action))
             for action in range(1, handler.n_move_actions + 1)
         }
 
@@ -73,7 +73,7 @@ class TestExactDisplacement:
             lengths = [
                 float(
                     np.linalg.norm(
-                        handler._decode_action(
+                        handler.decode_action(
                             handler.encode_action(angle_index, speed_index)
                         )
                     )

@@ -91,13 +91,22 @@ class BasePresenter(Renderer):
         self._scale = min(GRID_SIZE / self._board_w, GRID_SIZE / self._board_h)
         self._recompute_layout()
 
+    def _reserved_width(self) -> int:
+        """Window width claimed by something other than the board.
+
+        Zero for every presenter that draws only the board and the two HUD rows.
+        The debug presenter reserves a side panel here, which is what keeps the
+        board from being drawn underneath it.
+        """
+        return 0
+
     def _recompute_layout(self) -> None:
         self._canvas_w = math.ceil(self._scale * self._board_w)
         self._canvas_h = math.ceil(self._scale * self._board_h)
         north = self._theme.north_panel_h
         self._top_h = 2 * north
         south = self._theme.south_panel_rows * north
-        self._window_w = self._canvas_w
+        self._window_w = self._canvas_w + self._reserved_width()
         self._window_h = self._canvas_h + self._top_h + south
         self._offset_x = 0
         self._offset_y = self._top_h
