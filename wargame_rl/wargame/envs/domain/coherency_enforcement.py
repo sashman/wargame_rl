@@ -48,7 +48,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.coherency import UnitCoherency, evaluate_coherency
+from wargame_rl.wargame.envs.domain.coherency import (
+    UnitCoherency,
+    base_to_base_distances,
+    evaluate_coherency,
+)
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.domain.entities import WargameModel
@@ -179,3 +183,80 @@ def _return_to_start(model: WargameModel) -> int:
         return 0
     model.location = model.previous_location.copy()
     return 1
+
+
+def apply_attrition(
+    models: list[WargameModel],
+    nearest_distance: float,
+    furthest_distance: float,
+) -> list[int]:
+    """Remove models until every unit is back in coherency. Mutates models.
+
+    `03-moving.md` § Regaining coherency: in the End of Turn step, a unit on the
+    board that is out of coherency loses models one at a time until coherency is
+    restored. They are **destroyed, but trigger nothing that fires when a model
+    is destroyed** -- so the caller must not credit these to the opponent, or
+    `model_kills` pays for a death nobody caused and `models_lost` and the kill
+    counter stop meaning the same thing.
+
+    This is the **backstop**, not the enforcement. The move check is what keeps a
+    unit legal; what reaches here is a break no move caused -- casualties
+    splitting a unit, most of all. If this ever removes models in bulk, the
+    end-of-move check is wrong, and that is the diagnostic to reach for first.
+
+    Which model dies is the controlling player's choice on the table, and has to
+    be deterministic here (seeded env, bit-identical golden gates). The rule:
+    drop from the **smallest chain component** first, since detaching a lone
+    straggler costs one model where cutting the body would cost several, and
+    break ties by lowest index. Once the unit is connected, drop whichever model
+    sits furthest from the rest, which is the only way a spread breach closes.
+
+    Returns:
+        Indices of the models destroyed, in removal order.
+    """
+    destroyed: list[int] = []
+    if not models:
+        return destroyed
+
+    group_ids = np.array([m.group_id for m in models], dtype=np.intp)
+    base_radii = np.array([m.base_radius for m in models], dtype=float)
+    positions = np.array([m.location for m in models], dtype=float)
+
+    # Bounded by the force size: every pass either removes a model or stops.
+    for _ in range(len(models)):
+        alive_mask = np.array([m.is_alive for m in models], dtype=bool)
+        report = evaluate_coherency(
+            positions=positions,
+            group_ids=group_ids,
+            alive_mask=alive_mask,
+            base_radii=base_radii,
+            nearest_distance=nearest_distance,
+            furthest_distance=furthest_distance,
+        )
+        if report.all_coherent:
+            return destroyed
+        for unit in report.units:
+            if unit.coherent:
+                continue
+            victim = _choose_casualty(unit, positions, base_radii)
+            models[victim].take_damage(models[victim].stats["current_wounds"])
+            destroyed.append(victim)
+            # One at a time: removing a model re-shapes its unit, and the next
+            # pass re-evaluates rather than assuming the rest still have to go.
+            break
+    return destroyed
+
+
+def _choose_casualty(
+    unit: UnitCoherency,
+    positions: np.ndarray,
+    base_radii: np.ndarray,
+) -> int:
+    """Pick the model this unit loses, deterministically."""
+    members = unit.member_indices
+    if not unit.connected:
+        counts = np.bincount(unit.component, minlength=unit.n_components)
+        smallest = int(np.argmin(counts))
+        return int(members[unit.component == smallest][0])
+    gaps = base_to_base_distances(positions[members], base_radii[members])
+    return int(members[int(np.argmax(gaps.max(axis=1)))])

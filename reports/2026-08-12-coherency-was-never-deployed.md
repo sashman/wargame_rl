@@ -202,6 +202,54 @@ broken by **casualties**, where there is no move to undo. That is precisely what
 lawyer named: if attrition ever fires often, the revert is wrong. Here it would
 fire rarely, and only on the cases it exists for.
 
+## Attrition: the backstop, and the statistic that nearly misled me
+
+The last rung, `03-moving.md` § Regaining coherency — at End of Turn a unit out
+of coherency loses models one at a time until it is whole. Deterministic removal
+(smallest chain component first, then the model furthest from the rest), and
+**no kill credit**: the rule says these trigger nothing that fires on a model
+being destroyed, so routing them through the kill counter would pay `model_kills`
+for deaths nobody caused.
+
+| policy | deploy only | +`revert_model` | +attrition |
+|---|---|---|---|
+| `random` | −122.3 | −122.3 | −136.8 |
+| `greedy_nearest` | −52.2 | −35.2 | −43.6 |
+| `split_evenly` | −41.3 | −47.7 | −47.2 |
+| `squad_march` | −3.6 | −1.0 | +5.1 |
+| **`squad_march_shoot` (bar)** | **+58.9** | **+41.5** | **+51.1** |
+| `contest_and_spread` | +39.3 | +32.1 | +30.4 |
+
+**Attrition does not cost vp — it recovers ~10 of the 17 the move rule took.**
+
+That is the opposite of what the loss counts say, and the loss counts are the
+trap. Attrition is **50.7% of all player losses**, 6.9 models an episode out of
+25 — comfortably past two kill criteria written down in advance ("attrition
+losses > combat losses", "> 20% of the army per episode"). Judged on casualties
+it is a body tax. Judged on **vp** it is close to free, and the diagnostics say
+why: for the bar, `on_obj` goes 0.645 → **0.918** while `alive` goes 0.636 →
+0.507. Attrition preferentially kills **stragglers** — models already off doing
+nothing — so a smaller surviving force is better concentrated (`held` 1.62 →
+1.72, `player_vp` 142.7 → 151.3). It is symmetric, so the opponent pays it too.
+
+The lesson is the one this repo keeps relearning: **a casualty count is not an
+outcome.** The rule here is "always quote vp_margin", and reaching for a verdict
+off the loss split before measuring vp would have retired a rule that is nearly
+free.
+
+Two things do survive:
+
+- **The amplification is real.** One combat death can cost two attrition deaths:
+  a model dying mid-chain splits its unit, and restoring coherency means
+  removing the whole smaller fragment — a unit cannot be reconnected by removing
+  from it. On a table a 5-model unit sits in a clump and losing one rarely
+  disconnects anyone; here the 2" chain lets a squad string into a line.
+- **The training risk is not settled by this table.** `random` is hit hardest
+  (−122.3 → −136.8, `alive` 0.392) — attrition punishes scattering, which is
+  correct, and also means it lands hardest on an *untrained* policy. A learning
+  agent starts near-random. That argues for annealing the rule in, not against
+  it. Nothing here measures a learned policy.
+
 ## Status
 
 - `domain/coherency.py` — the predicate. Both conditions plus connectivity, base
@@ -215,8 +263,10 @@ fire rarely, and only on the cases it exists for.
 Everything is off by default and verified byte-identical when off: both
 bit-identical goldens pass unmodified, and 1169 tests are green.
 
-**Not done, deliberately.** Attrition — the backstop for the ~9% of unit-steps
-broken by casualties rather than by a move. Three separate points are worth
+**All three consequences are now implemented**, each off by default. What is
+not done is training anything under them: every number here is scripted policies
+on identical layouts, and the learned question — can an agent hold objectives
+under a rule that punishes scattering — is open. Three separate points are worth
 recording before that work starts:
 
 1. **The observability desk check fails today.** The only cohesion input is a
