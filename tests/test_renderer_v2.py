@@ -171,6 +171,42 @@ def test_recording_presenter_and_legacy_are_frame_sources() -> None:
 # --- Theme selection --------------------------------------------------------
 
 
+def test_the_tabletop_theme_is_blue_against_red() -> None:
+    """One hue per side, every squad — so a glance says which army, not which squad.
+
+    The squad ramps still differ shade by shade, which is what tells two of your
+    own squads apart. What must not vary is the *hue*: `DEFAULT_THEME` gives the
+    player blue, green, yellow, purple, cyan, orange, pink and red, so a player
+    squad and an opponent squad can be the same colour and the board reads as a
+    rainbow rather than as two armies.
+
+    Pinned as "blue channel dominates for the player, red for the opponent"
+    rather than against fixed RGB triples, so the palette can be retuned without
+    rewriting the test — only reintroducing a second hue fails it.
+    """
+    from wargame_rl.wargame.envs.renders.v2.theme import TABLETOP_THEME
+
+    palette = TABLETOP_THEME.palette
+
+    for red, green, blue in palette.player_groups:
+        assert blue > red and blue > green, f"player group ({red}, {green}, {blue})"
+    for red, green, blue in palette.opponent_groups:
+        assert red > green and red > blue, f"opponent group ({red}, {green}, {blue})"
+
+
+def test_training_recordings_default_to_the_tabletop_theme() -> None:
+    """The default a training run gets without asking, since nothing passes one."""
+    import inspect
+
+    from wargame_rl.wargame.model.common.record_episode_callback import (
+        RecordEpisodeCallback,
+    )
+
+    signature = inspect.signature(RecordEpisodeCallback.__init__)
+    assert signature.parameters["theme"].default == "tabletop"
+    assert signature.parameters["renderer_name"].default == "v2"
+
+
 def test_build_renderer_resolves_theme_by_name() -> None:
     from wargame_rl.wargame.envs.renders.v2.factory import resolve_theme
     from wargame_rl.wargame.envs.renders.v2.theme import TABLETOP_THEME
@@ -500,11 +536,25 @@ def _volley_env() -> tuple[WargameEnv, Any]:
     env = WargameEnv(config=config)
     observation, _ = env.reset(seed=4)
     policy = build_baseline_policy("squad_march_shoot")
-    for _ in range(6):
+    # Step until both sides have landed something, rather than a fixed six.
+    # Which round the first damaging volley falls in is a property of the
+    # scenario, and the scenario moves: real bases changed how fast the armies
+    # close and what they can see, and a hardcoded step count silently became
+    # "before anyone had fired" -- a fixture asserting on an empty list.
+    for _ in range(40):
         action = policy.select_action(
             env.player_models, env, action_mask=observation.action_mask
         )
-        observation, _r, _t, _tr, _i = env.step(action)
+        observation, _r, terminated, truncated, _i = env.step(action)
+        both_landed = all(
+            any(shot.result.damage_dealt > 0 for shot in results)
+            for results in (
+                env.last_player_shooting_results,
+                env.last_opponent_shooting_results,
+            )
+        )
+        if both_landed or terminated or truncated:
+            break
     return env, observation
 
 

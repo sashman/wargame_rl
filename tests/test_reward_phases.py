@@ -407,6 +407,13 @@ class TestClosestObjectiveV2Calculator:
                 number_of_wargame_models=2,
                 number_of_objectives=1,
                 objective_radius_size=2,
+                # Distances here are chosen to sit just outside the radius, and
+                # a real base is measured from its *edge*: at the 32mm default
+                # the model at (9, 8) is 2.24 from the objective centre but 1.61
+                # from it by base edge, so it counts as arrived and the progress
+                # term correctly goes to zero. This test is about the
+                # calculator, not the geometry.
+                base_radius=0.0,
             )
         )
         env.reset()

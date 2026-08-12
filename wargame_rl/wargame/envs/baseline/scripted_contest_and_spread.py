@@ -19,6 +19,7 @@ import numpy as np
 
 from wargame_rl.wargame.envs.baseline.policy import (
     BaselinePolicy,
+    objective_extent,
     step_toward_objective,
 )
 from wargame_rl.wargame.envs.baseline.registry import register_baseline
@@ -142,7 +143,7 @@ class ScriptedContestAndSpreadPolicy(BaselinePolicy):
                 continue
 
             objective = objectives[allocation[squad_index] % len(objectives)]
-            radius = float(objective.radius_size)
+            radius = objective_extent(objective)
             centroid = np.mean(
                 [models[i].location for i in member_indices], axis=0, dtype=float
             )
@@ -151,9 +152,7 @@ class ScriptedContestAndSpreadPolicy(BaselinePolicy):
 
             for i in member_indices:
                 if lead_distance <= radius:
-                    actions[i] = step_toward_objective(
-                        models[i], objective.location, radius, env
-                    )
+                    actions[i] = step_toward_objective(models[i], objective, env)
                 else:
                     # One squad vector for every member keeps relative positions,
                     # and therefore coherency, intact.

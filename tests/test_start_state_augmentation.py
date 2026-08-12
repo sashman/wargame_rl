@@ -38,7 +38,16 @@ PRE_FEATURE_STREAM_DIGEST = (
 
 
 def _config(probability: float) -> WargameEnvConfig:
-    """A small two-group scenario with objectives big enough to stand on."""
+    """A small two-group scenario with objectives big enough to stand on.
+
+    `base_radius` is pinned to 0.0 rather than left to the default, because the
+    digests above were recorded from a worktree predating the augmentation — a
+    world where the default *was* 0.0. Bases change where placement puts every
+    model, so inheriting today's 32mm default would compare this build against a
+    recording of a different scenario and fail for a reason that has nothing to
+    do with the augmentation. The tests that are about bases set
+    `config.base_radius = BASE_RADIUS` themselves.
+    """
     return WargameEnvConfig(
         render_mode=None,
         board_width=30,
@@ -47,6 +56,7 @@ def _config(probability: float) -> WargameEnvConfig:
         number_of_opponent_models=4,
         number_of_objectives=2,
         objective_radius_size=3,
+        base_radius=0.0,
         max_groups=2,
         opponent_policy=OpponentPolicyConfig(type="random"),
         start_on_objective_probability=probability,

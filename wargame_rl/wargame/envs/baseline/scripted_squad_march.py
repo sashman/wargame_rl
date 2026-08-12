@@ -8,6 +8,7 @@ import numpy as np
 
 from wargame_rl.wargame.envs.baseline.policy import (
     BaselinePolicy,
+    objective_extent,
     step_toward_objective,
 )
 from wargame_rl.wargame.envs.baseline.registry import register_baseline
@@ -56,7 +57,7 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
                 continue
 
             objective = objectives[squad_index % len(objectives)]
-            radius = float(objective.radius_size)
+            radius = objective_extent(objective)
             centroid = np.mean(
                 [models[i].location for i in member_indices], axis=0, dtype=float
             )
@@ -67,9 +68,7 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
                 if lead_distance <= radius:
                     # The squad has arrived; each model settles onto the disc
                     # individually so the whole body ends up inside it.
-                    actions[i] = step_toward_objective(
-                        models[i], objective.location, radius, env
-                    )
+                    actions[i] = step_toward_objective(models[i], objective, env)
                 else:
                     # Every model follows the same squad vector, which keeps
                     # relative positions — and therefore coherency — intact.

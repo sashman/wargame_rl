@@ -168,6 +168,10 @@ class TestAreaObjectives:
                 number_of_wargame_models=2,
                 number_of_objectives=1,
                 objectives=[ObjectiveConfig(area=SQUARE_AREA)],
+                # This test is about the objective's shape, not the model's.
+                # Bases now default to 32mm, which would shorten every distance
+                # below by 0.63 and hide what is being measured.
+                base_radius=0.0,
             )
         )
         env.reset(seed=0)
@@ -193,6 +197,10 @@ class TestAreaObjectives:
                 number_of_wargame_models=3,
                 number_of_objectives=1,
                 objectives=[ObjectiveConfig(area=SQUARE_AREA)],
+                # This test is about the objective's shape, not the model's.
+                # Bases now default to 32mm, which would shorten every distance
+                # below by 0.63 and hide what is being measured.
+                base_radius=0.0,
             )
         )
         env.reset(seed=0)
@@ -215,6 +223,8 @@ class TestAreaObjectives:
                 number_of_wargame_models=2,
                 number_of_objectives=1,
                 objectives=[ObjectiveConfig(x=15, y=15, radius_size=3)],
+                # As above: pinned so the 32mm base default does not move it.
+                base_radius=0.0,
             )
         )
         env.reset(seed=0)
@@ -266,16 +276,22 @@ class TestObjectivesOnTerrain:
             assert objective.area.vertices.tobytes() in outlines
 
     @pytest.mark.parametrize("seed", range(6))
-    def test_objectives_are_clear_of_both_deployment_zones(self, seed: int) -> None:
-        """Otherwise one side starts standing on the prize."""
+    def test_objectives_belong_to_the_middle_section(self, seed: int) -> None:
+        """Otherwise one side starts standing on the prize.
+
+        The rule is on the piece's **centre**, not its extent: a ruin may reach
+        across a deployment edge, which real tables do routinely, and requiring
+        the whole footprint to clear both edges rejects exactly the large pieces
+        the selection wants -- a 14" ruin cannot fit between the edges without
+        touching one.
+        """
         env = self._env()
         env.reset(seed=seed)
 
         for objective in env.objectives:
             assert objective.area is not None
-            x0, _, x1, _ = objective.area.bounds
-            assert x0 >= 20.0
-            assert x1 <= 40.0
+            centre_x = float(objective.area.centroid[0])
+            assert 20.0 <= centre_x <= 40.0
 
     @pytest.mark.parametrize("seed", range(6))
     def test_the_chosen_set_is_symmetric_on_a_mirrored_layout(self, seed: int) -> None:
@@ -301,8 +317,42 @@ class TestObjectivesOnTerrain:
             ),
         )
 
-        with pytest.raises(ValueError, match="terrain pieces clear"):
+        with pytest.raises(ValueError, match="centres lie between"):
             env.reset(seed=0)
+
+    def test_a_board_with_no_terrain_falls_back_to_discs(self) -> None:
+        """The default state defers; it does not fail.
+
+        A board with no ruins has nothing to put an objective *on*, and its
+        author never asked for terrain objectives — `objectives_on_terrain` is
+        left at `None` here rather than the `True` the other tests in this class
+        set. The loud failure above is kept for the case it was written for:
+        an explicit `True` against a layout that cannot deliver, where placing
+        discs instead would change the mission while looking like it worked.
+        """
+        env = self._env(objectives_on_terrain=None, random_terrain=None, terrain=None)
+        env.reset(seed=0)
+
+        assert all(not objective.is_area for objective in env.objectives)
+
+    def test_the_default_defers_to_hand_placed_objectives(self) -> None:
+        """A config that says where its objectives go keeps them there.
+
+        The default used to overrule an explicit `objectives:` list and move
+        every objective onto a ruin. One fixture pinned its opponents in place
+        by putting an objective on top of them; the objective moved to a wall,
+        the opponents advanced to the wall, and the geometry the test was built
+        around dissolved — silently, since nothing raised.
+        """
+        env = self._env(
+            objectives_on_terrain=None,
+            number_of_objectives=1,
+            objectives=[ObjectiveConfig(x=30, y=22, radius_size=3)],
+        )
+        env.reset(seed=0)
+
+        assert not env.objectives[0].is_area
+        assert env.objectives[0].location == pytest.approx([30.0, 22.0])
 
 
 class TestSnapshotRoundTrip:
@@ -403,57 +453,83 @@ class TestLayoutSurvivesTheTail:
             assert all(objective.is_area for objective in env.objectives)
 
 
-def test_spread_selection_beats_centre_selection_on_separation() -> None:
-    """`objectives_spread_on_terrain` picks the furthest-apart eligible pieces.
+def test_objectives_are_large_and_not_clustered() -> None:
+    """The two properties selection exists to produce, and how they trade off.
 
-    Nearest-to-centre packs every objective into the middle of the board, which
-    removes the travel trade-off between them. Pinned on the *outcome* -- the
-    minimum pairwise separation -- rather than on which pieces are chosen, since
-    the selection rule may change but "further apart" is the contract.
+    * **Large** — objectives sit on the substantial ruins. An area objective
+      holds as many models as it has room for, so size is what makes a piece
+      worth contesting.
+    * **Not clustered** — size says nothing about position, so the largest ruins
+      may all sit in one corner. That removes the travel trade-off between
+      objectives and lets one squad cover two: the measured failure was all
+      three inside a ~16" circle with 47% of pairs within one weapon range.
+
+    They genuinely conflict, so neither is asserted as absolute. Separation is
+    the hard constraint and size the ranking, which means a layout whose biggest
+    pieces are bunched correctly yields a *smaller*, spread set — one real
+    layout offers areas [40, 40, 28, 27, 27] where the [40, 40, 28] set sits
+    8.2" apart and the chosen [28, 27, 27] sits 13.8" apart.
+
+    Rates rather than rules for the same reason, measured when written.
     """
     import itertools
 
     from pydantic_yaml import parse_yaml_raw_as
 
+    from wargame_rl.wargame.envs.domain.placement import (
+        _DEFAULT_SEPARATION_FRACTION,
+        eligible_objective_pieces,
+    )
     from wargame_rl.wargame.envs.types.config import WargameEnvConfig
     from wargame_rl.wargame.model.common.factory import create_environment
 
     with open("configs/experiments/25v25_polygon_terrain_objectives.yaml") as handle:
-        raw = handle.read()
+        config = parse_yaml_raw_as(WargameEnvConfig, handle.read())
+    env = create_environment(env_config=config)
 
-    def min_separations(config_text: str) -> list[float]:
-        config = parse_yaml_raw_as(WargameEnvConfig, config_text)
-        env = create_environment(env_config=config)
-        out = []
-        for seed in range(700_000, 700_030):
-            env.reset(seed=seed)
-            centres = [np.asarray(o.location, dtype=float) for o in env.objectives]
-            out.append(
-                min(
-                    float(np.linalg.norm(a - b))
-                    for a, b in itertools.combinations(centres, 2)
-                )
-            )
-        return out
-
-    centre = min_separations(raw)
-    spread = min_separations(
-        # Anchored on the newline so the commented example of the same key
-        # further up the file is not also rewritten into a duplicate key.
-        raw.replace(
-            "\nobjectives_on_terrain: true",
-            "\nobjectives_on_terrain: true\nobjectives_spread_on_terrain: true",
-        )
+    section_width = float(env.opponent_deployment_zone[0]) - float(
+        env.deployment_zone[2]
+    )
+    floor = _DEFAULT_SEPARATION_FRACTION * float(
+        np.hypot(section_width, config.board_height)
     )
 
-    assert sum(spread) / len(spread) > sum(centre) / len(centre)
-    # Never worse on any individual layout: the spread set is chosen by maximising
-    # exactly this quantity, so a regression here means the flag is not wired.
-    assert all(s >= c - 1e-9 for s, c in zip(spread, centre))
+    seeds = list(range(700_000, 700_050))
+    took_the_largest = 0
+    cleared_the_floor = 0
+    for seed in seeds:
+        env.reset(seed=seed)
+        eligible = eligible_objective_pieces(
+            env.terrain, env.deployment_zone, env.opponent_deployment_zone
+        )
+        areas = sorted((float(f.polygon.area) for f in eligible), reverse=True)
+        chosen = sorted(
+            (float(o.area.area) for o in env.objectives if o.area), reverse=True
+        )
+        centres = [np.asarray(o.location, dtype=float) for o in env.objectives]
+        gap = min(
+            float(np.linalg.norm(a - b)) for a, b in itertools.combinations(centres, 2)
+        )
+
+        # Absolute: distinct pieces, so never two objectives on one ruin.
+        assert gap > 0.0, f"seed {seed}: objectives share a piece"
+        assert len({round(c[0], 6) for c in centres}) == len(centres)
+
+        took_the_largest += abs(chosen[0] - areas[0]) < 1e-9
+        cleared_the_floor += gap >= floor - 1e-9
+
+    # Measured 46/50 when written. Not 50: symmetry outranks size, and at an odd
+    # objective count a symmetric set needs the *self-mirroring* centre piece,
+    # which is whatever straddles the centre line however small.
+    assert took_the_largest >= 0.8 * len(seeds)
+    # Measured 39/50. The shortfall is layouts where no symmetric set clears the
+    # floor at all; there the most separated set is taken instead, which is the
+    # best the layout admits.
+    assert cleared_the_floor >= 0.7 * len(seeds)
 
 
-def test_spread_selection_keeps_objectives_mirror_symmetric() -> None:
-    """Spread selection must not hand one side an extra objective.
+def test_selection_keeps_objectives_mirror_symmetric() -> None:
+    """Selection must not hand one side an extra objective.
 
     Maximising separation *unconstrained* looks fair -- a mirrored layout's
     mirrored sets score identically -- but that says the mirror image scores the
@@ -468,7 +544,7 @@ def test_spread_selection_keeps_objectives_mirror_symmetric() -> None:
 
     with open("configs/experiments/25v25_spread_objectives.yaml") as handle:
         config = parse_yaml_raw_as(WargameEnvConfig, handle.read())
-    assert config.objectives_spread_on_terrain
+    assert config.objectives_on_terrain
     env = create_environment(env_config=config)
     middle = config.board_width / 2.0
 

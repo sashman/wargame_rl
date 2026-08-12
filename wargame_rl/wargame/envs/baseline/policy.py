@@ -18,7 +18,7 @@ from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 if TYPE_CHECKING:
-    from wargame_rl.wargame.envs.domain.entities import WargameModel
+    from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
     from wargame_rl.wargame.envs.wargame import WargameEnv
 
 
@@ -66,22 +66,63 @@ class BaselinePolicy(ABC):
         return WargameEnvAction(actions=[STAY_ACTION] * len(models))
 
 
-def step_toward_objective(
-    model: WargameModel, objective_location: np.ndarray, radius: float, env: WargameEnv
-) -> int:
-    """Return the action moving `model` toward an objective, or STAY if inside it.
+def objective_extent(objective: WargameObjective) -> float:
+    """How far from its centre an objective reaches, whichever kind it is.
 
-    The step is capped at the distance to the objective's boundary so a model
-    settles on the disc instead of overshooting and oscillating across it.
+    A disc reports its radius; an area reports the radius of a disc with the
+    same area, the same convention the observation builder uses so "how big is
+    this objective" means one thing everywhere.
+
+    Needed because `radius_size` is 0.0 for an area objective by design, so any
+    "have we arrived yet" test written against it waits for the squad's centroid
+    to reach the objective's centroid exactly -- which on a real ruin means
+    marching the whole squad onto one point.
     """
-    delta = np.asarray(objective_location, dtype=float) - np.asarray(
-        model.location, dtype=float
-    )
+    if objective.area is not None:
+        return float(np.sqrt(objective.area.area / np.pi))
+    return float(objective.radius_size)
+
+
+def step_toward_objective(
+    model: WargameModel, objective: WargameObjective, env: WargameEnv
+) -> int:
+    """Return the action moving `model` toward `objective`, or STAY once on it.
+
+    Arrival is a test against the objective's own *extent*, and the step is
+    capped at the distance to its boundary, so a model settles on the near edge
+    instead of overshooting and oscillating across it. Settling at the edge is
+    also what spreads a squad out: models arriving from different bearings stop
+    at different points on the perimeter rather than converging on one.
+
+    **This used to take a location and a radius, and that was the whole bug.**
+    An area objective reports `radius_size` of 0.0 by design -- its extent is
+    the outline, and distance is reported to that edge through the
+    `norms_offset` seam -- so every model steered at the *centroid* and stopped
+    only once within zero of it. On a marker objective that is merely the centre
+    of a small disc; on a terrain objective the size of a real ruin it means the
+    whole squad walking to a single point. With bases on they then collide, and
+    the ones behind stop dead in the open: measured at final occupancy 0.375 for
+    `greedy_nearest` and 0.542 for `split_evenly`, against 1.000 before bases
+    existed.
+    """
+    location = np.asarray(model.location, dtype=float)
+    if objective.area is not None:
+        if objective.area.contains(float(location[0]), float(location[1])):
+            return STAY_ACTION
+        gap = objective.area.distance_to_point(float(location[0]), float(location[1]))
+    else:
+        gap = float(
+            np.linalg.norm(np.asarray(objective.location, dtype=float) - location)
+        ) - float(objective.radius_size)
+        if gap <= 0.0:
+            return STAY_ACTION
+
+    delta = np.asarray(objective.location, dtype=float) - location
     distance = float(np.linalg.norm(delta))
-    if distance <= radius:
+    if distance <= 0.0:
         return STAY_ACTION
     return env.player_action_handler.best_action_toward(
-        float(delta[0]), float(delta[1]), max_step_length=distance - radius
+        float(delta[0]), float(delta[1]), max_step_length=gap
     )
 
 
@@ -109,9 +150,5 @@ class ScriptedObjectiveAssignmentPolicy(BaselinePolicy):
                 actions.append(STAY_ACTION)
                 continue
             objective = objectives[self.assign_objective(index, model, env)]
-            actions.append(
-                step_toward_objective(
-                    model, objective.location, float(objective.radius_size), env
-                )
-            )
+            actions.append(step_toward_objective(model, objective, env))
         return WargameEnvAction(actions=actions)

@@ -6,10 +6,32 @@ distance cache) are all meant to be *pure speedups*: same reward, same VP, same
 positions, same bits. This file is what makes that a checked claim rather than a
 hope.
 
-Assertions use `assert_array_equal`, never `assert_allclose`. These reward values
-feed published experiment reports in `reports/`, and a tolerance-based comparison
-would wave through exactly the float-reassociation regression a vectorisation
-change is most likely to introduce.
+**Game state is asserted bit-exact; reward is asserted to 1e-12 relative.** The
+split is not a preference, it is what the platforms allow.
+
+`positions`, `player_vp` and `opponent_vp` are bit-identical on every machine
+tried, so they stay on `assert_array_equal` -- a change that moves a model or a
+victory point is a behaviour change and must fail here.
+
+The reward arrays are not cross-platform bit-stable, and stopped being so when
+`base_radius` began defaulting to a real 32mm base. CI failed on **27 of 120
+elements differing by at most 4.4e-16 absolute, 6.7e-15 relative** -- one unit in
+the last place -- on the two 25v25 configs, while `dev/4v4_two_phases.yaml` and
+every observation-golden case passed. That signature (large arrays only,
+identical game state) is a vectorised reduction taking a different kernel on a
+different CPU, not a logic difference. It could not be reproduced locally:
+regeneration on this machine is deterministic to the byte.
+
+So the reward comparison carries `rtol=1e-12`, which is ~150x the largest
+divergence observed and ~1e9 below the smallest reward difference this project
+has ever cared about. **What this gives up:** the file previously claimed to
+catch a one-ULP change, and no longer does. What it still catches is what the
+gate exists for -- a float-reassociation regression from a vectorisation
+rewrite, which is orders of magnitude larger than 1e-12 relative, and any change
+to game state at all.
+
+Do not widen the tolerance further to make a red test go green. If reward
+diverges by more than a few ULP, the arithmetic changed.
 
 The golden `.npz` files are recorded from `main` *before* any optimisation lands.
 Regenerate deliberately and never to make a red test go green:
@@ -166,8 +188,15 @@ def test_reward_trajectory_is_bit_identical(config_name: str) -> None:
         err_msg="the set of active reward calculators changed",
     )
     for key in ("reward", "per_model_reward", "breakdown"):
-        np.testing.assert_array_equal(
-            recorded[key], golden[key], err_msg=f"{key} diverged from the golden run"
+        # rtol=1e-12: see the module docstring. Tight enough that a
+        # reassociation regression cannot pass, loose enough to survive a
+        # one-ULP difference between CI's CPU and a developer's.
+        np.testing.assert_allclose(
+            recorded[key],
+            golden[key],
+            rtol=1e-12,
+            atol=1e-15,
+            err_msg=f"{key} diverged from the golden run",
         )
     for key in ("player_vp", "opponent_vp", "positions"):
         np.testing.assert_array_equal(

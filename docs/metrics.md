@@ -395,6 +395,42 @@ consequences:
 
 Run at least two seeds per arm before reading a difference smaller than ~10pp.
 
+### Pairing beats sample size — `just measure-paired`
+
+The noise floor above is what makes two aggregate rows nearly useless for small
+effects. Per-episode `vp_margin` sd on 25v25 is ~45–90, so at n=100 each row
+carries a standard error of ~5–9 and their difference ~7–13 — larger than most
+effects this project has ever tried to measure.
+
+`just measure-paired <policy_a> <policy_b> <config> [n] [seed_base]` runs both
+policies over the **same seed list** and differences them per episode. The
+layout variance that dominates those rows cancels, and what is left is the
+standard error of the difference.
+
+It is not a refinement, it is the line between a result and an artefact. The
+comparison it was written for — nearest-target versus weakest-target under unit
+shooting — read **+8.0** as two aggregate means over 60 episodes and
+**+1.7 ± 5.7 (t = 0.30)** once paired over 100.
+
+Two rules it encodes:
+
+- **Append unconditionally.** Every episode contributes one entry to each arm in
+  seed order. A probe that skipped an episode in one arm and not the other
+  reported +21.1 where the paired truth was +10.6.
+- **Read the win count beside the mean.** A positive mean with a losing win
+  count is a heavy tail, not an improvement — and only one of those two numbers
+  says so. The weakest-target arm above was ahead in 24 of 100 episodes.
+
+Either argument may be a baseline name **or a checkpoint path**, so the
+comparison that decides a result — a trained policy against the bar — can be
+paired directly rather than read off two aggregate rows.
+
+**It also pairs two code versions.** Run the same policy from a worktree at an
+earlier commit and difference per episode; that is how the baseline arrival fix
+was resolved from "worth +10.2" (unpaired, one seed set) to +16.7 ± 6.5 on one
+seed set, −1.6 ± 6.7 on another and **+7.5 ± 4.7 pooled** — helping occupancy
+consistently while its effect on `vp_margin` stayed layout-dependent.
+
 ## 3. Trace metrics (`just analyze`, `just analyze-compare`)
 
 Per-step metrics from recorded event logs. Aggregates hid the objective drift
