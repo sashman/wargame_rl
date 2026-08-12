@@ -36,6 +36,7 @@ wargame_rl/
 │       │   │                      #   termination, LOS, shooting, terrain, turn execution
 │       │   ├── env_components/    # Adapters: actions, distance cache, observation builder
 │       │   ├── baseline/          # Scripted baseline policies + registry + evaluate
+│       │   ├── debug/             # Hand-stepping a live match: undo stack, session loop
 │       │   ├── reward/            # Phase manager, calculators, criteria
 │       │   ├── mission/           # VP calculators + registry
 │       │   ├── opponent/          # Opponent policies + registry
@@ -66,6 +67,7 @@ wargame_rl/
 │                                  #   measure_throughput)
 ├── train.py                       # Training entry point (Typer CLI)
 ├── simulate.py                    # Inference/simulation entry point
+├── debug.py                       # Step a live match by hand, and rewind it
 ├── replay_events.py               # Replay / narrate a match event log
 ├── analyze_events.py              # Analyse / compare match event logs
 └── main.py                        # Legacy entry (env test with random actions)
