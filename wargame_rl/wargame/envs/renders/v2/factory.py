@@ -40,7 +40,7 @@ def resolve_theme(theme: Theme | str) -> Theme:
         ) from None
 
 
-def _build_backend(name: str) -> RenderBackend:
+def build_backend(name: str) -> RenderBackend:
     if name == "pygame":
         return PygameBackend()
     if name == "pygame_aa":
@@ -69,7 +69,7 @@ def build_renderer(
     if name != "v2":
         raise ValueError(f"unknown renderer {name!r} (available: legacy, v2)")
 
-    be = _build_backend(backend)
+    be = build_backend(backend)
     resolved = resolve_theme(theme)
     if mode == "interactive":
         return InteractiveRenderer(be, resolved)

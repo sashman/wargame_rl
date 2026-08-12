@@ -37,6 +37,7 @@ wargame_rl/
 │       │   ├── env_components/    # Adapters: actions, distance cache, observation builder
 │       │   ├── map_pool.py        # Draws a real table per episode from a pool of maps
 │       │   ├── baseline/          # Scripted baseline policies + registry + evaluate
+│       │   ├── debug/             # Hand-stepping a live match: undo stack, session loop
 │       │   ├── reward/            # Phase manager, calculators, criteria
 │       │   ├── mission/           # VP calculators + registry
 │       │   ├── opponent/          # Opponent policies + registry
@@ -67,6 +68,7 @@ wargame_rl/
 │                                  #   measure_throughput)
 ├── train.py                       # Training entry point (Typer CLI)
 ├── simulate.py                    # Inference/simulation entry point
+├── debug.py                       # Step a live match by hand, and rewind it
 ├── replay_events.py               # Replay / narrate a match event log
 ├── analyze_events.py              # Analyse / compare match event logs
 └── main.py                        # Legacy entry (env test with random actions)
@@ -91,6 +93,7 @@ wargame_rl/
 | Simulate / record a checkpoint | `just simulate <ckpt> <config.yaml>` · `just record-sim <ckpt> <config.yaml>` |
 | Test env (random) | `just test-env` |
 | Watch a scripted policy play (no checkpoint) | `just play [config.yaml] [policy] [theme]` |
+| Step a match by hand and rewind it | `just debug [config.yaml] [policy\|ckpt] [theme]` |
 | Record a match event log | `just record <config.yaml>` |
 | Replay / narrate a log | `just replay <file>` · `just replay-summary <file>` |
 | Replay a log visually (window or MP4) | `just replay-render <file> [out.mp4]` |
