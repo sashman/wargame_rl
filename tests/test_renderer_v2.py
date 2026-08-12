@@ -26,7 +26,7 @@ from wargame_rl.wargame.envs.renders.v2.control import (  # noqa: E402
 )
 from wargame_rl.wargame.envs.renders.v2.factory import (  # noqa: E402
     BACKENDS,
-    _build_backend,
+    build_backend,
 )
 from wargame_rl.wargame.envs.renders.v2.presenters.recording import (  # noqa: E402
     RecordingRenderer,
@@ -359,7 +359,7 @@ def test_replay_source_from_controller_flags_reset_and_anchors() -> None:
 def test_replay_presenter_renders_and_exports(tmp_path: Any) -> None:
     env = _replay_env()
     source = ReplaySource.from_controller(_recording(env, 4))
-    presenter = ReplayPresenter(_build_backend("pillow"), source)
+    presenter = ReplayPresenter(build_backend("pillow"), source)
 
     frame = presenter.frame_at(0)
     rgb = presenter._backend.to_rgb_array(frame)
@@ -440,7 +440,7 @@ def test_round_track_holds_its_width_at_any_round_count(n_rounds: int) -> None:
     and degrades to a continuous fill once segments get thinner than the gaps."""
     from wargame_rl.wargame.envs.renders.v2.presenters.base import _TRACK_W
 
-    presenter = RecordingRenderer(_build_backend("pillow"))
+    presenter = RecordingRenderer(build_backend("pillow"))
     env = _env(number_of_battle_rounds=n_rounds)
     presenter.setup(env)
     frame = presenter._backend.new_canvas(400, 40, (0, 0, 0))
@@ -454,7 +454,7 @@ def test_round_track_holds_its_width_at_any_round_count(n_rounds: int) -> None:
 
 def test_south_panel_renders_with_many_calculators() -> None:
     """Eleven components is eleven thinner segments, not an overflowing row."""
-    presenter = RecordingRenderer(_build_backend("pillow"))
+    presenter = RecordingRenderer(build_backend("pillow"))
     env = _env(number_of_wargame_models=2)
     presenter.setup(env)
     env.step(WargameEnvAction(actions=[0, 0]))
@@ -480,12 +480,12 @@ def test_tab_toggles_the_key_map_and_the_panel_only_hints_at_it() -> None:
     )
 
     env = _env(number_of_wargame_models=2)
-    presenter = InteractiveRenderer(_build_backend("pillow"))
+    presenter = InteractiveRenderer(build_backend("pillow"))
     presenter.setup(env)
 
     assert presenter._hotkey_hint() == "[Tab] keys"
     assert presenter.key_map()  # the overlay has something to show
-    assert RecordingRenderer(_build_backend("pillow"))._hotkey_hint() is None
+    assert RecordingRenderer(build_backend("pillow"))._hotkey_hint() is None
 
     plain = presenter._backend.to_rgb_array(presenter._compose_with_tooltip(env))
     pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_TAB))
@@ -502,7 +502,7 @@ def test_tab_toggles_the_key_map_and_the_panel_only_hints_at_it() -> None:
 def test_round_readout_holds_its_width_when_the_round_gains_a_digit() -> None:
     """Round 6 → 10 of 20 must not shove the track along: the round sits in a
     field as wide as the round count, so the readout is the same width all game."""
-    presenter = RecordingRenderer(_build_backend("pillow"))
+    presenter = RecordingRenderer(build_backend("pillow"))
     env = _env(number_of_battle_rounds=20)
     presenter.setup(env)
     scene = presenter._scene_for(env)
@@ -610,7 +610,7 @@ def test_a_volley_fades_out_over_a_few_frames() -> None:
     )
 
     env, _ = _volley_env()
-    presenter = RecordingRenderer(_build_backend("pillow"))
+    presenter = RecordingRenderer(build_backend("pillow"))
     presenter.setup(env)
     pal = DEFAULT_THEME.palette
 
