@@ -31,6 +31,9 @@ from wargame_rl.wargame.envs.debug.session import record_moves  # noqa: E402
 from wargame_rl.wargame.envs.domain.battle_view import BattleView  # noqa: E402
 from wargame_rl.wargame.envs.renders.human import QuitRequested  # noqa: E402
 from wargame_rl.wargame.envs.renders.renderer import Renderer  # noqa: E402
+from wargame_rl.wargame.envs.renders.v2.control import (  # noqa: E402
+    compute_objective_control,
+)
 from wargame_rl.wargame.envs.renders.v2.factory import build_backend  # noqa: E402
 from wargame_rl.wargame.envs.renders.v2.presenters.debug import (  # noqa: E402
     OPPONENT,
@@ -43,6 +46,7 @@ from wargame_rl.wargame.envs.renders.v2.presenters.debug import (  # noqa: E402
 from wargame_rl.wargame.envs.renders.v2.presenters.interactive import (  # noqa: E402
     InteractiveRenderer,
 )
+from wargame_rl.wargame.envs.renders.v2.scene import build_scene  # noqa: E402
 from wargame_rl.wargame.envs.types import (  # noqa: E402
     WargameEnvAction,
     WargameEnvConfig,
@@ -50,6 +54,7 @@ from wargame_rl.wargame.envs.types import (  # noqa: E402
 from wargame_rl.wargame.envs.types.config import (  # noqa: E402
     ModelConfig,
     OpponentPolicyConfig,
+    TurnOrder,
     WeaponProfile,
 )
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase  # noqa: E402
@@ -596,6 +601,32 @@ def test_a_dead_model_earns_nothing_which_is_why_the_panel_says_so() -> None:
 
     assert any(env.last_per_model_reward[i] != 0.0 for i in (1, 2)), "check is vacuous"
     assert env.last_per_model_reward[0] == 0.0
+
+
+def test_the_hud_reports_turn_order_not_whose_turn_it_is() -> None:
+    """The clock zone says who takes the *first* turn of a round.
+
+    "Whose turn is it now" has one answer in every frame ever drawn: the
+    opponent's whole turn executes inside the player's `step()`, so the clock is
+    always parked back on a player phase before anything is composed. Asserted
+    here rather than trusted, because an indicator that silently reads the same
+    on every frame is worse than none — and the derivation of turn order rests
+    on exactly this invariant.
+    """
+    for order, acts_first in (
+        (TurnOrder.player, True),
+        (TurnOrder.opponent, False),
+    ):
+        env = _env(turn_order=order)
+        env.reset(seed=5)
+        select = selector_for(build_baseline_policy("squad_march"))
+
+        for _ in range(4):
+            state = env.game_clock_state
+            assert state.active_player is env._player_side, "clock left mid-opponent"
+            scene = build_scene(env, compute_objective_control(env), scale=10.0)
+            assert scene.hud.player_acts_first is acts_first
+            env.step(select(env.observation, env))
 
 
 def test_a_checkpointless_session_needs_no_torch() -> None:

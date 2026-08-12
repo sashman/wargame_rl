@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME, RGB, RGBA, Theme
-from wargame_rl.wargame.envs.types.game_timing import BattlePhase
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase, PlayerSide
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.domain.battle_view import BattleView
@@ -137,6 +137,17 @@ class HudData:
     player_total: int
     opponent_alive: int
     opponent_total: int
+    # Whether the player takes the first turn of each round, or the opponent
+    # does. None when the game is over and no side is active.
+    #
+    # Turn *order*, not "whose turn is it now" — that question has one answer in
+    # every frame ever drawn. The opponent's whole turn executes inside the
+    # player's `step()`, so the clock is always parked back on a player phase by
+    # the time a frame is composed. Which side the player occupies is the part
+    # that actually varies: under `turn_order: random` it is re-rolled every
+    # reset, and it decides whether the positions on screen already include the
+    # opponent's response.
+    player_acts_first: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -332,6 +343,22 @@ def _phase_chips(view: "BattleView") -> tuple[PhaseChip, ...]:
     )
 
 
+def player_acts_first(active: PlayerSide | None) -> bool | None:
+    """Whether the player takes the first turn of each round.
+
+    Reads the *active* side as the player's own, which is sound only because of
+    when a frame is drawn: `run_after_player_action` runs the opponent's entire
+    turn inside the player's `step()`, so the clock has always come back round to
+    a player phase before anything is composed. `player_1` is the side that acts
+    first, so the player acting first is exactly the player holding `player_1`.
+
+    None once the game is over, when no side is active.
+    """
+    if active is None:
+        return None
+    return active is PlayerSide.player_1
+
+
 def shot_fade_for_age(age: int) -> float:
     """How strongly a volley `age` frames old is drawn, 1.0 fresh to 0.0 gone."""
     if age < 0 or age >= SHOT_FADE_FRAMES:
@@ -500,5 +527,6 @@ def build_scene(
         player_total=len(player_models),
         opponent_alive=sum(1 for m in opponent_models if getattr(m, "is_alive", True)),
         opponent_total=len(opponent_models),
+        player_acts_first=player_acts_first(clock.active_player),
     )
     return Scene(board_w, board_h, pal.board_bg, tuple(prims), hud)

@@ -342,6 +342,32 @@ class BasePresenter(Renderer):
             + 12
         )
         self._draw_round_track(frame, left, y, hud.round, hud.n_rounds)
+        self._draw_turn_order(frame, hud, left + _TRACK_W + 14, y)
+
+    def _draw_turn_order(self, frame: Canvas, hud: HudData, x: int, y: int) -> None:
+        """Who takes the first turn of each round, in a fixed two-slot field.
+
+        Deliberately *order* rather than "whose turn is it now": the opponent's
+        whole turn runs inside the player's `step()`, so every frame ever drawn
+        is one where the player is next and a live indicator would be a constant.
+        Order is the part that varies — under `turn_order: random` the player's
+        side is re-rolled each reset — and it answers the question that matters
+        while paused: whether the positions on screen already include the
+        opponent's reply to this round, or come before it.
+        """
+        if hud.player_acts_first is None:
+            return
+        pal = self._theme.palette
+        first, second = (
+            (("YOU", pal.hud_player), ("OPP", pal.hud_opponent))
+            if hud.player_acts_first
+            else (("OPP", pal.hud_opponent), ("YOU", pal.hud_player))
+        )
+        self._text(frame, first[0], (x, y), _CHIP_SIZE, first[1], "midleft", True)
+        arrow_x = x + self._tsize("YOU ", _CHIP_SIZE, bold=True)[0]
+        self._text(frame, ">", (arrow_x, y), _CHIP_SIZE, self._dim(), "midleft")
+        second_x = arrow_x + self._tsize("> ", _CHIP_SIZE)[0]
+        self._text(frame, second[0], (second_x, y), _CHIP_SIZE, second[1], "midleft")
 
     def _draw_round_track(
         self, frame: Canvas, x: int, y: int, played: int, total: int
