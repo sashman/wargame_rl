@@ -338,6 +338,13 @@ test-env:
 play env_config_path='configs/golden/25v25_shooting_opponent.yaml' policy='squad_march_shoot' theme='default':
 	uv run play.py {{env_config_path}} {{policy}} {{theme}}
 
+# Step a match by hand and rewind it. Takes a baseline name or a .ckpt path.
+# Opens paused: [.] steps forward, [,] steps back, [Space] plays, [Tab] lists the keys.
+# A config with `skip_phases: []` steps one sub-phase at a time instead of one round.
+# Use it like: just debug · just debug configs/dev/tiny.yaml random · just debug <cfg> <run>/last.ckpt
+debug env_config_path='configs/golden/25v25_shooting_opponent.yaml' driver='squad_march_shoot' theme='default':
+	uv run debug.py {{env_config_path}} {{driver}} {{theme}}
+
 # One-shot: create branch from main, commit, push, open PR. Use after staging changes.
 # Always branches from main; if not on main, checks out main and pulls first.
 # Example: just ship feature/my-feature "Add reward shaping for distance"

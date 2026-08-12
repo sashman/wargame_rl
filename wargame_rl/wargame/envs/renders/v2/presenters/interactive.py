@@ -60,15 +60,21 @@ class InteractiveRenderer(BasePresenter):
         )
 
     def render(self, view: BattleView) -> None:
+        self._pump_and_present(view)
+        while self._paused:
+            self._pump_and_present(view)
+
+    def _pump_and_present(self, view: BattleView) -> None:
+        """Drain input and draw one frame, raising `QuitRequested` if asked to quit.
+
+        Split out of `render` so a presenter that wants the *driving loop* to own
+        the pause can advance one frame without blocking. `render` itself still
+        blocks while paused, which is what every existing caller expects.
+        """
         self._process_events(view)
         if self._should_quit:
             raise QuitRequested()
         self._present(self._compose_with_tooltip(view))
-        while self._paused:
-            self._process_events(view)
-            if self._should_quit:
-                raise QuitRequested()
-            self._present(self._compose_with_tooltip(view))
 
     def _compose_with_tooltip(self, view: BattleView) -> Canvas:
         frame = self._compose(view)
@@ -92,27 +98,45 @@ class InteractiveRenderer(BasePresenter):
         self._window.blit(surface, (0, 0))
         pygame.event.pump()
         pygame.display.update()
-        self._clock.tick(self._fps)
+        self._clock.tick(self._present_fps())
+
+    def _present_fps(self) -> int:
+        """Frame rate to cap presentation at. A hook so a paused presenter can
+        poll faster than the match plays and still feel responsive to keys."""
+        return self._fps
 
     # -- events --------------------------------------------------------------
 
     def _process_events(self, view: BattleView) -> None:
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self._should_quit = True
-            elif event.type == pygame.VIDEORESIZE:
-                self._fit_to_window(view, event.w, event.h)
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    self._paused = not self._paused
-                elif event.key == pygame.K_ESCAPE:
-                    self._should_quit = True
-                elif event.key == pygame.K_l:
-                    self._debug_los = not self._debug_los
-                elif event.key == pygame.K_TAB:
-                    self._show_keys = not self._show_keys
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                self._pinned = self._model_index_at(view, event.pos[0], event.pos[1])
+            self._handle_event(event, view)
+
+    def _handle_event(self, event: pygame.event.Event, view: BattleView) -> None:
+        """Dispatch one event. Subclasses extend `_handle_key` rather than this."""
+        if event.type == pygame.QUIT:
+            self._should_quit = True
+        elif event.type == pygame.VIDEORESIZE:
+            self._fit_to_window(view, event.w, event.h)
+        elif event.type == pygame.KEYDOWN:
+            self._handle_key(event, view)
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            self._pinned = self._model_index_at(view, event.pos[0], event.pos[1])
+
+    def _handle_key(self, event: pygame.event.Event, view: BattleView) -> None:
+        """Handle one key press.
+
+        Kept separate from `_handle_event` so a subclass can add keys and defer
+        the ones it does not know to `super()`, the way the replay presenter's
+        own key handler is structured.
+        """
+        if event.key == pygame.K_SPACE:
+            self._paused = not self._paused
+        elif event.key == pygame.K_ESCAPE:
+            self._should_quit = True
+        elif event.key == pygame.K_l:
+            self._debug_los = not self._debug_los
+        elif event.key == pygame.K_TAB:
+            self._show_keys = not self._show_keys
 
     def _fit_to_window(self, view: BattleView, w: int, h: int) -> None:
         top = 2 * self._theme.north_panel_h  # two-row top HUD
