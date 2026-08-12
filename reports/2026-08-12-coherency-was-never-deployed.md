@@ -1,0 +1,140 @@
+# Coherency was never deployed
+
+**2026-08-12.** The unit coherency rule has been rated *divergent* in the gap map
+since the spec landed. Asked to implement it accurately, the first thing built
+was not an enforcement mechanism but a **predicate and a measurement** — and the
+measurement moved the whole question.
+
+## What the rule is
+
+`docs/rules/03-moving.md` § Coherency. A unit of more than one model is in
+coherency while every model is:
+
+- within **2"** of at least one *other* model in the unit (the **chain**), and
+- within **9"** of *every other* model in the unit (the **spread**),
+
+and the unit forms a **single connected group**.
+
+That third clause is not implied by the first two, and the counterexample is
+ordinary: two fire teams of two, 5" apart, satisfy the chain (each model has a
+partner) and the spread (nothing exceeds 9") while the unit is plainly in two
+pieces. Connectivity on the chain graph is what separates them. Implementing
+only the stated conditions is the classic error, and it is why the predicate
+here computes components rather than distances.
+
+Distances are **base to base**, per `01-core-concepts.md` ("measure to and from
+the closest part of the model"), matching how this environment already measures
+engagement. At the default 32mm base that widens the chain to 3.26"
+centre-to-centre. This matters more than it looks: read literally against
+centre distances, the legal band between "bases touching" (1.26") and the chain
+limit is 0.74" — narrower than the smallest move the action space can make
+(1.0"). Base to base it is 2.0", twice the minimum move. The rules' own
+measuring convention is the difference between a controllable constraint and an
+uncontrollable one.
+
+## What was measured
+
+`just measure-coherency <policy|ckpt> <config> [n]` — new. Both forces, every
+step, at the rules' 2"/9" and at whatever the config calls `group_max_distance`,
+so the cost of adopting the rules' *numbers* is separable from the cost of
+enforcing the *concept*.
+
+On `configs/golden/25v25_shooting_opponent.yaml`, 20 episodes, seeds 700000+:
+
+| policy | units coherent | steps coherent | deployment coherent | models out |
+|---|---|---|---|---|
+| `hold_deployment` (STAY) | 0.006 | 0.000 | 0.000 | 20.14 |
+| `random` | 0.094 | 0.018 | 0.000 | 18.09 |
+| `squad_march` | 0.285 | 0.088 | 0.000 | 7.22 |
+| `squad_march_shoot` (the bar) | 0.248 | 0.033 | 0.000 | 8.13 |
+| trained agent (real-maps s1) | 0.306 | 0.022 | 0.000 | 15.01 |
+
+**Nothing in this repo has ever been in coherency.** The bar — a policy written
+to hold formation — satisfies the rule on 3.3% of steps. The trained agent
+manages 2.2%.
+
+## The cause is deployment, and `hold_deployment` proves it
+
+Every policy deploys incoherently in **every** episode, because placement does
+not depend on the policy. `wargame_model_placement` anchors each model within
+`group_max_distance` of one *random* already-placed squadmate: that bounds the
+nearest neighbour and leaves the unit's overall span unbounded, so a 5-model
+squad can legally deploy strung across 40" and in several pieces.
+
+The clean isolation is `hold_deployment`, the STAY baseline: it never moves, and
+it still scores **0.006**. Whatever is wrong is wrong before the first action.
+
+## The fix, and what it recovers
+
+`coherency.enforce_at_deployment` places each model within the chain distance of
+an already-placed squadmate *and* within the spread cap of all of them —
+connected by construction, since each new model attaches to a body that is
+already one piece. Same measurement, same seeds:
+
+| policy | units coherent | steps coherent | deployment | models out |
+|---|---|---|---|---|
+| `hold_deployment` (STAY) | 0.006 → **0.992** | 0.000 → **0.965** | **1.000** | 20.14 → **0.08** |
+| `random` | 0.094 → 0.105 | 0.018 → 0.024 | **1.000** | 18.09 → 17.75 |
+| `squad_march` | 0.285 → **0.799** | 0.088 → **0.462** | **1.000** | 7.22 → **1.16** |
+| `squad_march_shoot` | 0.248 → **0.804** | 0.033 → **0.428** | **1.000** | 8.13 → **1.29** |
+
+Three things worth reading off this:
+
+- **`hold_deployment` → 0.992** is the proof the fix is complete at the point it
+  acts. The residual 0.008 is its own force being shot apart, not placement.
+- **The marching baselines go 0.25 → 0.80 with no enforcement during play.**
+  Roughly three quarters of the breach was inherited from the set-up. No reward
+  term and no constraint mechanism was involved.
+- **`random` barely moves, 0.094 → 0.105.** That is the control: random
+  movement destroys coherency wherever it starts. A metric that improved here
+  too would be measuring something other than the policy.
+
+## What this changes about the plan
+
+The five expert reviews fanned out for this task split on the enforcement
+mechanism — action masking (unsound: coherency is a joint constraint and a
+per-model mask is a product set), move-revert, projection, attrition. That
+argument turns out to be **downstream of a much cheaper fact**. Three quarters
+of the problem was a placement bug, and the mechanism debate is only about the
+remaining quarter.
+
+The rules also settle the priority, against the intuition that attrition is the
+enforcement: the spec's *primary* consequence is the end-of-move revert
+(`03-moving.md` § Making a move), and End-of-Turn attrition is a **backstop**
+for breaks caused by something other than the unit's own move. On the table
+nobody loses models to coherency in a normal game, because the illegal move is
+never made. **If attrition fires often, the end-of-move check is wrong** — which
+is a design constraint, and a test, not a preference.
+
+## Status
+
+- `domain/coherency.py` — the predicate. Both conditions plus connectivity, base
+  to base, alive models only. Decides nothing; the same definition serves the
+  metric, and will serve any enforcement or reward without three copies drifting.
+- `scripts/measure_coherency.py` / `just measure-coherency`.
+- `coherency.enforce_at_deployment` — the § Setting up rule, **off by default**.
+- `configs/experiments/25v25_coherent_deploy.yaml` — the arm, carrying both
+  tables above in its header.
+
+Everything is off by default and verified byte-identical when off: both
+bit-identical goldens pass unmodified, and 1169 tests are green.
+
+**Not done, deliberately.** The end-of-move check, attrition, and the
+observation inputs any of it would need. Three separate points are worth
+recording before that work starts:
+
+1. **The observability desk check fails today.** The only cohesion input is a
+   nearest-neighbour *scalar* normalised by the board diagonal — 2" is 2.7% of
+   one column's range — with no distance to the furthest squadmate (the spread
+   condition has no tensor at all) and nothing exposing connectivity. This
+   repo's own rule is to add the input before training a term that keys on it.
+2. **`_same_group_closest_distance` counts corpses.** It takes every model's
+   location with no alive filter, and a destroyed model keeps its position
+   forever, while the `group_cohesion` *reward* masks the dead. The agent's
+   cohesion input and its cohesion reward disagree about who is in the unit, and
+   they diverge as casualties mount. A live bug, independent of coherency.
+3. **Turning deployment on is a scenario change and voids the baselines on that
+   config.** Precedent: the milder one-distance version moved the bar
+   +58.9 → +63.3 and flipped the top two baselines
+   (`configs/experiments/25v25_coherent_spawn.yaml`). Re-measure floor and bar
+   on identical layouts before quoting anything.

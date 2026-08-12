@@ -21,6 +21,7 @@ from wargame_rl.wargame.envs.domain.value_objects import (
     zero_position,
 )
 from wargame_rl.wargame.envs.types.config import (
+    CoherencyConfig,
     ModelConfig,
     ObjectiveConfig,
     WargameEnvConfig,
@@ -113,12 +114,70 @@ def _sample_near_anchor(
     )
 
 
+def _sample_coherent_member(
+    placed: list[tuple[float, float]],
+    chain_span: float,
+    spread_span: float,
+    x_min: float,
+    y_min: float,
+    x_max: float,
+    y_max: float,
+    occupied: list[tuple[float, float]],
+    min_separation: float,
+    rng: Generator,
+) -> tuple[float, float]:
+    """A point that keeps its unit in coherency, given where the unit already is.
+
+    Both spans are **centre to centre**, already widened from the rules' base to
+    base figures by the caller. The candidate must land within ``chain_span`` of
+    at least one placed member -- which is what makes the unit's chain graph
+    connected by construction, since it links to a component that is already one
+    piece -- and within ``spread_span`` of every one of them.
+
+    Sampled from the box around a random anchor rather than the whole zone: the
+    legal annulus is a small part of a deployment zone, and uniform sampling over
+    the zone would spend the retry budget missing it.
+    """
+    anchor = placed[int(rng.integers(len(placed)))]
+    lo_x = max(x_min, anchor[0] - chain_span)
+    hi_x = min(x_max, anchor[0] + chain_span)
+    lo_y = max(y_min, anchor[1] - chain_span)
+    hi_y = min(y_max, anchor[1] + chain_span)
+    if lo_x >= hi_x or lo_y >= hi_y:
+        raise RuntimeError(
+            f"No coherent placement near {anchor} within {chain_span} inside zone "
+            f"[{x_min},{y_min})x[{x_max},{y_max})"
+        )
+
+    chain_sq = chain_span * chain_span
+    spread_sq = spread_span * spread_span
+    for _ in range(_MAX_PLACEMENT_RETRIES):
+        candidate = (float(rng.uniform(lo_x, hi_x)), float(rng.uniform(lo_y, hi_y)))
+        dx, dy = candidate[0] - anchor[0], candidate[1] - anchor[1]
+        if dx * dx + dy * dy > chain_sq:
+            continue
+        if not _is_clear(candidate, occupied, min_separation):
+            continue
+        if any(
+            (candidate[0] - px) ** 2 + (candidate[1] - py) ** 2 > spread_sq
+            for px, py in placed
+        ):
+            continue
+        return candidate
+    raise RuntimeError(
+        f"Could not place a model in coherency near {anchor}: chain span "
+        f"{chain_span}, spread span {spread_span}, {len(placed)} already placed. "
+        "The unit may be too large for these distances at this base size."
+    )
+
+
 def wargame_model_placement(
     wargame_models: list[WargameModel],
     deployment_zone: np.ndarray,
     group_max_distance: float,
     rng: Generator,
     base_radius: float = 0.0,
+    coherency: CoherencyConfig | None = None,
 ) -> None:
     """Place models randomly inside the deployment zone, group-aware.
 
@@ -126,7 +185,28 @@ def wargame_model_placement(
     the configured base size. It fails loudly with the numbers rather than
     quietly stacking models: a 5x5 board's zone is 1 unit wide and a 32mm base
     is 1.26 across, so small demo configs have to grow.
+
+    Pass *coherency* with ``enforce_at_deployment`` set to satisfy
+    `03-moving.md` § Setting up -- every unit is then placed in coherency, which
+    is what the rules require of any set-up and what the default placement does
+    not achieve: measured with `just measure-coherency`, **0 of 20 episodes**
+    deploy coherently on the golden shooting config, because each model is
+    anchored within ``group_max_distance`` of one *random* squadmate, which
+    bounds the nearest neighbour and leaves the unit's overall span unbounded.
     """
+    coherent = coherency is not None and coherency.enforce_at_deployment
+    # The rules measure base to base; placement works in centres. Widening the
+    # spans here once is what lets the sampler stay in plain centre distance.
+    chain_span = (
+        coherency.nearest_distance + 2.0 * base_radius
+        if coherency is not None
+        else group_max_distance
+    )
+    spread_span = (
+        coherency.furthest_distance + 2.0 * base_radius
+        if coherency is not None
+        else group_max_distance
+    )
     occupied: list[tuple[float, float]] = []
     min_separation = 2.0 * base_radius
     # A base has to fit *within* the zone too, not just avoid its neighbours.
@@ -152,10 +232,25 @@ def wargame_model_placement(
         rng.shuffle(group)  # type: ignore[arg-type]
         placed: list[WargameModel] = []
 
+        placed_locations: list[tuple[float, float]] = []
+
         for model in group:
             if not placed:
                 loc = _sample_unoccupied(
                     x_min, y_min, x_max, y_max, occupied, min_separation, rng
+                )
+            elif coherent:
+                loc = _sample_coherent_member(
+                    placed_locations,
+                    chain_span,
+                    spread_span,
+                    x_min,
+                    y_min,
+                    x_max,
+                    y_max,
+                    occupied,
+                    min_separation,
+                    rng,
                 )
             else:
                 anchor = placed[int(rng.integers(len(placed)))]
@@ -175,6 +270,7 @@ def wargame_model_placement(
             model.reset_for_episode()
             occupied.append(loc)
             placed.append(model)
+            placed_locations.append(loc)
 
 
 def _sample_in_objective(
@@ -764,6 +860,7 @@ def place_for_episode(
             config.group_max_distance,
             rng,
             base_radius=base_radius,
+            coherency=config.coherency,
         )
 
     # Place objectives.
@@ -825,6 +922,7 @@ def place_for_episode(
                 config.group_max_distance,
                 rng,
                 base_radius=base_radius,
+                coherency=config.coherency,
             )
 
     # Last, so its draws cannot shift anything else *placed* this episode. They

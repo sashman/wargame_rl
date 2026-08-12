@@ -6,6 +6,7 @@ was one 667-line module and roughly 30 call sites import from
 invisible to them.
 
 - `battle`    — turn order, opponent policy, mission
+- `coherency` — the unit coherency rule's distances and enforcement switches
 - `entities`  — weapon profiles, models, objectives
 - `terrain`   — fixed pieces, named maps, the random generator
 - `env`       — `WargameEnvConfig`, which composes all of the above
@@ -19,6 +20,7 @@ from wargame_rl.wargame.envs.types.config.battle import (
     OpponentPolicyConfig,
     TurnOrder,
 )
+from wargame_rl.wargame.envs.types.config.coherency import CoherencyConfig
 from wargame_rl.wargame.envs.types.config.entities import (
     ModelConfig,
     ObjectiveConfig,
@@ -33,6 +35,7 @@ from wargame_rl.wargame.envs.types.config.terrain import (
 )
 
 __all__ = [
+    "CoherencyConfig",
     "MissionConfig",
     "ModelConfig",
     "ObjectiveConfig",
