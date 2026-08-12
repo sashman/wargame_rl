@@ -56,12 +56,30 @@ def _group_ids_to_one_hot(group_ids: np.ndarray, max_groups: int) -> np.ndarray:
 
 
 def _same_group_closest_distance(
-    locs: np.ndarray, group_ids: np.ndarray, max_dist: float
+    locs: np.ndarray,
+    group_ids: np.ndarray,
+    max_dist: float,
+    alive: np.ndarray,
 ) -> np.ndarray:
-    """For each model, compute the normalised distance to the nearest model in the same group.
+    """For each model, compute the normalised distance to the nearest *live* model in the same group.
 
     Returns shape (num_models, 1) with values in [0, 1].
-    A model that is the sole member of its group receives 1.0 (maximum distance).
+    A model that is the sole live member of its group receives 1.0 (maximum
+    distance).
+
+    **`alive` is not optional, and excluding it was a bug.** This column read
+    every model's location with no alive filter, and `take_damage` writes only
+    `current_wounds` — a destroyed model keeps its position on the board
+    forever. So a model could be told its nearest squadmate was adjacent when
+    that squadmate was a corpse and its nearest *living* one was across the
+    table. Measured on the golden shooting config over 380 steps, **24% of live
+    models read a wrong value, rising to 33% after step 30**, with a mean error
+    of 0.056 of this column's range against a 2" coherency band that is only
+    0.027 of it — the average error was twice the width of the whole
+    decision-relevant region. The `group_cohesion` *reward* has always masked
+    the dead (`distance_cache.min_distances_to_same_group`), so the observation
+    and the reward disagreed about who was in the unit, and diverged as
+    casualties mounted.
     """
     n = len(locs)
 
@@ -69,7 +87,9 @@ def _same_group_closest_distance(
     pairwise = np.sqrt((diff**2).sum(axis=-1))
     np.fill_diagonal(pairwise, np.inf)
 
-    same_group = group_ids[:, np.newaxis] == group_ids[np.newaxis, :]
+    same_group = (group_ids[:, np.newaxis] == group_ids[np.newaxis, :]) & alive[
+        np.newaxis, :
+    ]
     pairwise = np.where(same_group, pairwise, np.inf)
 
     closest = pairwise.min(axis=1)
@@ -109,12 +129,13 @@ def _models_to_features(
         [m.distances_to_objectives.flatten() for m in models], dtype=np.float32
     )
     group_ids = np.array([m.group_id for m in models], dtype=np.int32)
+    alive = np.array([bool(m.alive) for m in models], dtype=bool)
 
     core_parts = [
         _normalize(locs, half_board),
         _normalize(dists, half_board_tiled),
         _group_ids_to_one_hot(group_ids, max_groups),
-        _same_group_closest_distance(locs, group_ids, max_dist),
+        _same_group_closest_distance(locs, group_ids, max_dist, alive),
     ]
     # Inside `core`, ahead of `alive`, per the rule above. It is already a
     # fraction in [0, 1], so it needs no NORM_ constant.
@@ -128,6 +149,18 @@ def _models_to_features(
     if models[0].objective_present is not None:
         core_parts.append(
             np.array([m.objective_present for m in models], dtype=np.float32)
+        )
+    # Likewise inside `core`. The two halves of the coherency rule that the
+    # nearest-neighbour column above cannot express: the spread cap, and whether
+    # the unit is in one piece. Both arrive already normalised by the coherency
+    # distances rather than the board diagonal.
+    if models[0].coherency_spread is not None:
+        core_parts.append(
+            np.array([[m.coherency_spread] for m in models], dtype=np.float32)
+        )
+    if models[0].coherency_component is not None:
+        core_parts.append(
+            np.array([[m.coherency_component] for m in models], dtype=np.float32)
         )
     core = np.hstack(core_parts)
     alive_col = np.array([[m.alive] for m in models], dtype=np.float32)
@@ -213,11 +246,20 @@ def _observation_to_numpy(
         if probe and probe[0].objective_present is not None
         else 0
     )
+    # The spread distance and the component fraction, when `observe_coherency`
+    # is set. Two independent columns rather than one, because they are the two
+    # separate clauses of the rule and a unit can fail either alone.
+    n_coherency = sum(
+        1
+        for attribute in ("coherency_spread", "coherency_component")
+        if probe and getattr(probe[0], attribute) is not None
+    )
     base_feature_dim = (
         n_spatial
         + n_group
         + n_unit_strength
         + n_objective_presence
+        + n_coherency
         + N_WOUND_FEATURES
         + N_COMBAT_STATS
     )

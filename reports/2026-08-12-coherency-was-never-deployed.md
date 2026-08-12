@@ -89,6 +89,38 @@ Three things worth reading off this:
   movement destroys coherency wherever it starts. A metric that improved here
   too would be measuring something other than the policy.
 
+## What deploying legally costs — it pays
+
+Re-measured at n=100, seeds 700000-700099, both configs on identical layouts:
+
+| policy | golden (parent) | coherent deploy | delta | win |
+|---|---|---|---|---|
+| `random` | −128.4 | −122.3 | +6.1 | 0.01 → 0.03 |
+| `greedy_nearest` | −57.6 | −52.2 | +5.4 | 0.13 → 0.13 |
+| `split_evenly` | −49.2 | −41.3 | +7.9 | 0.26 → 0.26 |
+| `squad_march` | −26.4 | −3.6 | **+22.8** | 0.33 → 0.48 |
+| **`squad_march_shoot` (the bar)** | **+38.0** | **+58.9** | **+20.9** | 0.75 → 0.82 |
+| `contest_and_spread` | +18.7 | +39.3 | +20.6 | 0.64 → 0.79 |
+
+The parent's bar reproduces the known real-geometry figure of +38.0 exactly,
+which is the check that the measurement is sound.
+
+**Legality is not a tax here — it is worth ~21 vp to every policy that
+manoeuvres as squads**, and ~6 to the ones that do not. `random` gaining least
+is the control: a policy that scatters on the first step cannot keep what the
+set-up gave it. The mechanism is visible in `alive` — 0.450 → 0.592 for the bar,
+0.363 → 0.465 for `squad_march`. A squad that starts concentrated concentrates
+its fire, kills faster, and takes fewer casualties doing it.
+
+Two consequences:
+
+- **The bar on this config is +58.9.** Every trained number on the parent is
+  void here, including the agent's +6.08 ± 3.09 over the bar, which was measured
+  against +38.0.
+- **The ordering does not flip**, unlike the one-distance precedent, where
+  `contest_and_spread` edged past the bar. The bar keeps its lead and slightly
+  widens it, 19.3 → 19.6.
+
 ## What this changes about the plan
 
 The five expert reviews fanned out for this task split on the enforcement
