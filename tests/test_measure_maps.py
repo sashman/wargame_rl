@@ -16,6 +16,7 @@ from pydantic_yaml import parse_yaml_raw_as
 
 from scripts.measure_maps import config_for_map, load_maps
 from wargame_rl.wargame.envs.types import (
+    MapPoolConfig,
     RandomTerrainConfig,
     TerrainMapConfig,
     WargameEnvConfig,
@@ -126,6 +127,34 @@ def test_the_env_actually_runs_on_the_map_terrain() -> None:
         env.close()
 
 
+def test_a_map_pool_is_cleared_so_the_map_is_not_discarded() -> None:
+    """The same guard as the generator, for the third terrain mode.
+
+    Regression: `config_for_map` cleared `random_terrain` but not `map_pool`, so
+    scoring a pool-trained config redrew a layout at every reset and never used
+    the map. The failure looks exactly like a result — all 45 rows came back
+    byte-identical, because every row scored the same drawn sequence.
+    """
+    base = _scenario_with_random_terrain()
+    base.random_terrain = None
+    base.map_pool = MapPoolConfig(directory="configs/evaluation/maps")
+    terrain_map = parse_yaml_raw_as(TerrainMapConfig, MAP_YAML)
+
+    config = config_for_map(base, terrain_map)
+
+    assert config.map_pool is None
+    env = create_environment(env_config=config)
+    try:
+        env.reset(seed=700_000)
+        assert env.map_name is None
+        assert [(f.x0, f.y0, f.x1, f.y1) for f in env.terrain.footprints] == [
+            (12.0, 8.0, 19.0, 15.0),
+            (27.0, 20.0, 34.0, 27.0),
+        ]
+    finally:
+        env.close()
+
+
 def test_the_scenario_is_otherwise_untouched() -> None:
     """Only terrain may differ — that is what keeps evaluation comparable.
 
@@ -137,7 +166,7 @@ def test_the_scenario_is_otherwise_untouched() -> None:
 
     config = config_for_map(base, terrain_map)
 
-    ignored = {"terrain", "random_terrain", "render_mode"}
+    ignored = {"terrain", "random_terrain", "map_pool", "render_mode"}
     before = base.model_dump(exclude=ignored)
     after = config.model_dump(exclude=ignored)
     assert before == after

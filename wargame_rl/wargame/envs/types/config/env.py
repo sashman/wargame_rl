@@ -20,6 +20,7 @@ from wargame_rl.wargame.envs.types.config.battle import (
 )
 from wargame_rl.wargame.envs.types.config.entities import ModelConfig, ObjectiveConfig
 from wargame_rl.wargame.envs.types.config.terrain import (
+    MapPoolConfig,
     RandomTerrainConfig,
     TerrainPieceConfig,
 )
@@ -85,6 +86,15 @@ class WargameEnvConfig(BaseModel):
         default=None,
         description="Regenerate terrain randomly each episode instead of using a "
         "fixed `terrain` list. Mutually exclusive with `terrain`. None = fixed.",
+    )
+    map_pool: MapPoolConfig | None = Field(
+        default=None,
+        description="Draw a whole layout — terrain and objectives — from a set "
+        "of fixed maps, one per episode. The third terrain mode, mutually "
+        "exclusive with both `terrain` and `random_terrain`, and the only one "
+        "that trains on real tables. A pool whose maps differ in objective or "
+        "piece count needs `objective_budget` / `terrain_budget` to match, which "
+        "is checked when the pool is loaded. None = no pool.",
     )
     track_exposure: bool = Field(
         default=False,
@@ -583,6 +593,34 @@ class WargameEnvConfig(BaseModel):
                 f"{mean_size:g}x{mean_size:g} (plus {spec.min_gap} gap) need "
                 f"{required:g} cells, more than "
                 f"{_MAX_TERRAIN_PACKING_FRACTION:.0%} of the usable {usable}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_map_pool(self) -> "WargameEnvConfig":
+        """The three terrain modes are mutually exclusive.
+
+        Whichever pair were combined, one would silently win: a pool installs its
+        layout at reset and would overwrite a fixed `terrain`, and `random_terrain`
+        would regenerate over a drawn map — the same failure `measure-maps` guards
+        against by clearing the generator, which is silent because the run still
+        prints a map's name.
+        """
+        if self.map_pool is None:
+            return self
+        conflicting = [
+            name
+            for name, value in (
+                ("terrain", self.terrain),
+                ("random_terrain", self.random_terrain),
+            )
+            if value is not None
+        ]
+        if conflicting:
+            raise ValueError(
+                f"map_pool is mutually exclusive with {' and '.join(conflicting)}: "
+                "terrain is drawn from the pool, fixed, or generated — not two of "
+                "those"
             )
         return self
 

@@ -53,6 +53,14 @@ a whole batch with `np.stack`, so
 a batch containing episodes with different piece counts cannot be collated. Only size and
 position vary. `tests/test_random_terrain.py` asserts this directly.
 
+**`map_pool` is the third mode**, and it is how a run trains on the real tables: a whole
+layout — terrain and objectives — is drawn per episode from a directory of map files, so a
+run sees the distribution 36 real boards describe rather than one board or a generator's
+idea of one. All three modes are mutually exclusive. The pool is parsed and checked once at
+construction, the draw comes off the layout RNG so a seeded reset picks the same table
+twice, and `env.map_name` says which one. `names` splits the pool — training on all 45
+consumes the evaluation set. See `configs/experiments/25v25_real_maps.yaml`.
+
 **`terrain_budget` is the way round that**, and the reason it exists is the real layouts:
 `configs/evaluation/maps/` carries 15 or 16 pieces depending on the table, which `np.stack`
 refuses. Setting it pads the token *sequence* to a fixed length with all-zero rows, which the

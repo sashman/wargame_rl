@@ -35,6 +35,7 @@ wargame_rl/
 │       │   ├── domain/            # Battle aggregate, BattleView, clock, placement,
 │       │   │                      #   termination, LOS, shooting, terrain, turn execution
 │       │   ├── env_components/    # Adapters: actions, distance cache, observation builder
+│       │   ├── map_pool.py        # Draws a real table per episode from a pool of maps
 │       │   ├── baseline/          # Scripted baseline policies + registry + evaluate
 │       │   ├── reward/            # Phase manager, calculators, criteria
 │       │   ├── mission/           # VP calculators + registry
