@@ -86,13 +86,13 @@ def render(
         os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
         os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
-    from wargame_rl.wargame.envs.renders.v2.factory import _build_backend, resolve_theme
+    from wargame_rl.wargame.envs.renders.v2.factory import build_backend, resolve_theme
     from wargame_rl.wargame.envs.renders.v2.replay import ReplayPresenter, ReplaySource
 
     controller = _load_log(file_path)
     source = ReplaySource.from_controller(controller)
     presenter = ReplayPresenter(
-        _build_backend(backend), source, theme=resolve_theme(theme), fps=fps
+        build_backend(backend), source, theme=resolve_theme(theme), fps=fps
     )
 
     if out:

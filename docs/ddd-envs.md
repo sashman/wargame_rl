@@ -47,6 +47,7 @@ wargame_rl/wargame/envs/
 ├── opponent/                  # Opponent policies + registry
 ├── mission/                   # VP calculators + registry
 ├── baseline/                  # Scripted reference policies + evaluation
+├── debug/                     # Hand-stepping a live match: undo stack, session loop
 ├── state/                     # Snapshots, event log, replay, narration, analysis
 ├── reward/                    # Reward phases, calculators, criteria (use BattleView)
 ├── renders/                   # Pygame etc. (use BattleView)
@@ -58,6 +59,7 @@ wargame_rl/wargame/envs/
 - **Domain** does not import from `env_components`, `reward`, or `renders`. It may use `types/` (config, game timing).
 - **Env** and **env_components** create and use the domain (Battle, factory, placement, clock, termination, turn execution).
 - **Reward** and **renders** depend only on `BattleView` (and types); they receive a view in `calculate_reward` / `check_success` / `setup` / `render`.
+- **debug** drives a live env, so like `baseline/` it may import `WargameEnv`. This is what splits the debug mode across two packages: its presenter reads a `BattleView` and therefore lives under `renders/`, while the undo stack and session loop hold the env and live here.
 
 ## Key concepts
 
