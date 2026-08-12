@@ -253,6 +253,11 @@ measure-checkpoint checkpoint env_config n_episodes='100' record='':
 measure-maps policy env_config n_episodes='100' maps_dir='':
 	@uv run python -m scripts.measure_maps {{policy}} {{env_config}} {{n_episodes}} {{maps_dir}}
 
+# Re-render the preview PNG beside every evaluation map
+# Use it like: just render-maps
+render-maps env_config='' maps_dir='':
+	@uv run python -m scripts.render_maps {{env_config}} {{maps_dir}}
+
 # Which reward calculator actually pays a policy, and how much of the ledger is
 # global. Weights are not shares: a small global term paid to every model on
 # every step is a floor a movement term has to compete with, and a large weight

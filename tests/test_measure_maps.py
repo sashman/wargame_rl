@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from PIL import Image
 from pydantic_yaml import parse_yaml_raw_as
 
 from scripts.measure_maps import config_for_map, load_maps
@@ -176,6 +177,26 @@ def test_an_objective_without_coordinates_is_rejected() -> None:
             TerrainMapConfig,
             "name: t\nterrain: []\nobjectives:\n  - { x: 5, y: 5 }\n  - {}\n",
         )
+
+
+def test_a_preview_renders_from_the_map_file(tmp_path: Path) -> None:
+    """The preview generator must keep working, or the images go stale again.
+
+    The 45 previews were originally produced ad hoc and committed without the
+    code that made them, so the first objective change left every one of them
+    wrong with nothing to regenerate from.
+    """
+    from scripts.render_maps import render_map
+
+    base = _scenario_with_random_terrain()
+    terrain_map = parse_yaml_raw_as(TerrainMapConfig, MAP_WITH_OBJECTIVES_YAML)
+    out = tmp_path / "table_02.png"
+
+    render_map(base, terrain_map, out)
+
+    with Image.open(out) as image:
+        assert image.width == 1024
+        assert image.height > 0
 
 
 def test_every_shipped_map_carries_its_six_objectives() -> None:

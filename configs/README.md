@@ -78,20 +78,26 @@ comparable to a `measure-checkpoint` score; it is comparable across policies on
 the same maps, which is what it is for.
 
 **The bar saturates on six objectives, so the per-map spread no longer finds
-hard layouts.** On `25v25_shooting_opponent.yaml`, `squad_march_shoot` scores
-win 1.00 and `held` a flat 4.00 on all 45 maps; the same maps with terrain only
-and three random objectives gave win 0.40 and a −65..+80 vp_margin spread.
-Dropping the two home objectives does not recover it (still win 1.00), so this
-is not the deployment zones — `scripted_advance_and_shoot` concentrates and can
-contest about two points, so every objective past that is uncontested. `alive`
-rises 0.40 → 0.73 and exposure falls ~6x: the armies barely meet. Rank two
-policies against each other here; do not read a row as "this layout is hard".
+hard layouts.** On `25v25_shooting_opponent.yaml`, `squad_march_shoot` wins
+**every one of the 45 maps** (`held` 4.11 of 6, `alive` 0.77); the same maps
+with terrain only and three random objectives win 0.70 with a −70..+100
+vp_margin spread and `alive` 0.40. Dropping the two home objectives does not
+recover it (still win 1.00 on all ten sampled), so this is not the deployment
+zones — `scripted_advance_and_shoot` concentrates and can contest about two
+points, so every objective past that is uncontested. Exposure falls ~5x: the
+armies barely meet. Rank two policies against each other here; do not read a
+row as "this layout is hard". Measured at n=1 per map, so read the win column
+and the `held`/`alive` gap, not a single per-map vp_margin.
 
 Quote it against the bar on the same maps:
 
 ```bash
 just measure-maps squad_march_shoot configs/golden/25v25_shooting_opponent.yaml
 ```
+
+Previews are regenerated with `just render-maps`, which draws each map file
+directly rather than resetting an episode — fifty deployed models cover the
+layout the picture exists to show.
 
 There is deliberately **no config per map**. A 25v25 scenario is ~10 KB, so
 copying it per map means every future reward change must be applied N times —
