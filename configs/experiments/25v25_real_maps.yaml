@@ -20,25 +20,52 @@ config_name: 25v25_real_maps
 # So this is the first config where holding ground you already have can score,
 # and no reward lesson from the generated scenario is known to carry over.
 #
-# WHAT THE SCRIPTED POLICIES SCORE HERE. n=1 per map, all 45 tables:
+# WHAT EVERYTHING SCORES HERE. The nine HELD-OUT tables (05, 10, ... 45),
+# n=10 each, seeds 700000-700009 -- the split this config trains away from:
 #
-#   policy                       win    vp_margin   held (of 5.47)
-#   random (the floor)           0.67      +12.6    2.27
-#   squad_march                  1.00      +95.2    3.49
-#   squad_march_shoot (the bar)  1.00     +106.7    3.67
+#   policy                       win    vp_margin   held (of 5.6)  alive
+#   hold_deployment (STAY)       0.00      -70.2    1.63           0.998
+#   random                       0.28      -39.2    1.98           0.830
+#   squad_march                  0.94      +77.4    3.36           0.639
+#   squad_march_shoot (the bar)  1.00     +105.7    3.78           0.693
+#   ---
+#   PPO, 1000 epochs, seed 1     0.99      +84.5    3.37           0.917
+#   PPO, 1000 epochs, seed 2     0.93      +79.3    3.37           0.921
 #
-# TWO THINGS TO READ OFF THAT BEFORE USING THIS CONFIG:
+# THREE THINGS TO READ OFF THAT BEFORE USING THIS CONFIG:
 #
-#   Win rate is dead here. Both scripted rungs sit on the ceiling, so only
-#   `vp_margin` separates anything. The gap between them is 11.5.
+#   Standing still loses every episode. That is the check this scenario needs
+#   and passes: objectives sit inside the deployment zones, so a player starts
+#   holding 1.98 of them, and the obvious worry is that the mission is won by
+#   deploying. It is not -- STAY ends on 1.63 with 99.8% of its force alive,
+#   because the opponent takes the middle uncontested and then comes for the
+#   home points. `hold_deployment` exists to keep that quotable.
 #
-#   The floor is not zero. `random` wins two thirds of its games by deploying
-#   onto its home objectives and never leaving — its `held` of 2.27 is almost
-#   exactly the 1.98 it started with. A policy that beats `random` here has
-#   demonstrated very little.
+#   Win rate cannot separate anything above the bar, which sits at 1.00. Read
+#   `vp_margin`. (An earlier n=1-per-map sweep over all 45 tables put `random`
+#   at 0.67 win / +12.6; that was 45 single episodes and too noisy to read a
+#   win rate off. These n=10 figures supersede it.)
 #
-# These are single-episode-per-map figures, adequate for the shape of the
-# scenario and not for comparing arms. Re-measure at n=100 before quoting.
+#   The trained agent beats the opponent, and the gap to the bar is a
+#   GENERALISATION gap. On these nine HELD-OUT tables two seeds land at +84.5
+#   and +79.3 against the bar's +105.7. On nine TRAINING tables the same
+#   checkpoints score +89.5 and +90.3 against the bar's +91.2, and hold MORE
+#   objectives (3.64 v 3.57). It allocates correctly on ground it knows. On
+#   unfamiliar ground the failure is ALLOCATION, NOT COMBAT: the agent ends with ~92% of its force alive against the bar's 69%
+#   and a firepower ratio up to 8.5, then leaves ground uncontested. On
+#   table_05 it finishes with 6.3 of ~22 survivors on an objective while
+#   conceding three the opponent has ZERO models on. Note this is the failure
+#   `objective_hold.crowding_exponent` was meant to fix, and this config
+#   already sets it at a=1.0 -- the lever that worked on the generated scenario
+#   does not fix it here.
+#
+#   36 layouts is a small training distribution, and more of it -- more
+#   tables, or augmentation over these -- is the first thing to try, ahead of
+#   any reward change.
+#
+#   The plateau is at epoch ~140. Held-out vp_margin reads +81/+83 at epoch
+#   150, +83/+80 at 300 and +85/+79 at 1000: 850 epochs bought nothing. Do not
+#   spend compute on this gap; it needs a reward change.
 #
 # NOT COMPARABLE to any number measured on the generated scenario: different
 # objective count, different objective placement, different mission.

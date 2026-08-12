@@ -28,6 +28,7 @@ def _auto_register() -> None:
 
     for module in (
         "wargame_rl.wargame.envs.baseline.random_baseline",
+        "wargame_rl.wargame.envs.baseline.hold_deployment",
         "wargame_rl.wargame.envs.baseline.scripted_greedy_nearest",
         "wargame_rl.wargame.envs.baseline.scripted_split_evenly",
         "wargame_rl.wargame.envs.baseline.scripted_squad_march",
