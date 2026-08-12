@@ -24,7 +24,7 @@ about movement geometry instead of measuring it (`domain/movement.py`: the
   model is more than the cap from the rest, no model in the unit is within the
   cap of every other, so every one of them is in breach and the two modes
   coincide. They separate only while a break is local -- which is exactly why
-  they tie on the bar and differ by 51 vp on ``split_evenly``, whose squads are
+  they tie on the bar and differ by 50 vp on ``split_evenly``, whose squads are
   shattered across the whole board every turn.
 
 **A naive revert leaves two bases overlapping, which is another illegal move,

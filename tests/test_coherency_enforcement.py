@@ -121,7 +121,7 @@ def test_a_straggler_that_also_breaches_spread_condemns_the_whole_unit() -> None
     # within 9 of every other, so `revert_model` reverts everyone too -- it
     # sends back the models *in breach*, and a spread breach is collective.
     # Worth pinning: it is the reason the two modes tie on some geometries and
-    # differ by 51 vp on `split_evenly`.
+    # differ by 50 vp on `split_evenly`.
     starts = [(0.0, 0.0), (1.5, 0.0), (3.0, 0.0)]
     ends = [(20.0, 0.0), (21.5, 0.0), (3.0, 0.0)]
     models = make_unit(starts, ends)
