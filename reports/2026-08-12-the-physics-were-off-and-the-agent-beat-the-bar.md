@@ -3,6 +3,12 @@
 **2026-08-12** · `configs/experiments/25v25_real_geometry.yaml`, four 1000-epoch
 runs · wandb group `real-geometry-r1`
 
+> That config was folded into **`configs/golden/25v25_shooting_opponent.yaml`**
+> on the same day and deleted — the two were identical but for `config_name` and
+> the terrain profile, so the golden file now *is* this scenario and carries the
+> table below. The path is left as written because a report records what was
+> run. `git log -- configs/experiments/` restores it.
+
 Goal: beat `scripted_advance_and_shoot` on the 25v25 shooting scenario.
 
 **Achieved.** But the first thing found was that the scenario being trained on

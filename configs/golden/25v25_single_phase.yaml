@@ -1,4 +1,20 @@
 config_name: 25v25_single_phase
+#
+# ⚠ EVERY NUMBER IN THIS HEADER PREDATES 2026-08-12 AND IS VOID.
+#
+# On that date `base_radius` began defaulting to the rules' 32mm infantry base
+# and `objectives_on_terrain` to auto. This file sets neither, so it inherits
+# both -- which means it is a different scenario than when its figures were
+# measured. At the old default of 0.0 the whole of phase 03 was inert: no disc
+# occluded, the three cover rays coincided so cover could not occur, models did
+# not collide, range was centre to centre, and objectives were free-floating
+# discs rather than the ruins.
+#
+# The qualitative lessons below still hold. The numbers do not. Re-measure with
+# `just measure-baselines <this file> 100 "" 700000` before quoting anything,
+# and see configs/golden/25v25_shooting_opponent.yaml for a config that has
+# been re-measured.
+#
 number_of_wargame_models: 25
 number_of_opponent_models: 25
 number_of_objectives: 3

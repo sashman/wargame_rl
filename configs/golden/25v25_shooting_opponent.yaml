@@ -1,5 +1,103 @@
 config_name: 25v25_shooting_opponent
 #
+# 25v25 against an opponent that shoots back. THE SHOOTING-OPPONENT CONFIG,
+# and the reference scenario for this project.
+#
+# REWRITTEN 2026-08-12, and every number measured on it before that date is
+# VOID. This file never set `base_radius`, so it took the old default of 0.0 --
+# and at radius 0 the whole of phase 03 is a documented no-op: no disc occludes,
+# the three cover rays coincide so cover cannot occur, models do not collide,
+# and range is centre to centre. Objectives were free-floating discs rather than
+# the ruins. It was the pre-geometry scenario running on the post-geometry
+# engine, and it had been since phase 03 landed.
+#
+# The old header claimed a bar of +17.0 and an agent at +28.4. On the corrected
+# scenario the bar is +38.0; on the *old* terrain profile with the new defaults
+# it measured +49.5. Neither resembles +17.0. Do not resurrect those numbers
+# from git history without re-measuring.
+#
+# Four things now come from the code defaults rather than from this file:
+#
+#   base_radius            0.63in  a 32mm base, the rules' infantry base
+#   objectives_on_terrain  true    the objectives ARE the ruins
+#   objective selection    largest middle-section pieces, unclustered
+#   recording renderer     v2 with the tabletop theme
+#
+# What this file still has to say is the terrain profile, which was refitted:
+# 29 pieces of 3-7 was tuned before the geometry existed, against the real
+# tables' 15.
+#
+# TERRAIN FITTED TO THE 45 REAL LAYOUTS in configs/evaluation/maps/, measured:
+#
+#   pieces per table   15.5 (sd 0.5, min 15, max 16)
+#   piece area         mean 40, median 24, max 112
+#   piece width        mean 7.1   piece height mean 7.2
+#   vertices           mean 4.2 (4-6)
+#   coverage           23.5% of a 60x44 board
+#   middle third       6.4 pieces per table
+#
+# Hence count 15 of 3-11, left as rectangles: the real tables average 4.2
+# vertices, so rectangles are closer to them than hexagons would be.
+#
+
+# WHAT IT SCORES. n=100, seeds 700000-700099, identical layouts:
+#
+#   policy                       win    vp_margin   held   alive
+#   random (the floor)           0.04     -125.3    0.29   0.592
+#   greedy_nearest               0.13      -57.6    1.00   0.618
+#   split_evenly                 0.26      -49.2    0.96   0.086
+#   squad_march                  0.33      -26.4    1.15   0.363
+#   contest_and_spread           0.64      +18.7    1.48   0.523
+#   squad_march_shoot (the bar)  0.75      +38.0    1.71   0.450
+#
+# For a 300-epoch screen use n=30 on the same seed base, where the bar is
+# +36.2 / 0.70 win / 1.83 held. The two agree here, unlike the physics-off
+# scenario where n=30 read +21.4 against n=100's +6.7 -- but score the agent and
+# the bar at the same n and seed_base regardless.
+#
+# WHAT A TRAINED AGENT SCORES. Four 1000-epoch runs, two reward configs, paired
+# against the bar on identical layouts (`just measure-paired`):
+#
+#   config              seeds   pooled vs bar    sign test
+#   this file           2       +5.50 +/- 4.36   102/168 = 60.7%, z = 2.78
+#   objective_hold 2.5  2       +6.65 +/- 4.38   117/179 = 65.4%, z = 4.11
+#   all four            4       +6.08 +/- 3.09   219/347 = 63.1%, z = 4.89
+#
+# The agent beats the bar by ~+6 vp, winning 63% of layouts against a baseline
+# that wins 75% of its own games. Quote the *win frequency*, not the mean: the
+# pooled t is only 1.96 because the margin distribution is heavy-tailed.
+#
+# `objective_hold` 2.5 with `objective_coverage` 0.1 is NOT separable from this
+# config. Its first seed measured +14.2 and its second -0.9; see
+# reports/2026-08-12-the-physics-were-off-and-the-agent-beat-the-bar.md.
+#
+# THE BAR ROSE ON THE WAY TO THAT NUMBER:
+#   +6.7   physics off -- base_radius defaulted to 0.0
+#   +27.8  physics on
+#   +38.0  after baselines stopped marching onto the objective's centroid
+#
+# Score against +38.0: it is what the current code measures on these layouts.
+# But do NOT read the last step as "the fix is worth +10.2". That was an
+# unpaired before/after on one seed set. Paired per episode against a worktree
+# at the parent commit, 60 layouts each:
+#
+#   seeds 700000+   pre +18.8  post +35.5   paired +16.7 +/- 6.5  t= 2.56
+#   seeds  10000+   pre +28.6  post +27.0   paired  -1.6 +/- 6.7  t=-0.24
+#   pooled (120)                            paired  +7.5 +/- 4.7  t= 1.60
+#
+# So the *behavioural* defect is fixed and occupancy rises consistently
+# (0.61 -> 0.91 and 0.61 -> 0.87), while the effect on vp_margin is layout-set
+# dependent and pooled is suggestive rather than established.
+#
+# THE HEADROOM IS ALLOCATION. `just measure-objective-split`, n=60: the bar
+# parks 6.85 models on a point defended by 0.17, wins the middle 2.95 to 1.52,
+# and leaves the third 0.38 to 4.68. Redistribution ceiling 2.47 against 1.78
+# held. Unlike the physics-off scenario -- where the opponent massed ~10.7 on
+# its own point and nobody could flip it -- this is a genuine three-objective
+# mission.
+#
+# ---- the config it was copied from ----
+#
 # 25v25 against an opponent that shoots back. THE SHOOTING-OPPONENT CONFIG.
 #
 # This is the scenario the beat-the-bar work was done on, and this config is the
@@ -99,9 +197,9 @@ opponent_policy:
 # fixed to the left and right of the board, so an asymmetric draw would hand one
 # side better approaches for a whole run.
 random_terrain:
-  count: 29
+  count: 15
   min_size: 3
-  max_size: 7
+  max_size: 11
   mirror: true
   edge_margin: 2
   min_gap: 1
