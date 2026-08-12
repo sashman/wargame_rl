@@ -27,6 +27,7 @@ wargame_rl/wargame/envs/
 │   │                          #   DeploymentZone
 │   ├── game_clock.py          # Turn/phase/round logic
 │   ├── placement.py           # place_for_episode, placement helpers
+│   ├── coherency.py           # The unit coherency predicate: chain, spread, connectivity
 │   ├── termination.py         # is_battle_over, check_max_turns_reached
 │   ├── los.py                 # Sampled ray vs padded polygon blockers (vectorised)
 │   ├── sight.py               # "Can A see B?": los + terrain + blocking_mask
@@ -86,7 +87,7 @@ The env calls these; it does not reimplement their logic.
 ### Adding a new entity type
 
 1. **Define the entity** in `domain/entities.py` (or a new file under `domain/` if you prefer). Follow the same pattern as `WargameModel` / `WargameObjective`: attributes, `reset_for_episode` if it has episode state, and optionally a `to_space()` for the Gym observation space if the env needs it.
-2. **Add config** in `types/config/` — `entities.py` for a per-entity model, `terrain.py` for terrain, `battle.py` for turn order / opponent / mission, `env.py` for a scenario-level field. Keep new fields optional or default so existing YAML stays valid. `__init__.py` re-exports everything, so importers use `types.config` either way.
+2. **Add config** in `types/config/` — `entities.py` for a per-entity model, `terrain.py` for terrain, `battle.py` for turn order / opponent / mission, `coherency.py` for the coherency rule, `env.py` for a scenario-level field. Keep new fields optional or default so existing YAML stays valid. `__init__.py` re-exports everything, so importers use `types.config` either way.
 3. **Wire the factory**: in `domain/battle_factory.py`, create instances from config and attach them to the `Battle` (e.g. new list + property). If the aggregate must expose them for observation or rules, add them to `Battle` and to `BattleView`.
 4. **Observation**: if the new entity appears in the Gym observation, extend the observation types in `types/`, then in `env_components/observation_builder.py` add the mapping from `view` to that part of the observation (using `BattleView` so the builder stays view-based).
 5. **Backward compatibility**: if something used to live at envs root, keep a thin re-export from there that imports from `domain`.
