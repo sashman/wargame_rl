@@ -49,9 +49,31 @@ class WargameModelObservation:
     # where they have to live.
     objective_present: np.ndarray | None = None
 
+    # The two halves of the coherency rule that no input carried, populated only
+    # when `observe_coherency` is set.
+    #
+    # `coherency_spread` is the distance to the *furthest* live model in this
+    # model's unit, over the spread cap -- the 9" condition, which had no tensor
+    # at all. The existing same-group column is a *nearest* neighbour distance,
+    # so a unit strung across the board reads as perfectly tight from every
+    # model in it as long as each has a partner.
+    #
+    # `coherency_component` is the fraction of the unit's live models in this
+    # model's own chain component. It is 1.0 for a unit in one piece and drops
+    # when the unit splits, which is the rule's third clause -- and the one that
+    # is a transitive closure, so no amount of attention over pairwise distances
+    # recovers it cheaply.
+    #
+    # Both are normalised by the coherency distances rather than by the board
+    # diagonal. That is the point: against the diagonal the whole 2" band is
+    # 2.7% of a column's range, so the decision-relevant region is compressed
+    # into noise.
+    coherency_spread: float | None = None
+    coherency_component: float | None = None
+
     @property
     def size(self) -> int:
-        """Location + distances + group one-hot + same-group distance + alive + wound scalars (3) + combat stats (7), plus unit strength and objective-presence flags when observed."""
+        """Location + distances + group one-hot + same-group distance + alive + wound scalars (3) + combat stats (7), plus unit strength, objective-presence flags and the two coherency scalars when observed."""
         return int(
             self.location.size
             + self.distances_to_objectives.size
@@ -61,4 +83,6 @@ class WargameModelObservation:
             + 7
             + (0 if self.unit_strength is None else 1)
             + (0 if self.objective_present is None else self.objective_present.size)
+            + (0 if self.coherency_spread is None else 1)
+            + (0 if self.coherency_component is None else 1)
         )

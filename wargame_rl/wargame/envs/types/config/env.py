@@ -137,6 +137,25 @@ class WargameEnvConfig(BaseModel):
         "the objective embedding shape, so existing checkpoints will fail to "
         "load — which is the intended loud failure.",
     )
+    observe_coherency: bool = Field(
+        default=False,
+        description="Put the two halves of the coherency rule the observation "
+        "never carried on each model's token, widening it by two: the distance "
+        "to the *furthest* live model in its unit over the spread cap, and the "
+        "fraction of the unit in its own chain component. The existing "
+        'same-group column is a *nearest* neighbour distance, so the 9" spread '
+        "condition had no tensor at all and a unit strung across the board read "
+        "as tight from every model in it; connectivity is a transitive closure "
+        "and is not recoverable from pairwise distances cheaply. Both are "
+        "normalised by the coherency distances rather than the board diagonal — "
+        "against the diagonal the whole 2\" band is 2.7% of a column's range, so "
+        "the decision-relevant region is compressed into noise. This is the "
+        "input any coherency reward or enforcement must key on; adding it first "
+        "is the desk check this project has twice paid ~10 GPU-hours to skip. "
+        "Default False keeps the tensor byte-identical; turning it on changes "
+        "the per-model embedding shape, so existing checkpoints fail to load — "
+        "the intended loud failure. UNTRAINED.",
+    )
     observe_unit_strength: bool = Field(
         default=False,
         description="Put each model's *unit* remaining strength (alive members "

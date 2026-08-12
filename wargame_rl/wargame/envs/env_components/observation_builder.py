@@ -5,11 +5,16 @@ Extracted so observation shape or content can be varied without touching step/re
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
+from wargame_rl.wargame.envs.domain.coherency import (
+    base_to_base_distances,
+    evaluate_coherency,
+)
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.value_objects import POSITION_DTYPE
 from wargame_rl.wargame.envs.env_components.actions import ActionRegistry
@@ -89,6 +94,62 @@ def _objective_presence(n_objectives: int, budget: int) -> np.ndarray:
     return presence
 
 
+@dataclass(frozen=True, slots=True)
+class CoherencyDistances:
+    """The two coherency distances, in board units, resolved once per step.
+
+    A small carrier rather than two loose floats: the observation builder passes
+    them through three layers, and a pair of bare floats in that signature is
+    exactly how a nearest and a furthest end up swapped.
+    """
+
+    nearest: float
+    furthest: float
+
+
+def _coherency_features(
+    models: list[WargameModel],
+    nearest_distance: float,
+    furthest_distance: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Per-model spread ratio and component fraction, for the coherency inputs.
+
+    The spread ratio is the distance to the furthest live model in the unit over
+    the spread cap, clipped at 1 so "legal" and "twice as far as legal" do not
+    share a saturated value at the boundary the policy actually has to find.
+
+    The component fraction is how much of the unit is in this model's own chain
+    component. It is 1.0 for a unit in one piece, and a dead or lone model
+    reports a compliant (0.0, 1.0) rather than a violation.
+    """
+    n = len(models)
+    spread = np.zeros(n, dtype=np.float32)
+    component = np.ones(n, dtype=np.float32)
+    if n == 0:
+        return spread, component
+
+    report = evaluate_coherency(
+        positions=np.array([m.location for m in models], dtype=float),
+        group_ids=np.array([m.group_id for m in models], dtype=np.intp),
+        alive_mask=alive_mask_for(models),
+        base_radii=np.array([m.base_radius for m in models], dtype=float),
+        nearest_distance=nearest_distance,
+        furthest_distance=furthest_distance,
+    )
+    for unit in report.units:
+        if unit.size <= 1:
+            continue
+        gaps = base_to_base_distances(
+            np.array([models[i].location for i in unit.member_indices], dtype=float),
+            np.array([models[i].base_radius for i in unit.member_indices], dtype=float),
+        )
+        furthest = gaps.max(axis=1)
+        counts = np.bincount(unit.component, minlength=unit.n_components)
+        spread[unit.member_indices] = np.clip(furthest / furthest_distance, 0.0, 1.0)
+        component[unit.member_indices] = counts[unit.component] / unit.size
+    return spread, component
+
+
 def _models_to_obs(
     models: list[WargameModel],
     max_groups: int,
@@ -96,8 +157,14 @@ def _models_to_obs(
     observe_unit_strength: bool = False,
     objective_budget: int | None = None,
     n_objectives: int | None = None,
+    coherency: CoherencyDistances | None = None,
 ) -> list[WargameModelObservation]:
     strengths = _unit_strengths(models) if observe_unit_strength else {}
+    spread, component = (
+        _coherency_features(models, coherency.nearest, coherency.furthest)
+        if coherency is not None
+        else (None, None)
+    )
     presence = (
         None
         if objective_budget is None
@@ -148,6 +215,10 @@ def _models_to_obs(
                 save_stat=save,
                 unit_strength=(
                     strengths.get(m.group_id, 0.0) if observe_unit_strength else None
+                ),
+                coherency_spread=(None if spread is None else float(spread[i])),
+                coherency_component=(
+                    None if component is None else float(component[i])
                 ),
             )
         )
@@ -376,6 +447,20 @@ def build_observation(
     max_groups = view.config.max_groups
     objectives_obs = _objectives_to_obs(view, view.config.observe_objective_control)
     terrain_obs = _terrain_to_obs(view)
+    # Resolved to board units here, once, rather than per model -- the config
+    # authors them in inches like every other rules distance.
+    coherency = (
+        CoherencyDistances(
+            nearest=view.rules_quantities.scale.to_units(
+                view.config.coherency.nearest_distance
+            ),
+            furthest=view.rules_quantities.scale.to_units(
+                view.config.coherency.furthest_distance
+            ),
+        )
+        if view.config.observe_coherency
+        else None
+    )
     return WargameEnvObservation(
         current_turn=view.current_turn,
         wargame_models=_models_to_obs(
@@ -385,6 +470,7 @@ def build_observation(
             observe_unit_strength=view.config.observe_unit_strength,
             objective_budget=view.config.objective_budget,
             n_objectives=len(view.objectives),
+            coherency=coherency,
         ),
         objectives=objectives_obs,
         board_width=view.board_width,
@@ -396,6 +482,7 @@ def build_observation(
             observe_unit_strength=view.config.observe_unit_strength,
             objective_budget=view.config.objective_budget,
             n_objectives=len(view.objectives),
+            coherency=coherency,
         ),
         terrain=terrain_obs,
         action_mask=action_mask,
