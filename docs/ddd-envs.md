@@ -37,9 +37,11 @@ wargame_rl/wargame/envs/
 │   │                          #   units once, at construction
 │   ├── terrain.py             # Footprint, Terrain (LOS-blocking geometry)
 │   ├── terrain_placement.py   # generate_terrain: random per-episode layouts
+│   ├── map_layout.py          # MapLayout: one fixed layout, drawn from a pool
 │   ├── shooting.py            # Attack sequence: hit → wound → save → damage
 │   └── turn_execution.py      # run_until_player_phase, run_after_player_action
 ├── env_components/            # Adapters: actions, observation, distances, shooting masks
+├── map_pool.py                # Loads map files into MapLayouts, draws one per episode
 ├── opponent/                  # Opponent policies + registry
 ├── mission/                   # VP calculators + registry
 ├── baseline/                  # Scripted reference policies + evaluation
@@ -97,7 +99,7 @@ Add a frozen dataclass (or Pydantic model) in `domain/value_objects.py`. Use it 
 
 Placement is in `domain/placement.py`. To add a new strategy (e.g. by scenario name), extend `place_for_episode` or add a helper that it calls, using `Battle` and config only. The env continues to call `place_for_episode(_battle, config, rng)` after `_battle.reset_for_episode()` and clock reset. Do not put placement logic in `wargame.py`.
 
-Terrain follows the same pattern: `place_for_episode` calls `generate_terrain` from `domain/terrain_placement.py` and installs the result via `Battle.set_terrain` when the config sets `random_terrain`. LOS resolves terrain through the aggregate on every query, so a replacement takes effect immediately with no cache to invalidate.
+Terrain follows the same pattern, and there are three mutually exclusive modes. A fixed `terrain` list is built once by the factory. With `random_terrain`, `place_for_episode` calls `generate_terrain` from `domain/terrain_placement.py` and installs the result via `Battle.set_terrain`. With `map_pool`, the *env* draws a `MapLayout` and passes it in as `place_for_episode(..., layout=...)`, which installs its terrain and — when the map carries them — its objectives via `Battle.set_objectives`. Loading map files is the env layer's job (`envs/map_pool.py`) precisely so `domain/` never touches the filesystem: it only ever sees a `MapLayout`, which is a domain value. LOS resolves terrain through the aggregate on every query, so a replacement takes effect immediately with no cache to invalidate.
 
 ### Adding termination conditions
 
