@@ -115,10 +115,17 @@ class TransformerNetwork(RL_Network):
         terrain_size: int = 0,
         shooting_slice_start: int | None = None,
         shooting_slice_end: int | None = None,
+        objective_padding: bool = False,
         device: Device | None = None,
     ) -> None:
         self.game_size = game_size
         self.objective_size = objective_size
+        # Whether the objective token carries a trailing `present` column, i.e.
+        # whether the scenario sets `objective_budget`. Not inferred from the
+        # tensor: without the column, a hand-placed objective at the exact board
+        # centre also produces an all-zero row, and masking it out would silently
+        # hide a real objective from the whole network.
+        self.objective_padding = objective_padding
         self.wargame_model_size = wargame_model_size
         self.opponent_model_size = opponent_model_size
         self.terrain_size = terrain_size
@@ -392,7 +399,8 @@ class TransformerNetwork(RL_Network):
 
         batch_size = int(player_embedding.shape[0])
         n_wargame_models = int(player_embedding.shape[1])
-        n_prefix = 1 + int(objective_embedding.shape[1])
+        n_objectives = int(objective_embedding.shape[1])
+        n_prefix = 1 + n_objectives
 
         parts = [game_embedding, objective_embedding, player_embedding]
         if opp_embedding is not None:
@@ -416,6 +424,11 @@ class TransformerNetwork(RL_Network):
         key_mask = torch.ones(
             batch_size, seq_len, dtype=torch.bool, device=tokens.device
         )
+        # Padded objective slots: `present` is the last column and is 0 on them.
+        # Left attendable when the scenario does not pad, since every slot is
+        # then a real objective.
+        if self.objective_padding and n_objectives > 0:
+            key_mask[:, 1:n_prefix] = objective_tensor[:, :, -1] > 0.5
         key_mask[:, n_prefix : n_prefix + n_wargame_models] = player_alive
         if opp_embedding is not None and opp_tensor is not None and n_opponents > 0:
             # One derivation, two consumers: the key-padding mask below and the
@@ -424,7 +437,16 @@ class TransformerNetwork(RL_Network):
             opponent_alive = self._alive_from_features(opp_tensor, n_opponents)
             opp_start = n_prefix + n_wargame_models
             key_mask[:, opp_start : opp_start + n_opponents] = opponent_alive
-        # Terrain tokens are always attendable (no alive/dead concept).
+        # Terrain tokens have no alive/dead concept, but `terrain_budget` pads the
+        # sequence with all-zero rows. The last column is the piece's vertex
+        # count, which no real piece can have at zero, so this needs no flag and
+        # is a no-op for an unpadded layout.
+        if terrain_embedding is not None and terrain_tensor is not None:
+            n_terrain = int(terrain_embedding.shape[1])
+            terrain_start = n_prefix + n_wargame_models + n_opponents
+            key_mask[:, terrain_start : terrain_start + n_terrain] = (
+                terrain_tensor[:, :, -1] > 0.0
+            )
         attn_mask = key_mask[:, None, None, :]
 
         x = tokens
@@ -655,6 +677,7 @@ class TransformerNetwork(RL_Network):
             terrain_size=terrain_size,
             shooting_slice_start=shooting_slice.start if shooting_slice else None,
             shooting_slice_end=shooting_slice.end if shooting_slice else None,
+            objective_padding=env.config.objective_budget is not None,
         )
 
 

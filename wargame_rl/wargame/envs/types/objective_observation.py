@@ -27,6 +27,15 @@ class WargameEnvObjectiveObservation:
     opponent_count: float | None = None
     radius: float | None = None
 
+    # 1.0 for a real objective, 0.0 for a padding slot; populated only when
+    # `objective_budget` is set. None keeps the token at its historical width.
+    #
+    # Padding is otherwise indistinguishable from a real objective at the board
+    # centre with nobody on it -- the same reason a terrain token carries its
+    # vertex count. It is also what makes "the row is entirely zero" a safe test
+    # for padding, which is how the network drops these from attention.
+    present: float | None = None
+
     @property
     def size(self) -> int:
         return int(self.location.size)

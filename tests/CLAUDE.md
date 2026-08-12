@@ -30,7 +30,7 @@ Applies to everything under `tests/`. General testing philosophy lives in the ro
 
 **Model & training** — `test_ppo` · `test_agent` (actions/episodes) · `test_state` (obs/batch tensors) · `test_transformer_shooting_policy` (shooting head, dead-token masking) · `test_batched_eval` (lockstep eval waves) · `test_training_diagnostics` · `test_train_resume` · `test_train_run_name` · `test_simulate` · `test_z_e2e_training`
 
-**Observation** — `test_objective_control_observation` (`observe_objective_control`: token width off/on, counts exclude dead models, recomputed each step, batching, and that the transformer resizes its objective embedding on its own)
+**Observation** — `test_objective_control_observation` (`observe_objective_control`: token width off/on, counts exclude dead models, recomputed each step, batching, and that the transformer resizes its objective embedding on its own) · `test_observation_budgets` (`objective_budget` / `terrain_budget`: all 45 shipped maps produce one tensor shape, a five- and a six-objective map batch together, and weights built on the generated scenario `load_state_dict` onto a real map — the size mismatch this exists to remove. Padding is checked *behaviourally*: moving a padded objective cannot change the logits, with the same move on a real objective as the control, since a structural mask assertion would pass on a network that ignores objectives entirely)
 
 **Baselines & opponents** — `test_baselines` (scripted reference policies) · `test_opponents` (opponent system) · `test_contest_and_spread_baseline` (opponent-aware allocation + de-duplicated fire; records a *refuted* hypothesis — it loses to `squad_march_shoot`, because concentration is why that bar wins)
 

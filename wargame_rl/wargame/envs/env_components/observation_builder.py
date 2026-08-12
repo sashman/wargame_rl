@@ -70,13 +70,41 @@ def _unit_strengths(models: list[WargameModel]) -> dict[int, float]:
     return {gid: alive[gid] / totals[gid] for gid in totals}
 
 
+def _pad_distances(distances: np.ndarray, budget: int) -> np.ndarray:
+    """Pad a model's (n_objectives, 2) delta block out to `budget` rows with zeros.
+
+    The zeros are meaningless on their own — a zero delta is what standing on an
+    objective looks like — and are read only alongside the presence flags built
+    by `_objective_presence`.
+    """
+    padded = np.zeros((budget, 2), dtype=distances.dtype)
+    padded[: len(distances)] = distances
+    return padded
+
+
+def _objective_presence(n_objectives: int, budget: int) -> np.ndarray:
+    """Per-slot flags: 1.0 for the first `n_objectives` slots, 0.0 for padding."""
+    presence = np.zeros(budget, dtype=np.float32)
+    presence[:n_objectives] = 1.0
+    return presence
+
+
 def _models_to_obs(
     models: list[WargameModel],
     max_groups: int,
     model_configs: list[ModelConfig] | None = None,
     observe_unit_strength: bool = False,
+    objective_budget: int | None = None,
+    n_objectives: int | None = None,
 ) -> list[WargameModelObservation]:
     strengths = _unit_strengths(models) if observe_unit_strength else {}
+    presence = (
+        None
+        if objective_budget is None
+        else _objective_presence(
+            n_objectives if n_objectives is not None else 0, objective_budget
+        )
+    )
     result: list[WargameModelObservation] = []
     for i, m in enumerate(models):
         w_attacks = 0
@@ -100,7 +128,12 @@ def _models_to_obs(
         result.append(
             WargameModelObservation(
                 location=m.location,
-                distances_to_objectives=m.distances_to_objectives,
+                distances_to_objectives=(
+                    m.distances_to_objectives
+                    if objective_budget is None
+                    else _pad_distances(m.distances_to_objectives, objective_budget)
+                ),
+                objective_present=presence,
                 group_id=m.group_id,
                 max_groups=max_groups,
                 alive=1.0 if m.is_alive else 0.0,
@@ -125,6 +158,12 @@ def _terrain_to_obs(
     view: BattleView,
 ) -> list[WargameTerrainObservation]:
     """Build terrain observations: padded outline vertices, plus a vertex count.
+
+    When `terrain_budget` is set the token *sequence* is padded to it as well,
+    with all-zero rows. No extra flag is needed to mark those: the vertex-count
+    column is zero on them and no real piece has zero vertices, which is what
+    the network keys on to drop them from attention.
+
 
     Vertices are normalised to [-1, 1] by the board half-dimensions and padded to
     `TERRAIN_VERTEX_BUDGET` by repeating the last one, so pieces with different
@@ -157,7 +196,57 @@ def _terrain_to_obs(
         normalised[1 : 2 * TERRAIN_VERTEX_BUDGET : 2] = (padded[:, 1] - half_h) / half_h
         normalised[-1] = fp.n_vertices / TERRAIN_VERTEX_BUDGET
         result.append(WargameTerrainObservation(outline=normalised))
+
+    budget = view.config.terrain_budget
+    if budget is not None:
+        if len(result) > budget:
+            raise ValueError(
+                f"layout has {len(result)} terrain pieces, over the "
+                f"terrain_budget of {budget}"
+            )
+        width = 2 * TERRAIN_VERTEX_BUDGET + 1
+        result.extend(
+            WargameTerrainObservation(outline=np.zeros(width, dtype=np.float32))
+            for _ in range(budget - len(result))
+        )
     return result
+
+
+def _pad_objectives(
+    observations: list[WargameEnvObjectiveObservation],
+    view: BattleView,
+    with_control: bool,
+) -> list[WargameEnvObjectiveObservation]:
+    """Mark the real objectives present and pad the list out to `objective_budget`.
+
+    A padding slot sits at the board centre with zero control, so that once the
+    tensor pipeline normalises location by the board half-dimensions its whole
+    row is zero — which is what lets the network recognise padding without being
+    told how many objectives this particular layout had. `present` is what keeps
+    that test safe in the other direction: a real objective at the exact centre
+    would otherwise produce an all-zero row too.
+    """
+    budget = view.config.objective_budget
+    if budget is None:
+        return observations
+    if len(observations) > budget:
+        raise ValueError(
+            f"layout has {len(observations)} objectives, over the "
+            f"objective_budget of {budget}"
+        )
+    for observation in observations:
+        observation.present = 1.0
+    centre = np.array([view.board_width / 2.0, view.board_height / 2.0], dtype=float)
+    control = {"player_count": 0.0, "opponent_count": 0.0, "radius": 0.0}
+    observations.extend(
+        WargameEnvObjectiveObservation(
+            location=centre.copy(),
+            present=0.0,
+            **(control if with_control else {}),
+        )
+        for _ in range(budget - len(observations))
+    )
+    return observations
 
 
 def _objectives_to_obs(
@@ -171,10 +260,14 @@ def _objectives_to_obs(
     "half my army is here" and "half of theirs is here" on the same scale.
     """
     if not with_control:
-        return [
-            WargameEnvObjectiveObservation(location=obj.location)
-            for obj in view.objectives
-        ]
+        return _pad_objectives(
+            [
+                WargameEnvObjectiveObservation(location=obj.location)
+                for obj in view.objectives
+            ],
+            view,
+            with_control,
+        )
 
     player_locations = np.array(
         [m.location for m in view.player_models if m.is_alive], dtype=float
@@ -223,7 +316,7 @@ def _objectives_to_obs(
                 radius=extent / board_diagonal,
             )
         )
-    return observations
+    return _pad_objectives(observations, view, with_control)
 
 
 def build_observation(
@@ -290,6 +383,8 @@ def build_observation(
             max_groups,
             model_configs=view.config.models,
             observe_unit_strength=view.config.observe_unit_strength,
+            objective_budget=view.config.objective_budget,
+            n_objectives=len(view.objectives),
         ),
         objectives=objectives_obs,
         board_width=view.board_width,
@@ -299,6 +394,8 @@ def build_observation(
             max_groups,
             model_configs=view.config.opponent_models,
             observe_unit_strength=view.config.observe_unit_strength,
+            objective_budget=view.config.objective_budget,
+            n_objectives=len(view.objectives),
         ),
         terrain=terrain_obs,
         action_mask=action_mask,
