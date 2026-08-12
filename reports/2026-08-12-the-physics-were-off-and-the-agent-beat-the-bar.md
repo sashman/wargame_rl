@@ -52,15 +52,35 @@ n=100, **paired against the bar on identical layouts**:
 
 | arm | agent | paired vs bar | t | ahead |
 |---|---|---|---|---|
-| **hold25 s1** | **+52.1** | **+14.2 ± 6.1** | 2.31 | **64 / 89** |
+| hold25 s1 | +52.1 | +14.2 ± 6.1 | 2.31 | 64 / 89 |
+| **hold25 s2** | **+37.1** | **−0.9 ± 6.3** | −0.14 | 53 / 90 |
 | control s1 | +44.1 | +6.2 ± 6.6 | 0.93 | 51 / 86 |
 | control s2 | +42.8 | +4.8 ± 5.7 | 0.84 | 51 / 82 |
 
-The control reproduces itself across two seeds at +6.2 and +4.8 — both t ≈ 0.9,
-both with exactly 51 wins. Neither seed is significant alone; **pooled, the sign
-test is** (102 of 168 differing episodes, z ≈ 2.8, p ≈ 0.005). So the golden
-configuration already edges the bar by ~5 vp, and the income shift roughly
-triples that.
+> **⚠ The +14.2 did not replicate.** This report was first written with hold25
+> s2 still training and the headline stated as +14.2. Its second seed came back
+> at **−0.9**, fifteen points away. That is the within-config seed spread this
+> project has measured before (~9 vp), and it is exactly why the two-seed rule
+> exists — a rule invoked repeatedly on the way here and then very nearly
+> published around.
+
+**Pooled, and this is the result:**
+
+| | pooled mean | t | sign test |
+|---|---|---|---|
+| control (2 seeds) | +5.50 ± 4.36 | 1.26 | 102/168 = 60.7%, z = 2.78 |
+| hold25 (2 seeds) | +6.65 ± 4.38 | 1.52 | 117/179 = 65.4%, z = 4.11 |
+| **all four runs** | **+6.08 ± 3.09** | 1.96 | **219/347 = 63.1%, z = 4.89** |
+
+**The agent beats the bar by about +6 vp**, robustly: four independent runs, two
+configs, 347 decided episodes, sign test z = 4.9. It wins 63% of layouts against
+a bar that wins 75% of its own games.
+
+**The income shift is not distinguishable from the control.** +6.65 against
++5.50, with standard errors of ~4.4 each. It remains the only reward change to
+survive *any* measurement since the geometry landed, and on this evidence its
+effect is somewhere between nothing and modest — not the tripling one seed
+suggested.
 
 **Zero-shot on the goal's own config.** Scored on
 `configs/golden/25v25_shooting_opponent.yaml` — same everything except terrain,
@@ -198,9 +218,13 @@ on the config field.
 
 ## 6. What this does not support
 
-- **Not "the income shift is worth +14.2".** That is **one seed**; the second was
-  still training when this was written. Measured within-config seed spread on
-  this project is ~9 vp. The two-seed backing here is the *control* arm's ~+5.
+- **Not "the income shift is worth +14.2".** Its second seed measured **−0.9**;
+  see the correction in §2. Pooled it is +6.65 ± 4.38 against the control's
+  +5.50 ± 4.36 — the two configs are not separable on this evidence. What is
+  supported is the *aggregate*: +6.08 ± 3.09 over four runs, sign test z = 4.89.
+- **Not that any arm difference here is resolved.** With ~4.4 standard error per
+  config and a 15-vp gap between two seeds of the *same* config, this round can
+  rank the agent against the bar and nothing finer.
 - **Not a cover result.** Cover became possible for the first time this session
   (it requires `base_radius > 0`). Nothing here measures whether the agent uses
   it. `exposure` fell 0.354 v the bar's 0.305 — the wrong direction for a cover
