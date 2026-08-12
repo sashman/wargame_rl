@@ -18,8 +18,10 @@ from wargame_rl.wargame.envs.types.config.battle import (
     OpponentPolicyConfig,
     TurnOrder,
 )
+from wargame_rl.wargame.envs.types.config.coherency import CoherencyConfig
 from wargame_rl.wargame.envs.types.config.entities import ModelConfig, ObjectiveConfig
 from wargame_rl.wargame.envs.types.config.terrain import (
+    MapPoolConfig,
     RandomTerrainConfig,
     TerrainPieceConfig,
 )
@@ -85,6 +87,15 @@ class WargameEnvConfig(BaseModel):
         default=None,
         description="Regenerate terrain randomly each episode instead of using a "
         "fixed `terrain` list. Mutually exclusive with `terrain`. None = fixed.",
+    )
+    map_pool: MapPoolConfig | None = Field(
+        default=None,
+        description="Draw a whole layout — terrain and objectives — from a set "
+        "of fixed maps, one per episode. The third terrain mode, mutually "
+        "exclusive with both `terrain` and `random_terrain`, and the only one "
+        "that trains on real tables. A pool whose maps differ in objective or "
+        "piece count needs `objective_budget` / `terrain_budget` to match, which "
+        "is checked when the pool is loaded. None = no pool.",
     )
     track_exposure: bool = Field(
         default=False,
@@ -383,6 +394,13 @@ class WargameEnvConfig(BaseModel):
         default_factory=MissionConfig,
         description="Mission config: selects VP calculator and params (vp_per_objective, cap_per_turn, min_round).",
     )
+    coherency: CoherencyConfig = Field(
+        default_factory=CoherencyConfig,
+        description="The unit coherency rule (docs/rules/03-moving.md): its two "
+        "distances, and which of its consequences are enforced. Every "
+        "consequence defaults to off, so the default is exactly the behaviour "
+        "that predates it.",
+    )
 
     @field_validator("blocking_mask", mode="before")
     @classmethod
@@ -587,6 +605,34 @@ class WargameEnvConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def validate_map_pool(self) -> "WargameEnvConfig":
+        """The three terrain modes are mutually exclusive.
+
+        Whichever pair were combined, one would silently win: a pool installs its
+        layout at reset and would overwrite a fixed `terrain`, and `random_terrain`
+        would regenerate over a drawn map — the same failure `measure-maps` guards
+        against by clearing the generator, which is silent because the run still
+        prints a map's name.
+        """
+        if self.map_pool is None:
+            return self
+        conflicting = [
+            name
+            for name, value in (
+                ("terrain", self.terrain),
+                ("random_terrain", self.random_terrain),
+            )
+            if value is not None
+        ]
+        if conflicting:
+            raise ValueError(
+                f"map_pool is mutually exclusive with {' and '.join(conflicting)}: "
+                "terrain is drawn from the pool, fixed, or generated — not two of "
+                "those"
+            )
+        return self
+
+    @model_validator(mode="after")
     def validate_observation_budgets(self) -> "WargameEnvConfig":
         """Reject a budget smaller than what this scenario actually puts on the board.
 
@@ -612,6 +658,40 @@ class WargameEnvConfig(BaseModel):
                 raise ValueError(
                     f"terrain_budget ({self.terrain_budget}) is below the "
                     f"scenario's {n_pieces} terrain pieces"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def validate_coherency(self) -> "WargameEnvConfig":
+        """Reject a coherency setting that could not bind, or could not be met.
+
+        Two ways to switch the rule on and get nothing. The distances can be the
+        wrong way round, which makes the spread cap looser than the chain it is
+        supposed to bound. And the army can split into one-model units, every one
+        of which is coherent by definition -- `max_groups` defaults to 100, so a
+        25-model config that never sets it gets 25 units of one and the whole
+        rule is a silent no-op. Both are caught here rather than discovered from
+        a flat metric after a training run.
+        """
+        coherency = self.coherency
+        if coherency.furthest_distance < coherency.nearest_distance:
+            raise ValueError(
+                f"coherency.furthest_distance ({coherency.furthest_distance}) is "
+                f"below nearest_distance ({coherency.nearest_distance}): the "
+                "spread cap must be at least the chain distance"
+            )
+        if not (coherency.enforce_at_deployment or coherency.attrition):
+            return self
+        for label, count in (
+            ("number_of_wargame_models", self.number_of_wargame_models),
+            ("number_of_opponent_models", self.number_of_opponent_models),
+        ):
+            if count > 1 and max(1, count // self.max_groups) < 2:
+                raise ValueError(
+                    f"coherency is enforced but {label}={count} with "
+                    f"max_groups={self.max_groups} puts every model in its own "
+                    "unit, where coherency holds vacuously. Set max_groups below "
+                    f"{label} so units have at least two models."
                 )
         return self
 

@@ -443,7 +443,7 @@ is added.
 |---|---|
 | **`vp_per_step`** | **Yes — the one that does.** 0.00 / 2.13 / 3.75 / 5.00 across the baselines, matching win rate exactly |
 | `final_fraction_at_objectives`, `peak_*`, `objective_drift_ratio` | Only against random. Every competent policy saturates at 1.00 with a drift ratio of 1.00 — the same saturation that makes `models_at_objectives` unable to rank policies |
-| `mean_group_distance` | Measures coherency, not quality. Piling the whole army on one point scores *best*, so read it as a legality check against the phase's `group_max_distance`, never as a score |
+| `mean_group_distance` | Measures coherency, not quality. Piling the whole army on one point scores *best*, so read it as a legality check against the phase's `group_max_distance`, never as a score. It is also not the coherency *rule* — it is one average distance, where the rule is two conditions plus connectivity. For that, use `just measure-coherency`, which reports the share of units satisfying all three and the number of models outside their unit's coherent body |
 | `target_selection_optimality` | Only defined when shooting happens — `N/A` for every movement-only policy |
 | `idle_rate` | **Ignore.** Structurally ~50%+: it counts every `Stay` regardless of phase, and half of all steps are the shooting phase where `Stay` is often the only legal action |
 | `objective_approach_rate` | **Inverted.** Falls once models *arrive* and stop approaching, so competent policies score 13–15% and random scores 24% |

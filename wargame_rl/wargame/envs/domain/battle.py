@@ -81,6 +81,21 @@ class Battle:
         """
         self._terrain = terrain
 
+    def set_objectives(self, objectives: list[WargameObjective]) -> None:
+        """Replace the objectives — used when a drawn layout brings its own.
+
+        Mutates the list in place rather than rebinding it, because the env and
+        the renderers hold the same list object from construction. Rebinding
+        would leave every one of those aliases pointing at the previous
+        episode's objectives, silently and with no exception.
+
+        Objective *count* may change between episodes when a `map_pool` mixes
+        layouts of different sizes: the distance cache is rebuilt from this list
+        every step, and `objective_budget` is what keeps the observation a fixed
+        width across the change.
+        """
+        self._objectives[:] = objectives
+
     @property
     def player_vp(self) -> int:
         return self._player_vp
