@@ -26,6 +26,7 @@ from wargame_rl.wargame.envs.types.config.entities import (
 )
 from wargame_rl.wargame.envs.types.config.env import WargameEnvConfig
 from wargame_rl.wargame.envs.types.config.terrain import (
+    MapPoolConfig,
     RandomTerrainConfig,
     TerrainMapConfig,
     TerrainPieceConfig,
@@ -36,6 +37,7 @@ __all__ = [
     "ModelConfig",
     "ObjectiveConfig",
     "OpponentPolicyConfig",
+    "MapPoolConfig",
     "RandomTerrainConfig",
     "TerrainMapConfig",
     "TerrainPieceConfig",

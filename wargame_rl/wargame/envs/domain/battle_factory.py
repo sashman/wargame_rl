@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
 
-from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.envs.types import ObjectiveConfig, WargameEnvConfig
 
 from .battle import Battle
 from .entities import WargameModel, WargameObjective
@@ -106,12 +107,24 @@ def _build_models(
     return result
 
 
-def _build_objectives(config: WargameEnvConfig) -> list[WargameObjective]:
-    """Build the list of objectives from config."""
+def build_objectives(
+    objective_configs: Sequence[ObjectiveConfig] | None,
+    count: int,
+    default_radius: float,
+) -> list[WargameObjective]:
+    """Build `count` objectives, taking attributes from `objective_configs` where given.
+
+    Split out from `_build_objectives` so a layout drawn from a `map_pool` can
+    build its own objectives mid-episode from the same rules — a map's
+    objectives are `ObjectiveConfig`s like any other, they just arrive from the
+    map file rather than from the scenario.
+    """
     result: list[WargameObjective] = []
-    for i in range(config.number_of_objectives):
+    for i in range(count):
         objective_config = (
-            config.objectives[i] if config.objectives is not None else None
+            objective_configs[i]
+            if objective_configs is not None and i < len(objective_configs)
+            else None
         )
         area = objective_config.to_polygon() if objective_config is not None else None
         if area is not None:
@@ -126,12 +139,21 @@ def _build_objectives(config: WargameEnvConfig) -> list[WargameObjective]:
         radius = (
             objective_config.radius_size
             if objective_config is not None and objective_config.radius_size is not None
-            else float(config.objective_radius_size)
+            else default_radius
         )
         result.append(
             WargameObjective(location=zero_position(), radius_size=float(radius))
         )
     return result
+
+
+def _build_objectives(config: WargameEnvConfig) -> list[WargameObjective]:
+    """Build the list of objectives from config."""
+    return build_objectives(
+        config.objectives,
+        config.number_of_objectives,
+        float(config.objective_radius_size),
+    )
 
 
 def from_config(config: WargameEnvConfig) -> Battle:

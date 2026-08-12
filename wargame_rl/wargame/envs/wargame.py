@@ -19,7 +19,7 @@ from wargame_rl.wargame.envs.domain.battle_factory import (
 from wargame_rl.wargame.envs.domain.battle_factory import unit_count
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.game_clock import GameClock
-from wargame_rl.wargame.envs.domain.placement import place_for_episode
+from wargame_rl.wargame.envs.domain.placement import install_layout, place_for_episode
 from wargame_rl.wargame.envs.domain.rules_quantities import (
     RulesQuantities,
     resolve_rules_quantities,
@@ -58,6 +58,7 @@ from wargame_rl.wargame.envs.env_components.shooting_masks import (
     compute_unit_shooting_masks,
     max_weapon_ranges,
 )
+from wargame_rl.wargame.envs.map_pool import MapPool
 from wargame_rl.wargame.envs.mission import build_vp_calculator
 from wargame_rl.wargame.envs.opponent.policy import OpponentPolicy
 from wargame_rl.wargame.envs.opponent.registry import (
@@ -139,7 +140,13 @@ class WargameEnv(gym.Env):
                         WargameModel.to_space(
                             board_width=self.board_width,
                             board_height=self.board_height,
-                            number_of_objectives=config.number_of_objectives * 2,
+                            # The budget, when set, is the width the per-model
+                            # distance block actually has -- a pool episode may
+                            # carry fewer objectives than the config declares.
+                            number_of_objectives=(
+                                config.objective_budget or config.number_of_objectives
+                            )
+                            * 2,
                         )
                         for _ in range(config.number_of_wargame_models)
                     ]
@@ -179,6 +186,17 @@ class WargameEnv(gym.Env):
         self._game_clock = GameClock(n_rounds=config.number_of_battle_rounds)
 
         self._battle = _battle_from_config(config)
+        # Loaded and checked once: every map parsed, every polygon built, every
+        # count held against the observation budgets. A draw is then an index.
+        self._map_pool = MapPool.from_config(config)
+        self._map_name: str | None = None
+        # A drawn layout, like generated terrain below, has to exist before the
+        # first reset: network sizing reads an observation, and with a pool that
+        # observation must already be at its padded width.
+        if self._map_pool is not None:
+            layout = self._map_pool.draw(self.np_random)
+            install_layout(self._battle, config, layout)
+            self._map_name = layout.name
         # Random terrain is regenerated on every reset, but a layout has to
         # exist before the first one: network sizing reads an observation, and
         # the terrain tensor must already have its final piece count.
@@ -313,6 +331,15 @@ class WargameEnv(gym.Env):
     def terrain(self) -> "Terrain":
         """Read-only access to terrain footprints."""
         return self._battle.terrain
+
+    @property
+    def map_name(self) -> str | None:
+        """Name of the layout this episode is being played on, or None without a pool.
+
+        The only way to attribute an episode to a map once the pool is drawing
+        them, which a per-map breakdown of a training run needs.
+        """
+        return self._map_name
 
     @property
     def rules_quantities(self) -> RulesQuantities:
@@ -649,11 +676,16 @@ class WargameEnv(gym.Env):
         self._game_clock.skip_setup()
         # Clock is now at round 1, player_1, command phase
 
+        layout = None
+        if self._map_pool is not None:
+            layout = self._map_pool.draw(self.np_random)
+            self._map_name = layout.name
         place_for_episode(
             self._battle,
             self.config,
             self.np_random,
             augment_start=bool((options or {}).get("augment_start", False)),
+            layout=layout,
         )
 
         # If opponent goes first this round, auto-execute their turn and skip to player phase

@@ -8,7 +8,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from wargame_rl.wargame.envs.domain.battle import Battle
+from wargame_rl.wargame.envs.domain.battle_factory import build_objectives
 from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
+from wargame_rl.wargame.envs.domain.map_layout import MapLayout
 from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
 from wargame_rl.wargame.envs.domain.terrain import Footprint, Terrain
 from wargame_rl.wargame.envs.domain.terrain_placement import generate_terrain
@@ -688,16 +690,43 @@ def _can_host_objectives(battle: Battle, config: WargameEnvConfig) -> bool:
     return len(eligible) >= len(battle.objectives)
 
 
+def install_layout(battle: Battle, config: WargameEnvConfig, layout: MapLayout) -> None:
+    """Put a drawn layout's terrain, and its objectives if it has any, onto the battle.
+
+    Shared by `place_for_episode` and by env construction, which installs a
+    layout before the first reset so network sizing reads an observation of the
+    right shape. Both go through here so a pool episode and the very first
+    observation cannot describe different boards.
+    """
+    battle.set_terrain(layout.terrain)
+    if layout.objectives is not None:
+        battle.set_objectives(
+            build_objectives(
+                layout.objectives,
+                len(layout.objectives),
+                float(config.objective_radius_size),
+            )
+        )
+
+
 def place_for_episode(
     battle: Battle,
     config: WargameEnvConfig,
     rng: Generator,
     augment_start: bool = False,
+    layout: MapLayout | None = None,
 ) -> None:
     """Place terrain, player models, objectives, and opponent models for an episode.
 
     Uses fixed positions from config when available, otherwise random placement
     within deployment zones.
+
+    `layout` is one map drawn from a `map_pool`, already resolved by the caller —
+    the domain never reads the pool or the filesystem. Its terrain replaces the
+    board's, and its objectives, if it carries any, replace the scenario's
+    outright including their count. A layout that carries terrain alone falls
+    through to the normal objective placement, which then runs against *this*
+    layout's ruins because the terrain went in first.
 
     `augment_start` opts in to the start-state augmentation described on
     `start_group_on_objective`. It is off by default and **draws nothing from
@@ -712,6 +741,8 @@ def place_for_episode(
     # Terrain first: it is the board the rest is placed onto. Models and
     # objectives may sit inside a footprint, exactly as they may with a fixed
     # layout — a model in a ruin can still see out and be seen.
+    if layout is not None:
+        install_layout(battle, config, layout)
     if config.random_terrain is not None:
         battle.set_terrain(
             _generate_usable_terrain(
@@ -743,13 +774,20 @@ def place_for_episode(
     # config that places its own objectives -- doing otherwise moved every fixed
     # objective onto a ruin and silently changed the scenario -- and to a layout
     # with nothing to stand on.
+    #
+    # A layout that brought its own has already installed them above: they are
+    # part of the map in the same way its ruins are, and re-deriving them from
+    # the terrain would discard the placement the table actually uses.
+    brought_objectives = layout is not None and layout.objectives is not None
     required = config.objectives_on_terrain is True
     auto = (
         config.objectives_on_terrain is None
         and not config.has_fixed_objective_positions
         and _can_host_objectives(battle, config)
     )
-    if required or auto:
+    if brought_objectives:
+        pass
+    elif required or auto:
         objectives_from_terrain(
             battle.objectives,
             battle.terrain,
