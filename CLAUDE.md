@@ -35,6 +35,7 @@ wargame_rl/
 │       │   ├── domain/            # Battle aggregate, BattleView, clock, placement,
 │       │   │                      #   termination, LOS, shooting, terrain, turn execution
 │       │   ├── env_components/    # Adapters: actions, distance cache, observation builder
+│       │   ├── map_pool.py        # Draws a real table per episode from a pool of maps
 │       │   ├── baseline/          # Scripted baseline policies + registry + evaluate
 │       │   ├── debug/             # Hand-stepping a live match: undo stack, session loop
 │       │   ├── reward/            # Phase manager, calculators, criteria
@@ -103,6 +104,7 @@ wargame_rl/
 | Score a checkpoint (baseline-comparable) | `just measure-checkpoint <ckpt> <config.yaml> [n_episodes] [record]` |
 | Score on the real table layouts | `just measure-maps <policy\|ckpt> <config.yaml> [n_episodes] [maps_dir]` |
 | Why an objective was not held | `just measure-objective-split <policy\|ckpt> <config.yaml> [n_episodes]` |
+| How often a policy is in unit coherency | `just measure-coherency <policy\|ckpt> <config.yaml> [n_episodes]` |
 | Which calculator pays, and how much is global | `just measure-income-share <policy\|ckpt> <config.yaml> [n_episodes]` |
 | Two policies on identical layouts, paired per episode | `just measure-paired <policy\|ckpt> <policy\|ckpt> <config.yaml> [n_episodes] [seed_base]` |
 | Dice-vs-scenario noise floor | `just measure-noise-floor <config.yaml> [n_layouts] [n_combat_seeds] [policy]` |

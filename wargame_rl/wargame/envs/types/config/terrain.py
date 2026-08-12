@@ -100,6 +100,35 @@ class TerrainMapConfig(BaseModel):
         return self
 
 
+class MapPoolConfig(BaseModel):
+    """Draw a whole layout — terrain *and* objectives — from a set of fixed maps.
+
+    The third terrain mode, beside a fixed `terrain` list and a generated
+    `random_terrain`, and the only one that trains on real tables. A layout is
+    drawn per episode from the pool, so a run sees the distribution the maps
+    describe rather than one board or a generator's idea of one.
+
+    `names` is what splits the pool. Training on every map in `directory` leaves
+    no layout the agent has not seen, and a transfer number quoted against it
+    means nothing; naming a subset here and its complement in the evaluation
+    config keeps a held-out set. None means every map in the directory, which is
+    the right default for *evaluation* and the wrong one for training.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    directory: str = Field(
+        description="Directory of `TerrainMapConfig` YAML files, relative to the "
+        "working directory."
+    )
+    names: list[str] | None = Field(
+        default=None,
+        description="Map names to draw from, by `name` rather than filename. "
+        "None = every map in the directory. Name the split explicitly for a "
+        "training run, or it consumes the evaluation set.",
+    )
+
+
 class RandomTerrainConfig(BaseModel):
     """Regenerate terrain footprints randomly at the start of every episode.
 

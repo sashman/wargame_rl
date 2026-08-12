@@ -27,6 +27,7 @@ wargame_rl/wargame/envs/
 │   │                          #   DeploymentZone
 │   ├── game_clock.py          # Turn/phase/round logic
 │   ├── placement.py           # place_for_episode, placement helpers
+│   ├── coherency.py           # The unit coherency predicate: chain, spread, connectivity
 │   ├── termination.py         # is_battle_over, check_max_turns_reached
 │   ├── los.py                 # Sampled ray vs padded polygon blockers (vectorised)
 │   ├── sight.py               # "Can A see B?": los + terrain + blocking_mask
@@ -37,9 +38,11 @@ wargame_rl/wargame/envs/
 │   │                          #   units once, at construction
 │   ├── terrain.py             # Footprint, Terrain (LOS-blocking geometry)
 │   ├── terrain_placement.py   # generate_terrain: random per-episode layouts
+│   ├── map_layout.py          # MapLayout: one fixed layout, drawn from a pool
 │   ├── shooting.py            # Attack sequence: hit → wound → save → damage
 │   └── turn_execution.py      # run_until_player_phase, run_after_player_action
 ├── env_components/            # Adapters: actions, observation, distances, shooting masks
+├── map_pool.py                # Loads map files into MapLayouts, draws one per episode
 ├── opponent/                  # Opponent policies + registry
 ├── mission/                   # VP calculators + registry
 ├── baseline/                  # Scripted reference policies + evaluation
@@ -86,7 +89,7 @@ The env calls these; it does not reimplement their logic.
 ### Adding a new entity type
 
 1. **Define the entity** in `domain/entities.py` (or a new file under `domain/` if you prefer). Follow the same pattern as `WargameModel` / `WargameObjective`: attributes, `reset_for_episode` if it has episode state, and optionally a `to_space()` for the Gym observation space if the env needs it.
-2. **Add config** in `types/config/` — `entities.py` for a per-entity model, `terrain.py` for terrain, `battle.py` for turn order / opponent / mission, `env.py` for a scenario-level field. Keep new fields optional or default so existing YAML stays valid. `__init__.py` re-exports everything, so importers use `types.config` either way.
+2. **Add config** in `types/config/` — `entities.py` for a per-entity model, `terrain.py` for terrain, `battle.py` for turn order / opponent / mission, `coherency.py` for the coherency rule, `env.py` for a scenario-level field. Keep new fields optional or default so existing YAML stays valid. `__init__.py` re-exports everything, so importers use `types.config` either way.
 3. **Wire the factory**: in `domain/battle_factory.py`, create instances from config and attach them to the `Battle` (e.g. new list + property). If the aggregate must expose them for observation or rules, add them to `Battle` and to `BattleView`.
 4. **Observation**: if the new entity appears in the Gym observation, extend the observation types in `types/`, then in `env_components/observation_builder.py` add the mapping from `view` to that part of the observation (using `BattleView` so the builder stays view-based).
 5. **Backward compatibility**: if something used to live at envs root, keep a thin re-export from there that imports from `domain`.
@@ -99,7 +102,7 @@ Add a frozen dataclass (or Pydantic model) in `domain/value_objects.py`. Use it 
 
 Placement is in `domain/placement.py`. To add a new strategy (e.g. by scenario name), extend `place_for_episode` or add a helper that it calls, using `Battle` and config only. The env continues to call `place_for_episode(_battle, config, rng)` after `_battle.reset_for_episode()` and clock reset. Do not put placement logic in `wargame.py`.
 
-Terrain follows the same pattern: `place_for_episode` calls `generate_terrain` from `domain/terrain_placement.py` and installs the result via `Battle.set_terrain` when the config sets `random_terrain`. LOS resolves terrain through the aggregate on every query, so a replacement takes effect immediately with no cache to invalidate.
+Terrain follows the same pattern, and there are three mutually exclusive modes. A fixed `terrain` list is built once by the factory. With `random_terrain`, `place_for_episode` calls `generate_terrain` from `domain/terrain_placement.py` and installs the result via `Battle.set_terrain`. With `map_pool`, the *env* draws a `MapLayout` and passes it in as `place_for_episode(..., layout=...)`, which installs its terrain and — when the map carries them — its objectives via `Battle.set_objectives`. Loading map files is the env layer's job (`envs/map_pool.py`) precisely so `domain/` never touches the filesystem: it only ever sees a `MapLayout`, which is a domain value. LOS resolves terrain through the aggregate on every query, so a replacement takes effect immediately with no cache to invalidate.
 
 ### Adding termination conditions
 

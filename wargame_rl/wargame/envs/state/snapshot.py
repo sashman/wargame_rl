@@ -644,7 +644,17 @@ def validate_snapshot(
             f"Expected {config.number_of_opponent_models} opponent models, "
             f"got {len(snapshot.opponent_models)}"
         )
-    if len(snapshot.objectives) != config.number_of_objectives:
+    # A `map_pool` draws a layout per episode and each map brings its own
+    # objectives, so the count is a property of the drawn map rather than of the
+    # config. The budget is then the only fixed bound there is to check against.
+    if config.map_pool is not None:
+        budget = config.objective_budget
+        if budget is not None and len(snapshot.objectives) > budget:
+            errors.append(
+                f"Expected at most {budget} objectives (objective_budget), "
+                f"got {len(snapshot.objectives)}"
+            )
+    elif len(snapshot.objectives) != config.number_of_objectives:
         errors.append(
             f"Expected {config.number_of_objectives} objectives, "
             f"got {len(snapshot.objectives)}"

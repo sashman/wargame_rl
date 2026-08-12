@@ -5,6 +5,7 @@ This module contains all the type definitions used throughout the wargame enviro
 """
 
 from .config import (
+    MapPoolConfig,
     MissionConfig,
     ModelConfig,
     ObjectiveConfig,
@@ -41,6 +42,7 @@ __all__ = [
     "OpponentPolicyConfig",
     "PlayerSide",
     "SetupPhase",
+    "MapPoolConfig",
     "RandomTerrainConfig",
     "TerrainMapConfig",
     "TerrainPieceConfig",

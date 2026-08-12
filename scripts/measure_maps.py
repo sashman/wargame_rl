@@ -69,10 +69,12 @@ def config_for_map(
 ) -> WargameEnvConfig:
     """Copy `base_config` with this map's terrain, and objectives, in place of its own.
 
-    `random_terrain` is cleared as well as `terrain` set: the two are mutually
-    exclusive, and leaving the generator on would regenerate a layout at reset
-    and discard the map entirely — scoring the training distribution while
-    printing a map's name.
+    **Every other terrain mode is cleared, not just `terrain` set.** All three
+    are mutually exclusive, and leaving either of the others on would replace
+    the layout at reset and discard the map entirely — scoring the training
+    distribution while printing a map's name. The failure is silent and it looks
+    exactly like a real result: with `map_pool` left on, all 45 rows come back
+    byte-identical, because every row scored the same drawn sequence.
 
     A map that carries objectives replaces the scenario's, including its
     `number_of_objectives`: the real layouts put six on the table, and a map's
@@ -83,6 +85,7 @@ def config_for_map(
     config = cast(WargameEnvConfig, base_config.model_copy(deep=True))
     config.terrain = list(terrain_map.terrain)
     config.random_terrain = None
+    config.map_pool = None
     config.render_mode = None
     if terrain_map.objectives is not None:
         config.objectives = list(terrain_map.objectives)
