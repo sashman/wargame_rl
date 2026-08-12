@@ -293,6 +293,13 @@ measure-paired policy_a policy_b env_config n_episodes='100' seed_base='700000':
 measure-objective-split policy env_config n_episodes='100':
 	@uv run python -m scripts.measure_objective_split {{policy}} {{env_config}} {{n_episodes}}
 
+# How often a policy is in unit coherency (rules 03-moving.md), which this env
+# does not enforce. Measures both forces, at the rules' 2"/9" and at the config's
+# own group_max_distance, so the cost of adopting the rule is known before any
+# mechanism is built. Takes a baseline name or a checkpoint path.
+measure-coherency policy env_config n_episodes='30':
+	@uv run python -m scripts.measure_coherency {{policy}} {{env_config}} {{n_episodes}}
+
 # How much of a config's outcome spread is dice rather than policy. Holds the
 # layouts fixed and varies only the combat seed, so the within-layout spread is
 # the noise floor any arm-to-arm difference has to clear.
