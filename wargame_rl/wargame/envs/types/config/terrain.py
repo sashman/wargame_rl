@@ -70,14 +70,14 @@ class TerrainMapConfig(BaseModel):
         description="The layout's objectives, replacing the scenario's own and "
         "setting `number_of_objectives` to this length. Optional, so a map that "
         "carries terrain alone keeps scoring under the scenario's own objective "
-        "placement. Every entry must be positioned: a map's objectives are part "
-        "of the layout, and a randomly placed one would make the map's rows "
-        "differ run to run.",
+        "placement. Every entry must be determined — an `area` outline or x/y — "
+        "since a map's objectives are part of the layout and a randomly placed "
+        "one would make the map's rows differ run to run.",
     )
 
     @model_validator(mode="after")
-    def objectives_are_positioned(self) -> "TerrainMapConfig":
-        """Reject an objective without coordinates.
+    def objectives_are_determined(self) -> "TerrainMapConfig":
+        """Reject an objective with neither an area nor coordinates.
 
         A fixed map exists so a row means the same thing every time it is run.
         A random objective inside one would reintroduce exactly the variance the
@@ -87,11 +87,15 @@ class TerrainMapConfig(BaseModel):
         """
         if self.objectives is None:
             return self
-        missing = [i for i, o in enumerate(self.objectives) if o.x is None]
-        if missing:
+        undetermined = [
+            i
+            for i, objective in enumerate(self.objectives)
+            if objective.x is None and objective.area is None
+        ]
+        if undetermined:
             raise ValueError(
-                f"map '{self.name}': objectives {missing} have no x/y; every "
-                "objective in a fixed map must be positioned"
+                f"map '{self.name}': objectives {undetermined} have neither an "
+                "area nor x/y; every objective in a fixed map must be determined"
             )
         return self
 

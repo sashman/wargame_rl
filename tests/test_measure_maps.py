@@ -39,6 +39,16 @@ objectives:
   - { x: 48.16, y: 26.55 }
 """
 
+MAP_WITH_AREA_OBJECTIVES_YAML = """
+name: table_03
+terrain:
+  - { footprint: [12, 8, 18, 14] }
+  - { footprint: [27, 20, 33, 26] }
+objectives:
+  - area: [[12, 8], [19, 8], [19, 15], [12, 15]]
+  - area: [[27, 20], [34, 20], [34, 27], [27, 27]]
+"""
+
 SHIPPED_MAPS = Path(__file__).resolve().parents[1] / "configs" / "evaluation" / "maps"
 
 
@@ -170,13 +180,38 @@ def test_map_objectives_survive_to_the_board() -> None:
         env.close()
 
 
-def test_an_objective_without_coordinates_is_rejected() -> None:
+def test_an_undetermined_objective_is_rejected() -> None:
     """One bare entry would silently randomise every objective on the map."""
-    with pytest.raises(ValueError, match="must be positioned"):
+    with pytest.raises(ValueError, match="must be determined"):
         parse_yaml_raw_as(
             TerrainMapConfig,
             "name: t\nterrain: []\nobjectives:\n  - { x: 5, y: 5 }\n  - {}\n",
         )
+
+
+def test_area_objectives_are_the_ground_and_do_not_move() -> None:
+    """The shipped maps make each objective a ruin, so it is placed by its outline.
+
+    An area is not *placed* — `objective_placement` skips it and its location is
+    the outline's centroid — so the guard is that a reseed leaves it alone. A
+    regression here would draw a fresh centre and move the marker off its own
+    ground while leaving the area behind.
+    """
+    base = _scenario_with_random_terrain()
+    terrain_map = parse_yaml_raw_as(TerrainMapConfig, MAP_WITH_AREA_OBJECTIVES_YAML)
+
+    config = config_for_map(base, terrain_map)
+    assert config.number_of_objectives == 2
+
+    env = create_environment(env_config=config)
+    try:
+        env.reset(seed=700_000)
+        assert all(objective.is_area for objective in env.objectives)
+        before = [tuple(objective.location) for objective in env.objectives]
+        env.reset(seed=700_001)
+        assert [tuple(o.location) for o in env.objectives] == before
+    finally:
+        env.close()
 
 
 def test_a_preview_renders_from_the_map_file(tmp_path: Path) -> None:
@@ -199,15 +234,32 @@ def test_a_preview_renders_from_the_map_file(tmp_path: Path) -> None:
         assert image.height > 0
 
 
-def test_every_shipped_map_carries_its_six_objectives() -> None:
-    """The 45 real layouts all have the full marker set, on the board."""
+def test_every_shipped_map_objective_is_one_of_its_ruins() -> None:
+    """The 45 real layouts make each objective the ground a marker sits on.
+
+    Six markers per layout, but the two centre ones share the board's largest
+    ruin on 24 of the 45, and one piece of ground is held once — so a map
+    carries five or six objectives and each outline must be a terrain piece it
+    actually has. An outline that matched nothing would mean a marker was
+    attributed to the wrong ruin.
+    """
     maps = load_maps(SHIPPED_MAPS)
 
     assert len(maps) == 45
+    sizes = set()
     for terrain_map in maps:
         assert terrain_map.objectives is not None, terrain_map.name
-        assert len(terrain_map.objectives) == 6, terrain_map.name
+        sizes.add(len(terrain_map.objectives))
+        pieces = {
+            tuple(map(tuple, piece.to_polygon().vertices))
+            for piece in terrain_map.terrain
+        }
+        outlines = []
         for objective in terrain_map.objectives:
-            assert objective.x is not None and objective.y is not None
-            assert 0 <= objective.x < 60, terrain_map.name
-            assert 0 <= objective.y < 44, terrain_map.name
+            area = objective.to_polygon()
+            assert area is not None, terrain_map.name
+            outline = tuple(map(tuple, area.vertices))
+            assert outline in pieces, terrain_map.name
+            outlines.append(outline)
+        assert len(set(outlines)) == len(outlines), f"{terrain_map.name}: duplicate"
+    assert sizes == {5, 6}

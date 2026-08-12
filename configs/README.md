@@ -59,15 +59,22 @@ terrain:
   - { footprint: [12, 8, 18, 14] }
   - { footprint: [27, 20, 33, 26] }
 objectives:
-  - { x: 11.86, y: 17.45 }
-  - { x: 24.79, y: 24.08 }
+  - area: [[12, 8], [19, 8], [19, 15], [12, 15]]
 ```
 
-Every objective in a map must be positioned — a fixed map exists so a row means
-the same thing each run, and `place_for_episode` honours fixed positions only
-when *all* of them have coordinates, so one bare entry would silently randomise
-the lot. All 45 maps carry the six objectives of the layout they were traced
-from: one home per side, two centre, two in no man's land.
+Every objective must be *determined* — an `area` outline or x/y — because a
+fixed map exists so a row means the same thing each run, and one undetermined
+entry would silently randomise the lot (`place_for_episode` honours fixed
+positions only when all of them have coordinates).
+
+**On the real layouts the objective is the ground.** Every one of the 270
+markers sits inside exactly one ruin, so each objective is that ruin's outline:
+an area objective, held by standing on it, which is the rules' terrain
+objective rather than an abstract disc floating over the same footprint. The
+layouts print six markers — one home per side, two centre, two in no man's land
+— but on 24 of the 45 the two centre markers share the board's largest ruin,
+and one piece of ground is held once. Those maps carry five objectives; the
+other 21 carry six.
 
 `just measure-maps <ckpt> configs/golden/25v25_shooting_opponent.yaml` runs the
 golden scenario unchanged and swaps only the layout — `terrain`, plus
@@ -79,7 +86,7 @@ the same maps, which is what it is for.
 
 **The bar saturates on six objectives, so the per-map spread no longer finds
 hard layouts.** On `25v25_shooting_opponent.yaml`, `squad_march_shoot` wins
-**every one of the 45 maps** (`held` 4.11 of 6, `alive` 0.77); the same maps
+**every one of the 45 maps** (`held` 3.67, `alive` 0.69); the same maps
 with terrain only and three random objectives win 0.70 with a −70..+100
 vp_margin spread and `alive` 0.40. Dropping the two home objectives does not
 recover it (still win 1.00 on all ten sampled), so this is not the deployment

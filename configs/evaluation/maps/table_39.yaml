@@ -17,12 +17,13 @@ terrain:
   - outline: [[5.21, 5.14], [16.29, 5.14], [16.29, 12.41], [5.21, 12.41]]
   - outline: [[15.14, 22.30], [15.14, 16.21], [19.15, 16.21], [19.15, 22.30]]
 
-# Objective placements recovered from the layout this map was traced from.
-# Six markers: one home per side, two centre, two in no man's land.
+# The objectives are the ground itself: each is the outline of the ruin
+# the layout puts a marker on. Two markers on one ruin merge — that
+# ground is held once.
 objectives:
-  - { x: 10.66, y: 34.2 }  # no man's land
-  - { x: 10.82, y: 8.67 }  # home (defender side)
-  - { x: 25.98, y: 24.27 }  # centre
-  - { x: 34.0, y: 19.73 }  # centre
-  - { x: 49.2, y: 35.33 }  # home (attacker side)
-  - { x: 49.32, y: 9.8 }  # no man's land
+  - area: [[7.14, 39.79], [7.14, 28.71], [14.41, 28.71], [14.41, 39.79]]  # no man's land
+  - area: [[5.21, 5.14], [16.29, 5.14], [16.29, 12.41], [5.21, 12.41]]  # home (defender side)
+  - area: [[23.2, 18.49], [32.39, 26.96], [31.91, 28.82], [21.25, 25.96]]  # centre
+  - area: [[28.09, 15.18], [38.75, 18.04], [36.8, 25.51], [27.61, 17.04]]  # centre
+  - area: [[54.79, 38.86], [43.71, 38.86], [43.71, 31.59], [54.79, 31.59]]  # home (attacker side)
+  - area: [[52.86, 4.21], [52.86, 15.29], [45.59, 15.29], [45.59, 4.21]]  # no man's land

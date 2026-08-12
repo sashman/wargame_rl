@@ -75,16 +75,32 @@ def render_map(
         draw.polygon(points, fill=palette.terrain_fill, outline=palette.terrain_outline)
 
     radius = base_config.objective_radius_size
+    wash = (*palette.player_control, palette.area_wash_alpha)
     for objective in terrain_map.objectives or []:
-        assert objective.x is not None and objective.y is not None
-        size = (objective.radius_size or radius) * scale
-        centre = px(objective.x, objective.y)
-        draw.ellipse(
-            [centre[0] - size, centre[1] - size, centre[0] + size, centre[1] + size],
-            fill=(*palette.player_control, palette.area_wash_alpha),
-            outline=palette.objective_rim,
-            width=2,
-        )
+        area = objective.to_polygon()
+        if area is not None:
+            draw.polygon(
+                [px(x, y) for x, y in area.vertices],
+                fill=wash,
+                outline=palette.objective_rim,
+                width=2,
+            )
+            centre = px(*area.centroid)
+        else:
+            assert objective.x is not None and objective.y is not None
+            size = (objective.radius_size or radius) * scale
+            centre = px(objective.x, objective.y)
+            draw.ellipse(
+                [
+                    centre[0] - size,
+                    centre[1] - size,
+                    centre[0] + size,
+                    centre[1] + size,
+                ],
+                fill=wash,
+                outline=palette.objective_rim,
+                width=2,
+            )
         draw.ellipse(
             [centre[0] - 3, centre[1] - 3, centre[0] + 3, centre[1] + 3],
             fill=palette.objective_rim,
