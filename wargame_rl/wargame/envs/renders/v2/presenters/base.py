@@ -91,13 +91,22 @@ class BasePresenter(Renderer):
         self._scale = min(GRID_SIZE / self._board_w, GRID_SIZE / self._board_h)
         self._recompute_layout()
 
+    def _reserved_width(self) -> int:
+        """Window width claimed by something other than the board.
+
+        Zero for every presenter that draws only the board and the two HUD rows.
+        The debug presenter reserves a side panel here, which is what keeps the
+        board from being drawn underneath it.
+        """
+        return 0
+
     def _recompute_layout(self) -> None:
         self._canvas_w = math.ceil(self._scale * self._board_w)
         self._canvas_h = math.ceil(self._scale * self._board_h)
         north = self._theme.north_panel_h
         self._top_h = 2 * north
         south = self._theme.south_panel_rows * north
-        self._window_w = self._canvas_w
+        self._window_w = self._canvas_w + self._reserved_width()
         self._window_h = self._canvas_h + self._top_h + south
         self._offset_x = 0
         self._offset_y = self._top_h
@@ -333,6 +342,59 @@ class BasePresenter(Renderer):
             + 12
         )
         self._draw_round_track(frame, left, y, hud.round, hud.n_rounds)
+        after_turn = self._draw_turn_order(frame, hud, left + _TRACK_W + 14, y)
+        self._draw_undo_depth(frame, hud, after_turn + 16, y)
+
+    def _draw_undo_depth(self, frame: Canvas, hud: HudData, x: int, y: int) -> None:
+        """How many steps are available to rewind, labelled with the key itself.
+
+        Dim at zero, which is the whole point: pressing the key then is a no-op,
+        and the readout says so *before* it is pressed rather than logging it
+        somewhere the user is not looking. Right-aligned in a three-digit slot so
+        the field does not jitter as the history grows.
+        """
+        if hud.undo_depth is None:
+            return
+        pal = self._theme.palette
+        self._text(frame, "[,]", (x, y), _CHIP_SIZE, self._dim(), "midleft")
+        key_w = self._tsize("[,] ", _CHIP_SIZE)[0]
+        slot_w = self._tsize("000", _CHIP_SIZE)[0]
+        self._text(
+            frame,
+            str(hud.undo_depth),
+            (x + key_w + slot_w, y),
+            _CHIP_SIZE,
+            pal.text if hud.undo_depth else self._dim(),
+            "midright",
+        )
+
+    def _draw_turn_order(self, frame: Canvas, hud: HudData, x: int, y: int) -> int:
+        """Who takes the first turn of each round, in a fixed two-slot field.
+
+        Deliberately *order* rather than "whose turn is it now": the opponent's
+        whole turn runs inside the player's `step()`, so every frame ever drawn
+        is one where the player is next and a live indicator would be a constant.
+        Order is the part that varies — under `turn_order: random` the player's
+        side is re-rolled each reset — and it answers the question that matters
+        while paused: whether the positions on screen already include the
+        opponent's reply to this round, or come before it.
+
+        Returns the x the field ends at, so what follows can sit beside it.
+        """
+        if hud.player_acts_first is None:
+            return x
+        pal = self._theme.palette
+        first, second = (
+            (("YOU", pal.hud_player), ("OPP", pal.hud_opponent))
+            if hud.player_acts_first
+            else (("OPP", pal.hud_opponent), ("YOU", pal.hud_player))
+        )
+        self._text(frame, first[0], (x, y), _CHIP_SIZE, first[1], "midleft", True)
+        arrow_x = x + self._tsize("YOU ", _CHIP_SIZE, bold=True)[0]
+        self._text(frame, ">", (arrow_x, y), _CHIP_SIZE, self._dim(), "midleft")
+        second_x = arrow_x + self._tsize("> ", _CHIP_SIZE)[0]
+        self._text(frame, second[0], (second_x, y), _CHIP_SIZE, second[1], "midleft")
+        return second_x + self._tsize(second[0], _CHIP_SIZE)[0]
 
     def _draw_round_track(
         self, frame: Canvas, x: int, y: int, played: int, total: int

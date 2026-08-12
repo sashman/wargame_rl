@@ -9,6 +9,7 @@ while looking perfectly reasonable on screen.
 
 from __future__ import annotations
 
+import math
 import os
 from typing import Any
 
@@ -26,15 +27,29 @@ from wargame_rl.wargame.envs.debug import (  # noqa: E402
     capture_state,
     run_session,
 )
+from wargame_rl.wargame.envs.debug.session import record_moves  # noqa: E402
 from wargame_rl.wargame.envs.domain.battle_view import BattleView  # noqa: E402
 from wargame_rl.wargame.envs.renders.human import QuitRequested  # noqa: E402
 from wargame_rl.wargame.envs.renders.renderer import Renderer  # noqa: E402
+from wargame_rl.wargame.envs.renders.v2.control import (  # noqa: E402
+    compute_objective_control,
+)
 from wargame_rl.wargame.envs.renders.v2.factory import build_backend  # noqa: E402
 from wargame_rl.wargame.envs.renders.v2.presenters.debug import (  # noqa: E402
+    OPPONENT,
+    PANEL_W,
     PAUSED_POLL_FPS,
+    PLAYER,
     DebugControls,
     DebugPresenter,
 )
+from wargame_rl.wargame.envs.renders.v2.presenters.interactive import (  # noqa: E402
+    InteractiveRenderer,
+)
+from wargame_rl.wargame.envs.renders.v2.presenters.recording import (  # noqa: E402
+    RecordingRenderer,
+)
+from wargame_rl.wargame.envs.renders.v2.scene import build_scene  # noqa: E402
 from wargame_rl.wargame.envs.types import (  # noqa: E402
     WargameEnvAction,
     WargameEnvConfig,
@@ -42,6 +57,7 @@ from wargame_rl.wargame.envs.types import (  # noqa: E402
 from wargame_rl.wargame.envs.types.config import (  # noqa: E402
     ModelConfig,
     OpponentPolicyConfig,
+    TurnOrder,
     WeaponProfile,
 )
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase  # noqa: E402
@@ -407,6 +423,254 @@ def test_escape_still_quits(
     _press(presenter, env, pygame.K_ESCAPE)
     with pytest.raises(QuitRequested):
         presenter.render(env)
+
+
+# --- The inspector panel ----------------------------------------------------
+
+
+def _px(presenter: DebugPresenter, model: object) -> tuple[int, int]:
+    """Window pixel at a model's board location — the inverse of the hit test."""
+    location = model.location  # type: ignore[attr-defined]
+    return (
+        int(presenter._offset_x + location[0] * presenter._scale),
+        int(presenter._offset_y + location[1] * presenter._scale),
+    )
+
+
+def test_the_panel_is_reserved_not_drawn_over_the_board() -> None:
+    """A debugger that hides what is being debugged is worse than a narrow board.
+
+    Guards the layout hook: without `_reserved_width`, the window is board-width
+    and the panel is painted on top of the right-hand third of the table.
+    """
+    controls = DebugControls()
+    presenter = DebugPresenter(build_backend("pillow"), controls)
+    plain = InteractiveRenderer(build_backend("pillow"))
+    env = _env()
+    env.reset(seed=0)
+    presenter.setup(env)
+    plain.setup(env)
+
+    assert presenter._window_w == plain._window_w + PANEL_W
+    assert presenter._canvas_w == plain._canvas_w  # the board is not shrunk
+    assert presenter._offset_x + presenter._canvas_w <= presenter._window_w - PANEL_W
+
+
+def test_clicking_selects_a_model_on_either_side() -> None:
+    """Half the reason to open a debugger is to ask what the *opponent* did."""
+    controls = DebugControls()
+    presenter = DebugPresenter(build_backend("pillow"), controls)
+    env = _env()
+    env.reset(seed=0)
+    presenter.setup(env)
+
+    presenter._handle_click(env, *_px(presenter, env.player_models[1]))
+    assert controls.selected == (PLAYER, 1)
+
+    presenter._handle_click(env, *_px(presenter, env.opponent_models[2]))
+    assert controls.selected == (OPPONENT, 2)
+
+
+def test_clicking_the_panel_does_not_select() -> None:
+    """The hit test is board-only, so a click on the panel clears the selection."""
+    controls = DebugControls(selected=(PLAYER, 0))
+    presenter = DebugPresenter(build_backend("pillow"), controls)
+    env = _env()
+    env.reset(seed=0)
+    presenter.setup(env)
+
+    presenter._handle_click(env, presenter._window_w - 10, presenter._top_h + 40)
+
+    assert controls.selected is None
+
+
+def test_escape_deselects_before_it_quits(
+    presenter_and_env: tuple[DebugPresenter, DebugControls, WargameEnv],
+) -> None:
+    """Otherwise the only way to undo a click is to leave the session."""
+    import pygame
+
+    presenter, controls, env = presenter_and_env
+    controls.selected = (PLAYER, 0)
+
+    _press(presenter, env, pygame.K_ESCAPE)
+    assert controls.selected is None
+    assert not presenter._should_quit
+
+    _press(presenter, env, pygame.K_ESCAPE)
+    assert presenter._should_quit
+
+
+def test_the_panel_shows_the_selected_model(
+    presenter_and_env: tuple[DebugPresenter, DebugControls, WargameEnv],
+) -> None:
+    """Selecting must change what the reserved column draws, and two different
+    models must not draw the same thing."""
+    presenter, controls, env = presenter_and_env
+    env.step(
+        selector_for(build_baseline_policy("squad_march_shoot"))(env.observation, env)
+    )
+
+    def panel() -> np.ndarray:
+        frame = presenter._backend.to_rgb_array(presenter._compose_with_tooltip(env))
+        return np.asarray(frame[presenter._top_h :, presenter._window_w - PANEL_W :])
+
+    empty = panel()
+    controls.selected = (PLAYER, 0)
+    first = panel()
+    controls.selected = (PLAYER, 1)
+    second = panel()
+
+    assert not np.array_equal(empty, first)
+    assert not np.array_equal(first, second)
+
+
+def test_a_move_record_measures_the_gap_from_the_action_it_asked_for() -> None:
+    """Intended-versus-actual is the field nothing else in the renderer shows.
+
+    A move the board and its neighbours leave alone lands exactly on the action's
+    own vector; `resolve_move` displacement is the difference.
+    """
+    env = _env()
+    env.reset(seed=1234)
+    action = selector_for(build_baseline_policy("squad_march"))(env.observation, env)
+    before = [(float(m.location[0]), float(m.location[1])) for m in env.player_models]
+
+    env.step(action)
+    moves = record_moves(env, action, before)
+
+    assert set(moves) == set(range(len(env.player_models)))
+    for index, move in moves.items():
+        expected = math.dist(move.intended, move.actual)
+        assert move.gap == pytest.approx(expected)
+        # Nothing may end further from its intent than one full move.
+        assert move.gap <= env.config.max_move_speed
+    assert any(m.text != "Stay" for m in moves.values())
+
+
+def test_stepping_back_restores_the_moves_that_belong_to_that_step() -> None:
+    """Move records live on the controls, not in the env, so the rewind has to
+    carry them too — otherwise the panel describes a step that was just undone."""
+    # Movement-only, so consecutive steps both write records. With the default
+    # phases the second step is *shooting*, which writes none — and the test then
+    # compares a step against itself and passes for the wrong reason.
+    env = _env(
+        skip_phases=[
+            BattlePhase.command,
+            BattlePhase.shooting,
+            BattlePhase.charge,
+            BattlePhase.fight,
+        ]
+    )
+    controls = DebugControls()
+    select = selector_for(build_baseline_policy("squad_march"))
+    seen: list[dict[int, object]] = []
+
+    class _Recorder(_ScriptedRenderer):
+        def render(self, view: BattleView) -> None:
+            seen.append(dict(controls.moves))
+            super().render(view)
+
+    renderer = _Recorder(controls, [_step, _step, _back, None])
+    run_session(env, renderer, controls, select, seed=1234)
+
+    # Frames: initial, after step 1, after step 2, after the rewind.
+    assert seen[1] != seen[2]  # each movement step wrote its own records
+    assert seen[3] == seen[1]  # the rewind put step 1's back
+
+
+def test_a_dead_model_earns_nothing_which_is_why_the_panel_says_so() -> None:
+    """Pins the claim the panel prints beside a 0.000.
+
+    `phase_manager` iterates *alive* models, so a model that killed and died in
+    the same step earns nothing for the kill. Shown bare that reads as broken
+    reward plumbing, so the note is load-bearing — and so is this test, which
+    would fail if the reward loop ever started paying casualties.
+    """
+    env = _env()
+    env.reset(seed=1234)
+    # The casualty is arranged rather than shot for, so the test asserts the
+    # reward rule instead of depending on the dice going a particular way.
+    env.player_models[0].stats["current_wounds"] = 0
+    assert not env.player_models[0].is_alive
+
+    select = selector_for(build_baseline_policy("squad_march"))
+    # Step on until a survivor is actually paid something: on a step where the
+    # whole army earns zero, "the dead model earned zero" proves nothing.
+    for _ in range(6):
+        env.step(select(env.observation, env))
+        if any(env.last_per_model_reward[i] != 0.0 for i in (1, 2)):
+            break
+
+    assert any(env.last_per_model_reward[i] != 0.0 for i in (1, 2)), "check is vacuous"
+    assert env.last_per_model_reward[0] == 0.0
+
+
+def test_the_hud_reports_turn_order_not_whose_turn_it_is() -> None:
+    """The clock zone says who takes the *first* turn of a round.
+
+    "Whose turn is it now" has one answer in every frame ever drawn: the
+    opponent's whole turn executes inside the player's `step()`, so the clock is
+    always parked back on a player phase before anything is composed. Asserted
+    here rather than trusted, because an indicator that silently reads the same
+    on every frame is worse than none — and the derivation of turn order rests
+    on exactly this invariant.
+    """
+    for order, acts_first in (
+        (TurnOrder.player, True),
+        (TurnOrder.opponent, False),
+    ):
+        env = _env(turn_order=order)
+        env.reset(seed=5)
+        select = selector_for(build_baseline_policy("squad_march"))
+
+        for _ in range(4):
+            state = env.game_clock_state
+            assert state.active_player is env._player_side, "clock left mid-opponent"
+            scene = build_scene(env, compute_objective_control(env), scale=10.0)
+            assert scene.hud.player_acts_first is acts_first
+            env.step(select(env.observation, env))
+
+
+def test_the_rewind_depth_readout_tracks_the_real_history() -> None:
+    """The readout exists because "nothing to step back to" was invisible.
+
+    A real session logged that message twelve times to a terminal nobody was
+    watching, so the count is drawn in the window instead. It is only worth
+    anything if it matches the stack it claims to describe — including reading
+    zero at the start, which is exactly when pressing the key does nothing.
+    """
+    env = _env()
+    controls = DebugControls()
+    select = selector_for(build_baseline_policy("squad_march"))
+    depths: list[int] = []
+
+    class _Recorder(_ScriptedRenderer):
+        def render(self, view: BattleView) -> None:
+            depths.append(controls.undo_depth)
+            super().render(view)
+
+    renderer = _Recorder(controls, [_step, _step, _step, _back, _back, None])
+    run_session(env, renderer, controls, select, seed=7)
+
+    # One frame before each scripted action — start empty, three pushed, two
+    # popped — then the frame that quits, which sees the settled depth.
+    assert depths == [0, 1, 2, 3, 2, 1, 1]
+
+
+def test_the_depth_readout_is_drawn_only_where_rewinding_is_possible() -> None:
+    """A recording cannot rewind, so it must not advertise a key that does not
+    exist there — the same reason `key_map()` is empty for it."""
+    env = _env()
+    env.reset(seed=0)
+    controls = DebugControls(undo_depth=4)
+    debug = DebugPresenter(build_backend("pillow"), controls)
+    recording = RecordingRenderer(build_backend("pillow"))
+    debug.setup(env)
+    recording.setup(env)
+
+    assert debug._scene_for(env).hud.undo_depth == 4
+    assert recording._scene_for(env).hud.undo_depth is None
 
 
 def test_a_checkpointless_session_needs_no_torch() -> None:

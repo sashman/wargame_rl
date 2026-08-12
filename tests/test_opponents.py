@@ -323,7 +323,7 @@ class TestActionHandlerExtensions:
         cfg = _make_no_opponent_config()
         handler = ActionHandler(cfg)
         action = handler.best_action_toward(10.0, 0.0, max_step_length=2.0)
-        disp = handler._decode_action(action)
+        disp = handler.decode_action(action)
         assert np.linalg.norm(disp) <= 2.0 + 1e-6
 
     def test_best_action_toward_small_max_step_length_uses_min_speed(self) -> None:
@@ -332,7 +332,7 @@ class TestActionHandlerExtensions:
         handler = ActionHandler(cfg)
         action = handler.best_action_toward(1.0, 0.0, max_step_length=0.5)
         assert action != STAY_ACTION
-        disp = handler._decode_action(action)
+        disp = handler.decode_action(action)
         assert np.linalg.norm(disp) >= 1.0
 
 

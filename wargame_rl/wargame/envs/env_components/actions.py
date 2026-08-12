@@ -291,7 +291,7 @@ class ActionHandler:
             )
         return self._action_space
 
-    def _decode_action(self, action: int) -> np.ndarray:
+    def decode_action(self, action: int) -> np.ndarray:
         """Return the (dx, dy) displacement for *action*."""
         if action == STAY_ACTION:
             return zero_position()
@@ -396,7 +396,7 @@ class ActionHandler:
             ):
                 continue
             model.previous_location = model.location.copy()
-            displacement = self._decode_action(act)
+            displacement = self.decode_action(act)
             if not collides:
                 model.location = np.clip(model.location + displacement, lower, upper)
                 continue

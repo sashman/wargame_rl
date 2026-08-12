@@ -31,7 +31,7 @@ from wargame_rl.wargame.envs.renders.v2.scene import (
 )
 from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME, Theme
 from wargame_rl.wargame.envs.state.snapshot import GameStateSnapshot
-from wargame_rl.wargame.envs.types.game_timing import BattlePhase
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase, PlayerSide
 from wargame_rl.wargame.envs.types.geometry import Polygon
 
 if TYPE_CHECKING:
@@ -53,6 +53,10 @@ Point = tuple[float, float]
 class _ClockView:
     battle_round: int | None
     phase: BattlePhase | None
+    # The side that was active when the snapshot was taken — which is the
+    # player's own, since a step always leaves the clock on a player phase. It
+    # is what the HUD reads to say who takes the first turn of a round.
+    active_player: PlayerSide | None
 
 
 @dataclass(frozen=True)
@@ -216,6 +220,11 @@ def _snapshot_to_view(snapshot: GameStateSnapshot) -> _SnapshotView:
         game_clock_state=_ClockView(
             battle_round=snapshot.clock.battle_round,
             phase=BattlePhase(phase) if phase else None,
+            active_player=(
+                PlayerSide(snapshot.clock.active_player)
+                if snapshot.clock.active_player
+                else None
+            ),
         ),
         player_vp=snapshot.player_vp,
         player_vp_delta=snapshot.player_vp_delta,
