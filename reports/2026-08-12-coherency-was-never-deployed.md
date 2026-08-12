@@ -146,30 +146,30 @@ measured — n=100, seeds 700000+, identical layouts:
 
 | policy | deploy only | `revert_unit` | `revert_model` |
 |---|---|---|---|
-| `random` | −122.3 | −123.8 | −122.6 |
-| `greedy_nearest` | −52.2 | −33.9 | −35.7 |
-| **`split_evenly`** | **−41.3** | **−99.8** | **−48.7** |
-| `squad_march` | −3.6 | +0.9 | −0.5 |
-| **`squad_march_shoot` (bar)** | **+58.9** | **+48.9** | **+46.8** |
-| `contest_and_spread` | +39.3 | +39.6 | +33.1 |
+| `random` | −122.3 | −119.0 | −122.3 |
+| `greedy_nearest` | −52.2 | −27.9 | −35.2 |
+| **`split_evenly`** | **−41.3** | **−97.6** | **−47.7** |
+| `squad_march` | −3.6 | +0.9 | −1.0 |
+| **`squad_march_shoot` (bar)** | **+58.9** | **+44.2** | **+41.5** |
+| `contest_and_spread` | +39.3 | +41.7 | +32.1 |
 
 **1. Enforcing the move is a tax, where deploying legally was a bonus.** The bar
-gives back ~10–12 of the +20.9 that coherent deployment bought. At n=100
+gives back ~15–17 of the +20.9 that coherent deployment bought. At n=100
 *unpaired* this config resolves ~10–18 vp, so the direction is clear and the
 magnitude is not — pairing across configs would be needed to quote a number.
 
-**2. The two modes are not distinguishable on the bar.** 48.9 against 46.8 is
-2.1 apart, far inside noise. Reading that as a winner is reading noise.
+**2. The two modes are not distinguishable on the bar.** 44.2 against 41.5 is
+2.7 apart, far inside noise. Reading that as a winner is reading noise.
 
 **3. The undo cliff is real, and it lands exactly where it was predicted to.**
 `split_evenly` sends model *i* to objective *i mod n*, shattering every squad by
-construction. Under `revert_unit` it collapses **−41.3 → −99.8**, far outside
-any noise, and the diagnostics say why: `on_obj` 0.831 → **0.034**, `alive`
-0.101 → **0.959**. Almost nobody arrives and almost nobody dies — **the army is
+construction. Under `revert_unit` it collapses **−41.3 → −97.6**, far outside
+any noise, and the diagnostics say why: `on_obj` 0.831 → **0.030**, `alive`
+0.101 → **0.962**. Almost nobody arrives and almost nobody dies — **the army is
 frozen**, every move cancelled, standing still. `random` shows the same
-signature (`alive` 0.979, `on_obj` 0.011). Standing still is this project's
+signature (`alive` 0.982, `on_obj` 0.013). Standing still is this project's
 worst measured failure mode (−40.4). `revert_model` halves the damage by letting
-the coherent body keep moving: a 51 vp gap between the modes on one policy.
+the coherent body keep moving: a 50 vp gap between the modes on one policy.
 
 The modes tie on competent policies and separate sharply on incompetent ones —
 and a *learning* policy starts incompetent. `revert_model` is the safer default
@@ -181,6 +181,19 @@ happen.
 model exceeds the cap from the rest, no model is within the cap of every other,
 so all are in breach and `revert_model` reverts everyone too. The modes separate
 only while a break is *local*.
+
+**A first version of this was wrong, and the numbers above are the corrected
+ones.** The naive revert put a model back onto ground another had legally taken
+— models resolve sequentially against live positions, so one may move into a
+square a lower-indexed model vacated. Two overlapping bases is *another* illegal
+state, and `03-moving.md` checks it in the same breath as coherency ("no model
+is left on top of another model", under the same "if any check fails, the move
+cannot be made"). So the enforcement was laundering one illegal state into
+another. The revert now **cascades**: a displaced model's move has failed too,
+and it goes back as well, to a fixpoint. It converges because each pass reverts
+at least one more model and the worst case is the whole force at its start,
+which is legal by construction. Every qualitative conclusion survived the fix;
+the tax grew from ~10 to ~15 vp.
 
 **And the residual confirms the spec's own priority.** With the move rule on,
 the player still sits at 0.908 of units coherent rather than 1.000 — units

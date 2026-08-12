@@ -15,33 +15,33 @@
 # THE LADDER, n=100, seeds 700000-700099, identical layouts. vp_margin:
 #
 #   policy               deploy only   revert_unit   revert_model
-#   random                    -122.3        -123.8         -122.6
-#   greedy_nearest             -52.2         -33.9          -35.7
-#   split_evenly               -41.3         -99.8          -48.7
-#   squad_march                 -3.6          +0.9           -0.5
-#   squad_march_shoot (bar)    +58.9         +48.9          +46.8
-#   contest_and_spread         +39.3         +39.6          +33.1
+#   random                    -122.3        -119.0         -122.3
+#   greedy_nearest             -52.2         -27.9          -35.2
+#   split_evenly               -41.3         -97.6          -47.7
+#   squad_march                 -3.6          +0.9           -1.0
+#   squad_march_shoot (bar)    +58.9         +44.2          +41.5
+#   contest_and_spread         +39.3         +41.7          +32.1
 #
 # THREE READINGS, in descending confidence.
 #
 # 1. Enforcing the move is a TAX, where deploying legally was a bonus. The bar
-#    gives back ~10-12 of the +20.9 that coherent deployment bought. Caveat: at
+#    gives back ~15-17 of the +20.9 that coherent deployment bought. Caveat: at
 #    n=100 *unpaired* this config resolves ~10-18 vp, so the size is at the edge
 #    of measurable -- the direction is clear, the magnitude is not.
 #
-# 2. THE TWO MODES ARE NOT DISTINGUISHABLE ON THE BAR. 48.9 v 46.8 is 2.1 apart,
+# 2. THE TWO MODES ARE NOT DISTINGUISHABLE ON THE BAR. 44.2 v 41.5 is 2.7 apart,
 #    far inside noise. Reading that as "revert_unit wins" is reading noise.
 #
 # 3. THE UNDO CLIFF IS REAL, and it lands where it was predicted to.
 #    `split_evenly` sends model i to objective i mod n, shattering every squad
-#    by construction, and under revert_unit it collapses -41.3 -> -99.8 -- far
-#    outside noise. The diagnostic columns say why: on_obj 0.831 -> 0.034 and
-#    alive 0.101 -> 0.959. Almost nobody arrives and almost nobody dies. **The
+#    by construction, and under revert_unit it collapses -41.3 -> -97.6 -- far
+#    outside noise. The diagnostic columns say why: on_obj 0.831 -> 0.030 and
+#    alive 0.101 -> 0.962. Almost nobody arrives and almost nobody dies. **The
 #    army is frozen**: every move cancelled, standing still. `random` shows the
-#    same signature (alive 0.979, on_obj 0.011). Standing still is this repo's
+#    same signature (alive 0.982, on_obj 0.013). Standing still is this repo's
 #    worst measured failure mode (-40.4 vp_margin).
-#    `revert_model` halves the damage (-48.7) by letting the coherent body keep
-#    moving -- a 51 vp gap between the modes on the same policy.
+#    `revert_model` halves the damage (-47.7) by letting the coherent body keep
+#    moving -- a 50 vp gap between the modes on the same policy.
 #
 # WHICH TO USE. They tie on competent policies and separate sharply on
 # incompetent ones -- and a *learning* policy starts incompetent. revert_model

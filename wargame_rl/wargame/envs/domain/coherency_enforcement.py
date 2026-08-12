@@ -27,13 +27,18 @@ about movement geometry instead of measuring it (`domain/movement.py`: the
   they tie on the bar and differ by 51 vp on ``split_evenly``, whose squads are
   shattered across the whole board every turn.
 
-**A revert can leave two bases overlapping**, and that is inherent rather than a
-bug here. Models resolve sequentially against live positions, so a model may
-legally have moved onto ground a lower-indexed model vacated; sending the second
-one back puts them on the same spot. The tabletop cannot hit this because moves
-there are genuinely sequential and each is checked before the next. Rather than
-invent a repair, the count is returned so a caller can measure how often it
-happens before deciding whether it needs one.
+**A naive revert leaves two bases overlapping, which is another illegal move,
+so the revert cascades.** Models resolve sequentially against live positions, so
+a model may legally have moved onto ground a lower-indexed model vacated;
+sending the first one back would put two bases on the same spot. `03-moving.md`
+checks that in the *same breath* as coherency -- "no model is left on top of
+another model" sits under the same "if any check fails, the move cannot be
+made" -- so the second model's move has failed too, and it goes back as well.
+
+That converges rather than looping: each pass reverts at least one more model or
+stops, and the worst case is the whole force at its start, which is legal by
+construction because it is the configuration the previous step ended in. Enemies
+cannot be drawn in, since they do not move during this force's move.
 """
 
 from __future__ import annotations
@@ -43,7 +48,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
+from wargame_rl.wargame.envs.domain.coherency import UnitCoherency, evaluate_coherency
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.domain.entities import WargameModel
@@ -88,7 +93,7 @@ def enforce_after_move(
         furthest_distance=furthest_distance,
     )
 
-    reverted = 0
+    reverting: set[int] = set()
     for unit in report.units:
         if unit.coherent:
             continue
@@ -96,9 +101,71 @@ def enforce_after_move(
             targets = unit.member_indices
         else:
             targets = unit.member_indices[~unit.member_coherency]
-        for index in targets:
-            reverted += _return_to_start(models[index])
+        reverting.update(int(index) for index in targets)
+
+    if not reverting:
+        return 0
+
+    _cascade_displaced(models, reverting, report_units=report.units, mode=mode)
+
+    reverted = 0
+    for index in sorted(reverting):
+        reverted += _return_to_start(models[index])
     return reverted
+
+
+def _cascade_displaced(
+    models: list[WargameModel],
+    reverting: set[int],
+    report_units: tuple[UnitCoherency, ...],
+    mode: CoherencyEnforcement,
+) -> None:
+    """Grow *reverting* until no reverted model lands on ground still occupied.
+
+    A model may legally have moved onto ground a lower-indexed model vacated --
+    resolution runs in index order against live positions. Sending the first one
+    back would then put two bases on the same spot, and `03-moving.md` checks
+    that in the *same* breath as coherency: "no model is left on top of another
+    model", under the same "if any check fails, the move cannot be made". So the
+    second model's move has failed too, and it reverts as well.
+
+    This terminates. Each pass adds at least one model or stops, and the worst
+    case is the whole force back at its start -- which is legal by construction,
+    because it is the configuration the previous step ended in. Enemies cannot
+    be involved: they do not move during this force's move, so a start position
+    that was clear of them still is.
+    """
+    unit_of: dict[int, np.ndarray] = {}
+    if mode is CoherencyEnforcement.revert_unit:
+        for unit in report_units:
+            for index in unit.member_indices:
+                unit_of[int(index)] = unit.member_indices
+
+    for _ in range(len(models)):
+        added = False
+        for index in list(reverting):
+            start = models[index].previous_location
+            if start is None:
+                continue
+            radius = float(models[index].base_radius)
+            for other_index, other in enumerate(models):
+                if other_index in reverting or not other.is_alive:
+                    continue
+                separation = radius + float(other.base_radius)
+                if separation <= 0.0:
+                    continue
+                if float(np.hypot(*(start - other.location))) >= separation:
+                    continue
+                # Reverting a unit is all-or-nothing, so a displaced model
+                # brings its whole unit with it rather than splitting it.
+                joining = unit_of.get(other_index)
+                if joining is None:
+                    reverting.add(other_index)
+                else:
+                    reverting.update(int(i) for i in joining)
+                added = True
+        if not added:
+            return
 
 
 def _return_to_start(model: WargameModel) -> int:

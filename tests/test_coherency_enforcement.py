@@ -215,3 +215,55 @@ def test_a_split_unit_is_caught_by_both_modes(mode: CoherencyEnforcement) -> Non
 
     # Assert
     assert reverted > 0
+
+
+def overlapping_pairs(models: list[WargameModel]) -> list[tuple[int, int]]:
+    """Indices of every pair of live models whose bases intersect."""
+    pairs = []
+    for i, a in enumerate(models):
+        for j, b in enumerate(models[i + 1 :], start=i + 1):
+            if not (a.is_alive and b.is_alive):
+                continue
+            gap = float(np.hypot(*(a.location - b.location)))
+            if gap < a.base_radius + b.base_radius:
+                pairs.append((i, j))
+    return pairs
+
+
+def test_a_revert_never_leaves_two_bases_overlapping() -> None:
+    # Arrange: the case that makes a naive revert illegal. Model 1 legally
+    # advanced onto the ground model 0 vacated -- resolution runs in index
+    # order against live positions, so that is a move the handler permits.
+    # Model 0's unit then breaks coherency and it is sent back, onto model 1.
+    starts = [(10.0, 0.0), (8.0, 0.0), (11.5, 0.0), (10.0, 30.0)]
+    ends = [(40.0, 0.0), (10.0, 0.0), (11.5, 0.0), (10.0, 30.0)]
+    models = make_unit(starts, ends, group_ids=[0, 1, 1, 0])
+    for model in models:
+        model.base_radius = 0.63
+    assert not overlapping_pairs(models), "the moved state must start legal"
+
+    # Act
+    enforce_after_move(models, NEAREST, FURTHEST, CoherencyEnforcement.revert_model)
+
+    # Assert: model 0 went back, and model 1 was displaced by it and went back
+    # too, rather than being left underneath. "No model is left on top of
+    # another" is checked in the same breath as coherency (03-moving.md).
+    assert models[0].location.tolist() == [10.0, 0.0]
+    assert not overlapping_pairs(models)
+
+
+def test_the_cascade_terminates_at_the_starting_configuration() -> None:
+    # Arrange: a chain where every model advanced onto its neighbour's vacated
+    # ground, so reverting any one of them must unwind the whole column. The
+    # worst case has to land on the pre-move configuration, which is legal.
+    starts = [(float(i) * 1.5, 0.0) for i in range(5)]
+    ends = [(float(i) * 1.5 + 1.5, 0.0) for i in range(4)] + [(60.0, 0.0)]
+    models = make_unit(starts, ends, group_ids=[0, 0, 0, 0, 1])
+    for model in models:
+        model.base_radius = 0.63
+
+    # Act
+    enforce_after_move(models, NEAREST, FURTHEST, CoherencyEnforcement.revert_model)
+
+    # Assert
+    assert not overlapping_pairs(models)
