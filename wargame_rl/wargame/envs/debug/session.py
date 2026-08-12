@@ -97,6 +97,7 @@ def run_session(
     # has just been undone. Pushed and popped in lockstep with the env states.
     move_history: deque[dict[int, MoveRecord]] = deque(maxlen=undo_depth)
     observation, _info = env.reset(seed=seed)
+    controls.undo_depth = 0
     done = False
 
     try:
@@ -114,6 +115,7 @@ def run_session(
                     env, done = previous, False
                     observation = env.observation
                     controls.moves = move_history.pop() if move_history else {}
+                controls.undo_depth = len(undo)
                 continue
 
             if done:
@@ -127,6 +129,7 @@ def run_session(
 
             undo.push(env)
             move_history.append(dict(controls.moves))
+            controls.undo_depth = len(undo)
             action = select(observation, env)
             # Captured before the step, because the step is what moves them.
             moving = env.game_clock_state.phase is BattlePhase.movement

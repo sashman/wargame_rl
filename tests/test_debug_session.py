@@ -46,6 +46,9 @@ from wargame_rl.wargame.envs.renders.v2.presenters.debug import (  # noqa: E402
 from wargame_rl.wargame.envs.renders.v2.presenters.interactive import (  # noqa: E402
     InteractiveRenderer,
 )
+from wargame_rl.wargame.envs.renders.v2.presenters.recording import (  # noqa: E402
+    RecordingRenderer,
+)
 from wargame_rl.wargame.envs.renders.v2.scene import build_scene  # noqa: E402
 from wargame_rl.wargame.envs.types import (  # noqa: E402
     WargameEnvAction,
@@ -627,6 +630,47 @@ def test_the_hud_reports_turn_order_not_whose_turn_it_is() -> None:
             scene = build_scene(env, compute_objective_control(env), scale=10.0)
             assert scene.hud.player_acts_first is acts_first
             env.step(select(env.observation, env))
+
+
+def test_the_rewind_depth_readout_tracks_the_real_history() -> None:
+    """The readout exists because "nothing to step back to" was invisible.
+
+    A real session logged that message twelve times to a terminal nobody was
+    watching, so the count is drawn in the window instead. It is only worth
+    anything if it matches the stack it claims to describe — including reading
+    zero at the start, which is exactly when pressing the key does nothing.
+    """
+    env = _env()
+    controls = DebugControls()
+    select = selector_for(build_baseline_policy("squad_march"))
+    depths: list[int] = []
+
+    class _Recorder(_ScriptedRenderer):
+        def render(self, view: BattleView) -> None:
+            depths.append(controls.undo_depth)
+            super().render(view)
+
+    renderer = _Recorder(controls, [_step, _step, _step, _back, _back, None])
+    run_session(env, renderer, controls, select, seed=7)
+
+    # One frame before each scripted action — start empty, three pushed, two
+    # popped — then the frame that quits, which sees the settled depth.
+    assert depths == [0, 1, 2, 3, 2, 1, 1]
+
+
+def test_the_depth_readout_is_drawn_only_where_rewinding_is_possible() -> None:
+    """A recording cannot rewind, so it must not advertise a key that does not
+    exist there — the same reason `key_map()` is empty for it."""
+    env = _env()
+    env.reset(seed=0)
+    controls = DebugControls(undo_depth=4)
+    debug = DebugPresenter(build_backend("pillow"), controls)
+    recording = RecordingRenderer(build_backend("pillow"))
+    debug.setup(env)
+    recording.setup(env)
+
+    assert debug._scene_for(env).hud.undo_depth == 4
+    assert recording._scene_for(env).hud.undo_depth is None
 
 
 def test_a_checkpointless_session_needs_no_torch() -> None:

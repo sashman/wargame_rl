@@ -148,6 +148,14 @@ class HudData:
     # reset, and it decides whether the positions on screen already include the
     # opponent's response.
     player_acts_first: bool | None = None
+    # Steps currently available to rewind. None for presenters that cannot
+    # rewind at all (recording, replay), which then draw nothing.
+    #
+    # Shown as *state* rather than reported as an event: "nothing to step back
+    # to" is worth knowing before pressing the key, not after — and a log line
+    # about it lands in a terminal nobody is looking at while the window has
+    # their attention.
+    undo_depth: int | None = None
 
 
 @dataclass(frozen=True)

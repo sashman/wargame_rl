@@ -27,7 +27,7 @@ renderer shows.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import pygame
@@ -39,6 +39,7 @@ from wargame_rl.wargame.envs.renders.v2.debug_view import DebugView
 from wargame_rl.wargame.envs.renders.v2.presenters.interactive import (
     InteractiveRenderer,
 )
+from wargame_rl.wargame.envs.renders.v2.scene import Scene
 from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME, RGB, Theme
 
 # Paused, the window polls far faster than the match plays so a key press lands
@@ -101,6 +102,9 @@ class DebugControls:
     selected: tuple[str, int] | None = None
     # Player model index -> its last move. Written by the session.
     moves: dict[int, MoveRecord] = field(default_factory=dict)
+    # Steps available to rewind. Written by the session, drawn in the clock zone
+    # so an empty history is visible before `,` is pressed rather than after.
+    undo_depth: int = 0
 
 
 class DebugPresenter(InteractiveRenderer):
@@ -258,6 +262,19 @@ class DebugPresenter(InteractiveRenderer):
         self._backend.draw_line(frame, ghost, self._to_px(*move.actual), accent, 1)
         self._backend.draw_disc(
             frame, ghost, max(model.base_radius * self._scale, 4.0), None, accent, 1
+        )
+
+    def _scene_for(self, view: BattleView) -> Scene:
+        """The shared scene, plus the one HUD field only the driver knows.
+
+        `build_scene` reads a `BattleView`, and how far back the session can
+        rewind is not battle state — it is a property of the tool holding the
+        history. So it is grafted on here rather than threaded through a builder
+        that the recorder and the replay adapter also use.
+        """
+        scene = super()._scene_for(view)
+        return replace(
+            scene, hud=replace(scene.hud, undo_depth=self._controls.undo_depth)
         )
 
     def _observation(self, view: BattleView) -> object | None:
