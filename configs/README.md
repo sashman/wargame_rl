@@ -45,11 +45,26 @@ Delete an arm once its question is answered; `git log -- configs/` restores any
 of them. Every batch so far was disposed of this way (batch 1/2's arms, batch
 3's `cover_reason`, batch 4's eight `25v25_beat_*`).
 
+| Config | The open question |
+|---|---|
+| `25v25_real_maps.yaml` | Does training **on the real tables** produce a policy the generated scenario cannot? Same opponent, forces and reward as `golden/25v25_shooting_opponent.yaml`; only the board changes. Draws from 36 tables and holds out the 9 whose number is divisible by 5 |
+
 ## `evaluation/maps/` — the real table layouts
 
-Final evaluation. Training uses `random_terrain`, which is what makes a
-positioning result falsifiable — but it never asks how the policy does on the
-boards the game is actually played on.
+Final evaluation, and — through `map_pool` — training. Generated terrain is what
+makes a positioning result falsifiable, but it never asks how the policy does on
+the boards the game is actually played on, and it cannot: the generator places
+objectives only in the contested middle, while the real layouts put a third of
+them inside each player's own deployment zone. Measured across all 45 tables,
+the split is exactly 82 player-zone / 82 middle / 82 opponent-zone, every table
+mirror-symmetric, and before a model moves the player already holds 1.98
+objectives to the opponent's 1.91. **That is a different mission, not a harder
+board** — win rate saturates at 1.00 for both scripted rungs, and `random` wins
+0.67 by deploying onto its home objectives and never leaving.
+
+**Training on these maps consumes them.** `map_pool.names` is the split: name a
+subset for training and score the complement, or a transfer number means
+nothing.
 
 A map is terrain, and optionally the objectives that go with it:
 
