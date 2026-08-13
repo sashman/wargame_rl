@@ -94,6 +94,7 @@ wargame_rl/
 | Test env (random) | `just test-env` |
 | Watch a scripted policy play (no checkpoint) | `just play [config.yaml] [policy] [theme]` |
 | Step a match by hand and rewind it | `just debug [config.yaml] [policy\|ckpt] [theme]` |
+| Recreate a recorded match exactly and step it | `just debug-recording <file> [policy\|ckpt] [theme]` |
 | Record a match event log | `just record <config.yaml>` |
 | Replay / narrate a log | `just replay <file>` · `just replay-summary <file>` |
 | Replay a log visually (window or MP4) | `just replay-render <file> [out.mp4] [theme]` — tabletop by default |

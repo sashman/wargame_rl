@@ -47,6 +47,7 @@ def simulate(
     render: bool = True,
     env_config_path: str | None = None,
     record_events: bool = False,
+    seed: int | None = None,
     renderer_name: str = "legacy",
     backend: str = "pillow",
     theme: str = "default",
@@ -58,6 +59,11 @@ def simulate(
         num_episodes: Number of episodes to run
         render: Whether to render the environment
         record_events: Whether to record the last episode as a JSON event log
+        seed: Seeds the run, making it reproducible. Every episode after the
+            first continues the same generator stream, so one seed pins the
+            whole run and each recorded episode still carries its own
+            provenance. Without it the layout comes from process entropy and
+            the run cannot be recreated.
         renderer_name: ``legacy`` (HumanRender) or ``v2`` (the new renderer)
         backend: v2 drawing backend (``pillow``, ``pygame`` or ``pygame_aa``)
         theme: v2 theme name (``default`` or ``tabletop``)
@@ -84,6 +90,13 @@ def simulate(
         renderer=renderer,
         state_exporters=[event_exporter] if event_exporter else None,
     )
+    env.driver_label = checkpoint_path
+    if seed is not None:
+        # Once, before the loop. The agent resets per episode without a seed,
+        # which continues this stream rather than restarting it -- so the run is
+        # reproducible as a whole and each episode is individually recoverable
+        # from the generator state its provenance records.
+        env.reset(seed=seed)
     logging.info(f"Action space: {env.action_space}")
     logging.info(f"Observation space: {env.observation_space}")
     logging.info(f"Running {num_episodes} episodes...")
@@ -215,6 +228,11 @@ def main(
         None,
         help="Path to the environment config file, defaults to env_config.yaml from checkpoint directory.",
     ),
+    seed: int | None = typer.Option(
+        None,
+        help="Seed the run so it can be reproduced. Without it the layout comes "
+        "from process entropy and a recording cannot be recreated exactly.",
+    ),
     record_events: bool = typer.Option(
         False,
         help="Record the last episode as a JSON event log (written to recordings/)",
@@ -228,6 +246,13 @@ def main(
     theme: str = typer.Option("default", help="v2 theme: 'default' or 'tabletop'"),
 ) -> None:
     # Handle dynamic defaults inside the function
+    # Typer fills a default only when *it* invokes the command. Called directly
+    # -- as `tests/test_simulate.py` does -- an option nobody passed is still an
+    # `OptionInfo`, and this is the first one that reaches the env, where
+    # gymnasium rejects it as a seed.
+    if not isinstance(seed, int):
+        seed = None
+
     if checkpoint_path is None:
         checkpoint_path = get_latest_checkpoint()
 
@@ -240,6 +265,7 @@ def main(
         render,
         env_config_path,
         record_events=record_events,
+        seed=seed,
         renderer_name=renderer,
         backend=backend,
         theme=theme,

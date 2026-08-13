@@ -78,6 +78,7 @@ from wargame_rl.wargame.envs.state.restore import (
     restore_shooting_results,
 )
 from wargame_rl.wargame.envs.state.snapshot import (
+    EpisodeProvenance,
     GameStateSnapshot,
     build_snapshot,
     validate_snapshot,
@@ -176,6 +177,15 @@ class WargameEnv(gym.Env):
 
         self.renderer = renderer
         self._state_exporters: list[StateExporter] = state_exporters or []
+        # Free text naming whatever chooses the player's actions, stamped into
+        # a recording's provenance. The env cannot know it -- a checkpoint, a
+        # baseline name and a human at a keyboard all look the same from here.
+        self.driver_label: str | None = None
+        # Set on every reset; declared here so `provenance` fails loudly rather
+        # than with an AttributeError if it is read before the first one.
+        self._episode_rng_state: dict[str, Any] = {}
+        self._episode_combat_seed = 0
+        self._episode_seed: int | None = None
 
         self.window = None
         self.clock = None
@@ -286,6 +296,23 @@ class WargameEnv(gym.Env):
         else:
             self._opponent_action_handler = ActionHandler(config, n_models=0)
             self._opponent_policy = None
+
+    @property
+    def provenance(self) -> EpisodeProvenance:
+        """How to boot this episode again. Valid only after `reset`.
+
+        The config rides along in full so a recording is self-contained: a path
+        can be edited or deleted between recording a match and wanting to
+        recreate it, and a scenario that has drifted reproduces something that
+        merely looks like the recording.
+        """
+        return EpisodeProvenance(
+            config=self.config.model_dump(mode="json"),
+            rng_state=self._episode_rng_state,
+            combat_seed=self._episode_combat_seed,
+            seed=self._episode_seed,
+            driver=self.driver_label,
+        )
 
     @property
     def opponent_policy(self) -> OpponentPolicy | None:
@@ -668,6 +695,12 @@ class WargameEnv(gym.Env):
         and look entirely plausible doing it.
         """
         super().reset(seed=seed)
+        # Captured *before* the first draw, so restoring it and resetting again
+        # replays every draw this episode makes. A seed cannot stand in for it:
+        # a training rollout resets without one, so its layout is a point in a
+        # continuing stream that no integer names. See `EpisodeProvenance`.
+        self._episode_rng_state = dict(self.np_random.bit_generator.state)
+        self._episode_seed = seed
 
         # The draw happens either way. Skipping it when a combat seed is given
         # would shift every later draw from `np_random`, so the layout would
@@ -675,11 +708,12 @@ class WargameEnv(gym.Env):
         # the exact thing this option exists to separate.
         derived_combat_seed = int(self.np_random.integers(0, 2**31))
         explicit_combat_seed = (options or {}).get("combat_seed")
-        self._combat_rng = np.random.default_rng(
+        self._episode_combat_seed = (
             derived_combat_seed
             if explicit_combat_seed is None
             else int(explicit_combat_seed)
         )
+        self._combat_rng = np.random.default_rng(self._episode_combat_seed)
         self._last_player_shooting_results = []
         self._last_opponent_shooting_results = []
         self._last_player_action = None
@@ -736,7 +770,7 @@ class WargameEnv(gym.Env):
         if self._state_exporters:
             snapshot = self.to_snapshot()
             for exporter in self._state_exporters:
-                exporter.on_reset(snapshot)
+                exporter.on_reset(snapshot, self.provenance)
 
         return observation, info
 

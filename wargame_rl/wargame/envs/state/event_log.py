@@ -13,7 +13,7 @@ from wargame_rl.wargame.envs.state.events import (
     apply_delta,
     compute_delta,
 )
-from wargame_rl.wargame.envs.state.snapshot import GameStateSnapshot
+from wargame_rl.wargame.envs.state.snapshot import EpisodeProvenance, GameStateSnapshot
 
 
 class EventLog:
@@ -27,10 +27,15 @@ class EventLog:
             Lower values trade storage for faster seek. Default 10.
     """
 
-    def __init__(self, anchor_interval: int = 10) -> None:
+    def __init__(
+        self,
+        anchor_interval: int = 10,
+        provenance: EpisodeProvenance | None = None,
+    ) -> None:
         self._anchor_interval = anchor_interval
         self._events: list[MatchEvent] = []
         self._last_snapshot: GameStateSnapshot | None = None
+        self._provenance = provenance
 
     @property
     def events(self) -> list[MatchEvent]:
@@ -40,6 +45,16 @@ class EventLog:
     @property
     def anchor_interval(self) -> int:
         return self._anchor_interval
+
+    @property
+    def provenance(self) -> EpisodeProvenance | None:
+        """How to boot this episode again; None on recordings made before it
+        was written down, which therefore cannot be reproduced."""
+        return self._provenance
+
+    def set_provenance(self, provenance: EpisodeProvenance) -> None:
+        """Record the episode's inputs. Set at reset, before any step."""
+        self._provenance = provenance
 
     def __len__(self) -> int:
         return len(self._events)

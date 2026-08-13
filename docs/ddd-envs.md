@@ -47,7 +47,8 @@ wargame_rl/wargame/envs/
 ├── opponent/                  # Opponent policies + registry
 ├── mission/                   # VP calculators + registry
 ├── baseline/                  # Scripted reference policies + evaluation
-├── debug/                     # Hand-stepping a live match: undo stack, session loop
+├── debug/                     # Hand-stepping a live match: undo stack, session loop,
+│                           #   opponent overrides, reproducing a recorded episode
 ├── state/                     # Snapshots, event log, replay, narration, analysis
 ├── reward/                    # Reward phases, calculators, criteria (use BattleView)
 ├── renders/                   # Pygame etc. (use BattleView)
