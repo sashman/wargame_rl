@@ -186,3 +186,31 @@ def test_a_recording_without_provenance_says_so(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="no provenance"):
         read_provenance(stripped)
+
+
+def test_an_unusable_gpu_falls_back_to_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`torch.cuda.is_available()` answers the wrong question.
+
+    A card whose compute capability predates the torch build reports available,
+    accepts `.to("cuda")`, and fails on the *first forward* with `no kernel
+    image is available` — so every checkpoint path died at inference rather
+    than at startup, reading as a bug in whatever was being run. Measured on a
+    GTX 1080 Ti (sm_61) against a build listing sm_70+.
+    """
+    import torch
+
+    from wargame_rl.wargame.model.common.device import auto_device
+
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: False)
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "get_arch_list", lambda: ["sm_70", "sm_90"])
+    monkeypatch.setattr(torch.cuda, "get_device_capability", lambda: (6, 1))
+    auto_device.cache_clear()
+    try:
+        assert auto_device().type == "cpu"
+
+        monkeypatch.setattr(torch.cuda, "get_device_capability", lambda: (9, 0))
+        auto_device.cache_clear()
+        assert auto_device().type == "cuda"
+    finally:
+        auto_device.cache_clear()
