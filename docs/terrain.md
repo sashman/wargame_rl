@@ -343,6 +343,13 @@ Player and opponent token positions are unchanged by the presence of terrain, so
 
 The renderer draws terrain footprints as translucent brown rectangles with an outline and "Ruin" label, drawn after deployment zones and before models. The debug LOS overlay line is coloured by the actual blocked/clear verdict (green = clear, red = blocked).
 
+`just debug` can also shade everything the selected model cannot see, by sampling
+`line_of_sight_matrix` on a one-inch grid — the staircase edges are that sampling, not the
+terrain. It is the fastest way to check a layout's sightlines against the engine's own answer
+rather than against the geometry you think you drew.
+
+![The debug renderer with sight shading on: a wedge of visible board opens from the selected model, with each ruin casting a shadow behind it](images/debug-sight-shading.png)
+
 ## YAML Example
 
 A complete config with terrain (`configs/dev/terrain_los_demo.yaml`):
