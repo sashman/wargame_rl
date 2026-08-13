@@ -495,6 +495,37 @@ class WargameEnvConfig(BaseModel):
         )
 
     @model_validator(mode="after")
+    def require_coherency_observation_for_coherency_reward(self) -> "WargameEnvConfig":
+        """`unit_coherency` needs `observe_coherency`, so refuse the pair unset.
+
+        The desk check from [docs/reward-phases.md](../../../../docs/reward-phases.md)
+        § Design rules, made mechanical: *if two states differ only in what this
+        term keys on, do they differ in the observation?* Without
+        `observe_coherency` an objective's worth of coherency information never
+        reaches the network -- neither the 9" spread, which is a
+        furthest-neighbour quantity no existing column carries, nor
+        connectivity, which is a transitive closure. The reward would then be
+        unattributable, and an unattributable reward is experienced only as
+        "this pays less".
+
+        Rejected at construction because the failure is silent and expensive:
+        the overstack penalty and `objective_hold.surplus_value` each burned GPU
+        hours keying on per-objective counts the agent could not see.
+        """
+        uses_coherency_reward = any(
+            calculator.type == "unit_coherency"
+            for phase in self.reward_phases
+            for calculator in phase.reward_calculators
+        )
+        if uses_coherency_reward and not self.observe_coherency:
+            raise ValueError(
+                "a reward phase uses the 'unit_coherency' calculator but "
+                "observe_coherency is False, so the agent cannot see what the "
+                "reward keys on -- set observe_coherency: true"
+            )
+        return self
+
+    @model_validator(mode="after")
     def apply_legacy_terminal_bonus_defaults(self) -> "WargameEnvConfig":
         """Backfill per-phase terminal bonuses from deprecated env-level fields."""
         if not self.reward_phases:

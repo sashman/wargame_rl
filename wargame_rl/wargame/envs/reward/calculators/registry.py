@@ -30,6 +30,9 @@ from wargame_rl.wargame.envs.reward.calculators.objective_flip_bonus import (
 from wargame_rl.wargame.envs.reward.calculators.objective_hold import (
     ObjectiveHoldCalculator,
 )
+from wargame_rl.wargame.envs.reward.calculators.unit_coherency import (
+    UnitCoherencyCalculator,
+)
 from wargame_rl.wargame.envs.reward.calculators.vp_gain import VPGainCalculator
 
 RewardCalculatorType = PerModelRewardCalculator | GlobalRewardCalculator
@@ -44,6 +47,7 @@ CALCULATOR_REGISTRY: dict[str, type[RewardCalculatorType]] = {
     "objective_coverage": ObjectiveCoverageCalculator,
     "objective_flip_bonus": ObjectiveFlipBonusCalculator,
     "objective_hold": ObjectiveHoldCalculator,
+    "unit_coherency": UnitCoherencyCalculator,
     "vp_gain": VPGainCalculator,
     "killing": KillingReward,
 }
