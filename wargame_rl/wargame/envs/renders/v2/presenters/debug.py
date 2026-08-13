@@ -22,6 +22,11 @@ where three of the panel's rules came from: a dead model's reward of 0.000 needs
 its reason printed beside it, per-calculator numbers are army means and must say
 so, and the intended-versus-actual gap is the one field nothing else in the
 renderer shows.
+
+**The sight shading.** `S` shades the board the selected model cannot see, by
+sampling the engine's own predicate on a grid rather than projecting terrain
+silhouettes — a shadow the renderer computed for itself could not disagree with
+the engine, and a disagreement is the bug worth finding.
 """
 
 from __future__ import annotations
@@ -35,6 +40,11 @@ import pygame
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.domain.entities import WargameModel
 from wargame_rl.wargame.envs.renders.v2.backend import Canvas, RenderBackend
+from wargame_rl.wargame.envs.renders.v2.control import (
+    ShadowRect,
+    compute_los_shadow,
+    sight_from,
+)
 from wargame_rl.wargame.envs.renders.v2.debug_view import DebugView
 from wargame_rl.wargame.envs.renders.v2.presenters.interactive import (
     InteractiveRenderer,
@@ -122,6 +132,11 @@ class DebugPresenter(InteractiveRenderer):
         # of frames a second, so it is read once per step rather than per frame.
         self._obs_turn = -1
         self._obs: object | None = None
+        self._show_shadow = False
+        # A shadow sweep is thousands of rays; the window redraws tens of times a
+        # second while paused and nothing about it changes between those frames.
+        self._shadow_key: tuple[object, ...] | None = None
+        self._shadow: tuple[ShadowRect, ...] = ()
 
     # -- control flow --------------------------------------------------------
 
@@ -148,6 +163,7 @@ class DebugPresenter(InteractiveRenderer):
             ("[", "slower"),
             ("]", "faster"),
             ("Click", "inspect a model, either side"),
+            ("S", "shade what the selected model cannot see"),
             ("L", "line-of-sight debug ray"),
             ("Esc", "deselect, then quit"),
         )
@@ -168,6 +184,8 @@ class DebugPresenter(InteractiveRenderer):
             self._fps = max(MIN_FPS, self._fps - 1)
         elif event.key == pygame.K_RIGHTBRACKET:
             self._fps = min(MAX_FPS, self._fps + 1)
+        elif event.key == pygame.K_s:
+            self._show_shadow = not self._show_shadow
         elif event.key == pygame.K_ESCAPE and controls.selected is not None:
             # Esc backs out of what you are looking at before it quits, so a
             # click cannot be undone only by leaving the session.
@@ -277,6 +295,26 @@ class DebugPresenter(InteractiveRenderer):
             scene, hud=replace(scene.hud, undo_depth=self._controls.undo_depth)
         )
 
+    def _los_shadow(self, view: BattleView) -> tuple[ShadowRect, ...]:
+        """What the selected model cannot see, recomputed only when it changes.
+
+        Keyed on the observer's position and on the terrain rather than on the
+        turn, because a shadow depends on exactly those two — models do not
+        occlude. So a step that moved only *other* models reuses the sweep, and
+        an episode that regenerates terrain without moving anyone still gets a
+        fresh one.
+        """
+        chosen = self._selected(view)
+        if not self._show_shadow or chosen is None:
+            return ()
+        _side, _index, model = chosen
+        origin = (float(model.location[0]), float(model.location[1]))
+        key = (origin, view.terrain.outlines.tobytes())
+        if key != self._shadow_key:
+            self._shadow_key = key
+            self._shadow = compute_los_shadow(view, origin)
+        return self._shadow
+
     def _observation(self, view: BattleView) -> object | None:
         if not isinstance(view, DebugView):
             return None
@@ -317,6 +355,7 @@ class DebugPresenter(InteractiveRenderer):
         self._identity(cursor, side, index, model)
         self._action(cursor, side, index, model)
         self._reward(cursor, view, side, index, model)
+        self._sight(cursor, view, side, model)
         self._shooting(cursor, view, side, index)
         self._observation_rows(cursor, view, side, index)
 
@@ -407,6 +446,35 @@ class DebugPresenter(InteractiveRenderer):
             cursor.head("BY CALCULATOR · ARMY MEAN")
             for name, value in components:
                 cursor.row(name, f"{value:+.3f}")
+
+    def _sight(
+        self, cursor: _Cursor, view: BattleView, side: str, model: WargameModel
+    ) -> None:
+        """How much this model can see, in numbers beside the shading.
+
+        Counted under the same predicate the shading is drawn from, so the
+        number and the picture always answer the same question. It is not the
+        shooting mask, which also gates on weapon range — a model with enemies
+        in sight and no shots fired is exactly the case worth landing on, and
+        this is the row that says sight was not the reason.
+        """
+        enemies = view.opponent_models if side == PLAYER else view.player_models
+        alive = [enemy for enemy in enemies if enemy.is_alive]
+        if not alive:
+            return
+        cursor.head("SIGHT")
+        origin = (float(model.location[0]), float(model.location[1]))
+        targets = np.array([[e.location[0], e.location[1]] for e in alive], dtype=float)
+        cursor.row(
+            "enemies in sight",
+            f"{int(sight_from(view, origin, targets).sum())}/{len(alive)}",
+        )
+        if not self._show_shadow:
+            cursor.row("board hidden", "[S] to sweep")
+            return
+        board = float(view.config.board_width * view.config.board_height)
+        area = sum((x1 - x0) * (y1 - y0) for x0, y0, x1, y1 in self._shadow)
+        cursor.row("board hidden", f"{area / board:.0%}")
 
     def _shooting(
         self, cursor: _Cursor, view: BattleView, side: str, index: int

@@ -61,6 +61,11 @@ class Palette:
     area_wash_alpha: int = 120
     los_clear: RGB = (80, 200, 80)
     los_blocked: RGB = (255, 80, 80)
+    # The sight shadow: what the selected model cannot see. Neutral and dark
+    # rather than tinted, so it reads as *absence of light* over whatever it
+    # covers — a coloured wash would compete with objective control, which is
+    # the thing most worth seeing through it.
+    los_shadow: RGBA = (18, 20, 30, 96)
     panel_bg: RGB = (45, 45, 48)
     panel_line: RGB = (80, 80, 84)
     text: RGB = (220, 220, 220)
@@ -154,6 +159,7 @@ TABLETOP_PALETTE = Palette(
     area_wash_alpha=120,
     los_clear=(95, 140, 70),
     los_blocked=(190, 70, 50),
+    los_shadow=(46, 34, 20, 104),
     panel_bg=(58, 50, 38),
     panel_line=(87, 73, 58),
     text=(236, 226, 207),
