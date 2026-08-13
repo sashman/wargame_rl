@@ -31,6 +31,9 @@ if TYPE_CHECKING:
     from numpy.random import Generator
 
 _MAX_PLACEMENT_RETRIES = 1000
+# How many times a coherent unit may be re-laid before the zone is declared
+# too tight. Each attempt is independent, so a handful covers the rare corner.
+_MAX_UNIT_LAYOUT_ATTEMPTS = 20
 
 
 def _is_clear(
@@ -125,7 +128,7 @@ def _sample_coherent_member(
     occupied: list[tuple[float, float]],
     min_separation: float,
     rng: Generator,
-) -> tuple[float, float]:
+) -> tuple[float, float] | None:
     """A point that keeps its unit in coherency, given where the unit already is.
 
     Both spans are **centre to centre**, already widened from the rules' base to
@@ -134,41 +137,49 @@ def _sample_coherent_member(
     connected by construction, since it links to a component that is already one
     piece -- and within ``spread_span`` of every one of them.
 
-    Sampled from the box around a random anchor rather than the whole zone: the
-    legal annulus is a small part of a deployment zone, and uniform sampling over
-    the zone would spend the retry budget missing it.
-    """
-    anchor = placed[int(rng.integers(len(placed)))]
-    lo_x = max(x_min, anchor[0] - chain_span)
-    hi_x = min(x_max, anchor[0] + chain_span)
-    lo_y = max(y_min, anchor[1] - chain_span)
-    hi_y = min(y_max, anchor[1] + chain_span)
-    if lo_x >= hi_x or lo_y >= hi_y:
-        raise RuntimeError(
-            f"No coherent placement near {anchor} within {chain_span} inside zone "
-            f"[{x_min},{y_min})x[{x_max},{y_max})"
-        )
+    Sampled from the box around an anchor rather than the whole zone: the legal
+    annulus is a small part of a deployment zone, and uniform sampling over the
+    zone would spend the retry budget missing it.
 
+    **Every placed member is tried as an anchor, in a random order**, because
+    one anchor's feasible region being empty says nothing about the others'. The
+    first version drew a single anchor and raised if it failed, which killed two
+    training runs ~20 minutes in: a model anchored against the board edge, with
+    the spread cap measured to members already committed on the far side, has
+    nowhere legal to stand while a member one row in has plenty. Returns None
+    when *no* anchor works, which is the caller's signal to re-lay the unit
+    rather than an error -- the unit's own earlier choices are what boxed it in.
+    """
     chain_sq = chain_span * chain_span
     spread_sq = spread_span * spread_span
-    for _ in range(_MAX_PLACEMENT_RETRIES):
-        candidate = (float(rng.uniform(lo_x, hi_x)), float(rng.uniform(lo_y, hi_y)))
-        dx, dy = candidate[0] - anchor[0], candidate[1] - anchor[1]
-        if dx * dx + dy * dy > chain_sq:
+    order = rng.permutation(len(placed))
+    budget = max(1, _MAX_PLACEMENT_RETRIES // max(1, len(placed)))
+
+    for anchor_index in order:
+        anchor = placed[int(anchor_index)]
+        lo_x = max(x_min, anchor[0] - chain_span)
+        hi_x = min(x_max, anchor[0] + chain_span)
+        lo_y = max(y_min, anchor[1] - chain_span)
+        hi_y = min(y_max, anchor[1] + chain_span)
+        if lo_x >= hi_x or lo_y >= hi_y:
             continue
-        if not _is_clear(candidate, occupied, min_separation):
-            continue
-        if any(
-            (candidate[0] - px) ** 2 + (candidate[1] - py) ** 2 > spread_sq
-            for px, py in placed
-        ):
-            continue
-        return candidate
-    raise RuntimeError(
-        f"Could not place a model in coherency near {anchor}: chain span "
-        f"{chain_span}, spread span {spread_span}, {len(placed)} already placed. "
-        "The unit may be too large for these distances at this base size."
-    )
+        for _ in range(budget):
+            candidate = (
+                float(rng.uniform(lo_x, hi_x)),
+                float(rng.uniform(lo_y, hi_y)),
+            )
+            dx, dy = candidate[0] - anchor[0], candidate[1] - anchor[1]
+            if dx * dx + dy * dy > chain_sq:
+                continue
+            if not _is_clear(candidate, occupied, min_separation):
+                continue
+            if any(
+                (candidate[0] - px) ** 2 + (candidate[1] - py) ** 2 > spread_sq
+                for px, py in placed
+            ):
+                continue
+            return candidate
+    return None
 
 
 def wargame_model_placement(
@@ -230,47 +241,74 @@ def wargame_model_placement(
     for gid in group_ids:
         group = groups[gid]
         rng.shuffle(group)  # type: ignore[arg-type]
-        placed: list[WargameModel] = []
+        # A coherent unit can paint itself into a corner: the members already
+        # down constrain the next one through both the spread cap and the bases
+        # they occupy, and no anchor is left with anywhere legal. That is a
+        # property of *this* attempt, not of the zone, so the unit is re-laid
+        # from scratch rather than the episode failing. Bounded, because a zone
+        # genuinely too tight must still fail loudly instead of spinning.
+        for attempt in range(_MAX_UNIT_LAYOUT_ATTEMPTS):
+            placed: list[WargameModel] = []
+            placed_locations: list[tuple[float, float]] = []
+            trial_occupied = list(occupied)
+            for model in group:
+                if not placed:
+                    loc = _sample_unoccupied(
+                        x_min, y_min, x_max, y_max, trial_occupied, min_separation, rng
+                    )
+                elif coherent:
+                    candidate = _sample_coherent_member(
+                        placed_locations,
+                        chain_span,
+                        spread_span,
+                        x_min,
+                        y_min,
+                        x_max,
+                        y_max,
+                        trial_occupied,
+                        min_separation,
+                        rng,
+                    )
+                    if candidate is None:
+                        break
+                    loc = candidate
+                else:
+                    # Read the anchor from `placed_locations`, not from the
+                    # model: positions are committed only once the whole unit
+                    # lays successfully, so `model.location` is still the
+                    # placeholder until then.
+                    anchor_loc = placed_locations[int(rng.integers(len(placed)))]
+                    loc = _sample_near_anchor(
+                        np.asarray(anchor_loc, dtype=float),
+                        group_max_distance,
+                        x_min,
+                        y_min,
+                        x_max,
+                        y_max,
+                        trial_occupied,
+                        min_separation,
+                        rng,
+                    )
 
-        placed_locations: list[tuple[float, float]] = []
+                trial_occupied.append(loc)
+                placed.append(model)
+                placed_locations.append(loc)
 
-        for model in group:
-            if not placed:
-                loc = _sample_unoccupied(
-                    x_min, y_min, x_max, y_max, occupied, min_separation, rng
-                )
-            elif coherent:
-                loc = _sample_coherent_member(
-                    placed_locations,
-                    chain_span,
-                    spread_span,
-                    x_min,
-                    y_min,
-                    x_max,
-                    y_max,
-                    occupied,
-                    min_separation,
-                    rng,
-                )
-            else:
-                anchor = placed[int(rng.integers(len(placed)))]
-                loc = _sample_near_anchor(
-                    anchor.location,
-                    group_max_distance,
-                    x_min,
-                    y_min,
-                    x_max,
-                    y_max,
-                    occupied,
-                    min_separation,
-                    rng,
-                )
+            if len(placed) == len(group):
+                break
+        else:
+            raise RuntimeError(
+                f"Could not lay unit {gid} of {len(group)} models in coherency after "
+                f"{_MAX_UNIT_LAYOUT_ATTEMPTS} attempts: chain span {chain_span}, "
+                f"spread span {spread_span}, base separation {min_separation}, zone "
+                f"[{x_min},{y_min})x[{x_max},{y_max}). The zone is too tight for a "
+                "unit this size at these distances."
+            )
 
+        for model, loc in zip(placed, placed_locations):
             model.location = position(*loc)
             model.reset_for_episode()
             occupied.append(loc)
-            placed.append(model)
-            placed_locations.append(loc)
 
 
 def _sample_in_objective(

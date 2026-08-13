@@ -200,3 +200,72 @@ def test_the_config_defaults_match_the_domain_constants() -> None:
     # Act / Assert
     assert CoherencyConfig().nearest_distance == COHERENCY_NEAREST_IN
     assert CoherencyConfig().furthest_distance == COHERENCY_FURTHEST_IN
+
+
+def test_a_boxed_in_unit_is_re_laid_rather_than_crashing() -> None:
+    # Arrange: a zone barely wider than one unit's spread, so a unit that
+    # commits its first members badly can leave the next one nowhere legal to
+    # stand — the board edge on one side, the spread cap to its own members on
+    # the other. The first version of the sampler drew a single anchor and
+    # raised, which killed two 300-epoch training runs about twenty minutes in.
+    # Placement must recover by re-laying the unit, not by failing the episode.
+    rng = default_rng(0)
+    zone = np.array([0.0, 0.0, 12.0, 12.0])
+
+    # Act / Assert: many draws, because the failure was rare per reset and only
+    # showed up over thousands of them.
+    for _ in range(300):
+        models = [
+            WargameModel(
+                location=position(0.0, 0.0),
+                distances_to_objectives=np.zeros(3),
+                stats={"current_wounds": 1, "max_wounds": 1},
+                group_id=index // 5,
+                base_radius=0.63,
+            )
+            for index in range(10)
+        ]
+        wargame_model_placement(
+            models,
+            zone,
+            group_max_distance=10.0,
+            rng=rng,
+            base_radius=0.63,
+            coherency=CoherencyConfig(enforce_at_deployment=True),
+        )
+        report = evaluate_coherency(
+            positions=np.array([m.location for m in models], dtype=float),
+            group_ids=np.array([m.group_id for m in models], dtype=np.intp),
+            alive_mask=np.ones(len(models), dtype=bool),
+            base_radii=np.full(len(models), 0.63),
+            nearest_distance=2.0,
+            furthest_distance=9.0,
+        )
+        assert report.all_coherent
+
+
+def test_a_zone_too_tight_for_a_unit_still_fails_loudly() -> None:
+    # Arrange: recovery must not become an infinite retry. A zone that cannot
+    # hold the unit at all has to say so with the numbers, the way the
+    # base-overlap check already does.
+    models = [
+        WargameModel(
+            location=position(0.0, 0.0),
+            distances_to_objectives=np.zeros(3),
+            stats={"current_wounds": 1, "max_wounds": 1},
+            group_id=0,
+            base_radius=0.63,
+        )
+        for _ in range(12)
+    ]
+
+    # Act / Assert
+    with pytest.raises(RuntimeError, match="too tight|no room to stand"):
+        wargame_model_placement(
+            models,
+            np.array([0.0, 0.0, 3.0, 3.0]),
+            group_max_distance=10.0,
+            rng=default_rng(0),
+            base_radius=0.63,
+            coherency=CoherencyConfig(enforce_at_deployment=True),
+        )

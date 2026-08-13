@@ -176,6 +176,18 @@ class Polygon:
             or _has_separating_axis(other.vertices, self.vertices)
         )
 
+    def rotated_180(self, board_width: float, board_height: float) -> "Polygon":
+        """Rotate a half turn about the board's centre.
+
+        The point-symmetric partner to `mirrored`. Winding is *preserved*: a
+        half turn is two reflections, so handedness survives and the vertex
+        order does not need reversing — unlike a single reflection.
+        """
+        turned = self.vertices.copy()
+        turned[:, 0] = board_width - turned[:, 0]
+        turned[:, 1] = board_height - turned[:, 1]
+        return Polygon(turned)
+
     def mirrored(self, board_width: float) -> "Polygon":
         """Reflect across the board's vertical centre line.
 

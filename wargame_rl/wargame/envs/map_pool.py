@@ -119,8 +119,17 @@ def _validate_pool(layouts: Sequence[MapLayout], config: WargameEnvConfig) -> No
 class MapPool:
     """The layouts a run draws from, resolved and checked once at construction."""
 
-    def __init__(self, layouts: Sequence[MapLayout]) -> None:
+    def __init__(
+        self,
+        layouts: Sequence[MapLayout],
+        board_width: float = 0.0,
+        board_height: float = 0.0,
+        mirror: bool = False,
+    ) -> None:
         self._layouts = list(layouts)
+        self._board_width = board_width
+        self._board_height = board_height
+        self._mirror = mirror
 
     @classmethod
     def from_config(cls, config: WargameEnvConfig) -> "MapPool | None":
@@ -129,17 +138,34 @@ class MapPool:
             return None
         layouts = _load_layouts(config.map_pool)
         _validate_pool(layouts, config)
-        return cls(layouts)
+        return cls(
+            layouts,
+            board_width=config.board_width,
+            board_height=config.board_height,
+            mirror=config.map_pool.mirror,
+        )
 
     def draw(self, rng: Generator) -> MapLayout:
-        """One layout, uniformly at random.
+        """One layout, uniformly at random, in one of its allowed orientations.
 
         Uniform rather than a shuffled cycle: a cycle would make the layout a
         function of the episode index, so two runs at different rollout widths
         would see different sequences from the same seed, and an evaluation wave
         stepping in lockstep would see every env on the same map at once.
+
+        With `mirror` set the orientation is drawn the same way, from the four
+        reflections. That is **about 2x of real variety, not 4x**: the authored
+        tables are near-180-degree-symmetric, so the xy reflection is nearly the
+        table again and x is nearly y. See `MapPoolConfig.mirror`. The
+        orientation is drawn from the same generator as the layout, so a seeded
+        episode still reproduces exactly.
         """
-        return self._layouts[int(rng.integers(len(self._layouts)))]
+        layout = self._layouts[int(rng.integers(len(self._layouts)))]
+        if not self._mirror:
+            return layout
+        flip_x = bool(rng.integers(2))
+        flip_y = bool(rng.integers(2))
+        return layout.mirrored(self._board_width, self._board_height, flip_x, flip_y)
 
     @property
     def names(self) -> list[str]:
