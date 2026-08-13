@@ -10,6 +10,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
 from wargame_rl.wargame.envs.domain.coherency_enforcement import (
     CoherencyEnforcement,
     enforce_after_move,
@@ -44,6 +45,24 @@ def make_unit(
 def locations(models: list[WargameModel]) -> list[tuple[float, float]]:
     """Current positions, as plain tuples."""
     return [(float(m.location[0]), float(m.location[1])) for m in models]
+
+
+def is_coherent(models: list[WargameModel]) -> bool:
+    """Whether every unit satisfies the whole rule where the models now stand.
+
+    The revert's actual contract. Counting how many models went back says
+    nothing about whether the position it left is legal -- which is exactly how
+    a `revert_model` that enforced nothing passed its tests.
+    """
+    report = evaluate_coherency(
+        positions=np.array([m.location for m in models], dtype=float),
+        group_ids=np.array([m.group_id for m in models], dtype=np.intp),
+        alive_mask=np.array([m.is_alive for m in models], dtype=bool),
+        base_radii=np.array([m.base_radius for m in models], dtype=float),
+        nearest_distance=NEAREST,
+        furthest_distance=FURTHEST,
+    )
+    return all(unit.coherent for unit in report.units)
 
 
 def test_a_legal_move_is_left_alone() -> None:
@@ -81,11 +100,13 @@ def test_revert_unit_sends_the_whole_unit_back() -> None:
 
 def test_revert_model_sends_back_only_the_detached() -> None:
     # Arrange: a straggler that breaks the *chain* while staying inside the
-    # spread cap -- 5 from the nearest, 6.5 from the furthest, both under 9.
+    # spread cap -- 6.5 from the nearest, 8 from the furthest, both under 9.
     # That isolation matters: a straggler far enough to breach spread as well
     # puts every model in the unit in breach, and then the two modes coincide.
+    # The pair advances only 2, so sending the straggler home leaves the unit
+    # coherent -- which is what lets the local revert stand.
     starts = [(0.0, 0.0), (1.5, 0.0), (3.0, 0.0)]
-    ends = [(20.0, 0.0), (21.5, 0.0), (15.0, 0.0)]
+    ends = [(2.0, 0.0), (3.5, 0.0), (10.0, 0.0)]
     models = make_unit(starts, ends)
 
     # Act
@@ -95,8 +116,53 @@ def test_revert_model_sends_back_only_the_detached() -> None:
 
     # Assert: the straggler goes back, the pair keeps the ground it took.
     assert reverted == 1
-    assert locations(models)[:2] == [(20.0, 0.0), (21.5, 0.0)]
+    assert locations(models)[:2] == [(2.0, 0.0), (3.5, 0.0)]
     assert models[2].location.tolist() == [3.0, 0.0]
+    assert is_coherent(models), "a local revert that leaves a break is no revert"
+
+
+def test_revert_model_escalates_when_the_local_revert_does_not_work() -> None:
+    # Arrange: the same shape as the test above, but the pair has run 20 away.
+    # Sending the straggler home now leaves the unit spanning 3 to 21.5 -- a
+    # spread of 18.5 against a cap of 9 -- so the local revert has enforced
+    # nothing and must widen to the whole unit.
+    #
+    # Regression: one pass of `revert_model` gave the same rate of units broken
+    # by their own move as running with no enforcement at all (0.024 v 0.025),
+    # because selection never re-checked what the revert had done.
+    starts = [(0.0, 0.0), (1.5, 0.0), (3.0, 0.0)]
+    ends = [(20.0, 0.0), (21.5, 0.0), (15.0, 0.0)]
+    models = make_unit(starts, ends)
+
+    # Act
+    reverted = enforce_after_move(
+        models, NEAREST, FURTHEST, CoherencyEnforcement.revert_model
+    )
+
+    # Assert
+    assert reverted == 3
+    assert locations(models) == starts
+    assert is_coherent(models)
+
+
+def test_revert_model_leaves_a_unit_broken_before_it_moved() -> None:
+    # Arrange: a unit already split when its move began -- a casualty took the
+    # middle of the chain -- which no revert can repair, because reverting is
+    # not a move. The guarantee is "this move did not break the unit", not
+    # "the unit is coherent"; closing this break is attrition's job.
+    starts = [(0.0, 0.0), (30.0, 0.0)]
+    ends = [(1.0, 0.0), (31.0, 0.0)]
+    models = make_unit(starts, ends)
+
+    # Act
+    reverted = enforce_after_move(
+        models, NEAREST, FURTHEST, CoherencyEnforcement.revert_model
+    )
+
+    # Assert: it goes back to the start and stops there rather than looping.
+    assert reverted == 2
+    assert locations(models) == starts
+    assert not is_coherent(models)
 
 
 def test_revert_unit_cancels_the_same_move_entirely() -> None:
