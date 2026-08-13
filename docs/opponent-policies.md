@@ -67,6 +67,13 @@ opponent_models:
 | `type` | string | *required* | Registry key identifying the policy class (see table below). |
 | `params` | dict | `{}` | Keyword arguments forwarded to the policy constructor. |
 
+The config is the only way to *choose* a policy, but not the only way one gets set:
+`WargameEnv.set_opponent_policy(policy)` replaces it for the rest of the episode. That
+exists for `just debug`, which wraps the configured policy in `OverridableOpponentPolicy`
+(`envs/debug/overrides.py`) so a human can take individual opponent models off it. The
+wrapper is deliberately **not** in the registry — it is not a scenario, and nothing should
+be able to select it from YAML.
+
 ### Opponent model config fields
 
 Each entry in `opponent_models` uses `ModelConfig`, the same schema as player models:

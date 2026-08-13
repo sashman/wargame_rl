@@ -116,6 +116,16 @@ All displacements are pre-computed at environment initialization for efficiency.
 The board edge is clamped into the displacement to `[r, r] .. [width - r, height - r]`
 for a model of base radius `r`, **before** collisions are resolved.
 
+### Seeing the discretisation
+
+`just debug` makes the bins visible: click open ground with a model selected and it is
+ordered there, but the ghost is drawn at the **decoded landing point** rather than at the
+click. The gap between the two is exactly the angle-and-speed quantisation the policy is
+choosing under. An order the action mask refuses is drawn too, in the casualty colour, with
+the reason — a dead model has only `STAY`.
+
+![The debug renderer with four hand-authored orders pending: three player models and one opponent, one of them refused because the model is a casualty](images/debug-hand-authored-orders.png)
+
 ## Collision
 
 With `base_radius > 0` a model occupies ground, and moves are resolved against
