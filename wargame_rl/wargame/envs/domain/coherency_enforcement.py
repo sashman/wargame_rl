@@ -27,6 +27,26 @@ about movement geometry instead of measuring it (`domain/movement.py`: the
   they tie on the bar and differ by 50 vp on ``split_evenly``, whose squads are
   shattered across the whole board every turn.
 
+**Selection runs to a fixed point, because one pass does not make a unit
+coherent.** Reverting the models in breach moves the goalposts: pull a straggler
+back to where it started and it may now be too far from the squadmates who kept
+the ground they took, so the unit is still broken and a single pass has enforced
+nothing. Measured, before this was iterated: ``revert_model`` had the same
+coherent-to-incoherent transition rate as *no enforcement at all* (0.024 against
+0.025), where ``revert_unit`` had 0.000 in 1743 transitions.
+
+So each pass re-evaluates against the tentatively reverted positions, and a unit
+whose breaching models are already all reverted while it remains incoherent
+escalates to reverting the whole unit. That terminates: every pass either adds a
+model or escalates a unit, and both are bounded by the force size.
+
+**It deliberately stops at the starting configuration rather than forcing
+coherency.** A unit split by casualties is already incoherent when its move
+begins, and no revert can repair that -- reverting is not a move. Enforcing here
+would mean deleting models, which is `apply_attrition`'s job in the End of Turn
+step. The guarantee is therefore *this move did not break the unit*, not *the
+unit is coherent*.
+
 **A naive revert leaves two bases overlapping, which is another illegal move,
 so the revert cascades.** Models resolve sequentially against live positions, so
 a model may legally have moved onto ground a lower-indexed model vacated;
@@ -88,34 +108,110 @@ def enforce_after_move(
     if mode is CoherencyEnforcement.off or not models:
         return 0
 
-    report = evaluate_coherency(
-        positions=np.array([m.location for m in models], dtype=float),
-        group_ids=np.array([m.group_id for m in models], dtype=np.intp),
-        alive_mask=np.array([m.is_alive for m in models], dtype=bool),
-        base_radii=np.array([m.base_radius for m in models], dtype=float),
-        nearest_distance=nearest_distance,
-        furthest_distance=furthest_distance,
-    )
-
     reverting: set[int] = set()
-    for unit in report.units:
-        if unit.coherent:
-            continue
-        if mode is CoherencyEnforcement.revert_unit:
-            targets = unit.member_indices
-        else:
-            targets = unit.member_indices[~unit.member_coherency]
-        reverting.update(int(index) for index in targets)
+    units: tuple[UnitCoherency, ...] = ()
+    # Selection and the overlap cascade each only ever *add*, and the cascade's
+    # additions can break their own units, so the two alternate until neither
+    # grows the set. Bounded by the force size for the same reason.
+    for iteration in range(len(models) + 1):
+        first_units = _select_reverting(
+            models, reverting, nearest_distance, furthest_distance, mode
+        )
+        if iteration == 0:
+            units = first_units
+        before = len(reverting)
+        _cascade_displaced(models, reverting, report_units=units, mode=mode)
+        if len(reverting) == before:
+            break
 
     if not reverting:
         return 0
-
-    _cascade_displaced(models, reverting, report_units=report.units, mode=mode)
 
     reverted = 0
     for index in sorted(reverting):
         reverted += _return_to_start(models[index])
     return reverted
+
+
+def _select_reverting(
+    models: list[WargameModel],
+    reverting: set[int],
+    nearest_distance: float,
+    furthest_distance: float,
+    mode: CoherencyEnforcement,
+) -> tuple[UnitCoherency, ...]:
+    """Grow *reverting* until no unit is left broken by its own move.
+
+    Re-evaluates coherency against the *tentatively* reverted positions after
+    every pass, because reverting a model changes whether its unit is coherent
+    -- see the module docstring. Nothing is written to the models here; the
+    caller applies the reverts once the set has settled. Models already in
+    *reverting* on entry count as back at their start, so this composes with the
+    overlap cascade.
+
+    Returns:
+        The units as first seen, which `_cascade_displaced` needs to keep a unit
+        revert all-or-nothing.
+    """
+    positions = np.array([m.location for m in models], dtype=float)
+    group_ids = np.array([m.group_id for m in models], dtype=np.intp)
+    alive_mask = np.array([m.is_alive for m in models], dtype=bool)
+    base_radii = np.array([m.base_radius for m in models], dtype=float)
+    for index in reverting:
+        start = models[index].previous_location
+        if start is not None:
+            positions[index] = start
+
+    first_units: tuple[UnitCoherency, ...] = ()
+    # Each pass adds a model or escalates a unit, so the force size bounds both.
+    for pass_index in range(len(models) + 1):
+        report = evaluate_coherency(
+            positions=positions,
+            group_ids=group_ids,
+            alive_mask=alive_mask,
+            base_radii=base_radii,
+            nearest_distance=nearest_distance,
+            furthest_distance=furthest_distance,
+        )
+        if pass_index == 0:
+            first_units = report.units
+        added = False
+        for unit in report.units:
+            if unit.coherent:
+                continue
+            targets = _targets_for(unit, reverting, mode)
+            for index in targets:
+                if index in reverting:
+                    continue
+                reverting.add(index)
+                start = models[index].previous_location
+                if start is not None:
+                    positions[index] = start
+                added = True
+        # Nothing left to send back: what remains is a break the move did not
+        # cause, which only attrition can close.
+        if not added:
+            break
+    return first_units
+
+
+def _targets_for(
+    unit: UnitCoherency,
+    reverting: set[int],
+    mode: CoherencyEnforcement,
+) -> list[int]:
+    """The models of one incoherent unit to send back on this pass.
+
+    Under `revert_model` this is the models in breach, escalating to the whole
+    unit once those are all back and the unit is still broken -- a local revert
+    that has not worked has to widen or it enforces nothing.
+    """
+    if mode is CoherencyEnforcement.revert_unit:
+        return [int(index) for index in unit.member_indices]
+    breaching = [int(index) for index in unit.member_indices[~unit.member_coherency]]
+    if any(index not in reverting for index in breaching):
+        return breaching
+    return [int(index) for index in unit.member_indices]
 
 
 def _cascade_displaced(
