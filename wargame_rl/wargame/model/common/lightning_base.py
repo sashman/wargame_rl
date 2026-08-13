@@ -59,6 +59,8 @@ class _EvalStats:
     exposures: list[float | None] = field(default_factory=list)
     proximities: list[float | None] = field(default_factory=list)
     firepower: list[float | None] = field(default_factory=list)
+    coherency: list[float | None] = field(default_factory=list)
+    models_out: list[float | None] = field(default_factory=list)
 
     def record(self, env: WargameEnv, reward: float, steps: int) -> None:
         """Record the finished episode held in `env`."""
@@ -71,6 +73,9 @@ class _EvalStats:
         self.exposures.append(env.exposure_rate)
         self.proximities.append(env.terrain_proximity)
         self.firepower.append(env.firepower_ratio)
+        # Always present -- coherency needs no config flag, unlike exposure.
+        self.coherency.append(env.coherency_rate)
+        self.models_out.append(env.models_out_of_coherency)
         if env.last_step_context is not None:
             self.successes.append(
                 env.phase_manager.check_success(env, env.last_step_context)
@@ -310,6 +315,19 @@ class WargameLightningBase(LightningModule, ABC):
         firepower = mean_of_measured(stats.firepower)
         if firepower is not None:
             self.log(f"eval/{prefix}firepower_ratio", firepower, prog_bar=False)
+        # Whether the army holds formation, which no other eval metric shows.
+        # Read the two together: `coherency_rate` is confounded with squad size,
+        # since a unit shot down to one model is coherent by definition and the
+        # rate therefore climbs as an army dies. `models_out_of_coherency` has
+        # no such failure mode -- a dead model contributes nothing to it.
+        coherency = mean_of_measured(stats.coherency)
+        if coherency is not None:
+            self.log(f"eval/{prefix}coherency_rate", coherency, prog_bar=False)
+        models_out = mean_of_measured(stats.models_out)
+        if models_out is not None:
+            self.log(
+                f"eval/{prefix}models_out_of_coherency", models_out, prog_bar=False
+            )
 
     def _evaluate_episodes(
         self,
