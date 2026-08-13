@@ -15,6 +15,7 @@ from wargame_rl.wargame.envs.renders.renderer import Renderer
 from wargame_rl.wargame.envs.renders.v2.backend import Canvas, RenderBackend, rasterize
 from wargame_rl.wargame.envs.renders.v2.camera import Camera
 from wargame_rl.wargame.envs.renders.v2.control import (
+    ShadowRect,
     compute_objective_control,
     probe_debug_los,
 )
@@ -121,9 +122,20 @@ class BasePresenter(Renderer):
             scale=self._scale,
             theme=self._theme,
             debug_los=los,
+            los_shadow=self._los_shadow(view),
             show_grid=self._theme.show_grid,
             shot_fade=shot_fade_for_age(self._age_of_volley(view)),
         )
+
+    def _los_shadow(self, view: BattleView) -> tuple[ShadowRect, ...]:
+        """Board area to shade as unseen. Empty for every presenter but the debugger.
+
+        A hook rather than a flag because the shading is *from* somewhere, and
+        only a presenter with a selection has a somewhere to trace from. It has
+        to reach `build_scene` rather than being drawn onto the frame like the
+        selection ring, because it belongs under the models in the draw order.
+        """
+        return ()
 
     def _age_of_volley(self, view: BattleView) -> int:
         """Frames since the currently-reported shooting results first appeared.

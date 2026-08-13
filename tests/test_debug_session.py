@@ -32,7 +32,10 @@ from wargame_rl.wargame.envs.domain.battle_view import BattleView  # noqa: E402
 from wargame_rl.wargame.envs.renders.human import QuitRequested  # noqa: E402
 from wargame_rl.wargame.envs.renders.renderer import Renderer  # noqa: E402
 from wargame_rl.wargame.envs.renders.v2.control import (  # noqa: E402
+    ShadowRect,
+    compute_los_shadow,
     compute_objective_control,
+    sight_from,
 )
 from wargame_rl.wargame.envs.renders.v2.factory import build_backend  # noqa: E402
 from wargame_rl.wargame.envs.renders.v2.presenters.debug import (  # noqa: E402
@@ -49,7 +52,12 @@ from wargame_rl.wargame.envs.renders.v2.presenters.interactive import (  # noqa:
 from wargame_rl.wargame.envs.renders.v2.presenters.recording import (  # noqa: E402
     RecordingRenderer,
 )
-from wargame_rl.wargame.envs.renders.v2.scene import build_scene  # noqa: E402
+from wargame_rl.wargame.envs.renders.v2.scene import (  # noqa: E402
+    Disc,
+    Poly,
+    build_scene,
+)
+from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME  # noqa: E402
 from wargame_rl.wargame.envs.types import (  # noqa: E402
     WargameEnvAction,
     WargameEnvConfig,
@@ -57,6 +65,7 @@ from wargame_rl.wargame.envs.types import (  # noqa: E402
 from wargame_rl.wargame.envs.types.config import (  # noqa: E402
     ModelConfig,
     OpponentPolicyConfig,
+    TerrainPieceConfig,
     TurnOrder,
     WeaponProfile,
 )
@@ -684,3 +693,152 @@ def test_a_checkpointless_session_needs_no_torch() -> None:
     assert label == "squad_march_shoot"
     env.reset(seed=0)
     assert isinstance(select(env.observation, env), WargameEnvAction)
+
+
+# --- Sight shading ----------------------------------------------------------
+
+
+def _walled_env() -> WargameEnv:
+    """A wall down the middle of the board, so there is a shadow to find."""
+    return _env(terrain=[TerrainPieceConfig(footprint=(9, 3, 10, 16))])
+
+
+def _cell_centres(env: WargameEnv) -> list[tuple[float, float]]:
+    return [
+        (x + 0.5, y + 0.5)
+        for y in range(env.config.board_height)
+        for x in range(env.config.board_width)
+    ]
+
+
+def _shaded_by(rects: tuple[ShadowRect, ...], px: float, py: float) -> int:
+    return sum(1 for x0, y0, x1, y1 in rects if x0 <= px < x1 and y0 <= py < y1)
+
+
+def test_the_shadow_is_the_engines_own_answer_and_not_the_renderers() -> None:
+    """The load-bearing test for the shading.
+
+    Every sampled cell must be shaded exactly when the engine's own sight test
+    says it is unseen. The shading exists to be *believed* when it disagrees
+    with intuition about the geometry, which it can only be if it is a picture
+    of `has_line_of_sight_between_points` rather than of a silhouette the
+    renderer projected for itself.
+    """
+    env = _walled_env()
+    env.reset(seed=5)
+    origin = (2.5, 10.0)
+
+    rects = compute_los_shadow(env, origin)
+
+    for px, py in _cell_centres(env):
+        visible = env.has_line_of_sight_between_points(origin[0], origin[1], px, py)
+        assert bool(_shaded_by(rects, px, py)) is not visible, (px, py)
+
+
+def test_the_merged_rectangles_never_overlap() -> None:
+    """Overlap is invisible in the geometry and obvious on screen: the fill is
+    translucent, so a doubled rectangle draws twice as dark."""
+    env = _walled_env()
+    env.reset(seed=5)
+
+    rects = compute_los_shadow(env, (2.5, 10.0))
+
+    assert rects
+    assert all(_shaded_by(rects, px, py) <= 1 for px, py in _cell_centres(env))
+
+
+def test_an_empty_board_casts_no_shadow() -> None:
+    """With nothing to hide behind, every rectangle would be a false positive."""
+    env = _env(base_radius=0.0)
+    env.reset(seed=5)
+
+    assert compute_los_shadow(env, (2.5, 10.0)) == ()
+
+
+def test_a_model_in_the_way_shades_nothing() -> None:
+    """Models do not occlude, so the shading is a fact about terrain alone.
+
+    Sighting straight through a squadmate's base has to come back clear, or the
+    shading would be drawing a rule the game no longer applies.
+    """
+    env = _env()
+    env.reset(seed=5)
+    near, behind = env.player_models[0], env.player_models[1]
+    origin = (float(near.location[0]), float(near.location[1]))
+    # Straight through the second model's base and out the far side.
+    step = np.asarray(behind.location, dtype=float) - np.asarray(origin, dtype=float)
+    targets = np.array([np.asarray(behind.location, dtype=float) + step], dtype=float)
+
+    assert sight_from(env, origin, targets)[0]
+
+
+def test_pressing_s_toggles_the_shading(
+    presenter_and_env: tuple[DebugPresenter, DebugControls, WargameEnv],
+) -> None:
+    import pygame
+
+    presenter, _controls, env = presenter_and_env
+
+    _press(presenter, env, pygame.K_s)
+    assert presenter._show_shadow
+    _press(presenter, env, pygame.K_s)
+    assert not presenter._show_shadow
+
+
+def test_nothing_is_shaded_until_a_model_is_selected() -> None:
+    """The shadow is cast *from* somewhere, so with no selection there is no
+    question to answer — and a board shaded by default would be unreadable."""
+    env = _walled_env()
+    env.reset(seed=5)
+    controls = DebugControls()
+    presenter = DebugPresenter(build_backend("pillow"), controls)
+    presenter.setup(env)
+    presenter._show_shadow = True
+
+    assert presenter._los_shadow(env) == ()
+
+    controls.selected = (PLAYER, 0)
+    assert presenter._los_shadow(env) != ()
+
+
+def test_the_sweep_is_reused_while_nothing_it_depends_on_moves() -> None:
+    """Thousands of rays at 30 polling frames a second, so the cache is not an
+    optimisation — it is what keeps a paused window responsive to keys."""
+    env = _walled_env()
+    env.reset(seed=5)
+    controls = DebugControls(selected=(PLAYER, 0))
+    presenter = DebugPresenter(build_backend("pillow"), controls)
+    presenter.setup(env)
+    presenter._show_shadow = True
+
+    first = presenter._los_shadow(env)
+    assert presenter._los_shadow(env) is first
+
+    env.player_models[0].location = np.array([15.5, 10.0], dtype=float)
+    assert presenter._los_shadow(env) is not first
+
+
+def test_the_shadow_is_drawn_under_the_models() -> None:
+    """A debugger that hides the pieces inside their own shadow is no use — the
+    same rule that made the inspector a reserved column rather than an overlay."""
+    env = _walled_env()
+    env.reset(seed=5)
+    rects = compute_los_shadow(env, (2.5, 10.0))
+
+    control = compute_objective_control(env)
+    plain = build_scene(env, control, scale=10.0)
+    shaded = build_scene(env, control, scale=10.0, los_shadow=rects)
+
+    assert len(shaded.primitives) - len(plain.primitives) == len(rects)
+    bodies = {(float(m.location[0]), float(m.location[1])) for m in env.player_models}
+    first_model = min(
+        i
+        for i, p in enumerate(shaded.primitives)
+        if isinstance(p, Disc) and p.center in bodies
+    )
+    last_shadow = max(
+        i
+        for i, p in enumerate(shaded.primitives)
+        if isinstance(p, Poly) and p.fill == DEFAULT_THEME.palette.los_shadow
+    )
+    assert last_shadow < first_model

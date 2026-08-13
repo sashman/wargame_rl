@@ -25,7 +25,7 @@ from wargame_rl.wargame.envs.types.game_timing import BattlePhase, PlayerSide
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.domain.battle_view import BattleView
-    from wargame_rl.wargame.envs.renders.v2.control import LosResult
+    from wargame_rl.wargame.envs.renders.v2.control import LosResult, ShadowRect
 
 
 class Control(enum.Enum):
@@ -381,6 +381,7 @@ def build_scene(
     scale: float,
     theme: Theme = DEFAULT_THEME,
     debug_los: "LosResult | None" = None,
+    los_shadow: Sequence["ShadowRect"] = (),
     show_grid: bool = True,
     shot_fade: float = 1.0,
 ) -> Scene:
@@ -465,6 +466,15 @@ def build_scene(
         fill_rgba = (*fill_rgb, 255) if fill_rgb is not None else None
         prims.append(
             Disc((cx, cy), radius_board, fill_rgba, pal.objective_rim, rim_width)
+        )
+
+    # Sight shadow: over the board and everything static on it, under the models.
+    # It shades terrain and objectives because they *are* hidden — an objective
+    # nobody can see is the interesting case — but leaving the models on top
+    # keeps the pieces readable inside their own shadow.
+    for x0, y0, x1, y1 in los_shadow:
+        prims.append(
+            Poly(((x0, y0), (x1, y0), (x1, y1), (x0, y1)), pal.los_shadow, None, 0)
         )
 
     # Movement arrows, then models (opponents under players, matching legacy).
