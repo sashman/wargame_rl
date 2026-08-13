@@ -96,7 +96,7 @@ wargame_rl/
 | Step a match by hand and rewind it | `just debug [config.yaml] [policy\|ckpt] [theme]` |
 | Record a match event log | `just record <config.yaml>` |
 | Replay / narrate a log | `just replay <file>` · `just replay-summary <file>` |
-| Replay a log visually (window or MP4) | `just replay-render <file> [out.mp4] [theme]` |
+| Replay a log visually (window or MP4) | `just replay-render <file> [out.mp4] [theme]` — tabletop by default |
 | Analyse a log | `just analyze <file>` · `just analyze-compare <files...>` |
 | Inspect a Wandb run | `just run-summary <run_id> [bucket]` |
 | Measure reward-phase gates | `just measure-phase-gates <ckpt> <config.yaml> [n_episodes]` |

@@ -121,6 +121,29 @@ class MapPoolConfig(BaseModel):
         description="Directory of `TerrainMapConfig` YAML files, relative to the "
         "working directory."
     )
+    mirror: bool = Field(
+        default=False,
+        description=(
+            "Draw each layout in one of four orientations — as authored, "
+            "reflected in x, in y, or in both — chosen uniformly per episode. "
+            "This targets a *measured* defect: the same checkpoint scored "
+            "-1.4 vp on tables it trained on and -23.8 on tables it had not, so "
+            "the gap was generalisation and 36 layouts is a small distribution. "
+            "**It buys about 2x, not 4x.** The real tables are laid out with "
+            "near-180-degree rotational symmetry, the way fair tournament "
+            "tables are: measured over all 45, a table sits a median of 1.7 "
+            "board units from its own 180-degree rotation and at worst 3.9, on "
+            "a board 60 across. So the xy reflection is very nearly the "
+            "authored table again, and the x and y reflections are very nearly "
+            "each other. The one genuinely distinct orientation is the "
+            "side-swap, which is legitimate only while the two deployment "
+            "zones mirror each other — check that before enabling it on an "
+            "asymmetric scenario. All four are still drawn, because they are "
+            "near-duplicates rather than exact ones and the redundancy costs "
+            "nothing. Off by default, so an existing pool draws exactly what "
+            "it always did."
+        ),
+    )
     names: list[str] | None = Field(
         default=None,
         description="Map names to draw from, by `name` rather than filename. "
@@ -154,6 +177,39 @@ class RandomTerrainConfig(BaseModel):
     )
     max_size: int = Field(
         gt=0, default=7, description="Maximum footprint side length in cells."
+    )
+    mirror_mode: str = Field(
+        default="reflect_x",
+        pattern="^(reflect_x|rotate_180)$",
+        description=(
+            "How `mirror` pairs pieces. `reflect_x` puts a mirror line down the "
+            "middle of the table. `rotate_180` makes the layout point-symmetric "
+            "about the board centre, which is **what the real tables actually "
+            "are**: measured over all 45 authored layouts, a table sits a median "
+            "of 1.7 board units from its own 180-degree rotation and at worst "
+            "3.9, because a fair tournament table is built so neither side gets "
+            "the better ground. A generated table reflected in x alone has a "
+            "mirror line the real ones do not, and that is a regularity a policy "
+            "can learn and the eval maps will never reward. `reflect_x` remains "
+            "the default so existing runs are unchanged."
+        ),
+    )
+    angled_fraction: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Share of *small* pieces given a random facing rather than sitting "
+            "square to the board. A layout of perfectly axis-aligned boxes is a "
+            "tell, and the real tables are not laid out that way. Small only — "
+            "the lower half of the spec's size range — because a large ruin "
+            "turned off-axis reads as a mistake, and because an angled piece is "
+            "shrunk to fit the footprint it was allotted, which costs a bigger "
+            "piece more coverage. That shrink is not optional: the rectangles "
+            "are chosen to be mutually clear, and a turned rectangle sweeps "
+            "outside its box, so turning without shrinking would generate "
+            "overlapping ruins. 0.0 by default, which is the exact no-op."
+        ),
     )
     mirror: bool = Field(
         default=True,

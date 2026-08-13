@@ -57,6 +57,31 @@ def _mirror(rect: _Rect, board_width: int) -> _Rect:
     return (board_width - 1 - x1, y0, board_width - 1 - x0, y1)
 
 
+def _rotate_180(rect: _Rect, board_width: int, board_height: int) -> _Rect:
+    """Rotate a cell rectangle a half turn about the board's centre.
+
+    The partner operation to `_mirror`, and the one the *real* tables use.
+    Measured over all 45 authored layouts, a table sits a median of 1.7 board
+    units from its own 180-degree rotation and at worst 3.9 — they are built
+    point-symmetric, the way a fair tournament table is, so that neither side
+    gets the better ground. Reflecting in x alone gives a table a mirror line it
+    does not have, which is a difference the policy can learn and the real
+    tables will not reward.
+
+    Index space on both axes, for the same reason `_mirror` uses it: cell `i`
+    pairs with cell `N - 1 - i`, which matches reflecting the continuous
+    rectangle about the board dimension once `from_cell_rect` has pushed the far
+    corner out by one.
+    """
+    x0, y0, x1, y1 = rect
+    return (
+        board_width - 1 - x1,
+        board_height - 1 - y0 - (y1 - y0),
+        board_width - 1 - x0,
+        board_height - 1 - y0,
+    )
+
+
 def _sample_piece(
     spec: RandomTerrainConfig,
     board: BoardDimensions,
@@ -88,9 +113,19 @@ def _sample_centre_piece(
         width = width + 1 if width < spec.max_size else max(spec.min_size, width - 1)
     height = int(rng.integers(spec.min_size, spec.max_size + 1))
     x0 = (board.width - width) // 2
-    y0 = int(
-        rng.integers(spec.edge_margin, board.height - spec.edge_margin - height + 1)
-    )
+    if spec.mirror_mode == "rotate_180":
+        # A half-turn has one fixed point, the board centre, so the unpaired
+        # piece has to sit on it in *both* axes -- anywhere else and the layout
+        # is not point-symmetric however symmetric the piece itself is.
+        if (board.height - height) % 2 != 0:
+            height = (
+                height + 1 if height < spec.max_size else max(spec.min_size, height - 1)
+            )
+        y0 = (board.height - height) // 2
+    else:
+        y0 = int(
+            rng.integers(spec.edge_margin, board.height - spec.edge_margin - height + 1)
+        )
     return (x0, y0, x0 + width - 1, y0 + height - 1)
 
 
@@ -151,7 +186,11 @@ def _attempt_layout(
                 break
             # A piece is checked against its own reflection first — that is what
             # stops a pair from overlapping across the centre line.
-            reflection = _mirror(candidate, board.width)
+            reflection = (
+                _rotate_180(candidate, board.width, board.height)
+                if spec.mirror_mode == "rotate_180"
+                else _mirror(candidate, board.width)
+            )
             if _clashes(candidate, [reflection], spec.min_gap):
                 continue
             if _clashes(candidate, placed, spec.min_gap) or _clashes(
@@ -164,6 +203,69 @@ def _attempt_layout(
             return None
 
     return placed
+
+
+def _rotated_in_place(polygon: Polygon, angle: float) -> Polygon:
+    """Turn an outline about its own centre, shrunk to fit the box it started in.
+
+    Real tables do not lay every ruin square to the board edge, and a layout of
+    perfectly axis-aligned boxes is a tell. Rotation is applied *inside the
+    piece's own footprint*: the outline is turned, then scaled and re-centred
+    until its new bounding box fits the old one. Overlap is what makes that
+    necessary -- the rectangles were chosen to be mutually clear, and a turned
+    rectangle sweeps outside its box at every angle but a right one, so turning
+    without shrinking would put pieces through each other and through the board
+    edge.
+
+    The fit is computed on the **bounding box**, not on extents about the
+    centroid. Those differ for any outline that is not symmetric about its own
+    centre, and an inscribed polygon rarely is -- containing the symmetric box
+    lets the real one grow, which is exactly the overlap this exists to prevent.
+
+    The cost is that an angled piece is smaller than the box it was allotted.
+    That is the honest trade: coverage is what terrain is tuned on, and it is
+    better to lose a little of it visibly here than to silently generate
+    overlapping ruins.
+    """
+    x0, y0, x1, y1 = polygon.bounds
+    centre = np.array([(x0 + x1) / 2.0, (y0 + y1) / 2.0])
+    cos_a, sin_a = float(np.cos(angle)), float(np.sin(angle))
+    local = polygon.vertices - centre
+    turned = np.column_stack(
+        [
+            local[:, 0] * cos_a - local[:, 1] * sin_a,
+            local[:, 0] * sin_a + local[:, 1] * cos_a,
+        ]
+    )
+    spans = turned.max(axis=0) - turned.min(axis=0)
+    allowed = np.array([x1 - x0, y1 - y0])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratios = np.where(spans > 0, allowed / spans, 1.0)
+    turned *= float(min(1.0, ratios.min()))
+    # Re-centre on the box rather than on the vertices: scaling moved the
+    # turned outline's box centre off the original's.
+    turned_centre = (turned.max(axis=0) + turned.min(axis=0)) / 2.0
+    return Polygon(turned - turned_centre + centre)
+
+
+def _maybe_angle(
+    polygon: Polygon, spec: RandomTerrainConfig, rng: Generator
+) -> Polygon:
+    """Give a small piece a random facing, `angled_fraction` of the time.
+
+    Only small pieces, because a large ruin turned off-axis reads as a mistake
+    rather than as scenery, and because the shrink-to-fit above costs a bigger
+    piece more absolute coverage. "Small" is the lower half of the size range
+    the spec allows.
+    """
+    if spec.angled_fraction <= 0.0:
+        return polygon
+    x0, y0, x1, y1 = polygon.bounds
+    if max(x1 - x0, y1 - y0) > (spec.min_size + spec.max_size) / 2.0:
+        return polygon
+    if float(rng.random()) >= spec.angled_fraction:
+        return polygon
+    return _rotated_in_place(polygon, float(rng.uniform(0.0, np.pi / 2.0)))
 
 
 def _build_footprints(
@@ -188,20 +290,60 @@ def _build_footprints(
     footprints: list[Footprint] = []
     index = 0
     if spec.mirror and spec.count % 2 == 1:
-        footprints.append(
-            Footprint(_symmetric_polygon(placed[0], spec.n_vertices, rng))
+        centre_polygon = (
+            _point_symmetric_polygon(placed[0], spec.n_vertices, rng)
+            if spec.mirror_mode == "rotate_180"
+            else _symmetric_polygon(placed[0], spec.n_vertices, rng)
         )
+        footprints.append(Footprint(centre_polygon))
         index = 1
 
     while index < len(placed):
-        polygon = _inscribed_polygon(placed[index], spec.n_vertices, rng)
+        polygon = _maybe_angle(
+            _inscribed_polygon(placed[index], spec.n_vertices, rng), spec, rng
+        )
         footprints.append(Footprint(polygon))
         if spec.mirror:
-            footprints.append(Footprint(polygon.mirrored(float(board.width))))
+            partner = (
+                polygon.rotated_180(float(board.width), float(board.height))
+                if spec.mirror_mode == "rotate_180"
+                else polygon.mirrored(float(board.width))
+            )
+            footprints.append(Footprint(partner))
             index += 2
         else:
             index += 1
     return footprints
+
+
+def _point_symmetric_polygon(rect: _Rect, n_vertices: int, rng: Generator) -> Polygon:
+    """An outline that is its own half-turn about its centre.
+
+    The rotational counterpart to `_symmetric_polygon`, and built the same way
+    and for the same reason: draw *half* the vertices and generate the rest by
+    rotating them, so the symmetry is exact and the vertex count lands exactly
+    on the budget rather than doubling and overflowing the observation.
+
+    Half the vertices are drawn across a half turn of the inscribed ellipse and
+    the other half are the same points turned through pi. An odd budget cannot
+    be point-symmetric at all -- there is no vertex a half turn can fix except
+    the centre, which is inside the shape -- so the budget is rounded down and
+    the outline carries one vertex fewer.
+    """
+    x0, y0, x1, y1 = rect
+    left, bottom = float(x0), float(y0)
+    right, top = float(x1) + 1.0, float(y1) + 1.0
+    centre_x, centre_y = (left + right) / 2.0, (bottom + top) / 2.0
+    radius_x, radius_y = (right - left) / 2.0, (top - bottom) / 2.0
+
+    half = max(2, n_vertices // 2)
+    sector = np.pi / half
+    angles = sector * (np.arange(half) + rng.uniform(0.15, 0.85, half))
+    xs = centre_x + radius_x * np.cos(angles)
+    ys = centre_y + radius_y * np.sin(angles)
+    points = [(float(x), float(y)) for x, y in zip(xs, ys)]
+    turned = [(2.0 * centre_x - x, 2.0 * centre_y - y) for x, y in points]
+    return Polygon.from_points(points + turned)
 
 
 def _symmetric_polygon(rect: _Rect, n_vertices: int, rng: Generator) -> Polygon:
