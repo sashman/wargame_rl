@@ -2,9 +2,19 @@
 
 A recording carries the full state of every step but replaying it is a *video*:
 there is no env, so nothing can be asked "what if". This turns the provenance
-block on the reset snapshot back into a live environment that will produce the
-identical match — same layout, same dice, same everything — which is what makes
-`just debug` usable on a game you have already watched go wrong.
+block in the log header back into a live environment reproducing that episode —
+same layout, same dice, same everything — which is what makes `just debug`
+usable on a game you have already watched go wrong.
+
+**How exact, measured.** Two rebuilds from one provenance are bit-identical to
+each other, and a rebuild replaying a `simulate` recording's own actions matched
+its snapshots exactly over 20 steps, actions included. Against a *training*
+recording the agreement is exact at 38 of 40 steps with a transient ~9e-13 on a
+single model at two of them, which self-corrects. Both rebuilds agree with each
+other there, so the difference is between the training process and any
+reproduction, not between reproductions — unexplained, and small enough that it
+changes no decision the debugger is used to make. Do not quote this path as
+bit-identical against a training recording until that is understood.
 
 Lives here rather than in `state/` because it constructs a `WargameEnv`, and
 `state/` is imported *by* the env.
@@ -15,9 +25,36 @@ from __future__ import annotations
 from pathlib import Path
 
 from wargame_rl.wargame.envs.state.codecs import JsonMatchCodec
+from wargame_rl.wargame.envs.state.event_log import EventLog
 from wargame_rl.wargame.envs.state.snapshot import EpisodeProvenance
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
+
+
+def read_log(path: str | Path) -> EventLog:
+    """Decode a recording. Split out so a caller wanting both the provenance and
+    the actions does not parse the file twice."""
+    return JsonMatchCodec().decode(Path(path).read_bytes())
+
+
+def recorded_actions(log: EventLog) -> list[list[int] | None]:
+    """The player's action at each step, indexed by step number.
+
+    Index 0 is unused — a reset executes nothing — so entry `n` is the action
+    that produced the snapshot at step `n`. That indexing is what lets a session
+    follow the recording through a rewind for free: `env.current_turn` is
+    restored with the env, so the next action is always looked up by where the
+    match actually is rather than by how many steps have been taken.
+
+    Reconstructed once at startup rather than seeked per step: a seek walks from
+    the nearest anchor, and the whole point is to do that walk a single time.
+    """
+    actions: list[list[int] | None] = [None]
+    for step in range(1, len(log.events)):
+        snapshot = log.snapshot_at(step)
+        recorded = snapshot.player_actions
+        actions.append(list(recorded) if recorded is not None else None)
+    return actions
 
 
 def read_provenance(path: str | Path) -> EpisodeProvenance:
@@ -27,11 +64,15 @@ def read_provenance(path: str | Path) -> EpisodeProvenance:
     "reproduce this" and "this file cannot say how" are worth telling apart —
     the second is not fixable by trying again.
     """
-    source = Path(path)
-    log = JsonMatchCodec().decode(source.read_bytes())
+    return provenance_of(read_log(path), path)
+
+
+def provenance_of(log: EventLog, path: str | Path) -> EpisodeProvenance:
+    """The provenance from an already-decoded log; `path` only names it in the
+    error, so a caller that wants the actions too parses the file once."""
     if log.provenance is None:
         raise ValueError(
-            f"{source} carries no provenance. It was recorded before the inputs "
+            f"{path} carries no provenance. It was recorded before the inputs "
             "were written down, so the episode cannot be recreated from it — "
             "re-record it, or supply the config and seed by hand."
         )

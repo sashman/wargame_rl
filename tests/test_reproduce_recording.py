@@ -28,13 +28,29 @@ from wargame_rl.wargame.envs.baseline.registry import (  # noqa: E402
 )
 from wargame_rl.wargame.envs.debug.reproduce import (  # noqa: E402
     build_env,
+    provenance_of,
+    read_log,
     read_provenance,
+    rebuild,
     rebuild_from_recording,
-    reset_options,
+    recorded_actions,
+)
+from wargame_rl.wargame.envs.debug.reproduce import (  # noqa: E402
+    reset_options as reproduce_reset_options,
+)
+from wargame_rl.wargame.envs.debug.session import run_session  # noqa: E402
+from wargame_rl.wargame.envs.debug.undo import capture_state  # noqa: E402
+from wargame_rl.wargame.envs.domain.battle_view import BattleView  # noqa: E402
+from wargame_rl.wargame.envs.renders.human import QuitRequested  # noqa: E402
+from wargame_rl.wargame.envs.renders.renderer import Renderer  # noqa: E402
+from wargame_rl.wargame.envs.renders.v2.presenters.debug import (  # noqa: E402
+    PLAYER,
+    DebugControls,
 )
 from wargame_rl.wargame.envs.state.codecs import JsonMatchCodec  # noqa: E402
 from wargame_rl.wargame.envs.state.events import ResetEvent  # noqa: E402
 from wargame_rl.wargame.envs.state.exporter import EventLogExporter  # noqa: E402
+from wargame_rl.wargame.envs.types import WargameEnvAction  # noqa: E402
 from wargame_rl.wargame.envs.types import WargameEnvConfig  # noqa: E402
 from wargame_rl.wargame.envs.types.config import (  # noqa: E402
     ModelConfig,
@@ -129,7 +145,7 @@ def test_the_session_reset_path_reproduces_it(tmp_path: Path) -> None:
     provenance = read_provenance(path)
 
     env = build_env(provenance)
-    env.reset(seed=None, options=reset_options(provenance))
+    env.reset(seed=None, options=reproduce_reset_options(provenance))
 
     assert _trace(env) == original
 
@@ -214,3 +230,142 @@ def test_an_unusable_gpu_falls_back_to_cpu(monkeypatch: pytest.MonkeyPatch) -> N
         assert auto_device().type == "cuda"
     finally:
         auto_device.cache_clear()
+
+
+class _ScriptedRenderer(Renderer):
+    """Replays control mutations, one per rendered frame, then quits.
+
+    A local copy of the one in `test_debug_session`: importing across test
+    modules to share a five-line stand-in couples two files that otherwise have
+    nothing to say to each other.
+    """
+
+    def __init__(self, controls: DebugControls, script: list[Any]) -> None:
+        self._controls = controls
+        self._script = list(script)
+
+    def setup(self, view: BattleView) -> None:
+        return None
+
+    def render(self, view: BattleView) -> None:
+        if not self._script:
+            raise QuitRequested()
+        action = self._script.pop(0)
+        if action is not None:
+            action(self._controls)
+
+    def close(self) -> None:
+        return None
+
+
+# --- Following the recording ------------------------------------------------
+
+
+def _follow_one_step(env: WargameEnv, actions: list[list[int] | None]) -> None:
+    """Step the env with the recording's action for whatever turn it is on."""
+    recorded = actions[env.current_turn + 1]
+    assert recorded is not None
+    env.step(WargameEnvAction(actions=list(recorded)))
+
+
+def test_following_a_recording_reproduces_the_match_without_a_driver(
+    tmp_path: Path,
+) -> None:
+    """Why following exists at all.
+
+    A *training* recording's actions came from a network mid-training that was
+    never saved, so no driver can reproduce its decisions. Replaying the
+    recording's own actions does — and a scripted driver deliberately unlike the
+    recorded one proves the actions, not the driver, are what is steering.
+    """
+    path, original = _record(tmp_path, seed=4242)
+    log = read_log(path)
+    env = rebuild(provenance_of(log, path))
+    actions = recorded_actions(log)
+
+    replayed = []
+    for _ in range(len(original)):
+        _follow_one_step(env, actions)
+        replayed.append(
+            (
+                env.player_vp,
+                env.opponent_vp,
+                env.last_reward,
+                np.array([m.location for m in env.player_models]).tobytes(),
+                np.array([m.location for m in env.opponent_models]).tobytes(),
+                [m.stats["current_wounds"] for m in env.player_models],
+            )
+        )
+
+    assert replayed == original
+
+
+def test_the_action_index_is_the_turn_so_a_rewind_needs_no_bookkeeping(
+    tmp_path: Path,
+) -> None:
+    """`env.current_turn` is restored along with the env, so stepping back and
+    forward again follows the recording without the loop tracking anything."""
+    path, original = _record(tmp_path, seed=4242)
+    log = read_log(path)
+    actions = recorded_actions(log)
+    env = rebuild(provenance_of(log, path))
+
+    for _ in range(3):
+        _follow_one_step(env, actions)
+    saved = capture_state(env)
+    for _ in range(2):
+        _follow_one_step(env, actions)
+    after = np.array([m.location for m in env.player_models])
+
+    # Rewind, then follow again from the restored turn.
+    restored = saved
+    assert restored.current_turn == 3
+    for _ in range(2):
+        _follow_one_step(restored, actions)
+
+    np.testing.assert_array_equal(
+        np.array([m.location for m in restored.player_models]), after
+    )
+
+
+def test_the_session_follows_then_hands_over_when_you_diverge(tmp_path: Path) -> None:
+    """An action recorded for a state you have since altered is not that match
+    any more, it is a coincidence — so following stops the moment you author
+    something, and resumes if you rewind back past it."""
+    path, original = _record(tmp_path, seed=4242)
+    log = read_log(path)
+    actions = recorded_actions(log)
+    controls = DebugControls()
+    select = selector_for(build_baseline_policy("random"))
+
+    def _step(c: DebugControls) -> None:
+        c.step_once = True
+        c.paused = True
+
+    def _order(c: DebugControls) -> None:
+        c.selected = (PLAYER, 0)
+        c.order_at = (PLAYER, 0, 1.0, 1.0)
+
+    seen: list[Any] = []
+
+    class _Recorder(_ScriptedRenderer):
+        def render(self, view: BattleView) -> None:
+            seen.append(np.array([m.location for m in view.player_models]).tobytes())
+            super().render(view)
+
+    env = build_env(provenance_of(log, path))
+    script = [_step, _step, _order, _step, None]
+    run_session(
+        env,
+        _Recorder(controls, script),
+        controls,
+        select,
+        seed=None,
+        reset_options=reproduce_reset_options(provenance_of(log, path)),
+        recorded=actions,
+    )
+
+    # The two followed steps match the recording; the authored one does not.
+    assert seen[1] == original[0][3]
+    assert seen[2] == original[1][3]
+    assert seen[-1] != original[2][3]

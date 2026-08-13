@@ -35,7 +35,12 @@ from wargame_rl.wargame.envs.baseline.registry import (
     get_registry,
 )
 from wargame_rl.wargame.envs.debug import run_session
-from wargame_rl.wargame.envs.debug.reproduce import build_env, read_provenance
+from wargame_rl.wargame.envs.debug.reproduce import (
+    build_env,
+    provenance_of,
+    read_log,
+    recorded_actions,
+)
 from wargame_rl.wargame.envs.debug.reproduce import (
     reset_options as reproduce_reset_options,
 )
@@ -93,6 +98,12 @@ def debug(
         help="Recreate the episode a recording came from, exactly. Overrides "
         "the config, the seed and (unless one is given) the driver.",
     ),
+    follow: bool = typer.Option(
+        True,
+        help="With --from-recording, replay the recording's own actions until "
+        "you change something. --no-follow drives with the policy instead, "
+        "which reproduces the scenario but not necessarily the match.",
+    ),
     fps: int = typer.Option(4, help="Frames per second while playing."),
     backend: str = typer.Option("pillow", help="Drawing backend."),
     undo_depth: int = typer.Option(100, help="How many steps can be taken back."),
@@ -102,13 +113,20 @@ def debug(
     renderer = DebugPresenter(build_backend(backend), controls, resolve_theme(theme))
     source = env_config_path.split("/")[-1]
     reset_options: dict[str, int] | None = None
+    recorded: list[list[int] | None] | None = None
 
     if from_recording is not None:
         # Everything the episode needs comes off the recording -- the config
         # included, so a scenario file edited since it was made cannot quietly
         # reproduce something that merely looks like it.
-        provenance = read_provenance(from_recording)
+        log = read_log(from_recording)
+        provenance = provenance_of(log, from_recording)
         env = build_env(provenance, renderer=renderer)
+        if follow:
+            # The actions matter more than the driver for a *training*
+            # recording: the network that played it was mid-training and was
+            # never saved, so no driver can reproduce its decisions.
+            recorded = recorded_actions(log)
         reset_options = reproduce_reset_options(provenance)
         # `run_session` owns the reset; seeding there would discard the
         # generator state `build_env` just installed.
@@ -130,8 +148,13 @@ def debug(
     select, label = build_selector_for(driver, env)
     renderer.run_label = f"{label} · {source}"
 
+    driving = (
+        f"replaying {len(recorded) - 1} recorded steps, then {label}"
+        if recorded
+        else label
+    )
     logger.info(
-        f"Debugging {source} with {label}. Opens paused — "
+        f"Debugging {source} with {driving}. Opens paused — "
         "[.] steps, [,] steps back, [Space] plays, [Tab] lists the keys."
     )
     try:
@@ -143,6 +166,7 @@ def debug(
             seed=seed,
             undo_depth=undo_depth,
             reset_options=reset_options,
+            recorded=recorded,
         )
     except KeyboardInterrupt:
         logger.info("Interrupted.")

@@ -245,8 +245,25 @@ recording from a video into something you can step through by hand:
 just debug-recording recordings/my_events.jsonl
 ```
 
-boots a live env that produces the *identical* match — same layout, same dice,
-same everything — and opens it paused in the debugger.
+boots a live env that reproduces the match — same layout, same dice, same
+everything — and opens it paused in the debugger. By default it also **replays
+the recording's own actions** until you change something, then hands over to the
+driver. That is what makes a *training* recording steppable at all: the network
+that played it was mid-training and was never saved, so no driver can reproduce
+its decisions. `--no-follow` drives with the policy instead, which reproduces the
+scenario but not necessarily the match.
+
+Following stops the moment you author an order — an action recorded for a state
+you have since altered is not that match any more — and resumes if you rewind
+back past the divergence. The lookup is by `env.current_turn`, which a rewind
+restores along with everything else, so that costs no bookkeeping.
+
+**Measured fidelity.** Two rebuilds from one provenance are bit-identical; a
+rebuild replaying a `simulate` recording's actions matched its snapshots exactly
+over 20 steps. Against a *training* recording it is exact at 38 of 40 steps with
+a transient ~9e-13 on one model at two of them. Both rebuilds agree with each
+other there, so the difference is between the training process and any
+reproduction — unexplained, and not yet a claim of bit-identity for that path.
 
 Three choices in it are load-bearing:
 
