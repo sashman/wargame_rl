@@ -27,7 +27,14 @@ from wargame_rl.wargame.envs.debug import (  # noqa: E402
     capture_state,
     run_session,
 )
-from wargame_rl.wargame.envs.debug.session import record_moves  # noqa: E402
+from wargame_rl.wargame.envs.debug.overrides import (  # noqa: E402
+    OverridableOpponentPolicy,
+)
+from wargame_rl.wargame.envs.debug.session import (  # noqa: E402
+    apply_orders,
+    record_moves,
+    resolve_order,
+)
 from wargame_rl.wargame.envs.domain.battle_view import BattleView  # noqa: E402
 from wargame_rl.wargame.envs.renders.human import QuitRequested  # noqa: E402
 from wargame_rl.wargame.envs.renders.renderer import Renderer  # noqa: E402
@@ -45,6 +52,7 @@ from wargame_rl.wargame.envs.renders.v2.presenters.debug import (  # noqa: E402
     PLAYER,
     DebugControls,
     DebugPresenter,
+    Order,
 )
 from wargame_rl.wargame.envs.renders.v2.presenters.interactive import (  # noqa: E402
     InteractiveRenderer,
@@ -842,3 +850,366 @@ def test_the_shadow_is_drawn_under_the_models() -> None:
         if isinstance(p, Poly) and p.fill == DEFAULT_THEME.palette.los_shadow
     )
     assert last_shadow < first_model
+
+
+# --- Hand-authored orders ---------------------------------------------------
+
+
+def _order(env: WargameEnv, side: str, index: int, x: float, y: float) -> Order:
+    return resolve_order(env, env.observation, (side, index, x, y))[1]
+
+
+def test_an_order_lands_where_the_ghost_says_not_where_the_click_was() -> None:
+    """The contract the whole authoring flow rests on.
+
+    The action space is `n_movement_angles` x `n_speed_bins`, so a click is
+    snapped to a bin and the model lands somewhere else. The panel and the board
+    both draw `landing`, and this asserts that is where the model actually ends
+    up — a ghost that lied would make every authored move a guess.
+    """
+    env = _env(skip_phases=[BattlePhase.command, BattlePhase.charge, BattlePhase.fight])
+    env.reset(seed=11)
+    order = _order(env, PLAYER, 0, 12.0, 14.0)
+    assert order.legal
+
+    action = selector_for(build_baseline_policy("squad_march_shoot"))(
+        env.observation, env
+    )
+    apply_orders(env, action, {(PLAYER, 0): order})
+    env.step(action)
+
+    landed = (
+        float(env.player_models[0].location[0]),
+        float(env.player_models[0].location[1]),
+    )
+    assert math.dist(landed, order.landing) < 1e-9
+
+
+def test_the_landing_point_is_not_the_click() -> None:
+    """Stated as its own case because it is the *point*, not a defect: the bins
+    are coarse, and seeing how coarse is what the ghost is for."""
+    env = _env()
+    env.reset(seed=11)
+
+    order = _order(env, PLAYER, 0, 12.3, 14.7)
+
+    assert math.dist(order.landing, (12.3, 14.7)) > 0.01
+
+
+def test_an_order_in_the_wrong_phase_is_refused_with_a_reason() -> None:
+    """Refusing silently would leave the click looking ignored. The check is the
+    agent's own action mask, so the refusal has the same grounds the policy's
+    would."""
+    env = _env(skip_phases=[BattlePhase.command, BattlePhase.charge, BattlePhase.fight])
+    env.reset(seed=11)
+    select = selector_for(build_baseline_policy("squad_march_shoot"))
+    while env.game_clock_state.phase is BattlePhase.movement:
+        env.step(select(env.observation, env))
+
+    order = _order(env, PLAYER, 0, 12.0, 14.0)
+
+    assert not order.legal
+    assert order.reason is not None and "movement" in order.reason
+
+
+def test_an_illegal_order_is_not_applied() -> None:
+    """Drawn, so the click is not lost, but never sent to the env."""
+    env = _env()
+    env.reset(seed=11)
+    action = WargameEnvAction(actions=[0] * len(env.player_models))
+    refused = Order(action=7, text="Move E", landing=(1.0, 1.0), legal=False)
+
+    apply_orders(env, action, {(PLAYER, 0): refused})
+
+    assert action.actions[0] == 0
+
+
+def test_an_opponent_order_goes_through_the_policy_not_the_action() -> None:
+    """The opponent's whole turn runs inside the player's `step()`, so there is
+    no action vector to edit — the policy is the only seam."""
+    env = _env()
+    env.reset(seed=11)
+    configured = env.opponent_policy
+    order = _order(env, OPPONENT, 0, 4.0, 5.0)
+
+    action = WargameEnvAction(actions=[0] * len(env.player_models))
+    apply_orders(env, action, {(OPPONENT, 0): order})
+
+    wrapper = env.opponent_policy
+    assert isinstance(wrapper, OverridableOpponentPolicy)
+    assert wrapper.inner is configured
+    assert wrapper.overrides == {0: order.action}
+    assert wrapper.shoots == configured.shoots
+
+
+def test_the_wrapper_is_replaced_rather_than_nested() -> None:
+    """Ordering on step after step must not stack wrappers — each would re-apply
+    a stale override, and the pile would deepen for the whole session."""
+    env = _env()
+    env.reset(seed=11)
+    configured = env.opponent_policy
+    action = WargameEnvAction(actions=[0] * len(env.player_models))
+
+    for _ in range(3):
+        apply_orders(env, action, {(OPPONENT, 0): _order(env, OPPONENT, 0, 4.0, 5.0)})
+
+    wrapper = env.opponent_policy
+    assert isinstance(wrapper, OverridableOpponentPolicy)
+    assert wrapper.inner is configured
+
+
+def test_no_orders_restores_the_configured_opponent() -> None:
+    """A cleared order must hand the opponent back, or it keeps obeying the last
+    thing anyone typed."""
+    env = _env()
+    env.reset(seed=11)
+    configured = env.opponent_policy
+    action = WargameEnvAction(actions=[0] * len(env.player_models))
+    apply_orders(env, action, {(OPPONENT, 0): _order(env, OPPONENT, 0, 4.0, 5.0)})
+
+    apply_orders(env, action, {})
+
+    assert env.opponent_policy is configured
+
+
+def test_redoing_a_step_with_the_dice_held_reproduces_it_exactly() -> None:
+    """Why `reroll_dice` is off by default. The rewind restores the combat RNG
+    with everything else, so re-running the same decision is a controlled A/B —
+    change the order and the difference is the order, not the luck."""
+    env = _env()
+    env.reset(seed=1234)
+    select = selector_for(build_baseline_policy("squad_march_shoot"))
+    action = select(env.observation, env)
+
+    saved = capture_state(env)
+    env.step(action)
+    first = _outcome(env)
+
+    saved.step(action)
+
+    _assert_same(first, _outcome(saved))
+
+
+def test_rerolling_the_dice_moves_the_outcome_without_moving_the_layout() -> None:
+    """`D` reseeds the combat RNG only.
+
+    Positions still resolve identically across every seed — the point is to see
+    the spread the *dice* contribute, which `measure-noise-floor` says is larger
+    than the spread between scenarios. Asserted over several seeds rather than
+    one, because any single reroll may land on the same result by chance.
+    """
+    env = _env()
+    env.reset(seed=1234)
+    select = selector_for(build_baseline_policy("squad_march_shoot"))
+    # One movement step, so the step under test is the shooting one — dice
+    # cannot change a move, and a movement step would pass this vacuously.
+    env.step(select(env.observation, env))
+    assert env.game_clock_state.phase is BattlePhase.shooting
+    action = select(env.observation, env)
+
+    saved = capture_state(env)
+    outcomes = set()
+    positions = []
+    for combat_seed in range(6):
+        trial = capture_state(saved)
+        trial.reseed_combat(combat_seed)
+        trial.step(action)
+        result = _outcome(trial)
+        outcomes.add((tuple(result["wounds"]), result["reward"]))
+        positions.append(result["player"])
+
+    assert len(outcomes) > 1, "the dice must move something"
+    for other in positions[1:]:
+        np.testing.assert_array_equal(positions[0], other)
+
+
+def test_clicking_a_model_selects_and_clicking_the_board_orders(
+    presenter_and_env: tuple[DebugPresenter, DebugControls, WargameEnv],
+) -> None:
+    """One button, two meanings, decided by what is under the cursor — they
+    never overlap, because empty ground cannot be selected."""
+    presenter, controls, env = presenter_and_env
+    model = env.player_models[0]
+    on_model = presenter._to_px(float(model.location[0]), float(model.location[1]))
+
+    presenter._handle_click(env, int(on_model[0]), int(on_model[1]))
+    assert controls.selected == (PLAYER, 0)
+    assert controls.order_at is None
+
+    empty = presenter._to_px(float(env.config.board_width) - 0.5, 0.5)
+    presenter._handle_click(env, int(empty[0]), int(empty[1]))
+    assert controls.order_at is not None
+    assert controls.order_at[:2] == (PLAYER, 0)
+
+
+def test_ordering_needs_something_selected(
+    presenter_and_env: tuple[DebugPresenter, DebugControls, WargameEnv],
+) -> None:
+    """With no selection there is nobody to order, so the click is a no-op
+    rather than an order for whichever model was nearest."""
+    presenter, controls, env = presenter_and_env
+    empty = presenter._to_px(float(env.config.board_width) - 0.5, 0.5)
+
+    presenter._handle_click(env, int(empty[0]), int(empty[1]))
+
+    assert controls.order_at is None
+
+
+def test_enter_steps_and_backspace_cancels(
+    presenter_and_env: tuple[DebugPresenter, DebugControls, WargameEnv],
+) -> None:
+    """Enter is `.` under the name the authoring flow reaches for — *any* forward
+    step applies pending orders, so a click followed by `.` cannot lose them."""
+    import pygame
+
+    presenter, controls, env = presenter_and_env
+    controls.orders[(PLAYER, 0)] = Order(action=1, text="Move E", landing=(1.0, 1.0))
+
+    _press(presenter, env, pygame.K_RETURN)
+    assert (controls.step_once, controls.paused) == (True, True)
+
+    _press(presenter, env, pygame.K_BACKSPACE)
+    assert controls.orders == {}
+
+
+def test_d_toggles_the_dice(
+    presenter_and_env: tuple[DebugPresenter, DebugControls, WargameEnv],
+) -> None:
+    import pygame
+
+    presenter, controls, env = presenter_and_env
+
+    _press(presenter, env, pygame.K_d)
+    assert controls.reroll_dice
+    _press(presenter, env, pygame.K_d)
+    assert not controls.reroll_dice
+
+
+def test_the_session_resolves_a_click_into_an_order_before_stepping() -> None:
+    """End to end through the real loop: a click becomes an order, the order
+    moves the model, and the order is consumed rather than repeated."""
+    env = _env()
+    controls = DebugControls()
+    select = selector_for(build_baseline_policy("squad_march_shoot"))
+
+    def _click(c: DebugControls) -> None:
+        c.selected = (PLAYER, 0)
+        c.order_at = (PLAYER, 0, 12.0, 14.0)
+
+    def _step(c: DebugControls) -> None:
+        c.step_once = True
+        c.paused = True
+
+    seen: list[tuple[float, float]] = []
+
+    class _Recorder(_ScriptedRenderer):
+        def render(self, view: BattleView) -> None:
+            seen.append(
+                (
+                    float(view.player_models[0].location[0]),
+                    float(view.player_models[0].location[1]),
+                )
+            )
+            super().render(view)
+
+    renderer = _Recorder(controls, [_click, _step, None])
+    ended = run_session(env, renderer, controls, select, seed=11)
+
+    assert controls.orders == {}, "the order must be consumed by the step"
+    assert seen[-1] != seen[0], "the model should have moved"
+    assert ended.player_models[0].location is not None
+
+
+def test_a_dead_model_is_refused_by_name_not_by_the_mask() -> None:
+    """The same rule as the reward panel's `0.000`: a true statement that
+    explains nothing is worse than none. A casualty is restricted to STAY, and
+    reporting that as "the action mask refuses this move" sends the reader
+    looking for a bug in the mask."""
+    env = _env()
+    env.reset(seed=11)
+    env.player_models[0].stats["current_wounds"] = 0
+    assert not env.player_models[0].is_alive
+
+    order = _order(env, PLAYER, 0, 12.0, 14.0)
+
+    assert not order.legal
+    assert order.reason is not None and "Killed" in order.reason
+
+
+def test_the_panel_says_ordering_is_movement_only_before_the_click() -> None:
+    """The rewind-depth rule, applied again.
+
+    A real session clicked into a shooting phase thirty times in ninety seconds.
+    Every click was refused correctly and explained to a terminal nobody was
+    watching, which is the same failure as logging `Nothing to step back to.`
+    The standing answer belongs in the panel, ahead of the click.
+    """
+    env = _env(skip_phases=[BattlePhase.command, BattlePhase.charge, BattlePhase.fight])
+    env.reset(seed=11)
+    assert env.game_clock_state.phase is BattlePhase.movement
+    assert DebugPresenter._orders_caption(env) == "ORDERS · PENDING"
+
+    select = selector_for(build_baseline_policy("squad_march_shoot"))
+    while env.game_clock_state.phase is BattlePhase.movement:
+        env.step(select(env.observation, env))
+
+    assert DebugPresenter._orders_caption(env) == "ORDERS · MOVEMENT PHASE ONLY"
+
+
+def test_the_orders_section_is_drawn_when_it_has_a_warning_to_give() -> None:
+    """It is empty outside the movement phase — and that emptiness is exactly
+    what needs explaining, so the section must draw anyway."""
+    env = _env(skip_phases=[BattlePhase.command, BattlePhase.charge, BattlePhase.fight])
+    env.reset(seed=11)
+    select = selector_for(build_baseline_policy("squad_march_shoot"))
+    while env.game_clock_state.phase is BattlePhase.movement:
+        env.step(select(env.observation, env))
+
+    controls = DebugControls(selected=(PLAYER, 0))
+    presenter = DebugPresenter(build_backend("pillow"), controls)
+    presenter.setup(env)
+    frame = presenter._compose_with_tooltip(env)
+    panel = presenter._backend.to_rgb_array(frame)[
+        presenter._top_h : presenter._top_h + 200, presenter._window_w - PANEL_W :
+    ]
+
+    # The same panel with ordering legal must not look identical: one of them
+    # carries the warning rows and the other does not.
+    env.reset(seed=11)
+    presenter._obs_turn = -1
+    movement_panel = presenter._backend.to_rgb_array(
+        presenter._compose_with_tooltip(env)
+    )[presenter._top_h : presenter._top_h + 200, presenter._window_w - PANEL_W :]
+
+    assert not np.array_equal(panel, movement_panel)
+
+
+def test_repeated_identical_refusals_are_logged_once() -> None:
+    """Thirty clicks in the wrong phase produced thirty identical log lines and
+    buried everything else the session had to say."""
+    from loguru import logger as loguru_logger
+
+    env = _env(skip_phases=[BattlePhase.command, BattlePhase.charge, BattlePhase.fight])
+    controls = DebugControls()
+    select = selector_for(build_baseline_policy("squad_march_shoot"))
+    lines: list[str] = []
+    sink = loguru_logger.add(lambda message: lines.append(str(message)), level="INFO")
+
+    def _click(c: DebugControls) -> None:
+        c.selected = (PLAYER, 0)
+        c.order_at = (PLAYER, 0, 12.0, 14.0)
+
+    def _step(c: DebugControls) -> None:
+        c.step_once = True
+        c.paused = True
+
+    try:
+        # One step reaches the shooting phase, where every following click is
+        # refused for the same reason.
+        script = [_step] + [_click] * 5 + [None]
+        run_session(env, _ScriptedRenderer(controls, script), controls, select, seed=11)
+    finally:
+        loguru_logger.remove(sink)
+
+    refusals = [line for line in lines if "Refused:" in line]
+    assert len(refusals) == 1, refusals
