@@ -139,6 +139,8 @@ the two are equal; prefer `_epoch`.
 | `eval/baseline_squad_march_*` | Whole squads marched onto objectives by a scripted heuristic. Movement-only — **not** the bar, see below |
 | `eval/baseline_squad_march_shoot_*` | The bar: the only baseline that fires |
 | `eval/baseline_random_*` | The floor |
+| `eval/coherency_rate` | Share of unit-movement-phases where a unit satisfies the whole coherency rule (2" chain, 9" spread, one connected group). **Confounded with squad size** — read it with the next row |
+| `eval/models_out_of_coherency` | Mean models outside their unit's coherent body, per movement phase. Unconfounded, because a dead model contributes nothing |
 
 Each baseline emits `_win_rate` (0–100), `_vp_margin`, `_at_objectives` (a
 fraction), `_fraction_alive` (a fraction), and `_exposure` when the config sets
@@ -256,6 +258,25 @@ the shooting mask uses, which pulls the other way. Measured on
 | `eval/exposure_rate` | Fraction of alive model-shooting-phases where at least one alive enemy had **line of sight and weapon range** to that model |
 | `eval/terrain_proximity` | Mean distance from an alive model to the nearest terrain footprint (0 inside) |
 | `eval/fraction_alive` | Fraction of player models still alive at episode end. Logged always, not just when tracking exposure |
+
+### Coherency
+
+Logged always, with no config flag, and sampled once per **movement** phase --
+movement is the only thing that changes formation, since shooting changes it
+only through casualties, which the rule deliberately does not blame on the unit.
+
+**Read the two together, and never the rate alone.** A unit shot down to one
+model is coherent by definition, so `coherency_rate` *climbs as an army dies*: a
+rising rate can mean the units held together or that they stopped existing.
+`models_out_of_coherency` has no such failure mode. Reading the rate on its own
+already produced one wrong conclusion about which enforcement mode worked.
+
+Both are `None` -- absent from the dashboard rather than zero -- until a
+movement phase has been sampled, because a zero would plot as "never in
+coherency".
+
+`just measure-coherency <policy|ckpt> <config>` is the offline version, and
+reports the same quantities split by which of the three conditions failed.
 
 **Prefer `firepower_ratio` to `exposure_rate` for any question about cover.**
 Exposure counts only our side of the exchange, so it falls both when a policy
