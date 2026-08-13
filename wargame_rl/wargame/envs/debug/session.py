@@ -211,6 +211,7 @@ def run_session(
     # Dice for a reroll come off the session's own generator rather than the
     # clock, so a whole session — orders, redos and all — replays from its seed.
     redo_rng = np.random.default_rng(seed)
+    last_refusal: str | None = None
 
     try:
         while True:
@@ -220,8 +221,13 @@ def run_session(
                 request, controls.order_at = controls.order_at, None
                 key, order = resolve_order(env, observation, request)
                 controls.orders[key] = order
-                if not order.legal:
+                # One line per *distinct* reason. A real session clicked into a
+                # shooting phase thirty times and logged thirty identical lines;
+                # the panel is where the standing answer belongs, and repeating
+                # it here buries whatever else the log had to say.
+                if not order.legal and order.reason != last_refusal:
                     logger.info(f"Refused: {order.reason}")
+                last_refusal = order.reason if not order.legal else None
                 continue
 
             if controls.step_back:

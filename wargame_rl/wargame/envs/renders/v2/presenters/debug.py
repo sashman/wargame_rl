@@ -51,6 +51,7 @@ from wargame_rl.wargame.envs.renders.v2.presenters.interactive import (
 )
 from wargame_rl.wargame.envs.renders.v2.scene import Scene
 from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME, RGB, Theme
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 # Paused, the window polls far faster than the match plays so a key press lands
 # within a frame or two instead of waiting out a 4 fps tick.
@@ -455,7 +456,7 @@ class DebugPresenter(InteractiveRenderer):
         side, index, model = chosen
         cursor = _Cursor(self, frame, x0 + _PAD, self._top_h + _PAD, PANEL_W - 2 * _PAD)
         self._identity(cursor, side, index, model)
-        self._orders(cursor)
+        self._orders(cursor, view)
         self._action(cursor, side, index, model)
         self._reward(cursor, view, side, index, model)
         self._sight(cursor, view, side, model)
@@ -479,18 +480,36 @@ class DebugPresenter(InteractiveRenderer):
         if not model.is_alive:
             cursor.note("Killed — every field below is its final state.")
 
-    def _orders(self, cursor: _Cursor) -> None:
+    @staticmethod
+    def _orders_caption(view: BattleView) -> str:
+        """The ORDERS head, which doubles as the only warning that gets read.
+
+        Ordering is movement-phase-only, and a real session clicked into a
+        shooting phase **thirty times in ninety seconds** — each refused
+        correctly, each explained to a terminal nobody was watching. Same
+        mistake as the rewind depth before it: the answer to "will this click do
+        anything" belongs on screen *before* the click, not in a log after it.
+        """
+        if view.game_clock_state.phase is BattlePhase.movement:
+            return "ORDERS · PENDING"
+        return "ORDERS · MOVEMENT PHASE ONLY"
+
+    def _orders(self, cursor: _Cursor, view: BattleView) -> None:
         """Pending orders and the dice mode, above everything the *last* step did.
 
         High in the panel on purpose: it is the only section describing what has
         not happened yet, and the one the authoring flow needs to check before
-        pressing a key.
+        pressing a key. Outside the movement phase it draws even when empty —
+        that emptiness is exactly what needs explaining.
         """
         pal = self._theme.palette
         orders = self._controls.orders
-        if not orders and not self._controls.reroll_dice:
+        movement = view.game_clock_state.phase is BattlePhase.movement
+        if not orders and not self._controls.reroll_dice and movement:
             return
-        cursor.head("ORDERS · PENDING")
+        cursor.head(self._orders_caption(view), None if movement else self._dim())
+        if not movement:
+            cursor.row("click", "does not order now", self._dim())
         for (side, index), order in sorted(orders.items()):
             cursor.row(
                 f"{'you' if side == PLAYER else 'opp'} {index}",

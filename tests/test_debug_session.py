@@ -1134,3 +1134,82 @@ def test_a_dead_model_is_refused_by_name_not_by_the_mask() -> None:
 
     assert not order.legal
     assert order.reason is not None and "Killed" in order.reason
+
+
+def test_the_panel_says_ordering_is_movement_only_before_the_click() -> None:
+    """The rewind-depth rule, applied again.
+
+    A real session clicked into a shooting phase thirty times in ninety seconds.
+    Every click was refused correctly and explained to a terminal nobody was
+    watching, which is the same failure as logging `Nothing to step back to.`
+    The standing answer belongs in the panel, ahead of the click.
+    """
+    env = _env(skip_phases=[BattlePhase.command, BattlePhase.charge, BattlePhase.fight])
+    env.reset(seed=11)
+    assert env.game_clock_state.phase is BattlePhase.movement
+    assert DebugPresenter._orders_caption(env) == "ORDERS · PENDING"
+
+    select = selector_for(build_baseline_policy("squad_march_shoot"))
+    while env.game_clock_state.phase is BattlePhase.movement:
+        env.step(select(env.observation, env))
+
+    assert DebugPresenter._orders_caption(env) == "ORDERS · MOVEMENT PHASE ONLY"
+
+
+def test_the_orders_section_is_drawn_when_it_has_a_warning_to_give() -> None:
+    """It is empty outside the movement phase — and that emptiness is exactly
+    what needs explaining, so the section must draw anyway."""
+    env = _env(skip_phases=[BattlePhase.command, BattlePhase.charge, BattlePhase.fight])
+    env.reset(seed=11)
+    select = selector_for(build_baseline_policy("squad_march_shoot"))
+    while env.game_clock_state.phase is BattlePhase.movement:
+        env.step(select(env.observation, env))
+
+    controls = DebugControls(selected=(PLAYER, 0))
+    presenter = DebugPresenter(build_backend("pillow"), controls)
+    presenter.setup(env)
+    frame = presenter._compose_with_tooltip(env)
+    panel = presenter._backend.to_rgb_array(frame)[
+        presenter._top_h : presenter._top_h + 200, presenter._window_w - PANEL_W :
+    ]
+
+    # The same panel with ordering legal must not look identical: one of them
+    # carries the warning rows and the other does not.
+    env.reset(seed=11)
+    presenter._obs_turn = -1
+    movement_panel = presenter._backend.to_rgb_array(
+        presenter._compose_with_tooltip(env)
+    )[presenter._top_h : presenter._top_h + 200, presenter._window_w - PANEL_W :]
+
+    assert not np.array_equal(panel, movement_panel)
+
+
+def test_repeated_identical_refusals_are_logged_once() -> None:
+    """Thirty clicks in the wrong phase produced thirty identical log lines and
+    buried everything else the session had to say."""
+    from loguru import logger as loguru_logger
+
+    env = _env(skip_phases=[BattlePhase.command, BattlePhase.charge, BattlePhase.fight])
+    controls = DebugControls()
+    select = selector_for(build_baseline_policy("squad_march_shoot"))
+    lines: list[str] = []
+    sink = loguru_logger.add(lambda message: lines.append(str(message)), level="INFO")
+
+    def _click(c: DebugControls) -> None:
+        c.selected = (PLAYER, 0)
+        c.order_at = (PLAYER, 0, 12.0, 14.0)
+
+    def _step(c: DebugControls) -> None:
+        c.step_once = True
+        c.paused = True
+
+    try:
+        # One step reaches the shooting phase, where every following click is
+        # refused for the same reason.
+        script = [_step] + [_click] * 5 + [None]
+        run_session(env, _ScriptedRenderer(controls, script), controls, select, seed=11)
+    finally:
+        loguru_logger.remove(sink)
+
+    refusals = [line for line in lines if "Refused:" in line]
+    assert len(refusals) == 1, refusals
