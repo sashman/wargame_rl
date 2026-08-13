@@ -48,6 +48,7 @@ from wargame_rl.wargame.envs.env_components import (
     build_observation,
     compute_distances,
 )
+from wargame_rl.wargame.envs.env_components.coherency_tracker import CoherencyTracker
 from wargame_rl.wargame.envs.env_components.exposure import (
     ExposureTracker,
     record_shooting_phase,
@@ -269,6 +270,7 @@ class WargameEnv(gym.Env):
         # shooting phase). Weapon ranges come from config, so they are resolved
         # once here rather than on every shooting phase.
         self._exposure_tracker = ExposureTracker()
+        self._coherency_tracker = CoherencyTracker()
         self._opponent_max_ranges = max_weapon_ranges(
             config.opponent_models, config.number_of_opponent_models
         )
@@ -438,6 +440,26 @@ class WargameEnv(gym.Env):
         """
         return self._exposure_tracker.firepower_ratio
 
+    @property
+    def coherency_rate(self) -> float | None:
+        """Share of the player's unit-movement-phases spent in rules coherency.
+
+        Always available -- unlike the exposure metrics there is no config flag,
+        because this costs one predicate evaluation per movement phase and a run
+        training under the coherency rule with no record of whether it held
+        formation is the situation this exists to prevent.
+
+        **Read it with `models_out_of_coherency`.** This number is confounded
+        with squad size: a unit shot down to one model is coherent by
+        definition, so it rises as an army dies.
+        """
+        return self._coherency_tracker.coherency_rate
+
+    @property
+    def models_out_of_coherency(self) -> float | None:
+        """Mean player models outside their unit's coherent body, per phase."""
+        return self._coherency_tracker.models_out_of_coherency
+
     def has_line_of_sight_between_points(
         self, x0: float, y0: float, x1: float, y1: float
     ) -> bool:
@@ -574,6 +596,25 @@ class WargameEnv(gym.Env):
             ),
         )
 
+    def _record_coherency(self) -> None:
+        """Fold the player's formation into the episode's coherency totals."""
+        self._coherency_tracker.record(
+            positions=np.array([m.location for m in self.wargame_models], dtype=float),
+            group_ids=np.array(
+                [m.group_id for m in self.wargame_models], dtype=np.intp
+            ),
+            alive_mask=alive_mask_for(self.wargame_models),
+            base_radii=np.array(
+                [m.base_radius for m in self.wargame_models], dtype=float
+            ),
+            nearest_distance=self._rules_quantities.scale.to_units(
+                self.config.coherency.nearest_distance
+            ),
+            furthest_distance=self._rules_quantities.scale.to_units(
+                self.config.coherency.furthest_distance
+            ),
+        )
+
     def _on_before_advance(self, clock: GameClock) -> None:
         """Score VP when leaving command phase, and regain coherency at end of turn."""
         state = clock.state
@@ -688,6 +729,7 @@ class WargameEnv(gym.Env):
         self.episode_reward_steps = 0
         self.episode_reward = 0.0
         self._exposure_tracker.reset()
+        self._coherency_tracker.reset()
 
         self._battle.reset_for_episode()
         self.phase_manager.reset_episode()
@@ -835,6 +877,8 @@ class WargameEnv(gym.Env):
                 phase=phase,
                 enemy_models=self.opponent_models,
             )
+            if phase == BattlePhase.movement:
+                self._record_coherency()
 
     def _opponent_action_mask(
         self, phase: BattlePhase, opp_alive: np.ndarray

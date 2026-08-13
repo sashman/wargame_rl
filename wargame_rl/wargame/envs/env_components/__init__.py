@@ -1,6 +1,7 @@
 """Modular components for the wargame environment (actions, termination, placement, observation)."""
 
 from wargame_rl.wargame.envs.env_components.actions import ActionHandler
+from wargame_rl.wargame.envs.env_components.coherency_tracker import CoherencyTracker
 from wargame_rl.wargame.envs.env_components.distance_cache import (
     DistanceCache,
     compute_distances,
@@ -32,6 +33,7 @@ from wargame_rl.wargame.envs.env_components.termination import (
 )
 
 __all__ = [
+    "CoherencyTracker",
     "ActionHandler",
     "DistanceCache",
     "ExposureTracker",
