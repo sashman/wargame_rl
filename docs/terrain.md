@@ -284,7 +284,7 @@ Each footprint is evaluated independently. A model inside ruin A can still have 
 
 ### Integration
 
-Because all LOS queries route through the single `has_line_of_sight_between_cells` seam on `BattleView`, the following all agree on the same terrain blocking:
+Because all LOS queries route through the single `line_of_sight_matrix` seam on `BattleView`, the following all agree on the same terrain blocking:
 
 - Shooting masks (action masking)
 - Shooting resolution (damage)

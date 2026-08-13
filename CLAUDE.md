@@ -252,6 +252,19 @@ Detailed patterns live next to the code they govern — read them when working i
 > on — and every specific figure needs re-measuring. The two golden gates were
 > regenerated deliberately for this change. Baseline re-measurement is WP-12 of
 > phase 03; until it lands, treat quoted numbers as history, not as targets.
+>
+> **Sight changed again on 2026-08-13: models no longer block line of sight.**
+> Only terrain does — a deliberate divergence from the rules, on the grounds that
+> no model here has an opaque silhouette (see
+> [docs/rules/implementation-status.md](docs/rules/implementation-status.md) §
+> Line of sight). It is a large change, not a tidy-up: on
+> `golden/25v25_shooting_opponent.yaml` over 100 identical layouts the bar
+> `squad_march_shoot` moves **+38.0 → +17.0 vp_margin** (win 0.75 → 0.65) and
+> every other scripted policy loses ground too, because the opponent also shoots
+> more freely. `eval/exposure_rate` changed *definition* as well — the exposure
+> scan used the three-ray corridor and now uses the same centre ray the shooting
+> mask does — so exposure is not comparable across this date at all. Both golden
+> gates were regenerated deliberately. Re-measure any baseline before quoting it.
 
 - PPO on a `TransformerNetwork` is the only thing that trains — there is no algorithm or network to choose. `just train` and `train.py` used to take `--algorithm` and `--network-type`; both are gone, so `just train <config> 800` now means 800 *epochs*
 - Start training: `just train <env_config.yaml>` · with an epoch cap: `just train <env_config.yaml> 800`

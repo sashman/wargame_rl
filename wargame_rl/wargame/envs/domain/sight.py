@@ -10,6 +10,17 @@ either endpoint.
 Keeping the composition here rather than on the env facade gives the question
 "can A see B?" a single home in the domain.
 
+**Models do not block sight — only terrain does.** This is a deliberate
+divergence from `docs/rules/06-visibility-and-damage.md`, which lets enemy and
+third-party models block: no model on this table has a silhouette that is
+actually opaque, since a 32mm infantry figure is a thin shape on a round base
+rather than a cylinder, so a line that clips a base can be drawn in practice.
+Removing it takes the rules' *ignore your own unit* exemption with it — that
+exemption exists only to stop a squad shielding itself from its own occlusion,
+so with nothing occluding there is nothing to exempt. `base_radius` still shapes
+sight: it sets the width of the corridor traced in `visibility_matrix`, which is
+what makes terrain able to grant **cover**.
+
 **The batch entry point is the real one.** `line_of_sight_matrix` traces every
 requested pair in one vectorised pass; `has_line_of_sight_between_points` is a
 convenience wrapper for the renderer and for tests. Calling the single-pair form
@@ -23,15 +34,9 @@ scan is cheap next to the ray.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Any, NamedTuple
-
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.los import (
-    segments_are_clear,
-    segments_clear_of_discs,
-)
+from wargame_rl.wargame.envs.domain.los import segments_are_clear
 from wargame_rl.wargame.envs.domain.terrain import Terrain
 from wargame_rl.wargame.envs.types.geometry import polygons_contain_points
 
@@ -143,64 +148,6 @@ COVER = 1
 CLEAR = 2
 
 
-class Occluders(NamedTuple):
-    """The model bases that can block a sight line, and whose group they are in."""
-
-    centres: np.ndarray
-    """``(M, 2)`` base centres."""
-
-    radii: np.ndarray
-    """``(M,)`` base radii. A radius of 0 occludes nothing, which is what makes
-    all of this a no-op for configs whose models are dimensionless points."""
-
-    groups: np.ndarray
-    """``(M,)`` army-qualified group key, for the ignore-my-own-group rule."""
-
-
-def group_keys(models: Sequence[Any], army: int) -> np.ndarray:
-    """``(N,)`` group ids qualified by which army they belong to.
-
-    **Group numbering is per army**, so the raw ids are not comparable across
-    sides: both armies have a group 0, and comparing them directly would make
-    each side's first squad ignore the other's — invisible except as slightly
-    too much shooting. The army index is folded in so a key means one group on
-    one side.
-    """
-    if not models:
-        return np.zeros(0, dtype=np.int64)
-    return np.array([m.group_id for m in models], dtype=np.int64) * 2 + army
-
-
-def occluders_from(*armies: Sequence[Any]) -> Occluders:
-    """Build the occluder arrays from each army in turn. Dead models are removed.
-
-    A casualty is off the table, so its base is not something anyone has to see
-    around. Armies are passed separately because the group key has to record
-    which side an occluder is on.
-    """
-    centres: list[np.ndarray] = []
-    radii: list[float] = []
-    groups: list[int] = []
-    for army, models in enumerate(armies):
-        alive = [m for m in models if m.is_alive]
-        if not alive:
-            continue
-        centres.extend(np.asarray(m.location, dtype=float) for m in alive)
-        radii.extend(float(m.base_radius) for m in alive)
-        groups.extend(int(key) for key in group_keys(alive, army))
-    if not centres:
-        return Occluders(
-            np.zeros((0, 2), dtype=float),
-            np.zeros(0, dtype=float),
-            np.zeros(0, dtype=np.int64),
-        )
-    return Occluders(
-        np.array(centres, dtype=float),
-        np.array(radii, dtype=float),
-        np.array(groups, dtype=np.int64),
-    )
-
-
 def visibility_matrix(
     origins: np.ndarray,
     targets: np.ndarray,
@@ -209,9 +156,6 @@ def visibility_matrix(
     *,
     sample_step: float,
     candidates: np.ndarray | None = None,
-    occluders: Occluders | None = None,
-    origin_groups: np.ndarray | None = None,
-    target_groups: np.ndarray | None = None,
     origin_radii: np.ndarray | None = None,
     target_radii: np.ndarray | None = None,
 ) -> np.ndarray:
@@ -220,7 +164,8 @@ def visibility_matrix(
     Three rays per pair: the centre line, and two parallel to it offset by the
     wider of the two bases. All three clear is *fully visible*; none clear is
     hidden; anything between is **cover**, which worsens the attack by
-    `COVER_RANGED_SKILL_PENALTY`.
+    `COVER_RANGED_SKILL_PENALTY`. Only terrain is traced against — see the
+    module docstring for why models do not occlude.
 
     **The offsets are parallel, and symmetric in the pair, on purpose.** The
     literal reading — rays to the two outer tangents of the target — is more
@@ -237,10 +182,9 @@ def visibility_matrix(
 
     **This reduces exactly to the two-state answer when models have no base.**
     With `target_radii` all zero the two edge rays coincide with the centre ray,
-    so a pair is either CLEAR or HIDDEN and cover can never occur; and with
-    occluder radii all zero no model blocks anything. That is why none of this
-    needs a config flag: `base_radius` gates it, and every result measured
-    before models had bases is reproduced.
+    so a pair is either CLEAR or HIDDEN and cover can never occur. That is why
+    none of this needs a config flag: `base_radius` gates it, and every result
+    measured before models had bases is reproduced.
     """
     n_origins, n_targets = len(origins), len(targets)
     result = np.full((n_origins, n_targets), HIDDEN, dtype=np.int8)
@@ -273,11 +217,6 @@ def visibility_matrix(
         all_ends = np.concatenate([ends, ends + offsets, ends - offsets])
 
     clear = _terrain_clear(all_starts, all_ends, terrain, blocking_mask, sample_step)
-    if occluders is not None and len(occluders.centres):
-        clear &= _model_clear(
-            all_starts, all_ends, occluders, origin_groups, target_groups, rows, cols
-        )
-
     n_clear = clear.reshape(n_rays, len(rows)).sum(axis=0)
     result[rows, cols] = np.where(
         n_clear == n_rays, CLEAR, np.where(n_clear == 0, HIDDEN, COVER)
@@ -339,53 +278,3 @@ def _terrain_clear(
         blocker_exempt=exempt,
         opaque_cells=opaque_cell_grid(blocking_mask),
     )
-
-
-def _model_clear(
-    starts: np.ndarray,
-    ends: np.ndarray,
-    occluders: Occluders,
-    origin_groups: np.ndarray | None,
-    target_groups: np.ndarray | None,
-    rows: np.ndarray,
-    cols: np.ndarray,
-) -> np.ndarray:
-    """Clear-of-models for a batch of segments, with the unit exemption.
-
-    A model ignores others in its own group and in its target's group
-    (`docs/rules/06-visibility-and-damage.md`, where the rules call a group a
-    unit). Without the first half a model is blocked by the squadmate standing
-    in front of it; without the second, a group shields itself by presenting its
-    front rank.
-    """
-    exempt = np.zeros((len(rows), len(occluders.centres)), dtype=bool)
-    if origin_groups is not None:
-        exempt |= occluders.groups[np.newaxis, :] == origin_groups[rows][:, np.newaxis]
-    if target_groups is not None:
-        exempt |= occluders.groups[np.newaxis, :] == target_groups[cols][:, np.newaxis]
-    # A base sitting on either endpoint cannot block that query: the observer's
-    # own base is on the start of every ray it casts.
-    # A base sitting on either endpoint cannot block that query: the observer's
-    # own base is on the start of every ray it casts. The unit exemption usually
-    # covers this, but not always -- a caller that has positions and no models
-    # passes no units at all, and without this every model would block its own
-    # sight line and nothing could ever shoot.
-    exempt |= _covers_endpoint(starts[: len(rows)], occluders)
-    exempt |= _covers_endpoint(ends[: len(rows)], occluders)
-    n_rays = len(starts) // len(rows)
-    clear: np.ndarray = segments_clear_of_discs(
-        starts,
-        ends,
-        occluders.centres,
-        occluders.radii,
-        exempt=exempt if n_rays == 1 else np.tile(exempt, (n_rays, 1)),
-    )
-    return clear
-
-
-def _covers_endpoint(points: np.ndarray, occluders: Occluders) -> np.ndarray:
-    """``(N, M)`` — True where the disc contains that endpoint."""
-    gap_x = points[:, np.newaxis, 0] - occluders.centres[np.newaxis, :, 0]
-    gap_y = points[:, np.newaxis, 1] - occluders.centres[np.newaxis, :, 1]
-    covered: np.ndarray = (gap_x**2 + gap_y**2) <= (occluders.radii**2)[np.newaxis, :]
-    return covered
