@@ -345,6 +345,13 @@ play env_config_path='configs/golden/25v25_shooting_opponent.yaml' policy='squad
 debug env_config_path='configs/golden/25v25_shooting_opponent.yaml' driver='squad_march_shoot' theme='default':
 	uv run debug.py {{env_config_path}} {{driver}} {{theme}}
 
+# Recreate the episode a recording came from, exactly, and step it by hand.
+# The recording carries its own config, seed, dice and driver, so nothing else
+# is needed -- pass a driver only to override the one it names.
+# Use: just debug-recording recordings/my_events.jsonl
+debug-recording file driver='squad_march_shoot' theme='default':
+	uv run debug.py --from-recording {{file}} configs/golden/25v25_shooting_opponent.yaml {{driver}} {{theme}}
+
 # One-shot: create branch from main, commit, push, open PR. Use after staging changes.
 # Always branches from main; if not on main, checks out main and pulls first.
 # Example: just ship feature/my-feature "Add reward shaping for distance"

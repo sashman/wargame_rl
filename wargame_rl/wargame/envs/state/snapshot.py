@@ -132,6 +132,51 @@ class RewardSnapshot(BaseModel):
     """
 
 
+class EpisodeProvenance(BaseModel):
+    """Everything needed to boot this episode again, byte for byte.
+
+    Recorded once, in the **log header** — it describes how the recording was
+    made, not what was true at a point in the battle. Deliberately *not* a
+    snapshot field: a snapshot is a value object compared for equality, and a
+    field present on the recorded copy but absent from a live one breaks the
+    "a replayed snapshot equals the live one" invariant that
+    `test_v9_milestone_validation` pins. Every other episode-static field
+    (`terrain_footprints`, `skip_phases`) is on *both* sides, so it does not.
+
+    Before this existed a recording carried the full state of every step and
+    none of the *inputs* that produced it: watching a match and wanting to step
+    through it by hand meant knowing the seed, the config and the driver from
+    memory, and a recording made by `simulate.py` could not be reproduced at all
+    because it never seeded.
+
+    `rng_state` rather than a seed is the load-bearing choice. Not every episode
+    *has* a seed — a training rollout resets without one and continues the
+    generator's stream, so its layout is a point in that stream and no integer
+    names it. The bit-generator state names any point, and is captured before
+    `reset` draws anything, so restoring it and resetting again replays the same
+    draws. `seed` is kept beside it for humans, and is None exactly when the
+    caller passed none.
+    """
+
+    config: dict[str, Any]
+    """The env config as JSON, so a recording is self-contained rather than a
+    reference to a path that may since have changed."""
+
+    rng_state: dict[str, Any]
+    """`np_random.bit_generator.state` as captured at the top of `reset`."""
+
+    combat_seed: int
+    """The dice seed actually used, whether derived or passed in."""
+
+    seed: int | None = None
+    """The `reset(seed=...)` argument, when there was one."""
+
+    driver: str | None = None
+    """Free text naming what chose the player's actions — a baseline name or a
+    checkpoint path. The env cannot know this, so whoever drives it sets
+    `env.driver_label`; None means the recording does not say."""
+
+
 class GameStateSnapshot(BaseModel):
     """Complete, serialisable snapshot of game state at one point in time.
 

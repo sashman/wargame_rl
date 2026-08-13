@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 from collections import deque
+from typing import Any
 
 import numpy as np
 from loguru import logger
@@ -187,8 +188,9 @@ def run_session(
     controls: DebugControls,
     select: ActionSelector,
     *,
-    seed: int,
+    seed: int | None,
     undo_depth: int = DEFAULT_DEPTH,
+    reset_options: dict[str, Any] | None = None,
 ) -> WargameEnv:
     """Step one episode under the user's control until they quit.
 
@@ -198,19 +200,24 @@ def run_session(
 
     Quitting is the normal way out of a debug session, so the `QuitRequested`
     the renderer raises is caught here rather than propagated.
+
+    `seed=None` with `reset_options` is how a recorded episode is reproduced:
+    the caller has already installed the generator state, and seeding again
+    would throw it away. The reset happens *here* either way, so it happens
+    exactly once.
     """
     undo = UndoStack(undo_depth)
     # The move records live on the controls, not in the env, so they need their
     # own history — otherwise a rewind leaves the panel describing a step that
     # has just been undone. Pushed and popped in lockstep with the env states.
     move_history: deque[dict[int, MoveRecord]] = deque(maxlen=undo_depth)
-    observation, _info = env.reset(seed=seed)
+    observation, _info = env.reset(seed=seed, options=reset_options)
     controls.undo_depth = 0
     done = False
 
     # Dice for a reroll come off the session's own generator rather than the
     # clock, so a whole session — orders, redos and all — replays from its seed.
-    redo_rng = np.random.default_rng(seed)
+    redo_rng = np.random.default_rng(seed)  # None is valid: entropy-seeded
     last_refusal: str | None = None
 
     try:

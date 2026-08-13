@@ -235,6 +235,42 @@ Anchors are inserted every N steps (configurable, default 10). This enables effi
 
 The delta representation (`StateDelta`) captures per-step changes at field level — model positions that moved, VP that changed, combat results, reward. Unchanged fields are `None` and occupy no space.
 
+### Episode provenance — recreating the match
+
+The log **header** carries an `EpisodeProvenance`: the full env config, the
+generator state, the combat seed and a free-text `driver`. That is what turns a
+recording from a video into something you can step through by hand:
+
+```bash
+just debug-recording recordings/my_events.jsonl
+```
+
+boots a live env that produces the *identical* match — same layout, same dice,
+same everything — and opens it paused in the debugger.
+
+Three choices in it are load-bearing:
+
+- **A generator state, not a seed.** Not every episode has one: a training
+  rollout resets without a seed and continues the stream, so its layout is a
+  point in that stream that no integer names. `np_random.bit_generator.state`,
+  captured before `reset` draws anything, names any point. The `seed` field sits
+  beside it for humans and is `None` exactly when the caller passed none.
+- **The config travels with the recording**, rather than a path to it. A path can
+  be edited or deleted between recording a match and wanting it back, and a
+  scenario that has drifted would reproduce something that merely *looks* like
+  the recording.
+- **It lives in the header, not on the snapshot.** A snapshot is a value object
+  compared for equality — `test_v9_milestone_validation` pins that a replayed
+  snapshot equals a live one — and a field present on the recorded copy but
+  absent from a live one breaks that. Every other episode-static field
+  (`terrain_footprints`, `skip_phases`) is on *both* sides, so it does not.
+
+`driver` is set by whoever drives the env (`env.driver_label`); the env cannot
+know it, since a checkpoint, a baseline and a human at a keyboard all look the
+same from inside. Recordings made before this existed have no header
+`provenance` and cannot be reproduced — `read_provenance` says so explicitly
+rather than failing at reset.
+
 ### Codec Registry
 
 ```python
@@ -285,6 +321,11 @@ The analysis output is available as:
 | `just analyze <file>` | Full analysis report (text) |
 | `just analyze-json <file>` | Analysis report as JSON |
 | `just analyze-compare f1 f2` | Side-by-side metric comparison |
+| `just debug-recording <file> [driver] [theme]` | Recreate the episode exactly and step it by hand. Needs a recording with header provenance |
+
+`simulate.py` takes `--seed`, and **a recording is only reproducible if it was
+given one** — without it the layout comes from process entropy. Training
+recordings need no seed: each episode's generator state is captured on its own.
 
 Training and simulation also support `--record-events` for production use. The
 `train` recipe takes it as its third *positional* argument, not as a flag:
