@@ -94,6 +94,25 @@ class MoveRecord:
         return math.dist(self.intended, self.actual)
 
 
+@dataclass(frozen=True)
+class Order:
+    """A move a human authored for one model, resolved against the action space.
+
+    Built by the session for the same reason as `MoveRecord`: turning a clicked
+    point into an action needs the action handler, and checking it needs the
+    action mask — neither of which the renderer layer may reach for.
+
+    `landing` is where the model will *actually* end up, not where the click
+    was. The bins are coarse, and that discrepancy is the informative part.
+    """
+
+    action: int
+    text: str
+    landing: tuple[float, float]
+    legal: bool = True
+    reason: str | None = None
+
+
 @dataclass
 class DebugControls:
     """What the user has asked the match to do next, and what they are looking at.
@@ -115,6 +134,16 @@ class DebugControls:
     # Steps available to rewind. Written by the session, drawn in the clock zone
     # so an empty history is visible before `,` is pressed rather than after.
     undo_depth: int = 0
+    # A click asking for a move: (side, index, board_x, board_y). The presenter
+    # can say *where* was clicked but not what action reaches it, so the session
+    # resolves this into `orders` and clears it.
+    order_at: tuple[str, int, float, float] | None = None
+    # (side, index) -> the move authored for it, applied by the next step.
+    orders: dict[tuple[str, int], Order] = field(default_factory=dict)
+    # Whether a redo rolls fresh dice. Off by default: the rewind restores the
+    # combat RNG with everything else, so re-running a step reproduces it
+    # exactly, and holding the dice is what isolates the decision from the luck.
+    reroll_dice: bool = False
 
 
 class DebugPresenter(InteractiveRenderer):
@@ -162,7 +191,10 @@ class DebugPresenter(InteractiveRenderer):
             (",", "step one back"),
             ("[", "slower"),
             ("]", "faster"),
-            ("Click", "inspect a model, either side"),
+            ("Click", "a model to inspect it, the board to order it there"),
+            ("Enter", "commit the orders and step"),
+            ("Backspace", "cancel the orders"),
+            ("D", "redo with fresh dice / with the same dice"),
             ("S", "shade what the selected model cannot see"),
             ("L", "line-of-sight debug ray"),
             ("Esc", "deselect, then quit"),
@@ -172,11 +204,17 @@ class DebugPresenter(InteractiveRenderer):
         controls = self._controls
         if event.key == pygame.K_SPACE:
             controls.paused = not controls.paused
-        elif event.key in (pygame.K_PERIOD, pygame.K_RIGHT):
+        elif event.key in (pygame.K_PERIOD, pygame.K_RIGHT, pygame.K_RETURN):
             # Stepping implies pausing: you asked for one step, not for the match
-            # to resume from here.
+            # to resume from here. Enter is the same request under the name the
+            # authoring flow reaches for — any forward step applies the pending
+            # orders, so a click followed by `.` cannot silently discard them.
             controls.step_once = True
             controls.paused = True
+        elif event.key in (pygame.K_BACKSPACE, pygame.K_DELETE):
+            controls.orders.clear()
+        elif event.key == pygame.K_d:
+            controls.reroll_dice = not controls.reroll_dice
         elif event.key in (pygame.K_COMMA, pygame.K_LEFT):
             controls.step_back = True
             controls.paused = True
@@ -194,7 +232,40 @@ class DebugPresenter(InteractiveRenderer):
             super()._handle_key(event, view)
 
     def _handle_click(self, view: BattleView, mx: int, my: int) -> None:
-        self._controls.selected = self._model_at(view, mx, my)
+        """A model under the cursor selects it; open ground orders it there.
+
+        One button, no modifier, because the two meanings never overlap: you
+        cannot select empty ground, and ordering a model onto another model's
+        base is not a move the action space can express anyway. `Esc` is what
+        deselects, so nothing is lost by open ground meaning something else.
+        """
+        hit = self._model_at(view, mx, my)
+        if hit is not None:
+            self._controls.selected = hit
+            return
+        point = self._to_board(mx, my)
+        if point is None:
+            # Off the board entirely — the panel. Deselects, as it did before
+            # ordering existed; only *board* clicks changed meaning.
+            self._controls.selected = None
+            return
+        chosen = self._selected(view)
+        if chosen is None:
+            return
+        side, index, _model = chosen
+        self._controls.order_at = (side, index, point[0], point[1])
+
+    def _to_board(self, mx: int, my: int) -> tuple[float, float] | None:
+        """Window pixels to board units — the inverse of `_to_px`, or None off it."""
+        if not (
+            self._offset_x <= mx < self._offset_x + self._canvas_w
+            and self._offset_y <= my < self._offset_y + self._canvas_h
+        ):
+            return None
+        return (
+            (mx - self._offset_x) / self._scale,
+            (my - self._offset_y) / self._scale,
+        )
 
     # -- selection -----------------------------------------------------------
 
@@ -242,11 +313,42 @@ class DebugPresenter(InteractiveRenderer):
         hover tooltip did and says it without covering the board.
         """
         frame = self._compose(view)
+        self._draw_orders(frame, view)
         self._draw_selection(frame, view)
         self._draw_inspector(frame, view)
         if self._show_keys:
             self._draw_key_map(frame)
         return frame
+
+    def _draw_orders(self, frame: Canvas, view: BattleView) -> None:
+        """Every pending order, as a line to the *true* landing point.
+
+        All of them, not just the selected model's: an authored turn is read as
+        a whole, and a model whose order you can no longer see is a model you
+        will forget you gave one. An illegal order is drawn too, in the casualty
+        colour — silently dropping it would leave the click looking ignored.
+        """
+        pal = self._theme.palette
+        for (side, index), order in self._controls.orders.items():
+            models = view.player_models if side == PLAYER else view.opponent_models
+            if not 0 <= index < len(models):
+                continue
+            model = models[index]
+            accent = pal.hud_player if side == PLAYER else pal.hud_opponent
+            color = accent if order.legal else pal.shot_kill
+            start = self._to_px(*model.location)
+            end = self._to_px(*order.landing)
+            radius = max(model.base_radius * self._scale, 4.0)
+            self._backend.draw_line(frame, start, end, color, 2)
+            self._backend.draw_disc(frame, end, radius, None, color, 2)
+            # A cross-hair at the landing point, so a short order still reads as
+            # a destination rather than as a stray ring among the bases.
+            self._backend.draw_line(
+                frame, (end[0] - radius, end[1]), (end[0] + radius, end[1]), color, 1
+            )
+            self._backend.draw_line(
+                frame, (end[0], end[1] - radius), (end[0], end[1] + radius), color, 1
+            )
 
     def _to_px(self, x: float, y: float) -> tuple[float, float]:
         """Board units to window pixels — the inverse of the click hit test."""
@@ -353,6 +455,7 @@ class DebugPresenter(InteractiveRenderer):
         side, index, model = chosen
         cursor = _Cursor(self, frame, x0 + _PAD, self._top_h + _PAD, PANEL_W - 2 * _PAD)
         self._identity(cursor, side, index, model)
+        self._orders(cursor)
         self._action(cursor, side, index, model)
         self._reward(cursor, view, side, index, model)
         self._sight(cursor, view, side, model)
@@ -375,6 +478,33 @@ class DebugPresenter(InteractiveRenderer):
         cursor.row("base radius", f'{model.base_radius:.2f}"')
         if not model.is_alive:
             cursor.note("Killed — every field below is its final state.")
+
+    def _orders(self, cursor: _Cursor) -> None:
+        """Pending orders and the dice mode, above everything the *last* step did.
+
+        High in the panel on purpose: it is the only section describing what has
+        not happened yet, and the one the authoring flow needs to check before
+        pressing a key.
+        """
+        pal = self._theme.palette
+        orders = self._controls.orders
+        if not orders and not self._controls.reroll_dice:
+            return
+        cursor.head("ORDERS · PENDING")
+        for (side, index), order in sorted(orders.items()):
+            cursor.row(
+                f"{'you' if side == PLAYER else 'opp'} {index}",
+                order.text,
+                None if order.legal else pal.shot_kill,
+            )
+            if not order.legal and order.reason:
+                cursor.note(order.reason)
+        if orders:
+            cursor.row("commit", "[Enter]")
+        # Only worth a row once it is on: held dice are the default and the
+        # thing a rewind is *for*, so saying so every frame would be noise.
+        if self._controls.reroll_dice:
+            cursor.row("dice", "reroll [D]", pal.shot_kill)
 
     def _action(
         self, cursor: _Cursor, side: str, index: int, model: WargameModel

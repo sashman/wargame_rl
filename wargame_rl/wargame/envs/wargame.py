@@ -286,6 +286,31 @@ class WargameEnv(gym.Env):
             self._opponent_policy = None
 
     @property
+    def opponent_policy(self) -> OpponentPolicy | None:
+        """The policy driving the opponent, or None when there are no opponents."""
+        return self._opponent_policy
+
+    def set_opponent_policy(self, policy: OpponentPolicy | None) -> None:
+        """Replace the opponent's policy for the rest of the episode.
+
+        Exists for the debug session, which wraps the configured policy to let a
+        human override individual opponent models. Reaching into
+        `_opponent_policy` from outside would work and would silently break the
+        first time the attribute moved.
+        """
+        self._opponent_policy = policy
+
+    def reseed_combat(self, seed: int) -> None:
+        """Reseed the dice without touching the layout or the episode.
+
+        `reset(options={"combat_seed": ...})` is the other way to set this, but
+        it restarts the episode. Re-running one step against fresh dice — hammer
+        redo and watch the outcome spread — needs the dice alone to move, which
+        is exactly the separation `measure-noise-floor` is built on.
+        """
+        self._combat_rng = np.random.default_rng(seed)
+
+    @property
     def max_turns(self) -> int:
         """Maximum agent steps per episode (game-clock-derived: n_rounds × active phases)."""
         n_phases = len(BATTLE_PHASE_ORDER) - len(self._skip_phases)

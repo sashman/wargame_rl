@@ -11,22 +11,32 @@ pressed during a pause be seen at all.
 
 from __future__ import annotations
 
+import math
 from collections import deque
 
+import numpy as np
 from loguru import logger
 
 from wargame_rl.wargame.envs.baseline.evaluate import ActionSelector
+from wargame_rl.wargame.envs.debug.overrides import OverridableOpponentPolicy
 from wargame_rl.wargame.envs.debug.undo import DEFAULT_DEPTH, UndoStack
 from wargame_rl.wargame.envs.renders.human import QuitRequested
 from wargame_rl.wargame.envs.renders.renderer import Renderer
 from wargame_rl.wargame.envs.renders.v2.presenters.debug import (
+    OPPONENT,
+    PLAYER,
     DebugControls,
     MoveRecord,
+    Order,
 )
 from wargame_rl.wargame.envs.state.snapshot import describe_action
-from wargame_rl.wargame.envs.types import WargameEnvAction
+from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvObservation
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.envs.wargame_model import WargameModel
+
+# A click asking for a move: (side, index, board_x, board_y).
+OrderRequest = tuple[str, int, float, float]
 
 
 def record_moves(
@@ -73,6 +83,104 @@ def record_moves(
     return moves
 
 
+def resolve_order(
+    env: WargameEnv, observation: WargameEnvObservation, request: OrderRequest
+) -> tuple[tuple[str, int], Order]:
+    """Turn a clicked point into the action that gets closest to it.
+
+    The bins are coarse — `n_movement_angles` x `n_speed_bins` — so the model
+    will not land where the click was, and `landing` is the honest answer rather
+    than the request. That gap is worth seeing: it is the same discretisation the
+    policy is choosing under.
+
+    Legality is checked against the action mask the network is given, so an
+    order refused here is refused for exactly the reason the agent's would be —
+    most often that this is not the movement phase. Only the player's mask is
+    published, so an opponent order goes through unchecked.
+    """
+    side, index, x, y = request
+    models = env.player_models if side == PLAYER else env.opponent_models
+    model = models[index]
+    handler = (
+        env.player_action_handler if side == PLAYER else env.opponent_action_handler
+    )
+    start = (float(model.location[0]), float(model.location[1]))
+    delta = (x - start[0], y - start[1])
+    action = handler.best_action_toward(delta[0], delta[1], math.hypot(*delta))
+    displacement = handler.decode_action(action)
+    shooting = handler.shooting_slice
+    shoot_start = shooting.start if shooting is not None else env.n_actions
+    shoot_end = shooting.end if shooting is not None else env.n_actions
+
+    legal, reason = True, None
+    mask = observation.action_mask
+    if side == PLAYER and mask is not None and index < len(mask):
+        legal = bool(mask[index][action])
+        if not legal:
+            reason = _refusal(env, model)
+    return (side, index), Order(
+        action=action,
+        text=describe_action(
+            action,
+            env.config.n_movement_angles,
+            env.config.n_speed_bins,
+            shoot_start,
+            shoot_end,
+        ),
+        landing=(start[0] + float(displacement[0]), start[1] + float(displacement[1])),
+        legal=legal,
+        reason=reason,
+    )
+
+
+def _refusal(env: WargameEnv, model: WargameModel) -> str:
+    """Why the mask said no, in the terms the user is thinking in.
+
+    "The action mask refuses this move" is true of every refusal and explains
+    none of them. The two that actually happen are a casualty — restricted to
+    STAY, and the panel would otherwise report a dead model as merely illegal —
+    and clicking during a phase that is not movement.
+    """
+    if not model.is_alive:
+        return "Killed — a casualty has only STAY available."
+    phase = env.game_clock_state.phase
+    if phase is not BattlePhase.movement:
+        return (
+            f"Not legal now — the phase is {phase.value if phase else 'over'}, "
+            "not movement."
+        )
+    return "The action mask refuses this move."
+
+
+def apply_orders(
+    env: WargameEnv, action: WargameEnvAction, orders: dict[tuple[str, int], Order]
+) -> None:
+    """Overwrite the policy's choices with the human's, on both sides.
+
+    The player's actions are edited in place before `step`. The opponent's
+    cannot be: `run_after_player_action` runs its whole turn *inside* that same
+    `step`, so the only seam is the policy, which is wrapped. The wrapper is
+    installed fresh each step because a rewind hands back a *different* env
+    object — one carrying a deep copy of whatever was installed when it was
+    captured.
+    """
+    for (side, index), order in orders.items():
+        if side == PLAYER and order.legal and index < len(action.actions):
+            action.actions[index] = order.action
+    opponent = {
+        index: order.action
+        for (side, index), order in orders.items()
+        if side == OPPONENT and order.legal
+    }
+    inner = env.opponent_policy
+    if inner is None:
+        return
+    base = inner.inner if isinstance(inner, OverridableOpponentPolicy) else inner
+    env.set_opponent_policy(
+        OverridableOpponentPolicy(base, opponent) if opponent else base
+    )
+
+
 def run_session(
     env: WargameEnv,
     renderer: Renderer,
@@ -100,9 +208,21 @@ def run_session(
     controls.undo_depth = 0
     done = False
 
+    # Dice for a reroll come off the session's own generator rather than the
+    # clock, so a whole session — orders, redos and all — replays from its seed.
+    redo_rng = np.random.default_rng(seed)
+
     try:
         while True:
             renderer.render(env)
+
+            if controls.order_at is not None:
+                request, controls.order_at = controls.order_at, None
+                key, order = resolve_order(env, observation, request)
+                controls.orders[key] = order
+                if not order.legal:
+                    logger.info(f"Refused: {order.reason}")
+                continue
 
             if controls.step_back:
                 controls.step_back = False
@@ -131,6 +251,10 @@ def run_session(
             move_history.append(dict(controls.moves))
             controls.undo_depth = len(undo)
             action = select(observation, env)
+            apply_orders(env, action, controls.orders)
+            controls.orders.clear()
+            if controls.reroll_dice:
+                env.reseed_combat(int(redo_rng.integers(0, 2**31)))
             # Captured before the step, because the step is what moves them.
             moving = env.game_clock_state.phase is BattlePhase.movement
             before = [
