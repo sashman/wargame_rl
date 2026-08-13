@@ -39,6 +39,8 @@ random_terrain:
   min_size: 5     # footprint side length, inclusive
   max_size: 7
   mirror: true    # reflect the layout across the vertical centre line
+  mirror_mode: reflect_x   # or rotate_180 -- how the second half is derived
+  angled_fraction: 0.0     # fraction of small pieces rotated off-axis
   edge_margin: 2  # keep footprints this far from the board edge
   min_gap: 1      # minimum clear cells between two footprints
 ```
@@ -61,6 +63,12 @@ construction, the draw comes off the layout RNG so a seeded reset picks the same
 twice, and `env.map_name` says which one. `names` splits the pool — training on all 45
 consumes the evaluation set. See `configs/experiments/25v25_real_maps.yaml`.
 
+`map_pool.mirror` (default off) draws each layout in four orientations — identity, flipped in
+x, in y, and in both. Note the yield is closer to **2x than 4x**: the real tables are already
+near-point-symmetric, so the both-axes flip is nearly the identity and the two single-axis
+flips are nearly each other. `env.map_name` records the orientation, so a mirrored draw is
+still attributable to its source table and a held-out table stays held out under every flip.
+
 **`terrain_budget` is the way round that**, and the reason it exists is the real layouts:
 `configs/evaluation/maps/` carries 15 or 16 pieces depending on the table, which `np.stack`
 refuses. Setting it pads the token *sequence* to a fixed length with all-zero rows, which the
@@ -73,6 +81,19 @@ checkpoints fail to load. See `tests/test_observation_budgets.py`.
 board and `turn_order` only swaps who moves first, so an asymmetric draw would hand one side
 better approaches for a whole run. With an odd `count`, one piece straddles the centre line
 and is its own reflection.
+
+**`mirror_mode` chooses how the second half is derived**, and only applies when `mirror` is
+set. `reflect_x` (the default) reflects across the vertical centre line. `rotate_180` maps
+each piece through the board centre instead, which is the symmetry the real tables in
+`configs/evaluation/maps/` are built on — the 45 layouts sit a median 1.7 board units from
+their own 180 degree rotation. Under `rotate_180` the piece that straddles the centre is
+centred in *both* axes, not just in x.
+
+**`angled_fraction` rotates some small pieces off-axis**, matching the real tables, where
+ruins are not all square to the board. A rotated piece is fitted to its **bounding box**, not
+to the centroid-symmetric box — an asymmetric outline fitted to the latter can grow past the
+allotment it was sampled for and overlap its neighbour. It defaults to 0.0, which leaves
+generation byte-identical.
 
 Generation is rejection sampling. Specs that pack the board too tightly, or whose `max_size`
 cannot fit inside the margins, are rejected at config load rather than failing partway
