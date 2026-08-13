@@ -1,15 +1,16 @@
-"""Model occlusion and cover, and the group rule they depend on.
+"""What blocks sight, and what puts a target in cover.
 
-`group_id` is this project's name for the rules' *unit*, so it is the rules
-concept here too: a model with a base occludes, but ignores others in its own
-group and in its target's group — otherwise a squad shields itself with its own
-front rank and nobody can shoot past the man in front. A target only partly
-visible is **in cover**, which worsens the attack by one.
+**Models do not block sight — only terrain does.** That is a deliberate
+divergence from `docs/rules/06-visibility-and-damage.md`, recorded in the gap
+map: no model here has a silhouette that is actually opaque, so a line that
+clips a base can be drawn in practice. It takes the rules' *ignore your own
+unit* exemption with it, since that exemption exists only to stop a squad
+shielding itself from its own occlusion.
 
-Every one of these needs `base_radius > 0`. At radius 0 a model occludes
-nothing and the edge rays coincide with the centre one, so the whole feature is
-a no-op — which is exactly why an earlier version that never applied the group
-rule on the shooting path kept the entire suite green.
+`base_radius` still shapes sight, in one way: it sets the width of the corridor
+traced between two models. A target only partly visible along that corridor is
+**in cover**, which worsens the attack by one — so cover is now a fact about
+terrain, and at radius 0 the three rays coincide and cover cannot happen at all.
 """
 
 from __future__ import annotations
@@ -19,11 +20,15 @@ import pytest
 
 from wargame_rl.wargame.envs.domain import rules_constants
 from wargame_rl.wargame.envs.domain.shooting import DefenderStats, resolve_shooting
-from wargame_rl.wargame.envs.domain.sight import CLEAR, COVER, HIDDEN, group_keys
+from wargame_rl.wargame.envs.domain.sight import CLEAR, COVER, HIDDEN
+from wargame_rl.wargame.envs.env_components.shooting_masks import (
+    compute_unit_shooting_masks,
+)
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import (
     ModelConfig,
     OpponentPolicyConfig,
+    TerrainPieceConfig,
     WeaponProfile,
 )
 from wargame_rl.wargame.envs.wargame import WargameEnv
@@ -42,37 +47,10 @@ class _Weapon:
         self.damage = 1
 
 
-class TestGroupKeys:
-    def test_the_two_armies_do_not_share_a_group_numbering(self) -> None:
-        """Both armies have a group 0, and they are different groups.
-
-        Comparing raw ids across sides would make each army's first squad ignore
-        the other's when tracing sight — visible only as slightly too much
-        shooting, on one squad pairing, in a metric nobody reads per-group.
-        """
-        player = [ModelConfig(group_id=0), ModelConfig(group_id=1)]
-        env = WargameEnv(
-            config=WargameEnvConfig(
-                board_width=30,
-                board_height=30,
-                number_of_wargame_models=2,
-                number_of_opponent_models=2,
-                number_of_objectives=1,
-                models=player,
-                opponent_models=[ModelConfig(group_id=0), ModelConfig(group_id=1)],
-                opponent_policy=OpponentPolicyConfig(type="random"),
-            )
-        )
-
-        ours = group_keys(env.wargame_models, 0)
-        theirs = group_keys(env.opponent_models, 1)
-
-        assert not set(ours.tolist()) & set(theirs.tolist())
-
-
 def _sight_env(
     player: list[tuple[float, float, int]],
     opponent: list[tuple[float, float, int]],
+    terrain: list[TerrainPieceConfig] | None = None,
 ) -> WargameEnv:
     """Board with models at fixed spots, each carrying a declared group."""
     return WargameEnv(
@@ -84,6 +62,7 @@ def _sight_env(
             number_of_objectives=1,
             number_of_battle_rounds=2,
             base_radius=RADIUS,
+            terrain=terrain,
             models=[
                 ModelConfig(
                     x=int(x), y=int(y), group_id=u, weapons=[WeaponProfile(range=50)]
@@ -108,93 +87,71 @@ def _visibility(env: WargameEnv) -> np.ndarray:
     )
 
 
-class TestModelOcclusion:
-    def test_a_model_does_not_block_its_own_sight(self) -> None:
-        """The observer's base sits on the start of every ray it casts."""
-        env = _sight_env([(5, 20, 0)], [(40, 20, 1)])
-        env.reset(seed=0)
-
-        assert _visibility(env)[0, 0] == CLEAR
-
-    def test_one_enemy_on_the_line_gives_cover_not_concealment(self) -> None:
-        """A single same-size model cannot hide a target, and that is correct.
-
-        The corridor is as wide as the pair's bases, so one blocker of the same
-        radius covers the centre line and leaves both edges clear. Hiding takes
-        a screen, not a man.
-        """
-        env = _sight_env([(5, 20, 0)], [(20, 20, 1), (40, 20, 2)])
-        env.reset(seed=0)
-
-        assert _visibility(env)[0, 1] == COVER
-
-    def test_a_screen_of_enemies_hides_the_target(self) -> None:
+class TestModelsDoNotOcclude:
+    def test_a_solid_screen_of_enemies_does_not_hide_the_target(self) -> None:
+        """Three enemy bases dead on the line, and the target behind is still
+        fully visible — the divergence this file's docstring records."""
         env = _sight_env(
             [(5, 20, 0)],
             [(20, 19, 1), (20, 20, 1), (20, 21, 1), (40, 20, 2)],
         )
         env.reset(seed=0)
 
-        assert _visibility(env)[0, 3] == HIDDEN
+        assert _visibility(env)[0, 3] == CLEAR
 
-    def test_a_same_group_screen_does_not_block(self) -> None:
-        """Without this a unit shields itself, and the man at the back never fires."""
-        other_unit = _sight_env(
-            [(5, 20, 0), (20, 19, 1), (20, 20, 1), (20, 21, 1)], [(40, 20, 9)]
-        )
-        other_unit.reset(seed=0)
-        assert _visibility(other_unit)[0, 0] == HIDDEN
+    def test_a_squadmate_in_front_does_not_block_the_shot(self) -> None:
+        """Through the mask the game actually builds, not through a helper.
 
-        same_unit = _sight_env(
-            [(5, 20, 0), (20, 19, 0), (20, 20, 0), (20, 21, 0)], [(40, 20, 9)]
-        )
-        same_unit.reset(seed=0)
-        assert _visibility(same_unit)[0, 0] == CLEAR
-
-    def test_the_targets_own_group_does_not_block(self) -> None:
-        """A unit cannot hide behind its own front rank either."""
-        other_unit = _sight_env(
-            [(5, 20, 0)], [(20, 19, 1), (20, 20, 1), (20, 21, 1), (40, 20, 2)]
-        )
-        other_unit.reset(seed=0)
-        assert _visibility(other_unit)[0, 3] == HIDDEN
-
-        same_unit = _sight_env(
-            [(5, 20, 0)], [(20, 19, 2), (20, 20, 2), (20, 21, 2), (40, 20, 2)]
-        )
-        same_unit.reset(seed=0)
-        assert _visibility(same_unit)[0, 3] == CLEAR
-
-    def test_the_shooting_mask_applies_the_group_rule(self) -> None:
-        """The regression this file exists for.
-
-        The group rule was implemented in the sight layer but never reached the
-        shooting mask, which received positions and no models. Every config in
-        the suite has `base_radius: 0`, where nothing occludes, so the whole
-        suite stayed green while a squad could not shoot past its own front rank.
+        This was live until models stopped occluding. The unit exemption was
+        threaded through a separate seam that only the exposure tracker called,
+        while both real shooting masks passed `line_of_sight_matrix` — so a
+        model *was* blocked by the squadmate standing in front of it, on both
+        sides, for as long as bases occluded anything.
         """
         env = _sight_env(
-            [(5, 20, 0), (20, 19, 0), (20, 20, 0), (20, 21, 0)], [(40, 20, 9)]
+            [(5, 20, 0), (20, 19, 0), (20, 20, 0), (20, 21, 0)], [(40, 20, 0)]
         )
         env.reset(seed=0)
+        positions = np.array([m.location for m in env.wargame_models], dtype=float)
+        enemies = np.array([m.location for m in env.opponent_models], dtype=float)
 
-        mask = env.sight_between(env.wargame_models, env.opponent_models)(
-            np.array([m.location for m in env.wargame_models], dtype=float),
-            np.array([m.location for m in env.opponent_models], dtype=float),
-            np.ones((4, 1), dtype=bool),
+        mask = compute_unit_shooting_masks(
+            positions,
+            enemies,
+            np.ones(4, dtype=bool),
+            np.ones(1, dtype=bool),
+            env.player_max_ranges,
+            env.line_of_sight_matrix,
+            np.array([m.group_id for m in env.opponent_models], dtype=int),
+            1,
+            player_advanced=np.zeros(4, dtype=bool),
+            engagement_range=env.rules_quantities.engagement_range,
+            base_diameter=2.0 * env.rules_quantities.base_radius,
         )
 
         assert bool(mask[0, 0]), "a squadmate must not block the shot"
 
+    def test_terrain_still_blocks(self) -> None:
+        """The other half of the claim: dropping model occlusion changes nothing
+        about the ruin between them."""
+        wall = TerrainPieceConfig(outline=[(19, 10), (22, 10), (22, 30), (19, 30)])
+        env = _sight_env([(5, 20, 0)], [(40, 20, 1)], terrain=[wall])
+        env.reset(seed=0)
+
+        assert _visibility(env)[0, 0] == HIDDEN
+
 
 class TestCover:
-    def test_a_partly_screened_target_is_in_cover(self) -> None:
-        """Some of the corridor blocked, some clear, is cover."""
-        env = _sight_env([(5, 20, 0)], [(20, 21, 1), (40, 20, 2)])
+    def test_a_target_at_a_ruins_edge_is_in_cover(self) -> None:
+        """Cover is now a fact about terrain: one edge of the corridor clipped
+        by a ruin, the centre line and the other edge clear."""
+        # The corridor is RADIUS wide either side of the line y = 20, so a ruin
+        # occupying y in [20.5, 23] blocks only the upper ray.
+        ledge = TerrainPieceConfig(outline=[(19, 20.5), (22, 20.5), (22, 23), (19, 23)])
+        env = _sight_env([(5, 20, 0)], [(40, 20, 1)], terrain=[ledge])
         env.reset(seed=0)
-        env.opponent_models[0].location = np.array([20.0, 20.8])
 
-        assert _visibility(env)[0, 1] == COVER
+        assert _visibility(env)[0, 0] == COVER
 
     def test_cover_worsens_the_hit_roll_by_one(self) -> None:
         """And the unmodified 6 still hits, so cover is never an absolute shield."""
@@ -219,18 +176,11 @@ class TestCover:
         is CLEAR or HIDDEN and never in between — which is why the golden gates
         still pass unchanged on every config that predates model bases.
         """
-        env = WargameEnv(
-            config=WargameEnvConfig(
-                board_width=60,
-                board_height=40,
-                number_of_wargame_models=2,
-                number_of_opponent_models=2,
-                number_of_objectives=1,
-                number_of_battle_rounds=2,
-                base_radius=0.0,
-                opponent_policy=OpponentPolicyConfig(type="random"),
-            )
-        )
+        ledge = TerrainPieceConfig(outline=[(19, 20.5), (22, 20.5), (22, 23), (19, 23)])
+        env = _sight_env([(5, 20, 0)], [(40, 20, 1)], terrain=[ledge])
+        env.config.base_radius = 0.0
+        for model in (*env.wargame_models, *env.opponent_models):
+            model.base_radius = 0.0
         env.reset(seed=3)
 
         assert not (_visibility(env) == COVER).any()
@@ -240,10 +190,10 @@ class TestCover:
 def test_visibility_is_symmetric(seed: int) -> None:
     """A sees B exactly as well as B sees A.
 
-    Occlusion is symmetric because the group exemption is symmetric in the pair
-    and the geometry is a segment. `firepower_ratio` reads an exposed model as
-    one that can also fire, so an asymmetry here would make that metric count
-    two different populations.
+    The corridor is as wide as the wider of the pair's two bases, which is
+    symmetric in the pair, and the geometry is a segment. `firepower_ratio`
+    reads an exposed model as one that can also fire, so an asymmetry here would
+    make that metric count two different populations.
     """
     env = WargameEnv(
         config=WargameEnvConfig(

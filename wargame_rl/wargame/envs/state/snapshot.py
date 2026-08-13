@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 import numpy as np
 from pydantic import BaseModel, Field
 
+from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.shooting import (
     DefenderStats,
     PairedShootingResult,
@@ -325,6 +326,18 @@ class _SpatialData:
     opponent_in_range_per_obj: list[list[int]]
 
 
+def _living_only(norms: np.ndarray, models: list[WargameModel]) -> np.ndarray:
+    """`norms` with every dead model's row pushed out of range."""
+    if not models:
+        return norms
+    alive = alive_mask_for(models)
+    if alive.all():
+        return norms
+    out = norms.copy()
+    out[~alive] = np.inf
+    return out
+
+
 def _compute_spatial_data(
     player_models: list[WargameModel],
     opponent_models: list[WargameModel],
@@ -359,11 +372,20 @@ def _compute_spatial_data(
     if o_cache is not None:
         o_norms = o_cache.model_obj_norms_offset
         o_in_range = o_norms <= radii
-        p_ctrl, o_ctrl = objective_ownership_from_norms_offset(p_norms, o_norms, radii)
+        # Control counts the living only, matching what the env computes live —
+        # a casualty lying on the marker holds nothing and contests nothing.
+        # Applied here rather than through `compute_distances(alive_mask=...)`
+        # so the *recorded* distances stay real numbers: where a model fell is a
+        # fact worth keeping, and the mask would write `inf` into the snapshot.
+        p_ctrl, o_ctrl = objective_ownership_from_norms_offset(
+            _living_only(p_norms, player_models),
+            _living_only(o_norms, opponent_models),
+            radii,
+        )
     else:
         o_norms = np.zeros((0, n_obj), dtype=np.float64)
         o_in_range = np.zeros((0, n_obj), dtype=bool)
-        p_ctrl = np.any(p_in_range, axis=0)
+        p_ctrl = np.any(_living_only(p_norms, player_models) <= radii, axis=0)
         o_ctrl = np.zeros_like(p_ctrl, dtype=bool)
 
     control: list[str] = []

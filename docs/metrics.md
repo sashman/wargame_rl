@@ -239,8 +239,16 @@ mission, and `held` is bounded near 2.
 ## Cover metrics
 
 Emitted only when the env config sets `track_exposure: true`. Terrain blocks line
-of sight and nothing else, so "using cover" means exactly one thing: positioning
+of sight and nothing else — models stopped occluding on 2026-08-13, a deliberate
+divergence from the rules — so "using cover" means exactly one thing: positioning
 where no enemy can see you.
+
+**Nothing here is comparable across 2026-08-13.** The scan changed twice over
+that day: models no longer block, so more of the board is exposed, *and* the
+predicate itself moved from the three-ray corridor to the same single centre ray
+the shooting mask uses, which pulls the other way. Measured on
+`golden/25v25_shooting_opponent.yaml`, `squad_march_shoot`'s exposure went
+0.305 → 0.229 — a change of definition, not of behaviour.
 
 | Key | Meaning |
 |---|---|
