@@ -57,8 +57,8 @@ wargame_rl/
 │   └── dev/                       #   fixtures and demos
 ├── tests/                         # Pytest suite with conftest.py fixtures
 ├── docs/                          # Design docs (movement, reward phases, missions-and-vp,
-│                                  #   roadmap, metrics, shooting, terrain,
-│                                  #   training-throughput)
+│                                  #   roadmap, metrics, shooting, expected-damage,
+│                                  #   terrain, training-throughput)
 │   └── rules/                     # Rules specification + constants.yaml + gap map
 ├── reports/                       # Experiment findings, kept for retrospection
 ├── scripts/                       # Run-inspection tooling (run_summary, measure_phase_gates,

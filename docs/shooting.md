@@ -156,7 +156,7 @@ else:
 3. **Save** — one D6 per wound against `save + ap`; failures become unsaved.
 4. **Damage** — `unsaved × damage` wounds applied to the target; a model at 0 wounds is dead.
 
-Rolls use `self._combat_rng`, seeded from `np_random` at each `reset()`, so a seeded episode resolves identically. Each shot is recorded as a `PairedShootingResult` (attacker index, target index, `ShootingResult`, and whether this shot made the kill) and exposed for the step via `env.last_player_shooting_results` / `env.last_opponent_shooting_results` (both on `BattleView`, so the v2 renderer draws the damaging ones as tracers). `domain/shooting.py` also provides `expected_damage(weapon, defender)`, a closed-form expectation with no dice.
+Rolls use `self._combat_rng`, seeded from `np_random` at each `reset()`, so a seeded episode resolves identically. Each shot is recorded as a `PairedShootingResult` (attacker index, target index, `ShootingResult`, and whether this shot made the kill) and exposed for the step via `env.last_player_shooting_results` / `env.last_opponent_shooting_results` (both on `BattleView`, so the v2 renderer draws the damaging ones as tracers). `domain/shooting.py` also provides `expected_damage(weapon, defender)`, a closed-form expectation with no dice. It is the no-abilities case of the general result in [expected-damage.md](expected-damage.md) — `attacks × p_hit × p_wound × p_fail_save × damage`, with no critical-hit abilities, rerolls or `Shrug` term. That document gives the cell edits each ability contributes, so extending the closed form as abilities land is a table lookup rather than a rederivation.
 
 ## Observation Context
 
