@@ -730,6 +730,13 @@ class WargameEnv(gym.Env):
         self.episode_reward = 0.0
         self._exposure_tracker.reset()
         self._coherency_tracker.reset()
+        # Partial coherency enforcement draws per unit, so it needs a seeded
+        # stream. Derived from the episode combat seed rather than sharing it,
+        # so turning enforcement down does not shift the dice.
+        enforcement_rng = np.random.default_rng(self._episode_combat_seed + 1)
+        self._action_handler.coherency_rng = enforcement_rng
+        if self._opponent_action_handler is not None:
+            self._opponent_action_handler.coherency_rng = enforcement_rng
 
         self._battle.reset_for_episode()
         self.phase_manager.reset_episode()
