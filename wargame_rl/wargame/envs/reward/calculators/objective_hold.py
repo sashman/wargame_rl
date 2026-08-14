@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.env_components.distance_cache import (
     compute_distances,
@@ -106,6 +107,7 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         opponent_value: float = DEFAULT_OPPONENT_VALUE,
         crowding_exponent: float = DEFAULT_CROWDING_EXPONENT,
         marginal_weight: float = 0.0,
+        require_coherent: bool = False,
     ) -> None:
         super().__init__(weight=weight)
         if not 0.0 <= marginal_weight <= 1.0:
@@ -113,6 +115,7 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
                 f"marginal_weight must be in [0, 1], got {marginal_weight}"
             )
         self.marginal_weight = marginal_weight
+        self.require_coherent = require_coherent
         self.player_value = player_value
         self.contested_value = contested_value
         self.opponent_value = opponent_value
@@ -129,6 +132,8 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         # its own key, because `_objective_values` runs first and stamps
         # `_cached_ctx`, so sharing that key would freeze occupancy at step one
         # and price the whole episode at the opening crowd.
+        self._cached_body: np.ndarray | None = None
+        self._cached_body_ctx: StepContext | None = None
         self._cached_opp: np.ndarray | None = None
         self._cached_opp_ctx: StepContext | None = None
         self._cached_marginal: np.ndarray | None = None
@@ -145,7 +150,57 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         self._cached_marginal_ctx = None
         self._cached_opp = None
         self._cached_opp_ctx = None
+        self._cached_body = None
+        self._cached_body_ctx = None
         self._cached_occupancy = None
+
+    def _in_coherent_body(self, view: BattleView, ctx: StepContext) -> np.ndarray:
+        """Per-model: True while the model is inside its unit's coherent body.
+
+        The same predicate `domain/coherency.py` serves to the metric and to
+        enforcement, so the reward and the rule cannot drift apart.
+
+        **Why this gate is the shape it is.** Under the occupancy form a unit's
+        income depends only on how many objectives it touches, never on how far
+        anyone walked: measured per step at weight 1.25, five models together
+        earn the unit 1.25, a legal 3+2 across two nearby objectives earns 2.50,
+        and a 4+1 with one model detached far away earns **the same 2.50**. The
+        reward cannot tell the legal spread from the illegal one, and full
+        scatter pays 6.25 -- five times staying together. That is the gradient
+        the adrift models are following: 82.4% of them are walking to a
+        different objective from their unit's body.
+
+        Gating on the coherency predicate makes the reward agree with the rule.
+        The legal 3+2 is untouched, because every model is in the body and the
+        9" spread cap is what makes that spread legal in the first place. The
+        4+1 collapses to 1.25, because the detached model earns nothing.
+        """
+        if ctx is self._cached_body_ctx and self._cached_body is not None:
+            return self._cached_body
+
+        models = view.player_models
+        report = evaluate_coherency(
+            positions=np.array([m.location for m in models], dtype=float),
+            group_ids=np.array([m.group_id for m in models], dtype=np.intp),
+            alive_mask=alive_mask_for(models),
+            base_radii=np.array([m.base_radius for m in models], dtype=float),
+            nearest_distance=view.rules_quantities.scale.to_units(
+                view.config.coherency.nearest_distance
+            ),
+            furthest_distance=view.rules_quantities.scale.to_units(
+                view.config.coherency.furthest_distance
+            ),
+        )
+        in_body = np.zeros(len(models), dtype=bool)
+        for unit in report.units:
+            if unit.coherent:
+                in_body[unit.member_indices] = True
+            else:
+                largest = np.bincount(unit.component).argmax()
+                in_body[unit.member_indices[unit.component == largest]] = True
+        self._cached_body = in_body
+        self._cached_body_ctx = ctx
+        return in_body
 
     def _player_occupancy(self, ctx: StepContext) -> np.ndarray:
         """``(n_objectives,)`` count of live player models inside each disc."""
@@ -226,6 +281,11 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         A model inside overlapping objectives is credited with the best of them.
         """
         if not view.objectives:
+            return 0.0
+        # A model outside its unit's coherent body is in a state the rules do
+        # not allow -- `03-moving.md` says the move cannot be made. An illegal
+        # position should not be paid, so it earns nothing here.
+        if self.require_coherent and not self._in_coherent_body(view, ctx)[model_idx]:
             return 0.0
         cache = ctx.distance_cache
         inside = cache.model_obj_norms_offset[model_idx] <= cache.obj_radii
