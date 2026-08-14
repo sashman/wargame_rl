@@ -91,6 +91,8 @@ def enforce_after_move(
     nearest_distance: float,
     furthest_distance: float,
     mode: CoherencyEnforcement,
+    probability: float = 1.0,
+    rng: np.random.Generator | None = None,
 ) -> int:
     """Return out-of-coherency models to where they started. Mutates locations.
 
@@ -99,6 +101,12 @@ def enforce_after_move(
         nearest_distance: The chain distance, in board units.
         furthest_distance: The spread distance, in board units.
         mode: Which revert to apply. ``off`` returns 0 and touches nothing.
+        probability: Fraction of illegal unit moves actually reverted, drawn per
+            unit. 1.0 (the default) is full enforcement and takes the same code
+            path as before this parameter existed -- no draw is made, so a
+            seeded run is byte-identical. Below 1.0 the rule becomes a dial, so
+            the price of compliance can be measured; see `CoherencyConfig`.
+        rng: Episode RNG, required below 1.0 so a seeded run reproduces.
 
     Returns:
         How many models were sent back, which is the natural cost metric for
@@ -107,6 +115,13 @@ def enforce_after_move(
     """
     if mode is CoherencyEnforcement.off or not models:
         return 0
+    if probability <= 0.0:
+        return 0
+    if probability < 1.0 and rng is None:
+        raise ValueError(
+            "enforce_after_move needs an rng when probability < 1.0, or a "
+            "seeded run would not reproduce"
+        )
 
     reverting: set[int] = set()
     units: tuple[UnitCoherency, ...] = ()
@@ -115,7 +130,13 @@ def enforce_after_move(
     # grows the set. Bounded by the force size for the same reason.
     for iteration in range(len(models) + 1):
         first_units = _select_reverting(
-            models, reverting, nearest_distance, furthest_distance, mode
+            models,
+            reverting,
+            nearest_distance,
+            furthest_distance,
+            mode,
+            probability=probability,
+            rng=rng,
         )
         if iteration == 0:
             units = first_units
@@ -139,6 +160,8 @@ def _select_reverting(
     nearest_distance: float,
     furthest_distance: float,
     mode: CoherencyEnforcement,
+    probability: float = 1.0,
+    rng: np.random.Generator | None = None,
 ) -> tuple[UnitCoherency, ...]:
     """Grow *reverting* until no unit is left broken by its own move.
 
@@ -179,6 +202,11 @@ def _select_reverting(
         for unit in report.units:
             if unit.coherent:
                 continue
+            # Drawn once per unit per pass. A unit spared here keeps its illegal
+            # move for this step; the next step judges it afresh.
+            if probability < 1.0 and rng is not None:
+                if float(rng.random()) >= probability:
+                    continue
             targets = _targets_for(unit, reverting, mode)
             for index in targets:
                 if index in reverting:

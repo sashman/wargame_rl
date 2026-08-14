@@ -175,6 +175,10 @@ class ActionHandler:
         # rather than passed per call so scripted policies and the learned one
         # go through exactly the same enforcement.
         self._coherency_mode = CoherencyEnforcement(config.coherency.enforce_move)
+        self._coherency_probability = config.coherency.enforce_move_probability
+        # Set by the env at reset, so a partial-enforcement run reproduces from
+        # its seed. None is fine at full enforcement, which makes no draw.
+        self.coherency_rng: np.random.Generator | None = None
         self._coherency_nearest = quantities.scale.to_units(
             config.coherency.nearest_distance
         )
@@ -436,4 +440,6 @@ class ActionHandler:
                 self._coherency_nearest,
                 self._coherency_furthest,
                 self._coherency_mode,
+                probability=self._coherency_probability,
+                rng=self.coherency_rng,
             )

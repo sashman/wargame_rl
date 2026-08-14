@@ -70,6 +70,31 @@ class CoherencyConfig(BaseModel):
             "force that starts in breach can only ever be caught up with."
         ),
     )
+    enforce_move_probability: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "How often the end-of-move revert actually fires, per unit. 1.0 is "
+            "full enforcement and the default, and is byte-identical to the "
+            "behaviour before this field existed; 0.0 is equivalent to "
+            "`enforce_move: off`. Between them the rule is enforced on that "
+            "fraction of illegal unit moves, drawn from the episode RNG so a "
+            "seeded run reproduces.\n\n"
+            "WHY THIS EXISTS. Full enforcement is not free. Warm-started from a "
+            "trained policy it reaches a coherency rate of 1.000 with zero "
+            "models adrift -- and `vp_margin` settles at ~60-69 against the "
+            "unenforced control's ~92.5, flat over a hundred epochs. Training "
+            "*into* it from scratch is worse still (-75.3, the policy stops "
+            "moving). The failure is not the constraint but its abruptness: "
+            "every illegal move being cancelled teaches that movement does not "
+            "work, and the policy moves less rather than moving better -- "
+            "`alive` climbs to 0.98 while objectives held fall. A probability "
+            "makes enforcement a dial instead of a cliff, so the price of "
+            "compliance can be measured rather than assumed, and so a "
+            "curriculum can raise it as the policy adapts."
+        ),
+    )
     enforce_move: str = Field(
         default="off",
         pattern="^(off|revert_unit|revert_model)$",
