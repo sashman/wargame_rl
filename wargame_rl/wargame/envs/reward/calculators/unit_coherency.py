@@ -30,10 +30,37 @@ deliberately small. It is also *positive*: staying together should pay rather
 than breaking up costing, so that the term cannot make manoeuvring toward
 objectives a net loss and quietly suppress the whole activity.
 
-Note what this does **not** conflict with. `crowding_exponent` pays a unit less
-for piling onto one objective; this pays a model for staying near its own squad.
-They are compatible -- five coherent units spread across five objectives
-satisfies both -- because one is between units and the other within.
+**MEASURED, AND IT SATURATES AROUND 0.67. Read this before tuning it.** At
+matched epoch 175 on the real-maps scenario: control 0.562, this term at a 0.05
+pay gap 0.621, at 0.10 0.659; by epoch 370 the steeper arm reached 0.674.
+`vp_margin` was unchanged throughout (~+92), so the term is free -- and it is
+also not the lever. Diminishing increments (+0.059 then +0.038 as the gradient
+doubled) are the signature of a bonus fighting a stronger term, not of a missing
+gradient.
+
+**Why, and it retracts the paragraph that used to sit here.** This calculator
+originally claimed it did not conflict with `crowding_exponent` -- that one is
+between units and the other within, so five coherent units on five objectives
+satisfies both. Measured, that is wrong. 82.4% of adrift models have a *different
+nearest objective* from their unit's coherent body, at a median 13.6 board units
+from it against a 9.0 spread cap (`scratchpad/defection_check.py`, 1399
+observations). They are not drifting, they are **defecting**: pot-splitting sends
+the marginal model to the emptiest objective and nothing makes that spread respect
+unit boundaries. This term is a +0.05 counterweight to that, which is why it
+moves the metric a little and then stops.
+
+So coherency here is a *symptom* of unit-blind objective income. The lever worth
+building is **unit-atomic** objective pay, so a lone defector adds nothing its
+unit did not already have -- subject to the two standing traps, that an
+anti-concentration lever must conserve total income and must stay per-model
+differentiated.
+
+**And enforcement dominates it outright.** Warm-starting a trained policy into
+`coherency.enforce_move: revert_model` reaches `coherency_rate` **1.000** with
+zero models adrift within ten epochs. Training into that constraint from scratch
+is what collapses (-75.3 vp_margin, the policy stops moving); from a competent
+basin it is close to free. Prefer the constraint. Keep this term for the
+measurement it bought, not as the mechanism.
 """
 
 from __future__ import annotations
