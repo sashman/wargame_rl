@@ -97,7 +97,7 @@ class CoherencyConfig(BaseModel):
     )
     enforce_move: str = Field(
         default="off",
-        pattern="^(off|revert_unit|revert_model)$",
+        pattern="^(off|revert_unit|revert_model|clamp)$",
         description=(
             "Enforce coherency at the end of a move, which is the rules' "
             "*primary* consequence (`03-moving.md` § Making a move): a move that "
@@ -108,8 +108,15 @@ class CoherencyConfig(BaseModel):
             "diverges from the rule but replaces a 5-model cliff with a "
             "gradient. Which is better is measured, not argued: the analogous "
             "movement-geometry choice in `domain/movement.py` cost ~20 vp when "
-            "reasoned about instead. Off by default; either setting is a "
-            "dynamics change that voids the baselines on that config."
+            "reasoned about instead. `clamp` keeps the move and shortens it: a "
+            "detached model slides back along its own line of advance until it "
+            "is within the chain distance, falling back to the full revert only "
+            "if that still leaves an illegal position. It exists because the "
+            "revert's price was measured and is a *movement* tax -- on the real "
+            "tables `revert_model` sends back 6.34 of 25 models every step, "
+            "cutting displacement 0.460 -> 0.370 and vp_margin +104.2 -> +76.7 "
+            "for the same weights. Off by default; every setting is a dynamics "
+            "change that voids the baselines on that config."
         ),
     )
     attrition: bool = Field(

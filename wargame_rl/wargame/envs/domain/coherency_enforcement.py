@@ -84,6 +84,7 @@ class CoherencyEnforcement(str, Enum):
     off = "off"
     revert_unit = "revert_unit"
     revert_model = "revert_model"
+    clamp = "clamp"
 
 
 def enforce_after_move(
@@ -123,6 +124,15 @@ def enforce_after_move(
             "seeded run would not reproduce"
         )
 
+    if mode is CoherencyEnforcement.clamp:
+        return _clamp_after_move(
+            models,
+            nearest_distance,
+            furthest_distance,
+            probability=probability,
+            rng=rng,
+        )
+
     reverting: set[int] = set()
     units: tuple[UnitCoherency, ...] = ()
     # Selection and the overlap cascade each only ever *add*, and the cascade's
@@ -152,6 +162,224 @@ def enforce_after_move(
     for index in sorted(reverting):
         reverted += _return_to_start(models[index])
     return reverted
+
+
+def _clamp_after_move(
+    models: list[WargameModel],
+    nearest_distance: float,
+    furthest_distance: float,
+    probability: float,
+    rng: np.random.Generator | None,
+) -> int:
+    """Pull detached models back along their own line of advance. Mutates.
+
+    Measured motivation. On the real-tables scenario a trained policy that had
+    never seen the constraint pays it constantly: `revert_model` sends back
+    **6.34 of 25 models every step**, cutting mean displacement 0.460 -> 0.370
+    and `vp_margin` +104.2 -> +76.7 on identical layouts. Training under it for
+    a hundred epochs does not recover that; the policy adapts by *moving less*.
+    A rule that cancels a quarter of all movement is being learned as "movement
+    does not work", which is a credit-assignment accident rather than the rule.
+
+    So this mode keeps the model's decision and shortens it: a detached model
+    slides back along the line toward the body it left until it is exactly
+    within the chain distance. It ends somewhere it chose to go, just not as
+    far -- which is also what a player does at the table. Nobody makes an
+    illegal move and takes it back; they move as far as the rule allows.
+
+    **It is a divergence, and a smaller one than it looks.** `03-moving.md` says
+    an illegal move "cannot be made: return every model to where it started",
+    and that is `revert_unit`. But the spec describes a player who chooses among
+    legal moves, and reverting is only how a *referee* corrects one already
+    made. Clamping is the continuous-action analogue of masking the illegal
+    choice out, which is the closer analogue of choosing legally.
+
+    **It never leaves an illegal position.** A clamp is accepted only if it
+    makes the unit coherent and overlaps no live base; otherwise that unit falls
+    back to the full revert, so the guarantee is exactly `revert_unit`'s. That
+    fallback is also what handles a break the move did not cause -- a unit split
+    by casualties cannot be repaired by shortening anyone's move.
+
+    Returns:
+        How many models enforcement moved off the position the policy chose,
+        so the number stays comparable to the other modes'.
+    """
+    positions = np.array([m.location for m in models], dtype=float)
+    base_radii = np.array([m.base_radius for m in models], dtype=float)
+    alive_mask = np.array([m.is_alive for m in models], dtype=bool)
+    report = evaluate_coherency(
+        positions=positions,
+        group_ids=np.array([m.group_id for m in models], dtype=np.intp),
+        alive_mask=alive_mask,
+        base_radii=base_radii,
+        nearest_distance=nearest_distance,
+        furthest_distance=furthest_distance,
+    )
+
+    moved = 0
+    falling_back: list[UnitCoherency] = []
+    for unit in report.units:
+        if unit.coherent:
+            continue
+        # Drawn once per unit, exactly as the revert modes draw, so the two are
+        # comparable at the same probability.
+        if probability < 1.0 and rng is not None:
+            if float(rng.random()) >= probability:
+                continue
+        clamped = _pull_into_coherency(
+            models,
+            unit,
+            positions,
+            base_radii,
+            alive_mask,
+            nearest_distance,
+            furthest_distance,
+        )
+        if clamped is None:
+            falling_back.append(unit)
+            continue
+        for index, point in clamped.items():
+            positions[index] = point
+            models[index].location = np.array(point, dtype=models[index].location.dtype)
+            moved += 1
+
+    for unit in falling_back:
+        for index in unit.member_indices:
+            start = models[int(index)].previous_location
+            if start is not None:
+                positions[int(index)] = start
+            moved += _return_to_start(models[int(index)])
+    return moved
+
+
+def _pull_into_coherency(
+    models: list[WargameModel],
+    unit: UnitCoherency,
+    positions: np.ndarray,
+    base_radii: np.ndarray,
+    alive_mask: np.ndarray,
+    nearest_distance: float,
+    furthest_distance: float,
+) -> dict[int, np.ndarray] | None:
+    """New positions for one unit's detached models, or None if that fails.
+
+    The unit's largest chain component keeps its move and is the body everyone
+    else is pulled back toward. **A detached model is only ever moved backwards
+    along its own move segment**, never off it and never past its start. That
+    restriction is what makes this a shortened move rather than a free
+    repositioning: anything else would let enforcement teleport a model further
+    than its speed allows, and would repair breaks the move did not cause --
+    which is `apply_attrition`'s job, not this one.
+
+    Returns None when no legal point on the segment exists -- the body itself
+    broken by the spread condition, a unit split by casualties rather than by
+    its move, or a clamped model landing on an occupied base. The caller
+    reverts those, so the guarantee is exactly `revert_unit`'s.
+    """
+    members = unit.member_indices
+    body = members[unit.component == np.bincount(unit.component).argmax()]
+    detached = [int(i) for i in members if int(i) not in {int(b) for b in body}]
+    if not detached:
+        return None
+
+    proposed = {index: positions[index].copy() for index in detached}
+    for index in detached:
+        gaps = np.linalg.norm(positions[body] - positions[index], axis=1)
+        anchor = int(body[int(np.argmin(gaps))])
+        allowed = nearest_distance + float(base_radii[index] + base_radii[anchor])
+        if float(np.linalg.norm(positions[index] - positions[anchor])) <= allowed:
+            continue
+        previous = models[index].previous_location
+        if previous is None:
+            return None
+        start = np.array(previous, dtype=float)
+        fraction = _furthest_legal_fraction(
+            start, positions[index], positions[anchor], allowed
+        )
+        if fraction is None:
+            return None
+        proposed[index] = start + (positions[index] - start) * fraction
+
+    candidate = positions.copy()
+    for index, point in proposed.items():
+        candidate[index] = point
+
+    unit_mask = np.zeros(len(positions), dtype=bool)
+    unit_mask[members] = True
+    check = evaluate_coherency(
+        positions=candidate,
+        group_ids=np.where(unit_mask, unit.group_id, unit.group_id + 1),
+        alive_mask=alive_mask & unit_mask,
+        base_radii=base_radii,
+        nearest_distance=nearest_distance,
+        furthest_distance=furthest_distance,
+    )
+    if not all(reported.coherent for reported in check.units):
+        return None
+    if _overlaps_any_base(proposed, candidate, base_radii, alive_mask):
+        return None
+    return {index: point for index, point in proposed.items()}
+
+
+def _furthest_legal_fraction(
+    start: np.ndarray,
+    destination: np.ndarray,
+    anchor: np.ndarray,
+    allowed: float,
+) -> float | None:
+    """How far along its move a model may go and still reach `anchor`.
+
+    Returns the largest ``t`` in [0, 1] with
+    ``|start + t*(destination - start) - anchor| <= allowed``, or None if no
+    such ``t`` exists -- which means even standing still leaves the model too
+    far from the body, so the move is not what broke the unit.
+
+    Solved in closed form rather than searched: the constraint is a disc, the
+    move is a segment, so ``t`` is a root of a quadratic. Exact and constant
+    time, on a path that runs every step of every episode.
+    """
+    direction = destination - start
+    offset = start - anchor
+    a = float(direction @ direction)
+    b = 2.0 * float(offset @ direction)
+    c = float(offset @ offset) - allowed * allowed
+    if a == 0.0:
+        # The model did not move, so its distance to the body is fixed.
+        return 0.0 if c <= 0.0 else None
+    discriminant = b * b - 4.0 * a * c
+    if discriminant < 0.0:
+        return None
+    root = np.sqrt(discriminant)
+    upper = (-b + root) / (2.0 * a)
+    lower = (-b - root) / (2.0 * a)
+    # The segment enters the disc at `lower` and leaves at `upper`; we want the
+    # furthest point of [lower, upper] that is also on [0, 1].
+    highest = min(1.0, float(upper))
+    if highest < max(0.0, float(lower)):
+        return None
+    return highest
+
+
+def _overlaps_any_base(
+    proposed: dict[int, np.ndarray],
+    candidate: np.ndarray,
+    base_radii: np.ndarray,
+    alive_mask: np.ndarray,
+) -> bool:
+    """True if any clamped model would sit on top of a live base.
+
+    `03-moving.md` checks "no model is left on top of another model" in the same
+    breath as coherency, so a clamp that lands on an occupied base has failed
+    the same test the coherency breach did.
+    """
+    for index in proposed:
+        separations = base_radii + float(base_radii[index])
+        distances = np.linalg.norm(candidate - candidate[index], axis=1)
+        others = alive_mask.copy()
+        others[index] = False
+        if np.any(others & (separations > 0.0) & (distances < separations)):
+            return True
+    return False
 
 
 def _select_reverting(
