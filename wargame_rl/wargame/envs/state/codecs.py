@@ -13,6 +13,7 @@ from pydantic import TypeAdapter
 
 from wargame_rl.wargame.envs.state.event_log import EventLog
 from wargame_rl.wargame.envs.state.events import MatchEvent, ResetEvent, StepEvent
+from wargame_rl.wargame.envs.state.snapshot import EpisodeProvenance
 
 _event_adapter: TypeAdapter[MatchEvent] = TypeAdapter(MatchEvent)
 
@@ -49,6 +50,8 @@ class JsonMatchCodec:
             "version": "1.0",
             "anchor_interval": event_log.anchor_interval,
         }
+        if event_log.provenance is not None:
+            header["provenance"] = event_log.provenance.model_dump(mode="json")
         lines.append(json.dumps(header))
         for event in event_log.events:
             raw = _event_adapter.dump_python(event, mode="python")
@@ -62,7 +65,13 @@ class JsonMatchCodec:
 
         header = json.loads(lines[0])
         anchor_interval = header.get("anchor_interval", 10)
-        log = EventLog(anchor_interval=anchor_interval)
+        raw_provenance = header.get("provenance")
+        log = EventLog(
+            anchor_interval=anchor_interval,
+            provenance=(
+                EpisodeProvenance(**raw_provenance) if raw_provenance else None
+            ),
+        )
 
         for line in lines[1:]:
             raw = json.loads(line)

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 from collections import deque
+from typing import Any
 
 import numpy as np
 from loguru import logger
@@ -133,6 +134,29 @@ def resolve_order(
     )
 
 
+def _next_action(
+    env: WargameEnv,
+    select: ActionSelector,
+    observation: WargameEnvObservation,
+    recorded: list[list[int] | None] | None,
+    diverged_at: int | None,
+) -> WargameEnvAction:
+    """The recording's own action for this step, or the driver's.
+
+    Looked up by `env.current_turn` rather than by a counter the loop keeps: the
+    turn is restored along with the env by a rewind, so following survives
+    stepping back without any bookkeeping. Falls through to the driver past the
+    end of the recording and past a divergence, which is what lets a session run
+    on beyond the match it started from.
+    """
+    if recorded is None or diverged_at is not None:
+        return select(observation, env)
+    step = env.current_turn + 1
+    if step >= len(recorded) or recorded[step] is None:
+        return select(observation, env)
+    return WargameEnvAction(actions=list(recorded[step]))  # type: ignore[arg-type]
+
+
 def _refusal(env: WargameEnv, model: WargameModel) -> str:
     """Why the mask said no, in the terms the user is thinking in.
 
@@ -187,8 +211,10 @@ def run_session(
     controls: DebugControls,
     select: ActionSelector,
     *,
-    seed: int,
+    seed: int | None,
     undo_depth: int = DEFAULT_DEPTH,
+    reset_options: dict[str, Any] | None = None,
+    recorded: list[list[int] | None] | None = None,
 ) -> WargameEnv:
     """Step one episode under the user's control until they quit.
 
@@ -198,20 +224,35 @@ def run_session(
 
     Quitting is the normal way out of a debug session, so the `QuitRequested`
     the renderer raises is caught here rather than propagated.
+
+    `seed=None` with `reset_options` is how a recorded episode is reproduced:
+    the caller has already installed the generator state, and seeding again
+    would throw it away. The reset happens *here* either way, so it happens
+    exactly once.
+
+    `recorded` replays a recording's own actions instead of asking `select` for
+    them, which is what makes a *training* recording steppable: the network that
+    played it was mid-training and was never saved, so no driver can reproduce
+    its decisions. Following stops the moment you change something — see
+    `_diverged` — because an action recorded for a state you have since altered
+    is not that match any more, it is a coincidence.
     """
     undo = UndoStack(undo_depth)
     # The move records live on the controls, not in the env, so they need their
     # own history — otherwise a rewind leaves the panel describing a step that
     # has just been undone. Pushed and popped in lockstep with the env states.
     move_history: deque[dict[int, MoveRecord]] = deque(maxlen=undo_depth)
-    observation, _info = env.reset(seed=seed)
+    observation, _info = env.reset(seed=seed, options=reset_options)
     controls.undo_depth = 0
     done = False
 
     # Dice for a reroll come off the session's own generator rather than the
     # clock, so a whole session — orders, redos and all — replays from its seed.
-    redo_rng = np.random.default_rng(seed)
+    redo_rng = np.random.default_rng(seed)  # None is valid: entropy-seeded
     last_refusal: str | None = None
+    # The step an authored order first changed the match. Cleared by rewinding
+    # past it, because the recording is valid again on the far side.
+    diverged_at: int | None = None
 
     try:
         while True:
@@ -241,6 +282,9 @@ def run_session(
                     env, done = previous, False
                     observation = env.observation
                     controls.moves = move_history.pop() if move_history else {}
+                    if diverged_at is not None and env.current_turn < diverged_at:
+                        diverged_at = None
+                        logger.info("Back before the divergence — following again.")
                 controls.undo_depth = len(undo)
                 continue
 
@@ -256,9 +300,17 @@ def run_session(
             undo.push(env)
             move_history.append(dict(controls.moves))
             controls.undo_depth = len(undo)
-            action = select(observation, env)
+            authored = bool(controls.orders)
+            action = _next_action(env, select, observation, recorded, diverged_at)
             apply_orders(env, action, controls.orders)
             controls.orders.clear()
+            if authored and diverged_at is None:
+                diverged_at = env.current_turn
+                logger.info(
+                    f"Diverged from the recording at step {diverged_at}. "
+                    "The driver takes over from here; [,] back past this point "
+                    "to follow the recording again."
+                )
             if controls.reroll_dice:
                 env.reseed_combat(int(redo_rng.integers(0, 2**31)))
             # Captured before the step, because the step is what moves them.
