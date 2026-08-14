@@ -25,6 +25,28 @@ DEFAULT_OPPONENT_VALUE = 0.25
 DEFAULT_CROWDING_EXPONENT = 0.0
 
 
+def _states_from_counts(player: np.ndarray, opponent: np.ndarray) -> list[str]:
+    """Control state per objective from the two counts, under VP's own rule.
+
+    Strictly more models controls it; equal and non-zero is contested; empty is
+    neutral. Kept beside the calculator rather than reusing
+    `objective_states_from_norms_offset`, which derives the counts from
+    distances -- the marginal value needs to ask "what if this model were not
+    here", which is a question about counts, not positions.
+    """
+    states: list[str] = []
+    for p, q in zip(player, opponent):
+        if p == 0 and q == 0:
+            states.append("neutral")
+        elif p > q:
+            states.append("player")
+        elif q > p:
+            states.append("opponent")
+        else:
+            states.append("contested")
+    return states
+
+
 class ObjectiveHoldCalculator(PerModelRewardCalculator):
     """Per-model reward for standing on an objective, scaled by control state.
 
@@ -83,8 +105,14 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         contested_value: float = DEFAULT_CONTESTED_VALUE,
         opponent_value: float = DEFAULT_OPPONENT_VALUE,
         crowding_exponent: float = DEFAULT_CROWDING_EXPONENT,
+        marginal_weight: float = 0.0,
     ) -> None:
         super().__init__(weight=weight)
+        if not 0.0 <= marginal_weight <= 1.0:
+            raise ValueError(
+                f"marginal_weight must be in [0, 1], got {marginal_weight}"
+            )
+        self.marginal_weight = marginal_weight
         self.player_value = player_value
         self.contested_value = contested_value
         self.opponent_value = opponent_value
@@ -101,6 +129,10 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         # its own key, because `_objective_values` runs first and stamps
         # `_cached_ctx`, so sharing that key would freeze occupancy at step one
         # and price the whole episode at the opening crowd.
+        self._cached_opp: np.ndarray | None = None
+        self._cached_opp_ctx: StepContext | None = None
+        self._cached_marginal: np.ndarray | None = None
+        self._cached_marginal_ctx: StepContext | None = None
         self._cached_occupancy_ctx: StepContext | None = None
         self._cached_occupancy: np.ndarray | None = None
 
@@ -109,6 +141,10 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         self._cached_ctx = None
         self._cached_values = None
         self._cached_occupancy_ctx = None
+        self._cached_marginal = None
+        self._cached_marginal_ctx = None
+        self._cached_opp = None
+        self._cached_opp_ctx = None
         self._cached_occupancy = None
 
     def _player_occupancy(self, ctx: StepContext) -> np.ndarray:
@@ -120,6 +156,24 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         self._cached_occupancy = np.atleast_1d(occupancy).astype(np.float64)
         self._cached_occupancy_ctx = ctx
         return self._cached_occupancy
+
+    def _opponent_occupancy(self, view: BattleView, ctx: StepContext) -> np.ndarray:
+        """``(n_objectives,)`` count of live opponent models inside each disc."""
+        if ctx is self._cached_opp_ctx and self._cached_opp is not None:
+            return self._cached_opp
+        n_objectives = len(view.objectives)
+        if view.opponent_models:
+            opponent_norms = compute_distances(
+                view.opponent_models,
+                view.objectives,
+                alive_mask=alive_mask_for(view.opponent_models),
+            ).model_obj_norms_offset
+            counts = (opponent_norms <= ctx.distance_cache.obj_radii).sum(axis=0)
+        else:
+            counts = np.zeros(n_objectives)
+        self._cached_opp = np.atleast_1d(counts).astype(np.float64)
+        self._cached_opp_ctx = ctx
+        return self._cached_opp
 
     def _value_for_state(self, state: str) -> float:
         if state == "player":
@@ -184,4 +238,59 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
             occupancy = np.maximum(self._player_occupancy(ctx), 1.0)
             scaled = scaled / occupancy**self.crowding_exponent
 
+        if self.marginal_weight > 0.0:
+            marginal = self._marginal_values(view, ctx)
+            scaled = (
+                1.0 - self.marginal_weight
+            ) * scaled + self.marginal_weight * marginal
+
         return float(np.max(scaled[inside]))
+
+    def _marginal_values(self, view: BattleView, ctx: StepContext) -> np.ndarray:
+        """Per-objective value of *one* player model's presence, `V(p) - V(p-1)`.
+
+        A **difference reward**: what does this model's standing here actually
+        change? Computed on the control counts, which the agent can see with
+        `observe_objective_control`.
+
+        It prices the two defects the occupancy form cannot:
+
+        - **Futile defection.** One model against three defenders leaves the
+          objective the opponent's either way, so its marginal value is 0.
+          Under the occupancy form it collects the full opponent-state value,
+          which is why 82.4% of adrift models are walking to a *different*
+          objective from their unit's body -- they are paid to.
+        - **Over-stacking.** The sixth model on a point held 5-to-2 changes
+          nothing, so it earns nothing. `crowding_exponent` approximates this by
+          dividing; this derives it.
+
+        The model that *flips* control earns the whole swing, which is the
+        behaviour worth paying for.
+
+        Note what it does to a **safely held** point: every model there has a
+        marginal value of 0, so the term stops paying for holding ground nobody
+        contests. That is a real reduction in total income, and this repo has
+        twice measured that a lever which destroys income is experienced as
+        "this activity pays less" -- hence `marginal_weight` blends rather than
+        replaces, and defaults to 0.0, which is byte-identical to before it
+        existed. `vp_gain` and `objective_coverage` still pay for the hold.
+        """
+        if ctx is self._cached_marginal_ctx and self._cached_marginal is not None:
+            return self._cached_marginal
+
+        player = self._player_occupancy(ctx)
+        opponent = self._opponent_occupancy(view, ctx)
+        here = np.array(
+            [self._value_for_state(s) for s in _states_from_counts(player, opponent)],
+            dtype=np.float64,
+        )
+        without = np.array(
+            [
+                self._value_for_state(s)
+                for s in _states_from_counts(np.maximum(player - 1.0, 0.0), opponent)
+            ],
+            dtype=np.float64,
+        )
+        self._cached_marginal = here - without
+        self._cached_marginal_ctx = ctx
+        return self._cached_marginal
