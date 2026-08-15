@@ -21,6 +21,15 @@ def _cuda_is_usable() -> bool:
 
     Torch warns about the mismatch at import and then proceeds anyway, so the
     warning is not a guard. This is.
+
+    **Match on the major architecture, not the exact string.** CUDA guarantees
+    binary compatibility *within* a major version: a cubin built for `sm_86`
+    runs on any `sm_8x` device with `x >= 6`. An exact match therefore rejects
+    working hardware — measured on an RTX 4090 (`sm_89`) against a build listing
+    `sm_86`, where Lightning trained on the GPU all day while every script
+    reaching this helper silently ran on CPU and took minutes instead of
+    seconds. A false negative here is quieter than the crash the guard exists to
+    prevent, and so survived longer.
     """
     if not torch.cuda.is_available():
         return False
@@ -30,7 +39,16 @@ def _cuda_is_usable() -> bool:
         # availability check rather than refusing on missing metadata.
         return True
     major, minor = torch.cuda.get_device_capability()
-    return f"sm_{major}{minor}" in arches
+    for arch in arches:
+        # Entries look like "sm_86"; ignore anything else the build may list.
+        digits = arch.removeprefix("sm_")
+        if not digits.isdigit() or len(digits) < 2:
+            continue
+        # The last digit is the minor version, so this stays correct if a major
+        # version ever reaches double digits.
+        if int(digits[:-1]) == major and int(digits[-1]) <= minor:
+            return True
+    return False
 
 
 @lru_cache(maxsize=1)
