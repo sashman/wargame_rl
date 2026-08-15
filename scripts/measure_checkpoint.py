@@ -86,6 +86,7 @@ def format_result(result: BaselineResult) -> str:
         f"{result.name:<28}{result.final_fraction_at_objectives:>10.3f}"
         f"{result.win_rate:>9.2f}{result.player_vp:>12.1f}"
         f"{result.opponent_vp:>10.1f}{result.vp_margin:>11.1f}"
+        f"{format_optional_metric(result.vp_margin_se, 1):>8}"
         f"{result.objectives_held:>7.2f}{result.final_fraction_alive:>8.3f}"
         f"{format_optional_metric(result.exposure_rate):>10}"
         f"{format_optional_metric(result.terrain_proximity, 1):>11}"
@@ -117,7 +118,7 @@ def main() -> None:
     print(f"{config_path}  ({n_episodes} episodes, seeds {seeds[0]}-{seeds[-1]})\n")
     header = (
         f"{'policy':<28}{'on obj':>10}{'win':>9}{'player VP':>12}"
-        f"{'opp VP':>10}{'VP margin':>11}{'held':>7}{'alive':>8}"
+        f"{'opp VP':>10}{'VP margin':>11}{'±SE':>8}{'held':>7}{'alive':>8}"
         f"{'exposure':>10}{'terrain_d':>11}{'firepower':>12}"
     )
     print(header)
