@@ -220,6 +220,12 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         if ctx is self._cached_opp_ctx and self._cached_opp is not None:
             return self._cached_opp
         n_objectives = len(view.objectives)
+        # Annotated because the two branches produce different dtypes -- an
+        # integer count from `.sum` and a float zeros array -- and which one
+        # mypy infers depends on the numpy version. Left implicit it passes
+        # locally and fails CI, which is how this branch stayed red for four
+        # commits while `just validate` was green every time.
+        counts: np.ndarray
         if view.opponent_models:
             opponent_norms = compute_distances(
                 view.opponent_models,
