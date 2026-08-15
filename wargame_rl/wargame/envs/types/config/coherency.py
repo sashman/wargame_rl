@@ -99,6 +99,14 @@ class CoherencyConfig(BaseModel):
         default="off",
         pattern="^(off|revert_unit|revert_model|clamp)$",
         description=(
+            "⚠ WARM-START REQUIRED. Turning this on and training from scratch "
+            "COLLAPSES the run -- -75.3 vp_margin with `revert_unit` and ~-25 "
+            "with `clamp`, against a from-scratch control at +90 by epoch 40. A "
+            "near-random policy has every move blocked, correctly learns that "
+            "moving does nothing, and never recovers. Train first (with "
+            "`objective_hold.require_coherent`), then warm-start into this. A "
+            "warm-started policy reaches full compliance within ~10 epochs and "
+            "scores +79.8 to +100.4 against an unconstrained +98.6.\n\n"
             "Enforce coherency at the end of a move, which is the rules' "
             "*primary* consequence (`03-moving.md` § Making a move): a move that "
             "would end a unit out of coherency cannot be made, and its models "
