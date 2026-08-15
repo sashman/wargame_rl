@@ -37,3 +37,7 @@ class StepContext:
     # credited to the model that actually fired rather than shared flat across
     # the army. None when no shooting has been resolved this step.
     player_kills_by_model: np.ndarray | None = None
+    # Per-model: did coherency enforcement move this model off the position it
+    # chose this step? None outside the movement phase and when enforcement is
+    # off. `coherency_intervention` is the only consumer.
+    models_displaced_by_enforcement: np.ndarray | None = None

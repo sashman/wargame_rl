@@ -460,6 +460,30 @@ class WargameEnv(gym.Env):
         """Mean player models outside their unit's coherent body, per phase."""
         return self._coherency_tracker.models_out_of_coherency
 
+    @property
+    def intended_coherency_rate(self) -> float | None:
+        """Share of unit-samples the POLICY put in coherency, before the revert.
+
+        The number to read when `coherency.enforce_move` is on. `coherency_rate`
+        then describes the board the referee left, which is legal by
+        construction and says nothing about what was learned -- a policy
+        intending 0.630 reads 1.000 there.
+        """
+        return self._coherency_tracker.intended_coherency_rate
+
+    @property
+    def intended_models_out_of_coherency(self) -> float | None:
+        """Models per phase the policy left adrift, before the revert."""
+        return self._coherency_tracker.intended_models_out_of_coherency
+
+    @property
+    def models_reverted_last_move(self) -> int:
+        """Models the referee dragged back on the last movement phase.
+
+        The tax, and it was computed every step and read by nothing.
+        """
+        return self._action_handler.models_reverted_last_move
+
     def has_line_of_sight_between_points(
         self, x0: float, y0: float, x1: float, y1: float
     ) -> bool:
@@ -597,7 +621,15 @@ class WargameEnv(gym.Env):
         )
 
     def _record_coherency(self) -> None:
-        """Fold the player's formation into the episode's coherency totals."""
+        """Fold the player's formation into the episode's coherency totals.
+
+        Records BOTH the board after enforcement and the move the policy
+        proposed before it. Under `enforce_move` those are different questions
+        and only the second says anything about the policy.
+        """
+        self._coherency_tracker.record_intent(
+            self._action_handler.intended_coherency_last_move
+        )
         self._coherency_tracker.record(
             positions=np.array([m.location for m in self.wargame_models], dtype=float),
             group_ids=np.array(
@@ -1077,6 +1109,9 @@ class WargameEnv(gym.Env):
             player_models_killed=p_kills,
             opponent_models_killed=o_kills,
             player_kills_by_model=p_kills_by_model,
+            models_displaced_by_enforcement=(
+                self._action_handler.models_displaced_last_move
+            ),
         )
 
         # Consults the *configured* criteria for the active phase rather than a

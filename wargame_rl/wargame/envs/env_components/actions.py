@@ -17,6 +17,7 @@ from typing import Any
 import numpy as np
 from gymnasium import spaces
 
+from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
 from wargame_rl.wargame.envs.domain.coherency_enforcement import (
     CoherencyEnforcement,
     enforce_after_move,
@@ -186,6 +187,11 @@ class ActionHandler:
             config.coherency.furthest_distance
         )
         self.models_reverted_last_move = 0
+        # (units, units_coherent, models_out) for the move as PROPOSED, before
+        # enforcement. `None` outside the movement phase.
+        self.intended_coherency_last_move: tuple[int, int, int] | None = None
+        # Per-model: did enforcement move this model off where it chose to be?
+        self.models_displaced_last_move: np.ndarray | None = None
 
         angles = np.linspace(0, 2 * np.pi, n_angles, endpoint=False)
         speeds = np.linspace(max_speed / n_speeds, max_speed, n_speeds)
@@ -435,6 +441,18 @@ class ActionHandler:
         # unit-level property of the *completed* move can be judged. Nothing to
         # do outside the movement phase -- no model displaced.
         if phase is BattlePhase.movement:
+            # Judge the move the policy ACTUALLY MADE, before the referee edits
+            # it. Sampling only after enforcement is what let a whole
+            # investigation report 1.000 compliance for a policy that intends
+            # 0.630 -- the metric was measuring the wrapper. Costs one extra
+            # `evaluate_coherency` per movement phase, which is the same call
+            # the tracker already makes once.
+            self.intended_coherency_last_move = _intent_counts(
+                wargame_models, self._coherency_nearest, self._coherency_furthest
+            )
+            before_enforcement = np.array(
+                [m.location for m in wargame_models], dtype=float
+            )
             self.models_reverted_last_move = enforce_after_move(
                 wargame_models,
                 self._coherency_nearest,
@@ -443,3 +461,41 @@ class ActionHandler:
                 probability=self._coherency_probability,
                 rng=self.coherency_rng,
             )
+            # WHICH models the referee moved, not just how many. A per-model
+            # flag is what lets a reward term put a gradient inside the revert
+            # equivalence class: every reverted action currently produces the
+            # identical outcome, so the policy gradient there is exactly zero
+            # and only the entropy bonus acts -- which is the measured cause of
+            # intent eroding from 0.847 to 0.630 under enforcement.
+            #
+            # Computed by comparison rather than reported by the enforcement so
+            # it covers `clamp` too, where a model is moved but not reverted.
+            after = np.array([m.location for m in wargame_models], dtype=float)
+            self.models_displaced_last_move = np.any(
+                after != before_enforcement, axis=1
+            )
+
+
+def _intent_counts(
+    models: list[Any], nearest: float, furthest: float
+) -> tuple[int, int, int]:
+    """(units, units coherent, models out) for the move as the policy made it.
+
+    Evaluated on the moved-but-not-yet-corrected positions, so it reports what
+    the policy *chose* rather than what the referee left behind. Under
+    enforcement the two diverge completely -- a policy intending 0.630
+    coherency reads 1.000 once the revert has run.
+    """
+    alive = np.array([m.is_alive for m in models], dtype=bool)
+    if not alive.any():
+        return (0, 0, 0)
+    report = evaluate_coherency(
+        positions=np.array([m.location for m in models], dtype=float),
+        group_ids=np.array([m.group_id for m in models], dtype=np.intp),
+        alive_mask=alive,
+        base_radii=np.array([m.base_radius for m in models], dtype=float),
+        nearest_distance=nearest,
+        furthest_distance=furthest,
+    )
+    coherent = sum(1 for unit in report.units if unit.coherent)
+    return (len(report.units), coherent, report.n_models_out_of_coherency)

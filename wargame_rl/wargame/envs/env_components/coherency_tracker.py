@@ -35,6 +35,11 @@ class CoherencyTracker:
         self._units_coherent = 0
         self._models_out = 0
         self._samples = 0
+        # The same three counts for the move as PROPOSED, before enforcement.
+        self._intent_units = 0
+        self._intent_units_coherent = 0
+        self._intent_models_out = 0
+        self._intent_samples = 0
 
     def record(
         self,
@@ -80,6 +85,39 @@ class CoherencyTracker:
                 # adrift, and reported 0. `just measure-coherency` used the
                 # right definition throughout, so the two disagreed.
                 self._models_out += int((~unit.member_coherency).sum())
+
+    def record_intent(self, counts: tuple[int, int, int] | None) -> None:
+        """Fold one phase's PROPOSED formation into the intent totals.
+
+        `counts` is `(units, units_coherent, models_out)` judged before
+        enforcement edited anything, so these metrics answer "did the policy
+        choose a legal move" where the others answer "is the board legal". Under
+        enforcement the two diverge completely, and reporting only the second is
+        how a policy intending 0.630 coherency was published at 1.000.
+        """
+        if counts is None:
+            return
+        units, coherent, models_out = counts
+        if units == 0:
+            return
+        self._intent_samples += 1
+        self._intent_units += units
+        self._intent_units_coherent += coherent
+        self._intent_models_out += models_out
+
+    @property
+    def intended_coherency_rate(self) -> float | None:
+        """Share of unit-samples the POLICY put in coherency, before the revert."""
+        if not self._intent_units:
+            return None
+        return self._intent_units_coherent / self._intent_units
+
+    @property
+    def intended_models_out_of_coherency(self) -> float | None:
+        """Models per phase the policy left out of coherency, before the revert."""
+        if not self._intent_samples:
+            return None
+        return self._intent_models_out / self._intent_samples
 
     @property
     def coherency_rate(self) -> float | None:

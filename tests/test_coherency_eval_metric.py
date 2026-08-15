@@ -196,3 +196,36 @@ def test_a_spread_only_breach_is_counted() -> None:
     assert tracker.coherency_rate == 0.0
     adrift = tracker.models_out_of_coherency
     assert adrift is not None and adrift > 0.0
+
+
+def test_intent_and_board_diverge_under_enforcement() -> None:
+    """The metric pair that would have caught this project's worst error.
+
+    `coherency_rate` is sampled AFTER the end-of-move revert, so under
+    `enforce_move` it is legal by construction and says nothing about the
+    policy. A whole investigation published "1.000 compliance" for weights that
+    intend 0.630 on exactly this confusion.
+
+    So: same config, same weights, same layouts, enforcement on. The board must
+    read (near) perfect while intent reads materially worse -- and if they ever
+    agree, the intent metric has stopped measuring what it claims.
+    """
+    config = make_config(coherent_deployment=True)
+    config.coherency.enforce_move = "revert_model"
+    env = WargameEnv(config)
+    env.reset(seed=3)
+
+    # Act: random-ish movement, which a coherent force cannot survive legally.
+    for _ in range(6):
+        env.step(WargameEnvAction(actions=list(env.action_space.sample())))
+
+    board = env.coherency_rate
+    intent = env.intended_coherency_rate
+    assert board is not None and intent is not None
+
+    # Assert: the referee delivers a legal board, the policy did not choose one.
+    assert board > intent, (
+        f"intent {intent:.3f} should be worse than the enforced board {board:.3f}; "
+        "if they match, the intent metric is being sampled after enforcement"
+    )
+    assert env.models_reverted_last_move >= 0
