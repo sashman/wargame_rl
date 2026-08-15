@@ -7,10 +7,10 @@ the rule's **primary** enforcement. On the table nobody loses models to
 coherency in a normal game, because the illegal move is never made. So if
 attrition ever fires often, this is what is wrong.
 
-Two modes, because the spec's own rule and the shape this environment wants are
-not obviously the same thing, and this project has already been burned reasoning
-about movement geometry instead of measuring it (`domain/movement.py`: the
-"obviously better" tangential slide measured ~20 vp *worse* than back-off).
+Three modes, because the spec's own rule and the shape this environment wants
+are not obviously the same thing, and this project has already been burned
+reasoning about movement geometry instead of measuring it (`domain/movement.py`:
+the "obviously better" tangential slide measured ~20 vp *worse* than back-off).
 
 - ``revert_unit`` is the spec: one model out of place cancels its whole unit's
   move. Faithful, and a cliff -- the unit's 5-model joint action is legal or it
@@ -26,6 +26,11 @@ about movement geometry instead of measuring it (`domain/movement.py`: the
   coincide. They separate only while a break is local -- which is exactly why
   they tie on the bar and differ by 50 vp on ``split_evenly``, whose squads are
   shattered across the whole board every turn.
+- ``clamp`` **shortens** the move instead of cancelling it: a detached model
+  slides back along its own move segment to the furthest point still within the
+  chain distance, falling back to the full revert when no legal point exists, so
+  the legality guarantee is exactly ``revert_unit``'s. See ``_clamp_after_move``
+  for the measurement that motivates it.
 
 **Selection runs to a fixed point, because one pass does not make a unit
 coherent.** Reverting the models in breach moves the goalposts: pull a straggler
