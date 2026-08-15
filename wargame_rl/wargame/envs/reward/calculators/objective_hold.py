@@ -32,8 +32,7 @@ def _states_from_counts(player: np.ndarray, opponent: np.ndarray) -> list[str]:
     Strictly more models controls it; equal and non-zero is contested; empty is
     neutral. Kept beside the calculator rather than reusing
     `objective_states_from_norms_offset`, which derives the counts from
-    distances -- the marginal value needs to ask "what if this model were not
-    here", which is a question about counts, not positions.
+    distances -- the coherency gate needs to ask about counts, not positions.
     """
     states: list[str] = []
     for p, q in zip(player, opponent):
@@ -106,15 +105,9 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         contested_value: float = DEFAULT_CONTESTED_VALUE,
         opponent_value: float = DEFAULT_OPPONENT_VALUE,
         crowding_exponent: float = DEFAULT_CROWDING_EXPONENT,
-        marginal_weight: float = 0.0,
         require_coherent: bool = False,
     ) -> None:
         super().__init__(weight=weight)
-        if not 0.0 <= marginal_weight <= 1.0:
-            raise ValueError(
-                f"marginal_weight must be in [0, 1], got {marginal_weight}"
-            )
-        self.marginal_weight = marginal_weight
         self.require_coherent = require_coherent
         self.player_value = player_value
         self.contested_value = contested_value
@@ -136,8 +129,6 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         self._cached_body_ctx: StepContext | None = None
         self._cached_opp: np.ndarray | None = None
         self._cached_opp_ctx: StepContext | None = None
-        self._cached_marginal: np.ndarray | None = None
-        self._cached_marginal_ctx: StepContext | None = None
         self._cached_occupancy_ctx: StepContext | None = None
         self._cached_occupancy: np.ndarray | None = None
 
@@ -146,8 +137,6 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
         self._cached_ctx = None
         self._cached_values = None
         self._cached_occupancy_ctx = None
-        self._cached_marginal = None
-        self._cached_marginal_ctx = None
         self._cached_opp = None
         self._cached_opp_ctx = None
         self._cached_body = None
@@ -307,59 +296,4 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
             occupancy = np.maximum(self._player_occupancy(ctx), 1.0)
             scaled = scaled / occupancy**self.crowding_exponent
 
-        if self.marginal_weight > 0.0:
-            marginal = self._marginal_values(view, ctx)
-            scaled = (
-                1.0 - self.marginal_weight
-            ) * scaled + self.marginal_weight * marginal
-
         return float(np.max(scaled[inside]))
-
-    def _marginal_values(self, view: BattleView, ctx: StepContext) -> np.ndarray:
-        """Per-objective value of *one* player model's presence, `V(p) - V(p-1)`.
-
-        A **difference reward**: what does this model's standing here actually
-        change? Computed on the control counts, which the agent can see with
-        `observe_objective_control`.
-
-        It prices the two defects the occupancy form cannot:
-
-        - **Futile defection.** One model against three defenders leaves the
-          objective the opponent's either way, so its marginal value is 0.
-          Under the occupancy form it collects the full opponent-state value,
-          which is why 82.4% of adrift models are walking to a *different*
-          objective from their unit's body -- they are paid to.
-        - **Over-stacking.** The sixth model on a point held 5-to-2 changes
-          nothing, so it earns nothing. `crowding_exponent` approximates this by
-          dividing; this derives it.
-
-        The model that *flips* control earns the whole swing, which is the
-        behaviour worth paying for.
-
-        Note what it does to a **safely held** point: every model there has a
-        marginal value of 0, so the term stops paying for holding ground nobody
-        contests. That is a real reduction in total income, and this repo has
-        twice measured that a lever which destroys income is experienced as
-        "this activity pays less" -- hence `marginal_weight` blends rather than
-        replaces, and defaults to 0.0, which is byte-identical to before it
-        existed. `vp_gain` and `objective_coverage` still pay for the hold.
-        """
-        if ctx is self._cached_marginal_ctx and self._cached_marginal is not None:
-            return self._cached_marginal
-
-        player = self._player_occupancy(ctx)
-        opponent = self._opponent_occupancy(view, ctx)
-        here = np.array(
-            [self._value_for_state(s) for s in _states_from_counts(player, opponent)],
-            dtype=np.float64,
-        )
-        without = np.array(
-            [
-                self._value_for_state(s)
-                for s in _states_from_counts(np.maximum(player - 1.0, 0.0), opponent)
-            ],
-            dtype=np.float64,
-        )
-        self._cached_marginal = here - without
-        self._cached_marginal_ctx = ctx
-        return self._cached_marginal

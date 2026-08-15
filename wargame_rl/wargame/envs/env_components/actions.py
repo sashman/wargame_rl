@@ -176,10 +176,6 @@ class ActionHandler:
         # rather than passed per call so scripted policies and the learned one
         # go through exactly the same enforcement.
         self._coherency_mode = CoherencyEnforcement(config.coherency.enforce_move)
-        self._coherency_probability = config.coherency.enforce_move_probability
-        # Set by the env at reset, so a partial-enforcement run reproduces from
-        # its seed. None is fine at full enforcement, which makes no draw.
-        self.coherency_rng: np.random.Generator | None = None
         self._coherency_nearest = quantities.scale.to_units(
             config.coherency.nearest_distance
         )
@@ -190,8 +186,6 @@ class ActionHandler:
         # (units, units_coherent, models_out) for the move as PROPOSED, before
         # enforcement. `None` outside the movement phase.
         self.intended_coherency_last_move: tuple[int, int, int] | None = None
-        # Per-model: did enforcement move this model off where it chose to be?
-        self.models_displaced_last_move: np.ndarray | None = None
 
         angles = np.linspace(0, 2 * np.pi, n_angles, endpoint=False)
         speeds = np.linspace(max_speed / n_speeds, max_speed, n_speeds)
@@ -450,29 +444,11 @@ class ActionHandler:
             self.intended_coherency_last_move = _intent_counts(
                 wargame_models, self._coherency_nearest, self._coherency_furthest
             )
-            before_enforcement = np.array(
-                [m.location for m in wargame_models], dtype=float
-            )
             self.models_reverted_last_move = enforce_after_move(
                 wargame_models,
                 self._coherency_nearest,
                 self._coherency_furthest,
                 self._coherency_mode,
-                probability=self._coherency_probability,
-                rng=self.coherency_rng,
-            )
-            # WHICH models the referee moved, not just how many. A per-model
-            # flag is what lets a reward term put a gradient inside the revert
-            # equivalence class: every reverted action currently produces the
-            # identical outcome, so the policy gradient there is exactly zero
-            # and only the entropy bonus acts -- which is the measured cause of
-            # intent eroding from 0.847 to 0.630 under enforcement.
-            #
-            # Computed by comparison rather than reported by the enforcement so
-            # it covers `clamp` too, where a model is moved but not reverted.
-            after = np.array([m.location for m in wargame_models], dtype=float)
-            self.models_displaced_last_move = np.any(
-                after != before_enforcement, axis=1
             )
 
 

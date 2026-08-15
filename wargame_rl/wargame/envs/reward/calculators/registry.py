@@ -12,9 +12,6 @@ from wargame_rl.wargame.envs.reward.calculators.closest_objective import (
 from wargame_rl.wargame.envs.reward.calculators.closest_objective_v2 import (
     ClosestObjectiveV2Calculator,
 )
-from wargame_rl.wargame.envs.reward.calculators.coherency_intervention import (
-    CoherencyInterventionCalculator,
-)
 from wargame_rl.wargame.envs.reward.calculators.group_cohesion import (
     GroupCohesionCalculator,
 )
@@ -50,7 +47,6 @@ CALCULATOR_REGISTRY: dict[str, type[RewardCalculatorType]] = {
     "objective_coverage": ObjectiveCoverageCalculator,
     "objective_flip_bonus": ObjectiveFlipBonusCalculator,
     "objective_hold": ObjectiveHoldCalculator,
-    "coherency_intervention": CoherencyInterventionCalculator,
     "unit_coherency": UnitCoherencyCalculator,
     "vp_gain": VPGainCalculator,
     "killing": KillingReward,
