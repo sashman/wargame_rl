@@ -70,46 +70,32 @@ class CoherencyConfig(BaseModel):
             "force that starts in breach can only ever be caught up with."
         ),
     )
-    enforce_move_probability: float = Field(
-        default=1.0,
-        ge=0.0,
-        le=1.0,
-        description=(
-            "How often the end-of-move revert actually fires, per unit. 1.0 is "
-            "full enforcement and the default, and is byte-identical to the "
-            "behaviour before this field existed; 0.0 is equivalent to "
-            "`enforce_move: off`. Between them the rule is enforced on that "
-            "fraction of illegal unit moves, drawn from the episode RNG so a "
-            "seeded run reproduces.\n\n"
-            "WHY THIS EXISTS. Full enforcement is not free. Warm-started from a "
-            "trained policy it reaches a coherency rate of 1.000 with zero "
-            "models adrift -- and `vp_margin` settles at ~60-69 against the "
-            "unenforced control's ~92.5, flat over a hundred epochs. Training "
-            "*into* it from scratch is worse still (-75.3, the policy stops "
-            "moving). The failure is not the constraint but its abruptness: "
-            "every illegal move being cancelled teaches that movement does not "
-            "work, and the policy moves less rather than moving better -- "
-            "`alive` climbs to 0.98 while objectives held fall. A probability "
-            "makes enforcement a dial instead of a cliff, so the price of "
-            "compliance can be measured rather than assumed, and so a "
-            "curriculum can raise it as the policy adapts."
-        ),
-    )
     enforce_move: str = Field(
         default="off",
         pattern="^(off|revert_unit|revert_model)$",
         description=(
-            "Enforce coherency at the end of a move, which is the rules' "
-            "*primary* consequence (`03-moving.md` § Making a move): a move that "
-            "would end a unit out of coherency cannot be made, and its models "
-            "return to where they started. `revert_unit` is the spec -- one "
-            "model out of place cancels its whole unit's move. `revert_model` "
-            "returns only the models outside their unit's coherent body, which "
-            "diverges from the rule but replaces a 5-model cliff with a "
-            "gradient. Which is better is measured, not argued: the analogous "
-            "movement-geometry choice in `domain/movement.py` cost ~20 vp when "
-            "reasoned about instead. Off by default; either setting is a "
-            "dynamics change that voids the baselines on that config."
+            "Enforce coherency at the end of a move, the rules' *primary* "
+            "consequence (`03-moving.md` § Making a move): a move that would end "
+            "a unit out of coherency cannot be made, and its models return to "
+            "where they started. `revert_unit` is the spec -- one model out of "
+            "place cancels its whole unit's move. `revert_model` returns only "
+            "the models outside their unit's coherent body, which diverges from "
+            "the rule but replaces a 5-model cliff with a gradient.\n\n"
+            "⚠ THIS IS A REFEREE, NOT A TEACHER — DO NOT TRAIN UNDER IT. "
+            "Measured over ten runs on the real tables: enforcement guarantees a "
+            "legal board, and a policy trained under it learns *less* about "
+            "formation than one never exposed to it. With the referee switched "
+            "off so the numbers describe the policy rather than the wrapper, "
+            "training under enforcement lands at 0.569 units coherent against "
+            "0.756-0.886 for `objective_hold.require_coherent` alone, and loses "
+            "on unseen ground too -- 70.3 vp_margin on nine held-out tables "
+            "against gate-only's 81.5. The cause is structural: every reverted "
+            "action produces the identical outcome, so they share an advantage "
+            "and the policy gradient inside that whole set is exactly zero. "
+            "Train with the reward gate and no enforcement, then switch this on "
+            "for play, where it costs nothing and makes the board legal.\n\n"
+            "Off by default; every setting is a dynamics change that voids the "
+            "baselines on that config."
         ),
     )
     attrition: bool = Field(

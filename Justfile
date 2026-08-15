@@ -300,6 +300,13 @@ measure-objective-split policy env_config n_episodes='100':
 measure-coherency policy env_config n_episodes='30':
 	@uv run python -m scripts.measure_coherency {{policy}} {{env_config}} {{n_episodes}}
 
+# One annotated frame showing where a squad broke coherency. Rings the models
+# cut off from their unit and draws a line to the body they left, using
+# `evaluate_coherency` itself so the annotation cannot disagree with the metric.
+# Run it on two checkpoints at the SAME seed and step to get comparable boards.
+render-coherency-figure env_config ckpt out seed='700000' step='20':
+	@uv run python -m scripts.render_coherency_figures {{env_config}} {{ckpt}} {{seed}} {{step}} {{out}}
+
 # How much of a config's outcome spread is dice rather than policy. Holds the
 # layouts fixed and varies only the combat seed, so the within-layout spread is
 # the noise floor any arm-to-arm difference has to clear.

@@ -27,6 +27,23 @@ about movement geometry instead of measuring it (`domain/movement.py`: the
   they tie on the bar and differ by 50 vp on ``split_evenly``, whose squads are
   shattered across the whole board every turn.
 
+**This is a referee, not a teacher — do not train under it.** It guarantees a
+legal board and teaches nothing: measured with it switched off, so the numbers
+describe the policy rather than the wrapper, a policy trained under enforcement
+intends 0.569 units coherent against 0.756-0.886 for the reward gate alone, and
+loses on unseen ground too (70.3 vp_margin on nine held-out tables against
+81.5). Every reverted action produces the identical outcome, so they share an
+advantage and the policy gradient inside that whole set is exactly zero. Train
+with ``objective_hold.require_coherent`` and no enforcement; switch this on for
+play.
+
+A third mode, ``clamp``, shortened the move instead of cancelling it. It was
+removed once all three measured the same ~26 vp cost and the conclusion above
+made the choice of mode a play-time detail rather than a training lever; it
+could also never shorten a pure-spread breach, silently degrading to a full
+revert. ``git log -- wargame_rl/wargame/envs/domain/coherency_enforcement.py``
+restores it.
+
 **Selection runs to a fixed point, because one pass does not make a unit
 coherent.** Reverting the models in breach moves the goalposts: pull a straggler
 back to where it started and it may now be too far from the squadmates who kept
@@ -91,8 +108,6 @@ def enforce_after_move(
     nearest_distance: float,
     furthest_distance: float,
     mode: CoherencyEnforcement,
-    probability: float = 1.0,
-    rng: np.random.Generator | None = None,
 ) -> int:
     """Return out-of-coherency models to where they started. Mutates locations.
 
@@ -101,12 +116,6 @@ def enforce_after_move(
         nearest_distance: The chain distance, in board units.
         furthest_distance: The spread distance, in board units.
         mode: Which revert to apply. ``off`` returns 0 and touches nothing.
-        probability: Fraction of illegal unit moves actually reverted, drawn per
-            unit. 1.0 (the default) is full enforcement and takes the same code
-            path as before this parameter existed -- no draw is made, so a
-            seeded run is byte-identical. Below 1.0 the rule becomes a dial, so
-            the price of compliance can be measured; see `CoherencyConfig`.
-        rng: Episode RNG, required below 1.0 so a seeded run reproduces.
 
     Returns:
         How many models were sent back, which is the natural cost metric for
@@ -115,13 +124,6 @@ def enforce_after_move(
     """
     if mode is CoherencyEnforcement.off or not models:
         return 0
-    if probability <= 0.0:
-        return 0
-    if probability < 1.0 and rng is None:
-        raise ValueError(
-            "enforce_after_move needs an rng when probability < 1.0, or a "
-            "seeded run would not reproduce"
-        )
 
     reverting: set[int] = set()
     units: tuple[UnitCoherency, ...] = ()
@@ -135,8 +137,6 @@ def enforce_after_move(
             nearest_distance,
             furthest_distance,
             mode,
-            probability=probability,
-            rng=rng,
         )
         if iteration == 0:
             units = first_units
@@ -160,8 +160,6 @@ def _select_reverting(
     nearest_distance: float,
     furthest_distance: float,
     mode: CoherencyEnforcement,
-    probability: float = 1.0,
-    rng: np.random.Generator | None = None,
 ) -> tuple[UnitCoherency, ...]:
     """Grow *reverting* until no unit is left broken by its own move.
 
@@ -202,11 +200,6 @@ def _select_reverting(
         for unit in report.units:
             if unit.coherent:
                 continue
-            # Drawn once per unit per pass. A unit spared here keeps its illegal
-            # move for this step; the next step judges it afresh.
-            if probability < 1.0 and rng is not None:
-                if float(rng.random()) >= probability:
-                    continue
             targets = _targets_for(unit, reverting, mode)
             for index in targets:
                 if index in reverting:

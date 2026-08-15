@@ -60,6 +60,8 @@ class _EvalStats:
     proximities: list[float | None] = field(default_factory=list)
     firepower: list[float | None] = field(default_factory=list)
     coherency: list[float | None] = field(default_factory=list)
+    intended_coherency: list[float | None] = field(default_factory=list)
+    intended_models_out: list[float | None] = field(default_factory=list)
     models_out: list[float | None] = field(default_factory=list)
 
     def record(self, env: WargameEnv, reward: float, steps: int) -> None:
@@ -76,6 +78,12 @@ class _EvalStats:
         # Always present -- coherency needs no config flag, unlike exposure.
         self.coherency.append(env.coherency_rate)
         self.models_out.append(env.models_out_of_coherency)
+        # What the POLICY chose, before enforcement edited it. With
+        # `enforce_move` on, `coherency_rate` describes a board that is legal by
+        # construction; these two are the only ones that move when the policy
+        # learns something.
+        self.intended_coherency.append(env.intended_coherency_rate)
+        self.intended_models_out.append(env.intended_models_out_of_coherency)
         if env.last_step_context is not None:
             self.successes.append(
                 env.phase_manager.check_success(env, env.last_step_context)
@@ -320,6 +328,16 @@ class WargameLightningBase(LightningModule, ABC):
         # since a unit shot down to one model is coherent by definition and the
         # rate therefore climbs as an army dies. `models_out_of_coherency` has
         # no such failure mode -- a dead model contributes nothing to it.
+        intended = mean_of_measured(stats.intended_coherency)
+        if intended is not None:
+            self.log(f"eval/{prefix}intended_coherency_rate", intended, prog_bar=False)
+        intended_out = mean_of_measured(stats.intended_models_out)
+        if intended_out is not None:
+            self.log(
+                f"eval/{prefix}intended_models_out_of_coherency",
+                intended_out,
+                prog_bar=False,
+            )
         coherency = mean_of_measured(stats.coherency)
         if coherency is not None:
             self.log(f"eval/{prefix}coherency_rate", coherency, prog_bar=False)
