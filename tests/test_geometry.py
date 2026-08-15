@@ -12,7 +12,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from wargame_rl.wargame.envs.types.geometry import Polygon, polygons_contain_points
+from wargame_rl.wargame.envs.types.geometry import (
+    Polygon,
+    closed_edge_ends,
+    polygons_contain_points,
+    polygons_distance_to_points,
+)
 
 # An L, wound anticlockwise. Concave, so a convex half-plane test gets it wrong.
 L_SHAPE = Polygon.from_points(
@@ -164,3 +169,61 @@ class TestPadding:
         """Silently dropping vertices would turn a ruin into a smaller ruin."""
         with pytest.raises(ValueError, match="Cannot pad"):
             L_SHAPE.padded_to(4)
+
+
+class TestPaddedBatchMatchesTheSingleShape:
+    """A batch is padded to its widest outline; the narrower ones must not change.
+
+    `np.roll` puts each outline's closing edge in slot `V_max - 1`, which the
+    `real_edge` mask then discards as padding — so before `closed_edge_ends`,
+    every outline narrower than the batch was traced as an *open* polyline.
+    Measured on `configs/evaluation/maps/table_11.yaml`, that made 5.9% of
+    random sight queries wrong, always in the permissive direction, on 35 of the
+    36 pool maps.
+
+    Everything here needs **mixed** vertex counts. A batch of uniform-width
+    outlines has no padding, so it passes either way.
+    """
+
+    QUAD = Polygon.from_points([(0.0, 0.0), (6.0, 0.0), (6.0, 4.0), (0.0, 4.0)])
+    PROBES = [
+        (3.0, 2.0),  # interior
+        (0.5, 3.5),  # interior, nearest the closing edge
+        (3.0, -1.0),  # outside, below
+        (7.0, 2.0),  # outside, beyond the far edge
+        (-1.0, 2.0),  # outside, past the closing edge
+        (3.0, 5.0),  # outside, above
+    ]
+
+    def _batch(self) -> tuple[np.ndarray, np.ndarray]:
+        """The quad padded out to the L's width, exactly as `Terrain` stores it."""
+        budget = L_SHAPE.n_vertices
+        outlines = np.stack([self.QUAD.padded_to(budget), L_SHAPE.padded_to(budget)])
+        return outlines, np.array([self.QUAD.n_vertices, L_SHAPE.n_vertices])
+
+    @pytest.mark.parametrize("point", PROBES)
+    @pytest.mark.parametrize("include_boundary", [False, True])
+    def test_containment_survives_padding(
+        self, point: tuple[float, float], include_boundary: bool
+    ) -> None:
+        outlines, counts = self._batch()
+        batched = polygons_contain_points(
+            np.array([point]), outlines, counts, include_boundary=include_boundary
+        )[0, 0]
+
+        assert bool(batched) == self.QUAD.contains(*point)
+
+    @pytest.mark.parametrize("point", PROBES)
+    def test_distance_survives_padding(self, point: tuple[float, float]) -> None:
+        outlines, counts = self._batch()
+        batched = polygons_distance_to_points(np.array([point]), outlines, counts)[0, 0]
+
+        assert batched == pytest.approx(self.QUAD.distance_to_point(*point))
+
+    def test_the_closing_edge_is_the_one_that_was_dropped(self) -> None:
+        """Names the defect directly: the last real slot must close the outline."""
+        outlines, counts = self._batch()
+        ends = closed_edge_ends(outlines, counts)
+
+        assert ends[0, self.QUAD.n_vertices - 1].tolist() == [0.0, 0.0]
+        assert ends[1, L_SHAPE.n_vertices - 1].tolist() == [0.0, 0.0]

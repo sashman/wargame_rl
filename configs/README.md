@@ -20,6 +20,7 @@ to try something; copy it into `experiments/` instead.
 | `25v25_cover_control.yaml` | Batch-3 control. Cover is not used even with a working geometry and a priced trade. [Report](../reports/2026-08-06-cover-signal-reason-geometry.md) | `25v25_shooting_opponent.yaml` |
 | `25v25_single_phase.yaml` | The single-phase control for the curriculum question | `25v25_curriculum.yaml` |
 | `25v25_curriculum.yaml` | Two-rung ladder; final phase identical to the control's, so the comparison isolates the curriculum | `25v25_single_phase.yaml` |
+| `25v25_maps_coherency.yaml` | **Unit coherency on the real tables.** `objective_hold.require_coherent` is the only coherency lever measured to work: formation 0.51 → 0.756–0.886 with the referee off, 81.5 vp_margin on nine held-out tables, six seeds. **Never add `enforce_move` to it** — enforcement is a play-time referee, and training under it drops formation to 0.569 and held-out vp to 70.3. [Report](../reports/2026-08-16-enforcement-is-a-referee.md) | the enforced arms in that report |
 
 **The two scenarios are not comparable to each other.** The shooting pair faces
 `scripted_advance_and_shoot` on terrain regenerated every episode with

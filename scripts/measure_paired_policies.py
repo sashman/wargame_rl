@@ -35,7 +35,11 @@ import numpy as np
 from pydantic_yaml import parse_yaml_raw_as
 
 from scripts.measure_checkpoint import build_selector
-from wargame_rl.wargame.envs.baseline.evaluate import ActionSelector, selector_for
+from wargame_rl.wargame.envs.baseline.evaluate import (
+    ActionSelector,
+    evaluate_selector,
+    selector_for,
+)
 from wargame_rl.wargame.envs.baseline.registry import (
     build_baseline_policy,
     get_registry,
@@ -67,22 +71,17 @@ def episode_margins(
 ) -> np.ndarray:
     """Per-episode ``player_vp - opponent_vp``, one entry per seed, in order.
 
-    Appending happens on every iteration and never behind a branch, so the
-    returned array stays index-aligned with `seeds` and with the other arm's.
+    Runs through `evaluate_selector` rather than its own loop so this script and
+    the baseline table cannot answer the same question differently -- two
+    implementations of "score a policy over seeds" drifting apart is exactly the
+    class of defect the pairing here exists to guard against. The array it
+    returns is built one entry per seed unconditionally, so it stays
+    index-aligned with `seeds` and with the other arm's.
     """
     env = create_environment(env_config=env_config)
     select = _selector_for(policy_name, env)
-    margins: list[float] = []
-    for seed in seeds:
-        observation, _info = env.reset(seed=seed)
-        done = False
-        while not done:
-            observation, _reward, terminated, truncated, _step = env.step(
-                select(observation, env)
-            )
-            done = terminated or truncated
-        margins.append(float(env.player_vp - env.opponent_vp))
-    return np.array(margins)
+    result = evaluate_selector(select, env, seeds, policy_name)
+    return np.array(result.vp_margin_per_episode)
 
 
 def main() -> None:

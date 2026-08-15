@@ -27,6 +27,23 @@ about movement geometry instead of measuring it (`domain/movement.py`: the
   they tie on the bar and differ by 50 vp on ``split_evenly``, whose squads are
   shattered across the whole board every turn.
 
+**This is a referee, not a teacher — do not train under it.** It guarantees a
+legal board and teaches nothing: measured with it switched off, so the numbers
+describe the policy rather than the wrapper, a policy trained under enforcement
+intends 0.569 units coherent against 0.756-0.886 for the reward gate alone, and
+loses on unseen ground too (70.3 vp_margin on nine held-out tables against
+81.5). Every reverted action produces the identical outcome, so they share an
+advantage and the policy gradient inside that whole set is exactly zero. Train
+with ``objective_hold.require_coherent`` and no enforcement; switch this on for
+play.
+
+A third mode, ``clamp``, shortened the move instead of cancelling it. It was
+removed once all three measured the same ~26 vp cost and the conclusion above
+made the choice of mode a play-time detail rather than a training lever; it
+could also never shorten a pure-spread breach, silently degrading to a full
+revert. ``git log -- wargame_rl/wargame/envs/domain/coherency_enforcement.py``
+restores it.
+
 **Selection runs to a fixed point, because one pass does not make a unit
 coherent.** Reverting the models in breach moves the goalposts: pull a straggler
 back to where it started and it may now be too far from the squadmates who kept
@@ -115,7 +132,11 @@ def enforce_after_move(
     # grows the set. Bounded by the force size for the same reason.
     for iteration in range(len(models) + 1):
         first_units = _select_reverting(
-            models, reverting, nearest_distance, furthest_distance, mode
+            models,
+            reverting,
+            nearest_distance,
+            furthest_distance,
+            mode,
         )
         if iteration == 0:
             units = first_units

@@ -243,6 +243,27 @@ def _has_separating_axis(
     return bool(separated.any())
 
 
+def closed_edge_ends(
+    outlines: npt.NDArray[np.float64], vertex_counts: npt.NDArray[np.intp]
+) -> npt.NDArray[np.float64]:
+    """Edge endpoints for padded outlines, with every closing edge restored.
+
+    Padding repeats the last real vertex, so a plain roll gives outline ``i`` a
+    last real edge of ``v_last -> v_last`` — zero length, and therefore inert —
+    while the true closing edge ``v_last -> v0`` lands in the slot the
+    ``real_edge`` mask discards as padding. Both consumers below would then
+    trace an *open* polyline: a crossing-number test gets the wrong parity in a
+    wedge of the plane, and a distance test ignores one whole side.
+
+    Only outlines shorter than the array's vertex budget are affected, which is
+    why a fixture of uniform-width shapes cannot catch it.
+    """
+    ends: npt.NDArray[np.float64] = np.roll(outlines, -1, axis=1)
+    if len(outlines):
+        ends[np.arange(len(outlines)), vertex_counts - 1] = outlines[:, 0]
+    return ends
+
+
 def polygons_distance_to_points(
     points: npt.NDArray[np.float64],
     outlines: npt.NDArray[np.float64],
@@ -262,7 +283,7 @@ def polygons_distance_to_points(
         return np.zeros((n_points, n_outlines), dtype=VERTEX_DTYPE)
 
     starts = outlines  # (N, V, 2)
-    ends = np.roll(outlines, -1, axis=1)
+    ends = closed_edge_ends(outlines, vertex_counts)
     edge = ends - starts  # (N, V, 2)
     length_sq = (edge**2).sum(axis=2)  # (N, V)
     safe_length = np.where(length_sq > 0, length_sq, 1.0)
@@ -276,9 +297,9 @@ def polygons_distance_to_points(
         closest - points[:, np.newaxis, np.newaxis, :], axis=3
     )  # (P, N, V)
 
-    # Padded edges are zero-length duplicates of a real vertex, so they never
-    # give a *smaller* distance than the edges meeting there -- but masking them
-    # explicitly keeps the reasoning local rather than resting on that.
+    # Slots at or past the vertex count are padding and carry no edge. The real
+    # edges are all below it *because* `closed_edge_ends` puts the closing edge
+    # in the last real slot; masking alone would drop it.
     edge_index = np.arange(outlines.shape[1])
     real_edge = edge_index[np.newaxis, :] < vertex_counts[:, np.newaxis]
     distances = np.where(real_edge[np.newaxis, :, :], distances, np.inf)
@@ -304,9 +325,9 @@ def polygons_contain_points(
         points: ``(P, 2)``.
         outlines: ``(N, V_max, 2)`` vertices, padded by repeating the last one.
         vertex_counts: ``(N,)`` real vertex count per outline, so the padded
-            edges can be excluded. A padded edge is zero-length and would never
-            be crossed anyway; excluding it explicitly costs one comparison and
-            removes the need to reason about that.
+            slots can be excluded. Pair it with `closed_edge_ends`, never with a
+            bare roll: the mask discards the slot a roll puts the closing edge
+            in, which traces the outline as an open polyline.
         include_boundary: also count points lying exactly on an edge. Off by
             default because sight *samples* are measure-zero and this doubles the
             work; on for anything where membership decides a rule, since a
@@ -350,7 +371,7 @@ def polygons_contain_points(
         return inside
 
     starts = outlines[outline_index]  # (K, V, 2)
-    ends = np.roll(starts, -1, axis=1)
+    ends = closed_edge_ends(starts, vertex_counts[outline_index])
     edge_index = np.arange(outlines.shape[1])
     real_edge = edge_index[np.newaxis, :] < vertex_counts[outline_index][:, np.newaxis]
 

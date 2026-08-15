@@ -28,7 +28,7 @@ wargame_rl/wargame/envs/
 │   ├── game_clock.py          # Turn/phase/round logic
 │   ├── placement.py           # place_for_episode, placement helpers
 │   ├── coherency.py           # The unit coherency predicate: chain, spread, connectivity
-│   ├── coherency_enforcement.py # The end-of-move revert, in two modes
+│   ├── coherency_enforcement.py # The end-of-move revert, in three modes
 │   ├── termination.py         # is_battle_over, check_max_turns_reached
 │   ├── los.py                 # Sampled ray vs padded polygon blockers (vectorised)
 │   ├── sight.py               # "Can A see B?": los + terrain + blocking_mask

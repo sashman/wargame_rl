@@ -6,7 +6,7 @@ next to a learned policy is produced by exactly the same code path.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeAlias
@@ -65,11 +65,30 @@ class BaselineResult:
     # without this is how three experimental rounds were aimed at a deficit that
     # was mostly measurement noise.
     objectives_held: float
+    # Per-episode values, in seed order, kept so a result can carry an error bar
+    # and so two results measured on the same seeds can be paired. The loop
+    # already builds these lists; discarding them is why no figure in this
+    # repo's reports has ever had one. Default empty, so a hand-built
+    # `BaselineResult` in a test stays valid.
+    vp_margin_per_episode: tuple[float, ...] = ()
+    objectives_held_per_episode: tuple[float, ...] = ()
+    win_per_episode: tuple[float, ...] = ()
 
     @property
     def vp_margin(self) -> float:
         """Mean VP lead over the opponent — the phase-invariant scoreboard."""
         return self.player_vp - self.opponent_vp
+
+    @property
+    def vp_margin_se(self) -> float | None:
+        """Standard error of the mean `vp_margin`, or None below two episodes.
+
+        Per-episode `vp_margin` has a standard deviation of 45–50 on the 25v25
+        scenarios, so n=30 carries an SE of ~8–9 — larger than most arm
+        differences ever measured here. Reporting the mean without this is what
+        made a string of noise-level gaps read as effects.
+        """
+        return standard_error(self.vp_margin_per_episode)
 
 
 def format_optional_metric(value: float | None, decimals: int = 3) -> str:
@@ -82,6 +101,38 @@ def format_optional_metric(value: float | None, decimals: int = 3) -> str:
     if value is None:
         return "-"
     return f"{value:.{decimals}f}"
+
+
+def standard_error(values: Sequence[float]) -> float | None:
+    """Standard error of the mean, or None when fewer than two samples."""
+    if len(values) < 2:
+        return None
+    return float(np.std(values, ddof=1) / np.sqrt(len(values)))
+
+
+def paired_difference(
+    treatment: BaselineResult, control: BaselineResult
+) -> tuple[float, float | None]:
+    """Mean and SE of the per-episode `vp_margin` difference, treatment first.
+
+    Pairing is the whole point: layout variance dwarfs most effects here, and
+    it cancels exactly when both policies played the same seeds. An unpaired
+    read of one such comparison said +8.0 where the paired read said
+    +1.7 ± 5.7.
+
+    Raises:
+        ValueError: If the two results did not cover the same episode count —
+            differencing across different layout sets is meaningless.
+    """
+    left = treatment.vp_margin_per_episode
+    right = control.vp_margin_per_episode
+    if len(left) != len(right) or not left:
+        raise ValueError(
+            f"paired difference needs equal, non-empty episode counts: "
+            f"{len(left)} != {len(right)}"
+        )
+    differences = [a - b for a, b in zip(left, right)]
+    return float(np.mean(differences)), standard_error(differences)
 
 
 def mean_of_measured(values: list[float | None]) -> float | None:
@@ -269,4 +320,9 @@ def evaluate_selector(
         terrain_proximity=mean_of_measured(proximities),
         firepower_ratio=mean_of_measured(firepower),
         objectives_held=float(np.mean(held)),
+        vp_margin_per_episode=tuple(
+            player - opponent for player, opponent in zip(player_vps, opponent_vps)
+        ),
+        objectives_held_per_episode=tuple(held),
+        win_per_episode=tuple(wins),
     )
