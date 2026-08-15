@@ -71,7 +71,15 @@ class CoherencyTracker:
             if unit.coherent:
                 self._units_coherent += 1
             else:
-                self._models_out += unit.size - unit.largest_component_size
+                # `member_coherency` is the rule's own per-model answer.
+                # Counting `size - largest_component_size` instead measured the
+                # CHAIN graph only, so a unit fully connected but overrunning
+                # the 9" spread cap has one component and recorded **zero**
+                # models adrift while being 100% in breach -- a six-model line
+                # at 2.0 spacing spans 10.0 against the cap, has 2 models truly
+                # adrift, and reported 0. `just measure-coherency` used the
+                # right definition throughout, so the two disagreed.
+                self._models_out += int((~unit.member_coherency).sum())
 
     @property
     def coherency_rate(self) -> float | None:

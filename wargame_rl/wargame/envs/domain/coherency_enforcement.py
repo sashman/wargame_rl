@@ -248,12 +248,27 @@ def _clamp_after_move(
             models[index].location = np.array(point, dtype=models[index].location.dtype)
             moved += 1
 
-    for unit in falling_back:
-        for index in unit.member_indices:
-            start = models[int(index)].previous_location
+    if falling_back:
+        # Route the fallback through the SAME overlap cascade the revert modes
+        # use, or the guarantee this mode claims is false. A unit that cannot be
+        # clamped goes back to its start, and its start may be ground another
+        # model has since legally taken -- `03-moving.md` forbids leaving one
+        # model on top of another in the same breath as coherency, so the
+        # displaced model's move has failed too and it goes back as well.
+        #
+        # The first version of this reverted the units directly and skipped the
+        # cascade, which put two bases on the same point. It was invisible at
+        # `base_radius: 0.0`, where every overlap check is a no-op, and every
+        # test for this mode ran at 0.0.
+        reverting = {int(i) for unit in falling_back for i in unit.member_indices}
+        _cascade_displaced(
+            models, reverting, report_units=(), mode=CoherencyEnforcement.revert_model
+        )
+        for index in sorted(reverting):
+            start = models[index].previous_location
             if start is not None:
-                positions[int(index)] = start
-            moved += _return_to_start(models[int(index)])
+                positions[index] = start
+            moved += _return_to_start(models[index])
     return moved
 
 

@@ -163,6 +163,96 @@ def test_a_detached_model_earns_nothing() -> None:
     assert float(centre[0]) != float(other[0]) or float(centre[1]) != float(other[1])
 
 
+def test_the_legal_two_objective_spread_is_untouched() -> None:
+    # Arrange: the invariant this module's docstring has always named as
+    # load-bearing, and which -- until now -- did not exist. A gate that also
+    # killed the LEGAL spread would "fix" coherency by forbidding good play,
+    # and the 9" cap exists precisely so that spread is legal.
+    #
+    # The golden map cannot host it (objectives sit 13.0-14.5 apart against the
+    # 9" cap), which is why the stand-in only asserted the invariant abstractly.
+    # So the objectives are moved together here to build the case directly: two
+    # points 6.0 apart, a unit split 3+2 across them, every model inside the
+    # unit's coherent body.
+    env = prepared_env()
+    first = np.array(env.objectives[0].location, dtype=float)
+    env.objectives[1].location = np.array(
+        [first[0] + 6.0, first[1]], dtype=env.objectives[1].location.dtype
+    )
+    second = np.array(env.objectives[1].location, dtype=float)
+    for index, model in enumerate(env.wargame_models):
+        model.stats["current_wounds"] = 1 if index < 5 else 0
+        model.group_id = 0
+    # Spanning two objectives needs the chain to REACH: at 2" base to base the
+    # longest hop is 2 + 2r ~ 3.26 centre to centre, so a 6.0 gap takes an
+    # intermediate model. A naive 3+2 with nothing between the clusters is
+    # chain-broken and therefore illegal -- the vacuity guard below caught
+    # exactly that when this test was first written.
+    placements = [
+        first,
+        first + [0.0, 1.4],
+        first + [3.0, 0.0],
+        second,
+        second + [1.4, 0.0],
+    ]
+    for index, point in enumerate(placements):
+        env.wargame_models[index].location = np.array(
+            point, dtype=env.wargame_models[index].location.dtype
+        )
+    refresh_cache(env)
+
+    # Assert the arrangement really is legal, or the test proves nothing.
+    ctx = env.last_step_context
+    assert ctx is not None
+    gated = ObjectiveHoldCalculator(
+        weight=1.25, crowding_exponent=1.0, require_coherent=True
+    )
+    assert gated._in_coherent_body(env, ctx)[:5].all(), (
+        "test is vacuous unless the 3+2 spread is actually coherent"
+    )
+
+    # Act / Assert: the gate takes nothing from legal play.
+    ungated_income = unit_income(env, gate=False)
+    assert ungated_income > 0.0, "test is vacuous unless the spread earned something"
+    assert unit_income(env, gate=True) == pytest.approx(ungated_income)
+
+
+def test_a_chained_line_that_overruns_the_spread_cap_earns_nothing() -> None:
+    # Arrange: the breach the gate was BLIND to. Five models chained at 2.0
+    # base to base are one connected component, so a largest-component test
+    # sees nothing wrong -- but they span 11.78" against the 9" cap, which is
+    # illegal and which every enforcement mode reverts. Spread was the dominant
+    # breach category when measured (0.288 against chain's 0.125), so this was
+    # most of what the gate claimed to price.
+    env = prepared_env()
+    centre = np.array(env.objectives[0].location, dtype=float)
+    for index, model in enumerate(env.wargame_models):
+        model.stats["current_wounds"] = 1 if index < 5 else 0
+        model.group_id = 0
+    radius = float(env.wargame_models[0].base_radius)
+    for index in range(5):
+        env.wargame_models[index].location = np.array(
+            [centre[0] + index * (2.0 + 2 * radius), centre[1]],
+            dtype=env.wargame_models[index].location.dtype,
+        )
+    refresh_cache(env)
+    ctx = env.last_step_context
+    assert ctx is not None
+    gated = ObjectiveHoldCalculator(
+        weight=1.25, crowding_exponent=1.0, require_coherent=True
+    )
+
+    # Act
+    in_body = gated._in_coherent_body(env, ctx)
+
+    # Assert: the models at the ends of the line are out of coherency, and the
+    # gate must see it. At radius 0.0 the span is legal, so this only bites on
+    # real bases -- guard the premise rather than assume it.
+    if radius > 0.0:
+        assert not in_body[:5].all(), "the gate is blind to the spread cap"
+        assert gated.calculate(4, env.wargame_models[4], env, ctx) == 0.0
+
+
 def test_scattering_no_longer_multiplies_the_units_income() -> None:
     # Arrange: one model on each of the three objectives, the rest with the
     # first. Ungated this is the most profitable arrangement available — each

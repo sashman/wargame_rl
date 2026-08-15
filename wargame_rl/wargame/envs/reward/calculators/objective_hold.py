@@ -191,13 +191,16 @@ class ObjectiveHoldCalculator(PerModelRewardCalculator):
                 view.config.coherency.furthest_distance
             ),
         )
-        in_body = np.zeros(len(models), dtype=bool)
-        for unit in report.units:
-            if unit.coherent:
-                in_body[unit.member_indices] = True
-            else:
-                largest = np.bincount(unit.component).argmax()
-                in_body[unit.member_indices[unit.component == largest]] = True
+        # `in_coherency` is the rule's own per-model answer, and using anything
+        # else is how this gate silently stopped pricing half the rule. The
+        # previous version tested membership of the largest *chain* component,
+        # which cannot see a spread breach at all: five models chained at 2"
+        # are one component spanning 11.78" base to base, so a line the 9" cap
+        # forbids -- and that every enforcement mode reverts -- was paid in
+        # full, 5 models of 5. Spread was the *dominant* breach category when
+        # measured (0.288 against chain's 0.125), so the gate was blind to most
+        # of what it claimed to price.
+        in_body: np.ndarray = report.in_coherency
         self._cached_body = in_body
         self._cached_body_ctx = ctx
         return in_body

@@ -9,23 +9,87 @@ at **n=100, seeds 700000-700099, identical layouts**, on the config named.
 
 ---
 
-## Verdict
+> ## ⚠ CORRECTED 2026-08-15, after an adversarial review
+>
+> **The original verdict — "an agent can play in full unit coherency, sometimes
+> free" — was wrong in two independent ways, and the corrected result is a
+> different and more useful finding.** The original text is preserved below the
+> line with each retraction marked, because the errors are the reusable part.
+>
+> 1. **The compliance was the referee's, not the agent's.** Every 1.000 was
+>    measured *after* the enforcement fixed point. Run the same weights with
+>    `enforce_move: off` and the policy intends **0.630** coherency with **5.37
+>    of 25 models adrift** — inside the *unconstrained* control's own range.
+> 2. **Training under the constraint made intent worse, not better.** Measured
+>    with the referee off, on the same tool: stage 1 alone intends **0.847
+>    (2.20 adrift)**; after 300 epochs under enforcement the same lineage
+>    intends **0.630 (5.37 adrift)**. Stage 2 *destroyed* what stage 1 taught.
+> 3. **"Sometimes free" quoted a max-of-7 across two different environments.**
+>    Mean of 7 is +89.8, sd 7.2; the best sits +1.47 sd above its own group mean
+>    where E[max of 7] = 1.354, and it is the `save_top_k` checkpoint selected
+>    on *training reward* that this very report retracts two sections later.
 
-**An agent can play in full unit coherency, and it is sometimes free and
-typically costs about a tenth of its score.**
+## Verdict, corrected
 
-| | coherency | `vp_margin` |
+**The reward gate teaches formation. The hard constraint guarantees legality but
+is not learned, and training under it erodes what the gate taught.**
+
+| | what the policy *intends* (referee off) | models adrift |
 |---|---|---|
-| unconstrained control | ~0.55 | **+98.6** |
-| best constrained checkpoint | **1.000** | **+100.4** |
-| constrained, mean of 7 | 1.000 | **+89.8** |
-| constrained, worst | 1.000 | +63.7 |
+| unconstrained control | ~0.55 | 2.9-3.7 |
+| **stage 1, `require_coherent`** | **0.847** | **2.20** |
+| after 300 epochs under enforcement | **0.630** | 5.37 |
 
-Compliance is exact where it matters: `just measure-coherency` on the 40-epoch
-checkpoint reports **units coherent 1.000, steps 0.998, 0.00 of 25 models
-adrift**, under the strict 2"/9" chain-spread-connectivity predicate.
+Under enforcement the *board* is legal every step — that part is real and
+mechanically guaranteed. But the policy proposes an illegal move on **~56% of
+movement phases**, and the engine drags back **6.3-7.9 of 25 models per phase**.
+The published 1.000 measures the wrapper.
 
-**It requires a two-stage recipe and will not work any other way.**
+**What the rule costs.** Enforcement applies to **both** sides (one
+`ActionHandler` code path, built from the same config), so `vp_margin` nets two
+handicaps. Decomposed on frozen weights, n=100, identical layouts:
+
+| | player VP | opponent VP | `vp_margin` |
+|---|---|---|---|
+| unenforced | 279.9 | 181.3 | +98.6 |
+| enforced | 262.1 | 172.2 | +89.9 |
+| **Δ** | **−17.8** | **−9.1** | **−8.7** |
+
+Both sides obeying is the faithful game, so −8.7 is the right number for "should
+we implement this rule". But it is **not** true that "coherency costs the agent
+about a tenth of its score": it costs the agent nearly twice what it costs the
+scripted opponent, and the margin conceals that asymmetry. `held` also falls
+**3.45 → 3.01 on frozen weights**, so most of the `held` deficit attributed
+below to constrained *policies* is the rule, not the policy.
+
+**What survives as the practical result:** `require_coherent` is a real,
+measured, free improvement in learned behaviour (0.55 → 0.847 intent, `held`
+3.41 v 3.45, `vp_margin` inside noise). Enforcement is a shield: use it when you
+need a legal board, and do **not** read its compliance number as learning.
+
+### Defects found by the review and fixed here
+
+- **`require_coherent` was blind to the 9" spread clause.** It tested membership
+  of the largest *chain* component, so five models chained at 2" spanning
+  **11.78"** — illegal, and reverted by every enforcement mode — were paid in
+  full, 5 of 5. Spread was the *dominant* breach category (0.288 v chain 0.125).
+  Now uses `report.in_coherency`, the rule's own per-model answer.
+- **`eval/models_out_of_coherency` structurally reported 0 for spread-only
+  breaches**, counting `size - largest_component_size` (chain graph only) while
+  `just measure-coherency` used the rule's definition. The two metrics of the
+  same name disagreed. Now aligned.
+- **`clamp`'s fallback revert skipped the overlap cascade**, so it could drop a
+  base on occupied ground — the guarantee its docstring claimed to be "exactly
+  `revert_unit`'s". Invisible because **every clamp test ran at `base_radius`
+  0.0**, where the overlap checks are unconditional no-ops. Tests now run at the
+  shipped 0.63.
+- **`clamp` cannot shorten a pure-spread breach at all** and silently degrades
+  to a full revert, because it derives "detached" from chain components. Known
+  limitation, recorded, not yet fixed.
+- **The load-bearing test this file's own docstring named
+  (`test_the_legal_two_objective_spread_is_untouched`) did not exist.** Written
+  now — and its vacuity guard immediately caught that the obvious 3+2
+  construction is itself chain-broken.
 
 ---
 
@@ -58,14 +122,22 @@ ringed here.
 ![Constrained policy with every unit coherent](../docs/images/coherency-good.png)
 
 A constrained checkpoint on the identical layout: **zero squads split, zero
-models cut off**, every unit a recognisable clump. This is what
-`measure-coherency`'s "units coherent 1.000, 0.00 models adrift" looks like.
+models cut off**, every unit a recognisable clump.
+
+⚠ **Read this frame precisely.** It is what a legal *board* looks like, not what
+a policy that has learned the rule looks like. The referee has already dragged
+back the models that broke formation this phase; the same weights with
+enforcement off intend 0.630 coherency with 5.37 models adrift. The picture is
+the wrapper's output.
 
 Read the HUD honestly: at this instant the constrained policy is **behind**
 (held 2-2, −5) where the unconstrained one is 4-2, +50. Formation costs tempo
 early. The episode-level scores in the tables above are what settle it.
 
 ### The trap: compliance is not the goal
+
+**This figure turned out to be the whole report in miniature, and I did not
+take my own point seriously enough.**
 
 ![A from-scratch policy that learned not to move](../docs/images/coherency-from-scratch.png)
 
@@ -76,9 +148,13 @@ completely empty**. Every move that would break formation was blocked, so it
 learned not to move.
 
 This is the single most important picture here. **A coherency metric alone
-cannot tell this apart from the frame above it** -- both read 1.000. That is why
-every claim in this report is quoted as `vp_margin` *and* compliance, and why
-the warm-start warning now sits on the config field.
+cannot tell this apart from the frame above it** -- both read 1.000.
+
+And the same blindness invalidated the headline. A compliance metric read after
+enforcement cannot distinguish a policy that *plays* legally from one that is
+*corrected* into legality -- and the constrained policy is the second kind. I
+wrote the caption warning that 1.000 proves nothing, then quoted 1.000 as proof.
+Always score compliance with the referee **off**.
 
 ---
 

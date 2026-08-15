@@ -30,18 +30,31 @@ NEAREST = 2.0
 FURTHEST = 9.0
 
 
+# The shipped 32mm infantry base, and the value these tests must run at. Every
+# test in this file originally ran at the `WargameModel` default of 0.0, where
+# `_overlaps_any_base` and `_cascade_displaced` are *unconditional no-ops* -- so
+# the whole overlap half of the mode was untested, and a real bug shipped behind
+# a green suite. The revert modes have had 0.63 coverage all along; clamp
+# inherited none of it. (A docstring here rather than a comment trips
+# `check-docstring-first`, which is how this file failed its first commit.)
+BASE_RADIUS = 0.63
+
+
 def unit_from(
-    starts: list[tuple[float, float]], ends: list[tuple[float, float]]
+    starts: list[tuple[float, float]],
+    ends: list[tuple[float, float]],
+    group_id: int = 0,
 ) -> list[WargameModel]:
-    """One unit whose models moved from `starts` to `ends`."""
+    """One unit whose models moved from `starts` to `ends`, on real bases."""
     models = []
     for start, end in zip(starts, ends):
         model = WargameModel(
             location=position(*end),
             distances_to_objectives=np.zeros((1, 2)),
             stats={"current_wounds": 1, "max_wounds": 1},
-            group_id=0,
+            group_id=group_id,
         )
+        model.base_radius = BASE_RADIUS
         model.previous_location = np.array(start, dtype=model.location.dtype)
         models.append(model)
     return models
@@ -100,7 +113,9 @@ def test_the_clamped_model_keeps_its_direction_and_most_of_its_ground() -> None:
     x, y = float(models[2].location[0]), float(models[2].location[1])
     assert y == pytest.approx(0.0)
     assert 3.0 < x < 12.0
-    assert x == pytest.approx(1.5 + NEAREST)
+    # Base to base, like every other distance here: the gap between the discs
+    # is NEAREST, so the centres sit NEAREST + two radii apart.
+    assert x == pytest.approx(1.5 + NEAREST + 2 * BASE_RADIUS)
 
 
 def test_clamping_beats_reverting_on_ground_kept() -> None:
@@ -197,6 +212,38 @@ def test_units_are_clamped_independently() -> None:
     assert is_coherent(models)
     assert tuple(models[2].location) == (40.5, 0.0)
     assert tuple(models[3].location) == (42.0, 0.0)
+
+
+def test_a_fallback_revert_never_leaves_two_bases_overlapping() -> None:
+    # Arrange: the guarantee `clamp` claims -- "exactly `revert_unit`'s" -- and
+    # the one it did not keep. Unit 0 was ALREADY broken when it moved, so it
+    # cannot be clamped and falls back to a full revert; unit 1's model legally
+    # advanced onto the ground unit 0's model is about to be sent back to.
+    # Reverting without cascading drops one base on top of another, which
+    # `03-moving.md` forbids in the same breath as coherency.
+    #
+    # Invisible at `base_radius: 0.0`, where the overlap checks are no-ops --
+    # which is exactly how it shipped.
+    broken = unit_from(
+        [(0.0, 0.0), (1.5, 0.0), (40.0, 0.0)],
+        [(0.5, 0.0), (2.0, 0.0), (40.5, 0.0)],
+    )
+    # The taker must stay COHERENT after its move, or it falls back too and
+    # vacates the ground -- which is what made the first draft of this test
+    # pass while the bug was present.
+    taker = unit_from([(8.0, 0.0), (9.4, 0.0)], [(0.0, 0.0), (1.4, 0.0)], group_id=1)
+    models = broken + taker
+
+    # Act
+    enforce_after_move(models, NEAREST, FURTHEST, CoherencyEnforcement.clamp)
+
+    # Assert: no two live bases overlap anywhere on the board.
+    for i, a in enumerate(models):
+        for b in models[i + 1 :]:
+            gap = float(np.hypot(*(np.array(a.location) - np.array(b.location))))
+            assert gap >= a.base_radius + b.base_radius - 1e-9, (
+                f"bases overlap: gap {gap:.3f} < {a.base_radius + b.base_radius:.3f}"
+            )
 
 
 def test_the_other_modes_are_unchanged_by_this_addition() -> None:

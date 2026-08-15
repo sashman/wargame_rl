@@ -83,9 +83,19 @@ def test_a_detached_model_is_counted_out() -> None:
     # Act
     record_once(tracker, [(0.0, 0.0), (1.5, 0.0), (20.0, 0.0)], [0, 0, 0])
 
-    # Assert: the unit is broken, and exactly one model is off the body.
+    # Assert: the unit is broken, and every model is out of coherency.
+    #
+    # Three, not one. The SPREAD condition is collective -- once the straggler
+    # is beyond the 9" cap, no model in the unit is within the cap of every
+    # other, so none of them satisfies the rule. This counts models the RULE
+    # calls out (`member_coherency`), which is what `just measure-coherency`
+    # has always reported. The tracker used to count `size -
+    # largest_component_size`, i.e. the chain graph only, which gave 1 here and
+    # **0 for any spread-only breach** -- a unit 100% in breach reporting no
+    # models adrift. The two metrics of the same name disagreed; they no longer
+    # do.
     assert tracker.coherency_rate == 0.0
-    assert tracker.models_out_of_coherency == 1.0
+    assert tracker.models_out_of_coherency == 3.0
 
 
 def test_the_rate_averages_over_units_and_the_count_over_phases() -> None:
@@ -99,9 +109,11 @@ def test_the_rate_averages_over_units_and_the_count_over_phases() -> None:
         [0, 0, 1, 1, 1],
     )
 
-    # Assert: 1 of 2 units coherent, and the one stranded model counted once.
+    # Assert: 1 of 2 units coherent. The broken unit contributes all three of
+    # its models, since the 20-unit straggler puts every member outside the 9"
+    # spread cap -- see `test_a_detached_model_is_counted_out`.
     assert tracker.coherency_rate == 0.5
-    assert tracker.models_out_of_coherency == 1.0
+    assert tracker.models_out_of_coherency == 3.0
 
 
 def test_the_dead_are_not_counted_out() -> None:
@@ -162,3 +174,25 @@ def test_coherent_deployment_reads_higher_than_default(seed: int) -> None:
     coherent_rate, models_out = readings[False]
     assert coherent_rate == 0.0
     assert models_out is not None and models_out > 5
+
+
+def test_a_spread_only_breach_is_counted() -> None:
+    # Arrange: six models in a line at 2.0 spacing. The chain is intact, so the
+    # unit is ONE connected component and a `size - largest_component_size`
+    # count sees nothing wrong -- but the line spans 10.0 against the 9" cap,
+    # so the unit is entirely in breach.
+    #
+    # Regression: this is the case the tracker structurally could not see, and
+    # no test in this file constructed it -- every other one splits the chain
+    # graph. `just measure-coherency` reported it correctly throughout, so the
+    # training metric silently undercounted exactly the breach category that
+    # turned out to dominate.
+    tracker = CoherencyTracker()
+
+    # Act
+    record_once(tracker, [(float(i) * 2.0, 0.0) for i in range(6)], [0] * 6)
+
+    # Assert
+    assert tracker.coherency_rate == 0.0
+    adrift = tracker.models_out_of_coherency
+    assert adrift is not None and adrift > 0.0
