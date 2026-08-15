@@ -1,5 +1,29 @@
 # Coherency: the verdict
 
+> ## ⚠ SUPERSEDED — 2026-08-16
+>
+> **Read [Enforcement is a referee, not a teacher](2026-08-16-enforcement-is-a-referee.md)
+> instead. This report's conclusions and every number in it are void**, for two
+> independent reasons:
+>
+> 1. **Every compliance figure was sampled after the enforcement fixed point.**
+>    Under `coherency.enforce_move`, `eval/coherency_rate` is 1.000 by
+>    construction whatever the policy does, so it measures the referee and not
+>    the agent. Measured with the referee *off*, the same weights intend 0.630.
+> 2. **A geometry fix (#193) then moved line of sight on these maps by 22.6%**,
+>    voiding every eval-map number measured before it.
+>
+> The settled answer: train with `objective_hold.require_coherent`, never train
+> under `enforce_move`, and switch enforcement on for play.
+> `configs/golden/25v25_maps_coherency.yaml` is that configuration.
+>
+> **Kept, not deleted, because the reasoning and the retractions are the
+> reusable part** — this is a record of how a wrong conclusion was reached, and
+> rewriting it with the answer in hand would destroy that.
+
+---
+
+
 **2026-08-15.** Closes the question opened by
 [coherency is a symptom](2026-08-14-coherency-is-a-symptom.md) and continued in
 [what it costs](2026-08-14-coherency-what-it-costs.md), **both of which this
