@@ -1,5 +1,41 @@
 # Enforcement is a referee, not a teacher
 
+## In short, without the jargon
+
+There is a rule in the game that soldiers in a squad have to stay near each
+other. We wanted the AI to actually play that way. There were two ways to get
+it: **pay the AI** for keeping its squads together, or **have a referee** undo
+any move that breaks a squad apart.
+
+**Paying works. The referee does not teach — and using it while the AI is
+learning makes it worse.** An AI trained with the referee switched on gets
+lazy: it stops trying to stay together, because the referee tidies up after it
+anyway. Turn the referee off afterwards and it is *sloppier* than an AI that
+was never forced at all. It also loses more games on maps it has not seen
+before.
+
+So: **pay during training, and switch the referee on only for real games.**
+The referee still earns its place — it is the only thing that guarantees the
+army is actually legal — but it is a rule of the game, not a teaching aid.
+
+**We had also been measuring it wrong, and that is the more useful lesson.**
+We were checking whether the squads were together *after* the referee had
+already fixed them. Of course they were — that was the referee's doing, not the
+AI's. It looked like a perfect score. Measured properly, the AI was much
+sloppier than we had been reporting, and three earlier write-ups had to be
+withdrawn. The general form of the mistake: **if something guarantees an
+outcome, measuring that outcome tells you nothing about what caused it.**
+
+**One thing we still cannot explain.** Training doesn't start from scratch — it
+continues from an AI that already knows how to play. We used two such starting
+points. Both were equally bad at keeping squads together. Yet every AI grown
+from the first ended up sloppy, and every one grown from the second ended up
+tidy — eight for eight, with no overlap. Same lesson, same settings, roughly
+double the benefit for one group. Something about where you start decides which
+habit sticks, and we do not know what.
+
+---
+
 **2026-08-16.** Supersedes
 [coherency: the verdict](2026-08-15-coherency-the-verdict.md),
 [what it costs](2026-08-14-coherency-what-it-costs.md) and
