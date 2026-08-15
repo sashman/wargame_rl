@@ -29,6 +29,59 @@ adrift**, under the strict 2"/9" chain-spread-connectivity predicate.
 
 ---
 
+## What it looks like
+
+All three frames are the **same layout and seed (700000), the same round 11**,
+rendered from real checkpoints. Rings and lines are drawn from
+`evaluate_coherency` itself -- the predicate the metric and the enforcement both
+use -- so the annotation is the engine's own answer, not the figure's.
+
+### The defect: squads split across the board
+
+![Unconstrained policy with two squads split](../docs/images/coherency-bad.png)
+
+The unconstrained control, `require_coherent` off. **Each red line is one squad
+torn in half**: a ringed model at one objective, a dot at the body it left, and
+the gap between them. Both breaches are the *defection* pattern -- the model has
+not drifted a few inches, it has walked to a **different objective** from its
+squad. That is 82.4% of adrift models, at a median 13.6 board units against a
+9.0 cap.
+
+Note what the figure would look like if every flagged model were ringed: the
+spread condition is **collective**, so one model over the cap puts the whole
+unit in breach and the frame rings two tightly packed clusters -- which reads as
+"packed models are illegal", the opposite of the truth. Only the splinter is
+ringed here.
+
+### The fix: the same board, in formation
+
+![Constrained policy with every unit coherent](../docs/images/coherency-good.png)
+
+A constrained checkpoint on the identical layout: **zero squads split, zero
+models cut off**, every unit a recognisable clump. This is what
+`measure-coherency`'s "units coherent 1.000, 0.00 models adrift" looks like.
+
+Read the HUD honestly: at this instant the constrained policy is **behind**
+(held 2-2, −5) where the unconstrained one is 4-2, +50. Formation costs tempo
+early. The episode-level scores in the tables above are what settle it.
+
+### The trap: compliance is not the goal
+
+![A from-scratch policy that learned not to move](../docs/images/coherency-from-scratch.png)
+
+A policy trained under the rule **from scratch**, and the caption is green:
+**"ALL UNITS IN COHERENCY — 0 squads split"**. It is perfectly compliant and
+scoring **−50**, loitering in its own deployment zone with **three objectives
+completely empty**. Every move that would break formation was blocked, so it
+learned not to move.
+
+This is the single most important picture here. **A coherency metric alone
+cannot tell this apart from the frame above it** -- both read 1.000. That is why
+every claim in this report is quoted as `vp_margin` *and* compliance, and why
+the warm-start warning now sits on the config field.
+
+---
+
 ## The recipe
 
 1. **Train normally**, with `objective_hold.require_coherent: true`.
