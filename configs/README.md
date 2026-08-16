@@ -100,6 +100,17 @@ mission** where the golden config trains on three, so a map score is not
 comparable to a `measure-checkpoint` score; it is comparable across policies on
 the same maps, which is what it is for.
 
+**But the mission only pays for three of them.** VP is
+`min(cap_per_turn, controlled * vp_per_objective)` = `min(15, held * 5)`, so a
+fourth objective you control scores nothing extra, and on these maps own VP is
+saturated for anything competent (272–277 of a 285 ceiling). Above the cap
+`vp_margin` is decided by the *opponent's* score — by denial — which is why
+`measure-maps` prints `plr VP` and `opp VP` beside the margin, and why `held`
+stops ranking policies here: `squad_march_deny` holds **3.00** and
+`squad_march_shoot` **4.00**, and they score level. See
+[docs/metrics.md](../docs/metrics.md) and
+[the report](../reports/2026-08-16-the-cap-makes-it-a-denial-game.md).
+
 **The bar saturates on six objectives, so the per-map spread no longer finds
 hard layouts.** On `25v25_shooting_opponent.yaml`, `squad_march_shoot` wins
 **every one of the 45 maps** (`held` 3.67, `alive` 0.69); the same maps

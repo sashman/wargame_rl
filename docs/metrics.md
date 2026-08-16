@@ -199,6 +199,30 @@ The arithmetic is direct: an objective held pays 5 VP across ~19 scoring rounds,
 control and the bar — while the agent keeps **50% more models alive** and has *more* models
 on objectives in absolute terms. More survivors, more firepower, fewer objectives.
 
+### ⚠ `held` stops ranking once the VP cap binds
+
+Every row above is **below the cap**, and that is why the column is monotonic. VP is
+`min(cap_per_turn, controlled * vp_per_objective)` = `min(15, held * 5)` by default, so an
+objective past the **third** pays nothing, and the arithmetic in the paragraph above — 5 VP a
+round per objective — simply stops applying. On the generated scenario policies hold
+0.05–1.64, so the cap never binds and `held` is a faithful proxy. **On the real tables they
+hold 3.0–4.2, and it is not.** Measured on nine held-out maps, n=100:
+
+| policy | **held** | player VP | opp VP | vp margin |
+|---|---|---|---|---|
+| `squad_march_deny` | **3.00** | 277.3 | 165.1 | **+112.3** |
+| `squad_march_shoot` | **4.00** | 272.2 | 160.4 | **+111.8** |
+
+A full objective apart, level on score. Own VP is saturated for anything competent (272–277
+of a 285 ceiling), so on these maps `vp_margin` is decided almost entirely by the *opponent's*
+score — by **denial**, which `held` does not measure at all.
+
+**Read `plr VP` and `opp VP`, which `measure-maps` prints beside the margin.** The margin
+alone cannot say which half moved, and above the cap the two halves have different causes:
+own VP is a saturation question, opponent VP is a contest question. Three rounds of work here
+were aimed at raising `held` on a mission that stops paying for it at three. See
+[the report](../reports/2026-08-16-the-cap-makes-it-a-denial-game.md).
+
 **Historical note.** Three experimental rounds were designed against an apparent occupancy
 deficit read off `on_obj` at n=30 (0.925 against 1.000). At n=100 that gap is 0.945 against
 0.960 — mostly measurement noise — while the real deficit was always in `held`, which was not

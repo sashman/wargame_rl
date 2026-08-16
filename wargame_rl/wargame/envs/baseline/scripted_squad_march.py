@@ -16,7 +16,7 @@ from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.types import WargameEnvAction
 
 if TYPE_CHECKING:
-    from wargame_rl.wargame.envs.domain.entities import WargameModel
+    from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
     from wargame_rl.wargame.envs.wargame import WargameEnv
 
 
@@ -35,6 +35,19 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
       rules that the per-model baselines violate.
     """
 
+    def squad_objectives(
+        self, models: list[WargameModel], env: WargameEnv, group_ids: list[int]
+    ) -> list[WargameObjective]:
+        """One objective per squad, in `group_ids` order.
+
+        The seam subclasses change to play a different allocation while keeping
+        this class's centroid-steered, coherency-preserving movement. The
+        assignment here is fixed at squad *k* -> objective *k mod n* and never
+        revised, which is what makes this baseline a stable reference bar.
+        """
+        objectives = env.objectives
+        return [objectives[i % len(objectives)] for i in range(len(group_ids))]
+
     def select_movement(
         self, models: list[WargameModel], env: WargameEnv
     ) -> WargameEnvAction:
@@ -46,6 +59,7 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
 
         max_step = float(env.config.max_move_speed)
         group_ids = sorted({model.group_id for model in models})
+        targets = self.squad_objectives(models, env, group_ids)
 
         for squad_index, group_id in enumerate(group_ids):
             member_indices = [
@@ -56,7 +70,7 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
             if not member_indices:
                 continue
 
-            objective = objectives[squad_index % len(objectives)]
+            objective = targets[squad_index]
             radius = objective_extent(objective)
             centroid = np.mean(
                 [models[i].location for i in member_indices], axis=0, dtype=float

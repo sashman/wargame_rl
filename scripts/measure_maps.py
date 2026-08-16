@@ -37,6 +37,7 @@ from wargame_rl.wargame.envs.baseline.evaluate import (
     evaluate_selector,
     format_optional_metric,
     selector_for,
+    standard_error,
 )
 from wargame_rl.wargame.envs.baseline.registry import (
     build_baseline_policy,
@@ -119,10 +120,20 @@ def build_action_selector(
 
 
 def format_row(label: str, result: BaselineResult) -> str:
-    """One aligned row, the same columns `measure-checkpoint` prints."""
+    """One aligned row, the same columns `measure-checkpoint` prints.
+
+    The `+/-` column is the standard error of this map's `vp_margin` over its
+    own episodes. It is printed because per-episode `vp_margin` sd is 45-50 on
+    25v25, so a row at the old n=10 default carries an error bar of ~15 — wider
+    than most differences ever measured here. The tool computed this and threw
+    it away, which is how a row got read as a result.
+    """
+    error = result.vp_margin_se
+    error_text = f"{error:.1f}" if error is not None else "-"
     return (
         f"{label:<20}{result.final_fraction_at_objectives:>9.3f}"
-        f"{result.win_rate:>8.2f}{result.vp_margin:>12.1f}"
+        f"{result.win_rate:>8.2f}{result.vp_margin:>12.1f}{error_text:>8}"
+        f"{result.player_vp:>8.1f}{result.opponent_vp:>8.1f}"
         f"{result.objectives_held:>7.2f}{result.final_fraction_alive:>8.3f}"
         f"{format_optional_metric(result.exposure_rate):>10}"
         f"{format_optional_metric(result.firepower_ratio, 2):>11}"
@@ -151,8 +162,14 @@ def main() -> None:
         f"{config_path}  ({len(maps)} maps x {n_episodes} episodes, "
         f"seeds {seeds[0]}-{seeds[-1]})\n"
     )
+    # `player VP` and `opp VP` are split out because the margin alone cannot say
+    # which half moved, and under this mission they move for different reasons:
+    # VP is `min(cap_per_turn, controlled * vp_per_objective)`, so a competent
+    # policy saturates its own half at three objectives and every further gain
+    # in margin has to come from DENYING the opponent theirs.
     header = (
-        f"{'map':<20}{'on obj':>9}{'win':>8}{'VP margin':>12}"
+        f"{'map':<20}{'on obj':>9}{'win':>8}{'VP margin':>12}{'+/-':>8}"
+        f"{'plr VP':>8}{'opp VP':>8}"
         f"{'held':>7}{'alive':>8}{'exposure':>10}{'firepower':>11}"
     )
     print(header)
@@ -171,11 +188,22 @@ def main() -> None:
     print("-" * len(header))
     margins = [result.vp_margin for result in results]
     wins = [result.win_rate for result in results]
+    # The error bar on the mean is taken over MAPS, not over episodes, because
+    # a map is the unit this evaluation generalises across: nine maps at n=100
+    # is nine samples of "an unseen table", not nine hundred. Quoting the
+    # episode-level error here would understate it by ~3x and has already made
+    # a ~2-sigma difference read as settled.
+    across_maps = standard_error(margins)
+    across_text = f"{across_maps:.1f}" if across_maps is not None else "-"
     print(
         f"{'mean':<20}{statistics.fmean(r.final_fraction_at_objectives for r in results):>9.3f}"
         f"{statistics.fmean(wins):>8.2f}{statistics.fmean(margins):>12.1f}"
+        f"{across_text:>8}"
+        f"{statistics.fmean(r.player_vp for r in results):>8.1f}"
+        f"{statistics.fmean(r.opponent_vp for r in results):>8.1f}"
         f"{statistics.fmean(r.objectives_held for r in results):>7.2f}"
         f"{statistics.fmean(r.final_fraction_alive for r in results):>8.3f}"
+        "   (+/- is across maps)"
     )
     if len(results) > 1:
         # Printed because a mean over maps hides the case this evaluation exists
