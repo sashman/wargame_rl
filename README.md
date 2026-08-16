@@ -22,8 +22,8 @@ minus theirs. A 25-model force a side, five or six objectives, twenty rounds.
 
 ### What the trained model can do
 
-It plays a competent, cautious holding game. It deploys, advances, takes
-objectives and keeps them, and it **maxes out its own scoring** — 264 points of
+It plays a competent, cautious holding game. It deploys, moves onto objectives
+and keeps them, and it **maxes out its own scoring** — 264 points of
 a 285 ceiling, which is within a few points of the best player on the table. On
 its own half of the scoreboard it is close to perfect.
 
@@ -45,9 +45,9 @@ casualties and buys a fourth objective with them; this one keeps everybody alive
 and lets the opponent score freely. Against a do-nothing player conceding 210,
 it achieves **57%** of the pressure the best hand-written player applies.
 
-Concretely, at the table it will: hold what it deploys onto, decline an advance
-onto a defended objective, and leave contested ground uncontested for the rest of
-the game.
+Concretely, at the table it will: hold what it deploys onto, decline to commit a
+unit onto a defended objective, and leave contested ground uncontested for the
+rest of the game.
 
 ### The state of it
 

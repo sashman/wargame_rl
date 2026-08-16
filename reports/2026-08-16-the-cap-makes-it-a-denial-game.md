@@ -32,7 +32,7 @@ score freely — conceding 21 points a game more than the scripted benchmark.
 
 **Why it could not learn better.** Two separate reasons, both measured. Sending
 one squad forward alone gets that squad killed, so the learning rule is right to
-refuse — even though the whole army advancing together scores better. And the
+refuse — even though the whole army committing together scores better. And the
 training setup pays a bonus for keeping decisions *uncertain*, which held the
 agent's play permanently vague; that is why changing what the reward pays for
 never moved anything.
@@ -311,7 +311,7 @@ Arms in flight at the time of writing (300 epochs, warm starts matched to the
   income-destruction failure that killed `overstack_penalty_per_extra` and
   `surplus_value`.
 - **`gamma 0.99`** — the episode is **40 steps** and the default `gamma: 0.9`
-  gives a GAE horizon of **6.9 steps**, so an advance that repays over the
+  gives a GAE horizon of **6.9 steps**, so a committed move that repays over the
   remaining twelve rounds is discounted to ~4% of face value. Hiding with an
   intact army is what that horizon rewards. `CLAUDE.md` records that the case
   for 0.9 was measured on a different scenario and its refutation retracted.
@@ -320,7 +320,7 @@ Two other arms were launched and killed before they answered anything, and are
 recorded here so the compute is accounted for: a `deny_mid` (0.75 / 0.5) killed
 at epoch ~40 because halving a 4x pay cut still leaves a 2x one, and a combined
 `deny_high` + `gamma 0.99` cell killed at epoch ~21 once the teleport audit
-above showed *why* the denial arm is null — the advancing squad dies, and no
+above showed *why* the denial arm is null — the committing squad dies, and no
 discount factor pays a corpse. Only
 `configs/experiments/25v25_maps_deny_high.yaml` is kept, because it backs the
 measured null; `git log -- configs/` restores the others.
@@ -372,9 +372,9 @@ So all three of the obvious config-level levers are closed: the steering already
 points the right way, the pay is already collected on arrival, and raising that
 pay is a null because the arriving squad is dead.
 
-**The obstacle is coordination, not pricing.** A *unilateral* squad advance is
+**The obstacle is coordination, not pricing.** A *unilateral* squad commitment is
 correctly punished, and the per-model gradient is right to refuse it. The bar
-survives the same advance because it commits everything at once and trades in
+survives the same commitment because it commits everything at once and trades in
 aggregate — 24% casualties for 4.00 objectives held. That is a large, discrete,
 coordinated change of strategy, and it is not reachable by local perturbation
 from a defensive optimum. **The agent is not mis-trained; it is in a good local
@@ -385,9 +385,9 @@ optimum that a gradient cannot leave.**
 Two facts measured here are only consistent if the agent sits in a *local*
 optimum, and together they say exactly what to do:
 
-- a **unilateral** advance loses the deviating squad 29.4 income -> every
-  gradient step toward advancing is **downhill**;
-- the **joint** advancing policy earns **30.29** training reward an episode
+- a **unilateral** commitment loses the deviating squad 29.4 income -> every
+  gradient step toward committing is **downhill**;
+- the **joint** committing policy earns **30.29** training reward an episode
   against the agent's **24.77**, ahead on *every* calculator -> the destination
   is **uphill**.
 
@@ -568,7 +568,7 @@ prefer the agent's behaviour?
 Because those are different quantities. **30.29 is the undiscounted episode
 sum. PPO optimises the discounted per-model return**, and at `gamma: 0.9` with
 `gae_lambda: 0.95` the effective window is **6.9 steps of a 40-step episode**.
-Advancing costs income now and repays over the remaining rounds; discounted at
+Committing costs income now and repays over the remaining rounds; discounted at
 0.9 a step, a payoff 30 steps out is worth 4% of face value. **Under PPO's
 actual objective the conservative policy really is better**, even though it is
 worse over the episode and worse on `vp_margin`.
@@ -711,7 +711,7 @@ reason above.
 Warm-starting PPO from the clone is running at the time of writing (two seeds at
 the default learning rate, two at 1e-4 — the clone supplies the policy but not
 the critic, so the first updates carry a random value function and could undo
-it). The prediction that makes this worth running: because the advancing policy
+it). The prediction that makes this worth running: because the committing policy
 scores *higher* on the training reward, PPO has no incentive to drift back.
 
 **One hazard closed on the way.** `_apply_warm_start_weights` loads with
