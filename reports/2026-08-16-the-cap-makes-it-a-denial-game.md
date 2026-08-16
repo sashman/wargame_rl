@@ -452,25 +452,49 @@ changed, all measured at epoch 124:
 | 0.9 | 5e-5 | 103.2 | 0.887 | 174.1 |
 | **0.99** | 5e-5 | **98.2** | 0.913 | 177.9 |
 
-**Raising gamma made it worse at both learning rates.** The damage scales with
-**learning rate** and is essentially **indifferent to gamma** — the opposite of
-the prediction. And the explanation fails on its own terms besides: `gamma 0.99`
-gives a ~100-step horizon on a 40-step episode, i.e. effectively undiscounted,
-and undiscounted the advancing policy earns *more* (30.29 v 24.77). Discounting
-cannot be why PPO prefers conservatism.
+**Raising gamma made it worse at both learning rates**, and the damage scales
+with **learning rate** rather than with gamma.
 
-**The surviving explanation is the critic.** The clone supplies the *policy*
-and nothing else, so the first updates carry a **randomly initialised value
-function**, and the advantages that drive them are noise. That predicts damage
-proportional to step size and indifferent to the discount, which is exactly the
-table above. It also explains why every refinement setting tried has failed the
-same way while differing only in speed.
+**⚠ But that test was under-specified, and the sentence that followed it here
+was arithmetically wrong.** It read "`gamma 0.99` gives a ~100-step horizon on a
+40-step episode, i.e. effectively undiscounted". It does not. **`gae_lambda`
+caps the advantage window whatever gamma does** — the window is
+`1/(1 - gamma*lambda)`:
 
-**Untested and the obvious next move:** fit the value head before letting the
-policy move — freeze the policy for some epochs while the critic regresses on
-clone rollouts, or pretrain it alongside the behaviour clone. Until that is
-done, "PPO cannot improve on the clone" is **not** established; what is
-established is that PPO *with a cold critic* destroys it.
+| gamma | lambda | window |
+|---|---|---|
+| 0.9 | 0.95 | **6.9 steps** |
+| 0.99 | 0.95 | **16.8 steps** |
+| 0.99 | 0.99 | 50.3 steps |
+
+Episodes are 40 steps. So that arm moved the horizon from 7 steps to 17 — still
+under half an episode — and never came near undiscounted. **The horizon
+hypothesis is therefore NOT refuted; it was tested with the wrong knob.**
+`--gae-lambda` is now exposed for that reason, and the properly specified test
+(gamma 0.99 *with* lambda 0.99, a 50-step window) is running.
+
+### The critic was the next suspect, and it is not that either
+
+The clone supplies the *policy* and nothing else, so the first updates carry a
+randomly initialised value function and the advantages driving them are noise —
+which predicts damage proportional to step size. `behaviour_clone` was extended
+to fit the critic too (per-model discounted returns, MSE, reported as explained
+variance) and reached **0.976**, better than the 0.86-0.90 PPO reaches on its
+own. Refined at the identical epoch 124:
+
+| | clone -> after PPO | alive | opp VP |
+|---|---|---|---|
+| cold critic, lr 5e-5 | 115.8 -> **103.2** | 0.887 | 174.1 |
+| **warm critic (EV 0.976)**, lr 5e-5 | 111.1 -> **104.0** | 0.882 | 172.9 |
+
+**The same destination**, with near-identical `alive` and opponent VP. A good
+critic does not prevent it.
+
+**So the attractor is robust**: across cold and warm critics and both gammas
+tried, PPO converges on `alive` 0.88-0.91 and opponent VP 173-178 — the trained
+agent's own signature. Whatever selects that basin survives fixing the critic,
+and the one hypothesis not yet properly tested is the horizon, for the lambda
+reason above.
 
 Warm-starting PPO from the clone is running at the time of writing (two seeds at
 the default learning rate, two at 1e-4 — the clone supplies the policy but not
