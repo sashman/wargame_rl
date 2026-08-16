@@ -18,6 +18,7 @@ from wargame_rl.wargame.envs.domain.shooting import (
     ShootingResult,
     expected_damage,
     expected_damage_matrix,
+    hit_probability,
     resolve_shooting,
     resolve_shooting_phase,
     wound_roll_threshold,
@@ -431,6 +432,78 @@ class TestExpectedDamage:
     ) -> None:
         ed = expected_damage(weapon, defender)
         assert abs(ed - expected_approx) < 1e-10
+
+
+class TestExpectedDamageUnderCover:
+    """Cover worsens Ranged Skill by 1, and the closed form must say so.
+
+    The formula was written before cover existed and read `ballistic_skill`
+    straight off the weapon, so every expectation quoted beside a shot into
+    terrain was the expectation for a target standing in the open.
+    """
+
+    @pytest.mark.parametrize("ballistic_skill", [2, 3, 4, 5, 6])
+    def test_cover_costs_exactly_one_point_of_skill(self, ballistic_skill: int) -> None:
+        """The in-cover number equals the open-ground number one skill worse."""
+        in_cover = expected_damage(_wp(bs=ballistic_skill), _ds(), in_cover=True)
+        worse_skill = expected_damage(_wp(bs=ballistic_skill + 1), _ds())
+
+        assert abs(in_cover - worse_skill) < 1e-12
+
+    def test_cover_never_reduces_a_shot_to_nothing(self) -> None:
+        """RS 6 in cover resolves at 7 -- unreachable, and still hits on a 6.
+
+        The naive `(7 - skill) / 6` returns 0.0 here, which would report the
+        best-shielded target on the board as unhittable while the dice keep
+        killing it. This is the case that makes cover a modifier rather than an
+        absolute shield.
+        """
+        assert hit_probability(6, in_cover=True) == pytest.approx(1 / 6)
+        assert expected_damage(_wp(bs=6), _ds(), in_cover=True) > 0.0
+
+    @pytest.mark.parametrize("ballistic_skill", [2, 3, 4, 5, 6])
+    def test_the_default_is_bit_identical_to_the_pre_cover_formula(
+        self, ballistic_skill: int
+    ) -> None:
+        """Omitting the flag must reproduce the old number exactly, not nearly.
+
+        The observation's expected-damage block passes no cover, so this is what
+        keeps `test_observation_golden` and every trained checkpoint valid — a
+        tolerance here would hide the float reassociation that would void them.
+        """
+        weapon, defender = _wp(bs=ballistic_skill), _ds()
+
+        p_hit = (7 - weapon.ballistic_skill) / 6.0
+        p_wound = (7 - wound_roll_threshold(weapon.strength, defender.toughness)) / 6.0
+        p_save = (7 - (defender.save + weapon.ap)) / 6.0
+        before = weapon.attacks * p_hit * p_wound * (1.0 - p_save) * weapon.damage
+
+        assert expected_damage(weapon, defender) == before
+
+    @pytest.mark.parametrize("ballistic_skill", [2, 4, 6])
+    @pytest.mark.parametrize("in_cover", [False, True])
+    def test_it_predicts_what_the_dice_actually_do(
+        self, ballistic_skill: int, in_cover: bool
+    ) -> None:
+        """Monte Carlo `resolve_shooting` against the closed form.
+
+        The two are only worth having separately if they agree; this is the
+        assertion that would have caught the gap when cover landed, since it
+        fails on the resolution path's own rules rather than on a restatement of
+        the formula.
+        """
+        weapon = _wp(bs=ballistic_skill, attacks=4)
+        defender = _ds()
+        rng = np.random.default_rng(20260816)
+
+        trials = 20_000
+        total = sum(
+            resolve_shooting(weapon, defender, rng, in_cover=in_cover).damage_dealt
+            for _ in range(trials)
+        )
+
+        predicted = expected_damage(weapon, defender, in_cover=in_cover)
+        assert abs(total / trials - predicted) < 0.02
 
 
 class TestExpectedDamageMatrix:
