@@ -406,12 +406,50 @@ network on this scenario has moved **82.3 -> 115.8** in a day. The route was not
 a better reward: it was a better *scripted* policy (one inverted comparison,
 `squad_march_take`) plus enough imitation data to reproduce it faithfully.
 
-**What this does not claim.** This is not PPO beating the bar. Refinement from
-the clone measured neutral-to-slightly-negative at every setting tried
-(108.6 against a 109.7 clone at epoch 74; the low-entropy arms hold but do not
-climb). The learning algorithm's contribution to the final number is, so far,
-zero — and saying otherwise would be the same overreach this report spends four
-sections correcting.
+**What this does not claim.** This is not PPO beating the bar. The learning
+algorithm's contribution to the final number is zero, and it is worse than that:
+
+### PPO actively destroys the clone, and the rate scales with learning rate
+
+Refining the 115.8 clone at `ent_coef 0.0`, measured at epoch 124, n=100
+held-out:
+
+| | the clone | lr 1e-5 | lr 5e-5 |
+|---|---|---|---|
+| vp_margin | **115.8** | 106.3 | 103.2 |
+| fraction alive | 0.673 | 0.857 | **0.887** |
+| opp VP | **158.0** | 170.2 | 174.1 |
+
+A clean dose-response: the gentler learning rate degrades less, and both slide
+**monotonically toward conservatism** — straight back to the original agent's
+signature (alive 0.954, opp VP 181.6). PPO is not failing to improve the clone.
+It is dragging it home.
+
+### The discounting, not the reward, is what disagrees
+
+This looks like it contradicts the income measurement above — the bar earns
+**30.29** training reward an episode against the agent's 24.77, so how can PPO
+prefer the agent's behaviour?
+
+Because those are different quantities. **30.29 is the undiscounted episode
+sum. PPO optimises the discounted per-model return**, and at `gamma: 0.9` with
+`gae_lambda: 0.95` the effective window is **6.9 steps of a 40-step episode**.
+Advancing costs income now and repays over the remaining rounds; discounted at
+0.9 a step, a payoff 30 steps out is worth 4% of face value. **Under PPO's
+actual objective the conservative policy really is better**, even though it is
+worse over the episode and worse on `vp_margin`.
+
+So the reward function is not misaligned with the scoreboard — **the discount
+factor is**, and it is the wedge between "what the reward pays over a game" and
+"what the optimiser maximises". That reframes `gamma` from a tuning knob into
+the thing that decides which of two policy basins PPO regards as optimal.
+
+The test is direct, and it is running at the time of writing: refine the same
+clone at **`gamma 0.99`**, same warm start, same two learning rates, nothing
+else changed. If this reading is right, 0.99 preserves or improves the clone
+where 0.9 destroys it. The earlier `gamma 0.99` arms could not have shown this
+— they started from a conservative, entropy-pinned policy with nothing worth
+preserving.
 
 Warm-starting PPO from the clone is running at the time of writing (two seeds at
 the default learning rate, two at 1e-4 — the clone supplies the policy but not
