@@ -121,17 +121,50 @@ config_name: 25v25_maps_coherency
 # So this is the first config where holding ground you already have can score,
 # and no reward lesson from the generated scenario is known to carry over.
 #
-# WHAT EVERYTHING SCORES HERE. The nine HELD-OUT tables (05, 10, ... 45),
-# n=10 each, seeds 700000-700009 -- the split this config trains away from:
+# WHAT EVERYTHING SCORES HERE -- THE BASELINE OF RECORD, remeasured 2026-08-16.
+# The nine HELD-OUT tables (05, 10, ... 45), **n=100 per map**, seeds 700000+,
+# error bars taken ACROSS MAPS (a map is the unit this generalises over; nine
+# maps at n=100 is nine samples of "an unseen table", not nine hundred):
 #
-#   policy                       win    vp_margin   held (of 5.6)  alive
-#   hold_deployment (STAY)       0.00      -70.2    1.63           0.998
-#   random                       0.28      -39.2    1.98           0.830
-#   squad_march                  0.94      +77.4    3.36           0.639
-#   squad_march_shoot (the bar)  1.00     +105.7    3.78           0.693
+#   policy                     vp_margin  +/-   plrVP  oppVP  held  alive
+#   hold_deployment (FLOOR)       -88.9   8.1   121.1  210.0  1.27  0.998
+#   random                        -26.4   6.4   182.2  208.6  1.96  0.823
+#   squad_march                   +79.4   5.7   270.3  190.9  3.50  0.673
+#   squad_march_shoot (the BAR)  +111.8   5.3   272.2  160.4  4.00  0.762
+#   squad_march_deny             +112.3   4.8   277.3  165.1  3.00  0.590
+#   squad_march_take (STRONGEST) +116.7   4.7   277.5  160.8  4.02  0.756
 #   ---
-#   PPO, 1000 epochs, seed 1     0.99      +84.5    3.37           0.917
-#   PPO, 1000 epochs, seed 2     0.93      +79.3    3.37           0.921
+#   PPO @300, four seeds       +75.9..84.7      263.9  181.6  3.24  0.954
+#   behaviour clone of `take`    +115.8   5.3   273.8  158.0  3.82  0.673
+#
+# READ `plrVP` AND `oppVP`, NOT JUST THE MARGIN. VP is
+# `min(cap_per_turn, controlled * 5)` = `min(15, held * 5)`, so own score
+# SATURATES at three objectives (272-278 of a 285 ceiling for anything
+# competent) and every remaining point of margin comes from DENYING the
+# opponent. `held` therefore stops ranking policies here: `squad_march_deny`
+# holds 3.00 and `squad_march_shoot` 4.00, and they score level.
+#
+# THE TRAINED AGENT'S DEFICIT IS DENIAL, AND IT IS THE MOST REPRODUCIBLE NUMBER
+# ON THIS SCENARIO: four independently trained seeds concede 181.5 / 181.5 /
+# 181.1 / 182.4 opponent VP against the bar's 160.4 -- sd 0.6. Against a
+# do-nothing floor of 210.0 the agent achieves 57% of the bar's denial.
+#
+# ⚠ RAISING THE PAY FOR CONTESTED GROUND IS A MEASURED NULL. See
+# `docs/reward-phases.md` and the report: the advancing squad DIES (it loses
+# 29.4 of its own income and 1.7 of 5 models), and this calculator pays only
+# living models, so no rate pays a corpse.
+#
+# ⚠ `ent_coef: 0.03` PINS THE POLICY. Movement entropy sits at 3.21-3.33 of a
+# 4.575 maximum for every trained seed -- that is the bonus's equilibrium, not
+# convergence, and a policy held near uniform cannot represent "march this
+# squad onto that objective". Both nulls above were measured under it. Use
+# `--ent-coef 0.003` or `0.0` when refining an already-good policy.
+#
+# THE ONLY THING THAT HAS BEATEN THE BAR IS BEHAVIOUR CLONING
+# (`just behaviour-clone squad_march_take <this config> 1200 60`): at 98.3%
+# action match it scores +115.8, paired +4.04 +/- 1.92 over the bar and ahead on
+# 8 of 9 maps. PPO refinement from that checkpoint measured neutral-to-negative
+# at every setting tried, so the learning step has contributed nothing to it.
 #
 # THREE THINGS TO READ OFF THAT BEFORE USING THIS CONFIG:
 #
