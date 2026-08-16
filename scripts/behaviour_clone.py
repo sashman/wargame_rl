@@ -70,6 +70,47 @@ POLICY_PREFIX = "ppo_model.policy_network."
 VALUE_PREFIX = "ppo_model.value_network."
 
 
+def unit_match_counts(
+    predicted: torch.Tensor,
+    actions: torch.Tensor,
+    choosing: torch.Tensor,
+    group_ids: torch.Tensor,
+) -> tuple[int, int]:
+    """Count unit-steps where **every** deciding member matched the demonstrator.
+
+    Args:
+        predicted: ``(batch, n_models)`` the network's chosen action per model.
+        actions: ``(batch, n_models)`` the action the demonstrator chose.
+        choosing: ``(batch, n_models)`` which models had a real choice to make.
+        group_ids: ``(n_models,)`` unit membership, this project's name for the
+            rules' *unit*.
+
+    Returns:
+        ``(matched_units, counted_units)``. A unit-step with no deciding member
+        is not counted at all, mirroring `domain/coherency.py`, which iterates
+        living models so a wiped unit never registers as a failure.
+
+    **Why per-model action match is the wrong number for a joint property.**
+    A unit is coherent only if *all* of its models are placed correctly, so
+    fidelity has to be scored the same way. Measured: a clone at **98.3%**
+    action match holds unit coherency **0.580** against its demonstrator's
+    **0.884** -- because `0.983 ** 5` is only ~92% of unit-steps clean, and the
+    positional error is cumulative, since nothing re-forms a model that drifts
+    out. Per-model match reports 98% while the property the rules care about is
+    gone.
+    """
+    matched = (predicted == actions) & choosing
+    matched_units = counted_units = 0
+    for group_id in torch.unique(group_ids):
+        members = group_ids == group_id
+        deciding = (choosing & members).sum(dim=-1)
+        agreeing = (matched & members).sum(dim=-1)
+        valid = deciding > 0
+        counted_units += int(valid.sum())
+        matched_units += int(((agreeing == deciding) & valid).sum())
+    return matched_units, counted_units
+
+
 def collect(
     policy_name: str, config: WargameEnvConfig, n_episodes: int, gamma: float
 ) -> tuple[list[torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -129,6 +170,7 @@ def train(
     states: list[torch.Tensor],
     masks: torch.Tensor,
     actions: torch.Tensor,
+    group_ids: torch.Tensor,
     epochs: int,
     batch_size: int,
     device: torch.device,
@@ -139,15 +181,23 @@ def train(
     exactly one legal action (`stay`), so including it would spend most of the
     loss teaching the network to agree about corpses -- and on a 25-model board
     late in an episode that is the majority of rows.
+
+    Reports **two** fidelity numbers per epoch. `action-match` is the per-model
+    rate; `unit-match` is the fraction of unit-steps on which every deciding
+    member agreed. Read the second one when the clone has to satisfy anything
+    joint -- see `unit_match_counts` for why the first is blind to it. The loss
+    is still per model: this is a measurement, not an objective.
     """
     net.to(device).train()
     optimiser = torch.optim.AdamW(net.parameters(), lr=3e-4, weight_decay=0.01)
     loss_fn = nn.CrossEntropyLoss()
     n_steps = actions.shape[0]
 
+    group_ids = group_ids.to(device)
     for epoch in range(epochs):
         order = torch.randperm(n_steps)
         total, batches, correct, counted = 0.0, 0, 0, 0
+        units_matched, units_counted = 0, 0
         for start in range(0, n_steps, batch_size):
             index = order[start : start + batch_size]
             batch_states = [s[index].to(device) for s in states]
@@ -184,11 +234,20 @@ def train(
             batches += 1
             correct += int((flat_logits.argmax(dim=-1) == flat_actions).sum())
             counted += int(flat_actions.numel())
+            # Scored on the whole batch rather than the flattened selection,
+            # because a unit's members have to be compared side by side and
+            # flattening has already thrown their grouping away.
+            matched, total_units = unit_match_counts(
+                logits.argmax(dim=-1), batch_actions, choosing, group_ids
+            )
+            units_matched += matched
+            units_counted += total_units
 
         accuracy = correct / counted if counted else float("nan")
+        unit_accuracy = units_matched / units_counted if units_counted else float("nan")
         print(
             f"  epoch {epoch + 1}/{epochs}  loss {total / max(batches, 1):.4f}"
-            f"  action-match {accuracy:.3f}",
+            f"  action-match {accuracy:.3f}  unit-match {unit_accuracy:.3f}",
             flush=True,
         )
 
@@ -309,10 +368,16 @@ def main() -> None:
 
     env = create_environment(env_config=config)
     net = TransformerNetwork.policy_from_env(env)
+    # Read off the env rather than stored with the demonstrations: unit
+    # membership is fixed by the config, so it needs no re-collection and the
+    # cached demonstration sets (~780 MB each) stay valid.
+    group_ids = torch.tensor(
+        [model.group_id for model in env.wargame_models], dtype=torch.long
+    )
     env.close()
 
     print(f"cloning on {device} (seed {seed})")
-    train(net, states, masks, actions, epochs, batch_size=32, device=device)
+    train(net, states, masks, actions, group_ids, epochs, batch_size=32, device=device)
 
     print("fitting the critic on the demonstrator's own returns")
     value_env = create_environment(env_config=config)
