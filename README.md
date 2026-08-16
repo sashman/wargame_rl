@@ -6,64 +6,62 @@ Reinforcement learning model for playing table top wargames.
 
 *Written for someone who knows the game but not the machine learning.*
 
-**The aim.** Teach a computer to play a tabletop wargame well by *playing* it —
-not by being handed tactics. It deploys, moves, shoots and holds objectives, and
-the only thing it is told is the score at the end. Anything that looks like
-tactics has to be discovered.
+Every player — hand-written or trained — is scored the same way: 100 games on
+each of **nine tables it has never seen**, average victory-point margin, ours
+minus theirs. A 25-model force a side, five or six objectives, twenty rounds.
 
-**How we judge it.** Every player, human-written or learned, is scored the same
-way: play 100 games on each of **nine tables the learner has never seen**, and
-report the average victory-point margin — our score minus theirs. Nine unseen
-tables matter more than any number of games on familiar ones; a player that only
-performs on ground it has practised on has memorised the ground, not the game.
+| player | margin | objectives held | force surviving | VP conceded |
+|---|---|---|---|---|
+| deploys and never moves | −88.9 | 1.27 | 100% | 210.0 |
+| moves at random | −26.4 | 1.96 | 82% | 208.6 |
+| walks squads onto objectives | +79.4 | 3.50 | 67% | 190.9 |
+| …and shoots | +111.8 | 4.00 | 76% | 160.4 |
+| **`squad_march_take` — strongest player** | **+116.7** | 4.02 | 76% | 160.8 |
+| **trained model, taught by copying** | **+113.6** | 3.82 | 67% | 158.0 |
+| **trained model, learning on its own** | **+75.9 to +84.7** | 3.24 | 95% | 181.6 |
 
-The scale, on those nine unseen tables:
+### What the trained model can do
 
-| player | margin |
-|---|---|
-| deploys and never moves | −88.9 |
-| moves at random | −26.4 |
-| **walks squads onto objectives** | **+79.4** |
-| walks onto objectives *and shoots* | +111.8 |
-| **`squad_march_take` — best we have** | **+116.7** |
-| the trained AI, playing on its own | **+75.9 to +84.7** |
-| the trained AI, taught by copying | +113.6 |
+It plays a competent, cautious holding game. It deploys, advances, takes
+objectives and keeps them, and it **maxes out its own scoring** — 264 points of
+a 285 ceiling, which is within a few points of the best player on the table. On
+its own half of the scoreboard it is close to perfect.
 
-**Where that leaves us.** A few dozen lines of hand-written orders still play
-better than anything the computer has worked out for itself. The AI playing on
-its own lands around +80 — respectable, comfortably better than random, and well
-short of a competent player.
+It has learned the shape of the mission: it holds around three objectives
+consistently, which is exactly the number that saturates the 15-point-a-round
+scoring cap. It does not wander, it does not stall, and it does not lose games
+it should win.
 
-**The one real tactical discovery so far**, and it came from reading the mission
-rather than the machine: scoring is capped at 15 points a round, which is three
-objectives' worth. The tables carry five or six. **So a fourth objective you hold
-scores you nothing** — its entire value is that the opponent does not have it.
-Above three objectives this stops being a scoring race and becomes a game of
-denial, and the whole gap between a decent player and a good one lives there.
+### What it cannot do
 
-That produced the current best player, `squad_march_take`, and one rule of thumb
-worth having at the table: **holding an objective denies it far more reliably
-than contesting one.** A raid that arrives but does not outnumber the defender
-changes nothing at all — we measured a raiding player whose raids never once
-flipped an objective. Walking onto weakly-held ground flips it on arrival, and
-then denies for the rest of the game.
+**It will not fight for ground it does not already hold.** That is the whole
+deficit, and it shows in two numbers side by side: it finishes with **95% of its
+force alive** — more than any competent player, including the ones that beat it —
+while conceding **181.6 points** to an opponent the best players hold to 160.
 
-**The honest part.** The best *learned* player (+113.6) got there by **watching
-the hand-written one play 1200 games and copying its decisions**, matching them
-98% of the time. It is a good player, and it is a copy. Every attempt to let it
-improve on its teacher from there made it worse — that is tested thoroughly and
-written up, not glossed over.
+Read together, those say it is not surviving because it is skilful. It is
+surviving because it is not contesting. A committed player takes about a quarter
+casualties and buys a fourth objective with them; this one keeps everybody alive
+and lets the opponent score freely. Against a do-nothing player conceding 210,
+it achieves **57%** of the pressure the best hand-written player applies.
 
-**Why we think that is**, and it is the interesting problem rather than an
-excuse: look at the scale above. "Walk your squads onto objectives and shoot"
-already gets **96%** of everything available. All the cleverness — the cap, the
-denial, the best player we have — competes over the last 4%. Against an opponent
-that never changes its plan, with identical armies on both sides and one weapon
-range, there may simply be very little tactical depth for a learner to find.
+Concretely, at the table it will: hold what it deploys onto, decline an advance
+onto a defended objective, and leave contested ground uncontested for the rest of
+the game.
 
-**So the next move is to make the game harder rather than the learner smarter**:
-a stronger opponent first, then genuinely different armies. If a two-rule
-heuristic stops being nearly optimal, there is something to learn.
+### The state of it
+
+The strongest player in the project is hand-written, not learned. The strongest
+*trained* player reaches within a few points of it — but by **copying the
+hand-written one**, matching its decisions 98% of the time over 1200 games of
+demonstration, not by working the game out. Left to improve on its teacher, it
+gets worse.
+
+The likely reason is visible in the table above: "walk onto objectives and
+shoot" already captures **96%** of everything available. Everything cleverer
+competes over the last 4%. With an opponent that never varies its plan, mirror
+armies and a single weapon range, there is not much tactical depth on offer — so
+the next work is to make the game harder rather than the learner smarter.
 
 Full detail: [reports/](reports/README.md), most recently
 [the cap makes it a denial game](reports/2026-08-16-the-cap-makes-it-a-denial-game.md).
