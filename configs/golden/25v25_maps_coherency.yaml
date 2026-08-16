@@ -135,7 +135,9 @@ config_name: 25v25_maps_coherency
 #   squad_march_take (STRONGEST) +116.7   4.7   277.5  160.8  4.02  0.756
 #   ---
 #   PPO @300, four seeds       +75.9..84.7      263.9  181.6  3.24  0.954
-#   behaviour clone of `take`    +115.8   5.3   273.8  158.0  3.82  0.673
+#   behaviour clone of `take`    +113.6   1.9*  273.8  158.0  3.82  0.673
+#     * the clone's +/- is ACROSS FIVE CLONES, not across maps: identical
+#       settings, seed only, they score 115.8/114.6/114.3/112.1/111.1.
 #
 # READ `plrVP` AND `oppVP`, NOT JUST THE MARGIN. VP is
 # `min(cap_per_turn, controlled * 5)` = `min(15, held * 5)`, so own score
@@ -162,9 +164,17 @@ config_name: 25v25_maps_coherency
 #
 # THE ONLY THING THAT HAS BEATEN THE BAR IS BEHAVIOUR CLONING
 # (`just behaviour-clone squad_march_take <this config> 1200 60`): at 98.3%
-# action match it scores +115.8, paired +4.04 +/- 1.92 over the bar and ahead on
-# 8 of 9 maps. PPO refinement from that checkpoint measured neutral-to-negative
-# at every setting tried, so the learning step has contributed nothing to it.
+# action match it averages +113.6 over five clones, beating the bar by
+# +1.8 +/- 0.9. PPO refinement from a clone measured neutral-to-negative at
+# every setting tried, so the learning step has contributed nothing to it.
+#
+# ⚠ CLONE THE POLICY MORE THAN ONCE BEFORE QUOTING WHAT CLONING IS WORTH.
+# Clone-to-clone sd is 1.9 vp at fixed settings, and the first figure published
+# here (+115.8, paired +4.04 over the bar, ahead on 8 of 9 maps) was the best of
+# five draws -- correct for that checkpoint, wrong as the procedure's effect.
+# The same sd swallows the last rung of the fidelity ladder: 400 -> 700
+# demonstration episodes is worth +10.8 and stands, 700 -> 1200 is worth +1.4
+# and does not.
 #
 # THREE THINGS TO READ OFF THAT BEFORE USING THIS CONFIG:
 #

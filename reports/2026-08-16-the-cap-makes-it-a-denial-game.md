@@ -40,12 +40,21 @@ never moved anything.
 **What fixed it.** Not a better reward. A better *hand-written* policy — send
 spare squads to the weakest ground rather than attacking the strongest, which is
 one line — and then teaching the network to copy it. Copied faithfully enough
-(98% of decisions matched), the network scores **115.8** against the benchmark's
-**111.8**, ahead on 8 of the 9 unseen maps.
+(98% of decisions matched), the network scores **113.6 on average** against the
+benchmark's **111.8**.
 
-The best network policy on this scenario went from **82.3 to 115.8** in a day.
-Worth being clear about what did the work: the copying, not the learning. The
-reinforcement-learning step contributed nothing measurable on top.
+The best network policy on this scenario went from **82.3 to 115.8** in a day,
+and a typical one to 113.6. Worth being clear about what did the work: the
+copying, not the learning. The reinforcement-learning step contributed nothing
+measurable on top.
+
+**⚠ This section first read "the network scores 115.8, ahead on 8 of the 9
+unseen maps", and that was the best of five identical copies.** Repeating the
+copying five times — same demonstrations, same settings, only the random seed
+differing — gives 115.8 / 114.6 / 114.3 / 112.1 / 111.1: **mean 113.6, sd 1.9**.
+Four of the five beat the benchmark and one falls 0.7 short, so the win is
+**+1.8 +/- 0.9**, less than half the +4.04 originally published. See
+[the correction](#correction-the-clone-is-a-distribution-not-a-number).
 
 ---
 
@@ -406,6 +415,58 @@ network on this scenario has moved **82.3 -> 115.8** in a day. The route was not
 a better reward: it was a better *scripted* policy (one inverted comparison,
 `squad_march_take`) plus enough imitation data to reproduce it faithfully.
 
+### Correction: the clone is a distribution, not a number
+
+Everything above this line treats one checkpoint as *the* clone. It is not. The
+cloning procedure was run **five times at identical settings** — same cached
+1200-episode demonstration set, same 60 epochs, differing only in the torch seed
+— and scored n=100 on the same nine held-out tables:
+
+| clone | held-out vp_margin |
+|---|---|
+| A (the one quoted above) | **115.8** |
+| B | 114.6 |
+| C | 114.3 |
+| D | 112.1 |
+| E | 111.1 |
+| | **mean 113.6, sd 1.9, SE 0.9** |
+
+**115.8 was the maximum of five draws**, quoted as the result before the spread
+was known. Three things above are weaker than stated:
+
+- **The headline.** The procedure beats the bar by **+1.8 +/- 0.9**, not +4.04.
+  Four of five clones clear 111.8; one lands 0.7 below it. "A cloned network
+  beats the bar" survives as a statement about the mean, but it is a modest win,
+  not a clean one.
+- **The +4.04 +/- 1.92 pairing is still correct for clone A** and is not
+  retracted — what was wrong was reading a single checkpoint's paired margin as
+  the procedure's effect. The per-map rows were not kept for clones B-E, so the
+  spread cannot be re-paired without re-scoring.
+- **The fidelity ladder's last rung does not survive.** With sd 1.9 per clone,
+  the 400 -> 700 episode step (101.4 -> 112.2, **+10.8**) is far outside the
+  noise and stands. The 700 -> 1200 step is 112.2 -> **113.6** once the mean
+  replaces the max: **+1.4 against a sd of 1.9**, i.e. not established. So
+  fidelity bought the first jump; it is unproven that it bought the second. The
+  measured *match rates* (86.8% / 94.7% / 98.3%) are unaffected — only what the
+  last one is worth.
+- **Target reproduction.** At 98.3% match the clone reproduces `squad_march_take`
+  to within **3.1 vp** on average (113.6 against the target's 116.7), not the
+  0.9 that clone A alone suggested.
+
+**The lesson is the one this repo keeps relearning in new clothes.** A stochastic
+procedure was run once, its output quoted as a property of the procedure, and the
+figure that got published was the lucky one. The repo already says this about
+*training* seeds and about layout seeds; behaviour cloning is a third instance,
+and the tell was available cheaply — two early clones had already scored 115.8
+and 111.1 at identical settings, which was noted as a caveat and then not
+propagated into the headline.
+
+**What is untouched by this.** `squad_march_take` itself (116.7) is a
+deterministic scripted policy and carries no clone variance. And the
+PPO-degradation result below compares against the *whole* range: every refined
+arm scored 97.6-108.3, beneath even the worst clone (111.1), so its direction
+does not depend on which clone it is measured against.
+
 **What this does not claim.** This is not PPO beating the bar. The learning
 algorithm's contribution to the final number is zero, and it is worse than that:
 
@@ -470,8 +531,86 @@ caps the advantage window whatever gamma does** — the window is
 Episodes are 40 steps. So that arm moved the horizon from 7 steps to 17 — still
 under half an episode — and never came near undiscounted. **The horizon
 hypothesis is therefore NOT refuted; it was tested with the wrong knob.**
-`--gae-lambda` is now exposed for that reason, and the properly specified test
-(gamma 0.99 *with* lambda 0.99, a 50-step window) is running.
+`--gae-lambda` is now exposed for that reason.
+
+### The horizon, properly specified: it is a null. Only the learning rate moves it
+
+`gamma 0.99` **with** `gae_lambda 0.99` — a 50.3-step window, longer than the
+40-step episode, so a payoff at the far end of the game is finally inside what
+the advantage estimate can see. Four arms, two seeds per learning rate, from the
+critic-fitted clone at `ent_coef 0.0`. Scored at epoch 125 and again at a matched
+epoch 150, n=100 held-out:
+
+| arm | window | lr | e125 | e150 | alive @150 | opp VP @150 |
+|---|---|---|---|---|---|---|
+| the clone | — | — | 111.1-115.8 | — | 0.673 | 158.0 |
+| s1-h5 | 50 | 5e-5 | 100.3 | 97.6 | 0.917 | 178.0 |
+| s2-h5 | 50 | 5e-5 | — | 99.9 | 0.908 | 176.4 |
+| s3-h1 | 50 | 1e-5 | 108.3 | 107.4 | 0.828 | 168.5 |
+| s4-h1 | 50 | 1e-5 | — | 105.7 | 0.842 | 170.1 |
+| *reference:* 7-step | 7 | 1e-5 | 106.3 | — | 0.857 | 170.2 |
+| *reference:* 7-step | 7 | 5e-5 | 103.2 | — | 0.887 | 174.1 |
+
+**The horizon is a null. The learning rate is the whole effect.**
+
+- **lr 1e-5**: 50-step window gives 107.4 / 105.7, mean **106.6**. The 7-step
+  window at the same learning rate gave **106.3**. No difference.
+- **lr 5e-5**: 50-step gives 97.6 / 99.9 against the 7-step's 103.2 — if
+  anything slightly worse.
+- The learning rate separates cleanly and reproducibly: **~106.6 against ~98.8**,
+  with both seeds tight inside each pair.
+
+**A window longer than the entire game does not stop the decay.** Every arm sits
+below the *worst* clone (111.1), and each is still sliding at epoch 150.
+
+**⚠ This section first read "at the slow learning rate the horizon genuinely
+helps, and helps along the mechanism", built on s3-h1's 108.3 at epoch 125 —
+the best refinement then measured, with an `alive`/opp-VP signature sitting
+neatly between the clone and the basin.** The second seed at that learning rate
+came back at **105.7**, making the pair 107.4 / 105.7 with a spread of 1.7 — wide
+enough to swallow the +2.0 over the 7-step arm that the whole reading rested on.
+One seed, one epoch, and a mechanism story that fit: the same shape of mistake as
+the +4.04 clone and the λ arithmetic, caught this time only because the
+replication was already armed before the first number arrived. **Arm the second
+seed before reading the first.**
+
+### Where this was stopped, and the one candidate that was never tested
+
+This line of work was closed here deliberately. The goal — beat the bar on the
+real tables — was already met by `squad_march_take` and its clone; everything in
+this section is upside on top of a met goal, and it had reached the point of
+turning knobs against a stable negative.
+
+**The negative is worth stating cleanly, because it is well-supported.** Across
+**cold critic, a critic fitted to 0.976 explained variance, gamma 0.9, gamma
+0.99, a 7-step window, a 17-step window and a 50-step window, at two learning
+rates and eight training runs**, PPO refinement of a good clone landed at
+**97.6-108.3** — always below the clone, always by the same route (`alive` up,
+opponent VP up), always converging on the independently-trained agent's own
+signature. That basin is robust to everything tried.
+
+**Only one variable moved the number at all, and it was the learning rate** —
+which is a statement about how *fast* the policy leaves the clone, not about
+what it is being pulled toward. Every knob that reached the *objective* (gamma,
+lambda) or the *gradient's quality* (critic) measured null. That is the shape of
+a result where the destination is set by something none of these knobs touch.
+
+**The untested candidate, named so the next person starts there.** No arm ever
+made *drifting itself* costly. Every knob touched the speed of the drift
+(learning rate, horizon) or the quality of the gradient (critic); none added a
+penalty for moving away from the clone's decisions — the standard trust-region /
+KL-anchor fix for exactly this failure. That is the first thing to try.
+
+**And a prior question that should be answered before any of it**, because it
+may dissolve the problem: **no reward term pays for denial.** Every point of
+`vp_margin` on this scenario above the saturated own-score comes from taking VP
+off the opponent, and the reward pays for holding ground, not for denying it.
+It is entirely possible PPO is optimising correctly and the objective it is
+given genuinely ranks the cautious basin first — in which case no amount of
+optimiser tuning is the fix, and the repo's own rule applies: *check the agent
+is paid for what you are measuring.* Scoring the clone and a degraded checkpoint
+under the training reward itself is a desk-check, costs no GPU, and would settle
+it.
 
 ### The critic was the next suspect, and it is not that either
 
