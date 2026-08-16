@@ -32,37 +32,6 @@ consistently, which is exactly the number that saturates the 15-point-a-round
 scoring cap. It does not wander, it does not stall, and it does not lose games
 it should win.
 
-### What it cannot do
-
-**It will not fight for ground it does not already hold.** That is the whole
-deficit, and it shows in two numbers side by side: it finishes with **95% of its
-force alive** — more than any competent player, including the ones that beat it —
-while conceding **181.6 points** to an opponent the best players hold to 160.
-
-Read together, those say it is not surviving because it is skilful. It is
-surviving because it is not contesting. A committed player takes about a quarter
-casualties and buys a fourth objective with them; this one keeps everybody alive
-and lets the opponent score freely. Against a do-nothing player conceding 210,
-it achieves **57%** of the pressure the best hand-written player applies.
-
-Concretely, at the table it will: hold what it deploys onto, decline to commit a
-unit onto a defended objective, and leave contested ground uncontested for the
-rest of the game.
-
-### The state of it
-
-The strongest player in the project is hand-written, not learned. The strongest
-*trained* player reaches within a few points of it — but by **copying the
-hand-written one**, matching its decisions 98% of the time over 1200 games of
-demonstration, not by working the game out. Left to improve on its teacher, it
-gets worse.
-
-The likely reason is visible in the table above: "walk onto objectives and
-shoot" already captures **96%** of everything available. Everything cleverer
-competes over the last 4%. With an opponent that never varies its plan, mirror
-armies and a single weapon range, there is not much tactical depth on offer — so
-the next work is to make the game harder rather than the learner smarter.
-
 Full detail: [reports/](reports/README.md), most recently
 [the cap makes it a denial game](reports/2026-08-16-the-cap-makes-it-a-denial-game.md).
 
