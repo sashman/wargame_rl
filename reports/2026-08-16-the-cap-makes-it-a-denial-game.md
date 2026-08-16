@@ -129,8 +129,32 @@ inference: its denial squads never finish controlling what they were sent at, or
 flipping, and **a raid that does not flip an objective denies nothing**.
 
 So the lesson for the agent is not to raid the enemy zone. It is to *hold*
-contested ground it currently walks away from — which is `contested_value`, the
-state between the two, and the one the reward discounts by half.
+contested ground it currently walks away from.
+
+### Taking the weakest ground beats both, and beats the bar
+
+That reading is testable, and it holds. `squad_march_take` is
+`squad_march_deny` with **one line inverted**: after the cap is banked, surplus
+squads go to the objectives with the **fewest** opponents rather than the most.
+Nine held-out tables, n=100:
+
+| policy | vp_margin | +/- | player VP | opp VP | held | alive |
+|---|---|---|---|---|---|---|
+| `squad_march_shoot` (the old BAR) | 111.8 | 5.3 | 272.2 | **160.4** | 4.00 | 0.762 |
+| `squad_march_deny` | 112.3 | 4.8 | **277.3** | 165.1 | 3.00 | 0.590 |
+| **`squad_march_take`** | **116.7** | 4.7 | **277.5** | **160.8** | **4.02** | 0.756 |
+
+It is exactly the hybrid the decomposition predicted: the denier's scoring
+efficiency (277.5) *and* the bar's denial (160.8), for **+4.9 over the bar**.
+
+**Why inverting one comparison is worth five points.** Denial is still where the
+whole margin lives — own VP is capped at three objectives. What was wrong was
+the *means*: a raid on defended ground has to cross a strict count threshold to
+change anything, and `squad_march_deny`'s `held` of exactly 3.00 says its raids
+never did. Weakly-held ground flips on arrival and then denies for the remaining
+rounds. **Holding an objective is a far more reliable way to deny it than
+contesting one**, and a contest that does not cross the threshold denies
+nothing at all.
 
 ## Two failures, not one
 

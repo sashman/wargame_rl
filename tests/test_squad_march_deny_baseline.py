@@ -25,6 +25,9 @@ from wargame_rl.wargame.envs.baseline.scripted_squad_march import (
 from wargame_rl.wargame.envs.baseline.scripted_squad_march_deny import (
     ScriptedSquadMarchDenyPolicy,
 )
+from wargame_rl.wargame.envs.baseline.scripted_squad_march_take import (
+    ScriptedSquadMarchTakePolicy,
+)
 from wargame_rl.wargame.envs.types import (
     MissionConfig,
     ModelConfig,
@@ -142,3 +145,34 @@ def test_every_squad_gets_an_objective() -> None:
         targets = _targets(ScriptedSquadMarchDenyPolicy(), env)
         assert len(targets) == 3, f"cap {cap}: {targets}"
         assert all(0 <= index < 4 for index in targets), f"cap {cap}: {targets}"
+
+
+def test_take_sends_the_surplus_at_the_weakest_ground_not_the_strongest() -> None:
+    """The one thing that separates `take` from `deny`, and it is worth ~5 vp.
+
+    `deny` sends its surplus at what the opponent *controls*, and its `held`
+    sits at exactly 3.00 -- the raids never flip anything, so they deny nothing.
+    `take` sends the surplus at the *weakest*-held ground, which flips and then
+    denies for the rest of the game: 116.7 v 112.3 vp_margin on the held-out
+    tables, with `held` 4.02 v 3.00.
+
+    Objectives 0 and 1 are empty, 2 and 3 hold four opponents each. With a cap of
+    5 one squad banks the cap and two are surplus -- and with only two free
+    objectives for three squads, one squad must end up on defended ground even
+    under `take`. What separates the policies is *how many*: `take` fills the
+    free ground first and commits no more than it has to, while `deny` goes
+    looking for the defended ground on purpose.
+    """
+    env = _make_env(cap_per_turn=5)
+    env.reset(seed=0)
+
+    take = _targets(ScriptedSquadMarchTakePolicy(), env)
+    deny = _targets(ScriptedSquadMarchDenyPolicy(), env)
+
+    defended = (2, 3)
+    assert {0, 1}.issubset(set(take)), f"take left free ground unclaimed: {take}"
+    take_on_defended = [index for index in take if index in defended]
+    deny_on_defended = [index for index in deny if index in defended]
+    assert len(take_on_defended) < len(deny_on_defended), (
+        f"take should commit less to defended ground: take={take} deny={deny}"
+    )

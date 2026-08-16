@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from wargame_rl.wargame.envs.wargame import WargameEnv
 
 
-def _occupants(locations: np.ndarray, objective: WargameObjective) -> int:
+def occupants(locations: np.ndarray, objective: WargameObjective) -> int:
     """Models of one side controlling `objective`, under VP's own membership rule.
 
     An area objective has `radius_size` 0.0 by design, so a distance-to-centre
@@ -79,8 +79,8 @@ class ScriptedSquadMarchDenyPolicy(ScriptedSquadMarchShootPolicy):
         if opponent_locations.size == 0:
             opponent_locations = np.empty((0, 2), dtype=float)
 
-        opponent_counts = [_occupants(opponent_locations, o) for o in objectives]
-        player_counts = [_occupants(player_locations, o) for o in objectives]
+        opponent_counts = [occupants(opponent_locations, o) for o in objectives]
+        player_counts = [occupants(player_locations, o) for o in objectives]
 
         centroids = []
         for group_id in group_ids:
