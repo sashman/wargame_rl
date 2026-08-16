@@ -144,6 +144,10 @@ Nine held-out tables, n=100:
 | `squad_march_deny` | 112.3 | 4.8 | **277.3** | 165.1 | 3.00 | 0.590 |
 | **`squad_march_take`** | **116.7** | 4.7 | **277.5** | **160.8** | **4.02** | 0.756 |
 
+On the nine matched training tables the same ordering holds and widens:
+`squad_march_take` **108.8 +/- 2.2** against the bar's **98.7 +/- 2.7** — +10.1
+there against +4.9 held out.
+
 It is exactly the hybrid the decomposition predicted: the denier's scoring
 efficiency (277.5) *and* the bar's denial (160.8), for **+4.9 over the bar**.
 
@@ -335,6 +339,40 @@ policy, not merely most of it.
 limitation.** The same architecture, on the same inputs, plays at bar level when
 it is *put* there. Everything measured above is a statement about the
 optimisation, not the model.
+
+### Clone fidelity is the bottleneck, and it is buyable
+
+Cloning `squad_march_take` — the stronger but far more *reactive* target, which
+recomputes its assignment every step from live opponent counts — showed what
+sets a clone's ceiling:
+
+| clone of `squad_march_take` | episodes | epochs | action match | held-out vp_margin |
+|---|---|---|---|---|
+| first attempt | 400 | 14 | 86.8% | **101.4** (-15.3 v its target) |
+| larger | 700 | 35 | **94.7%** | **112.2** (-4.5 v its target) |
+
+The target scores 116.7, so the gap is **compounding error**, and it closes as
+action match rises. A fixed-assignment target (the bar, `k mod n`) loses only
+2.1 vp at 90.6% match; a reactive one loses 15.3 at 86.8% and 4.5 at 94.7%.
+**Reactive policies are harder to clone, and the fix is more data and more
+epochs rather than anything clever.**
+
+### Where this lands against the bar: a tie, not a win
+
+| held-out, n=100 | vp_margin | +/- | player VP | opp VP | held |
+|---|---|---|---|---|---|
+| `squad_march_shoot` (the bar) | 111.8 | 5.3 | 272.2 | 160.4 | 4.00 |
+| **clone of `squad_march_take`** | **112.2** | 4.9 | 272.5 | 160.3 | 3.73 |
+| `squad_march_take` (the target) | **116.7** | 4.7 | 277.5 | 160.8 | 4.02 |
+
+Paired per map against the bar, which is the powerful test: **+0.36 +/- 1.93,
+t = 0.18, ahead on 5 of 9 maps.** That is a dead tie. The best *network* policy
+now matches the bar and does not beat it — while the best *scripted* policy
+beats the old bar by 4.9.
+
+**Stated plainly: an agent beating the bar was not achieved.** What was
+achieved is that the best network policy moved **82.3 -> 112.2**, a +30 step,
+and the reason it was stuck is now measured rather than guessed.
 
 Warm-starting PPO from the clone is running at the time of writing (two seeds at
 the default learning rate, two at 1e-4 — the clone supplies the policy but not
