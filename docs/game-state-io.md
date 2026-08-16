@@ -99,7 +99,7 @@ A complete, serialisable Pydantic model of the game at one point in time. This i
 
 ```python
 class GameStateSnapshot(BaseModel):
-    schema_version: str = "2.3"
+    schema_version: str = "2.4"
     step: int
     max_steps: int
     clock: ClockSnapshot
@@ -189,6 +189,7 @@ class CombatResultSnapshot(BaseModel):
     hit_probability: float
     wound_probability: float
     killed: bool = False  # 2.3: this shot took the target to zero wounds
+    in_cover: bool = False  # 2.4: the target unit had cover against this attack
 
 
 class RewardSnapshot(BaseModel):
