@@ -36,11 +36,21 @@ class ScriptedSquadMarchTakePolicy(ScriptedSquadMarchDenyPolicy):
     which merely marches to `k mod n`, reaches 4.00 and denies more precisely
     because the ground it happens to walk onto is undefended.
 
-    So the ordering is inverted here: after the cap is banked, surplus squads go
-    to the objectives with the **fewest** opponents on them. Weak ground flips
-    and then denies for the rest of the game; defended ground absorbs a squad
-    and yields nothing. That recovers the bar's denial (160.9 against 160.4)
-    while keeping most of the denier's scoring efficiency (275.9 against 277.3).
+    So the ordering is inverted here. Weak ground flips and then denies for the
+    rest of the game; defended ground absorbs a squad and yields nothing. That
+    recovers the bar's denial (160.9 against 160.4) while keeping most of the
+    denier's scoring efficiency (275.9 against 277.3).
+
+    **Mechanically this is simpler than its parent, not an extra step on top.**
+    `squad_march_deny` builds a two-tier priority — bank
+    ``cap // vp_per_objective`` objectives, then re-sort the remainder to prefer
+    what the opponent controls. This drops the re-sort, and the two tiers
+    collapse into one flat ascending-opponent-count list: **one squad per
+    objective, cheapest ground first, nearest squad to each.** There is no cap
+    arithmetic here and `mission.params` is not read; banking still happens
+    because the head of that list *is* the cheapest ground. The other difference
+    is the leftover branch, which reinforces down the whole order rather than the
+    banked subset (it fires only when squads outnumber objectives).
 
     Note what this does *not* say: it is not that denial was the wrong target.
     Denial is still where the whole margin lives, since own VP is capped at

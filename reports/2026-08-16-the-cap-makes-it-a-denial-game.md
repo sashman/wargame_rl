@@ -174,6 +174,79 @@ rounds. **Holding an objective is a far more reliable way to deny it than
 contesting one**, and a contest that does not cross the threshold denies
 nothing at all.
 
+### What `squad_march_take` actually does
+
+Written out because it is now the strongest policy on the scenario, the target
+every clone imitates, and the thing a stronger *opponent* would be built from —
+and because "one line inverted" is the effect, not the mechanism.
+
+**Inherited unchanged**, from `squad_march` and `squad_march_shoot`:
+
+- **Squads move as one body.** Every model in a unit follows the *same* vector,
+  computed from the squad centroid to its target, capped at
+  `min(max_move_speed, distance)`. Relative positions are preserved, which is
+  what keeps the unit in coherency. Only once the centroid is within the
+  objective's extent does each model settle onto the objective individually, via
+  `step_toward_objective` — which steers at the objective's *boundary*, not its
+  centroid, so arriving models stop at different points on the perimeter and the
+  squad spreads across it rather than piling on one spot.
+- **Shooting** is `squad_march_shoot`'s, untouched.
+- The only seam a subclass overrides is `squad_objectives(models, env, group_ids)`
+  → one objective per squad.
+
+**The assignment, recomputed every movement phase** (control changes, and a
+squad en route to a point the opponent has abandoned should be re-tasked):
+
+1. Count living **opponent** models on each objective, under VP's own membership
+   rule — `occupants()` uses `area.contains_points` for an area objective,
+   because `radius_size` is 0.0 by design there and a distance-to-centre test
+   would count only models standing exactly on the centroid.
+2. Take the squad centroids, one per `group_id`, over living members.
+3. Sort objectives by **ascending opponent count**, ties broken on index so the
+   result is deterministic.
+4. Walk that order; for each objective, assign the **nearest unassigned squad**.
+   Stop when squads run out.
+5. Any leftover squads (more squads than objectives) reinforce down the same
+   order, `order[squad % len(order)]`.
+
+That is the whole policy: **one squad per objective, cheapest ground first,
+nearest squad to each.**
+
+**How it really differs from `squad_march_deny`** — worth stating precisely,
+because the report's "one comparison inverted" describes the outcome and would
+mislead anyone reimplementing it:
+
+| | `squad_march_deny` | `squad_march_take` |
+|---|---|---|
+| objective order | ascending opponent count | **same** |
+| first `needed` (= `cap // vp_per_objective`) | banked as hold targets | — no such step |
+| the remainder | **re-sorted**: contested first, then cheapest | left in ascending order |
+| leftover squads | reinforce the *held* subset | reinforce down the *whole* order |
+| reads `mission.params` | yes (`cap_per_turn`, `vp_per_objective`) | **no** |
+
+So `take` does not bank the cap and then spend a surplus — **it has no cap logic
+at all.** It drops `deny`'s re-sort of the remainder, and the two-tier structure
+collapses into one flat ascending list. Banking still happens, implicitly: the
+first few entries of that list *are* the cheapest objectives. The class docstring
+and the inline comment both describe the effect in cap-banking terms, which reads
+as though `needed` were computed; it is not.
+
+**Why it holds 4.02 objectives rather than 3.00.** With five squads and five or
+six objectives, step 4 gives nearly every squad its own objective, so the policy
+spreads onto the cheapest five. That overshoots the three-objective cap on
+purpose: objectives four and five pay nothing in own VP but deny 5 each per round
+off the opponent's score.
+
+**The two side-specific reads**, flagged for task #125 (making this playable as
+an opponent). Neither mirrors itself, and both fail *quietly*:
+
+- `env.opponent_models` in step 1 — from the other side this must count the
+  **player's** models. Unmirrored, the policy targets the ground its own team
+  holds. It runs, it looks plausible, and it scores badly for a reason nobody
+  would guess from the output.
+- `env.player_action_handler` inside `step_toward_objective` and
+  `select_movement` — wrong handler for opponent models.
+
 ## Two failures, not one
 
 | failure | training maps | held-out maps | nature |
