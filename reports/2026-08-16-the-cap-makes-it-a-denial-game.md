@@ -558,17 +558,47 @@ are not comparable:
 | `squad_march_shoot` | 0.825 | 0.405 | 1.08 | 0.155 | 0.003 | 0.175 |
 | **`squad_march_take`** | **0.884** | **0.617** | **0.78** | 0.087 | 0.002 | 0.116 |
 | trained PPO agent | 0.853 | 0.590 | 2.18 | 0.105 | 0.072 | 0.147 |
-| **its clone** | **0.580** | **0.238** | **5.69** | 0.339 | **0.270** | **0.420** |
+| **its clone, mean of 6** | **0.665** | **0.255** | **3.85** | — | **0.151** | **0.336** |
 
-**The best network by score is the worst policy measured on formation** — below
-the trained agent it replaced (0.853), below every scripted baseline, and below
-the teacher it copies, which is the best of them all.
+**The clone row is a mean over six clones, and that correction matters** — the
+figure first published here was **0.580**, which is the *worst* of the six:
 
-**The failure is fragmentation, not looseness.** `spread fail` is 0.270 against
-the teacher's 0.002 — a factor of 135 — and `split unit` 0.420. The clone's
-squads do not stretch at the edges; they come apart into disconnected groups
-heading different ways. That is the same signature as
-`reports/`'s coherency work on trained agents, arrived at by a different route.
+| clone | units coherent | steps | adrift | spread fail | split |
+|---|---|---|---|---|---|
+| `clone_take_xl` (the one first quoted) | **0.580** | 0.238 | 5.69 | 0.270 | 0.420 |
+| `clone_seed1` | 0.711 | 0.254 | 2.91 | 0.097 | 0.289 |
+| `clone_seed2` | 0.632 | 0.167 | 4.43 | 0.170 | 0.368 |
+| `clone_seed3` | 0.662 | 0.276 | 4.01 | 0.163 | 0.338 |
+| `clone_take_critic` | 0.705 | 0.329 | 3.34 | 0.107 | 0.295 |
+| `clone_unitmatch` | 0.697 | 0.267 | 2.70 | 0.099 | 0.303 |
+| **mean** | **0.665 +/- 0.021** | 0.255 | 3.85 | 0.151 | 0.336 |
+
+Identical demonstrations, identical settings, seed only. **This is the third time
+in one session that a single draw was quoted as a property** — after the clone's
++4.04 paired margin and the horizon arm's 108.3. The lesson had already been
+written into memory twice before this instance was created.
+
+**What the correction costs and what it does not.** The magnitude drops: the
+clone is 0.665 against the trained agent's 0.853, not 0.580, and `spread fail` is
+75x the teacher's rather than 135x. **The conclusion gets stronger, though** —
+all six clones (best 0.711) sit below the trained agent (0.853) with **no
+overlap**, so "the clone holds formation worse than the network it replaced" is
+better supported by six draws than it was by the one that overstated it.
+
+**The failure is fragmentation, not looseness.** `spread fail` 0.151 against the
+teacher's 0.002 and `split unit` 0.336 against 0.116. The clone's squads do not
+stretch at the edges; they come apart into disconnected groups heading different
+ways.
+
+**Open, and not resolved here: whether fidelity buys formation back.**
+`clone_take_xl` (98.3% action match) scores 0.580 and `clone_unitmatch` (98.6%
+action match, 0.965 *unit* match) scores 0.697 — but the two differ in seed as
+well as fidelity, and fidelity was never recorded for the other four, so the
+spread cannot be attributed. The arithmetic argues against fidelity being
+sufficient — at 0.965 per unit-step, `0.965 ** 40` = **0.24**, so only a quarter
+of units would clear a 40-step game error-free, and nothing re-forms a unit once
+it breaks — but that is a calculation, not a measurement. Deciding it needs
+clones fitted to several fidelities with the fidelity *recorded*.
 
 **Two things this rules out.** The tactic is not the cause: `squad_march_take` is
 the *best-disciplined* policy on the board, so banking the cap and taking weak
