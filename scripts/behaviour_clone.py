@@ -41,6 +41,7 @@ from wargame_rl.wargame.model.common.device import auto_device
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.common.observation import observation_to_tensor
 from wargame_rl.wargame.model.net import TransformerNetwork
+from wargame_rl.wargame.model.ppo.config import PPOConfig
 
 # Disjoint from every other seed band in the repo: evaluation uses 700000+,
 # in-run eval 500000+, the logged baselines 10000+. A clone trained on the
@@ -53,14 +54,25 @@ CLONE_SEED_BASE = 800_000
 # `main` verifies the key overlap instead of trusting it.
 POLICY_PREFIX = "ppo_model.policy_network."
 
+# The critic's prefix. Cloning the policy ALONE leaves PPO with a randomly
+# initialised value function, so its first updates are driven by noise -- and
+# measured, that destroys a good clone: 115.8 -> 98.2..106.3 held-out, damage
+# proportional to learning rate and indifferent to gamma. Supplying a fitted
+# critic is the direct test of that.
+VALUE_PREFIX = "ppo_model.value_network."
+
 
 def collect(
-    policy_name: str, config: WargameEnvConfig, n_episodes: int
-) -> tuple[list[torch.Tensor], torch.Tensor, torch.Tensor]:
-    """Play `policy_name` and record what it saw and what it did.
+    policy_name: str, config: WargameEnvConfig, n_episodes: int, gamma: float
+) -> tuple[list[torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Play `policy_name` and record what it saw, what it did, and what it earned.
 
-    Returns the five state tensors stacked over steps, the action mask, and the
-    action the scripted policy chose for each model.
+    Returns the five state tensors stacked over steps, the action mask, the
+    action the scripted policy chose for each model, and the **discounted
+    per-model return** from each step to the end of its episode.
+
+    The return is per model, not per episode, because that is what PPO's critic
+    predicts -- `value_from_encoded` emits one value per player token.
 
     Every step is kept, movement and shooting alike: the phase is part of the
     game-feature vector, so one network learns both and the clone reproduces the
@@ -72,10 +84,12 @@ def collect(
     states: list[list[torch.Tensor]] = []
     masks: list[torch.Tensor] = []
     actions: list[torch.Tensor] = []
+    returns: list[torch.Tensor] = []
 
     for index in range(n_episodes):
         observation, _ = env.reset(seed=CLONE_SEED_BASE + index)
         terminated = truncated = False
+        episode_rewards: list[torch.Tensor] = []
         while not (terminated or truncated):
             tensors = observation_to_tensor(observation)
             action = select(observation, env)
@@ -83,12 +97,23 @@ def collect(
             masks.append(tensors[5].detach().clone())
             actions.append(torch.tensor(action.actions, dtype=torch.long))
             observation, _r, terminated, truncated, _i = env.step(action)
+            episode_rewards.append(
+                torch.tensor(env.last_per_model_reward, dtype=torch.float32)
+            )
+        # Discount backwards within the episode; the bootstrap is zero because
+        # the episode has actually ended rather than been truncated mid-return.
+        running = torch.zeros_like(episode_rewards[0])
+        episode_returns: list[torch.Tensor] = []
+        for reward in reversed(episode_rewards):
+            running = reward + gamma * running
+            episode_returns.append(running.clone())
+        returns.extend(reversed(episode_returns))
         if (index + 1) % 25 == 0:
             print(f"  collected {index + 1}/{n_episodes} episodes", flush=True)
 
     env.close()
     stacked = [torch.stack([s[i] for s in states]) for i in range(5)]
-    return stacked, torch.stack(masks), torch.stack(actions)
+    return stacked, torch.stack(masks), torch.stack(actions), torch.stack(returns)
 
 
 def train(
@@ -160,6 +185,55 @@ def train(
         )
 
 
+def train_value(
+    net: TransformerNetwork,
+    states: list[torch.Tensor],
+    returns: torch.Tensor,
+    epochs: int,
+    batch_size: int,
+    device: torch.device,
+) -> None:
+    """Fit the critic to the demonstrator's own discounted returns.
+
+    Plain MSE over every model, dead ones included: a destroyed model's return
+    is a real number the critic should predict, and masking them would leave the
+    value of "this model is gone" untrained exactly when it starts to matter.
+
+    Reported as explained variance rather than raw loss, because the loss scale
+    means nothing on its own — 1 - Var(residual)/Var(target) says whether the
+    critic has learned anything, and it is the number PPO's advantages depend on.
+    """
+    net.to(device).train()
+    optimiser = torch.optim.AdamW(net.parameters(), lr=3e-4, weight_decay=0.01)
+    n_steps = returns.shape[0]
+
+    for epoch in range(epochs):
+        order = torch.randperm(n_steps)
+        residual, total = 0.0, 0.0
+        target_mean = float(returns.mean())
+        for start in range(0, n_steps, batch_size):
+            index = order[start : start + batch_size]
+            batch_states = [s[index].to(device) for s in states]
+            batch_returns = returns[index].to(device)
+
+            predicted = net(batch_states)
+            loss = torch.nn.functional.mse_loss(predicted, batch_returns)
+
+            optimiser.zero_grad(set_to_none=True)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
+            optimiser.step()
+
+            residual += float(((predicted - batch_returns) ** 2).sum().detach())
+            total += float(((batch_returns - target_mean) ** 2).sum().detach())
+
+        explained = 1.0 - residual / total if total > 0 else float("nan")
+        print(
+            f"  critic epoch {epoch + 1}/{epochs}  explained variance {explained:.3f}",
+            flush=True,
+        )
+
+
 def main() -> None:
     """Collect scripted play, clone it, and write a warm-start checkpoint."""
     if len(sys.argv) < 3:
@@ -178,9 +252,16 @@ def main() -> None:
     config.render_mode = None
     device = auto_device()
 
+    # The critic's target must be discounted the way the run that consumes it
+    # will discount, so this mirrors PPOConfig rather than inventing a value.
+    gamma = PPOConfig().gamma
+
     print(f"collecting {n_episodes} episodes of '{policy_name}' on {config_path}")
-    states, masks, actions = collect(policy_name, config, n_episodes)
-    print(f"  {actions.shape[0]} steps, {actions.shape[1]} models per step")
+    states, masks, actions, returns = collect(policy_name, config, n_episodes, gamma)
+    print(
+        f"  {actions.shape[0]} steps, {actions.shape[1]} models per step, "
+        f"returns discounted at gamma={gamma}"
+    )
 
     env = create_environment(env_config=config)
     net = TransformerNetwork.policy_from_env(env)
@@ -189,23 +270,42 @@ def main() -> None:
     print(f"cloning on {device}")
     train(net, states, masks, actions, epochs, batch_size=32, device=device)
 
+    print("fitting the critic on the demonstrator's own returns")
+    value_env = create_environment(env_config=config)
+    value_net = TransformerNetwork.value_from_env(value_env)
+    value_env.close()
+    train_value(value_net, states, returns, epochs, batch_size=32, device=device)
+
     state_dict = {
         POLICY_PREFIX + key: value.cpu() for key, value in net.state_dict().items()
     }
+    state_dict.update(
+        {
+            VALUE_PREFIX + key: value.cpu()
+            for key, value in value_net.state_dict().items()
+        }
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({"state_dict": state_dict}, out_path)
     print(f"wrote {out_path} ({len(state_dict)} tensors)")
 
     # `_apply_warm_start_weights` loads with strict=False, so a prefix mistake is
     # silent. Prove the keys land on a real module before anyone trains on this.
-    reference = TransformerNetwork.policy_from_env(
-        create_environment(env_config=config)
-    )
-    expected = {POLICY_PREFIX + k for k in reference.state_dict()}
+    check_env = create_environment(env_config=config)
+    expected = {
+        POLICY_PREFIX + key
+        for key in TransformerNetwork.policy_from_env(check_env).state_dict()
+    } | {
+        VALUE_PREFIX + key
+        for key in TransformerNetwork.value_from_env(check_env).state_dict()
+    }
+    check_env.close()
     overlap = len(expected & set(state_dict))
-    print(f"key check: {overlap}/{len(expected)} policy tensors will be applied")
+    print(
+        f"key check: {overlap}/{len(expected)} tensors (policy + critic) will be applied"
+    )
     if overlap != len(expected):
-        raise SystemExit("checkpoint keys do not match the policy network")
+        raise SystemExit("checkpoint keys do not match the policy/value networks")
 
 
 if __name__ == "__main__":

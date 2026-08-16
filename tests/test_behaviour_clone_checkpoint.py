@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import torch
 
-from scripts.behaviour_clone import POLICY_PREFIX
+from scripts.behaviour_clone import POLICY_PREFIX, VALUE_PREFIX
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.net import TransformerNetwork
@@ -59,6 +59,30 @@ def test_clone_prefix_matches_every_policy_tensor() -> None:
         f"{len(missing)} cloned keys have no home, e.g. {sorted(missing)[:3]}"
     )
     assert cloned, "no policy tensors produced"
+
+
+def test_the_critic_prefix_lands_too() -> None:
+    """The clone ships a fitted critic, and its keys must apply as well.
+
+    Cloning the policy *alone* leaves PPO with a randomly initialised value
+    function, and measured, that destroys a good clone: 115.8 -> 98.2..106.3
+    held-out, damage proportional to learning rate and indifferent to gamma. The
+    critic is only worth shipping if it actually loads, and `strict=False` will
+    never say otherwise.
+    """
+    module, env = _make_module()
+    critic = TransformerNetwork.value_from_env(env)
+    policy = TransformerNetwork.policy_from_env(env)
+
+    cloned = {VALUE_PREFIX + key for key in critic.state_dict()}
+    missing = cloned - set(module.state_dict())
+
+    assert not missing, (
+        f"{len(missing)} critic keys have no home: {sorted(missing)[:3]}"
+    )
+    assert cloned, "no critic tensors produced"
+    policy_keys = {POLICY_PREFIX + key for key in policy.state_dict()}
+    assert not (cloned & policy_keys), "policy and critic key sets must be disjoint"
 
 
 def test_loading_a_clone_actually_changes_the_weights() -> None:
