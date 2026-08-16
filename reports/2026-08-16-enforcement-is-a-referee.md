@@ -96,6 +96,38 @@ and leaves the policy no reason to prefer a legal move to an illegal one.
 
 ---
 
+## Against the floor and the bar
+
+Every figure above ranks arms against each other. Against the scripted ladder,
+on the same nine held-out tables, n=10 each:
+
+| policy | referee off | `revert_unit` | the rule costs |
+|---|---|---|---|
+| `hold_deployment` (floor) | — | −55.7 | — |
+| `random` | — | −50.6 | — |
+| `squad_march` | 82.2 | 81.1 | −1.1 |
+| **`squad_march_shoot` (the bar)** | **114.8** | **101.4** | **−13.4** |
+| agent, best two seeds | 89.2 | 84.4 | −4.8 |
+| agent, all four | 87.2 | 79.4 | −7.8 |
+
+**The agent does not beat the bar here — and coherency is not the reason.** The
+gap is **25.6** vp with the referee off and **17.0** with it on: obeying the rule
+*narrows* it. The bar pays **−13.4** to the referee against the agent's −4.8,
+because a shooting policy must break formation to get firing angles while the
+agent already holds it. `squad_march` pays just −1.1, since marching keeps
+squads together by construction.
+
+So the deficit is **generalisation**, and it predates every coherency change:
+the same checkpoints score **95.0** on the 36 training tables against 79–89 held
+out, and finish with **~94% of their force alive against the bar's 78–83%**
+while holding **3.3 objectives against 4.1**. The agent preserves its army and
+under-contests ground.
+
+This table exists because it nearly did not. The whole investigation ranked arms
+against each other for a day without a floor or a ceiling on current physics —
+which is how a policy scoring 17% against an 80% heuristic once read as progress
+in this project. Quote the agent against these rows, never on its own.
+
 ## The measurement error that produced three retracted reports
 
 **Every compliance figure was sampled after the enforcement fixed point.** Under
