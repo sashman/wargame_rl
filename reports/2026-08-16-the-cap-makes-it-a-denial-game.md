@@ -547,6 +547,36 @@ p ~ 0.005). In the README game specifically: 5/5 units coherent at deployment,
 3/5 after the *first* move, 0.555 averaged over the 20 movement phases with 8.5
 models adrift.
 
+**The whole ladder, measured properly** — `just measure-coherency`, the rules
+2"/9" predicate, n=30 at seeds 700000+, player rows. These are the numbers to
+quote; the table-20 figures above are one table and per-movement-phase, so they
+are not comparable:
+
+| policy | units coherent | steps coherent | adrift | chain fail | spread fail | split unit |
+|---|---|---|---|---|---|---|
+| `squad_march` | 0.843 | 0.485 | 0.94 | 0.142 | 0.004 | 0.157 |
+| `squad_march_shoot` | 0.825 | 0.405 | 1.08 | 0.155 | 0.003 | 0.175 |
+| **`squad_march_take`** | **0.884** | **0.617** | **0.78** | 0.087 | 0.002 | 0.116 |
+| trained PPO agent | 0.853 | 0.590 | 2.18 | 0.105 | 0.072 | 0.147 |
+| **its clone** | **0.580** | **0.238** | **5.69** | 0.339 | **0.270** | **0.420** |
+
+**The best network by score is the worst policy measured on formation** — below
+the trained agent it replaced (0.853), below every scripted baseline, and below
+the teacher it copies, which is the best of them all.
+
+**The failure is fragmentation, not looseness.** `spread fail` is 0.270 against
+the teacher's 0.002 — a factor of 135 — and `split unit` 0.420. The clone's
+squads do not stretch at the edges; they come apart into disconnected groups
+heading different ways. That is the same signature as
+`reports/`'s coherency work on trained agents, arrived at by a different route.
+
+**Two things this rules out.** The tactic is not the cause: `squad_march_take` is
+the *best-disciplined* policy on the board, so banking the cap and taking weak
+ground costs nothing in formation. And the trained agent's 0.853 is not merely
+the artefact of a policy that barely moves — its `adrift` of 2.18 against the
+teacher's 0.78 says it is not especially disciplined either, yet it is still
+three times better than the clone on that column.
+
 **The teacher's discipline is structural.** `squad_march` moves every model in a
 unit along one shared centroid vector, so relative positions — and therefore
 coherency — are preserved by construction. The clone reproduces that vector
