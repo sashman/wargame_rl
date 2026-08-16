@@ -46,14 +46,22 @@
 #   the 36 training tables, n=100     95.0 mean, held 2.97-3.32
 #   formation, referee off, 2"/9"     0.657 .. 0.903
 #
-# ⚠ THE SPREAD IS NOT NOISE, AND IT IS NOT THE SEED. Outcomes are bimodal and
-# the split tracks the WARM-START checkpoint: eight runs, no overlap between the
-# two lineages (0.657-0.704 against 0.853-0.903), roughly 3% by chance. Both
-# warm starts have near-identical formation themselves (0.524, 0.504), so it is
-# not inherited coherency — something else in those weights decides which
-# solution training settles into. Unexplained, and the reason to expect roughly
-# half of fresh runs to land near 0.70 rather than 0.88. The coherent lineage
-# also scores ~11 vp higher held-out, so formation and winning go together.
+# ⚠ THE SPREAD IS NOT NOISE AND IT IS NOT THE SEED — IT IS THE WARM START.
+# Outcomes are bimodal and the split tracks the warm-start checkpoint. Sixteen
+# runs, no overlap between the bands (0.657-0.720 against 0.853-0.903), and a
+# full crossover — every seed handed the other checkpoint — flipped every run
+# into its new lineage's band, so the training seed explains none of it.
+# Held-out vp follows: 86.0-88.7 against 73.7-83.8, eight runs, no overlap.
+#
+# The cause is AMPLIFICATION of a small head start. Over five seed sets, n=30
+# each, one warm start is ahead on all five by a mean of just +0.067; after 300
+# epochs its descendants are +0.19 ahead. This gate pays for legal positioning,
+# so a policy already marginally better at it collects more and reinforces.
+#
+# Practical consequence: expect roughly half of fresh runs to land near 0.70
+# rather than 0.88, and DO NOT read two seeds off one warm start as two
+# independent samples — they will agree tightly with each other while both
+# report their initialisation. Vary the warm start across seeds.
 #
 # WARM START IS REQUIRED for a different reason than enforcement's: this is a
 # reward gate, so a from-scratch run is not blocked, merely slower. Start from a
