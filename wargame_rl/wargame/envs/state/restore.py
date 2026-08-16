@@ -92,6 +92,8 @@ def restore_shooting_results(
     recordings, where a kill restores as an ordinary hit. Nothing downstream of a
     restore acts on the flag -- the reward calculators consumed it in the step
     that produced it -- but the renderer draws a killing shot differently.
+    `in_cover` (schema 2.4) restores the same way, and for the same reason: the
+    corridor that granted it belongs to positions the restore has since replaced.
     """
     return [
         PairedShootingResult(
@@ -104,6 +106,7 @@ def restore_shooting_results(
                 damage_dealt=snapshot.damage_dealt,
             ),
             killed=snapshot.killed,
+            in_cover=snapshot.in_cover,
         )
         for snapshot in snapshots
     ]

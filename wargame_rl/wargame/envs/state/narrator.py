@@ -117,10 +117,14 @@ class StepNarrator:
             f"{cr.hits} hits, {cr.wounds} wounds, "
             f"{cr.unsaved} unsaved, {cr.damage_dealt} damage dealt"
         )
+        # The expectation is computed under cover when the shot was, so say so:
+        # the same weapon against the same target otherwise reports two
+        # different hit chances across a match with no visible reason.
+        cover = ", in cover" if cr.in_cover else ""
         analytics = (
             f"    (expected {cr.expected_damage:.2f} dmg, "
             f"{cr.hit_probability * 100:.0f}% hit, "
-            f"{cr.wound_probability * 100:.0f}% wound)"
+            f"{cr.wound_probability * 100:.0f}% wound{cover})"
         )
         return [main, analytics]
 

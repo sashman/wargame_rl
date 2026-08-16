@@ -19,18 +19,28 @@ import numpy as np
 import pytest
 
 from wargame_rl.wargame.envs.domain import rules_constants
-from wargame_rl.wargame.envs.domain.shooting import DefenderStats, resolve_shooting
+from wargame_rl.wargame.envs.domain.shooting import (
+    DefenderStats,
+    expected_damage,
+    resolve_shooting,
+)
 from wargame_rl.wargame.envs.domain.sight import CLEAR, COVER, HIDDEN
+from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.env_components.shooting_masks import (
     compute_unit_shooting_masks,
 )
-from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.envs.types import (
+    NON_MOVEMENT_PHASES,
+    WargameEnvAction,
+    WargameEnvConfig,
+)
 from wargame_rl.wargame.envs.types.config import (
     ModelConfig,
     OpponentPolicyConfig,
     TerrainPieceConfig,
     WeaponProfile,
 )
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
 RADIUS = 1.0
@@ -51,8 +61,15 @@ def _sight_env(
     player: list[tuple[float, float, int]],
     opponent: list[tuple[float, float, int]],
     terrain: list[TerrainPieceConfig] | None = None,
+    skip_phases: list[BattlePhase] | None = None,
 ) -> WargameEnv:
-    """Board with models at fixed spots, each carrying a declared group."""
+    """Board with models at fixed spots, each carrying a declared group.
+
+    `skip_phases` defaults to the config's own default (shooting skipped), so
+    every sight test keeps stepping exactly as it did.
+    """
+    if skip_phases is None:
+        skip_phases = list(NON_MOVEMENT_PHASES)
     return WargameEnv(
         config=WargameEnvConfig(
             board_width=60,
@@ -63,6 +80,7 @@ def _sight_env(
             number_of_battle_rounds=2,
             base_radius=RADIUS,
             terrain=terrain,
+            skip_phases=skip_phases,
             models=[
                 ModelConfig(
                     x=int(x), y=int(y), group_id=u, weapons=[WeaponProfile(range=50)]
@@ -168,6 +186,45 @@ class TestCover:
         assert rules_constants.COVER_RANGED_SKILL_PENALTY == 1
         assert in_cover.hits < open_ground.hits
         assert in_cover.hits > 0
+
+    def test_a_shot_into_cover_reports_the_expectation_it_was_rolled_under(
+        self,
+    ) -> None:
+        """The analytical fields must be computed under the same rules as the dice.
+
+        `expected_damage` predates cover and read the weapon's Ranged Skill
+        straight off the profile, so every shot into terrain was recorded with
+        the expectation for a target standing in the open — the one number a
+        reader would use to decide whether the dice had been kind.
+        """
+        ledge = TerrainPieceConfig(outline=[(19, 20.5), (22, 20.5), (22, 23), (19, 23)])
+        env = _sight_env(
+            [(5, 20, 0)],
+            [(40, 20, 1)],
+            terrain=[ledge],
+            skip_phases=[BattlePhase.command, BattlePhase.charge, BattlePhase.fight],
+        )
+        env.reset(seed=0)
+        env.step(WargameEnvAction(actions=[STAY_ACTION]))  # movement -> shooting
+
+        shooting_slice = env.player_action_handler.shooting_slice
+        assert shooting_slice is not None
+        env.step(WargameEnvAction(actions=[shooting_slice.start + 1]))
+
+        results = env.last_player_shooting_results
+        assert results, "the covered unit must actually have been shot at"
+        assert all(r.in_cover for r in results)
+
+        recorded = env.to_snapshot().player_combat_results[0]
+        models = env.config.models
+        assert models is not None
+        weapon = models[0].weapons[0]
+        defender = DefenderStats(toughness=3, save=4)
+        assert recorded.in_cover
+        assert recorded.expected_damage == pytest.approx(
+            expected_damage(weapon, defender, in_cover=True)
+        )
+        assert recorded.expected_damage < expected_damage(weapon, defender)
 
     def test_no_base_means_no_cover_ever(self) -> None:
         """The property that makes all of this a no-op for older configs.

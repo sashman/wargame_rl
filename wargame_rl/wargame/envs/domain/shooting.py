@@ -75,6 +75,15 @@ class PairedShootingResult:
     killed: bool = False
     target_group: int = -1
     """The enemy **unit** this attack was declared against. -1 when unrecorded."""
+    in_cover: bool = False
+    """Whether the target unit had cover against this attack.
+
+    Recorded for the same reason as `killed`: it is a fact about the moment the
+    attack resolved -- the corridor between two models that have both since
+    moved -- and nothing downstream can recover it. Without it an analytical
+    expectation quoted beside the result is computed under different rules than
+    the dice were rolled under.
+    """
 
 
 def wound_roll_threshold(strength: int, toughness: int) -> int:
@@ -92,6 +101,37 @@ def wound_roll_threshold(strength: int, toughness: int) -> int:
     if 2 * strength <= toughness:
         return 6
     return 5
+
+
+def ranged_skill(ballistic_skill: int, *, in_cover: bool = False) -> int:
+    """Return the Ranged Skill an attack is resolved at.
+
+    Cover worsens it by `COVER_RANGED_SKILL_PENALTY`
+    (`docs/rules/13-terrain.md`). The returned value is the *modified* skill and
+    may exceed 6 -- the unmodified-6 rule, not a clamp, is what keeps such an
+    attack possible.
+    """
+    return ballistic_skill + (
+        rules_constants.COVER_RANGED_SKILL_PENALTY if in_cover else 0
+    )
+
+
+def hit_probability(ballistic_skill: int, *, in_cover: bool = False) -> float:
+    """Probability that one attack die hits.
+
+    The closed form of the hit-roll table in `docs/rules/05-attack-sequence.md`:
+    an unmodified 1 always fails and an unmodified 6 always hits, whatever the
+    skill characteristic and whatever the modifiers say. Both bounds bite once
+    cover is in play -- a Ranged Skill of 6 in cover resolves at 7, which is
+    unreachable by comparison and still hits on a 6.
+
+    Shared with :func:`resolve_shooting` through :func:`ranged_skill` so the
+    dice and the analytical expectation cannot answer differently.
+    """
+    skill = ranged_skill(ballistic_skill, in_cover=in_cover)
+    if skill > 6:
+        return 1.0 / 6.0
+    return (7 - max(skill, 2)) / 6.0
 
 
 def resolve_shooting(
@@ -112,9 +152,7 @@ def resolve_shooting(
     impossible -- which is what stops it from being an absolute shield when the
     board gets crowded.
     """
-    skill = weapon.ballistic_skill + (
-        rules_constants.COVER_RANGED_SKILL_PENALTY if in_cover else 0
-    )
+    skill = ranged_skill(weapon.ballistic_skill, in_cover=in_cover)
     hit_rolls = rng.integers(1, 7, size=weapon.attacks)
     hits = int(np.sum((hit_rolls != 1) & ((hit_rolls >= skill) | (hit_rolls == 6))))
 
@@ -287,6 +325,7 @@ def resolve_shooting_phase(
                         result=result,
                         killed=killed,
                         target_group=target_group,
+                        in_cover=in_cover,
                     )
                 )
     return results
@@ -295,9 +334,23 @@ def resolve_shooting_phase(
 def expected_damage(
     weapon: WeaponStats,
     defender: DefenderStats,
+    *,
+    in_cover: bool = False,
 ) -> float:
-    """Closed-form analytical expected damage for one model shooting at one target."""
-    p_hit = (7 - weapon.ballistic_skill) / 6.0
+    """Closed-form analytical expected damage for one model shooting at one target.
+
+    `in_cover` is the same flag :func:`resolve_shooting` takes and means the same
+    thing: the target unit has cover against this attack, worsening its Ranged
+    Skill by 1. It defaults to False, which is the expectation against a target
+    in the open -- pass what the corridor actually said, or the number describes
+    a shot nobody took.
+
+    Wounds, not casualties: damage in excess of a model's remaining Wounds does
+    not spill over (`docs/rules/05-attack-sequence.md`), and this does not model
+    allocation, so at `damage > 1` against one-wound models it overstates what a
+    volley removes from the board.
+    """
+    p_hit = hit_probability(weapon.ballistic_skill, in_cover=in_cover)
     p_wound = (7 - wound_roll_threshold(weapon.strength, defender.toughness)) / 6.0
     modified_save = defender.save + weapon.ap
     p_save = max(0.0, (7 - modified_save) / 6.0) if modified_save <= 6 else 0.0
@@ -339,6 +392,14 @@ def expected_damage_matrix(
     per *distinct* stat pair rather than once per model pair: an army built from
     one YAML profile has a single distinct pair, so a 25x25 block costs one call
     instead of 625.
+
+    **Cover is deliberately not applied here**, so every entry is the expectation
+    against a target in the open. This block is an observation input, and cover
+    is a fact about a *pair of positions* rather than a pair of stat lines --
+    folding it in would collapse the memoisation this function exists for (a
+    distinct value per model pair, not per profile pair) and would change what
+    the network sees, which is a scenario change to be measured rather than a
+    correction. See `docs/shooting.md`.
     """
     n_attackers = attacker_stats.shape[0]
     n_defenders = defender_stats.shape[0]
