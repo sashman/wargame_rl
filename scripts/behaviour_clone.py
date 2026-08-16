@@ -20,7 +20,15 @@ a discrete distance away. Behaviour cloning crosses it in one step, and because
 the destination scores *higher* on the training reward, PPO warm-started there
 has no incentive to drift back.
 
-Usage: just behaviour-clone <policy> <env_config> [n_episodes] [epochs] [out]
+Usage: just behaviour-clone <policy> <env_config> [n_episodes] [epochs] [out] [seed]
+
+**Clone twice before quoting a clone.** Two clones from identical data and
+identical settings, differing only in weight initialisation, measured **115.8**
+and **111.1** on the held-out tables — a 4.7 vp spread across the bar itself.
+The demonstration data is deterministic (`CLONE_SEED_BASE + episode`), so that
+variance is entirely the fit, and it is large enough to decide whether a clone
+appears to beat the bar or merely tie it. `seed` makes a clone reproducible;
+running several with different seeds is how you find out which you have.
 
 The output is a checkpoint `train.py --warm-start-ckpt-path` accepts.
 """
@@ -247,6 +255,12 @@ def main() -> None:
     out_path = (
         Path(sys.argv[5]) if len(sys.argv) > 5 else Path("checkpoints/clone.ckpt")
     )
+    # Seeds the weight init and the batch shuffling -- the ONLY things that
+    # differ between two clones of the same demonstrations, and worth 4.7 vp of
+    # held-out score. Unseeded, a clone is not reproducible and a single one is
+    # not quotable.
+    seed = int(sys.argv[6]) if len(sys.argv) > 6 else 0
+    torch.manual_seed(seed)
 
     config = parse_yaml_raw_as(WargameEnvConfig, Path(config_path).read_text())
     config.render_mode = None
@@ -256,8 +270,38 @@ def main() -> None:
     # will discount, so this mirrors PPOConfig rather than inventing a value.
     gamma = PPOConfig().gamma
 
-    print(f"collecting {n_episodes} episodes of '{policy_name}' on {config_path}")
-    states, masks, actions, returns = collect(policy_name, config, n_episodes, gamma)
+    # Collection is deterministic in (policy, config, n_episodes, gamma), and it
+    # is the slow half -- 1200 episodes is ~30 minutes against ~20 for the fit.
+    # Caching it is what makes "clone several times and look at the spread"
+    # affordable, which the variance above makes mandatory rather than nice.
+    cache = Path("checkpoints/clone_data") / (
+        f"{policy_name}-{Path(config_path).stem}-{n_episodes}-g{gamma}.pt"
+    )
+    if cache.exists():
+        print(f"reusing collected demonstrations from {cache}")
+        payload = torch.load(cache, weights_only=False)
+        states, masks, actions, returns = (
+            payload["states"],
+            payload["masks"],
+            payload["actions"],
+            payload["returns"],
+        )
+    else:
+        print(f"collecting {n_episodes} episodes of '{policy_name}' on {config_path}")
+        states, masks, actions, returns = collect(
+            policy_name, config, n_episodes, gamma
+        )
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            {
+                "states": states,
+                "masks": masks,
+                "actions": actions,
+                "returns": returns,
+            },
+            cache,
+        )
+        print(f"cached demonstrations to {cache}")
     print(
         f"  {actions.shape[0]} steps, {actions.shape[1]} models per step, "
         f"returns discounted at gamma={gamma}"
@@ -267,7 +311,7 @@ def main() -> None:
     net = TransformerNetwork.policy_from_env(env)
     env.close()
 
-    print(f"cloning on {device}")
+    print(f"cloning on {device} (seed {seed})")
     train(net, states, masks, actions, epochs, batch_size=32, device=device)
 
     print("fitting the critic on the demonstrator's own returns")
