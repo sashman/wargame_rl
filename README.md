@@ -6,9 +6,10 @@ Reinforcement learning model for playing table top wargames.
 
 *Written for someone who knows the game but not the machine learning.*
 
-Every player — hand-written or trained — is scored the same way: 100 games on
-each of **nine tables it has never seen**, average victory-point margin, ours
-minus theirs. A 25-model force a side, five or six objectives, twenty rounds.
+Every player — hand-written or trained — is scored the same way: **100 games of
+20 rounds on each of nine tables it has never seen** — 900 games in all —
+reported as the average victory-point margin, ours minus theirs. A 25-model
+force a side, five or six objectives.
 
 | player | margin | objectives held | force surviving | VP conceded |
 |---|---|---|---|---|
