@@ -72,6 +72,21 @@ seeds; each enforced arm is two.
 
 `configs/golden/25v25_maps_coherency.yaml` is that configuration.
 
+**At play, use `revert_unit` — the spec's own mode.** Nine held-out tables, four
+checkpoints, two per warm-start lineage:
+
+| referee | held-out `vp_margin` |
+|---|---|
+| off (illegal boards) | 87.2 |
+| `revert_model` (a divergence from the rule) | 80.4 |
+| **`revert_unit` (the rule as written)** | **79.4** |
+
+The spec mode and the divergence **tie** — 1 vp apart, and the sign flips across
+checkpoints — so the divergence buys nothing and rules accuracy is free. The
+referee costs ~7 vp, and a policy with better formation pays much less of it
+(86.0/84.6 against 75.8/70.4), because it gives the referee less to correct.
+Every prior comparison of these modes predates #193 and is void.
+
 **Why enforcement cannot teach.** Under `enforce_move` every reverted action
 produces the *identical* outcome, so all of them share a return and an
 advantage, and the policy gradient inside that whole equivalence class is

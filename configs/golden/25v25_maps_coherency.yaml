@@ -12,6 +12,18 @@
 #   at PLAY. It guarantees a legal board and teaches nothing, and training under
 #   it makes the policy WORSE at formation than never training under it at all.
 #
+#   FOR PLAY, USE `enforce_move: revert_unit` — the spec's own mode. Measured on
+#   the nine held-out tables, four checkpoints, two per warm-start lineage:
+#
+#     referee off      87.2 vp_margin   (illegal boards)
+#     revert_model     80.4             (a divergence from the rule)
+#     revert_unit      79.4             (the rule as written)
+#
+#   The spec mode and the divergence tie -- 1 vp apart with the sign flipping
+#   across checkpoints -- so the divergence buys nothing and rules accuracy is
+#   free. The referee costs ~7 vp, and a policy with better formation pays far
+#   less of it (86/85 against 75/72), because it gives the referee less to do.
+#
 # Measured over ten runs on these tables, with the referee switched OFF so the
 # numbers describe the policy rather than the wrapper:
 #
