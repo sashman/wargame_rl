@@ -26,13 +26,20 @@ sloppier than we had been reporting, and three earlier write-ups had to be
 withdrawn. The general form of the mistake: **if something guarantees an
 outcome, measuring that outcome tells you nothing about what caused it.**
 
-**One thing we still cannot explain.** Training doesn't start from scratch — it
-continues from an AI that already knows how to play. We used two such starting
-points. Both were equally bad at keeping squads together. Yet every AI grown
-from the first ended up sloppy, and every one grown from the second ended up
-tidy — eight for eight, with no overlap. Same lesson, same settings, roughly
-double the benefit for one group. Something about where you start decides which
-habit sticks, and we do not know what.
+**One more thing, which turned out to matter.** Training doesn't start from
+scratch — it continues from an AI that already knows how to play. We used two
+such starting points. One was very slightly better at keeping squads together;
+the gap was small enough that we first measured it as nothing at all. After
+training, that small head start had grown roughly threefold, and every AI grown
+from the better starting point ended up clearly tidier — sixteen runs, no
+overlap, and swapping which one each run started from swapped the result every
+time.
+
+So the lesson is about how we test things, not just about this rule: **a small
+difference in where you start gets multiplied by training.** Two test runs
+begun from the same place will agree closely with each other and still be
+telling you about their starting point rather than about the change you were
+testing.
 
 ---
 
@@ -134,35 +141,58 @@ the config surface for this rule went from ten knobs to five.
 
 ---
 
-## The open question: the warm start decides the outcome
+## The warm start decides the outcome, by amplifying a small head start
 
 Gate-only results are **bimodal, and the split tracks the warm-start checkpoint
 rather than the training seed.**
 
-| lineage | formation of descendants |
-|---|---|
-| `s1-maps` | 0.659, 0.665, 0.695, 0.704 |
-| `s2-maps` | 0.853, 0.866, 0.879, 0.903 |
+**Confirmed by crossover.** The first eight runs had seed and lineage
+confounded — seeds 1 and 4 both used warm start A, seeds 2 and 3 both used B. A
+full crossover, every seed handed the *other* lineage, flipped every one into
+its new lineage's band:
 
-Eight runs, no overlap, roughly **3% by chance**. Each individual run is stable
-(sd 0.011–0.025 across 100 evaluations), so this is two different learned
-solutions, not variance within one.
+| seed | formation with A | formation with B |
+|---|---|---|
+| 1 | 0.704 | **0.885** |
+| 4 | 0.703 | **0.882** |
+| 2 | **0.885** | 0.720 |
+| 3 | **0.891** | 0.703 |
 
-**And it is not inherited formation.** Both warm starts measure almost identically
-on the predicate themselves — 0.524 and 0.504. Something else in those weights
-decides which solution training settles into, under an identical reward.
+Sixteen runs, no overlap between the bands, and the seed explains none of it.
+Held-out `vp_margin` follows the same split — B lineage 86.0–88.7 against A's
+73.7–83.8, eight runs, again no overlap.
 
-The coherent lineage also **wins more**: +11 vp held-out (86.1 v 74.8) and +8.7
-on the training pool. So formation and score go together. An earlier claim here
-that they were independent came from the 30-episode in-run evaluation, where all
-four runs read 89–91; at n=100 they separate cleanly. That is the in-run eval
-being too noisy to compare arms, not a real null.
+**And the mechanism is amplification, not mystery.** Measured through the same
+tracker on five independent seed sets, n=30 each, B starts ahead on **all five**:
 
-This is the most interesting unexplained result on the board, and it likely
-generalises past coherency: if initialisation silently selects among equal-value
-solutions, it affects every experiment run here.
+| seeds | A | B | B − A |
+|---|---|---|---|
+| 700000 | 0.505 | 0.524 | +0.019 |
+| 500000 | 0.521 | 0.651 | +0.130 |
+| 300000 | 0.473 | 0.554 | +0.081 |
+| 900000 | 0.526 | 0.609 | +0.083 |
+| 100000 | 0.535 | 0.559 | +0.024 |
 
----
+Mean **+0.067** at the start, **+0.19** after 300 epochs. The gate roughly
+**triples** a small initial advantage: it pays for legal positioning, so a
+policy already marginally better at it collects more and reinforces, while one
+slightly behind never gets going.
+
+**Two earlier readings of this were wrong, and both from the same cause.** That
+B "started marginally behind, so this is not inherited formation" was an n=20
+measurement on a single seed set. That "two-thirds of the gap exists at epoch 0"
+used the in-run metric on seeds 500000+, the one set where B's head start is
+largest (+0.130 against a +0.067 mean) — a starting advantage read as an instant
+training effect. **The same checkpoint reads 0.505 to 0.651 depending on which
+layouts you draw**, so no claim about a warm start means anything without its
+seed set attached.
+
+**The consequence reaches past coherency.** If a modest initialisation
+difference is amplified threefold by a reward term, then **an arm comparison
+whose seeds share one warm start is partly measuring that warm start** — and
+its seeds will agree tightly with each other while doing so, which is exactly
+what a real effect looks like. Vary the warm start across seeds, and record
+which checkpoint each run descended from.
 
 ## Reusable lessons
 
