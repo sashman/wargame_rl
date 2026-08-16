@@ -230,6 +230,16 @@ def train(
         None,
         help="Override PPO discount factor (defaults to PPOConfig value)",
     ),
+    gae_lambda: float | None = typer.Option(
+        None,
+        help=(
+            "Override GAE lambda (defaults to PPOConfig value). Raise this WITH "
+            "--gamma or the horizon barely moves: the advantage window is "
+            "1/(1 - gamma*lambda) steps, so at the default lambda 0.95 a gamma "
+            "of 0.9 sees 6.9 steps and 0.99 only reaches 16.8 -- both under half "
+            "a 40-step episode. gamma 0.99 with lambda 0.99 gives 50."
+        ),
+    ),
     ent_coef: float | None = typer.Option(
         None,
         help="Override PPO entropy coefficient (defaults to PPOConfig value)",
@@ -335,6 +345,9 @@ def train(
         ppo_config.eval_every_n_epochs = resolved_eval_interval
     if gamma is not None:
         ppo_config.gamma = gamma
+    resolved_gae_lambda = _resolve_optional_float(gae_lambda)
+    if resolved_gae_lambda is not None:
+        ppo_config.gae_lambda = resolved_gae_lambda
     if ent_coef is not None:
         ppo_config.ent_coef = ent_coef
     # Resolved rather than compared to None: called as a plain function the
