@@ -265,9 +265,54 @@ coordinated change of strategy, and it is not reachable by local perturbation
 from a defensive optimum. **The agent is not mis-trained; it is in a good local
 optimum that a gradient cannot leave.**
 
-The credible route is therefore to *initialise* in the advancing basin —
-behaviour cloning from `squad_march_shoot`, then refining with PPO — which is
-implementation work rather than an arm, and is not attempted here.
+## Behaviour cloning crosses the gap, and proves the network was never the limit
+
+Two facts measured here are only consistent if the agent sits in a *local*
+optimum, and together they say exactly what to do:
+
+- a **unilateral** advance loses the deviating squad 29.4 income -> every
+  gradient step toward advancing is **downhill**;
+- the **joint** advancing policy earns **30.29** training reward an episode
+  against the agent's **24.77**, ahead on *every* calculator -> the destination
+  is **uphill**.
+
+A gradient cannot cross that, because the path down and the destination up are
+separated by a discrete distance. So don't walk there — *start* there.
+`scripts/behaviour_clone.py` (`just behaviour-clone`) plays a scripted baseline,
+records what it saw and what it did, and fits the policy network to it by masked
+cross-entropy, writing a checkpoint `--warm-start-ckpt-path` accepts.
+
+400 episodes, 12 epochs, **90.6% action match**. Scored on the nine held-out
+tables, n=100:
+
+| policy | vp_margin | +/- | player VP | opp VP | held | alive |
+|---|---|---|---|---|---|---|
+| `squad_march_shoot` (the BAR) | 111.8 | 5.3 | 272.2 | 160.4 | 4.00 | 0.762 |
+| **the clone** | **109.7** | 4.2 | 271.4 | **161.6** | 3.84 | 0.735 |
+| trained agent, 4 seeds | 82.3 | — | 263.9 | 181.6 | 3.24 | 0.954 |
+
+**Within error of the bar on every column, and +27 vp above the RL agent.** On
+table_05 — where the trained agent collapses to 40.5 with two thirds of its army
+hidden — the clone scores **110.9** at `on_obj` 0.801. The collapse simply does
+not happen.
+
+**So the network class, the observation and the action space were never the
+limitation.** The same architecture, on the same inputs, plays at bar level when
+it is *put* there. Everything measured above is a statement about the
+optimisation, not the model.
+
+Warm-starting PPO from the clone is running at the time of writing (two seeds at
+the default learning rate, two at 1e-4 — the clone supplies the policy but not
+the critic, so the first updates carry a random value function and could undo
+it). The prediction that makes this worth running: because the advancing policy
+scores *higher* on the training reward, PPO has no incentive to drift back.
+
+**One hazard closed on the way.** `_apply_warm_start_weights` loads with
+`strict=False`, so a wrong key prefix loads **nothing** and trains a random
+network while reporting a warm start. The cloner writes
+`ppo_model.policy_network.*`, verifies the overlap before exiting, and
+`tests/test_behaviour_clone_checkpoint.py` pins both the prefix and that loading
+actually changes the weights.
 
 ## What is worth doing next, and what is not
 
