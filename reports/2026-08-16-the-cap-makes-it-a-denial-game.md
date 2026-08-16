@@ -439,17 +439,38 @@ Advancing costs income now and repays over the remaining rounds; discounted at
 actual objective the conservative policy really is better**, even though it is
 worse over the episode and worse on `vp_margin`.
 
-So the reward function is not misaligned with the scoreboard — **the discount
-factor is**, and it is the wedge between "what the reward pays over a game" and
-"what the optimiser maximises". That reframes `gamma` from a tuning knob into
-the thing that decides which of two policy basins PPO regards as optimal.
+That suggested the discount factor, not the reward, was the wedge — that
+`gamma` decides which policy basin PPO regards as optimal. **It was tested
+directly and it is WRONG.** Same clone, same two learning rates, only `gamma`
+changed, all measured at epoch 124:
 
-The test is direct, and it is running at the time of writing: refine the same
-clone at **`gamma 0.99`**, same warm start, same two learning rates, nothing
-else changed. If this reading is right, 0.99 preserves or improves the clone
-where 0.9 destroys it. The earlier `gamma 0.99` arms could not have shown this
-— they started from a conservative, entropy-pinned policy with nothing worth
-preserving.
+| gamma | lr | vp_margin | alive | opp VP |
+|---|---|---|---|---|
+| — (the clone) | — | **115.8** | 0.673 | 158.0 |
+| 0.9 | 1e-5 | 106.3 | 0.857 | 170.2 |
+| **0.99** | 1e-5 | **103.5** | 0.823 | 172.1 |
+| 0.9 | 5e-5 | 103.2 | 0.887 | 174.1 |
+| **0.99** | 5e-5 | **98.2** | 0.913 | 177.9 |
+
+**Raising gamma made it worse at both learning rates.** The damage scales with
+**learning rate** and is essentially **indifferent to gamma** — the opposite of
+the prediction. And the explanation fails on its own terms besides: `gamma 0.99`
+gives a ~100-step horizon on a 40-step episode, i.e. effectively undiscounted,
+and undiscounted the advancing policy earns *more* (30.29 v 24.77). Discounting
+cannot be why PPO prefers conservatism.
+
+**The surviving explanation is the critic.** The clone supplies the *policy*
+and nothing else, so the first updates carry a **randomly initialised value
+function**, and the advantages that drive them are noise. That predicts damage
+proportional to step size and indifferent to the discount, which is exactly the
+table above. It also explains why every refinement setting tried has failed the
+same way while differing only in speed.
+
+**Untested and the obvious next move:** fit the value head before letting the
+policy move — freeze the policy for some epochs while the critic regresses on
+clone rollouts, or pretrain it alongside the behaviour clone. Until that is
+done, "PPO cannot improve on the clone" is **not** established; what is
+established is that PPO *with a cold critic* destroys it.
 
 Warm-starting PPO from the clone is running at the time of writing (two seeds at
 the default learning rate, two at 1e-4 — the clone supplies the policy but not
