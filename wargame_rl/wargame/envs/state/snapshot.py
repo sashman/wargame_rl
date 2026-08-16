@@ -17,6 +17,7 @@ from wargame_rl.wargame.envs.domain.shooting import (
     DefenderStats,
     PairedShootingResult,
     expected_damage,
+    hit_probability,
     wound_roll_threshold,
 )
 from wargame_rl.wargame.envs.env_components.distance_cache import (
@@ -115,6 +116,14 @@ class CombatResultSnapshot(BaseModel):
     phase and only one made the kill -- so it is recorded at resolution time.
     ``False`` on earlier recordings, where a kill replays as an ordinary hit.
     """
+    in_cover: bool = False
+    """Whether the target unit had cover against this attack (schema 2.4).
+
+    The three analytical fields above are computed under it, so a shot into
+    cover reports the expectation the dice were actually rolled against.
+    ``False`` on earlier recordings, whose analytics were all computed as if
+    every target stood in the open.
+    """
 
 
 class RewardSnapshot(BaseModel):
@@ -186,7 +195,7 @@ class GameStateSnapshot(BaseModel):
     attributing ``player_actions`` to a phase.
     """
 
-    schema_version: str = "2.3"
+    schema_version: str = "2.4"
     step: int
     max_steps: int
     clock: ClockSnapshot
@@ -339,8 +348,8 @@ def _combat_result_to_snapshot(
             toughness=target.stats["toughness"],
             save=target.stats["save"],
         )
-        exp_dmg = expected_damage(weapon, defender)
-        p_hit = (7 - weapon.ballistic_skill) / 6.0
+        exp_dmg = expected_damage(weapon, defender, in_cover=paired.in_cover)
+        p_hit = hit_probability(weapon.ballistic_skill, in_cover=paired.in_cover)
         threshold = wound_roll_threshold(weapon.strength, defender.toughness)
         p_wound = (7 - threshold) / 6.0
 
@@ -355,6 +364,7 @@ def _combat_result_to_snapshot(
         expected_damage=exp_dmg,
         hit_probability=p_hit,
         wound_probability=p_wound,
+        in_cover=paired.in_cover,
     )
 
 

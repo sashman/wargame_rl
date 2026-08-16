@@ -9,10 +9,18 @@ This is a pricing reference for the abilities in
 [16 — Ability reference](rules/16-ability-reference.md). Which of them are actually implemented is
 [implementation-status.md](rules/implementation-status.md)'s job, not this document's.
 
-`domain.shooting.expected_damage(weapon, defender)` implements equation (1) for the no-abilities
-case — hit, wound, save and Damage only. Everything below is the generalisation: each ability is one
-cell edit, so extending that function as abilities land is a table lookup rather than a
-rederivation. See [shooting.md](shooting.md).
+`domain.shooting.expected_damage(weapon, defender, *, in_cover=False)` implements equation (1) for
+the no-abilities case — hit, wound, save and Damage only, with `g_shrug = 1`. Everything below is
+the generalisation: each ability is one cell edit, so extending that function as abilities land is a
+table lookup rather than a rederivation. See [shooting.md](shooting.md).
+
+`in_cover` is the one **Modifier** the env implements, and it is a scalar shift of the hit gate
+rather than a cell edit — which is the whole of what that family needs. The two structural facts
+below are already load-bearing in it: `hit_probability` pins the failing 1 and the always-hitting 6,
+so a worsening modifier is worth nothing at a 6+ gate exactly as a `+1` is worth nothing at a 2+ one
+(§6.1). Nothing in the env yet reaches the Bonus, Bypass, Threshold or Reroll families, so the
+closed form is still a scalar per gate and cannot express them — see
+[rules/primitives.md](rules/primitives.md) § Family I for why that is the line to watch.
 
 ---
 

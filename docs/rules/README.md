@@ -32,13 +32,17 @@ disagrees with it, the environment is either behind or deliberately simplified �
 | 15 | [Missions and scoring](15-missions-and-scoring.md) | Setup, deployment, victory points, ending the battle |
 | 16 | [Ability reference](16-ability-reference.md) | Every weapon and unit ability, alphabetical |
 
-Two machine-facing files sit alongside them:
+Three companion files sit alongside them:
 
 - [`constants.yaml`](constants.yaml) — every number in one place, in inches, so tests can
   assert against the rules rather than against a magic literal.
 - [`implementation-status.md`](implementation-status.md) — what the environment
   implements, what it diverges on, and what is absent. This is the roadmap for the next
   implementation phase.
+- [`primitives.md`](primitives.md) — the chapters above read *across* rather than down: the
+  six mechanisms every named rule is composed from, and the grammar that composes them, so
+  a rule can be authored as data instead of implemented as a function. Read it before
+  building a mechanic, and apply its four fragility tests to the design.
 
 ## Conventions
 

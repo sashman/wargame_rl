@@ -156,7 +156,19 @@ else:
 3. **Save** — one D6 per wound against `save + ap`; failures become unsaved.
 4. **Damage** — `unsaved × damage` wounds applied to the target; a model at 0 wounds is dead.
 
-Rolls use `self._combat_rng`, seeded from `np_random` at each `reset()`, so a seeded episode resolves identically. Each shot is recorded as a `PairedShootingResult` (attacker index, target index, `ShootingResult`, and whether this shot made the kill) and exposed for the step via `env.last_player_shooting_results` / `env.last_opponent_shooting_results` (both on `BattleView`, so the v2 renderer draws the damaging ones as tracers). `domain/shooting.py` also provides `expected_damage(weapon, defender)`, a closed-form expectation with no dice. It is the no-abilities case of the general result in [expected-damage.md](expected-damage.md) — `attacks × p_hit × p_wound × p_fail_save × damage`, with no critical-hit abilities, rerolls or `Shrug` term. That document gives the cell edits each ability contributes, so extending the closed form as abilities land is a table lookup rather than a rederivation.
+Rolls use `self._combat_rng`, seeded from `np_random` at each `reset()`, so a seeded episode resolves identically. Each shot is recorded as a `PairedShootingResult` (attacker index, target index, `ShootingResult`, whether this shot made the kill, and whether the target had cover) and exposed for the step via `env.last_player_shooting_results` / `env.last_opponent_shooting_results` (both on `BattleView`, so the v2 renderer draws the damaging ones as tracers).
+
+### Expected damage
+
+`domain/shooting.py` provides `expected_damage(weapon, defender, *, in_cover=False)`, a closed-form expectation with no dice, and `hit_probability(ballistic_skill, *, in_cover=False)`, the hit-roll term on its own. Both go through `ranged_skill`, which is what `resolve_shooting` applies to the dice — the two paths cannot state different rules.
+
+It is the no-abilities case of the general result in [expected-damage.md](expected-damage.md) — `attacks × p_hit × p_wound × p_fail_save × damage`, with no critical-hit abilities, rerolls or `Shrug` term. That document gives the cell edits each ability contributes, so extending the closed form as abilities land is a table lookup rather than a rederivation. In its taxonomy cover is a **Modifier**: it shifts which faces pass the hit gate, and leaves the gate's shape alone.
+
+**Cover is a parameter, not an assumption.** A target in cover worsens the attack's Ranged Skill by 1 ([rules/13](rules/13-terrain.md#cover)), and the closed form read the weapon's skill straight off the profile until 2026-08-16, so every expectation quoted beside a shot into terrain described a target standing in the open. `hit_probability` also carries the two bounds the naive `(7 − RS) / 6` drops: an unmodified 1 always fails and an unmodified 6 always hits, so RS 6 in cover resolves at 7 and still lands 1 in 6 rather than being reported as impossible. Recordings carry `in_cover` per shot from schema 2.4, so `expected_damage`, `hit_probability` and `wound_probability` on a `CombatResultSnapshot` are computed under the rules the dice were rolled under; the narrator marks those shots `in cover`.
+
+Two things it still does not model, both by construction: it returns **wounds, not casualties** (damage does not spill between models, and it knows nothing about allocation, so `damage > 1` against one-wound models overstates a volley), and there is no invulnerable save because [InSv is absent everywhere](rules/implementation-status.md).
+
+`expected_damage_matrix` deliberately passes **no** cover, so the observation block is the open-ground expectation for every pair. Cover is a fact about two positions rather than two stat lines: folding it in would collapse the per-profile memoisation the matrix exists for, and it would change the network's input — a scenario change to be measured, not a correction to apply silently.
 
 ## Observation Context
 
@@ -180,4 +192,4 @@ If the transformer struggles with the implicit observation-to-action index mappi
 
 ### Precomputed Probability Matrices
 
-Attacker × defender expected damage tables (hit chance, wound chance, expected value) computed from weapon profiles and target stats. Dual purpose: observation feature for the transformer (perfect information, mirroring real player capability) and explainability tool. The per-pair primitive already exists as `expected_damage` in `domain/shooting.py`; what is missing is materialising it as a matrix in the observation.
+Attacker × defender expected damage tables (hit chance, wound chance, expected value) computed from weapon profiles and target stats. Dual purpose: observation feature for the transformer (perfect information, mirroring real player capability) and explainability tool. **The stat-line half of this shipped** — `expected_damage_matrix` is in the per-model block (see [model/CLAUDE.md](../wargame_rl/wargame/model/CLAUDE.md)). What is still open is the *positional* half: an entry that changes as the pair moves, which today means cover. It is one number per model pair rather than per profile pair, so it costs a real computation per step and changes what the network sees — screen it like a shaping term rather than shipping it as a fix.
