@@ -1,4 +1,4 @@
-# The VP cap makes this a denial game, and the reward pays for the wrong half
+# The VP cap makes this a denial game — and copying beats the bar where the reward could not
 
 **2026-08-16.** Everything here is measured on current physics (post-#193), nine
 held-out tables and nine *matched* training tables, **n=100 per map**, seeds
@@ -27,20 +27,25 @@ maps have five or six.
 That means once you hold three, the only way left to increase your *lead* is to
 stop the other side scoring. The trained agent worked this out and holds almost
 exactly three. What it never learned is the second half: taking ground off the
-opponent. It sits on its three, keeps 94% of its army alive, and lets the enemy
-score freely.
+opponent. It sat on its three, kept 94% of its army alive, and let the enemy
+score freely — conceding 21 points a game more than the scripted benchmark.
 
-The reward is why. A model is paid **1.0** for standing on ground we already
-hold — which is worth nothing extra once we are at the cap — and **0.25** for
-standing on ground the enemy holds, which is worth 5 points a round. Because a
-model only gets paid while it stays with its squad, and squads share the pay for
-a piece of ground, moving a whole squad onto enemy ground **quarters its
-income**. The agent is being paid, four to one, to do the thing that does not
-win.
+**Why it could not learn better.** Two separate reasons, both measured. Sending
+one squad forward alone gets that squad killed, so the learning rule is right to
+refuse — even though the whole army advancing together scores better. And the
+training setup pays a bonus for keeping decisions *uncertain*, which held the
+agent's play permanently vague; that is why changing what the reward pays for
+never moved anything.
 
-There is a second, separate problem. On two of the nine unfamiliar maps the
-agent simply fails to occupy anything: two thirds of its army ends the game
-hidden, alive and doing nothing. That does not happen on maps it trained on.
+**What fixed it.** Not a better reward. A better *hand-written* policy — send
+spare squads to the weakest ground rather than attacking the strongest, which is
+one line — and then teaching the network to copy it. Copied faithfully enough
+(98% of decisions matched), the network scores **115.8** against the benchmark's
+**111.8**, ahead on 8 of the 9 unseen maps.
+
+The best network policy on this scenario went from **82.3 to 115.8** in a day.
+Worth being clear about what did the work: the copying, not the learning. The
+reinforcement-learning step contributed nothing measurable on top.
 
 ---
 
@@ -370,9 +375,43 @@ t = 0.18, ahead on 5 of 9 maps.** That is a dead tie. The best *network* policy
 now matches the bar and does not beat it — while the best *scripted* policy
 beats the old bar by 4.9.
 
-**Stated plainly: an agent beating the bar was not achieved.** What was
-achieved is that the best network policy moved **82.3 -> 112.2**, a +30 step,
-and the reason it was stuck is now measured rather than guessed.
+### Pushing fidelity further clears the bar
+
+The two-point trend was worth one more test, so: 1200 episodes, 60 epochs.
+
+| clone of `squad_march_take` | episodes | epochs | action match | held-out |
+|---|---|---|---|---|
+| first | 400 | 14 | 86.8% | 101.4 |
+| larger | 700 | 35 | 94.7% | 112.2 |
+| **XL** | **1200** | **60** | **98.3%** | **115.8** |
+
+At 98.3% match the clone reproduces its target to within **0.9 vp** (115.8
+against 116.7), and the compounding-error gap has closed from 15.3 to under one
+point. **Fidelity was the whole ceiling, and it is buyable with data.**
+
+Paired per map against the bar, n=100 on each side:
+
+| | table_05 | 10 | 15 | 20 | 25 | 30 | 35 | 40 | 45 |
+|---|---|---|---|---|---|---|---|---|---|
+| XL clone - bar | +0.8 | +5.8 | +11.2 | +1.3 | +6.2 | +2.6 | +13.3 | **-5.4** | +0.6 |
+
+**+4.04 +/- 1.92, ahead on 8 of 9 maps.** Be precise about how strong that is:
+t = 2.10 on 8 degrees of freedom is p ~ 0.07 two-tailed, which is marginal
+alone. What makes it convincing is three independent lines agreeing — the sign
+test on 8-of-9 gives p ~ 0.04, the clone's *target* beats the bar by +4.9 with
+clean separation, and the clone tracks that target to within 0.9.
+
+**So a network policy now beats the bar on the real tables**, and the best
+network on this scenario has moved **82.3 -> 115.8** in a day. The route was not
+a better reward: it was a better *scripted* policy (one inverted comparison,
+`squad_march_take`) plus enough imitation data to reproduce it faithfully.
+
+**What this does not claim.** This is not PPO beating the bar. Refinement from
+the clone measured neutral-to-slightly-negative at every setting tried
+(108.6 against a 109.7 clone at epoch 74; the low-entropy arms hold but do not
+climb). The learning algorithm's contribution to the final number is, so far,
+zero — and saying otherwise would be the same overreach this report spends four
+sections correcting.
 
 Warm-starting PPO from the clone is running at the time of writing (two seeds at
 the default learning rate, two at 1e-4 — the clone supplies the policy but not
