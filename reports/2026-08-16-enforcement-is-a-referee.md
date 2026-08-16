@@ -72,6 +72,21 @@ seeds; each enforced arm is two.
 
 `configs/golden/25v25_maps_coherency.yaml` is that configuration.
 
+**At play, use `revert_unit` — the spec's own mode.** Nine held-out tables, four
+checkpoints, two per warm-start lineage:
+
+| referee | held-out `vp_margin` |
+|---|---|
+| off (illegal boards) | 87.2 |
+| `revert_model` (a divergence from the rule) | 80.4 |
+| **`revert_unit` (the rule as written)** | **79.4** |
+
+The spec mode and the divergence **tie** — 1 vp apart, and the sign flips across
+checkpoints — so the divergence buys nothing and rules accuracy is free. The
+referee costs ~7 vp, and a policy with better formation pays much less of it
+(86.0/84.6 against 75.8/70.4), because it gives the referee less to correct.
+Every prior comparison of these modes predates #193 and is void.
+
 **Why enforcement cannot teach.** Under `enforce_move` every reverted action
 produces the *identical* outcome, so all of them share a return and an
 advantage, and the policy gradient inside that whole equivalence class is
@@ -80,6 +95,38 @@ over a set covering most of the action space. Enforcement makes the board legal
 and leaves the policy no reason to prefer a legal move to an illegal one.
 
 ---
+
+## Against the floor and the bar
+
+Every figure above ranks arms against each other. Against the scripted ladder,
+on the same nine held-out tables, n=10 each:
+
+| policy | referee off | `revert_unit` | the rule costs |
+|---|---|---|---|
+| `hold_deployment` (floor) | — | −55.7 | — |
+| `random` | — | −50.6 | — |
+| `squad_march` | 82.2 | 81.1 | −1.1 |
+| **`squad_march_shoot` (the bar)** | **114.8** | **101.4** | **−13.4** |
+| agent, best two seeds | 89.2 | 84.4 | −4.8 |
+| agent, all four | 87.2 | 79.4 | −7.8 |
+
+**The agent does not beat the bar here — and coherency is not the reason.** The
+gap is **25.6** vp with the referee off and **17.0** with it on: obeying the rule
+*narrows* it. The bar pays **−13.4** to the referee against the agent's −4.8,
+because a shooting policy must break formation to get firing angles while the
+agent already holds it. `squad_march` pays just −1.1, since marching keeps
+squads together by construction.
+
+So the deficit is **generalisation**, and it predates every coherency change:
+the same checkpoints score **95.0** on the 36 training tables against 79–89 held
+out, and finish with **~94% of their force alive against the bar's 78–83%**
+while holding **3.3 objectives against 4.1**. The agent preserves its army and
+under-contests ground.
+
+This table exists because it nearly did not. The whole investigation ranked arms
+against each other for a day without a floor or a ceiling on current physics —
+which is how a policy scoring 17% against an 80% heuristic once read as progress
+in this project. Quote the agent against these rows, never on its own.
 
 ## The measurement error that produced three retracted reports
 

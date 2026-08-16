@@ -12,6 +12,18 @@
 #   at PLAY. It guarantees a legal board and teaches nothing, and training under
 #   it makes the policy WORSE at formation than never training under it at all.
 #
+#   FOR PLAY, USE `enforce_move: revert_unit` — the spec's own mode. Measured on
+#   the nine held-out tables, four checkpoints, two per warm-start lineage:
+#
+#     referee off      87.2 vp_margin   (illegal boards)
+#     revert_model     80.4             (a divergence from the rule)
+#     revert_unit      79.4             (the rule as written)
+#
+#   The spec mode and the divergence tie -- 1 vp apart with the sign flipping
+#   across checkpoints -- so the divergence buys nothing and rules accuracy is
+#   free. The referee costs ~7 vp, and a policy with better formation pays far
+#   less of it (86/85 against 75/72), because it gives the referee less to do.
+#
 # Measured over ten runs on these tables, with the referee switched OFF so the
 # numbers describe the policy rather than the wrapper:
 #
@@ -39,12 +51,31 @@
 # "objectives pay less". This zeroes an ILLEGAL position the policy can always
 # avoid at no cost, by keeping the model with its unit.
 #
-# WHAT IT SCORES. Six seeds, 300 epochs, warm-started from a trained
-# unconstrained policy (`25v25_maps_coherent.yaml`):
+# WHAT IT SCORES, AGAINST THE FLOOR AND THE BAR. Nine HELD-OUT tables, n=10
+# each, on current physics. Read the agent against these, never on its own:
 #
-#   nine HELD-OUT tables, n=10 each   73.7 .. 90.7 vp_margin, mean 81.5
-#   the 36 training tables, n=100     95.0 mean, held 2.97-3.32
-#   formation, referee off, 2"/9"     0.657 .. 0.903
+#                          referee off   revert_unit   the rule costs
+#   hold_deployment (STAY)         --         -55.7             --
+#   random                         --         -50.6             --
+#   squad_march                  82.2          81.1           -1.1
+#   squad_march_shoot (the BAR) 114.8         101.4          -13.4
+#   agent, best two seeds        89.2          84.4           -4.8
+#   agent, all four              87.2          79.4           -7.8
+#
+# ⚠ THE AGENT DOES NOT BEAT THE BAR HERE, and coherency is not why. The gap is
+# 25.6 vp with the referee OFF and only 17.0 with it ON -- obeying the rule
+# NARROWS it, because the bar pays -13.4 to the referee and the agent -4.8. The
+# bar has to break formation to get firing angles; the agent already holds it.
+# (`squad_march` pays just -1.1: marching keeps squads together by construction.)
+#
+# The deficit is GENERALISATION, and it predates all coherency work: the same
+# checkpoints score 95.0 on the 36 training tables against 79-89 held out, and
+# end with ~94% of their force alive against the bar's 78-83% while holding 3.3
+# objectives against 4.1. The agent preserves its army and under-contests
+# ground. More training layouts is the first thing to try; see also the
+# `max_groups` question -- five units cannot cover five or six objectives.
+#
+#   formation, referee off, 2"/9"     0.657 .. 0.903 (six seeds)
 #
 # ⚠ THE SPREAD IS NOT NOISE AND IT IS NOT THE SEED — IT IS THE WARM START.
 # Outcomes are bimodal and the split tracks the warm-start checkpoint. Sixteen
