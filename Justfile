@@ -270,6 +270,14 @@ render-maps env_config='' maps_dir='':
 # compared -- a kill is a lumpy 2.0 in one model's own row against
 # objective_hold's 0.15-0.30/step. Takes a baseline name or a checkpoint,
 # like measure-objective-split.
+# Clone a scripted baseline into the policy network, producing a checkpoint
+# `train.py --warm-start-ckpt-path` accepts. Crosses the coordination gap a
+# gradient cannot: every unilateral step toward advancing is downhill, while the
+# joint advancing policy scores HIGHER on the training reward (30.29 v 24.77).
+# Use: just behaviour-clone squad_march_shoot configs/golden/25v25_maps_coherency.yaml
+behaviour-clone policy env_config n_episodes='200' epochs='8' out='checkpoints/clone.ckpt' seed='0':
+	@uv run python -m scripts.behaviour_clone {{policy}} {{env_config}} {{n_episodes}} {{epochs}} {{out}} {{seed}}
+
 measure-income-share policy env_config n_episodes='30':
 	@uv run python -m scripts.measure_income_share {{policy}} {{env_config}} {{n_episodes}}
 

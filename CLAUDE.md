@@ -65,6 +65,7 @@ wargame_rl/
 │                                  #   measure_baselines, measure_checkpoint, measure_terrain,
 │                                  #   measure_noise_floor, measure_objective_split,
 │                                  #   measure_income_share, measure_maps,
+│                                  #   behaviour_clone,
 │                                  #   measure_throughput)
 ├── train.py                       # Training entry point (Typer CLI)
 ├── simulate.py                    # Inference/simulation entry point
@@ -107,6 +108,7 @@ wargame_rl/
 | Why an objective was not held | `just measure-objective-split <policy\|ckpt> <config.yaml> [n_episodes]` |
 | How often a policy is in unit coherency | `just measure-coherency <policy\|ckpt> <config.yaml> [n_episodes]` |
 | Which calculator pays, and how much is global | `just measure-income-share <policy\|ckpt> <config.yaml> [n_episodes]` |
+| Clone a scripted policy into the network (warm-start checkpoint) | `just behaviour-clone <policy> <config.yaml> [n_episodes] [epochs] [out]` |
 | Two policies on identical layouts, paired per episode | `just measure-paired <policy\|ckpt> <policy\|ckpt> <config.yaml> [n_episodes] [seed_base]` |
 | Dice-vs-scenario noise floor | `just measure-noise-floor <config.yaml> [n_layouts] [n_combat_seeds] [policy]` |
 | Terrain-profile statistics | `just measure-terrain <config.yaml> [n_layouts]` |

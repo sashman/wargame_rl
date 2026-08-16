@@ -33,6 +33,8 @@ def _auto_register() -> None:
         "wargame_rl.wargame.envs.baseline.scripted_split_evenly",
         "wargame_rl.wargame.envs.baseline.scripted_squad_march",
         "wargame_rl.wargame.envs.baseline.scripted_squad_march_shoot",
+        "wargame_rl.wargame.envs.baseline.scripted_squad_march_deny",
+        "wargame_rl.wargame.envs.baseline.scripted_squad_march_take",
         "wargame_rl.wargame.envs.baseline.scripted_contest_and_spread",
     ):
         importlib.import_module(module)
