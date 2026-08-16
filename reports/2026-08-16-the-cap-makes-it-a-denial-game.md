@@ -524,7 +524,55 @@ was known. Three things above are weaker than stated:
   last one is worth.
 - **Target reproduction.** At 98.3% match the clone reproduces `squad_march_take`
   to within **3.1 vp** on average (113.6 against the target's 116.7), not the
-  0.9 that clone A alone suggested.
+  0.9 that clone A alone suggested. **On score only — see below.**
+
+### Action-match fidelity does not preserve unit coherency
+
+Noticed by eye in the README recording — units visibly coming apart — and then
+measured. Five games recorded through `record_episode` so both policies play the
+**same seeded game** on table 20, coherency evaluated per movement phase with
+`domain/coherency.py`, the same predicate `just measure-coherency` uses:
+
+| seed | clone | `squad_march_take` |
+|---|---|---|
+| 1 | 0.220 | 0.970 |
+| 2 | 0.440 | 0.770 |
+| 3 | 0.650 | 1.000 |
+| 4 | 0.210 | 1.000 |
+| 5 | 0.460 | 1.000 |
+| **mean** | **0.396** | **0.948** |
+
+**Paired difference −0.552 +/- 0.097, clone behind in 5 of 5** (t = 5.7 on 4 df,
+p ~ 0.005). In the README game specifically: 5/5 units coherent at deployment,
+3/5 after the *first* move, 0.555 averaged over the 20 movement phases with 8.5
+models adrift.
+
+**The teacher's discipline is structural.** `squad_march` moves every model in a
+unit along one shared centroid vector, so relative positions — and therefore
+coherency — are preserved by construction. The clone reproduces that vector
+98.3% of the time and still lands at 0.40.
+
+**Why 98.3% is not enough, and it is not bad luck.** Coherency is a **joint**
+property of a unit: all five models must be placed correctly for the unit to
+count. At a 1.7% per-model error rate that is `0.983^5` ~ **92%** of unit-steps
+clean, and the errors are **positionally cumulative** — a model that drifts out
+is never pulled back, because nothing re-forms it and `enforce_move` is off in
+this config. Deployment is fully coherent (`enforce_at_deployment: true`) and it
+degrades from the first move on.
+
+**The consequence for how fidelity was measured here.** Score barely notices —
+the clone is 3.1 vp behind its teacher while its formation discipline is 0.55
+lower. **Action match is blind to joint and structural properties**, so "the
+clone reproduces its target" is a claim about `vp_margin` and nothing else. Two
+things follow:
+
+- Under `coherency.enforce_move` the clone would be taxed far more than its
+  teacher, and its 113.6 would not survive the switch. Any future comparison run
+  with enforcement on must re-measure both, not carry these numbers over.
+- A clone that must respect a **joint** constraint needs a fidelity measure at
+  the unit level, not the model level — or the constraint enforced during
+  cloning. Per-model action match will keep reporting 98% while the property the
+  rules care about is gone.
 
 **The lesson is the one this repo keeps relearning in new clothes.** A stochastic
 procedure was run once, its output quoted as a property of the procedure, and the
