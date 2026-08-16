@@ -296,6 +296,17 @@ table_05 — where the trained agent collapses to 40.5 with two thirds of its ar
 hidden — the clone scores **110.9** at `on_obj` 0.801. The collapse simply does
 not happen.
 
+On the nine matched **training** tables it is level too, and nominally ahead:
+
+| policy | vp_margin | +/- | player VP | opp VP | held | alive |
+|---|---|---|---|---|---|---|
+| `squad_march_shoot` | 98.7 | 2.7 | 272.1 | 173.4 | 3.84 | 0.733 |
+| **the clone** | **100.3** | 2.5 | 272.2 | **171.9** | 3.85 | 0.734 |
+
+So the clone is the scripted bar, reproduced inside the network, on both map
+sets and on every column — 90.6% action match is enough to carry the whole
+policy, not merely most of it.
+
 **So the network class, the observation and the action space were never the
 limitation.** The same architecture, on the same inputs, plays at bar level when
 it is *put* there. Everything measured above is a statement about the
