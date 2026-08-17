@@ -590,6 +590,44 @@ teacher's 0.002 and `split unit` 0.336 against 0.116. The clone's squads do not
 stretch at the edges; they come apart into disconnected groups heading different
 ways.
 
+### Cloning from referee-corrected demonstrations is a null
+
+The obvious fix, and it does not work. Demonstrations re-collected with
+`coherency.enforce_move: revert_model` on, so the referee undoes any move that
+would leave a unit out of coherency, then cloned identically (1200 episodes, 60
+epochs) and **scored with the referee OFF** — enforcement flatters compliance by
+simply correcting it, so a clone measured under it says nothing.
+
+| | unit coherency | vp_margin |
+|---|---|---|
+| clones from ordinary demonstrations | 0.665 (0.580-0.711, n=6) | 113.6 (111.1-115.8, n=5) |
+| **clone from enforced demonstrations** | **0.690** | **114.3** |
+
+**Both inside the existing spread.** It cost nothing and bought nothing. The
+fidelity gain was real and did not transfer: unit-match 0.965 -> **0.974** on the
+demonstrations, in-play formation unchanged.
+
+**Why, and it was predictable from the mechanism.** The teacher already holds
+formation on 88% of unit-moves, so the referee barely fires; and where it does it
+*removes* an incoherent state rather than demonstrating a recovery from one. The
+clone's failure is not that its demonstrations contain bad formation — it is that
+the clone **leaves the demonstrated states behind**. Small errors put it in
+positions the teacher never occupied, and no example of regrouping exists
+anywhere in the data, because a policy that never breaks formation never needs to
+re-form.
+
+**What that leaves.** Two routes, neither tried:
+
+- **Label the clone's own states.** Run the clone, ask the teacher what *it*
+  would do in the positions the clone actually reaches, and train on those. This
+  supplies exactly the missing thing — correct moves for broken formations —
+  which no amount of watching an unbroken teacher can provide.
+- **Make the structure representable.** The teacher's discipline is structural:
+  it moves every model of a unit along one shared centroid vector, so formation
+  is guaranteed by construction rather than chosen. Feeding the policy its unit's
+  own centroid vector would let it represent that pattern instead of
+  reconstructing it model by model.
+
 **Open, and not resolved here: whether fidelity buys formation back.**
 `clone_take_xl` (98.3% action match) scores 0.580 and `clone_unitmatch` (98.6%
 action match, 0.965 *unit* match) scores 0.697 — but the two differ in seed as
