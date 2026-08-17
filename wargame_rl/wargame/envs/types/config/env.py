@@ -156,6 +156,31 @@ class WargameEnvConfig(BaseModel):
         "the per-model embedding shape, so existing checkpoints fail to load — "
         "the intended loud failure. UNTRAINED.",
     )
+    observe_unit_centroid: bool = Field(
+        default=False,
+        description="Put the vector from each model to its unit's live centroid "
+        "on that model's token, widening it by two (dx, dy). "
+        "**`observe_coherency` carries magnitudes; this carries direction.** A "
+        "model can already be told its unit is stretched or split, and still "
+        "have nothing saying which way to move to fix it — the spread ratio is "
+        "the same number whichever side of the unit it sits on. "
+        "Added because the strongest scripted policies keep formation "
+        "*structurally* rather than by choosing to: `squad_march` moves every "
+        "model of a unit along ONE shared centroid vector, so relative "
+        "positions are preserved by construction. A behaviour clone at 98.6% "
+        "action match reproduces that only to 0.665 unit coherency against the "
+        "demonstrator's 0.884, and cloning from referee-corrected "
+        "demonstrations measured null — so the hypothesis is that the pattern "
+        "is not *representable* from the current inputs rather than merely "
+        "unlearned. This is the quantity the demonstrator actually computes. "
+        "Normalised by the spread cap, not the board diagonal, for the reason "
+        "given above, and clipped per axis so the sign survives at any "
+        "distance — direction is the point, and `observe_coherency` already "
+        "carries the magnitude. "
+        "Default False keeps the tensor byte-identical; turning it on changes "
+        "the per-model embedding shape, so existing checkpoints fail to load — "
+        "the intended loud failure. UNTRAINED.",
+    )
     observe_unit_strength: bool = Field(
         default=False,
         description="Put each model's *unit* remaining strength (alive members "
