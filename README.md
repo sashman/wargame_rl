@@ -21,7 +21,7 @@ legal (coherency 0.960 here, against ~0.71 for this model in general). The
 table below is the average over 900 games; this is the model at its best on
 both, not a typical outing.*
 
-| player | margin | objectives held | force surviving | VP conceded |
+| player | VP margin | objectives held | force surviving | VP conceded |
 |---|---|---|---|---|
 | deploys and never moves | −88.9 | 1.27 | 100% | 210.0 |
 | moves at random | −26.4 | 1.96 | 82% | 208.6 |
