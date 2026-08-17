@@ -27,7 +27,7 @@ both, not a typical outing.*
 | moves at random | −26.4 | 1.96 | 82% | 208.6 |
 | walks squads onto objectives | +79.4 | 3.50 | 67% | 190.9 |
 | …and shoots | +111.8 | 4.00 | 76% | 160.4 |
-| **`squad_march_take` — strongest player** | **+116.7** | 4.02 | 76% | 160.8 |
+| **`squad_march_take` — …and takes the weakest-held ground first; strongest player** | **+116.7** | 4.02 | 76% | 160.8 |
 | **trained model, taught by copying** | **+113.6** | 3.82 | 67% | 158.0 |
 | **trained model, learning on its own** | **+75.9 to +84.7** | 3.24 | 95% | 181.6 |
 
