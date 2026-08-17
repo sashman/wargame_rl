@@ -71,6 +71,21 @@ class WargameModelObservation:
     coherency_spread: float | None = None
     coherency_component: float | None = None
 
+    # The vector from this model to its unit's live centroid, over the spread
+    # cap, clipped per axis. Populated only when `observe_unit_centroid` is set.
+    #
+    # The two scalars above are **magnitudes** — they say a unit is stretched or
+    # split, not which way to move. The spread ratio reads the same from either
+    # side of a strung-out unit, so a model cannot act on it. This is the
+    # direction, and it is the quantity the scripted demonstrators actually
+    # compute: `squad_march` steers a whole unit along one shared centroid
+    # vector, which is *why* their formation holds by construction.
+    #
+    # Clipped per axis rather than by magnitude so the sign survives however far
+    # a model has strayed. Losing "how far" costs nothing here — that is exactly
+    # what `coherency_spread` carries.
+    unit_offset: np.ndarray | None = None
+
     @property
     def size(self) -> int:
         """Location + distances + group one-hot + same-group distance + alive + wound scalars (3) + combat stats (7), plus unit strength, objective-presence flags and the two coherency scalars when observed."""
@@ -85,4 +100,5 @@ class WargameModelObservation:
             + (0 if self.objective_present is None else self.objective_present.size)
             + (0 if self.coherency_spread is None else 1)
             + (0 if self.coherency_component is None else 1)
+            + (0 if self.unit_offset is None else self.unit_offset.size)
         )

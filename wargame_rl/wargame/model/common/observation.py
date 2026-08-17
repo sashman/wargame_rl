@@ -162,6 +162,10 @@ def _models_to_features(
         core_parts.append(
             np.array([[m.coherency_component] for m in models], dtype=np.float32)
         )
+    # Two more columns inside `core`: the direction to the unit's centroid. The
+    # two scalars above say a unit is stretched; this says which way to close it.
+    if models[0].unit_offset is not None:
+        core_parts.append(np.array([m.unit_offset for m in models], dtype=np.float32))
     core = np.hstack(core_parts)
     alive_col = np.array([[m.alive] for m in models], dtype=np.float32)
     cw = np.array([[float(m.current_wounds)] for m in models], dtype=np.float32)
@@ -254,12 +258,18 @@ def _observation_to_numpy(
         for attribute in ("coherency_spread", "coherency_component")
         if probe and getattr(probe[0], attribute) is not None
     )
+    # The centroid direction, when `observe_unit_centroid` is set. Two columns,
+    # one per axis — the magnitude is `coherency_spread`'s job.
+    n_unit_centroid = (
+        len(probe[0].unit_offset) if probe and probe[0].unit_offset is not None else 0
+    )
     base_feature_dim = (
         n_spatial
         + n_group
         + n_unit_strength
         + n_objective_presence
         + n_coherency
+        + n_unit_centroid
         + N_WOUND_FEATURES
         + N_COMBAT_STATS
     )
