@@ -65,6 +65,27 @@ class BaselineResult:
     # without this is how three experimental rounds were aimed at a deficit that
     # was mostly measurement noise.
     objectives_held: float
+    # **The rules-legality column, reported unconditionally.** Share of the
+    # player's unit-movement-phases in coherency (`docs/rules/03-moving.md`
+    # § Coherency), and the mean models outside their unit's coherent body.
+    #
+    # Always present, never opt-in, because a score quoted without it is a score
+    # that may have been earned by illegal moves. Coherency is *measured* on
+    # every config and *enforced* on almost none, so silence here reads as
+    # compliance and is not.
+    #
+    # This is the **policy's own** figure: it prefers `intended_coherency_rate`,
+    # falling back to the realised rate only when nothing is enforcing, where the
+    # two are identical by construction. Under `coherency.enforce_move` the
+    # realised rate is 1.000 whatever the policy does -- a metric sampled after a
+    # corrective wrapper measures the wrapper -- and reading it that way is what
+    # published a policy intending 0.630 as 1.000.
+    #
+    # Read the pair together: a unit shot down to one model is coherent by
+    # definition, so a rising rate can mean the units died. `models_out` has no
+    # such failure mode, since a dead model contributes nothing to it.
+    coherency_rate: float | None = None
+    models_out_of_coherency: float | None = None
     # Per-episode values, in seed order, kept so a result can carry an error bar
     # and so two results measured on the same seeds can be paired. The loop
     # already builds these lists; discarding them is why no figure in this
@@ -261,6 +282,8 @@ def evaluate_selector(
     proximities: list[float | None] = []
     firepower: list[float | None] = []
     held: list[float] = []
+    coherency: list[float | None] = []
+    models_out: list[float | None] = []
 
     for index, seed in enumerate(seeds):
         options = None if combat_seeds is None else {"combat_seed": combat_seeds[index]}
@@ -289,6 +312,19 @@ def evaluate_selector(
         exposures.append(env.exposure_rate)
         proximities.append(env.terrain_proximity)
         firepower.append(env.firepower_ratio)
+        # Intent first: under `enforce_move` the realised rate is 1.000 however
+        # the policy played, so reading it would report the referee. With no
+        # referee `intended_*` is None and the two are the same board anyway.
+        coherency.append(
+            env.intended_coherency_rate
+            if env.intended_coherency_rate is not None
+            else env.coherency_rate
+        )
+        models_out.append(
+            env.intended_models_out_of_coherency
+            if env.intended_models_out_of_coherency is not None
+            else env.models_out_of_coherency
+        )
 
         # Control is a strict count comparison, so an objective with equal
         # numbers on it scores for nobody.
@@ -320,6 +356,8 @@ def evaluate_selector(
         terrain_proximity=mean_of_measured(proximities),
         firepower_ratio=mean_of_measured(firepower),
         objectives_held=float(np.mean(held)),
+        coherency_rate=mean_of_measured(coherency),
+        models_out_of_coherency=mean_of_measured(models_out),
         vp_margin_per_episode=tuple(
             player - opponent for player, opponent in zip(player_vps, opponent_vps)
         ),
