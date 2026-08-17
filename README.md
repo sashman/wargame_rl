@@ -33,12 +33,24 @@ consistently, which is exactly the number that saturates the 15-point-a-round
 scoring cap. It does not wander, it does not stall, and it does not lose games
 it should win.
 
-![The copy-taught model playing table 20](docs/images/clone-plays-table-20.gif)
+**Where it is weakest is unit coherency.** Under the 2"/9" rule it keeps a unit
+together on **0.665** of unit-moves, against **0.884** for the hand-written
+policy it learned from and **0.853** for the earlier model that learned on its
+own — and its squads tend to come apart into separate groups rather than merely
+stretch. Nothing in the score reflects this: coherency is measured but not
+enforced in this scenario, so a model can play a winning game while its units
+fragment. Six copies were measured and all six sit below both, so it is a
+property of the copying, not a bad run.
 
-*One selected game — blue, moving first — on table 20, one of the nine it has
-never seen. It ends 270–105, holding four objectives to one. Chosen from a
-sweep of 36 games to show the play clearly; the table above is the average over
-900, and a typical game is closer than this one.*
+![The copy-taught model playing table 30](docs/images/clone-plays-table-30.gif)
+
+*One selected game — blue, moving first — on table 30, one of the nine it has
+never seen. It ends **285–120**, holding four objectives to one, with the
+player's score at the maximum a side can bank in twenty rounds. Chosen from a
+sweep of 54 games on **both** counts — a decisive win and units that stayed
+legal (coherency 0.960 here, against ~0.71 for this model in general). The
+table above is the average over 900 games; this is the model at its best on
+both, not a typical outing.*
 
 Full detail: [reports/](reports/README.md), most recently
 [the cap makes it a denial game](reports/2026-08-16-the-cap-makes-it-a-denial-game.md).
