@@ -12,8 +12,7 @@ reported as the average victory-point margin, ours minus theirs.
 
 The scenario: **25 models a side in five units of five**, both players carrying
 the identical profile, over five or six objectives. **All combat is shooting, to
-a maximum of 12 inches** — this game has no charge or fight phase, so nothing is
-ever decided in melee.
+a maximum of 12 inches.**
 
 ![The copy-taught model playing table 30](docs/images/clone-plays-table-30.gif)
 
