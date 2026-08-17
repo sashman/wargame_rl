@@ -151,6 +151,39 @@ Target choice is uniform rather than nearest-first. Nearest-first would concentr
 
 Requires the shooting phase to be active (`skip_phases` must not contain `shooting`) and `opponent_models` entries to carry `weapons`.
 
+### `scripted_baseline`
+
+Plays any registered **baseline** policy (`baseline/registry.py`) on the opponent side. The baselines are the strongest scripted play in the repo, but they were written to drive the *player* and the two hierarchies are separate; this adapter closes the gap without a second copy of any policy. The baseline is handed a side-swapped view of the env (`_MirroredEnv`), so the same code plays the opponent.
+
+```yaml
+opponent_policy:
+  type: scripted_baseline
+  params:
+    baseline: squad_march_take
+```
+
+**Parameters:** `baseline` (**required**) — a name from the baseline registry: `random`, `hold_deployment`, `greedy_nearest`, `split_evenly`, `squad_march`, `squad_march_shoot`, `squad_march_deny`, `squad_march_take`, `contest_and_spread`. Any further params are forwarded to the baseline's constructor. An unknown name raises at construction.
+
+`shoots` is derived from whether the baseline overrides `select_shooting`, so a shooting baseline gets its mask refined with range, line-of-sight and engagement validity and a movement-only one does not pay for the check. It is not a performance switch: declared wrongly, shots would be applied unchecked.
+
+**Use case:** the opponent was the ceiling. Measured on `configs/golden/25v25_maps_coherency.yaml` and the same config with `squad_march_take` as the opponent (`configs/experiments/25v25_maps_take_opponent.yaml`) — same 60 layouts, seeds 700000+, `vp_margin` with win rate in brackets:
+
+| player | vs `scripted_advance_and_shoot` | vs `squad_march_take` |
+|---|---|---|
+| `random` | −19.3 (0.40) | −214.6 (0.00) |
+| `greedy_nearest` | +3.2 (0.30) | −161.6 (0.00) |
+| `split_evenly` | −24.6 (0.40) | −204.2 (0.00) |
+| `squad_march` | +81.1 (0.93) | −168.8 (0.00) |
+| `squad_march_shoot` (the old bar) | **+104.9 (0.98)** | **−5.6 (0.48)** |
+| `contest_and_spread` | +102.3 (0.98) | −48.8 (0.20) |
+| `squad_march_take` | +108.1 | +9.9 (mirror) |
+
+Six of the seven policies beat the old opponent and none of them beats this one. The bar loses 110 points of margin and drops to an even game; the ladder below it collapses from "roughly even" to "annihilated" (`random`'s surviving force falls from 0.84 of its army to 0.09). `squad_march_take` against itself sits near zero, as a mirror match should.
+
+Two honest caveats on that table. `squad_march_take` and `squad_march_shoot` are **not** separated at n=60 on either opponent — paired difference 3.2 ± 4.7 (t = 0.68) on the old one and 15.6 ± 13.8 (t = 1.13) on the new one — so "the strongest scripted policy" is a claim about where it was first measured, not one this table establishes. And the `squad_march_take` rows come from a paired run rather than the ladder, because `scripts/measure_baselines.py`'s `BASELINES` tuple does not include it.
+
+**Adopting this policy voids every baseline and agent score measured on that config** — the whole ladder, not just the bar. Re-run `just measure-baselines <config> 100 "" 700000` first.
+
 ## Planned Policies (Not Yet Implemented)
 
 The following policies are designed in the architecture but have no class and are not registered — naming one in YAML raises `ValueError: Unknown opponent policy type` from `build_opponent_policy`:
