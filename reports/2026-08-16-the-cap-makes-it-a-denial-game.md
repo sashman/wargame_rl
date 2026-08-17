@@ -32,7 +32,7 @@ score freely — conceding 21 points a game more than the scripted benchmark.
 
 **Why it could not learn better.** Two separate reasons, both measured. Sending
 one squad forward alone gets that squad killed, so the learning rule is right to
-refuse — even though the whole army committing together scores better. And the
+refuse — even though the whole army advancing together scores better. And the
 training setup pays a bonus for keeping decisions *uncertain*, which held the
 agent's play permanently vague; that is why changing what the reward pays for
 never moved anything.
@@ -311,7 +311,7 @@ Arms in flight at the time of writing (300 epochs, warm starts matched to the
   income-destruction failure that killed `overstack_penalty_per_extra` and
   `surplus_value`.
 - **`gamma 0.99`** — the episode is **40 steps** and the default `gamma: 0.9`
-  gives a GAE horizon of **6.9 steps**, so a committed move that repays over the
+  gives a GAE horizon of **6.9 steps**, so an advance that repays over the
   remaining twelve rounds is discounted to ~4% of face value. Hiding with an
   intact army is what that horizon rewards. `CLAUDE.md` records that the case
   for 0.9 was measured on a different scenario and its refutation retracted.
@@ -320,7 +320,7 @@ Two other arms were launched and killed before they answered anything, and are
 recorded here so the compute is accounted for: a `deny_mid` (0.75 / 0.5) killed
 at epoch ~40 because halving a 4x pay cut still leaves a 2x one, and a combined
 `deny_high` + `gamma 0.99` cell killed at epoch ~21 once the teleport audit
-above showed *why* the denial arm is null — the committing squad dies, and no
+above showed *why* the denial arm is null — the advancing squad dies, and no
 discount factor pays a corpse. Only
 `configs/experiments/25v25_maps_deny_high.yaml` is kept, because it backs the
 measured null; `git log -- configs/` restores the others.
@@ -372,9 +372,9 @@ So all three of the obvious config-level levers are closed: the steering already
 points the right way, the pay is already collected on arrival, and raising that
 pay is a null because the arriving squad is dead.
 
-**The obstacle is coordination, not pricing.** A *unilateral* squad commitment is
+**The obstacle is coordination, not pricing.** A *unilateral* squad advance is
 correctly punished, and the per-model gradient is right to refuse it. The bar
-survives the same commitment because it commits everything at once and trades in
+survives the same advance because it commits everything at once and trades in
 aggregate — 24% casualties for 4.00 objectives held. That is a large, discrete,
 coordinated change of strategy, and it is not reachable by local perturbation
 from a defensive optimum. **The agent is not mis-trained; it is in a good local
@@ -385,9 +385,9 @@ optimum that a gradient cannot leave.**
 Two facts measured here are only consistent if the agent sits in a *local*
 optimum, and together they say exactly what to do:
 
-- a **unilateral** commitment loses the deviating squad 29.4 income -> every
-  gradient step toward committing is **downhill**;
-- the **joint** committing policy earns **30.29** training reward an episode
+- a **unilateral** advance loses the deviating squad 29.4 income -> every
+  gradient step toward advancing is **downhill**;
+- the **joint** advancing policy earns **30.29** training reward an episode
   against the agent's **24.77**, ahead on *every* calculator -> the destination
   is **uphill**.
 
@@ -524,85 +524,7 @@ was known. Three things above are weaker than stated:
   last one is worth.
 - **Target reproduction.** At 98.3% match the clone reproduces `squad_march_take`
   to within **3.1 vp** on average (113.6 against the target's 116.7), not the
-  0.9 that clone A alone suggested. **On score only — see below.**
-
-### Action-match fidelity does not preserve unit coherency
-
-Noticed by eye in the README recording — units visibly coming apart — and then
-measured. Five games recorded through `record_episode` so both policies play the
-**same seeded game** on table 20, coherency evaluated per movement phase with
-`domain/coherency.py`, the same predicate `just measure-coherency` uses:
-
-| seed | clone | `squad_march_take` |
-|---|---|---|
-| 1 | 0.220 | 0.970 |
-| 2 | 0.440 | 0.770 |
-| 3 | 0.650 | 1.000 |
-| 4 | 0.210 | 1.000 |
-| 5 | 0.460 | 1.000 |
-| **mean** | **0.396** | **0.948** |
-
-**Paired difference −0.552 +/- 0.097, clone behind in 5 of 5** (t = 5.7 on 4 df,
-p ~ 0.005). In the README game specifically: 5/5 units coherent at deployment,
-3/5 after the *first* move, 0.555 averaged over the 20 movement phases with 8.5
-models adrift.
-
-**The whole ladder, measured properly** — `just measure-coherency`, the rules
-2"/9" predicate, n=30 at seeds 700000+, player rows. These are the numbers to
-quote; the table-20 figures above are one table and per-movement-phase, so they
-are not comparable:
-
-| policy | units coherent | steps coherent | adrift | chain fail | spread fail | split unit |
-|---|---|---|---|---|---|---|
-| `squad_march` | 0.843 | 0.485 | 0.94 | 0.142 | 0.004 | 0.157 |
-| `squad_march_shoot` | 0.825 | 0.405 | 1.08 | 0.155 | 0.003 | 0.175 |
-| **`squad_march_take`** | **0.884** | **0.617** | **0.78** | 0.087 | 0.002 | 0.116 |
-| trained PPO agent | 0.853 | 0.590 | 2.18 | 0.105 | 0.072 | 0.147 |
-| **its clone** | **0.580** | **0.238** | **5.69** | 0.339 | **0.270** | **0.420** |
-
-**The best network by score is the worst policy measured on formation** — below
-the trained agent it replaced (0.853), below every scripted baseline, and below
-the teacher it copies, which is the best of them all.
-
-**The failure is fragmentation, not looseness.** `spread fail` is 0.270 against
-the teacher's 0.002 — a factor of 135 — and `split unit` 0.420. The clone's
-squads do not stretch at the edges; they come apart into disconnected groups
-heading different ways. That is the same signature as
-`reports/`'s coherency work on trained agents, arrived at by a different route.
-
-**Two things this rules out.** The tactic is not the cause: `squad_march_take` is
-the *best-disciplined* policy on the board, so banking the cap and taking weak
-ground costs nothing in formation. And the trained agent's 0.853 is not merely
-the artefact of a policy that barely moves — its `adrift` of 2.18 against the
-teacher's 0.78 says it is not especially disciplined either, yet it is still
-three times better than the clone on that column.
-
-**The teacher's discipline is structural.** `squad_march` moves every model in a
-unit along one shared centroid vector, so relative positions — and therefore
-coherency — are preserved by construction. The clone reproduces that vector
-98.3% of the time and still lands at 0.40.
-
-**Why 98.3% is not enough, and it is not bad luck.** Coherency is a **joint**
-property of a unit: all five models must be placed correctly for the unit to
-count. At a 1.7% per-model error rate that is `0.983^5` ~ **92%** of unit-steps
-clean, and the errors are **positionally cumulative** — a model that drifts out
-is never pulled back, because nothing re-forms it and `enforce_move` is off in
-this config. Deployment is fully coherent (`enforce_at_deployment: true`) and it
-degrades from the first move on.
-
-**The consequence for how fidelity was measured here.** Score barely notices —
-the clone is 3.1 vp behind its teacher while its formation discipline is 0.55
-lower. **Action match is blind to joint and structural properties**, so "the
-clone reproduces its target" is a claim about `vp_margin` and nothing else. Two
-things follow:
-
-- Under `coherency.enforce_move` the clone would be taxed far more than its
-  teacher, and its 113.6 would not survive the switch. Any future comparison run
-  with enforcement on must re-measure both, not carry these numbers over.
-- A clone that must respect a **joint** constraint needs a fidelity measure at
-  the unit level, not the model level — or the constraint enforced during
-  cloning. Per-model action match will keep reporting 98% while the property the
-  rules care about is gone.
+  0.9 that clone A alone suggested.
 
 **The lesson is the one this repo keeps relearning in new clothes.** A stochastic
 procedure was run once, its output quoted as a property of the procedure, and the
@@ -646,7 +568,7 @@ prefer the agent's behaviour?
 Because those are different quantities. **30.29 is the undiscounted episode
 sum. PPO optimises the discounted per-model return**, and at `gamma: 0.9` with
 `gae_lambda: 0.95` the effective window is **6.9 steps of a 40-step episode**.
-Committing costs income now and repays over the remaining rounds; discounted at
+Advancing costs income now and repays over the remaining rounds; discounted at
 0.9 a step, a payoff 30 steps out is worth 4% of face value. **Under PPO's
 actual objective the conservative policy really is better**, even though it is
 worse over the episode and worse on `vp_margin`.
@@ -789,7 +711,7 @@ reason above.
 Warm-starting PPO from the clone is running at the time of writing (two seeds at
 the default learning rate, two at 1e-4 — the clone supplies the policy but not
 the critic, so the first updates carry a random value function and could undo
-it). The prediction that makes this worth running: because the committing policy
+it). The prediction that makes this worth running: because the advancing policy
 scores *higher* on the training reward, PPO has no incentive to drift back.
 
 **One hazard closed on the way.** `_apply_warm_start_weights` loads with

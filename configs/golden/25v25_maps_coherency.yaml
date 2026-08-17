@@ -152,7 +152,7 @@ config_name: 25v25_maps_coherency
 # do-nothing floor of 210.0 the agent achieves 57% of the bar's denial.
 #
 # ⚠ RAISING THE PAY FOR CONTESTED GROUND IS A MEASURED NULL. See
-# `docs/reward-phases.md` and the report: the committing squad DIES (it loses
+# `docs/reward-phases.md` and the report: the advancing squad DIES (it loses
 # 29.4 of its own income and 1.7 of 5 models), and this calculator pays only
 # living models, so no rate pays a corpse.
 #
