@@ -251,14 +251,19 @@ opponent_deployment_zone: [40, 0, 60, 44]
 # that the opponent WAS most of the ceiling. Same 60 layouts, seeds 700000+,
 # vp_margin with win rate in brackets:
 #
-#                             old opponent      this one
-#   random                     -19.3 (0.40)  -214.6 (0.00)
-#   greedy_nearest              +3.2 (0.30)  -161.6 (0.00)
-#   split_evenly               -24.6 (0.40)  -204.2 (0.00)
-#   squad_march                +81.1 (0.93)  -168.8 (0.00)
-#   squad_march_shoot (BAR)   +104.9 (0.98)    -5.6 (0.48)
-#   contest_and_spread        +102.3 (0.98)   -48.8 (0.20)
-#   squad_march_take          +108.1          +9.9  (mirror)
+#                          old opponent  coh    this one  coh
+#   random                  -23.1 (0.42) 0.026  -215.2 (0.00) 0.168
+#   greedy_nearest           +3.2 (0.30) 0.846  -161.6 (0.00) 0.897
+#   split_evenly            -24.6 (0.40) 0.125  -204.2 (0.00) 0.202
+#   squad_march             +81.1 (0.93) 0.843  -168.8 (0.00) 0.790
+#   squad_march_shoot (BAR)+104.9 (0.98) 0.830    -5.6 (0.48) 0.795
+#   contest_and_spread     +102.3 (0.98) 0.806   -48.8 (0.20) 0.729
+#   squad_march_take       +108.1          -     +9.9 (mirror)  -
+#
+# A COMPETENT OPPONENT COSTS FORMATION: every policy that holds coherency at
+# all holds it less here, because units get shot apart faster. `random`'s rate
+# RISES only because it is dead (alive 0.849 -> 0.105, and a unit shot down to
+# one model is coherent by definition) -- read the rate with `alive`.
 #
 # Six of seven policies beat the old opponent; none beats this one. The bar
 # gives up 110 points of margin and lands on an even game, and everything below

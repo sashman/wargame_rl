@@ -168,17 +168,23 @@ opponent_policy:
 
 **Use case:** the opponent was the ceiling. Measured on `configs/golden/25v25_maps_coherency.yaml` and the same config with `squad_march_take` as the opponent (`configs/experiments/25v25_maps_take_opponent.yaml`) — same 60 layouts, seeds 700000+, `vp_margin` with win rate in brackets:
 
-| player | vs `scripted_advance_and_shoot` | vs `squad_march_take` |
-|---|---|---|
-| `random` | −19.3 (0.40) | −214.6 (0.00) |
-| `greedy_nearest` | +3.2 (0.30) | −161.6 (0.00) |
-| `split_evenly` | −24.6 (0.40) | −204.2 (0.00) |
-| `squad_march` | +81.1 (0.93) | −168.8 (0.00) |
-| `squad_march_shoot` (the old bar) | **+104.9 (0.98)** | **−5.6 (0.48)** |
-| `contest_and_spread` | +102.3 (0.98) | −48.8 (0.20) |
-| `squad_march_take` | +108.1 | +9.9 (mirror) |
+| player | vs `scripted_advance_and_shoot` | coherent | vs `squad_march_take` | coherent |
+|---|---|---|---|---|
+| `random` | −23.1 (0.42) | 0.026 | −215.2 (0.00) | 0.168 |
+| `greedy_nearest` | +3.2 (0.30) | 0.846 | −161.6 (0.00) | 0.897 |
+| `split_evenly` | −24.6 (0.40) | 0.125 | −204.2 (0.00) | 0.202 |
+| `squad_march` | +81.1 (0.93) | 0.843 | −168.8 (0.00) | 0.790 |
+| `squad_march_shoot` (the old bar) | **+104.9 (0.98)** | 0.830 | **−5.6 (0.48)** | 0.795 |
+| `contest_and_spread` | +102.3 (0.98) | 0.806 | −48.8 (0.20) | 0.729 |
+| `squad_march_take` | +108.1 | — | +9.9 (mirror) | — |
 
-Six of the seven policies beat the old opponent and none of them beats this one. The bar loses 110 points of margin and drops to an even game; the ladder below it collapses from "roughly even" to "annihilated" (`random`'s surviving force falls from 0.84 of its army to 0.09). `squad_march_take` against itself sits near zero, as a mirror match should.
+Six of the seven policies beat the old opponent and none of them beats this one. The bar loses 110 points of margin and drops to an even game; the ladder below it collapses from "roughly even" to "annihilated" (`random`'s surviving force falls from 0.85 of its army to 0.11). `squad_march_take` against itself sits near zero, as a mirror match should.
+
+**A competent opponent costs formation.** Every policy that holds formation at all holds it *less* against `squad_march_take` — `squad_march` 0.843 → 0.790, the bar 0.830 → 0.795, `contest_and_spread` 0.806 → 0.729 — because units get shot apart faster and casualties break the chain. Worth knowing before any coherency figure measured on the old opponent is carried across.
+
+**`random` is the reading-rule trap, live.** Its rate *rises* 0.026 → 0.168 against the stronger opponent, and its `adrift` falls 21.7 → 10.9 — not because it plays better but because it is dead: `alive` goes 0.849 → 0.105, and a unit shot down to one model is coherent by definition. Read the rate with `adrift` and `alive`, never alone.
+
+Three caveats on the table. `squad_march_take` and `squad_march_shoot` are **not** separated at n=60 on either opponent — paired difference 3.2 ± 4.7 (t = 0.68) on the old one and 15.6 ± 13.8 (t = 1.13) on the new one — so "the strongest scripted policy" is a claim about where it was first measured, not one this table establishes. The `squad_march_take` rows come from a paired run rather than the ladder, because `scripts/measure_baselines.py`'s `BASELINES` tuple does not include it, which is also why they have no coherency figure. And `random`'s row moves between runs at fixed seeds: it draws from the global `np.random` rather than `env.np_random`, so it is the one policy here that is not reproducible from an episode seed.
 
 Two honest caveats on that table. `squad_march_take` and `squad_march_shoot` are **not** separated at n=60 on either opponent — paired difference 3.2 ± 4.7 (t = 0.68) on the old one and 15.6 ± 13.8 (t = 1.13) on the new one — so "the strongest scripted policy" is a claim about where it was first measured, not one this table establishes. And the `squad_march_take` rows come from a paired run rather than the ladder, because `scripts/measure_baselines.py`'s `BASELINES` tuple does not include it.
 
