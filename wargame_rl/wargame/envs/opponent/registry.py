@@ -39,6 +39,7 @@ def _auto_register() -> None:
         "wargame_rl.wargame.envs.opponent.random_policy",
         "wargame_rl.wargame.envs.opponent.scripted_advance_to_objective_policy",
         "wargame_rl.wargame.envs.opponent.scripted_advance_and_shoot_policy",
+        "wargame_rl.wargame.envs.opponent.scripted_baseline_policy",
     ):
         importlib.import_module(mod)
 
