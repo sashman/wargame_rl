@@ -141,6 +141,33 @@ def test_squad_march_keeps_squads_together() -> None:
     assert marching.worst_cohesion_gap < splitting.worst_cohesion_gap
 
 
+def test_every_score_carries_rules_coherency() -> None:
+    """The legality column is unconditional, and it separates legal from illegal.
+
+    Every scoring table in `scripts/` renders `BaselineResult`, so a `None` here
+    is a dash in `measure-baselines`, `measure-checkpoint` and `measure-maps` at
+    once — and a score read without it may have been earned by illegal moves.
+    Coherency is measured on every config and enforced on almost none, so the
+    absence of the column reads as compliance and is not.
+
+    Asserted as a *contrast* rather than against a threshold: a bare "not None"
+    would pass on a field wired to a constant.
+    """
+    env = _make_env(number_of_wargame_models=9, number_of_objectives=3, max_groups=3)
+    seeds = [0, 1, 2]
+
+    marching = evaluate_baseline(build_baseline_policy("squad_march"), env, seeds)
+    splitting = evaluate_baseline(build_baseline_policy("split_evenly"), env, seeds)
+
+    assert marching.coherency_rate is not None
+    assert marching.models_out_of_coherency is not None
+    assert splitting.coherency_rate is not None
+    assert splitting.models_out_of_coherency is not None
+
+    assert marching.coherency_rate > splitting.coherency_rate
+    assert marching.models_out_of_coherency < splitting.models_out_of_coherency
+
+
 def test_squad_march_sends_whole_squads_to_one_objective() -> None:
     """Every member of a squad ends on the same objective."""
     env = _make_env()

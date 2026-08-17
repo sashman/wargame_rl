@@ -36,6 +36,7 @@ from wargame_rl.wargame.envs.baseline.evaluate import (
     BaselineResult,
     evaluate_selector,
     format_optional_metric,
+    mean_of_measured,
     selector_for,
     standard_error,
 )
@@ -135,6 +136,8 @@ def format_row(label: str, result: BaselineResult) -> str:
         f"{result.win_rate:>8.2f}{result.vp_margin:>12.1f}{error_text:>8}"
         f"{result.player_vp:>8.1f}{result.opponent_vp:>8.1f}"
         f"{result.objectives_held:>7.2f}{result.final_fraction_alive:>8.3f}"
+        f"{format_optional_metric(result.coherency_rate):>10}"
+        f"{format_optional_metric(result.models_out_of_coherency, 2):>8}"
         f"{format_optional_metric(result.exposure_rate):>10}"
         f"{format_optional_metric(result.firepower_ratio, 2):>11}"
     )
@@ -170,7 +173,8 @@ def main() -> None:
     header = (
         f"{'map':<20}{'on obj':>9}{'win':>8}{'VP margin':>12}{'+/-':>8}"
         f"{'plr VP':>8}{'opp VP':>8}"
-        f"{'held':>7}{'alive':>8}{'exposure':>10}{'firepower':>11}"
+        f"{'held':>7}{'alive':>8}{'coherent':>10}{'adrift':>8}"
+        f"{'exposure':>10}{'firepower':>11}"
     )
     print(header)
     print("-" * len(header))
@@ -203,6 +207,8 @@ def main() -> None:
         f"{statistics.fmean(r.opponent_vp for r in results):>8.1f}"
         f"{statistics.fmean(r.objectives_held for r in results):>7.2f}"
         f"{statistics.fmean(r.final_fraction_alive for r in results):>8.3f}"
+        f"{format_optional_metric(mean_of_measured([r.coherency_rate for r in results])):>10}"
+        f"{format_optional_metric(mean_of_measured([r.models_out_of_coherency for r in results]), 2):>8}"
         "   (+/- is across maps)"
     )
     if len(results) > 1:

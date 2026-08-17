@@ -2,6 +2,62 @@
 
 Reinforcement learning model for playing table top wargames.
 
+## Where we are
+
+*Written for someone who knows the game but not the machine learning.*
+
+Every player — hand-written or trained — is scored the same way: **100 games of
+20 rounds on each of nine tables it has never seen** — 900 games in all —
+reported as the average victory-point margin, ours minus theirs.
+
+The scenario: **25 models a side in five units of five**, both players carrying
+the identical profile, over five or six objectives. **All combat is shooting, to
+a maximum of 12 inches.**
+
+![The copy-taught model playing table 30](docs/images/clone-plays-table-30.gif)
+
+*One selected game — blue, moving first — on table 30, one of the nine it has
+never seen. It ends **285–120**, holding four objectives to one, with the
+player's score at the maximum a side can bank in twenty rounds. Chosen from a
+sweep of 54 games on **both** counts — a decisive win and units that stayed
+legal (coherency 0.960 here, against ~0.71 for this model in general). The
+table below is the average over 900 games; this is the model at its best on
+both, not a typical outing.*
+
+| player | VP margin | objectives held | force surviving | VP conceded |
+|---|---|---|---|---|
+| deploys and never moves | −88.9 | 1.27 | 100% | 210.0 |
+| moves at random | −26.4 | 1.96 | 82% | 208.6 |
+| walks squads onto objectives | +79.4 | 3.50 | 67% | 190.9 |
+| …and shoots | +111.8 | 4.00 | 76% | 160.4 |
+| **`squad_march_take` — …and takes the weakest-held objectives first; strongest player** | **+116.7** | 4.02 | 76% | 160.8 |
+| **trained model, taught by copying** | **+113.6** | 3.82 | 67% | 158.0 |
+| **trained model, learning on its own** | **+75.9 to +84.7** | 3.24 | 95% | 181.6 |
+
+### What the trained model can do
+
+It plays a competent, cautious holding game. It deploys, moves onto objectives
+and keeps them, and it **maxes out its own scoring** — 264 points of
+a 285 ceiling, which is within a few points of the best player on the table. On
+its own half of the scoreboard it is close to perfect.
+
+It has learned the shape of the mission: it holds around three objectives
+consistently, which is exactly the number that saturates the 15-point-a-round
+scoring cap. It does not wander, it does not stall, and it does not lose games
+it should win.
+
+**Where it is weakest is unit coherency.** Under the 2"/9" rule it keeps a unit
+together on **0.665** of unit-moves, against **0.884** for the hand-written
+policy it learned from and **0.853** for the earlier model that learned on its
+own — and its squads tend to come apart into separate groups rather than merely
+stretch. Nothing in the score reflects this: coherency is measured but not
+enforced in this scenario, so a model can play a winning game while its units
+fragment. Six copies were measured and all six sit below both, so it is a
+property of the copying, not a bad run.
+
+Full detail: [reports/](reports/README.md), most recently
+[the cap makes it a denial game](reports/2026-08-16-the-cap-makes-it-a-denial-game.md).
+
 ## Documentation
 
 - [Goals & Roadmap](docs/goals-and-roadmap.md) — Project vision, current status, and phased development plan

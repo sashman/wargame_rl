@@ -302,6 +302,37 @@ coherency".
 `just measure-coherency <policy|ckpt> <config>` is the offline version, and
 reports the same quantities split by which of the three conditions failed.
 
+#### ⚠ Every score carries coherency — never quote one without it
+
+`measure-baselines`, `measure-checkpoint` and `measure-maps` all print a
+**`coherent`** and an **`adrift`** column, unconditionally. They are not
+optional the way `exposure` is, and they are not there for interest: coherency
+is *measured* on every config and *enforced* on almost none, so a table without
+them is a table that may be reporting a score earned by illegal play. On the
+real tables `random` scores `coherent` **0.008** with 22.5 models adrift — it
+breaks the rule on essentially every move — and nothing else in its row says so.
+
+The column is the **policy's own** compliance. It reads
+`intended_coherency_rate` and falls back to the realised rate only when nothing
+is enforcing, where the two are the same board by construction. That fallback is
+the reading rule made automatic: under `coherency.enforce_move` the realised rate
+is **1.000 whatever the policy does**, because a metric sampled after a
+corrective wrapper measures the wrapper.
+
+Two things this does not do, and they are the caller's job:
+
+- **It does not make the board legal.** Enforcement is a referee applied at
+  *play* — `enforce_move: revert_unit`, the spec's own mode. Training under it
+  makes formation *worse* (0.569 against 0.756–0.886 for the gate alone), because
+  every reverted action produces the identical outcome, so they share an
+  advantage and the policy gradient inside that set is exactly zero.
+- **It does not compare across referee settings.** A score with the referee on
+  and one with it off are different games; `revert_unit` costs the bar 13.4 vp
+  and the agent 4.8.
+
+The training-side lever that does work is `objective_hold.require_coherent`:
+a model outside its unit's coherent body earns no objective income.
+
 **Prefer `firepower_ratio` to `exposure_rate` for any question about cover.**
 Exposure counts only our side of the exchange, so it falls both when a policy
 manoeuvres into a good fight and when it merely hides from every fight — it
@@ -661,6 +692,11 @@ Quote it against a baseline on the same maps, as with every other number here.
 State the verdict, the evidence with metric keys and epochs, and — for every claim — whether
 it rests on a full history or a sampled one. Distinguish "the 5 runs I sampled" from "the
 project". If a red flag depends on a trap above, say which.
+
+**Report `coherent` beside every score, including the baselines'.** A vp_margin
+is not a result on its own — it is a result *and* a claim that the moves earning
+it were legal, and only the second column carries that claim. See
+[§ Every score carries coherency](#-every-score-carries-coherency--never-quote-one-without-it).
 
 ---
 

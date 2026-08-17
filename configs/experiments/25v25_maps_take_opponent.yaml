@@ -237,12 +237,52 @@ skip_phases:
 deployment_zone: [0, 0, 20, 44]
 opponent_deployment_zone: [40, 0, 60, 44]
 
-# Shoots back. Every other opponent policy is movement-only, which leaves
-# terrain constraining only the player's own shooting and gives cover no value
-# whatsoever. Note this invalidates every baseline and agent score previously
-# measured against the movement-only opponent.
+# THE ONLY DIFFERENCE FROM `golden/25v25_maps_coherency.yaml`. The opponent
+# plays `squad_march_take` -- the strongest scripted policy measured here --
+# instead of `scripted_advance_and_shoot`, which picks its target uniformly and
+# never revises where a squad is going.
+#
+# The question is whether the ceiling is the scenario. A two-rule heuristic
+# captures ~96% of the available value against the old opponent; if that is
+# because the opponent is weak rather than because the game is shallow, a
+# competent opponent should compress the whole ladder and leave room above it.
+#
+# ⚠ EVERY NUMBER MEASURED ON THE GOLDEN CONFIG IS VOID HERE, and the answer is
+# that the opponent WAS most of the ceiling. Same 60 layouts, seeds 700000+,
+# vp_margin with win rate in brackets:
+#
+#                          old opponent  coh    this one  coh
+#   random                  -23.1 (0.42) 0.026  -215.2 (0.00) 0.168
+#   greedy_nearest           +3.2 (0.30) 0.846  -161.6 (0.00) 0.897
+#   split_evenly            -24.6 (0.40) 0.125  -204.2 (0.00) 0.202
+#   squad_march             +81.1 (0.93) 0.843  -168.8 (0.00) 0.790
+#   squad_march_shoot (BAR)+104.9 (0.98) 0.830    -5.6 (0.48) 0.795
+#   contest_and_spread     +102.3 (0.98) 0.806   -48.8 (0.20) 0.729
+#   squad_march_take       +108.1          -     +9.9 (mirror)  -
+#
+# A COMPETENT OPPONENT COSTS FORMATION: every policy that holds coherency at
+# all holds it less here, because units get shot apart faster. `random`'s rate
+# RISES only because it is dead (alive 0.849 -> 0.105, and a unit shot down to
+# one model is coherent by definition) -- read the rate with `alive`.
+#
+# Six of seven policies beat the old opponent; none beats this one. The bar
+# gives up 110 points of margin and lands on an even game, and everything below
+# it stops being a contest at all -- `random` ends with 0.09 of its army alive
+# where it kept 0.84 before. THE SCRIPTED CEILING IS THEREFORE OPEN AGAIN: the
+# best hand-written play here scores about zero, so there is room above it for
+# something to find, which there was not at +115 against a saturated VP cap.
+#
+# ⚠ THIS IS NOT A TRAINED RESULT. Nothing has been trained on this config; the
+# table above is scripted play only. Whether PPO reaches or beats the mirror
+# here is the open question, not a claim made by shipping the file.
+#
+# Re-run `just measure-baselines configs/experiments/25v25_maps_take_opponent.yaml
+# 100 "" 700000` before quoting anything, and note `squad_march_take` is absent
+# from that recipe's `BASELINES` -- its rows above come from `measure-paired`.
 opponent_policy:
-  type: scripted_advance_and_shoot
+  type: scripted_baseline
+  params:
+    baseline: squad_march_take
 
 # The layout is drawn from the real tables, one per episode, instead of being
 # generated. This is the third terrain mode and it is the only one that trains

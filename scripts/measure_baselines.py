@@ -76,8 +76,8 @@ def main() -> None:
     print(f"\n{config_path}  ({n_episodes} episodes, seeds {seeds[0]}-{seeds[-1]})\n")
     header = (
         f"{'baseline':<18}{'on_obj':>9}{'win':>8}{'player_vp':>11}"
-        f"{'opp_vp':>9}{'held':>7}{'alive':>8}{'exposure':>10}"
-        f"{'terrain_d':>11}{'firepower':>12}"
+        f"{'opp_vp':>9}{'held':>7}{'alive':>8}{'coherent':>10}{'adrift':>8}"
+        f"{'exposure':>10}{'terrain_d':>11}{'firepower':>12}"
     )
     print(header)
     print("-" * len(header))
@@ -94,6 +94,8 @@ def main() -> None:
             f"{result.opponent_vp:>9.1f}"
             f"{result.objectives_held:>7.2f}"
             f"{result.final_fraction_alive:>8.3f}"
+            f"{format_optional_metric(result.coherency_rate):>10}"
+            f"{format_optional_metric(result.models_out_of_coherency, 2):>8}"
             f"{format_optional_metric(result.exposure_rate):>10}"
             f"{format_optional_metric(result.terrain_proximity, 1):>11}"
             f"{format_optional_metric(result.firepower_ratio, 2):>12}"
