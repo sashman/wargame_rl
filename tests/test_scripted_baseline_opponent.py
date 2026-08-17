@@ -16,6 +16,7 @@ package reads.
 
 from __future__ import annotations
 
+import copy
 import re
 from pathlib import Path
 
@@ -298,6 +299,27 @@ def test_a_bad_baseline_name_fails_at_construction(params: dict[str, str]) -> No
         build_opponent_policy(
             OpponentPolicyConfig(type="scripted_baseline", params=params), env
         )
+
+
+def test_an_env_carrying_this_policy_survives_a_deep_copy() -> None:
+    """The regression that killed every training run on this policy.
+
+    Lightning deep-copies the env in `save_hyperparameters`, and `deepcopy`
+    reconstructs an object *without* calling `__init__` — so a `__getattr__`
+    that reaches through `self._env` re-enters itself while `_env` is still
+    missing and recurses until the stack ends. Every other test here builds the
+    mirror normally and never sees it.
+    """
+    env = _make_env("squad_march_take")
+    env.reset(seed=0)
+
+    clone = copy.deepcopy(env)
+
+    policy = clone.opponent_policy
+    assert isinstance(policy, ScriptedBaselineOpponentPolicy)
+    assert policy.baseline_name == "squad_march_take"
+    # And the copy is still playable, not merely constructible.
+    clone.step(_hold(clone))
 
 
 def test_the_existing_opponent_policies_are_untouched() -> None:
