@@ -83,8 +83,20 @@ class _MirroredEnv:
         return self._env.opponent_action_handler
 
     def __getattr__(self, name: str) -> Any:
-        """Fall through to the real env for everything not side-specific."""
-        return getattr(self._env, name)
+        """Fall through to the real env for everything not side-specific.
+
+        The `__dict__` lookup rather than `self._env` is load-bearing, and it is
+        not defensive programming. `__getattr__` runs for any name normal lookup
+        misses, and `copy.deepcopy` reconstructs an instance *without* calling
+        `__init__` — so during the copy `_env` is missing, `self._env` re-enters
+        here, and the two recurse until the stack ends. Lightning deep-copies the
+        env in `save_hyperparameters`, so with the plain version every training
+        run on a config using this policy died at startup with `RecursionError`.
+        """
+        env = self.__dict__.get("_env")
+        if env is None:
+            raise AttributeError(name)
+        return getattr(env, name)
 
 
 class ScriptedBaselineOpponentPolicy(OpponentPolicy):
