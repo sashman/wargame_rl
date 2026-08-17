@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import torch
 
-from scripts.behaviour_clone import POLICY_PREFIX, VALUE_PREFIX
+from scripts.behaviour_clone import POLICY_PREFIX, VALUE_PREFIX, unit_match_counts
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.net import TransformerNetwork
@@ -107,3 +107,46 @@ def test_loading_a_clone_actually_changes_the_weights() -> None:
 
     assert not torch.equal(before, after), "warm start was a silent no-op"
     assert torch.allclose(after, torch.full_like(after, 0.5))
+
+
+def test_unit_match_is_all_or_nothing_per_unit() -> None:
+    """A unit-step counts only when *every* deciding member agreed.
+
+    This is the number `action-match` cannot give: coherency is a joint
+    property, so one wrong model spoils its whole unit. Measured, the gap is
+    not academic — a clone at 98.3% action match held unit coherency 0.580
+    against its demonstrator's 0.884.
+    """
+    group_ids = torch.tensor([0, 0, 1, 1])
+    actions = torch.tensor([[5, 5, 7, 7], [5, 5, 7, 7]])
+    choosing = torch.ones(2, 4, dtype=torch.bool)
+    # Step 0: unit 0 has one member wrong, unit 1 is perfect.
+    # Step 1: both units perfect.
+    predicted = torch.tensor([[5, 9, 7, 7], [5, 5, 7, 7]])
+
+    matched, counted = unit_match_counts(predicted, actions, choosing, group_ids)
+
+    assert counted == 4, "two units over two steps"
+    assert matched == 3, "only unit 0 at step 0 should fail"
+    # The per-model rate is 7/8 = 0.875 on the same data, which is the point:
+    # it reports a far healthier number than the joint property warrants.
+
+
+def test_a_unit_with_nothing_to_decide_is_not_counted() -> None:
+    """A wiped or fully-masked unit is skipped, not scored as a failure.
+
+    Mirrors `domain/coherency.py`, which iterates *living* models so that a
+    casualty never registers as a breach. Counting dead units as matches would
+    inflate the rate as an army dies — the same confound `coherency_rate`
+    already carries.
+    """
+    group_ids = torch.tensor([0, 0, 1, 1])
+    actions = torch.tensor([[5, 5, 7, 7]])
+    predicted = torch.tensor([[5, 5, 0, 0]])
+    # Unit 1 has no deciding member: its models are destroyed.
+    choosing = torch.tensor([[True, True, False, False]])
+
+    matched, counted = unit_match_counts(predicted, actions, choosing, group_ids)
+
+    assert counted == 1, "only unit 0 had a decision to make"
+    assert matched == 1

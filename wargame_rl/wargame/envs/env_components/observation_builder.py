@@ -107,6 +107,37 @@ class CoherencyDistances:
     furthest: float
 
 
+def _unit_offsets(models: list[WargameModel], spread_cap: float) -> np.ndarray:
+    """Per-model vector to its unit's live centroid, over the spread cap.
+
+    This is the quantity `ScriptedSquadMarchPolicy.select_movement` computes and
+    steers every member of a unit along; reproducing its *effect* from per-model
+    inputs is what a behaviour clone has been failing to do.
+
+    Dead models report ``(0, 0)`` — the same "nothing to correct" value a lone
+    or already-centred model reports — because `phase_manager` and the coherency
+    predicate both iterate the living, and a casualty must never read as a model
+    that needs to move.
+    """
+    offsets = np.zeros((len(models), 2), dtype=np.float32)
+    if not models:
+        return offsets
+
+    positions = np.array([m.location for m in models], dtype=float)
+    group_ids = np.array([m.group_id for m in models], dtype=np.intp)
+    alive = alive_mask_for(models)
+    live = np.flatnonzero(alive)
+    for group_id in np.unique(group_ids[live]):
+        members = live[group_ids[live] == group_id]
+        centroid = positions[members].mean(axis=0)
+        # Clipped per axis: the sign is the signal, and how far is already
+        # carried by `coherency_spread`.
+        offsets[members] = np.clip(
+            (centroid - positions[members]) / spread_cap, -1.0, 1.0
+        )
+    return offsets
+
+
 def _coherency_features(
     models: list[WargameModel],
     nearest_distance: float,
@@ -158,8 +189,12 @@ def _models_to_obs(
     objective_budget: int | None = None,
     n_objectives: int | None = None,
     coherency: CoherencyDistances | None = None,
+    unit_centroid_cap: float | None = None,
 ) -> list[WargameModelObservation]:
     strengths = _unit_strengths(models) if observe_unit_strength else {}
+    offsets = (
+        None if unit_centroid_cap is None else _unit_offsets(models, unit_centroid_cap)
+    )
     spread, component = (
         _coherency_features(models, coherency.nearest, coherency.furthest)
         if coherency is not None
@@ -220,6 +255,7 @@ def _models_to_obs(
                 coherency_component=(
                     None if component is None else float(component[i])
                 ),
+                unit_offset=(None if offsets is None else offsets[i]),
             )
         )
     return result
@@ -461,6 +497,13 @@ def build_observation(
         if view.config.observe_coherency
         else None
     )
+    # Resolved here for the same reason as the pair above: the config authors it
+    # in inches, and this is the one place that knows the scale.
+    unit_centroid_cap = (
+        view.rules_quantities.scale.to_units(view.config.coherency.furthest_distance)
+        if view.config.observe_unit_centroid
+        else None
+    )
     return WargameEnvObservation(
         current_turn=view.current_turn,
         wargame_models=_models_to_obs(
@@ -471,6 +514,7 @@ def build_observation(
             objective_budget=view.config.objective_budget,
             n_objectives=len(view.objectives),
             coherency=coherency,
+            unit_centroid_cap=unit_centroid_cap,
         ),
         objectives=objectives_obs,
         board_width=view.board_width,
@@ -483,6 +527,7 @@ def build_observation(
             objective_budget=view.config.objective_budget,
             n_objectives=len(view.objectives),
             coherency=coherency,
+            unit_centroid_cap=unit_centroid_cap,
         ),
         terrain=terrain_obs,
         action_mask=action_mask,
