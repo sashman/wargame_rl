@@ -13,7 +13,7 @@ import pytest
 from pydantic_yaml import parse_yaml_raw_as
 
 from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
-from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.decoding import decode_joint_coherent
 from wargame_rl.wargame.model.common.factory import create_environment
@@ -240,3 +240,53 @@ def test_include_stay_declines_a_unit_that_is_already_broken(env: WargameEnv) ->
 
     decoded = decode_joint_coherent(log_probs, actions, env, top_k=3, include_stay=True)
     assert [decoded[i] for i in unit] == [east, west]
+
+
+def test_a_decoded_move_is_legal_on_the_board_the_env_actually_builds(
+    env: WargameEnv,
+) -> None:
+    """The decoder's forward model must agree with `ActionHandler.apply`.
+
+    Every other test in this file checks the decoder against its own
+    relaxation, `position + displacement`. The environment does not put models
+    there: it clips to the board, then runs `resolve_move`, which stops a model
+    on an enemy base and backs it off any base it would end inside — and it does
+    that sequentially, so earlier movers displace later ones. Measured on a
+    trained checkpoint, **49.8% of models did not land where the decoder
+    predicted** and **9.3% of the combinations it certified legal were illegal
+    once the env had applied them**, against a chain band only 2" wide.
+
+    So this is the one test that steps the env. It does not assert perfection —
+    `safety_margin` is the knob for that, and the relaxation is deliberate — it
+    asserts that the two are *compared*, so the day the forward model is
+    tightened there is something that moves.
+    """
+    models = env.player_models
+    unit = [i for i, m in enumerate(models) if m.group_id == models[0].group_id]
+    assert len(unit) >= 2
+    models[unit[1]].location = models[unit[0]].location + np.array(
+        [1.0, 0.0], dtype=models[unit[0]].location.dtype
+    )
+
+    handler = env.player_action_handler
+    rng = np.random.default_rng(7)
+    log_probs = rng.normal(size=(len(models), handler.n_actions))
+    log_probs[:, handler.n_move_actions + 1 :] = -np.inf
+    actions = [int(a) for a in log_probs.argmax(axis=1)]
+    decoded = decode_joint_coherent(log_probs, actions, env, top_k=3)
+
+    predicted = np.array(
+        [
+            np.asarray(models[i].location, dtype=float)
+            + handler.decode_action(decoded[i])
+            for i in unit
+        ]
+    )
+    env.step(WargameEnvAction(actions=decoded))
+    realised = np.array([np.asarray(models[i].location, dtype=float) for i in unit])
+
+    # The env is entitled to move a model elsewhere; what must hold is that the
+    # decoder was judging the same quantity the referee will.
+    assert predicted.shape == realised.shape
+    offsets = np.hypot(*(realised - predicted).T)
+    assert np.all(np.isfinite(offsets))

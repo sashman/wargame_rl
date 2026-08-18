@@ -773,9 +773,11 @@ Same nine held-out tables, same three checkpoints — **only the decode differs*
 | `squad_march_deny` | −4.4 | 0.891 |
 
 Per seed, argmax → top-3: **−20.3 → +1.6**, **−37.9 → −10.1**, **−46.3 →
-−15.6**. Every seed improves, by 26.7 / 27.8 / 30.7 — a **+26.8 vp mean** with a
-spread of 4 vp, which on this scenario is remarkable given that the *seed* spread
-is 26.
+−15.6**. Every seed improves, by **21.9 / 27.8 / 30.7** — a **+26.8 vp mean**,
+sd 4.5, so the three gains span 8.8 vp against a *seed* spread of 26. (An earlier
+draft printed the first delta as 26.7 and called the span 4 vp; the mean was
+right, the per-seed figure was not, and the span was understated 2.2x. The effect
+is z≈10 either way.)
 
 **K=3 is the setting.** A sweep over K ∈ {1, 3, 5} on the training maps found
 K=5 better on one seed and worse on the other two, at 3.4x the candidate count.

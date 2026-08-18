@@ -157,10 +157,15 @@ def main() -> None:
     policy_or_checkpoint = sys.argv[1]
     config_path = sys.argv[2]
     n_episodes = int(sys.argv[3]) if len(sys.argv) > 3 else 100
-    maps_dir = Path(sys.argv[4]) if len(sys.argv) > 4 else DEFAULT_MAPS_DIR
+    # Quoted in the recipe so an omitted `maps_dir` arrives as an empty
+    # positional rather than collapsing and shifting `decode_topk` into its
+    # place -- which made `just measure-maps <p> <cfg> <n>` fail outright.
+    maps_dir = (
+        Path(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4] else DEFAULT_MAPS_DIR
+    )
     # Joint constrained decoding: 1 keeps the historical independent argmax, so
     # every number measured before this existed still reproduces.
-    decode_topk = int(sys.argv[5]) if len(sys.argv) > 5 else 1
+    decode_topk = int(sys.argv[5]) if len(sys.argv) > 5 and sys.argv[5] else 1
     # Stand a unit still when the decoder finds nothing legal, instead of
     # letting the referee revert it and cascade onto its neighbours.
     decode_stay = len(sys.argv) > 6 and sys.argv[6] not in ("", "0", "false")
