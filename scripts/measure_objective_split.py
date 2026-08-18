@@ -99,6 +99,19 @@ def _classify(player: int, opponent: int) -> str:
     return "lost_far"
 
 
+def _pad_to(rows: list[np.ndarray], width: int) -> np.ndarray:
+    """Stack ragged per-episode rows into one matrix, padding short ones with NaN.
+
+    Objectives vary per table on a `map_pool` config, so the rows are ragged.
+    NaN rather than 0 because a table with five objectives has no sixth, and a
+    zero there would read as a sixth objective that nobody is standing on.
+    """
+    padded = np.full((len(rows), width), np.nan, dtype=float)
+    for index, row in enumerate(rows):
+        padded[index, : len(row)] = row
+    return padded
+
+
 def main() -> None:
     """Print the objective-by-objective breakdown for one policy."""
     if len(sys.argv) < 3:
@@ -158,24 +171,36 @@ def main() -> None:
         gains.append(_redistribution_gain(player, opponent))
         alive_totals.append(int(alive_mask_for(env.wargame_models).sum()))
 
-    player_matrix = np.stack(ranked_player)
-    opponent_matrix = np.stack(ranked_opponent)
-    n_objectives = player_matrix.shape[1]
-    total = n_episodes * n_objectives
+    # A `map_pool` config draws a different table each episode and the real
+    # tables carry 5 OR 6 objectives, so these rows are ragged and `np.stack`
+    # raises. Pad the short rows with NaN rather than 0: a table that simply has
+    # no sixth objective must not read as a sixth objective standing empty,
+    # which is what a zero would say to every rate below.
+    n_objectives = max(len(row) for row in ranked_player)
+    player_matrix = _pad_to(ranked_player, n_objectives)
+    opponent_matrix = _pad_to(ranked_opponent, n_objectives)
+    total = sum(len(row) for row in ranked_player)
 
     print(f"\n{label}   {config_path}")
     print(f"{n_episodes} episodes, seeds {seeds[0]}-{seeds[-1]}\n")
 
     print("per-objective end state, ranked by player occupancy within each episode")
-    print(f"{'rank':<8}{'player':>9}{'opponent':>10}{'held rate':>12}")
-    print("-" * 39)
+    print(f"{'rank':<8}{'player':>9}{'opponent':>10}{'held rate':>12}{'n':>8}")
+    print("-" * 47)
     for rank in range(n_objectives):
+        present = ~np.isnan(player_matrix[:, rank])
+        if not present.any():
+            continue
         held_rate = float(
-            (player_matrix[:, rank] > opponent_matrix[:, rank]).mean(),
+            (player_matrix[present, rank] > opponent_matrix[present, rank]).mean(),
         )
+        # `n` is printed because a rank past the fifth exists on only some of
+        # the tables, and a mean over a third of the episodes should not be
+        # read like the others.
         print(
-            f"{rank + 1:<8}{player_matrix[:, rank].mean():>9.2f}"
-            f"{opponent_matrix[:, rank].mean():>10.2f}{held_rate:>12.2f}"
+            f"{rank + 1:<8}{np.nanmean(player_matrix[:, rank]):>9.2f}"
+            f"{np.nanmean(opponent_matrix[:, rank]):>10.2f}{held_rate:>12.2f}"
+            f"{int(present.sum()):>8}"
         )
 
     print(f"\n{'outcome':<14}{'share of objectives':>21}")
@@ -183,7 +208,9 @@ def main() -> None:
     for name, count in classes.items():
         print(f"{name:<14}{count / total:>21.3f}")
 
-    mean_held = float((player_matrix > opponent_matrix).sum(axis=1).mean())
+    # NaN compares false, so a padded slot cannot count as held.
+    with np.errstate(invalid="ignore"):
+        mean_held = float((player_matrix > opponent_matrix).sum(axis=1).mean())
     print(f"\nmodels alive at end        {np.mean(alive_totals):>8.1f}")
     print(f"objectives held            {mean_held:>8.2f}")
     print(f"surplus models on held     {np.mean(surpluses):>8.2f}")

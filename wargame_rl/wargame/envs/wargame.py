@@ -198,6 +198,10 @@ class WargameEnv(gym.Env):
         # Loaded and checked once: every map parsed, every polygon built, every
         # count held against the observation budgets. A draw is then an index.
         self._coherency_attrition = config.coherency.attrition
+        # Models each force destroyed itself this step under the coherency
+        # attrition rule. Reset per step; read by `step` when attributing kills.
+        self._attrition_deaths_player = 0
+        self._attrition_deaths_opponent = 0
         self._map_pool = MapPool.from_config(config)
         self._map_name: str | None = None
         # A drawn layout, like generated terrain below, has to exist before the
@@ -610,7 +614,7 @@ class WargameEnv(gym.Env):
             if state.active_player == self._player_side
             else self.opponent_models
         )
-        apply_attrition(
+        destroyed = apply_attrition(
             models,
             self._rules_quantities.scale.to_units(
                 self.config.coherency.nearest_distance
@@ -619,6 +623,15 @@ class WargameEnv(gym.Env):
                 self.config.coherency.furthest_distance
             ),
         )
+        # Kept so `step` can take these back out of its alive-diff. Without
+        # this the rule's "triggers nothing that fires on a model being
+        # destroyed" is documented and not implemented: the diff is taken
+        # across the whole step and attrition runs inside it, so the OTHER
+        # side is paid for models this force removed itself.
+        if state.active_player == self._player_side:
+            self._attrition_deaths_player += len(destroyed)
+        else:
+            self._attrition_deaths_opponent += len(destroyed)
 
     def _record_coherency(self) -> None:
         """Fold the player's formation into the episode's coherency totals.
@@ -1025,6 +1038,8 @@ class WargameEnv(gym.Env):
         self._battle.reset_vp_deltas()
         self._last_player_shooting_results = []
         self._last_opponent_shooting_results = []
+        self._attrition_deaths_player = 0
+        self._attrition_deaths_opponent = 0
         opp_alive_before = [m.is_alive for m in self.opponent_models]
         player_alive_before = [m.is_alive for m in self.wargame_models]
 
@@ -1065,17 +1080,31 @@ class WargameEnv(gym.Env):
 
         p_dmg = sum(r.result.damage_dealt for r in self._last_player_shooting_results)
         o_dmg = sum(r.result.damage_dealt for r in self._last_opponent_shooting_results)
-        p_kills = sum(
-            1
-            for i, m in enumerate(self.opponent_models)
-            if i < len(opp_alive_before) and opp_alive_before[i] and not m.is_alive
+        # The alive-diff spans the whole step, and coherency attrition runs
+        # inside it, so a force's own attrition losses would otherwise read as
+        # the other side's kills -- `killing` paying +5 a model for deaths
+        # nobody caused, and `models_lost` charging for them. `03-moving.md`
+        # § Regaining coherency: these are destroyed but trigger nothing that
+        # fires when a model is destroyed.
+        p_kills = max(
+            0,
+            sum(
+                1
+                for i, m in enumerate(self.opponent_models)
+                if i < len(opp_alive_before) and opp_alive_before[i] and not m.is_alive
+            )
+            - self._attrition_deaths_opponent,
         )
-        o_kills = sum(
-            1
-            for i, m in enumerate(self.wargame_models)
-            if i < len(player_alive_before)
-            and player_alive_before[i]
-            and not m.is_alive
+        o_kills = max(
+            0,
+            sum(
+                1
+                for i, m in enumerate(self.wargame_models)
+                if i < len(player_alive_before)
+                and player_alive_before[i]
+                and not m.is_alive
+            )
+            - self._attrition_deaths_player,
         )
         # Attribute each kill to the model that fired it, so shooting reward
         # lands on that model's advantage rather than being shared flat.

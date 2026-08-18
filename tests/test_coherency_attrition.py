@@ -182,3 +182,81 @@ def test_a_unit_never_loses_every_model(n_models: int) -> None:
     # Assert
     assert len(destroyed) == n_models - 1
     assert len(survivors(models)) == 1
+
+
+def test_attrition_deaths_are_not_credited_to_the_other_side() -> None:
+    """A force's own attrition losses must not read as the enemy's kills.
+
+    `03-moving.md` § Regaining coherency: these models are destroyed but trigger
+    nothing that fires when a model is destroyed. The env's kill counters are an
+    alive-diff across the whole `step()`, and attrition runs *inside* that
+    window, so without an explicit correction the global `killing` calculator
+    pays one side for models the other side removed itself.
+
+    Asserted through `killing` rather than through the counter, so the test
+    fails if the correction is dropped from `step` -- checking the counter alone
+    would be true by construction. Measured before the fix: 9 opponent deaths
+    per 12 episodes were unattributable to any shot, against exactly 0 with
+    attrition off, which is what pinned the cause.
+    """
+    from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
+    from wargame_rl.wargame.envs.reward.phase import (
+        RewardCalculatorConfig,
+        RewardPhaseConfig,
+    )
+
+    base = parse_yaml_raw_as(
+        WargameEnvConfig,
+        open("configs/evaluation/25v25_maps_take_opponent_refereed.yaml").read(),
+    )
+    assert base.coherency.attrition, "fixture config must have attrition on"
+
+    # `killing` is the global calculator that reads `player_models_killed`, and
+    # it is the one the leak paid. Isolating it makes the breakdown readable.
+    bonus = 1.0
+    config = base.model_copy(
+        update={
+            "reward_phases": [
+                RewardPhaseConfig(
+                    name="kills-only",
+                    terminate_on_success=False,
+                    reward_calculators=[
+                        RewardCalculatorConfig(
+                            type="killing",
+                            weight=1.0,
+                            params={"bonus_killing_opponent": bonus},
+                        )
+                    ],
+                    success_criteria=base.reward_phases[-1].success_criteria,
+                )
+            ]
+        }
+    )
+
+    env = create_environment(config)
+    policy = build_baseline_policy("squad_march_take")
+    attrition_seen = 0
+    shot_kills = 0
+    paid_for = 0.0
+
+    for episode in range(3):
+        observation, _ = env.reset(seed=700_000 + episode)
+        terminated = truncated = False
+        while not (terminated or truncated):
+            action = policy.select_action(
+                env.player_models, env, action_mask=observation.action_mask
+            )
+            observation, _reward, terminated, truncated, _info = env.step(action)
+            attrition_seen += env._attrition_deaths_opponent
+            shot_kills += sum(1 for r in env._last_player_shooting_results if r.killed)
+            paid_for += env.last_reward_breakdown.get("killing", 0.0)
+
+    # Vacuous unless attrition actually fired.
+    assert attrition_seen > 0, "attrition never triggered; scenario cannot show the bug"
+    # `killing` is global, so every alive model receives it: the breakdown is
+    # the per-model mean, which equals the per-step bonus. Compare totals.
+    assert paid_for == pytest.approx(bonus * shot_kills, rel=1e-6), (
+        f"killing paid {paid_for} for {shot_kills} shooting kills while "
+        f"{attrition_seen} opponent models were destroyed by the opponent's own "
+        "coherency attrition -- those are being credited to the player"
+    )
