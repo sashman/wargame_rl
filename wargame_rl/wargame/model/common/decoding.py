@@ -109,6 +109,7 @@ def decode_joint_coherent(
     top_k: int,
     max_candidates: int = DEFAULT_MAX_CANDIDATES,
     include_stay: bool = False,
+    safety_margin: float = 0.0,
 ) -> list[int]:
     """Rerank each unit's actions into the most probable coherency-legal joint one.
 
@@ -121,6 +122,21 @@ def decode_joint_coherent(
             distances. Nothing is mutated.
         top_k: Candidates per model. 1 disables the decoder entirely.
         max_candidates: Skip a unit whose ``top_k ** size`` exceeds this.
+        safety_margin: Inches to tighten the chain distance by when judging a
+            candidate. **The decoder validates `position + displacement`; the
+            environment does not put models there.** `resolve_move` backs a
+            model off any base it would end inside, stops it dead on an enemy
+            base, and clamps to the board edge, and models resolve sequentially
+            so earlier movers displace later ones. Measured on the control
+            checkpoint over five held-out episodes with enforcement off:
+            **49.8% of models do not land where this function predicted**, mean
+            offset 0.820in and p90 2.005in -- the same size as the whole 2in
+            chain band -- and **9.3% of the combinations certified legal here
+            were illegal by the time the referee looked**. Simulating the
+            resolution exactly is not possible per unit (models of other units
+            move in the same loop) and 243 combos x k models of python collision
+            resolution would cost far more than the decode itself. A margin buys
+            the same protection generically, at the price of a smaller legal set.
         include_stay: Stand a unit still when its top-K set contains no legal
             combination at all, instead of handing it back for the referee to
             revert. It applies to the 0.3-1.4% of unit-moves the decoder cannot
@@ -171,13 +187,15 @@ def decode_joint_coherent(
             continue
         combos = np.array(list(itertools.product(*per_model)))
         ends = positions[None, :, :] + displacements[combos]
-        legal = _coherent_mask(ends, radii, nearest, furthest)
+        legal = _coherent_mask(ends, radii, max(nearest - safety_margin, 0.0), furthest)
         if not legal.any():
             # A strict fallback, never a competitor: standing still is only ever
             # taken when the ranked set offers nothing legal, so it cannot make
             # the policy passive. It is declined when the unit is *already*
             # incoherent -- a casualty split cannot be closed by not moving,
             # which is exactly what attrition is for.
+            # Judged at the TRUE distance: standing still moves nobody, so
+            # nothing can back off and the margin has no work to do here.
             if (
                 include_stay
                 and _coherent_mask(positions[None], radii, nearest, furthest)[0]
