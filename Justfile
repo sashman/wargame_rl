@@ -275,8 +275,8 @@ render-maps env_config='' maps_dir='':
 # gradient cannot: every unilateral step toward advancing is downhill, while the
 # joint advancing policy scores HIGHER on the training reward (30.29 v 24.77).
 # Use: just behaviour-clone squad_march_shoot configs/golden/25v25_maps_coherency.yaml
-behaviour-clone policy env_config n_episodes='200' epochs='8' out='checkpoints/clone.ckpt' seed='0':
-	@uv run python -m scripts.behaviour_clone {{policy}} {{env_config}} {{n_episodes}} {{epochs}} {{out}} {{seed}}
+behaviour-clone policy env_config n_episodes='200' epochs='8' out='checkpoints/clone.ckpt' seed='0' decode_topk='1':
+	@uv run python -m scripts.behaviour_clone {{policy}} {{env_config}} {{n_episodes}} {{epochs}} {{out}} {{seed}} {{decode_topk}}
 
 measure-income-share policy env_config n_episodes='30':
 	@uv run python -m scripts.measure_income_share {{policy}} {{env_config}} {{n_episodes}}

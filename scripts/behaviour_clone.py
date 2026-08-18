@@ -20,7 +20,22 @@ a discrete distance away. Behaviour cloning crosses it in one step, and because
 the destination scores *higher* on the training reward, PPO warm-started there
 has no incentive to drift back.
 
-Usage: just behaviour-clone <policy> <env_config> [n_episodes] [epochs] [out] [seed]
+Usage: just behaviour-clone <policy|ckpt> <env_config> [n_episodes] [epochs] [out]
+       [seed] [decode_topk]
+
+**The teacher may be a checkpoint, and it may be decoded.** Passing a
+checkpoint path with `decode_topk` > 1 distils *joint constrained decoding*
+into the weights: the demonstrations are the most probable coherency-legal
+combination the teacher's own distribution allows, which on three seeds is
+worth +26.8 vp_margin and coherency 0.651 -> 0.847 at play time. Cloning it
+asks whether the network can carry that improvement itself.
+
+⚠ **A per-model fit does not inherit a joint property.** A 98.3%-action-match
+clone of `squad_march_take` holds 0.40 unit coherency against its teacher's
+0.95, because matching each marginal says nothing about whether independent
+samples from those marginals are jointly legal. Expect the student to need the
+decoder too; the question is whether it needs it *less*, and whether the two
+compound.
 
 **Clone twice before quoting a clone.** Two clones from identical data and
 identical settings, differing only in weight initialisation, measured **115.8**
@@ -42,8 +57,8 @@ import torch
 from pydantic_yaml import parse_yaml_raw_as
 from torch import nn
 
-from wargame_rl.wargame.envs.baseline.evaluate import selector_for
-from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
+from scripts.measure_maps import build_action_selector
+from wargame_rl.wargame.envs.baseline.evaluate import ActionSelector
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.common.device import auto_device
 from wargame_rl.wargame.model.common.factory import create_environment
@@ -112,13 +127,13 @@ def unit_match_counts(
 
 
 def collect(
-    policy_name: str, config: WargameEnvConfig, n_episodes: int, gamma: float
+    select: ActionSelector, config: WargameEnvConfig, n_episodes: int, gamma: float
 ) -> tuple[list[torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Play `policy_name` and record what it saw, what it did, and what it earned.
+    """Play the demonstrator and record what it saw, what it did, and what it earned.
 
     Returns the five state tensors stacked over steps, the action mask, the
-    action the scripted policy chose for each model, and the **discounted
-    per-model return** from each step to the end of its episode.
+    action the demonstrator chose for each model, and the **discounted per-model
+    return** from each step to the end of its episode.
 
     The return is per model, not per episode, because that is what PPO's critic
     predicts -- `value_from_encoded` emits one value per player token.
@@ -126,9 +141,12 @@ def collect(
     Every step is kept, movement and shooting alike: the phase is part of the
     game-feature vector, so one network learns both and the clone reproduces the
     whole policy rather than half of it.
+
+    The selector is passed in rather than built here, because the demonstrator
+    is no longer necessarily a scripted policy: a checkpoint played under joint
+    constrained decoding is one too, and it is the interesting one.
     """
     env = create_environment(env_config=config)
-    select = selector_for(build_baseline_policy(policy_name))
 
     states: list[list[torch.Tensor]] = []
     masks: list[torch.Tensor] = []
@@ -307,13 +325,18 @@ def main() -> None:
         print(__doc__)
         raise SystemExit(1)
 
-    policy_name = sys.argv[1]
+    teacher = sys.argv[1]
     config_path = sys.argv[2]
     n_episodes = int(sys.argv[3]) if len(sys.argv) > 3 else 200
     epochs = int(sys.argv[4]) if len(sys.argv) > 4 else 8
     out_path = (
         Path(sys.argv[5]) if len(sys.argv) > 5 else Path("checkpoints/clone.ckpt")
     )
+    # Decoding the TEACHER, not the student. At K>1 the demonstrations are the
+    # most probable coherency-legal action *combination* the teacher's own
+    # distribution allows, so the student is fitted to legal joint play rather
+    # than to the independent argmax that produced 33% cancelled unit-moves.
+    decode_topk = int(sys.argv[7]) if len(sys.argv) > 7 else 1
     # Seeds the weight init and the batch shuffling -- the ONLY things that
     # differ between two clones of the same demonstrations, and worth 4.7 vp of
     # held-out score. Unseeded, a clone is not reproducible and a single one is
@@ -333,8 +356,13 @@ def main() -> None:
     # is the slow half -- 1200 episodes is ~30 minutes against ~20 for the fit.
     # Caching it is what makes "clone several times and look at the spread"
     # affordable, which the variance above makes mandatory rather than nice.
+    # A checkpoint path is not a filename, and two teachers differing only in
+    # `decode_topk` produce different demonstrations -- both have to reach the
+    # cache key or a decoded run silently reuses an argmax collection.
+    select, teacher_label = build_action_selector(teacher, config, decode_topk)
     cache = Path("checkpoints/clone_data") / (
-        f"{policy_name}-{Path(config_path).stem}-{n_episodes}-g{gamma}.pt"
+        f"{teacher_label}-k{decode_topk}-{Path(config_path).stem}"
+        f"-{n_episodes}-g{gamma}.pt"
     )
     if cache.exists():
         print(f"reusing collected demonstrations from {cache}")
@@ -346,10 +374,11 @@ def main() -> None:
             payload["returns"],
         )
     else:
-        print(f"collecting {n_episodes} episodes of '{policy_name}' on {config_path}")
-        states, masks, actions, returns = collect(
-            policy_name, config, n_episodes, gamma
+        print(
+            f"collecting {n_episodes} episodes of '{teacher_label}' "
+            f"(decode_topk={decode_topk}) on {config_path}"
         )
+        states, masks, actions, returns = collect(select, config, n_episodes, gamma)
         cache.parent.mkdir(parents=True, exist_ok=True)
         torch.save(
             {

@@ -17,8 +17,17 @@ from __future__ import annotations
 
 import torch
 
-from scripts.behaviour_clone import POLICY_PREFIX, VALUE_PREFIX, unit_match_counts
-from wargame_rl.wargame.envs.types import WargameEnvConfig
+from scripts.behaviour_clone import (
+    POLICY_PREFIX,
+    VALUE_PREFIX,
+    collect,
+    unit_match_counts,
+)
+from wargame_rl.wargame.envs.types import (
+    WargameEnvAction,
+    WargameEnvConfig,
+    WargameEnvObservation,
+)
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.net import TransformerNetwork
 from wargame_rl.wargame.model.ppo.lightning import PPOLightning
@@ -150,3 +159,39 @@ def test_a_unit_with_nothing_to_decide_is_not_counted() -> None:
 
     assert counted == 1, "only unit 0 had a decision to make"
     assert matched == 1
+
+
+def test_collect_takes_any_selector_and_records_its_actions() -> None:
+    """`collect` must accept a decoded checkpoint teacher, not only a script.
+
+    Distilling joint constrained decoding is the whole reason the demonstrator
+    became a parameter: the teacher is a checkpoint played at `decode_topk` > 1,
+    and what is recorded has to be the action the teacher *actually played*. A
+    plumbing slip that recorded the undecoded argmax instead would train the
+    student on the wrong target and look completely normal.
+    """
+    config = WargameEnvConfig(
+        render_mode=None,
+        number_of_wargame_models=3,
+        number_of_objectives=2,
+        number_of_battle_rounds=2,
+    )
+    played: list[list[int]] = []
+
+    def select(observation: WargameEnvObservation, env: WargameEnv) -> WargameEnvAction:
+        # The HIGHEST legal action per model, not a constant: the recorded
+        # actions must differ across steps and models, or a `collect` that
+        # wrote zeros -- or the teacher's undecoded argmax -- would pass here.
+        assert observation.action_mask is not None
+        chosen = [int(row.nonzero()[0][-1]) for row in observation.action_mask]
+        played.append(chosen)
+        return WargameEnvAction(actions=chosen)
+
+    states, masks, actions, returns = collect(select, config, n_episodes=1, gamma=0.9)
+
+    assert actions.shape[0] == len(played)
+    assert actions.shape[1] == config.number_of_wargame_models
+    assert torch.equal(actions, torch.tensor(played, dtype=torch.long))
+    assert masks.shape[0] == actions.shape[0]
+    assert returns.shape == actions.shape
+    assert all(tensor.shape[0] == actions.shape[0] for tensor in states)
