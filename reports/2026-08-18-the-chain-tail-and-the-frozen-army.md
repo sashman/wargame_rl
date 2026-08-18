@@ -848,12 +848,70 @@ sampling from the renormalised joint does to entropy. And the compounding
 argument — that a policy trained knowing its preferences will be legally combined
 can stop hedging — is a prediction, not a result.
 
-**After that, in order:** train under `repair` (it does not alias, so the
-"never train under enforcement" rule does not apply to it — different illegal
-actions map to different repaired configurations, and the gradient survives);
-then the hold-ground reward from §12; then re-normalise the nearest-squadmate
-observation by the chain distance rather than the board diagonal, where the 2"
-decision band is 2.7% of the feature's range.
+**After that, in order:** the hold-ground reward from §12; then re-normalise the
+nearest-squadmate observation by the chain distance rather than the board
+diagonal, where the 2" decision band is 2.7% of the feature's range.
+
+**Training under `repair` is no longer on that list — it was run and it failed.**
+See §15.
 
 **Still do not re-run:** unit-level action spaces, smaller units,
 `observe_unit_centroid`, or training under `revert_unit`.
+
+
+---
+
+## 15. Training under `repair` — refuted, and the standing rule's reason was wrong
+
+§13.1 shipped `repair` as a play-time referee, and §14 nominated *training* under
+it as the next thing to try. The argument was specific and it looked airtight:
+
+> The rule "never train under enforcement" rests **entirely** on action
+> aliasing. Under a revert, every illegal joint action produces the identical
+> outcome, so they share a return and an advantage and the policy gradient
+> inside that whole set is exactly zero. `repair` does not alias — where a stray
+> ends up depends continuously on where it went and which squadmate is nearest —
+> so the gradient survives and there is something to learn from.
+
+Three seeds, 300 epochs, `ent_coef` 0.003, scored on the nine held-out tables at
+n=30 under `revert_unit` + `attrition`, against the never-enforced `ctl`
+baseline on the identical configuration:
+
+| | play K=1 | coherency | play K=3 | coherency |
+|---|---|---|---|---|
+| **trained under `repair`** | **−57.6** | **0.489** | **−16.7** | **0.774** |
+| `ctl`, never enforced | −34.8 | 0.651 | −8.0 | 0.847 |
+
+Per seed under repair, argmax: −67.5 / −39.4 / −66.0, coherency 0.479 / 0.536 /
+0.452. **No overlap with the control on formation.** The runs were healthy —
+checked at epoch 100 on the training pool, `on_obj` 0.858, `held` 2.50, `alive`
+0.598 — so this is not the do-nothing collapse the config header warned to watch
+for. It is simply a worse policy, and a much worse-formed one.
+
+**The gradient survived. It did not help.** So aliasing was never the whole
+cause, and the explanation this report has been carrying since §3 is incomplete.
+
+### What fits every arm instead
+
+**Any referee substitutes for the skill.** The policy is handed a legal board it
+never had to produce, so it never has to learn to produce one. That predicts an
+*ordering* by how helpful the referee is, and the ordering holds:
+
+| referee during training | formation learned |
+|---|---|
+| `repair` — actively walks strays into legality, at no cost to the unit | **0.489** |
+| `revert_unit` — cancels the move, so straying is at least punished | 0.569 |
+| none, reward gate only | 0.651–0.886 |
+
+`repair` is the *most* helpful referee and produces the *worst* formation.
+Aliasing cannot explain that ordering — repair does not alias and finishes last.
+Substitution can.
+
+**The practical rule is unchanged and its reason is now simpler:** enforce at
+play, never during training, **whether or not the mode aliases**. Do not look
+for a non-aliasing enforcement mode that escapes it; that search is closed.
+
+One thing worth keeping from the arm: the decoder rescued it too. The
+repair-trained policies gain **+40.9 vp** from top-3 decoding at play time
+(−57.6 → −16.7). Every policy it has been applied to, well-formed or badly
+formed, improves.
