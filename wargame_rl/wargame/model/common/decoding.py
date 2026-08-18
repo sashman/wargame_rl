@@ -50,6 +50,11 @@ if TYPE_CHECKING:
 # grows fast, and this project has been burned by per-model python loops before.
 DEFAULT_MAX_CANDIDATES = 4096
 
+# Action 0 is the no-op the handler decodes to a zero displacement. Standing
+# still cannot *break* coherency -- positions do not change -- which is why the
+# scripted policies collect 38-57% of their moves legal for free.
+STAY_ACTION = 0
+
 
 def _displacement_table(env: WargameEnv) -> np.ndarray:
     """Every action's (dx, dy), read from the handler rather than rebuilt.
@@ -103,6 +108,7 @@ def decode_joint_coherent(
     env: WargameEnv,
     top_k: int,
     max_candidates: int = DEFAULT_MAX_CANDIDATES,
+    include_stay: bool = False,
 ) -> list[int]:
     """Rerank each unit's actions into the most probable coherency-legal joint one.
 
@@ -115,6 +121,15 @@ def decode_joint_coherent(
             distances. Nothing is mutated.
         top_k: Candidates per model. 1 disables the decoder entirely.
         max_candidates: Skip a unit whose ``top_k ** size`` exceeds this.
+        include_stay: Stand a unit still when its top-K set contains no legal
+            combination at all, instead of handing it back for the referee to
+            revert. It applies to the 0.3-1.4% of unit-moves the decoder cannot
+            solve, and the two outcomes put the unit in the *same place* -- but
+            a revert additionally runs the overlap cascade, which drags
+            *neighbouring* units back and accounts for 9.2-15.3% of all freezes,
+            while a deliberate stay triggers nothing. Declined when the unit is
+            already incoherent, because standing still cannot close a casualty
+            split.
 
     Returns:
         A new action list. Units of fewer than two live models, and units with
@@ -158,6 +173,17 @@ def decode_joint_coherent(
         ends = positions[None, :, :] + displacements[combos]
         legal = _coherent_mask(ends, radii, nearest, furthest)
         if not legal.any():
+            # A strict fallback, never a competitor: standing still is only ever
+            # taken when the ranked set offers nothing legal, so it cannot make
+            # the policy passive. It is declined when the unit is *already*
+            # incoherent -- a casualty split cannot be closed by not moving,
+            # which is exactly what attrition is for.
+            if (
+                include_stay
+                and _coherent_mask(positions[None], radii, nearest, furthest)[0]
+            ):
+                for index in member_indices:
+                    decoded[index] = STAY_ACTION
             continue
         score = np.stack(
             [log_probs[i][combos[:, j]] for j, i in enumerate(member_indices)], axis=1

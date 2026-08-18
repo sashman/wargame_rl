@@ -49,6 +49,7 @@ def build_selector(
     checkpoint_path: str,
     env: WargameEnv,
     decode_topk: int = 1,
+    decode_stay: bool = False,
 ) -> tuple[ActionSelector, TransformerNetwork]:
     """Load a policy network and wrap it as an `ActionSelector`.
 
@@ -63,6 +64,10 @@ def build_selector(
     `enforce_move: revert_unit`, `vp_margin` goes −26.0 → −3.5 at K=3 and
     intended coherency 0.662 → 0.852. Left at 1 by default so every existing
     number stays reproducible.
+
+    `decode_stay` stands a unit still when the top-K set yields no legal
+    combination at all, rather than letting the referee revert it to the same
+    positions *plus* an overlap cascade onto its neighbours.
     """
     policy_net = TransformerNetwork.from_checkpoint(env, checkpoint_path)
     policy_net.eval()
@@ -76,7 +81,13 @@ def build_selector(
             actions = [int(a) for a in logits.argmax(dim=-1).flatten().tolist()]
             if decode_topk > 1:
                 log_probs = torch.log_softmax(logits, dim=-1).squeeze(0).cpu().numpy()
-                actions = decode_joint_coherent(log_probs, actions, env_, decode_topk)
+                actions = decode_joint_coherent(
+                    log_probs,
+                    actions,
+                    env_,
+                    decode_topk,
+                    include_stay=decode_stay,
+                )
         return WargameEnvAction(actions=actions)
 
     return select, policy_net

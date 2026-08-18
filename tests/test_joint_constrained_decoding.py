@@ -137,3 +137,106 @@ def test_a_unit_too_large_for_the_candidate_budget_is_left_alone(
     decoded = decode_joint_coherent(log_probs, actions, env, top_k=8, max_candidates=4)
 
     assert decoded == actions
+
+
+def test_include_stay_supplies_a_fallback_when_nothing_legal_is_ranked(
+    env: WargameEnv,
+) -> None:
+    """With no legal combination in the top-K set, standing still beats reverting.
+
+    The decoder finds nothing legal on 0.3-1.4% of unit-moves and hands the unit
+    back unchanged, so the referee reverts it. A revert is not free: it also runs
+    the overlap cascade, which drags *neighbouring* units back and accounts for
+    9.2-15.3% of all freezes. A deliberate stay reaches the same positions
+    without triggering any of that.
+
+    The unit here is placed at the very edge of the chain and offered only
+    opposed sprints, so every combination of ranked actions tears it apart while
+    standing still is trivially legal.
+    """
+    models = env.player_models
+    unit = [i for i, m in enumerate(models) if m.group_id == models[0].group_id]
+    assert len(unit) >= 2
+    models[unit[1]].location = models[unit[0]].location + np.array(
+        [1.0, 0.0], dtype=models[unit[0]].location.dtype
+    )
+    assert unit_is_coherent(env, unit)
+
+    handler = env.player_action_handler
+    east = handler.best_action_toward(1.0, 0.0)
+    west = handler.best_action_toward(-1.0, 0.0)
+    n_actions = handler.n_actions
+    log_probs = np.full((len(models), n_actions), -np.inf)
+    # Only opposed sprints are rankable, so no pairing of them can be legal.
+    log_probs[unit[0]][east] = 0.0
+    log_probs[unit[1]][west] = 0.0
+    actions = [0] * len(models)
+    actions[unit[0]] = east
+    actions[unit[1]] = west
+
+    unchanged = decode_joint_coherent(log_probs, actions, env, top_k=3)
+    assert [unchanged[i] for i in unit] == [east, west], (
+        "without a fallback the unit is handed back for the referee to revert"
+    )
+
+    stayed = decode_joint_coherent(log_probs, actions, env, top_k=3, include_stay=True)
+    assert all(stayed[i] == 0 for i in unit)
+
+
+def test_include_stay_does_not_displace_a_legal_move(env: WargameEnv) -> None:
+    """The fallback must not make the policy passive.
+
+    It fires only when nothing legal is ranked, so a legal move the policy wants
+    has to survive it untouched. That is the risk worth guarding: the agent
+    stands still on 0.4% of unit-moves today, and a fallback that quietly raised
+    that would trade the referee's tax for a do-nothing policy, which scores
+    -198.0 here.
+    """
+    models = env.player_models
+    unit = [i for i, m in enumerate(models) if m.group_id == models[0].group_id]
+    models[unit[1]].location = models[unit[0]].location + np.array(
+        [1.0, 0.0], dtype=models[unit[0]].location.dtype
+    )
+    assert unit_is_coherent(env, unit)
+
+    handler = env.player_action_handler
+    east = handler.best_action_toward(1.0, 0.0)
+    n_actions = handler.n_actions
+    log_probs = np.full((len(models), n_actions), -20.0)
+    # Both models want east, which keeps them together: legal and preferred.
+    for index in unit:
+        log_probs[index][east] = 0.0
+    actions = [east if i in unit else 0 for i in range(len(models))]
+
+    decoded = decode_joint_coherent(log_probs, actions, env, top_k=3, include_stay=True)
+    assert all(decoded[i] == east for i in unit)
+
+
+def test_include_stay_declines_a_unit_that_is_already_broken(env: WargameEnv) -> None:
+    """Standing still cannot close a casualty split, so it must not be offered.
+
+    A unit whose models are already scattered is incoherent *before* it moves,
+    and freezing it there leaves it incoherent — which is the exact reason a
+    revert can only refuse and never repair. The rules' own answer to that state
+    is attrition, not a stay, so the decoder hands the unit back unchanged.
+    """
+    models = env.player_models
+    unit = [i for i, m in enumerate(models) if m.group_id == models[0].group_id]
+    assert len(unit) >= 2
+    models[unit[1]].location = models[unit[0]].location + np.array(
+        [30.0, 0.0], dtype=models[unit[0]].location.dtype
+    )
+    assert not unit_is_coherent(env, unit)
+
+    handler = env.player_action_handler
+    east = handler.best_action_toward(1.0, 0.0)
+    west = handler.best_action_toward(-1.0, 0.0)
+    log_probs = np.full((len(models), handler.n_actions), -np.inf)
+    log_probs[unit[0]][east] = 0.0
+    log_probs[unit[1]][west] = 0.0
+    actions = [0] * len(models)
+    actions[unit[0]] = east
+    actions[unit[1]] = west
+
+    decoded = decode_joint_coherent(log_probs, actions, env, top_k=3, include_stay=True)
+    assert [decoded[i] for i in unit] == [east, west]

@@ -250,8 +250,8 @@ measure-checkpoint checkpoint env_config n_episodes='100' record='':
 # what was trained. Takes a baseline name or a checkpoint, like
 # measure-objective-split.
 # Use it like: just measure-maps <ckpt> configs/golden/25v25_shooting_opponent.yaml
-measure-maps policy env_config n_episodes='100' maps_dir='' decode_topk='1':
-	@uv run python -m scripts.measure_maps {{policy}} {{env_config}} {{n_episodes}} {{maps_dir}} {{decode_topk}}
+measure-maps policy env_config n_episodes='100' maps_dir='' decode_topk='1' decode_stay='':
+	@uv run python -m scripts.measure_maps {{policy}} {{env_config}} {{n_episodes}} {{maps_dir}} {{decode_topk}} {{decode_stay}}
 
 # Re-render the preview PNG beside every evaluation map
 # Use it like: just render-maps

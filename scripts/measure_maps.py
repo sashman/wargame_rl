@@ -99,7 +99,10 @@ def config_for_map(
 
 
 def build_action_selector(
-    policy_or_checkpoint: str, config: WargameEnvConfig, decode_topk: int = 1
+    policy_or_checkpoint: str,
+    config: WargameEnvConfig,
+    decode_topk: int = 1,
+    decode_stay: bool = False,
 ) -> tuple[ActionSelector, str]:
     """Resolve the first argument to a selector, accepting a policy or a path.
 
@@ -108,7 +111,9 @@ def build_action_selector(
     """
     if Path(policy_or_checkpoint).exists():
         env = create_environment(env_config=config)
-        select, _net = build_selector(policy_or_checkpoint, env, decode_topk)
+        select, _net = build_selector(
+            policy_or_checkpoint, env, decode_topk, decode_stay
+        )
         return select, label_for(policy_or_checkpoint)
 
     if policy_or_checkpoint not in get_registry():
@@ -156,6 +161,9 @@ def main() -> None:
     # Joint constrained decoding: 1 keeps the historical independent argmax, so
     # every number measured before this existed still reproduces.
     decode_topk = int(sys.argv[5]) if len(sys.argv) > 5 else 1
+    # Stand a unit still when the decoder finds nothing legal, instead of
+    # letting the referee revert it and cascade onto its neighbours.
+    decode_stay = len(sys.argv) > 6 and sys.argv[6] not in ("", "0", "false")
 
     base_config = parse_yaml_raw_as(WargameEnvConfig, Path(config_path).read_text())
     maps = load_maps(maps_dir)
@@ -186,7 +194,7 @@ def main() -> None:
     for terrain_map in maps:
         config = config_for_map(base_config, terrain_map)
         select, _label = build_action_selector(
-            policy_or_checkpoint, config, decode_topk
+            policy_or_checkpoint, config, decode_topk, decode_stay
         )
         env = create_environment(env_config=config)
         result = evaluate_selector(select, env, seeds, terrain_map.name)
