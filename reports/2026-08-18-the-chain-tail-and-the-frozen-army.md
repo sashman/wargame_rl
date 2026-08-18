@@ -456,7 +456,13 @@ Adding information cannot hurt an optimal policy, so a *persistent* free-score
 cost is evidence about the optimisation or about the induced behaviour, never
 about the observation being wrong to have.
 
-### FINAL, epoch 300, n=30 per map — both levers failed
+### Epoch 300, n=30 per map — ONE SEED PER ARM
+
+⚠ **Superseded by the three-seed replication below.** Every conclusion in this
+subsection is a single seed, and on this scenario the seed spread is 26 vp
+refereed and 0.20 coherency — larger than any effect it appears to show. It is
+kept because the retractions it prompted are real; its *ranking* of the arms is
+not.
 
 Epoch-matched: every arm scored from `last.ckpt`, which
 `PeriodicLastCheckpoint.on_train_end` writes at completion, so all four are
@@ -540,6 +546,60 @@ intended coherency (`deny` 0.810 → 0.891, `take` 0.806 → 0.882) and **lowers
 agent's** (0.790 → 0.746). It strands the agent in worse positions than the ones
 it chose — failing at its own job on precisely the policy it costs the most.
 
+### REPLICATED, three seeds per arm — and the single-seed read was wrong twice
+
+The table above is **one seed**. Two further seeds per arm, from scratch, same
+300 epochs, same n=30 scoring. From-scratch runs with distinct seeds are genuine
+independent samples, so this spread is real training variance, not the warm-start
+artefact this repo has been caught by before.
+
+| arm | seed | free vp | refereed vp | coherency | adrift |
+|---|---|---|---|---|---|
+| `ctl` | s1 | +7.4 | −20.3 | 0.790 | 1.82 |
+| `ctl` | s2 | +0.4 | −37.9 | 0.645 | 3.01 |
+| `ctl` | s3 | +7.9 | −46.3 | 0.588 | 4.18 |
+| **`ctl` mean** | | **+5.2 ± 4.2** | **−34.8 ± 13.3** | **0.674 ± 0.104** | 3.00 |
+| `ctlE` | s1 | +11.1 | −17.3 | 0.703 | 2.40 |
+| `ctlE` | s2 | −2.7 | −30.4 | 0.815 | 1.28 |
+| `ctlE` | s3 | −7.9 | −39.1 | 0.795 | 1.48 |
+| **`ctlE` mean** | | **+0.2 ± 9.8** | **−28.9 ± 11.0** | **0.771 ± 0.060** | 1.72 |
+
+**Everything the single seed said about the levers was wrong, in both
+directions.** Seed 1 made `ctl` look strong on coherency (0.790 against its true
+0.674) and `ctlE` look weak (0.703 against its true 0.771). Replicated, the
+low-entropy arm is **better on both goal metrics** — coherency **0.771 v 0.674**
+and refereed **−28.9 v −34.8** — and has **half the coherency variance**
+(±0.060 v ±0.104).
+
+**But neither difference is significant at n=3.** The refereed gap is 5.9 vp
+against standard deviations of 11-13, and the coherency gap 0.097 against 0.060
+and 0.104 — `t ≈ 1.4`. This ranks the arms; it does not establish the effect.
+
+**The seed spread dwarfs every lever measured.** `ctl`'s refereed range is
+**26.0 vp** and its coherency range **0.202**, against lever effects of 6 vp and
+0.10. **No single-seed result on this scenario means anything**, which is the
+lesson this report has now paid for three times in one day — first from n=4-6
+interims, then from quoting seed 1 as the baseline.
+
+### The baseline, corrected
+
+    ctlE (ent_coef 0.003), 3 seeds:  +0.2 free | -28.9 refereed | coherency 0.771
+    ctl  (ent_coef 0.03),  3 seeds:  +5.2 free | -34.8 refereed | coherency 0.674
+
+Against the scripted ladder at the same n: the free coherency band is
+**0.772-0.810** and the refereed scores are `squad_march_shoot` **−36.7**,
+`squad_march_take` **−6.4**, `squad_march_deny` **−4.4**.
+
+- **Legality: `ctlE` reaches 0.771, the bottom edge of the scripted band.**
+  Essentially script-level compliance, and the first arm here to get there on a
+  replicated mean rather than a lucky seed. `ctl` at 0.674 does not.
+- **Strength: `ctlE` beats `squad_march_shoot` by 7.8 vp** and trails the best
+  script by ~25. `ctl` is level with `shoot`.
+
+**The earlier "both levers failed" verdict stands for `observe_unit_centroid`
+and is retracted for `ent_coef`**, which on three seeds is the better setting for
+this goal — pending an n that can actually resolve it.
+
 ### The four arms on one board
 
 ![The four arms of the screen playing the same seeded table under the referee](../docs/images/arms-side-by-side.gif)
@@ -557,18 +617,10 @@ confirms — it holds 1.99 objectives against the control's 2.32.
 
 ### What this leaves as the baseline
 
-The control config, at epoch 300, is the honest baseline to continue from:
-
-    free       +7.4 vp   intended coherency 0.790   held 2.32
-    refereed  -20.3 vp   (the best script, squad_march_deny, scores +3.4)
-
-**The legality half of the goal is already met and was met before this screen
-started**: 0.790 sits mid-band in the scripts' own 0.772-0.810 at the same n on
-the same maps, so the agent is no less rules-compliant than the policies it is
-measured against. What is not met is strength under the rule — **15.9 vp short
-of the best script**, though **16.4 ahead of `squad_march_shoot`** and third of
-six — and the whole of that gap is the referee tax, which no lever tried here
-reduced.
+**Superseded — see § The baseline, corrected above.** The single-seed figure
+originally recorded here (+7.4 free / −20.3 refereed / 0.790 coherency, "third
+of six, legality met") was seed 1 of three and the best of them. The replicated
+means are `ctlE` **+0.2 / −28.9 / 0.771** and `ctl` **+5.2 / −34.8 / 0.674**.
 
 ### Smaller units: refuted before spending a GPU-hour
 
@@ -606,35 +658,45 @@ unit size, beside the unit rate.
 
 ## 12. Where this leaves the goal, and what to try next
 
-**Met:** the agent plays a coherency-legal game *to the same standard as the
-scripted policies it is measured against* — intended unit coherency 0.790
-against their 0.768-0.804. That was true before this screen and is not something
-the screen improved; what the work added is the evidence that it is true, and
-the instrumentation to keep it honest.
+All figures are **three-seed means**, nine held-out tables, n=30 per map, error
+bars across maps.
 
-**Not met:** strength under the rule. −20.3 refereed against the best script's
-+3.4. The whole gap is the referee tax, and the tax did not respond to either
-lever.
+**Legality — reached, at the edge, by the low-entropy arm only.** `ctlE` intends
+**0.771** unit coherency against the scripts' 0.772-0.810. That is the bottom of
+the band, on a replicated mean rather than a lucky seed. `ctl` at **0.674** is
+not close.
 
-**What is now known well enough to build on:**
+**Strength — short.** `ctlE` scores **−28.9** refereed, beating
+`squad_march_shoot` (−36.7) by 7.8 and trailing `squad_march_deny` (−4.4) by
+~25. Free of the rule both arms are level with the scripts rather than ahead of
+them, which itself corrects the single-seed claim that the agent beat every
+script.
 
-- The tax is **not** explained by the coherency rate. Two policies at 0.79 and
-  0.80 pay 28 vp and ~0 respectively.
-- It **is** associated with never standing still — 0.4% of unit-moves against
-  38-57% — because a cancelled move you were not going to make is free, and
-  98.8% of the agent's cancelled moves were moves it wanted.
-- That behaviour is **not** caused by the entropy bonus, which is now measured
-  rather than assumed.
+**The dominant effect is not any lever — it is the seed.** `ctl`'s three seeds
+span **26.0 vp** refereed and **0.202** coherency; the levers move 6 vp and 0.10.
+Any future arm on this scenario needs **at least three seeds before it is read at
+all**, and the honest summary of the 2x2 is that it was under-powered by design.
 
-**The next thing to test, and it is a reward question, not an observation or
-optimiser one:** the agent has no incentive to hold ground.
-`closest_objective_v2` is potential-based approach shaping, so moving toward an
-objective always pays and holding pays nothing from it, while `objective_hold`
-pays the same whether the model arrived this turn or five turns ago. Before
-touching it, note the trap: rewarding stillness directly buys the
-`hold_deployment` floor, which scores **−198.0** here. The lever has to pay for
-holding *contested or held ground*, not for stopping.
+### The two things worth doing next, in order
 
-**Do not** re-run: unit-level action spaces, smaller units, `observe_unit_centroid`,
-`ent_coef` 0.003, or training under any `enforce_move` mode. All measured here
-or previously, all null or negative.
+1. **Train longer, and measure whether the spread closes.** Coherency was still
+   rising at the end of the budget — the `ctl` wave-1 seed read 0.722 at epoch
+   120, 0.782 at 190 and 0.790 at 300 — so 300 epochs may simply be short of
+   where formation settles, and an unconverged policy is exactly what produces a
+   0.20 spread across seeds. This is the cheapest remaining move, it tests the
+   variance and the mean at once, and nothing else should be tried until it is
+   known whether the arms have converged. Run `ctlE` (the better arm) at 800-1000
+   epochs, three seeds.
+2. **Then, and only then, the reward.** The agent has no incentive to hold
+   ground: approach shaping pays for advancing and nothing for holding, and
+   `objective_hold` pays the same whether a model arrived this turn or five turns
+   ago. **⚠ Not the same as raising contested pay**, which is already a measured
+   null (the committing squad dies, and the calculator pays only living models).
+   The trap: rewarding stillness as such buys the do-nothing floor at **−198.0**,
+   so the term must pay for holding ground the side *controls*, stay per-model
+   and differentiated, and not lower total objective income.
+
+**Do not re-run:** unit-level action spaces, smaller units,
+`observe_unit_centroid`, or training under any `enforce_move` mode. All measured,
+all null or negative. **`ent_coef` 0.003 is no longer on that list** — on three
+seeds it is the better setting, though not significantly.
