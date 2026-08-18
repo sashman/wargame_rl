@@ -883,13 +883,32 @@ baseline on the identical configuration:
 | `ctl`, never enforced | −34.8 | 0.651 | −8.0 | 0.847 |
 
 Per seed under repair, argmax: −67.5 / −39.4 / −66.0, coherency 0.479 / 0.536 /
-0.452. **No overlap with the control on formation.** The runs were healthy —
+0.452. The runs were healthy —
 checked at epoch 100 on the training pool, `on_obj` 0.858, `held` 2.50, `alive`
 0.598 — so this is not the do-nothing collapse the config header warned to watch
 for. It is simply a worse policy, and a much worse-formed one.
 
-**The gradient survived. It did not help.** So aliasing was never the whole
-cause, and the explanation this report has been carrying since §3 is incomplete.
+### Read these paired, not unpaired
+
+`seed_everything` runs before the model is built (`train.py:303` against `:374`),
+so two arms at the same seed whose configs do not change any parameter shape
+**start from identical weights**. Repair and the control qualify, so the honest
+estimator is the per-seed difference:
+
+| | s1 | s2 | s3 | mean | sd | t (2 df) |
+|---|---|---|---|---|---|---|
+| vp, repair − control | −47.2 | −1.5 | −19.7 | −22.8 | 23.0 | **−1.72, n.s.** |
+| coherency, repair − control | −0.267 | −0.103 | −0.116 | −0.162 | 0.091 | −3.08, p≈0.09 |
+
+So **formation is consistently worse — the same sign on 3/3 seeds and the ranges
+do not overlap (repair's best 0.536 against the control's worst 0.568) — while
+the vp gap does not reach significance.** The practical conclusion stands: repair
+is certainly not better, and it costs formation. But an earlier draft of this
+section said "worse on both decodes", which is true of the means and is not
+established for vp.
+
+**The gradient survived. It did not help.** So aliasing was not the whole cause,
+and the explanation this report has been carrying since §3 is incomplete.
 
 ### What fits every arm instead
 
@@ -906,6 +925,19 @@ never had to produce, so it never has to learn to produce one. That predicts an
 `repair` is the *most* helpful referee and produces the *worst* formation.
 Aliasing cannot explain that ordering — repair does not alias and finishes last.
 Substitution can.
+
+⚠ **Weigh that table for what it is.** The 0.569 row was measured on a different
+config in a different investigation, so only the repair-vs-control comparison in
+this section is like for like. The ordering is suggestive, not established, and
+a sharper mechanism is available that predicts the same thing: under `repair` the
+environment executes `f(a)` while the buffer stores `log π(a)`, so PPO credits
+the value of the *repaired* outcome to the probability of the *unrepaired*
+action — mechanically raising the probability of illegal actions that sit near
+good legal configurations. That is a density bug, not a pedagogy problem, and it
+is falsifiable: a **density-corrected revert**, storing the log-density of what
+was actually realised, should recover to the control's level. Worth ~8 GPU-hours
+and it discriminates the two explanations. Note both stories agree on the
+practical rule, so nothing downstream changes while it is open.
 
 **The practical rule is unchanged and its reason is now simpler:** enforce at
 play, never during training, **whether or not the mode aliases**. Do not look
