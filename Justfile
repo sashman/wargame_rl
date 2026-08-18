@@ -240,8 +240,8 @@ measure-baselines env_config n_episodes='100' record='' seed_base='':
 # to resolve what it was measuring. n=100 halves that to ~4.5 and costs minutes
 # against the hours a training run costs. Scoring was the cheap half being
 # under-sampled while the expensive half was over-sampled.
-measure-checkpoint checkpoint env_config n_episodes='100' record='':
-	@uv run python -m scripts.measure_checkpoint {{checkpoint}} {{env_config}} {{n_episodes}} "{{record}}"
+measure-checkpoint checkpoint env_config n_episodes='100' record='' decode_topk='1':
+	@uv run python -m scripts.measure_checkpoint {{checkpoint}} {{env_config}} {{n_episodes}} "{{record}}" {{decode_topk}}
 
 # Final evaluation: score a policy on the real table layouts, one row per map.
 # Training uses `random_terrain`, so this is the only thing that asks how the

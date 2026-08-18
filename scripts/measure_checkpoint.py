@@ -10,6 +10,7 @@ Pass `record` as a fourth argument to also write an event log to `recordings/`,
 which `just analyze-compare <agent> <baseline>` reads.
 
 Usage: just measure-checkpoint <checkpoint> <env_config> [n_episodes] [record]
+       [decode_topk]
 """
 
 from __future__ import annotations
@@ -131,13 +132,18 @@ def main() -> None:
     config_path = sys.argv[2]
     n_episodes = int(sys.argv[3]) if len(sys.argv) > 3 else 30
     record = len(sys.argv) > 4 and sys.argv[4].lower() in {"record", "true", "1"}
+    # Joint constrained decoding, off by default so every historical row here
+    # reproduces. It matters most for `record`: a recording made at K=1 shows
+    # the referee cancelling a third of the unit-moves, which is the play the
+    # decoder exists to replace, and is not what the checkpoint would do now.
+    decode_topk = int(sys.argv[5]) if len(sys.argv) > 5 else 1
 
     with open(config_path) as handle:
         env_config = parse_yaml_raw_as(WargameEnvConfig, handle.read())
     env_config.render_mode = None
 
     env = create_environment(env_config=env_config)
-    select, _policy_net = build_selector(checkpoint_path, env)
+    select, _policy_net = build_selector(checkpoint_path, env, decode_topk)
     seeds = [HELDOUT_SEED_BASE + i for i in range(n_episodes)]
 
     name = label_for(checkpoint_path)
@@ -156,7 +162,7 @@ def main() -> None:
     print(format_result(result))
 
     if record:
-        output = Path("recordings") / f"agent_{name}.jsonl"
+        output = Path("recordings") / f"agent_{name}-k{decode_topk}.jsonl"
         written = record_episode(select, env_config, seeds[0], output)
         print(f"\nwrote {written}")
 
