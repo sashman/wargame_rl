@@ -72,7 +72,7 @@ class CoherencyConfig(BaseModel):
     )
     enforce_move: str = Field(
         default="off",
-        pattern="^(off|revert_unit|revert_model)$",
+        pattern="^(off|revert_unit|revert_model|repair)$",
         description=(
             "Enforce coherency at the end of a move, the rules' *primary* "
             "consequence (`03-moving.md` § Making a move): a move that would end "
