@@ -511,6 +511,35 @@ That leaves the §8 finding intact as a *description* (the agent never stands
 still, and that is why the same coherency rate costs it 28 vp where it costs a
 script nothing) while removing the explanation I attached to it.
 
+### The ladder re-measured at n=30, like for like
+
+The §9 ladder was n=10 per map. Re-measured at **n=30**, on the same nine
+held-out tables and the same configs the agent was scored on:
+
+| policy | free vp | free coherent | refereed vp | refereed coherent |
+|---|---|---|---|---|
+| `hold_deployment` | — | — | −197.3 ± 9.5 | 0.983 |
+| `squad_march` | −165.5 | 0.772 | −149.7 ± 9.1 | 0.789 |
+| `squad_march_shoot` | −12.4 | 0.774 | −36.7 ± 4.4 | 0.800 |
+| **agent (control)** | **+7.4** | **0.790** | **−20.3 ± 7.9** | 0.746 |
+| `squad_march_take` | +0.2 | 0.806 | −6.4 ± 5.0 | 0.882 |
+| `squad_march_deny` | −6.6 | **0.810** | **−4.4 ± 4.9** | 0.891 |
+
+Two things change against the n=10 figures, and both matter:
+
+- **The scripts were flattered by n=10.** `squad_march_deny` reads +3.4 there and
+  **−4.4** here; `take` −1.1 and **−6.4**. So the gap from the agent to the best
+  script is **15.9 vp, not 23.7**, and the agent **beats `squad_march_shoot` by
+  16.4** — third of six under the rules.
+- **The agent's free coherency, 0.790, sits mid-band** in the scripts' own
+  0.772-0.810, measured at the same n on the same maps. The legality claim is
+  like for like.
+
+**And the referee's effect on *intent* splits by policy.** It raises the scripts'
+intended coherency (`deny` 0.810 → 0.891, `take` 0.806 → 0.882) and **lowers the
+agent's** (0.790 → 0.746). It strands the agent in worse positions than the ones
+it chose — failing at its own job on precisely the policy it costs the most.
+
 ### What this leaves as the baseline
 
 The control config, at epoch 300, is the honest baseline to continue from:
@@ -519,10 +548,12 @@ The control config, at epoch 300, is the honest baseline to continue from:
     refereed  -20.3 vp   (the best script, squad_march_deny, scores +3.4)
 
 **The legality half of the goal is already met and was met before this screen
-started**: 0.790 sits inside the scripted band of 0.768-0.804, so the agent is
-no less rules-compliant than the policies it is measured against. What is not
-met is strength under the rule — 23.7 vp short of the best script — and the
-whole of that gap is the referee tax, which no lever tried here reduced.
+started**: 0.790 sits mid-band in the scripts' own 0.772-0.810 at the same n on
+the same maps, so the agent is no less rules-compliant than the policies it is
+measured against. What is not met is strength under the rule — **15.9 vp short
+of the best script**, though **16.4 ahead of `squad_march_shoot`** and third of
+six — and the whole of that gap is the referee tax, which no lever tried here
+reduced.
 
 ### Smaller units: refuted before spending a GPU-hour
 
