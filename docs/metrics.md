@@ -238,6 +238,12 @@ and the **redistribution ceiling**: how many objectives the same survivors would
 model surplus to `opponent_count + 1` on an already-held point moved to the cheapest point the
 policy lost.
 
+On a `map_pool` config the tables carry 5 *or* 6 objectives, so the per-rank rows are ragged;
+short rows are padded with NaN rather than 0 — a table with no sixth objective must not read as
+a sixth objective standing empty — and an **`n` column** reports how many episodes actually had
+a rank that deep. Read a rank whose `n` is a fraction of the episode count accordingly. (Before
+2026-08-18 the recipe raised on any such config rather than reporting.)
+
 The ceiling is deliberately optimistic — it ignores travel time and return fire, both of which
 only lower it. So a ceiling near the current `held` **rules re-allocation out**, while a large
 one does not rule it in. It costs minutes and can retire a reward-shaping idea before it is
