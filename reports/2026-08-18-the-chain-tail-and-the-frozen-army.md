@@ -42,6 +42,16 @@ with a longest single freeze of **12 consecutive turns of a 20-round game** and
 0.331 frozen / 0.486 inches lost, opponent 0.142 / 0.284 — even though both
 forces go through the same handler.
 
+### What it looks like
+
+![The agent playing under the referee, v2 renderer, tabletop theme](../docs/images/frozen-army-refereed.gif)
+
+One episode of the control checkpoint under `revert_unit` + `attrition`. The
+piling is the thing to watch: ten of the player's models occupy a single
+objective disc while other squads sit alone, which is the formation the geometry
+predicts, since a tight blob is the only shape with slack to spare against the
+2" chain.
+
 ## 2. Freezing is an absorbing state
 
 `P(frozen next turn | frozen now) = 0.62`, against 0.17 after a move. 4.8% of
