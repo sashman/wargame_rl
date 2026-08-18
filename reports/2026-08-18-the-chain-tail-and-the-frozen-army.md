@@ -540,6 +540,21 @@ intended coherency (`deny` 0.810 → 0.891, `take` 0.806 → 0.882) and **lowers
 agent's** (0.790 → 0.746). It strands the agent in worse positions than the ones
 it chose — failing at its own job on precisely the policy it costs the most.
 
+### The four arms on one board
+
+![The four arms of the screen playing the same seeded table under the referee](../docs/images/arms-side-by-side.gif)
+
+All four checkpoints on **seed 700003**, verified to share an identical opening
+layout (same five objectives, same terrain) before being placed side by side —
+`record-sim` draws its table from the config's map pool and does **not** pin it,
+so a first pass produced four different boards and would have made this
+comparison quietly meaningless.
+
+The centroid arm's clumping is the thing to watch: at round 11 it has roughly
+eight models stacked on one objective while the control has its force spread
+over three. That is the failure mode the geometry predicts and the scoring
+confirms — it holds 1.99 objectives against the control's 2.32.
+
 ### What this leaves as the baseline
 
 The control config, at epoch 300, is the honest baseline to continue from:
