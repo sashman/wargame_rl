@@ -700,3 +700,160 @@ all**, and the honest summary of the 2x2 is that it was under-powered by design.
 `observe_unit_centroid`, or training under any `enforce_move` mode. All measured,
 all null or negative. **`ent_coef` 0.003 is no longer on that list** — on three
 seeds it is the better setting, though not significantly.
+
+---
+
+## 13. The fix was not a lever — it was the decode
+
+Everything in §11 tried to move the *policy*. Both attempts failed, and §12
+concluded the next move was to train the same thing for longer. That conclusion
+is superseded: two changes made at **play time**, touching no weights at all,
+recovered most of the gap in an afternoon.
+
+The reason they work is §3. The tax is not a policy defect — it is an
+**aggregation** defect. Twenty-five models each pick a move independently, and
+legality is a property of the *combination*. A per-model policy with a 7.8% tail
+is asked to produce a joint action that is legal five times over, and `p^5`
+punishes it for arithmetic rather than for judgement. Anything that repairs the
+combination attacks the exponent directly.
+
+### 13.1 `enforce_move: repair` — make the nearest legal move, not no move
+
+`revert_unit` has exactly two outcomes: the move you asked for, or nothing.
+`repair` adds a third — pull the stray models onto the unit body until the unit
+is coherent, and fall back to reverting only when it cannot be gathered at all.
+Up to eight passes; a pure spread breach is declined, because dragging one model
+in cannot fix a unit stretched across the board.
+
+Nine held-out tables, n=30 per map, three seeds, error bars across maps:
+
+| policy | vp_margin (repair) | vp_margin (`revert_unit`) | coherency |
+|---|---|---|---|
+| `squad_march_take` | −6.6 | −6.4 | 0.935 |
+| `squad_march_deny` | −5.7 | −4.4 | 0.927 |
+| `squad_march_shoot` | −9.2 | −36.7 | 0.926 |
+| **agent, 3-seed mean** | **−4.5** | −34.8 | 0.745 |
+
+Per seed under repair: **+0.8 / −3.7 / −10.5**.
+
+Read the two right-hand columns together before celebrating. **`repair` is a
+scenario change, not a free win** — it moves every policy on the board, and it
+moves `squad_march_shoot` by +27.5 on its own. What is genuinely notable is the
+*ranking*: under `repair` the agent's three-seed mean **finishes ahead of every
+script**, where under `revert_unit` it was thirty vp behind the best of them. The
+agent is the policy that was paying the exponent, so it is the policy a repair
+refunds.
+
+It is also a **documented divergence** from `03-moving.md` § Making a move,
+which says the move cannot be made. It belongs in the config surface as an
+option, not as a default, and the docstring says so.
+
+### 13.2 Joint constrained decoding — the same policy, decoded legally
+
+The stronger result, and it changes nothing about the rules.
+
+Instead of taking each model's `argmax` and hoping the combination is legal, take
+each model's **top K** candidates, enumerate the `K^k` combinations, and pick the
+most probable one that satisfies coherency:
+
+    a* = argmax over LEGAL combos of  sum_i log pi_i(a_i | s)
+
+At K=3 and k=5 that is 243 candidates per unit, masked in one vectorised pass
+(chain, spread, and connectivity via `(I+A)^(k-1) > 0`). It runs only in the
+movement phase; outside it the decoder is the identity.
+
+Same nine held-out tables, same three checkpoints — **only the decode differs**:
+
+| policy | vp_margin | intended coherency |
+|---|---|---|
+| `squad_march_shoot` | −36.7 | 0.800 |
+| **agent, argmax (K=1)** | **−34.8** | **0.651** |
+| **agent, top-3 (K=3)** | **−8.0** | **0.847** |
+| `squad_march_take` | −6.4 | 0.882 |
+| `squad_march_deny` | −4.4 | 0.891 |
+
+Per seed, argmax → top-3: **−20.3 → +1.6**, **−37.9 → −10.1**, **−46.3 →
+−15.6**. Every seed improves, by 26.7 / 27.8 / 30.7 — a **+26.8 vp mean** with a
+spread of 4 vp, which on this scenario is remarkable given that the *seed* spread
+is 26.
+
+**K=3 is the setting.** A sweep over K ∈ {1, 3, 5} on the training maps found
+K=5 better on one seed and worse on the other two, at 3.4x the candidate count.
+The first legal alternative is where nearly all the value is.
+
+### 13.3 Why this is the right shape of fix
+
+Three things make the decoder more than a trick:
+
+1. **It is bigger than any training lever measured here.** +26.8 vp against
+   levers that moved 6. The `p^5` requirement is simply deleted: legality is
+   guaranteed by the sampler, so the policy no longer has to be sharp enough to
+   produce it by luck.
+2. **It costs no weights and no GPU time.** `decode_topk` defaults to 1, so every
+   historical number stands, and any past checkpoint can be re-decoded.
+3. **It confirms the diagnosis.** If the agent's moves were *strategically*
+   wrong, reordering its own preferences could not help. That a different
+   ordering of the *same* distribution is worth 27 vp says the policy knew where
+   to go and the aggregation was throwing it away — which is exactly what the
+   user was watching on screen.
+
+**The honest limit:** the policy is still trained under a decode it does not know
+about, so it spends probability mass on combinations that will never execute.
+Folding the decoder into training is the obvious next move, and §14 states the
+correctness condition it has to meet.
+
+---
+
+## 14. Where this leaves the goal
+
+> Train a model, using RL, that plays a **coherency-legal** game and does **well
+> enough** against the opponent policies. Reach a baseline to continue from.
+
+Nine held-out tables, n=30 per map, three seeds, under the spec's own
+`revert_unit` with `attrition: true`:
+
+**Legality — met.** **0.847** intended unit coherency, clear of the scripted band
+of 0.772–0.891 rather than at its bottom edge. Up from 0.651.
+
+**Strength — level.** **−8.0** against the best script's **−4.4**. A 3.6 vp gap
+inside ±5–7 error bars, from **thirty vp behind**. Against `squad_march_shoot`
+(−36.7) it is ahead by 28.7.
+
+That is the baseline to continue from, and it is a genuine one: legal play at
+scripted strength, on ground the policy has never seen.
+
+**What actually produced it** was neither of the two things §12 nominated. Not
+training longer, and not a reward term — a change to how twenty-five independent
+decisions are combined into one legal move.
+
+### The next experiment, and the trap in it
+
+**Decode inside the training loop, as a proper joint policy.**
+
+Applying the decoder as a post-hoc filter during training would **break PPO**:
+the executed action would not be the sampled one, so the importance ratio would
+be computed against the wrong distribution. The clean formulation makes the
+constraint part of the *sampling*:
+
+    pi_unit(a | s) = softmax over LEGAL combos of  sum_i log pi_i(a_i | s)
+
+At K=3 that is ≤243 terms, so the joint log-probability is **exactly computable**
+and PPO stays correct. This is the same argument that makes action masking valid
+— the constraint is applied to the distribution *before* sampling, never to the
+action after.
+
+Two things are unmeasured. The decoder is greedy at play time but must be
+**sampled** in training or exploration collapses, and nobody has measured what
+sampling from the renormalised joint does to entropy. And the compounding
+argument — that a policy trained knowing its preferences will be legally combined
+can stop hedging — is a prediction, not a result.
+
+**After that, in order:** train under `repair` (it does not alias, so the
+"never train under enforcement" rule does not apply to it — different illegal
+actions map to different repaired configurations, and the gradient survives);
+then the hold-ground reward from §12; then re-normalise the nearest-squadmate
+observation by the chain distance rather than the board diagonal, where the 2"
+decision band is 2.7% of the feature's range.
+
+**Still do not re-run:** unit-level action spaces, smaller units,
+`observe_unit_centroid`, or training under `revert_unit`.
