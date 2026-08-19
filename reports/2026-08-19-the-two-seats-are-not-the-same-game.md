@@ -183,20 +183,57 @@ rather than the mechanism: the aggregate margin reproduces exactly at n=30
 (−24.6, matching the original seat-parity run), and scoring events remain equal
 (18.44 against 18.37).
 
-## Where that leaves it
+## ⚠ The "neutral" cadence is not neutral, and that qualifies the refutation
 
-The seat gap is **positional and persistent**, not a scoring artefact. Running
-the same policy, the player has more models alive (+0.09 alive fraction), more
-kills (+2.15), fires more shots (+3.07) — and controls **0.33 fewer objectives
-at every instant of the game**.
+Worth stating plainly because it cuts against the section above. The neutral
+sample is taken at the end of every `env.step()` — and in an IGOUGO game
+observed only at player-step boundaries, that point is *always immediately after
+the opponent's whole turn*. The side that moved most recently wins contested
+objectives, so the "neutral" cadence is itself biased toward the opponent.
 
-More survivors, more kills, fewer objectives. The player's models are
-systematically somewhere other than the objectives. The one lead worth
-following is that `squad_march_shoot` stops to shoot when it has a target and
-advances when it does not, so the side with more shooting opportunities
-advances less — and the player does fire more. Whether that is cause, effect or
-coincidence is not established, and per-leg standard errors here are 15–22 vp,
-so nothing at leg level is individually significant.
+There is no unbiased sampling point available from outside the env: any instant
+is later in one side's turn cycle than the other's.
+
+What survives: the scoring cadence does not **create** the gap, since a
+different cadence does not remove it. What does **not** survive: reading −0.331
+as the true positional gap. It is an upper bound biased in the same direction as
+the effect being measured, and the −0.272 at scoring instants may be nearer the
+truth. Both are of the same order, so the conclusion — the board favours the
+opponent throughout — holds; its size does not.
+
+## Where that leaves it: the player leads the approach and loses the hold
+
+The sharpest characterisation, tracking both armies per round on the worst leg
+(zone 1, player first), 20 layouts. `on_obj` is the share of **alive** models
+inside an objective radius:
+
+| round | plr on_obj | opp on_obj | plr dist | opp dist | plr live | opp live |
+|---|---|---|---|---|---|---|
+| 1 | **0.054** | 0.006 | 8.72 | 12.50 | 25.00 | 25.00 |
+| 4 | **0.407** | 0.313 | 2.28 | 2.45 | 18.90 | 21.00 |
+| 8 | **0.899** | 0.858 | 0.08 | 0.11 | 11.00 | 11.20 |
+| 10 | 0.845 | **0.923** | 0.05 | 0.03 | 8.95 | 8.36 |
+| 13 | 0.655 | **0.965** | 0.08 | 0.03 | 6.76 | 7.65 |
+| 17 | 0.587 | **0.975** | 0.01 | 0.01 | 5.71 | 8.29 |
+
+**The player wins the race and then loses the ground.** It is ahead on every
+round to 8 — it arrives first and arrives with more models on objectives. From
+round 9 the two curves cross and diverge: the player's occupancy decays from
+0.899 to 0.587 while the opponent's climbs to 0.975.
+
+By round 10 both armies are within 0.05 of an objective, so this is not about
+approach or travel. It is about which side's **survivors remain inside the
+radius** once the two armies are in contact and taking casualties.
+
+That is a much narrower question than the one this report opened with, and it is
+where the next investigation should start. Two candidates, neither tested: the
+scripted policy re-assigns squads to objectives as models die, so a squad
+holding a point can be sent elsewhere and the churn need not hit both seats
+equally; or casualties are not positionally uniform, and the models being
+removed are the ones standing on objectives.
+
+Per-leg standard errors are 15–22 vp, so nothing at leg level is individually
+significant; the aggregate and the per-round curves are what carry this.
 
 ## Incidental finding
 
