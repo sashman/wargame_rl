@@ -125,10 +125,17 @@ Measured — what each side controls **at its own scoring instant**, 8 layouts:
 | zone 2, A first | 1.194 | 1.337 |
 | zone 2, B first | **1.381** | 1.136 |
 
-**This closes the arithmetic.** The player earns 5.37 VP per scoring event and
-the opponent 6.54 — a gap of 1.17 VP, which at 5 VP per objective is 0.23
-objectives, exactly the 1.085 against 1.314 difference on that leg. Over ~18
-events an episode that integrates to roughly the seat gap observed.
+The player earns 5.37 VP per scoring event and the opponent 6.54 — a gap of
+1.17 VP, which at 5 VP per objective is 0.23 objectives, matching the 1.085
+against 1.314 difference.
+
+⚠ **That agreement is an accounting identity, not evidence.** Total VP is the
+sum over events of `controlled × 5`, and the margin is the difference of the
+two totals, so "VP per event × events = margin" cannot fail. What the
+decomposition *does* establish — and this could have come out otherwise — is
+that the gap lives entirely in **control per event** and not at all in the
+**number of events**, which are equal. The mechanism itself needs a separate
+test; see § Confirmation.
 
 It also predicts the *ordering*. Zone 2 with the opponent moving first is the
 only leg where the player controls more at its own scoring instant (1.381
@@ -136,16 +143,60 @@ against 1.136) — and it is the only leg the player wins (+16.0). The worst leg
 on this measure, zone 1 with the player first, is the worst leg on margin
 (−40.8).
 
-**So the residual is the scoring cadence, not positioning.** Both sides are
-measured at the moment least favourable to them, but "least favourable" is not
-the same board for the two seats, because the command phases are half a turn
-apart in the interleaving. The player is measured on a fully contested board;
-the opponent on one it has not yet committed to.
+That suggested the residual was the scoring cadence. **It is not — the
+confirmation refuted it.**
 
-⚠ **This is n=8 on one config and the leg-level numbers are noisy** (the
-ordering agrees with the margins on the extremes and swaps the middle two). The
-mechanism and the arithmetic agree, but it should be confirmed at higher n
-before anything is changed on the strength of it.
+## Confirmation at n=30: the cadence is innocent, the board is not
+
+The test that discriminates. Over the same episodes, objective control is
+sampled two ways:
+
+- **neutral** — at the end of every `step()`, a fixed cadence *identical for
+  both sides*, describing the board itself;
+- **scoring** — at each side's own VP event, where VP is actually taken.
+
+If the cadence made the gap, the board would be even at the neutral cadence and
+uneven at the scoring instants. 30 layouts, `squad_march_shoot` both seats:
+
+| | player | opponent | gap |
+|---|---|---|---|
+| **neutral cadence** | 1.154 | 1.486 | **−0.331** |
+| own scoring instant | 1.072 | 1.343 | −0.272 |
+
+**The neutral gap is the larger of the two.** Scoring at the command phases
+makes the seat gap *smaller* than a neutral cadence would. The board favours
+the opponent at every instant, and the scoring rule is not what puts it there.
+
+The cadence effect is real but secondary: the side being scored is measured at a
+moment worse for it than average, and asymmetrically so — the player is 0.403
+behind at its own instant against the opponent's 0.139 ahead at its own. That
+asymmetry exists. It is simply not big enough, or in the right direction, to
+account for a −0.331 baseline.
+
+**Retracted:** the claim in § part three that the residual *is* the scoring
+cadence, and that its arithmetic "closes". The arithmetic was an accounting
+identity that could not have failed, and the mechanism it was offered in support
+of does not survive the neutral-cadence control.
+
+Two other numbers from the same run, both reassuring about the measurement
+rather than the mechanism: the aggregate margin reproduces exactly at n=30
+(−24.6, matching the original seat-parity run), and scoring events remain equal
+(18.44 against 18.37).
+
+## Where that leaves it
+
+The seat gap is **positional and persistent**, not a scoring artefact. Running
+the same policy, the player has more models alive (+0.09 alive fraction), more
+kills (+2.15), fires more shots (+3.07) — and controls **0.33 fewer objectives
+at every instant of the game**.
+
+More survivors, more kills, fewer objectives. The player's models are
+systematically somewhere other than the objectives. The one lead worth
+following is that `squad_march_shoot` stops to shoot when it has a target and
+advances when it does not, so the side with more shooting opportunities
+advances less — and the player does fire more. Whether that is cause, effect or
+coincidence is not established, and per-leg standard errors here are 15–22 vp,
+so nothing at leg level is individually significant.
 
 ## Incidental finding
 
