@@ -6,6 +6,7 @@ from typing import Self, cast
 import torch
 from torch import nn
 
+from wargame_rl.wargame.envs.env_components.actions import ActionHandler
 from wargame_rl.wargame.envs.types import WargameEnvObservation
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common import Device, get_device
@@ -98,6 +99,55 @@ class RL_Network(nn.Module, ABC):
         net = cls.from_env(env, is_policy=is_policy)
         net.load_state_dict(state_dict)
         return net
+
+
+@dataclass(frozen=True, slots=True)
+class NetworkSpec:
+    """Everything a `TransformerNetwork`'s shapes depend on.
+
+    Extracted from `from_env` so a network can be sized from an **observation**
+    rather than from an env reset. Two callers need that and neither can reset:
+    an opponent policy is constructed inside `WargameEnv.__init__`, before the
+    env exists to reset; and a policy seated on the opponent side must be sized
+    from the *opponent's* action handler, which a reset does not reach.
+    """
+
+    game_size: int
+    objective_size: int
+    wargame_model_size: int
+    opponent_model_size: int
+    terrain_size: int
+    n_actions: int
+    shooting_slice_start: int | None
+    shooting_slice_end: int | None
+    objective_padding: bool
+
+
+def spec_from_observation(
+    observation: WargameEnvObservation,
+    action_handler: ActionHandler,
+    objective_budget: int | None,
+) -> NetworkSpec:
+    """Measure the input widths off one observation and one action space.
+
+    `action_handler` is passed rather than read off an env, because the handler
+    that matters is the one belonging to the *seat* being sized -- and for the
+    opponent seat that is `env.opponent_action_handler`, which no attribute of
+    a mirrored env would resolve to on its own.
+    """
+    tensors = observation_to_tensor(observation)
+    shooting_slice = action_handler.shooting_slice
+    return NetworkSpec(
+        game_size=int(tensors[0].shape[-1]),
+        objective_size=int(tensors[1].shape[-1]),
+        wargame_model_size=int(tensors[2].shape[-1]) if tensors[2].numel() > 0 else 0,
+        opponent_model_size=int(tensors[3].shape[-1]) if tensors[3].numel() > 0 else 0,
+        terrain_size=int(tensors[4].shape[-1]) if tensors[4].numel() > 0 else 0,
+        n_actions=action_handler.n_actions,
+        shooting_slice_start=shooting_slice.start if shooting_slice else None,
+        shooting_slice_end=shooting_slice.end if shooting_slice else None,
+        objective_padding=objective_budget is not None,
+    )
 
 
 class TransformerNetwork(RL_Network):
@@ -645,40 +695,46 @@ class TransformerNetwork(RL_Network):
     #     return optimizer
 
     @classmethod
-    def from_env(cls, env: WargameEnv, is_policy: bool) -> Self:
-        observation: WargameEnvObservation
-        observation, _ = env.reset()
-        tensors = observation_to_tensor(observation)
-        game_size = int(tensors[0].shape[-1])
-        objective_size = int(tensors[1].shape[-1])
-        wargame_model_size = int(tensors[2].shape[-1]) if tensors[2].numel() > 0 else 0
-        opponent_model_size = int(tensors[3].shape[-1]) if tensors[3].numel() > 0 else 0
-        terrain_size = int(tensors[4].shape[-1]) if tensors[4].numel() > 0 else 0
-        n_actions: int = env._action_handler.n_actions
-        shooting_slice = env._action_handler.shooting_slice
+    def from_spec(cls, spec: NetworkSpec, is_policy: bool) -> Self:
+        """Build a network from measured input widths and an action space."""
         transformer_config = TransformerConfig()
-
-        print(
-            f"game_size: {game_size}, objective_size: {objective_size}, "
-            f"wargame_model_size: {wargame_model_size}, "
-            f"opponent_model_size: {opponent_model_size}, "
-            f"terrain_size: {terrain_size}, "
-            f"shooting_slice: {shooting_slice}, "
-            f"transformer_config: {transformer_config}, n_actions: {n_actions}"
-        )
         return cls(
-            game_size=game_size,
-            objective_size=objective_size,
-            wargame_model_size=wargame_model_size,
-            n_actions=n_actions,
+            game_size=spec.game_size,
+            objective_size=spec.objective_size,
+            wargame_model_size=spec.wargame_model_size,
+            n_actions=spec.n_actions,
             transformer_config=transformer_config,
             is_policy=is_policy,
-            opponent_model_size=opponent_model_size,
-            terrain_size=terrain_size,
-            shooting_slice_start=shooting_slice.start if shooting_slice else None,
-            shooting_slice_end=shooting_slice.end if shooting_slice else None,
-            objective_padding=env.config.objective_budget is not None,
+            opponent_model_size=spec.opponent_model_size,
+            terrain_size=spec.terrain_size,
+            shooting_slice_start=spec.shooting_slice_start,
+            shooting_slice_end=spec.shooting_slice_end,
+            objective_padding=spec.objective_padding,
         )
+
+    @classmethod
+    def from_env(cls, env: WargameEnv, is_policy: bool) -> Self:
+        """Size a network from a fresh episode of `env`.
+
+        **Resets the env**, which is why anything that must not disturb the
+        layout RNG — or that runs before the env finished constructing, such as
+        an opponent policy built inside `WargameEnv.__init__` — has to go
+        through `spec_from_observation` and `from_spec` instead.
+        """
+        observation: WargameEnvObservation
+        observation, _ = env.reset()
+        spec = spec_from_observation(
+            observation, env._action_handler, env.config.objective_budget
+        )
+        print(
+            f"game_size: {spec.game_size}, objective_size: {spec.objective_size}, "
+            f"wargame_model_size: {spec.wargame_model_size}, "
+            f"opponent_model_size: {spec.opponent_model_size}, "
+            f"terrain_size: {spec.terrain_size}, "
+            f"shooting_slice: {env._action_handler.shooting_slice}, "
+            f"transformer_config: {TransformerConfig()}, n_actions: {spec.n_actions}"
+        )
+        return cls.from_spec(spec, is_policy)
 
 
 # PPO wraps the policy network as `ppo_model.policy_network`. `policy_net.` is

@@ -34,19 +34,11 @@ import sys
 import numpy as np
 from pydantic_yaml import parse_yaml_raw_as
 
-from scripts.measure_checkpoint import build_selector
-from wargame_rl.wargame.envs.baseline.evaluate import (
-    ActionSelector,
-    evaluate_selector,
-    selector_for,
-)
-from wargame_rl.wargame.envs.baseline.registry import (
-    build_baseline_policy,
-    get_registry,
-)
+from wargame_rl.wargame.envs.baseline.evaluate import ActionSelector, evaluate_selector
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.factory import create_environment
+from wargame_rl.wargame.selectors import build_action_selector
 
 HELDOUT_SEED_BASE = 700000
 
@@ -60,10 +52,7 @@ def _selector_for(name: str, env: WargameEnv) -> ActionSelector:
     standard error on each row is ~5-9 vp, so their difference carries ~7-13,
     which is the size of most effects worth measuring here.
     """
-    if name in get_registry():
-        return selector_for(build_baseline_policy(name))
-    select, _net = build_selector(name, env)
-    return select
+    return build_action_selector(name, env).select
 
 
 def episode_margins(

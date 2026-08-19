@@ -15,11 +15,9 @@ Usage: just measure-checkpoint <checkpoint> <env_config> [n_episodes] [record]
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
-import torch
 from pydantic_yaml import parse_yaml_raw_as
 
 from wargame_rl.wargame.envs.baseline.evaluate import (
@@ -29,16 +27,11 @@ from wargame_rl.wargame.envs.baseline.evaluate import (
     format_optional_metric,
     record_episode,
 )
-from wargame_rl.wargame.envs.types import (
-    WargameEnvAction,
-    WargameEnvConfig,
-    WargameEnvObservation,
-)
+from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.common.decoding import decode_joint_coherent
 from wargame_rl.wargame.model.common.factory import create_environment
-from wargame_rl.wargame.model.common.observation import observation_to_tensor
 from wargame_rl.wargame.model.net import TransformerNetwork
+from wargame_rl.wargame.selectors import build_action_selector, label_for
 
 # Disjoint from ROLLOUT_SEED_BASE (0), the training eval base (500_000) and the
 # baseline base (10_000), so a checkpoint is scored on layouts it never trained
@@ -51,60 +44,16 @@ def build_selector(
     env: WargameEnv,
     decode_topk: int = 1,
     decode_stay: bool = False,
-) -> tuple[ActionSelector, TransformerNetwork]:
+) -> tuple[ActionSelector, TransformerNetwork | None]:
     """Load a policy network and wrap it as an `ActionSelector`.
 
-    Greedy (argmax) rather than sampled: this measures the policy the agent
-    would play, not the exploration distribution around it. The network applies
-    the action mask internally, so illegal actions cannot be selected.
-
-    `decode_topk` > 1 replaces the independent per-model argmax with **joint
-    constrained decoding** — the most probable action *combination* each unit
-    can legally make (`model/common/decoding.py`). It changes only the decode,
-    never the weights, and is worth a great deal: measured over three seeds at
-    `enforce_move: revert_unit`, on nine held-out tables, `vp_margin` goes
-    −38.5 → +1.1 at K=3 and intended coherency 0.639 → 0.936. Across all 45
-    tables the per-map gain is +40.5 vp, positive on 45 of 45. Left at 1 by
-    default so every existing number stays reproducible.
-
-    `decode_stay` stands a unit still when the top-K set yields no legal
-    combination at all, rather than letting the referee revert it to the same
-    positions *plus* an overlap cascade onto its neighbours.
+    Kept as the checkpoint-only shape this script and its callers already use;
+    the resolution itself lives in `wargame_rl.wargame.selectors`, which also
+    accepts a baseline name. See `build_action_selector` for what `decode_topk`
+    and `decode_stay` do.
     """
-    policy_net = TransformerNetwork.from_checkpoint(env, checkpoint_path)
-    policy_net.eval()
-
-    def select(
-        observation: WargameEnvObservation, env_: WargameEnv
-    ) -> WargameEnvAction:
-        with torch.no_grad():
-            state = observation_to_tensor(observation, policy_net.device)
-            logits = policy_net(state)
-            actions = [int(a) for a in logits.argmax(dim=-1).flatten().tolist()]
-            if decode_topk > 1:
-                log_probs = torch.log_softmax(logits, dim=-1).squeeze(0).cpu().numpy()
-                actions = decode_joint_coherent(
-                    log_probs,
-                    actions,
-                    env_,
-                    decode_topk,
-                    include_stay=decode_stay,
-                )
-        return WargameEnvAction(actions=actions)
-
-    return select, policy_net
-
-
-def label_for(checkpoint_path: str) -> str:
-    """Name a run by its `--run-suffix`, falling back to the directory name.
-
-    Checkpoint directories are `<scenario>-<YYYY-MM-DD-HH-MM-SS>[-<suffix>]`, and
-    the scenario part is identical across the arms of a screen — so the suffix
-    is the only part that identifies which arm a row belongs to.
-    """
-    directory = Path(checkpoint_path).parent.name
-    match = re.search(r"\d{4}(?:-\d{2}){5}-(.+)$", directory)
-    return match.group(1) if match else directory
+    resolved = build_action_selector(checkpoint_path, env, decode_topk, decode_stay)
+    return resolved.select, resolved.network
 
 
 def format_result(result: BaselineResult) -> str:

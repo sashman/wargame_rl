@@ -385,6 +385,45 @@ debug env_config_path='configs/golden/25v25_shooting_opponent.yaml' driver='squa
 debug-recording file driver='squad_march_shoot' theme='default':
 	uv run debug.py --from-recording {{file}} configs/golden/25v25_shooting_opponent.yaml {{driver}} {{theme}}
 
+# Is the player seat advantaged, beyond the zone and the first turn? One policy
+# plays BOTH seats over the balanced four legs, so its rating difference is zero
+# by construction and whatever margin survives is the seat itself.
+#
+# NO RATING ON A CONFIG MEANS ANYTHING UNTIL THIS READS ZERO. The reward,
+# coherency and exposure trackers all sample the player's army only, so seat
+# symmetry is a claim rather than a fact until it is measured.
+# Use it like: just measure-seat-parity configs/golden/25v25_shooting_opponent.yaml squad_march_shoot 30
+measure-seat-parity env_config policy='squad_march_shoot' n_layouts='30':
+	@uv run python -m scripts.measure_seat_parity {{env_config}} "{{policy}}" "{{n_layouts}}"
+
+# Rate policies against each other on one scale, and fit the two structural
+# advantages the board has. Each pairing plays four legs per layout -- every
+# combination of (A's zone) x (who moves first) -- so the schedule is balanced
+# in both axes and `h_zone` and `h_turn` are separately identifiable. Legs are
+# appended to `ratings/<scenario>.json`, which is COMMITTED: a rating nobody can
+# reproduce is worthless.
+#
+# The config must set both deployment zones explicitly and use equal armies;
+# anything else is refused rather than measured, because a zone swap on derived
+# zones is a silent no-op and `h_zone` would then be fitted from noise.
+#
+# WARNING: on a config whose own `turn_order` is `random`, a rated leg is played
+# on a DIFFERENT layout stream from that config's `measure-baselines` numbers --
+# side assignment draws from the layout RNG before terrain and objectives are
+# placed. The four legs agree with each other, which is what the fit needs.
+#
+# Use it like: just measure-elo configs/golden/25v25_shooting_opponent.yaml 100 random squad_march squad_march_shoot
+measure-elo env_config n_layouts='100' +entrants='random squad_march squad_march_shoot':
+	@uv run python -m scripts.measure_elo {{env_config}} "{{n_layouts}}" {{entrants}}
+
+# Fit and print the rating table from legs already played. Nothing is replayed,
+# so an entrant can be added or the margin scale recalibrated without re-running
+# a match. Read it beside `held` and `vp_margin` -- Elo ranks, it does not
+# explain -- and quote the interval, not the point.
+# Use it like: just elo-table configs/golden/25v25_shooting_opponent.yaml
+elo-table env_config:
+	@uv run python -m scripts.elo_table {{env_config}}
+
 # One-shot: create branch from main, commit, push, open PR. Use after staging changes.
 # Always branches from main; if not on main, checks out main and pulls first.
 # Example: just ship feature/my-feature "Add reward shaping for distance"

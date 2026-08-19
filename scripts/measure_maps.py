@@ -30,22 +30,17 @@ from typing import cast
 
 from pydantic_yaml import parse_yaml_raw_as
 
-from scripts.measure_checkpoint import HELDOUT_SEED_BASE, build_selector, label_for
+from scripts.measure_checkpoint import HELDOUT_SEED_BASE
 from wargame_rl.wargame.envs.baseline.evaluate import (
-    ActionSelector,
     BaselineResult,
     evaluate_selector,
     format_optional_metric,
     mean_of_measured,
-    selector_for,
     standard_error,
-)
-from wargame_rl.wargame.envs.baseline.registry import (
-    build_baseline_policy,
-    get_registry,
 )
 from wargame_rl.wargame.envs.types import TerrainMapConfig, WargameEnvConfig
 from wargame_rl.wargame.model.common.factory import create_environment
+from wargame_rl.wargame.selectors import build_action_selector
 
 DEFAULT_MAPS_DIR = Path("configs/evaluation/maps")
 
@@ -96,33 +91,6 @@ def config_for_map(
         config.objective_min_separation = None
         config.objective_terrain_clearance = None
     return config
-
-
-def build_action_selector(
-    policy_or_checkpoint: str,
-    config: WargameEnvConfig,
-    decode_topk: int = 1,
-    decode_stay: bool = False,
-) -> tuple[ActionSelector, str]:
-    """Resolve the first argument to a selector, accepting a policy or a path.
-
-    Built per map because a checkpoint's network is sized from the env, and a
-    scripted policy holds env state; neither is safe to carry across configs.
-    """
-    if Path(policy_or_checkpoint).exists():
-        env = create_environment(env_config=config)
-        select, _net = build_selector(
-            policy_or_checkpoint, env, decode_topk, decode_stay
-        )
-        return select, label_for(policy_or_checkpoint)
-
-    if policy_or_checkpoint not in get_registry():
-        raise SystemExit(
-            f"'{policy_or_checkpoint}' is neither a checkpoint path nor a "
-            f"baseline. Known baselines: {', '.join(sorted(get_registry()))}"
-        )
-    policy = build_baseline_policy(policy_or_checkpoint)
-    return selector_for(policy), policy_or_checkpoint
 
 
 def format_row(label: str, result: BaselineResult) -> str:
@@ -198,11 +166,14 @@ def main() -> None:
     results: list[BaselineResult] = []
     for terrain_map in maps:
         config = config_for_map(base_config, terrain_map)
-        select, _label = build_action_selector(
-            policy_or_checkpoint, config, decode_topk, decode_stay
-        )
         env = create_environment(env_config=config)
-        result = evaluate_selector(select, env, seeds, terrain_map.name)
+        # Resolved per map, because a checkpoint's network is sized from the env
+        # and each map carries its own objective and terrain counts; a scripted
+        # policy holds env state. Neither is safe to carry across configs.
+        resolved = build_action_selector(
+            policy_or_checkpoint, env, decode_topk, decode_stay
+        )
+        result = evaluate_selector(resolved.select, env, seeds, terrain_map.name)
         results.append(result)
         print(format_row(terrain_map.name, result))
         env.close()
