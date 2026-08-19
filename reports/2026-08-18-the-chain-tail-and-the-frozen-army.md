@@ -1086,3 +1086,59 @@ more than any of the levers. ⚠ It is one clone per teacher on two of the three
 so it is a hypothesis. The measurement that settles it is three clone seeds from
 each of three teachers, all argmax demos, comparing the spread of clones with the
 spread of their teachers.
+
+
+---
+
+## 18. Against four opponents: formation generalises, the defensive habit does not
+
+Everything above was measured against one opponent, `squad_march_take`. The goal
+said *opponent policies*, plural, so the baseline arm (`ctlE`, three seeds) was
+scored against three more. **Swapping the opponent voids every baseline on the
+config**, so the scripted policies were re-measured on each one — comparing a new
+agent score against a bar from a different game is how this project once read a
+policy as clearing a bar it was ten points beneath.
+
+Nine held-out tables, n=30, verified top-3 decode, `revert_unit` + attrition:
+
+| opponent | agent, 3 seeds | best script | verdict |
+|---|---|---|---|
+| `squad_march_take` (trained against) | **+2.6** | −4.4 (`deny`) | agent ahead |
+| `squad_march_shoot` | **+19.3** | +12.1 (`take`) | agent ahead |
+| `squad_march_deny` | **+4.0** | −3.1 (`take`) | agent ahead |
+| `contest_and_spread` | +17.4 | **+31.1** (`take`) | **agent behind 13.7** |
+
+**Three of four.** And note what the absolute numbers do *not* say: the agent's
+score *rises* against two of the new opponents, because those opponents are
+weaker. Absolute score measures the opponent. Only the same-matchup comparison
+measures the agent.
+
+**Formation transfers completely.** Intended unit coherency is **0.94–0.97 on
+every opponent**, never dipping. Whatever is opponent-specific here, obeying the
+rule is not — which is the part of this work that clearly generalises.
+
+### The loss has one explanation, and it is the overstacking
+
+Read the VP split rather than the margin. Against `contest_and_spread`:
+
+| | player VP | opponent VP | held | on_obj |
+|---|---|---|---|---|
+| agent | 192 | **176** | 2.11 | 0.68 |
+| `squad_march_take` | **231** | 200 | 2.47 | 0.91 |
+
+The agent **denies better and takes far less**. It is a defensive player. Against
+opponents that hold ground well, denial is the winning game and the agent wins;
+against one that spreads itself thin the ground is cheap, taking is worth more
+than denying, and a script that simply marches out and grabs things beats it by
+14.
+
+That is the over-stacking defect seen from the other side. Eight models on one
+objective cannot punish an opponent who has left four lightly held, and `on_obj`
+0.68 against 0.91 is the same fact stated per model.
+
+**So the claim to make is narrower than "beats the scripts".** The agent is a
+better *defensive* player than any script, on four opponents, with formation that
+holds everywhere. It is not yet a better player outright: it cannot exploit an
+opponent who spreads. That is one nameable weakness rather than a vague gap, and
+it is the same one the reward levers have failed on — see §12's hold-ground note
+and the abandonment invariance.
