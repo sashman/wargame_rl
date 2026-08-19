@@ -1204,5 +1204,63 @@ is ±4.5, so a large gain is ruled out and a small one is not.
 
 **What this closes:** any lever whose premise is "the models are in the wrong
 place and moving them is worth objectives". Measured, they are not, and it is
-not. What remains open is teaching the policy to *choose* between two modes,
-which is a different and harder problem than re-pricing occupancy.
+not. §20 tested the conditional version this section left open, and it closes
+too.
+
+
+---
+
+## 20. Cheap ground exists, and taking it still loses
+
+§19 left one door open: its intervention committed at a fixed round, never
+reassessed, and marched into defended ground regardless. The conditional version
+— take only what is cheap, reassess every round, never give up the source — is
+the thing the agent actually lacks, so it was measured.
+
+### The opportunity is real, and §19's reading of it was wrong
+
+Per movement phase, objectives that are not ours:
+
+| defended by | mean available | at least one |
+|---|---|---|
+| **0 opponents** | **2.41** | **95.8%** of phases |
+| ≤ 1 | 2.89 | 97.5% |
+| ≤ 2 | 3.33 | 98.7% |
+
+**2.4 completely undefended objectives are available in 96% of movement phases.**
+§19 concluded the abandoned objectives were "defended positions, not free
+ground" — that is true of the **end state** and false **during the game**. The
+opponent arrives later. At the moment the choice is made, the ground is cheap.
+
+### Taking it still does not pay
+
+Paired on identical seeds, three interventions of increasing strength:
+
+| intervention | paired vp | improved |
+|---|---|---|
+| unconditional, one unit, from round 4 (§19) | −3.56 ± 4.52 | 32/90 |
+| conditional, one unit, reassessed | +2.78 … +4.93 ± ~6 | 30/72 |
+| **conditional, every spare unit, n=180** | **−3.17 ± 3.13** | **61/180** |
+
+Conditioning flips the sign of the one-unit version, so *cheapness* is the right
+criterion. But it buys nothing significant, and the **strongest** intervention —
+moving every unit that can leave without losing its ground, which is what would
+close the agent's 0.68 `on_obj` against the scripts' 0.91 — is **negative on the
+run with the most episodes and the tightest error bar**.
+
+### Why, and what it settles
+
+Units spend turns walking instead of scoring, are shot crossing open ground, and
+the opponent often arrives anyway. And **own VP saturates at three objectives**
+(`min(15, held × 5)`), so the fourth and fifth pay nothing except denial, which
+is the expensive kind of point.
+
+**There is no over-stacking bug.** The agent's positioning is close to locally
+optimal here. It survived neither the counterfactual nor its stronger form, and
+three independent probes agree.
+
+**What is left of the gap to `contest_and_spread`:** the agent holds 2.11
+objectives to the script's 2.47 and scores 192 to its 231, conceding 176 to its
+200. It needs roughly **+0.36 objectives held** — not more models sent, but
+**arriving earlier and on the right ones**. That is timing and target selection,
+and none of these three probes tested it.
