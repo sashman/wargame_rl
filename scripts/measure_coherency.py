@@ -38,12 +38,8 @@ from dataclasses import dataclass
 import numpy as np
 from pydantic_yaml import parse_yaml_raw_as
 
-from scripts.measure_checkpoint import HELDOUT_SEED_BASE, build_selector
-from wargame_rl.wargame.envs.baseline.evaluate import ActionSelector, selector_for
-from wargame_rl.wargame.envs.baseline.registry import (
-    build_baseline_policy,
-    get_registry,
-)
+from scripts.measure_checkpoint import HELDOUT_SEED_BASE
+from wargame_rl.wargame.envs.baseline.evaluate import ActionSelector
 from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
 from wargame_rl.wargame.envs.domain.entities import WargameModel, alive_mask_for
 from wargame_rl.wargame.envs.domain.rules_constants import (
@@ -54,6 +50,7 @@ from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quanti
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.factory import create_environment
+from wargame_rl.wargame.selectors import build_action_selector
 
 
 @dataclass
@@ -137,13 +134,9 @@ def main() -> None:
     quantities = resolve_rules_quantities(env_config)
     scale = quantities.scale
 
-    select: ActionSelector
-    if policy_name in get_registry():
-        select = selector_for(build_baseline_policy(policy_name))
-        label = policy_name
-    else:
-        select, _net = build_selector(policy_name, env)
-        label = policy_name.split("/")[-2] if "/" in policy_name else policy_name
+    resolved = build_action_selector(policy_name, env)
+    select: ActionSelector = resolved.select
+    label = resolved.label
 
     # Two rulers. The rules' own pair, and the single distance this scenario
     # currently calls coherency -- which has no chain/spread split at all, so it

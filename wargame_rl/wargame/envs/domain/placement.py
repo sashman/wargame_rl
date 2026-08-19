@@ -469,11 +469,8 @@ def objective_placement(
     if a draw cannot be placed within the retry budget the last candidate is
     used, because a slightly crowded layout is better than a failed episode.
     """
-    x_min = float(deployment_zone[2])
-    x_max = (
-        float(opponent_deployment_zone[0])
-        if opponent_deployment_zone is not None
-        else float(board_width)
+    x_min, x_max = _band_between_zones(
+        deployment_zone, opponent_deployment_zone, board_width
     )
     placed: list[Position] = []
     for objective in objectives:
@@ -494,6 +491,34 @@ def objective_placement(
         )
         objective.location = location
         placed.append(location)
+
+
+def _band_between_zones(
+    deployment_zone: np.ndarray,
+    opponent_deployment_zone: np.ndarray | None,
+    board_width: int,
+) -> tuple[float, float]:
+    """The strip of board left over between the two deployment zones.
+
+    **Which zone is on the left is not assumed.** This used to read the band as
+    `(deployment_zone.x_max, opponent_deployment_zone.x_min)`, which is right
+    only while the player deploys on the left -- every shipped config does, so
+    the assumption was invisible. Give the player the right-hand zone and those
+    two numbers are the *outer* edges of the board rather than the inner edges
+    of the gap, so `x_max < x_min` and objective placement raises
+    `high - low < 0` from numpy at reset.
+
+    It surfaced from a seat-parity check, which plays one policy from both
+    zones -- the whole point of which is to find asymmetries that no shipped
+    config exercises.
+    """
+    if opponent_deployment_zone is None:
+        return float(deployment_zone[2]), float(board_width)
+
+    leftmost, rightmost = sorted(
+        (deployment_zone, opponent_deployment_zone), key=lambda zone: float(zone[0])
+    )
+    return float(leftmost[2]), float(rightmost[0])
 
 
 def _sample_objective_location(
