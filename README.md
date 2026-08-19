@@ -18,38 +18,49 @@ this project used until recently, the best hand-written play scored **+104.9**;
 against this one it scores **−5.6**. The game got about 110 points harder, so
 **nothing here is comparable to a figure quoted before 2026-08-16.**
 
-![The same model, decoded two ways](docs/images/decode-side-by-side.gif)
+![The trained model playing table 30](docs/images/agent-plays-table-30.gif)
 
-*One game on table 30, one of the nine it has never seen — the **same trained
-model and the same dice on both sides**, differing only in how the squad decides.
-Left, each model picks its own move and the force comes apart;
-right, the squad picks its five moves together and stays in formation. Unit
-coherency in this game: **0.795 → 0.950**.*
+*One game on table 30, one of the nine it has never seen. It ends **210–125**,
+holding two objectives to one, with **12 models left against 2** — and its squads
+stay together throughout (unit coherency **0.962** here, against 0.94–0.97 for
+this model in general). Selected from a sweep of ten games on this table, on
+**both** counts — a decisive win and clean formation. The table below is the
+average; this is the model at its best.*
 
-*This shows **formation**, not score. A single game says nothing about the score:
-on this particular table the squad-together decision actually **costs** points in
-eight games of ten, while the average across all nine tables is strongly
-positive. The seed shown is the median of ten, not a flattering pick. Read the
-table below for score.*
+### The opponents
+
+All four are hand-written. They form a ladder — each adds exactly one behaviour
+to the one above it — except the last, which plays a different way entirely:
+
+| opponent | what it does |
+|---|---|
+| `squad_march_shoot` | Each squad marches to one objective as a body and holds it, firing at the nearest target in range. |
+| `squad_march_deny` | The same, but squads with nothing left to hold go and **contest what the other side holds**. |
+| `squad_march_take` | The same, but those spare squads instead go for the **most weakly held** objective — the cheapest to flip. Strongest of the four. |
+| `contest_and_spread` | Allocates squads against **where the enemy has actually deployed** rather than by a fixed rule, and spreads its fire instead of always shooting the nearest. |
 
 ### What it scores
 
-Nine held-out tables, three independently trained models, against four different
-opponents. The scripts are re-measured against each opponent, because changing
-the opponent changes the game:
+Nine held-out tables, three independently trained models, 20 rounds a game.
+Figures are the **average victory-point margin — ours minus theirs**, so 0 is a
+dead heat and +20 means winning by twenty points a game.
 
-| opponent it faces | trained model | best hand-written player | |
+The hand-written players are re-measured against **each** opponent, because
+changing the opponent changes the game:
+
+| opponent it faces | trained model<br>*avg VP margin* | best hand-written player<br>*avg VP margin* | |
 |---|---|---|---|
-| `squad_march_take` — the strongest | **+2.6** | −4.4 | **ahead** |
-| `squad_march_shoot` | **+19.3** | +12.1 | **ahead** |
-| `squad_march_deny` | **+4.0** | −3.1 | **ahead** |
+| `squad_march_take` — the strongest | **+2.6** | −4.4 | **ahead by 7.0** |
+| `squad_march_shoot` | **+19.3** | +12.1 | **ahead by 7.2** |
+| `squad_march_deny` | **+4.0** | −3.1 | **ahead by 7.1** |
 | `contest_and_spread` | +17.4 | **+31.1** | behind by 13.7 |
 
 **Ahead of the best hand-written play in three matchups of four.**
 
 ⚠ Read those numbers *down a column*, never across. A player's absolute score
 mostly measures how weak its opponent is — the trained model scores *higher*
-against the weaker opponents while doing relatively *worse*.
+against the weaker opponents while doing relatively *worse*. The only meaningful
+comparison is the two figures on the same row, which faced the same opponent.
 
 Full detail: [reports/](reports/README.md), most recently
 [the chain tail and the frozen army](reports/2026-08-18-the-chain-tail-and-the-frozen-army.md).
