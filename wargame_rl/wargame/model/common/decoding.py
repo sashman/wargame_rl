@@ -171,7 +171,7 @@ def decode_joint_coherent(
     max_candidates: int = DEFAULT_MAX_CANDIDATES,
     include_stay: bool = False,
     safety_margin: float = 0.0,
-    verify_moves: bool = False,
+    verify_moves: bool = True,
     max_verifications: int = 24,
 ) -> list[int]:
     """Rerank each unit's actions into the most probable coherency-legal joint one.
@@ -203,7 +203,12 @@ def decode_joint_coherent(
         verify_moves: Re-check shortlisted candidates against the endpoints the
             environment would actually produce (`_resolve_endpoints`) and take
             the best that survives, instead of trusting the free-translation
-            relaxation. This is the principled version of `safety_margin`: the
+            relaxation. **On by default, because the relaxation was a defect.**
+            Paired on three control seeds plus a distilled clone, nine held-out
+            tables at n=30, only the decode differing: **+6.4 vp (sd 1.4, t=7.7)
+            and +0.096 unit coherency (sd 0.004, t=40)**, every policy improving
+            on both axes. Pass False to reproduce a number measured before this
+            existed. This is the principled version of `safety_margin`: the
             relaxation is wrong on 49.8% of models by a median 1.75in against a
             2in band, and ~83% of the decoder's residual illegality is that
             error rather than a poor candidate set.

@@ -949,3 +949,97 @@ One thing worth keeping from the arm: the decoder rescued it too. The
 repair-trained policies gain **+40.9 vp** from top-3 decoding at play time
 (−57.6 → −16.7). Every policy it has been applied to, well-formed or badly
 formed, improves.
+
+
+---
+
+## 16. The decoder was solving the wrong geometry
+
+§13.2 reported the decoder at **0.847** intended unit coherency and read the
+residual 15.3% as the policy's own formation error. It was not. Most of it was
+the decoder.
+
+`decode_joint_coherent` judged candidates on `positions + displacement`. The
+environment does not put models there. `ActionHandler.apply` clamps into the
+board *first* — the edge is clamped into the displacement, before collisions —
+then runs `resolve_move`, which stops a model dead on an enemy base and backs it
+off any base it would end inside, **sequentially in model index order**, so
+earlier movers displace later ones.
+
+Measured on the control checkpoint, five held-out episodes, enforcement off so
+the realised board is the one the policy and env actually built:
+
+| | value |
+|---|---|
+| models that did not land where the decoder predicted | **49.8%** |
+| displacement | mean 0.820", p90 **2.005"**, max 6.000" |
+| unit-moves certified legal | 268 |
+| of those, actually legal after the step | 243 — **9.3% wrong** |
+
+The p90 offset is the width of the entire 2" chain band the constraint lives in.
+**The decoder was solving a relaxation whose error was the same size as the
+decision it was making**, and it bites hardest exactly where this agent lives:
+median gap to the nearest squadmate 0.00", models packed base to base, which is
+the configuration that generates the most back-off.
+
+**Seven tests covered this module and none of them called `env.step`.** Every one
+asserted the decoder against its own relaxation, so the defect was invisible to
+the suite by construction. That is the generalisable lesson: a test that
+exercises a forward model against itself cannot find a forward model that is
+wrong.
+
+### The fix, and what it is worth
+
+`_resolve_endpoints` mirrors `apply`, and the decoder now walks its shortlist in
+score order and takes the first candidate still coherent **after** that
+resolution. Bounded at 24 verifications — only ~5% of actions change at all, so
+the first candidate usually passes.
+
+Certificate error more than halves, and it *certifies more*, because the
+relaxation was rejecting combinations that resolve fine as well as accepting
+ones that do not:
+
+| | relaxation | verified |
+|---|---|---|
+| unit-moves certified legal | 268 | **294** |
+| of those, actually legal | 243 | 282 |
+| certificate error | 9.3% | **4.1%** |
+
+Nine held-out tables, n=30, **paired per seed** — only the decode differs:
+
+| policy | relaxation | verified | Δvp | coherency | Δcoh |
+|---|---|---|---|---|---|
+| ctl s1 | +1.6 | **+7.6** | +6.0 | 0.873 → **0.964** | +0.091 |
+| ctl s2 | −10.1 | −2.1 | +8.0 | 0.848 → **0.945** | +0.097 |
+| ctl s3 | −15.6 | −10.4 | +5.2 | 0.819 → **0.918** | +0.099 |
+| **mean** | **−8.0** | **−1.6** | **+6.4** | 0.847 → **0.942** | **+0.096** |
+| distilled clone | +5.2 | **+13.8** | +8.6 | 0.897 → **0.976** | +0.079 |
+
+**+6.4 vp (sd 1.4, t=7.7) and +0.096 coherency (sd 0.004, t=40)**, every policy
+improving on both axes, on three seeds whose *unpaired* spread is 26 vp. The
+coherency gains agree to the third decimal.
+
+A blunter guard — `safety_margin`, tightening the chain when judging candidates
+— was measured first and is worth about **+0.02** coherency. It is a fifth of
+the real fix and is superseded by it.
+
+Two divergences remain, documented rather than hidden: models of *other* units
+move in the same env loop, so their post-move positions are unknowable at decode
+time, and this unit resolves against that snapshot. They are why the residual is
+4.1% rather than zero.
+
+### Where this leaves the ladder
+
+| policy | vp_margin | intended coherency |
+|---|---|---|
+| `squad_march_shoot` | −36.7 | 0.800 |
+| agent, argmax | −34.8 | 0.651 |
+| agent, top-3, relaxation | −8.0 | 0.847 |
+| `squad_march_take` | −6.4 | 0.882 |
+| `squad_march_deny` | −4.4 | 0.891 |
+| agent, top-3, **verified** | −1.6 | **0.942** |
+| **distilled clone, top-3, verified** | **+13.8** | **0.976** |
+
+The best policy is now **18.2 vp ahead of the strongest script and more coherent
+than any of them** — 0.976 against a rule nothing measured here had ever held
+above 0.939. Not a weight changed for any of it.
