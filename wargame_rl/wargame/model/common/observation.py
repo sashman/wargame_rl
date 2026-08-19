@@ -98,9 +98,23 @@ def _same_group_closest_distance(
 
     ⚠ This is a deliberate observation change, so `test_observation_golden` was
     regenerated and **checkpoints trained before it score differently** (the
-    width is unchanged, so they still load). It is measured as an arm against
-    the three `ctlE` seeds, which share the same shapes and therefore the same
-    initial weights per seed -- so read it paired.
+    width is unchanged, so they still load).
+
+    ⚠⚠ **AND IT IS A MEASURED NULL. Do not claim it helps.** Three seeds, 300
+    epochs, scored on the nine held-out tables at n=30 and read PAIRED against
+    the `ctlE` seeds, which share every parameter shape and therefore the same
+    initial weights:
+
+        vp_margin   +6.0 / -2.6 / +7.1   mean +3.5, sd 5.3, t=1.14  n.s.
+        coherency  +0.007 /-0.006/+0.004 mean +0.002               flat
+
+    The sign flips across seeds and coherency does not move at all. Kept because
+    the old scaling was indefensible on inspection -- the band any decision
+    turns on had 2.7% of the range -- not because it bought anything. The +3.5
+    would need ~6 seeds to resolve and there are better uses for them.
+
+    **The useful negative:** the policy was not being held back by failing to see
+    this distance, so the remaining gap is not perceptual.
     """
     n = len(locs)
 
