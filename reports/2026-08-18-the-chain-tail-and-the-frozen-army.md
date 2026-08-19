@@ -1038,8 +1038,51 @@ time, and this unit resolves against that snapshot. They are why the residual is
 | `squad_march_take` | −6.4 | 0.882 |
 | `squad_march_deny` | −4.4 | 0.891 |
 | agent, top-3, **verified** | −1.6 | **0.942** |
-| **distilled clone, top-3, verified** | **+13.8** | **0.976** |
+| distilled clone, top-3, verified — **ONE LINEAGE** | +13.8 | 0.976 |
 
-The best policy is now **18.2 vp ahead of the strongest script and more coherent
-than any of them** — 0.976 against a rule nothing measured here had ever held
-above 0.939. Not a weight changed for any of it.
+**Read the last row with §17.** It is one clone from one teacher, and the
+mechanism it was credited to did not replicate.
+
+The robust result is the three-seed row: **0.942 unit coherency against the best
+script's 0.891**, on a rule nothing measured here had previously held above
+0.939, at **−1.6 vp against −4.4** — level, inside the error bars. Not a weight
+changed for any of it.
+
+---
+
+## 17. Distilling the *decoded* teacher does not replicate
+
+§13.3 and the clone table reported that cloning the decoder's own output beat
+cloning the argmax teacher by **+6.7 vp**, "clean, non-overlapping ranges". That
+was three clone seeds from **one teacher**. Repeated on the other two control
+seeds, one clone each, held out at n=30, played at K=3:
+
+| teacher | clone of argmax demos | clone of decoded demos | effect of decoding the demos |
+|---|---|---|---|
+| s1-ctl (3 clones each) | −3.3 | +3.4 | **+6.7** |
+| s2-ctl | −4.9 | −8.5 | **−3.6** |
+| s3-ctl | +2.0 | −11.3 | **−13.3** |
+
+**It reverses on two of three teachers**, mean −3.4. Coherency is mixed the same
+way: +0.017, +0.030, −0.077. **The +6.7 is retracted.** It was a property of one
+lineage, which is the exact failure mode this replication was run to catch — and
+the same one that has now produced seven retractions here in two days.
+
+The consequence for the ladder is that **the +13.8 clone is a single lineage**,
+not a recipe. It is a real policy and it really scores that; nothing reproduces
+it on demand.
+
+### What survives, and one thing worth chasing
+
+**Verification is untouched** — it was measured paired on three control seeds
+*and* the clone, and the effect is a defect fix, not a lineage property.
+
+**Every clone beat its own teacher**: +1.8 / +5.2 / +17.6 on the better arm, and
++4.3 on the two-arm mean, while the clone spread (6.8 vp across teachers) is
+narrower than the teacher spread (17.2 vp). So distillation may **compress the
+seed spread** even though the decoded demonstrations do nothing — which, on a
+scenario where the seed spread is 26 vp and dwarfs every lever, would be worth
+more than any of the levers. ⚠ It is one clone per teacher on two of the three,
+so it is a hypothesis. The measurement that settles it is three clone seeds from
+each of three teachers, all argmax demos, comparing the spread of clones with the
+spread of their teachers.
