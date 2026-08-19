@@ -36,7 +36,6 @@ unit-moves and finds no legal combination in 0.3-1.4%.
 from __future__ import annotations
 
 import itertools
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -164,114 +163,6 @@ def _resolve_endpoints(
     return ends
 
 
-@dataclass(frozen=True)
-class UnitCandidates:
-    """One unit's candidate joint moves and which of them the rules allow.
-
-    This is the object the play-time decoder and the training-time sampler
-    **share**, and sharing it is the point: if the two computed legality
-    separately they could drift, and training would then optimise a constraint
-    the game does not enforce. There is one definition, used twice.
-
-    Attributes:
-        member_indices: Indices into the env's model list, in candidate order.
-        combos: ``(n_combos, k)`` action ids, the cartesian product of each
-            member's top-K.
-        legal: ``(n_combos,)`` — True where the combination satisfies coherency
-            under the relaxed forward model (``position + displacement``) *and*
-            uses no padded slot.
-        topk_actions: ``(k, top_k)`` each member's ranked actions, padded to a
-            rectangular shape by repeating the last real one.
-        slot_valid: ``(k, top_k)`` — False where that slot is padding. A padded
-            slot repeats an action already present, so a combination reaching
-            one duplicates a combination that is already in the set; leaving
-            those legal would give the duplicated outcome twice the probability
-            mass. They are excluded from `legal` for exactly that reason.
-    """
-
-    member_indices: list[int]
-    combos: np.ndarray
-    legal: np.ndarray
-    topk_actions: np.ndarray
-    slot_valid: np.ndarray
-
-
-def legal_unit_candidates(
-    log_probs: np.ndarray,
-    env: WargameEnv,
-    top_k: int,
-    max_candidates: int = DEFAULT_MAX_CANDIDATES,
-    safety_margin: float = 0.0,
-) -> list[UnitCandidates]:
-    """Enumerate each unit's top-K joint moves and mark the coherency-legal ones.
-
-    Units with fewer than two live models, units whose candidate set would
-    exceed `max_candidates`, and units where the mask leaves a member with no
-    finite action are omitted — there is nothing to choose jointly in any of
-    those cases.
-
-    Legality here is the **relaxed** test, `position + displacement`. The
-    verified test — re-resolving against the env's own move resolution — is a
-    refinement applied to a shortlist at play time, because running it over
-    every candidate would put hundreds of collision resolutions on the hot path.
-    """
-    models = env.player_models
-    quantities = env.rules_quantities
-    nearest = quantities.scale.to_units(env.config.coherency.nearest_distance)
-    furthest = quantities.scale.to_units(env.config.coherency.furthest_distance)
-    displacements = _displacement_table(env)
-
-    by_unit: dict[int, list[int]] = {}
-    for index, model in enumerate(models):
-        if model.is_alive and index < len(log_probs):
-            by_unit.setdefault(int(model.group_id), []).append(index)
-
-    out: list[UnitCandidates] = []
-    for member_indices in by_unit.values():
-        size = len(member_indices)
-        if size < 2 or top_k**size > max_candidates:
-            continue
-        positions = np.array([models[i].location for i in member_indices], dtype=float)
-        radii = np.array([models[i].base_radius for i in member_indices], dtype=float)
-        # Restrict to actions the network's own mask left possible: a masked
-        # action has -inf log-probability and must never be decoded into.
-        per_model = []
-        for index in member_indices:
-            ranked = np.argsort(-log_probs[index])[:top_k]
-            per_model.append(ranked[np.isfinite(log_probs[index][ranked])])
-        if any(candidates.size == 0 for candidates in per_model):
-            continue
-        # Rectangular by construction, so the candidate set has one shape for a
-        # given (k, top_k) and a rollout can store it as a fixed-size array.
-        topk_actions = np.stack(
-            [
-                np.pad(c, (0, top_k - c.size), mode="edge")
-                for c in (np.asarray(c) for c in per_model)
-            ]
-        )
-        slot_valid = np.stack(
-            [np.arange(top_k) < np.asarray(c).size for c in per_model]
-        )
-        pattern = np.array(list(itertools.product(range(top_k), repeat=size)))
-        combos = np.take_along_axis(
-            topk_actions[np.newaxis, :, :], pattern[:, :, np.newaxis], axis=2
-        ).squeeze(-1)
-        ends = positions[None, :, :] + displacements[combos]
-        legal = _coherent_mask(ends, radii, max(nearest - safety_margin, 0.0), furthest)
-        # A combination reaching a padded slot duplicates one already present.
-        legal &= (
-            np.take_along_axis(
-                slot_valid[np.newaxis, :, :], pattern[:, :, np.newaxis], axis=2
-            )
-            .squeeze(-1)
-            .all(axis=1)
-        )
-        out.append(
-            UnitCandidates(member_indices, combos, legal, topk_actions, slot_valid)
-        )
-    return out
-
-
 def decode_joint_coherent(
     log_probs: np.ndarray,
     actions: list[int],
@@ -355,16 +246,28 @@ def decode_joint_coherent(
     furthest = quantities.scale.to_units(env.config.coherency.furthest_distance)
     displacements = _displacement_table(env)
 
-    # One definition of legality, shared with the training-time sampler. If
-    # these were computed separately they could drift, and training would then
-    # optimise a constraint the game does not enforce.
-    for unit in legal_unit_candidates(
-        log_probs, env, top_k, max_candidates, safety_margin
-    ):
-        member_indices = unit.member_indices
-        combos, legal = unit.combos, unit.legal
+    by_unit: dict[int, list[int]] = {}
+    for index, model in enumerate(models):
+        if model.is_alive and index < len(decoded):
+            by_unit.setdefault(int(model.group_id), []).append(index)
+
+    for member_indices in by_unit.values():
+        size = len(member_indices)
+        if size < 2 or top_k**size > max_candidates:
+            continue
         positions = np.array([models[i].location for i in member_indices], dtype=float)
         radii = np.array([models[i].base_radius for i in member_indices], dtype=float)
+        # Restrict to actions the network's own mask left possible: a masked
+        # action has -inf log-probability and must never be decoded into.
+        per_model = []
+        for index in member_indices:
+            ranked = np.argsort(-log_probs[index])[:top_k]
+            per_model.append(ranked[np.isfinite(log_probs[index][ranked])])
+        if any(candidates.size == 0 for candidates in per_model):
+            continue
+        combos = np.array(list(itertools.product(*per_model)))
+        ends = positions[None, :, :] + displacements[combos]
+        legal = _coherent_mask(ends, radii, max(nearest - safety_margin, 0.0), furthest)
         if not legal.any():
             # A strict fallback, never a competitor: standing still is only ever
             # taken when the ranked set offers nothing legal, so it cannot make
