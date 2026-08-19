@@ -1268,37 +1268,103 @@ and none of these three probes tested it.
 
 ---
 
-## 21. The decode's benefit is very unevenly spread across maps
+## 21. ⚠ RETRACTED — the decode helps on 45 of 45 tables
 
-Found while trying to make an honest README illustration, which is a good reason
-to make illustrations honestly.
+**This section originally claimed the decode's benefit was "very unevenly
+spread across maps", on the evidence of `ctlE` s1 losing 22.5 vp (median, 8 of
+10 games) on table_30. That claim is withdrawn. It was an n=10 result on a
+table selected for looking bad, and it does not survive n=30.**
 
-`ctlE` s1 on **table_30**, ten seeds, played twice — argmax against verified
-top-3, nothing else differing:
+### What the original measurement was
 
-| | argmax | top-3 | change |
-|---|---|---|---|
-| median vp | | | **−22.5** |
-| games where the decode *lost* points | | | **8 of 10** |
-| unit coherency | 0.594–0.849 | 0.839–1.000 | **+0.10 to +0.24, 10 of 10** |
+Ten seeds on table_30, argmax against verified top-3. It reproduces exactly —
+this is not a case of an irreproducible number:
 
-The nine-map average for this model is about **+26**. So table_30 runs strongly
-*against* the headline, and it is not an outlier of one episode — it is eight of
-ten games on that table.
+| `ctlE` s1, table_30 | first 10 seeds | 30 seeds |
+|---|---|---|
+| median of paired per-episode vp deltas | **−22.5** | **+10.0** |
+| games where the decode lost points | **8 of 10** | **12 of 30** |
+| mean paired delta (what `vp_margin` reports) | — | **+23.7** |
 
-This is consistent with the per-map spread already visible in the safety-margin
-sweep (+9.0, +3.0, −43.5, −25.5) and in §19's forced-redistribution probe. **The
-+26.8 and the +6.4 are averages over maps that disagree with each other by tens
-of points**, and the error bars quoted throughout this report are *across maps*
-for exactly that reason.
+The first ten seeds are the first third of the thirty, so this is one sample
+disagreeing with its own continuation: 8 losses in the first 10 draws, 4 in the
+next 20. Under the measured 40% loss rate that first block has probability
+~1%, which is exactly the kind of block you find when you **go looking for the
+worst-looking table** — and table_30 was chosen because a GIF sweep had
+flagged it. The anomaly was selected, then reported as a finding.
 
-**What is uniform is the legality.** Coherency rises in 10 of 10 games here, by
-+0.10 to +0.24, and 0.94–0.97 holds across four different opponents. The
-constraint result is robust; the *score* result is an average with real
-dispersion underneath it.
+Two further defects compounded it. The **median** was read against a mean:
+per-episode deltas here run −170 to +270, the top five games carry more than
+the whole total, and a right-skewed distribution's median is not what
+`vp_margin` reports. And **n=10 on a per-episode vp delta** is far inside the
+noise this report elsewhere insists on — per-episode `vp_margin` sd is 45–50.
 
-**Consequences.** Any single-game illustration of this work can honestly show
-formation and cannot honestly show score. And the obvious question this raises —
-*what distinguishes a map where the decode pays from one where it costs?* — is
-unanswered and worth a look, because a mechanism that is +26 on average and −22
-on a ninth of the tables may be two mechanisms wearing one name.
+### What is actually true, measured across every table
+
+All 45 tables, three `ctl` seeds, n=30, paired per (checkpoint, map) — the
+decode changes no weights, so the held-out split does not constrain this
+measurement and every table is admissible:
+
+| | |
+|---|---|
+| mean per-map delta | **+40.5 vp** |
+| median per-map delta | +41.9 |
+| tables where the decode **helps** | **45 / 45** |
+| tables where the decode **hurts** | **0 / 45** |
+| coherency delta | **+0.309, positive on 45/45**, min +0.268 |
+
+It is not carried by a minority: the best 9 tables average +60.4, the other 36
+average +35.5. Removing the top fifth still leaves +35.5.
+
+**table_30 is +30.2** (per seed +38, +36, +17) — mid-pack, and reproduced to
+0.1 vp by two independent runs.
+
+**The held-out nine are representative.** +39.6 (sd 15.7) against +40.7 (sd
+14.7) for the other 36 — worth knowing on its own, since every headline number
+in this repo is measured on those nine tables.
+
+### The one true observation, kept
+
+table_30's *absolute* score stays negative even verified (`ctl`: −2.5, −15.2,
+−28.5). It is a hard table. What §21 did was mistake **a table the agent plays
+badly** for **a table the decode fails on**, which are different claims — the
+delta there is strongly positive.
+
+### The decode's two halves, separated
+
+The original +26.8 was measured before `verify_moves` existed and before the
+observation rescale in #207 regenerated the golden files, so it cannot be
+differenced against anything measured after. Re-measured with all three arms
+under one code version — held-out nine, three seeds, n=30:
+
+| arm | vp margin | coherency |
+|---|---|---|
+| argmax (`decode_topk` 1) | −38.5 | 0.639 |
+| + rerank into a legal combination | −10.3 | 0.851 |
+| + verify against the env's own move resolution | **+1.1** | **0.936** |
+
+| contribution | vp | per seed |
+|---|---|---|
+| rerank into a legal combination | **+28.2** | +31.4, +19.8, +33.4 |
+| verify against env resolution | **+11.4** | +6.7, +16.2, +11.4 |
+| **both — what ships today** | **+39.6** | +38.1, +36.0, +44.8 |
+
+This replicates the ladder in §§13 and 16 (−34.8 → −8.0 → +2.6, coherency
+0.651 → 0.847 → 0.951) to within a couple of vp on every rung. Two figures
+should be read as superseded rather than wrong: **+26.8 is the *relaxed*
+decode**, not the one that ships, and verification is worth **+11.4**, not the
++6.4 recorded in §16 from a different paired comparison.
+
+### What this costs the reader
+
+The original §21 told you to distrust the score result and trust only the
+legality result. **Both are robust.** The decode is positive on every table
+measured, and coherency rises on every table measured.
+
+**The methodological lesson is the expensive one, and it is one this report
+already knew.** §11 retracts three claims for reading n=4–6 interims; §21 then
+did the same thing at n=10 and drew a *structural* conclusion from it ("two
+mechanisms wearing one name"). Selecting the extreme case and then measuring it
+at small n is not a weaker version of a good experiment — it is a machine for
+manufacturing findings. Any table singled out for looking anomalous needs the
+same n as anything else here, and its median is not its mean.
