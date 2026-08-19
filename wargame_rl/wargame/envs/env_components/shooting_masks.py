@@ -60,14 +60,22 @@ def compute_shooting_masks(
     shooters = np.asarray(player_alive, dtype=bool) & (player_max_ranges > 0)
     if player_advanced is not None:
         shooters &= ~np.asarray(player_advanced, dtype=bool)
+    alive_targets = np.asarray(opponent_alive, dtype=bool)
     if engagement_range > 0:
         # Engagement is measured base to base, not centre to centre: two models
         # with `r`-radius bases are `2r` closer than their centres suggest.
-        shooters &= distances.min(axis=1) - base_diameter > engagement_range
+        # Only LIVING enemies engage: casualties are masked to infinity before
+        # the minimum, so a corpse lying next to a model cannot go on pinning
+        # it, and a model with no living enemy left reduces over an empty set
+        # to infinity -- not engaged, which is the right answer.
+        nearest_live = np.where(alive_targets[np.newaxis, :], distances, np.inf).min(
+            axis=1
+        )
+        shooters &= nearest_live - base_diameter > engagement_range
 
     candidates = (
         shooters[:, np.newaxis]
-        & np.asarray(opponent_alive, dtype=bool)[np.newaxis, :]
+        & alive_targets[np.newaxis, :]
         & (distances <= player_max_ranges[:, np.newaxis])
     )
     if not candidates.any():
@@ -308,7 +316,11 @@ def compute_unit_shooting_masks(
     if player_advanced is not None:
         shooters &= ~np.asarray(player_advanced, dtype=bool)
     if engagement_range > 0:
-        shooters &= distances.min(axis=1) - base_diameter > engagement_range
+        # Only living enemies engage -- see `compute_shooting_masks`.
+        nearest_live = np.where(alive_targets[np.newaxis, :], distances, np.inf).min(
+            axis=1
+        )
+        shooters &= nearest_live - base_diameter > engagement_range
     if not shooters.any():
         return mask
 
