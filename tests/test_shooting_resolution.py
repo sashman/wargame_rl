@@ -787,6 +787,53 @@ class TestShootingMaskExtensions:
         assert not m[0, 0], "Model within engagement range should be masked"
         assert m[1, 0], "Model outside engagement range should shoot"
 
+    def test_a_dead_enemy_does_not_keep_a_model_engaged(self) -> None:
+        """A corpse must not lock a model out of shooting.
+
+        The gate took `distances.min()` over *every* opponent and applied
+        `opponent_alive` only afterwards, so a casualty lying next to a model
+        went on pinning it for the rest of the episode. The rule is about being
+        engaged by an enemy, and a dead model engages nobody.
+        """
+        pp = np.array([[0.0, 0.0]])
+        op = np.array([[1.0, 0.0], [10.0, 0.0]])  # corpse adjacent, live one far
+        pa = np.array([True])
+        oa = np.array([False, True])
+        pr = np.array([50.0])
+        m = compute_shooting_masks(
+            pp, op, pa, oa, pr, _all_visible, engagement_range=2.0
+        )
+        assert m[0, 1], "a corpse within engagement range must not pin the shooter"
+
+    def test_a_live_enemy_still_engages(self) -> None:
+        """The companion case: the gate must still fire on a living enemy."""
+        pp = np.array([[0.0, 0.0]])
+        op = np.array([[1.0, 0.0], [10.0, 0.0]])
+        pa = np.array([True])
+        oa = np.array([True, True])
+        pr = np.array([50.0])
+        m = compute_shooting_masks(
+            pp, op, pa, oa, pr, _all_visible, engagement_range=2.0
+        )
+        assert not m[0, 1], "a living adjacent enemy must still pin the shooter"
+
+    def test_every_enemy_dead_leaves_nobody_engaged(self) -> None:
+        """The empty-set edge case the fix introduces.
+
+        Masking the dead out before the minimum means a model with no living
+        enemy at all reduces over an empty set. It must read as "not engaged",
+        not as a crash or as engaged-by-default.
+        """
+        pp = np.array([[0.0, 0.0]])
+        op = np.array([[1.0, 0.0]])
+        pa = np.array([True])
+        oa = np.array([False])
+        pr = np.array([50.0])
+        m = compute_shooting_masks(
+            pp, op, pa, oa, pr, _all_visible, engagement_range=2.0
+        )
+        assert not m.any(), "no living target, so no shot -- but no crash either"
+
     def test_backward_compat_no_new_params(self) -> None:
         pp = np.array([[0, 0]])
         op = np.array([[5, 0]])
