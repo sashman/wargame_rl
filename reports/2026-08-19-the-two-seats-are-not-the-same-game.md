@@ -183,6 +183,27 @@ rather than the mechanism: the aggregate margin reproduces exactly at n=30
 (−24.6, matching the original seat-parity run), and scoring events remain equal
 (18.44 against 18.37).
 
+## Replicated across the sight fix
+
+Everything above was measured before `#211` ("sight is a property of the pair,
+not of the direction asked"), which fixed the line-of-sight asymmetry this
+report had ruled out as a cause. Re-run on the fixed code, same config, same 30
+layouts:
+
+| leg | before | after |
+|---|---|---|
+| zone 1, A first | −40.8 | −40.7 |
+| zone 1, B first | −27.5 | −27.2 |
+| zone 2, A first | −15.2 | −17.7 |
+| zone 2, B first | −14.8 | −13.3 |
+| **aggregate** | **−24.6 ± 9.4** | **−24.7 ± 9.4** |
+
+Unchanged to a tenth of a victory point, on two different code versions. That
+is a stronger statement than the original measurement: it replicates the seat
+gap, and it independently confirms the earlier finding that the sight
+asymmetry — real, and now fixed — was **unbiased between the seats** and never
+a candidate cause.
+
 ## ⚠ The "neutral" cadence is not neutral, and that qualifies the refutation
 
 Worth stating plainly because it cuts against the section above. The neutral
