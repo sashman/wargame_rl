@@ -1264,3 +1264,41 @@ objectives to the script's 2.47 and scores 192 to its 231, conceding 176 to its
 200. It needs roughly **+0.36 objectives held** — not more models sent, but
 **arriving earlier and on the right ones**. That is timing and target selection,
 and none of these three probes tested it.
+
+
+---
+
+## 21. The decode's benefit is very unevenly spread across maps
+
+Found while trying to make an honest README illustration, which is a good reason
+to make illustrations honestly.
+
+`ctlE` s1 on **table_30**, ten seeds, played twice — argmax against verified
+top-3, nothing else differing:
+
+| | argmax | top-3 | change |
+|---|---|---|---|
+| median vp | | | **−22.5** |
+| games where the decode *lost* points | | | **8 of 10** |
+| unit coherency | 0.594–0.849 | 0.839–1.000 | **+0.10 to +0.24, 10 of 10** |
+
+The nine-map average for this model is about **+26**. So table_30 runs strongly
+*against* the headline, and it is not an outlier of one episode — it is eight of
+ten games on that table.
+
+This is consistent with the per-map spread already visible in the safety-margin
+sweep (+9.0, +3.0, −43.5, −25.5) and in §19's forced-redistribution probe. **The
++26.8 and the +6.4 are averages over maps that disagree with each other by tens
+of points**, and the error bars quoted throughout this report are *across maps*
+for exactly that reason.
+
+**What is uniform is the legality.** Coherency rises in 10 of 10 games here, by
++0.10 to +0.24, and 0.94–0.97 holds across four different opponents. The
+constraint result is robust; the *score* result is an average with real
+dispersion underneath it.
+
+**Consequences.** Any single-game illustration of this work can honestly show
+formation and cannot honestly show score. And the obvious question this raises —
+*what distinguishes a map where the decode pays from one where it costs?* — is
+unanswered and worth a look, because a mechanism that is +26 on average and −22
+on a ninth of the tables may be two mechanisms wearing one name.

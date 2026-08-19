@@ -6,57 +6,64 @@ Reinforcement learning model for playing table top wargames.
 
 *Written for someone who knows the game but not the machine learning.*
 
-Every player — hand-written or trained — is scored the same way: **100 games of
-20 rounds on each of nine tables it has never seen** — 900 games in all —
-reported as the average victory-point margin, ours minus theirs.
-
 The scenario: **25 models a side in five units of five**, both players carrying
-the identical profile, over five or six objectives. **All combat is shooting, to
-a maximum of 12 inches.**
+the identical profile, over five or six objectives on real table layouts. **All
+combat is shooting, to a maximum of 12 inches.** Every player — hand-written or
+trained — is scored on **nine tables it has never seen**, reported as the average
+victory-point margin, ours minus theirs.
 
-![The copy-taught model playing table 30](docs/images/clone-plays-table-30.gif)
+**The opponent is now `squad_march_take`, the strongest hand-written player**,
+and that change is why the numbers below look small. Against the weak opponent
+this project used until recently, the best hand-written play scored **+104.9**;
+against this one it scores **−5.6**. The game got about 110 points harder, so
+**nothing here is comparable to a figure quoted before 2026-08-16.**
 
-*One selected game — blue, moving first — on table 30, one of the nine it has
-never seen. It ends **285–120**, holding four objectives to one, with the
-player's score at the maximum a side can bank in twenty rounds. Chosen from a
-sweep of 54 games on **both** counts — a decisive win and units that stayed
-legal (coherency 0.960 here, against ~0.71 for this model in general). The
-table below is the average over 900 games; this is the model at its best on
-both, not a typical outing.*
+![The trained model playing table 30](docs/images/agent-plays-table-30.gif)
 
-| player | VP margin | objectives held | force surviving | VP conceded |
-|---|---|---|---|---|
-| deploys and never moves | −88.9 | 1.27 | 100% | 210.0 |
-| moves at random | −26.4 | 1.96 | 82% | 208.6 |
-| walks squads onto objectives | +79.4 | 3.50 | 67% | 190.9 |
-| …and shoots | +111.8 | 4.00 | 76% | 160.4 |
-| **`squad_march_take` — …and takes the weakest-held objectives first; strongest player** | **+116.7** | 4.02 | 76% | 160.8 |
-| **trained model, taught by copying** | **+113.6** | 3.82 | 67% | 158.0 |
-| **trained model, learning on its own** | **+75.9 to +84.7** | 3.24 | 95% | 181.6 |
+*One game on table 30, one of the nine it has never seen. It ends **210–125**,
+holding two objectives to one, with **12 models left against 2** — and its squads
+stay together throughout (unit coherency **0.962** here, against 0.94–0.97 for
+this model in general). Selected from a sweep of ten games on this table, on
+**both** counts — a decisive win and clean formation. The table below is the
+average; this is the model at its best.*
 
-### What the trained model can do
+### The opponents
 
-It plays a competent, cautious holding game. It deploys, moves onto objectives
-and keeps them, and it **maxes out its own scoring** — 264 points of
-a 285 ceiling, which is within a few points of the best player on the table. On
-its own half of the scoreboard it is close to perfect.
+All four are hand-written. They form a ladder — each adds exactly one behaviour
+to the one above it — except the last, which plays a different way entirely:
 
-It has learned the shape of the mission: it holds around three objectives
-consistently, which is exactly the number that saturates the 15-point-a-round
-scoring cap. It does not wander, it does not stall, and it does not lose games
-it should win.
+| opponent | what it does |
+|---|---|
+| `squad_march_shoot` | Each squad marches to one objective as a body and holds it, firing at the nearest target in range. |
+| `squad_march_deny` | The same, but squads with nothing left to hold go and **contest what the other side holds**. |
+| `squad_march_take` | The same, but those spare squads instead go for the **most weakly held** objective — the cheapest to flip. Strongest of the four. |
+| `contest_and_spread` | Allocates squads against **where the enemy has actually deployed** rather than by a fixed rule, and spreads its fire instead of always shooting the nearest. |
 
-**Where it is weakest is unit coherency.** Under the 2"/9" rule it keeps a unit
-together on **0.665** of unit-moves, against **0.884** for the hand-written
-policy it learned from and **0.853** for the earlier model that learned on its
-own — and its squads tend to come apart into separate groups rather than merely
-stretch. Nothing in the score reflects this: coherency is measured but not
-enforced in this scenario, so a model can play a winning game while its units
-fragment. Six copies were measured and all six sit below both, so it is a
-property of the copying, not a bad run.
+### What it scores
+
+Nine held-out tables, three independently trained models, 20 rounds a game.
+Figures are the **average victory-point margin — ours minus theirs**, so 0 is a
+dead heat and +20 means winning by twenty points a game.
+
+The hand-written players are re-measured against **each** opponent, because
+changing the opponent changes the game:
+
+| opponent it faces | trained model<br>*avg VP margin* | best hand-written player<br>*avg VP margin* | |
+|---|---|---|---|
+| `squad_march_take` — the strongest | **+2.6** | −4.4 | **ahead by 7.0** |
+| `squad_march_shoot` | **+19.3** | +12.1 | **ahead by 7.2** |
+| `squad_march_deny` | **+4.0** | −3.1 | **ahead by 7.1** |
+| `contest_and_spread` | +17.4 | **+31.1** | behind by 13.7 |
+
+**Ahead of the best hand-written play in three matchups of four.**
+
+⚠ Read those numbers *down a column*, never across. A player's absolute score
+mostly measures how weak its opponent is — the trained model scores *higher*
+against the weaker opponents while doing relatively *worse*. The only meaningful
+comparison is the two figures on the same row, which faced the same opponent.
 
 Full detail: [reports/](reports/README.md), most recently
-[the cap makes it a denial game](reports/2026-08-16-the-cap-makes-it-a-denial-game.md).
+[the chain tail and the frozen army](reports/2026-08-18-the-chain-tail-and-the-frozen-army.md).
 
 ## Documentation
 
