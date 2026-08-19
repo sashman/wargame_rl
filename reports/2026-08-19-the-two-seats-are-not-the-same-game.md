@@ -94,9 +94,58 @@ victory points.** More shots, more kills, more survivors — fewer points. In th
 per-round trace the player holds 1.00 objectives at the end against the
 opponent's 1.67, with more models alive.
 
-So the residual is positional or in scoring, not in combat resolution. That is
-where the next investigation starts, and it is a much narrower target than
-where this began.
+So the residual is positional or in scoring, not in combat resolution.
+
+## What it is, part three: each side is scored at a different point in the round
+
+VP is awarded in `_on_before_advance` when a side leaves its **command** phase —
+the first phase of its own turn. Tracing the clock on the golden config with the
+player moving first:
+
+```
+step 0: player movement (r1)      SCORE plr r1
+step 1: player shooting (r1)      SCORE opp r1
+                                  [opponent moves, opponent shoots]
+                                  SCORE plr r2
+```
+
+So each side is scored **before its own move and immediately after the enemy's**
+— structurally symmetric, and the event *counts* are equal (17.8 against 17.5
+per episode; 20.0 against 20.0 on another leg). But the two scoring instants sit
+at different points in the move sequence: the player is scored at move-count
+`(N, N)`, a fully contested board where the enemy has just arrived, while the
+opponent is scored at `(N, N-1)`, before it has committed that round.
+
+Measured — what each side controls **at its own scoring instant**, 8 layouts:
+
+| leg | player controls, at player's scoring | opponent controls, at opponent's scoring |
+|---|---|---|
+| zone 1, A first | 1.085 | **1.314** |
+| zone 1, B first | 1.168 | 1.273 |
+| zone 2, A first | 1.194 | 1.337 |
+| zone 2, B first | **1.381** | 1.136 |
+
+**This closes the arithmetic.** The player earns 5.37 VP per scoring event and
+the opponent 6.54 — a gap of 1.17 VP, which at 5 VP per objective is 0.23
+objectives, exactly the 1.085 against 1.314 difference on that leg. Over ~18
+events an episode that integrates to roughly the seat gap observed.
+
+It also predicts the *ordering*. Zone 2 with the opponent moving first is the
+only leg where the player controls more at its own scoring instant (1.381
+against 1.136) — and it is the only leg the player wins (+16.0). The worst leg
+on this measure, zone 1 with the player first, is the worst leg on margin
+(−40.8).
+
+**So the residual is the scoring cadence, not positioning.** Both sides are
+measured at the moment least favourable to them, but "least favourable" is not
+the same board for the two seats, because the command phases are half a turn
+apart in the interleaving. The player is measured on a fully contested board;
+the opponent on one it has not yet committed to.
+
+⚠ **This is n=8 on one config and the leg-level numbers are noisy** (the
+ordering agrees with the margins on the extremes and swaps the middle two). The
+mechanism and the arithmetic agree, but it should be confirmed at higher n
+before anything is changed on the strength of it.
 
 ## Incidental finding
 
