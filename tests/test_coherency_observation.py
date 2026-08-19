@@ -52,23 +52,25 @@ def make_models(
 
 
 def test_the_cohesion_column_ignores_the_dead() -> None:
-    # Arrange: a model with a corpse at its feet and a live squadmate 20 away.
+    # Arrange: a model with a corpse at its feet and a live squadmate 4" away.
     # The corpse keeps its position forever -- `take_damage` writes only wounds.
-    locations = [(0.0, 0.0), (1.0, 0.0), (20.0, 0.0)]
+    # Both distances sit inside CHAIN_OBSERVATION_RANGE_IN, so the column can
+    # still tell them apart -- past 8" everything saturates to 1.0 by design.
+    locations = [(0.0, 0.0), (1.0, 0.0), (4.0, 0.0)]
     locs = np.array(locations, dtype=np.float32)
     group_ids = np.array([0, 0, 0], dtype=np.int32)
 
     # Act
     with_corpse = _same_group_closest_distance(
-        locs, group_ids, 100.0, np.array([True, False, True])
+        locs, group_ids, np.array([True, False, True])
     )
     all_alive = _same_group_closest_distance(
-        locs, group_ids, 100.0, np.array([True, True, True])
+        locs, group_ids, np.array([True, True, True])
     )
 
-    # Assert: the living squadmate at 20, not the body at 1.
-    assert with_corpse[0, 0] == np.float32(0.2)
-    assert all_alive[0, 0] == np.float32(0.01)
+    # Assert: the living squadmate at 4", not the body at 1".
+    assert with_corpse[0, 0] == np.float32(0.5)
+    assert all_alive[0, 0] == np.float32(0.125)
 
 
 def test_a_model_whose_whole_unit_is_dead_reads_as_alone() -> None:
@@ -78,9 +80,7 @@ def test_a_model_whose_whole_unit_is_dead_reads_as_alone() -> None:
     group_ids = np.array([0, 0], dtype=np.int32)
 
     # Act
-    column = _same_group_closest_distance(
-        locs, group_ids, 100.0, np.array([True, False])
-    )
+    column = _same_group_closest_distance(locs, group_ids, np.array([True, False]))
 
     # Assert: 1.0 is this column's "no same-group model" value.
     assert column[0, 0] == np.float32(1.0)

@@ -55,10 +55,16 @@ def _group_ids_to_one_hot(group_ids: np.ndarray, max_groups: int) -> np.ndarray:
     return one_hot
 
 
+# The chain limit is 2in and the whole decision this column informs lives inside
+# it, so the range is four chain-lengths: the band gets a quarter of [0, 1]
+# instead of the board diagonal's 2.7%, and anything past 8in saturates, because
+# a squadmate that far away is out of the unit whatever the exact distance.
+CHAIN_OBSERVATION_RANGE_IN = 8.0
+
+
 def _same_group_closest_distance(
     locs: np.ndarray,
     group_ids: np.ndarray,
-    max_dist: float,
     alive: np.ndarray,
 ) -> np.ndarray:
     """For each model, compute the normalised distance to the nearest *live* model in the same group.
@@ -80,6 +86,21 @@ def _same_group_closest_distance(
     the dead (`distance_cache.min_distances_to_same_group`), so the observation
     and the reward disagreed about who was in the unit, and diverged as
     casualties mounted.
+
+    **The scale was wrong too, and was changed on 2026-08-19.** This divided by
+    the board diagonal, so the 2in coherency band -- the only part of this
+    column any decision turns on -- occupied **2.7%** of its range, and the
+    corpse bug's own mean error was twice the width of that whole region. It
+    now divides by `CHAIN_OBSERVATION_RANGE_IN`, putting the band at 25% of the
+    range and saturating beyond it: past 8in a squadmate is simply "gone", and
+    how gone changes no decision this column informs. The unit is *inches*, not
+    a board fraction, so the feature no longer changes meaning with board size.
+
+    ⚠ This is a deliberate observation change, so `test_observation_golden` was
+    regenerated and **checkpoints trained before it score differently** (the
+    width is unchanged, so they still load). It is measured as an arm against
+    the three `ctlE` seeds, which share the same shapes and therefore the same
+    initial weights per seed -- so read it paired.
     """
     n = len(locs)
 
@@ -93,8 +114,10 @@ def _same_group_closest_distance(
     pairwise = np.where(same_group, pairwise, np.inf)
 
     closest = pairwise.min(axis=1)
-    closest = np.where(np.isinf(closest), max_dist, closest)
-    closest = np.clip(closest, 0.0, max_dist) / max_dist
+    closest = np.where(np.isinf(closest), CHAIN_OBSERVATION_RANGE_IN, closest)
+    closest = (
+        np.clip(closest, 0.0, CHAIN_OBSERVATION_RANGE_IN) / CHAIN_OBSERVATION_RANGE_IN
+    )
     result: np.ndarray = closest.astype(np.float32).reshape(n, 1)
     return result
 
@@ -103,7 +126,6 @@ def _models_to_features(
     models: list,
     half_board: np.ndarray,
     half_board_tiled: np.ndarray,
-    max_dist: float,
     max_groups: int,
     feature_dim: int,
 ) -> np.ndarray:
@@ -135,7 +157,7 @@ def _models_to_features(
         _normalize(locs, half_board),
         _normalize(dists, half_board_tiled),
         _group_ids_to_one_hot(group_ids, max_groups),
-        _same_group_closest_distance(locs, group_ids, max_dist, alive),
+        _same_group_closest_distance(locs, group_ids, alive),
     ]
     # Inside `core`, ahead of `alive`, per the rule above. It is already a
     # fraction in [0, 1], so it needs no NORM_ constant.
@@ -232,7 +254,6 @@ def _observation_to_numpy(
     )
     n_objectives = len(state.objectives)
     half_board_tiled = np.tile(half_board, n_objectives)
-    max_dist = float(np.sqrt(state.board_width**2 + state.board_height**2))
 
     n_opponent = len(state.opponent_models)
 
@@ -278,7 +299,6 @@ def _observation_to_numpy(
         models,
         half_board,
         half_board_tiled,
-        max_dist,
         max_groups,
         base_feature_dim,
     )
@@ -286,7 +306,6 @@ def _observation_to_numpy(
         state.opponent_models,
         half_board,
         half_board_tiled,
-        max_dist,
         max_groups,
         base_feature_dim,
     )
