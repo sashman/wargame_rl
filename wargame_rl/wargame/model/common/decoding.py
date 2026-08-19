@@ -178,12 +178,22 @@ class UnitCandidates:
         combos: ``(n_combos, k)`` action ids, the cartesian product of each
             member's top-K.
         legal: ``(n_combos,)`` — True where the combination satisfies coherency
-            under the relaxed forward model (``position + displacement``).
+            under the relaxed forward model (``position + displacement``) *and*
+            uses no padded slot.
+        topk_actions: ``(k, top_k)`` each member's ranked actions, padded to a
+            rectangular shape by repeating the last real one.
+        slot_valid: ``(k, top_k)`` — False where that slot is padding. A padded
+            slot repeats an action already present, so a combination reaching
+            one duplicates a combination that is already in the set; leaving
+            those legal would give the duplicated outcome twice the probability
+            mass. They are excluded from `legal` for exactly that reason.
     """
 
     member_indices: list[int]
     combos: np.ndarray
     legal: np.ndarray
+    topk_actions: np.ndarray
+    slot_valid: np.ndarray
 
 
 def legal_unit_candidates(
@@ -231,10 +241,34 @@ def legal_unit_candidates(
             per_model.append(ranked[np.isfinite(log_probs[index][ranked])])
         if any(candidates.size == 0 for candidates in per_model):
             continue
-        combos = np.array(list(itertools.product(*per_model)))
+        # Rectangular by construction, so the candidate set has one shape for a
+        # given (k, top_k) and a rollout can store it as a fixed-size array.
+        topk_actions = np.stack(
+            [
+                np.pad(c, (0, top_k - c.size), mode="edge")
+                for c in (np.asarray(c) for c in per_model)
+            ]
+        )
+        slot_valid = np.stack(
+            [np.arange(top_k) < np.asarray(c).size for c in per_model]
+        )
+        pattern = np.array(list(itertools.product(range(top_k), repeat=size)))
+        combos = np.take_along_axis(
+            topk_actions[np.newaxis, :, :], pattern[:, :, np.newaxis], axis=2
+        ).squeeze(-1)
         ends = positions[None, :, :] + displacements[combos]
         legal = _coherent_mask(ends, radii, max(nearest - safety_margin, 0.0), furthest)
-        out.append(UnitCandidates(member_indices, combos, legal))
+        # A combination reaching a padded slot duplicates one already present.
+        legal &= (
+            np.take_along_axis(
+                slot_valid[np.newaxis, :, :], pattern[:, :, np.newaxis], axis=2
+            )
+            .squeeze(-1)
+            .all(axis=1)
+        )
+        out.append(
+            UnitCandidates(member_indices, combos, legal, topk_actions, slot_valid)
+        )
     return out
 
 

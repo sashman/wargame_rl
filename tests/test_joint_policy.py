@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 import torch
 
-from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.envs.types import WargameEnvConfig, WargameEnvObservation
 from wargame_rl.wargame.envs.types.config import ModelConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.decoding import (
@@ -21,9 +21,12 @@ from wargame_rl.wargame.model.common.decoding import (
     legal_unit_candidates,
 )
 from wargame_rl.wargame.model.common.joint_policy import (
+    combo_pattern,
+    combos_from_topk,
     joint_entropy,
     joint_log_probs,
     joint_scores,
+    sample_joint_actions,
 )
 
 
@@ -167,4 +170,138 @@ def test_the_argmax_is_what_the_decoder_actually_plays() -> None:
         assert list(unit.combos[mode]) == chosen, (
             "the joint distribution's mode is not the combination the decoder plays"
         )
+    env.close()
+
+
+def _one_unit_env(n_models: int = 4) -> WargameEnv:
+    """One unit of `n_models`, deployed IN formation.
+
+    Placed explicitly rather than randomly: models scattered across a
+    deployment zone start incoherent, no combination of moves is legal, and the
+    joint sampler correctly declines to act -- which makes every test here pass
+    vacuously while proving nothing. The chain distance is 2", so 1.5" apart
+    leaves the unit coherent with room to move.
+    """
+    return WargameEnv(
+        config=WargameEnvConfig(
+            render_mode=None,
+            number_of_wargame_models=n_models,
+            number_of_objectives=2,
+            number_of_battle_rounds=4,
+            models=[
+                ModelConfig(group_id=0, x=10.0 + 1.5 * i, y=10.0)
+                for i in range(n_models)
+            ],
+        )
+    )
+
+
+def _masked_log_probs(observation: WargameEnvObservation, seed: int) -> np.ndarray:
+    """Random but mask-respecting per-model log-probs."""
+    rng = np.random.default_rng(seed)
+    mask = np.asarray(observation.action_mask)
+    logits = np.where(mask, rng.normal(size=mask.shape), -np.inf)
+    normalised: np.ndarray = logits - np.log(np.exp(logits).sum(axis=1, keepdims=True))
+    return normalised
+
+
+def test_the_stored_log_prob_is_the_density_of_what_executed() -> None:
+    """The property a broken PPO ratio would violate, and nothing else would.
+
+    The update recomputes the joint log-probability from the *stored* candidate
+    set. At unchanged parameters that must reproduce the number recorded during
+    the rollout exactly -- if it does not, `exp(new - old)` is not 1 at the
+    start of an epoch, the importance ratio is measured against the wrong
+    distribution, and PPO optimises a quantity nobody chose. It would train
+    happily and look completely normal.
+    """
+    env = _one_unit_env()
+    observation, _ = env.reset(seed=7)
+    log_probs = _masked_log_probs(observation, 11)
+    baseline = [int(row.argmax()) for row in log_probs]
+
+    actions, draws = sample_joint_actions(
+        log_probs, baseline, env, top_k=3, rng=np.random.default_rng(3)
+    )
+    assert draws, "no unit was decoded jointly; the test proves nothing"
+
+    for draw in draws:
+        pattern = combo_pattern(len(draw.member_indices), 3)
+        combos = combos_from_topk(draw.topk_actions, pattern)
+        recomputed = joint_log_probs(
+            torch.tensor(log_probs[draw.member_indices], dtype=torch.float64),
+            torch.tensor(combos, dtype=torch.long),
+            torch.tensor(draw.legal),
+        )[draw.chosen]
+
+        assert float(recomputed) == pytest.approx(draw.log_prob, abs=1e-9)
+        # And the executed action really is the sampled combination.
+        for slot, index in enumerate(draw.member_indices):
+            assert actions[index] == int(combos[draw.chosen, slot])
+    env.close()
+
+
+def test_a_sampled_move_is_always_coherency_legal() -> None:
+    """Sampling must draw only from the legal set, on every draw."""
+    env = _one_unit_env()
+    observation, _ = env.reset(seed=5)
+    log_probs = _masked_log_probs(observation, 2)
+    baseline = [int(row.argmax()) for row in log_probs]
+    rng = np.random.default_rng(99)
+
+    for _ in range(50):
+        _actions, draws = sample_joint_actions(log_probs, baseline, env, 3, rng)
+        for draw in draws:
+            assert draw.legal[draw.chosen], "sampled an illegal combination"
+    env.close()
+
+
+def test_sampling_explores_rather_than_collapsing_to_the_decode() -> None:
+    """Greedy would give PPO one action per state and nothing to improve."""
+    env = _one_unit_env()
+    observation, _ = env.reset(seed=5)
+    log_probs = _masked_log_probs(observation, 2)
+    baseline = [int(row.argmax()) for row in log_probs]
+    rng = np.random.default_rng(4)
+
+    seen = {
+        tuple(sample_joint_actions(log_probs, baseline, env, 3, rng)[0])
+        for _ in range(40)
+    }
+
+    assert len(seen) > 1, "the joint sampler is behaving greedily"
+    env.close()
+
+
+def test_a_padded_slot_never_doubles_a_combinations_mass() -> None:
+    """A member with fewer than K legal actions must not distort the joint.
+
+    Padding each member's candidate list to a rectangular shape repeats an
+    action, so the repeated combination appears twice. Left legal, the outcome
+    would carry twice the probability it should -- a silent bias toward
+    whatever the mask happened to restrict.
+    """
+    env = _one_unit_env()
+    observation, _ = env.reset(seed=13)
+    mask = np.asarray(observation.action_mask)
+    # Leave the first model exactly two legal actions against a top_k of 3.
+    restricted = np.zeros_like(mask)
+    restricted[0, :2] = True
+    restricted[1:] = mask[1:]
+    rng = np.random.default_rng(6)
+    logits = np.where(restricted, rng.normal(size=mask.shape), -np.inf)
+    log_probs = logits - np.log(np.exp(logits).sum(axis=1, keepdims=True))
+
+    units = legal_unit_candidates(log_probs, env, top_k=3)
+    assert units, "no candidate set built"
+    unit = units[0]
+
+    padded = ~unit.slot_valid[0]
+    assert padded.any(), "the restriction did not produce a padded slot"
+    reaches_padding = np.isin(
+        unit.combos[:, 0], unit.topk_actions[0][padded]
+    ) & ~np.isin(unit.combos[:, 0], unit.topk_actions[0][unit.slot_valid[0]])
+    assert not unit.legal[reaches_padding].any(), (
+        "a combination using a padded slot was left legal, doubling its mass"
+    )
     env.close()
