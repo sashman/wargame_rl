@@ -21,8 +21,8 @@ against this one it scores **−5.6**. The game got about 110 points harder, so
 ![The same model, decoded two ways](docs/images/decode-side-by-side.gif)
 
 *One game on table 30, one of the nine it has never seen — the **same trained
-model and the same dice on both sides**, differing only in how the squad decides
-(explained below). Left, each model picks its own move and the force comes apart;
+model and the same dice on both sides**, differing only in how the squad decides.
+Left, each model picks its own move and the force comes apart;
 right, the squad picks its five moves together and stays in formation. Unit
 coherency in this game: **0.795 → 0.950**.*
 
@@ -30,7 +30,7 @@ coherency in this game: **0.795 → 0.950**.*
 on this particular table the squad-together decision actually **costs** points in
 eight games of ten, while the average across all nine tables is strongly
 positive. The seed shown is the median of ten, not a flattering pick. Read the
-table above for score.*
+table below for score.*
 
 ### What it scores
 
@@ -50,41 +50,6 @@ the opponent changes the game:
 ⚠ Read those numbers *down a column*, never across. A player's absolute score
 mostly measures how weak its opponent is — the trained model scores *higher*
 against the weaker opponents while doing relatively *worse*.
-
-### It follows the rules, which it previously did not
-
-Under the 2"/9" coherency rule it keeps a unit together on **0.94–0.97** of
-unit-moves, against **0.80–0.89** for the hand-written players. Nothing measured
-in this project had previously held above 0.94.
-
-That was the hard part. A squad is five models each choosing a move on its own,
-but the rule is about the five moves *together* — so five individually sensible
-choices can tear a squad apart, and under the rules the whole squad's move is
-then cancelled. **One squad move in three was being thrown away**, and half of
-all the movement the army wanted to make never happened.
-
-The fix is not a better-trained model. It is a better *decision*: each model
-names its top three moves, the squad considers all 243 combinations of those,
-and it plays the best combination that keeps the unit together — checking where
-the models will *actually* end up, collisions and all, rather than where they
-aimed. Only about 5% of individual moves change, but because the old rule was
-all-or-nothing, changing one model's move rescues a whole squad.
-
-⚠ **Most of the current strength is that decision, not the training.** The same
-trained weights, with each model left to choose alone, score about **−29**.
-
-### What it still cannot do
-
-It has **one mode**. It plays a defensive game better than any hand-written
-player — it concedes far fewer points than they do, and it never loses an
-objective it has committed to. What it cannot do is switch to the aggressive game
-when ground is cheap, and that is the entire reason it loses to
-`contest_and_spread`, the opponent that spreads itself thin and leaves objectives
-lightly held.
-
-That gap is about **0.36 of an objective**, and it is a question of arriving
-*earlier on the right objectives* rather than sending more models. Sending more
-models has been measured and it loses.
 
 Full detail: [reports/](reports/README.md), most recently
 [the chain tail and the frozen army](reports/2026-08-18-the-chain-tail-and-the-frozen-army.md).
