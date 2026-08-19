@@ -211,7 +211,7 @@ but symmetry is *pairwise* — it does not equalise the counts, which is precise
 cover worth using: it lets you choose the exchange ratio.
 
 Both deliberately **ignore** the engagement-range and advanced gating that the real shooting
-mask applies. A shooter within `engagement_range` of any enemy cannot fire at all, so folding
+mask applies. A shooter within `engagement_range` of any **living** enemy cannot fire at all, so folding
 that in would score a headlong charge as if it were cover.
 
 See [metrics.md](metrics.md#cover-metrics) for the reading rules — in particular that

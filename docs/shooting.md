@@ -71,7 +71,7 @@ During the shooting phase, a per-model **unit**-target validity mask is overlaid
 
 1. **Model M is alive** — dead models get `STAY_ACTION` only
 2. **M did not advance this turn** — `advanced_this_turn` gate. Dormant: nothing in the env ever sets the flag True (only `load_state` restores it from a snapshot), so today this never masks anything. See [rules/09-movement-phase.md](rules/09-movement-phase.md#advance-move) for the rule it will enforce.
-3. **M is not locked in engagement** — masked out entirely if the nearest enemy is within `engagement_range` (config, authored in inches and resolved into board units by `domain/rules_quantities.py`; defaults to 1, against the rules' 2 — see `docs/rules/implementation-status.md`)
+3. **M is not locked in engagement** — masked out entirely if the nearest **living** enemy is within `engagement_range` (casualties are excluded before the minimum is taken; a corpse engages nobody, and a model with no living enemy left is not engaged) (config, authored in inches and resolved into board units by `domain/rules_quantities.py`; defaults to 1, against the rules' 2 — see `docs/rules/implementation-status.md`)
 4. **Unit U has a living model** — a unit is a legal target while any model in it survives, so killing one model closes nothing
 5. **Some model of U is in range** — Euclidean distance from M ≤ max weapon range of M
 6. **Some model of U is visible** to M
