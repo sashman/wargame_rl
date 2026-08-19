@@ -27,7 +27,7 @@ Usage: just behaviour-clone <policy|ckpt> <env_config> [n_episodes] [epochs] [ou
 checkpoint path with `decode_topk` > 1 distils *joint constrained decoding*
 into the weights: the demonstrations are the most probable coherency-legal
 combination the teacher's own distribution allows, which on three seeds is
-worth +26.8 vp_margin and coherency 0.651 -> 0.847 at play time. Cloning it
+worth +40.5 vp_margin and coherency 0.639 -> 0.936 at play time. Cloning it
 asks whether the network can carry that improvement itself.
 
 ⚠ **A per-model fit does not inherit a joint property.** A 98.3%-action-match

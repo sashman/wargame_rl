@@ -62,9 +62,10 @@ def build_selector(
     constrained decoding** — the most probable action *combination* each unit
     can legally make (`model/common/decoding.py`). It changes only the decode,
     never the weights, and is worth a great deal: measured over three seeds at
-    `enforce_move: revert_unit`, `vp_margin` goes −26.0 → −3.5 at K=3 and
-    intended coherency 0.662 → 0.852. Left at 1 by default so every existing
-    number stays reproducible.
+    `enforce_move: revert_unit`, on nine held-out tables, `vp_margin` goes
+    −38.5 → +1.1 at K=3 and intended coherency 0.639 → 0.936. Across all 45
+    tables the per-map gain is +40.5 vp, positive on 45 of 45. Left at 1 by
+    default so every existing number stays reproducible.
 
     `decode_stay` stands a unit still when the top-K set yields no legal
     combination at all, rather than letting the referee revert it to the same
