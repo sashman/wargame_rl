@@ -40,6 +40,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from wargame_rl.wargame.envs.domain.movement import resolve_move
+from wargame_rl.wargame.envs.domain.value_objects import position
+from wargame_rl.wargame.envs.env_components.actions import _base_arrays
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 if TYPE_CHECKING:
@@ -102,6 +105,64 @@ def _coherent_mask(
     return result
 
 
+def _resolve_endpoints(
+    env: WargameEnv,
+    member_indices: list[int],
+    combo: np.ndarray,
+    displacements: np.ndarray,
+) -> np.ndarray:
+    """Where the environment would actually put this unit, for one combination.
+
+    Mirrors `ActionHandler.apply`: clamp into the board first (the edge is
+    clamped into the *displacement*, before collisions), then `resolve_move`
+    against enemy bases as blockers and friendly bases as passable-but-not-
+    endable, in model index order so earlier members displace later ones.
+
+    Two documented divergences from `apply`, both unavoidable here and both
+    conservative:
+
+    * models of *other* units move in the same loop, so their post-move
+      positions are unknowable at decode time. They are taken where they stand.
+    * the moving unit's members are resolved against that snapshot rather than
+      against a board where every unit has already moved.
+
+    The alternative -- the free translation this replaced -- was wrong on 49.8%
+    of models with a median error of 1.75in against a 2in decision band, and
+    certified 9.3% of unit-moves legal that landed incoherent.
+    """
+    models = env.player_models
+    opponents = env.opponent_models
+    radius = float(models[member_indices[0]].base_radius)
+    lower = position(radius, radius)
+    upper = position(env.config.board_width - radius, env.config.board_height - radius)
+    blocker_centres, blocker_radii = _base_arrays(opponents if radius > 0.0 else None)
+    live = [m for m in models if m.is_alive]
+    friendly_centres = np.array([m.location for m in live], dtype=float)
+    friendly_radii = np.array([m.base_radius for m in live], dtype=float)
+    live_ids = {id(m): j for j, m in enumerate(live)}
+
+    ends = np.zeros((len(member_indices), 2), dtype=float)
+    for j, index in enumerate(member_indices):
+        model = models[index]
+        start = np.asarray(model.location, dtype=float)
+        keep = np.ones(len(live), dtype=bool)
+        keep[live_ids[id(model)]] = False
+        in_bounds = np.clip(start + displacements[combo[j]], lower, upper)
+        ends[j] = resolve_move(
+            start,
+            in_bounds - start,
+            model.base_radius,
+            blocker_centres,
+            blocker_radii,
+            friendly_centres[keep],
+            friendly_radii[keep],
+        )
+        # Earlier members hold the ground they just took, exactly as `apply`
+        # rebuilds its friendly array from live locations on every iteration.
+        friendly_centres[live_ids[id(model)]] = ends[j]
+    return ends
+
+
 def decode_joint_coherent(
     log_probs: np.ndarray,
     actions: list[int],
@@ -110,6 +171,8 @@ def decode_joint_coherent(
     max_candidates: int = DEFAULT_MAX_CANDIDATES,
     include_stay: bool = False,
     safety_margin: float = 0.0,
+    verify_moves: bool = False,
+    max_verifications: int = 24,
 ) -> list[int]:
     """Rerank each unit's actions into the most probable coherency-legal joint one.
 
@@ -137,6 +200,18 @@ def decode_joint_coherent(
             move in the same loop) and 243 combos x k models of python collision
             resolution would cost far more than the decode itself. A margin buys
             the same protection generically, at the price of a smaller legal set.
+        verify_moves: Re-check shortlisted candidates against the endpoints the
+            environment would actually produce (`_resolve_endpoints`) and take
+            the best that survives, instead of trusting the free-translation
+            relaxation. This is the principled version of `safety_margin`: the
+            relaxation is wrong on 49.8% of models by a median 1.75in against a
+            2in band, and ~83% of the decoder's residual illegality is that
+            error rather than a poor candidate set.
+        max_verifications: How many shortlisted candidates to resolve exactly
+            before giving up and taking the relaxation's best. Bounded because
+            243 x k collision resolutions would cost far more than the decode;
+            only ~5% of actions change at all, so the first candidate usually
+            passes.
         include_stay: Stand a unit still when its top-K set contains no legal
             combination at all, instead of handing it back for the referee to
             revert. It applies to the 0.3-1.4% of unit-moves the decoder cannot
@@ -206,7 +281,22 @@ def decode_joint_coherent(
         score = np.stack(
             [log_probs[i][combos[:, j]] for j, i in enumerate(member_indices)], axis=1
         ).sum(axis=1)
-        best = combos[int(np.argmax(np.where(legal, score, -np.inf)))]
+        ranked_legal = np.argsort(-np.where(legal, score, -np.inf))[: int(legal.sum())]
+        best = combos[ranked_legal[0]]
+        if verify_moves:
+            # The relaxation is a cheap SHORTLIST, not the answer: walk it in
+            # score order and take the first candidate that is still coherent
+            # once the env's own resolution has been applied. Bounded, because
+            # only ~5% of actions change at all -- the first candidate usually
+            # passes -- and an unbounded walk would put 243 x k collision
+            # resolutions on the hot path.
+            for candidate in ranked_legal[:max_verifications]:
+                resolved = _resolve_endpoints(
+                    env, member_indices, combos[candidate], displacements
+                )
+                if _coherent_mask(resolved[None], radii, nearest, furthest)[0]:
+                    best = combos[candidate]
+                    break
         for j, index in enumerate(member_indices):
             decoded[index] = int(best[j])
     return decoded
