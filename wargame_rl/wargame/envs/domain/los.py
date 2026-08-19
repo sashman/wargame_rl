@@ -42,6 +42,11 @@ def _interior_sample_offsets(
     or stop being blocked. That was a real defect, and it surfaced as two golden
     gates failing when a caller began tracing in two passes instead of one.
 
+    Absolute offsets alone are not enough to make the answer a property of the
+    pair: they are measured from the segment's *start*, so the caller's choice
+    of which endpoint comes first still moved the samples. `segments_are_clear`
+    orders the endpoints canonically before calling this, which closes that.
+
     The array is still rectangular, sized by the longest segment, with a mask
     marking the samples that fall inside each segment. Endpoints are excluded: a
     model standing on a blocker is handled by the see-out rule in `sight.py`,
@@ -87,6 +92,19 @@ def segments_are_clear(
     clear = np.ones(n_segments, dtype=bool)
     if n_segments == 0:
         return clear
+
+    # Sight is a property of the PAIR, and samples sit at absolute distances
+    # from the segment's start -- so tracing A->B and B->A sampled different
+    # points whenever the length was not a whole number of steps, and the two
+    # directions could disagree. Ordering the endpoints canonically makes the
+    # sample set independent of which one the caller passed first. The rest of
+    # the pass is direction-agnostic: `blocker_exempt` is per segment, and the
+    # result is a single "clear" flag, so swapping changes nothing else.
+    swap = (starts[:, 0] > ends[:, 0]) | (
+        (starts[:, 0] == ends[:, 0]) & (starts[:, 1] > ends[:, 1])
+    )
+    keep = swap[:, np.newaxis]
+    starts, ends = np.where(keep, ends, starts), np.where(keep, starts, ends)
 
     deltas = ends - starts
     lengths = np.linalg.norm(deltas, axis=1)

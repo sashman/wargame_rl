@@ -321,7 +321,11 @@ def test_terrain_los_blocking_mask_and_footprint_coexist() -> None:
     x1=st.integers(min_value=0, max_value=19),
     y1=st.integers(min_value=0, max_value=19),
 )
-@settings(max_examples=200, deadline=None)
+# `derandomize` because this is a REGRESSION gate, not an exploration run:
+# unseeded, it drew a fresh sample every run and so passed and failed on
+# identical code minutes apart, which is how the asymmetry below sat
+# undetected. CLAUDE.md: no randomness without a fixed seed.
+@settings(max_examples=200, deadline=None, derandomize=True)
 def test_terrain_los_symmetry(
     board_w: int,
     board_h: int,
@@ -356,6 +360,43 @@ def test_terrain_los_symmetry(
     forward = env.has_line_of_sight_between_points(x0, y0, x1, y1)
     backward = env.has_line_of_sight_between_points(x1, y1, x0, y0)
     assert forward == backward
+
+
+def test_the_found_asymmetry_stays_fixed() -> None:
+    """The exact counterexample hypothesis produced on 2026-08-19.
+
+    Samples sat at absolute distances from `starts`, so tracing A->B sampled
+    different points from B->A and the two disagreed whenever the segment
+    length was not a whole number of steps. This is that case, pinned
+    explicitly: the property test only finds it when its draw happens to
+    include it, and it had no fixed seed.
+    """
+    piece = TerrainPieceConfig(footprint=(0, 2, 2, 5))
+    env = _terrain_env([piece], board_width=11, board_height=9)
+
+    forward = env.has_line_of_sight_between_points(0, 8, 10, 1)
+    backward = env.has_line_of_sight_between_points(10, 1, 0, 8)
+
+    assert forward == backward, "sight must be a property of the pair"
+
+
+def test_sampling_does_not_depend_on_endpoint_order() -> None:
+    """Directly at the geometry primitive, over many lengths and angles.
+
+    Goes through `segments_are_clear` rather than the env so a future caller
+    that reverses endpoints cannot reintroduce this behind the composition.
+    """
+    outlines = np.array([[[3.0, 3.0], [5.0, 3.0], [5.0, 5.0], [3.0, 5.0]]])
+    counts = np.array([4])
+    rng = np.random.default_rng(20260819)
+    starts = rng.uniform(0.0, 10.0, size=(400, 2))
+    ends = rng.uniform(0.0, 10.0, size=(400, 2))
+
+    forward = segments_are_clear(starts, ends, outlines, counts, sample_step=0.5)
+    backward = segments_are_clear(ends, starts, outlines, counts, sample_step=0.5)
+
+    disagreed = int((forward != backward).sum())
+    assert disagreed == 0, f"{disagreed}/400 segments disagreed on direction"
 
 
 def test_a_pair_gets_the_same_answer_however_it_is_batched() -> None:
