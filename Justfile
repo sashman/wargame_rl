@@ -142,6 +142,23 @@ train-seed-flags max_epochs seed group tag flags *configs:
 	done; \
 	wait
 
+# THE COHERENCY BASELINE OF RECORD. Use this, not `just train`, for
+# `configs/golden/25v25_maps_two_mode.yaml`: `ent_coef` is not an env-config
+# field and the PPO default is 0.03, while the baseline is the 0.003 arm --
+# worth +5.9 +/- 2.5 vp read paired on seed. Plain `just train` silently trains
+# the worse arm.
+# Use: just train-coherency-baseline 300 3
+train-coherency-baseline max_epochs='300' n_seeds='3':
+	@trap 'kill 0' INT TERM && \
+	for s in $(seq 1 {{n_seeds}}); do \
+		uv run train.py --record-during-training --record-every-n-epochs 10 \
+			--env-config-path configs/golden/25v25_maps_two_mode.yaml \
+			--max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" \
+			--ent-coef 0.003 --run-suffix "s$s-baseline" \
+			--wandb-group coherency-baseline & \
+	done; \
+	wait
+
 # Run multiple env configs in parallel. Each run gets a unique --run-suffix and shared --wandb-group.
 # Uses PPO + transformer. Use: just train-multi config1.yaml config2.yaml
 # Trap INT/TERM so Ctrl+C kills all background train.py processes.

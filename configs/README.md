@@ -11,6 +11,9 @@ Environment configs, tiered by **what breaks if you change the file**.
 
 ## `golden/` — results-bearing
 
+**`25v25_maps_two_mode.yaml` is the coherency baseline of record (2026-08-19).** ⚠ Train it with `just train-coherency-baseline`, never plain `just train` — `ent_coef` is not an env-config field, and the PPO default (0.03) is the worse arm by **+5.9 ± 2.5 vp** read paired on seed. Scored on the nine held-out tables against four opponents with the verified top-3 decode: **ahead of the best script on three of four**, behind `contest_and_spread` by 13.7, and **0.94–0.97 intended unit coherency on all four**. The matching evaluation configs are `evaluation/25v25_maps_take_opponent_refereed.yaml` and `evaluation/25v25_maps_vs_*.yaml` — swapping the opponent voids every baseline, so re-measure the scripts on each.
+
+
 Each of these backs a number quoted in `CLAUDE.md` or a report. Do not edit one
 to try something; copy it into `experiments/` instead.
 
