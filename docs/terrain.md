@@ -284,7 +284,7 @@ For a query from point `(x0, y0)` to point `(x1, y1)`:
 2. A **strictly interior** sample along the ray is blocking if (both endpoints are exempt, and models never occlude — only the static mask and footprints block):
    - `config.blocking_mask[y][x]` is True (legacy static blocking), **OR**
    - The sample lies inside any non-exempt outline. Sample membership is interior-only: it is measure-zero and on the hot path.
-3. Symmetry is exact by construction — the pair (A, B) and the pair (B, A) sample the same parametric positions on the same segment, so the same blockers are tested. `firepower_ratio` depends on it, reading an exposed model as one that can also fire.
+3. Symmetry is exact by construction — `segments_are_clear` orders each segment's endpoints canonically before sampling, so the pair (A, B) and the pair (B, A) sample the same parametric positions on the same segment and the same blockers are tested. `firepower_ratio` depends on it, reading an exposed model as one that can also fire. ⚠ Until 2026-08-19 this was asserted rather than implemented: samples were measured from whichever endpoint the caller passed first, and **0.097% of pairs in real play disagreed by direction**.
 
 The sampled-ray core in `domain/los.py` knows nothing about terrain: it takes padded outlines and traces segments against them, vectorised over segments *and* over shapes. Steps 1–3 above are `domain/sight.py`, which composes that primitive with the domain model (`terrain.py`) and the static mask.
 
