@@ -14,9 +14,13 @@ victory-point margin, ours minus theirs.
 
 **The opponent is now `squad_march_take`, the strongest hand-written player**,
 and that change is why the numbers below look small. Against the weak opponent
-this project used until recently, the best hand-written play scored **+104.9**;
-against this one it scores **−5.6**. The game got about 110 points harder, so
+this project used until recently, the best hand-written play scores **+105.7**;
+against this one it scores **−6.2**. The game got about 110 points harder, so
 **nothing here is comparable to a figure quoted before 2026-08-16.**
+
+Everything below was re-measured on 2026-08-19 after a bug fix that changed the
+game: a **dead** model used to keep yours from shooting, which fired on 8.7% of
+model-steps. Figures quoted before that date are not comparable either.
 
 ![The trained model playing table 30](docs/images/agent-plays-table-30.gif)
 
@@ -50,12 +54,17 @@ changing the opponent changes the game:
 
 | opponent it faces | trained model<br>*avg VP margin* | best hand-written player<br>*avg VP margin* | |
 |---|---|---|---|
-| `squad_march_take` — the strongest | **+2.6** | −4.4 | **ahead by 7.0** |
-| `squad_march_shoot` | **+19.3** | +12.1 | **ahead by 7.2** |
-| `squad_march_deny` | **+4.0** | −3.1 | **ahead by 7.1** |
-| `contest_and_spread` | +17.4 | **+31.1** | behind by 13.7 |
+| `squad_march_take` — the strongest | **+8.0** | −6.2 | **ahead by 14.2** |
+| `squad_march_shoot` | **+25.0** | +13.4 | **ahead by 11.6** |
+| `squad_march_deny` | **+10.0** | −7.0 | **ahead by 17.0** |
+| `contest_and_spread` | +21.8 | **+25.9** | behind by 4.1 |
 
 **Ahead of the best hand-written play in three matchups of four.**
+
+It also keeps its squads together better than any hand-written player in every
+matchup — unit coherency **0.934–0.942**, against a scripted band of
+**0.777–0.895**. That is the game's own formation rule, and it is measured on
+what the model *intended*, not on what a referee corrected.
 
 ⚠ Read those numbers *down a column*, never across. A player's absolute score
 mostly measures how weak its opponent is — the trained model scores *higher*
