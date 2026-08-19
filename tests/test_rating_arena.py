@@ -166,15 +166,31 @@ def test_an_asymmetric_scenario_is_refused() -> None:
         require_symmetric(base)
 
 
-def test_a_checkpoint_cannot_yet_sit_on_the_opponent_seat() -> None:
-    """Refused with the reason and the phase, rather than reaching the env and
-    failing as 'Unknown opponent policy type'."""
+def test_a_checkpoint_is_seated_through_the_model_policy() -> None:
+    """Named in the config rather than installed on a live env, so a rated match
+    is reproducible from its provenance -- the recorded config says which
+    checkpoint played and how it was decoded."""
     checkpoint = Entrant(
         name="run-armA",
         build=lambda env: (_ for _ in ()).throw(AssertionError("not called")),
         kind="checkpoint",
         source="checkpoints/run/last.ckpt",
+        decode_topk=3,
     )
 
-    with pytest.raises(NotImplementedError, match="model"):
-        opponent_config_for(checkpoint)
+    config = opponent_config_for(checkpoint)
+
+    assert config.type == "model"
+    assert config.params["checkpoint"] == "checkpoints/run/last.ckpt"
+    assert config.params["decode_topk"] == 3
+
+
+def test_a_checkpoint_entrant_without_a_path_is_refused() -> None:
+    nameless = Entrant(
+        name="run-armA",
+        build=lambda env: (_ for _ in ()).throw(AssertionError("not called")),
+        kind="checkpoint",
+    )
+
+    with pytest.raises(ValueError, match="no source path"):
+        opponent_config_for(nameless)

@@ -30,6 +30,10 @@ import sys
 
 from pydantic_yaml import parse_yaml_raw_as
 
+# Registers the `model` opponent key, so a checkpoint can be entrant B.
+# The arena deliberately does not import this: `rating` never imports
+# `model`, and pulling a registration into the library would invert that.
+import wargame_rl.wargame.model.opponent  # noqa: F401,E402
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.rating.arena import play_pairing, require_symmetric

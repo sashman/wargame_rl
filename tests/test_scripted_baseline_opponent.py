@@ -23,13 +23,13 @@ from pathlib import Path
 import pytest
 
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
+from wargame_rl.wargame.envs.opponent.mirror import MirroredEnv
 from wargame_rl.wargame.envs.opponent.registry import (
     build_opponent_policy,
     get_registry,
 )
 from wargame_rl.wargame.envs.opponent.scripted_baseline_policy import (
     ScriptedBaselineOpponentPolicy,
-    _MirroredEnv,
 )
 from wargame_rl.wargame.envs.reward.phase import (
     RewardCalculatorConfig,
@@ -50,7 +50,7 @@ from wargame_rl.wargame.envs.wargame import WargameEnv
 WEAPONS = [WeaponProfile(range=12, attacks=2)]
 
 # Attributes of the env that mean different things to the two sides. Every one
-# of these must be overridden by `_MirroredEnv`; anything else is shared and is
+# of these must be overridden by `MirroredEnv`; anything else is shared and is
 # allowed to fall through to the real env.
 SIDE_SPECIFIC = {
     "wargame_models",
@@ -59,7 +59,26 @@ SIDE_SPECIFIC = {
     "player_action_handler",
     "opponent_action_handler",
     "config",
+    "player_vp",
+    "opponent_vp",
+    "player_vp_delta",
+    "opponent_vp_delta",
+    "player_max_ranges",
+    "opponent_max_ranges",
+    "deployment_zone",
+    "opponent_deployment_zone",
+    "last_player_shooting_results",
+    "last_opponent_shooting_results",
 }
+
+# Modules that read the env through a mirror. `observation_builder` joined the
+# list when the mirror was extended to the observation path -- without it the
+# guarantee stopped covering the code that had just come to depend on it.
+MIRROR_CONSUMERS = (
+    "wargame_rl/wargame/envs/baseline",
+    "wargame_rl/wargame/envs/env_components/observation_builder.py",
+    "wargame_rl/wargame/model/common/decoding.py",
+)
 
 
 def _make_env(baseline: str, *, player_x: int = 14) -> WargameEnv:
@@ -132,7 +151,7 @@ def test_the_mirror_swaps_the_sides_and_shares_everything_else() -> None:
     env = _make_env("squad_march_take")
     env.reset(seed=0)
 
-    mirror = _MirroredEnv(env)
+    mirror = MirroredEnv(env)
 
     assert mirror.wargame_models is env.opponent_models
     assert mirror.player_models is env.opponent_models
@@ -156,36 +175,54 @@ def test_the_mirror_swaps_the_sides_and_shares_everything_else() -> None:
 def test_every_side_specific_attribute_the_baselines_read_is_mirrored() -> None:
     """A new side-specific read must be classified, not silently fall through.
 
-    Scans the baseline *policy* modules for `env.<attr>` and requires each name
-    to be either overridden by `_MirroredEnv` or explicitly shared. `evaluate.py`
-    is excluded: it drives the player deliberately and never sees the mirror.
+    Scans every module that reads the env through a mirror for `env.<attr>` and
+    `view.<attr>`, and requires each name to be either overridden by
+    `MirroredEnv` or explicitly shared. `evaluate.py` is excluded: it drives the
+    player deliberately and never sees the mirror.
+
+    ⚠ **This catches new *reads of known* side-specific names, not newly
+    invented ones.** The assertion intersects with `SIDE_SPECIFIC`, so an
+    attribute nobody adds to that set falls through in silence. The guard that
+    cannot be fooled that way is `tests/test_swap_invariance.py`, which compares
+    the mirrored observation against the other seat's tensor for tensor. Treat
+    this scan as a cheap early warning, not as the guarantee.
     """
-    package = Path(__file__).resolve().parents[1] / "wargame_rl/wargame/envs/baseline"
+    root = Path(__file__).resolve().parents[1]
+    paths: list[Path] = []
+    for entry in MIRROR_CONSUMERS:
+        target = root / entry
+        paths.extend(sorted(target.glob("*.py")) if target.is_dir() else [target])
+
     reads: set[str] = set()
-    for path in sorted(package.glob("*.py")):
+    for path in paths:
         if path.name in {"__init__.py", "evaluate.py"}:
             continue
-        reads |= set(re.findall(r"\benv\.([a-z_][a-z_0-9]*)", path.read_text()))
+        # `view.` as well as `env.`: the observation builder takes a BattleView
+        # and names its parameter `view`, so an `env.`-only pattern read none of
+        # the code this guarantee had just been extended to cover.
+        reads |= set(
+            re.findall(r"\b(?:env|view)\.([a-z_][a-z_0-9]*)", path.read_text())
+        )
 
     env = _make_env("squad_march")
     # `dir` on the instance, not the class: `config` is swapped in `__init__`
     # rather than declared as a property.
     mirrored = {
         name
-        for name in dir(_MirroredEnv(env))
+        for name in dir(MirroredEnv(env))
         if not name.startswith("__") and name != "_env"
     }
     unclassified = (reads & SIDE_SPECIFIC) - mirrored
 
     assert not unclassified, (
         f"baselines read side-specific env attributes the mirror does not swap: "
-        f"{sorted(unclassified)}. Add a property to `_MirroredEnv`, or add the "
+        f"{sorted(unclassified)}. Add a property to `MirroredEnv`, or add the "
         f"name to SIDE_SPECIFIC here if it is genuinely shared."
     )
     # And the mirror must not have gone stale in the other direction: every
     # attribute it swaps has to still exist on the real env.
     for name in mirrored:
-        assert hasattr(env, name), f"_MirroredEnv overrides a dead attribute: {name}"
+        assert hasattr(env, name), f"MirroredEnv overrides a dead attribute: {name}"
 
 
 def test_it_moves_the_opponents_army_and_leaves_the_player_alone() -> None:

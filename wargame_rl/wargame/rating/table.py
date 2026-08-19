@@ -95,8 +95,16 @@ def mean_coherency(legs: Sequence[LegResult]) -> dict[str, float | None]:
 
     Unconditional, because a `vp_margin` on its own is a result plus an unstated
     claim that the moves earning it were legal, and only this column carries the
-    claim. It is `None` for an entrant only ever seated as B -- the arena scores
-    the player seat, so the opponent's own figure is not measured here.
+    claim.
+
+    ⚠ **It is `None` for an entrant only ever seated as B**, because
+    `evaluate_selector` measures the player seat and nothing measures the
+    opponent's. `pairings` lists each pair once in input order, so the entrant
+    named *last* on the command line is entrant B in every one of its pairings
+    and comes back with no coherency at all -- a real gap against this repo's
+    rule that no score is quoted without it. Closing it needs the arena to
+    track the opponent's coherency too, which the env does not currently
+    measure for that side.
     """
     totals: dict[str, list[float]] = {}
     for leg in legs:

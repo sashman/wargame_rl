@@ -65,20 +65,25 @@ class AsymmetricScenarioError(ValueError):
 def opponent_config_for(entrant: Entrant) -> OpponentPolicyConfig:
     """How entrant B is seated on the opponent side.
 
-    A scripted baseline goes through `scripted_baseline`, which already ships
-    and runs any player-side baseline on the opponent seat. A checkpoint needs
-    the `model` opponent policy, which does not exist yet -- so this refuses
-    rather than producing a config the env would reject with a less useful
-    message.
+    A scripted baseline goes through `scripted_baseline`, which runs any
+    player-side baseline on the opponent seat; a checkpoint goes through
+    `model`. Both are named in the config rather than installed on a live env,
+    so a rated match is reproducible from its provenance alone -- the recorded
+    config carries the opponent's identity, including which checkpoint it was
+    and how it was decoded.
     """
     if entrant.kind == "baseline":
         return OpponentPolicyConfig(
             type="scripted_baseline", params={"baseline": entrant.name}
         )
-    raise NotImplementedError(
-        f"entrant {entrant.name!r} is a checkpoint, and seating one on the "
-        "opponent side needs the 'model' opponent policy (phase 04 wave 3). "
-        "Until then a checkpoint can be rated as entrant A only."
+    if entrant.source is None:
+        raise ValueError(
+            f"checkpoint entrant {entrant.name!r} carries no source path, so "
+            "there is nothing to seat on the opponent side"
+        )
+    return OpponentPolicyConfig(
+        type="model",
+        params={"checkpoint": entrant.source, "decode_topk": entrant.decode_topk},
     )
 
 
