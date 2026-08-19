@@ -1142,3 +1142,67 @@ holds everywhere. It is not yet a better player outright: it cannot exploit an
 opponent who spreads. That is one nameable weakness rather than a vague gap, and
 it is the same one the reward levers have failed on — see §12's hold-ground note
 and the abandonment invariance.
+
+
+---
+
+## 19. The redistribution ceiling is a mirage, and "overstacking" was the wrong name
+
+§18 ended by naming over-stacking as the remaining defect, and the per-objective
+split looks damning. `measure-objective-split`, `ctlE` s2, 30 episodes:
+
+| rank | player | opponent | held rate |
+|---|---|---|---|
+| 1 | **6.13** | **0.00** | 0.97 |
+| 2 | 3.57 | 0.07 | 0.93 |
+| 3 | 1.50 | 0.33 | 0.57 |
+| 4 | 0.00 | 2.37 | 0.00 |
+| 5 | 0.00 | 3.90 | 0.00 |
+| 6 | 0.00 | 2.82 | 0.00 |
+
+`held` 0.443, **`abandoned` 0.557**, `lost_close` and `lost_far` both **exactly
+0.000**. Surplus models on held objectives **8.73** of 15.1 alive, and a
+**redistribution ceiling of 4.60 against 2.47 held — +2.13 objectives**.
+
+Six models guarding zero enemies while three objectives are conceded outright
+reads as an obvious defect. It is not.
+
+### The counterfactual
+
+The most over-guarded unit was forced to march to the nearest abandoned
+objective from round 4 onward, playing the **identical seeds both ways** so map
+and dice cancel:
+
+    forced redistribution, 90 paired episodes (9 held-out maps x 10)
+      vp_margin change   -3.56   sd 42.8   se 4.52
+      episodes improved  32/90
+      per map            +9.0, +3.0, -43.5, -25.5, ...
+
+**Moving the surplus does not help. It slightly hurts.** The ceiling is computed
+with no travel time and no return fire — its own docstring says so — and once
+both are paid the +2.13 evaporates. That is what the warning is worth in points.
+
+### Why the agent is right
+
+The abandoned objectives are not empty ground going begging. They hold **2.37,
+3.90 and 2.82 opponent models**. Marching five models into one starts a fight
+that may be lost *and* concedes the ground left behind. And `lost_close = 0.000`
+is not timidity — it is the flip side of only committing where it wins.
+
+**So "over-stacking" is the wrong name, and §18's framing is retracted.** The
+surplus is insurance, not waste. The defect is one level up: **the agent has
+exactly one mode.** It plays the defensive game better than any script and
+cannot switch to the aggressive one when ground is cheap — which is precisely
+why it beats three opponents and loses to `contest_and_spread`, the one that
+spreads itself thin and leaves ground worth taking.
+
+⚠ **Do not over-trust this negative.** The intervention is crude: it commits at a
+fixed round, never reassesses, and marches into defended ground regardless of
+what is there. A *conditional* redistribution — take when cheap, hold when not —
+is untested and is the thing the agent actually lacks. At sd 42.8 the error bar
+is ±4.5, so a large gain is ruled out and a small one is not.
+
+**What this closes:** any lever whose premise is "the models are in the wrong
+place and moving them is worth objectives". Measured, they are not, and it is
+not. What remains open is teaching the policy to *choose* between two modes,
+which is a different and harder problem than re-pricing occupancy.
