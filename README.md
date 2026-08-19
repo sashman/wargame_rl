@@ -20,11 +20,17 @@ against this one it scores **−5.6**. The game got about 110 points harder, so
 
 ![The same model, decoded two ways](docs/images/decode-side-by-side.gif)
 
-*One game on a held-out table, same weights and same dice on both sides — only
-the decision-making differs. Left, each model picks its own move: the force is
-strung out, ten models already lost, holding two objectives. Right, the squad
-picks its moves together (below): tight formation, 22 of 25 alive, three
-objectives. Round 7 of 20.*
+*One game on table 30, one of the nine it has never seen — the **same trained
+model and the same dice on both sides**, differing only in how the squad decides
+(explained below). Left, each model picks its own move and the force comes apart;
+right, the squad picks its five moves together and stays in formation. Unit
+coherency in this game: **0.795 → 0.950**.*
+
+*This shows **formation**, not score. A single game says nothing about the score:
+on this particular table the squad-together decision actually **costs** points in
+eight games of ten, while the average across all nine tables is strongly
+positive. The seed shown is the median of ten, not a flattering pick. Read the
+table above for score.*
 
 ### What it scores
 
