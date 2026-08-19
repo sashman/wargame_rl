@@ -24,12 +24,12 @@ model-steps. Figures quoted before that date are not comparable either.
 
 ![The trained model playing table 30](docs/images/agent-plays-table-30.gif)
 
-*One game on table 30, one of the nine it has never seen. It ends **210–125**,
-holding two objectives to one, with **12 models left against 2** — and its squads
-stay together throughout (unit coherency **0.962** here, against 0.94–0.97 for
-this model in general). Selected from a sweep of ten games on this table, on
-**both** counts — a decisive win and clean formation. The table below is the
-average; this is the model at its best.*
+*One game on table 30, one of the nine it has never seen. It ends **230–135**
+with **12 models left against 3** — and its squads stay together throughout
+(unit coherency **0.950** here, against 0.934–0.942 for this model in general).
+Selected from a sweep of twenty games on this table, on **both** counts — a
+decisive win and clean formation — so it is the model at its best, not its
+average: the median game on this table is **+28**, not +95.*
 
 ### The opponents
 
