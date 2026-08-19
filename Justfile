@@ -142,6 +142,23 @@ train-seed-flags max_epochs seed group tag flags *configs:
 	done; \
 	wait
 
+# THE COHERENCY BASELINE OF RECORD. Use this, not `just train`, for
+# `configs/golden/25v25_maps_two_mode.yaml`: `ent_coef` is not an env-config
+# field and the PPO default is 0.03, while the baseline is the 0.003 arm --
+# worth +5.9 +/- 2.5 vp read paired on seed. Plain `just train` silently trains
+# the worse arm.
+# Use: just train-coherency-baseline 300 3
+train-coherency-baseline max_epochs='300' n_seeds='3':
+	@trap 'kill 0' INT TERM && \
+	for s in $(seq 1 {{n_seeds}}); do \
+		uv run train.py --record-during-training --record-every-n-epochs 10 \
+			--env-config-path configs/golden/25v25_maps_two_mode.yaml \
+			--max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" \
+			--ent-coef 0.003 --run-suffix "s$s-baseline" \
+			--wandb-group coherency-baseline & \
+	done; \
+	wait
+
 # Run multiple env configs in parallel. Each run gets a unique --run-suffix and shared --wandb-group.
 # Uses PPO + transformer. Use: just train-multi config1.yaml config2.yaml
 # Trap INT/TERM so Ctrl+C kills all background train.py processes.
@@ -240,8 +257,8 @@ measure-baselines env_config n_episodes='100' record='' seed_base='':
 # to resolve what it was measuring. n=100 halves that to ~4.5 and costs minutes
 # against the hours a training run costs. Scoring was the cheap half being
 # under-sampled while the expensive half was over-sampled.
-measure-checkpoint checkpoint env_config n_episodes='100' record='':
-	@uv run python -m scripts.measure_checkpoint {{checkpoint}} {{env_config}} {{n_episodes}} "{{record}}"
+measure-checkpoint checkpoint env_config n_episodes='100' record='' decode_topk='1':
+	@uv run python -m scripts.measure_checkpoint {{checkpoint}} {{env_config}} {{n_episodes}} "{{record}}" {{decode_topk}}
 
 # Final evaluation: score a policy on the real table layouts, one row per map.
 # Training uses `random_terrain`, so this is the only thing that asks how the
@@ -250,8 +267,8 @@ measure-checkpoint checkpoint env_config n_episodes='100' record='':
 # what was trained. Takes a baseline name or a checkpoint, like
 # measure-objective-split.
 # Use it like: just measure-maps <ckpt> configs/golden/25v25_shooting_opponent.yaml
-measure-maps policy env_config n_episodes='100' maps_dir='':
-	@uv run python -m scripts.measure_maps {{policy}} {{env_config}} {{n_episodes}} {{maps_dir}}
+measure-maps policy env_config n_episodes='100' maps_dir='' decode_topk='1' decode_stay='':
+	@uv run python -m scripts.measure_maps {{policy}} {{env_config}} {{n_episodes}} "{{maps_dir}}" "{{decode_topk}}" "{{decode_stay}}"
 
 # Re-render the preview PNG beside every evaluation map
 # Use it like: just render-maps
@@ -275,8 +292,8 @@ render-maps env_config='' maps_dir='':
 # gradient cannot: every unilateral step toward advancing is downhill, while the
 # joint advancing policy scores HIGHER on the training reward (30.29 v 24.77).
 # Use: just behaviour-clone squad_march_shoot configs/golden/25v25_maps_coherency.yaml
-behaviour-clone policy env_config n_episodes='200' epochs='8' out='checkpoints/clone.ckpt' seed='0':
-	@uv run python -m scripts.behaviour_clone {{policy}} {{env_config}} {{n_episodes}} {{epochs}} {{out}} {{seed}}
+behaviour-clone policy env_config n_episodes='200' epochs='8' out='checkpoints/clone.ckpt' seed='0' decode_topk='1':
+	@uv run python -m scripts.behaviour_clone {{policy}} {{env_config}} {{n_episodes}} {{epochs}} {{out}} {{seed}} {{decode_topk}}
 
 measure-income-share policy env_config n_episodes='30':
 	@uv run python -m scripts.measure_income_share {{policy}} {{env_config}} {{n_episodes}}

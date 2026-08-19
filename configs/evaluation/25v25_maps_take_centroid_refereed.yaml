@@ -1,4 +1,57 @@
 # ===========================================================================
+# PLAY / SCORING config for the `observe_unit_centroid` arm. Identical to
+# `configs/experiments/25v25_maps_take_centroid.yaml` but for the coherency
+# block at the bottom, which turns the rule ON: the move check
+# (`revert_unit`) and the End-of-Turn backstop (`attrition`).
+#
+# It exists because a checkpoint must be scored against the config it was
+# TRAINED on, plus enforcement -- the centroid field widens the per-model token
+# by two, so scoring a centroid checkpoint against the 61-wide config fails
+# loudly (exit 1) rather than silently loading nothing. That loud failure is
+# deliberate; do not "fix" it by relaxing the load.
+#
+# Read the un-refereed config for the policy's own `intended_coherency_rate`
+# and this one for the legality claim. NEVER TRAIN ON THIS FILE -- see the
+# coherency block and the golden config's header for why enforcement teaches
+# nothing.
+# ===========================================================================
+
+# ===========================================================================
+# ARM -- can the agent SEE how to keep formation? `observe_unit_centroid: true`,
+# and nothing else, against `configs/experiments/25v25_maps_take_opponent.yaml`.
+#
+# WHY THIS ARM. The reward gate `objective_hold.require_coherent` pays a model
+# nothing while it sits outside its unit's coherent body -- but the predicate it
+# gates on is NOT on the model's token. The agent is paid on something it cannot
+# observe, which is the exact failure this repo already has a standing rule
+# against ("before training a reward lever, check the agent can observe what it
+# keys on"). `observe_coherency` carries MAGNITUDES (how stretched, how split);
+# the spread ratio reads the same on either side of the unit, so it never says
+# WHICH WAY to close up. This field carries the DIRECTION, and it is precisely
+# the quantity `ScriptedSquadMarchPolicy` steers on.
+#
+# MEASURED, AND NEVER TRAINED. On a behaviour clone the field moves unit
+# coherency 0.665 -> 0.793 and `spread fail` 0.151 -> 0.023 for -0.2 vp (PR
+# #202). It is built, tested (`tests/test_unit_centroid_observation.py`) and
+# documented, and it is set in **no config anywhere in the repo**. Whether it
+# helps PPO is untested; that is this arm.
+#
+# ⚠ IT WIDENS THE PER-MODEL TOKEN BY TWO, so `--warm-start-ckpt-path` from any
+# earlier checkpoint loads NOTHING -- `_apply_warm_start_weights` uses
+# `strict=False`, so a width mismatch scores a fresh network as a trained one.
+# TRAIN THIS FROM SCRATCH, and check the first eval is near the from-scratch
+# floor rather than near a trained score.
+#
+# ⚠ DO NOT ADD `coherency.enforce_move` HERE. It is a referee applied at PLAY:
+# every reverted action produces the identical outcome, so the policy gradient
+# inside that whole set is exactly zero. See the golden config's header.
+#
+# NOT COMPARABLE to anything measured against `scripted_advance_and_shoot`.
+# This faces `squad_march_take`, the strongest scripted policy, where the whole
+# ladder moves: the shooting bar goes +104.9 -> -5.6 when the opponent changes.
+# ===========================================================================
+
+# ===========================================================================
 # GOLDEN — unit coherency on the real tables. This is the config to train on
 # for this scenario, and the one that backs the published coherency numbers.
 #
@@ -99,7 +152,7 @@
 # trained `25v25_maps_coherent.yaml` checkpoint as every measurement above did.
 # ===========================================================================
 
-config_name: 25v25_maps_coherency
+config_name: 25v25_maps_take_centroid_refereed
 #
 # 25v25 on THE REAL TABLES, drawn one per episode from `configs/evaluation/maps/`.
 #
@@ -508,40 +561,17 @@ reward_phases:
 # See the header comment: this arm observes per-objective control state.
 observe_objective_control: true
 
+# THE ARM. Two extra columns per model token: the vector to its unit's live
+# centroid, normalised by the spread cap and clipped per axis so the sign
+# survives at any distance. Direction, where `observe_coherency` gives only
+# magnitude. Widens the token, so no earlier checkpoint can warm-start this.
+observe_unit_centroid: true
+
 # `docs/rules/03-moving.md` § Setting up: a unit is placed in coherency. Default
 # placement anchors each model on one *random* already-placed squadmate, which
 # bounds the nearest neighbour and leaves the unit's span unbounded -- so squads
 # deploy strung out and in pieces, and no policy here has ever started a game
 # legal. Enforcing it is the whole arm.
-# ===========================================================================
-# THE REFEREED PLAY CONFIG for the take-opponent scenario. Identical to
-# `experiments/25v25_maps_take_opponent.yaml` except for `enforce_move`.
-#
-# ⚠ THIS IS FOR PLAY, RECORDING AND PRESENTATION -- NEVER FOR TRAINING.
-#   `docs/rules/03-moving.md` says an incoherent move cannot be made, so a
-#   recording made WITHOUT this shows illegal moves: the training config only
-#   *measures* coherency, and the agent's own rate is ~0.79, i.e. roughly one
-#   unit-movement-phase in five is illegal.
-#
-#   Training under it is measured to make formation WORSE (0.569 against
-#   0.756-0.886 for the reward gate alone), because every reverted action
-#   produces the identical outcome, so they share an advantage and the policy
-#   gradient inside that set is exactly zero. Enforcement guarantees a legal
-#   board and teaches nothing.
-#
-#   `revert_unit` is the spec's own mode: one model out of place cancels its
-#   whole unit's move.
-#
-# ⚠ SCORES UNDER THIS ARE NOT COMPARABLE TO SCORES WITHOUT IT. The referee
-#   costs vp, and it costs a sloppy policy more than a tidy one. Re-measure both
-#   the agent and every scripted reference here before quoting anything.
-#
-# ⚠ AND `eval/coherency_rate` IS 1.000 BY CONSTRUCTION UNDER THIS CONFIG.
-#   The `coherent` column in `measure-*` reads `intended_coherency_rate` when a
-#   referee is running, so it keeps reporting what the POLICY chose (~0.79)
-#   while the board on screen is legal. That is the intended pairing: a legal
-#   recording, and an honest number beside it.
-# ===========================================================================
 coherency:
   enforce_at_deployment: true
   enforce_move: revert_unit

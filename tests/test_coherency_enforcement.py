@@ -333,3 +333,87 @@ def test_the_cascade_terminates_at_the_starting_configuration() -> None:
 
     # Assert
     assert not overlapping_pairs(models)
+
+
+def coherent(models: list[WargameModel]) -> bool:
+    """True while every unit in the force satisfies the whole rule."""
+    return evaluate_coherency(
+        positions=np.array([m.location for m in models], dtype=float),
+        group_ids=np.array([m.group_id for m in models], dtype=np.intp),
+        alive_mask=np.array([m.is_alive for m in models], dtype=bool),
+        base_radii=np.array([m.base_radius for m in models], dtype=float),
+        nearest_distance=NEAREST,
+        furthest_distance=FURTHEST,
+    ).all_coherent
+
+
+def test_repair_gathers_the_stray_and_keeps_everyone_elses_move() -> None:
+    """`repair` makes the nearest legal move where `revert_unit` makes none.
+
+    This is the whole point of the mode. The spec's revert cancels five models'
+    moves because one of them strayed, which destroys 48.9% of all intended
+    movement and cancels 33.1% of unit-moves. Repair pulls the stray back to the
+    body and lets the other four keep the ground they took.
+    """
+    # Four models advance in formation; the fifth overshoots and breaks the chain.
+    starts = [(10.0, 10.0), (11.5, 10.0), (13.0, 10.0), (14.5, 10.0), (16.0, 10.0)]
+    ends = [(12.0, 10.0), (13.5, 10.0), (15.0, 10.0), (16.5, 10.0), (26.0, 10.0)]
+
+    reverted = make_unit(starts, ends)
+    enforce_after_move(reverted, NEAREST, FURTHEST, CoherencyEnforcement.revert_unit)
+    assert all(np.allclose(m.location, s) for m, s in zip(reverted, starts)), (
+        "revert_unit should send the whole unit home"
+    )
+
+    repaired = make_unit(starts, ends)
+    moved = enforce_after_move(repaired, NEAREST, FURTHEST, CoherencyEnforcement.repair)
+
+    assert coherent(repaired), "repair must leave the unit legal"
+    assert moved > 0
+    # The four that were never in breach keep exactly the ground they took.
+    for index in range(4):
+        assert np.allclose(repaired[index].location, ends[index]), (
+            f"model {index} did not break the unit and should have kept its move"
+        )
+    # And the unit as a whole advanced, where the revert left it at its start.
+    assert repaired[0].location[0] > reverted[0].location[0]
+
+
+def test_repair_falls_back_to_the_revert_when_it_cannot_gather() -> None:
+    """A breach repair cannot close still gets the spec's own consequence.
+
+    A pure *spread* breach is the case: every model has a neighbour within the
+    chain distance, so there is no stray to pull in, but the unit is strung out
+    past the 9in cap. Repair declines and `revert_unit` finishes the job, so the
+    guarantee "the board is legal after enforcement" is never weakened.
+
+    **Six models, not five.** At the test fixture's `base_radius` of 0 a line of
+    five at the 2in chain limit spans only 8in, so a pure spread breach cannot be
+    built from five at all -- the two conditions cannot be separated until the
+    unit is big enough for the chain to reach past the cap.
+    """
+    # A chain at exactly the 2in limit: every neighbour is legal, the span is not.
+    starts = [(10.0 + 1.5 * i, 10.0) for i in range(6)]
+    ends = [(10.0 + 2.0 * i, 10.0) for i in range(6)]
+    models = make_unit(starts, ends)
+    assert not coherent(models), "fixture must start illegal"
+
+    enforce_after_move(models, NEAREST, FURTHEST, CoherencyEnforcement.repair)
+
+    assert coherent(models)
+    assert all(np.allclose(m.location, s) for m, s in zip(models, starts)), (
+        "an ungatherable unit must fall back to the full revert"
+    )
+
+
+def test_repair_touches_nothing_when_the_move_was_already_legal() -> None:
+    """No breach, no edit — the mode must be inert on a legal move."""
+    starts = [(10.0 + 1.5 * i, 10.0) for i in range(5)]
+    ends = [(11.0 + 1.5 * i, 10.0) for i in range(5)]
+    models = make_unit(starts, ends)
+    assert coherent(models), "fixture must start legal"
+
+    moved = enforce_after_move(models, NEAREST, FURTHEST, CoherencyEnforcement.repair)
+
+    assert moved == 0
+    assert all(np.allclose(m.location, e) for m, e in zip(models, ends))

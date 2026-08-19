@@ -10,6 +10,7 @@ Pass `record` as a fourth argument to also write an event log to `recordings/`,
 which `just analyze-compare <agent> <baseline>` reads.
 
 Usage: just measure-checkpoint <checkpoint> <env_config> [n_episodes] [record]
+       [decode_topk]
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ from wargame_rl.wargame.envs.types import (
     WargameEnvObservation,
 )
 from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.model.common.decoding import decode_joint_coherent
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.common.observation import observation_to_tensor
 from wargame_rl.wargame.model.net import TransformerNetwork
@@ -47,12 +49,26 @@ HELDOUT_SEED_BASE = 700_000
 def build_selector(
     checkpoint_path: str,
     env: WargameEnv,
+    decode_topk: int = 1,
+    decode_stay: bool = False,
 ) -> tuple[ActionSelector, TransformerNetwork]:
     """Load a policy network and wrap it as an `ActionSelector`.
 
     Greedy (argmax) rather than sampled: this measures the policy the agent
     would play, not the exploration distribution around it. The network applies
     the action mask internally, so illegal actions cannot be selected.
+
+    `decode_topk` > 1 replaces the independent per-model argmax with **joint
+    constrained decoding** — the most probable action *combination* each unit
+    can legally make (`model/common/decoding.py`). It changes only the decode,
+    never the weights, and is worth a great deal: measured over three seeds at
+    `enforce_move: revert_unit`, `vp_margin` goes −26.0 → −3.5 at K=3 and
+    intended coherency 0.662 → 0.852. Left at 1 by default so every existing
+    number stays reproducible.
+
+    `decode_stay` stands a unit still when the top-K set yields no legal
+    combination at all, rather than letting the referee revert it to the same
+    positions *plus* an overlap cascade onto its neighbours.
     """
     policy_net = TransformerNetwork.from_checkpoint(env, checkpoint_path)
     policy_net.eval()
@@ -62,8 +78,18 @@ def build_selector(
     ) -> WargameEnvAction:
         with torch.no_grad():
             state = observation_to_tensor(observation, policy_net.device)
-            actions = policy_net(state).argmax(dim=-1)
-        return WargameEnvAction(actions=[int(a) for a in actions.flatten().tolist()])
+            logits = policy_net(state)
+            actions = [int(a) for a in logits.argmax(dim=-1).flatten().tolist()]
+            if decode_topk > 1:
+                log_probs = torch.log_softmax(logits, dim=-1).squeeze(0).cpu().numpy()
+                actions = decode_joint_coherent(
+                    log_probs,
+                    actions,
+                    env_,
+                    decode_topk,
+                    include_stay=decode_stay,
+                )
+        return WargameEnvAction(actions=actions)
 
     return select, policy_net
 
@@ -106,13 +132,18 @@ def main() -> None:
     config_path = sys.argv[2]
     n_episodes = int(sys.argv[3]) if len(sys.argv) > 3 else 30
     record = len(sys.argv) > 4 and sys.argv[4].lower() in {"record", "true", "1"}
+    # Joint constrained decoding, off by default so every historical row here
+    # reproduces. It matters most for `record`: a recording made at K=1 shows
+    # the referee cancelling a third of the unit-moves, which is the play the
+    # decoder exists to replace, and is not what the checkpoint would do now.
+    decode_topk = int(sys.argv[5]) if len(sys.argv) > 5 else 1
 
     with open(config_path) as handle:
         env_config = parse_yaml_raw_as(WargameEnvConfig, handle.read())
     env_config.render_mode = None
 
     env = create_environment(env_config=env_config)
-    select, _policy_net = build_selector(checkpoint_path, env)
+    select, _policy_net = build_selector(checkpoint_path, env, decode_topk)
     seeds = [HELDOUT_SEED_BASE + i for i in range(n_episodes)]
 
     name = label_for(checkpoint_path)
@@ -131,7 +162,7 @@ def main() -> None:
     print(format_result(result))
 
     if record:
-        output = Path("recordings") / f"agent_{name}.jsonl"
+        output = Path("recordings") / f"agent_{name}-k{decode_topk}.jsonl"
         written = record_episode(select, env_config, seeds[0], output)
         print(f"\nwrote {written}")
 

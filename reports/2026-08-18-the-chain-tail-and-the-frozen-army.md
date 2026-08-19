@@ -1,0 +1,1266 @@
+# The chain tail and the frozen army
+
+**2026-08-18.** Why coherency-enforced play looks wrong on screen, what actually
+causes it, and which of the obvious fixes are already dead.
+
+Prompted by a plain observation from the user: *"the actual behaviour of the
+models looks very wrong. they look like they are prevented from moving where
+they want to move in order to win the game."*
+
+They were reading the screen correctly. This report quantifies it, finds the
+mechanism, and retracts a thesis of mine along the way.
+
+---
+
+## 1. The bill, measured
+
+Trained agent under `enforce_move: revert_unit`, **and no attrition** — the play
+setting as shipped at the time of measurement. Referee instrumented by capturing
+(start, intended, final) positions for every movement phase, 40 episodes; scores
+on the nine held-out tables, n=30 per map, identical layouts.
+
+⚠ **These figures are not directly comparable to §9's.** Attrition was added to
+the play config partway through this work (see § Landed), and every number in
+§9 was taken with it on. Attrition is worth **+15 vp** to the agent, so the
+tax figures here (−25.0 / −39.8) and there (−34.3 / −55.4) differ by both that
+and the change in n. Where they disagree, §9 is the current configuration.
+
+| | value |
+|---|---|
+| unit-moves frozen outright | **33.1%** (bar: 12.1%) |
+| **intended movement inches destroyed** | **48.9%** |
+| unit-episodes freezing at least once | 91.5% |
+| movement phases with ≥1 frozen unit | 70.5% |
+| cost to the agent | **−25.0 / −39.8 vp** |
+| cost to `squad_march_take` | **−4.3 vp** |
+
+A separate n=20 pass on the take-opponent config puts the freeze rate at 37.7%,
+with a longest single freeze of **12 consecutive turns of a 20-round game** and
+35 freezes lasting ≥5 turns.
+
+**The tax is 2.3x asymmetric between the two sides in the same games** — player
+0.331 frozen / 0.486 inches lost, opponent 0.142 / 0.284 — even though both
+forces go through the same handler.
+
+### What it looks like
+
+![The agent playing under the referee, v2 renderer, tabletop theme](../docs/images/frozen-army-refereed.gif)
+
+One episode of the control checkpoint under `revert_unit` + `attrition`. The
+piling is the thing to watch: ten of the player's models occupy a single
+objective disc while other squads sit alone, which is the formation the geometry
+predicts, since a tight blob is the only shape with slack to spare against the
+2" chain.
+
+## 2. Freezing is an absorbing state
+
+`P(frozen next turn | frozen now) = 0.62`, against 0.17 after a move. 4.8% of
+freeze runs last 10+ turns and **29 runs end only when the game does**.
+
+The cause is that a revert *reproduces the same decision*: the policy sees the
+same state next turn and re-issues the same move. For a deterministic policy it
+is a hard deadlock — `squad_march_take` on seed 700029 requests the identical
+24" move on all twenty rounds, is reverted every time, and finishes with twenty
+models exactly where they deployed, losing 160-275.
+
+**A revert cannot repair, only refuse.** A unit split by casualties is already
+incoherent when its move begins, so reverting returns it to the split it started
+from. Nothing in `enforce_move` can ever close that break.
+
+## 3. The mechanism: a 7.8% tail amplified into a 33% veto
+
+**The 2" chain binds. The 9" spread does not.**
+
+| quantity | value |
+|---|---|
+| gap to nearest squadmate, median | **0.09"** |
+| gap to nearest squadmate, p90 | 1.75" |
+| **models beyond the 2" chain limit** | **7.8%** |
+| unit-moves breaching the 9" spread | 3-5% |
+| mean unit spread, agent v bar | 3.70" v 3.78" — identical |
+
+On a five-model unit:
+
+    1 - 0.922^5 = 0.32,   and the measured unit freeze rate is 0.331.
+
+`revert_unit` is an all-or-nothing cliff, so it converts a **7.8% per-model tail
+into a 33% unit veto**. That single line sets the training target: to bring unit
+freezes to 5%, the per-model stray tail must fall from **7.8% to ~1%**.
+
+### The tail across the ladder
+
+Share of live models (in units of 2+) further than 2" from every squadmate, on
+the take-opponent config, referee off, 10 episodes, seeds 700000+:
+
+| policy | median gap | p90 | **tail >2"** | predicted unit freeze `1-(1-t)^5` |
+|---|---|---|---|---|
+| `squad_march_take` | 0.42" | 1.30" | **3.35%** | 0.157 |
+| `squad_march` | 0.40" | 1.50" | 5.02% | 0.227 |
+| `squad_march_shoot` | 0.38" | 1.53" | 4.99% | 0.226 |
+| **trained agent** | **0.00"** | 1.35" | **5.30%** | 0.238 |
+| `contest_and_spread` | 0.41" | 1.70" | 7.41% | 0.320 |
+
+Two things follow, and both are encouraging. **The gap to close is 1.6x, not
+8x** — the agent's tail is barely worse than `squad_march`'s and better than
+`contest_and_spread`'s. And **the agent's median gap is 0.00"** — its models sit
+base to base — where every script holds an even ~0.4" spacing. Same tail,
+completely different shape: the agent's formation is a *pile plus stragglers*,
+which is exactly the clumping the geometry predicts, since a tight blob is the
+only formation with slack.
+
+The `1-(1-t)^5` prediction is a **lower bound** on the freeze rate: it ignores
+the overlap cascade, the spread and connectivity clauses, and units whose size
+has changed. Predicted 0.238 against 0.331-0.377 measured.
+
+Independently, a literature scan turned up the same bound from the other
+direction — [Action-Graph Policies](https://arxiv.org/html/2602.17009v1) proves
+an independent per-agent factorisation *cannot represent* joint constraints, and
+squad compliance goes as `p^5` in per-model compliance `p`. The observed 0.89
+plateau implies `p = 0.977`; all five squads at 0.98 would need `p = 0.99919` on
+a 97-way categorical. **The plateau is an entropy floor raised to the fifth
+power**, which is why every reward-tuning attempt has stalled in the same place.
+
+The referee's own failure mode is named there too: **action aliasing** — many
+distinct joint actions project to one outcome, so they share a return and an
+advantage, and the policy gradient inside that set is exactly zero. The
+documented symptom is a flat-lining critic.
+
+## 4. Two corrections
+
+**~73% of detachments are formation slop, not deliberate splitting.** Of 818
+freezes involving a detached group, only ~27% had that group heading for a
+*different* objective. This qualifies the earlier "coherency is defection"
+finding, which measured adrift *models* rather than frozen unit-*moves*; both
+can hold, but the defection story does not carry into the freeze analysis.
+
+**9.2-15.3% of freezes are collateral** — the unit's own move was legal and it
+was dragged back only because a reverting neighbour needed its ground (the
+overlap cascade in `_cascade_displaced`). This is invisible to every coherency
+metric in the repo: the unit was compliant and still lost its move.
+
+## 5. A thesis of mine, retracted
+
+I proposed that the per-model action space was the binding constraint and that a
+**unit-level action space** would fix it. Three independent checks killed it:
+
+- **`squad_march_take` already is one.** `ScriptedSquadMarchPolicy` moves every
+  model of a unit along one shared centroid vector, and it measures **0.915**
+  units coherent (n=10, seeds 700000+), against the trained agent's 0.853 and
+  the gate's good warm-start lineage at **0.903** — *above* the unit-vector
+  script. The gap is ~0.03, not the ~0.16 a 0.95 target implies. **Nothing that
+  moves has ever measured above 0.939 here.**
+- **A zero-training probe.** Forcing the trained agent's moves rigid per unit
+  scored **0.444** units coherent against 0.813 as trained, and −1.2 vp. Rigid
+  translation *preserves* coherency exactly but cannot *restore* it, and with
+  `alive` at 0.55 casualty splits are constant. Adding a scripted "close up"
+  step recovered it to 0.839 — the second capability is the one that matters.
+- **Three causes no action space can fix**: sequential collision resolution
+  turns one shared displacement into five different realised ones; the scripts
+  abandon the shared vector on arrival *by design*; and casualty splits are
+  unrepairable by any move.
+
+What survives from the geometry is narrower and still useful: rigid translation
+is **1.0000 legal at every speed and formation** where independent uniform
+sampling is 0.011-0.090, and legality falls off with speed because a one-bin
+(22.5°) angular disagreement separates two models by `2v sin(11.25°)` — 0.39" at
+speed 1, **2.34" at speed 6, more than the entire chain slack on its own**.
+Measured on a trained checkpoint: the scripts move a unit rigidly **78.7%** of
+the time and overspend the chain budget on 0.8% of unit-moves; the agent moves
+rigidly **7.9%** of the time and overspends on **80.3%**.
+
+## 6. What was actually wrong, and what changed
+
+**The agent is paid on a predicate it cannot resolve.**
+`objective_hold.require_coherent` pays a model nothing while it sits outside its
+unit's coherent body. The distance to the nearest live squadmate *is* observed —
+but normalised by the **board diagonal**, so the entire 2" decision band is
+**2.7%** of that column's range. `observe_coherency` fixes exactly this for the
+spread (9") and connectivity clauses and normalises them by the coherency
+distances; the chain clause — **the one that binds** — has no such column.
+
+`observe_unit_centroid`, the direction to the unit's live centroid, is built,
+tested, documented at 0.665 → 0.793 on a behaviour clone, and **set in no config
+anywhere in the repo**.
+
+### Landed
+
+- **`coherency.attrition: true` in the play config**
+  (`configs/evaluation/25v25_maps_take_opponent_refereed.yaml`). It is the
+  rules' own End-of-Turn mechanism and the only thing that closes a
+  casualty-split deadlock. Worth **+15.0 vp** (−18.0 → −3.0, n=20) and takes
+  `squad_march_take` from 0.935 to 0.991 units coherent. It barely moves the
+  freeze rate (0.377 → 0.369) — it ends deadlocks, it does not make moves legal.
+  **Never train with it**: alone, with no referee, it deletes the army
+  (**−105.5 vp, 15.4% alive**), and a learner starts near-random, which is what
+  it punishes hardest.
+- **`configs/evaluation/maps_heldout/`** — the nine held-out tables as their own
+  directory, because `measure-maps` scores every map in whatever directory it is
+  handed and mixing the 36 training tables into a "held-out" number has happened
+  here before.
+- Doc drift fixed: `envs/CLAUDE.md` documented a `clamp` enforcement mode
+  removed on 2026-08-16.
+
+### Fixed here
+
+**The attrition kill-credit leak.** `p_kills`/`o_kills` are an alive-diff across
+the whole `step()` (`wargame.py:1046-1051`) and `_regain_coherency` runs inside
+that window, so the global `killing` calculator pays the player for models the
+**opponent's own attrition** destroyed. `wargame.py:598-601` documents the
+opposite. Measured over 12 episodes with `squad_march_take`:
+
+| | opponent deaths from player shooting | unexplained |
+|---|---|---|
+| attrition OFF | 146 | **0** |
+| attrition ON | 137 | **9** |
+
+The control at exactly zero attributes the whole leak to attrition. It does not
+touch VP, so the play config was never wrong, but it corrupts reward for any
+attrition training.
+
+**Fixed**: `_regain_coherency` now keeps what `apply_attrition` destroyed and
+`step` subtracts it from the alive-diff before attributing kills. The regression
+test asserts through the `killing` calculator rather than through the counter —
+checking the counter alone would be true by construction — and is verified
+sensitive: with the correction removed it fails with *"killing paid 41.0 for 36
+shooting kills while 5 opponent models were destroyed by the opponent's own
+coherency attrition"*.
+
+**Also fixed**: `measure-objective-split` crashed on any `map_pool` config, since
+the real tables carry 5 *or* 6 objectives and the per-episode rows are ragged.
+Short rows are now padded with NaN rather than 0 — a table with no sixth
+objective must not read as a sixth objective standing empty — and the per-rank
+table gained an `n` column, because a rank that exists on only a third of the
+tables should not be read like the others. It immediately shows that even
+`squad_march_take` **abandons 54.5% of objectives**, stacking 8.17 surplus
+models on the ones it holds against a redistribution ceiling of 4.33 versus 2.50
+actually held.
+
+## 7. What the referee does *not* cause
+
+Separable, and worth stating plainly so the rule does not get blamed for the
+policy's own faults. With the referee **off**, the agent still shows:
+
+| defect | agent (free) | `squad_march_take` |
+|---|---|---|
+| on-objective fraction | 0.750 | 0.976 |
+| objectives held | 2.18 | 2.74 |
+| own VP | 208 | 231 |
+| unit path ÷ net displacement | **1.53** | 1.09-1.12 |
+
+The squads wander 40-60% further than the straight line, and that is **worse**
+without the referee, not better. Under-occupation and dithering are the policy's,
+not the rule's. But the −25 to −40 vp *is* the rule's, and the referee also makes
+the agent's own **intended** coherency worse (0.711 v 0.786) by stranding it in
+worse positions.
+
+---
+
+## 8. The agent never stands still, and that is why the rule costs it so much
+
+Coherency *rate* does not predict the referee tax. Agent s1 intends **0.809**
+unit coherency — indistinguishable from `squad_march_take`'s 0.800 — and pays
+**−34.3 vp** where the script pays −0.7. Something else separates them.
+
+Unit-moves under the referee, 10 episodes, seeds 700000+, greedy actions:
+
+| policy | unit-moves that were a deliberate STAY | of FROZEN moves, share that wanted to move | intended inches lost |
+|---|---|---|---|
+| `squad_march_take` | **0.567** | 0.237 | 0.273 |
+| `squad_march_deny` | 0.528 | 0.251 | 0.232 |
+| `squad_march_shoot` | 0.380 | 0.490 | 0.495 |
+| **trained agent** | **0.004** | **0.988** | 0.359 |
+
+**Standing still is trivially coherency-legal** — positions do not change, so
+coherency cannot break. The scripts collect 38-57% of their moves legal for
+free. The agent collects 0.4%, and re-rolls the constraint every turn. Of its
+frozen moves **98.8% were moves it wanted to make**, against the scripts' 24-25%.
+A referee that cancels a move you were not going to make is free, and that is
+the whole difference.
+
+It also explains the absorbing state: with no safe action in its repertoire, a
+frozen unit re-issues the same illegal move indefinitely.
+
+**This is not an argmax artefact.** Reading the policy's own movement
+distribution over 2149 model-decisions:
+
+    mean policy entropy   3.413 nats of 4.575 max   (effective 30.3 of 97 actions)
+    MEDIAN P(STAY)        0.0103   ==  exactly uniform, 1/97
+    mean P(top action)    0.152    --  its BEST action holds 15% of the mass
+
+The mass genuinely is not there. The policy has learned nothing about when to
+hold position and is barely committed to anything — which is `ent_coef: 0.03`'s
+equilibrium, not convergence.
+
+## 9. The ladder against the strongest opponent
+
+Nine held-out tables (`configs/evaluation/maps_heldout/`), n=10 per map, seeds
+700000+, opponent `squad_march_take`. `REFEREED` is
+`enforce_move: revert_unit` **plus** `attrition: true`; `free` is neither.
+`coherent` is the policy's own `intended_coherency_rate` in every row.
+
+| policy | config | vp_margin | +/- | plrVP | oppVP | held | alive | coherent | adrift |
+|---|---|---|---|---|---|---|---|---|---|
+| `hold_deployment` | REFEREED | −198.0 | 10.1 | 75.2 | 273.2 | 0.68 | 0.576 | 0.984 | 0.08 |
+| `hold_deployment` | free | −209.0 | 9.0 | 67.5 | 276.5 | 0.53 | 0.522 | 0.951 | 0.29 |
+| `random` | REFEREED | −200.8 | 8.8 | 72.3 | 273.1 | 0.62 | 0.543 | 0.148 | 9.04 |
+| `random` | free | −213.6 | 7.8 | 63.0 | 276.6 | 0.17 | 0.144 | 0.155 | 11.14 |
+| `squad_march` | REFEREED | −150.3 | 8.3 | 122.8 | 273.1 | 0.93 | 0.226 | 0.815 | 0.86 |
+| `squad_march` | free | −163.7 | 10.1 | 111.6 | 275.2 | 0.73 | 0.160 | 0.773 | 1.06 |
+| `squad_march_shoot` | REFEREED | −23.8 | 8.9 | 216.9 | 240.7 | 2.54 | 0.501 | 0.822 | 0.96 |
+| `squad_march_shoot` | free | −10.3 | 8.4 | 229.3 | 239.7 | 2.63 | 0.453 | 0.768 | 1.33 |
+| **`squad_march_deny`** | **REFEREED** | **+3.4** | 8.1 | 229.8 | 226.4 | 2.48 | 0.454 | 0.892 | 0.59 |
+| `squad_march_deny` | free | −10.2 | 6.1 | 225.4 | 235.6 | 2.42 | 0.420 | 0.804 | 1.20 |
+| `squad_march_take` | REFEREED | −1.1 | 7.4 | 228.8 | 229.9 | 2.71 | 0.491 | 0.890 | 0.55 |
+| `squad_march_take` | free | −0.4 | 10.0 | 232.3 | 232.7 | 2.81 | 0.455 | 0.800 | 1.30 |
+
+`squad_march_take` scoring ~0 in its own mirror is the sanity check that this
+table is measuring what it claims to.
+
+**Against this opponent the entire scripted ladder is negative bar one.** That is
+the headroom the opponent swap opened.
+
+**The referee's sign is policy-dependent**, which is new: it is worth **+13.4**
+to `squad_march`, **+13.6** to `squad_march_deny`, roughly nothing to
+`squad_march_take`, and **−13.5** to `squad_march_shoot`. Note REFEREED bundles
+the referee with attrition, and attrition culls stragglers and concentrates the
+survivors' fire, so the two are not separated here.
+
+**The honest bar for intended coherency is ~0.80 free**, not the 0.884 quoted
+elsewhere — the scripts sit at 0.768-0.804 on this scenario at n=10/map.
+
+### Which makes the goal precise
+
+Measured previously on this scenario (n=30, held out): agent seed 2 scores
+**+14.3 free** and **−25.5 refereed**; seed 1 **−8.1** and **−33.1**.
+
+    free:      agent +14.3   best script -0.4    agent is 14.7 AHEAD
+    refereed:  agent -25.5   best script +3.4    agent is 28.9 BEHIND
+
+**Free of the rule the agent already beats every scripted policy. Under the rule
+it loses to all of them.** The entire deficit is the coherency tax — ~40 vp on
+the agent against −13 to +14 on the scripts. Closing that gap *is* the goal, and
+nothing else needs to improve for the goal to be met.
+
+## 10. The experiment this licensed
+
+A 2×2 screen, 300 epochs, seed 1, from scratch, against `squad_march_take` on
+the real tables — the two levers that attack the per-model tail directly and
+that nobody has pulled:
+
+- **`observe_unit_centroid`** — make the thing the reward gate keys on visible.
+- **`ent_coef` 0.03 → 0.003** — the bonus pins movement entropy at 3.21-3.33 of
+  a 4.575 maximum, and a near-uniform per-model movement distribution *is* a
+  unit-tearing generator. Nobody had connected that sentence to coherency.
+
+From scratch because `observe_unit_centroid` widens the per-model token and
+`_apply_warm_start_weights` uses `strict=False` — a width mismatch loads
+**nothing** and scores a fresh network as a trained one.
+
+**Results: see §9 below.**
+
+### Reading rules for whatever it returns
+
+- The success bar is **match `squad_march_take`'s 0.884 intended coherency while
+  holding `vp_margin`**. 0.95 is fantasy — nothing that moves has measured above
+  0.939.
+- Read **`intended_coherency_rate`**, never `coherency_rate`, from anything with
+  a referee or attrition on: both raise the realised rate by construction, one
+  by undoing moves and the other by deleting the models in breach.
+- Score from the highest `ppo-NNN-*.ckpt`, not `last.ckpt` — these runs are
+  stopped with SIGKILL, which leaves `last.ckpt` up to 25 epochs stale.
+- Error bars **across the nine maps**, not across episodes: a map is the unit
+  this generalises over.
+- VP is `min(15, held × 5)`, so own score saturates at three objectives and all
+  remaining margin is denial. Read `plr VP` and `opp VP`, not just the margin.
+- **Compare arm to arm, inside the screen.** All four arms are from scratch at
+  300 epochs. The two existing checkpoints they will be read beside
+  (`…00-34-46-s1/s2`) were **also from scratch** — checked, neither passed
+  `--warm-start-ckpt-path` — but ran to epochs 939/976. The plateau on this
+  scenario family is epoch ~140 and 300 → 1000 bought nothing, so the
+  comparison should be fair; state the epoch gap anyway rather than assume it.
+- **`ent_coef` is a reward-affecting change and the arms are not interchangeable
+  with any earlier run.** Every number previously measured here was taken at
+  0.03.
+
+## 11. Results
+
+### Interim, epoch ~120 of 300, n=4 per map — NOT a conclusion
+
+Epoch-matched via `last.ckpt` (all four written within 7 minutes of each other),
+because top-k files record different epochs per arm and comparing them reverses
+rankings. Nine held-out tables.
+
+| arm | centroid | ent_coef | free vp | refereed vp | **tax** | free coherency | adrift |
+|---|---|---|---|---|---|---|---|
+| `ctl` | no | 0.03 | **+18.5** | −15.4 | −33.9 | 0.722 | 2.51 |
+| `ctlE` | no | 0.003 | +5.4 | **−14.0** | −19.4 | 0.843 | 1.12 |
+| `cen` | **yes** | 0.03 | −18.8 | −29.4 | **−10.6** | **0.885** | **0.67** |
+| `cenE` | yes | 0.003 | −4.0 | −40.8 | −36.8 | 0.837 | 0.88 |
+
+**Both levers move coherency hard and well outside noise**: the centroid is worth
+**+0.163** and the lower entropy bonus **+0.121**, and they are *sub*-additive
+rather than additive. `cen` at 0.885 already beats every scripted policy on this
+scenario (0.768-0.804) and `squad_march_take`'s 0.800.
+
+**The referee tax follows coherency for three arms of four** — 33.9 → 19.4 →
+10.6 as intended coherency rises — which is the predicted mechanism. `cenE`
+breaks it at 36.8. At n=4 per map the vp figures carry ±9-18, so the tax
+estimates carry ±15-20 and only `ctl` v `cen` is even plausibly outside noise.
+
+**The cost shows up in ground held**, not obviously in vp: the centroid arms hold
+**1.58-1.69** objectives against the control's 2.00, and end with `alive`
+0.36-0.45 against `ctlE`'s 0.58. Holding formation appears to cost coverage,
+which is what five coherent units covering five or six objectives would predict —
+see the smaller-units question this opened.
+
+Final scoring at n=30 follows when the runs reach 300 epochs.
+
+### The decomposition the interim licenses, and how to read the final numbers
+
+Refereed score is what the goal is stated in, and it factors:
+
+    refereed vp  =  free vp  -  referee tax
+
+The two levers move the two factors in *opposite* directions, and the interim
+puts numbers on both:
+
+| | free vp | tax | refereed |
+|---|---|---|---|
+| `ctl` | **+18.5** | −33.9 | −15.4 |
+| `cen` | −18.8 | **−10.6** | −29.4 |
+| *`ctl`'s free score with `cen`'s tax* | *+18.5* | *−10.6* | ***+7.9*** |
+
+**A policy with the control's free score and the centroid arm's tax would score
++7.9 refereed and beat the best scripted policy (`squad_march_deny`, +3.4).**
+That is the whole target, and it is 37 vp of free score away — the cost the
+centroid observation is currently charging.
+
+So the question the final scoring must answer is **why the centroid arm's free
+score is lower**, and there are two candidates that call for opposite responses:
+
+1. **Convergence speed.** The field widens the per-model token, so the network
+   has more to learn at a fixed epoch budget. If so, the gap should be *closing*
+   between epoch 120 and 300 — which the interim above makes directly checkable —
+   and the response is more epochs, not a different lever. Note a warm start
+   cannot rescue this: the width mismatch is exactly what makes
+   `_apply_warm_start_weights` load nothing.
+2. **A real behavioural cost.** Coherent units cannot split, so the force covers
+   less ground: the centroid arms hold **1.58-1.69** objectives against the
+   control's 2.00. If the gap is *flat* from 120 to 300, this is the cause, and
+   the response is to make coherency cheaper per unit rather than to train
+   longer — smaller units, since unit coherency goes as `p^k` and 25 models in 8
+   units of 3 is a materially weaker constraint than 5 of 5, while covering more
+   ground.
+
+Adding information cannot hurt an optimal policy, so a *persistent* free-score
+cost is evidence about the optimisation or about the induced behaviour, never
+about the observation being wrong to have.
+
+### Epoch 300, n=30 per map — ONE SEED PER ARM
+
+⚠ **Superseded by the three-seed replication below.** Every conclusion in this
+subsection is a single seed, and on this scenario the seed spread is 26 vp
+refereed and 0.20 coherency — larger than any effect it appears to show. It is
+kept because the retractions it prompted are real; its *ranking* of the arms is
+not.
+
+Epoch-matched: every arm scored from `last.ckpt`, which
+`PeriodicLastCheckpoint.on_train_end` writes at completion, so all four are
+exactly epoch 300. The top-k files are **not** matched — this screen's
+best-training-reward epochs are 191 / 200 / 196 / 134 — and scoring those would
+have compared four different points in training.
+
+| arm | centroid | ent_coef | free vp | refereed vp | **tax** | coherent | held | alive |
+|---|---|---|---|---|---|---|---|---|
+| `ctl` | no | 0.03 | +7.4 ± 8.2 | **−20.3** | −27.7 | **0.790** | 2.32 | 0.495 |
+| `ctlE` | no | 0.003 | **+11.1** ± 11.5 | **−17.3** | −28.4 | 0.703 | 1.92 | 0.444 |
+| `cen` | yes | 0.03 | −25.5 ± 7.8 | **−62.1** | −36.6 | 0.781 | 1.99 | 0.439 |
+| `cenE` | yes | 0.003 | −6.2 ± 5.7 | −35.7 | −29.5 | 0.761 | 1.90 | 0.438 |
+
+**Neither lever helped.** The control is best or joint-best on every dimension
+that matters, the centroid arm is dramatically worse refereed (−62.1), and **the
+referee tax did not move at all**: 27.7 to 36.6 across every arm, against the
+28-vp tax the untreated agent already paid. The one thing the screen was built
+to reduce is exactly the thing that did not change.
+
+**Three claims of mine, retracted.** All three came from reading n=4 and n=6
+interims, and all three are the mistake this repo's n≥30 rule exists to prevent:
+
+1. *"`observe_unit_centroid` lifts coherency 0.722 → 0.885, above every script."*
+   At n=30 it reads **0.781**, marginally *below* the control's 0.790. Tracked
+   across reads it is 0.885 → 0.860 → 0.781 against the control's 0.722 → 0.782
+   → 0.790: the early advantage is real but transient, and the control overtakes
+   it by epoch 300.
+2. *"Lower `ent_coef` is worth +0.121 coherency."* At n=30 it is **0.703**, the
+   worst of the four.
+3. *"The centroid arm's free-score gap is closing (37.3 → 18.7)."* At n=30 the
+   gap is **32.9**. The trend was noise.
+
+**And the mechanism I proposed for the stay behaviour is refuted too**, by the
+cleanest measurement in the screen. Lowering `ent_coef` did exactly what I
+predicted to the policy — and the opposite of what I predicted to STAY:
+
+| | policy entropy | mean P(STAY) | median P(STAY) | P(top action) |
+|---|---|---|---|---|
+| `ctl` (0.03) | 3.545 | 0.0155 | 0.0101 | 0.131 |
+| `ctlE` (0.003) | **1.893** | **0.0005** | **0.0000** | **0.488** |
+
+The bonus was holding the policy diffuse, exactly as claimed — effective actions
+fell from 34.7 to 6.6 and the top action went from 13% to 49% of the mass. But
+STAY got *rarer*, by 30x. **The entropy bonus was never what suppressed standing
+still.** A concentrated policy simply commits harder to moving, which points at
+the reward — `closest_objective_v2` is potential-based approach shaping, so
+moving toward an objective always pays and holding pays nothing — and not at the
+optimiser.
+
+That leaves the §8 finding intact as a *description* (the agent never stands
+still, and that is why the same coherency rate costs it 28 vp where it costs a
+script nothing) while removing the explanation I attached to it.
+
+### The ladder re-measured at n=30, like for like
+
+The §9 ladder was n=10 per map. Re-measured at **n=30**, on the same nine
+held-out tables and the same configs the agent was scored on:
+
+| policy | free vp | free coherent | refereed vp | refereed coherent |
+|---|---|---|---|---|
+| `hold_deployment` | — | — | −197.3 ± 9.5 | 0.983 |
+| `squad_march` | −165.5 | 0.772 | −149.7 ± 9.1 | 0.789 |
+| `squad_march_shoot` | −12.4 | 0.774 | −36.7 ± 4.4 | 0.800 |
+| **agent (control)** | **+7.4** | **0.790** | **−20.3 ± 7.9** | 0.746 |
+| `squad_march_take` | +0.2 | 0.806 | −6.4 ± 5.0 | 0.882 |
+| `squad_march_deny` | −6.6 | **0.810** | **−4.4 ± 4.9** | 0.891 |
+
+Two things change against the n=10 figures, and both matter:
+
+- **The scripts were flattered by n=10.** `squad_march_deny` reads +3.4 there and
+  **−4.4** here; `take` −1.1 and **−6.4**. So the gap from the agent to the best
+  script is **15.9 vp, not 23.7**, and the agent **beats `squad_march_shoot` by
+  16.4** — third of six under the rules.
+- **The agent's free coherency, 0.790, sits mid-band** in the scripts' own
+  0.772-0.810, measured at the same n on the same maps. The legality claim is
+  like for like.
+
+**And the referee's effect on *intent* splits by policy.** It raises the scripts'
+intended coherency (`deny` 0.810 → 0.891, `take` 0.806 → 0.882) and **lowers the
+agent's** (0.790 → 0.746). It strands the agent in worse positions than the ones
+it chose — failing at its own job on precisely the policy it costs the most.
+
+### REPLICATED, three seeds per arm — and the single-seed read was wrong twice
+
+The table above is **one seed**. Two further seeds per arm, from scratch, same
+300 epochs, same n=30 scoring. From-scratch runs with distinct seeds are genuine
+independent samples, so this spread is real training variance, not the warm-start
+artefact this repo has been caught by before.
+
+| arm | seed | free vp | refereed vp | coherency | adrift |
+|---|---|---|---|---|---|
+| `ctl` | s1 | +7.4 | −20.3 | 0.790 | 1.82 |
+| `ctl` | s2 | +0.4 | −37.9 | 0.645 | 3.01 |
+| `ctl` | s3 | +7.9 | −46.3 | 0.588 | 4.18 |
+| **`ctl` mean** | | **+5.2 ± 4.2** | **−34.8 ± 13.3** | **0.674 ± 0.104** | 3.00 |
+| `ctlE` | s1 | +11.1 | −17.3 | 0.703 | 2.40 |
+| `ctlE` | s2 | −2.7 | −30.4 | 0.815 | 1.28 |
+| `ctlE` | s3 | −7.9 | −39.1 | 0.795 | 1.48 |
+| **`ctlE` mean** | | **+0.2 ± 9.8** | **−28.9 ± 11.0** | **0.771 ± 0.060** | 1.72 |
+
+**Everything the single seed said about the levers was wrong, in both
+directions.** Seed 1 made `ctl` look strong on coherency (0.790 against its true
+0.674) and `ctlE` look weak (0.703 against its true 0.771). Replicated, the
+low-entropy arm is **better on both goal metrics** — coherency **0.771 v 0.674**
+and refereed **−28.9 v −34.8** — and has **half the coherency variance**
+(±0.060 v ±0.104).
+
+**But neither difference is significant at n=3.** The refereed gap is 5.9 vp
+against standard deviations of 11-13, and the coherency gap 0.097 against 0.060
+and 0.104 — `t ≈ 1.4`. This ranks the arms; it does not establish the effect.
+
+**The seed spread dwarfs every lever measured.** `ctl`'s refereed range is
+**26.0 vp** and its coherency range **0.202**, against lever effects of 6 vp and
+0.10. **No single-seed result on this scenario means anything**, which is the
+lesson this report has now paid for three times in one day — first from n=4-6
+interims, then from quoting seed 1 as the baseline.
+
+### The baseline, corrected
+
+    ctlE (ent_coef 0.003), 3 seeds:  +0.2 free | -28.9 refereed | coherency 0.771
+    ctl  (ent_coef 0.03),  3 seeds:  +5.2 free | -34.8 refereed | coherency 0.674
+
+Against the scripted ladder at the same n: the free coherency band is
+**0.772-0.810** and the refereed scores are `squad_march_shoot` **−36.7**,
+`squad_march_take` **−6.4**, `squad_march_deny` **−4.4**.
+
+- **Legality: `ctlE` reaches 0.771, the bottom edge of the scripted band.**
+  Essentially script-level compliance, and the first arm here to get there on a
+  replicated mean rather than a lucky seed. `ctl` at 0.674 does not.
+- **Strength: `ctlE` beats `squad_march_shoot` by 7.8 vp** and trails the best
+  script by ~25. `ctl` is level with `shoot`.
+
+**The earlier "both levers failed" verdict stands for `observe_unit_centroid`
+and is retracted for `ent_coef`**, which on three seeds is the better setting for
+this goal — pending an n that can actually resolve it.
+
+### The four arms on one board
+
+![The four arms of the screen playing the same seeded table under the referee](../docs/images/arms-side-by-side.gif)
+
+All four checkpoints on **seed 700003**, verified to share an identical opening
+layout (same five objectives, same terrain) before being placed side by side —
+`record-sim` draws its table from the config's map pool and does **not** pin it,
+so a first pass produced four different boards and would have made this
+comparison quietly meaningless.
+
+The centroid arm's clumping is the thing to watch: at round 11 it has roughly
+eight models stacked on one objective while the control has its force spread
+over three. That is the failure mode the geometry predicts and the scoring
+confirms — it holds 1.99 objectives against the control's 2.32.
+
+### What this leaves as the baseline
+
+**Superseded — see § The baseline, corrected above.** The single-seed figure
+originally recorded here (+7.4 free / −20.3 refereed / 0.790 coherency, "third
+of six, legality met") was seed 1 of three and the best of them. The replicated
+means are `ctlE` **+0.2 / −28.9 / 0.771** and `ctl` **+5.2 / −34.8 / 0.674**.
+
+### Smaller units: refuted before spending a GPU-hour
+
+Candidate 2 above suggested 8 units of 3 rather than 5 of 5, since unit
+coherency goes as `p^k`. Built the config and measured scripted policies on both
+structures — no training needed, because the mechanism is structural.
+
+The surface result looked like a win: `squad_march_take` 0.797 → **0.878** units
+coherent, `squad_march` 0.795 → 0.860, vp essentially unchanged.
+
+**It is an artefact.** The per-model chain tail gets *worse* in smaller units,
+because a model in a 3-model unit has fewer candidate neighbours and its nearest
+squadmate is further away — median gap 0.35" → 0.86", tail 2.36% → 4.02% for
+`take`. Feeding each tail through its own exponent, the effects cancel:
+
+| policy | tail 5x5 | `1-(1-t)^5` | tail 8x3 | `1-(1-t)^3` | net |
+|---|---|---|---|---|---|
+| `squad_march_take` | 0.0236 | 0.113 | 0.0402 | 0.116 | **+0.003** |
+| `squad_march` | 0.0511 | 0.231 | 0.0675 | 0.189 | −0.042 |
+| `squad_march_shoot` | 0.0463 | 0.211 | 0.0702 | 0.196 | −0.015 |
+| `contest_and_spread` | 0.0729 | 0.315 | 0.1169 | 0.311 | −0.004 |
+
+Nothing for the strongest policy. The measured coherency rise is the casualty
+confound instead: `alive` fell 0.479 → 0.362, and a unit reduced to one live
+model is coherent by definition. **Smaller units buy no real legality and cost
+models.** This closes the `max_groups` force-composition question for the
+coherency motivation specifically.
+
+The general lesson is worth keeping: **a coherency rate rises whenever an army
+dies**, so any structural change that increases casualties will look like a
+formation improvement. Always read the per-model tail, which is invariant to
+unit size, beside the unit rate.
+
+---
+
+## 12. Where this leaves the goal, and what to try next
+
+All figures are **three-seed means**, nine held-out tables, n=30 per map, error
+bars across maps.
+
+**Legality — reached, at the edge, by the low-entropy arm only.** `ctlE` intends
+**0.771** unit coherency against the scripts' 0.772-0.810. That is the bottom of
+the band, on a replicated mean rather than a lucky seed. `ctl` at **0.674** is
+not close.
+
+**Strength — short.** `ctlE` scores **−28.9** refereed, beating
+`squad_march_shoot` (−36.7) by 7.8 and trailing `squad_march_deny` (−4.4) by
+~25. Free of the rule both arms are level with the scripts rather than ahead of
+them, which itself corrects the single-seed claim that the agent beat every
+script.
+
+**The dominant effect is not any lever — it is the seed.** `ctl`'s three seeds
+span **26.0 vp** refereed and **0.202** coherency; the levers move 6 vp and 0.10.
+Any future arm on this scenario needs **at least three seeds before it is read at
+all**, and the honest summary of the 2x2 is that it was under-powered by design.
+
+### The two things worth doing next, in order
+
+1. **Train longer, and measure whether the spread closes.** Coherency was still
+   rising at the end of the budget — the `ctl` wave-1 seed read 0.722 at epoch
+   120, 0.782 at 190 and 0.790 at 300 — so 300 epochs may simply be short of
+   where formation settles, and an unconverged policy is exactly what produces a
+   0.20 spread across seeds. This is the cheapest remaining move, it tests the
+   variance and the mean at once, and nothing else should be tried until it is
+   known whether the arms have converged. Run `ctlE` (the better arm) at 800-1000
+   epochs, three seeds.
+2. **Then, and only then, the reward.** The agent has no incentive to hold
+   ground: approach shaping pays for advancing and nothing for holding, and
+   `objective_hold` pays the same whether a model arrived this turn or five turns
+   ago. **⚠ Not the same as raising contested pay**, which is already a measured
+   null (the committing squad dies, and the calculator pays only living models).
+   The trap: rewarding stillness as such buys the do-nothing floor at **−198.0**,
+   so the term must pay for holding ground the side *controls*, stay per-model
+   and differentiated, and not lower total objective income.
+
+**Do not re-run:** unit-level action spaces, smaller units,
+`observe_unit_centroid`, or training under any `enforce_move` mode. All measured,
+all null or negative. **`ent_coef` 0.003 is no longer on that list** — on three
+seeds it is the better setting, though not significantly.
+
+---
+
+## 13. The fix was not a lever — it was the decode
+
+Everything in §11 tried to move the *policy*. Both attempts failed, and §12
+concluded the next move was to train the same thing for longer. That conclusion
+is superseded: two changes made at **play time**, touching no weights at all,
+recovered most of the gap in an afternoon.
+
+The reason they work is §3. The tax is not a policy defect — it is an
+**aggregation** defect. Twenty-five models each pick a move independently, and
+legality is a property of the *combination*. A per-model policy with a 7.8% tail
+is asked to produce a joint action that is legal five times over, and `p^5`
+punishes it for arithmetic rather than for judgement. Anything that repairs the
+combination attacks the exponent directly.
+
+### 13.1 `enforce_move: repair` — make the nearest legal move, not no move
+
+`revert_unit` has exactly two outcomes: the move you asked for, or nothing.
+`repair` adds a third — pull the stray models onto the unit body until the unit
+is coherent, and fall back to reverting only when it cannot be gathered at all.
+Up to eight passes; a pure spread breach is declined, because dragging one model
+in cannot fix a unit stretched across the board.
+
+Nine held-out tables, n=30 per map, three seeds, error bars across maps:
+
+| policy | vp_margin (repair) | vp_margin (`revert_unit`) | coherency |
+|---|---|---|---|
+| `squad_march_take` | −6.6 | −6.4 | 0.935 |
+| `squad_march_deny` | −5.7 | −4.4 | 0.927 |
+| `squad_march_shoot` | −9.2 | −36.7 | 0.926 |
+| **agent, 3-seed mean** | **−4.5** | −34.8 | 0.745 |
+
+Per seed under repair: **+0.8 / −3.7 / −10.5**.
+
+Read the two right-hand columns together before celebrating. **`repair` is a
+scenario change, not a free win** — it moves every policy on the board, and it
+moves `squad_march_shoot` by +27.5 on its own. What is genuinely notable is the
+*ranking*: under `repair` the agent's three-seed mean **finishes ahead of every
+script**, where under `revert_unit` it was thirty vp behind the best of them. The
+agent is the policy that was paying the exponent, so it is the policy a repair
+refunds.
+
+It is also a **documented divergence** from `03-moving.md` § Making a move,
+which says the move cannot be made. It belongs in the config surface as an
+option, not as a default, and the docstring says so.
+
+### 13.2 Joint constrained decoding — the same policy, decoded legally
+
+The stronger result, and it changes nothing about the rules.
+
+Instead of taking each model's `argmax` and hoping the combination is legal, take
+each model's **top K** candidates, enumerate the `K^k` combinations, and pick the
+most probable one that satisfies coherency:
+
+    a* = argmax over LEGAL combos of  sum_i log pi_i(a_i | s)
+
+At K=3 and k=5 that is 243 candidates per unit, masked in one vectorised pass
+(chain, spread, and connectivity via `(I+A)^(k-1) > 0`). It runs only in the
+movement phase; outside it the decoder is the identity.
+
+Same nine held-out tables, same three checkpoints — **only the decode differs**:
+
+| policy | vp_margin | intended coherency |
+|---|---|---|
+| `squad_march_shoot` | −36.7 | 0.800 |
+| **agent, argmax (K=1)** | **−34.8** | **0.651** |
+| **agent, top-3 (K=3)** | **−8.0** | **0.847** |
+| `squad_march_take` | −6.4 | 0.882 |
+| `squad_march_deny` | −4.4 | 0.891 |
+
+Per seed, argmax → top-3: **−20.3 → +1.6**, **−37.9 → −10.1**, **−46.3 →
+−15.6**. Every seed improves, by **21.9 / 27.8 / 30.7** — a **+26.8 vp mean**,
+sd 4.5, so the three gains span 8.8 vp against a *seed* spread of 26. (An earlier
+draft printed the first delta as 26.7 and called the span 4 vp; the mean was
+right, the per-seed figure was not, and the span was understated 2.2x. The effect
+is z≈10 either way.)
+
+**K=3 is the setting.** A sweep over K ∈ {1, 3, 5} on the training maps found
+K=5 better on one seed and worse on the other two, at 3.4x the candidate count.
+The first legal alternative is where nearly all the value is.
+
+### 13.3 Why this is the right shape of fix
+
+Three things make the decoder more than a trick:
+
+1. **It is bigger than any training lever measured here.** +26.8 vp against
+   levers that moved 6. The `p^5` requirement is simply deleted: legality is
+   guaranteed by the sampler, so the policy no longer has to be sharp enough to
+   produce it by luck.
+2. **It costs no weights and no GPU time.** `decode_topk` defaults to 1, so every
+   historical number stands, and any past checkpoint can be re-decoded.
+3. **It confirms the diagnosis.** If the agent's moves were *strategically*
+   wrong, reordering its own preferences could not help. That a different
+   ordering of the *same* distribution is worth 27 vp says the policy knew where
+   to go and the aggregation was throwing it away — which is exactly what the
+   user was watching on screen.
+
+**The honest limit:** the policy is still trained under a decode it does not know
+about, so it spends probability mass on combinations that will never execute.
+Folding the decoder into training is the obvious next move, and §14 states the
+correctness condition it has to meet.
+
+---
+
+## 14. Where this leaves the goal
+
+> Train a model, using RL, that plays a **coherency-legal** game and does **well
+> enough** against the opponent policies. Reach a baseline to continue from.
+
+Nine held-out tables, n=30 per map, three seeds, under the spec's own
+`revert_unit` with `attrition: true`:
+
+**Legality — met.** **0.847** intended unit coherency, clear of the scripted band
+of 0.772–0.891 rather than at its bottom edge. Up from 0.651.
+
+**Strength — level.** **−8.0** against the best script's **−4.4**. A 3.6 vp gap
+inside ±5–7 error bars, from **thirty vp behind**. Against `squad_march_shoot`
+(−36.7) it is ahead by 28.7.
+
+That is the baseline to continue from, and it is a genuine one: legal play at
+scripted strength, on ground the policy has never seen.
+
+**What actually produced it** was neither of the two things §12 nominated. Not
+training longer, and not a reward term — a change to how twenty-five independent
+decisions are combined into one legal move.
+
+### The next experiment, and the trap in it
+
+**Decode inside the training loop, as a proper joint policy.**
+
+Applying the decoder as a post-hoc filter during training would **break PPO**:
+the executed action would not be the sampled one, so the importance ratio would
+be computed against the wrong distribution. The clean formulation makes the
+constraint part of the *sampling*:
+
+    pi_unit(a | s) = softmax over LEGAL combos of  sum_i log pi_i(a_i | s)
+
+At K=3 that is ≤243 terms, so the joint log-probability is **exactly computable**
+and PPO stays correct. This is the same argument that makes action masking valid
+— the constraint is applied to the distribution *before* sampling, never to the
+action after.
+
+Two things are unmeasured. The decoder is greedy at play time but must be
+**sampled** in training or exploration collapses, and nobody has measured what
+sampling from the renormalised joint does to entropy. And the compounding
+argument — that a policy trained knowing its preferences will be legally combined
+can stop hedging — is a prediction, not a result.
+
+**After that, in order:** the hold-ground reward from §12; then re-normalise the
+nearest-squadmate observation by the chain distance rather than the board
+diagonal, where the 2" decision band is 2.7% of the feature's range.
+
+**Training under `repair` is no longer on that list — it was run and it failed.**
+See §15.
+
+**Still do not re-run:** unit-level action spaces, smaller units,
+`observe_unit_centroid`, or training under `revert_unit`.
+
+
+---
+
+## 15. Training under `repair` — refuted, and the standing rule's reason was wrong
+
+§13.1 shipped `repair` as a play-time referee, and §14 nominated *training* under
+it as the next thing to try. The argument was specific and it looked airtight:
+
+> The rule "never train under enforcement" rests **entirely** on action
+> aliasing. Under a revert, every illegal joint action produces the identical
+> outcome, so they share a return and an advantage and the policy gradient
+> inside that whole set is exactly zero. `repair` does not alias — where a stray
+> ends up depends continuously on where it went and which squadmate is nearest —
+> so the gradient survives and there is something to learn from.
+
+Three seeds, 300 epochs, `ent_coef` 0.003, scored on the nine held-out tables at
+n=30 under `revert_unit` + `attrition`, against the never-enforced `ctl`
+baseline on the identical configuration:
+
+| | play K=1 | coherency | play K=3 | coherency |
+|---|---|---|---|---|
+| **trained under `repair`** | **−57.6** | **0.489** | **−16.7** | **0.774** |
+| `ctl`, never enforced | −34.8 | 0.651 | −8.0 | 0.847 |
+
+Per seed under repair, argmax: −67.5 / −39.4 / −66.0, coherency 0.479 / 0.536 /
+0.452. The runs were healthy —
+checked at epoch 100 on the training pool, `on_obj` 0.858, `held` 2.50, `alive`
+0.598 — so this is not the do-nothing collapse the config header warned to watch
+for. It is simply a worse policy, and a much worse-formed one.
+
+### Read these paired, not unpaired
+
+`seed_everything` runs before the model is built (`train.py:303` against `:374`),
+so two arms at the same seed whose configs do not change any parameter shape
+**start from identical weights**. Repair and the control qualify, so the honest
+estimator is the per-seed difference:
+
+| | s1 | s2 | s3 | mean | sd | t (2 df) |
+|---|---|---|---|---|---|---|
+| vp, repair − control | −47.2 | −1.5 | −19.7 | −22.8 | 23.0 | **−1.72, n.s.** |
+| coherency, repair − control | −0.267 | −0.103 | −0.116 | −0.162 | 0.091 | −3.08, p≈0.09 |
+
+So **formation is consistently worse — the same sign on 3/3 seeds and the ranges
+do not overlap (repair's best 0.536 against the control's worst 0.568) — while
+the vp gap does not reach significance.** The practical conclusion stands: repair
+is certainly not better, and it costs formation. But an earlier draft of this
+section said "worse on both decodes", which is true of the means and is not
+established for vp.
+
+**The gradient survived. It did not help.** So aliasing was not the whole cause,
+and the explanation this report has been carrying since §3 is incomplete.
+
+### What fits every arm instead
+
+**Any referee substitutes for the skill.** The policy is handed a legal board it
+never had to produce, so it never has to learn to produce one. That predicts an
+*ordering* by how helpful the referee is, and the ordering holds:
+
+| referee during training | formation learned |
+|---|---|
+| `repair` — actively walks strays into legality, at no cost to the unit | **0.489** |
+| `revert_unit` — cancels the move, so straying is at least punished | 0.569 |
+| none, reward gate only | 0.651–0.886 |
+
+`repair` is the *most* helpful referee and produces the *worst* formation.
+Aliasing cannot explain that ordering — repair does not alias and finishes last.
+Substitution can.
+
+⚠ **Weigh that table for what it is.** The 0.569 row was measured on a different
+config in a different investigation, so only the repair-vs-control comparison in
+this section is like for like. The ordering is suggestive, not established, and
+a sharper mechanism is available that predicts the same thing: under `repair` the
+environment executes `f(a)` while the buffer stores `log π(a)`, so PPO credits
+the value of the *repaired* outcome to the probability of the *unrepaired*
+action — mechanically raising the probability of illegal actions that sit near
+good legal configurations. That is a density bug, not a pedagogy problem, and it
+is falsifiable: a **density-corrected revert**, storing the log-density of what
+was actually realised, should recover to the control's level. Worth ~8 GPU-hours
+and it discriminates the two explanations. Note both stories agree on the
+practical rule, so nothing downstream changes while it is open.
+
+**The practical rule is unchanged and its reason is now simpler:** enforce at
+play, never during training, **whether or not the mode aliases**. Do not look
+for a non-aliasing enforcement mode that escapes it; that search is closed.
+
+One thing worth keeping from the arm: the decoder rescued it too. The
+repair-trained policies gain **+40.9 vp** from top-3 decoding at play time
+(−57.6 → −16.7). Every policy it has been applied to, well-formed or badly
+formed, improves.
+
+
+---
+
+## 16. The decoder was solving the wrong geometry
+
+§13.2 reported the decoder at **0.847** intended unit coherency and read the
+residual 15.3% as the policy's own formation error. It was not. Most of it was
+the decoder.
+
+`decode_joint_coherent` judged candidates on `positions + displacement`. The
+environment does not put models there. `ActionHandler.apply` clamps into the
+board *first* — the edge is clamped into the displacement, before collisions —
+then runs `resolve_move`, which stops a model dead on an enemy base and backs it
+off any base it would end inside, **sequentially in model index order**, so
+earlier movers displace later ones.
+
+Measured on the control checkpoint, five held-out episodes, enforcement off so
+the realised board is the one the policy and env actually built:
+
+| | value |
+|---|---|
+| models that did not land where the decoder predicted | **49.8%** |
+| displacement | mean 0.820", p90 **2.005"**, max 6.000" |
+| unit-moves certified legal | 268 |
+| of those, actually legal after the step | 243 — **9.3% wrong** |
+
+The p90 offset is the width of the entire 2" chain band the constraint lives in.
+**The decoder was solving a relaxation whose error was the same size as the
+decision it was making**, and it bites hardest exactly where this agent lives:
+median gap to the nearest squadmate 0.00", models packed base to base, which is
+the configuration that generates the most back-off.
+
+**Seven tests covered this module and none of them called `env.step`.** Every one
+asserted the decoder against its own relaxation, so the defect was invisible to
+the suite by construction. That is the generalisable lesson: a test that
+exercises a forward model against itself cannot find a forward model that is
+wrong.
+
+### The fix, and what it is worth
+
+`_resolve_endpoints` mirrors `apply`, and the decoder now walks its shortlist in
+score order and takes the first candidate still coherent **after** that
+resolution. Bounded at 24 verifications — only ~5% of actions change at all, so
+the first candidate usually passes.
+
+Certificate error more than halves, and it *certifies more*, because the
+relaxation was rejecting combinations that resolve fine as well as accepting
+ones that do not:
+
+| | relaxation | verified |
+|---|---|---|
+| unit-moves certified legal | 268 | **294** |
+| of those, actually legal | 243 | 282 |
+| certificate error | 9.3% | **4.1%** |
+
+Nine held-out tables, n=30, **paired per seed** — only the decode differs:
+
+| policy | relaxation | verified | Δvp | coherency | Δcoh |
+|---|---|---|---|---|---|
+| ctl s1 | +1.6 | **+7.6** | +6.0 | 0.873 → **0.964** | +0.091 |
+| ctl s2 | −10.1 | −2.1 | +8.0 | 0.848 → **0.945** | +0.097 |
+| ctl s3 | −15.6 | −10.4 | +5.2 | 0.819 → **0.918** | +0.099 |
+| **mean** | **−8.0** | **−1.6** | **+6.4** | 0.847 → **0.942** | **+0.096** |
+| distilled clone | +5.2 | **+13.8** | +8.6 | 0.897 → **0.976** | +0.079 |
+
+**+6.4 vp (sd 1.4, t=7.7) and +0.096 coherency (sd 0.004, t=40)**, every policy
+improving on both axes, on three seeds whose *unpaired* spread is 26 vp. The
+coherency gains agree to the third decimal.
+
+A blunter guard — `safety_margin`, tightening the chain when judging candidates
+— was measured first and is worth about **+0.02** coherency. It is a fifth of
+the real fix and is superseded by it.
+
+Two divergences remain, documented rather than hidden: models of *other* units
+move in the same env loop, so their post-move positions are unknowable at decode
+time, and this unit resolves against that snapshot. They are why the residual is
+4.1% rather than zero.
+
+### Where this leaves the ladder
+
+| policy | vp_margin | intended coherency |
+|---|---|---|
+| `squad_march_shoot` | −36.7 | 0.800 |
+| agent, argmax | −34.8 | 0.651 |
+| agent, top-3, relaxation | −8.0 | 0.847 |
+| `squad_march_take` | −6.4 | 0.882 |
+| `squad_march_deny` | −4.4 | 0.891 |
+| agent, top-3, **verified** | −1.6 | **0.942** |
+| distilled clone, top-3, verified — **ONE LINEAGE** | +13.8 | 0.976 |
+
+**Read the last row with §17.** It is one clone from one teacher, and the
+mechanism it was credited to did not replicate.
+
+The robust result is the three-seed row: **0.942 unit coherency against the best
+script's 0.891**, on a rule nothing measured here had previously held above
+0.939, at **−1.6 vp against −4.4** — level, inside the error bars. Not a weight
+changed for any of it.
+
+---
+
+## 17. Distilling the *decoded* teacher does not replicate
+
+§13.3 and the clone table reported that cloning the decoder's own output beat
+cloning the argmax teacher by **+6.7 vp**, "clean, non-overlapping ranges". That
+was three clone seeds from **one teacher**. Repeated on the other two control
+seeds, one clone each, held out at n=30, played at K=3:
+
+| teacher | clone of argmax demos | clone of decoded demos | effect of decoding the demos |
+|---|---|---|---|
+| s1-ctl (3 clones each) | −3.3 | +3.4 | **+6.7** |
+| s2-ctl | −4.9 | −8.5 | **−3.6** |
+| s3-ctl | +2.0 | −11.3 | **−13.3** |
+
+**It reverses on two of three teachers**, mean −3.4. Coherency is mixed the same
+way: +0.017, +0.030, −0.077. **The +6.7 is retracted.** It was a property of one
+lineage, which is the exact failure mode this replication was run to catch — and
+the same one that has now produced seven retractions here in two days.
+
+The consequence for the ladder is that **the +13.8 clone is a single lineage**,
+not a recipe. It is a real policy and it really scores that; nothing reproduces
+it on demand.
+
+### What survives, and one thing worth chasing
+
+**Verification is untouched** — it was measured paired on three control seeds
+*and* the clone, and the effect is a defect fix, not a lineage property.
+
+**Every clone beat its own teacher**: +1.8 / +5.2 / +17.6 on the better arm, and
++4.3 on the two-arm mean, while the clone spread (6.8 vp across teachers) is
+narrower than the teacher spread (17.2 vp). So distillation may **compress the
+seed spread** even though the decoded demonstrations do nothing — which, on a
+scenario where the seed spread is 26 vp and dwarfs every lever, would be worth
+more than any of the levers. ⚠ It is one clone per teacher on two of the three,
+so it is a hypothesis. The measurement that settles it is three clone seeds from
+each of three teachers, all argmax demos, comparing the spread of clones with the
+spread of their teachers.
+
+
+---
+
+## 18. Against four opponents: formation generalises, the defensive habit does not
+
+Everything above was measured against one opponent, `squad_march_take`. The goal
+said *opponent policies*, plural, so the baseline arm (`ctlE`, three seeds) was
+scored against three more. **Swapping the opponent voids every baseline on the
+config**, so the scripted policies were re-measured on each one — comparing a new
+agent score against a bar from a different game is how this project once read a
+policy as clearing a bar it was ten points beneath.
+
+Nine held-out tables, n=30, verified top-3 decode, `revert_unit` + attrition:
+
+| opponent | agent, 3 seeds | best script | verdict |
+|---|---|---|---|
+| `squad_march_take` (trained against) | **+2.6** | −4.4 (`deny`) | agent ahead |
+| `squad_march_shoot` | **+19.3** | +12.1 (`take`) | agent ahead |
+| `squad_march_deny` | **+4.0** | −3.1 (`take`) | agent ahead |
+| `contest_and_spread` | +17.4 | **+31.1** (`take`) | **agent behind 13.7** |
+
+**Three of four.** And note what the absolute numbers do *not* say: the agent's
+score *rises* against two of the new opponents, because those opponents are
+weaker. Absolute score measures the opponent. Only the same-matchup comparison
+measures the agent.
+
+**Formation transfers completely.** Intended unit coherency is **0.94–0.97 on
+every opponent**, never dipping. Whatever is opponent-specific here, obeying the
+rule is not — which is the part of this work that clearly generalises.
+
+### The loss has one explanation, and it is the overstacking
+
+Read the VP split rather than the margin. Against `contest_and_spread`:
+
+| | player VP | opponent VP | held | on_obj |
+|---|---|---|---|---|
+| agent | 192 | **176** | 2.11 | 0.68 |
+| `squad_march_take` | **231** | 200 | 2.47 | 0.91 |
+
+The agent **denies better and takes far less**. It is a defensive player. Against
+opponents that hold ground well, denial is the winning game and the agent wins;
+against one that spreads itself thin the ground is cheap, taking is worth more
+than denying, and a script that simply marches out and grabs things beats it by
+14.
+
+That is the over-stacking defect seen from the other side. Eight models on one
+objective cannot punish an opponent who has left four lightly held, and `on_obj`
+0.68 against 0.91 is the same fact stated per model.
+
+**So the claim to make is narrower than "beats the scripts".** The agent is a
+better *defensive* player than any script, on four opponents, with formation that
+holds everywhere. It is not yet a better player outright: it cannot exploit an
+opponent who spreads. That is one nameable weakness rather than a vague gap, and
+it is the same one the reward levers have failed on — see §12's hold-ground note
+and the abandonment invariance.
+
+
+---
+
+## 19. The redistribution ceiling is a mirage, and "overstacking" was the wrong name
+
+§18 ended by naming over-stacking as the remaining defect, and the per-objective
+split looks damning. `measure-objective-split`, `ctlE` s2, 30 episodes:
+
+| rank | player | opponent | held rate |
+|---|---|---|---|
+| 1 | **6.13** | **0.00** | 0.97 |
+| 2 | 3.57 | 0.07 | 0.93 |
+| 3 | 1.50 | 0.33 | 0.57 |
+| 4 | 0.00 | 2.37 | 0.00 |
+| 5 | 0.00 | 3.90 | 0.00 |
+| 6 | 0.00 | 2.82 | 0.00 |
+
+`held` 0.443, **`abandoned` 0.557**, `lost_close` and `lost_far` both **exactly
+0.000**. Surplus models on held objectives **8.73** of 15.1 alive, and a
+**redistribution ceiling of 4.60 against 2.47 held — +2.13 objectives**.
+
+Six models guarding zero enemies while three objectives are conceded outright
+reads as an obvious defect. It is not.
+
+### The counterfactual
+
+The most over-guarded unit was forced to march to the nearest abandoned
+objective from round 4 onward, playing the **identical seeds both ways** so map
+and dice cancel:
+
+    forced redistribution, 90 paired episodes (9 held-out maps x 10)
+      vp_margin change   -3.56   sd 42.8   se 4.52
+      episodes improved  32/90
+      per map            +9.0, +3.0, -43.5, -25.5, ...
+
+**Moving the surplus does not help. It slightly hurts.** The ceiling is computed
+with no travel time and no return fire — its own docstring says so — and once
+both are paid the +2.13 evaporates. That is what the warning is worth in points.
+
+### Why the agent is right
+
+The abandoned objectives are not empty ground going begging. They hold **2.37,
+3.90 and 2.82 opponent models**. Marching five models into one starts a fight
+that may be lost *and* concedes the ground left behind. And `lost_close = 0.000`
+is not timidity — it is the flip side of only committing where it wins.
+
+**So "over-stacking" is the wrong name, and §18's framing is retracted.** The
+surplus is insurance, not waste. The defect is one level up: **the agent has
+exactly one mode.** It plays the defensive game better than any script and
+cannot switch to the aggressive one when ground is cheap — which is precisely
+why it beats three opponents and loses to `contest_and_spread`, the one that
+spreads itself thin and leaves ground worth taking.
+
+⚠ **Do not over-trust this negative.** The intervention is crude: it commits at a
+fixed round, never reassesses, and marches into defended ground regardless of
+what is there. A *conditional* redistribution — take when cheap, hold when not —
+is untested and is the thing the agent actually lacks. At sd 42.8 the error bar
+is ±4.5, so a large gain is ruled out and a small one is not.
+
+**What this closes:** any lever whose premise is "the models are in the wrong
+place and moving them is worth objectives". Measured, they are not, and it is
+not. §20 tested the conditional version this section left open, and it closes
+too.
+
+
+---
+
+## 20. Cheap ground exists, and taking it still loses
+
+§19 left one door open: its intervention committed at a fixed round, never
+reassessed, and marched into defended ground regardless. The conditional version
+— take only what is cheap, reassess every round, never give up the source — is
+the thing the agent actually lacks, so it was measured.
+
+### The opportunity is real, and §19's reading of it was wrong
+
+Per movement phase, objectives that are not ours:
+
+| defended by | mean available | at least one |
+|---|---|---|
+| **0 opponents** | **2.41** | **95.8%** of phases |
+| ≤ 1 | 2.89 | 97.5% |
+| ≤ 2 | 3.33 | 98.7% |
+
+**2.4 completely undefended objectives are available in 96% of movement phases.**
+§19 concluded the abandoned objectives were "defended positions, not free
+ground" — that is true of the **end state** and false **during the game**. The
+opponent arrives later. At the moment the choice is made, the ground is cheap.
+
+### Taking it still does not pay
+
+Paired on identical seeds, three interventions of increasing strength:
+
+| intervention | paired vp | improved |
+|---|---|---|
+| unconditional, one unit, from round 4 (§19) | −3.56 ± 4.52 | 32/90 |
+| conditional, one unit, reassessed | +2.78 … +4.93 ± ~6 | 30/72 |
+| **conditional, every spare unit, n=180** | **−3.17 ± 3.13** | **61/180** |
+
+Conditioning flips the sign of the one-unit version, so *cheapness* is the right
+criterion. But it buys nothing significant, and the **strongest** intervention —
+moving every unit that can leave without losing its ground, which is what would
+close the agent's 0.68 `on_obj` against the scripts' 0.91 — is **negative on the
+run with the most episodes and the tightest error bar**.
+
+### Why, and what it settles
+
+Units spend turns walking instead of scoring, are shot crossing open ground, and
+the opponent often arrives anyway. And **own VP saturates at three objectives**
+(`min(15, held × 5)`), so the fourth and fifth pay nothing except denial, which
+is the expensive kind of point.
+
+**There is no over-stacking bug.** The agent's positioning is close to locally
+optimal here. It survived neither the counterfactual nor its stronger form, and
+three independent probes agree.
+
+**What is left of the gap to `contest_and_spread`:** the agent holds 2.11
+objectives to the script's 2.47 and scores 192 to its 231, conceding 176 to its
+200. It needs roughly **+0.36 objectives held** — not more models sent, but
+**arriving earlier and on the right ones**. That is timing and target selection,
+and none of these three probes tested it.

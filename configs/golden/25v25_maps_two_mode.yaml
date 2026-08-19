@@ -1,4 +1,59 @@
 # ===========================================================================
+# GOLDEN -- THE COHERENCY BASELINE OF RECORD, set 2026-08-19.
+#
+# ⚠⚠ TRAIN IT WITH `just train-coherency-baseline`, NOT `just train`.
+#
+#   just train-coherency-baseline 300 1        # one seed
+#
+# `ent_coef` is NOT an env-config field, and the PPO default is 0.03. This
+# baseline is the 0.003 arm, and the difference is not cosmetic: read PAIRED on
+# seed -- which is valid because `seed_everything` runs before the model is
+# built, so arms differing only in a scalar start from identical weights -- the
+# per-seed differences are +3.1 / +7.5 / +7.2, i.e. +5.9 +/- 2.5, t~4.1. Running
+# plain `just train` on this file silently trains the WORSE arm and nothing
+# warns you.
+#
+# WHAT IT SCORES. Nine HELD-OUT tables (`configs/evaluation/maps_heldout`),
+# n=30, three seeds, 300 epochs, played with the VERIFIED top-3 joint decode
+# (the default since 2026-08-19), under the spec's own `revert_unit` +
+# `attrition`:
+#
+#   opponent               agent   best script      verdict
+#   squad_march_take        +2.6      -4.4 (deny)    ahead
+#   squad_march_shoot      +19.3     +12.1 (take)    ahead
+#   squad_march_deny        +4.0      -3.1 (take)    ahead
+#   contest_and_spread     +17.4     +31.1 (take)    BEHIND by 13.7
+#
+#   intended unit coherency   0.94 - 0.97 on ALL FOUR
+#
+# Score it with `just measure-maps <ckpt> configs/evaluation/25v25_maps_vs_*.yaml
+# 30 configs/evaluation/maps_heldout 3`, and re-measure the scripts on each
+# opponent -- swapping the opponent voids every baseline on that config.
+#
+# ⚠ MOST OF THE STRENGTH IS THE DECODE, NOT THE TRAINING. The same weights
+# decoded per-model independently score about -29. The joint constrained decode
+# (`model/common/decoding.py`) is worth ~+32, and verifying its candidates
+# against the endpoints the env actually produces is +6.4 of that. Do not read
+# these numbers as "300 epochs of PPO got here".
+#
+# ⚠ WHAT IS ALREADY CLOSED, so nobody spends GPU on it again:
+#   * over-stacking is NOT a defect. Forcing redistribution measured -3.6, and
+#     the stronger version -- every spare unit onto cheap ground -- measured
+#     -3.2 on 180 paired episodes. Cheap ground genuinely exists (2.4 undefended
+#     objectives in 96% of movement phases); taking it still loses, because own
+#     VP saturates at three objectives and units are shot crossing open ground.
+#   * the nearest-squadmate observation rescale is a null (+3.5 +/- 5.3).
+#   * training under ANY `enforce_move` mode, including `repair`.
+#   * cloning the decoder's own output (does not replicate across teachers).
+#
+# WHAT IS ACTUALLY LEFT: the agent has one mode. It plays the defensive game
+# better than any script and cannot switch to the aggressive one when ground is
+# cheap, which is the whole of the contest_and_spread loss. It needs ~+0.36
+# objectives held there -- arriving EARLIER and on the RIGHT ones, not sending
+# more models. Timing and target selection, untested.
+# ===========================================================================
+
+# ===========================================================================
 # GOLDEN — unit coherency on the real tables. This is the config to train on
 # for this scenario, and the one that backs the published coherency numbers.
 #
@@ -99,7 +154,7 @@
 # trained `25v25_maps_coherent.yaml` checkpoint as every measurement above did.
 # ===========================================================================
 
-config_name: 25v25_maps_coherency
+config_name: 25v25_maps_two_mode
 #
 # 25v25 on THE REAL TABLES, drawn one per episode from `configs/evaluation/maps/`.
 #
@@ -513,68 +568,5 @@ observe_objective_control: true
 # bounds the nearest neighbour and leaves the unit's span unbounded -- so squads
 # deploy strung out and in pieces, and no policy here has ever started a game
 # legal. Enforcing it is the whole arm.
-# ===========================================================================
-# THE REFEREED PLAY CONFIG for the take-opponent scenario. Identical to
-# `experiments/25v25_maps_take_opponent.yaml` except for `enforce_move`.
-#
-# ⚠ THIS IS FOR PLAY, RECORDING AND PRESENTATION -- NEVER FOR TRAINING.
-#   `docs/rules/03-moving.md` says an incoherent move cannot be made, so a
-#   recording made WITHOUT this shows illegal moves: the training config only
-#   *measures* coherency, and the agent's own rate is ~0.79, i.e. roughly one
-#   unit-movement-phase in five is illegal.
-#
-#   Training under it is measured to make formation WORSE (0.569 against
-#   0.756-0.886 for the reward gate alone), because every reverted action
-#   produces the identical outcome, so they share an advantage and the policy
-#   gradient inside that set is exactly zero. Enforcement guarantees a legal
-#   board and teaches nothing.
-#
-#   `revert_unit` is the spec's own mode: one model out of place cancels its
-#   whole unit's move.
-#
-# ⚠ SCORES UNDER THIS ARE NOT COMPARABLE TO SCORES WITHOUT IT. The referee
-#   costs vp, and it costs a sloppy policy more than a tidy one. Re-measure both
-#   the agent and every scripted reference here before quoting anything.
-#
-# ⚠ AND `eval/coherency_rate` IS 1.000 BY CONSTRUCTION UNDER THIS CONFIG.
-#   The `coherent` column in `measure-*` reads `intended_coherency_rate` when a
-#   referee is running, so it keeps reporting what the POLICY chose (~0.79)
-#   while the board on screen is legal. That is the intended pairing: a legal
-#   recording, and an honest number beside it.
-# ===========================================================================
 coherency:
   enforce_at_deployment: true
-  enforce_move: revert_unit
-  # THE RULES' OWN BACKSTOP, AND WITHOUT IT THIS CONFIG DEADLOCKS.
-  #
-  # `03-moving.md` § Regaining coherency: at the End of Turn a unit still out of
-  # coherency loses models one at a time until it is back in. `enforce_move` is
-  # the primary consequence and this is the secondary one -- playing with the
-  # first and not the second is not the rule, it is half of it, and the missing
-  # half is the half that CLOSES a break.
-  #
-  # A revert cannot repair a unit split by casualties: it puts the models back
-  # where they started, which is where the split already was. So such a unit is
-  # frozen EVERY turn for the rest of the game. Measured over 40 episodes:
-  # P(frozen next | frozen now) = 0.62 against 0.17 after a move, 29 freeze runs
-  # end only when the game does, and `squad_march_take` -- a DETERMINISTIC
-  # policy -- requests the identical move on all twenty rounds of seed 700029
-  # and is reverted every time, finishing with twenty models exactly where they
-  # deployed. Reverting reproduces the same decision, so nothing breaks the loop.
-  #
-  # Turning this on is worth +15.0 vp_margin to the trained agent (-18.0 ->
-  # -3.0, n=20, seeds 700000+) and takes `squad_march_take` from 0.935 to 0.991
-  # units coherent. It barely moves the freeze rate (0.377 -> 0.369) -- it
-  # closes the deadlocks, it does not make the policy's moves legal.
-  #
-  # ⚠ NEVER TRAIN WITH THIS, and never train with `enforce_move` either. On its
-  # own, with no referee in front of it, attrition DELETES THE ARMY: -105.5
-  # vp_margin with 15.4% of the force alive, against -18.0 and 49.8% for the
-  # referee alone. A learner starts near-random, and random is what it punishes
-  # hardest.
-  #
-  # ⚠ AND IT INFLATES `coherency_rate` THE SAME WAY THE REFEREE DOES, by
-  # deleting the models that are in breach rather than by fixing them. Judge it
-  # on `alive`, `held` and `vp_margin`. Read `intended_coherency_rate` for the
-  # policy's own compliance, never the realised rate from this config.
-  attrition: true

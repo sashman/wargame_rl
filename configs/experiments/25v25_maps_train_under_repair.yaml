@@ -1,4 +1,67 @@
 # ===========================================================================
+# ARM -- TRAIN UNDER `repair`. This deliberately contradicts the standing rule
+# "never train under coherency.enforce_move", and the reason is specific.
+#
+# THE RULE'S ACTUAL BASIS IS ACTION ALIASING, NOT ENFORCEMENT. Under
+# `revert_unit` and `revert_model`, every illegal joint action maps to the
+# IDENTICAL outcome -- everyone back where they started -- so they share a
+# return and an advantage, and the policy gradient inside that whole set is
+# exactly zero. Only the entropy bonus acts there. That is why training under a
+# revert measures 0.569 units coherent against 0.756-0.886 for the reward gate
+# alone, and loses on unseen ground too.
+#
+# `repair` IS NOT THAT OPERATOR. Different illegal joint actions map to
+# DIFFERENT repaired configurations -- where a stray ends up depends
+# continuously on where it went and which squadmate is nearest -- so the
+# aliasing is absent by construction and the gradient survives. It is the only
+# enforcement mode that both guarantees a legal board and leaves something to
+# learn from. The same reasoning is why the old `clamp` refutation did not
+# transfer to a joint projection.
+#
+# It also removes the absorbing state. Under a revert, P(frozen | frozen) = 0.62
+# against 0.17 after a move, because reverting reproduces the same decision and
+# the policy re-issues it; a repaired unit is somewhere new and the loop breaks.
+#
+# ⚠ ANSWERED, AND THE ANSWER IS NO. KEPT ONLY SO THE ARM CAN BE REPRODUCED.
+#
+# Three seeds, 300 epochs, ent_coef 0.003, scored on the nine held-out tables at
+# n=30 under `revert_unit` + attrition, against the never-enforced control:
+#
+#                        play K=1            play K=3
+#   trained under repair  -57.6 / 0.489 coh   -16.7 / 0.774 coh
+#   ctl, never enforced   -34.8 / 0.651       -8.0  / 0.847
+#
+# Worse on both decodes, and no overlap with the control on formation
+# (0.452-0.536 against 0.568-0.746). The runs were healthy -- on_obj 0.858,
+# held 2.50, alive 0.598 at epoch 100 -- so this is not the do-nothing collapse
+# warned about below.
+#
+# THE GRADIENT SURVIVED AND IT DID NOT HELP, so the aliasing argument above was
+# never the whole cause. What fits every arm is that ANY referee substitutes for
+# the skill: repair (the most helpful) 0.489, revert_unit 0.569, no enforcement
+# 0.651-0.886. Do not look for a non-aliasing mode that escapes the rule.
+#
+# ALSO MEASURED AT PLAY TIME, paired, 30 episodes, training pool,
+# revert -> repair: the trained agent's 3-seed mean goes -26.0 -> -8.2 and its
+# intended coherency 0.662 -> 0.745. That result stands; it is a referee, and a
+# referee is all it is.
+#
+# ⚠ WHAT TO WATCH. The revert's failure mode was a policy that learned NOT TO
+# MOVE -- `on_obj` 0.08 with `alive` 0.63. If that appears here, kill it.
+#
+# ⚠ NO ATTRITION. Attrition without a referee deletes the army (-105.5 vp, 15%
+# alive) and a learner starts near-random, which is what it punishes hardest.
+# It belongs in the play config, not this one.
+#
+# ⚠ SELECT ON THE PER-MODEL CHAIN TAIL, ON TRAINING MAPS. The seed spread on
+# this scenario is 26 vp refereed and 0.202 unit coherency, so vp cannot resolve
+# a lever at n=3, and the held-out nine are for final confirmation only.
+#
+# Control: the 3-seed baseline on `25v25_maps_take_opponent.yaml`
+# (+5.2 free / -34.8 refereed / 0.674 coherency).
+# ===========================================================================
+
+# ===========================================================================
 # GOLDEN — unit coherency on the real tables. This is the config to train on
 # for this scenario, and the one that backs the published coherency numbers.
 #
@@ -99,7 +162,7 @@
 # trained `25v25_maps_coherent.yaml` checkpoint as every measurement above did.
 # ===========================================================================
 
-config_name: 25v25_maps_coherency
+config_name: 25v25_maps_train_under_repair
 #
 # 25v25 on THE REAL TABLES, drawn one per episode from `configs/evaluation/maps/`.
 #
@@ -513,68 +576,7 @@ observe_objective_control: true
 # bounds the nearest neighbour and leaves the unit's span unbounded -- so squads
 # deploy strung out and in pieces, and no policy here has ever started a game
 # legal. Enforcing it is the whole arm.
-# ===========================================================================
-# THE REFEREED PLAY CONFIG for the take-opponent scenario. Identical to
-# `experiments/25v25_maps_take_opponent.yaml` except for `enforce_move`.
-#
-# ⚠ THIS IS FOR PLAY, RECORDING AND PRESENTATION -- NEVER FOR TRAINING.
-#   `docs/rules/03-moving.md` says an incoherent move cannot be made, so a
-#   recording made WITHOUT this shows illegal moves: the training config only
-#   *measures* coherency, and the agent's own rate is ~0.79, i.e. roughly one
-#   unit-movement-phase in five is illegal.
-#
-#   Training under it is measured to make formation WORSE (0.569 against
-#   0.756-0.886 for the reward gate alone), because every reverted action
-#   produces the identical outcome, so they share an advantage and the policy
-#   gradient inside that set is exactly zero. Enforcement guarantees a legal
-#   board and teaches nothing.
-#
-#   `revert_unit` is the spec's own mode: one model out of place cancels its
-#   whole unit's move.
-#
-# ⚠ SCORES UNDER THIS ARE NOT COMPARABLE TO SCORES WITHOUT IT. The referee
-#   costs vp, and it costs a sloppy policy more than a tidy one. Re-measure both
-#   the agent and every scripted reference here before quoting anything.
-#
-# ⚠ AND `eval/coherency_rate` IS 1.000 BY CONSTRUCTION UNDER THIS CONFIG.
-#   The `coherent` column in `measure-*` reads `intended_coherency_rate` when a
-#   referee is running, so it keeps reporting what the POLICY chose (~0.79)
-#   while the board on screen is legal. That is the intended pairing: a legal
-#   recording, and an honest number beside it.
-# ===========================================================================
 coherency:
   enforce_at_deployment: true
-  enforce_move: revert_unit
-  # THE RULES' OWN BACKSTOP, AND WITHOUT IT THIS CONFIG DEADLOCKS.
-  #
-  # `03-moving.md` § Regaining coherency: at the End of Turn a unit still out of
-  # coherency loses models one at a time until it is back in. `enforce_move` is
-  # the primary consequence and this is the secondary one -- playing with the
-  # first and not the second is not the rule, it is half of it, and the missing
-  # half is the half that CLOSES a break.
-  #
-  # A revert cannot repair a unit split by casualties: it puts the models back
-  # where they started, which is where the split already was. So such a unit is
-  # frozen EVERY turn for the rest of the game. Measured over 40 episodes:
-  # P(frozen next | frozen now) = 0.62 against 0.17 after a move, 29 freeze runs
-  # end only when the game does, and `squad_march_take` -- a DETERMINISTIC
-  # policy -- requests the identical move on all twenty rounds of seed 700029
-  # and is reverted every time, finishing with twenty models exactly where they
-  # deployed. Reverting reproduces the same decision, so nothing breaks the loop.
-  #
-  # Turning this on is worth +15.0 vp_margin to the trained agent (-18.0 ->
-  # -3.0, n=20, seeds 700000+) and takes `squad_march_take` from 0.935 to 0.991
-  # units coherent. It barely moves the freeze rate (0.377 -> 0.369) -- it
-  # closes the deadlocks, it does not make the policy's moves legal.
-  #
-  # ⚠ NEVER TRAIN WITH THIS, and never train with `enforce_move` either. On its
-  # own, with no referee in front of it, attrition DELETES THE ARMY: -105.5
-  # vp_margin with 15.4% of the force alive, against -18.0 and 49.8% for the
-  # referee alone. A learner starts near-random, and random is what it punishes
-  # hardest.
-  #
-  # ⚠ AND IT INFLATES `coherency_rate` THE SAME WAY THE REFEREE DOES, by
-  # deleting the models that are in breach rather than by fixing them. Judge it
-  # on `alive`, `held` and `vp_margin`. Read `intended_coherency_rate` for the
-  # policy's own compliance, never the realised rate from this config.
-  attrition: true
+  # THE ARM. See the header.
+  enforce_move: repair

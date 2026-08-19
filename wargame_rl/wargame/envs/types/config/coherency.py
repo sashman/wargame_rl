@@ -72,7 +72,7 @@ class CoherencyConfig(BaseModel):
     )
     enforce_move: str = Field(
         default="off",
-        pattern="^(off|revert_unit|revert_model)$",
+        pattern="^(off|revert_unit|revert_model|repair)$",
         description=(
             "Enforce coherency at the end of a move, the rules' *primary* "
             "consequence (`03-moving.md` § Making a move): a move that would end "
@@ -80,7 +80,15 @@ class CoherencyConfig(BaseModel):
             "where they started. `revert_unit` is the spec -- one model out of "
             "place cancels its whole unit's move. `revert_model` returns only "
             "the models outside their unit's coherent body, which diverges from "
-            "the rule but replaces a 5-model cliff with a gradient.\n\n"
+            "the rule but replaces a 5-model cliff with a gradient. `repair` "
+            "pulls the stray models onto the unit body instead, and reverts only "
+            "when the unit cannot be gathered at all -- the largest divergence "
+            "of the three, and the only one that can *restore* coherency rather "
+            "than merely refuse to break it. Measured on nine held-out tables, "
+            "three seeds, it takes the agent -34.8 -> -4.5 vp_margin and ahead "
+            "of every scripted policy, but it moves every policy on the board "
+            "(`squad_march_shoot` -36.7 -> -9.2), so it is a scenario change and "
+            "not a free win.\n\n"
             "⚠ THIS IS A REFEREE, NOT A TEACHER — DO NOT TRAIN UNDER IT. "
             "Measured over ten runs on the real tables: enforcement guarantees a "
             "legal board, and a policy trained under it learns *less* about "
@@ -94,6 +102,26 @@ class CoherencyConfig(BaseModel):
             "and the policy gradient inside that whole set is exactly zero. "
             "Train with the reward gate and no enforcement, then switch this on "
             "for play, where it costs nothing and makes the board legal.\n\n"
+            "⚠ AND THAT INCLUDES `repair`, WHICH WAS THE OBVIOUS EXCEPTION "
+            "AND IS NOT ONE. The rule was justified by action *aliasing*: the "
+            "revert modes map every illegal joint action to one outcome, so "
+            "they share an advantage and the gradient inside that set is "
+            "exactly zero. `repair` does not alias -- different illegal actions "
+            "produce different repaired configurations -- so the gradient "
+            "survives, and it still loses. Three seeds, 300 epochs, scored on "
+            "nine held-out tables: -57.6 vp_margin and 0.489 units coherent "
+            "against a never-enforced control's -34.8 and 0.651, with no "
+            "overlap on formation. So aliasing was never the whole cause. What "
+            "fits every arm measured is that ANY referee substitutes for the "
+            "skill -- the policy is handed a legal board it did not have to "
+            "produce -- and `repair` is the MOST helpful referee, which is why "
+            "it learns the least.\n\n"
+            "The tax the reverts levy is an aggregation problem, and the "
+            "cheaper answer is to decode legally in the first place: "
+            "`model/common/decoding.py` picks the most probable *legal* "
+            "combination of per-model moves, worth +26.8 vp_margin and "
+            "coherency 0.651 -> 0.847 on the same tables, for no weight "
+            "change at all.\n\n"
             "Off by default; every setting is a dynamics change that voids the "
             "baselines on that config."
         ),

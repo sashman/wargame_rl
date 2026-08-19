@@ -18,7 +18,7 @@ handle badly. The spread across maps is printed for the same reason.
 Accepts either a scripted baseline name or a checkpoint path, so the agent and
 the bar are measured by one code path on identical layouts.
 
-Usage: just measure-maps <policy|ckpt> <env_config> [n_episodes] [maps_dir]
+Usage: just measure-maps <policy|ckpt> <env_config> [n_episodes] [maps_dir] [decode_topk]
 """
 
 from __future__ import annotations
@@ -99,7 +99,10 @@ def config_for_map(
 
 
 def build_action_selector(
-    policy_or_checkpoint: str, config: WargameEnvConfig
+    policy_or_checkpoint: str,
+    config: WargameEnvConfig,
+    decode_topk: int = 1,
+    decode_stay: bool = False,
 ) -> tuple[ActionSelector, str]:
     """Resolve the first argument to a selector, accepting a policy or a path.
 
@@ -108,7 +111,9 @@ def build_action_selector(
     """
     if Path(policy_or_checkpoint).exists():
         env = create_environment(env_config=config)
-        select, _net = build_selector(policy_or_checkpoint, env)
+        select, _net = build_selector(
+            policy_or_checkpoint, env, decode_topk, decode_stay
+        )
         return select, label_for(policy_or_checkpoint)
 
     if policy_or_checkpoint not in get_registry():
@@ -152,7 +157,18 @@ def main() -> None:
     policy_or_checkpoint = sys.argv[1]
     config_path = sys.argv[2]
     n_episodes = int(sys.argv[3]) if len(sys.argv) > 3 else 100
-    maps_dir = Path(sys.argv[4]) if len(sys.argv) > 4 else DEFAULT_MAPS_DIR
+    # Quoted in the recipe so an omitted `maps_dir` arrives as an empty
+    # positional rather than collapsing and shifting `decode_topk` into its
+    # place -- which made `just measure-maps <p> <cfg> <n>` fail outright.
+    maps_dir = (
+        Path(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4] else DEFAULT_MAPS_DIR
+    )
+    # Joint constrained decoding: 1 keeps the historical independent argmax, so
+    # every number measured before this existed still reproduces.
+    decode_topk = int(sys.argv[5]) if len(sys.argv) > 5 and sys.argv[5] else 1
+    # Stand a unit still when the decoder finds nothing legal, instead of
+    # letting the referee revert it and cascade onto its neighbours.
+    decode_stay = len(sys.argv) > 6 and sys.argv[6] not in ("", "0", "false")
 
     base_config = parse_yaml_raw_as(WargameEnvConfig, Path(config_path).read_text())
     maps = load_maps(maps_dir)
@@ -182,7 +198,9 @@ def main() -> None:
     results: list[BaselineResult] = []
     for terrain_map in maps:
         config = config_for_map(base_config, terrain_map)
-        select, _label = build_action_selector(policy_or_checkpoint, config)
+        select, _label = build_action_selector(
+            policy_or_checkpoint, config, decode_topk, decode_stay
+        )
         env = create_environment(env_config=config)
         result = evaluate_selector(select, env, seeds, terrain_map.name)
         results.append(result)

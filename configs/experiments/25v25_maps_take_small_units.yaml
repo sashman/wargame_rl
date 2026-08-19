@@ -1,4 +1,68 @@
 # ===========================================================================
+# ARM -- 25 models in EIGHT units of ~3 instead of FIVE of 5. Everything else is
+# `configs/experiments/25v25_maps_take_centroid.yaml`, unchanged.
+#
+# WHY. Unit coherency is a joint constraint over a unit, so it holds with
+# probability ~p^k in per-model compliance p for a k-model unit. Unit size is
+# therefore a DIRECT lever on the freeze rate, and nobody had noticed:
+#
+#     measured per-model compliance   p = 0.977
+#     5-model unit    p^5 = 0.89       <- the plateau every reward lever hit
+#     3-model unit    p^3 = 0.93
+#
+# The second reason is coverage. These tables carry five or six objectives and
+# the force has five units, so a policy that keeps its units together cannot
+# contest more than five points -- and measured, the coherent arms hold
+# 1.58-1.69 objectives against a control's 2.00. Eight units can cover more
+# ground while each is easier to keep legal. The two effects push the same way.
+#
+# ⚠ THE OPPONENT IS UNCHANGED at five units of five, deliberately: this arm
+# tests OUR force structure, and moving both sides would confound it.
+#
+# ⚠ CONFOUNDS TO CONTROL WHEN READING THIS. Unit size changes shooting
+# allocation (the shooting head mean-pools opponent tokens per unit) and it
+# changes what `group_cohesion` prices. And a unit reduced to ONE live model is
+# coherent by definition, so smaller units inflate the coherency rate as
+# casualties mount -- read `adrift` and `alive` beside the rate, never the rate
+# alone.
+# ===========================================================================
+
+# ===========================================================================
+# ARM -- can the agent SEE how to keep formation? `observe_unit_centroid: true`,
+# and nothing else, against `configs/experiments/25v25_maps_take_opponent.yaml`.
+#
+# WHY THIS ARM. The reward gate `objective_hold.require_coherent` pays a model
+# nothing while it sits outside its unit's coherent body -- but the predicate it
+# gates on is NOT on the model's token. The agent is paid on something it cannot
+# observe, which is the exact failure this repo already has a standing rule
+# against ("before training a reward lever, check the agent can observe what it
+# keys on"). `observe_coherency` carries MAGNITUDES (how stretched, how split);
+# the spread ratio reads the same on either side of the unit, so it never says
+# WHICH WAY to close up. This field carries the DIRECTION, and it is precisely
+# the quantity `ScriptedSquadMarchPolicy` steers on.
+#
+# MEASURED, AND NEVER TRAINED. On a behaviour clone the field moves unit
+# coherency 0.665 -> 0.793 and `spread fail` 0.151 -> 0.023 for -0.2 vp (PR
+# #202). It is built, tested (`tests/test_unit_centroid_observation.py`) and
+# documented, and it is set in **no config anywhere in the repo**. Whether it
+# helps PPO is untested; that is this arm.
+#
+# ⚠ IT WIDENS THE PER-MODEL TOKEN BY TWO, so `--warm-start-ckpt-path` from any
+# earlier checkpoint loads NOTHING -- `_apply_warm_start_weights` uses
+# `strict=False`, so a width mismatch scores a fresh network as a trained one.
+# TRAIN THIS FROM SCRATCH, and check the first eval is near the from-scratch
+# floor rather than near a trained score.
+#
+# ⚠ DO NOT ADD `coherency.enforce_move` HERE. It is a referee applied at PLAY:
+# every reverted action produces the identical outcome, so the policy gradient
+# inside that whole set is exactly zero. See the golden config's header.
+#
+# NOT COMPARABLE to anything measured against `scripted_advance_and_shoot`.
+# This faces `squad_march_take`, the strongest scripted policy, where the whole
+# ladder moves: the shooting bar goes +104.9 -> -5.6 when the opponent changes.
+# ===========================================================================
+
+# ===========================================================================
 # GOLDEN — unit coherency on the real tables. This is the config to train on
 # for this scenario, and the one that backs the published coherency numbers.
 #
@@ -99,7 +163,7 @@
 # trained `25v25_maps_coherent.yaml` checkpoint as every measurement above did.
 # ===========================================================================
 
-config_name: 25v25_maps_coherency
+config_name: 25v25_maps_take_small_units
 #
 # 25v25 on THE REAL TABLES, drawn one per episode from `configs/evaluation/maps/`.
 #
@@ -226,7 +290,7 @@ number_of_objectives: 3
 objective_radius_size: 3
 board_width: 60
 board_height: 44
-max_groups: 5
+max_groups: 8
 turn_order: random
 number_of_battle_rounds: 20
 skip_phases:
@@ -369,28 +433,28 @@ models:
   - &squad_0 { group_id: 0, weapons: &rifle [{ range: 12, attacks: 1 }] }
   - *squad_0
   - *squad_0
-  - *squad_0
-  - *squad_0
   - &squad_1 { group_id: 1, weapons: *rifle }
-  - *squad_1
-  - *squad_1
   - *squad_1
   - *squad_1
   - &squad_2 { group_id: 2, weapons: *rifle }
   - *squad_2
   - *squad_2
-  - *squad_2
-  - *squad_2
   - &squad_3 { group_id: 3, weapons: *rifle }
-  - *squad_3
-  - *squad_3
   - *squad_3
   - *squad_3
   - &squad_4 { group_id: 4, weapons: *rifle }
   - *squad_4
   - *squad_4
-  - *squad_4
-  - *squad_4
+  - &squad_5 { group_id: 5, weapons: *rifle }
+  - *squad_5
+  - *squad_5
+  - &squad_6 { group_id: 6, weapons: *rifle }
+  - *squad_6
+  - *squad_6
+  - &squad_7 { group_id: 7, weapons: *rifle }
+  - *squad_7
+  - *squad_7
+  - *squad_7
 
 opponent_models:
   - &opp_squad_0 { group_id: 0, weapons: *rifle }
@@ -508,73 +572,16 @@ reward_phases:
 # See the header comment: this arm observes per-objective control state.
 observe_objective_control: true
 
+# THE ARM. Two extra columns per model token: the vector to its unit's live
+# centroid, normalised by the spread cap and clipped per axis so the sign
+# survives at any distance. Direction, where `observe_coherency` gives only
+# magnitude. Widens the token, so no earlier checkpoint can warm-start this.
+observe_unit_centroid: true
+
 # `docs/rules/03-moving.md` § Setting up: a unit is placed in coherency. Default
 # placement anchors each model on one *random* already-placed squadmate, which
 # bounds the nearest neighbour and leaves the unit's span unbounded -- so squads
 # deploy strung out and in pieces, and no policy here has ever started a game
 # legal. Enforcing it is the whole arm.
-# ===========================================================================
-# THE REFEREED PLAY CONFIG for the take-opponent scenario. Identical to
-# `experiments/25v25_maps_take_opponent.yaml` except for `enforce_move`.
-#
-# ⚠ THIS IS FOR PLAY, RECORDING AND PRESENTATION -- NEVER FOR TRAINING.
-#   `docs/rules/03-moving.md` says an incoherent move cannot be made, so a
-#   recording made WITHOUT this shows illegal moves: the training config only
-#   *measures* coherency, and the agent's own rate is ~0.79, i.e. roughly one
-#   unit-movement-phase in five is illegal.
-#
-#   Training under it is measured to make formation WORSE (0.569 against
-#   0.756-0.886 for the reward gate alone), because every reverted action
-#   produces the identical outcome, so they share an advantage and the policy
-#   gradient inside that set is exactly zero. Enforcement guarantees a legal
-#   board and teaches nothing.
-#
-#   `revert_unit` is the spec's own mode: one model out of place cancels its
-#   whole unit's move.
-#
-# ⚠ SCORES UNDER THIS ARE NOT COMPARABLE TO SCORES WITHOUT IT. The referee
-#   costs vp, and it costs a sloppy policy more than a tidy one. Re-measure both
-#   the agent and every scripted reference here before quoting anything.
-#
-# ⚠ AND `eval/coherency_rate` IS 1.000 BY CONSTRUCTION UNDER THIS CONFIG.
-#   The `coherent` column in `measure-*` reads `intended_coherency_rate` when a
-#   referee is running, so it keeps reporting what the POLICY chose (~0.79)
-#   while the board on screen is legal. That is the intended pairing: a legal
-#   recording, and an honest number beside it.
-# ===========================================================================
 coherency:
   enforce_at_deployment: true
-  enforce_move: revert_unit
-  # THE RULES' OWN BACKSTOP, AND WITHOUT IT THIS CONFIG DEADLOCKS.
-  #
-  # `03-moving.md` § Regaining coherency: at the End of Turn a unit still out of
-  # coherency loses models one at a time until it is back in. `enforce_move` is
-  # the primary consequence and this is the secondary one -- playing with the
-  # first and not the second is not the rule, it is half of it, and the missing
-  # half is the half that CLOSES a break.
-  #
-  # A revert cannot repair a unit split by casualties: it puts the models back
-  # where they started, which is where the split already was. So such a unit is
-  # frozen EVERY turn for the rest of the game. Measured over 40 episodes:
-  # P(frozen next | frozen now) = 0.62 against 0.17 after a move, 29 freeze runs
-  # end only when the game does, and `squad_march_take` -- a DETERMINISTIC
-  # policy -- requests the identical move on all twenty rounds of seed 700029
-  # and is reverted every time, finishing with twenty models exactly where they
-  # deployed. Reverting reproduces the same decision, so nothing breaks the loop.
-  #
-  # Turning this on is worth +15.0 vp_margin to the trained agent (-18.0 ->
-  # -3.0, n=20, seeds 700000+) and takes `squad_march_take` from 0.935 to 0.991
-  # units coherent. It barely moves the freeze rate (0.377 -> 0.369) -- it
-  # closes the deadlocks, it does not make the policy's moves legal.
-  #
-  # ⚠ NEVER TRAIN WITH THIS, and never train with `enforce_move` either. On its
-  # own, with no referee in front of it, attrition DELETES THE ARMY: -105.5
-  # vp_margin with 15.4% of the force alive, against -18.0 and 49.8% for the
-  # referee alone. A learner starts near-random, and random is what it punishes
-  # hardest.
-  #
-  # ⚠ AND IT INFLATES `coherency_rate` THE SAME WAY THE REFEREE DOES, by
-  # deleting the models that are in breach rather than by fixing them. Judge it
-  # on `alive`, `held` and `vp_margin`. Read `intended_coherency_rate` for the
-  # policy's own compliance, never the realised rate from this config.
-  attrition: true

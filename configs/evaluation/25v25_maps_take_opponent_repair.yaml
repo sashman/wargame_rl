@@ -1,4 +1,37 @@
 # ===========================================================================
+# PLAY config using `enforce_move: repair` instead of the spec's `revert_unit`.
+#
+# WHAT REPAIR DOES. A unit that ends its move out of coherency has its strays
+# pulled back onto the body they left, and only a unit that cannot be gathered
+# falls back to the full revert. It is a DIVERGENCE from `03-moving.md`, which
+# says an illegal move cannot be made; this makes the nearest legal move instead.
+#
+# WHY. The spec's revert destroys 48.9% of all intended movement, cancels 33.1%
+# of unit-moves, and is an absorbing state -- P(frozen | frozen) = 0.62 against
+# 0.17 after a move -- because reverting reproduces the same decision. It also
+# cannot repair a unit split by casualties, which is frozen for the rest of the
+# game. A crude local repair retains 86% of intended movement against 57%.
+#
+# ⚠ IT IS NOT A FREE WIN, AND IT CHANGES WHO WINS. Paired on 30 episodes of the
+# training pool, revert -> repair:
+#
+#   trained agent, 3 seeds   -26.0 -> -8.2    (+17.8)
+#   squad_march_shoot        -50.7 -> +2.0    (+52.7)
+#   squad_march_take         -11.0 -> -5.3    ( +5.7)
+#   squad_march_deny          -5.5 -> -22.8   (-17.3)
+#
+# `deny` gets WORSE, and the mechanism is not subtle: repair RELOCATES models,
+# which is worse than not moving when the policy's position was already good.
+# It helps policies whose strays want to rejoin and hurts policies whose
+# dispersion is deliberate. So any ladder measured under `revert_unit` has to be
+# re-measured here; the two are different games.
+#
+# ⚠ STILL A REFEREE — DO NOT TRAIN UNDER IT. Nothing about repair changes the
+# argument in the golden config's header: enforcement supplies no gradient for
+# the actions it edits. This is for play and for scoring.
+# ===========================================================================
+
+# ===========================================================================
 # GOLDEN — unit coherency on the real tables. This is the config to train on
 # for this scenario, and the one that backs the published coherency numbers.
 #
@@ -99,7 +132,7 @@
 # trained `25v25_maps_coherent.yaml` checkpoint as every measurement above did.
 # ===========================================================================
 
-config_name: 25v25_maps_coherency
+config_name: 25v25_maps_take_opponent_repair
 #
 # 25v25 on THE REAL TABLES, drawn one per episode from `configs/evaluation/maps/`.
 #
@@ -544,7 +577,7 @@ observe_objective_control: true
 # ===========================================================================
 coherency:
   enforce_at_deployment: true
-  enforce_move: revert_unit
+  enforce_move: repair
   # THE RULES' OWN BACKSTOP, AND WITHOUT IT THIS CONFIG DEADLOCKS.
   #
   # `03-moving.md` § Regaining coherency: at the End of Turn a unit still out of

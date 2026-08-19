@@ -1,4 +1,34 @@
 # ===========================================================================
+# EVALUATION -- the same scenario, played against `contest_and_spread`.
+#
+# Generated from `25v25_maps_take_opponent_refereed.yaml` by swapping ONE field,
+# `opponent_policy.params.baseline`. Everything else -- forces, reward, rounds,
+# maps, referee, attrition -- is identical, so a row here and a row there differ
+# by the opponent and nothing else.
+#
+# ⚠ SWAPPING THE OPPONENT VOIDS EVERY BASELINE. Re-measure the scripted policies
+# on THIS config before comparing anything to them; a bar from another opponent
+# is a bar from another game. That mistake once had a policy reading as clear of
+# a bar it was ten points beneath.
+#
+# ⚠ AND ABSOLUTE SCORE MEASURES THE OPPONENT, NOT THE AGENT. The trained agent
+# scores HIGHER against the weaker opponents here while being further behind the
+# scripts on them. Only the same-matchup comparison means anything.
+#
+# What the baseline arm scores, nine held-out tables, n=30, three seeds,
+# verified top-3 decode (`just measure-maps <ckpt> <this config> 30
+# configs/evaluation/maps_heldout 3`):
+#
+#   opponent               agent   best script
+#   squad_march_take        +2.6      -4.4 (deny)     agent ahead
+#   squad_march_shoot      +19.3     +12.1 (take)     agent ahead
+#   squad_march_deny        +4.0      -3.1 (take)     agent ahead
+#   contest_and_spread     +17.4     +31.1 (take)     AGENT BEHIND 13.7
+#
+# Intended unit coherency is 0.94-0.97 on every one of them.
+# ===========================================================================
+
+# ===========================================================================
 # GOLDEN — unit coherency on the real tables. This is the config to train on
 # for this scenario, and the one that backs the published coherency numbers.
 #
@@ -282,7 +312,7 @@ opponent_deployment_zone: [40, 0, 60, 44]
 opponent_policy:
   type: scripted_baseline
   params:
-    baseline: squad_march_take
+    baseline: contest_and_spread
 
 # The layout is drawn from the real tables, one per episode, instead of being
 # generated. This is the third terrain mode and it is the only one that trains
