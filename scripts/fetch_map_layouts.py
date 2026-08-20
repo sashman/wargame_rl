@@ -24,6 +24,10 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+from shapely.geometry import Polygon as ShapelyPolygon
+from shapely.ops import unary_union
+
 from wargame_rl.wargame.envs.domain.rules_constants import OBJECTIVE_MARKER_RANGE_IN
 from wargame_rl.wargame.envs.types.geometry import Polygon
 from wargame_rl.wargame.envs.types.terrain_observation import TERRAIN_VERTEX_BUDGET
@@ -41,6 +45,22 @@ BOARD_HEIGHT_IN = 44.0
 # Coordinates arrive with the origin at the centre of the board and y up. Ours
 # has the origin at the corner, so every point shifts by half the board.
 ORIGIN_SHIFT = (BOARD_WIDTH_IN / 2, BOARD_HEIGHT_IN / 2)
+
+# Two pieces sharing at least this much boundary are one ruin. The layouts
+# build a structure out of several kit pieces -- a rectangle split along a
+# diagonal seam, or two bars meeting in an L -- and the source renders each
+# such group as a single connected blob. Measured over all 45 tables, the
+# shared-boundary lengths are strikingly discrete: 110 pairs at ~0.32in (a
+# corner touch, incidental), then 84 at ~2.33 (a bar's end against another's
+# side), 6 at ~6.33 and 18 at ~13.6 (one rectangle split in two). 1.0 sits in
+# the empty gap between 0.33 and 1.45, 3x above the first mode and 2.3x below
+# the second.
+RUIN_CONTACT_IN = 1.0
+
+# Boundary sampling for that measurement. `eps` has to exceed the two-decimal
+# rounding the map files carry, or a shared edge reads as a near miss.
+_CONTACT_EPS_IN = 0.15
+_CONTACT_STEP_IN = 0.08
 
 Point = tuple[float, float]
 
@@ -149,21 +169,130 @@ def simplify_outline(points: list[Point], max_vertices: int) -> list[Point]:
     return simplified
 
 
+def shared_boundary(first: Polygon, second: Polygon) -> float:
+    """How much of the two outlines runs together, in inches.
+
+    Measured by walking one boundary and asking the engine's own
+    `distance_to_point` how close the other is, then taking the larger of the
+    two directions -- a short piece lying along a long one shares all of its own
+    edge and only part of the other's.
+    """
+
+    def along(source: Polygon, other: Polygon) -> float:
+        total = 0.0
+        vertices = source.vertices
+        for index in range(len(vertices)):
+            start, end = vertices[index], vertices[(index + 1) % len(vertices)]
+            length = float(np.hypot(*(end - start)))
+            if length <= 0.0:
+                continue
+            steps = max(2, int(length / _CONTACT_STEP_IN))
+            fractions = np.linspace(0.0, 1.0, steps)
+            points = start + fractions[:, np.newaxis] * (end - start)
+            near = [
+                other.distance_to_point(float(x), float(y)) < _CONTACT_EPS_IN
+                for x, y in points
+            ]
+            total += float(np.mean(near)) * length
+        return total
+
+    return max(along(first, second), along(second, first))
+
+
+def ruin_components(pieces: list[Polygon]) -> list[list[int]]:
+    """Group pieces into ruins -- connected runs of substantial shared edge.
+
+    A "terrain piece" in the source is a kit component, not a building: the
+    layouts routinely split one rectangle along a diagonal or butt two bars into
+    an L, and the source's own board render draws each such group as a single
+    blob. Treating the components separately is what made an objective cover
+    half a ruin and leave the other half neutral ground.
+    """
+    parent = list(range(len(pieces)))
+
+    def find(node: int) -> int:
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    for i, first in enumerate(pieces):
+        left = first.bounds
+        for j in range(i + 1, len(pieces)):
+            right = pieces[j].bounds
+            # Cheap reject: outlines that cannot touch cannot share an edge.
+            if (
+                left[2] + _CONTACT_EPS_IN < right[0]
+                or right[2] + _CONTACT_EPS_IN < left[0]
+                or left[3] + _CONTACT_EPS_IN < right[1]
+                or right[3] + _CONTACT_EPS_IN < left[1]
+            ):
+                continue
+            if shared_boundary(first, pieces[j]) >= RUIN_CONTACT_IN:
+                parent[find(i)] = find(j)
+
+    groups: dict[int, list[int]] = {}
+    for index in range(len(pieces)):
+        groups.setdefault(find(index), []).append(index)
+    return list(groups.values())
+
+
+def merge_ruin(pieces: list[Polygon], members: list[int]) -> list[Point]:
+    """One ruin's outline: the union of the pieces it is built from.
+
+    The pieces *abut* rather than overlap -- a diagonal seam or a butted L --
+    and two polygons a rounded hundredth apart do not fuse, so a plain union
+    returns a MultiPolygon and the ruin stays in halves. Grown by the same
+    epsilon the contact measurement uses and then shrunk back, the seam closes
+    while every real edge returns to where it was. Mitred joins, because a round
+    join would bevel every corner of the outline.
+
+    Exterior ring only. A union can enclose a courtyard, and an objective is the
+    ground you stand on to hold it -- a model in the courtyard is on the
+    objective, so the hole is not a hole for this purpose.
+
+    No vertex budget applies here, unlike terrain: an objective reaches the
+    network as its centroid, never as an outline.
+    """
+    if len(members) == 1:
+        return [(float(x), float(y)) for x, y in pieces[members[0]].vertices]
+    grown = [
+        ShapelyPolygon([(float(x), float(y)) for x, y in pieces[m].vertices])
+        .buffer(0)
+        .buffer(_CONTACT_EPS_IN, join_style=2)
+        for m in members
+    ]
+    union = unary_union(grown).buffer(-_CONTACT_EPS_IN, join_style=2)
+    if union.geom_type != "Polygon":
+        # Never silently take the biggest part: that is how half a ruin went
+        # missing while every count still read five.
+        raise ValueError(
+            f"ruin of pieces {members} did not merge into one outline "
+            f"(got {union.geom_type}); the contact threshold and the bridge "
+            f"epsilon disagree"
+        )
+    return [(float(x), float(y)) for x, y in union.exterior.coords[:-1]]
+
+
 def objectives_for(markers: list[Point], pieces: list[Polygon]) -> list[dict[str, Any]]:
     """Resolve the layout's objective markers against its terrain.
 
-    **An objective is a terrain piece.** Free-standing markers you stand near
-    are a previous edition's rule; here the marker only says *which ruin* is
-    being fought over, so it resolves to that piece's outline. Measured across
-    the pool, 146 of 225 markers sit inside a piece and 71 more within control
+    **An objective is a ruin.** Free-standing markers you stand near are a
+    previous edition's rule; here the marker only says *which ground* is being
+    fought over, so it resolves to that ruin's outline. Measured across the
+    pool, 146 of 225 markers sit inside a piece and 71 more within control
     range.
 
+    **A ruin is not a terrain piece.** The layouts build one structure out of
+    several kit pieces -- a rectangle split along a diagonal seam, two bars
+    butted into an L -- and the source's own board render draws each group as a
+    single blob. Resolving a marker to the nearest *piece* therefore made an
+    objective cover half a ruin and leave the other half neutral: on `table_02`
+    the centre rectangle came out green on one side of its diagonal and brown on
+    the other. `ruin_components` groups them first.
+
     Two markers on one ruin collapse into a single objective, because that
-    ground is held once. **On this pool that never fires** -- all 45 layouts
-    keep five distinct objectives -- so the rule is here for correctness, not
-    because it is load-bearing. The hand-traced tables it replaces did carry a
-    comment about merging; that described their own author's choices rather
-    than anything in the source.
+    ground is held once.
 
     Eight markers sit further than control range from any piece, at most 5.01
     inches. Those are deliberate open ground rather than bad data: four of them
@@ -171,6 +300,10 @@ def objectives_for(markers: list[Point], pieces: list[Polygon]) -> list[dict[str
     is a marker placed exactly one control range off a ruin. They stay discs, so
     the table keeps the shape the layout gave it.
     """
+    components = ruin_components(pieces)
+    owner = {
+        index: number for number, group in enumerate(components) for index in group
+    }
     objectives: list[dict[str, Any]] = []
     claimed: set[int] = set()
     for marker_x, marker_y in markers:
@@ -187,15 +320,19 @@ def objectives_for(markers: list[Point], pieces: list[Polygon]) -> list[dict[str
                     "radius_size": OBJECTIVE_MARKER_RANGE_IN,
                 }
             )
-        elif index not in claimed:
-            claimed.add(index)
+        elif owner[index] not in claimed:
+            claimed.add(owner[index])
             # Unrounded on purpose. `render_map_yaml` formats every coordinate
             # to two places exactly once; rounding here as well rounds twice by
             # two different rules, and `round(33.455, 2)` and `f"{33.455:.2f}"`
             # disagree -- which silently made an objective's outline differ by a
             # hundredth from the very piece it *is*.
             objectives.append(
-                {"area": [[float(x), float(y)] for x, y in pieces[index].vertices]}
+                {
+                    "area": [
+                        [x, y] for x, y in merge_ruin(pieces, components[owner[index]])
+                    ]
+                }
             )
     return objectives
 

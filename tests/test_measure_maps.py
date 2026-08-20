@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
+import numpy.typing as npt
 import pytest
 from PIL import Image
 from pydantic_yaml import parse_yaml_raw_as
@@ -22,6 +24,7 @@ from wargame_rl.wargame.envs.types import (
     TerrainMapConfig,
     WargameEnvConfig,
 )
+from wargame_rl.wargame.envs.types.geometry import Polygon
 from wargame_rl.wargame.model.common.factory import create_environment
 
 MAP_YAML = """
@@ -264,21 +267,30 @@ def test_a_preview_renders_from_the_map_file(tmp_path: Path) -> None:
         assert image.height > 0
 
 
-def test_every_shipped_map_objective_is_one_of_its_ruins() -> None:
-    """An objective is a terrain piece, or the open ground no piece reaches.
+def _interior_samples(polygon: Polygon) -> npt.NDArray[np.float64]:
+    """A grid of points inside a polygon, for all-or-nothing coverage checks."""
+    x0, y0, x1, y1 = polygon.bounds
+    grid_x, grid_y = np.meshgrid(
+        np.arange(x0 + 0.1, x1, 0.25), np.arange(y0 + 0.1, y1, 0.25)
+    )
+    points = np.column_stack([grid_x.ravel(), grid_y.ravel()])
+    return points[polygon.contains_points(points)]
 
-    Five markers per layout, and the marker only designates which ruin is fought
-    over -- so its outline must be a piece the map actually has, or an outline
-    that matched nothing would mean a marker was attributed to the wrong ruin.
-    Two markers on one ruin would collapse to a single objective; that never
-    fires on this pool, so every map carries five.
 
-    Eight of the 225 markers sit at or beyond control range of every piece and
-    stay discs on open ground. That exception is asserted rather than tolerated:
-    a disc *inside* reach of a ruin would mean the resolution missed a piece it
-    should have found. Keeping them as discs is what holds every table at five
-    objectives -- attaching one to a ruin another marker already claimed would
-    collapse the pair and drop that table to four.
+def test_no_shipped_objective_covers_part_of_a_ruin() -> None:
+    """An objective is a whole ruin, or the open ground no ruin reaches.
+
+    The invariant is *all or nothing per piece*: every terrain piece is either
+    entirely inside an objective or entirely outside it. That is the property
+    that broke when markers resolved to the nearest *piece* rather than to the
+    ruin it belongs to -- the layouts build one structure from several kit
+    pieces (a rectangle split along a diagonal seam, two bars butted into an L),
+    so 30 of 225 objectives covered one half of a ruin and left the other half
+    neutral ground. Every count still read five and every marker still resolved;
+    only looking at the picture showed it.
+
+    Sampled rather than exact, because the union bridges a sub-tenth-inch seam
+    and the two outlines meet on rounded coordinates.
     """
     maps = load_maps(SHIPPED_MAPS)
 
@@ -288,7 +300,6 @@ def test_every_shipped_map_objective_is_one_of_its_ruins() -> None:
         assert terrain_map.objectives is not None, terrain_map.name
         assert len(terrain_map.objectives) == 5, terrain_map.name
         pieces = [piece.to_polygon() for piece in terrain_map.terrain]
-        outlines = []
         for objective in terrain_map.objectives:
             area = objective.to_polygon()
             if area is None:
@@ -297,18 +308,15 @@ def test_every_shipped_map_objective_is_one_of_its_ruins() -> None:
                     piece.distance_to_point(objective.x, objective.y)
                     for piece in pieces
                 )
-                # `>=`, not `>`: five of the eight sit at exactly control
-                # range, because the layout places them one range off a ruin on
-                # purpose. The generator decides on the unrounded distance and
-                # the file keeps two places, so the boundary cases land exactly
-                # on it here.
+                # `>=`, not `>`: five of the eight sit at exactly control range,
+                # because the layout places them one range off a ruin on purpose.
                 assert nearest >= OBJECTIVE_MARKER_RANGE_IN, terrain_map.name
                 discs += 1
                 continue
-            outline = tuple(map(tuple, area.vertices))
-            assert outline in {tuple(map(tuple, piece.vertices)) for piece in pieces}, (
-                terrain_map.name
-            )
-            outlines.append(outline)
-        assert len(set(outlines)) == len(outlines), f"{terrain_map.name}: duplicate"
+            for index, piece in enumerate(pieces):
+                inside = area.contains_points(_interior_samples(piece))
+                assert inside.all() or not inside.any(), (
+                    f"{terrain_map.name}: objective covers "
+                    f"{inside.mean():.0%} of piece {index}"
+                )
     assert discs == 8

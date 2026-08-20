@@ -58,13 +58,34 @@ discs on open ground. Those eight are deliberate, not bad data: **four are the
 exact board centre**, and the distance 3.00" recurs to the inch, which is a
 marker placed exactly one control range off a ruin.
 
-Two markers on one ruin would collapse to a single objective, because that ground
-is held once. **On this pool that never fires.** Every table carries five.
-
 That 146 / 71 / 8 split is **identical against the dense source outlines and the
 simplified 8-vertex ones** — not one marker changes category. It is the sharpest
 evidence available that the vertex budget costs nothing load-bearing: the
 simplification is invisible to the only question the geometry is asked.
+
+### A ruin is not a terrain piece, and getting that wrong shipped
+
+**This was caught by eye, after the fact, and every numeric check had passed.**
+
+The layouts build one structure out of several kit pieces: a rectangle split
+along a diagonal seam, or two bars butted into an L. The source's own board
+render draws each such group as a single connected blob. Resolving a marker to
+the nearest *piece* therefore made an objective cover half a ruin — on
+`table_02` the centre rectangle came out green on one side of its diagonal and
+brown on the other, and two L-shaped ruins were objectives only along one arm.
+
+**30 of 225 objectives were affected.** Nothing measurable said so: every table
+carried five objectives, every marker resolved, the zone split was 75/75/75.
+
+Pieces are grouped by **shared boundary length**, and the pool makes the
+threshold obvious. Over all 45 tables the contact lengths are strikingly
+discrete — 110 pairs at ~0.32" (a corner touch), 84 at ~2.33" (a bar's end
+against another's side), 6 at ~6.33" and 18 at ~13.6" (one rectangle split in
+two). **1.0" sits in the empty gap** between 0.33 and 1.45, 3x above the first
+mode and 2.3x below the second.
+
+Two markers on one *ruin* collapse to a single objective, since that ground is
+held once. That still never fires: every table carries five.
 
 ### What the tracing had actually done
 
@@ -112,6 +133,12 @@ Lowering the objective budget to 5 would change the tensor width and orphan ever
 checkpoint in `checkpoints/` — it must not be "tidied".
 
 ## 6. What it cost, measured
+
+> ⚠ **Re-running.** The figures below were measured before ruin merging landed,
+> so they describe a version in which 30 of 225 objectives covered half a ruin.
+> The direction is unlikely to change — merging makes objectives *larger*, so if
+> anything it softens the occupancy loss — but the numbers are provisional until
+> the re-run completes.
 
 Four scripted policies on the golden training config, **all 45 tables**, n=30
 each, old geometry against new, paired by table. All 45 are admissible here for
@@ -183,7 +210,15 @@ Coherency 0.76–0.81 throughout.
   and passing. They now trim a layout to 15.
 - **A claim of mine that did not survive its own evidence.** I wrote that markers
   merge, citing "5 on 39 layouts, 4 on four, 3 on two". That histogram was
-  counting *open-ground* markers, not merges. No merging occurs at all.
+  counting *open-ground* markers, not merges. Marker collapse never fires.
+- **And then the reverse, which shipped.** Having established markers do not
+  merge, I concluded pieces need not either — so an objective became the single
+  piece a marker landed on, and 30 of 225 covered half a ruin. It took looking
+  at a picture. **Every count, split and resolution check passed**, because all
+  of them were counting objectives rather than asking what ground each one was.
+  The first implementation then compounded it: two abutting polygons do not fuse
+  into one outline, and the code took the largest part, discarding the rest in
+  silence. It now raises.
 
 The new ingest tests were sensitivity-checked by injecting three bugs — a shifted
 frame, a doubled control range, a removed dedupe — and confirming the right test

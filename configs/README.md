@@ -76,8 +76,12 @@ now the layout's own geometry, simplified to the 8-vertex observation budget by
 Douglas-Peucker — chosen by measuring all 720 pieces, where it holds area to a
 worst 1.078 of the true silhouette against the footprint rectangle's 1.592.
 
-**An objective is a terrain piece.** A layout's marker only says *which ruin* is
-fought over, so it resolves to that piece's outline; free-standing markers you
+**An objective is a ruin — a group of terrain pieces sharing at least 1" of
+boundary.** A layout's marker only says *which ground* is fought over, so it
+resolves to that ruin's whole outline. The pieces are kit components, not
+buildings: a rectangle split along a diagonal seam, two bars butted into an L, drawn
+as one blob by the source's own render. Resolving to the nearest *piece* instead
+left 30 of 225 objectives covering half a ruin; free-standing markers you
 stand near are a previous edition's rule, and are why the hand-traced tables
 carried six. Eight of the 225 markers sit at or beyond control range of every
 piece — four of them the exact board centre — and stay discs on open ground.

@@ -14,9 +14,11 @@ import pytest
 from pydantic_yaml import parse_yaml_raw_as
 
 from scripts.fetch_map_layouts import (
+    merge_ruin,
     objectives_for,
     piece_outline,
     render_map_yaml,
+    ruin_components,
     simplify_outline,
 )
 from wargame_rl.wargame.envs.types import TerrainMapConfig
@@ -154,3 +156,91 @@ def test_the_rendered_file_parses_as_a_map() -> None:
     assert parsed.objectives is not None
     assert parsed.objectives[0].area is not None
     assert parsed.objectives[1].x == 40.0
+
+
+def test_a_diagonal_seam_is_one_ruin() -> None:
+    """The failure that shipped: a rectangle split in two along a diagonal.
+
+    On `table_02` the centre ruin is exactly this, and resolving the marker to
+    the nearest *piece* made the objective cover one side of the seam only.
+    """
+    lower = Polygon.from_points([(0.0, 0.0), (10.0, 0.0), (0.0, 10.0)])
+    upper = Polygon.from_points([(10.0, 0.0), (10.0, 10.0), (0.0, 10.0)])
+
+    components = ruin_components([lower, upper])
+
+    assert [sorted(group) for group in components] == [[0, 1]]
+
+
+def test_two_bars_butted_into_an_l_are_one_ruin() -> None:
+    """The other real shape: a bar's end against another bar's side."""
+    upright = Polygon.from_points([(0.0, 0.0), (2.0, 0.0), (2.0, 8.0), (0.0, 8.0)])
+    across = Polygon.from_points([(2.0, 0.0), (8.0, 0.0), (8.0, 2.0), (2.0, 2.0)])
+
+    assert [sorted(g) for g in ruin_components([upright, across])] == [[0, 1]]
+
+
+def test_a_corner_touch_is_two_ruins() -> None:
+    """Incidental contact must not merge — 110 of 222 real pairs are this."""
+    first = Polygon.from_points([(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)])
+    second = Polygon.from_points([(4.0, 4.0), (8.0, 4.0), (8.0, 8.0), (4.0, 8.0)])
+
+    assert [sorted(g) for g in ruin_components([first, second])] == [[0], [1]]
+
+
+def test_merging_a_ruin_keeps_all_of_its_ground() -> None:
+    """The union must be one outline covering both pieces, not the larger one.
+
+    Two abutting polygons do not fuse on their own — shapely returns a
+    MultiPolygon — and the first implementation took the biggest part, which
+    silently threw half the ruin away while every count still read five.
+    """
+    upright = Polygon.from_points([(0.0, 0.0), (2.0, 0.0), (2.0, 8.0), (0.0, 8.0)])
+    across = Polygon.from_points([(2.0, 0.0), (8.0, 0.0), (8.0, 2.0), (2.0, 2.0)])
+
+    merged = Polygon.from_points(merge_ruin([upright, across], [0, 1]))
+
+    assert merged.area == pytest.approx(16.0 + 12.0, abs=0.5)
+    assert merged.contains(1.0, 7.0)  # the top of the upright
+    assert merged.contains(7.0, 1.0)  # the far end of the crossbar
+    assert not merged.contains(7.0, 7.0)  # the notch stays open
+
+
+def test_a_marker_takes_the_whole_ruin_not_the_piece_it_landed_on() -> None:
+    upright = Polygon.from_points([(0.0, 0.0), (2.0, 0.0), (2.0, 8.0), (0.0, 8.0)])
+    across = Polygon.from_points([(2.0, 0.0), (8.0, 0.0), (8.0, 2.0), (2.0, 2.0)])
+
+    objectives = objectives_for([(1.0, 7.0)], [upright, across])
+
+    assert len(objectives) == 1
+    area = Polygon.from_points([(x, y) for x, y in objectives[0]["area"]])
+    assert area.contains(7.0, 1.0), "the crossbar is part of the same ruin"
+
+
+def test_two_markers_on_one_ruin_are_still_one_objective() -> None:
+    """Now at ruin level: one marker per piece of the same structure."""
+    upright = Polygon.from_points([(0.0, 0.0), (2.0, 0.0), (2.0, 8.0), (0.0, 8.0)])
+    across = Polygon.from_points([(2.0, 0.0), (8.0, 0.0), (8.0, 2.0), (2.0, 2.0)])
+
+    assert len(objectives_for([(1.0, 7.0), (7.0, 1.0)], [upright, across])) == 1
+
+
+def test_a_ruin_merges_across_the_rounding_gap() -> None:
+    """The real pieces do not share an exact edge, and that is the whole problem.
+
+    Map files carry two decimal places and the outlines are simplified, so two
+    abutting pieces sit a few hundredths apart. `unary_union` leaves those as a
+    MultiPolygon, which is why the union is bridged. Fixtures that share an
+    exact edge fuse on their own and cannot catch a missing bridge -- an
+    injected "take the largest part" passed every other test here.
+    """
+    upright = Polygon.from_points([(0.0, 0.0), (2.0, 0.0), (2.0, 8.0), (0.0, 8.0)])
+    across = Polygon.from_points([(2.05, 0.0), (8.0, 0.0), (8.0, 2.0), (2.05, 2.0)])
+
+    assert [sorted(g) for g in ruin_components([upright, across])] == [[0, 1]]
+
+    merged = Polygon.from_points(merge_ruin([upright, across], [0, 1]))
+
+    assert merged.contains(1.0, 7.0), "the upright"
+    assert merged.contains(7.0, 1.0), "the crossbar, across the gap"
+    assert merged.area == pytest.approx(16.0 + 11.9, abs=0.6)

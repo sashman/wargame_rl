@@ -284,11 +284,20 @@ Detailed patterns live next to the code they govern — read them when working i
 > pair. Do not "tidy" the objective budget down to 5: that would change the
 > tensor width and orphan every checkpoint in `checkpoints/`.
 >
-> **An objective is a terrain piece.** The marker only designates which ruin is
-> fought over; free-standing markers are a previous edition's rule and are why the
-> hand-traced tables carried six. Eight of 225 markers sit at or beyond control
-> range of every piece — four of them the exact board centre, placed there on
-> purpose — and stay discs on open ground.
+> **An objective is a RUIN, and a ruin is not a terrain piece.** The marker only
+> designates which ground is fought over; free-standing markers are a previous
+> edition's rule and are why the hand-traced tables carried six. The layouts build
+> one structure from several kit pieces — a rectangle split along a diagonal seam,
+> two bars butted into an L — and the source's own render draws each group as one
+> blob, so pieces are grouped by **shared boundary ≥ 1.0"** before a marker is
+> resolved. That threshold sits in an empty gap: over all 45 tables the contact
+> lengths are 110 pairs at ~0.32" (corner touch), 84 at ~2.33", 6 at ~6.33" and 18
+> at ~13.6". ⚠ **Skipping that grouping shipped and had to be caught by eye** —
+> 30 of 225 objectives covered half a ruin while every count, split and resolution
+> check passed. Eight of 225 markers sit at or beyond control range of every piece
+> — four of them the exact board centre, placed there on purpose — and stay discs
+> on open ground. Two markers on one *ruin* would collapse to one objective; that
+> never fires, so every table carries five.
 
 > ### ⚠ Every number below this line predates continuous space and is void
 >
