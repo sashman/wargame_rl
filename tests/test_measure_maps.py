@@ -17,7 +17,6 @@ from PIL import Image
 from pydantic_yaml import parse_yaml_raw_as
 
 from scripts.measure_maps import config_for_map, load_maps
-from wargame_rl.wargame.envs.domain.rules_constants import OBJECTIVE_MARKER_RANGE_IN
 from wargame_rl.wargame.envs.types import (
     MapPoolConfig,
     RandomTerrainConfig,
@@ -278,16 +277,24 @@ def _interior_samples(polygon: Polygon) -> npt.NDArray[np.float64]:
 
 
 def test_no_shipped_objective_covers_part_of_a_ruin() -> None:
-    """An objective is a whole ruin, or the open ground no ruin reaches.
+    """Every objective is a whole ruin, and nothing else is an objective.
 
-    The invariant is *all or nothing per piece*: every terrain piece is either
-    entirely inside an objective or entirely outside it. That is the property
-    that broke when markers resolved to the nearest *piece* rather than to the
-    ruin it belongs to -- the layouts build one structure from several kit
-    pieces (a rectangle split along a diagonal seam, two bars butted into an L),
-    so 30 of 225 objectives covered one half of a ruin and left the other half
-    neutral ground. Every count still read five and every marker still resolved;
-    only looking at the picture showed it.
+    Two invariants, both of which broke at some point in building this pool:
+
+    **All or nothing per piece.** Every terrain piece is either entirely inside
+    an objective or entirely outside it. The layouts build one structure from
+    several kit pieces -- a rectangle split along a diagonal seam, two bars
+    butted into an L -- so resolving a marker to the nearest *piece* left 30 of
+    225 objectives covering half a ruin. Every count still read five and every
+    marker still resolved; only looking at a rendered table showed it.
+
+    **No disc objectives.** A marker beyond control range of every ruin resolves
+    to the nearest one anyway, because an objective that is not ground would be
+    the previous edition's free-standing marker under a new name.
+
+    **Five per table.** Each marker takes its own ruin; the biggest one within
+    control range, since a marker sitting in a gap next to a scrap of scatter
+    terrain would otherwise hand the objective to the scrap.
 
     Sampled rather than exact, because the union bridges a sub-tenth-inch seam
     and the two outlines meet on rounded coordinates.
@@ -295,28 +302,19 @@ def test_no_shipped_objective_covers_part_of_a_ruin() -> None:
     maps = load_maps(SHIPPED_MAPS)
 
     assert len(maps) == 45
-    discs = 0
+    counts = []
     for terrain_map in maps:
         assert terrain_map.objectives is not None, terrain_map.name
-        assert len(terrain_map.objectives) == 5, terrain_map.name
+        counts.append(len(terrain_map.objectives))
         pieces = [piece.to_polygon() for piece in terrain_map.terrain]
         for objective in terrain_map.objectives:
             area = objective.to_polygon()
-            if area is None:
-                assert objective.x is not None and objective.y is not None
-                nearest = min(
-                    piece.distance_to_point(objective.x, objective.y)
-                    for piece in pieces
-                )
-                # `>=`, not `>`: five of the eight sit at exactly control range,
-                # because the layout places them one range off a ruin on purpose.
-                assert nearest >= OBJECTIVE_MARKER_RANGE_IN, terrain_map.name
-                discs += 1
-                continue
+            assert area is not None, f"{terrain_map.name}: disc objective"
             for index, piece in enumerate(pieces):
                 inside = area.contains_points(_interior_samples(piece))
                 assert inside.all() or not inside.any(), (
                     f"{terrain_map.name}: objective covers "
                     f"{inside.mean():.0%} of piece {index}"
                 )
-    assert discs == 8
+    # Every marker takes its own ruin, so every table carries five.
+    assert counts == [5] * 45

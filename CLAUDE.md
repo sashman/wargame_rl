@@ -257,15 +257,18 @@ Detailed patterns live next to the code they govern — read them when working i
 > across player zone / middle / opponent zone).
 >
 > **Re-measured, all 45 tables, n=30, paired by table: the tables are harder to
-> HOLD and nothing else.** `held` falls for every scripted policy (−0.08 to −0.27,
-> t up to −5.3, same sign on 29–45 of 45) and `on_obj` with it, while **no
-> script's `vp_margin` moved measurably** (all inside 1.5 SE) — `vp_margin` is a
-> *difference* and both sides face the same harder board, so a symmetric loss of
-> occupancy cancels. `random` is the exception at **−19.2** (t=−6.3), because it
-> scored by deploying onto home objectives and standing there. Coherency is
-> untouched (≤0.01). **The new bar, all 45 at n=30:** `random` −237.0,
-> `squad_march_take` −7.5, `squad_march_shoot` −10.3, `squad_march_deny` −10.7;
-> on the held-out nine, −238.8 / −2.9 / −6.9 / −6.6.
+> HOLD, and that is what is established.** `held` falls for every scripted policy
+> (−0.11 to −0.29, t = −2.7 to −6.0) and `on_obj` with it (−0.03 to −0.05, t to
+> −6.1), consistent in sign. Coherency untouched (≤0.01). **`vp_margin` is weaker
+> than it looks** — only `random` is decisive at **−18.9** (t=−6.6), because it
+> scored by deploying onto home objectives and standing there, which is exactly
+> what moving the objectives punishes. `squad_march_deny` reads −7.3 at t=−1.9 but
+> its **sign count is 24/45, i.e. chance**, so that mean is carried by a handful of
+> tables; `take` is the one script where both tests agree (−8.7, t=−2.4, 30/45)
+> and `shoot` is unresolved on both. ⚠ **Quote a t AND a sign count on this pool**
+> — the per-table differences are heavy-tailed and the two disagree often enough
+> that either alone misleads. **The new bar, all 45 at n=30:** `random` −236.8,
+> `squad_march_take` −10.2, `squad_march_shoot` −12.1, `squad_march_deny` −14.7.
 >
 > ⚠ **Agent numbers still need re-measuring** — the four-opponent table in the
 > README is flagged and unrevised.
@@ -284,22 +287,24 @@ Detailed patterns live next to the code they govern — read them when working i
 > pair. Do not "tidy" the objective budget down to 5: that would change the
 > tensor width and orphan every checkpoint in `checkpoints/`.
 >
-> **An objective is a RUIN, and a ruin is not a terrain piece.** The marker only
-> designates which ground is fought over; free-standing markers are a previous
-> edition's rule and are why the hand-traced tables carried six. The layouts build
-> one structure from several kit pieces — a rectangle split along a diagonal seam,
-> two bars butted into an L — and the source's own render draws each group as one
-> blob, so pieces are grouped by **shared boundary ≥ 1.0"** before a marker is
-> resolved. That threshold sits in an empty gap: over all 45 tables the contact
-> lengths are 110 pairs at ~0.32" (corner touch), 84 at ~2.33", 6 at ~6.33" and 18
-> at ~13.6". ⚠ **Skipping that grouping shipped and had to be caught by eye** —
-> 30 of 225 objectives covered half a ruin while every count, split and resolution
-> check passed. Eight of 225 markers sit at or beyond control range of every piece
-> — four of them the exact board centre, placed there on purpose — and stay discs
-> on open ground. Two markers on one *ruin* would collapse to one objective; that
-> never fires, so every table carries five.
-
-> ### ⚠ Every number below this line predates continuous space and is void
+> **An objective is a RUIN, and three things had to be got right.** The marker
+> only designates which *ground* is fought over — free-standing markers are a
+> previous edition's rule and are why the hand-traced tables carried six. **(1) A
+> ruin is not a terrain piece**: the layouts build one structure from several kit
+> pieces (a rectangle split along a diagonal seam, two bars butted into an L), so
+> pieces are grouped by **shared boundary ≥ 1.0"** — a threshold in empty space,
+> since nothing falls between 0.33" and 1.45". **(2) The biggest ruin in control
+> range wins, not the nearest**: a marker often sits in the *gap* beside a scrap
+> of scatter terrain, and nearest-wins put objectives on 12.9 sq in slivers while
+> 82.5 sq in ruins stood 2" away. Largest-in-range agrees with the old hand-picked
+> objectives **91%** against nearest's 84%. **(3) One ruin per marker**: sharing
+> collapsed two objectives whose markers were *twelve to seventeen inches apart*.
+> There are **no disc objectives** — a marker beyond control range of every ruin
+> takes the nearest anyway, since an objective that is not ground is the previous
+> edition's marker under a new name. Every table carries five. ⚠ **All three
+> defects passed every structural check and were caught by eye on a rendered
+> table** — counts, splits, resolution rates and invariance all held while 30 of
+> 225 objectives covered half a ruin.
 >
 > The board stopped being a chessboard on 2026-08-10. Positions are real points,
 > a move covers exactly the distance its speed bin says (a "speed 1" diagonal

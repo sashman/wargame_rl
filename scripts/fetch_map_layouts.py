@@ -280,62 +280,74 @@ def objectives_for(markers: list[Point], pieces: list[Polygon]) -> list[dict[str
 
     **An objective is a ruin.** Free-standing markers you stand near are a
     previous edition's rule; here the marker only says *which ground* is being
-    fought over, so it resolves to that ruin's outline. Measured across the
-    pool, 146 of 225 markers sit inside a piece and 71 more within control
-    range.
+    fought over, so every marker resolves to a ruin -- unconditionally, with no
+    distance test. A disc floating on open ground would be the previous
+    edition's object under a new name.
 
     **A ruin is not a terrain piece.** The layouts build one structure out of
     several kit pieces -- a rectangle split along a diagonal seam, two bars
-    butted into an L -- and the source's own board render draws each group as a
-    single blob. Resolving a marker to the nearest *piece* therefore made an
-    objective cover half a ruin and leave the other half neutral: on `table_02`
-    the centre rectangle came out green on one side of its diagonal and brown on
-    the other. `ruin_components` groups them first.
+    butted into an L -- and the source's own render draws each group as a single
+    blob, so `ruin_components` groups them before anything is resolved.
 
-    Two markers on one ruin collapse into a single objective, because that
-    ground is held once.
+    **The biggest ruin in control range wins, not the nearest.** A marker
+    routinely sits in the gap between a large ruin and a scrap of scatter
+    terrain, and picking the nearest handed the objective to the scrap: on
+    `table_01` and `table_10` two of five objectives came out on 12.9 sq in
+    slivers while 82.5 sq in ruins stood two inches away. Control range is the
+    real rule's own measure -- a model within 3" of the marker holds it -- so
+    every ruin inside that range is ground you could hold the objective from,
+    and the one that dominates it is the ground being fought over. Measured
+    against the hand-picked objectives these tables used to carry, largest
+    agrees 91% of the time against nearest's 84%.
 
-    Eight markers sit further than control range from any piece, at most 5.01
-    inches. Those are deliberate open ground rather than bad data: four of them
-    are the exact board centre, and the distance 3.00 recurs to the inch, which
-    is a marker placed exactly one control range off a ruin. They stay discs, so
-    the table keeps the shape the layout gave it.
+    **One ruin per marker.** Without that, two markers *twelve to seventeen
+    inches apart* both claimed one long ruin and a table lost an objective --
+    they are plainly separate objectives, not one piece of ground held twice.
+    Markers are resolved most-constrained-first, so a marker with only one ruin
+    in range takes it before a marker spoilt for choice does; resolving in the
+    layout's own order would make the outcome depend on an arbitrary ordering.
     """
     components = ruin_components(pieces)
-    owner = {
-        index: number for number, group in enumerate(components) for index in group
-    }
-    objectives: list[dict[str, Any]] = []
-    claimed: set[int] = set()
-    for marker_x, marker_y in markers:
-        distances = sorted(
-            (piece.distance_to_point(marker_x, marker_y), index)
-            for index, piece in enumerate(pieces)
+    ruins = [Polygon.from_points(merge_ruin(pieces, group)) for group in components]
+
+    def ranked(marker: Point) -> list[tuple[float, int]]:
+        return sorted(
+            (ruin.distance_to_point(*marker), index) for index, ruin in enumerate(ruins)
         )
-        distance, index = distances[0]
-        if distance > OBJECTIVE_MARKER_RANGE_IN:
-            objectives.append(
-                {
-                    "x": marker_x,
-                    "y": marker_y,
-                    "radius_size": OBJECTIVE_MARKER_RANGE_IN,
-                }
-            )
-        elif owner[index] not in claimed:
-            claimed.add(owner[index])
-            # Unrounded on purpose. `render_map_yaml` formats every coordinate
-            # to two places exactly once; rounding here as well rounds twice by
-            # two different rules, and `round(33.455, 2)` and `f"{33.455:.2f}"`
-            # disagree -- which silently made an objective's outline differ by a
-            # hundredth from the very piece it *is*.
-            objectives.append(
-                {
-                    "area": [
-                        [x, y] for x, y in merge_ruin(pieces, components[owner[index]])
-                    ]
-                }
-            )
-    return objectives
+
+    order = sorted(
+        range(len(markers)),
+        key=lambda m: (
+            sum(1 for d, _ in ranked(markers[m]) if d <= OBJECTIVE_MARKER_RANGE_IN),
+            markers[m],
+        ),
+    )
+
+    chosen: dict[int, int] = {}
+    claimed: set[int] = set()
+    for m in order:
+        candidates = ranked(markers[m])
+        in_range = [
+            i
+            for d, i in candidates
+            if d <= OBJECTIVE_MARKER_RANGE_IN and i not in claimed
+        ]
+        if in_range:
+            ruin = max(in_range, key=lambda i: ruins[i].area)
+        else:
+            ruin = next(i for _, i in candidates if i not in claimed)
+        claimed.add(ruin)
+        chosen[m] = ruin
+
+    # Unrounded on purpose. `render_map_yaml` formats every coordinate to two
+    # places exactly once; rounding here as well rounds twice by two different
+    # rules, and `round(33.455, 2)` and `f"{33.455:.2f}"` disagree -- which
+    # silently made an objective's outline differ by a hundredth from the very
+    # piece it *is*.
+    return [
+        {"area": [[float(x), float(y)] for x, y in ruins[chosen[m]].vertices]}
+        for m in range(len(markers))
+    ]
 
 
 def _bounds(pieces: list[Polygon]) -> list[tuple[float, float, float, float]]:

@@ -113,30 +113,33 @@ def test_a_marker_on_a_ruin_makes_that_ruin_the_objective() -> None:
     ]
 
 
-def test_two_markers_on_one_ruin_are_one_objective() -> None:
-    """That ground is held once, so the second marker adds nothing."""
-    pieces = [Polygon.from_rect(0.0, 0.0, 10.0, 10.0)]
+def test_a_marker_on_open_ground_still_takes_a_ruin() -> None:
+    """There is no such thing as an objective that is not a ruin.
 
-    objectives = objectives_for([(2.0, 2.0), (8.0, 8.0)], pieces)
-
-    assert len(objectives) == 1
-
-
-def test_a_marker_on_open_ground_stays_a_disc() -> None:
-    """Beyond control range there is no ruin to be the objective."""
+    Eight of the pool's 225 markers sit beyond control range of every piece --
+    at most 5.16in, four of them the exact board centre. They resolve to the
+    nearest ruin anyway: a disc floating on open ground would be the previous
+    edition's free-standing marker under a new name. Six of the eight are at
+    exactly 3.00in, one control range, so that ruin is precisely the ground you
+    would hold the marker from.
+    """
     pieces = [Polygon.from_rect(0.0, 0.0, 4.0, 4.0)]
 
     objectives = objectives_for([(30.0, 22.0)], pieces)
 
-    assert objectives == [{"x": 30.0, "y": 22.0, "radius_size": 3.0}]
+    assert len(objectives) == 1
+    assert "area" in objectives[0]
+    assert "radius_size" not in objectives[0]
 
 
-def test_a_marker_just_inside_control_range_takes_the_ruin() -> None:
-    """The boundary case, since eight real markers sit exactly 3.00in out."""
-    pieces = [Polygon.from_rect(0.0, 0.0, 4.0, 4.0)]
+def test_the_nearest_ruin_wins_however_far_away_it_is() -> None:
+    near = Polygon.from_rect(0.0, 0.0, 4.0, 4.0)
+    far = Polygon.from_rect(50.0, 40.0, 54.0, 43.0)
 
-    assert "area" in objectives_for([(6.9, 2.0)], pieces)[0]
-    assert "x" in objectives_for([(7.1, 2.0)], pieces)[0]
+    objectives = objectives_for([(9.0, 2.0)], [near, far])
+
+    area = Polygon.from_points([(x, y) for x, y in objectives[0]["area"]])
+    assert area.contains(2.0, 2.0), "the near ruin, not the far one"
 
 
 def test_the_rendered_file_parses_as_a_map() -> None:
@@ -154,8 +157,8 @@ def test_the_rendered_file_parses_as_a_map() -> None:
     assert parsed.name == "table_99"
     assert len(parsed.terrain) == 2
     assert parsed.objectives is not None
-    assert parsed.objectives[0].area is not None
-    assert parsed.objectives[1].x == 40.0
+    assert len(parsed.objectives) == 2
+    assert all(o.area is not None for o in parsed.objectives)
 
 
 def test_a_diagonal_seam_is_one_ruin() -> None:
@@ -217,14 +220,6 @@ def test_a_marker_takes_the_whole_ruin_not_the_piece_it_landed_on() -> None:
     assert area.contains(7.0, 1.0), "the crossbar is part of the same ruin"
 
 
-def test_two_markers_on_one_ruin_are_still_one_objective() -> None:
-    """Now at ruin level: one marker per piece of the same structure."""
-    upright = Polygon.from_points([(0.0, 0.0), (2.0, 0.0), (2.0, 8.0), (0.0, 8.0)])
-    across = Polygon.from_points([(2.0, 0.0), (8.0, 0.0), (8.0, 2.0), (2.0, 2.0)])
-
-    assert len(objectives_for([(1.0, 7.0), (7.0, 1.0)], [upright, across])) == 1
-
-
 def test_a_ruin_merges_across_the_rounding_gap() -> None:
     """The real pieces do not share an exact edge, and that is the whole problem.
 
@@ -244,3 +239,55 @@ def test_a_ruin_merges_across_the_rounding_gap() -> None:
     assert merged.contains(1.0, 7.0), "the upright"
     assert merged.contains(7.0, 1.0), "the crossbar, across the gap"
     assert merged.area == pytest.approx(16.0 + 11.9, abs=0.6)
+
+
+def test_each_marker_gets_its_own_ruin() -> None:
+    """Two markers never collapse onto one objective.
+
+    Merging them was the first rule here, on the reasoning that one piece of
+    ground is held once. The pool refuted it: the only collisions were markers
+    **twelve to seventeen inches apart** both reaching one long ruin, which are
+    plainly two objectives. Each marker now takes the largest *unclaimed* ruin
+    in range.
+    """
+    big = Polygon.from_points([(0.0, 0.0), (30.0, 0.0), (30.0, 6.0), (0.0, 6.0)])
+    small_a = Polygon.from_points([(0.0, 8.0), (4.0, 8.0), (4.0, 12.0), (0.0, 12.0)])
+    small_b = Polygon.from_points(
+        [(26.0, 8.0), (30.0, 8.0), (30.0, 12.0), (26.0, 12.0)]
+    )
+
+    objectives = objectives_for([(2.0, 7.0), (28.0, 7.0)], [big, small_a, small_b])
+
+    assert len(objectives) == 2
+    areas = {
+        Polygon.from_points([(x, y) for x, y in o["area"]]).area for o in objectives
+    }
+    assert len(areas) == 2, "the two markers took different ruins"
+
+
+def test_the_biggest_ruin_in_range_wins_not_the_nearest() -> None:
+    """The defect that shipped on table_01 and table_10.
+
+    A marker sitting in the gap between a scrap of scatter terrain and a real
+    ruin handed the objective to the scrap, because the scrap was an inch
+    closer. Control range is the rule's own measure: every ruin within 3in is
+    ground you could hold the marker from, so the one that dominates wins.
+    """
+    scrap = Polygon.from_points([(0.0, 0.0), (3.0, 0.0), (3.0, 3.0), (0.0, 3.0)])
+    ruin = Polygon.from_points([(6.0, 0.0), (18.0, 0.0), (18.0, 8.0), (6.0, 8.0)])
+
+    # 1in from the scrap, 2in from the ruin -- nearest would take the scrap.
+    objectives = objectives_for([(4.0, 1.5)], [scrap, ruin])
+
+    area = Polygon.from_points([(x, y) for x, y in objectives[0]["area"]])
+    assert area.contains(12.0, 4.0), "the ruin, not the scrap"
+
+
+def test_a_marker_with_nothing_in_range_still_takes_the_nearest() -> None:
+    near = Polygon.from_rect(0.0, 0.0, 4.0, 4.0)
+    far = Polygon.from_rect(50.0, 40.0, 54.0, 43.0)
+
+    objectives = objectives_for([(20.0, 20.0)], [near, far])
+
+    area = Polygon.from_points([(x, y) for x, y in objectives[0]["area"]])
+    assert area.contains(2.0, 2.0)

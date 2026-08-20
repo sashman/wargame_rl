@@ -77,14 +77,14 @@ Douglas-Peucker — chosen by measuring all 720 pieces, where it holds area to a
 worst 1.078 of the true silhouette against the footprint rectangle's 1.592.
 
 **An objective is a ruin — a group of terrain pieces sharing at least 1" of
-boundary.** A layout's marker only says *which ground* is fought over, so it
-resolves to that ruin's whole outline. The pieces are kit components, not
-buildings: a rectangle split along a diagonal seam, two bars butted into an L, drawn
-as one blob by the source's own render. Resolving to the nearest *piece* instead
-left 30 of 225 objectives covering half a ruin; free-standing markers you
-stand near are a previous edition's rule, and are why the hand-traced tables
-carried six. Eight of the 225 markers sit at or beyond control range of every
-piece — four of them the exact board centre — and stay discs on open ground.
+boundary.** A layout's marker only says *which ground* is fought over. The pieces
+are kit components, not buildings: a rectangle split along a diagonal seam, two
+bars butted into an L, drawn as one blob by the source's own render. A marker
+takes the **largest unclaimed ruin within control range** — not the nearest,
+because markers often sit in the gap beside a scrap of scatter terrain, and
+nearest-wins put objectives on 12.9 sq in slivers while 82.5 sq in ruins stood
+two inches away. **There are no disc objectives**; a marker beyond range of every
+ruin takes the nearest anyway. Every table carries five.
 
 **Training on these maps consumes them.** `map_pool.names` is the split: name a
 subset for training and score the complement, or a transfer number means
