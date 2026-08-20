@@ -96,6 +96,18 @@ the published cards vindicate at **45 of 45, worst error 1.5 inches**. Every
 objective is checked against those cards in
 `tests/test_map_objective_counts.py`.
 
+**The tables carry their own deployment zones too.** `deployment_zone` is an
+axis-aligned band and only one of the six real deployments is one: two are
+triangles split by a board diagonal, two are stepped staircases, one is bounded
+by arcs. The names are ours — `diagonal_halves`, `long_edges`,
+`opposed_quadrants`, `short_edges`, `stepped_bands`, `stepped_columns` — used by
+10/9/8/7/6/5 of the 45 tables. **Here the API is trustworthy**, checked rather
+than assumed: the published cards' tinted region is ≥98% inside its polygon on
+all 45. ⚠ **`long_edges` puts the armies 20" apart across the short axis** where
+the others separate them by 24–40; at a 12" weapon range that is a different
+game, and it is a fifth of the pool. A map without a `deployment` block deploys
+under the scenario's rectangle exactly as before.
+
 **Training on these maps consumes them.** `map_pool.names` is the split: name a
 subset for training and score the complement, or a transfer number means
 nothing.

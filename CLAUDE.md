@@ -282,6 +282,21 @@ Detailed patterns live next to the code they govern — read them when working i
 > it worth an order of magnitude. A nine-table read of this same comparison made
 > `squad_march_deny` look like the biggest mover; at n=45 it was not.
 >
+> **The tables also bring their own DEPLOYMENT ZONES.** `deployment_zone` is an
+> axis-aligned band and **only one of the six real deployments is one** — two are
+> triangles split by a board diagonal, two are stepped staircases, one is bounded
+> by arcs. Maps carry outlines named for their shape (`diagonal_halves`,
+> `long_edges`, `opposed_quadrants`, `short_edges`, `stepped_bands`,
+> `stepped_columns`; 10/9/8/7/6/5 of 45). **Here the API IS trustworthy** — the
+> published cards' tinted region is ≥98% inside its polygon on all 45 — unlike
+> its objective markers. Sampling uses the rectangle as the outline's bounding
+> box and rejects outside it; every model deploys inside its own zone on 45/45,
+> where without the test an army spills out on five of the six shapes. ⚠
+> **`long_edges` puts the armies 20" apart across the SHORT axis** against 24–40
+> elsewhere — at a 12" weapon range that is a different game from turn one, and
+> it is a fifth of the pool. A map with no `deployment` block still uses the
+> rectangle, so generated-terrain configs are unchanged.
+>
 > **The observation width did NOT change** — `objective_budget` stays 6 and
 > `terrain_budget` 16 — so every checkpoint still loads and paired arms still
 > pair. Do not "tidy" the objective budget down to 5: that would change the

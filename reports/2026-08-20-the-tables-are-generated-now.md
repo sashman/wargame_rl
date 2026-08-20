@@ -101,6 +101,37 @@ Result: **45 of 45 objectives within 3" of a published one**, worst 2.0" (icon
 centre against outline centroid), counts **24 fives and 21 sixes** exactly as
 published, and the zone split back to **82 / 82 / 82**.
 
+## 3c. The tables bring their own deployment zones
+
+`deployment_zone` is `(x0, y0, x1, y1)` — an axis-aligned band. **Only one of
+the six real deployments is one.** Two are triangles split by a board diagonal,
+two are stepped staircases, one is bounded by arcs. A map now carries its own
+outlines, named for their shape (`diagonal_halves`, `long_edges`,
+`opposed_quadrants`, `short_edges`, `stepped_bands`, `stepped_columns`), used by
+10/9/8/7/6/5 of the 45 tables.
+
+**Here the API is trustworthy, unlike its objective markers**, and that was
+checked rather than assumed: rasterised against the published cards, the tinted
+deployment region is **at least 98% inside the API's polygon on all 45 tables**,
+attacker to red and defender to blue every time.
+
+Sampling still happens in the rectangle — it becomes the outline's bounding box —
+and the outline rejects anything outside it, so the existing "is this zone big
+enough for the army" check still fires. **Every model deploys inside its own zone
+on all 45 tables**; without the outline test an army spills out on five of the
+six shapes.
+
+Two routes had to be wired, not one: training draws a `MapLayout` from a pool,
+while evaluation installs a map onto a scenario and has no layout to carry
+anything. Wiring only the first would have trained a map under its own
+deployment and scored it under the rectangle — the same silent mismatch the
+three terrain modes once had.
+
+**`long_edges` is the one to watch.** It puts the armies along the 60" edges,
+**twenty inches apart across the short axis**, where the others separate them by
+24 to 40. At a twelve inch weapon range that is a materially different game from
+turn one, and it is a fifth of the pool.
+
 ## 4. Two independent checks nobody designed for
 
 Both were computed after the fact, and both came out exactly right — which is the
@@ -280,7 +311,7 @@ mission-pack ids are the commercial product's vocabulary, and
 `tests/test_no_ip_references.py` scans tracked *and untracked* files; only
 geometry crosses the boundary.
 
-Deployment zones — the other half of the source, six real shapes per layout
-including one that faces the armies across the *short* axis — are deliberately
-**not** in this change. They are a second scenario change and are measured
-separately, or neither would be attributable.
+Deployment zones ship with it: `DeploymentConfig` on the map, polygon sampling
+in `wargame_model_placement`, zones travelling with a mirrored layout, and the
+outlines drawn in the previews. A map without a `deployment` block still deploys
+under the scenario's rectangle, so every generated-terrain config is unchanged.

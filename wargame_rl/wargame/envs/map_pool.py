@@ -50,6 +50,7 @@ def _load_layouts(spec: MapPoolConfig) -> list[MapLayout]:
                 if terrain_map.objectives is None
                 else tuple(terrain_map.objectives)
             ),
+            deployment=terrain_map.deployment,
         )
 
     if spec.names is None:

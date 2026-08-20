@@ -26,6 +26,7 @@ from wargame_rl.wargame.envs.types.config import (
     ObjectiveConfig,
     WargameEnvConfig,
 )
+from wargame_rl.wargame.envs.types.geometry import Polygon
 
 if TYPE_CHECKING:
     from numpy.random import Generator
@@ -58,6 +59,34 @@ def _is_clear(
     return True
 
 
+def _fits_in_zone(
+    candidate: tuple[float, float], zone: Polygon | None, base_radius: float
+) -> bool:
+    """Whether a model at *candidate* stands inside a polygon deployment zone.
+
+    The rectangle path insets its bounds by the base radius so a base cannot
+    hang off the zone edge; an outline has no bounds to inset, so the base is
+    checked directly. Four cardinal points rather than the whole disc: the zones
+    are convex or nearly so, and this runs inside the placement retry loop.
+    """
+    if zone is None:
+        return True
+    x, y = candidate
+    if not zone.contains(x, y):
+        return False
+    if base_radius <= 0.0:
+        return True
+    return all(
+        zone.contains(x + dx, y + dy)
+        for dx, dy in (
+            (base_radius, 0.0),
+            (-base_radius, 0.0),
+            (0.0, base_radius),
+            (0.0, -base_radius),
+        )
+    )
+
+
 def _sample_unoccupied(
     x_min: float,
     y_min: float,
@@ -66,11 +95,15 @@ def _sample_unoccupied(
     occupied: list[tuple[float, float]],
     min_separation: float,
     rng: Generator,
+    zone: Polygon | None = None,
+    base_radius: float = 0.0,
 ) -> tuple[float, float]:
     """Return a random point in the zone whose base clears every placed base."""
     for _ in range(_MAX_PLACEMENT_RETRIES):
         candidate = (float(rng.uniform(x_min, x_max)), float(rng.uniform(y_min, y_max)))
-        if _is_clear(candidate, occupied, min_separation):
+        if _is_clear(candidate, occupied, min_separation) and _fits_in_zone(
+            candidate, zone, base_radius
+        ):
             return candidate
     raise RuntimeError(
         f"Could not fit a base of diameter {min_separation} in deployment zone "
@@ -89,6 +122,8 @@ def _sample_near_anchor(
     occupied: list[tuple[float, float]],
     min_separation: float,
     rng: Generator,
+    zone: Polygon | None = None,
+    base_radius: float = 0.0,
 ) -> tuple[float, float]:
     """Return a random point within *max_dist* (L2) of *anchor*, inside the zone."""
     lo_x = max(x_min, float(anchor[0]) - max_dist)
@@ -108,8 +143,10 @@ def _sample_near_anchor(
         y = float(rng.uniform(lo_y, hi_y))
         dx = x - float(anchor[0])
         dy = y - float(anchor[1])
-        if (dx * dx + dy * dy) <= max_dist_sq and _is_clear(
-            (x, y), occupied, min_separation
+        if (
+            (dx * dx + dy * dy) <= max_dist_sq
+            and _fits_in_zone((x, y), zone, base_radius)
+            and _is_clear((x, y), occupied, min_separation)
         ):
             return (x, y)
     raise RuntimeError(
@@ -128,6 +165,8 @@ def _sample_coherent_member(
     occupied: list[tuple[float, float]],
     min_separation: float,
     rng: Generator,
+    zone: Polygon | None = None,
+    base_radius: float = 0.0,
 ) -> tuple[float, float] | None:
     """A point that keeps its unit in coherency, given where the unit already is.
 
@@ -171,6 +210,8 @@ def _sample_coherent_member(
             dx, dy = candidate[0] - anchor[0], candidate[1] - anchor[1]
             if dx * dx + dy * dy > chain_sq:
                 continue
+            if not _fits_in_zone(candidate, zone, base_radius):
+                continue
             if not _is_clear(candidate, occupied, min_separation):
                 continue
             if any(
@@ -189,8 +230,15 @@ def wargame_model_placement(
     rng: Generator,
     base_radius: float = 0.0,
     coherency: CoherencyConfig | None = None,
+    zone: Polygon | None = None,
 ) -> None:
     """Place models randomly inside the deployment zone, group-aware.
+
+    `zone` is the layout's own deployment outline where it has one. The real
+    deployments are triangles, staircases and arcs rather than the axis-aligned
+    band `deployment_zone` describes, so the rectangle stays as the sampling
+    *box* -- it is the outline's bounding box then -- and the outline rejects
+    anything outside it.
 
     Bases may not overlap, so the zone has to be big enough to hold the army at
     the configured base size. It fails loudly with the numbers rather than
@@ -254,7 +302,15 @@ def wargame_model_placement(
             for model in group:
                 if not placed:
                     loc = _sample_unoccupied(
-                        x_min, y_min, x_max, y_max, trial_occupied, min_separation, rng
+                        x_min,
+                        y_min,
+                        x_max,
+                        y_max,
+                        trial_occupied,
+                        min_separation,
+                        rng,
+                        zone,
+                        base_radius,
                     )
                 elif coherent:
                     candidate = _sample_coherent_member(
@@ -268,6 +324,8 @@ def wargame_model_placement(
                         trial_occupied,
                         min_separation,
                         rng,
+                        zone,
+                        base_radius,
                     )
                     if candidate is None:
                         break
@@ -288,6 +346,8 @@ def wargame_model_placement(
                         trial_occupied,
                         min_separation,
                         rng,
+                        zone,
+                        base_radius,
                     )
 
                 trial_occupied.append(loc)
@@ -872,6 +932,29 @@ def place_for_episode(
     precisely so the layout stream *cannot* shift.
     """
     base_radius = resolve_rules_quantities(config).base_radius
+    # A layout may bring its own deployment zones. They replace the scenario's
+    # rectangles the same way its objectives replace the scenario's, and for the
+    # same reason: they are part of the table, not of the scenario. The
+    # rectangle handed to the sampler becomes the outline's bounding box, so the
+    # existing "is the zone big enough" check still fires on a zone that is.
+    player_zone = opponent_zone = None
+    player_box, opponent_box = battle.deployment_zone, battle.opponent_deployment_zone
+    if layout is not None and layout.deployment is not None:
+        player_zone = layout.deployment.player_polygon()
+        opponent_zone = layout.deployment.opponent_polygon()
+    elif config.deployment_outline is not None:
+        # The evaluation path installs a map onto a scenario rather than drawing
+        # it from a pool, so it has no `layout` to carry the zones -- it puts
+        # them on the config instead. Both routes have to work or a map would
+        # train under its own deployment and be scored under the rectangle.
+        player_zone = Polygon.from_points(config.deployment_outline)
+        if config.opponent_deployment_outline is not None:
+            opponent_zone = Polygon.from_points(config.opponent_deployment_outline)
+    if player_zone is not None:
+        player_box = np.array(player_zone.bounds, dtype=float)
+    if opponent_zone is not None:
+        opponent_box = np.array(opponent_zone.bounds, dtype=float)
+
     # Terrain first: it is the board the rest is placed onto. Models and
     # objectives may sit inside a footprint, exactly as they may with a fixed
     # layout — a model in a ruin can still see out and be seen.
@@ -894,11 +977,12 @@ def place_for_episode(
     else:
         wargame_model_placement(
             battle.player_models,
-            battle.deployment_zone,
+            player_box,
             config.group_max_distance,
             rng,
             base_radius=base_radius,
             coherency=config.coherency,
+            zone=player_zone,
         )
 
     # Place objectives.
@@ -956,11 +1040,12 @@ def place_for_episode(
         else:
             wargame_model_placement(
                 battle.opponent_models,
-                battle.opponent_deployment_zone,
+                opponent_box,
                 config.group_max_distance,
                 rng,
                 base_radius=base_radius,
                 coherency=config.coherency,
+                zone=opponent_zone,
             )
 
     # Last, so its draws cannot shift anything else *placed* this episode. They

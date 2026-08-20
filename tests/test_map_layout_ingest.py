@@ -148,17 +148,29 @@ def test_the_rendered_file_parses_as_a_map() -> None:
         Polygon.from_rect(1.0, 1.0, 5.0, 5.0),
         Polygon.from_rect(20.0, 20.0, 24.0, 24.0),
     ]
-    objectives = objectives_for([(3.0, 3.0), (40.0, 40.0)], pieces)
+    objectives = objectives_for([(3.0, 3.0), (22.0, 22.0)], pieces)
+    deployment = {
+        "name": "short_edges",
+        "player": [(0.0, 0.0), (18.0, 0.0), (18.0, 44.0), (0.0, 44.0)],
+        "opponent": [(42.0, 0.0), (60.0, 0.0), (60.0, 44.0), (42.0, 44.0)],
+    }
 
     parsed = parse_yaml_raw_as(
-        TerrainMapConfig, render_map_yaml("table_99", pieces, objectives)
+        TerrainMapConfig,
+        render_map_yaml("table_99", pieces, objectives, deployment),
     )
 
     assert parsed.name == "table_99"
     assert len(parsed.terrain) == 2
     assert parsed.objectives is not None
     assert len(parsed.objectives) == 2
+    assert parsed.deployment is not None
+    assert parsed.deployment.name == "short_edges"
+    assert parsed.deployment.player_polygon().area == 18.0 * 44.0
     assert all(o.area is not None for o in parsed.objectives)
+    assert parsed.deployment is not None
+    assert parsed.deployment.name == "short_edges"
+    assert parsed.deployment.player_polygon().area == 18.0 * 44.0
 
 
 def test_a_diagonal_seam_is_one_ruin() -> None:

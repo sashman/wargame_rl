@@ -48,6 +48,40 @@ class TerrainPieceConfig(BaseModel):
         return Polygon.from_cell_rect(*self.footprint)
 
 
+class DeploymentConfig(BaseModel):
+    """The two zones a layout is played with, as outlines rather than rectangles.
+
+    The real deployments are not rectangles: of the six the tables use, two are
+    triangles split by a board diagonal, two are stepped staircases and one is
+    bounded by arcs. Only one pair resembles the axis-aligned bands
+    `deployment_zone` describes, which is why a map carries its own.
+
+    The names are **ours** -- `long_edges`, `stepped_columns` and so on describe
+    the shape, because the published names belong to the product the rules
+    derive from and `tests/test_no_ip_references.py` keeps those out of the repo.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(
+        description="Geometric name for the shape, ours rather than the "
+        "published one. Useful as a stratum: 'does the agent do worse when the "
+        "armies face each other across the short axis' is a real question."
+    )
+    player: list[tuple[float, float]] = Field(
+        min_length=3, description="The player's zone, as a closed outline."
+    )
+    opponent: list[tuple[float, float]] = Field(
+        min_length=3, description="The opponent's zone, as a closed outline."
+    )
+
+    def player_polygon(self) -> Polygon:
+        return Polygon.from_points(self.player)
+
+    def opponent_polygon(self) -> Polygon:
+        return Polygon.from_points(self.opponent)
+
+
 class TerrainMapConfig(BaseModel):
     """A named fixed terrain layout, stored on its own in `configs/evaluation/maps/`.
 
@@ -73,6 +107,13 @@ class TerrainMapConfig(BaseModel):
         "placement. Every entry must be determined — an `area` outline or x/y — "
         "since a map's objectives are part of the layout and a randomly placed "
         "one would make the map's rows differ run to run.",
+    )
+
+    deployment: DeploymentConfig | None = Field(
+        default=None,
+        description="The layout's own deployment zones, replacing the "
+        "scenario's rectangular ones. Optional, so a map without them keeps "
+        "deploying under `deployment_zone` exactly as before.",
     )
 
     @model_validator(mode="after")
