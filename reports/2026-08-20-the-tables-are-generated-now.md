@@ -46,122 +46,71 @@ pieces against their true silhouette area:
 The rectangle's tail is the disqualifier: an angled or L-shaped ruin blocks half
 again as much board as it should. The hull fills in every concave bay.
 
-## 3. An objective is a ruin
+## 3. An objective is a ruin — and the API is not the source for them
 
 The current rules have no free-standing objective markers to stand near; the
-marker says *which ground* is fought over. Getting from "a marker" to "which
-ground" took three corrections, and **every one of them was caught by eye on a
-rendered table, after the structural checks had passed.**
+marker says *which ground* is fought over. So an objective is a ruin, and a
+ruin is a group of terrain pieces sharing at least 1" of boundary — the layouts
+build one structure from several kit pieces (a rectangle split along a diagonal
+seam, two bars butted into an L), and the source's own render draws each group
+as a single blob. Over all 45 tables the shared-boundary lengths are strikingly
+discrete: 110 pairs at ~0.32" (a corner touch), 84 at ~2.33", 6 at ~6.33" and 18
+at ~13.6". Nothing falls between 0.33" and 1.45", so the 1.0" threshold sits in
+empty space.
 
-**A ruin is not a terrain piece.** The layouts build one structure out of
-several kit pieces — a rectangle split along a diagonal seam, two bars butted
-into an L — and the source's own board render draws each group as a single
-connected blob. Resolving a marker to the nearest *piece* left **30 of 225
-objectives covering half a ruin**: on `table_02` the centre rectangle came out
-green on one side of its diagonal and brown on the other.
+**But the API's objective markers are wrong on six of the 45 tables**, by 12 to
+18 inches — a different ruin entirely. Neither the layout's own copy of its
+deployment nor the deployment's canonical markers is right everywhere; switching
+between them just moves which six fail. Terrain is unaffected: the piece
+geometry matched on 45 of 45.
 
-Pieces are grouped by **shared boundary length**, and the pool makes the
-threshold obvious. Over all 45 tables the contact lengths are strikingly
-discrete — 110 pairs at ~0.32" (a corner touch), 84 at ~2.33" (a bar's end
-against another's side), 6 at ~6.33" and 18 at ~13.6" (one rectangle split in
-two). **Nothing at all falls between 0.33" and 1.45"**, so 1.0" sits in empty
-space: 3.0x above the highest contact it separates, 1.45x below the lowest it
-joins.
+### The correction that matters
 
-**The biggest ruin in reach wins, not the nearest.** A marker routinely sits in
-the *gap* between a real ruin and a scrap of scatter terrain, and nearest-wins
-handed the objective to the scrap — on `table_01` and `table_10`, two of five
-objectives came out on **12.9 sq in** slivers while **82.5 sq in** ruins stood
-two inches away.
+**An earlier section of this report said the hand-traced objectives "were not
+the layout's". That was wrong, and it is retracted.**
 
-**And "reach" is not the rules' control range.** Using the rules' 3" was the
-obvious choice and it was wrong: the layouts routinely place a marker
-**3.75–4.0" from the large ruin it plainly means**, with a scrap 2–3" away on
-the other side, so a 3" cutoff excluded the real answer and took the scrap. That
-is what `table_02` and `table_06` showed — every one of their five objectives
-disagreed with the hand-traced ones.
+Checked against positions read off the published layout cards — one card per
+layout, each drawing an icon on every objective — the hand-traced tables are
+right on **45 of 45, worst error 1.5 inches**. The tracing was not approximate;
+it was better than anything derived from the API. What misled me was comparing
+the traced objectives to the API's markers and assuming the markers were
+authoritative.
 
-The right cutoff is an **authoring** distance, and the pool hands it over.
-Marker-to-ruin distances cluster below 4" and again from 5", with a trough at
-4.5 holding **2** of them against 18 just below and 28 just above; the
-resolution is *identical* anywhere in 4.0–5.0, so the constant sits in a gap
-rather than on a fitted edge. Agreement with the hand-picked objectives:
-**96%** at 4.5", against 91% at the rules' 3" and 84% for nearest-wins.
+So the tables are now built from **both** sources, each where it is reliable:
+terrain from the API, objectives resolved from the validated positions
+(`scripts/objective_markers.json`). Every objective is checked against the
+published cards in `tests/test_map_objective_counts.py`.
 
-**One ruin per marker.** Sharing was the first rule here, on the reasoning that
-one piece of ground is held once. The pool refuted it: the only collisions were
-markers **twelve to seventeen inches apart** both reaching one long ruin, which
-are plainly two objectives. Each marker now takes the largest *unclaimed* ruin
-in range, most-constrained-first so a marker with one option takes it before a
-marker spoilt for choice.
+### How a position becomes a ruin
 
-**A tie designates both, and that is what makes a table carry six.** These
-boards are point-symmetric, so the centre marker routinely sits in the *gap
-between a ruin and its own reflection*. On `table_01` it is **1.02 inches from
-each of two 58.5 sq in wedges whose centroids are exact mirrors** — there is no
-basis on which to prefer one, and picking by list order dropped an objective and
-broke the table's symmetry. Taking both restores it. This is not a tuned
-exception: it reproduces the hand-traced 5-or-6 split on **41 of 45 tables**,
-against 24 when every marker took exactly one.
+- **The biggest ruin in reach wins, not the nearest.** A marker often sits in
+  the gap between a real ruin and a scrap of scatter terrain.
+- **Reach is 4.5", not the rules' 3" control range.** It is an *authoring*
+  distance: marker-to-ruin distances cluster below 4" and again from 5", the 4.5
+  bin holds 2 against 18 and 28 either side, and resolution is identical
+  anywhere in 4.0–5.0.
+- **One ruin per marker**, most-constrained-first.
+- **A tie designates both.** The boards are point-symmetric, so a marker
+  routinely sits between a ruin and its own reflection — on `table_01`, 1.02"
+  from each of two 58.5 sq in wedges with mirror-image centroids. That is what
+  makes a table carry six, and the published cards draw it as **two Centre
+  icons**.
+- **No discs.** A position out of reach of every ruin takes the nearest anyway.
 
-**And no discs.** Eight of 225 markers sit beyond reach of every ruin —
-at most 5.16", four of them the exact board centre. They resolve to the nearest
-ruin anyway. An objective that is not ground would be the previous edition's
-free-standing marker under a new name. Six of the eight sit at *exactly* 3.00",
-one control range, so that ruin is precisely the ground you would hold the
-marker from; two (4.0" and 5.16") are a genuine approximation.
-
-Tables carry **five or six** objectives (25 and 20, against the hand-traced 24
-and 21), none is a disc, and the count matches the hand-traced one on **44 of
-45** tables. Objectives land within 3" of a hand-picked one **96%** of the
-time.
-
-### What the tracing had actually done
-
-The old files' own comment said each objective was "the outline of the ruin the
-layout puts a marker on". It was not. On `table_01`, **two of the layout's five
-markers land inside an objective the file declares**; the rest sit elsewhere,
-and the file's own comments name them `home`, `no man's land` and `centre` —
-chosen by eye for board symmetry. The tables also carried **six** objectives on
-27 of 45, which is the previous edition's mission count.
-
-## 3b. The published layouts confirm all of it
-
-Every rule above was derived from the geometry and sanity-checked against the
-hand-traced tables. It can be checked against something better: the layouts are
-published as measured cards, one per layout, each stating its own objective
-total.
-
-**All 45 counts match.** The distribution is **24 fives and 21 sixes** — which
-is also, exactly, what the hand-traced tables carried. Pinned in
-`tests/test_map_objective_counts.py`, the only expectation in this work that
-does not come from our own reasoning.
-
-The cards also settle the semantics independently:
-
-- every objective icon is drawn **inside a ruin's baseplate** — an objective is
-  a ruin, confirmed rather than inferred;
-- they sit on the **large** ruins, never the scatter pieces;
-- they are labelled **Home / Centre / No man's land**, the same taxonomy the
-  hand-traced files used in their comments; and
-- a six-objective layout shows **two Centre icons, one in each of the paired
-  wedges** — which is the tie rule, drawn.
-
-Reconciling against the cards found the last defect: `table_26`'s centre marker
-sits **5.16" from each of two 58.5 sq in ruins**, an exact symmetric tie *out of
-reach*, and the fallback path took one of them by list order. The tie rule had
-only ever been applied to in-reach candidates. Both branches honour it now.
+Result: **45 of 45 objectives within 3" of a published one**, worst 2.0" (icon
+centre against outline centroid), counts **24 fives and 21 sixes** exactly as
+published, and the zone split back to **82 / 82 / 82**.
 
 ## 4. Two independent checks nobody designed for
 
 Both were computed after the fact, and both came out exactly right — which is the
 strongest evidence the pipeline is faithful.
 
-- **The zone split is 78 / 78 across the two deployment zones** — exactly
-  balanced — with 89 in the middle. The sides balancing to within one objective is the
+- **The zone split is exactly 82 / 82 / 82** across player zone, middle and
+  opponent zone. The sides balancing to within one objective is the
   That exact balance is the check that matters, since the tables are
-  point-symmetric, and it fell out rather than being aimed at; the middle is
-  heavier because a tie is usually a pair of wedges flanking the board centre.
+  point-symmetric, and it fell out rather than being aimed at. Every wrong
+  resolution rule tried here broke it by two to nine objectives.
 - **The tables are point-symmetric to the measurement floor**: a table sits a
   median of **0.00"** from its own 180-degree rotation, worst 0.71". The
   hand-traced ones sat 1.7" out and at worst 3.9". *That asymmetry was tracing

@@ -1,93 +1,82 @@
-"""The generated tables carry the objective counts the published layouts do.
+"""The generated tables carry the objectives the published layouts do.
 
-External ground truth, and the only check here that does not come from our own
-reasoning. The counts were read off the published layout cards for all 45
-layouts -- each states its own objective total -- and they agree exactly with
-the counts the hand-traced tables carried before they were generated.
+External ground truth, and the only expectation here that does not come from our
+own reasoning. Positions were read off the published layout cards -- each card
+draws an icon on every objective and states its own total -- and are stored in
+`tests/data/published_objective_positions.json` as plain numbers.
 
-That matters because five of the six defects found while building this ingest
-passed every structural check and had to be caught by eye. A count that is
-wrong by one is the visible symptom of every one of them: an objective covering
-half a ruin, resolving to a scrap of scatter terrain, collapsing onto a
-neighbour, or a symmetric pair silently reduced to one.
+This is the check that mattered. Five defects in objective resolution passed
+every structural test in this repo before it existed: counts, zone splits,
+resolution rates, all-or-nothing coverage, and invariance under simplification.
+Each was caught by looking at a picture. A position that is out by twelve inches
+is a different ruin, and only a comparison against the real layout says so.
 
-Only counts are recorded. The layouts' own names and vocabulary stay out of the
+Only geometry is stored. The layouts' own names and vocabulary stay out of the
 repo -- see `tests/test_no_ip_references.py`.
 """
 
 from __future__ import annotations
 
+import json
+import math
 from pathlib import Path
 
 from scripts.measure_maps import load_maps
 
 SHIPPED_MAPS = Path("configs/evaluation/maps")
+PUBLISHED = Path("tests/data/published_objective_positions.json")
 
-PUBLISHED_OBJECTIVE_COUNTS = {
-    "table_01": 6,
-    "table_02": 5,
-    "table_03": 6,
-    "table_04": 5,
-    "table_05": 6,
-    "table_06": 5,
-    "table_07": 5,
-    "table_08": 5,
-    "table_09": 5,
-    "table_10": 5,
-    "table_11": 6,
-    "table_12": 5,
-    "table_13": 5,
-    "table_14": 5,
-    "table_15": 6,
-    "table_16": 6,
-    "table_17": 5,
-    "table_18": 5,
-    "table_19": 6,
-    "table_20": 6,
-    "table_21": 6,
-    "table_22": 5,
-    "table_23": 6,
-    "table_24": 5,
-    "table_25": 5,
-    "table_26": 6,
-    "table_27": 5,
-    "table_28": 5,
-    "table_29": 6,
-    "table_30": 6,
-    "table_31": 6,
-    "table_32": 5,
-    "table_33": 6,
-    "table_34": 5,
-    "table_35": 6,
-    "table_36": 5,
-    "table_37": 6,
-    "table_38": 5,
-    "table_39": 6,
-    "table_40": 5,
-    "table_41": 5,
-    "table_42": 6,
-    "table_43": 5,
-    "table_44": 6,
-    "table_45": 6,
-}
+# An icon is drawn at its ruin's centre, so it lands within a couple of inches
+# of the outline's centroid. Three inches is one control range and is a
+# comfortable margin either way; a wrong ruin is out by twelve or more.
+TOLERANCE_IN = 3.0
 
 
-def test_every_table_carries_the_published_objective_count() -> None:
-    counts = {
-        terrain_map.name: len(terrain_map.objectives or [])
-        for terrain_map in load_maps(SHIPPED_MAPS)
-    }
+def _centroid(area: list[tuple[float, float]]) -> tuple[float, float]:
+    xs = [p[0] for p in area]
+    ys = [p[1] for p in area]
+    return sum(xs) / len(xs), sum(ys) / len(ys)
 
-    assert counts == PUBLISHED_OBJECTIVE_COUNTS
+
+def test_every_published_objective_has_one_of_ours_on_it() -> None:
+    published = json.loads(PUBLISHED.read_text())
+    ours = {m.name: m for m in load_maps(SHIPPED_MAPS)}
+
+    assert set(published) == set(ours)
+    for name, positions in published.items():
+        mine = [_centroid(o.area) for o in ours[name].objectives or [] if o.area]
+        for x, y in positions:
+            nearest = min(math.hypot(x - a, y - b) for a, b in mine)
+            assert nearest <= TOLERANCE_IN, (
+                f"{name}: ({x}, {y}) is {nearest:.1f}in away"
+            )
 
 
 def test_the_split_is_twenty_four_fives_and_twenty_one_sixes() -> None:
-    """Pinned separately so a wholesale regeneration cannot drift the mix.
+    """Matches the published totals, and the hand-traced tables before them.
 
-    A table carries six when one of its markers is equidistant from two equally
-    large ruins and designates both -- the boards are point-symmetric, so the
-    centre marker routinely sits between a ruin and its own reflection.
+    A table carries six when a marker is equidistant from two equally large
+    ruins and designates both -- the boards are point-symmetric, so the centre
+    marker routinely sits between a ruin and its own reflection. The published
+    cards draw that as two Centre icons.
     """
     counts = [len(m.objectives or []) for m in load_maps(SHIPPED_MAPS)]
 
     assert sorted(counts) == [5] * 24 + [6] * 21
+
+
+def test_the_objectives_are_balanced_across_the_two_deployment_zones() -> None:
+    """82 / 82 / 82, and it falls out rather than being aimed at.
+
+    The tables are point-symmetric, so any correct resolution has to put the
+    same number of objectives in each side's third of the board. Every wrong
+    rule tried here broke this, by two to nine objectives.
+    """
+    counts = {"player": 0, "middle": 0, "opponent": 0}
+    for terrain_map in load_maps(SHIPPED_MAPS):
+        for objective in terrain_map.objectives or []:
+            assert objective.area is not None
+            x, _ = _centroid(objective.area)
+            counts["player" if x <= 20 else "opponent" if x >= 40 else "middle"] += 1
+
+    assert counts == {"player": 82, "middle": 82, "opponent": 82}

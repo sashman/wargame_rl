@@ -60,7 +60,7 @@ makes a positioning result falsifiable, but it never asks how the policy does on
 the boards the game is actually played on, and it cannot: the generator places
 objectives only in the contested middle, while the real layouts put a third of
 them inside each player's own deployment zone. Measured across all 45 tables,
-the split is 78 player-zone / 89 middle / 78 opponent-zone, every table
+the split is exactly 82 player-zone / 82 middle / 82 opponent-zone, every table
 point-symmetric — the two deployment zones balance exactly,
 which is the check that matters, while the middle is heavier because a marker
 equidistant from two equally large ruins designates both and those pairs flank
@@ -80,21 +80,21 @@ Douglas-Peucker — chosen by measuring all 720 pieces, where it holds area to a
 worst 1.078 of the true silhouette against the footprint rectangle's 1.592.
 
 **An objective is a ruin — a group of terrain pieces sharing at least 1" of
-boundary.** A layout's marker only says *which ground* is fought over. The pieces
-are kit components, not buildings: a rectangle split along a diagonal seam, two
-bars butted into an L, drawn as one blob by the source's own render. A marker
-takes the **largest unclaimed ruin within 4.5"** — not the nearest, and not the
-rules' 3" control range. Markers often sit in the gap beside a scrap of scatter
-terrain, and the layouts place a marker 3.75–4.0" from the large ruin it plainly
-means, so both alternatives put objectives on 12.9 sq in slivers while 82.5 sq in
-ruins stood a little further off. 4.5" is an *authoring* distance and sits in a
-measured trough in the marker-to-ruin distances. **There are no disc objectives**; a marker beyond range of every
-ruin takes the nearest anyway. A marker equidistant from two equally large ruins
-designates **both** — the boards are point-symmetric, so the centre marker
-routinely sits between a ruin and its own reflection, and picking one would break
-the symmetry. Tables carry **five or six** objectives (25 and 20), which reproduces the
-hand-traced count on 44 of 45 tables, with 96% of objectives landing within 3" of
-a hand-picked one.
+boundary.** The pieces are kit components, not buildings: a rectangle split along
+a diagonal seam, two bars butted into an L, drawn as one blob by the source's own
+render. A position takes the **largest unclaimed ruin within 4.5"** — not the
+nearest, and not the rules' 3" control range, which handed objectives to 12.9 sq
+in slivers while 82.5 sq in ruins stood 4" away. A position equidistant from two
+equally large ruins designates **both**, which is why a table carries five *or
+six*. There are no disc objectives.
+
+⚠ **Objective positions do NOT come from the API.** Its per-layout markers
+disagree with the published layout cards on six of the 45 tables by 12–18 inches;
+its terrain geometry is fine and matched 45/45. They come from
+`scripts/objective_markers.json`, carried over from the hand-traced tables, which
+the published cards vindicate at **45 of 45, worst error 1.5 inches**. Every
+objective is checked against those cards in
+`tests/test_map_objective_counts.py`.
 
 **Training on these maps consumes them.** `map_pool.names` is the split: name a
 subset for training and score the complement, or a transfer number means

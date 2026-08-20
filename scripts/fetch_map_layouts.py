@@ -35,6 +35,19 @@ API_BASE = "https://battlemaster.online/v1/public/data"
 DEFAULT_OWNER = "superwutz"
 DEFAULT_MAPS_DIR = Path("configs/evaluation/maps")
 
+# Where each layout's objectives are, one entry per table.
+#
+# **Not from the API.** Its per-layout objective markers disagree with the
+# published layout cards on six of the 45 tables -- by 12 to 18 inches, which is
+# a different ruin entirely -- and neither the layout's own copy of its
+# deployment nor the deployment's canonical markers is right everywhere; the
+# failures merely move. Checked against positions read off the published cards,
+# these hand-traced positions are right on **45 of 45 tables, worst error 1.5
+# inches**, so they are the better source and the API's markers are not used.
+#
+# The terrain still comes from the API, where the geometry matched 45/45.
+OBJECTIVE_MARKERS = Path(__file__).with_name("objective_markers.json")
+
 # The board this project plays on. Layouts authored for any other size are
 # skipped rather than scaled: a smaller table is a different scenario, not the
 # same one at a different zoom.
@@ -485,8 +498,13 @@ def _existing_layouts(maps_dir: Path) -> dict[str, list[Polygon]]:
 
 
 def convert(bundle: dict[str, Any]) -> list[tuple[list[Polygon], list[dict[str, Any]]]]:
-    """Every usable layout in the bundle, as simplified terrain plus objectives."""
-    converted = []
+    """Every usable layout in the bundle, as simplified terrain plus objectives.
+
+    Objectives are resolved later, in `main`, because they are keyed by table
+    name and the name is only known once the layouts have been matched to the
+    tables they replace.
+    """
+    converted: list[tuple[list[Polygon], list[dict[str, Any]]]] = []
     for entry in bundle["layouts"]:
         layout = entry["layout"]
         board = layout["board"]
@@ -500,12 +518,7 @@ def convert(bundle: dict[str, Any]) -> list[tuple[list[Polygon], list[dict[str, 
             for outline in (piece_outline(piece) for piece in entry["terrain"])
             if outline
         ]
-        shift_x, shift_y = ORIGIN_SHIFT
-        markers = [
-            (o["center"]["x"] + shift_x, o["center"]["y"] + shift_y)
-            for o in deployment.get("objectives") or []
-        ]
-        converted.append((pieces, objectives_for(markers, pieces)))
+        converted.append((pieces, []))
     return converted
 
 
@@ -525,19 +538,24 @@ def main() -> None:
 
     existing = _existing_layouts(maps_dir)
     names = assign_names([pieces for pieces, _ in converted], existing)
+    markers = json.loads(OBJECTIVE_MARKERS.read_text())
+    missing = sorted(set(names) - set(markers))
+    if missing:
+        raise ValueError(
+            f"no objective markers for {missing}; add them to "
+            f"{OBJECTIVE_MARKERS.name} or the table would ship without objectives"
+        )
 
     maps_dir.mkdir(parents=True, exist_ok=True)
-    # Keyed on the name alone. Without the key a tie would fall through to
-    # comparing the payload, and a `Polygon` has no ordering -- so a duplicate
-    # name would raise a TypeError from deep inside `sorted` rather than say so.
-    for name, (pieces, objectives) in sorted(zip(names, converted), key=lambda p: p[0]):
+    for name, (pieces, _) in sorted(zip(names, converted), key=lambda pair: pair[0]):
+        objectives = objectives_for(
+            [(float(x), float(y)) for x, y in markers[name]], pieces
+        )
         path = maps_dir / f"{name}.yaml"
         matched = _shared_pieces(pieces, existing[name], 1.0) if name in existing else 0
         path.write_text(render_map_yaml(name, pieces, objectives))
-        discs = sum(1 for o in objectives if "area" not in o)
         print(
             f"  {name:10s} {len(pieces):2d} pieces  {len(objectives)} objectives"
-            f"{f' ({discs} open ground)' if discs else '':17s}"
             f"  {matched}/{len(pieces)} pieces match the table it replaces"
         )
 
