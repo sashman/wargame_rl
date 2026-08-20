@@ -60,11 +60,27 @@ makes a positioning result falsifiable, but it never asks how the policy does on
 the boards the game is actually played on, and it cannot: the generator places
 objectives only in the contested middle, while the real layouts put a third of
 them inside each player's own deployment zone. Measured across all 45 tables,
-the split is exactly 82 player-zone / 82 middle / 82 opponent-zone, every table
-mirror-symmetric, and before a model moves the player already holds 1.98
-objectives to the opponent's 1.91. **That is a different mission, not a harder
-board** — win rate saturates at 1.00 for both scripted rungs, and `random` wins
-0.67 by deploying onto its home objectives and never leaving.
+the split is exactly 75 player-zone / 75 middle / 75 opponent-zone, every table
+mirror-symmetric. **That is a different mission, not a harder board** — win rate
+saturates at 1.00 for both scripted rungs, and `random` wins 0.67 by deploying
+onto its home objectives and never leaving. ⚠ Those win rates, and the
+deployment-time holding figures that used to sit here, were measured on the
+hand-traced tables and need re-running; the 75/75/75 split is current.
+
+**The tables are generated, not authored — `just fetch-maps` regenerates all 45
+from the public layout API.** They were traced by hand from that same source
+originally, and the tracing lost detail: outlines became quads where the source
+carries 167–348 vertices, one piece per table went missing, and the objectives
+were picked by eye for board symmetry rather than read off the layout. Each is
+now the layout's own geometry, simplified to the 8-vertex observation budget by
+Douglas-Peucker — chosen by measuring all 720 pieces, where it holds area to a
+worst 1.078 of the true silhouette against the footprint rectangle's 1.592.
+
+**An objective is a terrain piece.** A layout's marker only says *which ruin* is
+fought over, so it resolves to that piece's outline; free-standing markers you
+stand near are a previous edition's rule, and are why the hand-traced tables
+carried six. Eight of the 225 markers sit at or beyond control range of every
+piece — four of them the exact board centre — and stay discs on open ground.
 
 **Training on these maps consumes them.** `map_pool.names` is the split: name a
 subset for training and score the complement, or a transfer number means
@@ -113,6 +129,10 @@ stops ranking policies here: `squad_march_deny` holds **3.00** and
 `squad_march_shoot` **4.00**, and they score level. See
 [docs/metrics.md](../docs/metrics.md) and
 [the report](../reports/2026-08-16-the-cap-makes-it-a-denial-game.md).
+
+**⚠ Re-measure: the tables were regenerated from the layout API on 2026-08-20
+and now carry five objectives, not six.** The finding below was measured on the
+hand-traced six-objective tables and its numbers are history until re-run.
 
 **The bar saturates on six objectives, so the per-map spread no longer finds
 hard layouts.** On `25v25_shooting_opponent.yaml`, `squad_march_shoot` wins

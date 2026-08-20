@@ -7,7 +7,7 @@ Reinforcement learning model for playing table top wargames.
 *Written for someone who knows the game but not the machine learning.*
 
 The scenario: **25 models a side in five units of five**, both players carrying
-the identical profile, over five or six objectives on real table layouts. **All
+the identical profile, over five objectives on real table layouts. **All
 combat is shooting, to a maximum of 12 inches.** Every player — hand-written or
 trained — is scored on **nine tables it has never seen**, reported as the average
 victory-point margin, ours minus theirs.
@@ -56,6 +56,13 @@ dead heat and +20 means winning by twenty points a game.
 
 The hand-written players are re-measured against **each** opponent, because
 changing the opponent changes the game:
+
+> ⚠ **These figures were measured on the hand-traced evaluation tables, which were
+> replaced on 2026-08-20.** The tables are now generated from the layout API
+> (`just fetch-maps`) — the same 45 layouts, but with the source's own geometry and
+> objectives instead of a tracing of them, and 18% of objectives moved by up to
+> 13.7". The margins below have not yet been re-measured on the new tables and are
+> history until they are. The scenario, the opponents and the method are unchanged.
 
 | opponent it faces | trained model<br>*avg VP margin* | best hand-written player<br>*avg VP margin* | |
 |---|---|---|---|

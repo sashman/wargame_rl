@@ -15,6 +15,7 @@ from PIL import Image
 from pydantic_yaml import parse_yaml_raw_as
 
 from scripts.measure_maps import config_for_map, load_maps
+from wargame_rl.wargame.envs.domain.rules_constants import OBJECTIVE_MARKER_RANGE_IN
 from wargame_rl.wargame.envs.types import (
     MapPoolConfig,
     RandomTerrainConfig,
@@ -264,31 +265,50 @@ def test_a_preview_renders_from_the_map_file(tmp_path: Path) -> None:
 
 
 def test_every_shipped_map_objective_is_one_of_its_ruins() -> None:
-    """The 45 real layouts make each objective the ground a marker sits on.
+    """An objective is a terrain piece, or the open ground no piece reaches.
 
-    Six markers per layout, but the two centre ones share the board's largest
-    ruin on 24 of the 45, and one piece of ground is held once — so a map
-    carries five or six objectives and each outline must be a terrain piece it
-    actually has. An outline that matched nothing would mean a marker was
-    attributed to the wrong ruin.
+    Five markers per layout, and the marker only designates which ruin is fought
+    over -- so its outline must be a piece the map actually has, or an outline
+    that matched nothing would mean a marker was attributed to the wrong ruin.
+    Two markers on one ruin would collapse to a single objective; that never
+    fires on this pool, so every map carries five.
+
+    Eight of the 225 markers sit at or beyond control range of every piece and
+    stay discs on open ground. That exception is asserted rather than tolerated:
+    a disc *inside* reach of a ruin would mean the resolution missed a piece it
+    should have found. Keeping them as discs is what holds every table at five
+    objectives -- attaching one to a ruin another marker already claimed would
+    collapse the pair and drop that table to four.
     """
     maps = load_maps(SHIPPED_MAPS)
 
     assert len(maps) == 45
-    sizes = set()
+    discs = 0
     for terrain_map in maps:
         assert terrain_map.objectives is not None, terrain_map.name
-        sizes.add(len(terrain_map.objectives))
-        pieces = {
-            tuple(map(tuple, piece.to_polygon().vertices))
-            for piece in terrain_map.terrain
-        }
+        assert len(terrain_map.objectives) == 5, terrain_map.name
+        pieces = [piece.to_polygon() for piece in terrain_map.terrain]
         outlines = []
         for objective in terrain_map.objectives:
             area = objective.to_polygon()
-            assert area is not None, terrain_map.name
+            if area is None:
+                assert objective.x is not None and objective.y is not None
+                nearest = min(
+                    piece.distance_to_point(objective.x, objective.y)
+                    for piece in pieces
+                )
+                # `>=`, not `>`: five of the eight sit at exactly control
+                # range, because the layout places them one range off a ruin on
+                # purpose. The generator decides on the unrounded distance and
+                # the file keeps two places, so the boundary cases land exactly
+                # on it here.
+                assert nearest >= OBJECTIVE_MARKER_RANGE_IN, terrain_map.name
+                discs += 1
+                continue
             outline = tuple(map(tuple, area.vertices))
-            assert outline in pieces, terrain_map.name
+            assert outline in {tuple(map(tuple, piece.vertices)) for piece in pieces}, (
+                terrain_map.name
+            )
             outlines.append(outline)
         assert len(set(outlines)) == len(outlines), f"{terrain_map.name}: duplicate"
-    assert sizes == {5, 6}
+    assert discs == 8

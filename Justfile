@@ -270,6 +270,14 @@ measure-checkpoint checkpoint env_config n_episodes='100' record='' decode_topk=
 measure-maps policy env_config n_episodes='100' maps_dir='' decode_topk='1' decode_stay='':
 	@uv run python -m scripts.measure_maps {{policy}} {{env_config}} {{n_episodes}} "{{maps_dir}}" "{{decode_topk}}" "{{decode_stay}}"
 
+# Regenerate every evaluation table from the public layout API. The tables were
+# originally traced by hand from this same source and the tracing lost detail;
+# this reads the geometry instead. Overwrites configs/evaluation/maps/ and syncs
+# the held-out copies, so re-measure baselines after running it.
+# Use it like: just fetch-maps
+fetch-maps owner='' maps_dir='':
+	@uv run python -m scripts.fetch_map_layouts "{{owner}}" "{{maps_dir}}"
+
 # Re-render the preview PNG beside every evaluation map
 # Use it like: just render-maps
 render-maps env_config='' maps_dir='':
