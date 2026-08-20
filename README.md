@@ -7,7 +7,7 @@ Reinforcement learning model for playing table top wargames.
 *Written for someone who knows the game but not the machine learning.*
 
 The scenario: **25 models a side in five units of five**, both players carrying
-the identical profile, over five objectives on real table layouts. **All
+the identical profile, over five or six objectives on real table layouts. **All
 combat is shooting, to a maximum of 12 inches.** Every player — hand-written or
 trained — is scored on **nine tables it has never seen**, reported as the average
 victory-point margin, ours minus theirs.

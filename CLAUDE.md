@@ -297,8 +297,15 @@ Detailed patterns live next to the code they govern — read them when working i
 > range wins, not the nearest**: a marker often sits in the *gap* beside a scrap
 > of scatter terrain, and nearest-wins put objectives on 12.9 sq in slivers while
 > 82.5 sq in ruins stood 2" away. Largest-in-range agrees with the old hand-picked
-> objectives **91%** against nearest's 84%. **(3) One ruin per marker**: sharing
-> collapsed two objectives whose markers were *twelve to seventeen inches apart*.
+> objectives **91%** against nearest's 84%. **(3) One ruin per marker** (sharing
+> collapsed two objectives whose markers were *twelve to seventeen inches apart*)
+> — **except on a tie, where the marker designates both**: these boards are
+> point-symmetric, so the centre marker routinely sits in the gap between a ruin
+> and its own reflection (on `table_01`, 1.02" from each of two 58.5 sq in wedges
+> with mirror-image centroids), and picking one by list order drops an objective
+> and breaks the symmetry. **That is what makes a table carry six**, and it
+> reproduces the hand-traced 5-or-6 split on **41 of 45** tables against 24
+> otherwise. Tables carry five or six (28 and 17).
 > There are **no disc objectives** — a marker beyond control range of every ruin
 > takes the nearest anyway, since an objective that is not ground is the previous
 > edition's marker under a new name. Every table carries five. ⚠ **All three

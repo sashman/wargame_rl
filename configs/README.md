@@ -60,8 +60,11 @@ makes a positioning result falsifiable, but it never asks how the policy does on
 the boards the game is actually played on, and it cannot: the generator places
 objectives only in the contested middle, while the real layouts put a third of
 them inside each player's own deployment zone. Measured across all 45 tables,
-the split is exactly 75 player-zone / 75 middle / 75 opponent-zone, every table
-mirror-symmetric. **That is a different mission, not a harder board** — win rate
+the split is 76 player-zone / 89 middle / 77 opponent-zone, every table
+point-symmetric — the two deployment zones balance to within one objective,
+which is the check that matters, while the middle is heavier because a marker
+equidistant from two equally large ruins designates both and those pairs flank
+the board centre. **That is a different mission, not a harder board** — win rate
 saturates at 1.00 for both scripted rungs, and `random` wins 0.67 by deploying
 onto its home objectives and never leaving. ⚠ Those win rates, and the
 deployment-time holding figures that used to sit here, were measured on the
@@ -84,7 +87,11 @@ takes the **largest unclaimed ruin within control range** — not the nearest,
 because markers often sit in the gap beside a scrap of scatter terrain, and
 nearest-wins put objectives on 12.9 sq in slivers while 82.5 sq in ruins stood
 two inches away. **There are no disc objectives**; a marker beyond range of every
-ruin takes the nearest anyway. Every table carries five.
+ruin takes the nearest anyway. A marker equidistant from two equally large ruins
+designates **both** — the boards are point-symmetric, so the centre marker
+routinely sits between a ruin and its own reflection, and picking one would break
+the symmetry. Tables carry **five or six** objectives (28 and 17), which
+reproduces the hand-traced split on 41 of 45.
 
 **Training on these maps consumes them.** `map_pool.names` is the split: name a
 subset for training and score the complement, or a transfer number means

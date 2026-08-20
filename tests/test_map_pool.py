@@ -12,17 +12,15 @@ The pool is loaded and checked once at construction, and a draw is an index.
 from __future__ import annotations
 
 import copy
-from pathlib import Path
 from typing import cast
 
 import numpy as np
 import pytest
-from pydantic_yaml import parse_yaml_raw_as, to_yaml_str
+from pydantic_yaml import parse_yaml_raw_as
 
 from wargame_rl.wargame.envs.map_pool import MapPool
 from wargame_rl.wargame.envs.types import (
     MapPoolConfig,
-    TerrainMapConfig,
     WargameEnvAction,
     WargameEnvConfig,
 )
@@ -134,15 +132,13 @@ class TestTheLayoutActuallyChanges:
         first, second = list(boards.values())[:2]
         assert first[1] != second[1]
 
-    def test_every_map_in_the_pool_carries_five_objectives(self) -> None:
-        """Uniform since the tables became generated from the layout API.
+    def test_objective_count_varies_across_the_pool(self) -> None:
+        """The reason the budget is mandatory: tables carry five or six.
 
-        It was 5-or-6 while they were traced by hand, off six markers per
-        layout; the current mission has five, and the collapse of two markers
-        onto one ruin never fires on this pool. The budget stays at 6 anyway --
-        it is what lets one network span counts the pool does not contain, and
-        lowering it would change the observation width and orphan every
-        checkpoint.
+        A table carries six when one of its markers is equidistant from two
+        equally large ruins and designates both -- the boards are
+        point-symmetric, so the centre marker routinely sits in the gap between
+        a ruin and its own reflection. 28 tables carry five and 17 carry six.
         """
         # Arrange
         env = _env()
@@ -154,7 +150,7 @@ class TestTheLayoutActuallyChanges:
             counts.add(len(env.objectives))
 
         # Assert
-        assert counts == {5}
+        assert counts == {5, 6}
 
     def test_the_objectives_are_the_maps_own_areas(self) -> None:
         """Not re-derived from the terrain -- that would discard the real placement."""
@@ -165,7 +161,7 @@ class TestTheLayoutActuallyChanges:
         env.reset(seed=0)
 
         # Assert
-        assert len(env.objectives) == 5
+        assert len(env.objectives) in (5, 6)
         assert all(objective.is_area for objective in env.objectives)
 
 
@@ -191,30 +187,10 @@ class TestOneNetworkSpansThePool:
 
 
 class TestThePoolIsCheckedWhenItIsLoaded:
-    def test_mixed_counts_without_a_budget_are_rejected(self, tmp_path: Path) -> None:
-        """Failing at load beats failing on the episode that first draws a 6.
-
-        The pool has to be built here: the shipped tables are uniform at five
-        objectives, so they cannot exercise the check that exists for ragged
-        ones. A pool that mixes counts is still the failure being guarded
-        against -- it is one upstream layout away, not hypothetical.
-        """
-        # Arrange -- one four-objective map beside one five-objective map.
-        five = parse_yaml_raw_as(
-            TerrainMapConfig, (Path(MAPS_DIR) / "table_01.yaml").read_text()
-        )
-        assert five.objectives is not None and len(five.objectives) == 5
-        four = five.model_copy(deep=True)
-        four.name = "table_98"
-        four.objectives = four.objectives[:4] if four.objectives else None
-        for terrain_map in (five, four):
-            (tmp_path / f"{terrain_map.name}.yaml").write_text(to_yaml_str(terrain_map))
-
-        # Act / Assert
-        config = _pool_config(objective_budget=None)
-        config.map_pool = MapPoolConfig(directory=str(tmp_path))
+    def test_mixed_counts_without_a_budget_are_rejected(self) -> None:
+        """Failing at load beats failing on the episode that first draws a six."""
         with pytest.raises(ValueError, match="different widths"):
-            create_environment(env_config=config)
+            _env(objective_budget=None)
 
     def test_a_budget_below_the_pool_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="over the budget"):

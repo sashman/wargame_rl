@@ -291,3 +291,32 @@ def test_a_marker_with_nothing_in_range_still_takes_the_nearest() -> None:
 
     area = Polygon.from_points([(x, y) for x, y in objectives[0]["area"]])
     assert area.contains(2.0, 2.0)
+
+
+def test_a_marker_between_two_equal_ruins_designates_both() -> None:
+    """The board centre sits in the gap between a ruin and its own reflection.
+
+    These tables are point-symmetric, so an equidistant pair of equally large
+    ruins is the normal case at the centre, not a curiosity. On `table_01` the
+    centre marker is 1.02in from each of two 58.5 sq in wedges whose centroids
+    are exact mirrors; taking one by list order dropped an objective the layout
+    intends and broke the table's symmetry.
+    """
+    left = Polygon.from_points([(0.0, 0.0), (8.0, 0.0), (8.0, 8.0), (0.0, 8.0)])
+    right = Polygon.from_points([(12.0, 0.0), (20.0, 0.0), (20.0, 8.0), (12.0, 8.0)])
+
+    objectives = objectives_for([(10.0, 4.0)], [left, right])
+
+    assert len(objectives) == 2, "both halves of a symmetric pair"
+
+
+def test_an_unequal_pair_is_not_a_tie() -> None:
+    """Only a genuine tie splits; a bigger ruin still wins outright."""
+    big = Polygon.from_points([(0.0, 0.0), (16.0, 0.0), (16.0, 8.0), (0.0, 8.0)])
+    small = Polygon.from_points([(18.0, 3.0), (21.0, 3.0), (21.0, 6.0), (18.0, 6.0)])
+
+    objectives = objectives_for([(17.0, 4.0)], [big, small])
+
+    assert len(objectives) == 1
+    area = Polygon.from_points([(x, y) for x, y in objectives[0]["area"]])
+    assert area.contains(8.0, 4.0), "the big ruin"

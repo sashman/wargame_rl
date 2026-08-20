@@ -2,7 +2,7 @@
 
 The per-model block is `2 + n_objectives * 2` wide, so objective count is a hard
 input dimension: at three objectives a model token is 49 wide, at five 53, at six
-55. The 45 real layouts carry five objectives and 16 terrain pieces each,
+55. The 45 real layouts carry five or six objectives and 16 terrain pieces each,
 so no single network could span them and no checkpoint trained on the generated
 scenario could be scored on any of them.
 
@@ -72,13 +72,11 @@ def _shipped(name: str) -> TerrainMapConfig:
 def _map_with(n_objectives: int) -> TerrainMapConfig:
     """A layout carrying exactly `n_objectives`, from the pool where one exists.
 
-    The shipped pool is uniform at five objectives since the tables became
-    generated from the layout API, so the six-objective case has to be built.
-    That is the point of the budget rather than a gap in it: `objective_budget`
-    is 6 so one network spans counts the current pool does not contain, and the
-    padded slot every shipped map now leaves is what keeps the path live. The
-    added objective's position is arbitrary -- what is under test is the shape
-    of the tensor, not the board.
+    Both counts occur in the shipped pool -- 28 tables carry five and 17 carry
+    six, the latter where a marker equidistant from two equally large ruins
+    designates both. The synthetic fallback stays for the case where a future
+    pool is uniform: the budget exists to span counts, and a test that silently
+    skipped the ragged case would be the gap it guards against.
     """
     for path in sorted(MAPS_DIR.glob("*.yaml")):
         terrain_map = cast(

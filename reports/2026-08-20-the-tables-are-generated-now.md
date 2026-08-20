@@ -85,6 +85,15 @@ are plainly two objectives. Each marker now takes the largest *unclaimed* ruin
 in range, most-constrained-first so a marker with one option takes it before a
 marker spoilt for choice.
 
+**A tie designates both, and that is what makes a table carry six.** These
+boards are point-symmetric, so the centre marker routinely sits in the *gap
+between a ruin and its own reflection*. On `table_01` it is **1.02 inches from
+each of two 58.5 sq in wedges whose centroids are exact mirrors** — there is no
+basis on which to prefer one, and picking by list order dropped an objective and
+broke the table's symmetry. Taking both restores it. This is not a tuned
+exception: it reproduces the hand-traced 5-or-6 split on **41 of 45 tables**,
+against 24 when every marker took exactly one.
+
 **And no discs.** Eight of 225 markers sit beyond control range of every ruin —
 at most 5.16", four of them the exact board centre. They resolve to the nearest
 ruin anyway. An objective that is not ground would be the previous edition's
@@ -92,9 +101,10 @@ free-standing marker under a new name. Six of the eight sit at *exactly* 3.00",
 one control range, so that ruin is precisely the ground you would hold the
 marker from; two (4.0" and 5.16") are a genuine approximation.
 
-Every table carries five objectives, none is a disc, and only one is under 20
-sq in — a table where three markers contest two large ruins and the third
-marker is left the scrap.
+Tables carry **five or six** objectives (28 and 17), none is a disc, and only
+one is under 20 sq in — a table where three markers contest two large ruins and
+the third is left the scrap. Objectives land within 3" of a hand-picked one
+**91%** of the time.
 
 ### What the tracing had actually done
 
@@ -110,11 +120,10 @@ chosen by eye for board symmetry. The tables also carried **six** objectives on
 Both were computed after the fact, and both came out exactly right — which is the
 strongest evidence the pipeline is faithful.
 
-- **The zone split is 75 / 77 / 73** across player zone, middle and opponent
-  zone. It was *exactly* 75/75/75 while the eight open-ground markers stayed as
-  discs — the layout places those perfectly, and snapping them to ruins is what
-  costs the last two objectives of balance. A fair price for not carrying an
-  object the rules do not have.
+- **The zone split is 76 / 77 across the two deployment zones** — one apart —
+  with 89 in the middle. The sides balancing to within one objective is the
+  check that matters, since the tables are point-symmetric; the middle is
+  heavier because a tie is usually a pair of wedges flanking the board centre.
 - **The tables are point-symmetric to the measurement floor**: a table sits a
   median of **0.00"** from its own 180-degree rotation, worst 0.71". The
   hand-traced ones sat 1.7" out and at worst 3.9". *That asymmetry was tracing

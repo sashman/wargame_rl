@@ -71,7 +71,7 @@ still attributable to its source table and a held-out table stays held out under
 
 **`terrain_budget` is the way round that**, and the reason it exists is the real layouts:
 `configs/evaluation/maps/` carried 15 or 16 pieces depending on the table, which `np.stack`
-refuses. Since the tables became generated from the layout API they all carry 16, but the
+refuses. Since the tables became generated from the layout API they all carry 16 pieces, but the
 budget stays — it is what lets one network span counts the pool does not currently contain,
 and lowering it would change the input shape. Setting it pads the token *sequence* to a fixed length with all-zero rows, which the
 network drops from attention — no new column is needed to mark them, because a padding row's

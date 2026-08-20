@@ -58,6 +58,17 @@ ORIGIN_SHIFT = (BOARD_WIDTH_IN / 2, BOARD_HEIGHT_IN / 2)
 # comfortable one; above it is only 45%, so re-run that scan if the pool grows.
 RUIN_CONTACT_IN = 1.0
 
+# A marker equidistant from two equally large ruins designates both. The tables
+# are point-symmetric, so the board centre routinely sits in the gap between a
+# ruin and its own 180-degree reflection -- on `table_01` the centre marker is
+# 1.02in from each of two 58.5 sq in wedges whose centroids are exact mirrors.
+# Picking one by list order silently breaks the table's symmetry and drops an
+# objective the layout plainly intends. Ties are resolved by taking all of them,
+# which is also what the hand-traced tables did: it reproduces their 5-or-6
+# objective split on 41 of 45 tables, against 24 when every marker took one.
+TIE_DISTANCE_IN = 1.0
+TIE_AREA_FRACTION = 0.01
+
 # Boundary sampling for that measurement. `eps` has to exceed the two-decimal
 # rounding the map files carry, or a shared edge reads as a near miss.
 _CONTACT_EPS_IN = 0.15
@@ -323,21 +334,29 @@ def objectives_for(markers: list[Point], pieces: list[Polygon]) -> list[dict[str
         ),
     )
 
-    chosen: dict[int, int] = {}
+    chosen: dict[int, list[int]] = {}
     claimed: set[int] = set()
     for m in order:
-        candidates = ranked(markers[m])
-        in_range = [
-            i
-            for d, i in candidates
+        candidates = [
+            (d, i)
+            for d, i in ranked(markers[m])
             if d <= OBJECTIVE_MARKER_RANGE_IN and i not in claimed
         ]
-        if in_range:
-            ruin = max(in_range, key=lambda i: ruins[i].area)
-        else:
-            ruin = next(i for _, i in candidates if i not in claimed)
-        claimed.add(ruin)
-        chosen[m] = ruin
+        if not candidates:
+            fallback = next(i for _, i in ranked(markers[m]) if i not in claimed)
+            claimed.add(fallback)
+            chosen[m] = [fallback]
+            continue
+        largest = max(ruins[i].area for _, i in candidates)
+        tied = [
+            (d, i)
+            for d, i in candidates
+            if ruins[i].area >= largest * (1.0 - TIE_AREA_FRACTION)
+        ]
+        nearest = min(d for d, _ in tied)
+        take = [i for d, i in tied if d - nearest <= TIE_DISTANCE_IN]
+        claimed.update(take)
+        chosen[m] = take
 
     # Unrounded on purpose. `render_map_yaml` formats every coordinate to two
     # places exactly once; rounding here as well rounds twice by two different
@@ -345,8 +364,9 @@ def objectives_for(markers: list[Point], pieces: list[Polygon]) -> list[dict[str
     # silently made an objective's outline differ by a hundredth from the very
     # piece it *is*.
     return [
-        {"area": [[float(x), float(y)] for x, y in ruins[chosen[m]].vertices]}
+        {"area": [[float(x), float(y)] for x, y in ruins[ruin].vertices]}
         for m in range(len(markers))
+        for ruin in chosen[m]
     ]
 
 
