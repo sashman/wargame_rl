@@ -53,8 +53,9 @@ ORIGIN_SHIFT = (BOARD_WIDTH_IN / 2, BOARD_HEIGHT_IN / 2)
 # shared-boundary lengths are strikingly discrete: 110 pairs at ~0.32in (a
 # corner touch, incidental), then 84 at ~2.33 (a bar's end against another's
 # side), 6 at ~6.33 and 18 at ~13.6 (one rectangle split in two). 1.0 sits in
-# the empty gap between 0.33 and 1.45, 3x above the first mode and 2.3x below
-# the second.
+# empty space between 0.33 and 1.45 -- 3.0x above the highest contact it
+# separates and 1.45x below the lowest it joins. The margin below is the
+# comfortable one; above it is only 45%, so re-run that scan if the pool grows.
 RUIN_CONTACT_IN = 1.0
 
 # Boundary sampling for that measurement. `eps` has to exceed the two-decimal
