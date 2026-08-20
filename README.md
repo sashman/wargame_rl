@@ -46,6 +46,11 @@ to the one above it — except the last, which plays a different way entirely:
 ### What it scores
 
 Nine held-out tables, three independently trained models, 20 rounds a game.
+Trained by `just train-coherency-baseline` on
+`configs/golden/25v25_maps_two_mode.yaml` and played with the top-3 joint decode
+— **both matter**, and a figure quoted without them is not comparable. (The
+figures published here before 2026-08-20 came from a different training config
+and understated the model by about 16 points.)
 Figures are the **average victory-point margin — ours minus theirs**, so 0 is a
 dead heat and +20 means winning by twenty points a game.
 
@@ -54,15 +59,21 @@ changing the opponent changes the game:
 
 | opponent it faces | trained model<br>*avg VP margin* | best hand-written player<br>*avg VP margin* | |
 |---|---|---|---|
-| `squad_march_take` — the strongest | **+8.0** | −6.2 | **ahead by 14.2** |
-| `squad_march_shoot` | **+25.0** | +13.4 | **ahead by 11.6** |
-| `squad_march_deny` | **+10.0** | −7.0 | **ahead by 17.0** |
-| `contest_and_spread` | +21.8 | **+25.9** | behind by 4.1 |
+| `squad_march_take` — the strongest | **+24.1** | −6.2 | **ahead by 30.3** |
+| `squad_march_shoot` | **+36.2** | +13.4 | **ahead by 22.8** |
+| `squad_march_deny` | **+19.8** | −7.0 | **ahead by 26.8** |
+| `contest_and_spread` | **+35.3** | +25.9 | **ahead by 9.4** |
 
-**Ahead of the best hand-written play in three matchups of four.**
+**Ahead of the best hand-written play in every matchup.**
+
+Three of those four margins are decisive — 4 to 9 times the standard error over
+three independently trained models. The fourth, against `contest_and_spread`, is
+**suggestive rather than settled** at about twice its standard error; that
+opponent spreads thin, and taking cheap ground has always been this model's
+weakest habit.
 
 It also keeps its squads together better than any hand-written player in every
-matchup — unit coherency **0.934–0.942**, against a scripted band of
+matchup — unit coherency **0.958–0.960**, against a scripted band of
 **0.777–0.895**. That is the game's own formation rule, and it is measured on
 what the model *intended*, not on what a referee corrected.
 
