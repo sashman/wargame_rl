@@ -345,27 +345,39 @@ def objectives_for(markers: list[Point], pieces: list[Polygon]) -> list[dict[str
         ),
     )
 
-    chosen: dict[int, list[int]] = {}
-    claimed: set[int] = set()
-    for m in order:
-        candidates = [
-            (d, i)
-            for d, i in ranked(markers[m])
-            if d <= MARKER_REACH_IN and i not in claimed
-        ]
-        if not candidates:
-            fallback = next(i for _, i in ranked(markers[m]) if i not in claimed)
-            claimed.add(fallback)
-            chosen[m] = [fallback]
-            continue
-        largest = max(ruins[i].area for _, i in candidates)
+    def tied_with_best(pool: list[tuple[float, int]]) -> list[int]:
+        """The best ruin in `pool`, plus any that tie with it.
+
+        Best is the largest; a tie is an equal area at an equal distance, and
+        both members are taken. That is not a tidy-up -- it is what makes a
+        table carry six, and the official layouts agree on 45 of 45.
+        """
+        largest = max(ruins[i].area for _, i in pool)
         tied = [
             (d, i)
-            for d, i in candidates
+            for d, i in pool
             if ruins[i].area >= largest * (1.0 - TIE_AREA_FRACTION)
         ]
         nearest = min(d for d, _ in tied)
-        take = [i for d, i in tied if d - nearest <= TIE_DISTANCE_IN]
+        return [i for d, i in tied if d - nearest <= TIE_DISTANCE_IN]
+
+    chosen: dict[int, list[int]] = {}
+    claimed: set[int] = set()
+    for m in order:
+        unclaimed = [(d, i) for d, i in ranked(markers[m]) if i not in claimed]
+        in_reach = [(d, i) for d, i in unclaimed if d <= MARKER_REACH_IN]
+        if in_reach:
+            take = tied_with_best(in_reach)
+        else:
+            # Nothing in reach: fall back to the nearest, but keep the tie rule.
+            # A marker can be out of reach of a *symmetric pair* -- on `table_26`
+            # the centre marker sits 5.16in from each of two 58.5 sq in ruins --
+            # and taking one of those by list order is the same defect the tie
+            # rule exists to prevent, just on the other branch.
+            nearest = min(d for d, _ in unclaimed)
+            take = tied_with_best(
+                [(d, i) for d, i in unclaimed if d - nearest <= TIE_DISTANCE_IN]
+            )
         claimed.update(take)
         chosen[m] = take
 

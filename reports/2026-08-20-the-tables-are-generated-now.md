@@ -125,6 +125,33 @@ and the file's own comments name them `home`, `no man's land` and `centre` —
 chosen by eye for board symmetry. The tables also carried **six** objectives on
 27 of 45, which is the previous edition's mission count.
 
+## 3b. The published layouts confirm all of it
+
+Every rule above was derived from the geometry and sanity-checked against the
+hand-traced tables. It can be checked against something better: the layouts are
+published as measured cards, one per layout, each stating its own objective
+total.
+
+**All 45 counts match.** The distribution is **24 fives and 21 sixes** — which
+is also, exactly, what the hand-traced tables carried. Pinned in
+`tests/test_map_objective_counts.py`, the only expectation in this work that
+does not come from our own reasoning.
+
+The cards also settle the semantics independently:
+
+- every objective icon is drawn **inside a ruin's baseplate** — an objective is
+  a ruin, confirmed rather than inferred;
+- they sit on the **large** ruins, never the scatter pieces;
+- they are labelled **Home / Centre / No man's land**, the same taxonomy the
+  hand-traced files used in their comments; and
+- a six-objective layout shows **two Centre icons, one in each of the paired
+  wedges** — which is the tie rule, drawn.
+
+Reconciling against the cards found the last defect: `table_26`'s centre marker
+sits **5.16" from each of two 58.5 sq in ruins**, an exact symmetric tie *out of
+reach*, and the fallback path took one of them by list order. The tie rule had
+only ever been applied to in-reach candidates. Both branches honour it now.
+
 ## 4. Two independent checks nobody designed for
 
 Both were computed after the fact, and both came out exactly right — which is the

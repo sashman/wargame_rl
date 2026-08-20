@@ -320,8 +320,9 @@ def test_no_shipped_objective_covers_part_of_a_ruin() -> None:
                     f"{terrain_map.name}: objective covers "
                     f"{inside.mean():.0%} of piece {index}"
                 )
-    # Five, or six where a marker's two candidates tie. Reproduces the
-    # hand-traced count on 44 of 45 tables, and lands 96% of objectives within
-    # 3in of a hand-picked one.
+    # Five, or six where a marker's two candidates tie. The counts match the
+    # published layouts on all 45 tables -- pinned in
+    # `tests/test_map_objective_counts.py`, which is external ground truth
+    # rather than our own reasoning.
     assert set(counts) == {5, 6}
-    assert sum(counts) == 245
+    assert sum(counts) == 246
