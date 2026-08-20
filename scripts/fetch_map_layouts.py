@@ -28,7 +28,6 @@ import numpy as np
 from shapely.geometry import Polygon as ShapelyPolygon
 from shapely.ops import unary_union
 
-from wargame_rl.wargame.envs.domain.rules_constants import OBJECTIVE_MARKER_RANGE_IN
 from wargame_rl.wargame.envs.types.geometry import Polygon
 from wargame_rl.wargame.envs.types.terrain_observation import TERRAIN_VERTEX_BUDGET
 
@@ -66,6 +65,18 @@ RUIN_CONTACT_IN = 1.0
 # objective the layout plainly intends. Ties are resolved by taking all of them,
 # which is also what the hand-traced tables did: it reproduces their 5-or-6
 # objective split on 41 of 45 tables, against 24 when every marker took one.
+# How far the layout places a marker from the ruin it designates. **This is not
+# the rules' 3in control range**, and using that range was wrong: the layouts
+# routinely put a marker 3.75-4.0in from the large ruin it plainly means, with a
+# scrap of scatter terrain 2-3in away on the other side, so a 3in cutoff handed
+# the objective to the scrap. Measured over all 45 tables, marker-to-ruin
+# distances cluster below 4in and again from 5in, with a trough at 4.5 holding
+# only 2 of them against 18 just below and 28 just above -- and the resolution is
+# identical anywhere in 4.0-5.0, so the constant sits in a gap rather than on a
+# fitted edge. It lifts agreement with the hand-traced objectives from 91% to
+# 96%, and the objective count matches theirs on 44 of 45 tables.
+MARKER_REACH_IN = 4.5
+
 TIE_DISTANCE_IN = 1.0
 TIE_AREA_FRACTION = 0.01
 
@@ -329,7 +340,7 @@ def objectives_for(markers: list[Point], pieces: list[Polygon]) -> list[dict[str
     order = sorted(
         range(len(markers)),
         key=lambda m: (
-            sum(1 for d, _ in ranked(markers[m]) if d <= OBJECTIVE_MARKER_RANGE_IN),
+            sum(1 for d, _ in ranked(markers[m]) if d <= MARKER_REACH_IN),
             markers[m],
         ),
     )
@@ -340,7 +351,7 @@ def objectives_for(markers: list[Point], pieces: list[Polygon]) -> list[dict[str
         candidates = [
             (d, i)
             for d, i in ranked(markers[m])
-            if d <= OBJECTIVE_MARKER_RANGE_IN and i not in claimed
+            if d <= MARKER_REACH_IN and i not in claimed
         ]
         if not candidates:
             fallback = next(i for _, i in ranked(markers[m]) if i not in claimed)

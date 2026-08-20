@@ -293,21 +293,28 @@ Detailed patterns live next to the code they govern — read them when working i
 > ruin is not a terrain piece**: the layouts build one structure from several kit
 > pieces (a rectangle split along a diagonal seam, two bars butted into an L), so
 > pieces are grouped by **shared boundary ≥ 1.0"** — a threshold in empty space,
-> since nothing falls between 0.33" and 1.45". **(2) The biggest ruin in control
-> range wins, not the nearest**: a marker often sits in the *gap* beside a scrap
-> of scatter terrain, and nearest-wins put objectives on 12.9 sq in slivers while
-> 82.5 sq in ruins stood 2" away. Largest-in-range agrees with the old hand-picked
-> objectives **91%** against nearest's 84%. **(3) One ruin per marker** (sharing
+> since nothing falls between 0.33" and 1.45". **(2) The biggest ruin in
+> REACH wins, not the nearest — and reach is NOT the rules' control range**: a
+> marker often sits in the *gap* beside a scrap of scatter terrain, and
+> nearest-wins put objectives on 12.9 sq in slivers while 82.5 sq in ruins stood
+> 2" away. Using the rules' 3" was the obvious cutoff and also wrong, because the
+> layouts place a marker **3.75–4.0" from the large ruin it plainly means**.
+> `MARKER_REACH_IN` is **4.5"**, an *authoring* distance: marker-to-ruin
+> distances cluster below 4" and again from 5", the 4.5 bin holds 2 against 18
+> and 28 either side, and the resolution is identical anywhere in 4.0–5.0.
+> Agreement with the hand-picked objectives **96%**, against 91% at 3" and 84%
+> for nearest. **(3) One ruin per marker** (sharing
 > collapsed two objectives whose markers were *twelve to seventeen inches apart*)
 > — **except on a tie, where the marker designates both**: these boards are
 > point-symmetric, so the centre marker routinely sits in the gap between a ruin
 > and its own reflection (on `table_01`, 1.02" from each of two 58.5 sq in wedges
 > with mirror-image centroids), and picking one by list order drops an objective
 > and breaks the symmetry. **That is what makes a table carry six**, and it
-> reproduces the hand-traced 5-or-6 split on **41 of 45** tables against 24
-> otherwise. Tables carry five or six (28 and 17).
-> There are **no disc objectives** — a marker beyond control range of every ruin
-> takes the nearest anyway, since an objective that is not ground is the previous
+> reproduces the hand-traced 5-or-6 split on **44 of 45** tables against 24
+> otherwise. Tables carry five or six (25 and 20, against the hand-traced 24 and
+> 21), and the two deployment zones balance **exactly** at 78/78.
+> There are **no disc objectives** — a marker beyond reach of every ruin takes
+> the nearest anyway, since an objective that is not ground is the previous
 > edition's marker under a new name. Every table carries five. ⚠ **All three
 > defects passed every structural check and were caught by eye on a rendered
 > table** — counts, splits, resolution rates and invariance all held while 30 of

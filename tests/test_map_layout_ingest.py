@@ -320,3 +320,23 @@ def test_an_unequal_pair_is_not_a_tie() -> None:
     assert len(objectives) == 1
     area = Polygon.from_points([(x, y) for x, y in objectives[0]["area"]])
     assert area.contains(8.0, 4.0), "the big ruin"
+
+
+def test_a_big_ruin_just_out_of_control_range_still_wins() -> None:
+    """`MARKER_REACH_IN` is an authoring distance, not the rules' control range.
+
+    The layouts routinely place a marker 3.75-4.0in from the large ruin it
+    plainly designates, with a scrap of scatter terrain 2-3in away on the other
+    side. Cutting candidates at the rules' 3in handed the objective to the
+    scrap on `table_02` and `table_06`; both then disagreed with every one of
+    the hand-traced objectives for those tables.
+    """
+    scrap = Polygon.from_points([(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)])
+    ruin = Polygon.from_points([(10.0, 0.0), (22.0, 0.0), (22.0, 8.0), (10.0, 8.0)])
+
+    # 2in from the scrap, 4in from the ruin -- outside control range, inside reach.
+    objectives = objectives_for([(6.0, 2.0)], [scrap, ruin])
+
+    assert len(objectives) == 1
+    area = Polygon.from_points([(x, y) for x, y in objectives[0]["area"]])
+    assert area.contains(16.0, 4.0), "the ruin four inches away, not the scrap two away"

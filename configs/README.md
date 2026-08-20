@@ -60,8 +60,8 @@ makes a positioning result falsifiable, but it never asks how the policy does on
 the boards the game is actually played on, and it cannot: the generator places
 objectives only in the contested middle, while the real layouts put a third of
 them inside each player's own deployment zone. Measured across all 45 tables,
-the split is 76 player-zone / 89 middle / 77 opponent-zone, every table
-point-symmetric — the two deployment zones balance to within one objective,
+the split is 78 player-zone / 89 middle / 78 opponent-zone, every table
+point-symmetric — the two deployment zones balance exactly,
 which is the check that matters, while the middle is heavier because a marker
 equidistant from two equally large ruins designates both and those pairs flank
 the board centre. **That is a different mission, not a harder board** — win rate
@@ -83,15 +83,18 @@ worst 1.078 of the true silhouette against the footprint rectangle's 1.592.
 boundary.** A layout's marker only says *which ground* is fought over. The pieces
 are kit components, not buildings: a rectangle split along a diagonal seam, two
 bars butted into an L, drawn as one blob by the source's own render. A marker
-takes the **largest unclaimed ruin within control range** — not the nearest,
-because markers often sit in the gap beside a scrap of scatter terrain, and
-nearest-wins put objectives on 12.9 sq in slivers while 82.5 sq in ruins stood
-two inches away. **There are no disc objectives**; a marker beyond range of every
+takes the **largest unclaimed ruin within 4.5"** — not the nearest, and not the
+rules' 3" control range. Markers often sit in the gap beside a scrap of scatter
+terrain, and the layouts place a marker 3.75–4.0" from the large ruin it plainly
+means, so both alternatives put objectives on 12.9 sq in slivers while 82.5 sq in
+ruins stood a little further off. 4.5" is an *authoring* distance and sits in a
+measured trough in the marker-to-ruin distances. **There are no disc objectives**; a marker beyond range of every
 ruin takes the nearest anyway. A marker equidistant from two equally large ruins
 designates **both** — the boards are point-symmetric, so the centre marker
 routinely sits between a ruin and its own reflection, and picking one would break
-the symmetry. Tables carry **five or six** objectives (28 and 17), which
-reproduces the hand-traced split on 41 of 45.
+the symmetry. Tables carry **five or six** objectives (25 and 20), which reproduces the
+hand-traced count on 44 of 45 tables, with 96% of objectives landing within 3" of
+a hand-picked one.
 
 **Training on these maps consumes them.** `map_pool.names` is the split: name a
 subset for training and score the complement, or a transfer number means

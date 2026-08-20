@@ -68,15 +68,25 @@ two). **Nothing at all falls between 0.33" and 1.45"**, so 1.0" sits in empty
 space: 3.0x above the highest contact it separates, 1.45x below the lowest it
 joins.
 
-**The biggest ruin in control range wins, not the nearest.** A marker routinely
-sits in the *gap* between a real ruin and a scrap of scatter terrain, and
-nearest-wins handed the objective to the scrap — on `table_01` and `table_10`,
-two of five objectives came out on **12.9 sq in** slivers while **82.5 sq in**
-ruins stood two inches away. Control range is the rule's own measure: a model
-within 3" of the marker holds it, so every ruin inside that range is ground you
-could hold the objective from, and the one that dominates is what is being
-fought over. Measured against the hand-picked objectives these tables used to
-carry, largest-in-range agrees **91%** of the time against nearest's **84%**.
+**The biggest ruin in reach wins, not the nearest.** A marker routinely sits in
+the *gap* between a real ruin and a scrap of scatter terrain, and nearest-wins
+handed the objective to the scrap — on `table_01` and `table_10`, two of five
+objectives came out on **12.9 sq in** slivers while **82.5 sq in** ruins stood
+two inches away.
+
+**And "reach" is not the rules' control range.** Using the rules' 3" was the
+obvious choice and it was wrong: the layouts routinely place a marker
+**3.75–4.0" from the large ruin it plainly means**, with a scrap 2–3" away on
+the other side, so a 3" cutoff excluded the real answer and took the scrap. That
+is what `table_02` and `table_06` showed — every one of their five objectives
+disagreed with the hand-traced ones.
+
+The right cutoff is an **authoring** distance, and the pool hands it over.
+Marker-to-ruin distances cluster below 4" and again from 5", with a trough at
+4.5 holding **2** of them against 18 just below and 28 just above; the
+resolution is *identical* anywhere in 4.0–5.0, so the constant sits in a gap
+rather than on a fitted edge. Agreement with the hand-picked objectives:
+**96%** at 4.5", against 91% at the rules' 3" and 84% for nearest-wins.
 
 **One ruin per marker.** Sharing was the first rule here, on the reasoning that
 one piece of ground is held once. The pool refuted it: the only collisions were
@@ -94,17 +104,17 @@ broke the table's symmetry. Taking both restores it. This is not a tuned
 exception: it reproduces the hand-traced 5-or-6 split on **41 of 45 tables**,
 against 24 when every marker took exactly one.
 
-**And no discs.** Eight of 225 markers sit beyond control range of every ruin —
+**And no discs.** Eight of 225 markers sit beyond reach of every ruin —
 at most 5.16", four of them the exact board centre. They resolve to the nearest
 ruin anyway. An objective that is not ground would be the previous edition's
 free-standing marker under a new name. Six of the eight sit at *exactly* 3.00",
 one control range, so that ruin is precisely the ground you would hold the
 marker from; two (4.0" and 5.16") are a genuine approximation.
 
-Tables carry **five or six** objectives (28 and 17), none is a disc, and only
-one is under 20 sq in — a table where three markers contest two large ruins and
-the third is left the scrap. Objectives land within 3" of a hand-picked one
-**91%** of the time.
+Tables carry **five or six** objectives (25 and 20, against the hand-traced 24
+and 21), none is a disc, and the count matches the hand-traced one on **44 of
+45** tables. Objectives land within 3" of a hand-picked one **96%** of the
+time.
 
 ### What the tracing had actually done
 
@@ -120,9 +130,10 @@ chosen by eye for board symmetry. The tables also carried **six** objectives on
 Both were computed after the fact, and both came out exactly right — which is the
 strongest evidence the pipeline is faithful.
 
-- **The zone split is 76 / 77 across the two deployment zones** — one apart —
-  with 89 in the middle. The sides balancing to within one objective is the
-  check that matters, since the tables are point-symmetric; the middle is
+- **The zone split is 78 / 78 across the two deployment zones** — exactly
+  balanced — with 89 in the middle. The sides balancing to within one objective is the
+  That exact balance is the check that matters, since the tables are
+  point-symmetric, and it fell out rather than being aimed at; the middle is
   heavier because a tie is usually a pair of wedges flanking the board centre.
 - **The tables are point-symmetric to the measurement floor**: a table sits a
   median of **0.00"** from its own 180-degree rotation, worst 0.71". The

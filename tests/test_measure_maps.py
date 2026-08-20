@@ -288,12 +288,12 @@ def test_no_shipped_objective_covers_part_of_a_ruin() -> None:
     225 objectives covering half a ruin. Every count still read five and every
     marker still resolved; only looking at a rendered table showed it.
 
-    **No disc objectives.** A marker beyond control range of every ruin resolves
-    to the nearest one anyway, because an objective that is not ground would be
-    the previous edition's free-standing marker under a new name.
+    **No disc objectives.** A marker out of reach of every ruin resolves to the
+    nearest one anyway, because an objective that is not ground would be the
+    previous edition's free-standing marker under a new name.
 
     **Five or six per table.** Each marker takes its own ruin -- the biggest one
-    within control range, since a marker sitting in a gap next to a scrap of
+    within `MARKER_REACH_IN`, since a marker sitting in a gap next to a scrap of
     scatter terrain would otherwise hand the objective to the scrap. A marker
     equidistant from two equally large ruins designates *both*, which is what
     makes a table carry six: these boards are point-symmetric, so the centre
@@ -321,7 +321,7 @@ def test_no_shipped_objective_covers_part_of_a_ruin() -> None:
                     f"{inside.mean():.0%} of piece {index}"
                 )
     # Five, or six where a marker's two candidates tie. Reproduces the
-    # hand-traced split on 41 of 45 tables, against 24 when ties were broken
-    # arbitrarily.
+    # hand-traced count on 44 of 45 tables, and lands 96% of objectives within
+    # 3in of a hand-picked one.
     assert set(counts) == {5, 6}
-    assert sum(counts) == 242
+    assert sum(counts) == 245
