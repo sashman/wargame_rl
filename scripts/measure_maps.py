@@ -89,6 +89,12 @@ def config_for_map(
     config.random_terrain = None
     config.map_pool = None
     config.render_mode = None
+    if terrain_map.deployment is not None:
+        # A map's zones are part of the table, like its ruins. Without this the
+        # map would be scored under the scenario's rectangle while training used
+        # its own outline -- the same silent mismatch the terrain modes had.
+        config.deployment_outline = list(terrain_map.deployment.player)
+        config.opponent_deployment_outline = list(terrain_map.deployment.opponent)
     if terrain_map.objectives is not None:
         config.objectives = list(terrain_map.objectives)
         config.number_of_objectives = len(terrain_map.objectives)

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
+import numpy.typing as npt
 import pytest
 from PIL import Image
 from pydantic_yaml import parse_yaml_raw_as
@@ -21,6 +23,7 @@ from wargame_rl.wargame.envs.types import (
     TerrainMapConfig,
     WargameEnvConfig,
 )
+from wargame_rl.wargame.envs.types.geometry import Polygon
 from wargame_rl.wargame.model.common.factory import create_environment
 
 MAP_YAML = """
@@ -263,32 +266,63 @@ def test_a_preview_renders_from_the_map_file(tmp_path: Path) -> None:
         assert image.height > 0
 
 
-def test_every_shipped_map_objective_is_one_of_its_ruins() -> None:
-    """The 45 real layouts make each objective the ground a marker sits on.
+def _interior_samples(polygon: Polygon) -> npt.NDArray[np.float64]:
+    """A grid of points inside a polygon, for all-or-nothing coverage checks."""
+    x0, y0, x1, y1 = polygon.bounds
+    grid_x, grid_y = np.meshgrid(
+        np.arange(x0 + 0.1, x1, 0.25), np.arange(y0 + 0.1, y1, 0.25)
+    )
+    points = np.column_stack([grid_x.ravel(), grid_y.ravel()])
+    return points[polygon.contains_points(points)]
 
-    Six markers per layout, but the two centre ones share the board's largest
-    ruin on 24 of the 45, and one piece of ground is held once — so a map
-    carries five or six objectives and each outline must be a terrain piece it
-    actually has. An outline that matched nothing would mean a marker was
-    attributed to the wrong ruin.
+
+def test_no_shipped_objective_covers_part_of_a_ruin() -> None:
+    """Every objective is a whole ruin, and nothing else is an objective.
+
+    Two invariants, both of which broke at some point in building this pool:
+
+    **All or nothing per piece.** Every terrain piece is either entirely inside
+    an objective or entirely outside it. The layouts build one structure from
+    several kit pieces -- a rectangle split along a diagonal seam, two bars
+    butted into an L -- so resolving a marker to the nearest *piece* left 30 of
+    225 objectives covering half a ruin. Every count still read five and every
+    marker still resolved; only looking at a rendered table showed it.
+
+    **No disc objectives.** A marker out of reach of every ruin resolves to the
+    nearest one anyway, because an objective that is not ground would be the
+    previous edition's free-standing marker under a new name.
+
+    **Five or six per table.** Each marker takes its own ruin -- the biggest one
+    within `MARKER_REACH_IN`, since a marker sitting in a gap next to a scrap of
+    scatter terrain would otherwise hand the objective to the scrap. A marker
+    equidistant from two equally large ruins designates *both*, which is what
+    makes a table carry six: these boards are point-symmetric, so the centre
+    marker routinely sits in the gap between a ruin and its own reflection, and
+    picking one by list order would break the symmetry silently.
+
+    Sampled rather than exact, because the union bridges a sub-tenth-inch seam
+    and the two outlines meet on rounded coordinates.
     """
     maps = load_maps(SHIPPED_MAPS)
 
     assert len(maps) == 45
-    sizes = set()
+    counts = []
     for terrain_map in maps:
         assert terrain_map.objectives is not None, terrain_map.name
-        sizes.add(len(terrain_map.objectives))
-        pieces = {
-            tuple(map(tuple, piece.to_polygon().vertices))
-            for piece in terrain_map.terrain
-        }
-        outlines = []
+        counts.append(len(terrain_map.objectives))
+        pieces = [piece.to_polygon() for piece in terrain_map.terrain]
         for objective in terrain_map.objectives:
             area = objective.to_polygon()
-            assert area is not None, terrain_map.name
-            outline = tuple(map(tuple, area.vertices))
-            assert outline in pieces, terrain_map.name
-            outlines.append(outline)
-        assert len(set(outlines)) == len(outlines), f"{terrain_map.name}: duplicate"
-    assert sizes == {5, 6}
+            assert area is not None, f"{terrain_map.name}: disc objective"
+            for index, piece in enumerate(pieces):
+                inside = area.contains_points(_interior_samples(piece))
+                assert inside.all() or not inside.any(), (
+                    f"{terrain_map.name}: objective covers "
+                    f"{inside.mean():.0%} of piece {index}"
+                )
+    # Five, or six where a marker's two candidates tie. The counts match the
+    # published layouts on all 45 tables -- pinned in
+    # `tests/test_map_objective_counts.py`, which is external ground truth
+    # rather than our own reasoning.
+    assert set(counts) == {5, 6}
+    assert sum(counts) == 246

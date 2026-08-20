@@ -61,10 +61,52 @@ the boards the game is actually played on, and it cannot: the generator places
 objectives only in the contested middle, while the real layouts put a third of
 them inside each player's own deployment zone. Measured across all 45 tables,
 the split is exactly 82 player-zone / 82 middle / 82 opponent-zone, every table
-mirror-symmetric, and before a model moves the player already holds 1.98
-objectives to the opponent's 1.91. **That is a different mission, not a harder
-board** — win rate saturates at 1.00 for both scripted rungs, and `random` wins
-0.67 by deploying onto its home objectives and never leaving.
+point-symmetric — the two deployment zones balance exactly,
+which is the check that matters, while the middle is heavier because a marker
+equidistant from two equally large ruins designates both and those pairs flank
+the board centre. **That is a different mission, not a harder board** — win rate
+saturates at 1.00 for both scripted rungs, and `random` wins 0.67 by deploying
+onto its home objectives and never leaving. ⚠ Those win rates, and the
+deployment-time holding figures that used to sit here, were measured on the
+hand-traced tables and need re-running; the 75/75/75 split is current.
+
+**The tables are generated, not authored — `just fetch-maps` regenerates all 45
+from the public layout API.** They were traced by hand from that same source
+originally, and the tracing lost detail: outlines became quads where the source
+carries 167–348 vertices, one piece per table went missing, and the objectives
+were picked by eye for board symmetry rather than read off the layout. Each is
+now the layout's own geometry, simplified to the 8-vertex observation budget by
+Douglas-Peucker — chosen by measuring all 720 pieces, where it holds area to a
+worst 1.078 of the true silhouette against the footprint rectangle's 1.592.
+
+**An objective is a ruin — a group of terrain pieces sharing at least 1" of
+boundary.** The pieces are kit components, not buildings: a rectangle split along
+a diagonal seam, two bars butted into an L, drawn as one blob by the source's own
+render. A position takes the **largest unclaimed ruin within 4.5"** — not the
+nearest, and not the rules' 3" control range, which handed objectives to 12.9 sq
+in slivers while 82.5 sq in ruins stood 4" away. A position equidistant from two
+equally large ruins designates **both**, which is why a table carries five *or
+six*. There are no disc objectives.
+
+⚠ **Objective positions do NOT come from the API.** Its per-layout markers
+disagree with the published layout cards on six of the 45 tables by 12–18 inches;
+its terrain geometry is fine and matched 45/45. They come from
+`scripts/objective_markers.json`, carried over from the hand-traced tables, which
+the published cards vindicate at **45 of 45, worst error 1.5 inches**. Every
+objective is checked against those cards in
+`tests/test_map_objective_counts.py`.
+
+**The tables carry their own deployment zones too.** `deployment_zone` is an
+axis-aligned band and only one of the six real deployments is one: two are
+triangles split by a board diagonal, two are stepped staircases, one is bounded
+by arcs. The names are ours — `diagonal_halves`, `long_edges`,
+`opposed_quadrants`, `short_edges`, `stepped_bands`, `stepped_columns` — used by
+10/9/8/7/6/5 of the 45 tables. **Here the API is trustworthy**, checked rather
+than assumed: the published cards' tinted region is ≥98% inside its polygon on
+all 45. ⚠ **`long_edges` puts the armies 20" apart across the short axis** where
+the others separate them by 24–40; at a 12" weapon range that is a different
+game, and it is a fifth of the pool. A map without a `deployment` block deploys
+under the scenario's rectangle exactly as before.
 
 **Training on these maps consumes them.** `map_pool.names` is the split: name a
 subset for training and score the complement, or a transfer number means
@@ -113,6 +155,10 @@ stops ranking policies here: `squad_march_deny` holds **3.00** and
 `squad_march_shoot` **4.00**, and they score level. See
 [docs/metrics.md](../docs/metrics.md) and
 [the report](../reports/2026-08-16-the-cap-makes-it-a-denial-game.md).
+
+**⚠ Re-measure: the tables were regenerated from the layout API on 2026-08-20
+and now carry five objectives, not six.** The finding below was measured on the
+hand-traced six-objective tables and its numbers are history until re-run.
 
 **The bar saturates on six objectives, so the per-map spread no longer finds
 hard layouts.** On `25v25_shooting_opponent.yaml`, `squad_march_shoot` wins

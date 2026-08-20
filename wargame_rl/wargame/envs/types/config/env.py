@@ -242,6 +242,19 @@ class WargameEnvConfig(BaseModel):
         default=None,
         description="Opponent deployment zone (x_min, y_min, x_max, y_max). If None, defaults to (board_width*2//3, 0, board_width, board_height).",
     )
+    deployment_outline: list[tuple[float, float]] | None = Field(
+        default=None,
+        min_length=3,
+        description="Player deployment zone as an outline, replacing the "
+        "rectangle. The real deployments are triangles, staircases and arcs; "
+        "only one of the six is an axis-aligned band. None keeps the rectangle, "
+        "which is the exact no-op.",
+    )
+    opponent_deployment_outline: list[tuple[float, float]] | None = Field(
+        default=None,
+        min_length=3,
+        description="Opponent deployment zone as an outline. See `deployment_outline`.",
+    )
     models: list[ModelConfig] | None = Field(
         default=None,
         description="Per-model configuration (attributes, and optionally positions). Length must match number_of_wargame_models.",
