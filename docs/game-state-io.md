@@ -116,6 +116,7 @@ class GameStateSnapshot(BaseModel):
     skip_phases: list[str] | None = None  # 2.2: phases the config auto-advances
     deployment_outline: list[list[float]] | None = None  # 2.5: the zone's real shape
     opponent_deployment_outline: list[list[float]] | None = None  # 2.5
+    rules: RulesSnapshot | None = None  # 2.6: rules distances, in units
     player_vp: int
     opponent_vp: int
     player_vp_delta: int
@@ -337,7 +338,7 @@ The analysis output is available as:
 | `just record-sim <ckpt> <config> [n] [net]` | Record N episodes from a trained checkpoint, no rendering |
 | `just replay <file>` | Narrate a recorded match step-by-step |
 | `just replay-summary <file>` | Match metadata overview |
-| `just replay-render <file> [out.mp4] [theme]` | Replay visually — interactive window (play/pause/step/scrub) or MP4. Uses the v2 renderer; reads terrain from schema-2.1 recordings (pre-2.1 draw no ruins) and the reward ledger + skipped phases from 2.2 (earlier ones show neither). `theme` is `default` or `tabletop`; the latter colours models by *side* rather than by squad, so it reads like a table but cannot show which unit a model belongs to |
+| `just replay-render <file> [out.mp4] [theme] [overlays]` | Replay visually — interactive window (play/pause/step/scrub) or MP4. Uses the v2 renderer; reads terrain from schema-2.1 recordings (pre-2.1 draw no ruins) and the reward ledger + skipped phases from 2.2 (earlier ones show neither). `theme` is `default` or `tabletop`; the latter colours models by *side* rather than by squad, so it reads like a table but cannot show which unit a model belongs to. `overlays` passes renderer flags through — `--threat-range` / `--engagement-range` need schema 2.6 for the rules distances, and older recordings render exactly as they do with the overlays off |
 | `just analyze <file>` | Full analysis report (text) |
 | `just analyze-json <file>` | Analysis report as JSON |
 | `just analyze-compare f1 f2` | Side-by-side metric comparison |
