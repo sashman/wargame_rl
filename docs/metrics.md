@@ -146,7 +146,12 @@ Each baseline emits `_win_rate` (0–100), `_vp_margin`, `_at_objectives` (a
 fraction), `_fraction_alive` (a fraction), and `_exposure` when the config sets
 `track_exposure`. `random`, `squad_march` and `squad_march_shoot` are logged
 during training (`lightning_base.py:BASELINE_POLICIES`); the remaining rungs
-live in `scripts/measure_baselines.py`.
+live in `scripts/measure_baselines.py`, which scores nine policies —
+`hold_deployment` (the floor), `random`, `greedy_nearest`, `split_evenly`,
+`squad_march`, `squad_march_shoot`, `squad_march_deny`, `squad_march_take` and
+`contest_and_spread`. Its table prints **`vp_margin` and its standard error**
+beside the two VP columns, so a difference between two rows can be read against
+its own error bar rather than eyeballed.
 
 **Always read a number against the baselines.** Measured once per run at
 `on_train_start` over 20 held-out seeds, and constant thereafter. Every
