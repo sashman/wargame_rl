@@ -58,7 +58,7 @@ class ScriptedAdvanceToObjectivePolicy(OpponentPolicy):
 
         obj_radii = np.array([o.radius_size for o in env.objectives])
 
-        for model in opponent_models:
+        for index, model in enumerate(opponent_models):
             if not model.is_alive:
                 actions.append(STAY_ACTION)
                 continue
@@ -85,7 +85,12 @@ class ScriptedAdvanceToObjectivePolicy(OpponentPolicy):
             dx, dy = float(blended[0]), float(blended[1])
             distance_to_boundary = dists[nearest_idx] - obj_radii[nearest_idx]
             actions.append(
-                handler.best_action_toward(dx, dy, max_step_length=distance_to_boundary)
+                handler.best_action_toward(
+                    dx,
+                    dy,
+                    max_step_length=distance_to_boundary,
+                    model_idx=index,
+                )
             )
 
         return WargameEnvAction(actions=actions)

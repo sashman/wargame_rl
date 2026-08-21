@@ -169,6 +169,7 @@ class WargameEnv(gym.Env):
                 config.max_groups,
                 config.opponent_models,
             ),
+            model_moves=[model.move for model in config.models or ()],
         )
         self.action_space = self._action_handler.action_space
         self._skip_phases = frozenset(config.skip_phases)
@@ -293,6 +294,9 @@ class WargameEnv(gym.Env):
                     config.max_groups,
                     config.models,
                 ),
+                # The opponent's own list: one config builds both handlers, so
+                # reading `config.models` here would give the enemy our speed.
+                model_moves=[model.move for model in config.opponent_models or ()],
             )
             self._opponent_policy: OpponentPolicy | None = build_opponent_policy(
                 config.opponent_policy,  # type: ignore[arg-type]

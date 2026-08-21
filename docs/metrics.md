@@ -290,7 +290,7 @@ the shooting mask uses, which pulls the other way. Measured on
 
 | Key | Meaning |
 |---|---|
-| `eval/firepower_ratio` | **Prefer this one.** Over the episode, (alive enemies at least one of our models can see and reach) ÷ (our alive models at least one of theirs can). 1.0 is an even exchange; above 1.0 we bring more guns to bear than we expose |
+| `eval/firepower_ratio` | **Prefer this one.** Over the episode, (alive enemies at least one of our models can see and reach) ÷ (our alive models at least one of theirs can). 1.0 is an even exchange **on an even board**; above that we bring more guns to bear than we expose. ⚠ These are raw counts, so the neutral value is the establishment ratio, not 1.0 — on 25 v 18 an even exchange reads ~1.39 |
 | `eval/exposure_rate` | Fraction of alive model-shooting-phases where at least one alive enemy had **line of sight and weapon range** to that model |
 | `eval/terrain_proximity` | Mean distance from an alive model to the nearest terrain footprint (0 inside) |
 | `eval/fraction_alive` | Fraction of player models still alive at episode end. Logged always, not just when tracking exposure |

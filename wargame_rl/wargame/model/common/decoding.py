@@ -60,11 +60,17 @@ STAY_ACTION = 0
 
 
 def _displacement_table(env: WargameEnv) -> np.ndarray:
-    """Every action's (dx, dy), read from the handler rather than rebuilt.
+    """Every model's every action as a (dx, dy) — ``(n_models, n_actions, 2)``.
 
-    Recomputing the polar encoding here would be a second source of truth for
-    the action space, and a drift between them would move models to places the
-    decoder did not evaluate.
+    Read from the handler rather than rebuilt. Recomputing the polar encoding
+    here would be a second source of truth for the action space, and a drift
+    between them would move models to places the decoder did not evaluate.
+
+    Per model, not per action alone, because a model's speed bins span its own
+    Move characteristic: with differing M the same action index is a different
+    displacement for different models, and one shared row would certify
+    combinations nobody can make. Every row is identical when the army is
+    uniformly fast, which is every config shipped today.
 
     Only the stay and movement slices are decodable — `decode_action` indexes the
     displacement grid directly and raises on a shooting-slice action — so the
@@ -72,9 +78,13 @@ def _displacement_table(env: WargameEnv) -> np.ndarray:
     action displaces nothing, which is what the zeros say.
     """
     handler = env.player_action_handler
-    table = np.zeros((handler.n_actions, 2), dtype=float)
-    for action in range(1 + handler.n_move_actions):
-        table[action] = handler.decode_action(action)
+    n_models = len(env.player_models)
+    table = np.zeros((n_models, handler.n_actions, 2), dtype=float)
+    for model_idx in range(n_models):
+        for action in range(1 + handler.n_move_actions):
+            table[model_idx, action] = handler.decode_action(
+                action, model_idx=model_idx
+            )
     return table
 
 
@@ -147,7 +157,7 @@ def _resolve_endpoints(
         start = np.asarray(model.location, dtype=float)
         keep = np.ones(len(live), dtype=bool)
         keep[live_ids[id(model)]] = False
-        in_bounds = np.clip(start + displacements[combo[j]], lower, upper)
+        in_bounds = np.clip(start + displacements[index, combo[j]], lower, upper)
         ends[j] = resolve_move(
             start,
             in_bounds - start,
@@ -266,7 +276,11 @@ def decode_joint_coherent(
         if any(candidates.size == 0 for candidates in per_model):
             continue
         combos = np.array(list(itertools.product(*per_model)))
-        ends = positions[None, :, :] + displacements[combos]
+        # `(members, 1)` against `(C, k)` picks each member's own row, so a
+        # unit of models with different Move characteristics is enumerated at
+        # the distances each of them can actually travel.
+        member_rows = np.asarray(member_indices, dtype=int)[None, :]
+        ends = positions[None, :, :] + displacements[member_rows, combos]
         legal = _coherent_mask(ends, radii, max(nearest - safety_margin, 0.0), furthest)
         if not legal.any():
             # A strict fallback, never a competitor: standing still is only ever

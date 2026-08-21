@@ -65,6 +65,19 @@ class ModelConfig(BaseModel):
             "0 and opponent group 0 are different groups."
         ),
     )
+    move: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "The rules' Move (M) characteristic for this model, in inches: the "
+            "furthest it may travel in one normal move. None takes the "
+            "scenario's `max_move_speed`, which is what every config did before "
+            "this field existed, so leaving it unset is an exact no-op. Set it "
+            "when the two armies -- or two units in one army -- are not equally "
+            "fast. The speed bins stay uniform in *count*; each model's bins "
+            "just span its own M, so the action space is unchanged."
+        ),
+    )
     max_wounds: int = Field(default=1, gt=0)
     toughness: int = Field(default=3, gt=0, description="Wound roll comparison stat")
     save: int = Field(
