@@ -244,6 +244,12 @@ a sixth objective standing empty — and an **`n` column** reports how many epis
 a rank that deep. Read a rank whose `n` is a fraction of the episode count accordingly. (Before
 2026-08-18 the recipe raised on any such config rather than reporting.)
 
+⚠ **Pass `decode_topk` when measuring a checkpoint**: `just measure-objective-split <ckpt>
+<config> <n> 3`. It defaults to 1, the independent per-model argmax, which on this project is a
+different player from the one that ships — joint constrained decoding is worth +40.5 vp and takes
+intended coherency 0.639 → 0.936. An argmax split explains a policy nobody plays. The argument is
+inert for a scripted baseline, which has no network to decode.
+
 The ceiling is deliberately optimistic — it ignores travel time and return fire, both of which
 only lower it. So a ceiling near the current `held` **rules re-allocation out**, while a large
 one does not rule it in. It costs minutes and can retire a reward-shaping idea before it is
