@@ -10,7 +10,7 @@ of a shape the renderer worked out for itself.
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -435,3 +435,156 @@ def test_a_view_that_cannot_trace_sight_draws_nothing() -> None:
         "v2", "recording", threat_options=ThreatOptions(show_threat=True)
     )
     assert renderer._threat_overlay(_Partial()) is None  # type: ignore[attr-defined]
+
+
+# --- replay ------------------------------------------------------------------
+
+
+def _recorded(env: WargameEnv) -> Any:
+    """One snapshot of the env as it stands, through the env's own exporter."""
+    return env.to_snapshot()
+
+
+def test_a_replayed_threat_region_is_the_live_one() -> None:
+    """The strongest test here: it is the only thing that catches a lost
+    `los_sample_step`, a dropped `blocking_mask`, or a weapon-range derivation
+    that disagrees with `max_weapon_ranges`.
+
+    Any of those would draw a *plausible* region that quietly answered a
+    different question than the engine did.
+    """
+    from wargame_rl.wargame.envs.renders.v2.replay import _snapshot_to_view
+
+    env = _walled_env()
+    env.reset(seed=5)
+
+    live = compute_threat_overlay(env, _ON)
+    replayed = compute_threat_overlay(cast(Any, _snapshot_to_view(_recorded(env))), _ON)
+
+    assert live.player_threat == replayed.player_threat
+    assert live.opponent_threat == replayed.opponent_threat
+    assert live.player_engagement == replayed.player_engagement
+    assert live.engagement_radius == replayed.engagement_radius
+
+
+def test_a_replayed_view_traces_the_same_sight_as_the_engine() -> None:
+    """Cell for cell, not just in aggregate — a region can match while the two
+    sight answers differ in compensating places."""
+    from wargame_rl.wargame.envs.renders.v2.replay import _snapshot_to_view
+
+    env = _walled_env()
+    env.reset(seed=5)
+    view = _snapshot_to_view(_recorded(env))
+
+    origin = np.array([[2.5, 10.0]], dtype=float)
+    targets = np.array(_cell_centres(env), dtype=float)
+    replayed = np.asarray(view.line_of_sight_matrix(origin, targets))[0]
+
+    for (px, py), seen in zip(_cell_centres(env), replayed, strict=True):
+        assert bool(seen) is env.has_line_of_sight_between_points(2.5, 10.0, px, py), (
+            px,
+            py,
+        )
+
+
+def test_a_pre_2_6_recording_replays_without_the_overlay() -> None:
+    """Older recordings carry no sample step. Drawing a *plausible wrong* region
+    would be worse than drawing none, so the presenter declines rather than
+    defaulting the values."""
+    from wargame_rl.wargame.envs.renders.v2.factory import build_renderer
+    from wargame_rl.wargame.envs.renders.v2.replay import _snapshot_to_view
+
+    env = _walled_env()
+    env.reset(seed=5)
+    old = _recorded(env).model_copy(update={"rules": None, "schema_version": "2.5"})
+    view = _snapshot_to_view(old)
+
+    renderer = build_renderer("v2", "recording", threat_options=_ON)
+    assert renderer._threat_overlay(view) is None  # type: ignore[attr-defined]
+    # ...and the frame still builds, which is what "degrades" has to mean.
+    assert build_scene(cast(Any, view), (), scale=16.0, threat=None).primitives
+
+
+def test_the_recorded_rules_are_the_resolved_ones() -> None:
+    """In units, already scaled — a replay that divided by `inches_per_unit`
+    itself would be re-deriving a quantity the env already owns."""
+    env = _env(inches_per_unit=2.0)
+    env.reset(seed=5)
+
+    rules = _recorded(env).rules
+
+    assert rules is not None
+    assert rules.engagement_range == pytest.approx(
+        env.rules_quantities.engagement_range
+    )
+    assert rules.base_radius == pytest.approx(env.rules_quantities.base_radius)
+    assert rules.los_sample_step == pytest.approx(env.rules_quantities.los_sample_step)
+
+
+def _replay_source(env: WargameEnv, steps: int = 2) -> Any:
+    """A tiny recording of `env`, as the replay player consumes it."""
+    from wargame_rl.wargame.envs.renders.v2.replay import ReplaySource
+    from wargame_rl.wargame.envs.state.event_log import EventLog
+    from wargame_rl.wargame.envs.types.env_action import WargameEnvAction
+
+    log = EventLog()
+    log.record_reset(env.to_snapshot())
+    for _ in range(steps):
+        mask = env.observation.action_mask
+        assert mask is not None
+        env.step(WargameEnvAction.random(mask))
+        log.record_step(env.to_snapshot())
+    return ReplaySource(
+        snapshots=[log.snapshot_at(i) for i in range(len(log))],
+        anchor_indices=frozenset({0}),
+    )
+
+
+def _replayed_frame(source: Any, options: ThreatOptions) -> np.ndarray:
+    from wargame_rl.wargame.envs.renders.v2.factory import build_backend
+    from wargame_rl.wargame.envs.renders.v2.replay import ReplayPresenter
+
+    backend = build_backend("pillow")
+    presenter = ReplayPresenter(backend, source, threat_options=options)
+    return np.asarray(
+        backend.to_rgb_array(presenter.frame_at(len(source) - 1)), dtype=int
+    )
+
+
+def test_the_overlay_actually_reaches_the_replayed_frame() -> None:
+    """Computing the overlay is not drawing it.
+
+    `ReplayPresenter` composes through `build_scene_from_snapshot`, not through
+    `BasePresenter._scene_for`, so every unit test here passed while the replay
+    frame came out untouched — the geometry was right and nothing carried it to
+    the scene. Only a frame comparison catches that, which is why this asserts
+    on pixels rather than on primitives.
+    """
+    env = _walled_env()
+    env.reset(seed=5)
+    source = _replay_source(env)
+
+    off = _replayed_frame(source, ThreatOptions())
+    on = _replayed_frame(source, _ON)
+
+    assert (np.abs(on - off).sum(axis=2) > 6).mean() > 0.02
+
+
+def test_a_pre_2_6_replay_frame_is_the_overlay_off_frame() -> None:
+    """Degrading has to mean *identical*, not merely "did not crash"."""
+    from wargame_rl.wargame.envs.renders.v2.replay import ReplaySource
+
+    env = _walled_env()
+    env.reset(seed=5)
+    source = _replay_source(env)
+    old = ReplaySource(
+        snapshots=[
+            s.model_copy(update={"rules": None, "schema_version": "2.5"})
+            for s in source.snapshots
+        ],
+        anchor_indices=source.anchor_indices,
+    )
+
+    np.testing.assert_array_equal(
+        _replayed_frame(old, _ON), _replayed_frame(source, ThreatOptions())
+    )
