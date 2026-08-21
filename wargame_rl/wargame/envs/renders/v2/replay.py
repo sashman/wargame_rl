@@ -115,6 +115,8 @@ class _SnapshotView:
     config: _ConfigView
     deployment_zone: tuple[int, int, int, int]
     opponent_deployment_zone: tuple[int, int, int, int]
+    deployment_outline: Polygon | None
+    opponent_deployment_outline: Polygon | None
     objectives: tuple[_ObjectiveView, ...]
     player_models: tuple[_ModelView, ...]
     opponent_models: tuple[_ModelView, ...]
@@ -192,6 +194,8 @@ def _snapshot_to_view(snapshot: GameStateSnapshot) -> _SnapshotView:
             # Pre-2.2 recordings did not carry it; no phase is then dimmed.
             tuple(BattlePhase(p) for p in (snapshot.skip_phases or [])),
         ),
+        deployment_outline=_polygon(snapshot.deployment_outline),
+        opponent_deployment_outline=_polygon(snapshot.opponent_deployment_outline),
         deployment_zone=(int(dz[0]), int(dz[1]), int(dz[2]), int(dz[3])),
         opponent_deployment_zone=(
             int(odz[0]),

@@ -954,6 +954,11 @@ def place_for_episode(
         player_box = np.array(player_zone.bounds, dtype=float)
     if opponent_zone is not None:
         opponent_box = np.array(opponent_zone.bounds, dtype=float)
+    # Hand the resolved outlines to the aggregate so anything reading the
+    # battle sees the zone models were placed in, not the scenario's
+    # rectangle. Set unconditionally: on a map without deployments this
+    # clears the previous episode's zones rather than leaving them.
+    battle.set_deployment_outlines(player_zone, opponent_zone)
 
     # Terrain first: it is the board the rest is placed onto. Models and
     # objectives may sit inside a footprint, exactly as they may with a fixed

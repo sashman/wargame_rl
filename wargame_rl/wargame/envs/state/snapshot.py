@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
     from wargame_rl.wargame.envs.domain.terrain import Terrain
     from wargame_rl.wargame.envs.types.config import ModelConfig
+    from wargame_rl.wargame.envs.types.geometry import Polygon
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +196,7 @@ class GameStateSnapshot(BaseModel):
     attributing ``player_actions`` to a phase.
     """
 
-    schema_version: str = "2.4"
+    schema_version: str = "2.5"
     step: int
     max_steps: int
     clock: ClockSnapshot
@@ -221,6 +222,17 @@ class GameStateSnapshot(BaseModel):
     Static per episode, so it rides on the full snapshots exactly as
     ``terrain_footprints`` does. ``None`` on pre-2.2 recordings.
     """
+    deployment_outline: list[list[float]] | None = None
+    """Outline vertices of the player's deployment zone, ``[[x, y], ...]``.
+
+    A map may deploy along a diagonal, a staircase or an arc, none of which
+    ``deployment_zone``'s four numbers can describe, so a replay without this
+    draws the scenario's rectangle around an army standing somewhere else.
+    Static per episode and carried like ``terrain_footprints``. ``None`` on
+    pre-2.5 recordings and whenever the zone really is the rectangle.
+    """
+    opponent_deployment_outline: list[list[float]] | None = None
+    """Outline vertices of the opponent's deployment zone. See above."""
     player_vp: int
     opponent_vp: int
     player_vp_delta: int
@@ -565,6 +577,8 @@ def build_snapshot(
     action_phase: str | None = None,
     terrain: "Terrain | None" = None,
     episode_reward: float | None = None,
+    deployment_outline: "Polygon | None" = None,
+    opponent_deployment_outline: "Polygon | None" = None,
 ) -> GameStateSnapshot:
     """Build a complete game-state snapshot from env internals."""
     player_configs = config.models
@@ -671,6 +685,16 @@ def build_snapshot(
         opponent_deployment_zone=odz,
         terrain_footprints=terrain_footprints,
         skip_phases=[phase.value for phase in config.skip_phases],
+        deployment_outline=(
+            deployment_outline.vertices.tolist()
+            if deployment_outline is not None
+            else None
+        ),
+        opponent_deployment_outline=(
+            opponent_deployment_outline.vertices.tolist()
+            if opponent_deployment_outline is not None
+            else None
+        ),
         player_vp=player_vp,
         opponent_vp=opponent_vp,
         player_vp_delta=player_vp_delta,
