@@ -32,9 +32,9 @@ from __future__ import annotations
 import sys
 
 import numpy as np
-from pydantic_yaml import parse_yaml_raw_as
 
 from scripts.measure_checkpoint import build_selector
+from scripts.scenario_overrides import describe, load_env_config, parse_overrides
 from wargame_rl.wargame.envs.baseline.evaluate import (
     ActionSelector,
     evaluate_selector,
@@ -86,22 +86,22 @@ def episode_margins(
 
 def main() -> None:
     """Print both arms' marginal means and the paired difference between them."""
-    if len(sys.argv) < 4:
+    argv, overrides = parse_overrides(sys.argv)
+    if len(argv) < 4:
         print(__doc__)
         raise SystemExit(1)
 
-    name_a, name_b, config_path = sys.argv[1], sys.argv[2], sys.argv[3]
+    name_a, name_b, config_path = argv[1], argv[2], argv[3]
     # A checkpoint path is far too long for a table column, and its basename is
     # what identifies the run anyway.
     label_a, label_b = (
         name.split("/")[-1][:30] if "/" in name else name for name in (name_a, name_b)
     )
-    n_episodes = int(sys.argv[4]) if len(sys.argv) > 4 else 100
-    seed_base = int(sys.argv[5]) if len(sys.argv) > 5 else HELDOUT_SEED_BASE
+    n_episodes = int(argv[4]) if len(argv) > 4 else 100
+    seed_base = int(argv[5]) if len(argv) > 5 else HELDOUT_SEED_BASE
     seeds = [seed_base + index for index in range(n_episodes)]
 
-    with open(config_path) as handle:
-        env_config = parse_yaml_raw_as(WargameEnvConfig, handle.read())
+    env_config = load_env_config(config_path, **overrides)
 
     margins_a = episode_margins(name_a, env_config, seeds)
     margins_b = episode_margins(name_b, env_config, seeds)
@@ -109,7 +109,10 @@ def main() -> None:
     stderr = float(delta.std(ddof=1) / np.sqrt(len(delta))) or float("inf")
     decided = int((delta != 0).sum())
 
-    print(f"\n{config_path}   {n_episodes} episodes, seeds {seed_base}+\n")
+    print(
+        f"\n{config_path}{describe(overrides)}   {n_episodes} episodes, "
+        f"seeds {seed_base}+\n"
+    )
     print(f"{label_a:<32}{margins_a.mean():>9.1f}   (sd {margins_a.std():.1f})")
     print(f"{label_b:<32}{margins_b.mean():>9.1f}   (sd {margins_b.std():.1f})")
     print(f"\npaired difference       {delta.mean():>9.1f}   +/- {stderr:.1f} (1 se)")

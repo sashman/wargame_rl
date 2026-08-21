@@ -20,8 +20,8 @@ import sys
 from pathlib import Path
 
 import torch
-from pydantic_yaml import parse_yaml_raw_as
 
+from scripts.scenario_overrides import describe, load_env_config, parse_overrides
 from wargame_rl.wargame.envs.baseline.evaluate import (
     ActionSelector,
     BaselineResult,
@@ -29,11 +29,7 @@ from wargame_rl.wargame.envs.baseline.evaluate import (
     format_optional_metric,
     record_episode,
 )
-from wargame_rl.wargame.envs.types import (
-    WargameEnvAction,
-    WargameEnvConfig,
-    WargameEnvObservation,
-)
+from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvObservation
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.decoding import decode_joint_coherent
 from wargame_rl.wargame.model.common.factory import create_environment
@@ -125,22 +121,22 @@ def format_result(result: BaselineResult) -> str:
 
 def main() -> None:
     """Score one checkpoint and print its row of the baseline table."""
-    if len(sys.argv) < 3:
+    argv, overrides = parse_overrides(sys.argv)
+    if len(argv) < 3:
         print(__doc__)
         raise SystemExit(1)
 
-    checkpoint_path = sys.argv[1]
-    config_path = sys.argv[2]
-    n_episodes = int(sys.argv[3]) if len(sys.argv) > 3 else 30
-    record = len(sys.argv) > 4 and sys.argv[4].lower() in {"record", "true", "1"}
+    checkpoint_path = argv[1]
+    config_path = argv[2]
+    n_episodes = int(argv[3]) if len(argv) > 3 else 30
+    record = len(argv) > 4 and argv[4].lower() in {"record", "true", "1"}
     # Joint constrained decoding, off by default so every historical row here
     # reproduces. It matters most for `record`: a recording made at K=1 shows
     # the referee cancelling a third of the unit-moves, which is the play the
     # decoder exists to replace, and is not what the checkpoint would do now.
-    decode_topk = int(sys.argv[5]) if len(sys.argv) > 5 else 1
+    decode_topk = int(argv[5]) if len(argv) > 5 else 1
 
-    with open(config_path) as handle:
-        env_config = parse_yaml_raw_as(WargameEnvConfig, handle.read())
+    env_config = load_env_config(config_path, **overrides)
     env_config.render_mode = None
 
     env = create_environment(env_config=env_config)
@@ -149,7 +145,10 @@ def main() -> None:
 
     name = label_for(checkpoint_path)
     print(f"\n{checkpoint_path}")
-    print(f"{config_path}  ({n_episodes} episodes, seeds {seeds[0]}-{seeds[-1]})\n")
+    print(
+        f"{config_path}{describe(overrides)}  ({n_episodes} episodes, "
+        f"seeds {seeds[0]}-{seeds[-1]})\n"
+    )
     header = (
         f"{'policy':<28}{'on obj':>10}{'win':>9}{'player VP':>12}"
         f"{'opp VP':>10}{'VP margin':>11}{'±SE':>8}{'held':>7}{'alive':>8}"

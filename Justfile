@@ -252,8 +252,13 @@ measure-phase-gates checkpoint env_config n_episodes='30':
 # n=100 to match measure-checkpoint's default: an agent row and a baseline row
 # must be drawn from the same layout set *and* the same number of episodes, or
 # the comparison inherits the larger of the two error bars.
-measure-baselines env_config n_episodes='100' record='' seed_base='':
-	@uv run python -m scripts.measure_baselines {{env_config}} {{n_episodes}} "{{record}}" "{{seed_base}}"
+#
+# Every measure-* recipe takes trailing `key=value` scenario overrides --
+# `rounds=5`, `weapon_range=24`, `turn_order=player` -- so one config can be
+# scored at several settings of one number without copying it. See
+# scripts/scenario_overrides.py for why they are not positional.
+measure-baselines env_config n_episodes='100' record='' seed_base='' *overrides:
+	@uv run python -m scripts.measure_baselines {{env_config}} {{n_episodes}} "{{record}}" "{{seed_base}}" {{overrides}}
 
 # Score a checkpoint on held-out seeds through the same code path as the baselines,
 # so the two are directly comparable. Pass `record` as the fourth argument for a trace.
@@ -264,8 +269,8 @@ measure-baselines env_config n_episodes='100' record='' seed_base='':
 # to resolve what it was measuring. n=100 halves that to ~4.5 and costs minutes
 # against the hours a training run costs. Scoring was the cheap half being
 # under-sampled while the expensive half was over-sampled.
-measure-checkpoint checkpoint env_config n_episodes='100' record='' decode_topk='1':
-	@uv run python -m scripts.measure_checkpoint {{checkpoint}} {{env_config}} {{n_episodes}} "{{record}}" {{decode_topk}}
+measure-checkpoint checkpoint env_config n_episodes='100' record='' decode_topk='1' *overrides:
+	@uv run python -m scripts.measure_checkpoint {{checkpoint}} {{env_config}} {{n_episodes}} "{{record}}" {{decode_topk}} {{overrides}}
 
 # Final evaluation: score a policy on the real table layouts, one row per map.
 # Training uses `random_terrain`, so this is the only thing that asks how the
@@ -274,8 +279,8 @@ measure-checkpoint checkpoint env_config n_episodes='100' record='' decode_topk=
 # what was trained. Takes a baseline name or a checkpoint, like
 # measure-objective-split.
 # Use it like: just measure-maps <ckpt> configs/golden/25v25_shooting_opponent.yaml
-measure-maps policy env_config n_episodes='100' maps_dir='' decode_topk='1' decode_stay='':
-	@uv run python -m scripts.measure_maps {{policy}} {{env_config}} {{n_episodes}} "{{maps_dir}}" "{{decode_topk}}" "{{decode_stay}}"
+measure-maps policy env_config n_episodes='100' maps_dir='' decode_topk='1' decode_stay='' *overrides:
+	@uv run python -m scripts.measure_maps {{policy}} {{env_config}} {{n_episodes}} "{{maps_dir}}" "{{decode_topk}}" "{{decode_stay}}" {{overrides}}
 
 # Regenerate every evaluation table from the public layout API. The tables were
 # originally traced by hand from this same source and the tracing lost detail;
@@ -322,8 +327,8 @@ measure-income-share policy env_config n_episodes='30':
 # at n=100; the first number was noise. Read the win count beside the mean -- a
 # positive mean with a losing win count is a heavy tail, not an improvement.
 # Use: just measure-paired squad_march_shoot contest_and_spread <config> 100
-measure-paired policy_a policy_b env_config n_episodes='100' seed_base='700000':
-	@uv run python -m scripts.measure_paired_policies {{policy_a}} {{policy_b}} {{env_config}} {{n_episodes}} {{seed_base}}
+measure-paired policy_a policy_b env_config n_episodes='100' seed_base='700000' *overrides:
+	@uv run python -m scripts.measure_paired_policies {{policy_a}} {{policy_b}} {{env_config}} {{n_episodes}} {{seed_base}} {{overrides}}
 
 # Why an objective was not held: abandoned, narrowly lost, or lost by a mile.
 # `held` alone cannot separate those, and they call for different fixes. Also
@@ -350,8 +355,8 @@ render-coherency-figure env_config ckpt out seed='700000' step='20':
 # How much of a config's outcome spread is dice rather than policy. Holds the
 # layouts fixed and varies only the combat seed, so the within-layout spread is
 # the noise floor any arm-to-arm difference has to clear.
-measure-noise-floor env_config n_layouts='10' n_combat_seeds='10' policy='':
-	@uv run python -m scripts.measure_noise_floor {{env_config}} {{n_layouts}} {{n_combat_seeds}} "{{policy}}"
+measure-noise-floor env_config n_layouts='10' n_combat_seeds='10' policy='' *overrides:
+	@uv run python -m scripts.measure_noise_floor {{env_config}} {{n_layouts}} {{n_combat_seeds}} "{{policy}}" {{overrides}}
 
 # Terrain-layout statistics for a random_terrain config: coverage, how often a
 # sightline is blocked, and how much of the board is genuinely out of sight.

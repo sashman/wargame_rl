@@ -22,11 +22,9 @@ from __future__ import annotations
 import statistics
 import sys
 
-from pydantic_yaml import parse_yaml_raw_as
-
+from scripts.scenario_overrides import describe, load_env_config, parse_overrides
 from wargame_rl.wargame.envs.baseline.evaluate import evaluate_baseline
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
-from wargame_rl.wargame.envs.types.config import WargameEnvConfig
 from wargame_rl.wargame.model.common.factory import create_environment
 
 # Held out from the training seed space, matching measure_baselines.
@@ -38,26 +36,26 @@ COMBAT_SEED_BASE = 900_000
 DEFAULT_POLICY = "squad_march_shoot"
 
 
-def _argument(index: int, default: str) -> str:
+def _argument(argv: list[str], index: int, default: str) -> str:
     """Read a positional argument. Recipes pass omitted ones through as ''."""
-    if len(sys.argv) > index and sys.argv[index]:
-        return sys.argv[index]
+    if len(argv) > index and argv[index]:
+        return argv[index]
     return default
 
 
 def main() -> None:
     """Print per-layout and aggregate outcome spread for one config."""
-    if len(sys.argv) < 2:
+    argv, overrides = parse_overrides(sys.argv)
+    if len(argv) < 2:
         print(__doc__)
         raise SystemExit(1)
 
-    config_path = sys.argv[1]
-    n_layouts = int(_argument(2, "10"))
-    n_combat_seeds = int(_argument(3, "10"))
-    policy_name = _argument(4, DEFAULT_POLICY)
+    config_path = argv[1]
+    n_layouts = int(_argument(argv, 2, "10"))
+    n_combat_seeds = int(_argument(argv, 3, "10"))
+    policy_name = _argument(argv, 4, DEFAULT_POLICY)
 
-    with open(config_path) as handle:
-        env_config = parse_yaml_raw_as(WargameEnvConfig, handle.read())
+    env_config = load_env_config(config_path, **overrides)
 
     env = create_environment(env_config=env_config)
     combat_seeds = [COMBAT_SEED_BASE + j for j in range(n_combat_seeds)]
@@ -106,7 +104,7 @@ def main() -> None:
     )
     within_sd = statistics.fmean(within_layout_sds)
 
-    print(f"\n{policy_name} on {config_path}")
+    print(f"\n{policy_name} on {config_path}{describe(overrides)}")
     print(f"  overall win rate                 {overall_win:.3f}")
     print(f"  vp_margin sd within a layout     {within_sd:.1f}   <- the dice")
     print(f"  vp_margin sd between layouts     {between_sd:.1f}   <- the scenario")
