@@ -129,7 +129,12 @@ class ScriptedContestAndSpreadPolicy(BaselinePolicy):
         if not objectives:
             return WargameEnvAction(actions=actions)
 
-        max_step = float(env.config.max_move_speed)
+        # The SLOWEST member's Move, not the scenario's: a squad marches as a
+        # body on one shared vector, and that is what keeps its formation rigid
+        # and therefore legal. A member that cannot cover the shared step would
+        # be left behind, breaking the very property this policy relies on.
+        speeds = env.player_action_handler.move_speeds
+        max_step = float(speeds.min()) if speeds.size else 0.0
         group_ids = sorted({model.group_id for model in models})
         allocation = self._objective_allocation(env, len(group_ids))
 
@@ -152,7 +157,7 @@ class ScriptedContestAndSpreadPolicy(BaselinePolicy):
 
             for i in member_indices:
                 if lead_distance <= radius:
-                    actions[i] = step_toward_objective(models[i], objective, env)
+                    actions[i] = step_toward_objective(models[i], objective, env, i)
                 else:
                     # One squad vector for every member keeps relative positions,
                     # and therefore coherency, intact.
@@ -160,6 +165,7 @@ class ScriptedContestAndSpreadPolicy(BaselinePolicy):
                         float(lead[0]),
                         float(lead[1]),
                         max_step_length=min(max_step, lead_distance),
+                        model_idx=i,
                     )
 
         return WargameEnvAction(actions=actions)

@@ -315,7 +315,15 @@ class WargameEnvConfig(BaseModel):
     max_groups: int = Field(
         gt=0,
         default=100,
-        description="Maximum number of groups in the game; group_id is one-hot encoded over this size for neural network input.",
+        description=(
+            "Maximum number of groups in the game; group_id is one-hot encoded "
+            "over this size for neural network input. **One value for both "
+            "armies**, and it is load-bearing twice over: the one-hot is the "
+            "same width on the player and opponent blocks, which is what keeps "
+            "their token widths equal, and where no model names its own group "
+            "`group_span = n // max_groups` splits each army, so two armies of "
+            "different sizes get differently-sized units from the same cap."
+        ),
     )
     n_movement_angles: int = Field(
         gt=0,
@@ -780,6 +788,33 @@ class WargameEnvConfig(BaseModel):
                     f"max_groups={self.max_groups} puts every model in its own "
                     "unit, where coherency holds vacuously. Set max_groups below "
                     f"{label} so units have at least two models."
+                )
+        return self
+
+    @model_validator(mode="after")
+    def validate_group_ids_fit_the_one_hot(self) -> "WargameEnvConfig":
+        """Every declared `group_id` must be encodable in the group one-hot.
+
+        `_group_ids_to_one_hot` *clips* to `max_groups - 1`, so a config naming
+        more units than the cap allows does not fail — it silently merges its
+        last units into one column, and every consumer that reads membership
+        back out of the observation inherits the merge. The shooting slice does
+        not clip: `unit_count` sizes it off the highest id, so the mask and the
+        network would disagree about which unit an action names.
+        """
+        for label, configs in (
+            ("models", self.models),
+            ("opponent_models", self.opponent_models),
+        ):
+            if not configs:
+                continue
+            highest = max(int(config.group_id) for config in configs)
+            if highest >= self.max_groups:
+                raise ValueError(
+                    f"{label} declares group_id={highest} but max_groups="
+                    f"{self.max_groups}: the group one-hot has no column for it "
+                    "and would silently fold it into the last group. Raise "
+                    f"max_groups above {highest}."
                 )
         return self
 

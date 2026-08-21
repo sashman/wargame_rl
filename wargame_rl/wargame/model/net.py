@@ -48,6 +48,14 @@ class EncodedState:
     rows from influencing live ones.
     """
     mask_tensor: torch.Tensor | None
+    opponent_unit_index: torch.Tensor | None = None
+    """``(batch, n_opponents)`` unit id per opponent model, or None.
+
+    Read off the group one-hot the per-model block already carries, so the
+    shooting head pools opponents into the same units the shooting *mask*
+    allocates them to. None when the layout cannot be located, which falls
+    back to the historical arithmetic derivation.
+    """
 
 
 class RL_Network(nn.Module, ABC):
@@ -101,6 +109,10 @@ class RL_Network(nn.Module, ABC):
 
 
 class TransformerNetwork(RL_Network):
+    # Class-level default so an instance restored from a checkpoint written
+    # before this attribute existed reads None rather than raising.
+    max_groups: int | None = None
+
     # Transformer adapted from the NanoGPT implementation:
     # https://github.com/karpathy/nanoGPT
     def __init__(
@@ -116,6 +128,7 @@ class TransformerNetwork(RL_Network):
         shooting_slice_start: int | None = None,
         shooting_slice_end: int | None = None,
         objective_padding: bool = False,
+        max_groups: int | None = None,
         device: Device | None = None,
     ) -> None:
         self.game_size = game_size
@@ -133,6 +146,11 @@ class TransformerNetwork(RL_Network):
         self.is_policy = is_policy
         self.shooting_slice_start = shooting_slice_start
         self.shooting_slice_end = shooting_slice_end
+        # Width of the group one-hot in the per-model block, which is what lets
+        # the shooting head read real unit membership instead of re-deriving it.
+        # None keeps the historical arithmetic derivation, so a network restored
+        # from a pickle written before this field still behaves as it did.
+        self.max_groups = max_groups
 
         super().__init__()
 
@@ -334,6 +352,32 @@ class TransformerNetwork(RL_Network):
             )
         return model_tensor[:, :, idx] > 0.5
 
+    def _unit_index_from_features(
+        self, model_tensor: torch.Tensor, n_objectives: int, n_units: int
+    ) -> torch.Tensor | None:
+        """Unit id per model ``(batch, n_models)``, read off the group one-hot.
+
+        The per-model block is ``location(2) | distances(2 * n_objectives) |
+        group one-hot(max_groups) | ...`` (``model/common/observation.py``), so
+        the one-hot starts at ``2 + 2 * n_objectives``. Returning the *observed*
+        membership is the point: the shooting mask and damage resolution both
+        key on ``group_id``, and anything that re-derives it disagrees with them
+        the moment a unit is not the same size as its neighbours.
+
+        Returns None when the layout cannot be located — no ``max_groups``, more
+        units than the one-hot can distinguish, or a block too narrow to hold it
+        — so the caller degrades to the historical derivation rather than
+        indexing into the wrong columns.
+        """
+        if self.max_groups is None or n_units > self.max_groups:
+            return None
+        start = 2 + 2 * n_objectives
+        end = start + self.max_groups
+        if end > int(model_tensor.shape[-1]):
+            return None
+        one_hot = model_tensor[:, :, start:end]
+        return one_hot.argmax(dim=-1).clamp_(max=n_units - 1)
+
     def _embed_terrain(
         self, terrain_tensor: torch.Tensor, is_batched: bool = False
     ) -> torch.Tensor | None:
@@ -421,6 +465,7 @@ class TransformerNetwork(RL_Network):
         opponent_alive = torch.ones(
             batch_size, n_opponents, dtype=torch.bool, device=tokens.device
         )
+        opponent_unit_index: torch.Tensor | None = None
         key_mask = torch.ones(
             batch_size, seq_len, dtype=torch.bool, device=tokens.device
         )
@@ -437,6 +482,15 @@ class TransformerNetwork(RL_Network):
             opponent_alive = self._alive_from_features(opp_tensor, n_opponents)
             opp_start = n_prefix + n_wargame_models
             key_mask[:, opp_start : opp_start + n_opponents] = opponent_alive
+            if (
+                self.shooting_slice_start is not None
+                and self.shooting_slice_end is not None
+            ):
+                opponent_unit_index = self._unit_index_from_features(
+                    opp_tensor,
+                    n_objectives,
+                    self.shooting_slice_end - self.shooting_slice_start,
+                )
         # Terrain tokens have no alive/dead concept, but `terrain_budget` pads the
         # sequence with all-zero rows. The last column is the piece's vertex
         # count, which no real piece can have at zero, so this needs no flag and
@@ -462,11 +516,15 @@ class TransformerNetwork(RL_Network):
             player_alive=player_alive,
             opponent_alive=opponent_alive,
             mask_tensor=mask_tensor,
+            opponent_unit_index=opponent_unit_index,
         )
 
     @staticmethod
     def _pool_opponents_into_units(
-        opponent_latents: torch.Tensor, n_units: int, alive: torch.Tensor
+        opponent_latents: torch.Tensor,
+        n_units: int,
+        alive: torch.Tensor,
+        unit_index: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Mean-pool ``(B, n_opponents, D)`` model tokens into ``(B, n_units, D)``.
 
@@ -475,19 +533,30 @@ class TransformerNetwork(RL_Network):
         per model and the transformer needs them -- and are pooled only at the
         head.
 
-        Membership is recovered arithmetically rather than plumbed through the
-        tensor pipeline: `battle_factory` assigns ``group_id = i // span`` with
-        ``span = max(1, n // max_groups)``, so units are contiguous blocks and
-        ``span`` is recoverable from the two sizes the head already knows. A
-        ragged final unit is handled by the count divisor.
+        ``unit_index`` is the membership the observation actually carries, and is
+        what the shooting mask and the damage resolution key on. Without it the
+        fallback recovers membership arithmetically -- `battle_factory` assigns
+        ``group_id = i // span`` with ``span = max(1, n // max_groups)``, so
+        units are contiguous blocks of equal size. **That fallback is wrong the
+        moment squads differ in size**: at 4/4/4/3/3 it pools model 15 into unit
+        3 while the mask puts it in unit 4, silently scoring the wrong unit. It
+        is kept only for a network restored from a checkpoint that predates the
+        index, where it reproduces exactly what that network used to do.
         """
         batch, n_opponents, dim = opponent_latents.shape
-        span = max(1, math.ceil(n_opponents / n_units))
-        index = torch.div(
-            torch.arange(n_opponents, device=opponent_latents.device),
-            span,
-            rounding_mode="floor",
-        ).clamp_(max=n_units - 1)
+        if unit_index is None:
+            span = max(1, math.ceil(n_opponents / n_units))
+            index = (
+                torch.div(
+                    torch.arange(n_opponents, device=opponent_latents.device),
+                    span,
+                    rounding_mode="floor",
+                )
+                .clamp_(max=n_units - 1)
+                .expand(batch, n_opponents)
+            )
+        else:
+            index = unit_index
 
         # Dead models contribute nothing and are not counted. Without this a
         # destroyed model's latent still leaks into its unit's pooled token, and
@@ -501,11 +570,19 @@ class TransformerNetwork(RL_Network):
             device=opponent_latents.device,
             dtype=opponent_latents.dtype,
         )
-        summed.index_add_(1, index, opponent_latents * live)
+        # `scatter_add_` rather than `index_add_` because membership is now a
+        # per-sample tensor: a batch is free to mix layouts, and an index shared
+        # across the batch would quietly pool one sample's models by another's
+        # squads. Accumulation order is unchanged, so the sums are unchanged.
+        summed.scatter_add_(
+            1,
+            index.unsqueeze(-1).expand(batch, n_opponents, dim),
+            opponent_latents * live,
+        )
         counts = torch.zeros(
             batch, n_units, 1, device=opponent_latents.device, dtype=live.dtype
         )
-        counts.index_add_(1, index, live)
+        counts.scatter_add_(1, index.unsqueeze(-1), live)
         return summed / counts.clamp(min=1.0)
 
     def _shooting_scores(
@@ -556,7 +633,10 @@ class TransformerNetwork(RL_Network):
             start = cast(int, self.shooting_slice_start)
             n_units = cast(int, self.shooting_slice_end) - start
             unit_latents = self._pool_opponents_into_units(
-                opponent_latents, n_units, state.opponent_alive
+                opponent_latents,
+                n_units,
+                state.opponent_alive,
+                state.opponent_unit_index,
             )
             shooting_scores = self._shooting_scores(player_latents, unit_latents)
             base_logits = base_logits.clone()
@@ -678,6 +758,7 @@ class TransformerNetwork(RL_Network):
             shooting_slice_start=shooting_slice.start if shooting_slice else None,
             shooting_slice_end=shooting_slice.end if shooting_slice else None,
             objective_padding=env.config.objective_budget is not None,
+            max_groups=env.config.max_groups,
         )
 
 

@@ -361,10 +361,17 @@ def _objectives_to_obs(
 ) -> list[WargameEnvObjectiveObservation]:
     """Objective observations, optionally carrying per-objective control state.
 
-    Counts are of *alive* models inside each disc, normalised by the static
-    army sizes so the feature stays O(1) rather than shrinking with force size.
-    Both sides use their own establishment as the divisor, which keeps
-    "half my army is here" and "half of theirs is here" on the same scale.
+    Counts are of *alive* models inside each disc, normalised by a static army
+    size so the feature stays O(1) rather than shrinking with force size.
+
+    **Both sides share one divisor, and that is the point.** Control is decided
+    by a raw count comparison (`player_count > opponent_count`), so the two
+    columns are only comparable if they are on the same scale. Dividing each
+    side by *its own* establishment made them incomparable the moment the armies
+    were different sizes: at 25 v 18, ten of ours reads 0.40 and nine of theirs
+    reads 0.50, so the observation says they are winning an objective we
+    control. At parity the two divisors coincide, which is why every shipped
+    config is unaffected.
     """
     if not with_control:
         return _pad_objectives(
@@ -382,8 +389,13 @@ def _objectives_to_obs(
     opponent_locations = np.array(
         [m.location for m in view.opponent_models if m.is_alive], dtype=float
     )
-    n_player = max(1, view.config.number_of_wargame_models)
-    n_opponent = max(1, view.config.number_of_opponent_models)
+    # The larger establishment, so neither side's column can exceed 1.0 and the
+    # two stay directly comparable. Identical to either when the armies match.
+    establishment = max(
+        1,
+        view.config.number_of_wargame_models,
+        view.config.number_of_opponent_models,
+    )
     board_diagonal = float(np.hypot(view.board_width, view.board_height)) or 1.0
 
     def inside(locations: np.ndarray, objective: WargameObjective) -> int:
@@ -418,8 +430,8 @@ def _objectives_to_obs(
         observations.append(
             WargameEnvObjectiveObservation(
                 location=objective.location,
-                player_count=inside(player_locations, objective) / n_player,
-                opponent_count=inside(opponent_locations, objective) / n_opponent,
+                player_count=inside(player_locations, objective) / establishment,
+                opponent_count=inside(opponent_locations, objective) / establishment,
                 radius=extent / board_diagonal,
             )
         )
