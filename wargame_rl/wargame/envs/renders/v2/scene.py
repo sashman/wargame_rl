@@ -25,7 +25,11 @@ from wargame_rl.wargame.envs.types.game_timing import BattlePhase, PlayerSide
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.domain.battle_view import BattleView
-    from wargame_rl.wargame.envs.renders.v2.control import LosResult, ShadowRect
+    from wargame_rl.wargame.envs.renders.v2.control import (
+        LosResult,
+        ShadowRect,
+        ThreatOverlay,
+    )
 
 
 class Control(enum.Enum):
@@ -61,6 +65,29 @@ class Poly:
 
 
 @dataclass(frozen=True)
+class DiscUnion:
+    """N equal-radius circles composited as ONE translucent shape.
+
+    Not N `Disc`s. Every backend gives each translucent primitive its own alpha
+    layer, so two overlapping discs draw their intersection twice as dark — the
+    same seam artefact `control._merge_hidden` exists to avoid for the sight
+    shadow. Painting the circles into a single layer and compositing once makes
+    the union flat by construction, and gets a hole through the middle of a ring
+    of models right for free, since nothing paints there.
+
+    It is also *cheaper* than the discs it replaces: one full-canvas layer per
+    side instead of one per model.
+
+    Fill only, deliberately. An outline of a circle union is analytic geometry,
+    which does not belong behind a primitive whose whole job is one composite.
+    """
+
+    centers: tuple[tuple[float, float], ...]
+    radius: float
+    fill: RGBA
+
+
+@dataclass(frozen=True)
 class Seg:
     """A single line segment, board-unit endpoints, pixel width."""
 
@@ -80,7 +107,7 @@ class Label:
     color: RGB
 
 
-Primitive = Disc | Poly | Seg | Label
+Primitive = Disc | DiscUnion | Poly | Seg | Label
 
 
 # Short labels for the phase chain — five slots that must fit side by side.
@@ -382,6 +409,7 @@ def build_scene(
     theme: Theme = DEFAULT_THEME,
     debug_los: "LosResult | None" = None,
     los_shadow: Sequence["ShadowRect"] = (),
+    threat: "ThreatOverlay | None" = None,
     show_grid: bool = True,
     shot_fade: float = 1.0,
 ) -> Scene:
@@ -485,6 +513,40 @@ def build_scene(
         prims.append(
             Disc((cx, cy), radius_board, fill_rgba, pal.objective_rim, rim_width)
         )
+
+    # Threat overlays: over the static board, under the sight shadow and models.
+    # Under the shadow because the shadow means "you cannot see this" and should
+    # darken everything drawn as board state; under the models for the same
+    # reason the shadow is, that a tool hiding the pieces it describes is worse
+    # than one that draws less. Engagement fills go down before the threat
+    # outlines so a wash never mutes a line.
+    if threat is not None and not threat.is_empty():
+        for centers, engagement_wash in (
+            (threat.opponent_engagement, pal.engagement_opponent),
+            (threat.player_engagement, pal.engagement_player),
+        ):
+            if centers:
+                prims.append(
+                    DiscUnion(tuple(centers), threat.engagement_radius, engagement_wash)
+                )
+        threat_width = max(2, int(round(scale * 0.16)))
+        for rings, threat_stroke in (
+            (threat.opponent_threat, pal.threat_opponent),
+            (threat.player_threat, pal.threat_player),
+        ):
+            for ring in rings:
+                # No union trick needed: the rings already come from one merged
+                # mask, so neither the strokes nor the washes can overlap
+                # themselves — only the two sides' regions overlap each other,
+                # and that band reading as a blend is the point of the wash.
+                prims.append(
+                    Poly(
+                        tuple(ring),
+                        (*threat_stroke, pal.threat_fill_alpha),
+                        threat_stroke,
+                        threat_width,
+                    )
+                )
 
     # Sight shadow: over the board and everything static on it, under the models.
     # It shades terrain and objectives because they *are* hidden — an objective

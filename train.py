@@ -9,6 +9,7 @@ from pytorch_lightning import LightningModule, Trainer, seed_everything
 from pytorch_lightning.callbacks import Callback
 from typer.models import OptionInfo
 
+from wargame_rl.wargame.envs.renders.v2.control import ThreatOptions
 from wargame_rl.wargame.envs.state import EventLogExporter
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.common import (
@@ -167,6 +168,19 @@ def train(
     env_config_path: str | None = typer.Option(
         "configs/dev/tiny.yaml",
         help="Path to the environment config file",
+    ),
+    record_threat_range: bool = typer.Option(
+        False,
+        "--record-threat-range",
+        help=(
+            "Draw each side's shooting threat footprint in training recordings. "
+            "A video has no keyboard, so this is the only way to get it there."
+        ),
+    ),
+    record_engagement_range: bool = typer.Option(
+        False,
+        "--record-engagement-range",
+        help="Draw each side's engagement range in training recordings.",
     ),
     record_during_training: bool = typer.Option(
         False,
@@ -404,6 +418,10 @@ def train(
                     record_after_epoch=ppo_training_config.record_after_epoch,
                     record_every_n_epochs=ppo_training_config.record_every_n_epochs,
                     filename_prefix="ppo",
+                    overlays=ThreatOptions(
+                        show_threat=record_threat_range,
+                        show_engagement=record_engagement_range,
+                    ),
                 )
             )
         logger = get_logger(run, disabled=no_wandb)

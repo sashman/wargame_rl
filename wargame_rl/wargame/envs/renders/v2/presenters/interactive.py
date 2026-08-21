@@ -14,6 +14,7 @@ import pygame
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.renders.human import QuitRequested
 from wargame_rl.wargame.envs.renders.v2.backend import Canvas, RenderBackend
+from wargame_rl.wargame.envs.renders.v2.control import ThreatOptions
 from wargame_rl.wargame.envs.renders.v2.presenters.base import BasePresenter
 from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME, Theme
 
@@ -21,8 +22,13 @@ from wargame_rl.wargame.envs.renders.v2.theme import DEFAULT_THEME, Theme
 class InteractiveRenderer(BasePresenter):
     """Drives a live pygame window."""
 
-    def __init__(self, backend: RenderBackend, theme: Theme = DEFAULT_THEME) -> None:
-        super().__init__(backend, theme)
+    def __init__(
+        self,
+        backend: RenderBackend,
+        theme: Theme = DEFAULT_THEME,
+        threat_options: ThreatOptions | None = None,
+    ) -> None:
+        super().__init__(backend, theme, threat_options)
         self._window: pygame.Surface | None = None
         self._clock: pygame.time.Clock | None = None
         self._paused = False
@@ -55,6 +61,8 @@ class InteractiveRenderer(BasePresenter):
         return (
             ("Space", "pause / resume"),
             ("L", "line-of-sight debug ray"),
+            ("R", "shooting threat range, both sides"),
+            ("E", "engagement range, both sides"),
             ("Click", "pin a model's tooltip"),
             ("Esc", "quit"),
         )
@@ -139,6 +147,10 @@ class InteractiveRenderer(BasePresenter):
             self._should_quit = True
         elif event.key == pygame.K_l:
             self._debug_los = not self._debug_los
+        elif event.key == pygame.K_r:
+            self.toggle_threat()
+        elif event.key == pygame.K_e:
+            self.toggle_engagement()
         elif event.key == pygame.K_TAB:
             self._show_keys = not self._show_keys
 

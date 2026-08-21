@@ -42,6 +42,7 @@ from wargame_rl.wargame.envs.domain.entities import WargameModel
 from wargame_rl.wargame.envs.renders.v2.backend import Canvas, RenderBackend
 from wargame_rl.wargame.envs.renders.v2.control import (
     ShadowRect,
+    ThreatOptions,
     compute_los_shadow,
     sight_from,
 )
@@ -155,8 +156,9 @@ class DebugPresenter(InteractiveRenderer):
         backend: RenderBackend,
         controls: DebugControls,
         theme: Theme = DEFAULT_THEME,
+        threat_options: ThreatOptions | None = None,
     ) -> None:
-        super().__init__(backend, theme)
+        super().__init__(backend, theme, threat_options)
         self._controls = controls
         # `view.observation` rebuilds on access and a paused window renders tens
         # of frames a second, so it is read once per step rather than per frame.
@@ -198,6 +200,8 @@ class DebugPresenter(InteractiveRenderer):
             ("D", "redo with fresh dice / with the same dice"),
             ("S", "shade what the selected model cannot see"),
             ("L", "line-of-sight debug ray"),
+            ("R", "shooting threat range, both sides"),
+            ("E", "engagement range, both sides"),
             ("Esc", "deselect, then quit"),
         )
 

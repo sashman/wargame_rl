@@ -81,6 +81,26 @@ class PygameBackend:
         if outline is not None:
             pygame.draw.circle(canvas, outline, center, radius, max(1, int(width)))
 
+    def draw_disc_union(
+        self,
+        canvas: pygame.Surface,
+        centers: list[Point],
+        radius_px: float,
+        fill: RGBA,
+    ) -> None:
+        """One SRCALPHA layer for the whole union, blitted once.
+
+        `pygame.draw.circle` writes into the layer rather than blending, so the
+        overlaps stay at the target alpha; a per-disc layer would double them.
+        """
+        if not centers:
+            return
+        radius = max(1, int(round(radius_px)))
+        layer = pygame.Surface(canvas.get_size(), pygame.SRCALPHA)
+        for x, y in centers:
+            pygame.draw.circle(layer, fill, (int(x), int(y)), radius)
+        canvas.blit(layer, (0, 0))
+
     def draw_text(
         self,
         canvas: pygame.Surface,
