@@ -65,7 +65,7 @@ def record_moves(
         if index >= len(action.actions):
             break
         chosen = int(action.actions[index])
-        displacement = handler.decode_action(chosen)
+        displacement = handler.decode_action(chosen, model_idx=index)
         start = before[index]
         moves[index] = MoveRecord(
             text=describe_action(
@@ -107,8 +107,10 @@ def resolve_order(
     )
     start = (float(model.location[0]), float(model.location[1]))
     delta = (x - start[0], y - start[1])
-    action = handler.best_action_toward(delta[0], delta[1], math.hypot(*delta))
-    displacement = handler.decode_action(action)
+    action = handler.best_action_toward(
+        delta[0], delta[1], math.hypot(*delta), model_idx=index
+    )
+    displacement = handler.decode_action(action, model_idx=index)
     shooting = handler.shooting_slice
     shoot_start = shooting.start if shooting is not None else env.n_actions
     shoot_end = shooting.end if shooting is not None else env.n_actions

@@ -84,7 +84,10 @@ def objective_extent(objective: WargameObjective) -> float:
 
 
 def step_toward_objective(
-    model: WargameModel, objective: WargameObjective, env: WargameEnv
+    model: WargameModel,
+    objective: WargameObjective,
+    env: WargameEnv,
+    model_idx: int | None = None,
 ) -> int:
     """Return the action moving `model` toward `objective`, or STAY once on it.
 
@@ -122,7 +125,7 @@ def step_toward_objective(
     if distance <= 0.0:
         return STAY_ACTION
     return env.player_action_handler.best_action_toward(
-        float(delta[0]), float(delta[1]), max_step_length=gap
+        float(delta[0]), float(delta[1]), max_step_length=gap, model_idx=model_idx
     )
 
 
@@ -150,5 +153,5 @@ class ScriptedObjectiveAssignmentPolicy(BaselinePolicy):
                 actions.append(STAY_ACTION)
                 continue
             objective = objectives[self.assign_objective(index, model, env)]
-            actions.append(step_toward_objective(model, objective, env))
+            actions.append(step_toward_objective(model, objective, env, index))
         return WargameEnvAction(actions=actions)

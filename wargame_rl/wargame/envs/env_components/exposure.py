@@ -128,11 +128,17 @@ class ExposureTracker:
     def firepower_ratio(self) -> float | None:
         """(our models that can fire) / (theirs that can), over the episode.
 
-        1.0 is an even exchange; above 1.0 the army brings more guns to bear
-        than the enemy does, which is the exchange ratio cover is actually for.
-        `exposure_rate` cannot say this: it counts only our side of the trade,
-        so hiding and declining a bad fight look identical to hiding and taking
-        a good one.
+        Above the neutral value the army brings more guns to bear than the enemy
+        does, which is the exchange ratio cover is actually for. `exposure_rate`
+        cannot say this: it counts only our side of the trade, so hiding and
+        declining a bad fight look identical to hiding and taking a good one.
+
+        ⚠ **The neutral value is 1.0 only when the two armies are the same
+        size.** These are raw shooter counts, deliberately -- what matters in a
+        firefight is how many guns fire, not what fraction of an establishment
+        they are -- so on a 25 v 18 board an even exchange reads ~1.39. Read the
+        ratio against the establishment ratio, not against 1.0, and never
+        compare it across scenarios with different force sizes.
 
         This counts **shooters**, not targets. The metric began as
         `firepower_advantage`, a difference between the models each side could

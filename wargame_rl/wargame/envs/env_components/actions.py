@@ -11,6 +11,7 @@ action masks.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -160,6 +161,7 @@ class ActionHandler:
         *,
         n_models: int | None = None,
         n_shoot_targets: int = 0,
+        model_moves: Sequence[float | None] | None = None,
     ) -> None:
         self._n_models = (
             n_models if n_models is not None else config.number_of_wargame_models
@@ -212,6 +214,36 @@ class ActionHandler:
             * self._speeds[np.newaxis, :, np.newaxis]
         )  # (n_angles, n_speeds, 2)
         self._displacements: np.ndarray = raw.astype(POSITION_DTYPE)
+
+        # Per-model Move (the rules' M). Resolved here, once, like every other
+        # rules distance -- and only materialised when a config actually asks
+        # for differing speeds.
+        #
+        # The shared table above is kept verbatim for the uniform case rather
+        # than being re-derived as fractions x M, because the two are NOT the
+        # same float: at M = 6, `6.0 / 6` is exactly 1.0 while
+        # `linspace(1/6, 1, 6)[0] * 6` is 0.9999999999999999. Rebuilding it
+        # would move every model on the board by an ULP and fail the golden
+        # gates, for no gain on the configs that do not use this.
+        self._move_speeds = np.full(self._n_models, max_speed, dtype=float)
+        for index, move in enumerate(model_moves or ()):
+            if index >= self._n_models:
+                break
+            if move is not None:
+                self._move_speeds[index] = quantities.scale.to_units(move)
+        if np.all(self._move_speeds == max_speed):
+            self._model_displacements: np.ndarray | None = None
+        else:
+            per_model = (
+                self._unit_directions[np.newaxis, :, np.newaxis, :]
+                * np.linspace(
+                    self._move_speeds / n_speeds,
+                    self._move_speeds,
+                    n_speeds,
+                    axis=-1,
+                )[:, np.newaxis, :, np.newaxis]
+            )  # (n_models, n_angles, n_speeds, 2)
+            self._model_displacements = per_model.astype(POSITION_DTYPE)
 
         self._n_move_actions = n_angles * n_speeds
         self._n_speed_bins = n_speeds
@@ -295,13 +327,35 @@ class ActionHandler:
             )
         return self._action_space
 
-    def decode_action(self, action: int) -> np.ndarray:
-        """Return the (dx, dy) displacement for *action*."""
+    @property
+    def move_speeds(self) -> np.ndarray:
+        """Per-model Move in board units — ``(n_models,)``.
+
+        Every entry is the scenario's ``max_move_speed`` unless the model's
+        config overrode it. Scripted policies read this rather than the config
+        so they step at the speed the handler will actually give them.
+        """
+        speeds: np.ndarray = self._move_speeds
+        return speeds
+
+    def decode_action(self, action: int, model_idx: int | None = None) -> np.ndarray:
+        """Return the (dx, dy) displacement for *action*.
+
+        ``model_idx`` selects that model's own speed bins when the scenario
+        gives its models different Move characteristics. Omitting it uses the
+        shared table, which is the whole table whenever every model is equally
+        fast — every config shipped today.
+        """
         if action == STAY_ACTION:
             return zero_position()
         move_idx = action - 1
         angle_idx = move_idx // self._n_speed_bins
         speed_idx = move_idx % self._n_speed_bins
+        if model_idx is not None and self._model_displacements is not None:
+            per_model: np.ndarray = self._model_displacements[
+                model_idx, angle_idx, speed_idx
+            ]
+            return per_model
         result: np.ndarray = self._displacements[angle_idx, speed_idx]
         return result
 
@@ -310,7 +364,11 @@ class ActionHandler:
         return 1 + angle_idx * self._n_speed_bins + speed_idx
 
     def best_action_toward(
-        self, dx: float, dy: float, max_step_length: float | None = None
+        self,
+        dx: float,
+        dy: float,
+        max_step_length: float | None = None,
+        model_idx: int | None = None,
     ) -> int:
         """Return the action that moves closest to the direction (dx, dy).
 
@@ -332,7 +390,9 @@ class ActionHandler:
         if max_step_length is not None:
             speed_idx = self._n_speed_bins - 1
             for s in range(self._n_speed_bins - 1, -1, -1):
-                disp = self._displacements[angle_idx, s]
+                disp = self.decode_action(
+                    self.encode_action(angle_idx, s), model_idx=model_idx
+                )
                 if np.linalg.norm(disp) <= max_step_length:
                     speed_idx = s
                     break
@@ -400,7 +460,7 @@ class ActionHandler:
             ):
                 continue
             model.previous_location = model.location.copy()
-            displacement = self.decode_action(act)
+            displacement = self.decode_action(act, model_idx=i)
             if not collides:
                 model.location = np.clip(model.location + displacement, lower, upper)
                 continue
