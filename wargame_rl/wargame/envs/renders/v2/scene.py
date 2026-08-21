@@ -392,7 +392,7 @@ def build_scene(
     board_h = view.config.board_height
 
     # Deployment zones (drawn first, under everything). A map brings its own
-    # outline where it has one -- only one of the six real deployments is an
+    # outline where it has one -- only two of the six real deployments are an
     # axis-aligned band, so drawing the rectangle on the others puts the tint
     # somewhere the army is not.
     for zone, outline, color, label in (

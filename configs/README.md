@@ -97,11 +97,12 @@ objective is checked against those cards in
 `tests/test_map_objective_counts.py`.
 
 **The tables carry their own deployment zones too.** `deployment_zone` is an
-axis-aligned band and only one of the six real deployments is one: two are
-triangles split by a board diagonal, two are stepped staircases, one is bounded
-by arcs. The names are ours — `diagonal_halves`, `long_edges`,
-`opposed_quadrants`, `short_edges`, `stepped_bands`, `stepped_columns` — used by
-10/9/8/7/6/5 of the 45 tables. **Here the API is trustworthy**, checked rather
+axis-aligned band and only two of the six real deployments are one:
+`long_edges` and `short_edges`, 11 of the 45 tables between them. The other 34
+are a pair of triangles split by a board diagonal (`diagonal_halves`), two
+stepped staircases (`stepped_bands`, `stepped_columns`) and one bounded by arcs
+(`opposed_quadrants`, 61 vertices a side). The names are ours, and the counts
+are 7/6/8/5/9/10 in that alphabetical order. **Here the API is trustworthy**, checked rather
 than assumed: the published cards' tinted region is ≥98% inside its polygon on
 all 45. ⚠ **`long_edges` puts the armies 20" apart across the short axis** where
 the others separate them by 24–40; at a 12" weapon range that is a different

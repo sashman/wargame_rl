@@ -271,9 +271,11 @@ Five things about these tables are live decisions, not history:
 - ⚠ **`long_edges` puts the armies 20" apart across the SHORT axis** against
   24–40 elsewhere. At a 12" weapon range that is a different game from turn one,
   and it is 6 of 45 tables.
-- **Zones are polygons, not the `deployment_zone` rectangle** — only one of the
-  six real deployments is an axis-aligned band. Both the placement wiring and the
-  *rendering* wiring are needed; see `envs/CLAUDE.md`.
+- **Zones are polygons, not the `deployment_zone` rectangle** — only two of the
+  six real deployments are axis-aligned bands (`long_edges` and `short_edges`,
+  11 of the 45 tables); the other 34 are triangles, staircases and arcs. Both
+  the placement wiring and the *rendering* wiring are needed; see
+  `envs/CLAUDE.md`.
 - **The pool has a ~6 vp resolution floor.** Per-table `vp_margin` sd is
   18.5–20.6, so even n=45 gives SE 2.75–3.07. More episodes per table cannot
   help: the variance is *across tables* and only 45 tables exist.
