@@ -391,20 +391,38 @@ def build_scene(
     board_w = view.config.board_width
     board_h = view.config.board_height
 
-    # Deployment zones (drawn first, under everything).
-    for zone, color, label in (
-        (view.deployment_zone, pal.deployment_zone, "Deployment Zone"),
-        (view.opponent_deployment_zone, pal.opponent_zone, "Opponent Zone"),
+    # Deployment zones (drawn first, under everything). A map brings its own
+    # outline where it has one -- only one of the six real deployments is an
+    # axis-aligned band, so drawing the rectangle on the others puts the tint
+    # somewhere the army is not.
+    for zone, outline, color, label in (
+        (
+            view.deployment_zone,
+            view.deployment_outline,
+            pal.deployment_zone,
+            "Deployment Zone",
+        ),
+        (
+            view.opponent_deployment_zone,
+            view.opponent_deployment_outline,
+            pal.opponent_zone,
+            "Opponent Zone",
+        ),
     ):
-        x0, y0, x1, y1 = (
-            float(zone[0]),
-            float(zone[1]),
-            float(zone[2]),
-            float(zone[3]),
-        )
-        prims.append(
-            Poly(((x0, y0), (x1, y0), (x1, y1), (x0, y1)), (*color, 255), None, 0)
-        )
+        if outline is not None:
+            points = tuple((float(x), float(y)) for x, y in outline.vertices)
+            prims.append(Poly(points, (*color, 255), None, 0))
+            x0, y0, x1, y1 = outline.bounds
+        else:
+            x0, y0, x1, y1 = (
+                float(zone[0]),
+                float(zone[1]),
+                float(zone[2]),
+                float(zone[3]),
+            )
+            prims.append(
+                Poly(((x0, y0), (x1, y0), (x1, y1), (x0, y1)), (*color, 255), None, 0)
+            )
         cx = max(x0 + (x1 - x0) / 2, x0)
         cy = max(y0 + (y1 - y0) / 2, y0)
         prims.append(Label(label, (cx, cy), 48, pal.zone_label))

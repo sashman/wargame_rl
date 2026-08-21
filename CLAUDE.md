@@ -313,7 +313,11 @@ Detailed patterns live next to the code they govern — read them when working i
 > **`long_edges` puts the armies 20" apart across the SHORT axis** against 24–40
 > elsewhere — at a 12" weapon range that is a different game from turn one, and
 > it is a fifth of the pool. A map with no `deployment` block still uses the
-> rectangle, so generated-terrain configs are unchanged.
+> rectangle, so generated-terrain configs are unchanged. ⚠ **The renderers drew the
+> config rectangle until 2026-08-21** — placement always used the polygon, but nothing
+> exposed it on `BattleView`, so every video from the first training run tinted the wrong
+> ground on the 15 tables where the two do not overlap. Nothing measured was affected;
+> only what was drawn.
 >
 > **The observation width did NOT change** — `objective_budget` stays 6 and
 > `terrain_budget` 16 — so every checkpoint still loads and paired arms still

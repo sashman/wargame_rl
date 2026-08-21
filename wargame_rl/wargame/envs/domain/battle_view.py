@@ -12,6 +12,7 @@ from wargame_rl.wargame.envs.domain.shooting import PairedShootingResult
 from wargame_rl.wargame.envs.domain.terrain import Terrain
 from wargame_rl.wargame.envs.types.config import WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import GameState
+from wargame_rl.wargame.envs.types.geometry import Polygon
 
 
 @runtime_checkable
@@ -41,6 +42,10 @@ class BattleView(Protocol):
     def deployment_zone(self) -> np.ndarray: ...
     @property
     def opponent_deployment_zone(self) -> np.ndarray: ...
+    @property
+    def deployment_outline(self) -> Polygon | None: ...
+    @property
+    def opponent_deployment_outline(self) -> Polygon | None: ...
     @property
     def current_turn(self) -> int: ...
     @property

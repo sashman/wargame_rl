@@ -206,11 +206,18 @@ class HumanRender(Renderer):
         self.window.fill((45, 45, 48))
         self.canvas.fill((255, 255, 255))
 
-        self._draw_deployment_zone(self.canvas, deployment_zone)
+        # A map's own zone is a polygon on five of the six real deployments, so
+        # the rectangle is only correct when the map has no outline of its own.
+        self._draw_deployment_zone(
+            self.canvas, deployment_zone, outline=view.deployment_outline
+        )
         self._draw_deployment_zone_text(self.canvas, deployment_zone, "Deployment Zone")
 
         self._draw_deployment_zone(
-            self.canvas, opponent_deployment_zone, color=(220, 200, 200)
+            self.canvas,
+            opponent_deployment_zone,
+            color=(220, 200, 200),
+            outline=view.opponent_deployment_outline,
         )
         self._draw_deployment_zone_text(
             self.canvas, opponent_deployment_zone, "Opponent Zone"
@@ -581,8 +588,20 @@ class HumanRender(Renderer):
         canvas: pygame.Surface,
         deployment_zone: np.ndarray,
         color: tuple[int, int, int] = (200, 200, 200),
+        outline: Polygon | None = None,
     ) -> None:
-        """Draw deployment zone on the canvas."""
+        """Draw deployment zone on the canvas, as its outline where it has one."""
+
+        if outline is not None:
+            pygame.draw.polygon(
+                canvas,
+                color,
+                [
+                    (float(vx) * self.pix_square_size, float(vy) * self.pix_square_size)
+                    for vx, vy in outline.vertices
+                ],
+            )
+            return
 
         x = float(deployment_zone[0] * self.pix_square_size)
         y = float(deployment_zone[1] * self.pix_square_size)

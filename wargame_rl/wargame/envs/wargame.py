@@ -94,6 +94,7 @@ from wargame_rl.wargame.envs.types import (
 )
 from wargame_rl.wargame.envs.types.config import ModelConfig
 from wargame_rl.wargame.envs.types.game_timing import BATTLE_PHASE_ORDER, GameState
+from wargame_rl.wargame.envs.types.geometry import Polygon
 from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
@@ -353,6 +354,22 @@ class WargameEnv(gym.Env):
     def n_actions(self) -> int:
         """Number of discrete actions per model (including stay)."""
         return self._action_handler.n_actions
+
+    @property
+    def deployment_outline(self) -> Polygon | None:
+        """The player zone actually deployed into, or None for the rectangle.
+
+        A property rather than an attribute copied at construction, unlike
+        `deployment_zone`: a pool draws a different map every episode and
+        each brings its own zones, so a snapshot taken once would describe
+        the first map forever.
+        """
+        return self._battle.deployment_outline
+
+    @property
+    def opponent_deployment_outline(self) -> Polygon | None:
+        """The opponent zone actually deployed into, or None for the rectangle."""
+        return self._battle.opponent_deployment_outline
 
     @property
     def player_action_handler(self) -> ActionHandler:
@@ -1188,6 +1205,8 @@ class WargameEnv(gym.Env):
             objectives=self.objectives,
             deployment_zone=self.deployment_zone,
             opponent_deployment_zone=self.opponent_deployment_zone,
+            deployment_outline=self.deployment_outline,
+            opponent_deployment_outline=self.opponent_deployment_outline,
             player_vp=self.player_vp,
             opponent_vp=self.opponent_vp,
             player_vp_delta=self.player_vp_delta,
