@@ -1,8 +1,15 @@
-# The eval tables were traced by hand, and the tracing was the error
+# The eval tables are generated now, and the tracing they replaced was right
 
-**2026-08-20.** `configs/evaluation/maps/` is now generated from the public
-layout Data API by `just fetch-maps`. The 45 tables are the *same* 45 layouts
-they always were — the hand-tracing that produced them is what changed.
+**2026-08-20**, measurement revised **2026-08-21**. `configs/evaluation/maps/`
+is now generated from the public layout Data API by `just fetch-maps`. The 45
+tables are the *same* 45 layouts they always were — what changed is that their
+geometry is the source's rather than an approximation of it, and that they now
+carry their own deployment zones.
+
+⚠ **The title of this report used to read "and the tracing was the error".**
+That is retracted — see § 3. The hand-traced objectives match the published
+layout cards on 45 of 45; the error was mine, in treating the API's objective
+markers as authoritative.
 
 **This is a re-derivation with provenance, not a new distribution.** Establishing
 that was the first job, because it decides whether the change is a tidy-up or a
@@ -173,16 +180,17 @@ checkpoint in `checkpoints/` — it must not be "tidied".
 
 ## 6. What it cost, measured
 
-> ⚠ **Stale — re-running.** The figures below were measured before objective
-> resolution was finished (they predate largest-in-range and one-ruin-per-marker).
-> They are kept because the *method* section under them stands; the numbers do
-> not.
-
 Four scripted policies on the golden training config, **all 45 tables**, n=30
-each, traced geometry against generated, paired by table. All 45 are admissible
-here for the same reason the joint decode was measured on all of them: **a
-scripted policy has no weights**, so the held-out split constrains nothing about
-this comparison.
+each, traced geometry against the tables **as they ship** — terrain, objectives
+*and* deployment zones — paired by table. All 45 are admissible here for the
+same reason the joint decode was measured on all of them: **a scripted policy
+has no weights**, so the held-out split constrains nothing about this
+comparison.
+
+The traced column reproduces the earlier run **to the decimal** on all three
+deterministic scripts (−1.56, −7.78, −7.42), so the harness is deterministic and
+the difference is the maps. `random` moves about 1 vp between runs, because its
+own seed is not pinned — do not read a `random` difference under ~2 vp.
 
 Reported with both a t and a **sign count**, because the per-table differences
 are heavy-tailed: a few tables move hugely in both directions while most move
@@ -192,41 +200,64 @@ alone misleads.
 | | traced | generated | diff | t | same sign |
 |---|---|---|---|---|---|
 | **`vp_margin`** | | | | | |
-| `random` | −217.9 | −236.8 | **−18.9** | −6.58 | 33/45 |
-| `squad_march_take` | −1.6 | −10.2 | −8.7 | −2.43 | 30/45 |
-| `squad_march_shoot` | −7.8 | −12.1 | −4.3 | −1.02 | 28/45 |
-| `squad_march_deny` | −7.4 | −14.7 | −7.3 | −1.93 | **24/45** |
+| `random` | −218.7 | −222.5 | −3.7 | −3.28 | 29/45 |
+| `squad_march_take` | −1.6 | **+5.9** | +7.5 | 2.06 | 27/45 |
+| `squad_march_shoot` | −7.8 | −5.9 | +1.8 | 0.55 | 24/45 |
+| `squad_march_deny` | −7.4 | **+5.4** | +12.8 | 3.87 | 31/45 |
 | **`held`** | | | | | |
-| `random` | 0.11 | 0.00 | **−0.11** | −5.15 | **44/45** |
-| `squad_march_take` | 2.64 | 2.35 | **−0.29** | −5.95 | 36/45 |
-| `squad_march_shoot` | 2.62 | 2.41 | **−0.21** | −3.78 | 32/45 |
-| `squad_march_deny` | 2.36 | 2.26 | **−0.11** | −2.72 | 29/45 |
+| `random` | 0.10 | 0.15 | +0.05 | 3.51 | 41/45 |
+| `squad_march_take` | 2.64 | 2.67 | +0.03 | 0.60 | 23/45 |
+| `squad_march_shoot` | 2.62 | 2.63 | +0.01 | 0.14 | 21/45 |
+| `squad_march_deny` | 2.36 | 2.45 | +0.09 | 2.36 | 27/45 |
 | **`on_obj`** | | | | | |
-| `squad_march_take` | 0.44 | 0.39 | **−0.05** | −6.09 | 38/45 |
-| `squad_march_shoot` | 0.44 | 0.40 | **−0.04** | −3.71 | 30/45 |
-| `squad_march_deny` | 0.40 | 0.37 | **−0.03** | −3.46 | 31/45 |
-| **`coherent`** | all four | | **≤ 0.01** | | |
+| `squad_march_take` | 0.975 | 0.981 | +0.01 | 2.72 | 32/45 |
+| `squad_march_shoot` | 0.970 | 0.973 | 0.00 | 0.96 | 30/45 |
+| `squad_march_deny` | 0.970 | 0.969 | −0.00 | −0.32 | 24/45 |
+| **`coherent`** | all four | | **≤ 0.02** | | |
 
-**The tables are harder to hold, and that is what is established.** `held` falls
-for every policy and `on_obj` with it, at t = −2.7 to −6.1 and consistent in
-sign. Coherency is untouched, as it should be — this changed terrain and
-objectives, not formation.
+**The tables are not harder. Three of the four policies score the same or
+better, and `held` does not fall for any of them.** The three scripted `held`
+diffs are +0.03, +0.01 and +0.09; `deny` and `take` gain 12.8 and 7.5 vp; the
+bar, `squad_march_shoot`, is a null on every metric except a −0.02 in coherency.
+Only `random` loses ground, by 3.7.
 
-**`vp_margin` is weaker than it looks.** Only `random` is decisive. `deny`'s
-−7.3 has t = −1.93 but a sign count of **24/45, which is chance** — the mean is
-carried by a handful of tables, not a broad shift. `take` is the one script with
-both tests agreeing (t = −2.43, 30/45), and `shoot` is unresolved on both.
+`vp_margin` is still the weaker of the two tests. `deny` is decisive on both
+(t = 3.87, 31/45), `take` is suggestive on one and chance-adjacent on the other
+(t = 2.06, 27/45), and `shoot` is a flat null. Coherency is untouched, as it
+should be — this changed terrain, objectives and starting positions, not
+formation.
 
-`random` collapsing by 18.9 is the clearest single effect and has an obvious
-cause: it scored by deploying onto home objectives and standing there, which is
-exactly the behaviour moving the objectives punishes, and nothing on the other
-side loses with it.
+### ⚠ The earlier version of this section said the opposite, and it was measuring a configuration that does not ship
+
+It reported the tables as **harder to hold** — `held` down −0.11 to −0.29 for
+every scripted policy at t = −2.7 to −6.1, and `random` down **−18.9** (t =
+−6.58) as the clearest single effect. Every one of those figures came from
+running the new terrain and objectives under the **old rectangular deployment
+zone**, because the zones had not landed yet. That combination is not a board
+anyone plays: the layouts place the armies, and moving the objectives without
+moving the deployments puts them in the wrong relation to each other.
+
+With the zones in, `random`'s −18.9 is −3.7 and its `held` *rises* on 41 of 45
+tables. The reasoning offered for the −18.9 — that `random` had been scoring by
+deploying onto home objectives and standing there — was a good explanation of a
+measurement artefact.
+
+**A second error in that section: its `on_obj` row was the `alive` column.** The
+traced values quoted for `on_obj` (0.44, 0.44, 0.40) are exactly the survivor
+fractions (0.439, 0.442, 0.401); true `on_obj` for those scripts is 0.97, as it
+must be for policies that march onto an objective and stand on it. So the
+"`on_obj` falls with `held`" finding was never about objective occupancy — it
+said models were dying more. Occupancy is in fact flat or slightly up.
 
 ### What the ruin merge itself cost
 
 Isolated by re-running everything against the pre-merge tables — same policies,
 same seeds, and an old-tables column that reproduced **to the decimal** on all
 four policies, so the harness is deterministic and the difference is the maps.
+
+⚠ **Both arms of this one predate the deployment zones**, so the absolute scores
+below are the superseded lineage. The *comparison* still holds: merged and
+unmerged differ only in the objectives, and both sat under the same rectangle.
 
 | | unmerged | merged | diff | t | same sign |
 |---|---|---|---|---|---|
@@ -251,12 +282,17 @@ than the opponent's, and no further explanation here is supported by evidence.
 Merging is kept regardless: it is what the objective *is*. A rule that is
 correct and costs a couple of VP is not a trade.
 
-### The pool has a resolution floor, and it is about 8 vp
+### The pool has a resolution floor, and it is about 6 vp
 
-Per-table `vp_margin` sd is **24 to 28**, so at n=45 the standard error is
-**3.6 to 4.2**. Effects under ~8 vp are not resolvable on this pool *at all* —
+Per-table `vp_margin` sd is **18.5 to 20.6**, so at n=45 the standard error is
+**2.75 to 3.07**. Effects under ~6 vp are not resolvable on this pool *at all* —
 and more episodes per table cannot help, because the variance is **across
 tables** and there are only 45 tables in existence.
+
+That floor is **better than the traced tables' ~8 vp**, and the deployment zones
+are why: every table now starts its armies in a shape the layout specifies
+rather than in one rectangle imposed on all 45, which removes a source of
+across-table spread rather than adding one.
 
 **Pairing does not rescue it either, and the reason is worth keeping.** Pairing
 cancels variance when the unit is identical and only the treatment differs. Here
@@ -274,8 +310,54 @@ is not enough to characterise a map change.
 
 ### The new bar
 
-All 45, n=30: `random` −236.8 · `take` −10.2 · `shoot` −12.1 · `deny` −14.7.
-Coherency 0.76–0.80 throughout.
+All 45, n=30, seeds 700000+: `random` **−222.5** · `take` **+5.9** ·
+`shoot` **−5.9** · `deny` **+5.4**. Coherency 0.75–0.82 throughout.
+
+Note the bar for this config is `squad_march_shoot` by convention, but on these
+tables it is the *worst* of the three scripts — `take` and `deny` both finish
+positive and are within 0.5 vp of each other, well inside the ~6 vp floor. Quote
+the policy by name, not as "the bar".
+
+## 6b. The agent, re-trained on these tables
+
+Three seeds of the documented recipe (`configs/golden/25v25_maps_two_mode.yaml`,
+`ent_coef` 0.003, 300 epochs, wandb group `new-maps-baseline`), scored on the
+nine held-out tables at n=30 under the verified top-3 decode, on the **refereed**
+eval configs, with the scripts re-measured against each opponent.
+
+| opponent | agent | per seed | best script | gap | t | same sign |
+|---|---|---|---|---|---|---|
+| `squad_march_take` | **+22.6** | +24.4 / +14.8 / +28.8 | −1.1 (`deny`) | **+23.7** | 3.14 | 8/9 |
+| `squad_march_shoot` | **+40.2** | +49.0 / +22.4 / +49.3 | +23.0 (`take`) | +17.2 | 1.78 | 7/9 |
+| `squad_march_deny` | **+24.4** | +31.8 / +12.0 / +29.5 | −8.9 (`take`) | **+33.4** | 4.00 | 8/9 |
+| `contest_and_spread` | +21.8 | +30.9 / +8.1 / +26.4 | **+30.2** (`take`) | **−8.4** | −1.11 | 3/9 |
+
+Intended unit coherency **0.950–0.954** on every opponent, against a scripted
+0.903–0.908. Formation holds in all four, including the matchup it loses.
+
+**Two decisive leads, one unresolved lead, one loss.** The `contest_and_spread`
+loss is **not** statistically established either (t = −1.11, 3 of 9), but it is
+the only matchup without a lead, and it contradicts a claim that was live in
+`CLAUDE.md` — that the loss "no longer exists" and "was a property of the weaker
+lineage". Measured here on the generated tables with the lineage the documented
+recipe produces, it exists. That claim was made on the hand-traced tables.
+
+### The referee is not optional, and leaving it off flatters the scripts
+
+The first pass at this scored the same three seeds on the **training** config,
+which sets no `enforce_move` and no `attrition`. It read **+20.6 for the agent
+against a best script of +13.7** — a lead of 6.8 rather than 23.7.
+
+The referee cancels a unit's move when the move breaks coherency, so it taxes
+each policy in proportion to how often it breaks it. The agent intends 0.95
+coherency and pays almost nothing; the scripts intend 0.90 and pay about 16 vp
+(`squad_march_take` goes +13.7 unrefereed to −2.4 refereed on the same matchup).
+Turning the referee off therefore removes a penalty the scripts have earned and
+the agent has not.
+
+This is the same error as § 6's deployment zones, twice in two days: **measuring
+a configuration that is not the one being played.** The training config is not
+the eval config, and the difference is not a detail.
 
 ## 7. Three bugs this turned up, two of them mine
 
