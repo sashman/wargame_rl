@@ -19,6 +19,11 @@ from wargame_rl.wargame.envs.renders.v2.backends.pygame_aa_backend import (
     PygameAABackend,
 )
 from wargame_rl.wargame.envs.renders.v2.backends.pygame_backend import PygameBackend
+from wargame_rl.wargame.envs.renders.v2.control import (
+    THREAT_SMOOTHING,
+    THREAT_SPACING,
+    ThreatOptions,
+)
 from wargame_rl.wargame.envs.renders.v2.presenters.interactive import (
     InteractiveRenderer,
 )
@@ -56,6 +61,7 @@ def build_renderer(
     *,
     backend: str = "pillow",
     theme: Theme | str = DEFAULT_THEME,
+    threat_options: ThreatOptions | None = None,
 ) -> Renderer:
     """Construct a renderer.
 
@@ -63,6 +69,9 @@ def build_renderer(
     mode: ``interactive`` (window) or ``recording`` (headless frames).
     backend: v2 drawing backend — ``pygame``, ``pygame_aa`` or ``pillow``.
     theme: a `Theme`, or a registry name (``default`` / ``tabletop``).
+    threat_options: the threat/engagement overlays and their sampling. Both are
+        off by default, and `[R]` / `[E]` flip them wherever there is a keyboard
+        — a recording has none, which is why they are settable here at all.
     """
     if name == "legacy":
         return HumanRender()
@@ -72,7 +81,28 @@ def build_renderer(
     be = build_backend(backend)
     resolved = resolve_theme(theme)
     if mode == "interactive":
-        return InteractiveRenderer(be, resolved)
+        return InteractiveRenderer(be, resolved, threat_options)
     if mode == "recording":
-        return RecordingRenderer(be, resolved)
+        return RecordingRenderer(be, resolved, threat_options)
     raise ValueError(f"unknown mode {mode!r} (available: interactive, recording)")
+
+
+def threat_options(
+    show_threat: bool = False,
+    show_engagement: bool = False,
+    grid: float = THREAT_SPACING,
+    smoothing: int = THREAT_SMOOTHING,
+) -> ThreatOptions:
+    """Build `ThreatOptions` from flat CLI values.
+
+    One place, so `simulate`, `play`, `debug`, the training recorder and
+    `replay-render` cannot drift into parsing the same four switches
+    differently — and so a bad `--threat-grid` is rejected once, at build time,
+    with the same message everywhere.
+    """
+    return ThreatOptions(
+        show_threat=show_threat,
+        show_engagement=show_engagement,
+        spacing=grid,
+        smoothing=smoothing,
+    )

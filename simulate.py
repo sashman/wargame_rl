@@ -15,7 +15,8 @@ import typer
 from pydantic_yaml import parse_yaml_raw_as
 
 from wargame_rl.wargame.envs.renders.human import QuitRequested
-from wargame_rl.wargame.envs.renders.v2 import build_renderer
+from wargame_rl.wargame.envs.renders.v2 import build_renderer, threat_options
+from wargame_rl.wargame.envs.renders.v2.control import THREAT_SMOOTHING, THREAT_SPACING
 from wargame_rl.wargame.envs.state import EventLogExporter, JsonMatchCodec
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.common.argmax_agent import ArgmaxAgent
@@ -51,6 +52,10 @@ def simulate(
     renderer_name: str = "legacy",
     backend: str = "pillow",
     theme: str = "default",
+    show_threat_range: bool = False,
+    show_engagement_range: bool = False,
+    threat_grid: float = THREAT_SPACING,
+    threat_smoothing: int = THREAT_SMOOTHING,
 ) -> None:
     """Run simulation with trained agent.
 
@@ -67,6 +72,10 @@ def simulate(
         renderer_name: ``legacy`` (HumanRender) or ``v2`` (the new renderer)
         backend: v2 drawing backend (``pillow``, ``pygame`` or ``pygame_aa``)
         theme: v2 theme name (``default`` or ``tabletop``)
+        show_threat_range: draw each side's range ∩ line-of-sight footprint
+        show_engagement_range: draw each side's engagement zone
+        threat_grid: sampling grid for the threat sweep, in inches
+        threat_smoothing: Chaikin passes on the threat outline
     """
 
     if not os.path.exists(checkpoint_path):
@@ -76,7 +85,15 @@ def simulate(
 
     env_config = get_env_config(env_config_path, render)
     renderer = (
-        build_renderer(renderer_name, "interactive", backend=backend, theme=theme)
+        build_renderer(
+            renderer_name,
+            "interactive",
+            backend=backend,
+            theme=theme,
+            threat_options=threat_options(
+                show_threat_range, show_engagement_range, threat_grid, threat_smoothing
+            ),
+        )
         if render
         else None
     )
@@ -244,6 +261,24 @@ def main(
         "pillow", help="v2 drawing backend: 'pillow', 'pygame' or 'pygame_aa'"
     ),
     theme: str = typer.Option("default", help="v2 theme: 'default' or 'tabletop'"),
+    show_threat_range: bool = typer.Option(
+        False,
+        "--threat-range",
+        help="Outline the ground each side can shoot: weapon range intersected with line of sight.",
+    ),
+    show_engagement_range: bool = typer.Option(
+        False,
+        "--engagement-range",
+        help="Shade each side's engagement range — inside it, a model may not shoot at all.",
+    ),
+    threat_grid: float = typer.Option(
+        THREAT_SPACING,
+        help="Sampling grid for the threat sweep, in inches. Coarser is cheaper and blurs small cover pockets.",
+    ),
+    threat_smoothing: int = typer.Option(
+        THREAT_SMOOTHING,
+        help="Chaikin smoothing passes on the threat outline. 0 draws the sampled shape exactly.",
+    ),
 ) -> None:
     # Handle dynamic defaults inside the function
     # Typer fills a default only when *it* invokes the command. Called directly
@@ -269,6 +304,10 @@ def main(
         renderer_name=renderer,
         backend=backend,
         theme=theme,
+        show_threat_range=show_threat_range,
+        show_engagement_range=show_engagement_range,
+        threat_grid=threat_grid,
+        threat_smoothing=threat_smoothing,
     )
 
 

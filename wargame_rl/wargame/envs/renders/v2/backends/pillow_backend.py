@@ -98,6 +98,31 @@ class PillowBackend:
                 box, outline=(*outline, 255), width=max(1, int(width))
             )
 
+    def draw_disc_union(
+        self,
+        canvas: Image.Image,
+        centers: list[Point],
+        radius_px: float,
+        fill: RGBA,
+    ) -> None:
+        """One overlay for the whole union, blended in once.
+
+        `ImageDraw.ellipse` *writes* pixels rather than compositing, so circles
+        overlapping inside the overlay stay at the target alpha instead of
+        stacking. Building the layer by `alpha_composite`-ing one disc at a time
+        would reintroduce exactly the doubling this primitive exists to avoid.
+        """
+        if not centers:
+            return
+        radius = max(1.0, float(radius_px))
+        overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+        for x, y in centers:
+            draw.ellipse(
+                [(x - radius, y - radius), (x + radius, y + radius)], fill=fill
+            )
+        canvas.alpha_composite(overlay)
+
     def draw_text(
         self,
         canvas: Image.Image,

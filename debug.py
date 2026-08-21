@@ -44,7 +44,12 @@ from wargame_rl.wargame.envs.debug.reproduce import (
 from wargame_rl.wargame.envs.debug.reproduce import (
     reset_options as reproduce_reset_options,
 )
-from wargame_rl.wargame.envs.renders.v2.factory import build_backend, resolve_theme
+from wargame_rl.wargame.envs.renders.v2.control import THREAT_SMOOTHING, THREAT_SPACING
+from wargame_rl.wargame.envs.renders.v2.factory import (
+    build_backend,
+    resolve_theme,
+    threat_options,
+)
 from wargame_rl.wargame.envs.renders.v2.presenters.debug import (
     DebugControls,
     DebugPresenter,
@@ -92,6 +97,24 @@ def debug(
         help="Scripted baseline name, or a path to a .ckpt, driving the player.",
     ),
     theme: str = typer.Argument("default", help="Renderer theme: default | tabletop."),
+    show_threat_range: bool = typer.Option(
+        False,
+        "--threat-range",
+        help="Outline the ground each side can shoot: weapon range intersected with line of sight.",
+    ),
+    show_engagement_range: bool = typer.Option(
+        False,
+        "--engagement-range",
+        help="Shade each side's engagement range — inside it, a model may not shoot at all.",
+    ),
+    threat_grid: float = typer.Option(
+        THREAT_SPACING,
+        help="Sampling grid for the threat sweep, in inches. Coarser is cheaper and blurs small cover pockets.",
+    ),
+    threat_smoothing: int = typer.Option(
+        THREAT_SMOOTHING,
+        help="Chaikin smoothing passes on the threat outline. 0 draws the sampled shape exactly.",
+    ),
     seed: int = typer.Option(700000, help="Episode seed."),
     from_recording: str | None = typer.Option(
         None,
@@ -110,7 +133,14 @@ def debug(
 ) -> None:
     """Open a window on one episode and step it under your control."""
     controls = DebugControls()
-    renderer = DebugPresenter(build_backend(backend), controls, resolve_theme(theme))
+    renderer = DebugPresenter(
+        build_backend(backend),
+        controls,
+        resolve_theme(theme),
+        threat_options(
+            show_threat_range, show_engagement_range, threat_grid, threat_smoothing
+        ),
+    )
     source = env_config_path.split("/")[-1]
     reset_options: dict[str, int] | None = None
     recorded: list[list[int] | None] | None = None

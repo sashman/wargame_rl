@@ -434,6 +434,17 @@ class WargameEnv(gym.Env):
         return self._player_max_ranges
 
     @property
+    def opponent_max_ranges(self) -> np.ndarray:
+        """Longest weapon range per opponent model, resolved once from config.
+
+        The mirror of `player_max_ranges`. It existed only as a private
+        attribute, which the threat overlay cannot reach: a renderer reading one
+        side off the protocol and the other off `_opponent_max_ranges` would
+        draw one army's reach from the engine and the other's from a guess.
+        """
+        return self._opponent_max_ranges
+
+    @property
     def exposure_rate(self) -> float | None:
         """Fraction of alive model-shooting-phases an enemy could see and shoot.
 

@@ -182,8 +182,8 @@ train-multi *configs:
 simulate-latest:
 	uv run simulate.py
 
-simulate checkpoint env_config_path:
-	uv run simulate.py --checkpoint-path {{checkpoint}} --env-config-path {{env_config_path}}
+simulate checkpoint env_config_path overlays='':
+	uv run simulate.py --checkpoint-path {{checkpoint}} --env-config-path {{env_config_path}} {{overlays}}
 
 # Record a match event log from a trained checkpoint (no rendering) for analysis.
 # Use it like: just record-sim checkpoints/<run>/best.ckpt configs/golden/25v25_shooting_opponent.yaml
@@ -234,8 +234,8 @@ replay-summary file:
 
 # Replay a recording visually: an interactive window (play/pause/step/scrub) or,
 # with an out path, an MP4. Reads terrain from schema-2.1 recordings.
-replay-render file out='' theme='tabletop':
-	uv run replay_events.py render {{file}} --theme {{theme}} {{ if out != '' { '--out ' + out } else { '' } }}
+replay-render file out='' theme='tabletop' overlays='':
+	uv run replay_events.py render {{file}} --theme {{theme}} {{overlays}} {{ if out != '' { '--out ' + out } else { '' } }}
 
 # Compact rolling-mean summary of a Wandb training run. Use: just run-summary <run_id> [bucket]
 run-summary run_id bucket='50':
@@ -387,24 +387,28 @@ test-env:
 	uv run main.py --env_test
 
 # Watch a scripted policy play in a window — no checkpoint needed. [Tab] lists the keys.
+# [R] and [E] toggle the threat and engagement overlays live; pass them in `overlays`
+# to start with them on, e.g. just play <cfg> <policy> tabletop "--threat-range".
 # Use it like: just play · just play configs/dev/tiny.yaml random · just play <cfg> squad_march tabletop
-play env_config_path='configs/golden/25v25_shooting_opponent.yaml' policy='squad_march_shoot' theme='default':
-	uv run play.py {{env_config_path}} {{policy}} {{theme}}
+play env_config_path='configs/golden/25v25_shooting_opponent.yaml' policy='squad_march_shoot' theme='default' overlays='':
+	uv run play.py {{env_config_path}} {{policy}} {{theme}} {{overlays}}
 
 # Step a match by hand and rewind it. Takes a baseline name or a .ckpt path.
+# [R] shooting threat, [E] engagement range; `overlays` starts them on and can tune
+# the sweep, e.g. "--threat-range --threat-grid 2.0 --threat-smoothing 0".
 # Opens paused: [.] steps forward, [,] steps back, [Space] plays, [Tab] lists the keys.
 # A config with `skip_phases: []` steps one sub-phase at a time instead of one round.
 # Use it like: just debug · just debug configs/dev/tiny.yaml random · just debug <cfg> <run>/last.ckpt
-debug env_config_path='configs/golden/25v25_shooting_opponent.yaml' driver='squad_march_shoot' theme='default':
-	uv run debug.py {{env_config_path}} {{driver}} {{theme}}
+debug env_config_path='configs/golden/25v25_shooting_opponent.yaml' driver='squad_march_shoot' theme='default' overlays='':
+	uv run debug.py {{env_config_path}} {{driver}} {{theme}} {{overlays}}
 
 # Recreate the episode a recording came from and step it by hand. The recording
 # carries its own config, seed, dice and driver, so nothing else is needed --
 # pass a driver only to override the one it names. Replays the recording's own
 # actions until you change something, then the driver takes over.
 # Use: just debug-recording recordings/my_events.jsonl
-debug-recording file driver='squad_march_shoot' theme='default':
-	uv run debug.py --from-recording {{file}} configs/golden/25v25_shooting_opponent.yaml {{driver}} {{theme}}
+debug-recording file driver='squad_march_shoot' theme='default' overlays='':
+	uv run debug.py --from-recording {{file}} configs/golden/25v25_shooting_opponent.yaml {{driver}} {{theme}} {{overlays}}
 
 # One-shot: create branch from main, commit, push, open PR. Use after staging changes.
 # Always branches from main; if not on main, checks out main and pulls first.

@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 
 from wargame_rl.wargame.envs.renders.v2.backend import Canvas, RenderBackend
+from wargame_rl.wargame.envs.renders.v2.control import ThreatOptions
 from wargame_rl.wargame.envs.renders.v2.presenters.base import BasePresenter
 from wargame_rl.wargame.envs.renders.v2.scene import (
     SHOT_FADE_FRAMES,
@@ -304,8 +305,9 @@ class ReplayPresenter(BasePresenter):
         source: ReplaySource,
         theme: Theme = DEFAULT_THEME,
         fps: int = 5,
+        threat_options: ThreatOptions | None = None,
     ) -> None:
-        super().__init__(backend, theme)
+        super().__init__(backend, theme, threat_options)
         if len(source) == 0:
             raise ValueError("Cannot replay an empty recording")
         self._source = source
@@ -333,6 +335,8 @@ class ReplayPresenter(BasePresenter):
 
     def key_map(self) -> tuple[tuple[str, str], ...]:
         return (
+            ("R", "shooting threat range, both sides"),
+            ("E", "engagement range, both sides"),
             ("Space", "play / pause (restarts at the end)"),
             ("<-  ->", "step one frame"),
             ("Home  End", "first / last frame"),
@@ -478,6 +482,12 @@ class ReplayPresenter(BasePresenter):
             return False
         if key == pygame.K_TAB:  # type: ignore[attr-defined]
             self._show_keys = not self._show_keys
+            return True
+        if key == pygame.K_r:  # type: ignore[attr-defined]
+            self.toggle_threat()
+            return True
+        if key == pygame.K_e:  # type: ignore[attr-defined]
+            self.toggle_engagement()
             return True
         if key == pygame.K_SPACE:  # type: ignore[attr-defined]
             # Replaying from the end restarts; otherwise toggle.

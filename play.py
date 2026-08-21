@@ -23,7 +23,8 @@ from wargame_rl.wargame.envs.baseline.registry import (
     get_registry,
 )
 from wargame_rl.wargame.envs.renders.human import QuitRequested
-from wargame_rl.wargame.envs.renders.v2 import build_renderer
+from wargame_rl.wargame.envs.renders.v2 import build_renderer, threat_options
+from wargame_rl.wargame.envs.renders.v2.control import THREAT_SMOOTHING, THREAT_SPACING
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
@@ -40,6 +41,24 @@ def play(
         "squad_march_shoot", help="Scripted baseline driving the player."
     ),
     theme: str = typer.Argument("default", help="Renderer theme: default | tabletop."),
+    show_threat_range: bool = typer.Option(
+        False,
+        "--threat-range",
+        help="Outline the ground each side can shoot: weapon range intersected with line of sight.",
+    ),
+    show_engagement_range: bool = typer.Option(
+        False,
+        "--engagement-range",
+        help="Shade each side's engagement range — inside it, a model may not shoot at all.",
+    ),
+    threat_grid: float = typer.Option(
+        THREAT_SPACING,
+        help="Sampling grid for the threat sweep, in inches. Coarser is cheaper and blurs small cover pockets.",
+    ),
+    threat_smoothing: int = typer.Option(
+        THREAT_SMOOTHING,
+        help="Chaikin smoothing passes on the threat outline. 0 draws the sampled shape exactly.",
+    ),
     episodes: int = typer.Option(0, help="Episodes to play; 0 plays until you quit."),
     seed: int = typer.Option(700000, help="Seed of the first episode."),
     fps: int = typer.Option(4, help="Frames per second."),
@@ -51,7 +70,15 @@ def play(
         raise typer.BadParameter(f"unknown policy {policy!r}; try one of {available}")
 
     config = parse_yaml_file_as(WargameEnvConfig, env_config_path)
-    renderer = build_renderer("v2", "interactive", backend=backend, theme=theme)
+    renderer = build_renderer(
+        "v2",
+        "interactive",
+        backend=backend,
+        theme=theme,
+        threat_options=threat_options(
+            show_threat_range, show_engagement_range, threat_grid, threat_smoothing
+        ),
+    )
     env = WargameEnv(config=config, renderer=renderer)
     # The window's frame rate, which the interactive presenter reads off the
     # view's metadata in `setup` — so it has to be set before that call.

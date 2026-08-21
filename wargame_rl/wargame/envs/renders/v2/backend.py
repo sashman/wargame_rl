@@ -13,7 +13,14 @@ from typing import Any, Protocol
 import numpy as np
 
 from wargame_rl.wargame.envs.renders.v2.camera import Camera
-from wargame_rl.wargame.envs.renders.v2.scene import Disc, Label, Poly, Scene, Seg
+from wargame_rl.wargame.envs.renders.v2.scene import (
+    Disc,
+    DiscUnion,
+    Label,
+    Poly,
+    Scene,
+    Seg,
+)
 from wargame_rl.wargame.envs.renders.v2.theme import RGB, RGBA
 
 # The canvas is the backend's own surface type; callers pass it back opaquely.
@@ -61,6 +68,20 @@ class RenderBackend(Protocol):
         width: int,
     ) -> None:
         """Fill (honouring alpha) and/or outline a circle."""
+        ...
+
+    def draw_disc_union(
+        self,
+        canvas: Canvas,
+        centers: list[Point],
+        radius_px: float,
+        fill: RGBA,
+    ) -> None:
+        """Fill the union of N equal circles, compositing the alpha once.
+
+        Drawing them as N translucent discs would double the alpha wherever two
+        overlap; this paints them into one layer and blends that layer in.
+        """
         ...
 
     def draw_text(
@@ -115,6 +136,13 @@ def rasterize(
                 primitive.fill,
                 primitive.outline,
                 primitive.outline_w,
+            )
+        elif isinstance(primitive, DiscUnion):
+            backend.draw_disc_union(
+                canvas,
+                [camera.to_px(x, y) for x, y in primitive.centers],
+                primitive.radius * camera.scale,
+                primitive.fill,
             )
         elif isinstance(primitive, Seg):
             backend.draw_line(

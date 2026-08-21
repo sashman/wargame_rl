@@ -92,16 +92,16 @@ wargame_rl/
 | Train one seed with flags (parallelisable) | `just train-seed-flags <max_epochs> <seed> <group> <tag> <flags> <configs...>` |
 | Ship (branch → commit → push → PR) | `just ship <branch> "<message>"` |
 | Simulate latest | `just simulate-latest` |
-| Simulate / record a checkpoint | `just simulate <ckpt> <config.yaml>` · `just record-sim <ckpt> <config.yaml>` |
+| Simulate / record a checkpoint | `just simulate <ckpt> <config.yaml> [overlays]` · `just record-sim <ckpt> <config.yaml>` |
 | Regenerate the eval tables from the layout API | `just fetch-maps [owner] [maps_dir]` |
 | Record the README's GIFs (exact colours, median of N) | `just record-gifs <policy\|ckpt> <config> [tables]` |
 | Test env (random) | `just test-env` |
-| Watch a scripted policy play (no checkpoint) | `just play [config.yaml] [policy] [theme]` |
-| Step a match by hand and rewind it | `just debug [config.yaml] [policy\|ckpt] [theme]` |
-| Recreate a recorded match exactly and step it | `just debug-recording <file> [policy\|ckpt] [theme]` |
+| Watch a scripted policy play (no checkpoint) | `just play [config.yaml] [policy] [theme] [overlays]` |
+| Step a match by hand and rewind it | `just debug [config.yaml] [policy\|ckpt] [theme] [overlays]` |
+| Recreate a recorded match exactly and step it | `just debug-recording <file> [policy\|ckpt] [theme] [overlays]` |
 | Record a match event log | `just record <config.yaml>` |
 | Replay / narrate a log | `just replay <file>` · `just replay-summary <file>` |
-| Replay a log visually (window or MP4) | `just replay-render <file> [out.mp4] [theme]` — tabletop by default |
+| Replay a log visually (window or MP4) | `just replay-render <file> [out.mp4] [theme] [overlays]` — tabletop by default |
 | Analyse a log | `just analyze <file>` · `just analyze-compare <files...>` |
 | Inspect a Wandb run | `just run-summary <run_id> [bucket]` |
 | Measure reward-phase gates | `just measure-phase-gates <ckpt> <config.yaml> [n_episodes]` |
@@ -593,7 +593,8 @@ project's effort has gone, and the shape of the problem is now settled.
 - Key options: `--record-during-training`, `--max-epochs`, `--n-eval-episodes`,
   `--seed`, `--tf32`, `--precision`, `--eval-every-n-epochs`, `--lr`,
   `--max-grad-norm`, `--render-mode`, `--no-wandb`, `--run-suffix`,
-  `--wandb-group`, `--warm-start-ckpt-path`, `--resume-ckpt-path`.
+  `--wandb-group`, `--warm-start-ckpt-path`, `--resume-ckpt-path`,
+  `--record-threat-range`, `--record-engagement-range`.
 - `just profile <config.yaml> [max_epochs]` writes `profile.html` (`--no-wandb`,
   capped at 5 epochs by default); `just simulate-latest` runs the newest
   checkpoint.

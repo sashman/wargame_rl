@@ -82,6 +82,23 @@ class Palette:
     # event on the board, and reading it should not depend on knowing whose
     # tracer it was — the line already carries the shooter's side.
     shot_kill: RGB = (255, 240, 120)
+    # Threat overlays. By side, like the tracers and for the same reason: the
+    # shape is one army's reach and merging is per side, so a group ramp has
+    # nothing to say about it. The shooting threat is a line on a busy board, so
+    # it takes the stronger colour; the engagement wash covers ground under the
+    # pieces, so its alpha sits below the terrain fill's (90) and the shadow's
+    # (96) -- at 2.26" a model it can blanket a third of the table.
+    threat_player: RGB = (40, 90, 200)
+    threat_opponent: RGB = (200, 45, 40)
+    # The threat outline gets a wash of its own colour behind it. An outline
+    # alone does not say which SIDE of the frontier is threatened -- the region
+    # covers 36-41% of the board, so its boundary meanders down the middle --
+    # and without the wash the band where both armies' reach overlaps, which is
+    # the most useful thing on the board, cannot be seen at all. Kept very low:
+    # this sits under the models and must not compete with objective control.
+    threat_fill_alpha: int = 22
+    engagement_player: RGBA = (60, 130, 255, 48)
+    engagement_opponent: RGBA = (230, 60, 50, 48)
 
 
 @dataclass(frozen=True)
@@ -168,6 +185,13 @@ TABLETOP_PALETTE = Palette(
     shot_player=(46, 92, 148),
     shot_opponent=(176, 48, 38),
     shot_kill=(206, 138, 47),
+    # A little more alpha than the default theme: the parchment ground is warm
+    # and swallows a cool wash.
+    threat_player=(36, 74, 122),
+    threat_opponent=(150, 40, 32),
+    threat_fill_alpha=26,
+    engagement_player=(46, 92, 148, 52),
+    engagement_opponent=(176, 48, 38, 52),
 )
 
 TABLETOP_THEME = Theme(palette=TABLETOP_PALETTE)
