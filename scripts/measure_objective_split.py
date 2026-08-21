@@ -15,7 +15,13 @@ will close it.
 Accepts either a scripted baseline name or a checkpoint path, so the agent and
 the bar are measured by one code path on identical layouts.
 
-Usage: just measure-objective-split <policy|ckpt> <env_config> [n_episodes]
+`decode_topk` must match how the checkpoint is SCORED. At the default 1 this
+measures the independent per-model argmax, which on this project is a different
+player from the one that ships: joint constrained decoding is worth +40.5 vp and
+takes intended coherency 0.639 -> 0.936, so an argmax objective split explains a
+policy nobody plays.
+
+Usage: just measure-objective-split <policy|ckpt> <env_config> [n_episodes] [decode_topk]
 """
 
 from __future__ import annotations
@@ -121,6 +127,7 @@ def main() -> None:
     policy_name = sys.argv[1]
     config_path = sys.argv[2]
     n_episodes = int(sys.argv[3]) if len(sys.argv) > 3 else 100
+    decode_topk = int(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4] else 1
 
     with open(config_path) as handle:
         env_config = parse_yaml_raw_as(WargameEnvConfig, handle.read())
@@ -134,7 +141,7 @@ def main() -> None:
         select = selector_for(build_baseline_policy(policy_name))
         label = policy_name
     else:
-        select, _net = build_selector(policy_name, env)
+        select, _net = build_selector(policy_name, env, decode_topk)
         label = policy_name.split("/")[-2] if "/" in policy_name else policy_name
 
     seeds = [HELDOUT_SEED_BASE + i for i in range(n_episodes)]
