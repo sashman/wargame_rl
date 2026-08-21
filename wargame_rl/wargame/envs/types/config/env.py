@@ -247,7 +247,7 @@ class WargameEnvConfig(BaseModel):
         min_length=3,
         description="Player deployment zone as an outline, replacing the "
         "rectangle. The real deployments are triangles, staircases and arcs; "
-        "only one of the six is an axis-aligned band. None keeps the rectangle, "
+        "only two of the six are axis-aligned bands. None keeps the rectangle, "
         "which is the exact no-op.",
     )
     opponent_deployment_outline: list[tuple[float, float]] | None = Field(

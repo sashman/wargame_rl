@@ -12,26 +12,11 @@ combat is shooting, to a maximum of 12 inches.** Every player — hand-written o
 trained — is scored on **nine tables it has never seen**, reported as the average
 victory-point margin, ours minus theirs.
 
-**The opponent is now `squad_march_take`, the strongest hand-written player**,
-and that change is why the numbers below look small. Measured with that same
-player on both sides of the change, over all 45 tables: it scores **+126.2**
-against the weak opponent this project used until recently, and **+5.9** against
-the current one. The game got about 120 points harder, so **nothing here is
-comparable to a figure quoted before 2026-08-16.**
-
-Everything below was re-measured on 2026-08-21, on evaluation tables that are
-now **generated from the published layout data** rather than traced by hand —
-new terrain, objectives resolved as ruins, and each table's own deployment zones.
-Two earlier bug fixes also moved the game: a **dead** model used to keep yours
-from shooting (2026-08-19), and models stopped blocking line of sight
-(2026-08-13). Figures quoted before those dates are not comparable either.
-
 ### What a game looks like
 
 Four of the nine held-out tables, one game each, played by the trained model
-against `squad_march_take`. The tables carry **six different deployment shapes**
-and only one of them is the rectangle a scenario config can describe — the
-tinted bands below are the layouts' own zones.
+against `squad_march_take`. The tinted areas are each layout's own deployment
+zones, and the four below are four of the six shapes the tables use.
 
 | | |
 |---|---|
@@ -41,11 +26,11 @@ tinted bands below are the layouts' own zones.
 | **table 35 — stepped bands.** A **loss**, 150–205, down to 6 models. | **table 15 — diagonal halves.** The zone is a triangle cut by the board diagonal. Ends **105–70**. |
 
 *Each is the **median of eleven** games on that table — a rule chosen so the
-picture is not the model's best game, which is how the previous illustration
-here was picked. Read them as one game each, not as a score: over thirty games
-this model averages +21, +46, **+12** and +56 on these four tables respectively.
-Table 35 is the honest one — its median game is a loss even though its average is
-positive, so a single game there is a poor guide either way.*
+picture is not the model's best game. Read them as one game each, not as a
+score: over thirty games this model averages +21, +46, **+12** and +56 on these
+four tables respectively. Table 35 is the honest one — its median game is a loss
+even though its average is positive, so a single game there is a poor guide
+either way.*
 
 ### The opponents
 

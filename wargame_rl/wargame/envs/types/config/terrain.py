@@ -51,10 +51,11 @@ class TerrainPieceConfig(BaseModel):
 class DeploymentConfig(BaseModel):
     """The two zones a layout is played with, as outlines rather than rectangles.
 
-    The real deployments are not rectangles: of the six the tables use, two are
-    triangles split by a board diagonal, two are stepped staircases and one is
-    bounded by arcs. Only one pair resembles the axis-aligned bands
-    `deployment_zone` describes, which is why a map carries its own.
+    The real deployments are mostly not rectangles: of the six the tables use,
+    one is a pair of triangles split by a board diagonal, two are stepped
+    staircases and one is bounded by arcs. Only `long_edges` and `short_edges`
+    resemble the axis-aligned bands `deployment_zone` describes -- 11 of the 45
+    tables -- which is why a map carries its own.
 
     The names are **ours** -- `long_edges`, `stepped_columns` and so on describe
     the shape, because the published names belong to the product the rules
