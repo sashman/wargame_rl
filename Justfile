@@ -330,6 +330,16 @@ measure-income-share policy env_config n_episodes='30':
 measure-paired policy_a policy_b env_config n_episodes='100' seed_base='700000' *overrides:
 	@uv run python -m scripts.measure_paired_policies {{policy_a}} {{policy_b}} {{env_config}} {{n_episodes}} {{seed_base}} {{overrides}}
 
+# Where the travel reward actually points. `closest_objective_v2` is the only
+# calculator that pays a model to move BETWEEN objectives, and two gates inside
+# it decide where: a candidate test that only pays for arrivals flipping control
+# THIS STEP by ONE model, and a per-objective assignment that can leave a unit
+# with nothing and fall it through to "walk to your nearest". This reports what
+# both gates decided, so a reward change is aimed at a measured cause.
+# Use it like: just measure-shaping-gates <ckpt> configs/golden/25v25_maps_two_mode.yaml 30 "" 3
+measure-shaping-gates policy env_config n_episodes='30' maps_dir='' decode_topk='1' *overrides:
+	@uv run python -m scripts.measure_shaping_gates {{policy}} {{env_config}} {{n_episodes}} "{{maps_dir}}" "{{decode_topk}}" {{overrides}}
+
 # Why an objective was not held: abandoned, narrowly lost, or lost by a mile.
 # `held` alone cannot separate those, and they call for different fixes. Also
 # reports the redistribution ceiling -- what any pure re-allocation lever could
