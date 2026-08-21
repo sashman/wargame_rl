@@ -99,7 +99,7 @@ A complete, serialisable Pydantic model of the game at one point in time. This i
 
 ```python
 class GameStateSnapshot(BaseModel):
-    schema_version: str = "2.5"
+    schema_version: str = "2.6"
     step: int
     max_steps: int
     clock: ClockSnapshot

@@ -16,6 +16,8 @@ import numpy as np
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.domain.entities import WargameModel, alive_mask_for
+from wargame_rl.wargame.envs.domain.sight import BlockingMask, line_of_sight_matrix
+from wargame_rl.wargame.envs.domain.terrain import Terrain
 from wargame_rl.wargame.envs.env_components.distance_cache import (
     compute_distances,
     objective_ownership_from_norms_offset,
@@ -504,4 +506,33 @@ def _chaikin(ring: Ring, iterations: int, board_w: float, board_h: float) -> Rin
         points = cut
     return tuple(
         (min(max(x, 0.0), board_w), min(max(y, 0.0), board_h)) for x, y in points
+    )
+
+
+def sight_matrix_from_terrain(
+    origins: np.ndarray,
+    targets: np.ndarray,
+    terrain: Terrain,
+    blocking_mask: BlockingMask | None,
+    *,
+    sample_step: float,
+    candidates: np.ndarray | None = None,
+) -> np.ndarray:
+    """`(P, Q)` sight, traced against terrain the caller already holds.
+
+    The replay adapter's `line_of_sight_matrix`. It goes through the engine's own
+    `domain.sight` rather than through anything in `renders/`, so a replayed
+    threat region is the same answer as the live one — which is the whole reason
+    `build_scene` is shared between the two paths in the first place.
+
+    It lives here because `control.py` is the single v2 -> domain seam; putting
+    it in `replay.py` would open a second one.
+    """
+    return line_of_sight_matrix(
+        origins,
+        targets,
+        terrain,
+        blocking_mask,
+        sample_step=sample_step,
+        candidates=candidates,
     )

@@ -82,14 +82,22 @@ def _positions_key(models: Sequence[Any]) -> bytes:
 def _can_trace_sight(view: BattleView) -> bool:
     """Whether this view can answer the sight and range questions itself.
 
-    True for a live env. False for the replay adapter until it carries the
-    rules quantities and its own `line_of_sight_matrix` — a recorded frame has
-    the terrain but not, yet, the weapon ranges.
+    True for a live env, and for a replay of a schema-2.6 recording. False for
+    an older one: it carries the attributes but `rules_quantities` is None,
+    because no sample step was recorded and guessing one would answer a
+    *different* question convincingly.
     """
-    return all(
+    if not all(
         hasattr(view, attr)
-        for attr in ("line_of_sight_matrix", "player_max_ranges", "opponent_max_ranges")
-    )
+        for attr in (
+            "line_of_sight_matrix",
+            "player_max_ranges",
+            "opponent_max_ranges",
+            "rules_quantities",
+        )
+    ):
+        return False
+    return view.rules_quantities is not None
 
 
 class BasePresenter(Renderer):
