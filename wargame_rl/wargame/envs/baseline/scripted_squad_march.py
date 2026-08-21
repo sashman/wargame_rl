@@ -57,12 +57,18 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
         if not objectives:
             return WargameEnvAction(actions=actions)
 
-        # The SLOWEST member's Move, not the scenario's: a squad marches as a
-        # body on one shared vector, and that is what keeps its formation rigid
-        # and therefore legal. A member that cannot cover the shared step would
-        # be left behind, breaking the very property this policy relies on.
+        # Per SQUAD, and that distinction is load-bearing. A squad marches as a
+        # body on one shared vector -- that is what keeps its formation rigid
+        # and therefore legal -- so its step is capped by its own slowest
+        # member, since a member that cannot cover the shared step is left
+        # behind and breaks the property this policy relies on.
+        #
+        # Taking the minimum over the whole ARMY instead is identical while
+        # every model is equally fast, and silently wrong the moment they are
+        # not: one slow squad would cap a fast one, so a scripted bar could not
+        # use a speed a learned policy can. That flatters the agent against a
+        # hobbled bar, which is the most expensive class of error here.
         speeds = env.player_action_handler.move_speeds
-        max_step = float(speeds.min()) if speeds.size else 0.0
         group_ids = sorted({model.group_id for model in models})
         targets = self.squad_objectives(models, env, group_ids)
 
@@ -74,6 +80,9 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
             ]
             if not member_indices:
                 continue
+            max_step = float(
+                min(speeds[i] for i in member_indices) if speeds.size else 0.0
+            )
 
             objective = targets[squad_index]
             radius = objective_extent(objective)
