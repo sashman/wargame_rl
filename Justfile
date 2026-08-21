@@ -349,6 +349,12 @@ measure-noise-floor env_config n_layouts='10' n_combat_seeds='10' policy='':
 # Terrain-layout statistics for a random_terrain config: coverage, how often a
 # sightline is blocked, and how much of the board is genuinely out of sight.
 # Tune a terrain profile here, not after a thousand epochs of training.
+# Record one game per table and write a GIF of each, for the README.
+# Frames go straight to the GIF -- never via an mp4, which drifts every flat
+# colour. Use: just record-gifs <policy|ckpt> <config> [table_a,table_b]
+record-gifs policy env_config tables='' maps_dir='' out='' seed='' decode_topk='' width='':
+	@uv run python -m scripts.record_gifs {{policy}} {{env_config}} "{{tables}}" "{{maps_dir}}" "{{out}}" "{{seed}}" "{{decode_topk}}" "{{width}}"
+
 measure-terrain env_config n_layouts='200':
 	@uv run python -m scripts.measure_terrain {{env_config}} {{n_layouts}}
 

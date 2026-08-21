@@ -166,7 +166,9 @@ opponent_policy:
 
 `shoots` is derived from whether the baseline overrides `select_shooting`, so a shooting baseline gets its mask refined with range, line-of-sight and engagement validity and a movement-only one does not pay for the check. It is not a performance switch: declared wrongly, shots would be applied unchecked.
 
-**Use case:** the opponent was the ceiling. Measured on `configs/golden/25v25_maps_coherency.yaml` and the same config with `squad_march_take` as the opponent (`configs/experiments/25v25_maps_take_opponent.yaml`) — same 60 layouts, seeds 700000+, `vp_margin` with win rate in brackets:
+**Use case:** the opponent was the ceiling. Measured on `configs/golden/25v25_maps_coherency.yaml` and the same config with `squad_march_take` as the opponent (`configs/experiments/25v25_maps_take_opponent.yaml`) — same 60 layouts, seeds 700000+, `vp_margin` with win rate in brackets.
+
+⚠ **These absolute figures were measured on the hand-traced evaluation tables and are superseded** — the tables were regenerated on 2026-08-20. The *comparison* stands, because both columns were measured on the same tables. Re-measured on the generated tables (all 45, n=30, seeds 700000+), the left column reads: `random` −59.6, `squad_march_shoot` +116.7, `contest_and_spread` +112.8, `squad_march_take` +126.2, `squad_march_deny` +121.6.
 
 | player | vs `scripted_advance_and_shoot` | coherent | vs `squad_march_take` | coherent |
 |---|---|---|---|---|

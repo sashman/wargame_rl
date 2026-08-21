@@ -94,6 +94,7 @@ wargame_rl/
 | Simulate latest | `just simulate-latest` |
 | Simulate / record a checkpoint | `just simulate <ckpt> <config.yaml>` · `just record-sim <ckpt> <config.yaml>` |
 | Regenerate the eval tables from the layout API | `just fetch-maps [owner] [maps_dir]` |
+| Record the README's GIFs (exact colours, median of N) | `just record-gifs <policy\|ckpt> <config> [tables]` |
 | Test env (random) | `just test-env` |
 | Watch a scripted policy play (no checkpoint) | `just play [config.yaml] [policy] [theme]` |
 | Step a match by hand and rewind it | `just debug [config.yaml] [policy\|ckpt] [theme]` |
@@ -283,14 +284,31 @@ Five things about these tables are live decisions, not history:
 here while convention calls it "the bar" — **name the policy, never say "the
 bar"**.
 
+**The opponent is worth ~120 vp, measured with one policy on both sides.**
+`squad_march_take` scores **+126.2** against `scripted_advance_and_shoot`
+(`25v25_maps_coherency`) and **+5.9** against `squad_march_take` itself
+(`25v25_maps_two_mode`) — same 45 tables, same n, both unrefereed. That gap is
+why every pre-2026-08-16 figure is incomparable, and it is the honest form of the
+comparison: one policy, two opponents, rather than swapping policies between
+columns.
+
 **On the other four golden configs** (they generate their own terrain and are
 unaffected by the table change), re-measured 2026-08-19 post corpse-fix, n=100 at
 seeds 700000+, `squad_march_shoot`: `25v25_shooting_opponent` **+13.3**,
 `25v25_cover_control` **+15.9**, `25v25_single_phase` / `25v25_curriculum`
 **+70.3** (identical, as they share a scenario — a useful consistency check).
-Floors (`random`): −124.9, −133.5, −256.6 / −256.0. ⚠ `25v25_maps_coherency`
-draws from the same tables as `two_mode` and **has not been re-measured**; its old
-+105.7 is void and −5.9 does not carry across to it.
+Floors (`random`): −124.9, −133.5, −256.6 / −256.0.
+
+**`25v25_maps_coherency` re-measured 2026-08-21 on the generated tables**, all
+45, n=30, seeds 700000+ (it is *unrefereed* — `enforce_at_deployment` only — so
+these are not comparable to a refereed number): `squad_march_take` **+126.2**,
+`squad_march_deny` +121.6, `squad_march_shoot` **+116.7** (was +105.7),
+`contest_and_spread` +112.8, `random` **−59.6** (was −14.7). `take` is the
+strongest here, not `shoot`. ⚠ **`random` lost 45 points**, by far the biggest
+mover — the same mechanism as on `two_mode`: it used to score by deploying onto
+home objectives and standing there, and the generated tables put the objectives
+somewhere else. ⚠ **The agent has not been trained on this config since the
+tables changed**; only the bar is current.
 
 ### Where the agent stands
 

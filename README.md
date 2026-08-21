@@ -13,23 +13,39 @@ trained — is scored on **nine tables it has never seen**, reported as the aver
 victory-point margin, ours minus theirs.
 
 **The opponent is now `squad_march_take`, the strongest hand-written player**,
-and that change is why the numbers below look small. Against the weak opponent
-this project used until recently, the best hand-written play scores **+105.7**;
-against this one it scores **−6.2**. The game got about 110 points harder, so
-**nothing here is comparable to a figure quoted before 2026-08-16.**
+and that change is why the numbers below look small. Measured with that same
+player on both sides of the change, over all 45 tables: it scores **+126.2**
+against the weak opponent this project used until recently, and **+5.9** against
+the current one. The game got about 120 points harder, so **nothing here is
+comparable to a figure quoted before 2026-08-16.**
 
-Everything below was re-measured on 2026-08-19 after a bug fix that changed the
-game: a **dead** model used to keep yours from shooting, which fired on 8.7% of
-model-steps. Figures quoted before that date are not comparable either.
+Everything below was re-measured on 2026-08-21, on evaluation tables that are
+now **generated from the published layout data** rather than traced by hand —
+new terrain, objectives resolved as ruins, and each table's own deployment zones.
+Two earlier bug fixes also moved the game: a **dead** model used to keep yours
+from shooting (2026-08-19), and models stopped blocking line of sight
+(2026-08-13). Figures quoted before those dates are not comparable either.
 
-![The trained model playing table 30](docs/images/agent-plays-table-30.gif)
+### What a game looks like
 
-*One game on table 30, one of the nine it has never seen. It ends **230–135**
-with **12 models left against 3** — and its squads stay together throughout
-(unit coherency **0.950** here, against 0.934–0.942 for this model in general).
-Selected from a sweep of twenty games on this table, on **both** counts — a
-decisive win and clean formation — so it is the model at its best, not its
-average: the median game on this table is **+28**, not +95.*
+Four of the nine held-out tables, one game each, played by the trained model
+against `squad_march_take`. The tables carry **six different deployment shapes**
+and only one of them is the rectangle a scenario config can describe — the
+tinted bands below are the layouts' own zones.
+
+| | |
+|---|---|
+| ![Table 45, long edges](docs/images/agent-table-45-long-edges.gif) | ![Table 30, opposed quadrants](docs/images/agent-table-30-opposed-quadrants.gif) |
+| **table 45 — long edges.** Armies 20 inches apart across the *short* axis, at a 12-inch weapon range: a different game from turn one. Ends **120–60**. | **table 30 — opposed quadrants.** The zone boundary is an arc, 61 vertices. Ends **235–175**, 12 models left. |
+| ![Table 35, stepped bands](docs/images/agent-table-35-stepped-bands.gif) | ![Table 15, diagonal halves](docs/images/agent-table-15-diagonal-halves.gif) |
+| **table 35 — stepped bands.** A **loss**, 150–205, down to 6 models. | **table 15 — diagonal halves.** The zone is a triangle cut by the board diagonal. Ends **105–70**. |
+
+*Each is the **median of eleven** games on that table — a rule chosen so the
+picture is not the model's best game, which is how the previous illustration
+here was picked. Read them as one game each, not as a score: over thirty games
+this model averages +21, +46, **+12** and +56 on these four tables respectively.
+Table 35 is the honest one — its median game is a loss even though its average is
+positive, so a single game there is a poor guide either way.*
 
 ### The opponents
 
@@ -54,13 +70,9 @@ and understated the model by about 16 points.)
 Figures are the **average victory-point margin — ours minus theirs**, so 0 is a
 dead heat and +20 means winning by twenty points a game.
 
-The hand-written players are re-measured against **each** opponent, because
-changing the opponent changes the game:
-
-Re-measured **2026-08-21** on the generated evaluation tables, over three
-independently trained models, nine held-out tables, n=30, verified top-3 decode,
-with the hand-written players **re-measured against each opponent** (swapping the
-opponent voids every baseline on that config):
+Re-measured **2026-08-21** on the generated evaluation tables, with the
+hand-written players re-measured against **each** opponent — swapping the
+opponent changes the game, and voids every baseline on that config:
 
 | opponent it faces | trained model<br>*avg VP margin* | best hand-written player<br>*avg VP margin* | |
 |---|---|---|---|
