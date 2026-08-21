@@ -147,14 +147,21 @@ train-seed-flags max_epochs seed group tag flags *configs:
 # field and the PPO default is 0.03, while the baseline is the 0.003 arm --
 # worth +5.9 +/- 2.5 vp read paired on seed. Plain `just train` silently trains
 # the worse arm.
+#
+# `first_seed` and `tag` exist to EXTEND an existing set of seeds rather than
+# retrain it. Seed spread on this config is 11 vp, and on the four-opponent
+# table it is larger than the differences being read, so the answer to a
+# marginal result is more seeds -- which must not re-run the seeds already
+# trained. `tag` keeps the new runs in the same checkpoint lineage as the old.
 # Use: just train-coherency-baseline 300 3
-train-coherency-baseline max_epochs='300' n_seeds='3':
+# Use: just train-coherency-baseline 300 3 4 -newmaps   # seeds 4,5,6
+train-coherency-baseline max_epochs='300' n_seeds='3' first_seed='1' tag='-baseline':
 	@trap 'kill 0' INT TERM && \
-	for s in $(seq 1 {{n_seeds}}); do \
+	for s in $(seq {{first_seed}} $(( {{first_seed}} + {{n_seeds}} - 1 ))); do \
 		uv run train.py --record-during-training --record-every-n-epochs 10 \
 			--env-config-path configs/golden/25v25_maps_two_mode.yaml \
 			--max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" \
-			--ent-coef 0.003 --run-suffix "s$s-baseline" \
+			--ent-coef 0.003 --run-suffix "s$s{{tag}}" \
 			--wandb-group coherency-baseline & \
 	done; \
 	wait
@@ -323,8 +330,8 @@ measure-paired policy_a policy_b env_config n_episodes='100' seed_base='700000':
 # reports the redistribution ceiling -- what any pure re-allocation lever could
 # buy at best -- so a reward-shaping idea can be ruled out before it is trained.
 # Takes a baseline name or a checkpoint path.
-measure-objective-split policy env_config n_episodes='100':
-	@uv run python -m scripts.measure_objective_split {{policy}} {{env_config}} {{n_episodes}}
+measure-objective-split policy env_config n_episodes='100' decode_topk='1':
+	@uv run python -m scripts.measure_objective_split {{policy}} {{env_config}} {{n_episodes}} "{{decode_topk}}"
 
 # How often a policy is in unit coherency (rules 03-moving.md), which this env
 # does not enforce. Measures both forces, at the rules' 2"/9" and at the config's

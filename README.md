@@ -34,19 +34,20 @@ either way.*
 
 ### The opponents
 
-All four are hand-written. They form a ladder — each adds exactly one behaviour
-to the one above it — except the last, which plays a different way entirely:
+All five are hand-written. The middle three form a ladder — each adds exactly
+one behaviour to the one above it — while the first and last play differently:
 
 | opponent | what it does |
 |---|---|
+| `advance_and_shoot` | Every model steers for *its own* nearest objective, pulled slightly toward the group's centre, and fires at a target drawn at random from those in range. No squads and no allocation at all. **Weakest of the five**, and the only one that is not a squad player. |
 | `squad_march_shoot` | Each squad marches to one objective as a body and holds it, firing at the nearest target in range. |
 | `squad_march_deny` | The same, but squads with nothing left to hold go and **contest what the other side holds**. |
-| `squad_march_take` | The same, but those spare squads instead go for the **most weakly held** objective — the cheapest to flip. Strongest of the four. |
+| `squad_march_take` | The same, but those spare squads instead go for the **most weakly held** objective — the cheapest to flip. **Strongest of the five**. |
 | `contest_and_spread` | Allocates squads against **where the enemy has actually deployed** rather than by a fixed rule, and spreads its fire instead of always shooting the nearest. |
 
 ### What it scores
 
-Nine held-out tables, three independently trained models, 20 rounds a game.
+Nine held-out tables, **six** independently trained models, 20 rounds a game.
 Trained by `just train-coherency-baseline` on
 `configs/golden/25v25_maps_two_mode.yaml` and played with the top-3 joint decode
 — **both matter**, and a figure quoted without them is not comparable. (The
@@ -61,33 +62,44 @@ opponent changes the game, and voids every baseline on that config:
 
 | opponent it faces | trained model<br>*avg VP margin* | best hand-written player<br>*avg VP margin* | |
 |---|---|---|---|
-| `squad_march_take` — the strongest | **+22.6** | −1.1 | **ahead by 23.7** |
-| `squad_march_shoot` | **+40.2** | +23.0 | ahead by 17.2 |
-| `squad_march_deny` | **+24.4** | −8.9 | **ahead by 33.4** |
-| `contest_and_spread` | +21.8 | **+30.2** | **behind by 8.4** |
+| `squad_march_deny` | **+26.4** | −8.9 | **ahead by 35.4** |
+| `squad_march_take` — the strongest | **+25.1** | −1.1 | **ahead by 26.1** |
+| `squad_march_shoot` | **+39.2** | +23.0 | ahead by 16.2 |
+| `contest_and_spread` | +20.8 | **+30.2** | behind by 9.5 |
+| `advance_and_shoot` — the weakest | +61.4 | **+137.2** | **behind by 75.9** |
 
-**Ahead of the best hand-written play in three matchups of four, and behind in
-the fourth.**
+**Ahead of the best hand-written play in three matchups of five, and behind in
+two.** Two of the leads are decisive — paired per table, t = 3.3 and 4.5, the
+model ahead on 8 and on **all 9** tables. The lead against `squad_march_shoot`
+is **not settled** (t = 1.6, 7 of 9), and neither is the `contest_and_spread`
+loss (t = −1.2, 4 of 9).
 
-Two of the three leads are decisive — paired per table, t = 3.1 and 4.0, the
-same sign on 8 of 9 tables. The lead against `squad_march_shoot` is **not
-settled** (t = 1.8, 7 of 9). Nor is the loss against `contest_and_spread`
-(t = −1.1, 3 of 9), but it is the one matchup where the model does not lead, and
-the seed spread is wide there: +30.9, +8.1, +26.4 against a bar of +30.2.
+**The last row is settled, and it is the important one.** Behind by 76 points on
+**every one of the nine tables**. It is not a different failure from the
+`contest_and_spread` loss — it is the same one, larger:
 
-That opponent spreads thin, and taking cheap ground has always been this model's
-weakest habit — it wins by conceding little rather than by taking much, which is
-worth less against an opponent that holds nothing firmly.
+> **The model wins by conceding, not by taking.** It parks on about two
+> objectives and holds them, against every opponent alike. When the opponent
+> would otherwise score heavily, not conceding is worth 60–96 points a game and
+> the model wins comfortably. When the opponent is weak, *everyone* holds it to
+> the same score, that advantage is worth nothing, and all that remains is
+> ground taken — where the hand-written players reach three or four objectives
+> and the model still sits on two.
+
+The two halves separate cleanly: across all five matchups the model scores 42 to
+71 fewer points than the best hand-written player — flat, whoever it plays —
+while its defensive advantage falls from +96 to **zero**. The margin tracks how
+much the opponent would have scored, at a correlation of **0.99**.
 
 ⚠ **An earlier version of this table showed `contest_and_spread` as a 9.4-point
-lead, and it was measured on the hand-traced tables.** On the generated ones the
-matchup reverses. Do not treat the loss as retired.
+lead, measured on the hand-traced tables.** On the generated ones the matchup
+reverses. Do not treat the loss as retired.
 
 It also keeps its squads together better than any hand-written player in every
-matchup — unit coherency **0.950–0.954**, against a scripted band of
-**0.903–0.908**. That is the game's own formation rule, and it is measured on
+matchup — unit coherency **0.938–0.955**, against a scripted band of
+**0.867–0.908**. That is the game's own formation rule, and it is measured on
 what the model *intended*, not on what a referee corrected. Formation is the one
-thing that holds in **all four** matchups, including the one it loses.
+thing that holds in **all five** matchups, including the two it loses.
 
 ⚠ Read those numbers *down a column*, never across. A player's absolute score
 mostly measures how weak its opponent is — the trained model scores *higher*

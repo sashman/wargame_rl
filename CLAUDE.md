@@ -309,37 +309,71 @@ these are not comparable to a refereed number): `squad_march_take` **+126.2**,
 strongest here, not `shoot`. ⚠ **`random` lost 45 points**, by far the biggest
 mover — the same mechanism as on `two_mode`: it used to score by deploying onto
 home objectives and standing there, and the generated tables put the objectives
-somewhere else. ⚠ **The agent has not been trained on this config since the
-tables changed**; only the bar is current.
+somewhere else.
+
+⚠ **Nothing trains on `25v25_maps_coherency` any more, and that is deliberate.**
+Comments stripped it is byte-identical to `25v25_maps_two_mode` but for
+`config_name` and the opponent (`tests/test_map_config_pairs.py` pins this), so
+it is not a second scenario — it is the same one against an opponent worth ~120
+vp less. Its agent column comes from scoring the `two_mode` lineage on
+`configs/evaluation/25v25_maps_vs_advance_and_shoot.yaml`, the refereed member
+of the eval family, where the agent is **−75.9 behind the best script on 0 of 9
+tables**. Training against the weaker opponent would produce a weaker agent at
+the matchup it is already worst at; spend the GPU elsewhere.
 
 ### Where the agent stands
 
-Three seeds of the documented recipe (`configs/golden/25v25_maps_two_mode.yaml`,
+**Six seeds** of the documented recipe (`configs/golden/25v25_maps_two_mode.yaml`,
 `ent_coef` 0.003, 300 epochs, `just train-coherency-baseline`), held-out nine,
 n=30, verified top-3 decode, **refereed** eval configs, scripts re-measured per
-opponent:
+opponent. Measured 2026-08-21:
 
 | opponent | agent | best script | gap | t | sign |
 |---|---|---|---|---|---|
-| `squad_march_take` | **+22.6** | −1.1 (`deny`) | **+23.7** | 3.14 | 8/9 |
-| `squad_march_shoot` | **+40.2** | +23.0 (`take`) | +17.2 | 1.78 | 7/9 |
-| `squad_march_deny` | **+24.4** | −8.9 (`take`) | **+33.4** | 4.00 | 8/9 |
-| `contest_and_spread` | +21.8 | **+30.2** (`take`) | **−8.4** | −1.11 | 3/9 |
+| `squad_march_deny` | **+26.4** | −8.9 (`take`) | **+35.4** | 4.49 | **9/9** |
+| `squad_march_take` | **+25.1** | −1.1 (`deny`) | **+26.1** | 3.32 | 8/9 |
+| `squad_march_shoot` | **+39.2** | +23.0 (`take`) | +16.2 | 1.64 | 7/9 |
+| `contest_and_spread` | +20.8 | **+30.2** (`take`) | **−9.5** | −1.18 | 4/9 |
+| `advance_and_shoot` | +61.4 | **+137.2** (`deny`) | **−75.9** | **−7.12** | **0/9** |
 
-Coherency **0.950–0.954** on every opponent against a scripted 0.903–0.908 —
-formation holds even in the matchup it loses.
+Coherency **0.938–0.955** on every opponent against a scripted 0.867–0.908 —
+formation holds even in the matchups it loses. Seeds 4–6 moved every pre-existing
+row by under 2 vp, so the table is now a replication rather than a first read.
+
+**ONE trait explains all five rows: the agent's defence is excellent and its
+offence is capped, so its lead is whatever denial happens to be worth.** Split
+the gap into what it scores minus what the script scores (offence) and what the
+script concedes minus what it concedes (defence):
+
+| opponent | script concedes | offence | defence | gap |
+|---|---|---|---|---|
+| `squad_march_deny` | 223.5 | −60.8 | **+96.1** | +35.3 |
+| `squad_march_take` | 219.6 | −56.3 | **+82.3** | +26.1 |
+| `squad_march_shoot` | 197.1 | −42.0 | +58.2 | +16.2 |
+| `contest_and_spread` | 184.2 | −48.0 | +38.5 | −9.5 |
+| `advance_and_shoot` | 128.0 | −71.3 | **−4.5** | −75.8 |
+
+Offence is flat at −42 to −71 everywhere; defence runs +96 down to **zero**, and
+the gap tracks *what the best script concedes* at **r = +0.991**. `held` is
+1.9–2.1 against every opponent while the scripts reach 2.9–3.9 against the weak
+ones. The agent plays the same game regardless and cannot tell which game it is
+in.
 
 - ⚠ **Absolute score measures the OPPONENT, not the agent.** The agent scores
   *higher* against weaker opponents while being further behind the scripts. Only
   the same-row comparison means anything, and swapping the opponent voids every
   baseline on that config.
-- ⚠ **The `contest_and_spread` loss is real again.** A previous note said it "no
-  longer exists"; that was measured on the hand-traced tables. It is not
-  statistically settled (t=−1.11) and one seed carries it (+30.9 / +8.1 / +26.4),
-  but it is the only matchup without a lead. The mechanism: the agent wins by
-  conceding little rather than taking much, and denial is worth less against an
-  opponent that holds nothing firmly. The claim is **"a better defensive player
-  than any script"**, not "a better player".
+- ⚠ **The weaker the opponent, the worse the agent does — relative to a script.**
+  Against `advance_and_shoot` both sides concede ~130, so the defensive edge is
+  worth nothing and only the offensive deficit is left: **−75.9 on 0 of 9
+  tables**, the largest and most significant deficit ever measured here. This is
+  not a different failure from `contest_and_spread`'s −9.5; it is the same one
+  with denial priced at zero.
+- ⚠ **`contest_and_spread` is unchanged at six seeds** (−8.4 → −9.5) and still
+  not statistically settled (t=−1.18, 4/9). What six seeds *did* settle is that
+  it is not a one-seed artefact — the per-seed band is +8.1 to +30.9, all six
+  behind the script's +30.2. The claim is **"a better defensive player than any
+  script"**, not "a better player".
 - ⚠ **ALWAYS state which config a quoted agent number was trained on.** Missing
   provenance is why two lineages sat side by side in the docs undetected.
 
