@@ -57,32 +57,40 @@ dead heat and +20 means winning by twenty points a game.
 The hand-written players are re-measured against **each** opponent, because
 changing the opponent changes the game:
 
-> ⚠ **These figures were measured on the hand-traced evaluation tables, which were
-> replaced on 2026-08-20.** The tables are now generated from the layout API
-> (`just fetch-maps`) — the same 45 layouts, but with the source's own geometry and
-> objectives instead of a tracing of them, and 18% of objectives moved by up to
-> 13.7". The margins below have not yet been re-measured on the new tables and are
-> history until they are. The scenario, the opponents and the method are unchanged.
+Re-measured **2026-08-21** on the generated evaluation tables, over three
+independently trained models, nine held-out tables, n=30, verified top-3 decode,
+with the hand-written players **re-measured against each opponent** (swapping the
+opponent voids every baseline on that config):
 
 | opponent it faces | trained model<br>*avg VP margin* | best hand-written player<br>*avg VP margin* | |
 |---|---|---|---|
-| `squad_march_take` — the strongest | **+24.1** | −6.2 | **ahead by 30.3** |
-| `squad_march_shoot` | **+36.2** | +13.4 | **ahead by 22.8** |
-| `squad_march_deny` | **+19.8** | −7.0 | **ahead by 26.8** |
-| `contest_and_spread` | **+35.3** | +25.9 | **ahead by 9.4** |
+| `squad_march_take` — the strongest | **+22.6** | −1.1 | **ahead by 23.7** |
+| `squad_march_shoot` | **+40.2** | +23.0 | ahead by 17.2 |
+| `squad_march_deny` | **+24.4** | −8.9 | **ahead by 33.4** |
+| `contest_and_spread` | +21.8 | **+30.2** | **behind by 8.4** |
 
-**Ahead of the best hand-written play in every matchup.**
+**Ahead of the best hand-written play in three matchups of four, and behind in
+the fourth.**
 
-Three of those four margins are decisive — 4 to 9 times the standard error over
-three independently trained models. The fourth, against `contest_and_spread`, is
-**suggestive rather than settled** at about twice its standard error; that
-opponent spreads thin, and taking cheap ground has always been this model's
-weakest habit.
+Two of the three leads are decisive — paired per table, t = 3.1 and 4.0, the
+same sign on 8 of 9 tables. The lead against `squad_march_shoot` is **not
+settled** (t = 1.8, 7 of 9). Nor is the loss against `contest_and_spread`
+(t = −1.1, 3 of 9), but it is the one matchup where the model does not lead, and
+the seed spread is wide there: +30.9, +8.1, +26.4 against a bar of +30.2.
+
+That opponent spreads thin, and taking cheap ground has always been this model's
+weakest habit — it wins by conceding little rather than by taking much, which is
+worth less against an opponent that holds nothing firmly.
+
+⚠ **An earlier version of this table showed `contest_and_spread` as a 9.4-point
+lead, and it was measured on the hand-traced tables.** On the generated ones the
+matchup reverses. Do not treat the loss as retired.
 
 It also keeps its squads together better than any hand-written player in every
-matchup — unit coherency **0.958–0.960**, against a scripted band of
-**0.777–0.895**. That is the game's own formation rule, and it is measured on
-what the model *intended*, not on what a referee corrected.
+matchup — unit coherency **0.950–0.954**, against a scripted band of
+**0.903–0.908**. That is the game's own formation rule, and it is measured on
+what the model *intended*, not on what a referee corrected. Formation is the one
+thing that holds in **all four** matchups, including the one it loses.
 
 ⚠ Read those numbers *down a column*, never across. A player's absolute score
 mostly measures how weak its opponent is — the trained model scores *higher*
