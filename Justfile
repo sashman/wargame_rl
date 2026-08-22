@@ -48,7 +48,7 @@ dockerize:
 # Or with an epoch cap: just train path/to/config.yaml 800
 # Or with a match event log for analysis: just train path/to/config.yaml 800 true
 train env_config_path='configs/dev/4v4_two_phases.yaml' max_epochs='' record_events='' *extra='':
-	@uv run train.py --record-during-training \
+	@uv run train.py --record-during-training --record-threat-range --record-engagement-range \
 		--env-config-path {{env_config_path}} \
 		{{ if max_epochs != "" { "--max-epochs " + max_epochs } else { "" } }} \
 		{{ if record_events != "" { "--record-events" } else { "" } }} \
@@ -62,7 +62,7 @@ train-multi-epochs max_epochs *configs:
 	group="train-multi-$(date +%Y-%m-%d-%H-%M-%S)" && \
 	i=1 && \
 	for c in {{configs}}; do \
-		uv run train.py --record-during-training --env-config-path "$c" --max-epochs {{max_epochs}} --run-suffix "$i" --wandb-group "$group" & \
+		uv run train.py --record-during-training --record-threat-range --record-engagement-range --env-config-path "$c" --max-epochs {{max_epochs}} --run-suffix "$i" --wandb-group "$group" & \
 		i=$((i+1)); \
 	done && \
 	wait
@@ -84,7 +84,7 @@ train-multi-seeds max_epochs n_seeds *configs:
 	for s in $(seq 1 {{n_seeds}}); do \
 		echo "=== seed $s of {{n_seeds}} ===" && \
 		for c in {{configs}}; do \
-			uv run train.py --record-during-training --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" --run-suffix "s$s" --wandb-group "$group" & \
+			uv run train.py --record-during-training --record-threat-range --record-engagement-range --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" --run-suffix "s$s" --wandb-group "$group" & \
 		done; \
 		wait; \
 	done
@@ -98,7 +98,7 @@ train-multi-seeds max_epochs n_seeds *configs:
 train-seed max_epochs seed group *configs:
 	@trap 'kill 0' INT TERM && \
 	for c in {{configs}}; do \
-		uv run train.py --record-during-training --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed {{seed}} --run-suffix "s{{seed}}" --wandb-group "{{group}}" & \
+		uv run train.py --record-during-training --record-threat-range --record-engagement-range --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed {{seed}} --run-suffix "s{{seed}}" --wandb-group "{{group}}" & \
 	done; \
 	wait
 
@@ -121,7 +121,7 @@ train-arm max_epochs n_seeds group tag flags *configs:
 	for s in $(seq 1 {{n_seeds}}); do \
 		echo "=== seed $s of {{n_seeds}} ({{tag}}) ===" && \
 		for c in {{configs}}; do \
-			uv run train.py --record-during-training --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" --run-suffix "s$s{{tag}}" --wandb-group "{{group}}" {{flags}} & \
+			uv run train.py --record-during-training --record-threat-range --record-engagement-range --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" --run-suffix "s$s{{tag}}" --wandb-group "{{group}}" {{flags}} & \
 		done; \
 		wait; \
 	done
@@ -138,10 +138,16 @@ train-arm max_epochs n_seeds group tag flags *configs:
 train-seed-flags max_epochs seed group tag flags *configs:
 	@trap 'kill 0' INT TERM && \
 	for c in {{configs}}; do \
-		uv run train.py --record-during-training --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed {{seed}} --run-suffix "s{{seed}}{{tag}}" --wandb-group "{{group}}" {{flags}} & \
+		uv run train.py --record-during-training --record-threat-range --record-engagement-range --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed {{seed}} --run-suffix "s{{seed}}{{tag}}" --wandb-group "{{group}}" {{flags}} & \
 	done; \
 	wait
 
+# Recordings carry the THREAT and ENGAGEMENT overlays. Threat is range ∩ line
+# of sight -- the same predicate the shooting mask uses -- so the picture
+# cannot disagree with the rule, and it is the only way to see WHY a model
+# did not shoot. A video has no keyboard, so these have to be set at launch.
+# ⚠ They change what the VIDEO looks like, never what the run trains.
+#
 # THE COHERENCY BASELINE OF RECORD. Use this, not `just train`, for
 # `configs/golden/25v25_maps_two_mode.yaml`: `ent_coef` is not an env-config
 # field and the PPO default is 0.03, while the baseline is the 0.003 arm --
@@ -164,6 +170,7 @@ train-coherency-baseline max_epochs='300' n_seeds='3' first_seed='1' tag='-basel
 	@trap 'kill 0' INT TERM && \
 	for s in $(seq {{first_seed}} $(( {{first_seed}} + {{n_seeds}} - 1 ))); do \
 		uv run train.py --record-during-training --record-every-n-epochs 10 \
+			--record-threat-range --record-engagement-range \
 			--env-config-path {{env_config}} \
 			--max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" \
 			--ent-coef 0.003 --run-suffix "s$s{{tag}}" \
@@ -224,7 +231,7 @@ measure-vp-cap policy env_config n_episodes='20' decode_topk='1':
 train-mixed-roles config max_epochs='300' n_seeds='3' first_seed='1' tag='-mixed':
 	@trap 'kill 0' INT TERM && \
 	for s in $(seq {{first_seed}} $(( {{first_seed}} + {{n_seeds}} - 1 ))); do \
-		uv run train.py --record-during-training --record-every-n-epochs 10 \
+		uv run train.py --record-during-training --record-threat-range --record-engagement-range --record-every-n-epochs 10 \
 			--env-config-path {{config}} \
 			--max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" \
 			--ent-coef 0.003 --run-suffix "s$s{{tag}}" \
@@ -240,7 +247,7 @@ train-multi *configs:
 	group="train-multi-$(date +%Y-%m-%d-%H-%M-%S)" && \
 	i=1 && \
 	for c in {{configs}}; do \
-		uv run train.py --record-during-training --env-config-path "$c" --run-suffix "$i" --wandb-group "$group" & \
+		uv run train.py --record-during-training --record-threat-range --record-engagement-range --env-config-path "$c" --run-suffix "$i" --wandb-group "$group" & \
 		i=$((i+1)); \
 	done && \
 	wait

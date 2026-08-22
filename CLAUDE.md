@@ -569,6 +569,36 @@ class of failure `vp_margin` and `coherent` are both blind to.
   the third movement-side fix measured away after the tangential slide.
   **Do not attempt a fourth.**
 
+### The advance move is REJECTED at 300 epochs, and the loss splits in two
+
+Measured 2026-08-22, [brief](docs/advance-move-problem.md).
+`configs/experiments/25v25_maps_advance.yaml` — the golden config with only
+`n_advance_speed_bins: 3` — three seeds, 300 epochs, scored refereed at K=3.
+
+- **arm −3.3 (+10.8 / −12.4 / −8.4) against the control's +23.4. UNPAIRED
+  −26.7 ± 8.3, t = −3.20.** The control beat the best script by +24.5; the arm
+  is 2.2 *behind* it.
+- ⚠ **UNPAIRABLE BY CONSTRUCTION.** Adding actions (102 → 150) changes the
+  output head, so no init is shared. A zero-initialised conditioning path fixes
+  an added *input*, never an added *action*. The layouts and seeds are shared,
+  and the two configs are verified the same game for a non-advancing policy
+  (scripts score to the same decimal on both) — that cross-config bridge is what
+  makes the comparison legitimate at all.
+- **Forbidding advance at PLAY, on the same weights, is worth +8.5 vp** (+10.9 /
+  +3.9 / +10.8, 3/3). So the weights are not broken — but it reaches only
+  **+11.1** against the control's +23.4. **~8.5 vp is the agent choosing a bad
+  option; ~12 vp is a worse learned policy.** Both explanations are true.
+- ⚠ **NOT caused by freezing, and that explanation was published before being
+  checked.** The arm freezes 18–28% and delivers 70–77% — but **the control
+  agent freezes 26.3% and delivers 76.4%**. Trained agents freeze at that rate
+  *because they stack*, advance or not. The comparison had been made against the
+  **scripts** (11%), which was never the right control.
+- ⚠ **RETRACTED: usage is NOT monotone in the damage.** s2 advances 23.1% and
+  gains least from giving it up (+3.9); s1 advances 8.1% and gains most (+10.9).
+- **Open:** whether the ~12 vp is fixable by training longer or is a permanent
+  cost of a 47% larger action space. 300 epochs is a screen, and this project's
+  own rule is that a marginal screen means "run it longer".
+
 ### How to measure here
 
 The single most expensive class of error in this project. Every rule below was
