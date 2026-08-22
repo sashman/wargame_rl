@@ -118,3 +118,72 @@ change. The two before it (`24v24` spare squads, mixed roles) left offence
 unmoved at −50.5 and −42. If this one also leaves offence flat, the honest
 conclusion is that offence is not reward-shapeable here and the next move is
 architectural, not another term.
+# Amendment to the contest_deficit pre-registration
+
+**Written 2026-08-22 at epoch 290 of 300, BEFORE any score existed.** Recorded
+here first, timestamped, precisely so it cannot be mistaken for a post-hoc
+rationalisation. Prompted by an adversarial review, not by a result.
+
+## 1. The REJECT rule was armed against the wrong failure
+
+Original: *"REJECT if the paired difference is negative, or if `alive` rises
+while `held` does not — that is the hoarding getting worse."*
+
+That catches hoarding. **The predicted failure of THIS lever is the opposite**:
+squads paid to walk at defended ruins get shot crossing open ground, so `alive`
+FALLS. Under the original wording, "the agent lost 20 vp because its army died
+attacking" would not have tripped the alive/held clause at all.
+
+**Added, symmetric clause:** REJECT also if `alive` FALLS without `held` rising.
+Report model-steps-in-the-open alongside, since `measure-hold-hazard` establishes
+that the exposed models are the ones walking between points, not the ones
+standing on them.
+
+## 2. Prior evidence AGAINST this lever that the report failed to cite
+
+The **teleport audit** (2026-08-11, recounted in
+`reports/2026-08-16-the-cap-makes-it-a-denial-game.md`) force-moved a squad onto
+contested ground, n=39 **paired**:
+
+| | control -> teleported |
+|---|---|
+| the moved squad's own income | 83.03 -> **53.62**  (−29.41 ± 8.27) |
+| the moved squad's survivors (of 5) | 3.03 -> **1.33** (−1.69 ± 0.28) |
+| episode reward (scalar) | 20.94 -> 24.65 (+3.71 ± 1.30) |
+
+The squad dies on a point holding **4.91 opponents**. PPO trains on the
+per-model reward vector, so the gradient that squad generates gets *worse* by
+35% while the team scalar improves. **`contest_deficit: 5` pays for exactly that
+move, at exactly that defender count.**
+
+The golden config header also records forcing redistribution onto *undefended*
+ground at **−3.6** and **−3.2 on 180 paired episodes**. Defended ground is
+strictly harder, and the defenders are in cover because objectives are ruins.
+
+⚠ I knew the −3.2/−3.6 result — I cited it earlier in this same session — and
+still wrote a report that did not engage with it. That is the error to learn
+from, not the lever.
+
+## 3. What is genuinely different this time, stated fairly
+
+The previous nulls (`deny_high`, the redistribution arms) ran at `ent_coef`
+0.03, where the policy is measured as too blunt to represent a committed squad
+advance. This arm runs at **0.003**. So it is not a strict repeat.
+
+## 4. The arrival payout was NOT changed, and that may be the whole problem
+
+`contest_deficit` widens *candidacy* for the TRAVEL term only. `objective_hold`
+still pays 1.0 / 0.5 / 0.25 for ours / contested / theirs, and raising the last
+two to parity was measured a clean null (188.5 v 188.5). So the agent is now
+paid to WALK toward enemy ground while still paid 4x less for ARRIVING there —
+and arriving is what kills it. If this arm fails, that asymmetry is the first
+thing to look at, not the gate.
+
+## 5. Cross-branch interaction — do not confound these
+
+⚠ `feature/movement-batch`'s engagement rule made **87% of opponent-held
+objectives physically impossible to enter**. If that had landed alongside this,
+`contest_deficit` would steer squads at ground they cannot occupy, and neither
+result would mean anything. The engagement half has been reverted for this
+reason among others. **Do not merge a movement-blocking change and this one and
+then measure either.**
