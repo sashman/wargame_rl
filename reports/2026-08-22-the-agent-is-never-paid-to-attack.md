@@ -51,6 +51,45 @@ flip the point, which matches the fact that units move as units.
   all lowered total objective income; this one points existing travel reward at
   ground that currently pays nothing. Nothing is taken away from held points.
 
+## What the gate did and did not forbid
+
+⚠ It never forbade the coordinated attack. Nothing in the rules stops the agent
+sending three models at a point two defenders hold, and `objective_hold` and
+`vp_gain` pay for it normally once it succeeds. What was missing is the
+*shaping*: `closest_objective_v2` is the only term that pays a model to move
+BETWEEN objectives, and its target could never be that point. So the agent had
+to discover a coordinated multi-model assault from sparse downstream signal,
+while `fallback_to_nearest` actively paid it to close on the point it already
+stood on.
+
+**The granularity is the unit, not the model.** `_compute_group_assignment`
+gives a candidate objective to exactly one *group*, so `contest_deficit: 5`
+reads as "could a squad take this?" rather than "could three models take this?".
+5 is the squad size, and the coherency work established that models here already
+move as units (0.938-0.955 coherent), so the shaped behaviour is "send that
+squad at that point".
+
+## The remaining bottleneck, measured and NOT addressed here
+
+Widening the gate raises candidate objectives, but units assigned rises only
+**32.0% -> 48.1%** (1.60 -> 2.41 of 5) while *steps where one unit owns 2+
+objectives* rises **29.0% -> 70.7%**.
+
+That is `_compute_group_assignment`: it walks each candidate objective and gives
+it to the **closest group**, so one well-placed unit can take several while other
+units get none. The candidate gate was the binding constraint; with it widened,
+greedy per-objective assignment becomes the next one.
+
+⚠ **This is deliberately NOT in this arm.** Fixing it means a matching (each
+group at most one objective) rather than an argmin, which is a second behaviour
+change; stacking it would make the result uninterpretable. Recorded here so the
+next step is chosen from a measurement rather than rediscovered.
+
+⚠ Note also that the golden config's own comment for this parameter reads "5
+groups over 3 objectives leaves two groups unassigned" -- that is the THREE
+objective scenario, and the generated tables carry five or six. The comment is
+stale; the measurement above is what holds.
+
 ## Pre-registered criteria
 
 Three seeds, 300 epochs, `ent_coef` 0.003, recording on, **paired against the
