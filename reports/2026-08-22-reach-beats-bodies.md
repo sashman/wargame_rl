@@ -75,9 +75,48 @@ It is the minimal compensation the measurement asks for: the free-fire window is
 30 shots; only closing time changes. `15v30_elite_vs_fast_horde.yaml` and its
 swapped twin are the re-screen.
 
+## The rebalance worked, and it produced the result the first design could not
+
+Horde Move 6 -> 12, nothing else. Same screen, n=30, held-out nine, K=1.
+
+**Balance.** The best script's win rate as the player went from **0.72 / 0.33**
+to **0.53 / 0.44**. Halving the free-fire window was the whole fix.
+
+**And the ranking now differs by side with an effect size behind it:**
+
+| | ELITE | HORDE |
+|---|---|---|
+| policy spread (best - worst) | **5.6 vp** | **40.9 vp** |
+| ranking | deny > **contest** > shoot > take | take > deny > shoot > **contest** |
+| `contest_and_spread` v the best script | −2.9, t = **0.32** | **−40.9, t = 2.58** |
+
+**`contest_and_spread` is second of four commanding the elite and last of four
+commanding the horde.** Unlike every ordering in the Move 6 screen, that gap is
+significant. Same policy, competitive with one army, catastrophic with the other
+— which is what "the two sides need different play" has to mean if it means
+anything.
+
+The mechanism reads cleanly: spreading thin to contest many points works for 15
+tough models that kill at 24", and is suicide for 30 short-range models that must
+close — they arrive piecemeal and are destroyed in detail.
+
+⚠ **The take/deny axis is STILL noise** (t = 0.56 and 0.50). The result rests
+entirely on `contest_and_spread`, and it should be quoted that way.
+
+## What is being trained, and why that side
+
+**The horde.** Its four scripts span **40.9 vp**; the elite's span **5.6**. A
+scenario where every policy scores alike cannot teach a policy anything, and the
+elite side is close to that. Three seeds, 300 epochs, `ent_coef` 0.003,
+recording on, scored against the scripts re-measured here — a new scenario
+inherits no bar.
+
 ## Do not re-run
 
 - **Matched firepower alone does not balance an asymmetric pair.** Reach is worth
   more than bodies here by a wide margin, and `alive` is the diagnostic that says
   so — 9–11% against 41–52%.
 - **A ranking change of 2.4 vp against an se of 20.4 is not a ranking change.**
+- **Balancing an asymmetric pair on firepower alone.** The lever that worked
+  was CLOSING TIME, not shots: the free-fire window is `(reach gap) / move`,
+  and halving it moved the match-up from 0.72/0.33 to 0.53/0.44.
