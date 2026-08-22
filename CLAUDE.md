@@ -501,13 +501,20 @@ Move 12 against 15 elites at 24" reach — trained three seeds, 300 epochs, scor
 
 - **The agent beats the best script by +48.5, the largest margin recorded here.**
   Agent **+16.2** (+29.5 / +8.2 / +11.0) against `squad_march_deny` **−32.3**.
-  Across seeds +48.5 ± 6.7 (t=7.26, df=2); **across tables +48.6 ± 9.2 (t=5.30,
-  df=8), ahead on 9 of 9**. ⚠ **UNPAIRED** — 30 models and `max_groups` 6 share no
-  init with any other lineage.
+  ⚠ **t = 3.65, not the 7.26 first published** — that divided by the seed spread
+  alone and treated the script's own **±11.5** as zero; propagating both gives
+  SE 13.30. The "two independent estimators" were one dataset sliced two ways
+  (their agreement is arithmetic), and **8–9 of 9 tables**, not 9 of 9 — the
+  per-seed counts are 9/9, 8/9, 8/9 and averaging before counting signs flatters
+  it. ⚠ **UNPAIRED** on init — though the layout pairing that matters here IS
+  present (identical tables and seeds).
 - ⚠ **This is NOT the agent getting better.** Offence is **negative on 3/3**
-  (−11.4 / −43.9 / −31.1); defence carries all of it (+73.3 / +84.4 / +74.4). It is
-  the mirror's decomposition unchanged, and the r=+0.991 rule — *the gap tracks what
-  the best script concedes* — continuing to hold. The elite concedes 187.4 to a
+  (−11.4 / −43.9 / −31.1); defence carries all of it (+73.3 / +84.4 / +74.4).
+  ⚠ **RETRACTED: this does NOT confirm the r=+0.991 rule.** Refitting the 25v25
+  rows predicts **−5.1** at this concede level against +48.5 observed — a miss
+  bigger than the effect. The correlation was fitted on one scenario and does not
+  transfer. The offence/defence split is also an **identity**, not a
+  decomposition, so read it as bookkeeping rather than as a cause. The elite concedes 187.4 to a
   script and 103–114 to the agent, so ~80 vp of denial exists here; against
   `advance_and_shoot`, where both concede ~130, the same trait was worth −75.9.
 - **`held` INVERTED, and that is the one new observation.** The agent holds *more*
