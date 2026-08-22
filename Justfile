@@ -166,6 +166,67 @@ train-coherency-baseline max_epochs='300' n_seeds='3' first_seed='1' tag='-basel
 	done; \
 	wait
 
+# Can the policy explore WHERE a squad goes, or only how fast? A product policy
+# pays p^k for DIRECTIONAL disagreement inside a squad and nothing for speed
+# disagreement, so the surviving entropy is predicted to be one shared angle.
+# Circular variance 0 means the squad has exactly one direction available to it.
+#
+# Use: just measure-angle-collapse squad_march_take configs/experiments/24v24_maps_spare_squads.yaml 20
+measure-angle-collapse policy env_config n_episodes='20' decode_topk='1':
+	@uv run python -m scripts.measure_angle_collapse {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}}
+
+# Do squads converge, or take separate objectives? The discriminating number is
+# SQUADS PER OCCUPIED OBJECTIVE -- 1.00 means each squad has a point to itself.
+# Squads move under a 2" chain and `objective_hold` requires coherence, so the
+# squad is the allocation quantum; if squads bunch, no reward weight fixes it.
+#
+# Use: just measure-squad-dispersion squad_march_take configs/experiments/24v24_maps_spare_squads.yaml 20
+measure-squad-dispersion policy env_config n_episodes='20' decode_topk='1':
+	@uv run python -m scripts.measure_squad_dispersion {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}}
+
+# What standing on an objective earns a model, against what it costs it. Reports
+# the income differential, the excess death hazard, and the hazard at which the
+# two break even -- i.e. whether hiding is correct play under this reward.
+#
+# Use: just measure-hold-hazard squad_march_take configs/experiments/24v24_maps_spare_squads.yaml 30
+measure-hold-hazard policy env_config n_episodes='30' decode_topk='1':
+	@uv run python -m scripts.measure_hold_hazard {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}}
+
+# How often the mission's 15 VP per-turn cap binds, and what it discards. The
+# fourth objective a side controls pays ZERO while the tables carry five or six,
+# so `held` can rise without a single extra point being paid. `held` cannot see
+# that; this can.
+#
+# Use: just measure-vp-cap squad_march_take configs/golden/25v25_maps_two_mode.yaml 20
+measure-vp-cap policy env_config n_episodes='20' decode_topk='1':
+	@uv run python -m scripts.measure_vp_cap {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}}
+
+# THE MIXED-ROLES ARM. Three seeds in parallel, `ent_coef` 0.003 (the PPO
+# default is 0.03 and is the worse arm here by +5.9 +/- 2.5 vp read paired),
+# recording on so the behaviour can be eyeballed as it trains.
+#
+# ⚠ The arm configs are UNREFEREED, like every training config here. Score the
+# resulting checkpoints on the `_refereed` twin, never on the config they
+# trained on -- the referee taxes a policy by how often it breaks coherency, so
+# scoring unrefereed flatters the scripts by ~16 vp.
+#
+# ⚠ `40v40_maps_mixed_roles_spares.yaml` changes `max_groups` 5 -> 8 and the
+# model count 25 -> 40, so it is a TENSOR-SHAPE change: it orphans every
+# existing checkpoint and removes the paired estimator against the
+# `two_mode` lineage. `25v25_maps_mixed_roles*.yaml` keep both.
+#
+# Use: just train-mixed-roles configs/experiments/25v25_maps_mixed_roles.yaml 300 3
+train-mixed-roles config max_epochs='300' n_seeds='3' first_seed='1' tag='-mixed':
+	@trap 'kill 0' INT TERM && \
+	for s in $(seq {{first_seed}} $(( {{first_seed}} + {{n_seeds}} - 1 ))); do \
+		uv run train.py --record-during-training --record-every-n-epochs 10 \
+			--env-config-path {{config}} \
+			--max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" \
+			--ent-coef 0.003 --run-suffix "s$s{{tag}}" \
+			--wandb-group mixed-roles & \
+	done; \
+	wait
+
 # Run multiple env configs in parallel. Each run gets a unique --run-suffix and shared --wandb-group.
 # Uses PPO + transformer. Use: just train-multi config1.yaml config2.yaml
 # Trap INT/TERM so Ctrl+C kills all background train.py processes.
@@ -329,6 +390,16 @@ measure-income-share policy env_config n_episodes='30':
 # Use: just measure-paired squad_march_shoot contest_and_spread <config> 100
 measure-paired policy_a policy_b env_config n_episodes='100' seed_base='700000' *overrides:
 	@uv run python -m scripts.measure_paired_policies {{policy_a}} {{policy_b}} {{env_config}} {{n_episodes}} {{seed_base}} {{overrides}}
+
+# Where the travel reward actually points. `closest_objective_v2` is the only
+# calculator that pays a model to move BETWEEN objectives, and two gates inside
+# it decide where: a candidate test that only pays for arrivals flipping control
+# THIS STEP by ONE model, and a per-objective assignment that can leave a unit
+# with nothing and fall it through to "walk to your nearest". This reports what
+# both gates decided, so a reward change is aimed at a measured cause.
+# Use it like: just measure-shaping-gates <ckpt> configs/golden/25v25_maps_two_mode.yaml 30 "" 3
+measure-shaping-gates policy env_config n_episodes='30' maps_dir='' decode_topk='1' *overrides:
+	@uv run python -m scripts.measure_shaping_gates {{policy}} {{env_config}} {{n_episodes}} "{{maps_dir}}" "{{decode_topk}}" {{overrides}}
 
 # Why an objective was not held: abandoned, narrowly lost, or lost by a mile.
 # `held` alone cannot separate those, and they call for different fixes. Also

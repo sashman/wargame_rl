@@ -233,3 +233,44 @@ def test_a_group_id_the_one_hot_cannot_hold_is_rejected() -> None:
             max_groups=2,
             models=[ModelConfig(group_id=g) for g in (0, 1, 2, 2)],
         )
+
+
+class TestSquadMarchSpeed:
+    """A squad's march step is capped by ITS OWN slowest member, not the army's.
+
+    Identical while every model is equally fast, and silently wrong the moment
+    they are not: one slow squad capping a fast one means a scripted bar cannot
+    use a speed a learned policy can, which flatters the agent against a hobbled
+    bar. Found by screening a mixed-profile config, where the fast squad never
+    moved at its own speed.
+    """
+
+    def test_a_fast_squad_is_not_capped_by_a_slow_one(self) -> None:
+        from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
+
+        config = _asymmetric_config()
+        assert config.models is not None
+        for index in range(5):  # squad 0 is fast
+            config.models[index].move = 12.0
+        for index in range(5, 10):  # squad 1 is slow
+            config.models[index].move = 2.0
+        env = WargameEnv(config=config)
+        observation, _ = env.reset(seed=13)
+
+        policy = build_baseline_policy("squad_march")
+        before = [model.location.copy() for model in env.player_models]
+        env.step(
+            policy.select_action(
+                env.player_models, env, action_mask=observation.action_mask
+            )
+        )
+        moved = [
+            float(np.linalg.norm(model.location - start))
+            for model, start in zip(env.player_models, before)
+        ]
+
+        fast = max(moved[:5])
+        slow = max(moved[5:10])
+        # The fast squad must be able to exceed the slow squad's whole budget.
+        assert fast > 2.0 + 1e-9, f"fast squad capped at the army minimum ({fast:.2f})"
+        assert slow <= 2.0 + 1e-9, f"slow squad exceeded its own Move ({slow:.2f})"

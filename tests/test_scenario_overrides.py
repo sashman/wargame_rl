@@ -106,3 +106,46 @@ def test_the_header_names_the_scenario_it_measured() -> None:
         describe({"rounds": "5", "weapon_range": "24"})
         == "  [rounds=5, weapon_range=24]"
     )
+
+
+class TestMissionOverrides:
+    """The two mission knobs, which are the cheapest test of "is the mission the
+    constraint" -- and the only overrides that are NOT self-contained scalars.
+    """
+
+    def test_cap_per_turn_reaches_the_mission_params(self) -> None:
+        """The scoring cap must land where `DefaultVPCalculator` reads it."""
+        config = load_env_config(GOLDEN, cap_per_turn="30")
+
+        assert config.mission.params["cap_per_turn"] == 30
+
+    def test_vp_per_objective_reaches_the_mission_params(self) -> None:
+        """Per-objective value likewise."""
+        config = load_env_config(GOLDEN, vp_per_objective="3")
+
+        assert config.mission.params["vp_per_objective"] == 3
+
+    def test_the_override_actually_changes_scored_vp(self) -> None:
+        """SENSITIVITY. A knob that parses but does not change scoring is worse
+        than no knob, because it reads as a measured null.
+        """
+        from wargame_rl.wargame.envs.mission.vp_calculator import DefaultVPCalculator
+
+        base = load_env_config(GOLDEN)
+        raised = load_env_config(GOLDEN, cap_per_turn="30")
+
+        # The concrete class, not the ABC -- the cap is what this override moves,
+        # and the ABC deliberately does not promise one.
+        default_cap = DefaultVPCalculator(**base.mission.params).cap_per_turn
+        raised_cap = DefaultVPCalculator(**raised.mission.params).cap_per_turn
+
+        assert default_cap == 15
+        assert raised_cap == 30
+
+    def test_overriding_one_mission_knob_leaves_the_other_alone(self) -> None:
+        """A deep copy per override, so scoring two settings cannot cross-talk."""
+        raised = load_env_config(GOLDEN, cap_per_turn="30")
+        plain = load_env_config(GOLDEN)
+
+        assert "vp_per_objective" not in raised.mission.params
+        assert plain.mission.params == {}

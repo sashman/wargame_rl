@@ -109,6 +109,8 @@ wargame_rl/
 | Score a checkpoint (baseline-comparable) | `just measure-checkpoint <ckpt> <config.yaml> [n_episodes] [record] [decode_topk] [key=value...]` |
 | Score on the real table layouts | `just measure-maps <policy\|ckpt> <config.yaml> [n_episodes] [maps_dir] [decode_topk] [key=value...]` |
 | Why an objective was not held | `just measure-objective-split <policy\|ckpt> <config.yaml> [n_episodes]` |
+| How often the VP cap binds, and what it discards | `just measure-vp-cap <policy\|ckpt> <config.yaml> [n_episodes] [decode_topk]` |
+| What holding a point earns against what it costs | `just measure-hold-hazard <policy\|ckpt> <config.yaml> [n_episodes] [decode_topk]` |
 | How often a policy is in unit coherency | `just measure-coherency <policy\|ckpt> <config.yaml> [n_episodes]` |
 | Which calculator pays, and how much is global | `just measure-income-share <policy\|ckpt> <config.yaml> [n_episodes]` |
 | Clone a scripted policy into the network (warm-start checkpoint) | `just behaviour-clone <policy> <config.yaml> [n_episodes] [epochs] [out]` |
@@ -376,6 +378,75 @@ in.
   script"**, not "a better player".
 - ⚠ **ALWAYS state which config a quoted agent number was trained on.** Missing
   provenance is why two lineages sat side by side in the docs undetected.
+
+### Allocation: the scenario was not asking, and fixing it did not fix the agent
+
+Measured 2026-08-22, [report](reports/2026-08-22-spare-squads-pose-the-question-the-agent-still-cannot-answer.md).
+
+- **Five squads against five or six objectives pose NO allocation question.**
+  `squad_march_take` and `squad_march_deny` differ only in what a spare squad
+  does; paired at n=100 their difference is **+5.7 / −9.2 / +9.8** across three
+  layout sets — **it changes sign**, mean +2.1. ⚠ A single seed set reading +5.7
+  says the opposite. 25–31 episodes in 100 are *identical*.
+- **Eight squads of three do pose it: +16.0, positive on 3/3 sets**, and only
+  **2–5** episodes in 100 identical. `configs/experiments/24v24_maps_spare_squads.yaml`
+  is the golden config with only the squad structure changed.
+- ⚠ **Mixed weapon profiles are a measured null — and the first two arms measured
+  their own lethality instead.** `25v25_maps_mixed_roles` fires **45 shots a round
+  against the control's 25**; `alive` collapses 0.432 → 0.203 → 0.135 at 40
+  models, and an army of five survivors cannot spread over six objectives. Held
+  at **exactly 25 shots** (`..._matched.yaml`), roles reproduce the control's
+  paired difference **to one decimal**. It was the squad count, never the guns.
+- **Trained on the config that does ask, offence did not move.** Three seeds, 300
+  epochs, `ent_coef` 0.003, scored refereed at K=3, all at `last.ckpt` (epoch
+  299 — the highest `ppo-NNN` is **145** for s1 against **292** for s3):
+  agent **+15.1 ± 5.6** against `squad_march_take` **+6.0 ± 3.0**, gap **+9.1,
+  t≈1.44, UNPAIRED** (`max_groups` 5→8 is a shape change). Offence **−50.5**,
+  defence **+59.6** — still entirely denial. `held` 2.17 v 2.80, a 0.63 shortfall
+  against 0.58 before. Coherency 0.964–0.967 against the scripts' 0.941–0.945.
+- ⚠ **THE AGENT HOARDS.** It finishes with **52.9% of its army alive against the
+  scripts' 27.4–30.9% while holding fewer objectives.** Nearly twice the
+  survivors, less ground. That, not the scenario and not the profiles, is where
+  the offence deficit lives.
+- **The VP cap taxes the SCRIPTS, not the agent.** `min(15, controlled × 5)`
+  means the *fourth* objective pays zero while the tables carry five or six.
+  `just measure-vp-cap` on `25v25_maps_two_mode`: `squad_march_take` is above the
+  cap on **23.9%** of steps and loses **10.1%** of its VP; the agent loses
+  **1.1%** and reaches three objectives on only **22.3%** of steps against the
+  script's 55.6%. So the agent's shortfall is **fully payable**, and the cap
+  compresses exactly the `take`-vs-`deny` difference used to detect allocation.
+  `held` cannot see any of this — it is an end-state snapshot with no notion of
+  which points were paid.
+
+### Holding pays — the agent stacks, it does not hide
+
+Measured 2026-08-22 with no GPU, [report](reports/2026-08-22-holding-pays-and-the-agent-stacks.md).
+
+- ⚠ **OBJECTIVES ARE RUINS, so standing on one is COVER.** All 270 markers in
+  `configs/evaluation/maps/` sit inside a terrain piece. `just
+  measure-hold-hazard` prices the trade per model-step: standing on an objective
+  pays **+0.37 to +0.44** more and its excess death hazard is **negative in 5 of
+  5 policies** (−0.13% to −1.43%) against a break-even of +3.4% to +6.0%. The
+  exposed models are the ones walking between points. **"Hiding is correct play"
+  is refuted** — the agent is leaving return on the table.
+- **The error is ALLOCATION, not risk.** The agent spends **54.4% of model-steps
+  on objectives against the scripts' 75.5%**, and stacks **4.90 models on its top
+  point where `squad_march_take` puts 2.73** — 8.6 of 12.5 survivors on
+  objectives, 55.3% of points empty, **redistribution ceiling +2.20**, the
+  largest recorded here.
+- **It earns exactly half the script's `objective_hold`** (6.76 v 13.48) from a
+  pot it splits over half as many points, and **53.7% of its income is global**
+  against the script's 25.8% — `vp_gain` and `objective_coverage` are broadcast
+  whole to every alive model, so more than half of what it earns asks nothing of
+  any individual model.
+- ⚠ **Do not reach for anti-stacking shaping.** `crowding_exponent: 1.0` is the
+  measured-good lever, it is already on, and the agent ignores it. Measure
+  **squad dispersion** first — squads of three under a 2" chain make the squad the
+  allocation quantum — and check `closest_objective_v2`'s `fallback_to_nearest`,
+  which *pays* an unassigned group to close on the nearest point, usually one
+  already held.
+- The observability desk check **passes** here: `observe_objective_control: true`
+  and `_objectives_to_obs` supply per-objective alive counts for both sides.
 
 ### How to measure here
 

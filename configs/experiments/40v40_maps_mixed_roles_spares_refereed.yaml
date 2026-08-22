@@ -1,0 +1,245 @@
+# ---------------------------------------------------------------------------
+# MIXED PROFILES -- an arm, not a golden config. Delete when its question is
+# answered.
+#
+# The question: the match is a MIRROR of 50 identical short-range troopers, and
+# the two strongest scripts tie in 47 of 100 games and score within 0.2 vp of
+# each other. Does giving squads different jobs break that equilibrium?
+#
+# Profiles come from the medians of 189 multi-model infantry units across 23
+# published armies. Two findings from that data shape this file:
+#
+#   1. A ROLE IS THE GUN, NOT THE BODY. Across the five roles the median Move is
+#      6, Toughness 4 and Save 3 -- identical. What separates them is range,
+#      attacks, strength and AP. So this arm varies ONLY the weapon (and Move on
+#      the one role where the data disagrees, the fast skirmisher at 12).
+#   2. The body varies on a different axis -- toughness, wounds, save and base
+#      size move together (r 0.5-0.7), the elite/horde axis. It cuts ACROSS
+#      roles rather than defining them, and its main term is WOUNDS, which this
+#      engine flattens to 1. So it is deliberately left alone here: mixing it in
+#      would confound the role question with a durability question.
+#
+# What this arm cannot express, and why the mix is thinner than the real thing:
+#   - Damage > 1 is INERT at max_wounds: 1 -- excess damage is discarded -- so
+#     the fire-support and heavy roles lose part of their identity. Their D is
+#     left at the default rather than set to a number that would do nothing.
+#   - Control Value is 1 for every model; in the data the `line` role holds
+#     objectives at DOUBLE weight, which is exactly the mechanic this scenario
+#     is about.
+#   - Base size is 32mm for every role in the data, so it is not varied here.
+#     It only starts to matter alongside toughness, which this arm holds fixed.
+#
+# Toughness, save and wounds are the CURRENT scenario's, not the data's medians
+# (T4/Sv3), so casualty rates stay in the regime everything was measured in and
+# the weapon mix is the only thing that moved.
+# ---------------------------------------------------------------------------
+#
+# V2 -- SPARE SQUADS. 40 models in 8 units of 5, against tables carrying 5 or 6
+# objectives, so two or three squads have no home to sit in.
+#
+# That is the point of this variant. With five squads and five-to-six
+# objectives there is never a spare, and `squad_march_take` and
+# `squad_march_deny` differ ONLY in what a spare squad does -- which is why they
+# tie in 47 of 100 games. A scenario that never poses the allocation question
+# cannot measure an answer to it.
+#
+# ⚠ Not comparable to the 25-model configs on any absolute number: more models
+# is more firepower, more bodies on objectives and a wider shooting slice. It is
+# its own scenario with its own floor and bar.
+config_name: 40v40_maps_mixed_roles_spares_refereed
+number_of_wargame_models: 40
+number_of_opponent_models: 40
+number_of_objectives: 3
+objective_radius_size: 3
+board_width: 60
+board_height: 44
+max_groups: 8
+turn_order: random
+number_of_battle_rounds: 20
+skip_phases:
+  - command
+  - charge
+  - fight
+deployment_zone: [0, 0, 20, 44]
+opponent_deployment_zone: [40, 0, 60, 44]
+opponent_policy:
+  type: scripted_baseline
+  params:
+    baseline: squad_march_take
+models:
+  # line
+  - &plr_0 { group_id: 0, weapons: &plr_line_0 [{ range: 24, attacks: 2, ballistic_skill: 3, strength: 5, ap: 1 }] }
+  - *plr_0
+  - *plr_0
+  - *plr_0
+  - *plr_0
+  # line
+  - &plr_1 { group_id: 1, weapons: &plr_line_1 [{ range: 24, attacks: 2, ballistic_skill: 3, strength: 5, ap: 1 }] }
+  - *plr_1
+  - *plr_1
+  - *plr_1
+  - *plr_1
+  # line
+  - &plr_2 { group_id: 2, weapons: &plr_line_2 [{ range: 24, attacks: 2, ballistic_skill: 3, strength: 5, ap: 1 }] }
+  - *plr_2
+  - *plr_2
+  - *plr_2
+  - *plr_2
+  # fire
+  - &plr_3 { group_id: 3, weapons: &plr_fire_3 [{ range: 36, attacks: 3, ballistic_skill: 4, strength: 5, ap: 1 }] }
+  - *plr_3
+  - *plr_3
+  - *plr_3
+  - *plr_3
+  # fire
+  - &plr_4 { group_id: 4, weapons: &plr_fire_4 [{ range: 36, attacks: 3, ballistic_skill: 4, strength: 5, ap: 1 }] }
+  - *plr_4
+  - *plr_4
+  - *plr_4
+  - *plr_4
+  # heavy
+  - &plr_5 { group_id: 5, weapons: &plr_heavy_5 [{ range: 24, attacks: 1, ballistic_skill: 3, strength: 8, ap: 3 }] }
+  - *plr_5
+  - *plr_5
+  - *plr_5
+  - *plr_5
+  # skirmisher
+  - &plr_6 { group_id: 6, move: 12.0, weapons: &plr_skirmisher_6 [{ range: 12, attacks: 1, ballistic_skill: 3, strength: 5, ap: 1 }] }
+  - *plr_6
+  - *plr_6
+  - *plr_6
+  - *plr_6
+  # assault
+  - &plr_7 { group_id: 7, weapons: &plr_assault_7 [{ range: 12, attacks: 1, ballistic_skill: 3, strength: 4, ap: 0 }] }
+  - *plr_7
+  - *plr_7
+  - *plr_7
+  - *plr_7
+opponent_models:
+  # line
+  - &opp_0 { group_id: 0, weapons: &opp_line_0 [{ range: 24, attacks: 2, ballistic_skill: 3, strength: 5, ap: 1 }] }
+  - *opp_0
+  - *opp_0
+  - *opp_0
+  - *opp_0
+  # line
+  - &opp_1 { group_id: 1, weapons: &opp_line_1 [{ range: 24, attacks: 2, ballistic_skill: 3, strength: 5, ap: 1 }] }
+  - *opp_1
+  - *opp_1
+  - *opp_1
+  - *opp_1
+  # line
+  - &opp_2 { group_id: 2, weapons: &opp_line_2 [{ range: 24, attacks: 2, ballistic_skill: 3, strength: 5, ap: 1 }] }
+  - *opp_2
+  - *opp_2
+  - *opp_2
+  - *opp_2
+  # fire
+  - &opp_3 { group_id: 3, weapons: &opp_fire_3 [{ range: 36, attacks: 3, ballistic_skill: 4, strength: 5, ap: 1 }] }
+  - *opp_3
+  - *opp_3
+  - *opp_3
+  - *opp_3
+  # fire
+  - &opp_4 { group_id: 4, weapons: &opp_fire_4 [{ range: 36, attacks: 3, ballistic_skill: 4, strength: 5, ap: 1 }] }
+  - *opp_4
+  - *opp_4
+  - *opp_4
+  - *opp_4
+  # heavy
+  - &opp_5 { group_id: 5, weapons: &opp_heavy_5 [{ range: 24, attacks: 1, ballistic_skill: 3, strength: 8, ap: 3 }] }
+  - *opp_5
+  - *opp_5
+  - *opp_5
+  - *opp_5
+  # skirmisher
+  - &opp_6 { group_id: 6, move: 12.0, weapons: &opp_skirmisher_6 [{ range: 12, attacks: 1, ballistic_skill: 3, strength: 5, ap: 1 }] }
+  - *opp_6
+  - *opp_6
+  - *opp_6
+  - *opp_6
+  # assault
+  - &opp_7 { group_id: 7, weapons: &opp_assault_7 [{ range: 12, attacks: 1, ballistic_skill: 3, strength: 4, ap: 0 }] }
+  - *opp_7
+  - *opp_7
+  - *opp_7
+  - *opp_7
+map_pool:
+  directory: configs/evaluation/maps
+  names:
+    - table_01
+    - table_02
+    - table_03
+    - table_04
+    - table_06
+    - table_07
+    - table_08
+    - table_09
+    - table_11
+    - table_12
+    - table_13
+    - table_14
+    - table_16
+    - table_17
+    - table_18
+    - table_19
+    - table_21
+    - table_22
+    - table_23
+    - table_24
+    - table_26
+    - table_27
+    - table_28
+    - table_29
+    - table_31
+    - table_32
+    - table_33
+    - table_34
+    - table_36
+    - table_37
+    - table_38
+    - table_39
+    - table_41
+    - table_42
+    - table_43
+    - table_44
+objective_budget: 6
+terrain_budget: 16
+track_exposure: true
+objective_min_separation: null
+reward_phases:
+  - name: win
+    terminate_on_success: false
+    terminal_success_bonus: 2.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.01
+      - type: objective_hold  # LEGALITY-GATED ARM: see header
+        weight: 1.25
+        params: { crowding_exponent: 1.0, require_coherent: true }
+      - type: model_kills
+        weight: 1.0
+        params: { bonus_per_kill: 2.0 }
+      - type: group_cohesion
+        weight: 0.3
+        params: { group_max_distance: 6.0, violation_penalty: -0.05 }
+      - type: vp_gain
+        weight: 2.0
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: player_ahead_on_vp
+      params: {}
+observe_objective_control: true
+coherency:
+  enforce_at_deployment: true
+  # THE REFEREE. Play/eval only -- see the golden eval configs for why
+  # training under it costs ~26 vp and makes formation worse.
+  enforce_move: revert_unit
+  # The rules' own backstop. Without it a reverted unit is frozen for the
+  # rest of the game and a deterministic policy hard-deadlocks.
+  attrition: true
