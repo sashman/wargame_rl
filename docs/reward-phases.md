@@ -252,6 +252,7 @@ Both calculators and criteria receive a `StepContext` object containing the dist
 | Field | Type | Description |
 |-------|------|-------------|
 | `distance_cache` | `DistanceCache` | Pre-computed distances between models and objectives |
+| `opponent_distances(view)` | `DistanceCache` | The **opponent's** distances, built at most once a step. Five calculators each built this from scratch with byte-identical arguments and their own private memo; `compute_distances` is ~37% of `env.step()`. Sound to cache because the context is constructed after the opponent's turn has been executed, so the board is final. Call it rather than `compute_distances` |
 | `current_turn` | `int` | Step counter (increments each `env.step()` call; with default `skip_phases`, each step is one active phase, currently movement only) |
 | `max_turns` | `int` | Maximum agent steps per episode (`n_rounds × (5 - len(skip_phases))`; default `n_rounds` since non-movement phases are skipped) |
 | `board_width` | `int` | Board width in cells |
