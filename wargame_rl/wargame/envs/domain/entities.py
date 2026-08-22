@@ -58,6 +58,11 @@ class WargameModel:
         self.best_closest_objective_distance = best_closest_objective_distance
         self.model_rewards_history: list["ModelRewards"] = []
         self.advanced_this_turn: bool = False
+        # This model's UNIT's advance roll for the current turn, in inches. The
+        # rules roll one D6 per unit *before* moving, so the policy must be able
+        # to see it when it chooses -- see `_roll_advance_dice`. 0 outside a
+        # movement phase and whenever the scenario has no advance bins.
+        self.advance_roll: float = 0.0
 
     def set_previous_closest_objective_distance(self, distance: float) -> None:
         self.previous_closest_objective_distance = distance
@@ -73,6 +78,18 @@ class WargameModel:
         self.stats["current_wounds"] = self.stats["max_wounds"]
         self.model_rewards_history.clear()
         self.advanced_this_turn = False
+        self.advance_roll = 0.0
+
+    def begin_turn(self) -> None:
+        """Clear the per-TURN move state before this side moves again.
+
+        ⚠ `advanced_this_turn` was previously cleared only at episode reset, so
+        it was sticky by construction -- nothing set it, and had anything set it
+        the model could never have shot again. A per-turn boundary is what the
+        rules' "until the end of the turn it cannot shoot" needs.
+        """
+        self.advanced_this_turn = False
+        self.advance_roll = 0.0
 
     @property
     def is_alive(self) -> bool:

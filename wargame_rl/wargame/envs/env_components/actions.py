@@ -168,6 +168,7 @@ class ActionHandler:
         )
         n_angles = config.n_movement_angles
         n_speeds = config.n_speed_bins
+        n_advance_bins = config.n_advance_speed_bins
         # Through the resolver rather than off the config, so that a board using
         # a scale other than 1 inch per unit moves models the right distance.
         quantities = resolve_rules_quantities(config)
@@ -269,6 +270,21 @@ class ActionHandler:
         else:
             self._shooting_slice = None
 
+        # ⚠ Registered LAST, so every action index that existed before advance
+        # still means what it meant. Widening `n_speed_bins` instead would
+        # renumber the movement slice (`decode_action` is angle-major,
+        # speed-minor), and `_apply_warm_start_weights` loads with
+        # `strict=False`, so every checkpoint would load and be wrong.
+        self._n_advance_bins = n_advance_bins
+        if n_advance_bins > 0:
+            self._advance_slice: ActionSlice | None = self._registry.register(
+                "advance",
+                n_angles * n_advance_bins,
+                frozenset({BattlePhase.movement}),
+            )
+        else:
+            self._advance_slice = None
+
     @property
     def shooting_slice(self) -> ActionSlice | None:
         """Shooting action slice, or None when no shoot targets are registered."""
@@ -338,16 +354,32 @@ class ActionHandler:
         speeds: np.ndarray = self._move_speeds
         return speeds
 
-    def decode_action(self, action: int, model_idx: int | None = None) -> np.ndarray:
+    def decode_action(
+        self,
+        action: int,
+        model_idx: int | None = None,
+        advance_roll: float = 0.0,
+    ) -> np.ndarray:
         """Return the (dx, dy) displacement for *action*.
 
         ``model_idx`` selects that model's own speed bins when the scenario
         gives its models different Move characteristics. Omitting it uses the
         shared table, which is the whole table whenever every model is equally
         fast — every config shipped today.
+
+        ``advance_roll`` is this model's unit's D6 for the turn, and is read
+        only for actions in the advance slice. It defaults to 0 so that every
+        existing caller — five scripted baselines, both opponent policies, the
+        joint decoder and the debug session — is unchanged: with no advance
+        slice registered, no action can reach the branch that reads it.
         """
         if action == STAY_ACTION:
             return zero_position()
+        if (
+            self._advance_slice is not None
+            and self._advance_slice.start <= action < self._advance_slice.end
+        ):
+            return self._advance_displacement(action, model_idx, advance_roll)
         move_idx = action - 1
         angle_idx = move_idx // self._n_speed_bins
         speed_idx = move_idx % self._n_speed_bins
@@ -358,6 +390,41 @@ class ActionHandler:
             return per_model
         result: np.ndarray = self._displacements[angle_idx, speed_idx]
         return result
+
+    def _advance_displacement(
+        self, action: int, model_idx: int | None, advance_roll: float
+    ) -> np.ndarray:
+        """Displacement for an advance action: `M + fraction x roll`, in units.
+
+        The bins divide the ROLL, not the whole distance, so the shortest
+        advance still travels at least the model's full Move. That is what makes
+        advancing a strict extension of the movement axis: every advance bin
+        goes further than any normal move, and pays for it with the turn's
+        shooting.
+        """
+        index = action - self._advance_slice.start  # type: ignore[union-attr]
+        angle_idx = index // self._n_advance_bins
+        bin_idx = index % self._n_advance_bins
+        move = (
+            float(self._move_speeds[model_idx])
+            if model_idx is not None
+            else float(self._speeds[-1])
+        )
+        fraction = (bin_idx + 1) / self._n_advance_bins
+        distance = move + fraction * advance_roll
+        direction = self._unit_directions[angle_idx]
+        displacement: np.ndarray = (direction * distance).astype(POSITION_DTYPE)
+        return displacement
+
+    @property
+    def movement_slice(self) -> ActionSlice:
+        """The normal-move action slice. Always registered."""
+        return self._registry.slice_for("movement")
+
+    @property
+    def advance_slice(self) -> ActionSlice | None:
+        """Advance action slice, or None when the scenario has no advance bins."""
+        return self._advance_slice
 
     def encode_action(self, angle_idx: int, speed_idx: int) -> int:
         """Encode an (angle_idx, speed_idx) pair into an action integer."""
@@ -460,7 +527,19 @@ class ActionHandler:
             ):
                 continue
             model.previous_location = model.location.copy()
-            displacement = self.decode_action(act, model_idx=i)
+            is_advance = (
+                self._advance_slice is not None
+                and self._advance_slice.start <= act < self._advance_slice.end
+            )
+            if is_advance:
+                # The rules' cost: "only [RUN AND GUN] weapons may be fired
+                # after it", and no weapon here has that ability, so an advance
+                # forfeits this turn's shooting outright. Both shooting masks
+                # already read this flag; nothing has ever set it until now.
+                model.advanced_this_turn = True
+            displacement = self.decode_action(
+                act, model_idx=i, advance_roll=model.advance_roll
+            )
             if not collides:
                 model.location = np.clip(model.location + displacement, lower, upper)
                 continue
