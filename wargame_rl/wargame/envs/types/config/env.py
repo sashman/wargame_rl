@@ -364,6 +364,26 @@ class WargameEnvConfig(BaseModel):
             "are legal. See docs/rules/implementation-status.md."
         ),
     )
+    n_advance_speed_bins: int = Field(
+        ge=0,
+        default=0,
+        description=(
+            "Number of ADVANCE speed bins, appended as their own action slice. "
+            "An advance trades the turn's shooting for reach: maximum distance "
+            "is the model's Move PLUS an advance roll (one D6 per unit, made "
+            "before moving), and a model that advances cannot shoot this turn "
+            "-- no weapon here has the ability that would let it. "
+            "0 (the default) registers NO slice, makes NO dice draw and adds NO "
+            "observation column, so every existing config keeps its exact "
+            "action space, its checkpoints and its RNG stream. "
+            "⚠ The slice is appended AFTER shooting on purpose. Widening the "
+            "existing movement bins instead would renumber every action, "
+            "because `decode_action` is angle-major and speed-minor -- action 7 "
+            "would stop meaning (angle 1, speed 0) and start meaning (angle 0, "
+            "speed 6). Warm starts load with `strict=False`, so that would "
+            "scramble every checkpoint silently."
+        ),
+    )
     base_radius: float = Field(
         ge=0,
         default=INFANTRY_BASE_RADIUS_IN,

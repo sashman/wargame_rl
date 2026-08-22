@@ -525,6 +525,50 @@ Move 12 against 15 elites at 24" reach — trained three seeds, 300 epochs, scor
 - **Untested: the elite side.** Only the horde was trained. The denial-price account
   predicts an elite agent wins by *less*; that is one training run.
 
+### Freezing is friendly gridlock, and only deterministic policies suffer it
+
+Measured 2026-08-22, no GPU, [report](reports/2026-08-22-freezing-is-friendly-gridlock.md).
+`just measure-freezing` counts the movement orders that produce no movement — a
+class of failure `vp_margin` and `coherent` are both blind to.
+
+- **A frozen model stays frozen 89% of the time; a moving model freezes 3%.**
+  `squad_march_take` / `shoot` / `contest_and_spread` all land at P(f|f)
+  **0.888–0.893** against P(f|moved) 0.028–0.035, i.e. **absorbing +0.86**.
+  ~11% of orders freeze and ~12% truncate, but **92% of ordered inches are
+  delivered** — which is why it went unseen. The loss is a small population that
+  never recovers, not a general slowdown.
+- ⚠ **`random` is the control, and it inverts.** It truncates **more than twice
+  as often** (27.5%) and delivers **less** (86.3%), yet is barely absorbing at
+  **+0.086**. So the collision system is not at fault: a blocked random policy
+  tries another direction next phase, a **purposeful policy re-issues the same
+  blocked order forever**. Freezing is determinism meeting an obstacle, not the
+  obstacle. **Any movement-delivery comparison against `random` reads backwards.**
+- **The obstacle is FRIENDLY.** 91.8% of frozen model-steps have a friendly base
+  touching against 27.7% of moving ones (1.27 v 0.32 friendlies; enemies 0.22 v
+  0.03). Friendly bases may be crossed but not *ended on*, so a model whose
+  destination is taken backs off to zero.
+- **This is the stacking finding's mechanical consequence** — 4.90 models on the
+  agent's top point against `squad_march_take`'s 2.73 — and it undermines
+  **"the agent never stands still"**: some of that 0.4% STAY rate is models that
+  are stuck, and the statistic cannot separate the two.
+- ⚠ **Do not re-run the tangential slide.** Measured 2026-08-10 and **worse**
+  (0.70/+20.6 → 0.57/+1.0): a fully blocked model spends its whole move sliding
+  into the open.
+- **Not measured:** the vp cost, or any trained agent. A model frozen on an
+  objective it already holds loses nothing.
+- **Read `absorbing` beside any movement feature's result** — an advance is the
+  longest move in the game and so the most likely to be stopped.
+- ⚠ **THE SOLVER IS NOT THE BUG — two variants tried and REVERTED.** Bisection
+  on travel made it worse (delivery 91.8% → 90.4%): the legal set is not an
+  interval, since travelling further can leave one base without entering
+  another. A correct descending scan froze less (11.1%) but truncated more
+  (13.3%) and delivered less (91.1%) — it converts freezes into short moves
+  without buying ground. **75.5% of frozen model-steps have no legal shorter
+  move along that heading at all.** So **"fix freezing" reduces to "fix
+  allocation"** — the same wall three reward terms failed against — and this is
+  the third movement-side fix measured away after the tangential slide.
+  **Do not attempt a fourth.**
+
 ### How to measure here
 
 The single most expensive class of error in this project. Every rule below was

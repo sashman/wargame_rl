@@ -202,6 +202,16 @@ def _models_to_features(
     # two scalars above say a unit is stretched; this says which way to close it.
     if models[0].unit_offset is not None:
         core_parts.append(np.array([m.unit_offset for m in models], dtype=np.float32))
+    # The advance trade, when the scenario has advance bins: what reach this
+    # model's unit rolled, and whether it has already spent its shooting.
+    if models[0].advance_roll is not None:
+        core_parts.append(
+            np.array([[m.advance_roll] for m in models], dtype=np.float32)
+        )
+    if models[0].advanced_this_turn is not None:
+        core_parts.append(
+            np.array([[m.advanced_this_turn] for m in models], dtype=np.float32)
+        )
     core = np.hstack(core_parts)
     alive_col = np.array([[m.alive] for m in models], dtype=np.float32)
     cw = np.array([[float(m.current_wounds)] for m in models], dtype=np.float32)
@@ -298,6 +308,14 @@ def _observation_to_numpy(
     n_unit_centroid = (
         len(probe[0].unit_offset) if probe and probe[0].unit_offset is not None else 0
     )
+    # The advance roll and the spent-shooting flag, when the scenario has
+    # advance bins. Two columns, because they answer different questions: what
+    # reach is available, and whether it has already been bought.
+    n_advance = sum(
+        1
+        for attribute in ("advance_roll", "advanced_this_turn")
+        if probe and getattr(probe[0], attribute) is not None
+    )
     base_feature_dim = (
         n_spatial
         + n_group
@@ -305,6 +323,7 @@ def _observation_to_numpy(
         + n_objective_presence
         + n_coherency
         + n_unit_centroid
+        + n_advance
         + N_WOUND_FEATURES
         + N_COMBAT_STATS
     )

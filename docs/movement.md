@@ -164,6 +164,7 @@ Movement parameters are set via `WargameEnvConfig`:
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `n_movement_angles` | `16` | Number of angular bins (22.5° apart) |
+| `n_advance_speed_bins` | `0` | Advance bins, as their own action slice appended after shooting. 0 registers nothing, draws no dice and changes no action index |
 | `n_speed_bins` | `6` | Number of discrete speed levels |
 | `max_move_speed` | `6.0` | Maximum distance a model can move per step, in inches. The scenario-wide default for the rules' **Move (M)** characteristic |
 | `ModelConfig.move` | `None` | Per-model override of `max_move_speed`, in inches. `None` takes the scenario value |

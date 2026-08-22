@@ -85,10 +85,24 @@ class WargameModelObservation:
     # a model has strayed. Losing "how far" costs nothing here — that is exactly
     # what `coherency_spread` carries.
     unit_offset: np.ndarray | None = None
+    # The two halves of the advance trade, present only when the scenario has
+    # advance bins. Without them a policy choosing an advance is blind to both
+    # what it buys and what it has already spent:
+    #   `advance_roll`      -- this model's UNIT's D6 for the turn, normalised
+    #                          by the die's maximum. The rules roll before the
+    #                          move is chosen, so it must be observable when the
+    #                          choice is made, not merely afterwards.
+    #   `advanced_this_turn` -- whether it has already advanced. The action mask
+    #                          already FORBIDS shooting, so the policy cannot act
+    #                          on it wrongly; this is for the VALUE head, which
+    #                          otherwise cannot tell a model that has spent its
+    #                          shooting from one holding fire by choice.
+    advance_roll: float | None = None
+    advanced_this_turn: float | None = None
 
     @property
     def size(self) -> int:
-        """Location + distances + group one-hot + same-group distance + alive + wound scalars (3) + combat stats (7), plus unit strength, objective-presence flags and the two coherency scalars when observed."""
+        """Location + distances + group one-hot + same-group distance + alive + wound scalars (3) + combat stats (7), plus unit strength, objective-presence flags, the two coherency scalars and the two advance scalars when observed."""
         return int(
             self.location.size
             + self.distances_to_objectives.size
@@ -101,4 +115,6 @@ class WargameModelObservation:
             + (0 if self.coherency_spread is None else 1)
             + (0 if self.coherency_component is None else 1)
             + (0 if self.unit_offset is None else self.unit_offset.size)
+            + (0 if self.advance_roll is None else 1)
+            + (0 if self.advanced_this_turn is None else 1)
         )
