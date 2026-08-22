@@ -166,6 +166,41 @@ train-coherency-baseline max_epochs='300' n_seeds='3' first_seed='1' tag='-basel
 	done; \
 	wait
 
+# How often the mission's 15 VP per-turn cap binds, and what it discards. The
+# fourth objective a side controls pays ZERO while the tables carry five or six,
+# so `held` can rise without a single extra point being paid. `held` cannot see
+# that; this can.
+#
+# Use: just measure-vp-cap squad_march_take configs/golden/25v25_maps_two_mode.yaml 20
+measure-vp-cap policy env_config n_episodes='20' decode_topk='1':
+	@uv run python -m scripts.measure_vp_cap {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}}
+
+# THE MIXED-ROLES ARM. Three seeds in parallel, `ent_coef` 0.003 (the PPO
+# default is 0.03 and is the worse arm here by +5.9 +/- 2.5 vp read paired),
+# recording on so the behaviour can be eyeballed as it trains.
+#
+# ⚠ The arm configs are UNREFEREED, like every training config here. Score the
+# resulting checkpoints on the `_refereed` twin, never on the config they
+# trained on -- the referee taxes a policy by how often it breaks coherency, so
+# scoring unrefereed flatters the scripts by ~16 vp.
+#
+# ⚠ `40v40_maps_mixed_roles_spares.yaml` changes `max_groups` 5 -> 8 and the
+# model count 25 -> 40, so it is a TENSOR-SHAPE change: it orphans every
+# existing checkpoint and removes the paired estimator against the
+# `two_mode` lineage. `25v25_maps_mixed_roles*.yaml` keep both.
+#
+# Use: just train-mixed-roles configs/experiments/25v25_maps_mixed_roles.yaml 300 3
+train-mixed-roles config max_epochs='300' n_seeds='3' first_seed='1' tag='-mixed':
+	@trap 'kill 0' INT TERM && \
+	for s in $(seq {{first_seed}} $(( {{first_seed}} + {{n_seeds}} - 1 ))); do \
+		uv run train.py --record-during-training --record-every-n-epochs 10 \
+			--env-config-path {{config}} \
+			--max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" \
+			--ent-coef 0.003 --run-suffix "s$s{{tag}}" \
+			--wandb-group mixed-roles & \
+	done; \
+	wait
+
 # Run multiple env configs in parallel. Each run gets a unique --run-suffix and shared --wandb-group.
 # Uses PPO + transformer. Use: just train-multi config1.yaml config2.yaml
 # Trap INT/TERM so Ctrl+C kills all background train.py processes.
