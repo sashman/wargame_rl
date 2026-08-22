@@ -19,12 +19,11 @@ class VPGainCalculator(GlobalRewardCalculator):
     """
 
     def calculate(self, view: BattleView, ctx: StepContext) -> float:
-        cap_per_turn = 15
-        config = getattr(view, "config", None)
-        mission = getattr(config, "mission", None)
-        mission_params = getattr(mission, "params", None)
-        if isinstance(mission_params, dict):
-            cap_per_turn = int(mission_params.get("cap_per_turn", cap_per_turn))
+        # The mission's own number. This used to duck-type its way through
+        # three `getattr`s to `params["cap_per_turn"]` and fall back to 15,
+        # so a mission that priced objectives differently would have rescaled
+        # every reward in the run without a word.
+        cap_per_turn = view.config.mission.per_round_cap
 
         if cap_per_turn <= 0:
             return 0.0

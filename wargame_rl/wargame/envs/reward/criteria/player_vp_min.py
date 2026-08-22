@@ -16,18 +16,23 @@ if TYPE_CHECKING:
 
 
 def _theoretical_max_vp(view: BattleView) -> int:
-    """Compute theoretical max VP for default mission from config."""
+    """The most VP this mission can pay over the whole battle.
+
+    ⚠ Reads the mission's own numbers rather than branching on its *name*. This
+    used to `return 0` for any `mission.type != "default"`, which made the
+    threshold collapse to `min_vp` and `success_rate` pin at 1.0 -- a curriculum
+    advancing on epoch count with nothing logged to say the gate had stopped
+    meaning anything. No config in the repo sets a mission, so nothing ever
+    exercised it; the first one to would have hit it silently.
+    """
     config = view.config
-    if config.mission.type != "default":
-        return 0
-    params = config.mission.params
-    vp_per_obj = int(params.get("vp_per_objective", 5))
-    cap_per_turn = int(params.get("cap_per_turn", 15))
-    min_round = int(params.get("min_round", 2))
-    n_rounds = config.number_of_battle_rounds
-    n_obj = len(view.objectives)
-    scoring_rounds = max(0, n_rounds - min_round + 1)
-    max_per_round = min(n_obj * vp_per_obj, cap_per_turn)
+    mission = config.mission
+    scoring_rounds = max(
+        0, config.number_of_battle_rounds - mission.first_scoring_round + 1
+    )
+    max_per_round = min(
+        len(view.objectives) * mission.points_per_objective, mission.per_round_cap
+    )
     return scoring_rounds * max_per_round
 
 
@@ -53,7 +58,12 @@ class PlayerVPMinCriteria(SuccessCriteria):
         return view.player_vp >= self._threshold(view)
 
     def vp_threshold_for_terminal_bonus(self, view: BattleView) -> int | None:
-        """Return the VP threshold when met at termination can trigger terminal bonus."""
-        if view.config.mission.type != "default":
+        """The VP threshold whose being met at termination triggers the bonus.
+
+        None only when the mission pays nothing at all, rather than whenever it
+        is not the one named `"default"` -- under the old name test any mission
+        silently disabled `terminal_vp_bonus`.
+        """
+        if view.config.mission.per_round_cap <= 0:
             return None
         return self._threshold(view)

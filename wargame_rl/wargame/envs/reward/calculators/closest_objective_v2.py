@@ -4,8 +4,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.entities import alive_mask_for
-from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.reward.calculators.base import PerModelRewardCalculator
 
 if TYPE_CHECKING:
@@ -160,12 +158,7 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
 
         n_obj = len(view.objectives)
         if view.opponent_models:
-            opp_alive = alive_mask_for(view.opponent_models)
-            opponent_cache = compute_distances(
-                view.opponent_models,
-                view.objectives,
-                alive_mask=opp_alive,
-            )
+            opponent_cache = ctx.opponent_distances(view)
             opponent_in_range = (
                 opponent_cache.model_obj_norms_offset <= opponent_cache.obj_radii
             )

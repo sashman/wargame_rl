@@ -6,9 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.env_components.distance_cache import (
-    compute_distances,
     objective_ownership_from_norms_offset,
 )
 from wargame_rl.wargame.envs.reward.calculators.base import GlobalRewardCalculator
@@ -35,11 +33,7 @@ class ObjectiveCoverageCalculator(GlobalRewardCalculator):
         if n_obj == 0:
             return 0.0
         if view.opponent_models:
-            opp_alive = alive_mask_for(view.opponent_models)
-            opponent_cache = compute_distances(
-                view.opponent_models, view.objectives, alive_mask=opp_alive
-            )
-            opponent_norms = opponent_cache.model_obj_norms_offset
+            opponent_norms = ctx.opponent_distances(view).model_obj_norms_offset
         else:
             opponent_norms = np.zeros((0, n_obj), dtype=np.float64)
         player_controls, _ = objective_ownership_from_norms_offset(

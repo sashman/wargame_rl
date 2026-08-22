@@ -418,6 +418,50 @@ Measured 2026-08-22, [report](reports/2026-08-22-spare-squads-pose-the-question-
   `held` cannot see any of this — it is an end-state snapshot with no notion of
   which points were paid.
 
+### The overstack penalty was paying for itself
+
+Measured 2026-08-22, paired, [report](reports/2026-08-22-the-overstack-penalty-was-paying-for-itself.md).
+
+- **`overstack_penalty_per_extra: 0.0` is REJECTED: −12.2 ± 5.5 paired, t=−2.23,
+  3/3 seeds negative**, `held` 2.19 → 2.05. Three seeds, 300 epochs, scored
+  refereed at K=3 on `24v24_maps_spare_squads_refereed.yaml`.
+- The whole of `closest_objective_v2`'s **negative** net income is this penalty
+  (progress +0.08, penalty −0.90). Removing it flips the term to +0.29 and every
+  other calculator is bit-identical — the mechanism was exactly as diagnosed.
+- **And it still lost.** Offence **+2.9**, defence **−15.1**: the travel term did
+  pay more for movement, and the agent conceded fifteen VP for it. Discouraging
+  stacking was making models spread out to *deny*.
+- ⚠ **A term with negative net income is not thereby a broken term.** What a term
+  costs shows up in `measure-income-share`; **what it prevents does not**. The
+  rule "an anti-concentration lever must redistribute, not destroy" came from
+  levers that halved occupancy — it does not license removing a small one that
+  is not doing that. This one is 1/5 the magnitude of the lever that failed and
+  sits *alongside* `crowding_exponent`, not instead of it.
+
+### ⚠ The observed control count was not the scored one (fixed 2026-08-22)
+
+- There were **three** implementations of "on an objective". Scoring, `objective_hold`
+  and every control read use `norms_offset <= obj_radii`, measured from the model's
+  **base edge**; `observation_builder` had its own `area.contains_points` test on the
+  model **centre**. Measured on the held-out nine: **206 of 2,700 (objective, step)
+  slots disagreed — 7.6%**, 215 models miscounted.
+- **`player_count` on the objective token is the feature every objective-keyed reward
+  term and every proposed mission primitive reads**, so the standing rule *"check the
+  agent can observe what the lever keys on"* was quietly false for all of them.
+- Now one definition, `objective_counts_from_norms_offset`, shared by all three.
+  Pinned by `tests/test_observed_control_matches_scoring.py`, verified to fail on the
+  old builder.
+- ⚠ **This changed the observation**, so `observation_golden_25v25_shooting_opponent.npz`
+  was regenerated deliberately (the other two are byte-identical — the change bites only
+  where `observe_objective_control: true`). Checkpoints trained before this saw the old
+  feature; scores across this date are not strictly comparable.
+- ⚠ **It cost +0.84 ms/step (+16.1%)** on `25v25_maps_two_mode` — observation build
+  0.659 → 1.257 ms — because the counts are now computed with the alive mask the
+  observation path never had. The caches already passed to `_get_obs` are built
+  **without** an alive mask, so reusing them would count the dead. The planned
+  throughput step (one shared opponent cache, batched `_distances_to_objectives`)
+  recovers this and more; see [docs/missions-design.md](docs/missions-design.md).
+
 ### Holding pays — the agent stacks, it does not hide
 
 Measured 2026-08-22 with no GPU, [report](reports/2026-08-22-holding-pays-and-the-agent-stacks.md).
@@ -447,6 +491,39 @@ Measured 2026-08-22 with no GPU, [report](reports/2026-08-22-holding-pays-and-th
   already held.
 - The observability desk check **passes** here: `observe_objective_control: true`
   and `_objectives_to_obs` supply per-objective alive counts for both sides.
+
+### Asymmetric armies — the agent's best matchup, for the reason already on file
+
+Measured 2026-08-22, [report](reports/2026-08-22-the-horde-is-the-agents-best-matchup.md).
+`configs/experiments/30v15_fast_horde_vs_elite.yaml` — 30 bodies at 12" reach and
+Move 12 against 15 elites at 24" reach — trained three seeds, 300 epochs, scored
+**refereed** at K=3 on the held-out nine, n=30.
+
+- **The agent beats the best script by +48.5, the largest margin recorded here.**
+  Agent **+16.2** (+29.5 / +8.2 / +11.0) against `squad_march_deny` **−32.3**.
+  Across seeds +48.5 ± 6.7 (t=7.26, df=2); **across tables +48.6 ± 9.2 (t=5.30,
+  df=8), ahead on 9 of 9**. ⚠ **UNPAIRED** — 30 models and `max_groups` 6 share no
+  init with any other lineage.
+- ⚠ **This is NOT the agent getting better.** Offence is **negative on 3/3**
+  (−11.4 / −43.9 / −31.1); defence carries all of it (+73.3 / +84.4 / +74.4). It is
+  the mirror's decomposition unchanged, and the r=+0.991 rule — *the gap tracks what
+  the best script concedes* — continuing to hold. The elite concedes 187.4 to a
+  script and 103–114 to the agent, so ~80 vp of denial exists here; against
+  `advance_and_shoot`, where both concede ~130, the same trait was worth −75.9.
+- **`held` INVERTED, and that is the one new observation.** The agent holds *more*
+  than the scripts (1.38–1.72 v 0.60–1.00) while keeping 2.9x the army alive
+  (0.287–0.374 v 0.077–0.125). The hoarding did not stop — it stopped costing
+  ground, because control is a **headcount** and 30 survivors outnumber 15 elites
+  wherever they arrive. ⚠ So **the horde side MASKS the offence deficit**; do not
+  read a healthy `held` here as allocation being solved.
+- ⚠ **The referee tax here is enormous and REORDERS the bar.** `take` −6.9 →
+  **−46.4**, `shoot` −33.1 → −66.3, `contest_and_spread` −47.8 → −90.7, `deny`
+  −15.4 → −32.3. Unrefereed `take` leads; refereed **`deny`** leads. Thirty models
+  in six squads of five at Move 12 shatter formation constantly. Every scripted
+  screen number is void as a bar — "measure what ships" applies to a **scenario**,
+  not just a config field.
+- **Untested: the elite side.** Only the horde was trained. The denial-price account
+  predicts an elite agent wins by *less*; that is one training run.
 
 ### How to measure here
 
