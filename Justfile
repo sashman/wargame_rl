@@ -201,6 +201,16 @@ measure-hold-hazard policy env_config n_episodes='30' decode_topk='1':
 measure-vp-cap policy env_config n_episodes='20' decode_topk='1':
 	@uv run python -m scripts.measure_vp_cap {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}}
 
+# Does the critic believe the stack is right -- and is it? Forks a live game at a
+# chosen round, rigidly translates one SURPLUS squad off an over-stacked objective
+# onto an empty one, and prices the move twice: `dV` is what the critic thinks it
+# is worth, `dVP` is what it turns out to be worth when both branches are played
+# out. The two signs together separate "the reward is wrong" from "the search is
+# wrong" from "the stack was correct all along" -- on frozen weights, no GPU.
+# Use: just measure-critic-probe <ckpt> configs/experiments/24v24_maps_spare_squads_refereed.yaml 10 3,6,10 3
+measure-critic-probe ckpt env_config n_episodes='10' rounds='3,6,10' decode_topk='3' reverse='' *overrides:
+	@uv run python -m scripts.measure_critic_probe {{ckpt}} {{env_config}} {{n_episodes}} {{rounds}} {{decode_topk}} {{reverse}} {{overrides}}
+
 # THE MIXED-ROLES ARM. Three seeds in parallel, `ent_coef` 0.003 (the PPO
 # default is 0.03 and is the worse arm here by +5.9 +/- 2.5 vp read paired),
 # recording on so the behaviour can be eyeballed as it trains.
