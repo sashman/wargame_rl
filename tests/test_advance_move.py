@@ -357,3 +357,79 @@ class TestAdvanceObservation:
 
         # Assert
         assert wide - narrow == 2
+
+
+class TestAdvanceIsResolvedPerUnit:
+    """One model advancing commits its whole unit -- and costs it the turn's fire."""
+
+    @staticmethod
+    def _env(bins: int) -> WargameEnv:
+        config = load_env_config("configs/dev/4v4_two_phases.yaml").model_copy(
+            deep=True
+        )
+        config.n_advance_speed_bins = bins
+        return create_environment(env_config=config)
+
+    def _apply(self, env: WargameEnv, actions: list[int]) -> None:
+        assert isinstance(env.action_space, spaces.Tuple)
+        env.player_action_handler.apply(
+            WargameEnvAction(actions=actions),
+            env.wargame_models,
+            env.config.board_width,
+            env.config.board_height,
+            env.action_space,
+            phase=BattlePhase.movement,
+            enemy_models=env.opponent_models,
+        )
+
+    def test_one_advancing_model_commits_its_whole_unit(self) -> None:
+        """⚠ The exploit this closes: advance one model, keep the rest shooting."""
+        # Arrange
+        env = self._env(3)
+        try:
+            env.reset(seed=7)
+            handler = env.player_action_handler
+            slice_ = handler.advance_slice
+            assert slice_ is not None
+            # Two units of two. Set explicitly: the 4v4 fixture puts every
+            # model in its own unit, where "the whole unit advances" is
+            # vacuously true and the test would pass without the code.
+            for index, model in enumerate(env.wargame_models):
+                model.group_id = index // 2
+            groups = [int(m.group_id) for m in env.wargame_models]
+            first = groups[0]
+            assert groups.count(first) > 1, "need a unit of 2+ models"
+
+            actions = [handler.encode_action(0, 0)] * len(env.wargame_models)
+            actions[0] = slice_.start  # exactly ONE model advances
+
+            # Act
+            self._apply(env, actions)
+
+            # Assert: every model sharing that unit pays, and only those.
+            for model, group in zip(env.wargame_models, groups, strict=True):
+                assert model.advanced_this_turn is (group == first), (
+                    f"unit {group} wrongly {'' if model.advanced_this_turn else 'not '}"
+                    "charged for the advance"
+                )
+        finally:
+            env.close()
+
+    def test_a_unit_nobody_advanced_keeps_its_shooting(self) -> None:
+        """The control: without it the test above passes on an always-true flag."""
+        # Arrange
+        env = self._env(3)
+        try:
+            env.reset(seed=7)
+            handler = env.player_action_handler
+
+            # Act
+            self._apply(
+                env,
+                [handler.encode_action(0, 0)] * len(env.wargame_models),
+            )
+
+            # Assert
+            assert not any(m.advanced_this_turn for m in env.wargame_models)
+        finally:
+            env.close()

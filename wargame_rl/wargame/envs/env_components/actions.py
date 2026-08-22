@@ -354,6 +354,46 @@ class ActionHandler:
         speeds: np.ndarray = self._move_speeds
         return speeds
 
+    def _mark_advancing_units(
+        self, action: WargameEnvAction, wargame_models: list[Any]
+    ) -> None:
+        """Set `advanced_this_turn` for every model in any unit that advances.
+
+        A move type is chosen per UNIT in the rules, but this action space is
+        per MODEL, so nothing stops one model picking an advance while its
+        squadmates pick normal moves. Left alone that is an exploit rather than
+        a mere divergence: send one model 12" to take an objective and keep the
+        other four shooting, which no legal turn allows.
+
+        Resolving it upward -- if any model advances, the whole unit advances
+        and the whole unit forfeits its shooting -- makes the cheat cost what it
+        should. The models' chosen displacements are left alone: every normal
+        speed is within `M`, which is within the advance allowance `M + roll`,
+        so each is a legal distance for the move type the unit is now making.
+
+        ⚠ This does NOT make the move rules-legal in full. A unit still makes
+        what the rules would call one move type with per-model distances chosen
+        independently, and a 12"-versus-6" split inside a 2" chain will break
+        coherency. It removes the free lunch, not the divergence.
+        """
+        if self._advance_slice is None:
+            return
+        start, end = self._advance_slice.start, self._advance_slice.end
+        advancing_groups = {
+            int(wargame_models[i].group_id)
+            for i, act in enumerate(action.actions)
+            if i < len(wargame_models) and start <= act < end
+        }
+        if not advancing_groups:
+            return
+        for model in wargame_models:
+            if int(model.group_id) in advancing_groups:
+                # The rules' cost: "only [RUN AND GUN] weapons may be fired
+                # after it", and no weapon here has that ability, so an advance
+                # forfeits the turn's shooting outright. Both shooting masks
+                # already read this flag; nothing set it before the advance move.
+                model.advanced_this_turn = True
+
     def decode_action(
         self,
         action: int,
@@ -517,6 +557,8 @@ class ActionHandler:
             [m.base_radius for m in wargame_models], dtype=float
         )
         friendly_alive = np.array([m.is_alive for m in wargame_models], dtype=bool)
+        if phase is BattlePhase.movement:
+            self._mark_advancing_units(action, wargame_models)
         for i, act in enumerate(action.actions):
             model = wargame_models[i]
             if not model.is_alive:
@@ -533,16 +575,6 @@ class ActionHandler:
             ):
                 continue
             model.previous_location = model.location.copy()
-            is_advance = (
-                self._advance_slice is not None
-                and self._advance_slice.start <= act < self._advance_slice.end
-            )
-            if is_advance:
-                # The rules' cost: "only [RUN AND GUN] weapons may be fired
-                # after it", and no weapon here has that ability, so an advance
-                # forfeits this turn's shooting outright. Both shooting masks
-                # already read this flag; nothing has ever set it until now.
-                model.advanced_this_turn = True
             displacement = self.decode_action(
                 act, model_idx=i, advance_roll=model.advance_roll
             )
