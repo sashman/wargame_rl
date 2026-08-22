@@ -492,6 +492,39 @@ Measured 2026-08-22 with no GPU, [report](reports/2026-08-22-holding-pays-and-th
 - The observability desk check **passes** here: `observe_objective_control: true`
   and `_objectives_to_obs` supply per-objective alive counts for both sides.
 
+### Asymmetric armies — the agent's best matchup, for the reason already on file
+
+Measured 2026-08-22, [report](reports/2026-08-22-the-horde-is-the-agents-best-matchup.md).
+`configs/experiments/30v15_fast_horde_vs_elite.yaml` — 30 bodies at 12" reach and
+Move 12 against 15 elites at 24" reach — trained three seeds, 300 epochs, scored
+**refereed** at K=3 on the held-out nine, n=30.
+
+- **The agent beats the best script by +48.5, the largest margin recorded here.**
+  Agent **+16.2** (+29.5 / +8.2 / +11.0) against `squad_march_deny` **−32.3**.
+  Across seeds +48.5 ± 6.7 (t=7.26, df=2); **across tables +48.6 ± 9.2 (t=5.30,
+  df=8), ahead on 9 of 9**. ⚠ **UNPAIRED** — 30 models and `max_groups` 6 share no
+  init with any other lineage.
+- ⚠ **This is NOT the agent getting better.** Offence is **negative on 3/3**
+  (−11.4 / −43.9 / −31.1); defence carries all of it (+73.3 / +84.4 / +74.4). It is
+  the mirror's decomposition unchanged, and the r=+0.991 rule — *the gap tracks what
+  the best script concedes* — continuing to hold. The elite concedes 187.4 to a
+  script and 103–114 to the agent, so ~80 vp of denial exists here; against
+  `advance_and_shoot`, where both concede ~130, the same trait was worth −75.9.
+- **`held` INVERTED, and that is the one new observation.** The agent holds *more*
+  than the scripts (1.38–1.72 v 0.60–1.00) while keeping 2.9x the army alive
+  (0.287–0.374 v 0.077–0.125). The hoarding did not stop — it stopped costing
+  ground, because control is a **headcount** and 30 survivors outnumber 15 elites
+  wherever they arrive. ⚠ So **the horde side MASKS the offence deficit**; do not
+  read a healthy `held` here as allocation being solved.
+- ⚠ **The referee tax here is enormous and REORDERS the bar.** `take` −6.9 →
+  **−46.4**, `shoot` −33.1 → −66.3, `contest_and_spread` −47.8 → −90.7, `deny`
+  −15.4 → −32.3. Unrefereed `take` leads; refereed **`deny`** leads. Thirty models
+  in six squads of five at Move 12 shatter formation constantly. Every scripted
+  screen number is void as a bar — "measure what ships" applies to a **scenario**,
+  not just a config field.
+- **Untested: the elite side.** Only the horde was trained. The denial-price account
+  predicts an elite agent wins by *less*; that is one training run.
+
 ### How to measure here
 
 The single most expensive class of error in this project. Every rule below was
