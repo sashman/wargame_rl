@@ -418,6 +418,30 @@ Measured 2026-08-22, [report](reports/2026-08-22-spare-squads-pose-the-question-
   `held` cannot see any of this — it is an end-state snapshot with no notion of
   which points were paid.
 
+### ⚠ The observed control count was not the scored one (fixed 2026-08-22)
+
+- There were **three** implementations of "on an objective". Scoring, `objective_hold`
+  and every control read use `norms_offset <= obj_radii`, measured from the model's
+  **base edge**; `observation_builder` had its own `area.contains_points` test on the
+  model **centre**. Measured on the held-out nine: **206 of 2,700 (objective, step)
+  slots disagreed — 7.6%**, 215 models miscounted.
+- **`player_count` on the objective token is the feature every objective-keyed reward
+  term and every proposed mission primitive reads**, so the standing rule *"check the
+  agent can observe what the lever keys on"* was quietly false for all of them.
+- Now one definition, `objective_counts_from_norms_offset`, shared by all three.
+  Pinned by `tests/test_observed_control_matches_scoring.py`, verified to fail on the
+  old builder.
+- ⚠ **This changed the observation**, so `observation_golden_25v25_shooting_opponent.npz`
+  was regenerated deliberately (the other two are byte-identical — the change bites only
+  where `observe_objective_control: true`). Checkpoints trained before this saw the old
+  feature; scores across this date are not strictly comparable.
+- ⚠ **It cost +0.84 ms/step (+16.1%)** on `25v25_maps_two_mode` — observation build
+  0.659 → 1.257 ms — because the counts are now computed with the alive mask the
+  observation path never had. The caches already passed to `_get_obs` are built
+  **without** an alive mask, so reusing them would count the dead. The planned
+  throughput step (one shared opponent cache, batched `_distances_to_objectives`)
+  recovers this and more; see [docs/missions-design.md](docs/missions-design.md).
+
 ### Holding pays — the agent stacks, it does not hide
 
 Measured 2026-08-22 with no GPU, [report](reports/2026-08-22-holding-pays-and-the-agent-stacks.md).
