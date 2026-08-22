@@ -558,6 +558,16 @@ class of failure `vp_margin` and `coherent` are both blind to.
   objective it already holds loses nothing.
 - **Read `absorbing` beside any movement feature's result** — an advance is the
   longest move in the game and so the most likely to be stopped.
+- ⚠ **THE SOLVER IS NOT THE BUG — two variants tried and REVERTED.** Bisection
+  on travel made it worse (delivery 91.8% → 90.4%): the legal set is not an
+  interval, since travelling further can leave one base without entering
+  another. A correct descending scan froze less (11.1%) but truncated more
+  (13.3%) and delivered less (91.1%) — it converts freezes into short moves
+  without buying ground. **75.5% of frozen model-steps have no legal shorter
+  move along that heading at all.** So **"fix freezing" reduces to "fix
+  allocation"** — the same wall three reward terms failed against — and this is
+  the third movement-side fix measured away after the tangential slide.
+  **Do not attempt a fourth.**
 
 ### How to measure here
 

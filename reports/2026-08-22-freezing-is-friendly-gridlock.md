@@ -87,3 +87,74 @@ result.**
 just measure-freezing squad_march_take configs/golden/25v25_maps_two_mode.yaml 5
 just measure-freezing random            configs/golden/25v25_maps_two_mode.yaml 5
 ```
+
+---
+
+# ATTEMPTED FIX — two solver variants, both REJECTED
+
+**The solver is not the bug.** Asked to fix freezing, I changed
+`domain/movement.py`'s backoff twice and reverted both.
+
+## What suggested a fix existed
+
+The retired backoff retreated to "just before the earliest offending base", and
+in a crowded stack that point overlaps a *different* base — so the loop burned
+its `_MAX_BACKOFF_PASSES = 4` and returned zero travel. Probing frozen
+model-steps, **24.5% had a legal shorter move along the same heading**,
+recovering a median 6.0".
+
+⚠ **That probe was confounded and I should have said so before acting on it.**
+It tested candidate points against **end-of-phase** positions, while `apply`
+resolves models **sequentially** — so a spot measured free may have been
+occupied at the moment that model actually moved. 24.5% is an upper bound of
+unknown tightness.
+
+## Variant 1 — bisection on travel. Worse.
+
+|  | frozen | truncated | delivered | P(f\|f) | absorbing |
+|---|---|---|---|---|---|
+| baseline | 11.8% | 12.3% | **91.8%** | 0.893 | +0.858 |
+| bisection | 12.3% | 11.9% | **90.4%** | 0.921 | +0.888 |
+
+**The flaw is in the assumption, not the tuning:** bisection needs the legal set
+to be an interval, and it is not. Travelling *further* can leave one base
+without entering another, so a halving lands in an illegal gap and converges
+below the true furthest legal point.
+
+## Variant 2 — descending scan, 32 samples. Correct, and still no better.
+
+|  | frozen | truncated | delivered | P(f\|f) | absorbing |
+|---|---|---|---|---|---|
+| baseline | 11.8% | 12.3% | **91.8%** | 0.893 | +0.858 |
+| descending scan | 11.1% | **13.3%** | **91.1%** | 0.905 | +0.872 |
+
+Fewer frozen, but more truncated and **less distance delivered**. It converts
+freezes into short moves without buying ground.
+
+⚠ Both comparisons are **unpaired on diverging trajectories** — changing the
+solver changes every subsequent position — so these differences are indicative,
+not significant. What they do not show is any gain worth voiding every golden
+and every baseline for.
+
+**Reverted.** The baseline reproduces bit-for-bit afterwards (4348 orders,
+11.8%, 91.8%, 0.893, +0.858), which also confirms the harness is deterministic.
+
+## The conclusion, which is the useful part
+
+**75.5% of frozen model-steps are genuinely, physically blocked** — no shorter
+move along that heading exists. The solver is doing the right thing. Freezing is
+not a physics defect to be fixed in `movement.py`; it is **stacking, observed
+through a new instrument**:
+
+- the models are jammed because the policy put them on the same ground,
+- they *stay* jammed because a purposeful policy re-issues the same blocked
+  order, which is why `random` escapes and the scripts do not.
+
+So **"fix freezing" reduces to "fix allocation"** — the same wall three reward
+terms have already failed against. It is not an independent, cheaper problem,
+and this is the third movement-side fix to be tried and measured away, after the
+tangential slide (2026-08-10) and these two.
+
+⚠ **Do not attempt a fourth solver variant.** The remaining headroom is bounded
+above by 24.5% of an 11.8% freeze rate on a metric where 91.8% of ordered
+distance is already delivered — and that bound is itself an over-estimate.
