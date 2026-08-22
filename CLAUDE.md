@@ -105,15 +105,15 @@ wargame_rl/
 | Analyse a log | `just analyze <file>` · `just analyze-compare <files...>` |
 | Inspect a Wandb run | `just run-summary <run_id> [bucket]` |
 | Measure reward-phase gates | `just measure-phase-gates <ckpt> <config.yaml> [n_episodes]` |
-| Scripted baselines (floor + bar) | `just measure-baselines <config.yaml> [n_episodes] [record] [seed_base]` |
-| Score a checkpoint (baseline-comparable) | `just measure-checkpoint <ckpt> <config.yaml> [n_episodes] [record]` |
-| Score on the real table layouts | `just measure-maps <policy\|ckpt> <config.yaml> [n_episodes] [maps_dir] [decode_topk]` |
+| Scripted baselines (floor + bar) | `just measure-baselines <config.yaml> [n_episodes] [record] [seed_base] [key=value...]` |
+| Score a checkpoint (baseline-comparable) | `just measure-checkpoint <ckpt> <config.yaml> [n_episodes] [record] [decode_topk] [key=value...]` |
+| Score on the real table layouts | `just measure-maps <policy\|ckpt> <config.yaml> [n_episodes] [maps_dir] [decode_topk] [key=value...]` |
 | Why an objective was not held | `just measure-objective-split <policy\|ckpt> <config.yaml> [n_episodes]` |
 | How often a policy is in unit coherency | `just measure-coherency <policy\|ckpt> <config.yaml> [n_episodes]` |
 | Which calculator pays, and how much is global | `just measure-income-share <policy\|ckpt> <config.yaml> [n_episodes]` |
 | Clone a scripted policy into the network (warm-start checkpoint) | `just behaviour-clone <policy> <config.yaml> [n_episodes] [epochs] [out]` |
-| Two policies on identical layouts, paired per episode | `just measure-paired <policy\|ckpt> <policy\|ckpt> <config.yaml> [n_episodes] [seed_base]` |
-| Dice-vs-scenario noise floor | `just measure-noise-floor <config.yaml> [n_layouts] [n_combat_seeds] [policy]` |
+| Two policies on identical layouts, paired per episode | `just measure-paired <policy\|ckpt> <policy\|ckpt> <config.yaml> [n_episodes] [seed_base] [key=value...]` |
+| Dice-vs-scenario noise floor | `just measure-noise-floor <config.yaml> [n_layouts] [n_combat_seeds] [policy] [key=value...]` |
 | Terrain-profile statistics | `just measure-terrain <config.yaml> [n_layouts]` |
 | Where epoch time goes | `just measure-throughput <config.yaml> [n_steps] [engaged]` |
 | Profile | `just profile <config.yaml> [max_epochs]` |
@@ -406,6 +406,13 @@ paid for.
   for exactly this.
 - **Quote a t AND a sign count on the map pool.** Per-table differences are
   heavy-tailed and the two disagree often enough that either alone misleads.
+- **Every `measure-*` recipe takes trailing `key=value` scenario overrides** —
+  `rounds=5`, `weapon_range=24`, `turn_order=player` — so one config can be scored
+  at several settings of one number without copying it (`scripts/scenario_overrides.py`).
+  With no override token the load is exactly a plain parse, so every existing
+  invocation is unchanged. The printed header names the overrides, because a
+  table that does not say which scenario it measured gets compared to the wrong
+  one.
 - **n=100.** `measure-checkpoint` and `measure-baselines` default there, not 30:
   per-episode `vp_margin` sd is ~45–50, so n=30 gives SE ~8–9, larger than most
   arm differences ever measured here.
