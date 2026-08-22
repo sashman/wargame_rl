@@ -191,6 +191,27 @@ def _distances_to_objectives(
     return distances
 
 
+def objective_counts_from_norms_offset(
+    norms_offset: np.ndarray, obj_radii: np.ndarray
+) -> np.ndarray:
+    """Models of one side in range of each objective, under the scoring rule.
+
+    THE definition of "on an objective" for this project, and deliberately the
+    only one. `norms_offset` already measures from the model's **base edge**
+    (`compute_distances` subtracts `base_radius`) and already carries `inf` for
+    dead models, so the comparison is the whole rule.
+
+    Extracted because it was written out three times: twice here, and a third
+    time in `observation_builder` as a point-in-polygon test on the model
+    *centre*. That third copy disagreed with this one on **7.6% of
+    (objective, step) slots** on the held-out nine -- so the count the agent
+    observed was not the count the mission scored, in the one feature every
+    objective-keyed reward and mission term reads.
+    """
+    counts: np.ndarray = np.sum(norms_offset <= obj_radii, axis=0)
+    return counts
+
+
 def objective_ownership_from_norms_offset(
     player_norms_offset: np.ndarray,
     opponent_norms_offset: np.ndarray,
@@ -210,8 +231,10 @@ def objective_ownership_from_norms_offset(
         `(n_objectives,)`.
     """
     # OC/count rule (OC=1 per model): strictly greater in-range count controls.
-    player_counts = np.sum(player_norms_offset <= obj_radii, axis=0)
-    opponent_counts = np.sum(opponent_norms_offset <= obj_radii, axis=0)
+    player_counts = objective_counts_from_norms_offset(player_norms_offset, obj_radii)
+    opponent_counts = objective_counts_from_norms_offset(
+        opponent_norms_offset, obj_radii
+    )
     player_controls = player_counts > opponent_counts
     opponent_controls = opponent_counts > player_counts
     return player_controls, opponent_controls
@@ -227,8 +250,10 @@ def objective_states_from_norms_offset(
     "player": player count > opponent count; "opponent": opponent count > player
     count; "contested": equal and >=1 present; "neutral": none present.
     """
-    player_counts = np.sum(player_norms_offset <= obj_radii, axis=0)
-    opponent_counts = np.sum(opponent_norms_offset <= obj_radii, axis=0)
+    player_counts = objective_counts_from_norms_offset(player_norms_offset, obj_radii)
+    opponent_counts = objective_counts_from_norms_offset(
+        opponent_norms_offset, obj_radii
+    )
     states: list[str] = []
     for player_count, opponent_count in zip(player_counts, opponent_counts):
         p, o = int(player_count), int(opponent_count)
