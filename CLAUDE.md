@@ -418,6 +418,26 @@ Measured 2026-08-22, [report](reports/2026-08-22-spare-squads-pose-the-question-
   `held` cannot see any of this — it is an end-state snapshot with no notion of
   which points were paid.
 
+### The overstack penalty was paying for itself
+
+Measured 2026-08-22, paired, [report](reports/2026-08-22-the-overstack-penalty-was-paying-for-itself.md).
+
+- **`overstack_penalty_per_extra: 0.0` is REJECTED: −12.2 ± 5.5 paired, t=−2.23,
+  3/3 seeds negative**, `held` 2.19 → 2.05. Three seeds, 300 epochs, scored
+  refereed at K=3 on `24v24_maps_spare_squads_refereed.yaml`.
+- The whole of `closest_objective_v2`'s **negative** net income is this penalty
+  (progress +0.08, penalty −0.90). Removing it flips the term to +0.29 and every
+  other calculator is bit-identical — the mechanism was exactly as diagnosed.
+- **And it still lost.** Offence **+2.9**, defence **−15.1**: the travel term did
+  pay more for movement, and the agent conceded fifteen VP for it. Discouraging
+  stacking was making models spread out to *deny*.
+- ⚠ **A term with negative net income is not thereby a broken term.** What a term
+  costs shows up in `measure-income-share`; **what it prevents does not**. The
+  rule "an anti-concentration lever must redistribute, not destroy" came from
+  levers that halved occupancy — it does not license removing a small one that
+  is not doing that. This one is 1/5 the magnitude of the lever that failed and
+  sits *alongside* `crowding_exponent`, not instead of it.
+
 ### ⚠ The observed control count was not the scored one (fixed 2026-08-22)
 
 - There were **three** implementations of "on an objective". Scoring, `objective_hold`
