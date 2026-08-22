@@ -532,6 +532,45 @@ Move 12 against 15 elites at 24" reach — trained three seeds, 300 epochs, scor
 - **Untested: the elite side.** Only the horde was trained. The denial-price account
   predicts an elite agent wins by *less*; that is one training run.
 
+### Offence is not reward-shapeable here — three arms, one conclusion
+
+Measured 2026-08-22, [report](reports/2026-08-22-the-agent-is-never-paid-to-attack.md).
+
+`closest_objective_v2`'s candidate gate asks whether an arrival improves the
+control label, imagining exactly ONE model arriving — so an objective the
+opponent holds by two or more could never be a travel target. `contest_deficit`
+widens that. Three seeds, 300 epochs, `ent_coef` 0.003, scored refereed at K=3,
+**paired against the `-newmaps` controls**.
+
+- **REJECTED. −2.7 ± 4.8 paired, t=−0.55, 1 of 3 seeds positive**; across tables
+  −2.7 ± 3.7, t=−0.72, **ahead on 2 of 9**.
+- ⚠ **It failed on the ACCEPT criterion, which was OFFENCE.** Offence went
+  **−61.2 → −71.5**, backwards on 2 of 3 seeds. The lever built to fix offence
+  made it worse.
+- ⚠ **`alive` fell 3/3 (−0.048) with `held` flat** — the *reverse* of hoarding,
+  and the original reject rule (`alive` **rises**) would have missed it entirely.
+  The symmetric clause was added at epoch 290, before any score existed, after
+  adversarial review. **Write reject rules for the failure your lever actually
+  risks, not the one you are already worried about.**
+- **The mechanism is the 2026-08-11 teleport audit reproduced by gradient.** That
+  audit force-moved a squad onto contested ground and measured **−1.69 of 5
+  models** and **−29.41 of its own income** against 4.91 defenders. Paying a
+  policy to walk at defended ruins gets it shot crossing open ground. **The
+  one-model gate was load-bearing**, exactly as the overstack penalty was.
+- The gate change *worked mechanically* — "they hold it by 2+" exclusions fell
+  43.4% → 3.9%, units with their own objective rose 32.0% → 48.1% — and bought
+  nothing. Observability passed. The scenario was not at fault either
+  (`24v24_maps_spare_squads` was built to pose the question; offence did not move
+  there).
+
+⚠ **THIS IS THE THIRD CONSECUTIVE REWARD TERM TO LEAVE OFFENCE FLAT OR WORSE**
+(−50.5, −42, −71.5). Stop shaping offence. **The diagnosis the evidence supports
+is a DIFFERENCE-REWARD problem:** `vp_gain` is net, so denial *is* paid — but it
+is **global**, broadcast identically to every alive model, so no model can prefer
+"take theirs" to "stand on ours"; both move the same shared scalar identically.
+The per-model term prices only *distance closed*; the term that prices *outcome*
+is global. No candidacy gate can reach that.
+
 ### How to measure here
 
 The single most expensive class of error in this project. Every rule below was

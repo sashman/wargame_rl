@@ -187,3 +187,101 @@ objectives physically impossible to enter**. If that had landed alongside this,
 result would mean anything. The engagement half has been reverted for this
 reason among others. **Do not merge a movement-blocking change and this one and
 then measure either.**
+
+---
+
+# RESULT — rejected, through the door the reviewers opened
+
+**Measured 2026-08-22.** Three seeds, 300 epochs, `ent_coef` 0.003, scored
+refereed at K=3 on `configs/evaluation/25v25_maps_take_opponent_refereed.yaml`,
+held-out nine, n=30, seeds 700000+. **Paired on seed against the `-newmaps`
+controls** — same seed, same config but for one parameter, same flags, same
+epoch budget, so the per-seed difference is the strong estimator.
+
+| seed | arm | control | difference |
+|---|---|---|---|
+| s1 | +23.2 | +26.6 | **−3.4** |
+| s2 | +20.9 | +14.9 | +6.0 |
+| s3 | +18.0 | +28.6 | **−10.6** |
+
+**−2.7 ± 4.8, t = −0.55 (df=2), 1 of 3 seeds positive.**
+Across tables: **−2.7 ± 3.7, t = −0.72 (df=8), ahead on 2 of 9.** The two
+estimators agree in sign and magnitude — and note they are *not* independent
+evidence, being one dataset sliced two ways.
+
+Scripts on the same config, re-measured refereed at K=1: `squad_march_deny`
+**−1.1**, `squad_march_take` **−2.4**. Coherency: arm 0.942–0.965 against the
+scripts' 0.908–0.910.
+
+## It failed on the ACCEPT criterion, not just on vp
+
+The pre-registered ACCEPT rule required **offence** to improve — a vp gain that
+was all defence again would not count. Offence (own VP minus the best script's)
+went the **wrong way**:
+
+| | offence | defence |
+|---|---|---|
+| arm | **−71.5** | +93.2 |
+| control | **−61.2** | +85.5 |
+| difference | **−10.3** | +7.7 |
+
+Per seed, offence moved −8.0 / +5.3 / −28.2. So the lever that existed to fix
+offence made it worse on 2 of 3 seeds, and the small defensive gain did not
+cover it.
+
+## ⚠ It failed through the clause the reviewers added, which the original rule would have MISSED
+
+`alive` **fell on 3 of 3 seeds** (−0.075 / −0.032 / −0.037, mean **−0.048**)
+while `held` did **not** rise (mean −0.007).
+
+The original REJECT rule read *"`alive` rises while `held` does not"* — armed
+against hoarding. **This failure is the opposite**, and would not have tripped
+that clause at all. The symmetric clause was added at epoch 290, before any
+score existed, on adversarial review. It fired.
+
+## The mechanism is the teleport audit, reproduced by training instead of by force
+
+The 2026-08-11 audit force-moved a squad onto contested ground and measured it
+losing **1.69 of 5 models** and **29.41 of its own income** against 4.91
+defenders. `contest_deficit: 5` pays for that move by gradient rather than by
+teleport, and got the same answer: the army finishes ~4.8 percentage points
+smaller and holds no more ground.
+
+**Paying a policy to walk at defended ruins gets it shot crossing open ground.**
+The one-model gate was not a bug; it was load-bearing, in exactly the way the
+overstack penalty was.
+
+## What this settles, and what it does not
+
+⚠ **At t = −0.55 this is formally INCONCLUSIVE**, and this project's own rule is
+that a marginal 300-epoch result means "run it longer", not "refuted". The
+reason it is recorded as REJECTED rather than unresolved is that the
+pre-registered accept condition was *offence improving*, and offence moved
+backwards. Running longer would settle the vp difference; it would not rescue
+the criterion the arm was built to satisfy.
+
+**This is the THIRD consecutive reward-shaping attempt to leave offence flat or
+worse: −50.5, −42, now −71.5.** The pre-registration said in advance that if
+this happened, the honest conclusion is that offence is not reward-shapeable
+here and the next move is architectural. That conclusion now stands.
+
+**Where the evidence points instead.** `vp_gain` is *net* — denial is already
+paid — but it is a **global** term, broadcast identically to every alive model.
+No model can therefore prefer "take theirs" to "stand on ours", because both
+change the same shared scalar by the same amount. That is a **difference-reward**
+problem, not a pricing one, and no widening of a candidacy gate can reach it.
+The travel term is per-model but only prices *distance closed*; the term that
+prices *outcome* is global. Closing that gap means a per-model credit for the
+opponent VP a model's own presence denied — a structural change to how credit is
+assigned, which is what "architectural" means here.
+
+## Ledger of what was NOT the problem
+
+- **Not the candidacy gate.** Widening it did what it claimed mechanically — the
+  "they hold it by 2+" exclusion fell 43.4% → 3.9%, units with their own
+  objective rose 32.0% → 48.1% — and the policy got no better at offence.
+- **Not observability.** The desk check passed; per-objective alive counts for
+  both sides are in the observation and were verified against the scoring
+  definition the same week.
+- **Not the scenario.** `24v24_maps_spare_squads` was built specifically to pose
+  the allocation question, and offence did not move there either.
