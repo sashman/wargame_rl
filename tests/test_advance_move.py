@@ -25,6 +25,7 @@ from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.types.config.env import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.factory import create_environment
+from wargame_rl.wargame.model.common.observation import observation_to_tensor
 
 SHOOT_TARGETS = 5
 
@@ -297,3 +298,62 @@ class TestAdvanceInAnEpisode:
             assert model.advance_roll != 99.0
         finally:
             env.close()
+
+
+class TestAdvanceObservation:
+    """Both halves of the trade must be visible to the policy."""
+
+    @staticmethod
+    def _obs(bins: int):  # type: ignore[no-untyped-def]
+        config = load_env_config("configs/dev/4v4_two_phases.yaml").model_copy(
+            deep=True
+        )
+        config.n_advance_speed_bins = bins
+        env = create_environment(env_config=config)
+        try:
+            observation, _info = env.reset(seed=7)
+            return observation, env.wargame_models[0].advance_roll
+        finally:
+            env.close()
+
+    def test_no_advance_bins_adds_no_observation_columns(self) -> None:
+        """The no-op guarantee: an unchanged tensor width keeps checkpoints."""
+        # Arrange / Act
+        observation, _roll = self._obs(0)
+
+        # Assert
+        model = observation.wargame_models[0]
+        assert model.advance_roll is None
+        assert model.advanced_this_turn is None
+
+    def test_the_roll_is_observable_and_normalised_by_the_die(self) -> None:
+        """A D6 raw would be 6x the scale of every neighbouring feature."""
+        # Arrange / Act
+        observation, raw_roll = self._obs(3)
+
+        # Assert
+        model = observation.wargame_models[0]
+        assert model.advance_roll is not None
+        assert model.advance_roll == pytest.approx(raw_roll / 6.0)
+        assert 0.0 < model.advance_roll <= 1.0
+
+    def test_the_spent_shooting_flag_is_observable(self) -> None:
+        """For the VALUE head: the action mask already forbids the shot."""
+        # Arrange / Act
+        observation, _roll = self._obs(3)
+
+        # Assert
+        assert observation.wargame_models[0].advanced_this_turn == 0.0
+
+    def test_the_two_columns_widen_the_per_model_tensor_by_exactly_two(self) -> None:
+        """⚠ A tensor-shape change: it orphans every checkpoint deliberately."""
+        # Arrange
+        plain, _ = self._obs(0)
+        advancing, _ = self._obs(3)
+
+        # Act
+        narrow = observation_to_tensor(plain)[2].shape[1]
+        wide = observation_to_tensor(advancing)[2].shape[1]
+
+        # Assert
+        assert wide - narrow == 2

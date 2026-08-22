@@ -185,6 +185,11 @@ def _coherency_features(
     return spread, component
 
 
+# A D6. The roll is divided by it so the column is in [0, 1] like every
+# other normalised feature, rather than being 6x the scale of its neighbours.
+ADVANCE_DIE_FACES = 6.0
+
+
 def _models_to_obs(
     models: list[WargameModel],
     max_groups: int,
@@ -194,6 +199,7 @@ def _models_to_obs(
     n_objectives: int | None = None,
     coherency: CoherencyDistances | None = None,
     unit_centroid_cap: float | None = None,
+    observe_advance: bool = False,
 ) -> list[WargameModelObservation]:
     strengths = _unit_strengths(models) if observe_unit_strength else {}
     offsets = (
@@ -254,6 +260,14 @@ def _models_to_obs(
                 save_stat=save,
                 unit_strength=(
                     strengths.get(m.group_id, 0.0) if observe_unit_strength else None
+                ),
+                advance_roll=(
+                    None
+                    if not observe_advance
+                    else float(m.advance_roll) / ADVANCE_DIE_FACES
+                ),
+                advanced_this_turn=(
+                    None if not observe_advance else float(m.advanced_this_turn)
                 ),
                 coherency_spread=(None if spread is None else float(spread[i])),
                 coherency_component=(
@@ -539,6 +553,7 @@ def build_observation(
             n_objectives=len(view.objectives),
             coherency=coherency,
             unit_centroid_cap=unit_centroid_cap,
+            observe_advance=view.config.n_advance_speed_bins > 0,
         ),
         objectives=objectives_obs,
         board_width=view.board_width,
@@ -552,6 +567,7 @@ def build_observation(
             n_objectives=len(view.objectives),
             coherency=coherency,
             unit_centroid_cap=unit_centroid_cap,
+            observe_advance=view.config.n_advance_speed_bins > 0,
         ),
         terrain=terrain_obs,
         action_mask=action_mask,
