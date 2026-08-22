@@ -394,13 +394,19 @@ class ActionHandler:
     def _advance_displacement(
         self, action: int, model_idx: int | None, advance_roll: float
     ) -> np.ndarray:
-        """Displacement for an advance action: `M + fraction x roll`, in units.
+        """Displacement for an advance action: `fraction x (M + roll)`, in units.
 
-        The bins divide the ROLL, not the whole distance, so the shortest
-        advance still travels at least the model's full Move. That is what makes
-        advancing a strict extension of the movement axis: every advance bin
-        goes further than any normal move, and pays for it with the turn's
-        shooting.
+        `M + roll` is a MAXIMUM in the rules, not a fixed distance -- a unit may
+        advance any distance up to it, including a short one. So the bins span
+        the whole range and the top bin is exactly `M + roll`.
+
+        ⚠ This deliberately admits DOMINATED actions: a 4" advance costs the
+        turn's shooting and buys nothing a 4" normal move would not. Pruning
+        them was the first design here, and it was wrong for the same reason
+        widening `n_speed_bins` was wrong -- it optimises the action space
+        against the rules. A unit that cannot stop short cannot advance toward
+        an objective and halt to keep coherency, which is the binding constraint
+        in this project.
         """
         index = action - self._advance_slice.start  # type: ignore[union-attr]
         angle_idx = index // self._n_advance_bins
@@ -411,7 +417,7 @@ class ActionHandler:
             else float(self._speeds[-1])
         )
         fraction = (bin_idx + 1) / self._n_advance_bins
-        distance = move + fraction * advance_roll
+        distance = fraction * (move + advance_roll)
         direction = self._unit_directions[angle_idx]
         displacement: np.ndarray = (direction * distance).astype(POSITION_DTYPE)
         return displacement

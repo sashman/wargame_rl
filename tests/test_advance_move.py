@@ -65,8 +65,8 @@ def test_advance_actions_are_APPENDED_so_old_indices_keep_their_meaning() -> Non
     assert advancing.advance_slice.start == plain.n_actions
 
 
-def test_the_shortest_advance_still_beats_the_fastest_normal_move() -> None:
-    """Advance extends the distance axis; it does not overlap it."""
+def test_the_longest_advance_beats_the_fastest_normal_move() -> None:
+    """Reach is what an advance buys, so the top bin must exceed a normal move."""
     # Arrange
     config = WargameEnvConfig(n_advance_speed_bins=3, number_of_wargame_models=4)
     handler = ActionHandler(config, n_shoot_targets=SHOOT_TARGETS)
@@ -79,17 +79,41 @@ def test_the_shortest_advance_still_beats_the_fastest_normal_move() -> None:
             handler.encode_action(0, config.n_speed_bins - 1), model_idx=0
         )
     )
+    longest_advance = np.linalg.norm(
+        handler.decode_action(slice_.end - 1, model_idx=0, advance_roll=1.0)
+    )
+
+    # Assert: even the WORST roll must beat the best normal move.
+    assert longest_advance > fastest_normal
+
+
+def test_an_advance_can_stop_SHORT_of_a_normal_move() -> None:
+    """`M + roll` is a maximum, not a fixed distance -- there must be a brake.
+
+    ⚠ This admits dominated actions on purpose: a 4" advance costs the turn's
+    shooting and buys nothing a 4" normal move would not. The first version of
+    this encoding pruned them, which optimised the action space against the
+    rules and removed the ability to advance toward an objective and halt to
+    keep unit coherency -- the binding constraint in this project.
+    """
+    # Arrange
+    config = WargameEnvConfig(n_advance_speed_bins=3, number_of_wargame_models=4)
+    handler = ActionHandler(config, n_shoot_targets=SHOOT_TARGETS)
+    slice_ = handler.advance_slice
+    assert slice_ is not None
+
+    # Act
     shortest_advance = np.linalg.norm(
-        handler.decode_action(slice_.start, model_idx=0, advance_roll=1.0)
+        handler.decode_action(slice_.start, model_idx=0, advance_roll=6.0)
     )
 
     # Assert
-    assert shortest_advance > fastest_normal
+    assert shortest_advance < config.max_move_speed
 
 
 @pytest.mark.parametrize("roll", [1.0, 3.0, 6.0])
-def test_distance_is_move_plus_a_fraction_of_the_roll(roll: float) -> None:
-    """The bins divide the ROLL, so the top bin is exactly `M + roll`."""
+def test_the_bins_divide_the_whole_allowance(roll: float) -> None:
+    """The top bin is exactly `M + roll`; the rest are even fractions of it."""
     # Arrange
     config = WargameEnvConfig(n_advance_speed_bins=3, number_of_wargame_models=4)
     handler = ActionHandler(config, n_shoot_targets=SHOOT_TARGETS)
@@ -98,13 +122,16 @@ def test_distance_is_move_plus_a_fraction_of_the_roll(roll: float) -> None:
 
     # Act
     top_bin = handler.decode_action(slice_.start + 2, model_idx=0, advance_roll=roll)
+    mid_bin = handler.decode_action(slice_.start + 1, model_idx=0, advance_roll=roll)
 
-    # Assert
-    assert np.linalg.norm(top_bin) == pytest.approx(config.max_move_speed + roll)
+    # Assert: the top bin is the full allowance, and the bins divide it evenly.
+    allowance = config.max_move_speed + roll
+    assert np.linalg.norm(top_bin) == pytest.approx(allowance)
+    assert np.linalg.norm(mid_bin) == pytest.approx(allowance * 2 / 3)
 
 
-def test_a_roll_of_zero_collapses_an_advance_to_a_normal_move() -> None:
-    """No free distance: the whole gain is the die."""
+def test_a_roll_of_zero_gives_exactly_the_normal_move_allowance() -> None:
+    """The die is the whole gain. (A D6 never rolls 0; this pins the boundary.)"""
     # Arrange
     config = WargameEnvConfig(n_advance_speed_bins=3, number_of_wargame_models=4)
     handler = ActionHandler(config, n_shoot_targets=SHOOT_TARGETS)
