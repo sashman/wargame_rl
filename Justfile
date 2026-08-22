@@ -166,6 +166,24 @@ train-coherency-baseline max_epochs='300' n_seeds='3' first_seed='1' tag='-basel
 	done; \
 	wait
 
+# Can the policy explore WHERE a squad goes, or only how fast? A product policy
+# pays p^k for DIRECTIONAL disagreement inside a squad and nothing for speed
+# disagreement, so the surviving entropy is predicted to be one shared angle.
+# Circular variance 0 means the squad has exactly one direction available to it.
+#
+# Use: just measure-angle-collapse squad_march_take configs/experiments/24v24_maps_spare_squads.yaml 20
+measure-angle-collapse policy env_config n_episodes='20' decode_topk='1':
+	@uv run python -m scripts.measure_angle_collapse {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}}
+
+# Do squads converge, or take separate objectives? The discriminating number is
+# SQUADS PER OCCUPIED OBJECTIVE -- 1.00 means each squad has a point to itself.
+# Squads move under a 2" chain and `objective_hold` requires coherence, so the
+# squad is the allocation quantum; if squads bunch, no reward weight fixes it.
+#
+# Use: just measure-squad-dispersion squad_march_take configs/experiments/24v24_maps_spare_squads.yaml 20
+measure-squad-dispersion policy env_config n_episodes='20' decode_topk='1':
+	@uv run python -m scripts.measure_squad_dispersion {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}}
+
 # What standing on an objective earns a model, against what it costs it. Reports
 # the income differential, the excess death hazard, and the hazard at which the
 # two break even -- i.e. whether hiding is correct play under this reward.

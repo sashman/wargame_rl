@@ -37,7 +37,13 @@ from wargame_rl.wargame.envs.types.config import TurnOrder, WargameEnvConfig
 # Every override is a scenario *scalar*: one number, one meaning, no derived
 # state to keep in step. Anything that would need a second field updated with it
 # belongs in a config file, where it can be reviewed.
-KNOWN_OVERRIDES = ("rounds", "weapon_range", "turn_order")
+KNOWN_OVERRIDES = (
+    "rounds",
+    "weapon_range",
+    "turn_order",
+    "cap_per_turn",
+    "vp_per_objective",
+)
 
 
 def parse_overrides(argv: list[str]) -> tuple[list[str], dict[str, str]]:
@@ -86,6 +92,34 @@ def apply_overrides(config: WargameEnvConfig, **overrides: str) -> WargameEnvCon
         # nineteen that draw is a far larger share of the outcome, so the two
         # horizons cannot be compared without holding it still.
         varied.turn_order = TurnOrder(overrides["turn_order"])
+
+    # ⚠ THE TWO MISSION KNOBS ARE FOR SCORING, NOT TRAINING.
+    #
+    # They are the cheapest possible test of "the mission is too simple": the
+    # mission pays `min(cap_per_turn, controlled * vp_per_objective)`, so on a
+    # table carrying five or six objectives the FOURTH one a side controls is
+    # worth exactly nothing. `just measure-vp-cap` puts a number on that --
+    # the cap discards 10.1% of `squad_march_take`'s VP and 1.1% of the
+    # agent's, i.e. today it taxes the SCRIPTS, not the learner.
+    #
+    # Scoring is safe because `vp_margin` comes from the mission and a scored
+    # policy does not read the reward at all.
+    #
+    # ⚠ TRAINING IS NOT SAFE. Unlike `rounds` and `weapon_range`, these two are
+    # NOT self-contained scalars -- two reward paths derive from them:
+    #   * `reward/calculators/vp_gain.py` divides its delta by `cap_per_turn`,
+    #     so changing it RESCALES the training reward; and
+    #   * `reward/criteria/player_vp_min.py` derives its phase-advance
+    #     threshold from all three mission params, so changing them MOVES THE
+    #     CURRICULUM GATES.
+    # Either would silently make an arm incomparable to its control. Score with
+    # a frozen reward first; if the mission turns out to matter, change it in a
+    # config where the reward coupling is reviewed, not through an argv token.
+    if "cap_per_turn" in overrides:
+        varied.mission.params["cap_per_turn"] = int(overrides["cap_per_turn"])
+
+    if "vp_per_objective" in overrides:
+        varied.mission.params["vp_per_objective"] = int(overrides["vp_per_objective"])
 
     if "weapon_range" in overrides:
         weapon_range = int(overrides["weapon_range"])
