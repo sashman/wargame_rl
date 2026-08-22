@@ -401,6 +401,18 @@ measure-paired policy_a policy_b env_config n_episodes='100' seed_base='700000' 
 measure-shaping-gates policy env_config n_episodes='30' maps_dir='' decode_topk='1' *overrides:
 	@uv run python -m scripts.measure_shaping_gates {{policy}} {{env_config}} {{n_episodes}} "{{maps_dir}}" "{{decode_topk}}" {{overrides}}
 
+# How often an ordered move produces NO movement, and whether freezing sticks.
+# A model that asks to move and does not is invisible in every score here:
+# vp_margin sees the consequence, `coherent` sees the formation, and nothing
+# counts the order that evaporated. Read `absorbing` first -- P(f|f) minus
+# P(f|moved). Above zero means freezing is self-sustaining, i.e. a subset of the
+# army is permanently out of the game rather than occasionally delayed.
+# Matters most for the LONGEST moves: an advance is the most likely to be
+# stopped, so an advance arm can measure "no effect" when the moves never ran.
+# Use: just measure-freezing squad_march_take configs/golden/25v25_maps_two_mode.yaml 20
+measure-freezing policy env_config n_episodes='20' maps_dir='' decode_topk='1' *overrides:
+	@uv run python -m scripts.measure_freezing {{policy}} {{env_config}} {{n_episodes}} "{{maps_dir}}" "{{decode_topk}}" {{overrides}}
+
 # Why an objective was not held: abandoned, narrowly lost, or lost by a mile.
 # `held` alone cannot separate those, and they call for different fixes. Also
 # reports the redistribution ceiling -- what any pure re-allocation lever could
