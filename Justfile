@@ -166,6 +166,14 @@ train-coherency-baseline max_epochs='300' n_seeds='3' first_seed='1' tag='-basel
 	done; \
 	wait
 
+# What standing on an objective earns a model, against what it costs it. Reports
+# the income differential, the excess death hazard, and the hazard at which the
+# two break even -- i.e. whether hiding is correct play under this reward.
+#
+# Use: just measure-hold-hazard squad_march_take configs/experiments/24v24_maps_spare_squads.yaml 30
+measure-hold-hazard policy env_config n_episodes='30' decode_topk='1':
+	@uv run python -m scripts.measure_hold_hazard {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}}
+
 # How often the mission's 15 VP per-turn cap binds, and what it discards. The
 # fourth objective a side controls pays ZERO while the tables carry five or six,
 # so `held` can rise without a single extra point being paid. `held` cannot see

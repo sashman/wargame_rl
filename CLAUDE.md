@@ -110,6 +110,7 @@ wargame_rl/
 | Score on the real table layouts | `just measure-maps <policy\|ckpt> <config.yaml> [n_episodes] [maps_dir] [decode_topk] [key=value...]` |
 | Why an objective was not held | `just measure-objective-split <policy\|ckpt> <config.yaml> [n_episodes]` |
 | How often the VP cap binds, and what it discards | `just measure-vp-cap <policy\|ckpt> <config.yaml> [n_episodes] [decode_topk]` |
+| What holding a point earns against what it costs | `just measure-hold-hazard <policy\|ckpt> <config.yaml> [n_episodes] [decode_topk]` |
 | How often a policy is in unit coherency | `just measure-coherency <policy\|ckpt> <config.yaml> [n_episodes]` |
 | Which calculator pays, and how much is global | `just measure-income-share <policy\|ckpt> <config.yaml> [n_episodes]` |
 | Clone a scripted policy into the network (warm-start checkpoint) | `just behaviour-clone <policy> <config.yaml> [n_episodes] [epochs] [out]` |
@@ -416,6 +417,36 @@ Measured 2026-08-22, [report](reports/2026-08-22-spare-squads-pose-the-question-
   compresses exactly the `take`-vs-`deny` difference used to detect allocation.
   `held` cannot see any of this — it is an end-state snapshot with no notion of
   which points were paid.
+
+### Holding pays — the agent stacks, it does not hide
+
+Measured 2026-08-22 with no GPU, [report](reports/2026-08-22-holding-pays-and-the-agent-stacks.md).
+
+- ⚠ **OBJECTIVES ARE RUINS, so standing on one is COVER.** All 270 markers in
+  `configs/evaluation/maps/` sit inside a terrain piece. `just
+  measure-hold-hazard` prices the trade per model-step: standing on an objective
+  pays **+0.37 to +0.44** more and its excess death hazard is **negative in 5 of
+  5 policies** (−0.13% to −1.43%) against a break-even of +3.4% to +6.0%. The
+  exposed models are the ones walking between points. **"Hiding is correct play"
+  is refuted** — the agent is leaving return on the table.
+- **The error is ALLOCATION, not risk.** The agent spends **54.4% of model-steps
+  on objectives against the scripts' 75.5%**, and stacks **4.90 models on its top
+  point where `squad_march_take` puts 2.73** — 8.6 of 12.5 survivors on
+  objectives, 55.3% of points empty, **redistribution ceiling +2.20**, the
+  largest recorded here.
+- **It earns exactly half the script's `objective_hold`** (6.76 v 13.48) from a
+  pot it splits over half as many points, and **53.7% of its income is global**
+  against the script's 25.8% — `vp_gain` and `objective_coverage` are broadcast
+  whole to every alive model, so more than half of what it earns asks nothing of
+  any individual model.
+- ⚠ **Do not reach for anti-stacking shaping.** `crowding_exponent: 1.0` is the
+  measured-good lever, it is already on, and the agent ignores it. Measure
+  **squad dispersion** first — squads of three under a 2" chain make the squad the
+  allocation quantum — and check `closest_objective_v2`'s `fallback_to_nearest`,
+  which *pays* an unassigned group to close on the nearest point, usually one
+  already held.
+- The observability desk check **passes** here: `observe_objective_control: true`
+  and `_objectives_to_obs` supply per-objective alive counts for both sides.
 
 ### How to measure here
 
