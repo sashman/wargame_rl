@@ -39,6 +39,8 @@ class BaselinePolicy(ABC):
         the one that does.
         """
         phase = env.game_clock_state.phase
+        if phase is BattlePhase.command:
+            return self.select_command(models, env)
         if phase is BattlePhase.movement:
             return self.select_movement(models, env)
         if phase is BattlePhase.shooting:
@@ -51,6 +53,18 @@ class BaselinePolicy(ABC):
     ) -> WargameEnvAction:
         """Return one movement-phase action per player model."""
         ...
+
+    def select_command(
+        self, models: list[WargameModel], env: WargameEnv
+    ) -> WargameEnvAction:
+        """Return one command-phase action per player model — the move type.
+
+        Defaults to STAY, which the handler reads as declaring a **normal**
+        move. That is what keeps every baseline written before the declaration
+        existed working unchanged: a policy that does not choose a move type
+        gets the one it always had.
+        """
+        return WargameEnvAction(actions=[STAY_ACTION] * len(models))
 
     def select_shooting(
         self,

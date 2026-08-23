@@ -920,7 +920,7 @@ in [implementation-status.md](rules/implementation-status.md#advance-move).
 
 | ID | Claim | Expressible | Lands in | Verdict |
 |---|---|---|---|---|
-| D-38 | A unit declares one move type, and the whole unit pays for it | `partial` | action space | `settled` |
+| D-38 | A unit declares one move type, and the whole unit pays for it | `live` | action space | `settled` |
 | D-39 | Advance only when you would have had no shot | `live` | scripted policy | `refused` |
 | D-40 | Advance to arrive, not to approach | `live` | scripted policy | `settled` |
 | D-41 | The longest move is the most likely to be stopped | `live` | — | `settled` |
@@ -938,9 +938,9 @@ in which *one* model chose an advance, so that one model forfeits all five model
 shooting. With 48 of 150 actions in the advance slice, a near-uniform policy triggers
 that on `1 - (1 - 0.32)^5` = **85.5%** of five-model unit-turns.
 
-**Expressible.** `partial`. Enforced by resolution after the fact rather than by the
-structure of the action space, so the cost is right and the choice is still five
-separate ones.
+**Expressible.** `live` since 2026-08-23. It was `partial` — enforced by an OR over five
+per-model movement actions after the fact — until the declaration was split into its own
+phase.
 
 **Where it lands.** `ActionRegistry` · `ActionHandler.apply`.
 
@@ -951,15 +951,14 @@ manufacturing the agreement and the policy learned the unit-level structure with
 given it. ⚠ What this does **not** measure is what the same defect costs during
 *exploration*, which is where 85.5% applies.
 
-⚠ **AND THE OBVIOUS IMPLEMENTATION IS WRONG.** "Let the unit's leader declare, and mask
-the advance slice for everyone else" makes the declaration genuinely unit-level and cuts the
-initialisation trigger rate from 85.5% to 32% — and it would **shatter formation**. A move
-type and a displacement are the *same action* here, so a leader-only advance caps every other
-model at `M`: the scripts advance **5-of-5 with a within-unit distance spread of 0.00"**, and
-leader-binds forces that spread to ~6" against a 2" chain. A real declaration has to be
-separable from the displacement, which needs an **action-bearing command phase** — and
-`command` sits in `skip_phases` on every config, so making it act changes steps-per-round
-everywhere. Entries D-38 and D-42 therefore share one blocker.
+**BUILT 2026-08-23, and the shape of it is the lesson.** The declaration is a `move_type`
+slice of two actions in the **command phase**, resolved from the unit's lowest-indexed alive
+model. ⚠ The obvious cheaper version — mask the advance rungs for everyone but the leader —
+**shatters formation**: a move type and a displacement were the *same action*, so a
+leader-only advance caps every other model at `M`, and the scripts advance **5-of-5 with a
+within-unit spread of 0.00"** against a 2" chain. Separating the declaration from the
+distance is what makes a unit decision safe. Adding fall back or charge now costs **one value
+in `move_type`**, not another 48-action slice.
 
 **Cheapest test.** `just measure-advance-use <ckpt> <config> 10 1`.
 

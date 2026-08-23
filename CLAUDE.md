@@ -699,15 +699,61 @@ is touched** and every reward and observation golden stays bit-identical.
 - ⚠ **At three bins a roll of 1 leaves NO legal rung.** Deliberate: the rules would
   permit a 7" advance, the ladder cannot express it, and a 1" gain never repays a
   turn of fire.
-- ⚠ **"Move type is a unit declaration" is BLOCKED, and the obvious fix is wrong.**
-  Leader-binds — one model declares, the rest are masked — is a real unit
-  declaration and cuts the initialisation trigger rate 85.5% → 32%, and it would
-  **shatter formation**: move type and displacement are the same action, so a
-  leader-only advance caps every squadmate at `M`. The scripts advance **5-of-5 at a
-  within-unit spread of 0.00"**; leader-binds forces ~6" against a 2" chain. A true
-  declaration needs an **action-bearing command phase**, and `command` is in
-  `skip_phases` on every config — making it act changes steps-per-round everywhere.
-  **Settle the horizon question first.**
+- ⚠ **Leader-binds inside the movement slice would SHATTER formation** — move type
+  and displacement were the same action, so a leader-only advance caps every
+  squadmate at `M`. The scripts advance **5-of-5 at a within-unit spread of 0.00"**;
+  leader-binds forces ~6" against a 2" chain. That is why the declaration had to be
+  split out into its own phase rather than masked inside the movement slice.
+
+### The move type is declared in the command phase, by the unit's leader
+
+Shipped 2026-08-23. This is the "unit declaration" and "additive cost" half of the
+movement goal, and it only works because the declaration is **separate from the
+displacement**.
+
+- **A `move_type` slice of 2 actions** (`normal`, `advance`), valid in
+  `BattlePhase.command`, registered **last** so no existing index moves. Action
+  space **150 → 152** with advance on; **unchanged at 102** with
+  `n_advance_speed_bins: 0`, which is every golden config.
+- **The unit's LEADER decides** — its lowest-indexed alive model — and the whole
+  unit is bound. ⚠ This replaces an **OR over five per-model movement actions**, in
+  which any one model choosing a long rung spent all five models' shooting (85.5%
+  of five-model unit-turns at initialisation).
+- **STAY declares `normal`**, so every policy written before the declaration
+  existed behaves exactly as it did. Verified: a non-advancing script scores
+  **bit-identically** on 10 of 10 seeds across the change.
+- **A rung is legal only for a unit that declared**, and only within `M + roll`.
+  Masked on **both seats**.
+- **Declaring costs the shooting immediately**, whether or not a member then uses a
+  long rung. That is the rules' cost: it attaches to the move type, not the
+  distance.
+- ⚠ **The roll moved to the START of the side's turn.** It used to happen on the
+  command→movement boundary, which was right while the type was chosen during
+  movement — but a declaration made in the command phase would then be **blind**,
+  and since legality is gated on `M + roll`, no rung would ever be legal. It is
+  idempotent and keyed on `(battle_round, active_player)` rather than hung on a
+  phase transition, because command is the FIRST phase of a turn and the first turn
+  of an episode never advances into it.
+- **Config validation**: `n_advance_speed_bins > 0` with `command` in `skip_phases`
+  is rejected at construction — otherwise the rungs exist and no declaration is
+  ever legal, and a training run measures a feature it never had.
+- **Adding fall back or charge now costs one value in `move_type`**, not another
+  48-action slice and another unit-resolution hack.
+
+⚠ **What it voids.** The command phase is now a real agent step on advance configs.
+Verified neutral on the game itself — the golden config scores **bit-identically on
+8 of 8 seeds** with command skipped or active — **except in episodes that end EARLY
+by elimination**, which lose one player scoring event. Measured: 10 of 45 tables
+moved by exactly **−1.5** at n=10, i.e. 15 VP in one episode each. The skipped
+command phase used to be traversed *inside* the terminating step and scored there;
+now it is a phase the agent never gets to leave. **Arguably more correct** — a
+scoring event that needs your next turn should not fire in a game already over —
+but it is a change, so re-measure rather than carry a figure across it.
+
+**Throughput: ~15% more wall-clock per battle round, not 50%.** Per-step cost
+*falls* 4.338 → 3.334 ms because command steps do almost nothing, so 1.5x the steps
+nets 8.68 → 10.00 ms per round. A 2048-step epoch is 9.5 s → 7.5 s but covers a
+third fewer rounds.
 
 ### Offence is not reward-shapeable here — three arms, one conclusion
 

@@ -773,6 +773,23 @@ class WargameEnvConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def validate_advance_needs_a_command_phase(self) -> "WargameEnvConfig":
+        """A scenario with advance rungs must let its units declare a move type.
+
+        The move type is declared in the command phase, so a config that skips
+        that phase can register the rungs and never make one legal -- the
+        advance would be silently unavailable for the whole run. Caught here
+        rather than at the first `reset`, because a training run would otherwise
+        spend hours measuring a feature it never had.
+        """
+        if self.n_advance_speed_bins > 0 and BattlePhase.command in self.skip_phases:
+            raise ValueError(
+                "n_advance_speed_bins > 0 needs the command phase, where a unit "
+                "declares its move type -- remove 'command' from skip_phases"
+            )
+        return self
+
+    @model_validator(mode="after")
     def validate_observation_budgets(self) -> "WargameEnvConfig":
         """Reject a budget smaller than what this scenario actually puts on the board.
 

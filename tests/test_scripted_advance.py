@@ -25,12 +25,26 @@ from wargame_rl.wargame.envs.types import (
     WargameEnvConfig,
 )
 from wargame_rl.wargame.envs.types.config import WeaponProfile
+from wargame_rl.wargame.envs.types.game_timing import NON_MOVEMENT_PHASES, BattlePhase
 from wargame_rl.wargame.model.common.factory import create_environment
+
+
+def _phases_with_command() -> list[BattlePhase]:
+    """Skip everything non-movement EXCEPT command, where the move type is declared.
+
+    A config with advance rungs and no command phase is rejected at
+    construction: the declaration would be unreachable and the advance silently
+    unavailable for the whole run.
+    """
+    return [p for p in NON_MOVEMENT_PHASES if p is not BattlePhase.command]
 
 
 def _config(bins: int) -> WargameEnvConfig:
     return WargameEnvConfig(
-        render_mode=None, number_of_battle_rounds=6, n_advance_speed_bins=bins
+        render_mode=None,
+        number_of_battle_rounds=6,
+        n_advance_speed_bins=bins,
+        skip_phases=_phases_with_command(),
     )
 
 
@@ -221,13 +235,28 @@ def test_the_opponent_advances_too() -> None:
     advance_slice = env.opponent_action_handler.advance_slice
     assert advance_slice is not None
 
-    action = policy.select_action(env.opponent_models, env)
-    advances = sum(
-        1 for a in action.actions if advance_slice.start <= a < advance_slice.end
-    )
+    # Seated as the env's own opponent and played end to end. The move type is
+    # declared in the COMMAND phase and only then are the long rungs legal, so a
+    # single `select_action` after reset returns a declaration, not a move —
+    # and the only assertion that survives that restructuring is the physical
+    # one: did a model cross more ground than its Move allows?
+    env._opponent_policy = policy
+    move = float(env.opponent_action_handler.move_speeds[0])
+    stay = WargameEnvAction(actions=[0] * len(env.wargame_models))
+    ran = False
+    for _ in range(30):
+        before = [m.location.copy() for m in env.opponent_models]
+        _obs, _r, done, _t, _i = env.step(stay)
+        ran = ran or any(
+            float(np.linalg.norm(m.location - b)) > move + 1e-6
+            for m, b in zip(env.opponent_models, before, strict=True)
+            if m.is_alive
+        )
+        if ran or done:
+            break
     env.close()
 
-    assert advances > 0, "the opponent never used the Advance move"
+    assert ran, "the opponent never used the Advance move"
 
 
 def test_the_opponent_toggle_reproduces_the_walking_opponent() -> None:
@@ -324,6 +353,7 @@ def _armed_config(bins: int, weapon_range: int) -> WargameEnvConfig:
             ModelConfig(weapons=[weapon], group_id=i // 2) for i in range(4)
         ],
         opponent_policy=OpponentPolicyConfig(type="scripted_advance_to_objective"),
+        skip_phases=_phases_with_command(),
     )
 
 

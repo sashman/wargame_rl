@@ -173,6 +173,9 @@ class WargameEnv(gym.Env):
         )
         self.action_space = self._action_handler.action_space
         self._skip_phases = frozenset(config.skip_phases)
+        # (battle_round, side) whose advance dice have been rolled. See
+        # `_ensure_advance_rolls`.
+        self._rolled_for: tuple[int, PlayerSide] | None = None
         # Resolved once, never per call: runtime reads plain floats off this and
         # never divides by the scale.
         self._rules_quantities = resolve_rules_quantities(config)
@@ -754,12 +757,33 @@ class WargameEnv(gym.Env):
                 rolls[group] = float(self._advance_rng.integers(1, 7))
             model.advance_roll = rolls[group]
 
+    def _ensure_advance_rolls(self) -> None:
+        """Roll each unit's D6 once, at the START of the side's turn.
+
+        ⚠ The roll used to happen on the command→movement boundary, which was
+        right while the move type was chosen in the movement phase. It is now
+        declared in the **command** phase, so a roll taken on the way out of it
+        would leave every unit declaring blind — and, because a rung's legality
+        is gated on `M + roll`, would leave no rung legal at all.
+
+        Idempotent and keyed on `(battle_round, active_player)` rather than
+        hooked to a phase transition, because the command phase is the FIRST of
+        a side's turn: there is no preceding phase within the turn to hang it
+        on, and the very first turn of an episode never advances into it.
+        """
+        state = self._game_clock.state
+        if state.active_player is None or state.battle_round is None:
+            return
+        key = (int(state.battle_round), state.active_player)
+        if self._rolled_for == key:
+            return
+        self._rolled_for = key
+        self._roll_advance_dice(state.active_player)
+
     def _on_before_advance(self, clock: GameClock) -> None:
         """Score VP when leaving command phase, and regain coherency at end of turn."""
         state = clock.state
         self._regain_coherency(state)
-        if state.phase == BattlePhase.command and state.active_player is not None:
-            self._roll_advance_dice(state.active_player)
         if state.phase != BattlePhase.command or state.battle_round is None:
             return
         if state.active_player is None:
@@ -801,6 +825,11 @@ class WargameEnv(gym.Env):
         self, distance_cache: DistanceCache | None = None
     ) -> WargameEnvObservation:
         """Get the observation for the current state of the environment."""
+        # Before the observation, never after: the command-phase declaration is
+        # chosen from this observation and has to see the turn's roll. Every
+        # observation the player acts on comes through here, so this is the one
+        # place that guarantees it. Idempotent per (round, side).
+        self._ensure_advance_rolls()
         return build_observation(
             self,
             distance_cache=distance_cache,
@@ -1089,6 +1118,9 @@ class WargameEnv(gym.Env):
     def _apply_opponent_action(self) -> None:
         if self._opponent_policy is None or not self.opponent_models:
             return
+        # The opponent reads the board directly rather than through `_get_obs`,
+        # so its own turn's roll has to be ensured here or it declares blind.
+        self._ensure_advance_rolls()
         phase = self._game_clock.state.phase or BattlePhase.movement
         opp_alive = alive_mask_for(self.opponent_models)
         if self.config.track_exposure and phase == BattlePhase.shooting:

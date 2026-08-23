@@ -3,14 +3,18 @@ while maintaining group cohesion around their centroid."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
+from wargame_rl.wargame.envs.env_components.actions import (
+    MOVE_TYPE_ADVANCE,
+    STAY_ACTION,
+)
 from wargame_rl.wargame.envs.opponent.policy import OpponentPolicy
 from wargame_rl.wargame.envs.opponent.registry import register_policy
 from wargame_rl.wargame.envs.types import WargameEnvAction
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.wargame import WargameEnv
@@ -51,6 +55,69 @@ class ScriptedAdvanceToObjectivePolicy(OpponentPolicy):
     # distance for one model.
     advance_when_out_of_reach: bool = False
 
+    def _advancing_groups(
+        self,
+        opponent_models: list[WargameModel],
+        handler: Any,
+        obj_locs: np.ndarray,
+        obj_radii: np.ndarray,
+    ) -> set[int]:
+        """Which units should declare an advance, measured from unit centroids.
+
+        A unit moves as a body, so whether a normal move arrives is decided by
+        where the body is, not by its nearest model -- measuring from the
+        nearest member almost never fires, because the opponent deploys 3-12"
+        from its objectives at Move 6.
+        """
+        advancing: set[int] = set()
+        if not self.advance_when_out_of_reach:
+            return advancing
+        speeds = handler.move_speeds
+        for group_id in {int(m.group_id) for m in opponent_models if m.is_alive}:
+            members = [
+                i
+                for i, m in enumerate(opponent_models)
+                if int(m.group_id) == group_id and m.is_alive
+            ]
+            reach = float(min(speeds[i] for i in members) if speeds.size else 0.0)
+            unit_centre = np.mean(
+                [opponent_models[i].location for i in members], axis=0, dtype=float
+            )
+            gaps = np.linalg.norm(obj_locs - unit_centre, axis=1) - obj_radii
+            if gaps.size and float(np.min(gaps)) > reach:
+                advancing.add(group_id)
+        return advancing
+
+    def _declare_move_types(
+        self,
+        opponent_models: list[WargameModel],
+        handler: Any,
+        obj_locs: np.ndarray,
+        obj_radii: np.ndarray,
+    ) -> WargameEnvAction:
+        """One declaration per unit, from its leader. STAY declares `normal`.
+
+        The opponent declares through the same slice the player does. A bar that
+        cannot use a core rule is not a bar -- and an asymmetry here would be
+        invisible, because the movement step reads `declared_advance` and would
+        simply never see one.
+        """
+        actions = [STAY_ACTION] * len(opponent_models)
+        move_type = handler.move_type_slice
+        if move_type is None or BattlePhase.command not in move_type.valid_phases:
+            return WargameEnvAction(actions=actions)
+        advancing = self._advancing_groups(
+            opponent_models, handler, obj_locs, obj_radii
+        )
+        leaders: dict[int, int] = {}
+        for index, model in enumerate(opponent_models):
+            if model.is_alive:
+                leaders.setdefault(int(model.group_id), index)
+        for group_id, leader in leaders.items():
+            if group_id in advancing:
+                actions[leader] = move_type.start + MOVE_TYPE_ADVANCE
+        return WargameEnvAction(actions=actions)
+
     def select_action(
         self,
         opponent_models: list[WargameModel],
@@ -72,28 +139,20 @@ class ScriptedAdvanceToObjectivePolicy(OpponentPolicy):
 
         obj_radii = np.array([o.radius_size for o in env.objectives])
 
+        if env.game_clock_state.phase is BattlePhase.command:
+            return self._declare_move_types(
+                opponent_models, handler, obj_locs, obj_radii
+            )
+
         # One decision per unit, taken before any of its models moves.
-        speeds = handler.move_speeds
-        advancing_groups: set[int] = set()
-        if self.advance_when_out_of_reach:
-            for group_id in {int(m.group_id) for m in opponent_models if m.is_alive}:
-                members = [
-                    i
-                    for i, m in enumerate(opponent_models)
-                    if int(m.group_id) == group_id and m.is_alive
-                ]
-                reach = float(min(speeds[i] for i in members) if speeds.size else 0.0)
-                # Measured from the unit's CENTROID, matching the scripted player
-                # baselines: a unit moves as a body, so whether a normal move
-                # arrives is decided by where the body is, not by its nearest
-                # model. Using the nearest member instead almost never fires --
-                # the opponent deploys 3-12" from its objectives at Move 6.
-                unit_centre = np.mean(
-                    [opponent_models[i].location for i in members], axis=0, dtype=float
-                )
-                gaps = np.linalg.norm(obj_locs - unit_centre, axis=1) - obj_radii
-                if gaps.size and float(np.min(gaps)) > reach:
-                    advancing_groups.add(group_id)
+        # Read the declaration made in the command phase rather than deciding
+        # again: the env holds the unit to what it declared, and a long rung is
+        # masked for a unit that declared a normal move.
+        advancing_groups = {
+            int(m.group_id)
+            for m in opponent_models
+            if m.is_alive and m.declared_advance
+        }
 
         for index, model in enumerate(opponent_models):
             if not model.is_alive:

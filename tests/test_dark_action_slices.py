@@ -23,9 +23,19 @@ from pytorch_lightning import seed_everything
 
 from wargame_rl.wargame.envs.env_components.actions import ActionHandler
 from wargame_rl.wargame.envs.types import WargameEnvConfig
-from wargame_rl.wargame.envs.types.game_timing import BattlePhase
+from wargame_rl.wargame.envs.types.game_timing import NON_MOVEMENT_PHASES, BattlePhase
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.net import TransformerNetwork
+
+
+def _phases_with_command() -> list[BattlePhase]:
+    """Skip everything non-movement EXCEPT command, where the move type is declared.
+
+    A config with advance rungs and no command phase is rejected at
+    construction: the declaration would be unreachable and the advance silently
+    unavailable for the whole run.
+    """
+    return [p for p in NON_MOVEMENT_PHASES if p is not BattlePhase.command]
 
 
 @pytest.fixture
@@ -39,6 +49,7 @@ def _config(
 ) -> WargameEnvConfig:
     config: WargameEnvConfig = env_config.model_copy(deep=True)
     config.n_advance_speed_bins = bins
+    config.skip_phases = _phases_with_command()
     config.dark_action_slices = dark
     return config
 

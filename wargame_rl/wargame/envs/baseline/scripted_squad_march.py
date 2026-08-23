@@ -12,8 +12,12 @@ from wargame_rl.wargame.envs.baseline.policy import (
     step_toward_objective,
 )
 from wargame_rl.wargame.envs.baseline.registry import register_baseline
-from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
+from wargame_rl.wargame.envs.env_components.actions import (
+    MOVE_TYPE_ADVANCE,
+    STAY_ACTION,
+)
 from wargame_rl.wargame.envs.types import WargameEnvAction
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
@@ -138,6 +142,86 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
                 return True
         return False
 
+    def _squad_advance_decisions(
+        self, models: list[WargameModel], env: WargameEnv
+    ) -> dict[int, bool]:
+        """Which squads should declare an advance this turn, by group id.
+
+        Computed in the COMMAND phase, before anything has moved — which is
+        exactly when the rules ask for the move type, and why the same geometry
+        the movement step uses is still valid here.
+        """
+        objectives = env.objectives
+        decisions: dict[int, bool] = {}
+        if not objectives or not (
+            self.advance_when_out_of_reach
+            or self.advance_when_no_shot
+            or self.advance_to_arrive
+        ):
+            return decisions
+
+        speeds = env.player_action_handler.move_speeds
+        group_ids = sorted({model.group_id for model in models})
+        targets = self.squad_objectives(models, env, group_ids)
+        for squad_index, group_id in enumerate(group_ids):
+            member_indices = [
+                i
+                for i, model in enumerate(models)
+                if model.group_id == group_id and model.is_alive
+            ]
+            if not member_indices:
+                continue
+            max_step = float(
+                min(speeds[i] for i in member_indices) if speeds.size else 0.0
+            )
+            objective = targets[squad_index]
+            radius = objective_extent(objective)
+            centroid = np.mean(
+                [models[i].location for i in member_indices], axis=0, dtype=float
+            )
+            lead = np.asarray(objective.location, dtype=float) - centroid
+            lead_distance = float(np.linalg.norm(lead))
+            out_of_reach = lead_distance > radius and lead_distance > max_step
+            walk_step = (
+                lead / lead_distance * min(max_step, lead_distance)
+                if lead_distance > 0.0
+                else np.zeros(2, dtype=float)
+            )
+            roll = float(models[member_indices[0]].advance_roll)
+            arrives_this_turn = lead_distance - radius <= max_step + roll
+            decisions[int(group_id)] = out_of_reach and (
+                self.advance_when_out_of_reach
+                or (
+                    (self.advance_when_no_shot or self.advance_to_arrive)
+                    and (arrives_this_turn or not self.advance_to_arrive)
+                    and not self._would_forfeit_a_shot(
+                        models, member_indices, env, walk_step
+                    )
+                )
+            )
+        return decisions
+
+    def select_command(
+        self, models: list[WargameModel], env: WargameEnv
+    ) -> WargameEnvAction:
+        """Declare each squad's move type, from its leader's action."""
+        move_type = env.player_action_handler.move_type_slice
+        actions = [STAY_ACTION] * len(models)
+        # STAY already declares `normal`, so only an ADVANCE needs an action --
+        # which also means a DARKENED slice (registered, valid in no phase, so
+        # masked) is handled by emitting nothing rather than by a special case.
+        if move_type is None or BattlePhase.command not in move_type.valid_phases:
+            return WargameEnvAction(actions=actions)
+        decisions = self._squad_advance_decisions(models, env)
+        leaders: dict[int, int] = {}
+        for index, model in enumerate(models):
+            if model.is_alive:
+                leaders.setdefault(int(model.group_id), index)
+        for group_id, leader in leaders.items():
+            if decisions.get(group_id):
+                actions[leader] = move_type.start + MOVE_TYPE_ADVANCE
+        return WargameEnvAction(actions=actions)
+
     def select_movement(
         self, models: list[WargameModel], env: WargameEnv
     ) -> WargameEnvAction:
@@ -182,30 +266,11 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
             lead = np.asarray(objective.location, dtype=float) - centroid
             lead_distance = float(np.linalg.norm(lead))
 
-            # One decision for the whole squad, taken before any member moves.
-            # Both rules require that a normal full move cannot close the gap --
-            # otherwise the advance buys nothing at any price. They differ in
-            # whether they then ask what it costs.
-            out_of_reach = lead_distance > radius and lead_distance > max_step
-            walk_step = (
-                lead / lead_distance * min(max_step, lead_distance)
-                if lead_distance > 0.0
-                else np.zeros(2, dtype=float)
-            )
-            # The unit's D6 for the turn: one roll per unit, so every member
-            # carries the same value and the first is the unit's.
-            roll = float(models[member_indices[0]].advance_roll)
-            arrives_this_turn = lead_distance - radius <= max_step + roll
-            squad_advances = out_of_reach and (
-                self.advance_when_out_of_reach
-                or (
-                    (self.advance_when_no_shot or self.advance_to_arrive)
-                    and (arrives_this_turn or not self.advance_to_arrive)
-                    and not self._would_forfeit_a_shot(
-                        models, member_indices, env, walk_step
-                    )
-                )
-            )
+            # READ the declaration rather than recompute it. The move type was
+            # chosen in the command phase and the env is holding the squad to
+            # it; deciding again here could disagree with what was declared, and
+            # a long rung is masked for a squad that declared a normal move.
+            squad_advances = bool(models[member_indices[0]].declared_advance)
 
             for i in member_indices:
                 if lead_distance <= radius:
