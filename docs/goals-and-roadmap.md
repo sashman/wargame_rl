@@ -10,7 +10,7 @@ Train reinforcement learning agents that learn to play tabletop wargames — nav
 
 2. **Scalable training pipeline** — Maintain a PPO training loop that handles multi-unit action spaces, per-model credit assignment, and experiment tracking via Wandb.
 
-3. **Emergent tactical behaviour** — Through reward shaping and environment design, encourage agents to learn recognisable tactics: advancing on objectives, maintaining unit cohesion, using cover, focusing fire, and retreating when outmatched.
+3. **Emergent tactical behaviour** — Through reward shaping and environment design, encourage agents to learn recognisable tactics. [docs/play-doctrine.md](play-doctrine.md) is what "recognisable" means here, entry by entry, and which entries the environment can express at all. ⚠ The three examples this goal used to name have all since been measured and none survives as written: **using cover** is refuted (the agent manages range, not cover — deleting all terrain moved exposure 0.116 → 0.120), **focusing fire** is capped at the 3.6% of attacks that unit targeting discards, and **retreating when outmatched** is unreachable while the fall-back move is absent. What the record actually shows is missing is **allocation**: the agent holds 2.08–2.30 distinct objectives against a script's 3.28.
 
 4. **Extensible architecture** — Keep the codebase modular so new game phases (shooting, melee, morale) can be added without rewriting the observation/action pipeline.
 

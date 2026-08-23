@@ -58,7 +58,7 @@ wargame_rl/
 ├── tests/                         # Pytest suite with conftest.py fixtures
 ├── docs/                          # Design docs (movement, reward phases, missions-and-vp,
 │                                  #   roadmap, metrics, shooting, expected-damage,
-│                                  #   terrain, training-throughput)
+│                                  #   terrain, training-throughput, play-doctrine)
 │   └── rules/                     # Rules specification + constants.yaml + gap map
 ├── reports/                       # Experiment findings, kept for retrospection
 ├── scripts/                       # Run-inspection tooling (fetch_map_layouts,
@@ -133,6 +133,7 @@ wargame_rl/
 - **Group cohesion** — optional penalty for unit separation
 - **DDD layering** — `domain/` owns the rules (Battle aggregate, clock, placement, termination, LOS, shooting); `wargame.py` is a facade; reward/renders depend only on the `BattleView` protocol. See [docs/ddd-envs.md](docs/ddd-envs.md)
 - **Rules specification** — [docs/rules/](docs/rules/README.md) is the game's rules authority: a self-contained spec written for this project, with `constants.yaml` (every number, in inches) and [implementation-status.md](docs/rules/implementation-status.md) (per-rule: implemented / partial / divergent / absent). Before implementing a mechanic, read its chapter and its gap-map row. `tests/test_no_ip_references.py` keeps the repo free of references to the commercial product the rules derive from — the spec names no product, publisher, edition or faction, and neither should anything else
+- **Play doctrine** — [docs/play-doctrine.md](docs/play-doctrine.md) is how this game is *won*, as `docs/rules/` is how it is *played*: 37 numbered entries, each stating a claim, whether the environment can express it, which extension point it lands in, and what has already been measured about it. It is a store of **hypotheses, never of evidence** — price an entry as a scripted policy (`just measure-paired`, no GPU) before it becomes a reward term or a training run, and where an entry disagrees with the record below, **the record wins**
 
 ### Game State I/O (`envs/state/`)
 
@@ -965,6 +966,10 @@ project's effort has gone, and the shape of the problem is now settled.
   worth **68 vp**. See [the report](reports/2026-08-08-paying-the-pot-beats-the-bar.md).
 - **Treat any precision or numerics setting as a reward-affecting change** and
   screen it like a shaping term.
+- **Read the doctrine entry's verdict before writing the term.**
+  [docs/play-doctrine.md](docs/play-doctrine.md) carries one per claim, and several
+  of the terms tried here restate an entry now marked `refused`. The cheapest form
+  of any entry is a scripted policy, not a calculator.
 - Register new calculators and criteria and document them in
   [docs/reward-phases.md](docs/reward-phases.md).
 
