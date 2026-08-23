@@ -1077,8 +1077,49 @@ Re-measure rather than carry a figure across one.
   concentrates its models and so stands near its own casualties more often. A
   second fix the same day (LOS symmetry, #211) is a **measured null** on score and
   voids nothing.
+- **2026-08-23 — the scripts learned to Advance, and a move must end unengaged.**
+  The scripted bar moved **+1.3 to +32.6 vp** (4 of 4) and the movement rule changed
+  on every config, so every scripted-bar figure on an advance config and every agent
+  score compared against one is void. Three goldens were regenerated deliberately;
+  the other three are byte-identical, which is the check that the movement change is
+  targeted rather than global.
 - **2026-08-20 — the eval tables were regenerated**, and 2026-08-21 they were
   re-measured against their own deployment zones. See § The board.
+
+### The bar was playing a different game — Advance, and the endpoint rule
+
+Measured 2026-08-23, no GPU,
+[report](reports/2026-08-23-the-bar-was-playing-a-different-game.md).
+
+- ⚠ **ADVANCE IS A CORE RULE, NOT AN ARM.** It was framed as accept/reject against
+  a control without it. Wrong question: it is staying, so the question is how well
+  the agent plays the game *including* it. Reframing exposed the defect below.
+- ⚠ **NO SCRIPTED BASELINE AND NO OPPONENT POLICY COULD ADVANCE.** All of them
+  predate the feature, so an advancing agent was scored against a walking bar and
+  trained against a walking opponent. Scripts advance now — **run while far, walk
+  once close**, decided per squad, reading the unit's own D6.
+
+| policy | advance OFF | advance ON | delta |
+|---|---|---|---|
+| `squad_march` | −165.2 ± 5.7 | −139.7 ± 7.6 | **+25.5** |
+| `squad_march_shoot` | −50.7 ± 10.0 | −18.1 ± 13.0 | **+32.6** |
+| `squad_march_take` | −12.7 ± 13.1 | **+2.8 ± 4.4** | **+15.5** |
+| `squad_march_deny` | −3.7 ± 6.7 | −2.4 ± 9.9 | +1.3 |
+
+- **Positive on 4 of 4**, `held` 2.46 → 2.82 for `take`. ⚠ **`squad_march_shoot`
+  gains MOST (+32.6) despite forgoing its shooting to advance** — the extra
+  distance beats the fire it gives up at range, the opposite of the intuition.
+- **A move must now END unengaged** (`09-movement-phase.md`), and **passing through
+  stays legal** (`03-moving.md`). Engagement after a movement phase **6.01% →
+  3.21%, 47% removed**; the back-off fires on 1.52% of moves, mean 1.05".
+  ⚠ The legal set along the ray is **not an interval**, so it walks back ring by
+  ring rather than bisecting. ⚠ The reverted first attempt was a **path**
+  constraint and cost 87% of opponent-held objectives their only legal spot.
+- ⚠ **THE OPPONENT POLICIES STILL DO NOT ADVANCE.** `scripted_advance_to_objective`
+  is named for the word, not the rule. **Do not train on an advance config until
+  they do** — the agent would train against an opponent playing a slower game.
+- `advance_when_out_of_reach: False` reproduces the pre-Advance bar action for
+  action, so both columns come from one config and one code path.
 
 ### Settled — do not re-run
 
