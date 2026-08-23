@@ -235,6 +235,9 @@ class WargameEnv(gym.Env):
 
         # Combat RNG (re-seeded per episode in reset)
         self._combat_rng: np.random.Generator = np.random.default_rng()
+        # Separate stream: see `_roll_advance_dice`. Never drawn from unless the
+        # scenario registers advance bins, so existing configs are untouched.
+        self._advance_rng: np.random.Generator = np.random.default_rng()
         self._last_player_shooting_results: list[PairedShootingResult] = []
         self._last_opponent_shooting_results: list[PairedShootingResult] = []
 
@@ -347,6 +350,10 @@ class WargameEnv(gym.Env):
         is exactly the separation `measure-noise-floor` is built on.
         """
         self._combat_rng = np.random.default_rng(seed)
+        # Offset so the advance stream is not a copy of the combat stream.
+        self._advance_rng = np.random.default_rng(
+            None if seed is None else seed + 1_000_003
+        )
 
     @property
     def max_turns(self) -> int:
@@ -692,10 +699,45 @@ class WargameEnv(gym.Env):
             ),
         )
 
+    def _roll_advance_dice(self, active_side: PlayerSide) -> None:
+        """Clear the turn's move state and roll one D6 per unit, for one side.
+
+        The rules make the advance roll "before moving", and the policy chooses
+        its move afterwards -- so the roll has to be visible in the observation
+        the policy conditions on. It is: `step()` applies the action, THEN runs
+        the clock (which calls this on the command -> movement boundary), THEN
+        builds the observation. So a roll made here lands in the observation
+        that precedes the movement action it governs.
+
+        ⚠ Drawn from a DEDICATED generator, and only when the scenario has
+        advance bins. Sharing `np_random` or `_combat_rng` would shift every
+        later draw, so adding this feature would silently change the terrain,
+        the deployment and every dice roll of every existing config.
+        """
+        if self._action_handler.advance_slice is None:
+            return
+        models = (
+            self.wargame_models
+            if active_side == self._player_side
+            else self.opponent_models
+        )
+        for model in models:
+            model.begin_turn()
+        # One roll per UNIT, shared by its models -- the rules roll for the
+        # unit, not the model.
+        rolls: dict[int, float] = {}
+        for model in models:
+            group = int(model.group_id)
+            if group not in rolls:
+                rolls[group] = float(self._advance_rng.integers(1, 7))
+            model.advance_roll = rolls[group]
+
     def _on_before_advance(self, clock: GameClock) -> None:
         """Score VP when leaving command phase, and regain coherency at end of turn."""
         state = clock.state
         self._regain_coherency(state)
+        if state.phase == BattlePhase.command and state.active_player is not None:
+            self._roll_advance_dice(state.active_player)
         if state.phase != BattlePhase.command or state.battle_round is None:
             return
         if state.active_player is None:

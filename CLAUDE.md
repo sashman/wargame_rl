@@ -532,6 +532,79 @@ Move 12 against 15 elites at 24" reach — trained three seeds, 300 epochs, scor
 - **Untested: the elite side.** Only the horde was trained. The denial-price account
   predicts an elite agent wins by *less*; that is one training run.
 
+### Freezing is friendly gridlock, and only deterministic policies suffer it
+
+Measured 2026-08-22, no GPU, [report](reports/2026-08-22-freezing-is-friendly-gridlock.md).
+`just measure-freezing` counts the movement orders that produce no movement — a
+class of failure `vp_margin` and `coherent` are both blind to.
+
+- **A frozen model stays frozen 89% of the time; a moving model freezes 3%.**
+  `squad_march_take` / `shoot` / `contest_and_spread` all land at P(f|f)
+  **0.888–0.893** against P(f|moved) 0.028–0.035, i.e. **absorbing +0.86**.
+  ~11% of orders freeze and ~12% truncate, but **92% of ordered inches are
+  delivered** — which is why it went unseen. The loss is a small population that
+  never recovers, not a general slowdown.
+- ⚠ **`random` is the control, and it inverts.** It truncates **more than twice
+  as often** (27.5%) and delivers **less** (86.3%), yet is barely absorbing at
+  **+0.086**. So the collision system is not at fault: a blocked random policy
+  tries another direction next phase, a **purposeful policy re-issues the same
+  blocked order forever**. Freezing is determinism meeting an obstacle, not the
+  obstacle. **Any movement-delivery comparison against `random` reads backwards.**
+- **The obstacle is FRIENDLY.** 91.8% of frozen model-steps have a friendly base
+  touching against 27.7% of moving ones (1.27 v 0.32 friendlies; enemies 0.22 v
+  0.03). Friendly bases may be crossed but not *ended on*, so a model whose
+  destination is taken backs off to zero.
+- **This is the stacking finding's mechanical consequence** — 4.90 models on the
+  agent's top point against `squad_march_take`'s 2.73 — and it undermines
+  **"the agent never stands still"**: some of that 0.4% STAY rate is models that
+  are stuck, and the statistic cannot separate the two.
+- ⚠ **Do not re-run the tangential slide.** Measured 2026-08-10 and **worse**
+  (0.70/+20.6 → 0.57/+1.0): a fully blocked model spends its whole move sliding
+  into the open.
+- **Not measured:** the vp cost, or any trained agent. A model frozen on an
+  objective it already holds loses nothing.
+- **Read `absorbing` beside any movement feature's result** — an advance is the
+  longest move in the game and so the most likely to be stopped.
+- ⚠ **THE SOLVER IS NOT THE BUG — two variants tried and REVERTED.** Bisection
+  on travel made it worse (delivery 91.8% → 90.4%): the legal set is not an
+  interval, since travelling further can leave one base without entering
+  another. A correct descending scan froze less (11.1%) but truncated more
+  (13.3%) and delivered less (91.1%) — it converts freezes into short moves
+  without buying ground. **75.5% of frozen model-steps have no legal shorter
+  move along that heading at all.** So **"fix freezing" reduces to "fix
+  allocation"** — the same wall three reward terms failed against — and this is
+  the third movement-side fix measured away after the tangential slide.
+  **Do not attempt a fourth.**
+
+### The advance move is REJECTED at 300 epochs, and the loss splits in two
+
+Measured 2026-08-22, [brief](docs/advance-move-problem.md).
+`configs/experiments/25v25_maps_advance.yaml` — the golden config with only
+`n_advance_speed_bins: 3` — three seeds, 300 epochs, scored refereed at K=3.
+
+- **arm −3.3 (+10.8 / −12.4 / −8.4) against the control's +23.4. UNPAIRED
+  −26.7 ± 8.3, t = −3.20.** The control beat the best script by +24.5; the arm
+  is 2.2 *behind* it.
+- ⚠ **UNPAIRABLE BY CONSTRUCTION.** Adding actions (102 → 150) changes the
+  output head, so no init is shared. A zero-initialised conditioning path fixes
+  an added *input*, never an added *action*. The layouts and seeds are shared,
+  and the two configs are verified the same game for a non-advancing policy
+  (scripts score to the same decimal on both) — that cross-config bridge is what
+  makes the comparison legitimate at all.
+- **Forbidding advance at PLAY, on the same weights, is worth +8.5 vp** (+10.9 /
+  +3.9 / +10.8, 3/3). So the weights are not broken — but it reaches only
+  **+11.1** against the control's +23.4. **~8.5 vp is the agent choosing a bad
+  option; ~12 vp is a worse learned policy.** Both explanations are true.
+- ⚠ **NOT caused by freezing, and that explanation was published before being
+  checked.** The arm freezes 18–28% and delivers 70–77% — but **the control
+  agent freezes 26.3% and delivers 76.4%**. Trained agents freeze at that rate
+  *because they stack*, advance or not. The comparison had been made against the
+  **scripts** (11%), which was never the right control.
+- ⚠ **RETRACTED: usage is NOT monotone in the damage.** s2 advances 23.1% and
+  gains least from giving it up (+3.9); s1 advances 8.1% and gains most (+10.9).
+- **Open:** whether the ~12 vp is fixable by training longer or is a permanent
+  cost of a 47% larger action space. 300 epochs is a screen, and this project's
+  own rule is that a marginal screen means "run it longer".
 ### Offence is not reward-shapeable here — three arms, one conclusion
 
 Measured 2026-08-22, [report](reports/2026-08-22-the-agent-is-never-paid-to-attack.md).
