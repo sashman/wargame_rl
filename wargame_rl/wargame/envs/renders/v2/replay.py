@@ -20,8 +20,16 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
+from wargame_rl.wargame.envs.domain.rules_quantities import RulesQuantities
+from wargame_rl.wargame.envs.domain.scale import Scale
+from wargame_rl.wargame.envs.domain.sight import BlockingMask
+from wargame_rl.wargame.envs.domain.terrain import Footprint, Terrain
 from wargame_rl.wargame.envs.renders.v2.backend import Canvas, RenderBackend
-from wargame_rl.wargame.envs.renders.v2.control import ThreatOptions
+from wargame_rl.wargame.envs.renders.v2.control import (
+    ThreatOptions,
+    ThreatOverlay,
+    sight_matrix_from_terrain,
+)
 from wargame_rl.wargame.envs.renders.v2.presenters.base import BasePresenter
 from wargame_rl.wargame.envs.renders.v2.scene import (
     SHOT_FADE_FRAMES,
@@ -102,16 +110,6 @@ class _Shot:
 
 
 @dataclass(frozen=True)
-class _Footprint:
-    polygon: Polygon
-
-
-@dataclass(frozen=True)
-class _TerrainView:
-    footprints: tuple[_Footprint, ...]
-
-
-@dataclass(frozen=True)
 class _SnapshotView:
     config: _ConfigView
     deployment_zone: tuple[int, int, int, int]
@@ -121,7 +119,15 @@ class _SnapshotView:
     objectives: tuple[_ObjectiveView, ...]
     player_models: tuple[_ModelView, ...]
     opponent_models: tuple[_ModelView, ...]
-    terrain: _TerrainView
+    terrain: Terrain
+    # Weapon range per model, from `ModelSnapshot.weapons` — already recorded for
+    # both sides, so the threat sweep needed no new field for it.
+    player_max_ranges: np.ndarray
+    opponent_max_ranges: np.ndarray
+    # None on a pre-2.6 recording, which is what makes the overlays unavailable
+    # there rather than wrong.
+    rules_quantities: RulesQuantities | None
+    blocking_mask: BlockingMask | None
     n_rounds: int
     current_turn: int
     last_reward: float | None
@@ -135,11 +141,58 @@ class _SnapshotView:
     opponent_vp: int
     opponent_vp_delta: int
 
+    def line_of_sight_matrix(
+        self,
+        origins: np.ndarray,
+        targets: np.ndarray,
+        candidates: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """The engine's own sight test, run against the recorded terrain.
+
+        This is what keeps "the renderer never invents its own answer to what is
+        visible" true in replay as well as live — and it is why
+        `compute_threat_overlay` is one function that serves both paths rather
+        than two that can drift.
+
+        A pre-2.6 recording has no `los_sample_step`, and guessing one would
+        answer a *different* question convincingly, so it refuses instead. The
+        presenter checks `rules_quantities` before it ever gets here.
+        """
+        if self.rules_quantities is None:
+            raise ValueError(
+                "this recording predates schema 2.6 and carries no sample step"
+            )
+        return sight_matrix_from_terrain(
+            origins,
+            targets,
+            self.terrain,
+            self.blocking_mask,
+            sample_step=self.rules_quantities.los_sample_step,
+            candidates=candidates,
+        )
+
 
 def _polygon(vertices: list[list[float]] | None) -> Polygon | None:
     if not vertices:
         return None
     return Polygon(vertices=np.asarray(vertices, dtype=np.float64))
+
+
+def _max_ranges(models: "Sequence[object]") -> np.ndarray:
+    """Longest weapon range per model, the rule `max_weapon_ranges` uses.
+
+    Already on the recording — `ModelSnapshot.weapons` carries `weapon_range`
+    for both sides — so the threat sweep needed no new snapshot field for it.
+    A model with no weapons gets 0.0, which the sweep's `range > 0` guard then
+    rules out rather than marking the cell it stands on.
+    """
+    return np.array(
+        [
+            max((float(w.weapon_range) for w in m.weapons), default=0.0)  # type: ignore[attr-defined]
+            for m in models
+        ],
+        dtype=float,
+    )
 
 
 def _model_view(snap_model: object) -> _ModelView:
@@ -183,10 +236,16 @@ def _snapshot_to_view(snapshot: GameStateSnapshot) -> _SnapshotView:
     """Adapt a snapshot to the read-only surface `build_scene` consumes."""
     dz = snapshot.deployment_zone
     odz = snapshot.opponent_deployment_zone
-    footprints = tuple(
-        _Footprint(polygon=Polygon(vertices=np.asarray(fp, dtype=np.float64)))
-        for fp in (snapshot.terrain_footprints or [])
+    # The real `Terrain`, not a stub: it derives its own padded outlines and
+    # vertex counts, which is exactly what `domain.sight` needs to trace against.
+    # `build_scene` only reads `.footprints[].polygon`, so this is invisible to it.
+    terrain = Terrain(
+        [
+            Footprint(Polygon(vertices=np.asarray(fp, dtype=np.float64)))
+            for fp in (snapshot.terrain_footprints or [])
+        ]
     )
+    rules = snapshot.rules
     phase = snapshot.clock.battle_phase
     return _SnapshotView(
         config=_ConfigView(
@@ -214,7 +273,22 @@ def _snapshot_to_view(snapshot: GameStateSnapshot) -> _SnapshotView:
         ),
         player_models=tuple(_model_view(m) for m in snapshot.player_models),
         opponent_models=tuple(_model_view(m) for m in snapshot.opponent_models),
-        terrain=_TerrainView(footprints=footprints),
+        terrain=terrain,
+        player_max_ranges=_max_ranges(snapshot.player_models),
+        opponent_max_ranges=_max_ranges(snapshot.opponent_models),
+        rules_quantities=(
+            RulesQuantities(
+                scale=Scale(inches_per_unit=1.0),
+                engagement_range=rules.engagement_range,
+                max_move_speed=0.0,
+                los_sample_step=rules.los_sample_step,
+                base_radius=rules.base_radius,
+                coherency_distance=0.0,
+            )
+            if rules is not None
+            else None
+        ),
+        blocking_mask=rules.blocking_mask if rules is not None else None,
         n_rounds=snapshot.n_rounds,
         current_turn=snapshot.step,
         last_reward=snapshot.reward.total,
@@ -245,6 +319,7 @@ def build_scene_from_snapshot(
     theme: Theme = DEFAULT_THEME,
     show_grid: bool = True,
     shot_fade: float = 1.0,
+    threat: "ThreatOverlay | None" = None,
 ) -> Scene:
     """Build the same `Scene` a live `BattleView` would, from a recorded snapshot."""
     control = tuple(Control(c) for c in snapshot.objective_control)
@@ -254,6 +329,7 @@ def build_scene_from_snapshot(
         control,
         scale=scale,
         theme=theme,
+        threat=threat,
         show_grid=show_grid,
         shot_fade=shot_fade,
     )
@@ -355,6 +431,13 @@ class ReplayPresenter(BasePresenter):
             theme=self._theme,
             show_grid=self._theme.show_grid,
             shot_fade=shot_fade_for_age(self._volley_age(index)),
+            # The adapter is built twice per frame — once here for the overlay
+            # and once inside `build_scene_from_snapshot`. Cheap (it is a
+            # dataclass over data already in memory) and it keeps the snapshot
+            # the single source for both, rather than threading a view out.
+            threat=self._threat_overlay(
+                cast("BattleView", _snapshot_to_view(snapshot))
+            ),
         )
         base = self._compose_scene(scene)
         frame = self._backend.new_canvas(
