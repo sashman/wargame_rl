@@ -20,6 +20,11 @@ field read only by `_resolve_player_side`, and A's zone is a swap of the two
 deployment-zone fields. Entrant A always sits on the player seat; entrant B
 rides in `opponent_policy`.
 
+⚠ **The engine SEAT is a third axis, and these four legs do not balance it** --
+see `pairings` below and `docs/elo.md` § Open gaps. "Unbiased before the
+advantage terms are fitted" holds for zone and turn order, and for the seat only
+on a scenario that passes `just measure-seat-parity`.
+
 This module may import `envs/types` -- the shared kernel -- and nothing else
 from the project.
 """
@@ -170,11 +175,19 @@ def combat_seeds_for(seeds: Sequence[int]) -> list[int]:
 
 
 def pairings(entrants: Sequence[str]) -> list[tuple[str, str]]:
-    """Every unordered pair, each listed once.
+    """Every unordered pair, each listed once, in input order.
 
-    Ordered pairs would double the cost for nothing: the four legs already
-    balance both axes, so playing B-versus-A adds no information A-versus-B
-    lacks.
+    Ordered pairs would double the cost: the four legs already balance both
+    axes, so playing B-versus-A adds no information A-versus-B lacks.
+
+    ⚠ **That holds only while the two SEATS are the same game**, which is a
+    third axis the four legs do not balance -- entrant A always sits on the
+    player seat, so the entrant named first on the command line takes it in
+    every one of its pairings and the entrant named last never takes it at all.
+    Measured on `configs/golden/25v25_shooting_opponent.yaml` the seats differ
+    by **-24.6 +/- 9.4 vp**, which would make ratings there a function of
+    argument order. `just measure-seat-parity` is the gate, and nothing calls
+    it. See `docs/elo.md` § Open gaps.
     """
     names = list(entrants)
     if len(set(names)) != len(names):
