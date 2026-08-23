@@ -18,7 +18,13 @@ import numpy as np
 import pytest
 
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
-from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
+from wargame_rl.wargame.envs.types import (
+    ModelConfig,
+    OpponentPolicyConfig,
+    WargameEnvAction,
+    WargameEnvConfig,
+)
+from wargame_rl.wargame.envs.types.config import WeaponProfile
 from wargame_rl.wargame.model.common.factory import create_environment
 
 
@@ -292,3 +298,151 @@ def test_advancing_is_OFF_by_default_because_the_heuristic_was_REJECTED() -> Non
 
     assert ScriptedSquadMarchPolicy.advance_when_out_of_reach is False
     assert ScriptedAdvanceToObjectivePolicy.advance_when_out_of_reach is False
+
+
+def _armed_config(bins: int, weapon_range: int) -> WargameEnvConfig:
+    """A config with real weapons on both sides.
+
+    ⚠ The bare `_config` above leaves `models` unset, and `max_weapon_ranges`
+    returns 0.0 for every model of a `None` model list — so a rule that turns
+    on weapon reach is vacuously satisfied there and a test written against it
+    asserts nothing. Both sides are armed explicitly.
+    """
+    weapon = WeaponProfile(range=weapon_range)
+    return WargameEnvConfig(
+        render_mode=None,
+        number_of_battle_rounds=6,
+        n_advance_speed_bins=bins,
+        number_of_wargame_models=4,
+        models=[ModelConfig(weapons=[weapon], group_id=i // 2) for i in range(4)],
+        number_of_opponent_models=4,
+        opponent_models=[
+            ModelConfig(weapons=[weapon], group_id=i // 2) for i in range(4)
+        ],
+        opponent_policy=OpponentPolicyConfig(type="scripted_advance_to_objective"),
+    )
+
+
+def _no_shot_advance_actions(weapon_range: int) -> tuple[int, int]:
+    """Play `squad_march_take_advance` armed; return (advances, ordinary moves)."""
+    env = create_environment(env_config=_armed_config(3, weapon_range))
+    policy = build_baseline_policy("squad_march_take_advance")
+    observation, _ = env.reset(seed=3)
+    advance_slice = env.player_action_handler.advance_slice
+    advances = moves = 0
+    done = False
+    while not done:
+        action = policy.select_action(
+            env.wargame_models, env, action_mask=observation.action_mask
+        )
+        for value in action.actions:
+            if (
+                advance_slice is not None
+                and advance_slice.start <= value < advance_slice.end
+            ):
+                advances += 1
+            elif value != 0:
+                moves += 1
+        observation, _r, done, _t, _i = env.step(action)
+    env.close()
+    return advances, moves
+
+
+def test_the_priced_rule_advances_when_no_shot_is_forfeited() -> None:
+    """At a short reach most of the march is out of range, so the run is free."""
+    advances, moves = _no_shot_advance_actions(weapon_range=6)
+
+    assert advances > 0, "it never advanced, so the free run is being declined"
+    assert moves > 0, "it advanced every step, so it never settles onto a point"
+
+
+def test_a_weapon_that_covers_the_board_stops_every_advance() -> None:
+    """The rule's whole content: an advance that costs a shot is not taken.
+
+    With reach past the board diagonal every member has an enemy within range
+    of wherever a normal move would land, so no advance is ever free.
+    """
+    advances, moves = _no_shot_advance_actions(weapon_range=200)
+
+    assert advances == 0, "it advanced while giving up a shot it actually had"
+    assert moves > 0, "it stopped moving entirely, which is a different bug"
+
+
+def test_the_priced_rule_leaves_the_rejected_heuristic_off() -> None:
+    """The two rules are independent; `squad_march_take` must not start running."""
+    plain = build_baseline_policy("squad_march_take")
+    priced = build_baseline_policy("squad_march_take_advance")
+
+    assert plain.advance_when_out_of_reach is False  # type: ignore[attr-defined]
+    assert plain.advance_when_no_shot is False  # type: ignore[attr-defined]
+    assert priced.advance_when_out_of_reach is False  # type: ignore[attr-defined]
+    assert priced.advance_when_no_shot is True  # type: ignore[attr-defined]
+
+
+def test_the_priced_rule_is_the_take_allocation_with_nothing_else_changed() -> None:
+    """With no advance bins registered it must be `squad_march_take`, action for action."""
+    env_plain = create_environment(env_config=_config(0))
+    env_priced = create_environment(env_config=_config(0))
+    plain = build_baseline_policy("squad_march_take")
+    priced = build_baseline_policy("squad_march_take_advance")
+    observation_plain, _ = env_plain.reset(seed=11)
+    observation_priced, _ = env_priced.reset(seed=11)
+
+    done = False
+    while not done:
+        action_plain = plain.select_action(
+            env_plain.wargame_models,
+            env_plain,
+            action_mask=observation_plain.action_mask,
+        )
+        action_priced = priced.select_action(
+            env_priced.wargame_models,
+            env_priced,
+            action_mask=observation_priced.action_mask,
+        )
+        assert list(action_plain.actions) == list(action_priced.actions)
+        observation_plain, _r, done, _t, _i = env_plain.step(action_plain)
+        observation_priced, _r2, _d2, _t2, _i2 = env_priced.step(action_priced)
+    env_plain.close()
+    env_priced.close()
+
+
+def test_the_arrive_rule_runs_less_often_than_the_no_shot_rule() -> None:
+    """D-40 is strictly narrower: every arrival is free, not every free run arrives.
+
+    Both share the no-shot clause, so the only difference is the arrival
+    condition. If the arrive rule ever ran MORE, the extra clause would be
+    doing something other than what it says.
+    """
+    env = create_environment(env_config=_armed_config(3, weapon_range=6))
+    advance_slice = env.player_action_handler.advance_slice
+    counts = {}
+    for name in ("squad_march_take_advance", "squad_march_take_arrive"):
+        policy = build_baseline_policy(name)
+        observation, _ = env.reset(seed=5)
+        advances = 0
+        done = False
+        while not done:
+            action = policy.select_action(
+                env.wargame_models, env, action_mask=observation.action_mask
+            )
+            advances += sum(
+                1
+                for value in action.actions
+                if advance_slice is not None
+                and advance_slice.start <= value < advance_slice.end
+            )
+            observation, _r, done, _t, _i = env.step(action)
+        counts[name] = advances
+    env.close()
+
+    assert counts["squad_march_take_arrive"] <= counts["squad_march_take_advance"]
+
+
+def test_the_arrive_rule_leaves_every_other_flag_alone() -> None:
+    """Only the two clauses it names may be on."""
+    policy = build_baseline_policy("squad_march_take_arrive")
+
+    assert policy.advance_when_out_of_reach is False  # type: ignore[attr-defined]
+    assert policy.advance_when_no_shot is True  # type: ignore[attr-defined]
+    assert policy.advance_to_arrive is True  # type: ignore[attr-defined]

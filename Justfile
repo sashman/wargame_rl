@@ -184,6 +184,14 @@ train-coherency-baseline max_epochs='300' n_seeds='3' first_seed='1' tag='-basel
 # disagreement, so the surviving entropy is predicted to be one shared angle.
 # Circular variance 0 means the squad has exactly one direction available to it.
 #
+# What a policy buys with the advance move and what it pays. Separates the three
+# encoding defects: DOMINATED advances (cost the unit's shooting for a distance a
+# normal move reaches), who pulled the trigger (one model forfeits all five), and
+# advancing from INSIDE an objective (pays in full for no payable progress).
+# Use: just measure-advance-use squad_march_take configs/experiments/25v25_maps_advance.yaml 10
+measure-advance-use policy env_config n_episodes='10' decode_topk='1' *overrides:
+	@uv run python -m scripts.measure_advance_use {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}} {{overrides}}
+
 # Use: just measure-angle-collapse squad_march_take configs/experiments/24v24_maps_spare_squads.yaml 20
 measure-angle-collapse policy env_config n_episodes='20' decode_topk='1':
 	@uv run python -m scripts.measure_angle_collapse {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}}

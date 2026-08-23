@@ -109,6 +109,7 @@ wargame_rl/
 | Score a checkpoint (baseline-comparable) | `just measure-checkpoint <ckpt> <config.yaml> [n_episodes] [record] [decode_topk] [key=value...]` |
 | Score on the real table layouts | `just measure-maps <policy\|ckpt> <config.yaml> [n_episodes] [maps_dir] [decode_topk] [key=value...]` |
 | Why an objective was not held | `just measure-objective-split <policy\|ckpt> <config.yaml> [n_episodes]` |
+| What a policy buys with the advance move, and what it pays | `just measure-advance-use <policy\|ckpt> <config.yaml> [n_episodes] [decode_topk]` |
 | How often the VP cap binds, and what it discards | `just measure-vp-cap <policy\|ckpt> <config.yaml> [n_episodes] [decode_topk]` |
 | What holding a point earns against what it costs | `just measure-hold-hazard <policy\|ckpt> <config.yaml> [n_episodes] [decode_topk]` |
 | How often a policy is in unit coherency | `just measure-coherency <policy\|ckpt> <config.yaml> [n_episodes]` |
@@ -133,7 +134,7 @@ wargame_rl/
 - **Group cohesion** — optional penalty for unit separation
 - **DDD layering** — `domain/` owns the rules (Battle aggregate, clock, placement, termination, LOS, shooting); `wargame.py` is a facade; reward/renders depend only on the `BattleView` protocol. See [docs/ddd-envs.md](docs/ddd-envs.md)
 - **Rules specification** — [docs/rules/](docs/rules/README.md) is the game's rules authority: a self-contained spec written for this project, with `constants.yaml` (every number, in inches) and [implementation-status.md](docs/rules/implementation-status.md) (per-rule: implemented / partial / divergent / absent). Before implementing a mechanic, read its chapter and its gap-map row. `tests/test_no_ip_references.py` keeps the repo free of references to the commercial product the rules derive from — the spec names no product, publisher, edition or faction, and neither should anything else
-- **Play doctrine** — [docs/play-doctrine.md](docs/play-doctrine.md) is how this game is *won*, as `docs/rules/` is how it is *played*: 37 numbered entries, each stating a claim, whether the environment can express it, which extension point it lands in, and what has already been measured about it. It is a store of **hypotheses, never of evidence** — price an entry as a scripted policy (`just measure-paired`, no GPU) before it becomes a reward term or a training run, and where an entry disagrees with the record below, **the record wins**
+- **Play doctrine** — [docs/play-doctrine.md](docs/play-doctrine.md) is how this game is *won*, as `docs/rules/` is how it is *played*: 42 numbered entries, each stating a claim, whether the environment can express it, which extension point it lands in, and what has already been measured about it. It is a store of **hypotheses, never of evidence** — price an entry as a scripted policy (`just measure-paired`, no GPU) before it becomes a reward term or a training run, and where an entry disagrees with the record below, **the record wins**
 
 ### Game State I/O (`envs/state/`)
 
@@ -606,6 +607,67 @@ Measured 2026-08-22, [brief](docs/advance-move-problem.md).
 - **Open:** whether the ~12 vp is fixable by training longer or is a permanent
   cost of a 47% larger action space. 300 epochs is a screen, and this project's
   own rule is that a marginal screen means "run it longer".
+- ⚠ **Read this beside the next section.** The arm's use of the slice is *sane* at
+  convergence — it avoids dominated actions and agrees at unit level — and the move
+  itself is worth ≤ 0 at twenty rounds for a script too. So the ~8.5 vp "choosing a
+  bad option" half is the agent using a move that does not pay at this horizon, not
+  a decode failure.
+
+### Advance is a SHORT-GAME move, and nothing in the encoding was the problem
+
+Measured 2026-08-23, no GPU,
+[report](reports/2026-08-23-three-prices-for-the-advance-move.md). `just
+measure-advance-use` censuses what a policy buys with the advance and what it pays.
+
+- ⚠ **All FOUR nominated encoding defects fail to bind at convergence.** Three
+  seeds of the rejected arm, held-out nine, n=10, at **both** `decode_topk` 1 and 3
+  (K=1 ≈ K=3 in every cell, so none of it is the decoder's): **dominated** advances
+  **0.4–5.9%**, unanimous 5-of-5 unit triggers **64–81%** with one model dragging
+  four on only 7–11%, waste **1.8–4.0%**. The policy learned the unit-level move
+  type without being given the structure, and learned to avoid the half of the
+  slice that is strictly dominated.
+- ⚠ **THREE SCRIPTED RULES, THREE REJECTIONS, each narrower than the last.** Paired
+  against `squad_march_take`, n=100, three seed bases: pricing nothing ("run while
+  far") **≈ −78** in the 2×2; pricing the forfeited shooting
+  (`squad_march_take_advance`, 11.2% of unit-turns) **−18.4, 0 of 3**; pricing the
+  shooting *and* requiring the run to land the squad on the point
+  (`squad_march_take_arrive`, 2.2% of unit-turns) **−11.9, 0 of 3**. The family
+  converges on the non-advancing control **from below** — the signature of a move
+  whose value is negative wherever it is spent.
+- ⚠ **The mechanism I proposed was REFUTED by the statistic built to test it.**
+  "It ends inside their reach a turn early" (D-14) predicts advancing moves are
+  exposed; they end inside an alive enemy's weapon reach on **4.1%** of model-moves
+  (script) and 8.6% (agent) against **22.4%** and **44.7%** for *walking* moves.
+  Five times safer. The rule only advances when nothing is in range, and nothing is
+  in range when you are far away.
+- **The real cost is WHOLE-EPISODE and no end-of-move statistic can see it.** All 45
+  tables, n=10: exposure 0.2156 → **0.2388** (+10.8%), firepower 1.091 → **1.004**,
+  `alive` 0.396 → 0.349, `held` 2.573 → 2.276, opponent VP **+13.2** against own
+  −7.7. Coherency *rises* (0.845 → 0.859), so it is not a formation failure.
+- **PRE-REGISTERED AND CONFIRMED: the advance's value is monotone in the round
+  count.** `squad_march_take_arrive` v `squad_march_take`, n=100, three seed bases,
+  **positive means plain walking wins**: rounds **5 → −1.7 (3 of 3 to advancing,
+  t up to −2.73)**, rounds 10 → +1.3, rounds 20 → **+11.9 (0 of 3)**. ⚠ **Absolute
+  vp are NOT comparable across horizons** — the five-round outcome sd is 12 against
+  twenty's 91 — so read it normalised: **+0.14 sd → −0.04 → −0.13**. And the
+  five-round game is **not degenerate**: `hold_deployment` scores −33.1 with `held`
+  0.79 against the marcher's −0.7 and `held` 2.50.
+- **So the config that trains runs 20 rounds, and there the advance is worth ≤ 0.**
+  That cuts both ways for the action space: it lowers the value of *re-encoding* a
+  move the policy already uses sanely, and raises the value of *shrinking* it —
+  32% of the action space is an option the policy must spend samples learning to
+  decline, half of it strictly dominated.
+- ⚠ **The only live explanation left for the −26.7 is the PATH, and nothing above
+  prices it.** Every statistic here is taken at convergence; a 300-epoch screen
+  prices sample efficiency.
+- **Cautions earned.** Split a statistic by where a model *ends*, not where it
+  starts ("advances from inside an objective" reads 21–31% and is 1.8–4.0% waste
+  plus 17–20% reallocation). Every behavioural statistic needs its **within-policy**
+  control — within-unit distance spread looked like an advance defect at p90 4–6"
+  against a 2" chain until the same policy's *walking* turns came out the same.
+  And ⚠ **`random` is not a control for action-slice usage**: `RandomBaselinePolicy`
+  samples `0..n_move_actions` and can never choose an advance.
+
 ### Offence is not reward-shapeable here — three arms, one conclusion
 
 Measured 2026-08-22, [report](reports/2026-08-22-the-agent-is-never-paid-to-attack.md).
@@ -1124,6 +1186,11 @@ measurements skipped (`25v25_maps_advance_refereed`, held-out nine, n=10,
 - `advance_when_out_of_reach` now defaults **False** on both sides, pinned by a test. **The
   mechanism stays** — a bar that cannot use a core rule is not a bar. The heuristic is what
   is rejected: it never prices the forfeited shooting.
+- ⚠ **Pricing it is NOT enough, measured 2026-08-23.** `squad_march_take_advance`
+  advances only when a normal move would have left nothing in range and loses **−18.4
+  paired, 0 of 3 seed bases**; adding the arrival clause (`squad_march_take_arrive`)
+  reaches **−11.9, 0 of 3**. See § Advance is a SHORT-GAME move — at twenty rounds no
+  advance rule pays, and at five rounds the same rule wins 3 of 3.
 
 - **The endpoint rule works BETTER than first claimed: 7.52% → 0.00%, all of it removed.**
   The published 6.01% → 3.21% used a hardcoded 2.26" ring fractionally *larger* than the

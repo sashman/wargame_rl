@@ -82,6 +82,62 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
     # forfeited shooting, which this one never does.
     advance_when_out_of_reach: bool = False
 
+    # The replacement, and the difference is the whole point: this one prices
+    # the shooting it gives up. An advance costs the unit its ENTIRE turn of
+    # fire (`advanced_this_turn`; no weapon here has the ability that would
+    # permit firing after one), so the only advance that is free is one that
+    # forfeits a shot the unit did not have. That is what the rejected
+    # heuristic above never asked, and it is why it cost its user ~78 vp.
+    #
+    # Still per SQUAD, for the same reason: the roll is one D6 per unit and the
+    # env marks every model of any group that advanced.
+    advance_when_no_shot: bool = False
+
+    # D-40, and the refinement the measurement above asked for. `no_shot` alone
+    # is REJECTED -- 0 of 3 seed bases, -18.4 vp paired -- and the mechanism is
+    # not the shot it gives up (those advances end inside an enemy's reach on
+    # 4.1% of moves against walking's 22.4%). It is that arriving EARLY buys
+    # turns standing forward under fire: episode exposure +10.8%, firepower
+    # ratio 1.091 -> 1.004, `alive` 0.396 -> 0.349.
+    #
+    # Control is a headcount at the scoring moment, so being nearer buys
+    # nothing and being THERE buys everything. This clause spends the D6 only
+    # when it converts a two-turn approach into a one-turn arrival, which is
+    # the only advance whose gain is not zero.
+    advance_to_arrive: bool = False
+
+    def _would_forfeit_a_shot(
+        self,
+        models: list[WargameModel],
+        member_indices: list[int],
+        env: WargameEnv,
+        displacement: np.ndarray,
+    ) -> bool:
+        """Whether any member would have an enemy in range after a NORMAL move.
+
+        Range only, and deliberately so. Line of sight can only ever REMOVE
+        shots, so a squad with nothing in range has nothing to forfeit however
+        the sight lines fall; a squad with something in range may still be
+        blocked. Erring this way declines a few advances that were in fact free
+        and never spends a shot the unit really had — which is the safe
+        direction, because the shot is the expensive half of the trade.
+
+        Evaluated at the post-move position rather than the current one: the
+        movement phase resolves before the shooting phase, so what the unit
+        gives up is the shot it would have had *after* walking.
+        """
+        enemies = [model for model in env.opponent_models if model.is_alive]
+        if not enemies:
+            return False
+        enemy_positions = np.array([m.location for m in enemies], dtype=float)
+        ranges = env.player_max_ranges
+        for index in member_indices:
+            destination = np.asarray(models[index].location, dtype=float) + displacement
+            reach = float(ranges[index]) if ranges.size else 0.0
+            if np.any(np.linalg.norm(enemy_positions - destination, axis=1) <= reach):
+                return True
+        return False
+
     def select_movement(
         self, models: list[WargameModel], env: WargameEnv
     ) -> WargameEnvAction:
@@ -126,12 +182,29 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
             lead = np.asarray(objective.location, dtype=float) - centroid
             lead_distance = float(np.linalg.norm(lead))
 
-            # One decision for the whole squad, taken before any member moves:
-            # a normal full move cannot close the gap, so run.
-            squad_advances = (
+            # One decision for the whole squad, taken before any member moves.
+            # Both rules require that a normal full move cannot close the gap --
+            # otherwise the advance buys nothing at any price. They differ in
+            # whether they then ask what it costs.
+            out_of_reach = lead_distance > radius and lead_distance > max_step
+            walk_step = (
+                lead / lead_distance * min(max_step, lead_distance)
+                if lead_distance > 0.0
+                else np.zeros(2, dtype=float)
+            )
+            # The unit's D6 for the turn: one roll per unit, so every member
+            # carries the same value and the first is the unit's.
+            roll = float(models[member_indices[0]].advance_roll)
+            arrives_this_turn = lead_distance - radius <= max_step + roll
+            squad_advances = out_of_reach and (
                 self.advance_when_out_of_reach
-                and lead_distance > radius
-                and lead_distance > max_step
+                or (
+                    (self.advance_when_no_shot or self.advance_to_arrive)
+                    and (arrives_this_turn or not self.advance_to_arrive)
+                    and not self._would_forfeit_a_shot(
+                        models, member_indices, env, walk_step
+                    )
+                )
             )
 
             for i in member_indices:

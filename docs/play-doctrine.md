@@ -910,7 +910,168 @@ scores above 90% of ceiling is rejected.
 
 ---
 
-## 12. I — Parked on absent mechanics
+## 12. J — The move type
+
+The group the environment gained most recently, and the one every coming mechanic
+lands in: fall back and charge are both move types, and both will arrive through
+whatever seam Advance opened. ⚠ **These are claims about how to play a move type,
+not about how to encode one.** The encoding defects are a gap-map matter and live
+in [implementation-status.md](rules/implementation-status.md#advance-move).
+
+| ID | Claim | Expressible | Lands in | Verdict |
+|---|---|---|---|---|
+| D-38 | A unit declares one move type, and the whole unit pays for it | `partial` | action space | `settled` |
+| D-39 | Advance only when you would have had no shot | `live` | scripted policy | `refused` |
+| D-40 | Advance to arrive, not to approach | `live` | scripted policy | `settled` |
+| D-41 | The longest move is the most likely to be stopped | `live` | — | `settled` |
+| D-42 | An advance is worth what one turn is worth, so it is a short-game move | `live` | scenario | `settled` |
+
+### D-38 — A unit declares one move type, and the whole unit pays for it
+
+**Claim.** The move type is chosen for the unit. Every model in it moves under that
+declaration and every model in it bears the cost.
+
+**Why it is true here.** [Rules § Movement phase](rules/09-movement-phase.md) makes the
+move type a unit property, and this action space makes it a per-model choice, resolved
+upward afterwards: `ActionHandler._mark_advancing_units` marks every model of any group
+in which *one* model chose an advance, so that one model forfeits all five models'
+shooting. With 48 of 150 actions in the advance slice, a near-uniform policy triggers
+that on `1 - (1 - 0.32)^5` = **85.5%** of five-model unit-turns.
+
+**Expressible.** `partial`. Enforced by resolution after the fact rather than by the
+structure of the action space, so the cost is right and the choice is still five
+separate ones.
+
+**Where it lands.** `ActionRegistry` · `ActionHandler.apply`.
+
+**Already measured.** `settled`, 2026-08-23, and it **does not bind at convergence**.
+Trained policies choose unanimously on **64–81%** of advancing unit-turns and one model
+drags four on only **7–11%**, at both `decode_topk` 1 and 3 — so the joint decoder is not
+manufacturing the agreement and the policy learned the unit-level structure without being
+given it. ⚠ What this does **not** measure is what the same defect costs during
+*exploration*, which is where 85.5% applies.
+
+**Cheapest test.** `just measure-advance-use <ckpt> <config> 10 1`.
+
+### D-39 — Advance only when you would have had no shot
+
+**Claim.** An advance costs the unit its entire turn of fire. Take it only when that
+fire was worth nothing — when a normal move would have left nothing in range anyway.
+
+**Why it is true here.** `advanced_this_turn` gates both shooting masks and no weapon
+here has the ability that would permit firing after an advance, so the forfeit is total.
+`model_kills` credits the model that actually fired, so the cost lands per model on the
+models that pay it — the trade is priced, and a policy that ignores it is ignoring
+something it is charged for.
+
+**Expressible.** `live`.
+
+**Where it lands.** `ScriptedSquadMarchPolicy.advance_when_no_shot`, shipped 2026-08-23 as
+the baseline `squad_march_take_advance`. Range only, deliberately: sight can only *remove*
+shots, so "nothing in range" is a sufficient condition for "nothing forfeited", and erring
+that way declines a few free advances rather than spending a real shot.
+
+**Already measured.** `refused`, 2026-08-23,
+[report](../reports/2026-08-23-three-prices-for-the-advance-move.md). Pricing the shooting
+is **necessary and not sufficient**: `squad_march_take_advance` is **−18.4 vp paired, 0 of 3
+seed bases** against plain `squad_march_take` (−35.0 / −6.3 / −13.8). The heuristic that
+prices *nothing* — "run while far, walk once close" — costs its user about **78 vp** in the
+2×2, so this is an improvement of 60 vp on a losing move. ⚠ And the mechanism proposed for
+the failure (D-14: it ends inside their reach) is **refuted** — advancing moves end inside an
+enemy's reach on 4.1% of model-moves against walking's 22.4%. What it costs is whole-episode:
+exposure +10.8%, firepower 1.091 → 1.004, `alive` 0.396 → 0.349.
+
+**Cheapest test.** `just measure-paired squad_march_take_advance squad_march_take
+configs/experiments/25v25_maps_advance.yaml 100`, on three seed bases.
+
+### D-40 — Advance to arrive, not to approach
+
+**Claim.** Intermediate position buys nothing. The advance that pays is the one that turns
+a two-turn approach into a one-turn arrival.
+
+**Why it is true here.** § 3: VP is scored at each side's command boundary, on control,
+which is a headcount at that instant. Being three inches closer at the boundary scores
+exactly what being nine inches closer scores — nothing. So the extra `D6` is worth its
+price only when it crosses the last gap.
+
+**Expressible.** `live`.
+
+**Where it lands.** The squad's advance predicate, beside D-39's clause rather than
+instead of it.
+
+**Already measured.** `settled`, 2026-08-23,
+[report](../reports/2026-08-23-three-prices-for-the-advance-move.md). The claim is **right and
+insufficient**: `squad_march_take_arrive` adds the arrival clause on top of D-39's and more
+than halves the loss, **−18.4 → −11.9 vp paired** while firing on 2.2% of unit-turns instead
+of 11.2% — but it is still **0 of 3 seed bases** at twenty rounds. See D-42 for why. Also
+2026-08-23: only **1.8–4.0%** of a trained policy's advances start and end inside the same
+objective, and **17–20%** start inside one and *leave*, which is reallocation. ⚠ Counting
+"advances from inside an objective" alone conflates those and reads as waste; the first
+version of that statistic did exactly that and was corrected before publication.
+
+**Cheapest test.** `just measure-paired squad_march_take_arrive squad_march_take
+configs/experiments/25v25_maps_advance.yaml 100`, on three seed bases.
+
+### D-41 — The longest move is the most likely to be stopped
+
+**Claim.** Price an advance against the chance it is blocked, not only against the
+shooting it spends.
+
+**Why it is true here.** Friendly bases may be crossed but not ended on, and for a
+deterministic policy freezing is an absorbing state at **+0.86**. An advance is the longest
+move in the game and therefore the most exposed to that.
+
+**Expressible.** `live`.
+
+**Where it lands.** Nowhere. A fact to price with — § 14 refuses a fourth movement-side fix
+for freezing, and "fix freezing" reduces to "fix allocation".
+
+**Already measured.** `settled`. The advance arm freezes 18–28% and delivers 70–77% of
+ordered inches — but the **non-advancing control agent freezes 26.3% and delivers 76.4%**,
+so trained agents freeze at that rate because they stack, advance or not. ⚠ The comparison
+that made the advance look guilty was against the *scripts* (11%), which was never the
+right control. Within-unit distance spread carries the same trap: it is p90 **4–6"** on
+advancing unit-turns against a 2" chain, and **the same on walking unit-turns of the same
+policy**.
+
+**Cheapest test.** `just measure-freezing`, always beside a non-advancing control of the
+same kind — never beside a script.
+
+---
+
+### D-42 — An advance is worth what one turn is worth, so it is a short-game move
+
+**Claim.** What an advance buys is arriving one turn earlier. That is worth a *fraction of
+the game*, so its value falls as the game lengthens — and on a twenty-round clock it is
+negative.
+
+**Why it is true here.** § 3: VP is scored at each side's command boundary, roughly nineteen
+times a side over `number_of_battle_rounds: 20`. Arriving on round 3 instead of round 4 adds
+one scoring event out of nineteen — about 5% — against a whole turn of five models' fire
+forfeited and an extra turn spent standing forward. At five rounds the same arrival is one
+event of four, about 25%, and the arithmetic reverses.
+
+**Expressible.** `live`, and it is a **scenario** property rather than a policy one. Every
+`measure-*` recipe takes `rounds=` as a trailing override, so it costs one command.
+
+**Where it lands.** `number_of_battle_rounds`, not any policy. ⚠ Nothing in a movement rule
+can fix a move whose gain the clock has priced at zero.
+
+**Already measured.** `settled`, 2026-08-23,
+[report](../reports/2026-08-23-three-prices-for-the-advance-move.md). Pre-registered before
+the numbers existed. `squad_march_take_arrive` against `squad_march_take`, n=100, three seed
+bases, **positive means plain walking wins**: rounds 5 → **−1.7 (3 of 3 to advancing)**,
+rounds 10 → +1.3, rounds 20 → **+11.9 (0 of 3)**. Monotone. ⚠ **Absolute vp are not
+comparable across horizons** — the five-round outcome sd is 12 against twenty's 91 — so read
+it normalised: **+0.14 sd → −0.04 → −0.13**. The five-round game is **not degenerate**:
+`hold_deployment` scores −33.1 with `held` 0.79 against the marcher's −0.7 and `held` 2.50.
+
+**Cheapest test.** `just measure-paired squad_march_take_arrive squad_march_take
+configs/experiments/25v25_maps_advance.yaml 100 700000 rounds=5`.
+
+---
+
+## 13. I — Parked on absent mechanics
 
 Recorded so they are not rediscovered, and so the wanted-list has one home. Each names the
 [gap-map](rules/implementation-status.md) row that blocks it.
@@ -926,7 +1087,7 @@ Recorded so they are not rediscovered, and so the wanted-list has one home. Each
 
 ---
 
-## 13. Backlog
+## 14. Backlog
 
 **The standing rule: price every entry as a scripted policy before it becomes a reward term, an
 observation, a mission or a training run.** A scripted arm costs one inference run and no GPU,
@@ -980,7 +1141,7 @@ and no tensor change. It must clear that document's two pre-registered rejection
 
 ---
 
-## 14. What this document may never propose
+## 15. What this document may never propose
 
 Stated as refusals so they survive a future editor. Each is paid for; the reasoning is in
 `CLAUDE.md` and `reports/`.
@@ -1008,7 +1169,7 @@ Stated as refusals so they survive a future editor. Each is paid for; the reason
 
 ---
 
-## 15. Related
+## 16. Related
 
 - [docs/rules/](rules/README.md) — what is legal. It wins over this file on any conflict.
 - [docs/rules/implementation-status.md](rules/implementation-status.md) — the per-rule gap map

@@ -83,7 +83,7 @@ table is the roadmap for the next implementation phase.
 | Rule | Status | Owner / note |
 |---|---|---|
 | [Normal shooting](10-shooting-phase.md#normal-shooting) | implemented | The `"shooting"` action slice; see `docs/shooting.md`. |
-| [Advance blocks normal shooting](10-shooting-phase.md#normal-shooting) | partial | The mask reads `advanced_this_turn`, which is never set — so the gate is dormant, not wrong. |
+| [Advance blocks normal shooting](10-shooting-phase.md#normal-shooting) | **implemented** | `compute_unit_shooting_masks` takes `player_advanced` and both seats pass it — the player's from `observation_builder`, the opponent's from `wargame.py::_opponent_action_mask`. `ActionHandler._mark_advancing_units` sets the flag for every model of any unit in which one model chose an advance, so the forfeit is unit-wide as the rules require. ⚠ This row read "never set, so the gate is dormant" until 2026-08-23; it was made live when the advance slice shipped and the row was not updated. Measured cost to a scripted policy: 12.7% of shooting slots forfeited at an advance rate of 11.2% of unit-turns. |
 | [Run-and-gun / sidearm / indirect shooting](10-shooting-phase.md) | absent | Only one shooting type exists. |
 | [Engaged units cannot shoot](10-shooting-phase.md) | implemented | `compute_shooting_masks` rejects an attacker within `engagement_range` of any opponent, measured base to base. |
 | [Engaged large models can be shot at](10-shooting-phase.md#shooting-at-engaged-large-models) | absent | No `MONSTER`/`VEHICLE` distinction. |
