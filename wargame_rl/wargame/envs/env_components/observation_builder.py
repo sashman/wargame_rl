@@ -18,6 +18,10 @@ from wargame_rl.wargame.envs.domain.coherency import (
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.value_objects import POSITION_DTYPE
 from wargame_rl.wargame.envs.env_components.actions import ActionRegistry
+from wargame_rl.wargame.envs.env_components.distance_cache import (
+    compute_distances,
+    objective_counts_from_norms_offset,
+)
 from wargame_rl.wargame.envs.env_components.shooting_masks import (
     compute_unit_shooting_masks,
 )
@@ -181,6 +185,11 @@ def _coherency_features(
     return spread, component
 
 
+# A D6. The roll is divided by it so the column is in [0, 1] like every
+# other normalised feature, rather than being 6x the scale of its neighbours.
+ADVANCE_DIE_FACES = 6.0
+
+
 def _models_to_obs(
     models: list[WargameModel],
     max_groups: int,
@@ -190,6 +199,7 @@ def _models_to_obs(
     n_objectives: int | None = None,
     coherency: CoherencyDistances | None = None,
     unit_centroid_cap: float | None = None,
+    observe_advance: bool = False,
 ) -> list[WargameModelObservation]:
     strengths = _unit_strengths(models) if observe_unit_strength else {}
     offsets = (
@@ -250,6 +260,14 @@ def _models_to_obs(
                 save_stat=save,
                 unit_strength=(
                     strengths.get(m.group_id, 0.0) if observe_unit_strength else None
+                ),
+                advance_roll=(
+                    None
+                    if not observe_advance
+                    else float(m.advance_roll) / ADVANCE_DIE_FACES
+                ),
+                advanced_this_turn=(
+                    None if not observe_advance else float(m.advanced_this_turn)
                 ),
                 coherency_spread=(None if spread is None else float(spread[i])),
                 coherency_component=(
@@ -356,15 +374,50 @@ def _pad_objectives(
     return observations
 
 
+def _in_range_counts(
+    models: list[WargameModel], objectives: list[WargameObjective]
+) -> np.ndarray:
+    """Alive models of one side in range of each objective, per the scoring rule.
+
+    Delegates to `compute_distances` and `objective_counts_from_norms_offset` so
+    there is exactly one definition of "on an objective" in the codebase.
+    """
+    if not models or not objectives:
+        return np.zeros(len(objectives), dtype=int)
+    cache = compute_distances(models, objectives, alive_mask=alive_mask_for(models))
+    return objective_counts_from_norms_offset(
+        cache.model_obj_norms_offset, cache.obj_radii
+    )
+
+
 def _objectives_to_obs(
     view: BattleView, with_control: bool
 ) -> list[WargameEnvObjectiveObservation]:
     """Objective observations, optionally carrying per-objective control state.
 
-    Counts are of *alive* models inside each disc, normalised by the static
-    army sizes so the feature stays O(1) rather than shrinking with force size.
-    Both sides use their own establishment as the divisor, which keeps
-    "half my army is here" and "half of theirs is here" on the same scale.
+    Counts are of *alive* models in range of each objective, normalised by a
+    static army size so the feature stays O(1) rather than shrinking with force
+    size.
+
+    ⚠ **The count is the one the mission scores, and it did not used to be.**
+    This built its own membership test -- `area.contains_points` on the model
+    *centre* -- while VP, `objective_hold` and every control read use
+    `norms_offset <= obj_radii`, which measures from the model's **base edge**.
+    A model whose base overlaps the ruin while its centre sits outside scored
+    for the mission and was invisible here. Measured on the held-out nine before
+    the fix: **206 of 2,700 (objective, step) slots disagreed -- 7.6%**, 215
+    models miscounted. Every objective-keyed reward term and every proposed
+    mission primitive reads this feature, so the standing rule "check the agent
+    can observe what the lever keys on" was quietly false for all of them.
+
+    **Both sides share one divisor, and that is the point.** Control is decided
+    by a raw count comparison (`player_count > opponent_count`), so the two
+    columns are only comparable if they are on the same scale. Dividing each
+    side by *its own* establishment made them incomparable the moment the armies
+    were different sizes: at 25 v 18, ten of ours reads 0.40 and nine of theirs
+    reads 0.50, so the observation says they are winning an objective we
+    control. At parity the two divisors coincide, which is why every shipped
+    config is unaffected.
     """
     if not with_control:
         return _pad_objectives(
@@ -376,38 +429,23 @@ def _objectives_to_obs(
             with_control,
         )
 
-    player_locations = np.array(
-        [m.location for m in view.player_models if m.is_alive], dtype=float
+    # Built the same way `DefaultVPCalculator.compute_vp` builds them -- same
+    # function, same alive masks -- so the two cannot drift apart again. Dead
+    # models arrive as `inf` and fall out of the comparison.
+    player_counts = _in_range_counts(view.player_models, view.objectives)
+    opponent_counts = _in_range_counts(view.opponent_models, view.objectives)
+
+    # The larger establishment, so neither side's column can exceed 1.0 and the
+    # two stay directly comparable. Identical to either when the armies match.
+    establishment = max(
+        1,
+        view.config.number_of_wargame_models,
+        view.config.number_of_opponent_models,
     )
-    opponent_locations = np.array(
-        [m.location for m in view.opponent_models if m.is_alive], dtype=float
-    )
-    n_player = max(1, view.config.number_of_wargame_models)
-    n_opponent = max(1, view.config.number_of_opponent_models)
     board_diagonal = float(np.hypot(view.board_width, view.board_height)) or 1.0
 
-    def inside(locations: np.ndarray, objective: WargameObjective) -> int:
-        """Count models controlling this objective, whichever kind it is.
-
-        An area objective has radius 0, so a distance-to-centre test would count
-        only models standing exactly on the centroid — a control feature that
-        reads zero forever while the reward keyed on it pays out. The membership
-        rule has to follow the objective's own shape.
-        """
-        if locations.size == 0:
-            return 0
-        if objective.area is not None:
-            return int(objective.area.contains_points(locations).sum())
-        centre = np.asarray(objective.location, dtype=float)
-        return int(
-            (
-                np.linalg.norm(locations - centre, axis=1)
-                <= float(objective.radius_size)
-            ).sum()
-        )
-
     observations = []
-    for objective in view.objectives:
+    for index, objective in enumerate(view.objectives):
         # An area's "radius" is reported as the radius of a disc with the same
         # area, so the feature keeps meaning "how big is this objective" across
         # both kinds rather than collapsing to zero for one of them.
@@ -418,8 +456,8 @@ def _objectives_to_obs(
         observations.append(
             WargameEnvObjectiveObservation(
                 location=objective.location,
-                player_count=inside(player_locations, objective) / n_player,
-                opponent_count=inside(opponent_locations, objective) / n_opponent,
+                player_count=float(player_counts[index]) / establishment,
+                opponent_count=float(opponent_counts[index]) / establishment,
                 radius=extent / board_diagonal,
             )
         )
@@ -515,6 +553,7 @@ def build_observation(
             n_objectives=len(view.objectives),
             coherency=coherency,
             unit_centroid_cap=unit_centroid_cap,
+            observe_advance=view.config.n_advance_speed_bins > 0,
         ),
         objectives=objectives_obs,
         board_width=view.board_width,
@@ -528,6 +567,7 @@ def build_observation(
             n_objectives=len(view.objectives),
             coherency=coherency,
             unit_centroid_cap=unit_centroid_cap,
+            observe_advance=view.config.n_advance_speed_bins > 0,
         ),
         terrain=terrain_obs,
         action_mask=action_mask,

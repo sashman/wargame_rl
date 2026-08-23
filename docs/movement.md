@@ -164,8 +164,11 @@ Movement parameters are set via `WargameEnvConfig`:
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `n_movement_angles` | `16` | Number of angular bins (22.5° apart) |
+| `n_advance_speed_bins` | `0` | Advance bins, as their own action slice appended after shooting. 0 registers nothing, draws no dice and changes no action index |
+| `dark_action_slices` | `[]` | Slice names registered at full width but valid in **no** phase, so every one of their actions is masked all episode. Exists to restore *pairing* to an action-space arm: the arm and its control then share a parameter shape and start from bit-identical weights. ⚠ It does not make an existing control reusable — a narrower head consumes less RNG at init, so the control must be retrained with the slice darkened |
 | `n_speed_bins` | `6` | Number of discrete speed levels |
-| `max_move_speed` | `6.0` | Maximum distance a model can move per step, in inches |
+| `max_move_speed` | `6.0` | Maximum distance a model can move per step, in inches. The scenario-wide default for the rules' **Move (M)** characteristic |
+| `ModelConfig.move` | `None` | Per-model override of `max_move_speed`, in inches. `None` takes the scenario value |
 | `base_radius` | `0.0` | Model base radius, in inches. `0.63` is the rules' 32mm infantry base |
 
 These can be overridden in YAML environment config files:
@@ -177,6 +180,31 @@ max_move_speed: 6.0
 base_radius: 0.63
 ```
 
-## Future: Per-Model Speed
+## Per-Model Speed
 
-The system is designed so that `max_move_speed` can become a per-model attribute. In that case, speed bins would represent **fractions** of each model's individual max speed rather than absolute values. The action space stays uniform across all models — "speed bin 3 of 6" means "move at 50% of my max speed" regardless of the model's actual maximum. This keeps the network architecture unchanged while allowing heterogeneous unit speeds.
+`ModelConfig.move` is the rules' **Move (M)** characteristic, in inches. A model
+that sets it uses its own maximum in place of `max_move_speed`:
+
+```yaml
+models:
+  - { group_id: 0, move: 10.0 }   # a fast squad
+  - { group_id: 1 }               # takes max_move_speed
+```
+
+The action space is **uniform across models**: the bin *count* never changes, so
+"speed bin 3 of 6" means "half of my own maximum" whatever that maximum is, and
+the network architecture is untouched. Each side's handler is built from its own
+model list, so the two armies can move at different speeds.
+
+Two things to know:
+
+- **A uniformly-fast army is byte-identical to one that never set the field.**
+  The shared displacement table is kept verbatim in that case rather than being
+  re-derived as fractions × M, because the two are not the same float: at M = 6,
+  `6.0 / 6` is exactly `1.0` while `linspace(1/6, 1, 6)[0] * 6` is
+  `0.9999999999999999`.
+- **M is not in the observation yet.** With every model equally fast the network
+  does not need it, but under genuinely differing speeds the same action index
+  would mean different distances to different models with nothing in the tensor
+  saying so. Adding it widens the per-model token, which orphans every
+  checkpoint — see `docs/rules/implementation-status.md`.

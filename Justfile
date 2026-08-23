@@ -48,7 +48,7 @@ dockerize:
 # Or with an epoch cap: just train path/to/config.yaml 800
 # Or with a match event log for analysis: just train path/to/config.yaml 800 true
 train env_config_path='configs/dev/4v4_two_phases.yaml' max_epochs='' record_events='' *extra='':
-	@uv run train.py --record-during-training \
+	@uv run train.py --record-during-training --record-threat-range --record-engagement-range \
 		--env-config-path {{env_config_path}} \
 		{{ if max_epochs != "" { "--max-epochs " + max_epochs } else { "" } }} \
 		{{ if record_events != "" { "--record-events" } else { "" } }} \
@@ -62,7 +62,7 @@ train-multi-epochs max_epochs *configs:
 	group="train-multi-$(date +%Y-%m-%d-%H-%M-%S)" && \
 	i=1 && \
 	for c in {{configs}}; do \
-		uv run train.py --record-during-training --env-config-path "$c" --max-epochs {{max_epochs}} --run-suffix "$i" --wandb-group "$group" & \
+		uv run train.py --record-during-training --record-threat-range --record-engagement-range --env-config-path "$c" --max-epochs {{max_epochs}} --run-suffix "$i" --wandb-group "$group" & \
 		i=$((i+1)); \
 	done && \
 	wait
@@ -84,7 +84,7 @@ train-multi-seeds max_epochs n_seeds *configs:
 	for s in $(seq 1 {{n_seeds}}); do \
 		echo "=== seed $s of {{n_seeds}} ===" && \
 		for c in {{configs}}; do \
-			uv run train.py --record-during-training --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" --run-suffix "s$s" --wandb-group "$group" & \
+			uv run train.py --record-during-training --record-threat-range --record-engagement-range --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" --run-suffix "s$s" --wandb-group "$group" & \
 		done; \
 		wait; \
 	done
@@ -98,7 +98,7 @@ train-multi-seeds max_epochs n_seeds *configs:
 train-seed max_epochs seed group *configs:
 	@trap 'kill 0' INT TERM && \
 	for c in {{configs}}; do \
-		uv run train.py --record-during-training --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed {{seed}} --run-suffix "s{{seed}}" --wandb-group "{{group}}" & \
+		uv run train.py --record-during-training --record-threat-range --record-engagement-range --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed {{seed}} --run-suffix "s{{seed}}" --wandb-group "{{group}}" & \
 	done; \
 	wait
 
@@ -121,7 +121,7 @@ train-arm max_epochs n_seeds group tag flags *configs:
 	for s in $(seq 1 {{n_seeds}}); do \
 		echo "=== seed $s of {{n_seeds}} ({{tag}}) ===" && \
 		for c in {{configs}}; do \
-			uv run train.py --record-during-training --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" --run-suffix "s$s{{tag}}" --wandb-group "{{group}}" {{flags}} & \
+			uv run train.py --record-during-training --record-threat-range --record-engagement-range --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" --run-suffix "s$s{{tag}}" --wandb-group "{{group}}" {{flags}} & \
 		done; \
 		wait; \
 	done
@@ -138,24 +138,115 @@ train-arm max_epochs n_seeds group tag flags *configs:
 train-seed-flags max_epochs seed group tag flags *configs:
 	@trap 'kill 0' INT TERM && \
 	for c in {{configs}}; do \
-		uv run train.py --record-during-training --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed {{seed}} --run-suffix "s{{seed}}{{tag}}" --wandb-group "{{group}}" {{flags}} & \
+		uv run train.py --record-during-training --record-threat-range --record-engagement-range --env-config-path "$c" --max-epochs {{max_epochs}} --n-eval-episodes 30 --seed {{seed}} --run-suffix "s{{seed}}{{tag}}" --wandb-group "{{group}}" {{flags}} & \
 	done; \
 	wait
 
+# Recordings carry the THREAT and ENGAGEMENT overlays. Threat is range ∩ line
+# of sight -- the same predicate the shooting mask uses -- so the picture
+# cannot disagree with the rule, and it is the only way to see WHY a model
+# did not shoot. A video has no keyboard, so these have to be set at launch.
+# ⚠ They change what the VIDEO looks like, never what the run trains.
+#
 # THE COHERENCY BASELINE OF RECORD. Use this, not `just train`, for
 # `configs/golden/25v25_maps_two_mode.yaml`: `ent_coef` is not an env-config
 # field and the PPO default is 0.03, while the baseline is the 0.003 arm --
 # worth +5.9 +/- 2.5 vp read paired on seed. Plain `just train` silently trains
 # the worse arm.
+#
+# `first_seed` and `tag` exist to EXTEND an existing set of seeds rather than
+# retrain it. Seed spread on this config is 11 vp, and on the four-opponent
+# table it is larger than the differences being read, so the answer to a
+# marginal result is more seeds -- which must not re-run the seeds already
+# trained. `tag` keeps the new runs in the same checkpoint lineage as the old.
 # Use: just train-coherency-baseline 300 3
-train-coherency-baseline max_epochs='300' n_seeds='3':
+# Use: just train-coherency-baseline 300 3 4 -newmaps   # seeds 4,5,6
+#
+# `env_config` exists so an ARM can be trained with byte-identical flags to the
+# control. Pairing needs the same seed AND the same flags -- `train-seed-flags`
+# omits `--record-every-n-epochs`, and a differing recording cadence is not
+# something to assume is free. Defaulted, so every existing invocation is
+# unchanged.
+train-coherency-baseline max_epochs='300' n_seeds='3' first_seed='1' tag='-baseline' env_config='configs/golden/25v25_maps_two_mode.yaml':
 	@trap 'kill 0' INT TERM && \
-	for s in $(seq 1 {{n_seeds}}); do \
+	for s in $(seq {{first_seed}} $(( {{first_seed}} + {{n_seeds}} - 1 ))); do \
 		uv run train.py --record-during-training --record-every-n-epochs 10 \
-			--env-config-path configs/golden/25v25_maps_two_mode.yaml \
+			--record-threat-range --record-engagement-range \
+			--env-config-path {{env_config}} \
 			--max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" \
-			--ent-coef 0.003 --run-suffix "s$s-baseline" \
+			--ent-coef 0.003 --run-suffix "s$s{{tag}}" \
 			--wandb-group coherency-baseline & \
+	done; \
+	wait
+
+# Can the policy explore WHERE a squad goes, or only how fast? A product policy
+# pays p^k for DIRECTIONAL disagreement inside a squad and nothing for speed
+# disagreement, so the surviving entropy is predicted to be one shared angle.
+# Circular variance 0 means the squad has exactly one direction available to it.
+#
+# Use: just measure-angle-collapse squad_march_take configs/experiments/24v24_maps_spare_squads.yaml 20
+measure-angle-collapse policy env_config n_episodes='20' decode_topk='1':
+	@uv run python -m scripts.measure_angle_collapse {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}}
+
+# Do squads converge, or take separate objectives? The discriminating number is
+# SQUADS PER OCCUPIED OBJECTIVE -- 1.00 means each squad has a point to itself.
+# Squads move under a 2" chain and `objective_hold` requires coherence, so the
+# squad is the allocation quantum; if squads bunch, no reward weight fixes it.
+#
+# Use: just measure-squad-dispersion squad_march_take configs/experiments/24v24_maps_spare_squads.yaml 20
+measure-squad-dispersion policy env_config n_episodes='20' decode_topk='1':
+	@uv run python -m scripts.measure_squad_dispersion {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}}
+
+# What standing on an objective earns a model, against what it costs it. Reports
+# the income differential, the excess death hazard, and the hazard at which the
+# two break even -- i.e. whether hiding is correct play under this reward.
+#
+# Use: just measure-hold-hazard squad_march_take configs/experiments/24v24_maps_spare_squads.yaml 30
+measure-hold-hazard policy env_config n_episodes='30' decode_topk='1':
+	@uv run python -m scripts.measure_hold_hazard {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}}
+
+# How often the mission's 15 VP per-turn cap binds, and what it discards. The
+# fourth objective a side controls pays ZERO while the tables carry five or six,
+# so `held` can rise without a single extra point being paid. `held` cannot see
+# that; this can.
+#
+# Use: just measure-vp-cap squad_march_take configs/golden/25v25_maps_two_mode.yaml 20
+measure-vp-cap policy env_config n_episodes='20' decode_topk='1':
+	@uv run python -m scripts.measure_vp_cap {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}}
+
+# Does the critic believe the stack is right -- and is it? Forks a live game at a
+# chosen round, rigidly translates one SURPLUS squad off an over-stacked objective
+# onto an empty one, and prices the move twice: `dV` is what the critic thinks it
+# is worth, `dVP` is what it turns out to be worth when both branches are played
+# out. The two signs together separate "the reward is wrong" from "the search is
+# wrong" from "the stack was correct all along" -- on frozen weights, no GPU.
+# Use: just measure-critic-probe <ckpt> configs/experiments/24v24_maps_spare_squads_refereed.yaml 10 3,6,10 3
+measure-critic-probe ckpt env_config n_episodes='10' rounds='3,6,10' decode_topk='3' reverse='' *overrides:
+	@uv run python -m scripts.measure_critic_probe {{ckpt}} {{env_config}} {{n_episodes}} {{rounds}} {{decode_topk}} {{reverse}} {{overrides}}
+
+# THE MIXED-ROLES ARM. Three seeds in parallel, `ent_coef` 0.003 (the PPO
+# default is 0.03 and is the worse arm here by +5.9 +/- 2.5 vp read paired),
+# recording on so the behaviour can be eyeballed as it trains.
+#
+# ⚠ The arm configs are UNREFEREED, like every training config here. Score the
+# resulting checkpoints on the `_refereed` twin, never on the config they
+# trained on -- the referee taxes a policy by how often it breaks coherency, so
+# scoring unrefereed flatters the scripts by ~16 vp.
+#
+# ⚠ `40v40_maps_mixed_roles_spares.yaml` changes `max_groups` 5 -> 8 and the
+# model count 25 -> 40, so it is a TENSOR-SHAPE change: it orphans every
+# existing checkpoint and removes the paired estimator against the
+# `two_mode` lineage. `25v25_maps_mixed_roles*.yaml` keep both.
+#
+# Use: just train-mixed-roles configs/experiments/25v25_maps_mixed_roles.yaml 300 3
+train-mixed-roles config max_epochs='300' n_seeds='3' first_seed='1' tag='-mixed':
+	@trap 'kill 0' INT TERM && \
+	for s in $(seq {{first_seed}} $(( {{first_seed}} + {{n_seeds}} - 1 ))); do \
+		uv run train.py --record-during-training --record-threat-range --record-engagement-range --record-every-n-epochs 10 \
+			--env-config-path {{config}} \
+			--max-epochs {{max_epochs}} --n-eval-episodes 30 --seed "$s" \
+			--ent-coef 0.003 --run-suffix "s$s{{tag}}" \
+			--wandb-group mixed-roles & \
 	done; \
 	wait
 
@@ -167,7 +258,7 @@ train-multi *configs:
 	group="train-multi-$(date +%Y-%m-%d-%H-%M-%S)" && \
 	i=1 && \
 	for c in {{configs}}; do \
-		uv run train.py --record-during-training --env-config-path "$c" --run-suffix "$i" --wandb-group "$group" & \
+		uv run train.py --record-during-training --record-threat-range --record-engagement-range --env-config-path "$c" --run-suffix "$i" --wandb-group "$group" & \
 		i=$((i+1)); \
 	done && \
 	wait
@@ -175,8 +266,8 @@ train-multi *configs:
 simulate-latest:
 	uv run simulate.py
 
-simulate checkpoint env_config_path:
-	uv run simulate.py --checkpoint-path {{checkpoint}} --env-config-path {{env_config_path}}
+simulate checkpoint env_config_path overlays='':
+	uv run simulate.py --checkpoint-path {{checkpoint}} --env-config-path {{env_config_path}} {{overlays}}
 
 # Record a match event log from a trained checkpoint (no rendering) for analysis.
 # Use it like: just record-sim checkpoints/<run>/best.ckpt configs/golden/25v25_shooting_opponent.yaml
@@ -227,8 +318,8 @@ replay-summary file:
 
 # Replay a recording visually: an interactive window (play/pause/step/scrub) or,
 # with an out path, an MP4. Reads terrain from schema-2.1 recordings.
-replay-render file out='' theme='tabletop':
-	uv run replay_events.py render {{file}} --theme {{theme}} {{ if out != '' { '--out ' + out } else { '' } }}
+replay-render file out='' theme='tabletop' overlays='':
+	uv run replay_events.py render {{file}} --theme {{theme}} {{overlays}} {{ if out != '' { '--out ' + out } else { '' } }}
 
 # Compact rolling-mean summary of a Wandb training run. Use: just run-summary <run_id> [bucket]
 run-summary run_id bucket='50':
@@ -245,8 +336,13 @@ measure-phase-gates checkpoint env_config n_episodes='30':
 # n=100 to match measure-checkpoint's default: an agent row and a baseline row
 # must be drawn from the same layout set *and* the same number of episodes, or
 # the comparison inherits the larger of the two error bars.
-measure-baselines env_config n_episodes='100' record='' seed_base='':
-	@uv run python -m scripts.measure_baselines {{env_config}} {{n_episodes}} "{{record}}" "{{seed_base}}"
+#
+# Every measure-* recipe takes trailing `key=value` scenario overrides --
+# `rounds=5`, `weapon_range=24`, `turn_order=player` -- so one config can be
+# scored at several settings of one number without copying it. See
+# scripts/scenario_overrides.py for why they are not positional.
+measure-baselines env_config n_episodes='100' record='' seed_base='' *overrides:
+	@uv run python -m scripts.measure_baselines {{env_config}} {{n_episodes}} "{{record}}" "{{seed_base}}" {{overrides}}
 
 # Score a checkpoint on held-out seeds through the same code path as the baselines,
 # so the two are directly comparable. Pass `record` as the fourth argument for a trace.
@@ -257,8 +353,8 @@ measure-baselines env_config n_episodes='100' record='' seed_base='':
 # to resolve what it was measuring. n=100 halves that to ~4.5 and costs minutes
 # against the hours a training run costs. Scoring was the cheap half being
 # under-sampled while the expensive half was over-sampled.
-measure-checkpoint checkpoint env_config n_episodes='100' record='' decode_topk='1':
-	@uv run python -m scripts.measure_checkpoint {{checkpoint}} {{env_config}} {{n_episodes}} "{{record}}" {{decode_topk}}
+measure-checkpoint checkpoint env_config n_episodes='100' record='' decode_topk='1' *overrides:
+	@uv run python -m scripts.measure_checkpoint {{checkpoint}} {{env_config}} {{n_episodes}} "{{record}}" {{decode_topk}} {{overrides}}
 
 # Final evaluation: score a policy on the real table layouts, one row per map.
 # Training uses `random_terrain`, so this is the only thing that asks how the
@@ -267,8 +363,16 @@ measure-checkpoint checkpoint env_config n_episodes='100' record='' decode_topk=
 # what was trained. Takes a baseline name or a checkpoint, like
 # measure-objective-split.
 # Use it like: just measure-maps <ckpt> configs/golden/25v25_shooting_opponent.yaml
-measure-maps policy env_config n_episodes='100' maps_dir='' decode_topk='1' decode_stay='':
-	@uv run python -m scripts.measure_maps {{policy}} {{env_config}} {{n_episodes}} "{{maps_dir}}" "{{decode_topk}}" "{{decode_stay}}"
+measure-maps policy env_config n_episodes='100' maps_dir='' decode_topk='1' decode_stay='' *overrides:
+	@uv run python -m scripts.measure_maps {{policy}} {{env_config}} {{n_episodes}} "{{maps_dir}}" "{{decode_topk}}" "{{decode_stay}}" {{overrides}}
+
+# Regenerate every evaluation table from the public layout API. The tables were
+# originally traced by hand from this same source and the tracing lost detail;
+# this reads the geometry instead. Overwrites configs/evaluation/maps/ and syncs
+# the held-out copies, so re-measure baselines after running it.
+# Use it like: just fetch-maps
+fetch-maps owner='' maps_dir='':
+	@uv run python -m scripts.fetch_map_layouts "{{owner}}" "{{maps_dir}}"
 
 # Re-render the preview PNG beside every evaluation map
 # Use it like: just render-maps
@@ -307,16 +411,38 @@ measure-income-share policy env_config n_episodes='30':
 # at n=100; the first number was noise. Read the win count beside the mean -- a
 # positive mean with a losing win count is a heavy tail, not an improvement.
 # Use: just measure-paired squad_march_shoot contest_and_spread <config> 100
-measure-paired policy_a policy_b env_config n_episodes='100' seed_base='700000':
-	@uv run python -m scripts.measure_paired_policies {{policy_a}} {{policy_b}} {{env_config}} {{n_episodes}} {{seed_base}}
+measure-paired policy_a policy_b env_config n_episodes='100' seed_base='700000' *overrides:
+	@uv run python -m scripts.measure_paired_policies {{policy_a}} {{policy_b}} {{env_config}} {{n_episodes}} {{seed_base}} {{overrides}}
+
+# Where the travel reward actually points. `closest_objective_v2` is the only
+# calculator that pays a model to move BETWEEN objectives, and two gates inside
+# it decide where: a candidate test that only pays for arrivals flipping control
+# THIS STEP by ONE model, and a per-objective assignment that can leave a unit
+# with nothing and fall it through to "walk to your nearest". This reports what
+# both gates decided, so a reward change is aimed at a measured cause.
+# Use it like: just measure-shaping-gates <ckpt> configs/golden/25v25_maps_two_mode.yaml 30 "" 3
+measure-shaping-gates policy env_config n_episodes='30' maps_dir='' decode_topk='1' *overrides:
+	@uv run python -m scripts.measure_shaping_gates {{policy}} {{env_config}} {{n_episodes}} "{{maps_dir}}" "{{decode_topk}}" {{overrides}}
+
+# How often an ordered move produces NO movement, and whether freezing sticks.
+# A model that asks to move and does not is invisible in every score here:
+# vp_margin sees the consequence, `coherent` sees the formation, and nothing
+# counts the order that evaporated. Read `absorbing` first -- P(f|f) minus
+# P(f|moved). Above zero means freezing is self-sustaining, i.e. a subset of the
+# army is permanently out of the game rather than occasionally delayed.
+# Matters most for the LONGEST moves: an advance is the most likely to be
+# stopped, so an advance arm can measure "no effect" when the moves never ran.
+# Use: just measure-freezing squad_march_take configs/golden/25v25_maps_two_mode.yaml 20
+measure-freezing policy env_config n_episodes='20' maps_dir='' decode_topk='1' *overrides:
+	@uv run python -m scripts.measure_freezing {{policy}} {{env_config}} {{n_episodes}} "{{maps_dir}}" "{{decode_topk}}" {{overrides}}
 
 # Why an objective was not held: abandoned, narrowly lost, or lost by a mile.
 # `held` alone cannot separate those, and they call for different fixes. Also
 # reports the redistribution ceiling -- what any pure re-allocation lever could
 # buy at best -- so a reward-shaping idea can be ruled out before it is trained.
 # Takes a baseline name or a checkpoint path.
-measure-objective-split policy env_config n_episodes='100':
-	@uv run python -m scripts.measure_objective_split {{policy}} {{env_config}} {{n_episodes}}
+measure-objective-split policy env_config n_episodes='100' decode_topk='1':
+	@uv run python -m scripts.measure_objective_split {{policy}} {{env_config}} {{n_episodes}} "{{decode_topk}}"
 
 # How often a policy is in unit coherency (rules 03-moving.md), which this env
 # does not enforce. Measures both forces, at the rules' 2"/9" and at the config's
@@ -335,12 +461,18 @@ render-coherency-figure env_config ckpt out seed='700000' step='20':
 # How much of a config's outcome spread is dice rather than policy. Holds the
 # layouts fixed and varies only the combat seed, so the within-layout spread is
 # the noise floor any arm-to-arm difference has to clear.
-measure-noise-floor env_config n_layouts='10' n_combat_seeds='10' policy='':
-	@uv run python -m scripts.measure_noise_floor {{env_config}} {{n_layouts}} {{n_combat_seeds}} "{{policy}}"
+measure-noise-floor env_config n_layouts='10' n_combat_seeds='10' policy='' *overrides:
+	@uv run python -m scripts.measure_noise_floor {{env_config}} {{n_layouts}} {{n_combat_seeds}} "{{policy}}" {{overrides}}
 
 # Terrain-layout statistics for a random_terrain config: coverage, how often a
 # sightline is blocked, and how much of the board is genuinely out of sight.
 # Tune a terrain profile here, not after a thousand epochs of training.
+# Record one game per table and write a GIF of each, for the README.
+# Frames go straight to the GIF -- never via an mp4, which drifts every flat
+# colour. Use: just record-gifs <policy|ckpt> <config> [table_a,table_b]
+record-gifs policy env_config tables='' maps_dir='' out='' seed='' decode_topk='' width='':
+	@uv run python -m scripts.record_gifs {{policy}} {{env_config}} "{{tables}}" "{{maps_dir}}" "{{out}}" "{{seed}}" "{{decode_topk}}" "{{width}}"
+
 measure-terrain env_config n_layouts='200':
 	@uv run python -m scripts.measure_terrain {{env_config}} {{n_layouts}}
 
@@ -366,24 +498,28 @@ test-env:
 	uv run main.py --env_test
 
 # Watch a scripted policy play in a window — no checkpoint needed. [Tab] lists the keys.
+# [R] and [E] toggle the threat and engagement overlays live; pass them in `overlays`
+# to start with them on, e.g. just play <cfg> <policy> tabletop "--threat-range".
 # Use it like: just play · just play configs/dev/tiny.yaml random · just play <cfg> squad_march tabletop
-play env_config_path='configs/golden/25v25_shooting_opponent.yaml' policy='squad_march_shoot' theme='default':
-	uv run play.py {{env_config_path}} {{policy}} {{theme}}
+play env_config_path='configs/golden/25v25_shooting_opponent.yaml' policy='squad_march_shoot' theme='default' overlays='':
+	uv run play.py {{env_config_path}} {{policy}} {{theme}} {{overlays}}
 
 # Step a match by hand and rewind it. Takes a baseline name or a .ckpt path.
+# [R] shooting threat, [E] engagement range; `overlays` starts them on and can tune
+# the sweep, e.g. "--threat-range --threat-grid 2.0 --threat-smoothing 0".
 # Opens paused: [.] steps forward, [,] steps back, [Space] plays, [Tab] lists the keys.
 # A config with `skip_phases: []` steps one sub-phase at a time instead of one round.
 # Use it like: just debug · just debug configs/dev/tiny.yaml random · just debug <cfg> <run>/last.ckpt
-debug env_config_path='configs/golden/25v25_shooting_opponent.yaml' driver='squad_march_shoot' theme='default':
-	uv run debug.py {{env_config_path}} {{driver}} {{theme}}
+debug env_config_path='configs/golden/25v25_shooting_opponent.yaml' driver='squad_march_shoot' theme='default' overlays='':
+	uv run debug.py {{env_config_path}} {{driver}} {{theme}} {{overlays}}
 
 # Recreate the episode a recording came from and step it by hand. The recording
 # carries its own config, seed, dice and driver, so nothing else is needed --
 # pass a driver only to override the one it names. Replays the recording's own
 # actions until you change something, then the driver takes over.
 # Use: just debug-recording recordings/my_events.jsonl
-debug-recording file driver='squad_march_shoot' theme='default':
-	uv run debug.py --from-recording {{file}} configs/golden/25v25_shooting_opponent.yaml {{driver}} {{theme}}
+debug-recording file driver='squad_march_shoot' theme='default' overlays='':
+	uv run debug.py --from-recording {{file}} configs/golden/25v25_shooting_opponent.yaml {{driver}} {{theme}} {{overlays}}
 
 # Is the player seat advantaged, beyond the zone and the first turn? One policy
 # plays BOTH seats over the balanced four legs, so its rating difference is zero

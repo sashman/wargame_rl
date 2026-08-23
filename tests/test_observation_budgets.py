@@ -2,7 +2,7 @@
 
 The per-model block is `2 + n_objectives * 2` wide, so objective count is a hard
 input dimension: at three objectives a model token is 49 wide, at five 53, at six
-55. The 45 real layouts carry five or six objectives and 15 or 16 terrain pieces,
+55. The 45 real layouts carry five or six objectives and 16 terrain pieces each,
 so no single network could span them and no checkpoint trained on the generated
 scenario could be scored on any of them.
 
@@ -23,7 +23,11 @@ import torch
 from pydantic_yaml import parse_yaml_raw_as
 
 from scripts.measure_maps import config_for_map
-from wargame_rl.wargame.envs.types import TerrainMapConfig, WargameEnvConfig
+from wargame_rl.wargame.envs.types import (
+    ObjectiveConfig,
+    TerrainMapConfig,
+    WargameEnvConfig,
+)
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.common.observation import (
@@ -54,20 +58,49 @@ def _budgeted_config() -> WargameEnvConfig:
     return config
 
 
-def _map_env(config: WargameEnvConfig, name: str) -> WargameEnv:
-    terrain_map = parse_yaml_raw_as(
-        TerrainMapConfig, (MAPS_DIR / f"{name}.yaml").read_text()
-    )
+def _map_env(config: WargameEnvConfig, terrain_map: TerrainMapConfig) -> WargameEnv:
     return create_environment(env_config=config_for_map(config, terrain_map))
 
 
-def _named_map_with(n_objectives: int) -> str:
-    """First shipped map carrying exactly `n_objectives`, so the pair is real data."""
+def _shipped(name: str) -> TerrainMapConfig:
+    return cast(
+        TerrainMapConfig,
+        parse_yaml_raw_as(TerrainMapConfig, (MAPS_DIR / f"{name}.yaml").read_text()),
+    )
+
+
+def _map_with(n_objectives: int) -> TerrainMapConfig:
+    """A layout carrying exactly `n_objectives`, from the pool where one exists.
+
+    Both counts occur in the shipped pool -- 28 tables carry five and 17 carry
+    six, the latter where a marker equidistant from two equally large ruins
+    designates both. The synthetic fallback stays for the case where a future
+    pool is uniform: the budget exists to span counts, and a test that silently
+    skipped the ragged case would be the gap it guards against.
+    """
     for path in sorted(MAPS_DIR.glob("*.yaml")):
-        terrain_map = parse_yaml_raw_as(TerrainMapConfig, path.read_text())
+        terrain_map = cast(
+            TerrainMapConfig, parse_yaml_raw_as(TerrainMapConfig, path.read_text())
+        )
         if terrain_map.objectives and len(terrain_map.objectives) == n_objectives:
-            return str(terrain_map.name)
-    raise AssertionError(f"no shipped map carries {n_objectives} objectives")
+            return terrain_map
+    terrain_map = _shipped("table_01")
+    assert terrain_map.objectives is not None
+    while len(terrain_map.objectives) < n_objectives:
+        terrain_map.objectives.append(ObjectiveConfig(x=1.0, y=1.0, radius_size=3.0))
+    assert len(terrain_map.objectives) == n_objectives
+    return terrain_map
+
+
+def _map_with_pieces(n_pieces: int) -> TerrainMapConfig:
+    """A layout trimmed to `n_pieces`, so terrain padding has something to pad.
+
+    Every shipped table now carries exactly 16 pieces against a budget of 16,
+    which would leave the padding assertions checking an empty slice.
+    """
+    terrain_map = _shipped("table_01")
+    terrain_map.terrain = terrain_map.terrain[:n_pieces]
+    return terrain_map
 
 
 class TestTheBudgetsAreOffByDefault:
@@ -114,7 +147,7 @@ class TestPaddingIsMarked:
     def test_real_slots_are_flagged_and_padding_is_a_zero_row(self) -> None:
         """The whole row zero is what the network keys on to drop the slot."""
         # Arrange -- five real objectives into a budget of six.
-        env = _map_env(_budgeted_config(), _named_map_with(5))
+        env = _map_env(_budgeted_config(), _map_with(5))
 
         # Act
         env.reset(seed=700000)
@@ -128,7 +161,7 @@ class TestPaddingIsMarked:
     def test_a_padding_slot_does_not_read_as_standing_on_an_objective(self) -> None:
         """A padded delta is (0, 0), which is the most emphatic thing it could say."""
         # Arrange
-        env = _map_env(_budgeted_config(), _named_map_with(5))
+        env = _map_env(_budgeted_config(), _map_with(5))
 
         # Act
         env.reset(seed=700000)
@@ -144,7 +177,7 @@ class TestPaddingIsMarked:
         """The vertex count is zero on padding, and no real piece has zero vertices."""
         # Arrange -- a 15-piece layout into a budget of 16.
         config = _budgeted_config()
-        env = _map_env(config, "table_01")
+        env = _map_env(config, _map_with_pieces(15))
 
         # Act
         env.reset(seed=700000)
@@ -166,7 +199,7 @@ class TestOneNetworkSpansEveryShippedMap:
         widths = set()
         for path in sorted(MAPS_DIR.glob("*.yaml")):
             terrain_map = parse_yaml_raw_as(TerrainMapConfig, path.read_text())
-            env = _map_env(config, terrain_map.name)
+            env = _map_env(config, terrain_map)
             env.reset(seed=700000)
             widths.add(
                 tuple(int(t.shape[-1]) for t in observation_to_tensor(env.observation))
@@ -182,7 +215,7 @@ class TestOneNetworkSpansEveryShippedMap:
         config = _budgeted_config()
         observations = []
         for n_objectives in (5, 6):
-            env = _map_env(config, _named_map_with(n_objectives))
+            env = _map_env(config, _map_with(n_objectives))
             env.reset(seed=700000)
             observations.append(env.observation)
 
@@ -202,7 +235,7 @@ class TestOneNetworkSpansEveryShippedMap:
         trained = TransformerNetwork.policy_from_env(train_env)
 
         # Act -- scored on a six-objective, 16-piece real layout.
-        map_env = _map_env(config, _named_map_with(6))
+        map_env = _map_env(config, _map_with(6))
         on_map = TransformerNetwork.policy_from_env(map_env)
         on_map.load_state_dict(trained.state_dict())
         map_env.reset(seed=700000)
@@ -218,7 +251,7 @@ class TestPaddingIsExcludedFromAttention:
         """Behavioural, not structural: a masked token must not reach the output."""
         # Arrange -- a five-objective map leaves one padded slot.
         config = _budgeted_config()
-        env = _map_env(config, _named_map_with(5))
+        env = _map_env(config, _map_with(5))
         env.reset(seed=700000)
         torch.manual_seed(0)
         net = TransformerNetwork.policy_from_env(env)
@@ -239,7 +272,7 @@ class TestPaddingIsExcludedFromAttention:
         """The control -- otherwise the test above would pass on a dead network."""
         # Arrange
         config = _budgeted_config()
-        env = _map_env(config, _named_map_with(5))
+        env = _map_env(config, _map_with(5))
         env.reset(seed=700000)
         torch.manual_seed(0)
         net = TransformerNetwork.policy_from_env(env)
@@ -283,7 +316,7 @@ class TestTheConfigRejectsABudgetThatDoesNotFit:
         config = _base_config()
         config.objective_budget = 5
         config.terrain_budget = TERRAIN_BUDGET
-        env = _map_env(copy.deepcopy(config), _named_map_with(6))
+        env = _map_env(copy.deepcopy(config), _map_with(6))
 
         # Act / Assert
         with pytest.raises(ValueError, match="objective_budget"):

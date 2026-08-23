@@ -146,7 +146,12 @@ Each baseline emits `_win_rate` (0–100), `_vp_margin`, `_at_objectives` (a
 fraction), `_fraction_alive` (a fraction), and `_exposure` when the config sets
 `track_exposure`. `random`, `squad_march` and `squad_march_shoot` are logged
 during training (`lightning_base.py:BASELINE_POLICIES`); the remaining rungs
-live in `scripts/measure_baselines.py`.
+live in `scripts/measure_baselines.py`, which scores nine policies —
+`hold_deployment` (the floor), `random`, `greedy_nearest`, `split_evenly`,
+`squad_march`, `squad_march_shoot`, `squad_march_deny`, `squad_march_take` and
+`contest_and_spread`. Its table prints **`vp_margin` and its standard error**
+beside the two VP columns, so a difference between two rows can be read against
+its own error bar rather than eyeballed.
 
 **Always read a number against the baselines.** Measured once per run at
 `on_train_start` over 20 held-out seeds, and constant thereafter. Every
@@ -244,6 +249,12 @@ a sixth objective standing empty — and an **`n` column** reports how many epis
 a rank that deep. Read a rank whose `n` is a fraction of the episode count accordingly. (Before
 2026-08-18 the recipe raised on any such config rather than reporting.)
 
+⚠ **Pass `decode_topk` when measuring a checkpoint**: `just measure-objective-split <ckpt>
+<config> <n> 3`. It defaults to 1, the independent per-model argmax, which on this project is a
+different player from the one that ships — joint constrained decoding is worth +40.5 vp and takes
+intended coherency 0.639 → 0.936. An argmax split explains a policy nobody plays. The argument is
+inert for a scripted baseline, which has no network to decode.
+
 The ceiling is deliberately optimistic — it ignores travel time and return fire, both of which
 only lower it. So a ceiling near the current `held` **rules re-allocation out**, while a large
 one does not rule it in. It costs minutes and can retire a reward-shaping idea before it is
@@ -284,7 +295,7 @@ the shooting mask uses, which pulls the other way. Measured on
 
 | Key | Meaning |
 |---|---|
-| `eval/firepower_ratio` | **Prefer this one.** Over the episode, (alive enemies at least one of our models can see and reach) ÷ (our alive models at least one of theirs can). 1.0 is an even exchange; above 1.0 we bring more guns to bear than we expose |
+| `eval/firepower_ratio` | **Prefer this one.** Over the episode, (alive enemies at least one of our models can see and reach) ÷ (our alive models at least one of theirs can). 1.0 is an even exchange **on an even board**; above that we bring more guns to bear than we expose. ⚠ These are raw counts, so the neutral value is the establishment ratio, not 1.0 — on 25 v 18 an even exchange reads ~1.39 |
 | `eval/exposure_rate` | Fraction of alive model-shooting-phases where at least one alive enemy had **line of sight and weapon range** to that model |
 | `eval/terrain_proximity` | Mean distance from an alive model to the nearest terrain footprint (0 inside) |
 | `eval/fraction_alive` | Fraction of player models still alive at episode end. Logged always, not just when tracking exposure |

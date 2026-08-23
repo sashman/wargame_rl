@@ -94,6 +94,7 @@ from wargame_rl.wargame.envs.types import (
 )
 from wargame_rl.wargame.envs.types.config import ModelConfig
 from wargame_rl.wargame.envs.types.game_timing import BATTLE_PHASE_ORDER, GameState
+from wargame_rl.wargame.envs.types.geometry import Polygon
 from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.envs.wargame_objective import WargameObjective
 
@@ -168,6 +169,7 @@ class WargameEnv(gym.Env):
                 config.max_groups,
                 config.opponent_models,
             ),
+            model_moves=[model.move for model in config.models or ()],
         )
         self.action_space = self._action_handler.action_space
         self._skip_phases = frozenset(config.skip_phases)
@@ -233,6 +235,9 @@ class WargameEnv(gym.Env):
 
         # Combat RNG (re-seeded per episode in reset)
         self._combat_rng: np.random.Generator = np.random.default_rng()
+        # Separate stream: see `_roll_advance_dice`. Never drawn from unless the
+        # scenario registers advance bins, so existing configs are untouched.
+        self._advance_rng: np.random.Generator = np.random.default_rng()
         self._last_player_shooting_results: list[PairedShootingResult] = []
         self._last_opponent_shooting_results: list[PairedShootingResult] = []
 
@@ -292,6 +297,9 @@ class WargameEnv(gym.Env):
                     config.max_groups,
                     config.models,
                 ),
+                # The opponent's own list: one config builds both handlers, so
+                # reading `config.models` here would give the enemy our speed.
+                model_moves=[model.move for model in config.opponent_models or ()],
             )
             self._opponent_policy: OpponentPolicy | None = build_opponent_policy(
                 config.opponent_policy,  # type: ignore[arg-type]
@@ -342,6 +350,10 @@ class WargameEnv(gym.Env):
         is exactly the separation `measure-noise-floor` is built on.
         """
         self._combat_rng = np.random.default_rng(seed)
+        # Offset so the advance stream is not a copy of the combat stream.
+        self._advance_rng = np.random.default_rng(
+            None if seed is None else seed + 1_000_003
+        )
 
     @property
     def max_turns(self) -> int:
@@ -353,6 +365,22 @@ class WargameEnv(gym.Env):
     def n_actions(self) -> int:
         """Number of discrete actions per model (including stay)."""
         return self._action_handler.n_actions
+
+    @property
+    def deployment_outline(self) -> Polygon | None:
+        """The player zone actually deployed into, or None for the rectangle.
+
+        A property rather than an attribute copied at construction, unlike
+        `deployment_zone`: a pool draws a different map every episode and
+        each brings its own zones, so a snapshot taken once would describe
+        the first map forever.
+        """
+        return self._battle.deployment_outline
+
+    @property
+    def opponent_deployment_outline(self) -> Polygon | None:
+        """The opponent zone actually deployed into, or None for the rectangle."""
+        return self._battle.opponent_deployment_outline
 
     @property
     def player_action_handler(self) -> ActionHandler:
@@ -414,13 +442,12 @@ class WargameEnv(gym.Env):
 
     @property
     def opponent_max_ranges(self) -> np.ndarray:
-        """Longest weapon range per opponent model.
+        """Longest weapon range per opponent model, resolved once from config.
 
-        Deliberately **not** on `BattleView`. Its only consumer is `MirroredEnv`,
-        which is cast to `WargameEnv`; widening the view would push the property
-        onto the replay adapter, which reads a `GameStateSnapshot` and cannot
-        supply it. That is the same pressure that produced `DebugView` rather
-        than a wider `BattleView`.
+        The mirror of `player_max_ranges`. It existed only as a private
+        attribute, which the threat overlay cannot reach: a renderer reading one
+        side off the protocol and the other off `_opponent_max_ranges` would
+        draw one army's reach from the engine and the other's from a guess.
         """
         return self._opponent_max_ranges
 
@@ -684,10 +711,45 @@ class WargameEnv(gym.Env):
             ),
         )
 
+    def _roll_advance_dice(self, active_side: PlayerSide) -> None:
+        """Clear the turn's move state and roll one D6 per unit, for one side.
+
+        The rules make the advance roll "before moving", and the policy chooses
+        its move afterwards -- so the roll has to be visible in the observation
+        the policy conditions on. It is: `step()` applies the action, THEN runs
+        the clock (which calls this on the command -> movement boundary), THEN
+        builds the observation. So a roll made here lands in the observation
+        that precedes the movement action it governs.
+
+        ⚠ Drawn from a DEDICATED generator, and only when the scenario has
+        advance bins. Sharing `np_random` or `_combat_rng` would shift every
+        later draw, so adding this feature would silently change the terrain,
+        the deployment and every dice roll of every existing config.
+        """
+        if self._action_handler.advance_slice is None:
+            return
+        models = (
+            self.wargame_models
+            if active_side == self._player_side
+            else self.opponent_models
+        )
+        for model in models:
+            model.begin_turn()
+        # One roll per UNIT, shared by its models -- the rules roll for the
+        # unit, not the model.
+        rolls: dict[int, float] = {}
+        for model in models:
+            group = int(model.group_id)
+            if group not in rolls:
+                rolls[group] = float(self._advance_rng.integers(1, 7))
+            model.advance_roll = rolls[group]
+
     def _on_before_advance(self, clock: GameClock) -> None:
         """Score VP when leaving command phase, and regain coherency at end of turn."""
         state = clock.state
         self._regain_coherency(state)
+        if state.phase == BattlePhase.command and state.active_player is not None:
+            self._roll_advance_dice(state.active_player)
         if state.phase != BattlePhase.command or state.battle_round is None:
             return
         if state.active_player is None:
@@ -1212,6 +1274,8 @@ class WargameEnv(gym.Env):
             objectives=self.objectives,
             deployment_zone=self.deployment_zone,
             opponent_deployment_zone=self.opponent_deployment_zone,
+            deployment_outline=self.deployment_outline,
+            opponent_deployment_outline=self.opponent_deployment_outline,
             player_vp=self.player_vp,
             opponent_vp=self.opponent_vp,
             player_vp_delta=self.player_vp_delta,

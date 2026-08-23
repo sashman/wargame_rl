@@ -19,12 +19,21 @@
 # `attrition`:
 #
 #   opponent               agent   best script      verdict
-#   squad_march_take        +2.6      -4.4 (deny)    ahead
-#   squad_march_shoot      +19.3     +12.1 (take)    ahead
-#   squad_march_deny        +4.0      -3.1 (take)    ahead
-#   contest_and_spread     +17.4     +31.1 (take)    BEHIND by 13.7
+#   squad_march_take       +22.6      -1.1 (deny)     ahead by 23.7  (t=3.14, 8/9)
+#   squad_march_shoot      +40.2     +23.0 (take)     ahead by 17.2  (t=1.78, NOT settled)
+#   squad_march_deny       +24.4      -8.9 (take)     ahead by 33.4  (t=4.00, 8/9)
+#   contest_and_spread     +21.8     +30.2 (take)     BEHIND by 8.4  (t=-1.11, 3/9)
 #
-#   intended unit coherency   0.94 - 0.97 on ALL FOUR
+#   Re-measured 2026-08-21 on the GENERATED tables, three seeds of the documented
+#   recipe (wandb group `new-maps-baseline`), nine held-out tables, n=30, verified
+#   top-3 decode, scripts re-measured per opponent.
+#
+#   Intended unit coherency 0.950-0.954 on ALL FOUR -- formation holds even in the
+#   matchup it loses.
+#
+#   ⚠ The `contest_and_spread` loss is BACK. A previous note said it "no longer
+#   exists"; that was measured on the hand-traced tables. Do not treat it as
+#   retired.
 #
 # Score it with `just measure-maps <ckpt> configs/evaluation/25v25_maps_vs_*.yaml
 # 30 configs/evaluation/maps_heldout 3`, and re-measure the scripts on each
@@ -128,7 +137,7 @@
 # end with ~94% of their force alive against the bar's 78-83% while holding 3.3
 # objectives against 4.1. The agent preserves its army and under-contests
 # ground. More training layouts is the first thing to try; see also the
-# `max_groups` question -- five units cannot cover five or six objectives.
+# `max_groups` question -- five units against five objectives leave none spare.
 #
 #   formation, referee off, 2"/9"     0.657 .. 0.903 (six seeds)
 #
@@ -394,9 +403,13 @@ map_pool:
     - table_43
     - table_44
 
-# The maps carry 5 or 6 objectives and 15 or 16 pieces, so both budgets are
-# required: without them the observation is a different width per map, which
-# neither collates into one batch nor shares one network.
+# The maps carry 5 objectives and 16 pieces each, generated from the layout
+# API. The budgets stay at 6 and 16 anyway: they are what lets one network
+# span counts the pool does not currently contain, and lowering the objective
+# budget would change the observation width and orphan every checkpoint.
+# They were mandatory when the tables were traced by hand and carried 5 or 6
+# objectives and 15 or 16 pieces, so the observation was a different width per
+# map -- which neither collates into one batch nor shares one network.
 objective_budget: 6
 terrain_budget: 16
 

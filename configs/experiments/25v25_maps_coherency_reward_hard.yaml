@@ -182,9 +182,13 @@ map_pool:
     - table_43
     - table_44
 
-# The maps carry 5 or 6 objectives and 15 or 16 pieces, so both budgets are
-# required: without them the observation is a different width per map, which
-# neither collates into one batch nor shares one network.
+# The maps carry 5 objectives and 16 pieces each, generated from the layout
+# API. The budgets stay at 6 and 16 anyway: they are what lets one network
+# span counts the pool does not currently contain, and lowering the objective
+# budget would change the observation width and orphan every checkpoint.
+# They were mandatory when the tables were traced by hand and carried 5 or 6
+# objectives and 15 or 16 pieces, so the observation was a different width per
+# map -- which neither collates into one batch nor shares one network.
 objective_budget: 6
 terrain_budget: 16
 

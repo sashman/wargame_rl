@@ -59,12 +59,28 @@ def render_map(
         return (MARGIN_PX + x * scale, MARGIN_PX + y * scale)
 
     draw.rectangle([px(0, 0), px(board_w, board_h)], fill=palette.board_bg)
-    for opponent, colour in (
-        (False, palette.deployment_zone),
-        (True, palette.opponent_zone),
+    # The map's own zones when it has them. They are the shape the table is
+    # actually played with -- five of the six deployments are not rectangles, so
+    # drawing the scenario's band instead would show a board nobody plays.
+    for outline, colour in (
+        (
+            terrain_map.deployment.player if terrain_map.deployment else None,
+            palette.deployment_zone,
+        ),
+        (
+            terrain_map.deployment.opponent if terrain_map.deployment else None,
+            palette.opponent_zone,
+        ),
     ):
-        x0, y0, x1, y1 = _zone(base_config, opponent)
-        draw.rectangle([px(x0, y0), px(x1, y1)], fill=colour)
+        if outline is not None:
+            draw.polygon([px(x, y) for x, y in outline], fill=colour)
+    if terrain_map.deployment is None:
+        for opponent, colour in (
+            (False, palette.deployment_zone),
+            (True, palette.opponent_zone),
+        ):
+            x0, y0, x1, y1 = _zone(base_config, opponent)
+            draw.rectangle([px(x0, y0), px(x1, y1)], fill=colour)
     for inch in range(1, board_w):
         draw.line([px(inch, 0), px(inch, board_h)], fill=palette.grid, width=1)
     for inch in range(1, board_h):
@@ -111,7 +127,8 @@ def render_map(
     draw.text(
         (MARGIN_PX, height - LABEL_H + 4),
         f"{terrain_map.name}   {board_w}x{board_h}in   "
-        f"{len(terrain_map.terrain)} pieces   {n_objectives} objectives",
+        f"{len(terrain_map.terrain)} pieces   {n_objectives} objectives"
+        + (f"   {terrain_map.deployment.name}" if terrain_map.deployment else ""),
         fill=palette.text,
     )
     image.save(out, optimize=True)

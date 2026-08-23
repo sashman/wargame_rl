@@ -145,6 +145,7 @@ class NetworkOpponentPolicy(SelectorOpponentPolicy):
                 observation,
                 self.mirror.player_action_handler,
                 self.mirror.config.objective_budget,
+                self.mirror.config.max_groups,
             )
             net = TransformerNetwork.from_spec(spec, is_policy=True)
             net.load_state_dict(self._state_dict)

@@ -13,6 +13,7 @@ import numpy as np
 from pydantic import BaseModel, Field
 
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
 from wargame_rl.wargame.envs.domain.shooting import (
     DefenderStats,
     PairedShootingResult,
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
     from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
     from wargame_rl.wargame.envs.domain.terrain import Terrain
     from wargame_rl.wargame.envs.types.config import ModelConfig
+    from wargame_rl.wargame.envs.types.geometry import Polygon
 
 
 # ---------------------------------------------------------------------------
@@ -49,6 +51,31 @@ class WeaponSnapshot(BaseModel):
     damage: int
 
     model_config = {"populate_by_name": True}
+
+
+class RulesSnapshot(BaseModel):
+    """The rules distances a replay needs to reproduce the engine's own answers.
+
+    In **units**, already scaled, exactly as `RulesQuantities` resolves them — a
+    replay dividing by `inches_per_unit` itself would be the renderer
+    re-deriving a quantity the env already owns, and the two would drift the
+    first time the scale changed.
+
+    `los_sample_step` travels because replaying sight at a different step is a
+    *different answer*, not a rounding of the same one. `blocking_mask` is
+    `None` in every config in the tree, so in practice it costs one `null` per
+    full snapshot — but it is the last input to `domain.sight`, and a replay
+    that silently omitted it would disagree with the engine exactly where a
+    config had bothered to set one.
+
+    Static per episode, so it rides on the reset and anchor snapshots like
+    `terrain_footprints`, and never in a delta.
+    """
+
+    engagement_range: float
+    base_radius: float
+    los_sample_step: float
+    blocking_mask: list[list[bool]] | None = None
 
 
 class ModelSnapshot(BaseModel):
@@ -195,7 +222,7 @@ class GameStateSnapshot(BaseModel):
     attributing ``player_actions`` to a phase.
     """
 
-    schema_version: str = "2.4"
+    schema_version: str = "2.6"
     step: int
     max_steps: int
     clock: ClockSnapshot
@@ -220,6 +247,25 @@ class GameStateSnapshot(BaseModel):
 
     Static per episode, so it rides on the full snapshots exactly as
     ``terrain_footprints`` does. ``None`` on pre-2.2 recordings.
+    """
+    deployment_outline: list[list[float]] | None = None
+    """Outline vertices of the player's deployment zone, ``[[x, y], ...]``.
+
+    A map may deploy along a diagonal, a staircase or an arc, none of which
+    ``deployment_zone``'s four numbers can describe, so a replay without this
+    draws the scenario's rectangle around an army standing somewhere else.
+    Static per episode and carried like ``terrain_footprints``. ``None`` on
+    pre-2.5 recordings and whenever the zone really is the rectangle.
+    """
+    opponent_deployment_outline: list[list[float]] | None = None
+    """Outline vertices of the opponent's deployment zone. See above."""
+    rules: RulesSnapshot | None = None
+    """Rules distances in units, so a replay can trace sight for itself.
+
+    Static per episode and carried like ``terrain_footprints``. ``None`` on
+    pre-2.6 recordings, where the threat overlays are simply unavailable —
+    better than defaulting the values, which would draw a *plausible wrong*
+    shape rather than nothing.
     """
     player_vp: int
     opponent_vp: int
@@ -532,6 +578,32 @@ def describe_action(
 # ---------------------------------------------------------------------------
 
 
+def _rules_snapshot(config: WargameEnvConfig) -> RulesSnapshot:
+    """Resolve the config's rules distances the same way the env does.
+
+    Through `resolve_rules_quantities`, not by reading the config's inches
+    directly: the env stores units, the picture is drawn in units, and two
+    conversions of the same number is how they come to differ.
+
+    Populated on **both** the live and the recorded snapshot — a field present
+    only on the recorded copy would break the "a replayed snapshot equals the
+    live one" invariant `test_v9_milestone_validation` pins. That is exactly why
+    `EpisodeProvenance` is header-only and this is not.
+    """
+    rules = resolve_rules_quantities(config)
+    mask = config.blocking_mask
+    return RulesSnapshot(
+        engagement_range=float(rules.engagement_range),
+        base_radius=float(rules.base_radius),
+        los_sample_step=float(rules.los_sample_step),
+        blocking_mask=(
+            [[bool(cell) for cell in row] for row in np.asarray(mask).tolist()]
+            if mask is not None
+            else None
+        ),
+    )
+
+
 def build_snapshot(
     *,
     config: WargameEnvConfig,
@@ -565,6 +637,8 @@ def build_snapshot(
     action_phase: str | None = None,
     terrain: "Terrain | None" = None,
     episode_reward: float | None = None,
+    deployment_outline: "Polygon | None" = None,
+    opponent_deployment_outline: "Polygon | None" = None,
 ) -> GameStateSnapshot:
     """Build a complete game-state snapshot from env internals."""
     player_configs = config.models
@@ -671,6 +745,17 @@ def build_snapshot(
         opponent_deployment_zone=odz,
         terrain_footprints=terrain_footprints,
         skip_phases=[phase.value for phase in config.skip_phases],
+        rules=_rules_snapshot(config),
+        deployment_outline=(
+            deployment_outline.vertices.tolist()
+            if deployment_outline is not None
+            else None
+        ),
+        opponent_deployment_outline=(
+            opponent_deployment_outline.vertices.tolist()
+            if opponent_deployment_outline is not None
+            else None
+        ),
         player_vp=player_vp,
         opponent_vp=opponent_vp,
         player_vp_delta=player_vp_delta,

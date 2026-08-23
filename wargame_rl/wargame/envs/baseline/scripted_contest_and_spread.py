@@ -129,7 +129,18 @@ class ScriptedContestAndSpreadPolicy(BaselinePolicy):
         if not objectives:
             return WargameEnvAction(actions=actions)
 
-        max_step = float(env.config.max_move_speed)
+        # Per SQUAD, and that distinction is load-bearing. A squad marches as a
+        # body on one shared vector -- that is what keeps its formation rigid
+        # and therefore legal -- so its step is capped by its own slowest
+        # member, since a member that cannot cover the shared step is left
+        # behind and breaks the property this policy relies on.
+        #
+        # Taking the minimum over the whole ARMY instead is identical while
+        # every model is equally fast, and silently wrong the moment they are
+        # not: one slow squad would cap a fast one, so a scripted bar could not
+        # use a speed a learned policy can. That flatters the agent against a
+        # hobbled bar, which is the most expensive class of error here.
+        speeds = env.player_action_handler.move_speeds
         group_ids = sorted({model.group_id for model in models})
         allocation = self._objective_allocation(env, len(group_ids))
 
@@ -141,6 +152,9 @@ class ScriptedContestAndSpreadPolicy(BaselinePolicy):
             ]
             if not member_indices:
                 continue
+            max_step = float(
+                min(speeds[i] for i in member_indices) if speeds.size else 0.0
+            )
 
             objective = objectives[allocation[squad_index] % len(objectives)]
             radius = objective_extent(objective)
@@ -152,7 +166,7 @@ class ScriptedContestAndSpreadPolicy(BaselinePolicy):
 
             for i in member_indices:
                 if lead_distance <= radius:
-                    actions[i] = step_toward_objective(models[i], objective, env)
+                    actions[i] = step_toward_objective(models[i], objective, env, i)
                 else:
                     # One squad vector for every member keeps relative positions,
                     # and therefore coherency, intact.
@@ -160,6 +174,7 @@ class ScriptedContestAndSpreadPolicy(BaselinePolicy):
                         float(lead[0]),
                         float(lead[1]),
                         max_step_length=min(max_step, lead_distance),
+                        model_idx=i,
                     )
 
         return WargameEnvAction(actions=actions)

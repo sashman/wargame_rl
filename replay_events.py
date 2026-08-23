@@ -78,6 +78,17 @@ def render(
         "pillow", help="v2 drawing backend: 'pillow', 'pygame' or 'pygame_aa'"
     ),
     theme: str = typer.Option("default", help="v2 theme: 'default' or 'tabletop'"),
+    show_threat_range: bool = typer.Option(
+        False,
+        "--threat-range",
+        help=(
+            "Outline the ground each side can shoot. Load-bearing for --out, "
+            "where there is no window to press [R] in."
+        ),
+    ),
+    show_engagement_range: bool = typer.Option(
+        False, "--engagement-range", help="Shade each side's engagement range."
+    ),
     fps: int = typer.Option(5, help="Playback / export frames per second"),
 ) -> None:
     """Replay a recording visually — an interactive window, or an MP4 with --out."""
@@ -86,13 +97,21 @@ def render(
         os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
         os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
-    from wargame_rl.wargame.envs.renders.v2.factory import build_backend, resolve_theme
+    from wargame_rl.wargame.envs.renders.v2.factory import (
+        build_backend,
+        resolve_theme,
+        threat_options,
+    )
     from wargame_rl.wargame.envs.renders.v2.replay import ReplayPresenter, ReplaySource
 
     controller = _load_log(file_path)
     source = ReplaySource.from_controller(controller)
     presenter = ReplayPresenter(
-        build_backend(backend), source, theme=resolve_theme(theme), fps=fps
+        build_backend(backend),
+        source,
+        theme=resolve_theme(theme),
+        fps=fps,
+        threat_options=threat_options(show_threat_range, show_engagement_range),
     )
 
     if out:

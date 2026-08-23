@@ -48,6 +48,41 @@ class TerrainPieceConfig(BaseModel):
         return Polygon.from_cell_rect(*self.footprint)
 
 
+class DeploymentConfig(BaseModel):
+    """The two zones a layout is played with, as outlines rather than rectangles.
+
+    The real deployments are mostly not rectangles: of the six the tables use,
+    one is a pair of triangles split by a board diagonal, two are stepped
+    staircases and one is bounded by arcs. Only `long_edges` and `short_edges`
+    resemble the axis-aligned bands `deployment_zone` describes -- 11 of the 45
+    tables -- which is why a map carries its own.
+
+    The names are **ours** -- `long_edges`, `stepped_columns` and so on describe
+    the shape, because the published names belong to the product the rules
+    derive from and `tests/test_no_ip_references.py` keeps those out of the repo.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(
+        description="Geometric name for the shape, ours rather than the "
+        "published one. Useful as a stratum: 'does the agent do worse when the "
+        "armies face each other across the short axis' is a real question."
+    )
+    player: list[tuple[float, float]] = Field(
+        min_length=3, description="The player's zone, as a closed outline."
+    )
+    opponent: list[tuple[float, float]] = Field(
+        min_length=3, description="The opponent's zone, as a closed outline."
+    )
+
+    def player_polygon(self) -> Polygon:
+        return Polygon.from_points(self.player)
+
+    def opponent_polygon(self) -> Polygon:
+        return Polygon.from_points(self.opponent)
+
+
 class TerrainMapConfig(BaseModel):
     """A named fixed terrain layout, stored on its own in `configs/evaluation/maps/`.
 
@@ -73,6 +108,13 @@ class TerrainMapConfig(BaseModel):
         "placement. Every entry must be determined — an `area` outline or x/y — "
         "since a map's objectives are part of the layout and a randomly placed "
         "one would make the map's rows differ run to run.",
+    )
+
+    deployment: DeploymentConfig | None = Field(
+        default=None,
+        description="The layout's own deployment zones, replacing the "
+        "scenario's rectangular ones. Optional, so a map without them keeps "
+        "deploying under `deployment_zone` exactly as before.",
     )
 
     @model_validator(mode="after")
@@ -129,17 +171,17 @@ class MapPoolConfig(BaseModel):
             "This targets a *measured* defect: the same checkpoint scored "
             "-1.4 vp on tables it trained on and -23.8 on tables it had not, so "
             "the gap was generalisation and 36 layouts is a small distribution. "
-            "**It buys about 2x, not 4x.** The real tables are laid out with "
-            "near-180-degree rotational symmetry, the way fair tournament "
-            "tables are: measured over all 45, a table sits a median of 1.7 "
-            "board units from its own 180-degree rotation and at worst 3.9, on "
-            "a board 60 across. So the xy reflection is very nearly the "
-            "authored table again, and the x and y reflections are very nearly "
-            "each other. The one genuinely distinct orientation is the "
-            "side-swap, which is legitimate only while the two deployment "
-            "zones mirror each other — check that before enabling it on an "
-            "asymmetric scenario. All four are still drawn, because they are "
-            "near-duplicates rather than exact ones and the redundancy costs "
+            "**It buys exactly 2x, not 4x** — provably, since the tables are "
+            "generated from the layout API. They are point-symmetric to the "
+            "measurement floor: over all 45, a table sits a median of 0.00 and "
+            "at worst 0.71 board units from its own 180-degree rotation, where "
+            "the hand-traced ones sat 1.7 out and at worst 3.9. So rot180 is the "
+            "identity, and because it commutes with the x reflection, flip_y IS "
+            "flip_x and flip_xy IS the original: four orientations collapse to "
+            "two, the table and its side-swap. The side-swap is legitimate only "
+            "while the two deployment zones mirror each other — check that "
+            "before enabling it on an asymmetric scenario. All four are still "
+            "drawn; two are now exact duplicates and the redundancy costs "
             "nothing. Off by default, so an existing pool draws exactly what "
             "it always did."
         ),
@@ -185,10 +227,11 @@ class RandomTerrainConfig(BaseModel):
             "How `mirror` pairs pieces. `reflect_x` puts a mirror line down the "
             "middle of the table. `rotate_180` makes the layout point-symmetric "
             "about the board centre, which is **what the real tables actually "
-            "are**: measured over all 45 authored layouts, a table sits a median "
-            "of 1.7 board units from its own 180-degree rotation and at worst "
-            "3.9, because a fair tournament table is built so neither side gets "
-            "the better ground. A generated table reflected in x alone has a "
+            "are**: measured over all 45 generated layouts, a table sits a median "
+            "of 0.00 board units from its own 180-degree rotation and at worst "
+            "0.71, because a fair tournament table is built so neither side gets "
+            "the better ground. The 1.7 median recorded here before 2026-08-20 "
+            "was tracing error, not the tables. A generated table reflected in x alone has a "
             "mirror line the real ones do not, and that is a regularity a policy "
             "can learn and the eval maps will never reward. `reflect_x` remains "
             "the default so existing runs are unchanged."

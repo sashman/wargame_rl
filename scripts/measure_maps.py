@@ -31,6 +31,7 @@ from typing import cast
 from pydantic_yaml import parse_yaml_raw_as
 
 from scripts.measure_checkpoint import HELDOUT_SEED_BASE
+from scripts.scenario_overrides import describe, load_env_config, parse_overrides
 from wargame_rl.wargame.envs.baseline.evaluate import (
     BaselineResult,
     evaluate_selector,
@@ -84,6 +85,12 @@ def config_for_map(
     config.random_terrain = None
     config.map_pool = None
     config.render_mode = None
+    if terrain_map.deployment is not None:
+        # A map's zones are part of the table, like its ruins. Without this the
+        # map would be scored under the scenario's rectangle while training used
+        # its own outline -- the same silent mismatch the terrain modes had.
+        config.deployment_outline = list(terrain_map.deployment.player)
+        config.opponent_deployment_outline = list(terrain_map.deployment.opponent)
     if terrain_map.objectives is not None:
         config.objectives = list(terrain_map.objectives)
         config.number_of_objectives = len(terrain_map.objectives)
@@ -118,27 +125,26 @@ def format_row(label: str, result: BaselineResult) -> str:
 
 def main() -> None:
     """Score one policy across every real map and print the per-map table."""
-    if len(sys.argv) < 3:
+    argv, overrides = parse_overrides(sys.argv)
+    if len(argv) < 3:
         print(__doc__)
         raise SystemExit(1)
 
-    policy_or_checkpoint = sys.argv[1]
-    config_path = sys.argv[2]
-    n_episodes = int(sys.argv[3]) if len(sys.argv) > 3 else 100
+    policy_or_checkpoint = argv[1]
+    config_path = argv[2]
+    n_episodes = int(argv[3]) if len(argv) > 3 else 100
     # Quoted in the recipe so an omitted `maps_dir` arrives as an empty
     # positional rather than collapsing and shifting `decode_topk` into its
     # place -- which made `just measure-maps <p> <cfg> <n>` fail outright.
-    maps_dir = (
-        Path(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4] else DEFAULT_MAPS_DIR
-    )
+    maps_dir = Path(argv[4]) if len(argv) > 4 and argv[4] else DEFAULT_MAPS_DIR
     # Joint constrained decoding: 1 keeps the historical independent argmax, so
     # every number measured before this existed still reproduces.
-    decode_topk = int(sys.argv[5]) if len(sys.argv) > 5 and sys.argv[5] else 1
+    decode_topk = int(argv[5]) if len(argv) > 5 and argv[5] else 1
     # Stand a unit still when the decoder finds nothing legal, instead of
     # letting the referee revert it and cascade onto its neighbours.
-    decode_stay = len(sys.argv) > 6 and sys.argv[6] not in ("", "0", "false")
+    decode_stay = len(argv) > 6 and argv[6] not in ("", "0", "false")
 
-    base_config = parse_yaml_raw_as(WargameEnvConfig, Path(config_path).read_text())
+    base_config = load_env_config(config_path, **overrides)
     maps = load_maps(maps_dir)
     # The same seeds on every map, so a difference between rows is the layout
     # and not the draw. Disjoint from training and model selection.
@@ -146,8 +152,8 @@ def main() -> None:
 
     print(f"\n{policy_or_checkpoint}")
     print(
-        f"{config_path}  ({len(maps)} maps x {n_episodes} episodes, "
-        f"seeds {seeds[0]}-{seeds[-1]})\n"
+        f"{config_path}{describe(overrides)}  ({len(maps)} maps x "
+        f"{n_episodes} episodes, seeds {seeds[0]}-{seeds[-1]})\n"
     )
     # `player VP` and `opp VP` are split out because the margin alone cannot say
     # which half moved, and under this mission they move for different reasons:

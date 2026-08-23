@@ -7,6 +7,7 @@ import numpy as np
 from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
 from wargame_rl.wargame.envs.domain.terrain import Terrain
 from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions, DeploymentZone
+from wargame_rl.wargame.envs.types.geometry import Polygon
 
 
 class Battle:
@@ -35,6 +36,13 @@ class Battle:
         self._deployment_zone = deployment_zone
         self._opponent_deployment_zone = opponent_deployment_zone
         self._terrain = terrain
+        # A map may deploy along a diagonal, a staircase or an arc, none of
+        # which a rectangle can describe. Placement resolves the real outline
+        # and stores it here so the renderer draws the zone models were
+        # actually placed in; without it a table's army sits outside the band
+        # drawn around it.
+        self._deployment_outline: Polygon | None = None
+        self._opponent_deployment_outline: Polygon | None = None
         self._player_vp = 0
         self._opponent_vp = 0
         self._player_vp_delta = 0
@@ -67,6 +75,27 @@ class Battle:
     @property
     def opponent_deployment_zone(self) -> np.ndarray:
         return self._opponent_deployment_zone.as_array()
+
+    @property
+    def deployment_outline(self) -> Polygon | None:
+        """The player zone's real outline, or None when it is the rectangle."""
+        return self._deployment_outline
+
+    @property
+    def opponent_deployment_outline(self) -> Polygon | None:
+        """The opponent zone's real outline, or None when it is the rectangle."""
+        return self._opponent_deployment_outline
+
+    def set_deployment_outlines(
+        self, player: Polygon | None, opponent: Polygon | None
+    ) -> None:
+        """Record the zones an episode actually deployed into.
+
+        Set on every placement, including back to None, so a pool episode
+        cannot leave a previous map's zones behind on the next one.
+        """
+        self._deployment_outline = player
+        self._opponent_deployment_outline = opponent
 
     @property
     def terrain(self) -> Terrain:

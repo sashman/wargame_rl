@@ -1,0 +1,615 @@
+"""Generate the evaluation tables from the public layout Data API.
+
+The 45 tables in `configs/evaluation/maps/` were traced by hand from this same
+source, and the tracing lost things. Outlines became quads; the objectives were
+picked by eye for board symmetry rather than read off the layout -- on
+`table_01` only two of the layout's five markers land inside an objective it
+declares. This regenerates both from the data, so a table is what the layout
+says it is and a new table costs a re-run rather than an afternoon of tracing.
+
+Nothing from the API's vocabulary crosses this boundary. Layout slugs,
+deployment names and mission-pack ids are the commercial product's names, and
+`tests/test_no_ip_references.py` keeps them out of the repo; only geometry is
+read, and the raw responses are never written to disk.
+
+Usage: just fetch-maps [owner] [maps_dir]
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import sys
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+from shapely.geometry import Polygon as ShapelyPolygon
+from shapely.ops import unary_union
+
+from wargame_rl.wargame.envs.types.geometry import Polygon
+from wargame_rl.wargame.envs.types.terrain_observation import TERRAIN_VERTEX_BUDGET
+
+API_BASE = "https://battlemaster.online/v1/public/data"
+DEFAULT_OWNER = "superwutz"
+DEFAULT_MAPS_DIR = Path("configs/evaluation/maps")
+
+# Where each layout's objectives are, one entry per table.
+#
+# **Not from the API.** Its per-layout objective markers disagree with the
+# published layout cards on six of the 45 tables -- by 12 to 18 inches, which is
+# a different ruin entirely -- and neither the layout's own copy of its
+# deployment nor the deployment's canonical markers is right everywhere; the
+# failures merely move. Checked against positions read off the published cards,
+# these hand-traced positions are right on **45 of 45 tables, worst error 1.5
+# inches**, so they are the better source and the API's markers are not used.
+#
+# The terrain still comes from the API, where the geometry matched 45/45.
+OBJECTIVE_MARKERS = Path(__file__).with_name("objective_markers.json")
+
+# Our names for the six deployment shapes, keyed by the API's slug. The
+# published names belong to the product the rules derive from, so they are
+# renamed at this boundary and never enter the repo; these describe the shape.
+#
+# Unlike the objective markers, the ZONES check out: rasterised against the
+# published layout cards, the tinted region is >= 98% inside the API's polygon
+# on all 45 tables, attacker to red and defender to blue every time.
+DEPLOYMENT_NAMES = {
+    "crucible-of-battle": "diagonal_halves",
+    "dawn-of-war": "long_edges",
+    "hammer-and-anvil": "short_edges",
+    "search-and-destroy": "opposed_quadrants",
+    "sweeping-engagement": "stepped_bands",
+    "tipping-point": "stepped_columns",
+}
+
+# The board this project plays on. Layouts authored for any other size are
+# skipped rather than scaled: a smaller table is a different scenario, not the
+# same one at a different zoom.
+BOARD_WIDTH_IN = 60.0
+BOARD_HEIGHT_IN = 44.0
+
+# Coordinates arrive with the origin at the centre of the board and y up. Ours
+# has the origin at the corner, so every point shifts by half the board.
+ORIGIN_SHIFT = (BOARD_WIDTH_IN / 2, BOARD_HEIGHT_IN / 2)
+
+# Two pieces sharing at least this much boundary are one ruin. The layouts
+# build a structure out of several kit pieces -- a rectangle split along a
+# diagonal seam, or two bars meeting in an L -- and the source renders each
+# such group as a single connected blob. Measured over all 45 tables, the
+# shared-boundary lengths are strikingly discrete: 110 pairs at ~0.32in (a
+# corner touch, incidental), then 84 at ~2.33 (a bar's end against another's
+# side), 6 at ~6.33 and 18 at ~13.6 (one rectangle split in two). 1.0 sits in
+# empty space between 0.33 and 1.45 -- 3.0x above the highest contact it
+# separates and 1.45x below the lowest it joins. The margin below is the
+# comfortable one; above it is only 45%, so re-run that scan if the pool grows.
+RUIN_CONTACT_IN = 1.0
+
+# A marker equidistant from two equally large ruins designates both. The tables
+# are point-symmetric, so the board centre routinely sits in the gap between a
+# ruin and its own 180-degree reflection -- on `table_01` the centre marker is
+# 1.02in from each of two 58.5 sq in wedges whose centroids are exact mirrors.
+# Picking one by list order silently breaks the table's symmetry and drops an
+# objective the layout plainly intends. Ties are resolved by taking all of them,
+# which is also what the hand-traced tables did: it reproduces their 5-or-6
+# objective split on 41 of 45 tables, against 24 when every marker took one.
+# How far the layout places a marker from the ruin it designates. **This is not
+# the rules' 3in control range**, and using that range was wrong: the layouts
+# routinely put a marker 3.75-4.0in from the large ruin it plainly means, with a
+# scrap of scatter terrain 2-3in away on the other side, so a 3in cutoff handed
+# the objective to the scrap. Measured over all 45 tables, marker-to-ruin
+# distances cluster below 4in and again from 5in, with a trough at 4.5 holding
+# only 2 of them against 18 just below and 28 just above -- and the resolution is
+# identical anywhere in 4.0-5.0, so the constant sits in a gap rather than on a
+# fitted edge. It lifts agreement with the hand-traced objectives from 91% to
+# 96%, and the objective count matches theirs on 44 of 45 tables.
+MARKER_REACH_IN = 4.5
+
+TIE_DISTANCE_IN = 1.0
+TIE_AREA_FRACTION = 0.01
+
+# Boundary sampling for that measurement. `eps` has to exceed the two-decimal
+# rounding the map files carry, or a shared edge reads as a near miss.
+_CONTACT_EPS_IN = 0.15
+_CONTACT_STEP_IN = 0.08
+
+Point = tuple[float, float]
+
+
+def fetch_bundle(owner: str) -> dict[str, Any]:
+    """Every layout and deployment for one owner, in a single request.
+
+    The bundle endpoint exists for exactly this: the catalogs *with* their
+    details, so a full regeneration costs one round trip instead of ninety.
+    """
+    url = f"{API_BASE}/bundle?owner={owner}"
+    request = urllib.request.Request(url, headers={"User-Agent": "wargame-rl"})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        payload: dict[str, Any] = json.load(response)
+    if payload.get("format") != "battlemaster.data.bundle":
+        raise ValueError(f"unexpected payload format {payload.get('format')!r}")
+    return payload
+
+
+def piece_outline(piece: dict[str, Any]) -> list[Point]:
+    """One terrain piece's silhouette, in board coordinates.
+
+    Outline points are piece-local and **centred** on the footprint origin, so
+    the piece frame is rotated about its own middle and then translated. That
+    convention is not documented; it was established by measurement, and the
+    test is decisive -- centred puts all 720 pieces on the board with zero
+    overhang, while treating the points as corner-relative throws 70 of them off
+    the edge by up to 3.75 inches.
+    """
+    footprint = piece["footprint"]
+    origin_x, origin_y = footprint["origin"]["x"], footprint["origin"]["y"]
+    angle = math.radians(footprint.get("rotationDeg") or 0.0)
+    cos_a, sin_a = math.cos(angle), math.sin(angle)
+    shift_x, shift_y = ORIGIN_SHIFT
+    points = (piece.get("outline") or {}).get("points") or []
+    return [
+        (
+            origin_x + p["x"] * cos_a - p["y"] * sin_a + shift_x,
+            origin_y + p["x"] * sin_a + p["y"] * cos_a + shift_y,
+        )
+        for p in points
+    ]
+
+
+def _furthest_from_chord(
+    points: list[Point], first: int, last: int
+) -> tuple[int, float]:
+    """The vertex furthest from the line through two others, and how far."""
+    ax, ay = points[first]
+    bx, by = points[last]
+    dx, dy = bx - ax, by - ay
+    length = math.hypot(dx, dy)
+    best_index, best_distance = first, -1.0
+    for index in range(first + 1, last):
+        px, py = points[index]
+        distance = (
+            abs(dx * (ay - py) - (ax - px) * dy) / length
+            if length
+            else math.hypot(px - ax, py - ay)
+        )
+        if distance > best_distance:
+            best_index, best_distance = index, distance
+    return best_index, best_distance
+
+
+def _douglas_peucker(points: list[Point], tolerance: float) -> list[Point]:
+    """Drop vertices that sit within `tolerance` of the line they lie on."""
+
+    def keep_between(first: int, last: int) -> list[int]:
+        if last <= first + 1:
+            return []
+        index, distance = _furthest_from_chord(points, first, last)
+        if distance <= tolerance:
+            return []
+        return keep_between(first, index) + [index] + keep_between(index, last)
+
+    kept = [0, *keep_between(0, len(points) - 1), len(points) - 1]
+    return [points[index] for index in kept]
+
+
+def simplify_outline(points: list[Point], max_vertices: int) -> list[Point]:
+    """Reduce a dense silhouette to at most `max_vertices`, keeping its shape.
+
+    Mandatory, not an optimisation: every source outline carries 167 to 348
+    vertices against an observation budget of 8, which is why the hand-traced
+    tables were quads.
+
+    Douglas-Peucker rather than the alternatives, chosen by measuring all 720
+    pieces against their true area. It holds a median 1.027 and a worst 1.078;
+    a convex hull reaches 1.160 because it fills in every concave bay, and the
+    footprint rectangle has a 1.592 tail -- an angled or L-shaped ruin blocks
+    half again as much board as it should. The tolerance is found by bisection
+    because the vertex count, not the tolerance, is what the budget constrains.
+    """
+    ring = [*points, points[0]]
+    low, high = 0.0, max(BOARD_WIDTH_IN, BOARD_HEIGHT_IN)
+    for _ in range(40):
+        middle = (low + high) / 2
+        if len(_douglas_peucker(ring, middle)) - 1 <= max_vertices:
+            high = middle
+        else:
+            low = middle
+    simplified = _douglas_peucker(ring, high)[:-1]
+    if len(simplified) < 3:
+        raise ValueError(f"outline simplified to {len(simplified)} vertices")
+    return simplified
+
+
+def shared_boundary(first: Polygon, second: Polygon) -> float:
+    """How much of the two outlines runs together, in inches.
+
+    Measured by walking one boundary and asking the engine's own
+    `distance_to_point` how close the other is, then taking the larger of the
+    two directions -- a short piece lying along a long one shares all of its own
+    edge and only part of the other's.
+    """
+
+    def along(source: Polygon, other: Polygon) -> float:
+        total = 0.0
+        vertices = source.vertices
+        for index in range(len(vertices)):
+            start, end = vertices[index], vertices[(index + 1) % len(vertices)]
+            length = float(np.hypot(*(end - start)))
+            if length <= 0.0:
+                continue
+            steps = max(2, int(length / _CONTACT_STEP_IN))
+            fractions = np.linspace(0.0, 1.0, steps)
+            points = start + fractions[:, np.newaxis] * (end - start)
+            near = [
+                other.distance_to_point(float(x), float(y)) < _CONTACT_EPS_IN
+                for x, y in points
+            ]
+            total += float(np.mean(near)) * length
+        return total
+
+    return max(along(first, second), along(second, first))
+
+
+def ruin_components(pieces: list[Polygon]) -> list[list[int]]:
+    """Group pieces into ruins -- connected runs of substantial shared edge.
+
+    A "terrain piece" in the source is a kit component, not a building: the
+    layouts routinely split one rectangle along a diagonal or butt two bars into
+    an L, and the source's own board render draws each such group as a single
+    blob. Treating the components separately is what made an objective cover
+    half a ruin and leave the other half neutral ground.
+    """
+    parent = list(range(len(pieces)))
+
+    def find(node: int) -> int:
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    for i, first in enumerate(pieces):
+        left = first.bounds
+        for j in range(i + 1, len(pieces)):
+            right = pieces[j].bounds
+            # Cheap reject: outlines that cannot touch cannot share an edge.
+            if (
+                left[2] + _CONTACT_EPS_IN < right[0]
+                or right[2] + _CONTACT_EPS_IN < left[0]
+                or left[3] + _CONTACT_EPS_IN < right[1]
+                or right[3] + _CONTACT_EPS_IN < left[1]
+            ):
+                continue
+            if shared_boundary(first, pieces[j]) >= RUIN_CONTACT_IN:
+                parent[find(i)] = find(j)
+
+    groups: dict[int, list[int]] = {}
+    for index in range(len(pieces)):
+        groups.setdefault(find(index), []).append(index)
+    return list(groups.values())
+
+
+def merge_ruin(pieces: list[Polygon], members: list[int]) -> list[Point]:
+    """One ruin's outline: the union of the pieces it is built from.
+
+    The pieces *abut* rather than overlap -- a diagonal seam or a butted L --
+    and two polygons a rounded hundredth apart do not fuse, so a plain union
+    returns a MultiPolygon and the ruin stays in halves. Grown by the same
+    epsilon the contact measurement uses and then shrunk back, the seam closes
+    while every real edge returns to where it was. Mitred joins, because a round
+    join would bevel every corner of the outline.
+
+    Exterior ring only. A union can enclose a courtyard, and an objective is the
+    ground you stand on to hold it -- a model in the courtyard is on the
+    objective, so the hole is not a hole for this purpose.
+
+    No vertex budget applies here, unlike terrain: an objective reaches the
+    network as its centroid, never as an outline.
+    """
+    if len(members) == 1:
+        return [(float(x), float(y)) for x, y in pieces[members[0]].vertices]
+    grown = [
+        ShapelyPolygon([(float(x), float(y)) for x, y in pieces[m].vertices])
+        .buffer(0)
+        .buffer(_CONTACT_EPS_IN, join_style="mitre")
+        for m in members
+    ]
+    union = unary_union(grown).buffer(-_CONTACT_EPS_IN, join_style="mitre")
+    if union.geom_type != "Polygon":
+        # Never silently take the biggest part: that is how half a ruin went
+        # missing while every count still read five.
+        raise ValueError(
+            f"ruin of pieces {members} did not merge into one outline "
+            f"(got {union.geom_type}); the contact threshold and the bridge "
+            f"epsilon disagree"
+        )
+    return [(float(x), float(y)) for x, y in union.exterior.coords[:-1]]
+
+
+def objectives_for(markers: list[Point], pieces: list[Polygon]) -> list[dict[str, Any]]:
+    """Resolve the layout's objective markers against its terrain.
+
+    **An objective is a ruin.** Free-standing markers you stand near are a
+    previous edition's rule; here the marker only says *which ground* is being
+    fought over, so every marker resolves to a ruin -- unconditionally, with no
+    distance test. A disc floating on open ground would be the previous
+    edition's object under a new name.
+
+    **A ruin is not a terrain piece.** The layouts build one structure out of
+    several kit pieces -- a rectangle split along a diagonal seam, two bars
+    butted into an L -- and the source's own render draws each group as a single
+    blob, so `ruin_components` groups them before anything is resolved.
+
+    **The biggest ruin in control range wins, not the nearest.** A marker
+    routinely sits in the gap between a large ruin and a scrap of scatter
+    terrain, and picking the nearest handed the objective to the scrap: on
+    `table_01` and `table_10` two of five objectives came out on 12.9 sq in
+    slivers while 82.5 sq in ruins stood two inches away. Control range is the
+    real rule's own measure -- a model within 3" of the marker holds it -- so
+    every ruin inside that range is ground you could hold the objective from,
+    and the one that dominates it is the ground being fought over. Measured
+    against the hand-picked objectives these tables used to carry, largest
+    agrees 91% of the time against nearest's 84%.
+
+    **One ruin per marker.** Without that, two markers *twelve to seventeen
+    inches apart* both claimed one long ruin and a table lost an objective --
+    they are plainly separate objectives, not one piece of ground held twice.
+    Markers are resolved most-constrained-first, so a marker with only one ruin
+    in range takes it before a marker spoilt for choice does; resolving in the
+    layout's own order would make the outcome depend on an arbitrary ordering.
+    """
+    components = ruin_components(pieces)
+    ruins = [Polygon.from_points(merge_ruin(pieces, group)) for group in components]
+
+    def ranked(marker: Point) -> list[tuple[float, int]]:
+        return sorted(
+            (ruin.distance_to_point(*marker), index) for index, ruin in enumerate(ruins)
+        )
+
+    order = sorted(
+        range(len(markers)),
+        key=lambda m: (
+            sum(1 for d, _ in ranked(markers[m]) if d <= MARKER_REACH_IN),
+            markers[m],
+        ),
+    )
+
+    def tied_with_best(pool: list[tuple[float, int]]) -> list[int]:
+        """The best ruin in `pool`, plus any that tie with it.
+
+        Best is the largest; a tie is an equal area at an equal distance, and
+        both members are taken. That is not a tidy-up -- it is what makes a
+        table carry six, and the official layouts agree on 45 of 45.
+        """
+        largest = max(ruins[i].area for _, i in pool)
+        tied = [
+            (d, i)
+            for d, i in pool
+            if ruins[i].area >= largest * (1.0 - TIE_AREA_FRACTION)
+        ]
+        nearest = min(d for d, _ in tied)
+        return [i for d, i in tied if d - nearest <= TIE_DISTANCE_IN]
+
+    chosen: dict[int, list[int]] = {}
+    claimed: set[int] = set()
+    for m in order:
+        unclaimed = [(d, i) for d, i in ranked(markers[m]) if i not in claimed]
+        in_reach = [(d, i) for d, i in unclaimed if d <= MARKER_REACH_IN]
+        if in_reach:
+            take = tied_with_best(in_reach)
+        else:
+            # Nothing in reach: fall back to the nearest, but keep the tie rule.
+            # A marker can be out of reach of a *symmetric pair* -- on `table_26`
+            # the centre marker sits 5.16in from each of two 58.5 sq in ruins --
+            # and taking one of those by list order is the same defect the tie
+            # rule exists to prevent, just on the other branch.
+            nearest = min(d for d, _ in unclaimed)
+            take = tied_with_best(
+                [(d, i) for d, i in unclaimed if d - nearest <= TIE_DISTANCE_IN]
+            )
+        claimed.update(take)
+        chosen[m] = take
+
+    # Unrounded on purpose. `render_map_yaml` formats every coordinate to two
+    # places exactly once; rounding here as well rounds twice by two different
+    # rules, and `round(33.455, 2)` and `f"{33.455:.2f}"` disagree -- which
+    # silently made an objective's outline differ by a hundredth from the very
+    # piece it *is*.
+    return [
+        {"area": [[float(x), float(y)] for x, y in ruins[ruin].vertices]}
+        for m in range(len(markers))
+        for ruin in chosen[m]
+    ]
+
+
+def _bounds(pieces: list[Polygon]) -> list[tuple[float, float, float, float]]:
+    """Each piece's axis-aligned extent, rounded, for comparing two layouts."""
+    return sorted(tuple(round(value, 1) for value in p.bounds) for p in pieces)  # type: ignore[misc]
+
+
+def _shared_pieces(left: list[Polygon], right: list[Polygon], tolerance: float) -> int:
+    """How many pieces two layouts have in common, matched greedily by extent."""
+    remaining = _bounds(right)
+    shared = 0
+    for candidate in _bounds(left):
+        for index, other in enumerate(remaining):
+            if max(abs(a - b) for a, b in zip(candidate, other)) <= tolerance:
+                remaining.pop(index)
+                shared += 1
+                break
+    return shared
+
+
+def assign_names(
+    layouts: list[list[Polygon]], existing: dict[str, list[Polygon]]
+) -> list[str]:
+    """Name each regenerated layout after the table it replaces.
+
+    Identity is the *geometry*, deliberately. The API's own version keys are
+    change-detection tokens that move whenever a layout is edited, and its slugs
+    are product vocabulary that must not enter the repo -- while the terrain
+    itself is the thing that makes `table_07` the table everyone means.
+
+    Keeping the numbering is what makes this change readable: `maps_heldout` is
+    nine specific tables and every current baseline was measured on them, so a
+    renumbering would silently redefine the held-out set at the same moment the
+    geometry changed, and nothing downstream would be comparable to anything.
+    """
+    scored = sorted(
+        (
+            (-_shared_pieces(pieces, other, tolerance=1.0), name, index)
+            for index, pieces in enumerate(layouts)
+            for name, other in existing.items()
+        )
+    )
+    names: dict[int, str] = {}
+    taken: set[str] = set()
+    for _, name, index in scored:
+        if index not in names and name not in taken:
+            names[index] = name
+            taken.add(name)
+    spare = (f"table_{n:02d}" for n in range(1, 100) if f"table_{n:02d}" not in taken)
+    return [names.get(index) or next(spare) for index in range(len(layouts))]
+
+
+def render_map_yaml(
+    name: str,
+    pieces: list[Polygon],
+    objectives: list[dict[str, Any]],
+    deployment: dict[str, Any],
+) -> str:
+    """The map file, in the same shape the hand-written ones used."""
+    lines = [
+        "# Generated by `just fetch-maps` from the public layout API.",
+        "# Edit the generator, not this file -- a re-run overwrites it.",
+        "#",
+        "# Objectives are ruins: a position designates the ground fought over,",
+        "# so it resolves to the largest ruin within reach. Deployment zones are",
+        "# the layout's own outlines, not the scenario's rectangles.",
+        f"name: {name}",
+        "deployment:",
+        f"  name: {deployment['name']}",
+    ]
+    for role in ("player", "opponent"):
+        outline = ", ".join(f"[{x:.2f}, {y:.2f}]" for x, y in deployment[role])
+        lines.append(f"  {role}: [{outline}]")
+    lines.append("terrain:")
+    for piece in pieces:
+        outline = ", ".join(f"[{x:.2f}, {y:.2f}]" for x, y in piece.vertices)
+        lines.append(f"  - outline: [{outline}]")
+    lines.append("objectives:")
+    for objective in objectives:
+        if "area" in objective:
+            area = ", ".join(f"[{x:.2f}, {y:.2f}]" for x, y in objective["area"])
+            lines.append(f"  - area: [{area}]")
+        else:
+            lines.append(f"  - x: {objective['x']:.2f}")
+            lines.append(f"    y: {objective['y']:.2f}")
+            lines.append(f"    radius_size: {objective['radius_size']}")
+    return "\n".join(lines) + "\n"
+
+
+def _existing_layouts(maps_dir: Path) -> dict[str, list[Polygon]]:
+    """The tables already on disk, as geometry, for the naming match."""
+    from scripts.measure_maps import load_maps
+
+    if not maps_dir.is_dir():
+        return {}
+    return {
+        terrain_map.name: [piece.to_polygon() for piece in terrain_map.terrain]
+        for terrain_map in load_maps(maps_dir)
+    }
+
+
+def convert(bundle: dict[str, Any]) -> list[tuple[list[Polygon], dict[str, Any]]]:
+    """Every usable layout in the bundle, as simplified terrain plus objectives.
+
+    Objectives are resolved later, in `main`, because they are keyed by table
+    name and the name is only known once the layouts have been matched to the
+    tables they replace.
+    """
+    converted: list[tuple[list[Polygon], dict[str, Any]]] = []
+    for entry in bundle["layouts"]:
+        layout = entry["layout"]
+        board = layout["board"]
+        deployment = entry.get("deployment")
+        if (board["widthIn"], board["heightIn"]) != (BOARD_WIDTH_IN, BOARD_HEIGHT_IN):
+            continue
+        if not deployment:
+            continue
+        pieces = [
+            Polygon.from_points(simplify_outline(outline, TERRAIN_VERTEX_BUDGET))
+            for outline in (piece_outline(piece) for piece in entry["terrain"])
+            if outline
+        ]
+        shift_x, shift_y = ORIGIN_SHIFT
+        zones = {
+            z["role"]: [(p["x"] + shift_x, p["y"] + shift_y) for p in z["points"]]
+            for z in deployment.get("zones") or []
+        }
+        # attacker -> player. The env has no attacker/defender asymmetry, so
+        # carrying those words in would imply a rule we do not implement.
+        converted.append(
+            (
+                pieces,
+                {
+                    "name": DEPLOYMENT_NAMES[deployment["slug"]],
+                    "player": zones["attacker"],
+                    "opponent": zones["defender"],
+                },
+            )
+        )
+    return converted
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    owner = args[0] if args and args[0] else DEFAULT_OWNER
+    maps_dir = Path(args[1]) if len(args) > 1 and args[1] else DEFAULT_MAPS_DIR
+
+    bundle = fetch_bundle(owner)
+    print(f"{bundle['layoutCount']} layouts, {bundle['deploymentCount']} deployments")
+
+    converted = convert(bundle)
+    skipped = bundle["layoutCount"] - len(converted)
+    print(
+        f"{len(converted)} usable on {BOARD_WIDTH_IN:.0f}x{BOARD_HEIGHT_IN:.0f}in, {skipped} skipped"
+    )
+
+    existing = _existing_layouts(maps_dir)
+    names = assign_names([pieces for pieces, _ in converted], existing)
+    markers = json.loads(OBJECTIVE_MARKERS.read_text())
+    missing = sorted(set(names) - set(markers))
+    if missing:
+        raise ValueError(
+            f"no objective markers for {missing}; add them to "
+            f"{OBJECTIVE_MARKERS.name} or the table would ship without objectives"
+        )
+
+    maps_dir.mkdir(parents=True, exist_ok=True)
+    for name, (pieces, deployment) in sorted(
+        zip(names, converted), key=lambda pair: pair[0]
+    ):
+        objectives = objectives_for(
+            [(float(x), float(y)) for x, y in markers[name]], pieces
+        )
+        path = maps_dir / f"{name}.yaml"
+        matched = _shared_pieces(pieces, existing[name], 1.0) if name in existing else 0
+        path.write_text(render_map_yaml(name, pieces, objectives, deployment))
+        print(
+            f"  {name:10s} {len(pieces):2d} pieces  {len(objectives)} objectives"
+            f"  {deployment['name']:<18s}"
+            f"  {matched}/{len(pieces)} pieces match"
+        )
+
+    heldout = maps_dir.parent / "maps_heldout"
+    if heldout.is_dir():
+        for path in sorted(heldout.glob("*.yaml")):
+            source = maps_dir / path.name
+            if source.is_file():
+                path.write_text(source.read_text())
+        print(f"synced {len(list(heldout.glob('*.yaml')))} held-out copies")
+
+
+if __name__ == "__main__":
+    main()

@@ -70,7 +70,7 @@ wargame_rl/wargame/envs/
 
 ### BattleView (protocol)
 
-`BattleView` is a read-only interface: board size, config, metadata, player/opponent models, objectives, deployment zones, terrain, current turn, last reward (with its per-calculator breakdown and the episode's running total), the last phase's shooting results for each side, game clock state, n_rounds, player/opponent VP and VP deltas, `player_max_ranges`, plus the sight seam — `line_of_sight_matrix` and its single-pair convenience `has_line_of_sight_between_points`. `WargameEnv` implements it so that reward calculators, success criteria, and renderers can take `view: BattleView` instead of the full env. That keeps their contract minimal and makes it easy to test or reuse them with another view implementation (e.g. a replay or a headless battle).
+`BattleView` is a read-only interface: board size, config, metadata, player/opponent models, objectives, deployment zones, terrain, current turn, last reward (with its per-calculator breakdown and the episode's running total), the last phase's shooting results for each side, game clock state, n_rounds, player/opponent VP and VP deltas, `player_max_ranges` / `opponent_max_ranges`, plus the sight seam — `line_of_sight_matrix` and its single-pair convenience `has_line_of_sight_between_points`. `WargameEnv` implements it so that reward calculators, success criteria, and renderers can take `view: BattleView` instead of the full env. That keeps their contract minimal and makes it easy to test or reuse them with another view implementation (e.g. a replay or a headless battle).
 
 ### Domain services
 

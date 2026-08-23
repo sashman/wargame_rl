@@ -242,6 +242,19 @@ class WargameEnvConfig(BaseModel):
         default=None,
         description="Opponent deployment zone (x_min, y_min, x_max, y_max). If None, defaults to (board_width*2//3, 0, board_width, board_height).",
     )
+    deployment_outline: list[tuple[float, float]] | None = Field(
+        default=None,
+        min_length=3,
+        description="Player deployment zone as an outline, replacing the "
+        "rectangle. The real deployments are triangles, staircases and arcs; "
+        "only two of the six are axis-aligned bands. None keeps the rectangle, "
+        "which is the exact no-op.",
+    )
+    opponent_deployment_outline: list[tuple[float, float]] | None = Field(
+        default=None,
+        min_length=3,
+        description="Opponent deployment zone as an outline. See `deployment_outline`.",
+    )
     models: list[ModelConfig] | None = Field(
         default=None,
         description="Per-model configuration (attributes, and optionally positions). Length must match number_of_wargame_models.",
@@ -302,7 +315,15 @@ class WargameEnvConfig(BaseModel):
     max_groups: int = Field(
         gt=0,
         default=100,
-        description="Maximum number of groups in the game; group_id is one-hot encoded over this size for neural network input.",
+        description=(
+            "Maximum number of groups in the game; group_id is one-hot encoded "
+            "over this size for neural network input. **One value for both "
+            "armies**, and it is load-bearing twice over: the one-hot is the "
+            "same width on the player and opponent blocks, which is what keeps "
+            "their token widths equal, and where no model names its own group "
+            "`group_span = n // max_groups` splits each army, so two armies of "
+            "different sizes get differently-sized units from the same cap."
+        ),
     )
     n_movement_angles: int = Field(
         gt=0,
@@ -343,6 +364,50 @@ class WargameEnvConfig(BaseModel):
             "are legal. See docs/rules/implementation-status.md."
         ),
     )
+    n_advance_speed_bins: int = Field(
+        ge=0,
+        default=0,
+        description=(
+            "Number of ADVANCE speed bins, appended as their own action slice. "
+            "An advance trades the turn's shooting for reach: maximum distance "
+            "is the model's Move PLUS an advance roll (one D6 per unit, made "
+            "before moving), and a model that advances cannot shoot this turn "
+            "-- no weapon here has the ability that would let it. "
+            "0 (the default) registers NO slice, makes NO dice draw and adds NO "
+            "observation column, so every existing config keeps its exact "
+            "action space, its checkpoints and its RNG stream. "
+            "⚠ The slice is appended AFTER shooting on purpose. Widening the "
+            "existing movement bins instead would renumber every action, "
+            "because `decode_action` is angle-major and speed-minor -- action 7 "
+            "would stop meaning (angle 1, speed 0) and start meaning (angle 0, "
+            "speed 6). Warm starts load with `strict=False`, so that would "
+            "scramble every checkpoint silently."
+        ),
+    )
+    # Slices named here are registered at full width but valid in NO phase, so
+    # every one of their actions is masked to -inf for the whole episode.
+    #
+    # This exists to restore PAIRING to action-space experiments, which are
+    # otherwise the least measurable class of change here: adding actions
+    # widens the policy head, which changes how much RNG `seed_everything`
+    # consumes, so an arm and its control no longer start from the same weights
+    # and the paired estimator -- worth roughly an order of magnitude -- is
+    # lost. Registering the slice in BOTH arms and darkening it in the control
+    # makes the two parameter shapes identical, and their initial weights
+    # bit-identical (verified in `tests/test_dark_action_slices.py`).
+    #
+    # ⚠ It does NOT make an existing control reusable. A control trained
+    # without the slice has a different head width and therefore different
+    # weights everywhere -- measured, only 73 of 110 shared-shape tensors
+    # match -- so the control must be retrained WITH the slice darkened.
+    dark_action_slices: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Action slices to register but never make valid, so an arm and its "
+            "control share a parameter shape and can be paired."
+        ),
+    )
+
     base_radius: float = Field(
         ge=0,
         default=INFANTRY_BASE_RADIUS_IN,
@@ -767,6 +832,33 @@ class WargameEnvConfig(BaseModel):
                     f"max_groups={self.max_groups} puts every model in its own "
                     "unit, where coherency holds vacuously. Set max_groups below "
                     f"{label} so units have at least two models."
+                )
+        return self
+
+    @model_validator(mode="after")
+    def validate_group_ids_fit_the_one_hot(self) -> "WargameEnvConfig":
+        """Every declared `group_id` must be encodable in the group one-hot.
+
+        `_group_ids_to_one_hot` *clips* to `max_groups - 1`, so a config naming
+        more units than the cap allows does not fail — it silently merges its
+        last units into one column, and every consumer that reads membership
+        back out of the observation inherits the merge. The shooting slice does
+        not clip: `unit_count` sizes it off the highest id, so the mask and the
+        network would disagree about which unit an action names.
+        """
+        for label, configs in (
+            ("models", self.models),
+            ("opponent_models", self.opponent_models),
+        ):
+            if not configs:
+                continue
+            highest = max(int(config.group_id) for config in configs)
+            if highest >= self.max_groups:
+                raise ValueError(
+                    f"{label} declares group_id={highest} but max_groups="
+                    f"{self.max_groups}: the group one-hot has no column for it "
+                    "and would silently fold it into the last group. Raise "
+                    f"max_groups above {highest}."
                 )
         return self
 

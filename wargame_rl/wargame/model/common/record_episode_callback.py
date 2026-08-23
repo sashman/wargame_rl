@@ -12,12 +12,13 @@ from pathlib import Path
 from typing import cast
 
 import torch
+import wandb
 from loguru import logger
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import Callback
 from torch import nn
 
-import wandb
+from wargame_rl.wargame.envs.renders.v2.control import ThreatOptions
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.common.observation import observation_to_tensor
 
@@ -33,6 +34,7 @@ def _run_recording(
     renderer_name: str = "v2",
     backend: str = "pillow",
     theme: str = "tabletop",
+    overlays: ThreatOptions | None = None,
 ) -> None:
     """Run in a separate process: create env with a renderer, run one episode, save MP4.
     Must set SDL_VIDEODRIVER=dummy before any pygame import to avoid EGL conflicts with PyTorch.
@@ -55,7 +57,13 @@ def _run_recording(
     # Build env with the chosen renderer in headless recording mode. `setup`/`close`
     # come from the Renderer base; `epoch`/`get_frame_array` from the FrameSource
     # protocol both legacy and v2 satisfy.
-    renderer = build_renderer(renderer_name, "recording", backend=backend, theme=theme)
+    renderer = build_renderer(
+        renderer_name,
+        "recording",
+        backend=backend,
+        theme=theme,
+        threat_options=overlays,
+    )
     env = create_environment(env_config=env_config, renderer=renderer)
     renderer.setup(env)
     frame_source = cast(FrameSource, renderer)
@@ -139,6 +147,7 @@ class RecordEpisodeCallback(Callback):
         renderer_name: str = "v2",
         backend: str = "pillow",
         theme: str = "tabletop",
+        overlays: ThreatOptions | None = None,
     ) -> None:
         self.run_name = run_name
         self.env_config = env_config
@@ -149,6 +158,9 @@ class RecordEpisodeCallback(Callback):
         self.renderer_name = renderer_name
         self.backend = backend
         self.theme = theme
+        # A video has no keyboard, so the only way to see the overlays in a
+        # training recording is to ask for them when the run starts.
+        self.overlays = overlays or ThreatOptions()
         self._checkpoint_dir = f"./checkpoints/{run_name}"
         self._pending_proc: BaseProcess | None = None
         self._pending_filepath: Path | None = None
@@ -257,6 +269,7 @@ class RecordEpisodeCallback(Callback):
                 "renderer_name": self.renderer_name,
                 "backend": self.backend,
                 "theme": self.theme,
+                "overlays": self.overlays,
             },
             daemon=True,
         )

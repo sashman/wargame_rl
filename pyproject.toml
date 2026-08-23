@@ -33,7 +33,10 @@ dev = [
     "pytest-xdist>=3.8.0",
     "pyyaml>=6.0.3",
     "ruff>=0.9.5",
+    "shapely>=2.1.2",
     "types-pyyaml>=6.0.12.20260724",
+    "types-shapely>=2.1.0.20260728",
+    "types-tqdm>=4.70.0.20260805",
 ]
 
 [tool.mypy]

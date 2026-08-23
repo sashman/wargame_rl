@@ -81,7 +81,10 @@ def test_a_leg_is_scored_by_evaluate_selector() -> None:
     leg = FOUR_LEGS[0]
     seeds = layout_seeds(N_LAYOUTS)
     combat = combat_seeds_for(seeds)
-    entrant_a, entrant_b = _entrant("squad_march"), _entrant("random")
+    # Both sides deterministic: `random` seeds itself from OS entropy rather
+    # than from the episode seed, so two runs of the same leg genuinely differ
+    # and this equality could never hold.
+    entrant_a, entrant_b = _entrant("squad_march"), _entrant("squad_march_take")
 
     from_arena = play_leg(entrant_a, entrant_b, base, leg, seeds, combat)
 
@@ -146,7 +149,9 @@ def test_swapping_the_zone_changes_the_result() -> None:
     base = _base_config()
     seeds = layout_seeds(N_LAYOUTS)
     combat = combat_seeds_for(seeds)
-    args = (_entrant("squad_march"), _entrant("random"), base)
+    # A deterministic opponent, so a difference between the two legs is the
+    # zone swap rather than the opponent's own unseeded RNG.
+    args = (_entrant("squad_march"), _entrant("squad_march_take"), base)
 
     zone_one = play_leg(*args, Leg(Zone.zone_1, Seat.a), seeds, combat)
     zone_two = play_leg(*args, Leg(Zone.zone_2, Seat.a), seeds, combat)

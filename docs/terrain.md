@@ -70,8 +70,10 @@ flips are nearly each other. `env.map_name` records the orientation, so a mirror
 still attributable to its source table and a held-out table stays held out under every flip.
 
 **`terrain_budget` is the way round that**, and the reason it exists is the real layouts:
-`configs/evaluation/maps/` carries 15 or 16 pieces depending on the table, which `np.stack`
-refuses. Setting it pads the token *sequence* to a fixed length with all-zero rows, which the
+`configs/evaluation/maps/` carried 15 or 16 pieces depending on the table, which `np.stack`
+refuses. Since the tables became generated from the layout API they all carry 16 pieces, but the
+budget stays — it is what lets one network span counts the pool does not currently contain,
+and lowering it would change the input shape. Setting it pads the token *sequence* to a fixed length with all-zero rows, which the
 network drops from attention — no new column is needed to mark them, because a padding row's
 vertex count is zero and no real piece has zero vertices. It defaults to None, which is
 byte-identical to a config without it, and setting it changes the input shape, so existing

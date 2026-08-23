@@ -9,6 +9,10 @@ with the same backend primitives so a recording includes them.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
+from typing import Any
+
+import numpy as np
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.renders.renderer import Renderer
@@ -16,7 +20,10 @@ from wargame_rl.wargame.envs.renders.v2.backend import Canvas, RenderBackend, ra
 from wargame_rl.wargame.envs.renders.v2.camera import Camera
 from wargame_rl.wargame.envs.renders.v2.control import (
     ShadowRect,
+    ThreatOptions,
+    ThreatOverlay,
     compute_objective_control,
+    compute_threat_overlay,
     probe_debug_los,
 )
 from wargame_rl.wargame.envs.renders.v2.scene import (
@@ -57,12 +64,58 @@ def _blend(a: RGB, b: RGB) -> RGB:
     return ((a[0] + b[0]) // 2, (a[1] + b[1]) // 2, (a[2] + b[2]) // 2)
 
 
+def _positions_key(models: Sequence[Any]) -> bytes:
+    """Alive models' positions, as bytes — the only part of a side the sweep
+    depends on. Casualties drop out here rather than being compared, so a death
+    invalidates the cache exactly as a move does."""
+    packed: bytes = np.array(
+        [
+            (float(m.location[0]), float(m.location[1]))
+            for m in models
+            if getattr(m, "is_alive", True)
+        ],
+        dtype=float,
+    ).tobytes()
+    return packed
+
+
+def _can_trace_sight(view: BattleView) -> bool:
+    """Whether this view can answer the sight and range questions itself.
+
+    True for a live env, and for a replay of a schema-2.6 recording. False for
+    an older one: it carries the attributes but `rules_quantities` is None,
+    because no sample step was recorded and guessing one would answer a
+    *different* question convincingly.
+    """
+    if not all(
+        hasattr(view, attr)
+        for attr in (
+            "line_of_sight_matrix",
+            "player_max_ranges",
+            "opponent_max_ranges",
+            "rules_quantities",
+        )
+    ):
+        return False
+    return view.rules_quantities is not None
+
+
 class BasePresenter(Renderer):
     """Scene→frame pipeline shared by the interactive and recording presenters."""
 
-    def __init__(self, backend: RenderBackend, theme: Theme = DEFAULT_THEME) -> None:
+    def __init__(
+        self,
+        backend: RenderBackend,
+        theme: Theme = DEFAULT_THEME,
+        threat_options: ThreatOptions | None = None,
+    ) -> None:
         self._backend = backend
         self._theme = theme
+        # Mutable, because the keys flip it at runtime; the object itself is
+        # frozen, so a flip is a replace rather than a field poke.
+        self.threat_options = threat_options or ThreatOptions()
+        self._threat_key: tuple[object, ...] | None = None
+        self._threat_cache: ThreatOverlay | None = None
         self.epoch: int | None = None
         # Free-text provenance for the context slot (the training run's name, a
         # config stem, a seed) — set by whoever drives the renderer.
@@ -123,8 +176,56 @@ class BasePresenter(Renderer):
             theme=self._theme,
             debug_los=los,
             los_shadow=self._los_shadow(view),
+            threat=self._threat_overlay(view),
             show_grid=self._theme.show_grid,
             shot_fade=shot_fade_for_age(self._age_of_volley(view)),
+        )
+
+    def _threat_overlay(self, view: BattleView) -> ThreatOverlay | None:
+        """Threat geometry for this frame, or None when both switches are off.
+
+        A concrete method rather than the empty hook `_los_shadow` is: the
+        shadow is cast *from* a selection, so only a presenter with a cursor has
+        a somewhere to trace from, while a threat region is a fact about a whole
+        side that every presenter can answer.
+
+        Cached on exactly what the answer depends on — both sides' alive
+        positions, both range arrays, the terrain, and the options. Not the turn:
+        models do not occlude, so nothing else can change it. This is what keeps
+        a *paused* debug window responsive while it polls at 30 fps; it buys
+        nothing during live play, where everything moves every step.
+        """
+        options = self.threat_options
+        if not options.enabled:
+            return None
+        if not _can_trace_sight(view):
+            # A replayed snapshot cannot answer the sight question yet. Drawing
+            # the engagement half alone would be worse than drawing nothing: it
+            # would look like the threat region was empty rather than unknown.
+            return None
+        key = (
+            options,
+            _positions_key(view.player_models),
+            np.asarray(view.player_max_ranges).tobytes(),
+            _positions_key(view.opponent_models),
+            np.asarray(view.opponent_max_ranges).tobytes(),
+            view.terrain.outlines.tobytes(),
+        )
+        if key != self._threat_key:
+            self._threat_key = key
+            self._threat_cache = compute_threat_overlay(view, options)
+        return self._threat_cache
+
+    def toggle_threat(self) -> None:
+        """Flip the shooting-threat overlay. Bound to `[R]` where there are keys."""
+        self.threat_options = self.threat_options.toggled(
+            threat=not self.threat_options.show_threat
+        )
+
+    def toggle_engagement(self) -> None:
+        """Flip the engagement overlay. Bound to `[E]` where there are keys."""
+        self.threat_options = self.threat_options.toggled(
+            engagement=not self.threat_options.show_engagement
         )
 
     def _los_shadow(self, view: BattleView) -> tuple[ShadowRect, ...]:

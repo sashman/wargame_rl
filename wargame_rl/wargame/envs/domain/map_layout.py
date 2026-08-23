@@ -15,7 +15,7 @@ from typing import cast
 import numpy as np
 
 from wargame_rl.wargame.envs.domain.terrain import Footprint, Terrain
-from wargame_rl.wargame.envs.types.config import ObjectiveConfig
+from wargame_rl.wargame.envs.types.config import DeploymentConfig, ObjectiveConfig
 from wargame_rl.wargame.envs.types.geometry import Polygon
 
 
@@ -32,6 +32,7 @@ class MapLayout:
     name: str
     terrain: Terrain
     objectives: tuple[ObjectiveConfig, ...] | None = None
+    deployment: DeploymentConfig | None = None
 
     @property
     def n_objectives(self) -> int:
@@ -92,11 +93,37 @@ class MapLayout:
                 )
                 for objective in self.objectives
             )
+        deployment = None
+        if self.deployment is not None:
+            # The zones travel with the layout. A flipped table whose army still
+            # deployed into the unflipped zone would put it on the far side of
+            # the board -- the one failure mode of mirroring a map that brings
+            # its own deployment.
+            deployment = cast(
+                DeploymentConfig,
+                self.deployment.model_copy(
+                    update={
+                        "player": [
+                            (float(x), float(y))
+                            for x, y in mirror_points(
+                                np.array(self.deployment.player, dtype=float)
+                            )
+                        ],
+                        "opponent": [
+                            (float(x), float(y))
+                            for x, y in mirror_points(
+                                np.array(self.deployment.opponent, dtype=float)
+                            )
+                        ],
+                    }
+                ),
+            )
         suffix = ("x" if flip_x else "") + ("y" if flip_y else "")
         return MapLayout(
             name=f"{self.name}:{suffix}",
             terrain=Terrain(footprints=footprints),
             objectives=objectives,
+            deployment=deployment,
         )
 
     @staticmethod

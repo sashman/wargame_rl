@@ -11,6 +11,7 @@ action masks.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -33,6 +34,11 @@ from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 STAY_ACTION = 0
+
+# Every slice name `ActionHandler` can register. A name outside this set in
+# `dark_action_slices` is a typo that would silently darken nothing, so it
+# raises rather than doing nothing.
+KNOWN_ACTION_SLICES = frozenset({"stay", "movement", "shooting", "advance"})
 
 
 def _base_arrays(models: list[Any] | None) -> tuple[np.ndarray, np.ndarray]:
@@ -160,12 +166,14 @@ class ActionHandler:
         *,
         n_models: int | None = None,
         n_shoot_targets: int = 0,
+        model_moves: Sequence[float | None] | None = None,
     ) -> None:
         self._n_models = (
             n_models if n_models is not None else config.number_of_wargame_models
         )
         n_angles = config.n_movement_angles
         n_speeds = config.n_speed_bins
+        n_advance_bins = config.n_advance_speed_bins
         # Through the resolver rather than off the config, so that a board using
         # a scale other than 1 inch per unit moves models the right distance.
         quantities = resolve_rules_quantities(config)
@@ -213,6 +221,36 @@ class ActionHandler:
         )  # (n_angles, n_speeds, 2)
         self._displacements: np.ndarray = raw.astype(POSITION_DTYPE)
 
+        # Per-model Move (the rules' M). Resolved here, once, like every other
+        # rules distance -- and only materialised when a config actually asks
+        # for differing speeds.
+        #
+        # The shared table above is kept verbatim for the uniform case rather
+        # than being re-derived as fractions x M, because the two are NOT the
+        # same float: at M = 6, `6.0 / 6` is exactly 1.0 while
+        # `linspace(1/6, 1, 6)[0] * 6` is 0.9999999999999999. Rebuilding it
+        # would move every model on the board by an ULP and fail the golden
+        # gates, for no gain on the configs that do not use this.
+        self._move_speeds = np.full(self._n_models, max_speed, dtype=float)
+        for index, move in enumerate(model_moves or ()):
+            if index >= self._n_models:
+                break
+            if move is not None:
+                self._move_speeds[index] = quantities.scale.to_units(move)
+        if np.all(self._move_speeds == max_speed):
+            self._model_displacements: np.ndarray | None = None
+        else:
+            per_model = (
+                self._unit_directions[np.newaxis, :, np.newaxis, :]
+                * np.linspace(
+                    self._move_speeds / n_speeds,
+                    self._move_speeds,
+                    n_speeds,
+                    axis=-1,
+                )[:, np.newaxis, :, np.newaxis]
+            )  # (n_models, n_angles, n_speeds, 2)
+            self._model_displacements = per_model.astype(POSITION_DTYPE)
+
         self._n_move_actions = n_angles * n_speeds
         self._n_speed_bins = n_speeds
         self._n_angles = n_angles
@@ -221,21 +259,50 @@ class ActionHandler:
         self._action_space: spaces.Tuple | None = None
 
         self._registry = ActionRegistry()
-        self._registry.register("stay", 1, ALL_BATTLE_PHASES)
+        # A darkened slice keeps its width and loses every phase, so its actions
+        # are masked for the whole episode while the policy head stays the same
+        # shape. See `WargameEnvConfig.dark_action_slices`.
+        dark = frozenset(config.dark_action_slices)
+        unknown = dark - KNOWN_ACTION_SLICES
+        if unknown:
+            raise ValueError(
+                f"dark_action_slices names unknown slices: {sorted(unknown)}. "
+                f"Known slices: {sorted(KNOWN_ACTION_SLICES)}"
+            )
+
+        def phases(name: str, valid: frozenset[BattlePhase]) -> frozenset[BattlePhase]:
+            return frozenset() if name in dark else valid
+
+        self._registry.register("stay", 1, phases("stay", ALL_BATTLE_PHASES))
         self._registry.register(
             "movement",
             self._n_move_actions,
-            frozenset({BattlePhase.movement}),
+            phases("movement", frozenset({BattlePhase.movement})),
         )
 
         if n_shoot_targets > 0:
             self._shooting_slice: ActionSlice | None = self._registry.register(
                 "shooting",
                 n_shoot_targets,
-                frozenset({BattlePhase.shooting}),
+                phases("shooting", frozenset({BattlePhase.shooting})),
             )
         else:
             self._shooting_slice = None
+
+        # ⚠ Registered LAST, so every action index that existed before advance
+        # still means what it meant. Widening `n_speed_bins` instead would
+        # renumber the movement slice (`decode_action` is angle-major,
+        # speed-minor), and `_apply_warm_start_weights` loads with
+        # `strict=False`, so every checkpoint would load and be wrong.
+        self._n_advance_bins = n_advance_bins
+        if n_advance_bins > 0:
+            self._advance_slice: ActionSlice | None = self._registry.register(
+                "advance",
+                n_angles * n_advance_bins,
+                phases("advance", frozenset({BattlePhase.movement})),
+            )
+        else:
+            self._advance_slice = None
 
     @property
     def shooting_slice(self) -> ActionSlice | None:
@@ -295,22 +362,145 @@ class ActionHandler:
             )
         return self._action_space
 
-    def decode_action(self, action: int) -> np.ndarray:
-        """Return the (dx, dy) displacement for *action*."""
+    @property
+    def move_speeds(self) -> np.ndarray:
+        """Per-model Move in board units — ``(n_models,)``.
+
+        Every entry is the scenario's ``max_move_speed`` unless the model's
+        config overrode it. Scripted policies read this rather than the config
+        so they step at the speed the handler will actually give them.
+        """
+        speeds: np.ndarray = self._move_speeds
+        return speeds
+
+    def _mark_advancing_units(
+        self, action: WargameEnvAction, wargame_models: list[Any]
+    ) -> None:
+        """Set `advanced_this_turn` for every model in any unit that advances.
+
+        A move type is chosen per UNIT in the rules, but this action space is
+        per MODEL, so nothing stops one model picking an advance while its
+        squadmates pick normal moves. Left alone that is an exploit rather than
+        a mere divergence: send one model 12" to take an objective and keep the
+        other four shooting, which no legal turn allows.
+
+        Resolving it upward -- if any model advances, the whole unit advances
+        and the whole unit forfeits its shooting -- makes the cheat cost what it
+        should. The models' chosen displacements are left alone: every normal
+        speed is within `M`, which is within the advance allowance `M + roll`,
+        so each is a legal distance for the move type the unit is now making.
+
+        ⚠ This does NOT make the move rules-legal in full. A unit still makes
+        what the rules would call one move type with per-model distances chosen
+        independently, and a 12"-versus-6" split inside a 2" chain will break
+        coherency. It removes the free lunch, not the divergence.
+        """
+        if self._advance_slice is None:
+            return
+        start, end = self._advance_slice.start, self._advance_slice.end
+        advancing_groups = {
+            int(wargame_models[i].group_id)
+            for i, act in enumerate(action.actions)
+            if i < len(wargame_models) and start <= act < end
+        }
+        if not advancing_groups:
+            return
+        for model in wargame_models:
+            if int(model.group_id) in advancing_groups:
+                # The rules' cost: "only [RUN AND GUN] weapons may be fired
+                # after it", and no weapon here has that ability, so an advance
+                # forfeits the turn's shooting outright. Both shooting masks
+                # already read this flag; nothing set it before the advance move.
+                model.advanced_this_turn = True
+
+    def decode_action(
+        self,
+        action: int,
+        model_idx: int | None = None,
+        advance_roll: float = 0.0,
+    ) -> np.ndarray:
+        """Return the (dx, dy) displacement for *action*.
+
+        ``model_idx`` selects that model's own speed bins when the scenario
+        gives its models different Move characteristics. Omitting it uses the
+        shared table, which is the whole table whenever every model is equally
+        fast — every config shipped today.
+
+        ``advance_roll`` is this model's unit's D6 for the turn, and is read
+        only for actions in the advance slice. It defaults to 0 so that every
+        existing caller — five scripted baselines, both opponent policies, the
+        joint decoder and the debug session — is unchanged: with no advance
+        slice registered, no action can reach the branch that reads it.
+        """
         if action == STAY_ACTION:
             return zero_position()
+        if (
+            self._advance_slice is not None
+            and self._advance_slice.start <= action < self._advance_slice.end
+        ):
+            return self._advance_displacement(action, model_idx, advance_roll)
         move_idx = action - 1
         angle_idx = move_idx // self._n_speed_bins
         speed_idx = move_idx % self._n_speed_bins
+        if model_idx is not None and self._model_displacements is not None:
+            per_model: np.ndarray = self._model_displacements[
+                model_idx, angle_idx, speed_idx
+            ]
+            return per_model
         result: np.ndarray = self._displacements[angle_idx, speed_idx]
         return result
+
+    def _advance_displacement(
+        self, action: int, model_idx: int | None, advance_roll: float
+    ) -> np.ndarray:
+        """Displacement for an advance action: `fraction x (M + roll)`, in units.
+
+        `M + roll` is a MAXIMUM in the rules, not a fixed distance -- a unit may
+        advance any distance up to it, including a short one. So the bins span
+        the whole range and the top bin is exactly `M + roll`.
+
+        ⚠ This deliberately admits DOMINATED actions: a 4" advance costs the
+        turn's shooting and buys nothing a 4" normal move would not. Pruning
+        them was the first design here, and it was wrong for the same reason
+        widening `n_speed_bins` was wrong -- it optimises the action space
+        against the rules. A unit that cannot stop short cannot advance toward
+        an objective and halt to keep coherency, which is the binding constraint
+        in this project.
+        """
+        index = action - self._advance_slice.start  # type: ignore[union-attr]
+        angle_idx = index // self._n_advance_bins
+        bin_idx = index % self._n_advance_bins
+        move = (
+            float(self._move_speeds[model_idx])
+            if model_idx is not None
+            else float(self._speeds[-1])
+        )
+        fraction = (bin_idx + 1) / self._n_advance_bins
+        distance = fraction * (move + advance_roll)
+        direction = self._unit_directions[angle_idx]
+        displacement: np.ndarray = (direction * distance).astype(POSITION_DTYPE)
+        return displacement
+
+    @property
+    def movement_slice(self) -> ActionSlice:
+        """The normal-move action slice. Always registered."""
+        return self._registry.slice_for("movement")
+
+    @property
+    def advance_slice(self) -> ActionSlice | None:
+        """Advance action slice, or None when the scenario has no advance bins."""
+        return self._advance_slice
 
     def encode_action(self, angle_idx: int, speed_idx: int) -> int:
         """Encode an (angle_idx, speed_idx) pair into an action integer."""
         return 1 + angle_idx * self._n_speed_bins + speed_idx
 
     def best_action_toward(
-        self, dx: float, dy: float, max_step_length: float | None = None
+        self,
+        dx: float,
+        dy: float,
+        max_step_length: float | None = None,
+        model_idx: int | None = None,
     ) -> int:
         """Return the action that moves closest to the direction (dx, dy).
 
@@ -332,7 +522,9 @@ class ActionHandler:
         if max_step_length is not None:
             speed_idx = self._n_speed_bins - 1
             for s in range(self._n_speed_bins - 1, -1, -1):
-                disp = self._displacements[angle_idx, s]
+                disp = self.decode_action(
+                    self.encode_action(angle_idx, s), model_idx=model_idx
+                )
                 if np.linalg.norm(disp) <= max_step_length:
                     speed_idx = s
                     break
@@ -384,6 +576,8 @@ class ActionHandler:
             [m.base_radius for m in wargame_models], dtype=float
         )
         friendly_alive = np.array([m.is_alive for m in wargame_models], dtype=bool)
+        if phase is BattlePhase.movement:
+            self._mark_advancing_units(action, wargame_models)
         for i, act in enumerate(action.actions):
             model = wargame_models[i]
             if not model.is_alive:
@@ -400,7 +594,9 @@ class ActionHandler:
             ):
                 continue
             model.previous_location = model.location.copy()
-            displacement = self.decode_action(act)
+            displacement = self.decode_action(
+                act, model_idx=i, advance_roll=model.advance_roll
+            )
             if not collides:
                 model.location = np.clip(model.location + displacement, lower, upper)
                 continue

@@ -57,6 +57,7 @@ from wargame_rl.wargame.envs.types import (
     WargameEnvAction,
     WargameEnvConfig,
 )
+from wargame_rl.wargame.envs.types.config import MissionConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
 # ---------------------------------------------------------------------------
@@ -848,7 +849,11 @@ def _vp_view(
     cap_per_turn: int = 15,
     opponent_vp_delta: int = 0,
 ) -> SimpleNamespace:
-    mission = SimpleNamespace(params={"cap_per_turn": cap_per_turn})
+    # A real `MissionConfig`, not a stub. `vp_gain` used to duck-type its way to
+    # `params["cap_per_turn"]` through three `getattr`s precisely so a stub like
+    # this would satisfy it -- and that same tolerance is what let it silently
+    # fall back to a cap of 15 for any mission that did not carry the key.
+    mission = MissionConfig(params={"cap_per_turn": cap_per_turn})
     config = SimpleNamespace(mission=mission)
     return SimpleNamespace(
         player_vp_delta=vp_delta,
@@ -1261,8 +1266,11 @@ class TestAllModelsGroupedCriteria:
 
 class TestPlayerVPMinCriteria:
     def test_threshold_from_fraction_of_max(self) -> None:
+        # A real `MissionConfig`. The criterion reads the mission's own numbers
+        # now rather than branching on the string "default", which used to make
+        # any other name return a theoretical max of 0.
         config = SimpleNamespace(
-            mission=SimpleNamespace(type="default", params={}),
+            mission=MissionConfig(),
             number_of_battle_rounds=5,
         )
         view = SimpleNamespace(
@@ -1278,8 +1286,11 @@ class TestPlayerVPMinCriteria:
         assert criteria.is_successful(view, ctx) is False
 
     def test_vp_threshold_for_terminal_bonus(self) -> None:
+        # A real `MissionConfig`. The criterion reads the mission's own numbers
+        # now rather than branching on the string "default", which used to make
+        # any other name return a theoretical max of 0.
         config = SimpleNamespace(
-            mission=SimpleNamespace(type="default", params={}),
+            mission=MissionConfig(),
             number_of_battle_rounds=5,
         )
         view = SimpleNamespace(
