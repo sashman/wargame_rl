@@ -249,6 +249,13 @@ deciding what an action means.
   advance and the ladder cannot express it. Deliberate — a 1" gain never repays a
   turn of fire.
 
+**The exploration burden, measured.** 120 movement phases on the advance config:
+**25.1 of 48** advance actions are legal per model on average (52% of the slice — the
+roll masks the rest), and **0.00** of them are dominated. Under the old ladder roughly
+**24 of 150 actions — 16% of the whole space — were strictly dominated** and always
+legal. That is the entire mechanism the re-encoding buys, and it can only be cashed by
+training; every other statistic in this report is taken at convergence.
+
 **And the other two criteria are blocked together, on a mistake worth recording.**
 "Move type is a unit declaration" has an obvious implementation — let the unit's
 leader declare and mask the advance slice for everyone else. It is a genuine

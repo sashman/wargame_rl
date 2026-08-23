@@ -682,6 +682,10 @@ is touched** and every reward and observation golden stays bit-identical.
   for scripts and 0.4–5.9% for agents under the old ladder. And it was the only
   slice in the game whose indices changed meaning turn to turn, so a policy had to
   read `advance_roll` to know what its own action did.
+- **Exploration burden, measured** (120 movement phases): **25.1 of 48** advance
+  actions legal per model, **0.00** of them dominated — against roughly **24 of 150
+  actions, 16% of the whole space, strictly dominated and always legal** before. That
+  is the whole of what the re-encoding buys, and only training can cash it.
 - ⚠ **The reason on file for admitting dominated bins does not hold**, and was
   checked against `env.step`: only ONE model need choose an advance for the unit to
   advance, so its squadmates keep the whole normal slice and stop where they like.
