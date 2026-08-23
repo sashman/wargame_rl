@@ -142,3 +142,83 @@ different route than it proposed.
 - **Fall Back** is not implemented, so an engaged model cannot disengage.
 - Issue #237 (the opponent's advance columns are stale by one turn) is still open
   and belongs in this same batch.
+
+---
+
+# CORRECTION, 2026-08-23 (same day, after an audit panel)
+
+**Two of the four bar rows were wrong in SIGN, the engagement figure was wrong in the
+other direction, and the batch shipped a movement bug.** Two audit panels were pointed
+at this report and told to break it. All three findings were reproduced here
+independently before being accepted.
+
+## 1. ⚠ The bar table is RETRACTED. Advance HURTS the two strongest scripts.
+
+The published deltas came from n=10 with **no error bar on the delta at all** — each
+column's own across-map spread was quoted instead, and `measure_maps` never computes a
+paired difference even though `baseline/evaluate.py::paired_difference` exists. Redone
+at n=30, paired across the nine held-out tables:
+
+| policy | published (n=10) | **n=30 paired** | t | per-table sign |
+|---|---|---|---|---|
+| `squad_march` | +25.5 | **+21.1 +/- 5.2** | 4.06 | 8/9 |
+| `squad_march_shoot` | +32.6 | **+23.7 +/- 7.4** | 3.22 | 7/9 |
+| `squad_march_take` | +15.5 | **-6.5 +/- 8.0** | -0.80 | 4/9 |
+| `squad_march_deny` | +1.3 | **-20.0 +/- 7.1** | **-2.82** | **1/9** |
+
+The audit panel reached -18.7 (t=-4.65, 1/9) for `deny` by its own implementation.
+
+**"Worth +1.3 to +32.6, positive on 4 of 4" is false.** The honest statement is that the
+naive out-of-reach heuristic helps the movement-only policies, for which advancing is
+free because they never shoot, and **costs the allocation-aware ones about 6-20 vp** —
+including `squad_march_take`, which *is* the bar.
+
+⚠ **This does not mean Advance is bad. It means THIS HEURISTIC is bad**, and a bar should
+use the best scripted play available. Until a better rule exists,
+`advance_when_out_of_reach` should default to **False for `take` and `deny`**.
+
+## 2. ⚠ The engagement figure was wrong in the OTHER direction: it is 100%, not 47%
+
+The 6.01% -> 3.21% figure came from an uncommitted script with a hardcoded 2.26" ring.
+That constant is fractionally **larger** than the env's own predicate
+(`shooting_masks.py`: engaged iff `centre_distance <= engagement_range + 2*base_radius`),
+while `back_off_to_unengaged` parks every rescued model at `ring + epsilon`. **So the
+test counted every model the rule saved as still engaged.**
+
+Recomputed against the env's own predicate: **7.52% -> 0.00%. All of it removed.**
+
+And the published explanation of the residual — "legitimate: a model with no legal
+endpoint stays, and deployment can place one engaged" — is refuted:
+`domain/placement.py` enforces `hostile_separation = min_separation + engagement_range`,
+so no model ever *starts* a movement phase engaged.
+
+## 3. ⚠ The batch shipped a movement bug: models ended OVERLAPPING
+
+`back_off_to_unengaged` walked the endpoint backwards along its heading **without
+re-checking bases**, into ground `resolve_move` had already cleared as
+passable-but-not-endable. Measured: **0.18% of friendly pairs ended a movement phase
+overlapping, worst penetration 0.68"**, against **0.0000%** with the rule off — violating
+the first line of `movement.py`'s own docstring.
+
+**Fixed:** the occupied bases now contribute forbidden spans to the same backward walk,
+so one point must satisfy both constraints. Re-measured **0.0000% both ways**.
+
+⚠ **Six unit tests covered the function and not one called `env.step`, so none of them
+could ever have seen it** — the composition is where the defect lives. That is verbatim
+the defect this project already paid for on the joint decoder, in the same PR that cites
+it. `test_no_two_models_end_a_movement_phase_overlapping` now drives the real env.
+
+## What survives
+
+- The **premise**: no scripted baseline or opponent policy could advance, and an advancing
+  agent was being scored against a walking bar. That was real and had to be fixed.
+- The **endpoint rule**, which works better than claimed.
+- The correction in section 3 of the original report (the bar table was already
+  symmetric) — the audit panel checked it and rated it SOUND.
+
+## The lesson
+
+**Compute the error bar on the quantity you are claiming, not on its parts.** Both wrong
+rows were visible in the published numbers: combining the printed bars naively gives
+t = 1.12 and 0.11 for `take` and `deny`, and +1.3 was reported as a positive result
+anyway.
