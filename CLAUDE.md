@@ -501,13 +501,20 @@ Move 12 against 15 elites at 24" reach — trained three seeds, 300 epochs, scor
 
 - **The agent beats the best script by +48.5, the largest margin recorded here.**
   Agent **+16.2** (+29.5 / +8.2 / +11.0) against `squad_march_deny` **−32.3**.
-  Across seeds +48.5 ± 6.7 (t=7.26, df=2); **across tables +48.6 ± 9.2 (t=5.30,
-  df=8), ahead on 9 of 9**. ⚠ **UNPAIRED** — 30 models and `max_groups` 6 share no
-  init with any other lineage.
+  ⚠ **t = 3.65, not the 7.26 first published** — that divided by the seed spread
+  alone and treated the script's own **±11.5** as zero; propagating both gives
+  SE 13.30. The "two independent estimators" were one dataset sliced two ways
+  (their agreement is arithmetic), and **8–9 of 9 tables**, not 9 of 9 — the
+  per-seed counts are 9/9, 8/9, 8/9 and averaging before counting signs flatters
+  it. ⚠ **UNPAIRED** on init — though the layout pairing that matters here IS
+  present (identical tables and seeds).
 - ⚠ **This is NOT the agent getting better.** Offence is **negative on 3/3**
-  (−11.4 / −43.9 / −31.1); defence carries all of it (+73.3 / +84.4 / +74.4). It is
-  the mirror's decomposition unchanged, and the r=+0.991 rule — *the gap tracks what
-  the best script concedes* — continuing to hold. The elite concedes 187.4 to a
+  (−11.4 / −43.9 / −31.1); defence carries all of it (+73.3 / +84.4 / +74.4).
+  ⚠ **RETRACTED: this does NOT confirm the r=+0.991 rule.** Refitting the 25v25
+  rows predicts **−5.1** at this concede level against +48.5 observed — a miss
+  bigger than the effect. The correlation was fitted on one scenario and does not
+  transfer. The offence/defence split is also an **identity**, not a
+  decomposition, so read it as bookkeeping rather than as a cause. The elite concedes 187.4 to a
   script and 103–114 to the agent, so ~80 vp of denial exists here; against
   `advance_and_shoot`, where both concede ~130, the same trait was worth −75.9.
 - **`held` INVERTED, and that is the one new observation.** The agent holds *more*
@@ -598,6 +605,44 @@ Measured 2026-08-22, [brief](docs/advance-move-problem.md).
 - **Open:** whether the ~12 vp is fixable by training longer or is a permanent
   cost of a 47% larger action space. 300 epochs is a screen, and this project's
   own rule is that a marginal screen means "run it longer".
+### Offence is not reward-shapeable here — three arms, one conclusion
+
+Measured 2026-08-22, [report](reports/2026-08-22-the-agent-is-never-paid-to-attack.md).
+
+`closest_objective_v2`'s candidate gate asks whether an arrival improves the
+control label, imagining exactly ONE model arriving — so an objective the
+opponent holds by two or more could never be a travel target. `contest_deficit`
+widens that. Three seeds, 300 epochs, `ent_coef` 0.003, scored refereed at K=3,
+**paired against the `-newmaps` controls**.
+
+- **REJECTED. −2.7 ± 4.8 paired, t=−0.55, 1 of 3 seeds positive**; across tables
+  −2.7 ± 3.7, t=−0.72, **ahead on 2 of 9**.
+- ⚠ **It failed on the ACCEPT criterion, which was OFFENCE.** Offence went
+  **−61.2 → −71.5**, backwards on 2 of 3 seeds. The lever built to fix offence
+  made it worse.
+- ⚠ **`alive` fell 3/3 (−0.048) with `held` flat** — the *reverse* of hoarding,
+  and the original reject rule (`alive` **rises**) would have missed it entirely.
+  The symmetric clause was added at epoch 290, before any score existed, after
+  adversarial review. **Write reject rules for the failure your lever actually
+  risks, not the one you are already worried about.**
+- **The mechanism is the 2026-08-11 teleport audit reproduced by gradient.** That
+  audit force-moved a squad onto contested ground and measured **−1.69 of 5
+  models** and **−29.41 of its own income** against 4.91 defenders. Paying a
+  policy to walk at defended ruins gets it shot crossing open ground. **The
+  one-model gate was load-bearing**, exactly as the overstack penalty was.
+- The gate change *worked mechanically* — "they hold it by 2+" exclusions fell
+  43.4% → 3.9%, units with their own objective rose 32.0% → 48.1% — and bought
+  nothing. Observability passed. The scenario was not at fault either
+  (`24v24_maps_spare_squads` was built to pose the question; offence did not move
+  there).
+
+⚠ **THIS IS THE THIRD CONSECUTIVE REWARD TERM TO LEAVE OFFENCE FLAT OR WORSE**
+(−50.5, −42, −71.5). Stop shaping offence. **The diagnosis the evidence supports
+is a DIFFERENCE-REWARD problem:** `vp_gain` is net, so denial *is* paid — but it
+is **global**, broadcast identically to every alive model, so no model can prefer
+"take theirs" to "stand on ours"; both move the same shared scalar identically.
+The per-model term prices only *distance closed*; the term that prices *outcome*
+is global. No candidacy gate can reach that.
 
 ### How to measure here
 

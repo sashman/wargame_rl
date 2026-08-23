@@ -162,10 +162,11 @@ train-seed-flags max_epochs seed group tag flags *configs:
 # Use: just train-coherency-baseline 300 3
 # Use: just train-coherency-baseline 300 3 4 -newmaps   # seeds 4,5,6
 #
-# `env_config` exists so an ARM trains with byte-identical flags to the control.
-# `train-seed-flags` omits `--record-every-n-epochs`, and a differing recording
-# cadence is not something to assume is free. Defaulted, so every existing
-# invocation is unchanged.
+# `env_config` exists so an ARM can be trained with byte-identical flags to the
+# control. Pairing needs the same seed AND the same flags -- `train-seed-flags`
+# omits `--record-every-n-epochs`, and a differing recording cadence is not
+# something to assume is free. Defaulted, so every existing invocation is
+# unchanged.
 train-coherency-baseline max_epochs='300' n_seeds='3' first_seed='1' tag='-baseline' env_config='configs/golden/25v25_maps_two_mode.yaml':
 	@trap 'kill 0' INT TERM && \
 	for s in $(seq {{first_seed}} $(( {{first_seed}} + {{n_seeds}} - 1 ))); do \
