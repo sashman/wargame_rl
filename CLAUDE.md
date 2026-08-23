@@ -685,41 +685,49 @@ summed army value, `dVP` the realised `vp_margin` from playing both branches out
   allocation-aware decode would be replacing a rule that just beat its own exact
   counterpart by 33.7 vp. Re-cost before funding. Tune on the 36, never the nine.
 
-### A squad cannot agree where to go — the unit never moves as a body
+### Squad heading disagreement is a SYMPTOM, and the statistic measured architecture
 
-Measured 2026-08-23, no GPU, three seeds, held-out nine,
-[report](reports/2026-08-23-a-squad-cannot-agree-where-to-go.md).
+Measured 2026-08-23, no GPU, three seeds,
+[report + correction](reports/2026-08-23-a-squad-cannot-agree-where-to-go.md). Two expert
+panels were given the first version and refuted its causal half the same day.
 
-| | within-squad angle variance | all on ONE heading | distinct objectives held | squads per point | sharing |
-|---|---|---|---|---|---|
-| `squad_march_take` | **0.0007** | **96.8%** | **3.28** | **1.21** | **31.9%** |
-| agent (s1/s2/s3) | 0.108–0.148 | 52.9–58.5% | 2.08–2.30 | 1.89–1.96 | 75.6–79.1% |
+**What SURVIVES — the agent allocates worse than chance.** Both panels reconstructed the
+numerator independently: the script puts **3.97** squads on objectives, the agent
+**4.03–4.51** — essentially identical — and the agent crams them onto **2.08–2.30** distinct
+points against the script's **3.28**. Per alive squad, 0.35 objectives against 0.685.
+Correcting for squad count makes the gap **larger**.
 
-- **The scripts steer a whole unit along ONE shared vector** (`model_observation.py`
-  says so, and calls it why their formation "holds by construction"). The agent's
-  models disagree with each other on **roughly half** of all squad-moves.
-- ⚠ **`decode_topk=3` does NOT fix it** — variance 0.1312, all-on-one 57.0%,
-  indistinguishable from K=1. **The joint decoder filters for LEGALITY and never
-  makes a squad agree where to go.** "The decoder solved coherency" is about
-  legality only.
-- **A squad whose members pull different ways cannot travel** — the 2" chain turns
-  disagreement into immobility. So the script's squads translate cleanly onto 3.28
-  separate objectives while the agent's mill in place on 2.08, piled two deep.
-  This is the freezing finding from the other end: **91.8% of frozen model-steps
-  have a friendly base in contact**, and 75.5% have no legal shorter move at all.
-- ⚠ **This is why the advance move did not pay: extra speed is worthless to a unit
-  that cannot commit to a heading.** It does **not** reinstate the retracted
-  freezing explanation — the arm and control froze *equally* because both share
-  the disagreement. Neither could use speed.
-- ⚠ **Two obvious fixes are still measured nulls**: `observe_unit_centroid` (−62.1
-  vp, worst arm on record) and a rigid unit action space (coherency 0.444). But
-  read the second precisely — rigid translation "cannot *restore* a broken
-  formation" is about recovery, **not** about committing to a heading. A
-  hierarchical move (squad picks the heading, models pick offsets) is neither, and
-  is untried. ⚠ It changes the action space, so it is **UNPAIRABLE** — build the
-  cross-config bridge first.
-- **Watch within-squad circular variance.** 0.0007 scripted against 0.108–0.148.
-  Free to read on frozen weights before scoring an epoch.
+- ⚠ **RETRACTED: "a squad cannot agree where to go, so it never gets anywhere."** Executed
+  squad-centroid travel is **2.82" per squad-step against the script's 2.05"** — the agent
+  covers ~40% MORE ground while holding a third fewer objectives. It is not failing to go
+  anywhere; **it is going somewhere useless, constantly.**
+- ⚠ **THE HEADLINE STATISTIC MEASURED THE ARCHITECTURE.** `clone_squad_march_take.ckpt` is a
+  factored per-model network cloned from the winning script. All-on-one-heading: teacher
+  **91.8%**, its own clone **42.2%**, agent 35.1%. Normalised to per-model modal agreement,
+  **83% of the script-to-agent gap is the factored architecture** and only 17% is the agent.
+  A product policy cannot reproduce a shared vector. **Report per-model modal agreement, and
+  always beside a clone control.**
+- ⚠ **"Make the squad agree" is a MEASURED NULL.** Consensus decoding on frozen weights
+  drives within-squad variance to **0.0000** and buys 7.8% more travel for
+  **−4.8 / −4.1 / −9.1 vp, 3/3 seeds negative** (two independent implementations).
+- ⚠ **`measure_angle_collapse` had NO movement-phase filter** and decoded the shooting slice
+  as headings (bin 16 of a 16-bin wheel); squadmates shoot the same target, so those rows
+  read unanimous and diluted whichever policy shoots more. Fixed with a phase guard and a bin
+  assert. Corrected: script 0.0006 / 97.9%, agent **0.142–0.190 / 41.6–47.7%**.
+  ⚠ **The "stay share 33.5% v 65.5%" line is RETRACTED** — movement-phase only it is ~0% v
+  56.9%, which *confirms* the standing 0.4%-v-38–57% figure.
+- **THE LEAD CANDIDATE, and CLAUDE.md already said to check it.** `closest_objective_v2` +
+  `fallback_to_nearest: true` pays **+0.081 per inch closed on the CENTRE POINT** of each
+  model's *own* nearest objective — saturating within ~0.63" of the centre, **not** at the
+  control radius. So **STAY is strictly dominated** (hence the ~0% stay rate), every model is
+  pulled to a point one or two bases can occupy, and — with 8 squads over 5–6 markers leaving
+  2–3 unassigned each step — **two members of one squad are paid to walk apart**. A target
+  switch returns progress 0.0 and re-anchors, so **abandoning a target is free**. Check this
+  before anything else.
+- ⚠ **RUN THE CLONE CONTROL ON ANY BEHAVIOURAL STATISTIC before building a diagnosis on it.**
+  It costs one inference run. If a clone of the *winning* policy scores near the *losing* one,
+  the statistic is measuring your architecture, not skill. This is the second time a published
+  explanation here was checked against the wrong control.
 
 ### How to measure here
 
