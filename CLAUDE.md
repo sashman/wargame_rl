@@ -1115,9 +1115,20 @@ Measured 2026-08-23, no GPU,
   ⚠ The legal set along the ray is **not an interval**, so it walks back ring by
   ring rather than bisecting. ⚠ The reverted first attempt was a **path**
   constraint and cost 87% of opponent-held objectives their only legal spot.
-- ⚠ **THE OPPONENT POLICIES STILL DO NOT ADVANCE.** `scripted_advance_to_objective`
-  is named for the word, not the rule. **Do not train on an advance config until
-  they do** — the agent would train against an opponent playing a slower game.
+- **The opponent advances too.** ⚠ Correction to a first draft: the measurements
+  above were *already* symmetric, because the advance configs set
+  `opponent_policy: scripted_baseline` wrapping `squad_march_take`, which inherited
+  Advance in the same change. The two hand-written policies
+  (`scripted_advance_to_objective`, and `scripted_advance_and_shoot` which delegates
+  to it) now advance as well, decided per unit from the unit's **centroid** —
+  measured from the nearest member it almost never fires, since the opponent deploys
+  3–12" from its objectives at Move 6.
+- ⚠ **The opponent's advance columns are ZEROED, not dropped, and #237's proposal
+  does not work.** Player and opponent tokens share a feature width
+  (`model/common/observation.py` asserts it), so removing two columns from one side
+  alone fails at the tensor. A constant-zero column contributes nothing through the
+  embedding, so zeroing is informationally identical to dropping — and costs **no
+  shape change and orphans no checkpoint**, which the proposal would have.
 - `advance_when_out_of_reach: False` reproduces the pre-Advance bar action for
   action, so both columns come from one config and one code path.
 

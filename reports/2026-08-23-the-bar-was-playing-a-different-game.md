@@ -106,12 +106,39 @@ Three golden files were regenerated deliberately:
 `observation_golden_25v25_single_phase`. The other three are byte-identical, which
 is the check that the movement change is targeted rather than global.
 
-## What is NOT done
+## 3. The opponent advances too
 
-- **The opponent policies do not advance yet.** `scripted_advance_to_objective` and
-  `scripted_advance_and_shoot` are named for the word, not the rule. Until they do,
-  the agent still trains against an opponent playing a slower game. ⚠ **Do not
-  train on an advance config before this lands.**
+⚠ **Correction to an earlier draft of this report.** It said the opponent could not
+advance. That was true of the two hand-written opponent policies, and **false of the
+measurements above**: the advance configs set `opponent_policy: scripted_baseline`
+wrapping `squad_march_take`, so the opponent inherited Advance from
+`ScriptedSquadMarchPolicy` in the same change. Both columns of the table are
+therefore symmetric — off is neither side advancing, on is both.
+
+`scripted_advance_to_objective` (and `scripted_advance_and_shoot`, which delegates
+to it for movement) now advance under the same rule, decided per **unit** — from
+the unit's **centroid**, matching the player-side baselines. Measured from the
+nearest member instead, it almost never fires: the opponent deploys 3-12" from its
+objectives at Move 6.
+
+`advance_when_out_of_reach = False` gives the walking opponent back.
+
+## 4. The opponent's advance columns are zeroed
+
+Each side rolls at the start of its **own** turn, so the opponent's `advance_roll`
+and `advanced_this_turn` are zero in round 1 and **one turn stale** thereafter --
+they record what it rolled and did on its *last* turn. A stale column is worse than
+no column: the network has to learn to ignore it.
+
+⚠ **Issue #237 proposed dropping the two columns and that does not work.** The
+player and opponent tokens share a feature width (`model/common/observation.py`
+asserts it), so removing two columns from one side alone fails at the tensor.
+They are **zeroed** instead. A constant-zero column contributes nothing through the
+embedding, so this is informationally identical to dropping it -- and unlike
+dropping it, costs no shape change and orphans no checkpoint. Closes #237 by a
+different route than it proposed.
+
+## What is NOT done
 - **Fall Back** is not implemented, so an engaged model cannot disengage.
 - Issue #237 (the opponent's advance columns are stale by one turn) is still open
   and belongs in this same batch.

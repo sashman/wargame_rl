@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
-from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.model.common.factory import create_environment
 
 
@@ -64,8 +64,16 @@ def test_the_toggle_reproduces_the_pre_advance_bar_exactly() -> None:
     """`advance_when_out_of_reach = False` must be the old policy, action for action."""
     env_old = create_environment(env_config=_config(3))
     env_new = create_environment(env_config=_config(3))
-    old = build_baseline_policy("squad_march")
-    old.advance_when_out_of_reach = False  # type: ignore[attr-defined]
+    # A subclass, not a mutated instance: mutating one would be a hazard for any
+    # test that ran after it on the same worker.
+    from wargame_rl.wargame.envs.baseline.scripted_squad_march import (
+        ScriptedSquadMarchPolicy,
+    )
+
+    class NoAdvance(ScriptedSquadMarchPolicy):
+        advance_when_out_of_reach = False
+
+    old = NoAdvance()
     new = build_baseline_policy("squad_march")
 
     observation_old, _ = env_old.reset(seed=5)
@@ -165,3 +173,82 @@ def test_a_scripted_policy_never_emits_an_illegal_action_when_darkened() -> None
             )
         observation, _r, done, _t, _i = env.step(action)
     env.close()
+
+
+def test_the_opponent_advances_too() -> None:
+    """A rules feature the OPPONENT cannot use is the same defect as a bar that cannot.
+
+    Until this existed, an advancing agent trained against an opponent walking at
+    Move while it ran at `M + D6` — which flatters the agent at the very matchup
+    it is scored on.
+
+    ⚠ Exercises `scripted_advance_to_objective` directly rather than through a
+    config, because the golden advance config's opponent is `scripted_baseline`
+    — a *baseline* played on the opponent side, which takes its Advance from
+    `ScriptedSquadMarchPolicy` and is covered by the tests above.
+    """
+    from scripts.scenario_overrides import load_env_config
+    from wargame_rl.wargame.envs.opponent.registry import build_opponent_policy
+    from wargame_rl.wargame.envs.types.config.battle import OpponentPolicyConfig
+
+    config = load_env_config("configs/experiments/25v25_maps_advance.yaml")
+    env = create_environment(env_config=config)
+    env.reset(seed=8)
+    policy = build_opponent_policy(
+        OpponentPolicyConfig(type="scripted_advance_to_objective"), env
+    )
+    advance_slice = env.opponent_action_handler.advance_slice
+    assert advance_slice is not None
+
+    action = policy.select_action(env.opponent_models, env)
+    advances = sum(
+        1 for a in action.actions if advance_slice.start <= a < advance_slice.end
+    )
+    env.close()
+
+    assert advances > 0, "the opponent never used the Advance move"
+
+
+def test_the_opponent_toggle_reproduces_the_walking_opponent() -> None:
+    """`advance_when_out_of_reach = False` must give the pre-Advance opponent."""
+    from scripts.scenario_overrides import load_env_config
+    from wargame_rl.wargame.envs.opponent.scripted_advance_to_objective_policy import (
+        ScriptedAdvanceToObjectivePolicy,
+    )
+
+    class Walking(ScriptedAdvanceToObjectivePolicy):
+        advance_when_out_of_reach = False
+
+    config = load_env_config("configs/experiments/25v25_maps_advance.yaml")
+    env = create_environment(env_config=config)
+    env.reset(seed=8)
+    advance_slice = env.opponent_action_handler.advance_slice
+    assert advance_slice is not None
+
+    action = Walking(env).select_action(env.opponent_models, env)
+    env.close()
+
+    assert not any(
+        advance_slice.start <= a < advance_slice.end for a in action.actions
+    ), "the toggle is off and the opponent still advanced"
+
+
+def test_the_opponents_advance_columns_are_zeroed_not_stale() -> None:
+    """Each side rolls on its own turn, so the opponent's values are a turn old.
+
+    Zeroed rather than dropped: the two token types share a feature width, and a
+    constant-zero column is informationally identical to no column while costing
+    no shape change.
+    """
+    env = create_environment(env_config=_config(3))
+    observation, _ = env.reset(seed=2)
+
+    for _ in range(6):
+        observation, _r, done, _t, _i = env.step(
+            WargameEnvAction(actions=[int(a) for a in env.action_space.sample()])
+        )
+        if done:
+            break
+        for model in observation.opponent_models:
+            assert model.advance_roll == 0.0
+            assert model.advanced_this_turn == 0.0

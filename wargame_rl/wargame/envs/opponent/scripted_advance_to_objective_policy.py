@@ -37,6 +37,20 @@ class ScriptedAdvanceToObjectivePolicy(OpponentPolicy):
             kwargs.get("cohesion_weight", DEFAULT_COHESION_WEIGHT)  # type: ignore[arg-type]
         )
 
+    # Advance when a normal full move cannot reach the objective -- the same
+    # "run while far, walk once close" rule the scripted player baselines use.
+    #
+    # ⚠ A bar the OPPONENT cannot use is the same defect as one the bar cannot
+    # use. Until this existed, an advancing agent trained against an opponent
+    # walking at Move while it ran at `M + D6`, which flatters the agent at the
+    # matchup it is scored on.
+    #
+    # Decided per GROUP because that is how the env resolves it: one D6 per unit,
+    # and `advanced_this_turn` marked for every model of any group that advanced.
+    # A per-model decision would forfeit the whole unit's shooting to buy extra
+    # distance for one model.
+    advance_when_out_of_reach: bool = True
+
     def select_action(
         self,
         opponent_models: list[WargameModel],
@@ -57,6 +71,29 @@ class ScriptedAdvanceToObjectivePolicy(OpponentPolicy):
         w = self._cohesion_weight
 
         obj_radii = np.array([o.radius_size for o in env.objectives])
+
+        # One decision per unit, taken before any of its models moves.
+        speeds = handler.move_speeds
+        advancing_groups: set[int] = set()
+        if self.advance_when_out_of_reach:
+            for group_id in {int(m.group_id) for m in opponent_models if m.is_alive}:
+                members = [
+                    i
+                    for i, m in enumerate(opponent_models)
+                    if int(m.group_id) == group_id and m.is_alive
+                ]
+                reach = float(min(speeds[i] for i in members) if speeds.size else 0.0)
+                # Measured from the unit's CENTROID, matching the scripted player
+                # baselines: a unit moves as a body, so whether a normal move
+                # arrives is decided by where the body is, not by its nearest
+                # model. Using the nearest member instead almost never fires --
+                # the opponent deploys 3-12" from its objectives at Move 6.
+                unit_centre = np.mean(
+                    [opponent_models[i].location for i in members], axis=0, dtype=float
+                )
+                gaps = np.linalg.norm(obj_locs - unit_centre, axis=1) - obj_radii
+                if gaps.size and float(np.min(gaps)) > reach:
+                    advancing_groups.add(group_id)
 
         for index, model in enumerate(opponent_models):
             if not model.is_alive:
@@ -84,8 +121,21 @@ class ScriptedAdvanceToObjectivePolicy(OpponentPolicy):
             blended = (1.0 - w) * obj_dir + w * centroid_dir
             dx, dy = float(blended[0]), float(blended[1])
             distance_to_boundary = dists[nearest_idx] - obj_radii[nearest_idx]
+            advance = (
+                handler.best_advance_toward(
+                    dx,
+                    dy,
+                    advance_roll=float(model.advance_roll),
+                    max_step_length=distance_to_boundary,
+                    model_idx=index,
+                )
+                if int(model.group_id) in advancing_groups
+                else None
+            )
             actions.append(
-                handler.best_action_toward(
+                advance
+                if advance is not None
+                else handler.best_action_toward(
                     dx,
                     dy,
                     max_step_length=distance_to_boundary,
