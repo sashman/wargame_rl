@@ -134,7 +134,7 @@ wargame_rl/
 - **Group cohesion** — optional penalty for unit separation
 - **DDD layering** — `domain/` owns the rules (Battle aggregate, clock, placement, termination, LOS, shooting); `wargame.py` is a facade; reward/renders depend only on the `BattleView` protocol. See [docs/ddd-envs.md](docs/ddd-envs.md)
 - **Rules specification** — [docs/rules/](docs/rules/README.md) is the game's rules authority: a self-contained spec written for this project, with `constants.yaml` (every number, in inches) and [implementation-status.md](docs/rules/implementation-status.md) (per-rule: implemented / partial / divergent / absent). Before implementing a mechanic, read its chapter and its gap-map row. `tests/test_no_ip_references.py` keeps the repo free of references to the commercial product the rules derive from — the spec names no product, publisher, edition or faction, and neither should anything else
-- **Play doctrine** — [docs/play-doctrine.md](docs/play-doctrine.md) is how this game is *won*, as `docs/rules/` is how it is *played*: 42 numbered entries, each stating a claim, whether the environment can express it, which extension point it lands in, and what has already been measured about it. It is a store of **hypotheses, never of evidence** — price an entry as a scripted policy (`just measure-paired`, no GPU) before it becomes a reward term or a training run, and where an entry disagrees with the record below, **the record wins**
+- **Play doctrine** — [docs/play-doctrine.md](docs/play-doctrine.md) is how this game is *won*, as `docs/rules/` is how it is *played*: 43 numbered entries, each stating a claim, whether the environment can express it, which extension point it lands in, and what has already been measured about it. It is a store of **hypotheses, never of evidence** — price an entry as a scripted policy (`just measure-paired`, no GPU) before it becomes a reward term or a training run, and where an entry disagrees with the record below, **the record wins**
 
 ### Game State I/O (`envs/state/`)
 
@@ -657,6 +657,18 @@ measure-advance-use` censuses what a policy buys with the advance and what it pa
   move the policy already uses sanely, and raises the value of *shrinking* it —
   32% of the action space is an option the policy must spend samples learning to
   decline, half of it strictly dominated.
+- ⚠ **A MOVE TYPE IS A LEVER, NOT AN ADVANTAGE — and the gate that assumed otherwise is
+  RETIRED.** The standing rule was "a scripted advance rule that prices the forfeited shooting
+  has to beat `squad_march_take` before anything trains". It bakes in the assumption the
+  evidence refutes, so no correct implementation can satisfy it. **Do not add scripted policies
+  whose purpose is to advance** — the two on file cost their own users −78 and −11.9 vp. The
+  right question is not *does the lever pay* but **does carrying it cost the agent anything**,
+  which needs no advance-seeking script: train against a `dark_action_slices` control of
+  identical shape and read the paired difference. See D-43.
+- ⚠ **NO MELEE, so every movement measurement here is PROVISIONAL.** A shooting army has no
+  reason to close except to stand on an objective, so closing is priced only by what it
+  captures and never by what it threatens. Any move type whose value is "arrive sooner" is
+  being measured in a game that does not yet reward arriving.
 - ⚠ **The only live explanation left for the −26.7 is the PATH, and nothing above
   prices it.** Every statistic here is taken at convergence; a 300-epoch screen
   prices sample efficiency.
