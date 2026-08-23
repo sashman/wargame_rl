@@ -17,7 +17,10 @@ from wargame_rl.wargame.envs.domain.coherency import (
 )
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.value_objects import POSITION_DTYPE
-from wargame_rl.wargame.envs.env_components.actions import ActionRegistry
+from wargame_rl.wargame.envs.env_components.actions import (
+    ADVANCE_DIE_FACES,
+    ActionRegistry,
+)
 from wargame_rl.wargame.envs.env_components.distance_cache import (
     compute_distances,
     objective_counts_from_norms_offset,
@@ -187,7 +190,6 @@ def _coherency_features(
 
 # A D6. The roll is divided by it so the column is in [0, 1] like every
 # other normalised feature, rather than being 6x the scale of its neighbours.
-ADVANCE_DIE_FACES = 6.0
 
 
 def _models_to_obs(
@@ -491,6 +493,16 @@ def build_observation(
         action_mask = action_registry.get_model_action_masks(
             phase, len(view.player_models), alive_mask=player_alive
         )
+        if action_registry.has_slice("advance") and phase == BattlePhase.movement:
+            # The advance rungs are ABSOLUTE distances above Move, so the turn's
+            # D6 no longer changes what an action means -- it decides which
+            # rungs are reachable. Without this mask a policy could pick a 12"
+            # advance on a roll of 1 and silently receive a 7" one, which is the
+            # non-stationary semantics the absolute ladder exists to remove.
+            advance_slice = action_registry.slice_for("advance")
+            action_mask[:, advance_slice.start : advance_slice.end] &= (
+                view.player_advance_legality
+            )
         if (
             action_registry.has_slice("shooting")
             and phase == BattlePhase.shooting

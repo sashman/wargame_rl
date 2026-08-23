@@ -162,7 +162,7 @@ opponent_policy:
     baseline: squad_march_take
 ```
 
-**Parameters:** `baseline` (**required**) — a name from the baseline registry: `random`, `hold_deployment`, `greedy_nearest`, `split_evenly`, `squad_march`, `squad_march_shoot`, `squad_march_deny`, `squad_march_take`, `contest_and_spread`, `assignment_optimal`. Any further params are forwarded to the baseline's constructor. An unknown name raises at construction.
+**Parameters:** `baseline` (**required**) — a name from the baseline registry: `random`, `hold_deployment`, `greedy_nearest`, `split_evenly`, `squad_march`, `squad_march_shoot`, `squad_march_deny`, `squad_march_take`, `squad_march_take_advance`, `squad_march_take_arrive`, `contest_and_spread`, `assignment_optimal`. Any further params are forwarded to the baseline's constructor. An unknown name raises at construction.
 
 `shoots` is derived from whether the baseline overrides `select_shooting`, so a shooting baseline gets its mask refined with range, line-of-sight and engagement validity and a movement-only one does not pay for the check. It is not a performance switch: declared wrongly, shots would be applied unchecked.
 

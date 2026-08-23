@@ -109,6 +109,7 @@ wargame_rl/
 | Score a checkpoint (baseline-comparable) | `just measure-checkpoint <ckpt> <config.yaml> [n_episodes] [record] [decode_topk] [key=value...]` |
 | Score on the real table layouts | `just measure-maps <policy\|ckpt> <config.yaml> [n_episodes] [maps_dir] [decode_topk] [key=value...]` |
 | Why an objective was not held | `just measure-objective-split <policy\|ckpt> <config.yaml> [n_episodes]` |
+| What a policy buys with the advance move, and what it pays | `just measure-advance-use <policy\|ckpt> <config.yaml> [n_episodes] [decode_topk]` |
 | How often the VP cap binds, and what it discards | `just measure-vp-cap <policy\|ckpt> <config.yaml> [n_episodes] [decode_topk]` |
 | What holding a point earns against what it costs | `just measure-hold-hazard <policy\|ckpt> <config.yaml> [n_episodes] [decode_topk]` |
 | How often a policy is in unit coherency | `just measure-coherency <policy\|ckpt> <config.yaml> [n_episodes]` |
@@ -133,7 +134,7 @@ wargame_rl/
 - **Group cohesion** — optional penalty for unit separation
 - **DDD layering** — `domain/` owns the rules (Battle aggregate, clock, placement, termination, LOS, shooting); `wargame.py` is a facade; reward/renders depend only on the `BattleView` protocol. See [docs/ddd-envs.md](docs/ddd-envs.md)
 - **Rules specification** — [docs/rules/](docs/rules/README.md) is the game's rules authority: a self-contained spec written for this project, with `constants.yaml` (every number, in inches) and [implementation-status.md](docs/rules/implementation-status.md) (per-rule: implemented / partial / divergent / absent). Before implementing a mechanic, read its chapter and its gap-map row. `tests/test_no_ip_references.py` keeps the repo free of references to the commercial product the rules derive from — the spec names no product, publisher, edition or faction, and neither should anything else
-- **Play doctrine** — [docs/play-doctrine.md](docs/play-doctrine.md) is how this game is *won*, as `docs/rules/` is how it is *played*: 37 numbered entries, each stating a claim, whether the environment can express it, which extension point it lands in, and what has already been measured about it. It is a store of **hypotheses, never of evidence** — price an entry as a scripted policy (`just measure-paired`, no GPU) before it becomes a reward term or a training run, and where an entry disagrees with the record below, **the record wins**
+- **Play doctrine** — [docs/play-doctrine.md](docs/play-doctrine.md) is how this game is *won*, as `docs/rules/` is how it is *played*: 42 numbered entries, each stating a claim, whether the environment can express it, which extension point it lands in, and what has already been measured about it. It is a store of **hypotheses, never of evidence** — price an entry as a scripted policy (`just measure-paired`, no GPU) before it becomes a reward term or a training run, and where an entry disagrees with the record below, **the record wins**
 
 ### Game State I/O (`envs/state/`)
 
@@ -606,6 +607,154 @@ Measured 2026-08-22, [brief](docs/advance-move-problem.md).
 - **Open:** whether the ~12 vp is fixable by training longer or is a permanent
   cost of a 47% larger action space. 300 epochs is a screen, and this project's
   own rule is that a marginal screen means "run it longer".
+- ⚠ **Read this beside the next section.** The arm's use of the slice is *sane* at
+  convergence — it avoids dominated actions and agrees at unit level — and the move
+  itself is worth ≤ 0 at twenty rounds for a script too. So the ~8.5 vp "choosing a
+  bad option" half is the agent using a move that does not pay at this horizon, not
+  a decode failure.
+
+### Advance is a SHORT-GAME move, and nothing in the encoding was the problem
+
+Measured 2026-08-23, no GPU,
+[report](reports/2026-08-23-three-prices-for-the-advance-move.md). `just
+measure-advance-use` censuses what a policy buys with the advance and what it pays.
+
+- ⚠ **All FOUR nominated encoding defects fail to bind at convergence.** Three
+  seeds of the rejected arm, held-out nine, n=10, at **both** `decode_topk` 1 and 3
+  (K=1 ≈ K=3 in every cell, so none of it is the decoder's): **dominated** advances
+  **0.4–5.9%**, unanimous 5-of-5 unit triggers **64–81%** with one model dragging
+  four on only 7–11%, waste **1.8–4.0%**. The policy learned the unit-level move
+  type without being given the structure, and learned to avoid the half of the
+  slice that is strictly dominated.
+- ⚠ **THREE SCRIPTED RULES, THREE REJECTIONS, each narrower than the last.** Paired
+  against `squad_march_take`, n=100, three seed bases: pricing nothing ("run while
+  far") **≈ −78** in the 2×2; pricing the forfeited shooting
+  (`squad_march_take_advance`, 11.2% of unit-turns) **−18.4, 0 of 3**; pricing the
+  shooting *and* requiring the run to land the squad on the point
+  (`squad_march_take_arrive`, 2.2% of unit-turns) **−11.9, 0 of 3**. The family
+  converges on the non-advancing control **from below** — the signature of a move
+  whose value is negative wherever it is spent.
+- ⚠ **The mechanism I proposed was REFUTED by the statistic built to test it.**
+  "It ends inside their reach a turn early" (D-14) predicts advancing moves are
+  exposed; they end inside an alive enemy's weapon reach on **4.1%** of model-moves
+  (script) and 8.6% (agent) against **22.4%** and **44.7%** for *walking* moves.
+  Five times safer. The rule only advances when nothing is in range, and nothing is
+  in range when you are far away.
+- **The real cost is WHOLE-EPISODE and no end-of-move statistic can see it.** All 45
+  tables, n=10: exposure 0.2156 → **0.2388** (+10.8%), firepower 1.091 → **1.004**,
+  `alive` 0.396 → 0.349, `held` 2.573 → 2.276, opponent VP **+13.2** against own
+  −7.7. Coherency *rises* (0.845 → 0.859), so it is not a formation failure.
+- **PRE-REGISTERED AND CONFIRMED: the advance's value is monotone in the round
+  count.** `squad_march_take_arrive` v `squad_march_take`, n=100, three seed bases,
+  **positive means plain walking wins**: rounds **5 → −1.7 (3 of 3 to advancing,
+  t up to −2.73)**, rounds 10 → +1.3, rounds 20 → **+11.9 (0 of 3)**. ⚠ **Absolute
+  vp are NOT comparable across horizons** — the five-round outcome sd is 12 against
+  twenty's 91 — so read it normalised: **+0.14 sd → −0.04 → −0.13**. And the
+  five-round game is **not degenerate**: `hold_deployment` scores −33.1 with `held`
+  0.79 against the marcher's −0.7 and `held` 2.50.
+- **So the config that trains runs 20 rounds, and there the advance is worth ≤ 0.**
+  That cuts both ways for the action space: it lowers the value of *re-encoding* a
+  move the policy already uses sanely, and raises the value of *shrinking* it —
+  32% of the action space is an option the policy must spend samples learning to
+  decline, half of it strictly dominated.
+- ⚠ **The only live explanation left for the −26.7 is the PATH, and nothing above
+  prices it.** Every statistic here is taken at convergence; a 300-epoch screen
+  prices sample efficiency.
+- **Cautions earned.** Split a statistic by where a model *ends*, not where it
+  starts ("advances from inside an objective" reads 21–31% and is 1.8–4.0% waste
+  plus 17–20% reallocation). Every behavioural statistic needs its **within-policy**
+  control — within-unit distance spread looked like an advance defect at p90 4–6"
+  against a 2" chain until the same policy's *walking* turns came out the same.
+  And ⚠ **`random` is not a control for action-slice usage**: `RandomBaselinePolicy`
+  samples `0..n_move_actions` and can never choose an advance.
+
+### The advance slice, re-encoded: absolute rungs, gated by a mask
+
+Shipped 2026-08-23. `n_advance_speed_bins` defaults to **0**, so **no golden config
+is touched** and every reward and observation golden stays bit-identical.
+
+- **Rungs are absolute**: `M + (bin + 1) x (6 / bins)` — at `M = 6` with three bins,
+  **8" / 10" / 12"**. The unit's D6 now decides which rungs are **legal**
+  (`ActionHandler.advance_legality`, masked on **both** seats) instead of deciding
+  what an action means.
+- **Two defects go with it.** No action can spend the unit's shooting for a distance
+  a normal move reaches — **dominated advances measured 0.0%**, against 3.5–13.8%
+  for scripts and 0.4–5.9% for agents under the old ladder. And it was the only
+  slice in the game whose indices changed meaning turn to turn, so a policy had to
+  read `advance_roll` to know what its own action did.
+- **Exploration burden, measured** (120 movement phases): **25.1 of 48** advance
+  actions legal per model, **0.00** of them dominated — against roughly **24 of 150
+  actions, 16% of the whole space, strictly dominated and always legal** before. That
+  is the whole of what the re-encoding buys, and only training can cash it.
+- ⚠ **The reason on file for admitting dominated bins does not hold**, and was
+  checked against `env.step`: only ONE model need choose an advance for the unit to
+  advance, so its squadmates keep the whole normal slice and stop where they like.
+  Two tests that pinned the old behaviour were replaced, each naming what it
+  replaced and why.
+- **Cross-config bridge verified.** `squad_march_take` — which never advances —
+  scores **−2.8 / `held` 2.57 / `alive` 0.396 / `coherent` 0.845** on all 45 tables
+  either side of the change, identical to every printed digit.
+- ⚠ **It VOIDS the advance arm's checkpoints behaviourally.** The tensor width is
+  unchanged so they still load; their action indices now mean different distances.
+- ⚠ **At three bins a roll of 1 leaves NO legal rung.** Deliberate: the rules would
+  permit a 7" advance, the ladder cannot express it, and a 1" gain never repays a
+  turn of fire.
+- ⚠ **Leader-binds inside the movement slice would SHATTER formation** — move type
+  and displacement were the same action, so a leader-only advance caps every
+  squadmate at `M`. The scripts advance **5-of-5 at a within-unit spread of 0.00"**;
+  leader-binds forces ~6" against a 2" chain. That is why the declaration had to be
+  split out into its own phase rather than masked inside the movement slice.
+
+### The move type is declared in the command phase, by the unit's leader
+
+Shipped 2026-08-23. This is the "unit declaration" and "additive cost" half of the
+movement goal, and it only works because the declaration is **separate from the
+displacement**.
+
+- **A `move_type` slice of 2 actions** (`normal`, `advance`), valid in
+  `BattlePhase.command`, registered **last** so no existing index moves. Action
+  space **150 → 152** with advance on; **unchanged at 102** with
+  `n_advance_speed_bins: 0`, which is every golden config.
+- **The unit's LEADER decides** — its lowest-indexed alive model — and the whole
+  unit is bound. ⚠ This replaces an **OR over five per-model movement actions**, in
+  which any one model choosing a long rung spent all five models' shooting (85.5%
+  of five-model unit-turns at initialisation).
+- **STAY declares `normal`**, so every policy written before the declaration
+  existed behaves exactly as it did. Verified: a non-advancing script scores
+  **bit-identically** on 10 of 10 seeds across the change.
+- **A rung is legal only for a unit that declared**, and only within `M + roll`.
+  Masked on **both seats**.
+- **Declaring costs the shooting immediately**, whether or not a member then uses a
+  long rung. That is the rules' cost: it attaches to the move type, not the
+  distance.
+- ⚠ **The roll moved to the START of the side's turn.** It used to happen on the
+  command→movement boundary, which was right while the type was chosen during
+  movement — but a declaration made in the command phase would then be **blind**,
+  and since legality is gated on `M + roll`, no rung would ever be legal. It is
+  idempotent and keyed on `(battle_round, active_player)` rather than hung on a
+  phase transition, because command is the FIRST phase of a turn and the first turn
+  of an episode never advances into it.
+- **Config validation**: `n_advance_speed_bins > 0` with `command` in `skip_phases`
+  is rejected at construction — otherwise the rungs exist and no declaration is
+  ever legal, and a training run measures a feature it never had.
+- **Adding fall back or charge now costs one value in `move_type`**, not another
+  48-action slice and another unit-resolution hack.
+
+⚠ **What it voids.** The command phase is now a real agent step on advance configs.
+Verified neutral on the game itself — the golden config scores **bit-identically on
+8 of 8 seeds** with command skipped or active — **except in episodes that end EARLY
+by elimination**, which lose one player scoring event. Measured: 10 of 45 tables
+moved by exactly **−1.5** at n=10, i.e. 15 VP in one episode each. The skipped
+command phase used to be traversed *inside* the terminating step and scored there;
+now it is a phase the agent never gets to leave. **Arguably more correct** — a
+scoring event that needs your next turn should not fire in a game already over —
+but it is a change, so re-measure rather than carry a figure across it.
+
+**Throughput: ~15% more wall-clock per battle round, not 50%.** Per-step cost
+*falls* 4.338 → 3.334 ms because command steps do almost nothing, so 1.5x the steps
+nets 8.68 → 10.00 ms per round. A 2048-step epoch is 9.5 s → 7.5 s but covers a
+third fewer rounds.
+
 ### Offence is not reward-shapeable here — three arms, one conclusion
 
 Measured 2026-08-22, [report](reports/2026-08-22-the-agent-is-never-paid-to-attack.md).
@@ -1124,6 +1273,11 @@ measurements skipped (`25v25_maps_advance_refereed`, held-out nine, n=10,
 - `advance_when_out_of_reach` now defaults **False** on both sides, pinned by a test. **The
   mechanism stays** — a bar that cannot use a core rule is not a bar. The heuristic is what
   is rejected: it never prices the forfeited shooting.
+- ⚠ **Pricing it is NOT enough, measured 2026-08-23.** `squad_march_take_advance`
+  advances only when a normal move would have left nothing in range and loses **−18.4
+  paired, 0 of 3 seed bases**; adding the arrival clause (`squad_march_take_arrive`)
+  reaches **−11.9, 0 of 3**. See § Advance is a SHORT-GAME move — at twenty rounds no
+  advance rule pays, and at five rounds the same rule wins 3 of 3.
 
 - **The endpoint rule works BETTER than first claimed: 7.52% → 0.00%, all of it removed.**
   The published 6.01% → 3.21% used a hardcoded 2.26" ring fractionally *larger* than the

@@ -78,6 +78,13 @@ class MirroredEnv:
     # ---- weapon reach ------------------------------------------------------
 
     @property
+    def player_advance_legality(self) -> np.ndarray:
+        """Our models' legal advance rungs — the opponent handler's, not the player's."""
+        return self._env.opponent_action_handler.advance_legality(
+            self._env.opponent_models
+        )
+
+    @property
     def player_max_ranges(self) -> np.ndarray:
         """Our weapons' reach. Read by `build_observation` for the shooting mask."""
         return self._env.opponent_max_ranges

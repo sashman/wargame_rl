@@ -368,3 +368,18 @@ def test_the_existing_opponent_policies_are_untouched() -> None:
         "scripted_advance_to_objective",
         "scripted_advance_and_shoot",
     } <= (set(registry))
+
+
+def test_the_old_mirror_name_still_resolves_for_pickled_checkpoints() -> None:
+    """A checkpoint pickles the env, so the pre-extraction name must survive.
+
+    `MirroredEnv` was `scripted_baseline_policy._MirroredEnv` until it moved to
+    `opponent/mirror.py`. Every checkpoint saved before that move names the old
+    path, and `torch.load` resolves pickled classes by module attribute — so
+    deleting the alias makes those weights unloadable, and `checkpoints/` is
+    the only copy of them.
+    """
+    from wargame_rl.wargame.envs.opponent import scripted_baseline_policy
+    from wargame_rl.wargame.envs.opponent.mirror import MirroredEnv
+
+    assert scripted_baseline_policy._MirroredEnv is MirroredEnv

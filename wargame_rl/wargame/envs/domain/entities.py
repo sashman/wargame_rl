@@ -63,6 +63,10 @@ class WargameModel:
         # to see it when it chooses -- see `_roll_advance_dice`. 0 outside a
         # movement phase and whenever the scenario has no advance bins.
         self.advance_roll: float = 0.0
+        # Whether this model's UNIT declared an advance in the command phase.
+        # The declaration gates which movement rungs are legal; the shooting
+        # forfeit is carried by `advanced_this_turn`, set at the same moment.
+        self.declared_advance: bool = False
 
     def set_previous_closest_objective_distance(self, distance: float) -> None:
         self.previous_closest_objective_distance = distance
@@ -79,6 +83,7 @@ class WargameModel:
         self.model_rewards_history.clear()
         self.advanced_this_turn = False
         self.advance_roll = 0.0
+        self.declared_advance = False
 
     def begin_turn(self) -> None:
         """Clear the per-TURN move state before this side moves again.
@@ -90,6 +95,7 @@ class WargameModel:
         """
         self.advanced_this_turn = False
         self.advance_roll = 0.0
+        self.declared_advance = False
 
     @property
     def is_alive(self) -> bool:
