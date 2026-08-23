@@ -643,6 +643,47 @@ is **global**, broadcast identically to every alive model, so no model can prefe
 "take theirs" to "stand on ours"; both move the same shared scalar identically.
 The per-model term prices only *distance closed*; the term that prices *outcome*
 is global. No candidacy gate can reach that.
+### The critic already knows the stack is wrong — the failure is SEARCH
+
+Measured 2026-08-23, no GPU, three seeds, 634 forked games,
+[report](reports/2026-08-23-the-critic-already-knows.md). `just measure-critic-probe`
+forks a live game, rigidly translates one SURPLUS squad off an over-stacked
+objective onto an empty one, and prices the move twice — `dV` is the critic's
+summed army value, `dVP` the realised `vp_margin` from playing both branches out.
+
+| direction | n | dV (critic) | dVP (realised) |
+|---|---|---|---|
+| **spread** a surplus squad onto an empty point | 397 | **+2.63 ± 0.32** (t=+8.3) | **+3.85 ± 1.81** (t=+2.1) |
+| **stack** another squad onto the pile (the control) | 237 | **−7.18 ± 0.58** (t=−12.4) | **−11.52 ± 2.51** (t=−4.6) |
+
+- ⚠ **THE SURVIVAL-PREMIUM DIAGNOSIS IS REFUTED.** Two independent expert panels
+  converged on it — the global stream is paid only to `alive_models`
+  (`reward/phase_manager.py:272-274`), so the agent supposedly learned to
+  over-price survival. That predicts the critic prefers the surplus model staying
+  put. **It prefers the opposite, 6 of 6 seed-round cells, t=+8.3.** Do not fund
+  `dead_share_fraction` or pivotality redistribution *on that rationale*.
+- **The reverse direction is the control that makes it mean anything.** The
+  counterfactual is off-distribution and critics are optimistic there — but that
+  predicts BOTH directions positive. The critic is directionally correct both
+  ways and gets the asymmetry approximately right (2.7× against a realised 3.0×).
+- **What is left is a SEARCH failure.** Reward and critic both value spreading
+  correctly; the policy does not do it. Spend on directed exploration and
+  representation, not on reward attribution.
+- ⚠ **The gradient out is SHALLOW and the gradient in is STEEP.** Marginal
+  spreading gains +3.85; marginal stacking loses −11.52. The agent is *slightly
+  past* a broad optimum, not parked in a basin the reward dug. Any lever will
+  therefore move top-stack occupancy a lot for a small score change — **read
+  `dVP`, not occupancy.**
+- **`corr(dV, dVP)` is ~0** (+0.07). The critic has the direction and no grip on
+  *which* redistribution pays. A search method that needs the critic to rank
+  candidate reallocations will not work; one that needs only the direction will.
+- ⚠ **Optimal allocation LOST.** `assignment_optimal` is `squad_march_take` with
+  the greedy matching replaced by an exact minimum-cost assignment (subset DP,
+  verified against brute force on 300 instances): **−26.1 ± 9.4 against greedy's
+  +7.6 ± 3.8**, `held` 2.21 v 2.80. This is **not** proof allocation is at its
+  ceiling — it is one untuned cost model losing to greedy — but an
+  allocation-aware decode would be replacing a rule that just beat its own exact
+  counterpart by 33.7 vp. Re-cost before funding. Tune on the 36, never the nine.
 
 ### How to measure here
 
