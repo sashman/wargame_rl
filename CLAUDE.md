@@ -1082,8 +1082,71 @@ Re-measure rather than carry a figure across one.
   concentrates its models and so stands near its own casualties more often. A
   second fix the same day (LOS symmetry, #211) is a **measured null** on score and
   voids nothing.
+- **2026-08-23 — the scripts learned to Advance, and a move must end unengaged.**
+  The scripted bar moved **+1.3 to +32.6 vp** (4 of 4) and the movement rule changed
+  on every config, so every scripted-bar figure on an advance config and every agent
+  score compared against one is void. Three goldens were regenerated deliberately;
+  the other three are byte-identical, which is the check that the movement change is
+  targeted rather than global.
 - **2026-08-20 — the eval tables were regenerated**, and 2026-08-21 they were
   re-measured against their own deployment zones. See § The board.
+
+### The bar was playing a different game — Advance, and the endpoint rule
+
+Measured 2026-08-23, no GPU, **corrected the same day after two audit panels**,
+[report + correction](reports/2026-08-23-the-bar-was-playing-a-different-game.md).
+
+- ⚠ **ADVANCE IS A CORE RULE, NOT AN ARM.** It was framed as accept/reject against a
+  control without it. Wrong question: it is staying.
+- ⚠ **NO SCRIPTED BASELINE AND NO OPPONENT POLICY COULD ADVANCE.** An advancing agent was
+  scored against a walking bar. That premise was real and is fixed; the *magnitudes* first
+  published were not.
+
+⚠ **THE BAR NEVER MOVED, AND THE HEURISTIC IS REJECTED.** The 2x2 the first two
+measurements skipped (`25v25_maps_advance_refereed`, held-out nine, n=10,
+`squad_march_take` both sides, vp_margin to the player):
+
+| | opponent walks | opponent advances |
+|---|---|---|
+| **player walks** | **−4.1** | +72.7 |
+| **player advances** | **−81.8** | −3.6 |
+
+- **"Run while far, walk once close" costs its USER ~78 vp**, and both-advance (−3.6) is
+  indistinguishable from both-walk (−4.1). The published "+15.5 to the bar" was **two
+  self-inflicted wounds cancelling** — both sides adopted the same bad heuristic in the
+  same change.
+- ⚠ **NEVER MEASURE A SYMMETRIC CHANGE WITH BOTH SIDES CHANGED AT ONCE.** Run the 2×2.
+- ⚠ The first OFF column was also measured on **different code** (before the endpoint
+  rule), so those deltas were the sum of two changes.
+- ⚠ **"`shoot` gains most despite forgoing its shooting" is FALSE — it forgoes nothing.**
+  Declared shots 8,132 walking v **8,375 advancing**. At range 12 with objectives 20–40"
+  away, squads only advance while already out of range.
+- `advance_when_out_of_reach` now defaults **False** on both sides, pinned by a test. **The
+  mechanism stays** — a bar that cannot use a core rule is not a bar. The heuristic is what
+  is rejected: it never prices the forfeited shooting.
+
+- **The endpoint rule works BETTER than first claimed: 7.52% → 0.00%, all of it removed.**
+  The published 6.01% → 3.21% used a hardcoded 2.26" ring fractionally *larger* than the
+  env's own predicate, while the back-off parks rescued models at `ring + epsilon` — so it
+  counted every model the rule saved as still engaged. No model ever *starts* engaged
+  either: `placement.py` enforces `hostile_separation = min_separation + engagement_range`.
+- ⚠ **THE BATCH SHIPPED A MOVEMENT BUG, now fixed.** The back-off walked the endpoint
+  backwards **without re-checking bases**, so a rescued model came to rest inside a
+  friendly one: **0.18% of pairs, worst 0.68"**, against 0.0000% with the rule off. Six
+  unit tests covered the function and **none called `env.step`**, so none could see it —
+  verbatim the joint-decoder defect this project already paid +11.4 vp for. Occupied bases
+  now contribute spans to the same backward walk.
+- **Passing through an engagement range stays legal**; only ending inside is not. The
+  reverted first attempt was a *path* constraint and cost 87% of opponent-held objectives
+  their only legal spot.
+- **The opponent advances too**, per unit from the unit's **centroid** (from the nearest
+  member it almost never fires — the opponent deploys 3–12" from objectives at Move 6).
+  The bar table was *already* symmetric: the advance configs set
+  `opponent_policy: scripted_baseline` wrapping `squad_march_take`, which inherited Advance
+  in the same change. An audit panel checked that correction and rated it SOUND.
+- ⚠ **The opponent's advance columns are ZEROED, not dropped**, and #237's proposal does not
+  work: player and opponent tokens share a feature width, so removing two columns from one
+  side alone fails at the tensor.
 
 ### Settled — do not re-run
 

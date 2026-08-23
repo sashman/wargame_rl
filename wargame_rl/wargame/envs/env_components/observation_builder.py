@@ -200,6 +200,7 @@ def _models_to_obs(
     coherency: CoherencyDistances | None = None,
     unit_centroid_cap: float | None = None,
     observe_advance: bool = False,
+    advance_is_known: bool = True,
 ) -> list[WargameModelObservation]:
     strengths = _unit_strengths(models) if observe_unit_strength else {}
     offsets = (
@@ -264,10 +265,16 @@ def _models_to_obs(
                 advance_roll=(
                     None
                     if not observe_advance
-                    else float(m.advance_roll) / ADVANCE_DIE_FACES
+                    else (
+                        float(m.advance_roll) / ADVANCE_DIE_FACES
+                        if advance_is_known
+                        else 0.0
+                    )
                 ),
                 advanced_this_turn=(
-                    None if not observe_advance else float(m.advanced_this_turn)
+                    None
+                    if not observe_advance
+                    else (float(m.advanced_this_turn) if advance_is_known else 0.0)
                 ),
                 coherency_spread=(None if spread is None else float(spread[i])),
                 coherency_component=(
@@ -568,6 +575,20 @@ def build_observation(
             coherency=coherency,
             unit_centroid_cap=unit_centroid_cap,
             observe_advance=view.config.n_advance_speed_bins > 0,
+            # ⚠ The opponent's advance columns are ZEROED, not read. Each side
+            # rolls at the start of its OWN turn, so the opponent's values are
+            # zero in round 1 and one turn STALE thereafter -- they record what
+            # it rolled and did on its last turn, which says nothing about the
+            # turn it is about to take. A stale column is worse than no column:
+            # the network has to learn to ignore it.
+            #
+            # Zeroed rather than dropped because the player and opponent tokens
+            # share a feature width (`observation.py` asserts it), so removing
+            # two columns from one side alone does not typecheck at the tensor.
+            # A constant-zero column contributes nothing through the embedding,
+            # so this is informationally identical to dropping it -- and unlike
+            # dropping it, costs no shape change and orphans no checkpoint.
+            advance_is_known=False,
         ),
         terrain=terrain_obs,
         action_mask=action_mask,
