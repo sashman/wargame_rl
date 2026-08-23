@@ -14,6 +14,13 @@ and `squad_march_take`'s allocation -- is inherited unchanged, so a paired
 comparison against `squad_march_take` isolates the advance rule and nothing
 else.
 
+⚠ **NOT A BAR, and not to be developed further.** Per doctrine D-43, a move type
+is a lever rather than an advantage, and a policy built to advance is built to be
+wrong most of the time. This exists as a **measurement instrument** — it is what
+priced the advance trade — and its number is a finding, not a target. Do not add
+further advance-seeking policies; the right question is whether carrying the lever
+costs the agent anything, which is answered by a `dark_action_slices` control.
+
 ⚠ Its accept criterion is the paired difference against `squad_march_take`, not
 its absolute score, and the record's own rule applies: quote a t AND a sign
 count, because per-table differences on the map pool are heavy-tailed.

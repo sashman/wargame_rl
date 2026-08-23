@@ -14,6 +14,13 @@ a squad nine inches closer scores. This policy spends the D6 only when it turns
 a two-turn approach into a one-turn arrival, and keeps the no-shot clause on top
 of it -- both halves of the trade, priced.
 
+⚠ **NOT A BAR, and not to be developed further.** Per doctrine D-43, a move type
+is a lever rather than an advantage, and a policy built to advance is built to be
+wrong most of the time. This exists as a **measurement instrument** — it is what
+priced the advance trade — and its number is a finding, not a target. Do not add
+further advance-seeking policies; the right question is whether carrying the lever
+costs the agent anything, which is answered by a `dark_action_slices` control.
+
 ⚠ Pre-registered before the number existed. **Accept** only on a paired
 difference above zero with 3 of 3 seed bases positive and `held` no lower.
 **Reject** on anything else -- including a positive difference with `held`
