@@ -23,7 +23,7 @@ from wargame_rl.wargame.envs.domain.coherency_enforcement import (
     CoherencyEnforcement,
     enforce_after_move,
 )
-from wargame_rl.wargame.envs.domain.movement import resolve_move
+from wargame_rl.wargame.envs.domain.movement import back_off_to_unengaged, resolve_move
 from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
 from wargame_rl.wargame.envs.domain.value_objects import (
     POSITION_DTYPE,
@@ -178,6 +178,7 @@ class ActionHandler:
         # a scale other than 1 inch per unit moves models the right distance.
         quantities = resolve_rules_quantities(config)
         max_speed = quantities.max_move_speed
+        self._engagement_range = float(quantities.engagement_range)
         # A model with a base cannot stand with half of it off the table.
         self._base_radius = quantities.base_radius
         # Resolved once, like every other rules distance. The mode is read here
@@ -535,6 +536,63 @@ class ActionHandler:
 
         return self.encode_action(angle_idx, speed_idx)
 
+    def best_advance_toward(
+        self,
+        dx: float,
+        dy: float,
+        advance_roll: float,
+        max_step_length: float | None = None,
+        model_idx: int | None = None,
+    ) -> int | None:
+        """The advance action moving closest to `(dx, dy)`, or None if unavailable.
+
+        The advance counterpart of `best_action_toward`: same nearest-angle
+        choice, then the largest bin whose distance does not exceed
+        `max_step_length`. Returns None when the scenario registers no advance
+        slice, so a caller can fall back to a normal move without branching on
+        the config.
+
+        `advance_roll` is the unit's own D6 for this turn (`model.advance_roll`),
+        because the reachable distance is `fraction x (M + roll)` and a policy
+        that assumed a fixed roll would ask for a step it cannot take.
+        """
+        if self._advance_slice is None:
+            return None
+        # A DARKENED slice is registered but valid in no phase, so its actions
+        # are masked. Returning one would hand the caller an illegal action --
+        # and it is what makes a darkened config a true "advance off" control
+        # for a scripted policy, rather than one that silently emits moves the
+        # mask forbids.
+        if BattlePhase.movement not in self._advance_slice.valid_phases:
+            return None
+        if dx == 0.0 and dy == 0.0:
+            return None
+
+        target_angle = np.arctan2(dy, dx) % (2 * np.pi)
+        angles = np.linspace(0, 2 * np.pi, self._n_angles, endpoint=False)
+        diffs = np.abs(angles - target_angle)
+        diffs = np.minimum(diffs, 2 * np.pi - diffs)
+        angle_idx = int(np.argmin(diffs))
+
+        move = (
+            float(self._move_speeds[model_idx])
+            if model_idx is not None
+            else float(self._speeds[-1])
+        )
+        reach = move + advance_roll
+
+        bin_idx = self._n_advance_bins - 1
+        if max_step_length is not None:
+            for candidate in range(self._n_advance_bins - 1, -1, -1):
+                distance = ((candidate + 1) / self._n_advance_bins) * reach
+                if distance <= max_step_length:
+                    bin_idx = candidate
+                    break
+            else:
+                bin_idx = 0
+
+        return self._advance_slice.start + angle_idx * self._n_advance_bins + bin_idx
+
     def apply(
         self,
         action: WargameEnvAction,
@@ -570,6 +628,24 @@ class ActionHandler:
         blocker_centres, blocker_radii = _base_arrays(
             enemy_models if collides else None
         )
+        # A move must END unengaged (`09-movement-phase.md`); passing through an
+        # engagement range is explicitly legal (`03-moving.md`). So the rings are
+        # applied to the endpoint only, never to the path.
+        alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+        if self._engagement_range > 0.0 and alive_enemies:
+            engagement_centres = np.array(
+                [m.location for m in alive_enemies], dtype=float
+            )
+            engagement_reach = np.array(
+                [
+                    self._engagement_range + float(m.base_radius) + self._base_radius
+                    for m in alive_enemies
+                ],
+                dtype=float,
+            )
+        else:
+            engagement_centres = np.empty((0, 2), dtype=float)
+            engagement_reach = np.empty(0, dtype=float)
         n_models = len(wargame_models)
         friendly_buffer = np.zeros((n_models, 2), dtype=float)
         friendly_radius_buffer = np.array(
@@ -598,7 +674,12 @@ class ActionHandler:
                 act, model_idx=i, advance_roll=model.advance_roll
             )
             if not collides:
-                model.location = np.clip(model.location + displacement, lower, upper)
+                model.location = back_off_to_unengaged(
+                    model.location,
+                    np.clip(model.location + displacement, lower, upper),
+                    engagement_centres,
+                    engagement_reach,
+                )
                 continue
             # Read live each iteration: earlier models in this loop have already
             # moved, and a model must not end on ground another just took. The
@@ -617,14 +698,31 @@ class ActionHandler:
             # producing exactly the overlap the whole resolution just avoided,
             # only near a board edge and only sometimes.
             in_bounds = np.clip(model.location + displacement, lower, upper)
-            model.location = resolve_move(
+            # The bases the endpoint may not land inside: enemies (which also
+            # block the path) and the moving army's own models (which may be
+            # crossed but not ended on). Passed in because backing off walks the
+            # endpoint into ground `resolve_move` had already cleared -- without
+            # them a model rescued from an engagement ring comes to rest inside
+            # a friendly base, measured at 0.18% of pairs.
+            occupied_centres = np.concatenate([blocker_centres, friendly_centres])
+            occupied_reach = (
+                np.concatenate([blocker_radii, friendly_radii]) + model.base_radius
+            )
+            model.location = back_off_to_unengaged(
                 model.location,
-                in_bounds - model.location,
-                model.base_radius,
-                blocker_centres,
-                blocker_radii,
-                friendly_centres,
-                friendly_radii,
+                resolve_move(
+                    model.location,
+                    in_bounds - model.location,
+                    model.base_radius,
+                    blocker_centres,
+                    blocker_radii,
+                    friendly_centres,
+                    friendly_radii,
+                ),
+                engagement_centres,
+                engagement_reach,
+                occupied_centres,
+                occupied_reach,
             )
 
         # Every model in the force has now moved, which is the earliest point a

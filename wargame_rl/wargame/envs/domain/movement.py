@@ -26,6 +26,10 @@ import numpy as np
 # either way decides whether the position is legal -- so a model would sometimes
 # end up marginally inside another and sometimes not, from the same move.
 _CONTACT_MARGIN = 1e-6
+# Steps the endpoint just clear of an engagement ring. Small enough not to move
+# a model visibly, large enough that the strict `<` test cannot re-trip on the
+# boundary in floating point.
+_ENDPOINT_EPSILON = 1e-6
 
 # How many times to back off before giving up and staying put. Backing off out
 # of one base can put a model inside another; in practice one pass settles it,
@@ -134,6 +138,86 @@ def _stack(first: np.ndarray, second: np.ndarray) -> np.ndarray:
     if not len(second):
         return first
     return np.concatenate([first, second])
+
+
+def back_off_to_unengaged(
+    start: np.ndarray,
+    resolved: np.ndarray,
+    enemy_centres: np.ndarray,
+    enemy_reach: np.ndarray,
+    occupied_centres: np.ndarray | None = None,
+    occupied_reach: np.ndarray | None = None,
+) -> np.ndarray:
+    """Pull an endpoint back along its own heading until it is unengaged.
+
+    `09-movement-phase.md` requires a unit to be unengaged *after* moving, and
+    `03-moving.md` is explicit that only the endpoint counts:
+
+        Passing through an enemy unit's engagement range during a move does not
+        make the moving unit engaged. Only where it *ends* matters.
+
+    ⚠ **This is why the first attempt was reverted.** Inflating enemy blockers
+    by the engagement range turns an end-state rule into a 2"-thick impassable
+    wall: review measured **87% of opponent-held objectives with no legal spot
+    at all**, and it stopped a model at the ring's near edge even when its move
+    would have carried it clean through and out the far side. Passing through is
+    legal; only ending inside is not.
+
+    The legal set along the ray is **not an interval** -- a ray can leave one
+    ring and enter another -- so this walks back interval by interval rather
+    than bisecting, which is the same mistake the movement solver made once
+    already. Each enemy ring contributes the open span of `t` where the point
+    lies inside it; the answer is the largest `t` in `[0, 1]` outside every span.
+
+    ⚠ **`occupied_*` is not optional in practice, and omitting it was a real bug.**
+    Backing off walks the endpoint into ground `resolve_move` had already cleared
+    as passable-but-not-endable, so a model rescued from an engagement ring could
+    come to rest inside a friendly base. Measured before the fix: **0.18% of
+    friendly pairs ended a movement phase overlapping, worst penetration 0.68"**,
+    against 0.0000% with the rule off. Both constraints have to be satisfied by
+    the same point, so both contribute forbidden spans to one walk.
+
+    Returns `start` when no legal point exists short of it, which is the rules'
+    own remedy: the move is not made.
+    """
+    centres = enemy_centres
+    reach = enemy_reach
+    if (
+        occupied_centres is not None
+        and occupied_reach is not None
+        and occupied_centres.shape[0] > 0
+    ):
+        centres = np.vstack([centres, occupied_centres])
+        reach = np.concatenate([reach, occupied_reach])
+    if centres.shape[0] == 0:
+        return resolved
+    direction = resolved - start
+    length_squared = float(direction @ direction)
+    if length_squared <= 0.0:
+        return resolved
+
+    # Inside ring i for t in (lo_i, hi_i), from |start + t*d - c|^2 < reach^2.
+    offsets = start[None, :] - centres
+    b = offsets @ direction
+    c = np.einsum("ij,ij->i", offsets, offsets) - reach**2
+    discriminant = b**2 - length_squared * c
+    hit = discriminant > 0.0
+    if not np.any(hit):
+        return resolved
+    root = np.sqrt(discriminant[hit])
+    lo = (-b[hit] - root) / length_squared
+    hi = (-b[hit] + root) / length_squared
+
+    t = 1.0
+    # Each step exits one ring; there are finitely many, so this terminates.
+    for _ in range(len(lo) + 1):
+        inside = (lo < t) & (t < hi)
+        if not np.any(inside):
+            return start + t * direction if t > 0.0 else start
+        t = float(np.min(lo[inside])) - _ENDPOINT_EPSILON
+        if t <= 0.0:
+            return start
+    return start
 
 
 def resolve_move(

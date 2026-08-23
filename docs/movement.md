@@ -157,6 +157,28 @@ models had bases reproducible.
 > on the policy side — distinct target slots around an objective, rather than
 > aiming every model at the centre.
 
+## Ending unengaged
+
+A move must leave the moving unit **unengaged** (`docs/rules/09-movement-phase.md`),
+and `docs/rules/03-moving.md` is explicit that only the endpoint counts:
+
+> Passing through an enemy unit's engagement range during a move does **not** make
+> the moving unit engaged. Only where it *ends* matters.
+
+`domain/movement.py::back_off_to_unengaged` applies this **after** `resolve_move`,
+so enemies still block at their true base radius and the path is unchanged. If the
+resolved endpoint lies inside any enemy's engagement ring
+(`engagement_range + both base radii`), it is pulled back along its own heading
+until it clears every ring. When no legal point exists short of the start, the
+model does not move — the rules' own remedy.
+
+⚠ The legal set along the ray is **not an interval**: a ray can leave one ring and
+enter another, so the back-off walks ring by ring rather than bisecting.
+
+⚠ Applying the engagement range as a *path* constraint instead — by inflating
+enemy blocker radii — was tried and reverted. It turns an end-state rule into an
+impassable wall and left 87% of opponent-held objectives with no legal spot at all.
+
 ## Configuration
 
 Movement parameters are set via `WargameEnvConfig`:
