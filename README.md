@@ -113,6 +113,7 @@ Full detail: [reports/](reports/README.md), most recently
 
 - [Goals & Roadmap](docs/goals-and-roadmap.md) — Project vision, current status, and phased development plan
 - [Rules Reference](docs/rules/README.md) — The full rules specification for the game we're modelling, plus a per-rule map of what the environment implements
+- [Play Doctrine](docs/play-doctrine.md) — How the game is *won*: numbered play heuristics, each scored against what the environment can express and what has already been measured
 - [Movement System](docs/movement.md) — How polar coordinate movement works (action encoding, direction, speed, configuration)
 - [DDD in wargame/envs](docs/ddd-envs.md) — Domain-driven design motivation and how to extend the environment
 - [Metrics Reference](docs/metrics.md) — Semantics of every Wandb metric, plus an evaluation procedure for assessing runs
