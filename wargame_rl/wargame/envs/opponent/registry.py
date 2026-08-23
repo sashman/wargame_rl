@@ -25,8 +25,19 @@ def build_opponent_policy(
     cls = _REGISTRY.get(config.type)
     if cls is None:
         available = ", ".join(sorted(_REGISTRY)) or "(none)"
+        # `model` is registered by importing `wargame_rl.wargame.model.opponent`,
+        # which lives in the layer above this one -- so it is absent whenever an
+        # env is constructed directly rather than through the factory. Saying so
+        # is the whole cost of keeping `envs` from importing `model`.
+        hint = (
+            " The `model` policy registers on `import "
+            "wargame_rl.wargame.model.opponent`; build the env through "
+            "`model.common.factory.create_environment` and it is imported for you."
+            if config.type == "model"
+            else ""
+        )
         raise ValueError(
-            f"Unknown opponent policy type '{config.type}'. Available: {available}"
+            f"Unknown opponent policy type '{config.type}'. Available: {available}.{hint}"
         )
     return cls(env=env, **config.params)  # type: ignore[call-arg]
 

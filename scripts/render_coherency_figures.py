@@ -20,13 +20,13 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from pydantic_yaml import parse_yaml_raw_as
 
-from scripts.measure_checkpoint import build_selector
 from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.renders.v2 import build_renderer
 from wargame_rl.wargame.envs.renders.v2.fonts import mono_font_path
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.selectors import build_action_selector
 
 RING = (232, 62, 62)
 RING_OK = (58, 176, 106)
@@ -154,7 +154,7 @@ def annotate(
 def run(config_path: str, checkpoint: str, seed: int, step: int, out: str) -> int:
     """Play to `step` on `seed`, then write an annotated frame. Returns adrift."""
     env = build(config_path)
-    select, _ = build_selector(checkpoint, env)
+    select = build_action_selector(checkpoint, env).select
     observation, _ = env.reset(seed=seed)
     for _ in range(step):
         observation, _, terminated, truncated, _ = env.step(select(observation, env))

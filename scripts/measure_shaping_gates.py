@@ -48,7 +48,7 @@ from typing import cast
 
 import numpy as np
 
-from scripts.measure_maps import build_action_selector, config_for_map, load_maps
+from scripts.measure_maps import config_for_map, load_maps
 from scripts.scenario_overrides import describe, load_env_config, parse_overrides
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.env_components.distance_cache import DistanceCache
@@ -57,6 +57,7 @@ from wargame_rl.wargame.envs.reward.calculators.closest_objective_v2 import (
 )
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.common.factory import create_environment
+from wargame_rl.wargame.selectors import build_action_selector
 
 HELDOUT_SEED_BASE = 700_000
 DEFAULT_MAPS_DIR = Path("configs/evaluation/maps_heldout")
@@ -288,10 +289,8 @@ def main() -> None:
     n_units_hint = 0
     for terrain_map in maps:
         config = config_for_map(base_config, terrain_map)
-        select, _label = build_action_selector(
-            policy_or_checkpoint, config, decode_topk, False
-        )
         env = create_environment(env_config=config)
+        select = build_action_selector(policy_or_checkpoint, env, decode_topk).select
         calculator = find_calculator(env)
         if calculator is None:
             raise SystemExit(

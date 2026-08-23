@@ -1,0 +1,106 @@
+"""Is the player seat advantaged, beyond the zone and the first turn?
+
+**No rating on this config means anything until this reads zero.** The reward,
+coherency and exposure trackers all sample the player's army only, and
+`terminate_on_player_elimination` is a player-side option. Those are
+measurement-only or default-off, so the *game* should be seat-symmetric -- but
+that is a claim, not a fact, and if it is false then every Elo number on this
+scenario is measuring an implementation asymmetry instead of a policy.
+
+One policy plays **both seats** over the balanced four legs. Because it is the
+same policy, its rating difference is identically zero by construction, so
+whatever margin survives is the seat advantage and nothing else. That makes a
+self-pairing the cleanest estimator of `h_zone` and `h_turn` there is -- cleaner
+than any table over distinct entrants, where the two advantages are fitted
+alongside every rating at once.
+
+What to look for:
+
+  aggregate margin ~ 0    the four legs cancel, so the seat itself is fair
+  zone / first-turn       real structural advantages; a table CORRECTS for
+                          these, so a non-zero value here is a finding, not a
+                          failure
+
+A non-zero **aggregate** margin is a bug, and it blocks rating this scenario.
+
+Usage: just measure-seat-parity <env_config> [policy] [n_layouts]
+"""
+
+from __future__ import annotations
+
+import sys
+
+import numpy as np
+from pydantic_yaml import parse_yaml_raw_as
+
+from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.rating.arena import play_pairing, require_symmetric
+from wargame_rl.wargame.rating.elo import fit_ratings
+from wargame_rl.wargame.rating.entrant import Entrant
+from wargame_rl.wargame.rating.table import design_from_legs
+from wargame_rl.wargame.selectors import build_action_selector
+
+
+def main() -> None:
+    """Play one policy against itself and report whether the seats are fair."""
+    if len(sys.argv) < 2:
+        print(__doc__)
+        raise SystemExit(1)
+
+    config_path = sys.argv[1]
+    policy = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else "squad_march_shoot"
+    n_layouts = int(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3] else 30
+
+    with open(config_path) as handle:
+        config = parse_yaml_raw_as(WargameEnvConfig, handle.read())
+    config.render_mode = None
+    require_symmetric(config)
+
+    entrant = Entrant(
+        name=policy,
+        build=lambda env: build_action_selector(policy, env).select,
+        kind="baseline",
+    )
+    legs = play_pairing(entrant, entrant, config, n_layouts)
+
+    print(f"\n{config_path}   {policy} on both seats")
+    print(f"{n_layouts} layouts x 4 legs\n")
+
+    header = f"{'leg':<28}{'mean margin':>13}{'wins':>8}"
+    print(header)
+    print("-" * len(header))
+    for leg in legs:
+        zone = "zone 1" if leg.leg.sigma_zone > 0 else "zone 2"
+        first = "A first" if leg.leg.sigma_turn > 0 else "B first"
+        print(
+            f"{zone + ', ' + first:<28}{float(np.mean(leg.margins)):>+13.1f}"
+            f"{float(np.mean(leg.wins)):>8.2f}"
+        )
+    print("-" * len(header))
+
+    every_margin = np.array(
+        [margin for leg in legs for margin in leg.margins], dtype=np.float64
+    )
+    aggregate = float(np.mean(every_margin))
+    error = float(np.std(every_margin, ddof=1) / np.sqrt(every_margin.size))
+    print(f"{'aggregate':<28}{aggregate:>+13.1f}   +/- {error:.1f} (1 se)")
+
+    design, entrants = design_from_legs(legs)
+    fit = fit_ratings(design, entrants, anchor=policy)
+    print(f"\nzone advantage   {fit.h_zone:+.1f} Elo")
+    print(f"first-turn adv.  {fit.h_turn:+.1f} Elo")
+
+    verdict = (
+        "the seats are fair; rating this scenario is sound"
+        if abs(aggregate) <= 2.0 * error
+        else "⚠ THE PLAYER SEAT IS ADVANTAGED -- every rating here would carry it"
+    )
+    print(f"\n{verdict}")
+    print(
+        "the two advantages above are structural and a rating corrects for "
+        "them; only the aggregate has to be zero"
+    )
+
+
+if __name__ == "__main__":
+    main()

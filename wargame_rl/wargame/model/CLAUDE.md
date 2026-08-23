@@ -5,7 +5,12 @@ Applies to everything under `wargame_rl/wargame/model/`.
 ## Networks
 
 `TransformerNetwork` (in `net.py`) is the only network implementing the `RL_Network`
-protocol. It exposes `policy_from_env(env)` and `from_checkpoint(env, path)`.
+protocol. It exposes `policy_from_env(env)` and `from_checkpoint(env, path)`, plus
+`from_spec(spec, is_policy)` and the module-level `spec_from_observation(observation,
+action_handler, objective_budget, max_groups)`. The last two exist because `from_env` **resets the
+env** and reads `env._action_handler`: an opponent policy is constructed inside
+`WargameEnv.__init__`, so it can do neither, and it must size from the *opponent's*
+handler rather than the player's.
 
 DQN and `MLPNetwork` were removed once neither had been trained in months. Two
 things survived that removal because the transformer needs them: `common/layers.py`

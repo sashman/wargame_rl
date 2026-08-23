@@ -36,12 +36,13 @@ from pathlib import Path
 
 import numpy as np
 
-from scripts.measure_maps import build_action_selector, config_for_map, load_maps
+from scripts.measure_maps import config_for_map, load_maps
 from scripts.scenario_overrides import describe, load_env_config, parse_overrides
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.common.factory import create_environment
+from wargame_rl.wargame.selectors import build_action_selector
 
 HELDOUT_SEED_BASE = 700_000
 DEFAULT_MAPS_DIR = Path("configs/evaluation/maps_heldout")
@@ -94,8 +95,8 @@ def collect(
     tally = Dispersion()
     for terrain_map in load_maps(DEFAULT_MAPS_DIR):
         per_map = config_for_map(config, terrain_map)
-        select, _label = build_action_selector(policy, per_map, decode_topk, False)
         env = create_environment(env_config=per_map)
+        select = build_action_selector(policy, env, decode_topk).select
         tally.board_diagonal = float(
             np.hypot(per_map.board_width, per_map.board_height)
         )

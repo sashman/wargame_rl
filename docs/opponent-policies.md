@@ -153,7 +153,7 @@ Requires the shooting phase to be active (`skip_phases` must not contain `shooti
 
 ### `scripted_baseline`
 
-Plays any registered **baseline** policy (`baseline/registry.py`) on the opponent side. The baselines are the strongest scripted play in the repo, but they were written to drive the *player* and the two hierarchies are separate; this adapter closes the gap without a second copy of any policy. The baseline is handed a side-swapped view of the env (`_MirroredEnv`), so the same code plays the opponent.
+Plays any registered **baseline** policy (`baseline/registry.py`) on the opponent side. The baselines are the strongest scripted play in the repo, but they were written to drive the *player* and the two hierarchies are separate; this adapter closes the gap without a second copy of any policy. The baseline is handed a side-swapped view of the env (`MirroredEnv`, in `envs/opponent/mirror.py`), so the same code plays the opponent.
 
 ```yaml
 opponent_policy:
@@ -192,6 +192,57 @@ Two honest caveats on that table. `squad_march_take` and `squad_march_shoot` are
 
 **Adopting this policy voids every baseline and agent score measured on that config** — the whole ladder, not just the bar. Re-run `just measure-baselines <config> 100 "" 700000` first.
 
+### `model`
+
+Plays a trained checkpoint on the opponent side, which is what makes
+agent-versus-agent matches and the rating table possible.
+
+```yaml
+opponent_policy:
+  type: model
+  params:
+    checkpoint: checkpoints/<run>/last.ckpt
+    decode_topk: 3
+```
+
+**Parameters:** `checkpoint` (**required**) — a path to a `.ckpt`;
+`decode_topk` (default 1) — joint constrained decoding, exactly as
+`measure-checkpoint` uses it; `decode_stay` (default false).
+
+Three things about it are load-bearing and none is obvious:
+
+- **It lives under `model/`, not `envs/opponent/`,** because it needs a
+  network, and `envs` importing `model` would be a dependency inversion *and* a
+  real import cycle (`model/net.py` imports `envs.wargame`). The env-layer half
+  is `SelectorOpponentPolicy`, which seats any `ActionSelector` and is
+  torch-free. Registration therefore flows **downward**: importing
+  `wargame_rl.wargame.model.opponent` registers the key, and
+  `model.common.factory.create_environment` does that import — so building an
+  env any other way raises with a message naming it.
+- **The network is sized lazily, on the first action.** `from_env` resets the
+  env, and this policy is constructed *inside* `WargameEnv.__init__`; sizing
+  there would re-enter a half-built env and consume the layout RNG, shifting
+  every seeded episode. It is sized instead from the first mirrored observation
+  and the **opponent's** action handler — reading `env._action_handler` through
+  the mirror falls through to the *player's*, which on a symmetric config is
+  the same width and therefore silent.
+- **It refuses unequal armies.** `_alive_feature_index` locates the `alive`
+  column by counting back from the trailing expected-damage block, and
+  `_alive_from_features` falls back to treating every row as alive when that
+  index lands out of range — so on unequal armies the seat reads casualties as
+  live models and never raises. Removing this restriction is the size-agnostic
+  policy work.
+
+The checkpoint is loaded with the strict prefix conversion, so a state dict
+with an unrecognised prefix raises rather than loading nothing — unlike
+`train.py`'s warm-start path, which uses `strict=False` and would train a random
+network while reporting success.
+
+**Adopting this policy voids every baseline and agent score measured on that
+config.** And before rating anything on a config, run
+`just measure-seat-parity` — the two seats are not equivalent on every
+scenario, and where they are not, every rating carries the difference.
+
 ## Planned Policies (Not Yet Implemented)
 
 The following policies are designed in the architecture but have no class and are not registered — naming one in YAML raises `ValueError: Unknown opponent policy type` from `build_opponent_policy`:
@@ -199,7 +250,6 @@ The following policies are designed in the architecture but have no class and ar
 | Type key | Description |
 |----------|-------------|
 | `human` | Read actions from the renderer (keyboard/mouse input). Enables human-vs-agent play. |
-| `model` | Load a pre-trained checkpoint and use it as the opponent. Enables self-play and agent-vs-agent evaluation. |
 
 ## Adding a New Policy
 

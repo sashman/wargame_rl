@@ -48,24 +48,18 @@ from collections import defaultdict
 
 from pydantic_yaml import parse_yaml_raw_as
 
-from scripts.measure_checkpoint import HELDOUT_SEED_BASE, build_selector
-from wargame_rl.wargame.envs.baseline.evaluate import ActionSelector, selector_for
-from wargame_rl.wargame.envs.baseline.registry import (
-    build_baseline_policy,
-    get_registry,
-)
+from scripts.measure_checkpoint import HELDOUT_SEED_BASE
+from wargame_rl.wargame.envs.baseline.evaluate import ActionSelector
 from wargame_rl.wargame.envs.reward.calculators.base import GlobalRewardCalculator
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.factory import create_environment
+from wargame_rl.wargame.selectors import build_action_selector
 
 
 def _selector_for_policy(policy_name: str, env: WargameEnv) -> ActionSelector:
     """A baseline by registry name, or a policy loaded from a checkpoint path."""
-    if policy_name in get_registry():
-        return selector_for(build_baseline_policy(policy_name))
-    select, _net = build_selector(policy_name, env)
-    return select
+    return build_action_selector(policy_name, env).select
 
 
 def _calculator_kinds(env: WargameEnv) -> dict[str, str]:

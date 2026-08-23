@@ -23,17 +23,11 @@ Keys are listed in the window itself — press [Tab].
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import typer
 from loguru import logger
 from pydantic_yaml import parse_yaml_file_as
 
-from wargame_rl.wargame.envs.baseline.evaluate import ActionSelector, selector_for
-from wargame_rl.wargame.envs.baseline.registry import (
-    build_baseline_policy,
-    get_registry,
-)
+from wargame_rl.wargame.envs.baseline.evaluate import ActionSelector
 from wargame_rl.wargame.envs.debug import run_session
 from wargame_rl.wargame.envs.debug.reproduce import (
     build_env,
@@ -56,6 +50,7 @@ from wargame_rl.wargame.envs.renders.v2.presenters.debug import (
 )
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.selectors import build_action_selector
 
 app = typer.Typer(add_completion=False)
 
@@ -67,23 +62,13 @@ def build_selector_for(driver: str, env: WargameEnv) -> tuple[ActionSelector, st
     """Resolve a baseline name or a checkpoint path to a selector and a label.
 
     Torch is imported only on the checkpoint branch — a scripted session should
-    not pay for it.
+    not pay for it, which is why `wargame_rl.wargame.selectors` defers it.
     """
-    path = Path(driver)
-    if path.suffix == ".ckpt" or path.exists():
-        if not path.exists():
-            raise typer.BadParameter(f"no checkpoint at {driver!r}")
-        from scripts.measure_checkpoint import build_selector
-
-        select, _net = build_selector(str(path), env)
-        return select, path.parent.name
-
-    available = sorted(get_registry())
-    if driver not in available:
-        raise typer.BadParameter(
-            f"unknown policy {driver!r}; try one of {available}, or a .ckpt path"
-        )
-    return selector_for(build_baseline_policy(driver)), driver
+    try:
+        resolved = build_action_selector(driver, env)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    return resolved.select, resolved.label
 
 
 @app.command()
