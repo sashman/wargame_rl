@@ -16,10 +16,17 @@ in code before acting on them.**
 
 | 2026-08-23 | audit | PR #245 (scripts advance, opponent advances, move must end unengaged, stale columns zeroed) — is the bar trustworthy enough to train against? | **BLOCKED the merge.** Three real defects, all reproduced independently before being accepted | (1) the bar table had **no error bar on the delta** — redone paired at n=30, **two of four rows wrong in SIGN**, `deny` −20.0 (t=−2.82, 1/9) not +1.3; (2) the engagement figure was wrong the *other* way — a hardcoded 2.26" ring fractionally larger than the env predicate counted every rescued model as still engaged, true figure **7.52% → 0.00%**; (3) **a shipped movement bug** — the back-off walked endpoints into friendly bases, 0.18% of pairs overlapping, and **six unit tests covered the function with zero `env.step` calls** so none could see it |
 
-**Running total — nominations 0/2, audits 11/11.** Audit mode found a live bug in shipped
+**Second panel, same round, found the decisive one:** the 2×2 nobody had run. Advancing
+costs its USER ~78 vp (−81.8 against −4.1); both-advance (−3.6) is indistinguishable from
+both-walk (−4.1). **The published "+15.5 to the bar" was two self-inflicted wounds
+cancelling.** Also: the OFF column had been measured on *different code*, and the
+"gains most despite forgoing its shooting" highlight was false — it fires 3% MORE shots.
+
+**Running total — nominations 0/2, audits 15/15.** Audit mode found a live bug in shipped
 code and two sign errors in a published table, at zero GPU. Both panels reached the `deny`
 result independently (−18.7 and −20.0, both 1/9).
 
-⚠ **New standing rule earned here: compute the error bar on the quantity you are claiming,
-not on its parts.** And: a test that never calls `env.step` cannot see a composition defect —
+⚠ **Three standing rules earned here: (1) compute the error bar on the quantity you are
+claiming, not on its parts; (2) NEVER measure a symmetric change with both sides changed at
+once — run the 2×2; (3) check both columns were measured on the same code.** And: a test that never calls `env.step` cannot see a composition defect —
 this project has now paid for that twice.

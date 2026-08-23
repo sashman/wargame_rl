@@ -49,7 +49,7 @@ class ScriptedAdvanceToObjectivePolicy(OpponentPolicy):
     # and `advanced_this_turn` marked for every model of any group that advanced.
     # A per-model decision would forfeit the whole unit's shooting to buy extra
     # distance for one model.
-    advance_when_out_of_reach: bool = True
+    advance_when_out_of_reach: bool = False
 
     def select_action(
         self,

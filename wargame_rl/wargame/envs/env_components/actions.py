@@ -698,6 +698,16 @@ class ActionHandler:
             # producing exactly the overlap the whole resolution just avoided,
             # only near a board edge and only sometimes.
             in_bounds = np.clip(model.location + displacement, lower, upper)
+            # The bases the endpoint may not land inside: enemies (which also
+            # block the path) and the moving army's own models (which may be
+            # crossed but not ended on). Passed in because backing off walks the
+            # endpoint into ground `resolve_move` had already cleared -- without
+            # them a model rescued from an engagement ring comes to rest inside
+            # a friendly base, measured at 0.18% of pairs.
+            occupied_centres = np.concatenate([blocker_centres, friendly_centres])
+            occupied_reach = (
+                np.concatenate([blocker_radii, friendly_radii]) + model.base_radius
+            )
             model.location = back_off_to_unengaged(
                 model.location,
                 resolve_move(
@@ -711,6 +721,8 @@ class ActionHandler:
                 ),
                 engagement_centres,
                 engagement_reach,
+                occupied_centres,
+                occupied_reach,
             )
 
         # Every model in the force has now moved, which is the earliest point a

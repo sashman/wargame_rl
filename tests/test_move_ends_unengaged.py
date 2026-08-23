@@ -99,3 +99,58 @@ def test_the_legal_set_is_not_an_interval_and_the_walk_handles_it() -> None:
     assert 5.0 <= end[0] <= 8.0, f"expected the gap between the rings, got {end[0]}"
     for centre, radius in zip(centres, reach):
         assert np.linalg.norm(end - centre) >= radius - 1e-9
+
+
+def test_no_two_models_end_a_movement_phase_overlapping() -> None:
+    """The composition test the unit tests above structurally cannot perform.
+
+    ⚠ **This is the bug that shipped.** Backing off walks the endpoint into
+    ground `resolve_move` had already cleared as passable-but-not-endable, so a
+    model rescued from an engagement ring came to rest INSIDE a friendly base:
+    **0.18% of friendly pairs, worst penetration 0.68"**, against 0.0000% with
+    the rule off. `movement.py`'s own first line is that no two models may end a
+    move overlapping.
+
+    Every other test in this file calls the pure function. None of them could
+    ever have seen this — the same defect this project already paid for on the
+    joint decoder, where "seven tests covered the module and none called
+    `env.step`, so every one asserted the decoder against its own relaxation".
+    So this one drives the real env.
+    """
+    from pathlib import Path
+
+    from scripts.measure_maps import config_for_map, load_maps
+    from scripts.scenario_overrides import load_env_config
+    from wargame_rl.wargame.envs.baseline.evaluate import selector_for
+    from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
+    from wargame_rl.wargame.envs.types.game_timing import BattlePhase
+    from wargame_rl.wargame.model.common.factory import create_environment
+
+    config = load_env_config("configs/evaluation/25v25_maps_advance_refereed.yaml")
+    terrain_map = load_maps(Path("configs/evaluation/maps_heldout"))[0]
+    env = create_environment(env_config=config_for_map(config, terrain_map))
+    select = selector_for(build_baseline_policy("squad_march_take"))
+
+    observation, _ = env.reset(seed=700000)
+    done = False
+    worst = 0.0
+    while not done:
+        was_movement = env.game_clock_state.phase is BattlePhase.movement
+        observation, _r, done, _t, _i = env.step(select(observation, env))
+        if not was_movement:
+            continue
+        alive = [m for m in env.player_models if m.is_alive]
+        if len(alive) < 2:
+            continue
+        locations = np.array([m.location for m in alive], dtype=float)
+        radii = np.array([m.base_radius for m in alive], dtype=float)
+        gaps = np.linalg.norm(locations[:, None, :] - locations[None, :, :], axis=2)
+        needed = radii[:, None] + radii[None, :]
+        upper = np.triu_indices(len(alive), 1)
+        worst = max(worst, float(np.max(needed[upper] - gaps[upper])))
+    env.close()
+
+    assert worst <= 1e-9, (
+        f"two models ended a movement phase overlapping by {worst:.3f} in — the "
+        "back-off placed an endpoint inside a base"
+    )

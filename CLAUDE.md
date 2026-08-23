@@ -1097,25 +1097,29 @@ Measured 2026-08-23, no GPU, **corrected the same day after two audit panels**,
   scored against a walking bar. That premise was real and is fixed; the *magnitudes* first
   published were not.
 
-**The bar, n=30, PAIRED across the held-out nine** (the first publication was n=10 with no
-error bar on the delta at all, and two rows were wrong in sign):
+⚠ **THE BAR NEVER MOVED, AND THE HEURISTIC IS REJECTED.** The 2x2 the first two
+measurements skipped (`25v25_maps_advance_refereed`, held-out nine, n=10,
+`squad_march_take` both sides, vp_margin to the player):
 
-| policy | n=30 paired delta | t | sign |
-|---|---|---|---|
-| `squad_march` | **+21.1 ± 5.2** | 4.06 | 8/9 |
-| `squad_march_shoot` | **+23.7 ± 7.4** | 3.22 | 7/9 |
-| `squad_march_take` | **−6.5 ± 8.0** | −0.80 | 4/9 |
-| `squad_march_deny` | **−20.0 ± 7.1** | **−2.82** | **1/9** |
+| | opponent walks | opponent advances |
+|---|---|---|
+| **player walks** | **−4.1** | +72.7 |
+| **player advances** | **−81.8** | −3.6 |
 
-- ⚠ **THE NAIVE "run while far, walk once close" HEURISTIC HURTS THE TWO STRONGEST
-  SCRIPTS.** It is free for movement-only policies, which never shoot, and costs the
-  allocation-aware ones 6–20 vp — including `squad_march_take`, which *is* the bar. **This
-  does not mean Advance is bad; it means the heuristic is.** Until a better rule exists,
-  `advance_when_out_of_reach` should default **False for `take` and `deny`**.
-- ⚠ **COMPUTE THE ERROR BAR ON THE QUANTITY YOU CLAIM, NOT ON ITS PARTS.** `measure_maps`
-  prints per-column across-map SEs and never computes a paired difference, though
-  `baseline/evaluate.py::paired_difference` exists. Combining the printed bars naively
-  already gave t=1.12 and t=0.11 for the two bad rows.
+- **"Run while far, walk once close" costs its USER ~78 vp**, and both-advance (−3.6) is
+  indistinguishable from both-walk (−4.1). The published "+15.5 to the bar" was **two
+  self-inflicted wounds cancelling** — both sides adopted the same bad heuristic in the
+  same change.
+- ⚠ **NEVER MEASURE A SYMMETRIC CHANGE WITH BOTH SIDES CHANGED AT ONCE.** Run the 2×2.
+- ⚠ The first OFF column was also measured on **different code** (before the endpoint
+  rule), so those deltas were the sum of two changes.
+- ⚠ **"`shoot` gains most despite forgoing its shooting" is FALSE — it forgoes nothing.**
+  Declared shots 8,132 walking v **8,375 advancing**. At range 12 with objectives 20–40"
+  away, squads only advance while already out of range.
+- `advance_when_out_of_reach` now defaults **False** on both sides, pinned by a test. **The
+  mechanism stays** — a bar that cannot use a core rule is not a bar. The heuristic is what
+  is rejected: it never prices the forfeited shooting.
+
 - **The endpoint rule works BETTER than first claimed: 7.52% → 0.00%, all of it removed.**
   The published 6.01% → 3.21% used a hardcoded 2.26" ring fractionally *larger* than the
   env's own predicate, while the back-off parks rescued models at `ring + epsilon` — so it

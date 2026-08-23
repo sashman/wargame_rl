@@ -12,6 +12,8 @@ exactly, so the two are comparable on one config.
 
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 import pytest
 
@@ -26,10 +28,13 @@ def _config(bins: int) -> WargameEnvConfig:
     )
 
 
-def _advance_actions(policy_name: str, bins: int, rounds: int = 6) -> tuple[int, int]:
+def _advance_actions(
+    policy_name: str, bins: int, rounds: int = 6, advancing: bool = False
+) -> tuple[int, int]:
     """Play an episode; return (advance actions chosen, movement actions chosen)."""
     env = create_environment(env_config=_config(bins))
     policy = build_baseline_policy(policy_name)
+    policy.advance_when_out_of_reach = advancing  # type: ignore[attr-defined]
     observation, _ = env.reset(seed=3)
     handler = env.player_action_handler
     advance_slice = handler.advance_slice
@@ -54,7 +59,7 @@ def _advance_actions(policy_name: str, bins: int, rounds: int = 6) -> tuple[int,
 
 def test_a_squad_that_cannot_reach_its_objective_advances() -> None:
     """The whole point: run while far, walk once close."""
-    advances, moves = _advance_actions("squad_march", bins=3)
+    advances, moves = _advance_actions("squad_march", bins=3, advancing=True)
 
     assert advances > 0, "the scripted bar never used the Advance move"
     assert moves > 0, "it advanced every step, so it never settles onto a point"
@@ -70,11 +75,11 @@ def test_the_toggle_reproduces_the_pre_advance_bar_exactly() -> None:
         ScriptedSquadMarchPolicy,
     )
 
-    class NoAdvance(ScriptedSquadMarchPolicy):
-        advance_when_out_of_reach = False
+    class Advancing(ScriptedSquadMarchPolicy):
+        advance_when_out_of_reach = True
 
-    old = NoAdvance()
-    new = build_baseline_policy("squad_march")
+    old = build_baseline_policy("squad_march")  # the default: does not advance
+    advancing = Advancing()
 
     observation_old, _ = env_old.reset(seed=5)
     observation_new, _ = env_new.reset(seed=5)
@@ -87,7 +92,7 @@ def test_the_toggle_reproduces_the_pre_advance_bar_exactly() -> None:
         action_old = old.select_action(
             env_old.wargame_models, env_old, action_mask=observation_old.action_mask
         )
-        action_new = new.select_action(
+        action_new = advancing.select_action(
             env_new.wargame_models, env_new, action_mask=observation_new.action_mask
         )
         if list(action_old.actions) != list(action_new.actions):
@@ -189,14 +194,20 @@ def test_the_opponent_advances_too() -> None:
     """
     from scripts.scenario_overrides import load_env_config
     from wargame_rl.wargame.envs.opponent.registry import build_opponent_policy
+    from wargame_rl.wargame.envs.opponent.scripted_advance_to_objective_policy import (
+        ScriptedAdvanceToObjectivePolicy,
+    )
     from wargame_rl.wargame.envs.types.config.battle import OpponentPolicyConfig
 
     config = load_env_config("configs/experiments/25v25_maps_advance.yaml")
     env = create_environment(env_config=config)
     env.reset(seed=8)
-    policy = build_opponent_policy(
+    built = build_opponent_policy(
         OpponentPolicyConfig(type="scripted_advance_to_objective"), env
     )
+    policy = cast(ScriptedAdvanceToObjectivePolicy, built)
+    # Opt in: the default is now OFF, because the heuristic was rejected.
+    policy.advance_when_out_of_reach = True
     advance_slice = env.opponent_action_handler.advance_slice
     assert advance_slice is not None
 
@@ -252,3 +263,32 @@ def test_the_opponents_advance_columns_are_zeroed_not_stale() -> None:
         for model in observation.opponent_models:
             assert model.advance_roll == 0.0
             assert model.advanced_this_turn == 0.0
+
+
+def test_advancing_is_OFF_by_default_because_the_heuristic_was_REJECTED() -> None:
+    """The 2x2 that rejected it: advancing costs its USER about 78 vp.
+
+    `25v25_maps_advance_refereed`, held-out nine, n=10, `squad_march_take` both
+    sides, vp_margin to the player:
+
+                           opponent walks   opponent advances
+        player walks            -4.1              +72.7
+        player advances        -81.8               -3.6
+
+    Both-advance (-3.6) is indistinguishable from both-walk (-4.1), which is how
+    a first measurement read this as "+15.5 to the bar". It is worth nothing to
+    the bar -- both sides were handicapping themselves equally.
+
+    The MECHANISM stays, because a bar that cannot use a core rule is not a bar.
+    The HEURISTIC is what is rejected, so the default must stay off until a rule
+    exists that prices the forfeited shooting.
+    """
+    from wargame_rl.wargame.envs.baseline.scripted_squad_march import (
+        ScriptedSquadMarchPolicy,
+    )
+    from wargame_rl.wargame.envs.opponent.scripted_advance_to_objective_policy import (
+        ScriptedAdvanceToObjectivePolicy,
+    )
+
+    assert ScriptedSquadMarchPolicy.advance_when_out_of_reach is False
+    assert ScriptedAdvanceToObjectivePolicy.advance_when_out_of_reach is False

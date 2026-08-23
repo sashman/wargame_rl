@@ -222,3 +222,50 @@ it. `test_no_two_models_end_a_movement_phase_overlapping` now drives the real en
 rows were visible in the published numbers: combining the printed bars naively gives
 t = 1.12 and 0.11 for `take` and `deny`, and +1.3 was reported as a positive result
 anyway.
+
+
+---
+
+# SECOND CORRECTION — the heuristic is REJECTED, and the bar never moved
+
+A second audit panel completed the 2x2 the first correction did not. Reproduced here
+independently. `25v25_maps_advance_refereed`, held-out nine, n=10, `squad_march_take` on
+both sides, vp_margin to the player:
+
+| | opponent walks | opponent advances |
+|---|---|---|
+| **player walks** | **-4.1** | +72.7 |
+| **player advances** | **-81.8** | -3.6 |
+
+- **Using the heuristic costs its USER about 78 vp.**
+- **The bar never moved.** Both-advance (-3.6) is indistinguishable from both-walk (-4.1).
+- ⚠ **The published "+15.5 to the bar" was two self-inflicted wounds cancelling.** Both
+  sides adopted the same bad heuristic in the same change and hurt themselves by the same
+  amount, so the diagonal looked like a gain.
+
+**NEVER MEASURE A SYMMETRIC CHANGE WITH BOTH SIDES CHANGED AT ONCE.** The whole bar table
+is void, not merely mis-signed: it compared one diagonal of a 2x2 against the other.
+
+Two further findings from the same panel, both reproduced:
+
+- ⚠ **The OFF column was measured on DIFFERENT CODE.** It came from the bridge run, taken
+  before the endpoint rule existed; the ON column includes it. So the published deltas were
+  the sum of two changes shipping together, never one.
+- ⚠ **"`squad_march_shoot` gains most despite forgoing its shooting" is FALSE — it forgoes
+  nothing.** Declared shots: 8,132 walking against **8,375 advancing**, 3% *more*. At
+  weapon range 12 with objectives 20-40" away, the squads only advance while already out of
+  range. The mechanism the highlight asserted does not exist in the data.
+
+## What changes in the code
+
+`advance_when_out_of_reach` now defaults to **False** on both the player baselines and the
+opponent policy, pinned by a test. **The mechanism stays** -- `best_advance_toward` is
+correct and a scripted bar that cannot use a core rule is not a bar. What is rejected is
+this heuristic, which never prices the forfeited shooting.
+
+## What still stands
+
+- The **premise**: no script or opponent policy could advance. Still true, still worth
+  fixing, and the mechanism to fix it now exists.
+- The **endpoint rule**: 7.52% -> 0.00%, all of it removed.
+- The **overlap fix**, and the behavioural test that catches it.

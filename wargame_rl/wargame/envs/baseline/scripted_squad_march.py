@@ -61,7 +61,26 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
     # one D6 per unit and `advanced_this_turn` is marked for every model of any
     # group that advanced, so a squad splitting its choice loses the shooting
     # anyway and gains only part of the distance.
-    advance_when_out_of_reach: bool = True
+    # ⚠ **REJECTED AS A DEFAULT, and the measurement that rejected it is the 2x2.**
+    # "Run while far, walk once close" costs its USER about 78 vp. Measured on
+    # `25v25_maps_advance_refereed`, held-out nine, n=10, `squad_march_take`
+    # both sides, vp_margin to the player:
+    #
+    #                        opponent walks   opponent advances
+    #     player walks            -4.1              +72.7
+    #     player advances        -81.8               -3.6
+    #
+    # The both-advance cell (-3.6) is indistinguishable from both-walk (-4.1),
+    # which is why a first measurement read this as "Advance is worth +15.5 to
+    # the bar". It is worth nothing to the bar: the two sides were handicapping
+    # themselves by the same amount and the effects cancelled. **Never measure a
+    # symmetric change with both sides changed at once.**
+    #
+    # The mechanism (`ActionHandler.best_advance_toward`) is kept, because
+    # Advance is a core rule and a scripted bar that cannot use it is not a bar.
+    # What is rejected is this HEURISTIC. A better rule has to price the
+    # forfeited shooting, which this one never does.
+    advance_when_out_of_reach: bool = False
 
     def select_movement(
         self, models: list[WargameModel], env: WargameEnv
