@@ -58,7 +58,11 @@ def _mirror_of(env: WargameEnv) -> WargameEnv:
 
 def _observation_tensors(view: WargameEnv, registry: object) -> list[np.ndarray]:
     observation = build_observation(view, action_registry=registry)  # type: ignore[arg-type]
-    return [tensor.numpy() for tensor in observation_to_tensor(observation)]
+    # `.cpu()` before `.numpy()`: `observation_to_tensor` places on the default
+    # device, so on a GPU machine this raised and the test never ran. CI is
+    # CPU-only, which is why it went green while `main` was red on any box with
+    # a card in it.
+    return [tensor.cpu().numpy() for tensor in observation_to_tensor(observation)]
 
 
 def _paired_envs(steps: int = 0) -> tuple[WargameEnv, WargameEnv]:
