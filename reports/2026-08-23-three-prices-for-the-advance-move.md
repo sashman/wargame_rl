@@ -270,3 +270,69 @@ A declaration therefore has to be *separable* from the displacement, which needs
 config, so making it act changes steps-per-round everywhere. That is the same
 machinery the "additive cost" criterion needs, so the two are one change, and it is
 not worth spending before the horizon question is settled.
+
+---
+
+## 10. Addendum — the declaration
+
+The remaining two criteria, built the same day once the blocker turned out to be
+one change rather than two.
+
+**A `move_type` slice of two actions** (`normal`, `advance`), valid in the
+**command phase**, registered last so no existing index moves. The unit's
+lowest-indexed alive model declares and the whole unit is bound.
+
+| | before | after |
+|---|---|---|
+| how the move type is decided | an **OR over five per-model movement actions** | one declaration by the unit's leader |
+| P(a 5-model unit advances) at init | 0.855 | one binary choice per unit |
+| action space, advance on | 150 | 152 |
+| action space, `n_advance_speed_bins: 0` | 102 | **102** |
+| cost of adding fall back or charge | ~48 actions + a unit-resolution hack | **one value in `move_type`** |
+
+- **STAY declares `normal`**, so every policy written before the declaration
+  behaves as it did. Verified: a non-advancing script scores **bit-identically on
+  10 of 10 seeds** across the change.
+- **Declaring spends the unit's shooting immediately**, whether or not a member
+  then uses a long rung — the rules' cost attaches to the move type, not the
+  distance.
+- ⚠ **The advance roll moved to the start of the side's turn.** A declaration made
+  in the command phase would otherwise be blind, and since rung legality is gated
+  on `M + roll`, no rung would ever be legal. Idempotent and keyed on
+  `(battle_round, active_player)` rather than hung on a phase transition, because
+  command is the *first* phase of a turn and the first turn of an episode never
+  advances into it.
+- **`n_advance_speed_bins > 0` now requires the command phase**, rejected at
+  construction otherwise — the rungs would exist and no declaration would ever be
+  legal, and a run would measure a feature it never had.
+
+⚠ **The cheaper version is actively wrong, and this is the finding.** Masking the
+advance rungs to the leader alone makes the declaration unit-level inside the
+existing structure — and **shatters formation**, because a move type and a
+displacement were the same action, so a leader-only advance caps every squadmate at
+`M`. The scripts advance **5-of-5 with a within-unit spread of 0.00"**; leader-binds
+forces ~6" against a 2" chain. Separating the declaration from the distance is the
+whole reason the unit decision is safe.
+
+### What it voids, and what it does not
+
+The command phase is now a real agent step on advance configs. Verified neutral on
+the game — the golden config scores **bit-identically on 8 of 8 seeds** with command
+skipped or active — **except in episodes that end early by elimination**:
+
+| seed 700003, table_02 | steps | final round | scoring events | own VP |
+|---|---|---|---|---|
+| command skipped | 20 | 11 | **10** | 120 |
+| command active | 30 | 11 | **9** | 105 |
+
+10 of 45 tables moved by exactly **−1.5** at n=10 — 15 VP in one episode each. The
+skipped command phase used to be traversed *inside* the terminating step and scored
+there; it is now a phase the agent never gets to leave. **Arguably more correct**: a
+scoring event that requires reaching your next turn should not fire in a game that
+has already ended. Either way it is a change, so re-measure rather than carry a
+figure across it.
+
+**Throughput: ~15% more wall-clock per battle round, not the 50% the step count
+suggests.** Per-step cost *falls* from 4.338 ms to 3.334 ms because a command step
+does almost nothing, so 1.5× the steps nets 8.68 → 10.00 ms per round. A 2048-step
+epoch runs 9.5 s → 7.5 s and covers a third fewer rounds.
