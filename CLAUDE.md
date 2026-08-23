@@ -668,6 +668,43 @@ measure-advance-use` censuses what a policy buys with the advance and what it pa
   And ⚠ **`random` is not a control for action-slice usage**: `RandomBaselinePolicy`
   samples `0..n_move_actions` and can never choose an advance.
 
+### The advance slice, re-encoded: absolute rungs, gated by a mask
+
+Shipped 2026-08-23. `n_advance_speed_bins` defaults to **0**, so **no golden config
+is touched** and every reward and observation golden stays bit-identical.
+
+- **Rungs are absolute**: `M + (bin + 1) x (6 / bins)` — at `M = 6` with three bins,
+  **8" / 10" / 12"**. The unit's D6 now decides which rungs are **legal**
+  (`ActionHandler.advance_legality`, masked on **both** seats) instead of deciding
+  what an action means.
+- **Two defects go with it.** No action can spend the unit's shooting for a distance
+  a normal move reaches — **dominated advances measured 0.0%**, against 3.5–13.8%
+  for scripts and 0.4–5.9% for agents under the old ladder. And it was the only
+  slice in the game whose indices changed meaning turn to turn, so a policy had to
+  read `advance_roll` to know what its own action did.
+- ⚠ **The reason on file for admitting dominated bins does not hold**, and was
+  checked against `env.step`: only ONE model need choose an advance for the unit to
+  advance, so its squadmates keep the whole normal slice and stop where they like.
+  Two tests that pinned the old behaviour were replaced, each naming what it
+  replaced and why.
+- **Cross-config bridge verified.** `squad_march_take` — which never advances —
+  scores **−2.8 / `held` 2.57 / `alive` 0.396 / `coherent` 0.845** on all 45 tables
+  either side of the change, identical to every printed digit.
+- ⚠ **It VOIDS the advance arm's checkpoints behaviourally.** The tensor width is
+  unchanged so they still load; their action indices now mean different distances.
+- ⚠ **At three bins a roll of 1 leaves NO legal rung.** Deliberate: the rules would
+  permit a 7" advance, the ladder cannot express it, and a 1" gain never repays a
+  turn of fire.
+- ⚠ **"Move type is a unit declaration" is BLOCKED, and the obvious fix is wrong.**
+  Leader-binds — one model declares, the rest are masked — is a real unit
+  declaration and cuts the initialisation trigger rate 85.5% → 32%, and it would
+  **shatter formation**: move type and displacement are the same action, so a
+  leader-only advance caps every squadmate at `M`. The scripts advance **5-of-5 at a
+  within-unit spread of 0.00"**; leader-binds forces ~6" against a 2" chain. A true
+  declaration needs an **action-bearing command phase**, and `command` is in
+  `skip_phases` on every config — making it act changes steps-per-round everywhere.
+  **Settle the horizon question first.**
+
 ### Offence is not reward-shapeable here — three arms, one conclusion
 
 Measured 2026-08-22, [report](reports/2026-08-22-the-agent-is-never-paid-to-attack.md).

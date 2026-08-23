@@ -217,3 +217,49 @@ just measure-paired squad_march_take_arrive squad_march_take \
     configs/experiments/25v25_maps_advance.yaml 100 700000 rounds=5
 just measure-maps squad_march_take_arrive configs/experiments/25v25_maps_advance.yaml 10 "" 1 rounds=5
 ```
+
+---
+
+## 9. Addendum — the slice, re-encoded
+
+Two of the goal's four criteria are unambiguous and do not depend on the horizon
+question, so they were built and verified the same day.
+
+**Absolute rungs.** An advance bin is now `M + (bin + 1) × (6 / bins)` — at `M = 6`
+with three bins, **8" / 10" / 12"** — and the unit's D6 gates which rungs are
+**legal** (`ActionHandler.advance_legality`, masked on both seats) rather than
+deciding what an action means.
+
+| | old: `fraction × (M + roll)` | new: absolute rungs |
+|---|---|---|
+| bin 1 at roll 1 / roll 6 | 2.33" / 4.00" | 8", legal only at roll ≥ 2 |
+| bin 3 at roll 1 / roll 6 | 7.00" / 12.00" | 12", legal only at roll 6 |
+| dominated share of the slice | ~50% in expectation | **0 by construction** |
+| dominated advances *measured* | 3.5–13.8% (scripts), 0.4–5.9% (agents) | **0.0%** |
+
+- ⚠ **The cross-config bridge holds.** `squad_march_take` never advances and scores
+  **−2.8 / `held` 2.57 / `alive` 0.396 / `coherent` 0.845** on all 45 tables either
+  side of the change — identical to every printed digit. That is what makes any
+  comparison across the re-encoding legitimate.
+- `n_advance_speed_bins` defaults to 0, so **no golden config is touched** and every
+  reward and observation golden stays bit-identical.
+- ⚠ **It voids the advance arm's checkpoints behaviourally.** Tensor width is
+  unchanged so they load; their indices now mean different distances.
+- ⚠ **At three bins a roll of 1 leaves no legal rung.** The rules permit a 7"
+  advance and the ladder cannot express it. Deliberate — a 1" gain never repays a
+  turn of fire.
+
+**And the other two criteria are blocked together, on a mistake worth recording.**
+"Move type is a unit declaration" has an obvious implementation — let the unit's
+leader declare and mask the advance slice for everyone else. It is a genuine
+unit-level declaration and it cuts the initialisation trigger rate from 85.5% to
+32%. **It would also shatter formation.** Move type and displacement are the same
+action here, so a leader-only advance caps every other model at `M`: the scripts
+advance **5-of-5 with a within-unit distance spread of 0.00"**, and leader-binds
+forces that spread to ~6" against a 2" chain.
+
+A declaration therefore has to be *separable* from the displacement, which needs an
+**action-bearing command phase** — and `command` is in `skip_phases` on every
+config, so making it act changes steps-per-round everywhere. That is the same
+machinery the "additive cost" criterion needs, so the two are one change, and it is
+not worth spending before the horizon question is settled.

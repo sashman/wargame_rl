@@ -122,24 +122,28 @@ def test_a_scenario_without_advance_bins_is_untouched() -> None:
 
 @pytest.mark.parametrize("policy", ["squad_march", "squad_march_shoot"])
 def test_best_advance_toward_respects_the_units_own_roll(policy: str) -> None:
-    """The reachable distance is `M + roll`, so the roll has to be read, not assumed."""
+    """The roll has to be read — it now decides WHETHER an advance is on offer.
+
+    ⚠ This test previously asserted that a smaller roll yields a *shorter*
+    advance. Under the absolute ladder it does not: a rung means the same
+    distance every turn, and a roll too small to reach any rung offers no
+    advance at all. Returning None is what lets a scripted caller fall back to
+    a normal move without branching on the roll.
+    """
     env = create_environment(env_config=_config(3))
     env.reset(seed=11)
     handler = env.player_action_handler
 
     far = handler.best_advance_toward(1.0, 0.0, advance_roll=6.0, model_idx=0)
-    near = handler.best_advance_toward(
-        1.0, 0.0, advance_roll=0.0, max_step_length=1.0, model_idx=0
-    )
-    assert far is not None and near is not None
+    assert far is not None, "a roll of 6 must reach the top rung"
+    assert handler.best_advance_toward(1.0, 0.0, advance_roll=0.0, model_idx=0) is None
 
+    move = float(handler.move_speeds[0])
     reach_far = np.linalg.norm(
         handler.decode_action(far, model_idx=0, advance_roll=6.0)
     )
-    reach_near = np.linalg.norm(
-        handler.decode_action(near, model_idx=0, advance_roll=0.0)
-    )
-    assert reach_far > reach_near, "the roll did not change the distance offered"
+    assert reach_far > move, "the advance did not beat a normal move"
+    assert reach_far <= move + 6.0, "it exceeded the rules' maximum"
 
 
 def test_no_advance_slice_returns_none_rather_than_raising() -> None:

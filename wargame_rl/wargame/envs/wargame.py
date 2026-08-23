@@ -441,6 +441,16 @@ class WargameEnv(gym.Env):
         return self._player_max_ranges
 
     @property
+    def player_advance_legality(self) -> np.ndarray:
+        """`(n_models, n_advance_actions)` — which advance rungs this turn allows.
+
+        Exposed on `BattleView` because the observation builder masks with it and
+        must not reach into the action handler, and because the mirrored view has
+        to answer it for the opponent's own models rather than the player's.
+        """
+        return self._action_handler.advance_legality(self.wargame_models)
+
+    @property
     def opponent_max_ranges(self) -> np.ndarray:
         """Longest weapon range per opponent model, resolved once from config.
 
@@ -1026,6 +1036,14 @@ class WargameEnv(gym.Env):
         mask = handler.registry.get_model_action_masks(
             phase, len(self.opponent_models), alive_mask=opp_alive
         )
+        advance_slice = handler.advance_slice
+        if advance_slice is not None and phase is BattlePhase.movement:
+            # The same absolute-rung gate the player gets. Leaving it off would
+            # let the opponent pick a rung its roll cannot reach and silently
+            # receive a shorter move -- the asymmetry that voids a bar.
+            mask[:, advance_slice.start : advance_slice.end] &= (
+                handler.advance_legality(self.opponent_models)
+            )
         shooting_slice = handler.shooting_slice
         if (
             phase != BattlePhase.shooting

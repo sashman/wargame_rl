@@ -35,6 +35,11 @@ from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 STAY_ACTION = 0
 
+# The advance roll is one D6 (`wargame.py::_roll_advance`), so the most an
+# advance can add to a model's Move is 6". The bin ladder is built from this,
+# which is what keeps an action index meaning the same distance every turn.
+ADVANCE_DIE_FACES = 6.0
+
 # Every slice name `ActionHandler` can register. A name outside this set in
 # `dark_action_slices` is a typo that would silently darken nothing, so it
 # raises rather than doing nothing.
@@ -451,22 +456,38 @@ class ActionHandler:
         result: np.ndarray = self._displacements[angle_idx, speed_idx]
         return result
 
+    def advance_distance(self, bin_idx: int, move: float) -> float:
+        """Absolute distance of an advance bin, in inches. Always beyond `move`.
+
+        The ladder is `M + (bin + 1) x (6 / bins)`, so at `M = 6` and three bins
+        it is 8", 10", 12" -- fixed rungs above the model's Move, not fractions
+        of `M + roll`.
+
+        Two defects of the fractional encoding go with this. **Stationary
+        semantics**: an action index means the same displacement every turn, so
+        a policy does not have to read `advance_roll` to know what its own
+        action does; the roll now decides only which rungs are LEGAL, which is
+        what the mask is for. **No dominated actions**: every rung is beyond a
+        normal move's reach, so no advance can spend the unit's shooting for a
+        distance a normal move already delivers.
+
+        ⚠ The reason previously recorded for admitting dominated bins -- that a
+        unit which cannot stop short cannot advance and halt to keep coherency
+        -- does not hold, and was verified against `env.step`. Only ONE model
+        need choose an advance for the unit to advance; its squadmates keep the
+        whole normal slice and stop wherever they like.
+        """
+        return move + (bin_idx + 1) * (ADVANCE_DIE_FACES / self._n_advance_bins)
+
     def _advance_displacement(
         self, action: int, model_idx: int | None, advance_roll: float
     ) -> np.ndarray:
-        """Displacement for an advance action: `fraction x (M + roll)`, in units.
+        """Displacement for an advance action, at a fixed distance above Move.
 
-        `M + roll` is a MAXIMUM in the rules, not a fixed distance -- a unit may
-        advance any distance up to it, including a short one. So the bins span
-        the whole range and the top bin is exactly `M + roll`.
-
-        ⚠ This deliberately admits DOMINATED actions: a 4" advance costs the
-        turn's shooting and buys nothing a 4" normal move would not. Pruning
-        them was the first design here, and it was wrong for the same reason
-        widening `n_speed_bins` was wrong -- it optimises the action space
-        against the rules. A unit that cannot stop short cannot advance toward
-        an objective and halt to keep coherency, which is the binding constraint
-        in this project.
+        `advance_roll` is not read: the rung is absolute. The roll gates which
+        rungs are legal, through `advance_legality`, and an over-long rung that
+        reaches here despite the mask is clamped to `M + roll` so the rules'
+        maximum still holds.
         """
         index = action - self._advance_slice.start  # type: ignore[union-attr]
         angle_idx = index // self._n_advance_bins
@@ -476,11 +497,32 @@ class ActionHandler:
             if model_idx is not None
             else float(self._speeds[-1])
         )
-        fraction = (bin_idx + 1) / self._n_advance_bins
-        distance = fraction * (move + advance_roll)
+        distance = min(self.advance_distance(bin_idx, move), move + advance_roll)
         direction = self._unit_directions[angle_idx]
         displacement: np.ndarray = (direction * distance).astype(POSITION_DTYPE)
         return displacement
+
+    def advance_legality(self, models: list[Any]) -> np.ndarray:
+        """`(n_models, n_advance_actions)` -- which rungs this turn's rolls allow.
+
+        A rung is legal for a model when its absolute distance is within that
+        model's `M + roll`. With three bins a roll of 1 leaves none legal, which
+        is correct rather than a gap: the rules would permit a 7" advance and
+        the ladder cannot express it, and a 1" gain never repays a turn of fire.
+        """
+        if self._advance_slice is None:
+            return np.zeros((len(models), 0), dtype=bool)
+        n_bins = self._n_advance_bins
+        legality = np.zeros((len(models), self._advance_slice.size), dtype=bool)
+        for index, model in enumerate(models):
+            move = float(self._move_speeds[index])
+            reach = move + float(model.advance_roll)
+            allowed = np.array(
+                [self.advance_distance(b, move) <= reach for b in range(n_bins)],
+                dtype=bool,
+            )
+            legality[index] = np.tile(allowed, self._n_angles)
+        return legality
 
     @property
     def movement_slice(self) -> ActionSlice:
@@ -552,9 +594,10 @@ class ActionHandler:
         slice, so a caller can fall back to a normal move without branching on
         the config.
 
-        `advance_roll` is the unit's own D6 for this turn (`model.advance_roll`),
-        because the reachable distance is `fraction x (M + roll)` and a policy
-        that assumed a fixed roll would ask for a step it cannot take.
+        `advance_roll` is the unit's own D6 for this turn (`model.advance_roll`).
+        The rungs are absolute, so the roll no longer changes what an action
+        means -- it decides which rungs are legal, and this returns None when it
+        leaves none, so a caller falls back to a normal move without branching.
         """
         if self._advance_slice is None:
             return None
@@ -580,16 +623,17 @@ class ActionHandler:
             else float(self._speeds[-1])
         )
         reach = move + advance_roll
-
-        bin_idx = self._n_advance_bins - 1
-        if max_step_length is not None:
-            for candidate in range(self._n_advance_bins - 1, -1, -1):
-                distance = ((candidate + 1) / self._n_advance_bins) * reach
-                if distance <= max_step_length:
-                    bin_idx = candidate
-                    break
-            else:
-                bin_idx = 0
+        # The longest rung that is both legal for this roll and no further than
+        # the caller asked to travel. Descending, so a squad marching a bounded
+        # distance takes the biggest step it is allowed rather than the first.
+        ceiling = reach if max_step_length is None else min(reach, max_step_length)
+        bin_idx = None
+        for candidate in range(self._n_advance_bins - 1, -1, -1):
+            if self.advance_distance(candidate, move) <= ceiling:
+                bin_idx = candidate
+                break
+        if bin_idx is None:
+            return None
 
         return self._advance_slice.start + angle_idx * self._n_advance_bins + bin_idx
 

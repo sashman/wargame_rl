@@ -951,6 +951,16 @@ manufacturing the agreement and the policy learned the unit-level structure with
 given it. ⚠ What this does **not** measure is what the same defect costs during
 *exploration*, which is where 85.5% applies.
 
+⚠ **AND THE OBVIOUS IMPLEMENTATION IS WRONG.** "Let the unit's leader declare, and mask
+the advance slice for everyone else" makes the declaration genuinely unit-level and cuts the
+initialisation trigger rate from 85.5% to 32% — and it would **shatter formation**. A move
+type and a displacement are the *same action* here, so a leader-only advance caps every other
+model at `M`: the scripts advance **5-of-5 with a within-unit distance spread of 0.00"**, and
+leader-binds forces that spread to ~6" against a 2" chain. A real declaration has to be
+separable from the displacement, which needs an **action-bearing command phase** — and
+`command` sits in `skip_phases` on every config, so making it act changes steps-per-round
+everywhere. Entries D-38 and D-42 therefore share one blocker.
+
 **Cheapest test.** `just measure-advance-use <ckpt> <config> 10 1`.
 
 ### D-39 — Advance only when you would have had no shot

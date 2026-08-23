@@ -88,14 +88,16 @@ def test_the_longest_advance_beats_the_fastest_normal_move() -> None:
     assert longest_advance > fastest_normal
 
 
-def test_an_advance_can_stop_SHORT_of_a_normal_move() -> None:
-    """`M + roll` is a maximum, not a fixed distance -- there must be a brake.
+def test_no_advance_rung_is_within_a_normal_move() -> None:
+    """No action may spend the unit's shooting for a distance a walk reaches.
 
-    ⚠ This admits dominated actions on purpose: a 4" advance costs the turn's
-    shooting and buys nothing a 4" normal move would not. The first version of
-    this encoding pruned them, which optimised the action space against the
-    rules and removed the ability to advance toward an objective and halt to
-    keep unit coherency -- the binding constraint in this project.
+    ⚠ This REPLACES `test_an_advance_can_stop_SHORT_of_a_normal_move`, which
+    pinned the opposite. That test's justification -- that a unit which cannot
+    stop short cannot advance toward an objective and halt to keep coherency --
+    was checked against `env.step` on 2026-08-23 and does not hold: only ONE
+    model need choose an advance for the whole unit to advance, and its
+    squadmates keep the entire normal slice. The brake is the normal slice, not
+    a short advance. See `test_a_unit_advances_while_its_squadmates_stop_short`.
     """
     # Arrange
     config = WargameEnvConfig(n_advance_speed_bins=3, number_of_wargame_models=4)
@@ -104,31 +106,101 @@ def test_an_advance_can_stop_SHORT_of_a_normal_move() -> None:
     assert slice_ is not None
 
     # Act
-    shortest_advance = np.linalg.norm(
-        handler.decode_action(slice_.start, model_idx=0, advance_roll=6.0)
-    )
+    distances = [
+        float(
+            np.linalg.norm(
+                handler.decode_action(
+                    slice_.start + bin_idx, model_idx=0, advance_roll=6.0
+                )
+            )
+        )
+        for bin_idx in range(config.n_advance_speed_bins)
+    ]
 
     # Assert
-    assert shortest_advance < config.max_move_speed
+    assert all(d > config.max_move_speed for d in distances), distances
 
 
-@pytest.mark.parametrize("roll", [1.0, 3.0, 6.0])
-def test_the_bins_divide_the_whole_allowance(roll: float) -> None:
-    """The top bin is exactly `M + roll`; the rest are even fractions of it."""
+def test_an_advance_rung_means_the_same_distance_whatever_the_roll() -> None:
+    """Stationary semantics: the roll gates legality, never meaning.
+
+    Under the fractional encoding one index meant 2.33" on a roll of 1 and 4.00"
+    on a roll of 6, so a policy had to read `advance_roll` to know what its own
+    action did. It is the only slice in the game that ever behaved that way.
+    """
     # Arrange
     config = WargameEnvConfig(n_advance_speed_bins=3, number_of_wargame_models=4)
     handler = ActionHandler(config, n_shoot_targets=SHOOT_TARGETS)
     slice_ = handler.advance_slice
     assert slice_ is not None
 
-    # Act
-    top_bin = handler.decode_action(slice_.start + 2, model_idx=0, advance_roll=roll)
-    mid_bin = handler.decode_action(slice_.start + 1, model_idx=0, advance_roll=roll)
+    # Act — the top rung, which every roll of 6 makes legal
+    distances = {
+        roll: float(
+            np.linalg.norm(
+                handler.decode_action(slice_.start + 2, model_idx=0, advance_roll=roll)
+            )
+        )
+        for roll in (6.0,)
+    }
+    ladder = [handler.advance_distance(b, config.max_move_speed) for b in range(3)]
 
-    # Assert: the top bin is the full allowance, and the bins divide it evenly.
-    allowance = config.max_move_speed + roll
-    assert np.linalg.norm(top_bin) == pytest.approx(allowance)
-    assert np.linalg.norm(mid_bin) == pytest.approx(allowance * 2 / 3)
+    # Assert
+    assert ladder == [8.0, 10.0, 12.0]
+    assert distances[6.0] == pytest.approx(12.0)
+
+
+def test_the_roll_decides_which_rungs_are_legal() -> None:
+    """A rung beyond `M + roll` must be masked, not silently shortened."""
+    # Arrange
+    config = WargameEnvConfig(n_advance_speed_bins=3, number_of_wargame_models=4)
+    handler = ActionHandler(config, n_shoot_targets=SHOOT_TARGETS)
+    slice_ = handler.advance_slice
+    assert slice_ is not None
+
+    class _Model:
+        def __init__(self, roll: float) -> None:
+            self.advance_roll = roll
+
+    # Act — M = 6, so the ladder is 8/10/12 and needs rolls of 2/4/6
+    legality = handler.advance_legality(
+        [_Model(1.0), _Model(2.0), _Model(4.0), _Model(6.0)]
+    )
+
+    # Assert — one row per model, the first `n_bins` columns are the first angle
+    assert legality.shape == (4, slice_.size)
+    assert list(legality[0, :3]) == [False, False, False]
+    assert list(legality[1, :3]) == [True, False, False]
+    assert list(legality[2, :3]) == [True, True, False]
+    assert list(legality[3, :3]) == [True, True, True]
+
+
+@pytest.mark.parametrize("roll", [2.0, 4.0, 6.0])
+def test_a_legal_rung_is_never_shortened(roll: float) -> None:
+    """A rung the roll allows must be delivered in full.
+
+    ⚠ Replaces `test_the_bins_divide_the_whole_allowance`, which pinned the
+    fractional ladder: the top bin was `M + roll` and the rest even fractions of
+    it, so the same index meant a different distance every turn. The rungs are
+    absolute now, and the roll decides only which of them are legal.
+    """
+    # Arrange
+    config = WargameEnvConfig(n_advance_speed_bins=3, number_of_wargame_models=4)
+    handler = ActionHandler(config, n_shoot_targets=SHOOT_TARGETS)
+    slice_ = handler.advance_slice
+    assert slice_ is not None
+    move = config.max_move_speed
+
+    # Act — the longest rung this roll makes legal
+    legal = [b for b in range(3) if handler.advance_distance(b, move) <= move + roll]
+    top = legal[-1]
+    delivered = np.linalg.norm(
+        handler.decode_action(slice_.start + top, model_idx=0, advance_roll=roll)
+    )
+
+    # Assert
+    assert delivered == pytest.approx(handler.advance_distance(top, move))
+    assert delivered <= move + roll
 
 
 def test_a_roll_of_zero_gives_exactly_the_normal_move_allowance() -> None:
