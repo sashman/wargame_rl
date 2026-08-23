@@ -685,6 +685,42 @@ summed army value, `dVP` the realised `vp_margin` from playing both branches out
   allocation-aware decode would be replacing a rule that just beat its own exact
   counterpart by 33.7 vp. Re-cost before funding. Tune on the 36, never the nine.
 
+### A squad cannot agree where to go — the unit never moves as a body
+
+Measured 2026-08-23, no GPU, three seeds, held-out nine,
+[report](reports/2026-08-23-a-squad-cannot-agree-where-to-go.md).
+
+| | within-squad angle variance | all on ONE heading | distinct objectives held | squads per point | sharing |
+|---|---|---|---|---|---|
+| `squad_march_take` | **0.0007** | **96.8%** | **3.28** | **1.21** | **31.9%** |
+| agent (s1/s2/s3) | 0.108–0.148 | 52.9–58.5% | 2.08–2.30 | 1.89–1.96 | 75.6–79.1% |
+
+- **The scripts steer a whole unit along ONE shared vector** (`model_observation.py`
+  says so, and calls it why their formation "holds by construction"). The agent's
+  models disagree with each other on **roughly half** of all squad-moves.
+- ⚠ **`decode_topk=3` does NOT fix it** — variance 0.1312, all-on-one 57.0%,
+  indistinguishable from K=1. **The joint decoder filters for LEGALITY and never
+  makes a squad agree where to go.** "The decoder solved coherency" is about
+  legality only.
+- **A squad whose members pull different ways cannot travel** — the 2" chain turns
+  disagreement into immobility. So the script's squads translate cleanly onto 3.28
+  separate objectives while the agent's mill in place on 2.08, piled two deep.
+  This is the freezing finding from the other end: **91.8% of frozen model-steps
+  have a friendly base in contact**, and 75.5% have no legal shorter move at all.
+- ⚠ **This is why the advance move did not pay: extra speed is worthless to a unit
+  that cannot commit to a heading.** It does **not** reinstate the retracted
+  freezing explanation — the arm and control froze *equally* because both share
+  the disagreement. Neither could use speed.
+- ⚠ **Two obvious fixes are still measured nulls**: `observe_unit_centroid` (−62.1
+  vp, worst arm on record) and a rigid unit action space (coherency 0.444). But
+  read the second precisely — rigid translation "cannot *restore* a broken
+  formation" is about recovery, **not** about committing to a heading. A
+  hierarchical move (squad picks the heading, models pick offsets) is neither, and
+  is untried. ⚠ It changes the action space, so it is **UNPAIRABLE** — build the
+  cross-config bridge first.
+- **Watch within-squad circular variance.** 0.0007 scripted against 0.108–0.148.
+  Free to read on frozen weights before scoring an epoch.
+
 ### How to measure here
 
 The single most expensive class of error in this project. Every rule below was
