@@ -24,6 +24,15 @@ from wargame_rl.wargame.envs.opponent.mirror import MirroredEnv
 from wargame_rl.wargame.envs.opponent.policy import OpponentPolicy
 from wargame_rl.wargame.envs.opponent.registry import register_policy
 
+# `MirroredEnv` lived here as `_MirroredEnv` until it was extracted to
+# `opponent/mirror.py`. A checkpoint pickles the whole `WargameEnv`, and this
+# policy holds a mirror, so every checkpoint saved before that extraction names
+# a class this module no longer has and fails to load at all -- and
+# `checkpoints/` is the only copy of those weights. The instance state is
+# `{_env, config}` in both versions and everything else is a property, so
+# unpickling the old name into the new class restores exactly the old object.
+_MirroredEnv = MirroredEnv
+
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.types import WargameEnvAction
     from wargame_rl.wargame.envs.wargame import WargameEnv

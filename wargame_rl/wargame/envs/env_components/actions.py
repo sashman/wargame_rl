@@ -35,10 +35,23 @@ from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 STAY_ACTION = 0
 
+# The advance roll is one D6 (`wargame.py::_roll_advance`), so the most an
+# advance can add to a model's Move is 6". The bin ladder is built from this,
+# which is what keeps an action index meaning the same distance every turn.
+ADVANCE_DIE_FACES = 6.0
+
 # Every slice name `ActionHandler` can register. A name outside this set in
 # `dark_action_slices` is a typo that would silently darken nothing, so it
 # raises rather than doing nothing.
 KNOWN_ACTION_SLICES = frozenset({"stay", "movement", "shooting", "advance"})
+
+# The move-type slice, in declaration order. `normal` first so that a policy
+# emitting the slice's first action declares the default, and STAY in the
+# command phase means the same thing -- which is what keeps every policy that
+# does not act in the command phase working unchanged.
+MOVE_TYPE_NORMAL = 0
+MOVE_TYPE_ADVANCE = 1
+N_MOVE_TYPES = 2
 
 
 def _base_arrays(models: list[Any] | None) -> tuple[np.ndarray, np.ndarray]:
@@ -305,6 +318,69 @@ class ActionHandler:
         else:
             self._advance_slice = None
 
+        # The DECLARATION, and the reason it is a slice of its own rather than a
+        # property of a movement action. A move type is a unit's choice in the
+        # rules; folding it into the per-model movement action makes it five
+        # choices resolved by an OR, so one model's exploration spends four
+        # squadmates' shooting. Splitting it also decouples the type from the
+        # DISTANCE: a unit that has declared an advance can still move members
+        # short, which is what keeps it in coherency, and a leader-declares rule
+        # would be unimplementable without that split.
+        #
+        # Darkening "advance" darkens this too, so the rungs become unreachable
+        # by the same switch -- a rung is legal only where a declaration was made.
+        if n_advance_bins > 0:
+            self._move_type_slice: ActionSlice | None = self._registry.register(
+                "move_type",
+                N_MOVE_TYPES,
+                phases("advance", frozenset({BattlePhase.command})),
+            )
+        else:
+            self._move_type_slice = None
+
+    @property
+    def move_type_slice(self) -> ActionSlice | None:
+        """Move-type declaration slice, or None when the scenario has no advance."""
+        return self._move_type_slice
+
+    def declare_move_types(
+        self, action: WargameEnvAction, wargame_models: list[Any]
+    ) -> None:
+        """Record each unit's declared move type from its LEADER's action.
+
+        The leader is the lowest-indexed alive model of the unit. One model
+        decides and the whole unit is bound, which is what the rules mean by a
+        unit choosing a move type -- and it is only safe because the declaration
+        no longer carries a distance: every squadmate keeps the whole movement
+        slice and can stop short to hold formation.
+
+        ⚠ STAY declares `normal`, so any policy that does not act in the command
+        phase behaves exactly as it did before the declaration existed.
+
+        Declaring an advance spends the unit's shooting immediately, whether or
+        not a member then uses a long rung. That is the rules' cost: it attaches
+        to the move type, not to the distance travelled.
+        """
+        if self._move_type_slice is None:
+            return
+        start = self._move_type_slice.start
+        leaders: dict[int, int] = {}
+        for index, model in enumerate(wargame_models):
+            if not model.is_alive:
+                continue
+            leaders.setdefault(int(model.group_id), index)
+        advancing = set()
+        for group, leader in leaders.items():
+            if leader >= len(action.actions):
+                continue
+            if int(action.actions[leader]) == start + MOVE_TYPE_ADVANCE:
+                advancing.add(group)
+        for model in wargame_models:
+            declared = int(model.group_id) in advancing
+            model.declared_advance = declared
+            if declared:
+                model.advanced_this_turn = True
+
     @property
     def shooting_slice(self) -> ActionSlice | None:
         """Shooting action slice, or None when no shoot targets are registered."""
@@ -374,46 +450,6 @@ class ActionHandler:
         speeds: np.ndarray = self._move_speeds
         return speeds
 
-    def _mark_advancing_units(
-        self, action: WargameEnvAction, wargame_models: list[Any]
-    ) -> None:
-        """Set `advanced_this_turn` for every model in any unit that advances.
-
-        A move type is chosen per UNIT in the rules, but this action space is
-        per MODEL, so nothing stops one model picking an advance while its
-        squadmates pick normal moves. Left alone that is an exploit rather than
-        a mere divergence: send one model 12" to take an objective and keep the
-        other four shooting, which no legal turn allows.
-
-        Resolving it upward -- if any model advances, the whole unit advances
-        and the whole unit forfeits its shooting -- makes the cheat cost what it
-        should. The models' chosen displacements are left alone: every normal
-        speed is within `M`, which is within the advance allowance `M + roll`,
-        so each is a legal distance for the move type the unit is now making.
-
-        ⚠ This does NOT make the move rules-legal in full. A unit still makes
-        what the rules would call one move type with per-model distances chosen
-        independently, and a 12"-versus-6" split inside a 2" chain will break
-        coherency. It removes the free lunch, not the divergence.
-        """
-        if self._advance_slice is None:
-            return
-        start, end = self._advance_slice.start, self._advance_slice.end
-        advancing_groups = {
-            int(wargame_models[i].group_id)
-            for i, act in enumerate(action.actions)
-            if i < len(wargame_models) and start <= act < end
-        }
-        if not advancing_groups:
-            return
-        for model in wargame_models:
-            if int(model.group_id) in advancing_groups:
-                # The rules' cost: "only [RUN AND GUN] weapons may be fired
-                # after it", and no weapon here has that ability, so an advance
-                # forfeits the turn's shooting outright. Both shooting masks
-                # already read this flag; nothing set it before the advance move.
-                model.advanced_this_turn = True
-
     def decode_action(
         self,
         action: int,
@@ -451,22 +487,38 @@ class ActionHandler:
         result: np.ndarray = self._displacements[angle_idx, speed_idx]
         return result
 
+    def advance_distance(self, bin_idx: int, move: float) -> float:
+        """Absolute distance of an advance bin, in inches. Always beyond `move`.
+
+        The ladder is `M + (bin + 1) x (6 / bins)`, so at `M = 6` and three bins
+        it is 8", 10", 12" -- fixed rungs above the model's Move, not fractions
+        of `M + roll`.
+
+        Two defects of the fractional encoding go with this. **Stationary
+        semantics**: an action index means the same displacement every turn, so
+        a policy does not have to read `advance_roll` to know what its own
+        action does; the roll now decides only which rungs are LEGAL, which is
+        what the mask is for. **No dominated actions**: every rung is beyond a
+        normal move's reach, so no advance can spend the unit's shooting for a
+        distance a normal move already delivers.
+
+        ⚠ The reason previously recorded for admitting dominated bins -- that a
+        unit which cannot stop short cannot advance and halt to keep coherency
+        -- does not hold, and was verified against `env.step`. Only ONE model
+        need choose an advance for the unit to advance; its squadmates keep the
+        whole normal slice and stop wherever they like.
+        """
+        return move + (bin_idx + 1) * (ADVANCE_DIE_FACES / self._n_advance_bins)
+
     def _advance_displacement(
         self, action: int, model_idx: int | None, advance_roll: float
     ) -> np.ndarray:
-        """Displacement for an advance action: `fraction x (M + roll)`, in units.
+        """Displacement for an advance action, at a fixed distance above Move.
 
-        `M + roll` is a MAXIMUM in the rules, not a fixed distance -- a unit may
-        advance any distance up to it, including a short one. So the bins span
-        the whole range and the top bin is exactly `M + roll`.
-
-        ⚠ This deliberately admits DOMINATED actions: a 4" advance costs the
-        turn's shooting and buys nothing a 4" normal move would not. Pruning
-        them was the first design here, and it was wrong for the same reason
-        widening `n_speed_bins` was wrong -- it optimises the action space
-        against the rules. A unit that cannot stop short cannot advance toward
-        an objective and halt to keep coherency, which is the binding constraint
-        in this project.
+        `advance_roll` is not read: the rung is absolute. The roll gates which
+        rungs are legal, through `advance_legality`, and an over-long rung that
+        reaches here despite the mask is clamped to `M + roll` so the rules'
+        maximum still holds.
         """
         index = action - self._advance_slice.start  # type: ignore[union-attr]
         angle_idx = index // self._n_advance_bins
@@ -476,11 +528,40 @@ class ActionHandler:
             if model_idx is not None
             else float(self._speeds[-1])
         )
-        fraction = (bin_idx + 1) / self._n_advance_bins
-        distance = fraction * (move + advance_roll)
+        distance = min(self.advance_distance(bin_idx, move), move + advance_roll)
         direction = self._unit_directions[angle_idx]
         displacement: np.ndarray = (direction * distance).astype(POSITION_DTYPE)
         return displacement
+
+    def advance_legality(self, models: list[Any]) -> np.ndarray:
+        """`(n_models, n_advance_actions)` -- which rungs this turn's rolls allow.
+
+        Two gates, and both are the point. A rung is legal only for a model
+        whose unit **declared an advance** in the command phase, and only when
+        its absolute distance is within that model's `M + roll`.
+
+        The declaration gate is what makes the move type a unit decision: no
+        model can reach a long rung on its own, and every model of a unit that
+        did declare can, so the unit still moves as a body. The roll gate is
+        what lets the rungs be absolute -- with three bins a roll of 1 leaves
+        none legal, which is a resolution limit rather than a bug, since the
+        rules' 7" advance never repays a turn of fire.
+        """
+        if self._advance_slice is None:
+            return np.zeros((len(models), 0), dtype=bool)
+        n_bins = self._n_advance_bins
+        legality = np.zeros((len(models), self._advance_slice.size), dtype=bool)
+        for index, model in enumerate(models):
+            if not getattr(model, "declared_advance", False):
+                continue
+            move = float(self._move_speeds[index])
+            reach = move + float(model.advance_roll)
+            allowed = np.array(
+                [self.advance_distance(b, move) <= reach for b in range(n_bins)],
+                dtype=bool,
+            )
+            legality[index] = np.tile(allowed, self._n_angles)
+        return legality
 
     @property
     def movement_slice(self) -> ActionSlice:
@@ -552,9 +633,10 @@ class ActionHandler:
         slice, so a caller can fall back to a normal move without branching on
         the config.
 
-        `advance_roll` is the unit's own D6 for this turn (`model.advance_roll`),
-        because the reachable distance is `fraction x (M + roll)` and a policy
-        that assumed a fixed roll would ask for a step it cannot take.
+        `advance_roll` is the unit's own D6 for this turn (`model.advance_roll`).
+        The rungs are absolute, so the roll no longer changes what an action
+        means -- it decides which rungs are legal, and this returns None when it
+        leaves none, so a caller falls back to a normal move without branching.
         """
         if self._advance_slice is None:
             return None
@@ -580,16 +662,17 @@ class ActionHandler:
             else float(self._speeds[-1])
         )
         reach = move + advance_roll
-
-        bin_idx = self._n_advance_bins - 1
-        if max_step_length is not None:
-            for candidate in range(self._n_advance_bins - 1, -1, -1):
-                distance = ((candidate + 1) / self._n_advance_bins) * reach
-                if distance <= max_step_length:
-                    bin_idx = candidate
-                    break
-            else:
-                bin_idx = 0
+        # The longest rung that is both legal for this roll and no further than
+        # the caller asked to travel. Descending, so a squad marching a bounded
+        # distance takes the biggest step it is allowed rather than the first.
+        ceiling = reach if max_step_length is None else min(reach, max_step_length)
+        bin_idx = None
+        for candidate in range(self._n_advance_bins - 1, -1, -1):
+            if self.advance_distance(candidate, move) <= ceiling:
+                bin_idx = candidate
+                break
+        if bin_idx is None:
+            return None
 
         return self._advance_slice.start + angle_idx * self._n_advance_bins + bin_idx
 
@@ -652,8 +735,11 @@ class ActionHandler:
             [m.base_radius for m in wargame_models], dtype=float
         )
         friendly_alive = np.array([m.is_alive for m in wargame_models], dtype=bool)
-        if phase is BattlePhase.movement:
-            self._mark_advancing_units(action, wargame_models)
+        if phase is BattlePhase.command:
+            # No early return: the per-model loop below still validates every
+            # action against its space before skipping non-movement phases, and
+            # an unvalidated declaration would be a silent out-of-range action.
+            self.declare_move_types(action, wargame_models)
         for i, act in enumerate(action.actions):
             model = wargame_models[i]
             if not model.is_alive:

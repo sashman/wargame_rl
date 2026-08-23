@@ -2,6 +2,21 @@
 
 A handoff brief. Everything here is measured; the open question is at the end.
 
+> ⚠ **UPDATE 2026-08-23 — step 3 below is answered, and the answer is (a).**
+> [Three prices for the Advance move](../reports/2026-08-23-three-prices-for-the-advance-move.md)
+> measured the mechanic with scripted policies, no GPU. **The scenario cannot use
+> the advance at twenty rounds**: three rules, each pricing more of the trade than
+> the last, lose −78, **−18.4 (0 of 3 seed bases)** and **−11.9 (0 of 3)** to plain
+> `squad_march_take`. The same rule **wins 3 of 3 at `rounds=5`**, and the value is
+> monotone in the round count — an advance buys one turn, which is 5% of a
+> twenty-round game and 25% of a five-round one.
+>
+> This also **re-reads step 1**: the arm's use of the slice is *sane* at
+> convergence (dominated advances 0.4–5.9%, unanimous unit triggers 64–81%), so
+> the ~8.5 vp "bad choice at play" is mostly the agent using a move that does not
+> pay here. **Explanation (b) — exploration cost — is the only one still live**,
+> and step 2 (annealing) is still the cheapest test of it.
+
 ---
 
 ## 1. The game, in one paragraph
@@ -181,10 +196,13 @@ permanent cost of the larger action space.
 2. **Anneal advance during early training** — if the loss is
    exploration cost, starting with advance masked and unmasking later should
    recover most of it, cheaply.
-3. **Check whether an advance ever reaches a NEW objective.** The premise of the
-   feature is reach. Measure the distance from each advancing unit to its nearest
-   *unheld* objective before and after. If advances never close that gap, (a) is
-   established and the mechanic is fine but the scenario cannot use it.
+3. ~~**Check whether an advance ever reaches a NEW objective.**~~ **DONE
+   2026-08-23, and (a) is established** — see the banner. `just measure-advance-use`
+   shows the advances *do* go somewhere (17–20% leave an objective to take another,
+   only 1.8–4.0% start and end on the same one), and the scenario still cannot use
+   them: the cost is whole-episode, not per-move. Advancing moves end inside an
+   enemy's reach on **4.1%** of model-moves against walking's **22.4%**, while
+   episode exposure rises 10.8% and the firepower ratio falls 1.091 → 1.004.
 4. **Only then** consider 1000 epochs.
 
 ## 8. Context a newcomer will need
