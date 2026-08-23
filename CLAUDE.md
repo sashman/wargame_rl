@@ -729,6 +729,35 @@ Correcting for squad count makes the gap **larger**.
   the statistic is measuring your architecture, not skill. This is the second time a published
   explanation here was checked against the wrong control.
 
+### The travel reward, audited: the mechanism was wrong and the term is mostly inert
+
+Measured 2026-08-23, no GPU, held-out nine,
+[report](reports/2026-08-23-the-travel-reward-audit.md). `just measure-shaping-gates` on the
+config that trains, agent at K=3.
+
+- ⚠ **REFUTED: `closest_objective_v2` does NOT pull models to an objective's CENTRE POINT.**
+  `_distances_to_objectives` measures an **area's outline, zero inside**, and the training
+  config's objectives are all areas (`radius_size 0.0`). The pull saturates at the boundary.
+  The panel read `norms_offset` as a centre distance; for an area it is not.
+- ⚠ **REFUTED: "STAY is strictly dominated".** **43.5% of paid model-steps are already
+  INSIDE their target**, earning exactly zero however the model moves. This term cannot be
+  what drives the ~0% stay rate.
+- **REAL BUT SMALL: squadmates paid to walk apart.** 8.0% of squad-steps have members on 2+
+  targets (script 4.8%). Too rare to explain a 33% shortfall in objectives held.
+- ⚠ **A SCRIPTED POLICY IS NOT A CONTROL FOR WHAT A REWARD TERM DOES.** It does not learn
+  from reward, so its column says where its models *stand*, not what it was *paid*. Here that
+  matters: the script is **worse on every gate** (points at 16.0% of objectives v 35.8%,
+  assigns 9.8% of units v 21.0%, takes 84.2% fallback v 73.6%) **and allocates better** (3.28
+  objectives v 2.08–2.30). **No gate explains the allocation gap.**
+- **The term is largely inert and nets negative**: 43.5% of paid steps pay zero, 64.2% of
+  objectives are not candidates for anybody, and net income is progress +0.08 against the
+  overstack penalty's −0.90.
+- ⚠ **FOURTH consecutive empty result on this term** — the candidate gate (`contest_deficit`,
+  rejected), removing the overstack penalty (rejected, −12.2 ± 5.5), the potential-invariance
+  defect (real, term nets negative anyway), and now the fallback mechanism. **Stop nominating
+  `closest_objective_v2`.** There is no working travel gradient and four attempts to build one
+  have failed.
+
 ### How to measure here
 
 The single most expensive class of error in this project. Every rule below was
