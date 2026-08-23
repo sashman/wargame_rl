@@ -165,6 +165,7 @@ Movement parameters are set via `WargameEnvConfig`:
 |-----------|---------|-------------|
 | `n_movement_angles` | `16` | Number of angular bins (22.5° apart) |
 | `n_advance_speed_bins` | `0` | Advance bins, as their own action slice appended after shooting. 0 registers nothing, draws no dice and changes no action index |
+| `dark_action_slices` | `[]` | Slice names registered at full width but valid in **no** phase, so every one of their actions is masked all episode. Exists to restore *pairing* to an action-space arm: the arm and its control then share a parameter shape and start from bit-identical weights. ⚠ It does not make an existing control reusable — a narrower head consumes less RNG at init, so the control must be retrained with the slice darkened |
 | `n_speed_bins` | `6` | Number of discrete speed levels |
 | `max_move_speed` | `6.0` | Maximum distance a model can move per step, in inches. The scenario-wide default for the rules' **Move (M)** characteristic |
 | `ModelConfig.move` | `None` | Per-model override of `max_move_speed`, in inches. `None` takes the scenario value |

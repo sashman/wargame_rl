@@ -35,6 +35,11 @@ from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 STAY_ACTION = 0
 
+# Every slice name `ActionHandler` can register. A name outside this set in
+# `dark_action_slices` is a typo that would silently darken nothing, so it
+# raises rather than doing nothing.
+KNOWN_ACTION_SLICES = frozenset({"stay", "movement", "shooting", "advance"})
+
 
 def _base_arrays(models: list[Any] | None) -> tuple[np.ndarray, np.ndarray]:
     """Centres and radii of the *alive* models in a list, for collision tests.
@@ -254,18 +259,32 @@ class ActionHandler:
         self._action_space: spaces.Tuple | None = None
 
         self._registry = ActionRegistry()
-        self._registry.register("stay", 1, ALL_BATTLE_PHASES)
+        # A darkened slice keeps its width and loses every phase, so its actions
+        # are masked for the whole episode while the policy head stays the same
+        # shape. See `WargameEnvConfig.dark_action_slices`.
+        dark = frozenset(config.dark_action_slices)
+        unknown = dark - KNOWN_ACTION_SLICES
+        if unknown:
+            raise ValueError(
+                f"dark_action_slices names unknown slices: {sorted(unknown)}. "
+                f"Known slices: {sorted(KNOWN_ACTION_SLICES)}"
+            )
+
+        def phases(name: str, valid: frozenset[BattlePhase]) -> frozenset[BattlePhase]:
+            return frozenset() if name in dark else valid
+
+        self._registry.register("stay", 1, phases("stay", ALL_BATTLE_PHASES))
         self._registry.register(
             "movement",
             self._n_move_actions,
-            frozenset({BattlePhase.movement}),
+            phases("movement", frozenset({BattlePhase.movement})),
         )
 
         if n_shoot_targets > 0:
             self._shooting_slice: ActionSlice | None = self._registry.register(
                 "shooting",
                 n_shoot_targets,
-                frozenset({BattlePhase.shooting}),
+                phases("shooting", frozenset({BattlePhase.shooting})),
             )
         else:
             self._shooting_slice = None
@@ -280,7 +299,7 @@ class ActionHandler:
             self._advance_slice: ActionSlice | None = self._registry.register(
                 "advance",
                 n_angles * n_advance_bins,
-                frozenset({BattlePhase.movement}),
+                phases("advance", frozenset({BattlePhase.movement})),
             )
         else:
             self._advance_slice = None

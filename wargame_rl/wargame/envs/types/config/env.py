@@ -384,6 +384,30 @@ class WargameEnvConfig(BaseModel):
             "scramble every checkpoint silently."
         ),
     )
+    # Slices named here are registered at full width but valid in NO phase, so
+    # every one of their actions is masked to -inf for the whole episode.
+    #
+    # This exists to restore PAIRING to action-space experiments, which are
+    # otherwise the least measurable class of change here: adding actions
+    # widens the policy head, which changes how much RNG `seed_everything`
+    # consumes, so an arm and its control no longer start from the same weights
+    # and the paired estimator -- worth roughly an order of magnitude -- is
+    # lost. Registering the slice in BOTH arms and darkening it in the control
+    # makes the two parameter shapes identical, and their initial weights
+    # bit-identical (verified in `tests/test_dark_action_slices.py`).
+    #
+    # ⚠ It does NOT make an existing control reusable. A control trained
+    # without the slice has a different head width and therefore different
+    # weights everywhere -- measured, only 73 of 110 shared-shape tensors
+    # match -- so the control must be retrained WITH the slice darkened.
+    dark_action_slices: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Action slices to register but never make valid, so an arm and its "
+            "control share a parameter shape and can be paired."
+        ),
+    )
+
     base_radius: float = Field(
         ge=0,
         default=INFANTRY_BASE_RADIUS_IN,
