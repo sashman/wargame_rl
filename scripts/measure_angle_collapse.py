@@ -28,7 +28,7 @@ Usage: just measure-angle-collapse <policy|ckpt> <env_config> [n_episodes] [deco
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -37,7 +37,9 @@ from scripts.measure_maps import build_action_selector, config_for_map, load_map
 from scripts.scenario_overrides import describe, load_env_config, parse_overrides
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
+from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.model.common.factory import create_environment
 
 HELDOUT_SEED_BASE = 700_000
@@ -50,6 +52,8 @@ class Collapse:
 
     squads: int = 0
     circular_variance: float = 0.0
+    on_objective_variance: list[float] = field(default_factory=list)
+    en_route_variance: list[float] = field(default_factory=list)
     distinct_bins: int = 0
     squad_members: int = 0
     fully_aligned: int = 0
@@ -71,7 +75,7 @@ class Collapse:
 
 
 def squad_angles(
-    actions: np.ndarray, env: object, n_speed_bins: int
+    actions: np.ndarray, env: object, n_speed_bins: int, n_angles: int
 ) -> dict[int, list[int]]:
     """Angle bin chosen by each alive, moving model, grouped by squad."""
     models = env.player_models  # type: ignore[attr-defined]
@@ -84,7 +88,13 @@ def squad_angles(
         by_squad.setdefault(int(model.group_id), [])
         if action == STAY_ACTION:
             continue
-        by_squad[int(model.group_id)].append((action - 1) // n_speed_bins)
+        bin_index = (action - 1) // n_speed_bins
+        if bin_index >= n_angles:
+            raise ValueError(
+                f"action {action} decodes to angle bin {bin_index} of {n_angles} "
+                "-- a non-movement action reached the heading decode"
+            )
+        by_squad[int(model.group_id)].append(bin_index)
     return by_squad
 
 
@@ -104,13 +114,23 @@ def collect(
             while not done:
                 chosen = select(observation, env)
                 actions = np.asarray(chosen.actions, dtype=int).reshape(-1)
+                # Only the movement phase carries a heading. Without this the
+                # shooting slice is decoded as `(action - 1) // n_speed_bins`
+                # too, which lands on angle bin 16+ of a 16-bin wheel -- and
+                # squadmates shoot the SAME target, so those rows read as
+                # unanimous and dilute whichever policy shoots more.
+                if env.game_clock_state.phase is not BattlePhase.movement:
+                    observation, _r, done, _t, _i = env.step(chosen)
+                    continue
                 alive = np.asarray(alive_mask_for(env.player_models))  # type: ignore[attr-defined]
                 tally.moves += int(np.sum(alive & (actions != STAY_ACTION)))
                 tally.stays += int(np.sum(alive & (actions == STAY_ACTION)))
 
                 headings: list[complex] = []
                 modes: list[int] = []
-                for _group, bins in squad_angles(actions, env, n_speed_bins).items():
+                for _group, bins in squad_angles(
+                    actions, env, n_speed_bins, tally.n_angles
+                ).items():
                     if not bins:
                         continue
                     radians = 2.0 * np.pi * np.asarray(bins) / tally.n_angles
@@ -122,6 +142,37 @@ def collect(
                         continue  # A lone mover is aligned by definition.
                     tally.squads += 1
                     tally.circular_variance += 1.0 - resultant
+                    # Split by whether the squad has ARRIVED. A squad standing
+                    # where it means to stand can disagree about headings
+                    # without that costing it anything; only a squad still
+                    # travelling is testing the claim that disagreement stops
+                    # movement.
+                    members = [
+                        m
+                        for m in env.player_models  # type: ignore[attr-defined]
+                        if int(m.group_id) == int(_group) and m.is_alive
+                    ]
+                    if members:
+                        cache = compute_distances(
+                            members,
+                            env.objectives,  # type: ignore[attr-defined]
+                            alive_mask=np.ones(len(members), dtype=bool),
+                        )
+                        arrived = bool(
+                            (
+                                cache.model_obj_norms_offset.min(axis=1)
+                                <= cache.obj_radii[
+                                    cache.model_obj_norms_offset.argmin(axis=1)
+                                ]
+                            ).mean()
+                            > 0.5
+                        )
+                        target = (
+                            tally.on_objective_variance
+                            if arrived
+                            else tally.en_route_variance
+                        )
+                        target.append(1.0 - resultant)
                     tally.distinct_bins += len(set(bins))
                     tally.squad_members += len(bins)
                     tally.fully_aligned += int(len(set(bins)) == 1)
@@ -155,6 +206,18 @@ def report(tally: Collapse) -> None:
     )
     print(
         f"    squads all on ONE angle          {100.0 * tally.fully_aligned / tally.squads if tally.squads else 0.0:>9.1f}%"
+    )
+
+    def _mean(sample: list[float]) -> str:
+        return f"{float(np.mean(sample)):.4f} (n={len(sample):,})" if sample else "-"
+
+    print(
+        f"    variance -- squad ALREADY ON an objective  "
+        f"{_mean(tally.on_objective_variance)}"
+    )
+    print(
+        f"    variance -- squad EN ROUTE                 "
+        f"{_mean(tally.en_route_variance)}"
     )
     print(
         f"    stay share of alive model-steps  {100.0 * tally.stays / total if total else 0.0:>9.1f}%"

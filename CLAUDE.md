@@ -685,6 +685,79 @@ summed army value, `dVP` the realised `vp_margin` from playing both branches out
   allocation-aware decode would be replacing a rule that just beat its own exact
   counterpart by 33.7 vp. Re-cost before funding. Tune on the 36, never the nine.
 
+### Squad heading disagreement is a SYMPTOM, and the statistic measured architecture
+
+Measured 2026-08-23, no GPU, three seeds,
+[report + correction](reports/2026-08-23-a-squad-cannot-agree-where-to-go.md). Two expert
+panels were given the first version and refuted its causal half the same day.
+
+**What SURVIVES — the agent allocates worse than chance.** Both panels reconstructed the
+numerator independently: the script puts **3.97** squads on objectives, the agent
+**4.03–4.51** — essentially identical — and the agent crams them onto **2.08–2.30** distinct
+points against the script's **3.28**. Per alive squad, 0.35 objectives against 0.685.
+Correcting for squad count makes the gap **larger**.
+
+- ⚠ **RETRACTED: "a squad cannot agree where to go, so it never gets anywhere."** Executed
+  squad-centroid travel is **2.82" per squad-step against the script's 2.05"** — the agent
+  covers ~40% MORE ground while holding a third fewer objectives. It is not failing to go
+  anywhere; **it is going somewhere useless, constantly.**
+- ⚠ **THE HEADLINE STATISTIC MEASURED THE ARCHITECTURE.** `clone_squad_march_take.ckpt` is a
+  factored per-model network cloned from the winning script. All-on-one-heading: teacher
+  **91.8%**, its own clone **42.2%**, agent 35.1%. Normalised to per-model modal agreement,
+  **83% of the script-to-agent gap is the factored architecture** and only 17% is the agent.
+  A product policy cannot reproduce a shared vector. **Report per-model modal agreement, and
+  always beside a clone control.**
+- ⚠ **"Make the squad agree" is a MEASURED NULL.** Consensus decoding on frozen weights
+  drives within-squad variance to **0.0000** and buys 7.8% more travel for
+  **−4.8 / −4.1 / −9.1 vp, 3/3 seeds negative** (two independent implementations).
+- ⚠ **`measure_angle_collapse` had NO movement-phase filter** and decoded the shooting slice
+  as headings (bin 16 of a 16-bin wheel); squadmates shoot the same target, so those rows
+  read unanimous and diluted whichever policy shoots more. Fixed with a phase guard and a bin
+  assert. Corrected: script 0.0006 / 97.9%, agent **0.142–0.190 / 41.6–47.7%**.
+  ⚠ **The "stay share 33.5% v 65.5%" line is RETRACTED** — movement-phase only it is ~0% v
+  56.9%, which *confirms* the standing 0.4%-v-38–57% figure.
+- **THE LEAD CANDIDATE, and CLAUDE.md already said to check it.** `closest_objective_v2` +
+  `fallback_to_nearest: true` pays **+0.081 per inch closed on the CENTRE POINT** of each
+  model's *own* nearest objective — saturating within ~0.63" of the centre, **not** at the
+  control radius. So **STAY is strictly dominated** (hence the ~0% stay rate), every model is
+  pulled to a point one or two bases can occupy, and — with 8 squads over 5–6 markers leaving
+  2–3 unassigned each step — **two members of one squad are paid to walk apart**. A target
+  switch returns progress 0.0 and re-anchors, so **abandoning a target is free**. Check this
+  before anything else.
+- ⚠ **RUN THE CLONE CONTROL ON ANY BEHAVIOURAL STATISTIC before building a diagnosis on it.**
+  It costs one inference run. If a clone of the *winning* policy scores near the *losing* one,
+  the statistic is measuring your architecture, not skill. This is the second time a published
+  explanation here was checked against the wrong control.
+
+### The travel reward, audited: the mechanism was wrong and the term is mostly inert
+
+Measured 2026-08-23, no GPU, held-out nine,
+[report](reports/2026-08-23-the-travel-reward-audit.md). `just measure-shaping-gates` on the
+config that trains, agent at K=3.
+
+- ⚠ **REFUTED: `closest_objective_v2` does NOT pull models to an objective's CENTRE POINT.**
+  `_distances_to_objectives` measures an **area's outline, zero inside**, and the training
+  config's objectives are all areas (`radius_size 0.0`). The pull saturates at the boundary.
+  The panel read `norms_offset` as a centre distance; for an area it is not.
+- ⚠ **REFUTED: "STAY is strictly dominated".** **43.5% of paid model-steps are already
+  INSIDE their target**, earning exactly zero however the model moves. This term cannot be
+  what drives the ~0% stay rate.
+- **REAL BUT SMALL: squadmates paid to walk apart.** 8.0% of squad-steps have members on 2+
+  targets (script 4.8%). Too rare to explain a 33% shortfall in objectives held.
+- ⚠ **A SCRIPTED POLICY IS NOT A CONTROL FOR WHAT A REWARD TERM DOES.** It does not learn
+  from reward, so its column says where its models *stand*, not what it was *paid*. Here that
+  matters: the script is **worse on every gate** (points at 16.0% of objectives v 35.8%,
+  assigns 9.8% of units v 21.0%, takes 84.2% fallback v 73.6%) **and allocates better** (3.28
+  objectives v 2.08–2.30). **No gate explains the allocation gap.**
+- **The term is largely inert and nets negative**: 43.5% of paid steps pay zero, 64.2% of
+  objectives are not candidates for anybody, and net income is progress +0.08 against the
+  overstack penalty's −0.90.
+- ⚠ **FOURTH consecutive empty result on this term** — the candidate gate (`contest_deficit`,
+  rejected), removing the overstack penalty (rejected, −12.2 ± 5.5), the potential-invariance
+  defect (real, term nets negative anyway), and now the fallback mechanism. **Stop nominating
+  `closest_objective_v2`.** There is no working travel gradient and four attempts to build one
+  have failed.
+
 ### How to measure here
 
 The single most expensive class of error in this project. Every rule below was

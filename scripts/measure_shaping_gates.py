@@ -44,6 +44,7 @@ import sys
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 
@@ -75,6 +76,18 @@ class GateCounts:
     model_steps_assigned: int = 0
     model_steps_fallback: int = 0
     model_steps_no_target: int = 0
+    # Does the travel reward split a squad? Members of one unit can hold
+    # different targets whenever their group owns none and `fallback_to_nearest`
+    # drops each of them onto its OWN nearest objective.
+    squad_steps: int = 0
+    squad_steps_split: int = 0
+    # Is the pull to a POINT or to the AREA? For an area objective
+    # `norms_offset` is distance to the OUTLINE and zero inside, so a model that
+    # has entered its target earns nothing further. If most paid model-steps are
+    # already inside, the term is a point-magnet; if none are, it saturates at
+    # the boundary as designed.
+    paid_model_steps: int = 0
+    paid_model_steps_inside: int = 0
     # Why an objective was not a candidate, by control state. The gate reads
     # only the two counts, so these are exhaustive.
     blocked_reason: Counter[str] = field(default_factory=Counter)
@@ -112,6 +125,14 @@ class GateCounts:
             (
                 "model-steps paid nothing to travel",
                 pct(self.model_steps_no_target, self.model_steps),
+            ),
+            (
+                "SQUAD-steps split across 2+ targets",
+                pct(self.squad_steps_split, self.squad_steps),
+            ),
+            (
+                "paid model-steps ALREADY INSIDE their target",
+                pct(self.paid_model_steps_inside, self.paid_model_steps),
             ),
         ]
 
@@ -199,10 +220,33 @@ def instrument(calculator: ClosestObjectiveV2Calculator, counts: GateCounts) -> 
             counts.model_steps_assigned += 1
         else:
             counts.model_steps_fallback += 1
+
+        counts.paid_model_steps += 1
+        # `norms_offset` is the distance to the objective's range surface: the
+        # outline for an area, the centre for a marker. Zero means the model has
+        # arrived and this term can pay it nothing more.
+        if float(cache.model_obj_norms_offset[model_idx, chosen]) <= 0.0:
+            counts.paid_model_steps_inside += 1
+
+        if state.get("target_step") != step_key:
+            _flush_squad_targets(state, counts)
+            state["target_step"] = step_key
+            state["targets"] = {}
+        targets = cast(dict[int, set[int]], state.setdefault("targets", {}))
+        targets.setdefault(group, set()).add(int(chosen))
         return chosen
 
     calculator._candidate_mask = counted_mask  # type: ignore[method-assign]
     calculator._choose_target_objective = counted_choose  # type: ignore[method-assign]
+
+
+def _flush_squad_targets(state: dict[str, object], counts: GateCounts) -> None:
+    """Tally the finished step's per-squad target sets."""
+    targets = cast(dict[int, set[int]], state.get("targets") or {})
+    for chosen in targets.values():
+        counts.squad_steps += 1
+        if len(chosen) >= 2:
+            counts.squad_steps_split += 1
 
 
 def find_calculator(env: object) -> ClosestObjectiveV2Calculator | None:
