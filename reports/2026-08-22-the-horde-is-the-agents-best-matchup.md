@@ -31,11 +31,26 @@ effect size recorded in this project.
 
 Agent mean **+16.2**, best script **−32.3**, gap **+48.5**.
 
-Two independent estimators, both significant and in agreement:
+⚠ **CORRECTED 2026-08-22 after adversarial review. The original version of this
+section overstated the result three ways; all three are my errors, not the
+measurement's.**
 
-- **across seeds:** +48.5 ± 6.7, t = 7.26 (df=2, p≈0.018)
-- **across tables:** +48.6 ± 9.2, t = 5.30 (df=8), **agent ahead on 9 of 9**
-  (per seed: 9/9, 8/9, 8/9)
+**The headline t was inflated ~2x.** `t = 7.26` divided the gap by the SEED
+spread alone (±6.68), treating the best script's score as a constant — but the
+table above gives `squad_march_deny` **−32.3 ± 11.5**. Propagating both:
+
+    SE(gap) = sqrt(6.68² + 11.5²) = 13.30   ->   t = 3.65,  not 7.26
+
+Still significant. Not the precision originally claimed.
+
+**The "two independent estimators" were one dataset sliced two ways.** Across
+seeds (±6.7) and across tables (±9.2) are the same 3 x 9 x 30 episodes
+decomposed along two axes; the point estimates are *arithmetically forced* to
+agree, since both are `16.2 − (−32.3)`. Their agreement corroborated nothing.
+
+**"9 of 9 tables" was the seed-AVERAGED sign count.** The per-seed counts are
+9/9, 8/9, 8/9. Averaging first and counting signs after manufactures a cleaner
+result than any seed achieved. The honest statement is **8–9 of 9**.
 
 ⚠ **UNPAIRED.** Model counts (30 v 25) and `max_groups` (6 v 5) differ from every
 other lineage here, so no control shares an initialisation. The per-table estimator
@@ -70,7 +85,20 @@ denial available, and the agent collects it. On `advance_and_shoot`, where both 
 conceded ~130, the same policy trait was worth nothing and the agent finished −75.9
 behind on 0 of 9 tables.
 
-**So this row is the +0.991 correlation continuing to hold, not a new capability.**
+⚠ **RETRACTED: this row does NOT continue the +0.991 correlation.** Refitting
+the 25v25 table (concedes vs gap) gives slope 1.152, intercept −221.1, and at
+`concede = 187.4` it predicts **−5.1 vp against the +48.5 observed** — a miss
+larger than the entire effect being reported. The correlation was fitted on five
+rows of one scenario and does not transfer to this one. The *mechanism* (the
+gap tracks what denial is worth) remains a reasonable reading of the
+offence/defence split; the quantitative claim that this row confirms the fit was
+wrong and is withdrawn.
+
+⚠ Note also that the offence/defence split is an **identity**, not a
+decomposition: `gap ≡ (own − script's own) + (script's conceded − own conceded)`
+holds by construction. Under `min(15, controlled × 5)` holding a point
+simultaneously scores and denies, so the two terms are mechanically
+anti-correlated and neither is a cause. Read it as bookkeeping.
 
 ## The one genuinely new observation: `held` inverted
 

@@ -43,8 +43,14 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         non_improvement_penalty_base: float = 0.3,
         progress_scale: float = 0.0,
         fallback_to_nearest: bool = False,
+        contest_deficit: int = 1,
     ) -> None:
         super().__init__(weight=weight)
+        if contest_deficit < 1:
+            raise ValueError(
+                "contest_deficit must be >= 1; 1 reproduces the one-model gate "
+                f"this calculator has always used, got {contest_deficit}"
+            )
         self.best_distance_bonus_scale = (
             0.0 if best_distance_bonus_scale is None else best_distance_bonus_scale
         )
@@ -60,6 +66,17 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         # nearest objective (so e.g. extra models, when models > objectives, are
         # still guided to an objective). Keep False for strict de-stacking.
         self.fallback_to_nearest = fallback_to_nearest
+        # How far behind on an objective we may be and still be paid to walk at
+        # it. The gate below asks whether an arrival IMPROVES the control label;
+        # at the historical value of 1 that silently means "one more model must
+        # flip it", so an objective the opponent holds by two or more can never
+        # be a candidate and the travel reward never points at it. Measured on
+        # the v3.0 lineage, that excluded 43.4% of all non-candidate objectives,
+        # left 68% of units unassigned, and dropped them through
+        # `fallback_to_nearest` onto the point they were already standing on --
+        # i.e. the agent was never paid to attack. Raising this to a unit's
+        # worth of models lets a whole unit's arrival count.
+        self.contest_deficit = contest_deficit
         self._last_breakdown: dict[int, dict[str, float]] = {}
         self._target_obj_idx: dict[int, int] = {}
         self._previous_target_distance: dict[int, float] = {}
@@ -170,13 +187,23 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         player_count: int,
         opponent_count: int,
     ) -> bool:
+        """Would arriving here improve the control label within reach?
+
+        `contest_deficit` is how many models we are allowed to imagine arriving.
+        At 1 this is exactly the historical test -- one more model must move the
+        label -- and every recorded number was measured under it.
+        """
         current = self._state_label(player_count, opponent_count)
-        next_state = self._state_label(player_count + 1, opponent_count)
-        return (
-            (current == "neutral" and next_state == "player")
-            or (current == "opponent" and next_state == "contested")
-            or (current == "contested" and next_state == "player")
-        )
+        for arrivals in range(1, self.contest_deficit + 1):
+            next_state = self._state_label(player_count + arrivals, opponent_count)
+            if (
+                (current == "neutral" and next_state == "player")
+                or (current == "opponent" and next_state == "contested")
+                or (current == "opponent" and next_state == "player")
+                or (current == "contested" and next_state == "player")
+            ):
+                return True
+        return False
 
     def _compute_group_assignment(
         self,

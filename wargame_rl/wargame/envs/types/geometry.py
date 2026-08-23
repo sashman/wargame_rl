@@ -152,6 +152,16 @@ class Polygon:
         """Distance from the point to the outline; 0.0 anywhere inside it."""
         if self.contains(x, y):
             return 0.0
+        return self.distance_to_boundary(x, y)
+
+    def distance_to_boundary(self, x: float, y: float) -> float:
+        """Distance from the point to the nearest edge, inside or out.
+
+        Unsigned, unlike `distance_to_point`, which reports 0.0 anywhere inside.
+        A caller that has already established containment wants this one: it
+        answers "how much room is left before a base of radius r crosses an
+        edge", which is the rules' *wholly within* test.
+        """
         point = np.array([x, y], dtype=VERTEX_DTYPE)
         starts = self.vertices
         ends = np.roll(self.vertices, -1, axis=0)
