@@ -31,17 +31,14 @@ import sys
 import numpy as np
 from pydantic_yaml import parse_yaml_raw_as
 
-from scripts.measure_checkpoint import HELDOUT_SEED_BASE, build_selector
-from wargame_rl.wargame.envs.baseline.evaluate import ActionSelector, selector_for
-from wargame_rl.wargame.envs.baseline.registry import (
-    build_baseline_policy,
-    get_registry,
-)
+from scripts.measure_checkpoint import HELDOUT_SEED_BASE
+from wargame_rl.wargame.envs.baseline.evaluate import ActionSelector
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.factory import create_environment
+from wargame_rl.wargame.selectors import build_action_selector
 
 
 def _counts_at_end(env: WargameEnv) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -134,15 +131,9 @@ def main() -> None:
     env_config.render_mode = None
     env = create_environment(env_config=env_config)
 
-    select: ActionSelector
-    # `get_registry` populates itself on first call, so this also decides whether
-    # the argument is a name or a path.
-    if policy_name in get_registry():
-        select = selector_for(build_baseline_policy(policy_name))
-        label = policy_name
-    else:
-        select, _net = build_selector(policy_name, env, decode_topk)
-        label = policy_name.split("/")[-2] if "/" in policy_name else policy_name
+    resolved = build_action_selector(policy_name, env, decode_topk)
+    select: ActionSelector = resolved.select
+    label = resolved.label
 
     seeds = [HELDOUT_SEED_BASE + i for i in range(n_episodes)]
 

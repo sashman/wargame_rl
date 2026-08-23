@@ -57,7 +57,6 @@ import torch
 from pydantic_yaml import parse_yaml_raw_as
 from torch import nn
 
-from scripts.measure_maps import build_action_selector
 from wargame_rl.wargame.envs.baseline.evaluate import ActionSelector
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.common.device import auto_device
@@ -65,6 +64,7 @@ from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.common.observation import observation_to_tensor
 from wargame_rl.wargame.model.net import TransformerNetwork
 from wargame_rl.wargame.model.ppo.config import PPOConfig
+from wargame_rl.wargame.selectors import build_action_selector
 
 # Disjoint from every other seed band in the repo: evaluation uses 700000+,
 # in-run eval 500000+, the logged baselines 10000+. A clone trained on the
@@ -359,7 +359,10 @@ def main() -> None:
     # A checkpoint path is not a filename, and two teachers differing only in
     # `decode_topk` produce different demonstrations -- both have to reach the
     # cache key or a decoded run silently reuses an argmax collection.
-    select, teacher_label = build_action_selector(teacher, config, decode_topk)
+    resolved = build_action_selector(
+        teacher, create_environment(env_config=config), decode_topk
+    )
+    select, teacher_label = resolved.select, resolved.label
     cache = Path("checkpoints/clone_data") / (
         f"{teacher_label}-k{decode_topk}-{Path(config_path).stem}"
         f"-{n_episodes}-g{gamma}.pt"

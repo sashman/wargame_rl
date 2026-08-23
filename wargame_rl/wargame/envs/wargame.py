@@ -452,6 +452,18 @@ class WargameEnv(gym.Env):
         return self._opponent_max_ranges
 
     @property
+    def player_side(self) -> PlayerSide:
+        """Which clock seat the player's army occupies this episode.
+
+        Re-resolved every `reset` from `turn_order`, and under `random` it is a
+        coin flip — so an episode cannot be attributed to a turn order without
+        it. Note that reading it costs a draw from the layout RNG *only* under
+        `random`, which is why a config fixing `turn_order` sits on a different
+        layout stream from the same config leaving it random.
+        """
+        return self._player_side
+
+    @property
     def exposure_rate(self) -> float | None:
         """Fraction of alive model-shooting-phases an enemy could see and shoot.
 

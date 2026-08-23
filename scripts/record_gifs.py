@@ -83,13 +83,13 @@ def record_episode(
     decode_topk: int,
 ) -> EpisodeResult:
     """Play one seeded game on one table, keeping every rendered frame."""
-    # Imported here: `build_action_selector` pulls in torch, and a caller that
+    # Imported here: resolving a checkpoint pulls in torch, and a caller that
     # only wants `write_gif` should not pay for that.
-    from scripts.measure_maps import build_action_selector
+    from wargame_rl.wargame.selectors import build_action_selector
 
-    # One config for both the played env and the selector: `build_action_selector`
-    # builds its own env to size the network, and sizing it from the scenario
-    # rather than from *this map* would give the wrong observation width.
+    # The selector is resolved against the env built for *this map*, because a
+    # checkpoint's network is sized from the env it plays in and sizing it from
+    # the scenario would give the wrong observation width.
     map_config = config_for_map(config, terrain_map)
     renderer = build_renderer(RENDERER, "recording", backend="pillow", theme=THEME)
     env = create_environment(env_config=map_config, renderer=renderer)
@@ -98,9 +98,7 @@ def record_episode(
     frame_source.epoch = 0
 
     unwrapped = cast(WargameEnv, env.unwrapped)
-    select, _label = build_action_selector(
-        policy_or_checkpoint, map_config, decode_topk, False
-    )
+    select = build_action_selector(policy_or_checkpoint, unwrapped, decode_topk).select
 
     observation, _ = env.reset(seed=seed)
     frames: list[np.ndarray] = []
