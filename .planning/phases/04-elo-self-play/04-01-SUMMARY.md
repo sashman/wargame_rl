@@ -21,10 +21,14 @@ class ResolvedSelector:
     source: str | None
     network: TransformerNetwork | None
 
+
 def is_checkpoint(spec: str) -> bool: ...
 def label_for(checkpoint_path: str) -> str: ...
 def build_action_selector(
-    spec: str, env: WargameEnv, decode_topk: int = 1, decode_stay: bool = False,
+    spec: str,
+    env: WargameEnv,
+    decode_topk: int = 1,
+    decode_stay: bool = False,
 ) -> ResolvedSelector: ...
 ```
 
