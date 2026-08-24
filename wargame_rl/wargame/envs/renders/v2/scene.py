@@ -345,6 +345,57 @@ def _draw_shots(
         prims.append(Disc(end, radius, None, _toward(ring, pal.board_bg, fade), width))
 
 
+def _draw_clashes(
+    prims: list[Primitive],
+    results: Sequence[object],
+    attackers: Sequence[object],
+    targets: Sequence[object],
+    color: RGB,
+    theme: Theme,
+    scale: float,
+    fade: float,
+) -> None:
+    """A burst between two bases for every melee blow that did damage.
+
+    ⚠ **Not `_draw_shots`.** That draws a tracer from base edge to base edge and
+    its "misses are not drawn" tuning was measured on 25-shot volleys; melee
+    happens at contact, so the same primitive renders as an inch-long stub in a
+    pile of models — the one place on the board where a line cannot be read.
+    A marker at the midpoint of the contact says who is fighting whom without
+    needing length to do it.
+    """
+    pal = theme.palette
+    for entry in results:
+        attacker_idx = int(entry.attacker_idx)  # type: ignore[attr-defined]
+        target_idx = int(entry.target_idx)  # type: ignore[attr-defined]
+        if attacker_idx >= len(attackers) or target_idx >= len(targets):
+            continue
+        outcome = entry.result  # type: ignore[attr-defined]
+        damage = int(getattr(outcome, "damage_dealt", 0))
+        if damage <= 0:
+            continue
+        killed = bool(getattr(entry, "killed", False))
+        start, end = _shot_endpoints(attackers[attacker_idx], targets[target_idx])
+        midpoint = ((start[0] + end[0]) / 2.0, (start[1] + end[1]) / 2.0)
+        width = max(2, int(scale * 0.10)) if killed else max(1, int(scale * 0.06))
+        ring = pal.shot_kill if killed else color
+        radius = 0.20 + 0.10 * min(damage, 4)
+        prims.append(
+            Disc(midpoint, radius, None, _toward(ring, pal.board_bg, fade), width)
+        )
+        # A second, tighter ring: one disc alone reads as an impact marker, and
+        # an impact marker is what shooting already uses.
+        prims.append(
+            Disc(
+                midpoint,
+                radius * 0.45,
+                None,
+                _toward(color, pal.board_bg, fade),
+                width,
+            )
+        )
+
+
 def _reward_components(view: "BattleView") -> tuple[tuple[str, float], ...]:
     """The step's reward components: one entry per calculator, nothing nested.
 
@@ -580,6 +631,26 @@ def build_scene(
         _draw_shots(
             prims,
             view.last_opponent_shooting_results,
+            view.opponent_models,
+            view.player_models,
+            pal.shot_opponent,
+            theme,
+            scale,
+            shot_fade,
+        )
+        _draw_clashes(
+            prims,
+            view.last_player_fight_results,
+            view.player_models,
+            view.opponent_models,
+            pal.shot_player,
+            theme,
+            scale,
+            shot_fade,
+        )
+        _draw_clashes(
+            prims,
+            view.last_opponent_fight_results,
             view.opponent_models,
             view.player_models,
             pal.shot_opponent,

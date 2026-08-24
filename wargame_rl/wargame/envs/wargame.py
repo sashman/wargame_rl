@@ -428,6 +428,16 @@ class WargameEnv(gym.Env):
         return list(self._last_opponent_shooting_results)
 
     @property
+    def last_player_fight_results(self) -> list[PairedFightResult]:
+        """Melee the player resolved during the most recent step."""
+        return list(self._last_player_fight_results)
+
+    @property
+    def last_opponent_fight_results(self) -> list[PairedFightResult]:
+        """Melee the opponent resolved during the most recent step."""
+        return list(self._last_opponent_fight_results)
+
+    @property
     def opponent_action_space(self) -> spaces.Tuple:
         """Action space for opponent models (used by policies)."""
         return self._opponent_action_handler.action_space
@@ -1591,6 +1601,8 @@ class WargameEnv(gym.Env):
             opponent_vp_delta=self.opponent_vp_delta,
             player_shooting_results=self._last_player_shooting_results,
             opponent_shooting_results=self._last_opponent_shooting_results,
+            player_fight_results=self._last_player_fight_results,
+            opponent_fight_results=self._last_opponent_fight_results,
             player_action=self._last_player_action,
             opponent_action=self._last_opponent_action,
             last_reward=self.last_reward,

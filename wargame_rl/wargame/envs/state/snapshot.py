@@ -13,10 +13,12 @@ import numpy as np
 from pydantic import BaseModel, Field
 
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.fight import PairedFightResult
 from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
 from wargame_rl.wargame.envs.domain.shooting import (
     DefenderStats,
     PairedShootingResult,
+    expected_attack_damage,
     expected_damage,
     hit_probability,
     wound_roll_threshold,
@@ -91,6 +93,15 @@ class ModelSnapshot(BaseModel):
     toughness: int
     save: int
     advanced_this_turn: bool
+    charged_this_turn: bool = False
+    """Whether this model's UNIT made a charge move this turn.
+
+    Defaulted rather than required so pre-2.7 recordings still load; on those it
+    reads False, which is what melee-off play means anyway.
+    """
+    fell_back_this_turn: bool = False
+    """Whether this model's UNIT withdrew from melee this turn, forfeiting its
+    shooting and its charge. ``False`` on pre-2.7 recordings."""
     weapons: list[WeaponSnapshot]
     distances_to_objectives: list[float]
     at_objective: list[bool]
@@ -222,7 +233,7 @@ class GameStateSnapshot(BaseModel):
     attributing ``player_actions`` to a phase.
     """
 
-    schema_version: str = "2.6"
+    schema_version: str = "2.7"
     step: int
     max_steps: int
     clock: ClockSnapshot
@@ -277,6 +288,16 @@ class GameStateSnapshot(BaseModel):
     player_action_descriptions: list[str] | None
     player_combat_results: list[CombatResultSnapshot]
     opponent_combat_results: list[CombatResultSnapshot]
+    player_melee_results: list[CombatResultSnapshot] = []
+    opponent_melee_results: list[CombatResultSnapshot] = []
+    """Melee resolutions for the step, in the same shape as the shooting ones.
+
+    Separate lists rather than a flag on ``CombatResultSnapshot``, because the
+    renderer draws a tracer for every damaging shooting result and a melee
+    result is base to base -- an inch-long stub on a tuning measured for 25-shot
+    volleys. Empty on pre-2.7 recordings and on every melee-off config, which is
+    every config shipped today.
+    """
     reward: RewardSnapshot
     is_terminated: bool
     is_truncated: bool
@@ -338,6 +359,8 @@ def _model_to_snapshot(
         toughness=model.stats["toughness"],
         save=model.stats["save"],
         advanced_this_turn=model.advanced_this_turn,
+        charged_this_turn=model.charged_this_turn,
+        fell_back_this_turn=model.fell_back_this_turn,
         weapons=weapons,
         distances_to_objectives=dists,
         at_objective=at_obj,
@@ -366,6 +389,58 @@ def _clock_to_snapshot(state: GameState) -> ClockSnapshot:
         battle_round=state.battle_round,
         active_player=state.active_player.value if state.active_player else None,
         battle_phase=state.phase.value if state.phase else None,
+    )
+
+
+def _fight_result_to_snapshot(
+    paired: PairedFightResult,
+    attacker_configs: list[ModelConfig] | None,
+    targets: list[WargameModel],
+) -> CombatResultSnapshot:
+    """Convert a `PairedFightResult` to the same snapshot shape as a shot.
+
+    Two differences from the shooting builder, and both are the rules':
+    the weapon is `melee_weapons[0]` and it hits on Melee Skill, and
+    `in_cover` is always False — `docs/rules/12-fight-phase.md` grants no cover
+    in melee, so a melee expectation is not comparable to a shooting one
+    measured with cover in play.
+    """
+    r = paired.result
+    exp_dmg = 0.0
+    p_hit = 0.0
+    p_wound = 0.0
+
+    has_weapon = (
+        attacker_configs is not None
+        and paired.attacker_idx < len(attacker_configs)
+        and attacker_configs[paired.attacker_idx].melee_weapons
+    )
+    has_target = paired.target_idx < len(targets)
+
+    if has_weapon and has_target:
+        weapon = attacker_configs[paired.attacker_idx].melee_weapons[0]  # type: ignore[index]
+        target = targets[paired.target_idx]
+        defender = DefenderStats(
+            toughness=target.stats["toughness"],
+            save=target.stats["save"],
+        )
+        exp_dmg = expected_attack_damage(weapon.melee_skill, weapon, defender)
+        p_hit = hit_probability(weapon.melee_skill)
+        threshold = wound_roll_threshold(weapon.strength, defender.toughness)
+        p_wound = (7 - threshold) / 6.0
+
+    return CombatResultSnapshot(
+        attacker_idx=paired.attacker_idx,
+        target_idx=paired.target_idx,
+        killed=paired.killed,
+        hits=r.hits,
+        wounds=r.wounds,
+        unsaved=r.unsaved,
+        damage_dealt=r.damage_dealt,
+        expected_damage=exp_dmg,
+        hit_probability=p_hit,
+        wound_probability=p_wound,
+        in_cover=False,
     )
 
 
@@ -639,6 +714,8 @@ def build_snapshot(
     episode_reward: float | None = None,
     deployment_outline: "Polygon | None" = None,
     opponent_deployment_outline: "Polygon | None" = None,
+    player_fight_results: list[PairedFightResult] | None = None,
+    opponent_fight_results: list[PairedFightResult] | None = None,
 ) -> GameStateSnapshot:
     """Build a complete game-state snapshot from env internals."""
     player_configs = config.models
@@ -699,6 +776,14 @@ def build_snapshot(
     o_combat = [
         _combat_result_to_snapshot(r, opponent_configs, player_models)
         for r in opponent_shooting_results
+    ]
+    p_melee = [
+        _fight_result_to_snapshot(r, player_configs, opponent_models)
+        for r in player_fight_results or []
+    ]
+    o_melee = [
+        _fight_result_to_snapshot(r, opponent_configs, player_models)
+        for r in opponent_fight_results or []
     ]
 
     p_actions: list[int] | None = None
@@ -766,6 +851,8 @@ def build_snapshot(
         player_action_descriptions=p_action_descs,
         player_combat_results=p_combat,
         opponent_combat_results=o_combat,
+        player_melee_results=p_melee,
+        opponent_melee_results=o_melee,
         reward=RewardSnapshot(
             total=last_reward,
             breakdown=dict(reward_breakdown),

@@ -141,6 +141,13 @@ wargame_rl/
 - **VP reward and success** — `vp_gain` calculator, `player_vp_min` success criteria, optional terminal VP bonus; observation includes `player_vp_delta` for step-wise VP signal
 - **Deployment zones** — configurable spawn areas for player and opponent
 - **Group cohesion** — optional penalty for unit separation
+- **Melee, off by default** — `melee.enabled` steps the charge phase, resolves fights,
+  lets a move end in contact, costs an engaged unit that withdraws its shooting, and stops
+  engaged models being shot at. Off it registers no slice, draws no dice and leaves
+  `skip_phases` alone, so every golden config and every golden fixture is bit-identical.
+  ⚠ Engagement was 0.0000% of model-pairs not because contact is far but because
+  `back_off_to_unengaged` parks the army **8.7 micro-inches** outside it — a charge needs
+  the *exemption*, not the distance. [docs/melee.md](docs/melee.md)
 - **DDD layering** — `domain/` owns the rules (Battle aggregate, clock, placement, termination, LOS, shooting); `wargame.py` is a facade; reward/renders depend only on the `BattleView` protocol. See [docs/ddd-envs.md](docs/ddd-envs.md)
 - **Rules specification** — [docs/rules/](docs/rules/README.md) is the game's rules authority: a self-contained spec written for this project, with `constants.yaml` (every number, in inches) and [implementation-status.md](docs/rules/implementation-status.md) (per-rule: implemented / partial / divergent / absent). Before implementing a mechanic, read its chapter and its gap-map row. `tests/test_no_ip_references.py` keeps the repo free of references to the commercial product the rules derive from — the spec names no product, publisher, edition or faction, and neither should anything else
 - **Play doctrine** — [docs/play-doctrine.md](docs/play-doctrine.md) is how this game is *won*, as `docs/rules/` is how it is *played*: 43 numbered entries, each stating a claim, whether the environment can express it, which extension point it lands in, and what has already been measured about it. It is a store of **hypotheses, never of evidence** — price an entry as a scripted policy (`just measure-paired`, no GPU) before it becomes a reward term or a training run, and where an entry disagrees with the record below, **the record wins**
@@ -680,10 +687,16 @@ measure-advance-use` censuses what a policy buys with the advance and what it pa
   right question is not *does the lever pay* but **does carrying it cost the agent anything**,
   which needs no advance-seeking script: train against a `dark_action_slices` control of
   identical shape and read the paired difference. See D-43.
-- ⚠ **NO MELEE, so every movement measurement here is PROVISIONAL.** A shooting army has no
-  reason to close except to stand on an objective, so closing is priced only by what it
-  captures and never by what it threatens. Any move type whose value is "arrive sooner" is
-  being measured in a game that does not yet reward arriving.
+- ⚠ **NO MELEE IN ANY MEASURED CONFIG, so every movement measurement here is
+  PROVISIONAL.** A shooting army has no reason to close except to stand on an objective, so
+  closing is priced only by what it captures and never by what it threatens. Any move type
+  whose value is "arrive sooner" is being measured in a game that does not yet reward
+  arriving. ⚠ The charge and fight phases now **exist** behind `melee.enabled` (default
+  **False**, an exact no-op verified byte-identical to a pre-melee `main`) — but nothing has
+  been measured with them on, and turning them on voids every baseline and every agent score
+  on that config. See [docs/melee.md](docs/melee.md), which also records what is still
+  outstanding and why a **vp gate is unpowered by construction** for a lethality-neutral
+  mechanic.
 - ⚠ **The only live explanation left for the −26.7 is the PATH, and nothing above
   prices it.** Every statistic here is taken at convergence; a 300-epoch screen
   prices sample efficiency.

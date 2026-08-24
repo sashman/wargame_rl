@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     import numpy as np
 
     from wargame_rl.wargame.envs.domain.entities import WargameModel
+    from wargame_rl.wargame.envs.domain.fight import PairedFightResult
     from wargame_rl.wargame.envs.domain.shooting import PairedShootingResult
     from wargame_rl.wargame.envs.wargame import WargameEnv
 
@@ -138,6 +139,18 @@ class MirroredEnv:
     def last_opponent_shooting_results(self) -> list[PairedShootingResult]:
         """Theirs."""
         return self._env.last_player_shooting_results
+
+    # ---- melee results -----------------------------------------------------
+
+    @property
+    def last_player_fight_results(self) -> list[PairedFightResult]:
+        """Our last melee."""
+        return self._env.last_opponent_fight_results
+
+    @property
+    def last_opponent_fight_results(self) -> list[PairedFightResult]:
+        """Theirs."""
+        return self._env.last_player_fight_results
 
     # ---- deployment zones --------------------------------------------------
     #

@@ -19,6 +19,7 @@ from wargame_rl.wargame.envs.domain.consolidate import consolidate_objective
 from wargame_rl.wargame.envs.domain.entities import WargameObjective
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
+from wargame_rl.wargame.envs.state.snapshot import GameStateSnapshot
 from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.types.config import MeleeConfig, MeleeWeaponProfile
 from wargame_rl.wargame.envs.types.config.battle import OpponentPolicyConfig
@@ -208,3 +209,59 @@ def test_consolidation_happens_through_env_step() -> None:
     assert not opponent.is_alive, "the melee did not kill the target"
     offset = compute_distances([player], [objective]).model_obj_norms_offset[0, 0]
     assert offset <= radius, "the survivor did not consolidate onto the objective"
+
+
+def test_a_melee_recording_carries_the_blows_and_the_flags() -> None:
+    """Schema 2.7: melee results and the two per-turn flags reach the snapshot.
+
+    Separate lists from the shooting ones, because the renderer draws a tracer
+    for a shot and a clash marker for a blow — see `scene.py::_draw_clashes`.
+    """
+    # Arrange
+    env = _env()
+    player = env.wargame_models[0]
+    opponent = env.opponent_models[0]
+    player.location = np.array([10.0, 10.0], dtype=player.location.dtype)
+    opponent.location = np.array([11.0, 10.0], dtype=opponent.location.dtype)
+
+    # Act
+    for _ in range(3):
+        env.step(WargameEnvAction(actions=[STAY_ACTION]))
+        snapshot = env.to_snapshot()
+        if snapshot.player_melee_results:
+            break
+
+    # Assert
+    assert snapshot.schema_version == "2.7"
+    assert snapshot.player_melee_results, "the melee never reached the snapshot"
+    blow = snapshot.player_melee_results[0]
+    assert blow.expected_damage > 0.0, "melee expectation was not computed"
+    assert not blow.in_cover, "12-fight-phase.md grants no cover in melee"
+    assert snapshot.player_models[0].charged_this_turn in (True, False)
+    assert snapshot.player_models[0].fell_back_this_turn in (True, False)
+
+
+def test_a_pre_2_7_recording_still_loads() -> None:
+    """The new fields are all defaulted, so an old recording is not orphaned."""
+    # Arrange
+    env = _env()
+    env.reset(seed=11)
+    payload = env.to_snapshot().model_dump()
+    payload["schema_version"] = "2.6"
+    for key in (
+        "player_melee_results",
+        "opponent_melee_results",
+    ):
+        payload.pop(key)
+    for side in ("player_models", "opponent_models"):
+        for model in payload[side]:
+            model.pop("charged_this_turn")
+            model.pop("fell_back_this_turn")
+
+    # Act
+    restored = GameStateSnapshot.model_validate(payload)
+
+    # Assert
+    assert restored.player_melee_results == []
+    assert not restored.player_models[0].charged_this_turn
+    assert not restored.player_models[0].fell_back_this_turn

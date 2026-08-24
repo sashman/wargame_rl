@@ -92,10 +92,17 @@ def _within(
     return bool(matrix.any())
 
 
-def _select_objective(
+def _nearest_objective_in_reach(
     offsets: np.ndarray, members: list[int], max_distance: float
 ) -> int | None:
-    """The nearest objective within reach of the unit, or None if there is none."""
+    """The nearest objective within reach of the unit, or None if there is none.
+
+    Named for what it does. `_select_objective` would have read as the rules'
+    *the player selects one of those in range*, which is
+    `DEFERRED: consolidate.select_objective` and deliberately absent — and the
+    register's own guard in `tests/test_implementation_status.py` fails on that
+    name, which is how the collision was found.
+    """
     if offsets.shape[1] == 0:
         return None
     per_objective = offsets[members].min(axis=0)
@@ -179,7 +186,7 @@ def consolidate_objective(
     offsets = objective_offsets()
     moved_groups: list[int] = []
     for group, members in candidates:
-        objective = _select_objective(offsets, members, max_distance)
+        objective = _nearest_objective_in_reach(offsets, members, max_distance)
         if objective is None:
             continue
         start = {
