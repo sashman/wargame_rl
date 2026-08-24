@@ -819,6 +819,17 @@ Measured 2026-08-24, three seeds, 300 epochs, **paired**,
 - ⚠ **HYPOTHESIS, NOT A FINDING: the extra option may SLOW learning.** The control
   gained more from the extra 700 epochs than the arm on every seed (+13.8 v −5.6,
   +26.3 v +28.1, **+19.7 v −18.3**). Three seeds at sd 15.3 cannot establish it.
+- **VERDICT: REJECT.** Arm **+12.7** against the control's **+29.0** at 1000 epochs
+  (beats the old advance arm's −3.3, does not clear the control on any seed).
+- ⚠ **But the reject clause's own explanation — "~12 vp is the permanent cost of a
+  larger action space" — is REFUTED by the same run.** A pre-predicted falsifier,
+  confirmed 3/3: advance-trained weights with the lever masked at **play** land
+  within **1.8–4.1 vp** of the control (s3 alone recovers **+32.2**). Decomposed:
+  **carrying the option −2.9 ± 0.67 (lower bound −4.8)**; using it at play −13.4.
+  **Do not carry forward "the encoding costs ~12 vp", and do not re-open the
+  encoding** — the structure is not what loses. The open problem is that two of three
+  seeds drift into *using* a move that does not pay, and 700 extra epochs made that
+  worse, not better.
 - ⚠ **A THREE-SEED SCREEN WAS READ AS A RESULT TWICE AND REVERSED BOTH TIMES.** The
   per-seed paired difference is unstable across seeds *and* across epoch budgets.
   **Nothing here should move a design decision** — resolving "free" versus "−16"

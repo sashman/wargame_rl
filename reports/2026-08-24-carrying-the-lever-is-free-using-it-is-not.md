@@ -241,3 +241,58 @@ bound but applies to every number in this report.
 **Nothing here should move a design decision.** The honest state is: the encoding is
 structurally correct, the lever's cost is unresolved between "free" and "−16", and
 resolving it needs six seeds at 1000 epochs — not another three.
+
+---
+
+# VERDICT: REJECT — and the reject clause's own explanation is refuted
+
+The goal's decision rule was:
+
+> **Accept**: the re-encoded arm beats the current advance arm, and reaches the
+> non-advance control's +23.4 or better, three seeds, refereed, K=3.
+> **Reject**: it does not clear the control — in which case ~12 vp is the permanent
+> cost of a larger action space and Advance needs a different design, not a better
+> encoding.
+
+At 1000 epochs, refereed, K=3, held-out nine, n=30:
+
+| | s1 | s2 | s3 | mean |
+|---|---|---|---|---|
+| arm | +26.7 | +9.9 | +1.6 | **+12.7** |
+| control | +33.6 | +17.9 | +35.6 | **+29.0** |
+
+It **beats the old advance arm** (−3.3) but **does not clear the control**, on any
+seed. **The gate returns REJECT.**
+
+## ⚠ But "a permanent cost of a larger action space" is REFUTED by the same run
+
+The reject clause carried an explanation. It is wrong, and the falsifier that shows
+it was pre-predicted and confirmed 3/3 — advance-trained weights, lever masked at
+**play**:
+
+| quantity | mean | SE | 95% lower bound |
+|---|---|---|---|
+| as-scored (the gate) | −16.3 | 8.86 | −42.2 |
+| **carrying the option** | **−2.9** | **0.67** | **−4.8** |
+| using it at play | −13.4 | 9.43 | −40.9 |
+
+Weights trained *with* the lever score within **1.8–4.1 vp** of the control once the
+lever is masked (s1 +29.5 v +33.6, s2 +15.1 v +17.9, s3 **+33.8 v +35.6**). s3 alone
+recovers **+32.2**.
+
+So the larger action space does **not** impose ~12 vp. It imposes **−2.9 ± 0.67**,
+and that estimate is tight where every other number here is not. **Advance does not
+need a different design.** What costs is a policy *exercising* a move that does not
+pay — 0.3% usage → −2.8; 4.9% → −5.2; 5.1% → **−32.2**.
+
+## What the verdict does and does not license
+
+- **REJECT stands** on the criterion as written. The arm does not clear the control.
+- ⚠ **Do NOT carry forward "the encoding costs ~12 vp".** It is measured at −2.9 with
+  a lower bound of −4.8, by a pre-registered falsifier.
+- ⚠ **Do NOT re-open the encoding.** All four structural criteria are met and the
+  decomposition says the structure is not what is losing.
+- **The open problem is a POLICY problem**: two of three seeds drifted into using a
+  move that costs them, and 700 extra epochs made that worse rather than better
+  (usage 0.0→0.3%, 10.9→4.9%, 0.6→5.1%). More seeds would measure that; they would
+  not explain it.
