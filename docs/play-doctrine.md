@@ -79,6 +79,7 @@ imported unexamined.
 | The config that trains runs **20 battle rounds**, so ~19 scoring rounds a side. | `configs/golden/25v25_maps_two_mode.yaml` | **No single round is worth more than about 5% of the game.** Every last-round-swing, going-second and endgame-timing heuristic is an artefact of a five-round game and **does not transfer**. This is the largest single transfer failure in this document. |
 | Only terrain blocks sight; models never do. Enemy bases block a move; friendly bases may be crossed but not ended on. | [gap map § Terrain](rules/implementation-status.md) · `domain/movement.py` · `resolve_move` | **A screen stops movement, never fire.** Screening is a real mechanic here, and self-gridlock is its price. |
 | Every objective on the real tables sits inside a terrain piece. | `CLAUDE.md` § Holding pays | **Holding is hiding.** Standing on an objective pays +0.37 to +0.44 more per model-step at *negative* excess death hazard. "Stay off the point and stay safe" is refuted. |
+| There is no melee, so a shooting army has **no reason to close** except to stand on an objective. | [gap map § Charge and fight](rules/implementation-status.md) | ⚠ **Every measurement of a movement feature here is provisional on that.** Closing the distance is priced only by what it captures, never by what it threatens, so any move type whose value is "arrive sooner" is measured in a game that does not yet reward arriving. |
 | There is no charge phase and no fight phase. | [gap map § Charge and fight](rules/implementation-status.md) | **Ground is sticky.** Nothing is levered off a point except by being shot off it, so every heuristic built on contact — trading, tarpitting, wrapping — arrives `absent`. |
 | Coherency is a 2" chain and a 9" span over a five-model unit. | [rules § Coherency](rules/03-moving.md) | **The allocation quantum is the unit, not the model.** "Send one more body than they have" is not a legal move. Several of the strongest entries below are blocked on precisely this. |
 | Weapon range is 12" against a 6" move on a 60x44 board. | `configs/golden/25v25_maps_two_mode.yaml` | Threat is a **two-move quantity**, and on the `long_edges` layouts the armies start 20" apart across the short axis — inside two moves from turn one. |
@@ -925,6 +926,7 @@ in [implementation-status.md](rules/implementation-status.md#advance-move).
 | D-40 | Advance to arrive, not to approach | `live` | scripted policy | `settled` |
 | D-41 | The longest move is the most likely to be stopped | `live` | — | `settled` |
 | D-42 | An advance is worth what one turn is worth, so it is a short-game move | `live` | scenario | `settled` |
+| D-43 | A move type is a lever, not an advantage — do not build a policy that must use one | `live` | — | `settled` |
 
 ### D-38 — A unit declares one move type, and the whole unit pays for it
 
@@ -1077,6 +1079,45 @@ it normalised: **+0.14 sd → −0.04 → −0.13**. The five-round game is **no
 
 **Cheapest test.** `just measure-paired squad_march_take_arrive squad_march_take
 configs/experiments/25v25_maps_advance.yaml 100 700000 rounds=5`.
+
+---
+
+### D-43 — A move type is a lever, not an advantage; do not build a policy that must use one
+
+**Claim.** Advance is an option with a real trade — further, but no shooting. Whether it is
+worth taking is a **situational** judgement, and a policy built to advance is a policy built
+to be wrong most of the time. What the environment owes the agent is the *availability* of the
+lever; what the agent does with it is learned behaviour.
+
+**Why it is true here.** Its use is niche — it pays when you must reach a specific destination
+now — and the arithmetic that decides "now" is the scoring clock (D-42), which at twenty rounds
+prices one turn at ~5%. ⚠ And the game is **incomplete**: with no melee, a shooting army has no
+reason to close except to capture, so the whole class of reasons a real player advances is
+absent. Anything measured about advance today is provisional on a mechanic that does not exist.
+
+**Expressible.** `live`.
+
+**Where it lands.** Nowhere — it is a rule about what NOT to build. ⚠ Specifically: **do not
+add scripted policies whose purpose is to advance.** Getting one right is harder than it looks,
+and a bar that advances badly is worse than a bar that walks; the record has both, at −78 and
+−11.9 vp to their own users.
+
+**Already measured.** `settled`, 2026-08-23,
+[report](../reports/2026-08-23-three-prices-for-the-advance-move.md). Three scripted rules,
+each pricing more of the trade than the last, all lose to plain walking: **−78**, **−18.4
+(0/3)**, **−11.9 (0/3)**. The loss shrinks as usage shrinks and never turns positive, which is
+the signature of a move whose value is negative wherever it is *forced*.
+
+⚠ **This retires a gate that was mis-specified.** The standing rule read "a scripted advance
+rule that prices the forfeited shooting has to beat `squad_march_take` before anything trains".
+That bakes in the assumption above — that advance ought to pay — and so it can never be
+satisfied by a correct implementation. The right question is not *does the lever pay* but
+**does carrying it cost the agent anything**, which needs no advance-seeking script at all:
+train the arm against a `dark_action_slices` control of identical shape and read the paired
+difference.
+
+**Cheapest test.** `just measure-advance-use <ckpt> <config> 10 1` on a trained arm — usage
+should be *low*, and low usage is not a failure.
 
 ---
 
