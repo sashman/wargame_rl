@@ -26,6 +26,10 @@ from wargame_rl.wargame.envs.domain.shooting import (
 )
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
+from wargame_rl.wargame.envs.state.events import (
+    _apply_model_delta,
+    _compute_model_delta,
+)
 from wargame_rl.wargame.envs.state.snapshot import GameStateSnapshot
 from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.types.config import MeleeConfig, MeleeWeaponProfile
@@ -244,8 +248,38 @@ def test_a_melee_recording_carries_the_blows_and_the_flags() -> None:
     blow = snapshot.player_melee_results[0]
     assert blow.expected_damage > 0.0, "melee expectation was not computed"
     assert not blow.in_cover, "12-fight-phase.md grants no cover in melee"
-    assert snapshot.player_models[0].charged_this_turn in (True, False)
-    assert snapshot.player_models[0].fell_back_this_turn in (True, False)
+    assert snapshot.player_models[0].charged_this_turn is not None
+    assert snapshot.player_models[0].fell_back_this_turn is not None
+
+
+def test_a_charge_survives_the_DELTA_codec() -> None:
+    """Schema 2.7's two flags must reach a replay, not just a full snapshot.
+
+    ⚠ **This replaces a tautology.** The test here asserted
+    `charged_this_turn in (True, False)`, which no implementation can fail, and
+    under it both fields were added to `ModelSnapshot` and to NEITHER side of
+    the delta codec in `state/events.py`. Full snapshots carried them; every
+    delta dropped them silently, so a replay reconstructed from an event log
+    carried the anchor's value forever and a charge could never read True.
+    Found by an expert panel.
+    """
+    # Arrange: two snapshots of the same model differing ONLY in the melee flags.
+    env = _env()
+    env.reset(seed=13)
+    before = env.to_snapshot()
+    for model in env.wargame_models:
+        model.charged_this_turn = True
+        model.fell_back_this_turn = True
+    after = env.to_snapshot()
+
+    # Act
+    delta = _compute_model_delta(0, before.player_models[0], after.player_models[0])
+    assert delta is not None, "the codec saw no change at all"
+    restored = _apply_model_delta(before.player_models[0], delta)
+
+    # Assert
+    assert restored.charged_this_turn, "a charge did not survive the delta codec"
+    assert restored.fell_back_this_turn, "a fall back did not survive the delta codec"
 
 
 def test_a_pre_2_7_recording_still_loads() -> None:
@@ -277,7 +311,7 @@ def test_a_pre_2_7_recording_still_loads() -> None:
 def test_the_shipped_melee_config_is_lethality_neutral() -> None:
     """`configs/experiments/25v25_maps_melee.yaml` measures the MECHANIC.
 
-    ⚠ **`MeleeWeaponProfile`'s defaults are an ordinary weapon, not a neutral
+    ⚠ **`MeleeWeaponProfile`'s defaults are an ordinary weapon, not a cold
     one**, so a scenario that wants to price the charge rather than the blade
     has to say so. `wound_roll_threshold` returns 6 whenever
     `2 x strength <= toughness`, which is what makes `A1 / MS6+ / S1 / AP2`
@@ -302,6 +336,13 @@ def test_the_shipped_melee_config_is_lethality_neutral() -> None:
     assert config.melee.enabled
     assert BattlePhase.charge not in (config.skip_phases or [])
     assert BattlePhase.fight in (config.skip_phases or [])
+    # ⚠ Pinned as a NUMBER, not as a claim about neutrality. The 0.02415 target
+    # this was chosen against is half of `0.163 x 0.296296` -- half the damage an
+    # AVERAGE model's shooting is worth -- and an engaged model is not average:
+    # it stands within an inch of an enemy, so the shooting it forfeits is close
+    # to certain. Against that conditional the blade returns about a tenth of
+    # what it costs. Lethality-NEGLIGIBLE, which is still the right choice for
+    # measuring the mechanic. See docs/melee.md.
     assert per_fight == pytest.approx(0.0232, abs=0.0005)
     assert all(m.melee_weapons for m in player_models)
     assert all(m.melee_weapons for m in opponent_models)

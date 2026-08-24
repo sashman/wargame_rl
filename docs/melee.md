@@ -108,8 +108,31 @@ non-vacuous: adding a `_pile_in` definition trips it by name.
   Fixing it needs a `player_groups` argument threaded into both mask functions.
 - `consolidate.select_objective` — the env takes the nearest objective in range;
   the rules let the player choose.
-- `fallback.declared_move_type`, `fallback.reckless_break`,
-  `fallback.blocks_charge`.
+- `fallback.declared_move_type`, `fallback.reckless_break`.
+
+## ⚠ Three gaps an audit found that are NOT rules gaps
+
+Verified in the code on 2026-08-25. None is fixed; each would change what a
+training arm measures, so each is a decision rather than a tidy-up.
+
+1. **`charge_roll` has no observation column, and the action mask is not a
+   substitute.** `advance_roll` has one (`observation_builder.py`, normalised by
+   `ADVANCE_DIE_FACES`) for a rationale that applies here verbatim. The mask is
+   carried on `EncodedState.mask_tensor` and applied by `masked_fill` to the
+   **final logits only** (`model/net.py:711`) — it never enters the trunk, and
+   `value_from_encoded` never touches it. So the critic cannot distinguish a
+   unit three inches from an enemy holding a roll of 11 from the same unit
+   holding a roll of 2. ~10 lines, gated on `melee.enabled`, and every golden
+   stays bit-identical because no shipped config turns melee on.
+2. **The joint decoder is inert in the charge phase.** `decoding.py:272` returns
+   early unless the phase is `movement`. `decode_topk=3` is worth **+40.5 vp on
+   45 of 45 tables** and this project's eval discipline makes it mandatory — yet
+   it does nothing for the longest, all-or-nothing, coherency-refereed move in
+   the game. **Any melee score quoted "at K=3" is a K=1 score in the phase the
+   feature is about.**
+3. **The shooter-side engagement gate is per-MODEL where the rule is per-UNIT**,
+   while the target side of the same function is per-unit. See
+   `DEFERRED: shooting.engaged_unit_cannot_shoot` in the register.
 
 ## The value of a charge is the shooting shield, not the damage
 
@@ -157,10 +180,24 @@ target of 0.02415, within 4.1%.
 weapon. A scenario that wants to measure the *mechanic* rather than the *damage*
 must say so in its config.
 
+⚠ **"Neutral" is measured against the WRONG CONDITIONAL, and the label
+overstates the case.** 0.02415 is half of `0.163 × 0.296296`, i.e. half the
+damage an *average* model's shooting is worth at a 16.3% shot rate — and the
+fight resolves twice per battle round, so per round the profile is ~95.9% of
+that forfeit. But an engaged model is not an average model: it is standing
+within an inch of an enemy, deep inside a 12" weapon range, so the shooting it
+gives up is close to certain rather than 16.3% likely. Against that conditional
+the blade returns roughly **a tenth** of what it costs. The shipped profile is
+better described as **lethality-negligible** than lethality-neutral, which is
+still the right choice for measuring the mechanic — it just is not the claim the
+number was making. The 16.3% rate itself remains unsourced.
+
 ## Measuring it
 
-⚠ **A vp gate is unpowered by construction here.** At n=3 the one-sided
-half-width is **19.05 vp**; at n=6, **9.32**. A lethality-neutral melee mechanic
+⚠ **A vp gate is unpowered by construction here, and the figures below were
+themselves too kind.** 19.05 at n=3 and 9.32 at n=6 are 50%-power CI
+half-widths, not minimum detectable effects: at 80% power and one-sided 95% the
+MDE is **25.97 vp at n=3** and **13.54 at n=6**. A lethality-neutral melee mechanic
 is designed to move vp by less than that, and no number of seeds fixes a gate
 that is tighter than its own estimator — the old "≥ −8 on 3 of 3" rule passes a
 do-nothing feature **44%** of the time.
