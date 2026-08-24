@@ -48,7 +48,11 @@ wargame_rl/
 │       │   ├── net.py             # RL_Network base, TransformerNetwork
 │       │   ├── common/            # Shared: lightning_base (eval + baselines + phase
 │       │   │                      #   advancement), factory, observation, layers, callbacks
-│       │   └── ppo/               # PPO: actor-critic, lightning module, agent, config
+│       │   ├── ppo/               # PPO: actor-critic, lightning module, agent, config
+│       │   └── opponent/          # A checkpoint seated on the opponent side
+│       ├── rating/                # Elo: margin score, Bradley-Terry fit, schedule,
+│       │                          #   arena, ledger, table
+│       ├── selectors.py           # One policy-name-or-checkpoint-path resolver
 │       └── types.py               # Experience
 ├── configs/                       # Env configs, tiered by what breaks if edited
 │   ├── golden/                    #   backs a published number
@@ -58,15 +62,17 @@ wargame_rl/
 ├── tests/                         # Pytest suite with conftest.py fixtures
 ├── docs/                          # Design docs (movement, reward phases, missions-and-vp,
 │                                  #   roadmap, metrics, shooting, expected-damage,
-│                                  #   terrain, training-throughput, play-doctrine)
+│                                  #   terrain, training-throughput, play-doctrine, elo)
 │   └── rules/                     # Rules specification + constants.yaml + gap map
 ├── reports/                       # Experiment findings, kept for retrospection
+├── ratings/                       # Rating ledgers, one per scenario fingerprint
 ├── scripts/                       # Run-inspection tooling (fetch_map_layouts,
 │                                  #   run_summary, measure_phase_gates,
 │                                  #   measure_baselines, measure_checkpoint, measure_terrain,
 │                                  #   measure_noise_floor, measure_objective_split,
 │                                  #   measure_income_share, measure_maps,
-│                                  #   behaviour_clone,
+│                                  #   behaviour_clone, measure_seat_parity,
+│                                  #   measure_elo, elo_table,
 │                                  #   measure_throughput)
 ├── train.py                       # Training entry point (Typer CLI)
 ├── simulate.py                    # Inference/simulation entry point
@@ -117,6 +123,9 @@ wargame_rl/
 | Clone a scripted policy into the network (warm-start checkpoint) | `just behaviour-clone <policy> <config.yaml> [n_episodes] [epochs] [out]` |
 | Two policies on identical layouts, paired per episode | `just measure-paired <policy\|ckpt> <policy\|ckpt> <config.yaml> [n_episodes] [seed_base] [key=value...]` |
 | Dice-vs-scenario noise floor | `just measure-noise-floor <config.yaml> [n_layouts] [n_combat_seeds] [policy] [key=value...]` |
+| Are the two seats the same game (the rating precondition) | `just measure-seat-parity <config.yaml> [policy] [n_layouts]` |
+| Rate policies against each other on one scale | `just measure-elo <config.yaml> [n_layouts] <entrant...>` |
+| Fit and print the rating table from legs already played | `just elo-table <config.yaml>` |
 | Terrain-profile statistics | `just measure-terrain <config.yaml> [n_layouts]` |
 | Where epoch time goes | `just measure-throughput <config.yaml> [n_steps] [engaged]` |
 | Profile | `just profile <config.yaml> [max_epochs]` |
@@ -139,6 +148,12 @@ wargame_rl/
 ### Game State I/O (`envs/state/`)
 
 Snapshot/event pipeline for recording and inspecting matches — `GameStateSnapshot`, event-log deltas, `StateExporter` (wired into `step()`), replay, narration, and `analyze_match` metrics. Driven by `replay_events.py` / `analyze_events.py` and the `record` · `replay` · `analyze` · `analyze-compare` recipes. See [docs/game-state-io.md](docs/game-state-io.md)
+
+### Ratings (`rating/`)
+
+Puts scripted baselines and learned checkpoints on **one scale**, so "did this get better" has an answer that does not depend on which opponent it happened to face. Bradley-Terry maximum likelihood with the deployment-zone and first-turn advantages as explicit fitted terms, a bootstrap over layouts, and an append-only ledger in `ratings/` keyed by a scenario fingerprint that **refuses** to mix scenarios. `score.py` and `elo.py` import numpy and nothing from this repo; `arena.py` is the only module that touches a live env, and it wraps `evaluate_selector` rather than reimplementing it. Recipes: `measure-seat-parity` · `measure-elo` · `elo-table`. See [docs/elo.md](docs/elo.md)
+
+⚠ **A rating assumes the two seats are the same game, and nothing enforces that.** On `configs/golden/25v25_shooting_opponent.yaml` they are not — one policy played from both seats loses from the *player* seat by **−24.6 ± 9.4 vp**, and every number in this file is quoted from that seat. `just measure-seat-parity` is the gate and it is **advisory**: entrant A always takes the player seat and `pairings` lists each pair once in input order, so on a config that fails the gate, ratings are confounded by command-line position. No rating is published for this reason. See [the report](reports/2026-08-19-the-two-seats-are-not-the-same-game.md)
 
 ### RL Algorithm
 
@@ -1439,7 +1454,7 @@ never applied the reward being tuned).
 - After pushing a new feature branch, always create a PR using `gh pr create`
 - Run `just validate` (format + lint + test) before pushing; `just format && just lint` for quick iteration
 - **Shipping:** always create a new branch from up-to-date `main` — never reuse an existing feature branch for a new PR. Checkout `main`, pull latest, then branch. Never push directly on an in-progress branch from another workflow. The `/ship` skill (`.claude/skills/ship/`) automates this via `just ship`
-- **Docs-drift check:** a `PostToolUse` hook (`.claude/settings.json` → `.claude/hooks/docs_check.py`) fires after `gh pr create` and `just ship`. It diffs the branch against `main` and names the live docs that cite the changed paths, symbols, recipes or config fields. Fix mechanical drift (renamed symbol, changed default, missing table row) directly; only *suggest* anything asserting behaviour. It is silent when nothing is implicated, and never fails a ship. `reports/` and `.planning/` are exempt — they record what was believed at the time. Run it by hand with `python3 .claude/hooks/docs_check.py --dry-run [<base>..<head>]`
+- **Docs-drift check:** a `PostToolUse` hook (`.claude/settings.json` → `.claude/hooks/docs_check.py`) fires after `gh pr create` and `just ship`. It diffs the branch against `main` and names the live docs that cite the changed paths, symbols, recipes or config fields. Fix mechanical drift (renamed symbol, changed default, missing table row) directly; only *suggest* anything asserting behaviour. It is silent when nothing is implicated, and never fails a ship. `reports/`, `.planning/` and `ratings/` are exempt — they record what was measured or believed at the time, under a named code revision; `configs/` is exempt too. Run it by hand with `python3 .claude/hooks/docs_check.py --dry-run [<base>..<head>]`
 
 ## CUDA Environment
 
