@@ -92,10 +92,17 @@ table is the roadmap for the next implementation phase.
 
 | Rule | Status | Owner / note |
 |---|---|---|
-| [Charge phase](11-charge-phase.md) | absent | The phase exists in `BattlePhase` and is a stub — only `"stay"` is legal. It is in `skip_phases` by default. |
-| [Fight phase](12-fight-phase.md) | absent | Same — a stub in `skip_phases`. |
-| [Strikes First](16-ability-reference.md#strikes-first) | absent | — |
-| [Pile in / consolidate](12-fight-phase.md) | absent | — |
+| [Charge phase](11-charge-phase.md) | absent | `DEFERRED: charge.phase` — the phase exists in `BattlePhase` and is a stub; only `"stay"` is legal. |
+| [Fight phase — fight step](12-fight-phase.md#fight-step) | **partial** | `domain/fight.py:resolve_fight`, behind `melee.enabled` (default off, an exact no-op). Engaged models strike the unit they are in contact with; the defender allocates via the shared `_allocate_target`, and the attack sequence is `domain/shooting.py:resolve_attack`, extracted so melee and shooting cannot resolve the same dice differently. Resolved on the boundary LEAVING the fight phase, before `_regain_coherency`, so a unit shredded in melee can then lose stragglers to attrition — the rule's order. The phase carries **no agent action** and stays in `skip_phases`: its mask offers exactly one legal action per model (STAY), so stepping it would cost +50% of episode length for a choice with one option. Gaps below. |
+| — alternating activation | absent | `DEFERRED: fight.alternating_activation` — v1 order is fixed: the active player's units, then the opposing player's, each in group order. The rules alternate between players and return to the Strikes First sub-step whenever a new Strikes First unit becomes eligible. |
+| — passing | absent | `DEFERRED: fight.passing` — a unit whose targets all die simply does not fight. The rules would let it wait for an enemy pile-in to bring something within 5"; with no pile-in there is nothing to wait for. |
+| — select a melee weapon | absent | `DEFERRED: fight.select_weapon` — a model fights with `melee_weapons[0]`. A choice with no second case while every model carries at most one. |
+| — fighting after death | absent | `DEFERRED: fight.fighting_after_death` — a destroyed model is removed at once and never swings. A no-op only while every model has one wound. |
+| [Strikes First](16-ability-reference.md#strikes-first) | absent | `DEFERRED: fight.strikes_first` — nothing grants it yet, because nothing charges. Whatever implements the charge must grant it to every model of a charging unit until the end of that turn. |
+| [Pile in](12-fight-phase.md#pile-in-step) | absent | `DEFERRED: fight.pile_in` — no 3" close-up, so a unit engaged at the edge of engagement range fights from there and a unit that loses its nearest model cannot close. |
+| [Overrun fight](12-fight-phase.md#overrun-fight) | absent | `DEFERRED: fight.overrun` — a unit that destroys its target cannot reach a new one this phase. |
+| [Consolidate](12-fight-phase.md#consolidate-step) | absent | `DEFERRED: consolidate.step` — no consolidation move at all. ⚠ When it lands, note the modes are **ordered and compulsory**: Objective mode fires only for a unit that is unengaged AND not within 3" of an enemy, which after a successful charge is almost never. |
+| [Melee weapon profile](02-unit-profiles.md#weapon-characteristics) | **partial** | `MeleeWeaponProfile` (`types/config/entities.py`): attacks, melee skill, strength, AP, damage. One profile per model, and no `[EXTRA ATTACKS]` or `[SIDEARM]`. ⚠ Cover does **not** apply in melee, per `12-fight-phase.md`, so a melee expected-damage figure is not comparable to a shooting one measured with cover in play. |
 
 ## Terrain and visibility
 

@@ -18,7 +18,27 @@ from wargame_rl.wargame.envs.domain.entities import WargameModel
 
 
 @runtime_checkable
-class WeaponStats(Protocol):
+class AttackStats(Protocol):
+    """The stats an attack sequence needs once its SKILL is already decided.
+
+    Everything after the hit roll is identical for a bow and a blade, so this is
+    what a melee weapon and a ranged one share. The skill itself is not here: a
+    ranged weapon carries `ballistic_skill` and is modified by cover, a melee
+    weapon carries `melee_skill` and is not, so it is passed in.
+    """
+
+    @property
+    def attacks(self) -> int: ...
+    @property
+    def strength(self) -> int: ...
+    @property
+    def ap(self) -> int: ...
+    @property
+    def damage(self) -> int: ...
+
+
+@runtime_checkable
+class WeaponStats(AttackStats, Protocol):
     """Structural protocol for weapon stats used in resolution.
 
     Satisfied by ``WeaponProfile`` (Pydantic, types layer) without importing it,
@@ -26,15 +46,7 @@ class WeaponStats(Protocol):
     """
 
     @property
-    def attacks(self) -> int: ...
-    @property
     def ballistic_skill(self) -> int: ...
-    @property
-    def strength(self) -> int: ...
-    @property
-    def ap(self) -> int: ...
-    @property
-    def damage(self) -> int: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,7 +164,25 @@ def resolve_shooting(
     impossible -- which is what stops it from being an absolute shield when the
     board gets crowded.
     """
-    skill = ranged_skill(weapon.ballistic_skill, in_cover=in_cover)
+    return resolve_attack(
+        ranged_skill(weapon.ballistic_skill, in_cover=in_cover), weapon, defender, rng
+    )
+
+
+def resolve_attack(
+    skill: int,
+    weapon: AttackStats,
+    defender: DefenderStats,
+    rng: np.random.Generator,
+) -> ShootingResult:
+    """The attack sequence, once the skill to hit on is known.
+
+    Shared verbatim by shooting and melee -- `docs/rules/05-attack-sequence.md`
+    is one sequence, and only the characteristic it hits on and whether cover
+    applies differ. Extracted rather than copied so the two can never resolve
+    the same dice differently; the draws and their order are unchanged, which
+    `tests/test_reward_golden.py` pins bit-for-bit.
+    """
     hit_rolls = rng.integers(1, 7, size=weapon.attacks)
     hits = int(np.sum((hit_rolls != 1) & ((hit_rolls >= skill) | (hit_rolls == 6))))
 

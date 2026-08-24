@@ -18,6 +18,7 @@ from wargame_rl.wargame.envs.domain.battle_factory import (
 from wargame_rl.wargame.envs.domain.battle_factory import unit_count
 from wargame_rl.wargame.envs.domain.coherency_enforcement import apply_attrition
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.fight import PairedFightResult, resolve_fight
 from wargame_rl.wargame.envs.domain.game_clock import GameClock
 from wargame_rl.wargame.envs.domain.placement import install_layout, place_for_episode
 from wargame_rl.wargame.envs.domain.rules_quantities import (
@@ -243,6 +244,11 @@ class WargameEnv(gym.Env):
         self._advance_rng: np.random.Generator = np.random.default_rng()
         self._last_player_shooting_results: list[PairedShootingResult] = []
         self._last_opponent_shooting_results: list[PairedShootingResult] = []
+        # Melee results ride beside the shooting ones but in their own lists:
+        # the renderer draws a tracer for every damaging SHOOTING result, and a
+        # melee hit at base contact would render as an inch-long stub.
+        self._last_player_fight_results: list[PairedFightResult] = []
+        self._last_opponent_fight_results: list[PairedFightResult] = []
 
         # Last actions and termination flag (for snapshot / replay)
         self._last_player_action: WargameEnvAction | None = None
@@ -653,6 +659,63 @@ class WargameEnv(gym.Env):
     def opponent_vp_delta(self) -> int:
         return self._battle.opponent_vp_delta
 
+    def _resolve_fight_phase(self, state: GameState) -> None:
+        """Both sides trade melee blows, on the boundary leaving the fight phase.
+
+        ⚠ **The fight phase carries no agent action, and stays in
+        `skip_phases`.** Measured: `registry.get_action_mask(BattlePhase.fight)`
+        offers exactly ONE legal action per model (STAY) on every shipped
+        config, so stepping it would cost an agent step per round -- +50% of
+        episode length on the golden config -- to make a decision with one
+        option. `on_before_advance` fires on skipped phases (only the opponent's
+        action is guarded), which is how `_regain_coherency` already works.
+
+        Both players act in this phase per `docs/rules/12-fight-phase.md`, so
+        both forces swing on the same boundary; the ACTIVE player's units
+        resolve first, which is v1's stand-in for alternating activation.
+
+        Dice come from `_combat_rng`. Unlike the advance roll this needs no
+        dedicated stream: it draws only when a fight actually resolves, so a
+        config with melee off draws nothing and every existing dice sequence is
+        untouched.
+        """
+        if not self.config.melee.enabled:
+            return
+        if state.phase is not BATTLE_PHASE_ORDER[-1] or state.active_player is None:
+            return
+        engagement_range = self._rules_quantities.engagement_range
+        base_diameter = 2.0 * self._rules_quantities.base_radius
+        player_side = (
+            self.wargame_models,
+            self.opponent_models,
+            [cfg.melee_weapons for cfg in self.config.models or []],
+            True,
+        )
+        opponent_side = (
+            self.opponent_models,
+            self.wargame_models,
+            [cfg.melee_weapons for cfg in self.config.opponent_models or []],
+            False,
+        )
+        order = (
+            [player_side, opponent_side]
+            if state.active_player == self._player_side
+            else [opponent_side, player_side]
+        )
+        for attackers, defenders, weapons, is_player in order:
+            results = resolve_fight(
+                attackers,
+                defenders,
+                self._combat_rng,
+                attacker_weapons=weapons,
+                engagement_range=engagement_range,
+                base_diameter=base_diameter,
+            )
+            if is_player:
+                self._last_player_fight_results.extend(results)
+            else:
+                self._last_opponent_fight_results.extend(results)
+
     def _regain_coherency(self, state: GameState) -> None:
         """Apply `03-moving.md` § Regaining coherency to the active player's force.
 
@@ -804,8 +867,15 @@ class WargameEnv(gym.Env):
         self._roll_advance_dice(state.active_player)
 
     def _on_before_advance(self, clock: GameClock) -> None:
-        """Score VP when leaving command phase, and regain coherency at end of turn."""
+        """Resolve the fight, regain coherency, and score VP at the command boundary."""
         state = clock.state
+        # ⚠ ORDER IS LOAD-BEARING. Both hang off the same boundary -- leaving
+        # `fight`, which is `BATTLE_PHASE_ORDER[-1]` and so stands in for end of
+        # turn. You fight, THEN the survivors are culled back into coherency; a
+        # unit shredded in melee can lose further models to attrition in the
+        # same step, which is the rule. Reversing them would cull first and let
+        # models that should have swung die before they did.
+        self._resolve_fight_phase(state)
         self._regain_coherency(state)
         if state.phase != BattlePhase.command or state.battle_round is None:
             return
@@ -909,6 +979,8 @@ class WargameEnv(gym.Env):
         self._combat_rng = np.random.default_rng(self._episode_combat_seed)
         self._last_player_shooting_results = []
         self._last_opponent_shooting_results = []
+        self._last_player_fight_results = []
+        self._last_opponent_fight_results = []
         self._last_player_action = None
         self._last_opponent_action = None
         self._last_action_phase = None
@@ -1204,6 +1276,8 @@ class WargameEnv(gym.Env):
         self._battle.reset_vp_deltas()
         self._last_player_shooting_results = []
         self._last_opponent_shooting_results = []
+        self._last_player_fight_results = []
+        self._last_opponent_fight_results = []
         self._attrition_deaths_player = 0
         self._attrition_deaths_opponent = 0
         opp_alive_before = [m.is_alive for m in self.opponent_models]
@@ -1244,8 +1318,14 @@ class WargameEnv(gym.Env):
         clock_state = self._game_clock.state
         phase = clock_state.phase or BattlePhase.command
 
-        p_dmg = sum(r.result.damage_dealt for r in self._last_player_shooting_results)
-        o_dmg = sum(r.result.damage_dealt for r in self._last_opponent_shooting_results)
+        # Damage is damage, whichever phase dealt it -- the shaping terms that
+        # read these price wounds, not weapons.
+        p_dmg = sum(
+            r.result.damage_dealt for r in self._last_player_shooting_results
+        ) + sum(r.result.damage_dealt for r in self._last_player_fight_results)
+        o_dmg = sum(
+            r.result.damage_dealt for r in self._last_opponent_shooting_results
+        ) + sum(r.result.damage_dealt for r in self._last_opponent_fight_results)
         # The alive-diff spans the whole step, and coherency attrition runs
         # inside it, so a force's own attrition losses would otherwise read as
         # the other side's kills -- `killing` paying +5 a model for deaths
@@ -1278,6 +1358,17 @@ class WargameEnv(gym.Env):
         for shot in self._last_player_shooting_results:
             if shot.killed and shot.attacker_idx < len(p_kills_by_model):
                 p_kills_by_model[shot.attacker_idx] += 1
+        # ⚠ Melee kills count here too. The GLOBAL kill counter is an alive-diff
+        # and so picks them up for free, but this vector was built from shooting
+        # results alone -- so without this a fight-phase kill would pay the
+        # global `killing` calculator and pay `model_kills` nothing. On a
+        # lineage where 53.7% of income is already global against a script's
+        # 25.8%, and whose standing diagnosis is a difference-reward problem,
+        # adding a damage channel that is credited only globally would deepen
+        # the exact defect three reward terms have already failed against.
+        for blow in self._last_player_fight_results:
+            if blow.killed and blow.attacker_idx < len(p_kills_by_model):
+                p_kills_by_model[blow.attacker_idx] += 1
 
         # Built before termination is known because the phase's success criteria
         # need a context to evaluate against. No criteria reads `is_terminated`,

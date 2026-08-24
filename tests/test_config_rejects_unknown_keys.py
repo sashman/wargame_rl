@@ -19,6 +19,7 @@ from wargame_rl.wargame.envs.reward.phase import (
 )
 from wargame_rl.wargame.envs.types.config import (
     MeleeConfig,
+    MeleeWeaponProfile,
     MissionConfig,
     ModelConfig,
     ObjectiveConfig,
@@ -43,6 +44,7 @@ CONFIG_MODELS: list[type[BaseModel]] = [
     MissionConfig,
     OpponentPolicyConfig,
     MeleeConfig,
+    MeleeWeaponProfile,
     RewardPhaseConfig,
     RewardCalculatorConfig,
     SuccessCriteriaConfig,

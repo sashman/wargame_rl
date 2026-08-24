@@ -23,6 +23,7 @@ from wargame_rl.wargame.envs.types.config.battle import (
 )
 from wargame_rl.wargame.envs.types.config.coherency import CoherencyConfig
 from wargame_rl.wargame.envs.types.config.entities import (
+    MeleeWeaponProfile,
     ModelConfig,
     ObjectiveConfig,
     WeaponProfile,
@@ -40,6 +41,7 @@ from wargame_rl.wargame.envs.types.config.terrain import (
 __all__ = [
     "CoherencyConfig",
     "MeleeConfig",
+    "MeleeWeaponProfile",
     "MissionConfig",
     "ModelConfig",
     "ObjectiveConfig",

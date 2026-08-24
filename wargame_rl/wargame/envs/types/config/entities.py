@@ -33,6 +33,49 @@ class WeaponProfile(BaseModel):
     damage: int = Field(default=1, gt=0, description="Wounds inflicted per failed save")
 
 
+class MeleeWeaponProfile(BaseModel):
+    """A melee weapon: the same attack sequence, hit on Melee Skill, no range.
+
+    A separate type rather than fields on `WeaponProfile`, for two reasons that
+    are both silent-failure shaped. `max_weapon_ranges` takes
+    `max(w.range for w in model.weapons)`, so a melee profile carrying any range
+    at all would widen the model's SHOOTING reach. And `expected_damage_matrix`
+    packs `WeaponProfile` into a fixed `(n, 5)` array that feeds the observation
+    tensor, so widening that model risks the observation golden for nothing.
+
+    ⚠ **Cover does not apply.** `docs/rules/12-fight-phase.md` grants none, and
+    cover here is a property of sight. So a charge is the one attack that strips
+    the defender's only structural advantage on a board where every objective is
+    a ruin -- which also means the expected damage of a melee weapon is NOT
+    comparable to a shooting figure measured with cover in play.
+
+    ⚠ **There is no lethality-neutral profile by default, but there is one.**
+    Holding melee's expected damage to what an engaged model forfeits in
+    shooting needs roughly 0.024 per model per fight. `strength` is what gets
+    you there, not skill: `wound_roll_threshold` returns 6 whenever
+    `2 * strength <= toughness`, so S1 against T3 wounds on 6+ and
+    `A1 / MS6+ / S1 / AP2` lands at 0.0232. The defaults below are NOT that
+    profile -- they are an ordinary weapon, and a scenario that wants
+    lethality-neutral melee must say so.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    attacks: int = Field(default=2, gt=0, description="Number of hit rolls per fight")
+    melee_skill: int = Field(
+        default=3, ge=2, le=6, description="D6 roll needed to hit (e.g. 3 means 3+)"
+    )
+    strength: int = Field(
+        default=4, gt=0, description="For wound roll comparison vs target toughness"
+    )
+    ap: int = Field(
+        default=1,
+        ge=0,
+        description="Armour penetration (worsens target save by this amount)",
+    )
+    damage: int = Field(default=1, gt=0, description="Wounds inflicted per failed save")
+
+
 class ModelConfig(BaseModel):
     """Per-model configuration (position, group, stats, etc.).
 
@@ -89,6 +132,14 @@ class ModelConfig(BaseModel):
     weapons: list[WeaponProfile] = Field(
         default_factory=list,
         description="Weapon profiles. Empty = cannot shoot.",
+    )
+    melee_weapons: list[MeleeWeaponProfile] = Field(
+        default_factory=list,
+        description=(
+            "Melee weapons. Empty (the default) means this model cannot fight "
+            "in melee at all, which is an exact no-op for every config written "
+            "before the fight phase existed."
+        ),
     )
 
     @model_validator(mode="after")
