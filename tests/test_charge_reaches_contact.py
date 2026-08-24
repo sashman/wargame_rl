@@ -146,3 +146,54 @@ def test_a_charge_still_may_not_end_inside_another_model() -> None:
     )
     separation = float(np.linalg.norm(mover.location - enemy.location))
     assert separation >= 1.0 - 1e-6, f"models overlap: centres {separation:.4f} apart"
+
+
+def _legality(
+    *,
+    gap: float,
+    roll: float,
+    engaged: bool = False,
+    advanced: bool = False,
+    fell_back: bool = False,
+) -> np.ndarray:
+    """One model, one enemy `gap` away; return its charge-move legality row."""
+    handler = _handler(melee=True)
+    mover = _model(5.0)
+    mover.charge_roll = roll
+    mover.advanced_this_turn = advanced
+    mover.fell_back_this_turn = fell_back
+    enemy = _model(5.0 + (ENGAGEMENT / 2 if engaged else gap), group=1)
+    row: np.ndarray = handler.charge_legality([mover], [enemy])[0]
+    return row
+
+
+def test_a_unit_out_of_the_declaration_range_may_not_charge() -> None:
+    """12" is the band a charge may be declared within."""
+    assert (
+        _legality(gap=30.0, roll=12.0).any() is np.False_
+        or not _legality(gap=30.0, roll=12.0).any()
+    )
+    assert _legality(gap=8.0, roll=12.0).any()
+
+
+def test_an_already_engaged_unit_may_not_charge() -> None:
+    """You cannot charge out of a fight."""
+    assert not _legality(gap=8.0, roll=12.0, engaged=True).any()
+
+
+def test_a_unit_that_advanced_or_fell_back_may_not_charge() -> None:
+    """Both flags block the declaration, per 11-charge-phase.md § Eligibility."""
+    assert not _legality(gap=8.0, roll=12.0, advanced=True).any()
+    assert not _legality(gap=8.0, roll=12.0, fell_back=True).any()
+
+
+def test_the_roll_caps_the_charge_distance() -> None:
+    """The 2D6 is the move's maximum, so longer speed bins are masked out."""
+    generous = _legality(gap=8.0, roll=12.0)
+    stingy = _legality(gap=8.0, roll=1.0)
+    assert generous.sum() > stingy.sum()
+
+
+def test_a_roll_of_zero_leaves_no_legal_charge() -> None:
+    """Nothing is rolled outside a charge phase, and nothing is then legal."""
+    assert not _legality(gap=8.0, roll=0.0).any()

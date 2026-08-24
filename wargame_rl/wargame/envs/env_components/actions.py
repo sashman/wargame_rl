@@ -200,6 +200,7 @@ class ActionHandler:
         max_speed = quantities.max_move_speed
         self._engagement_range = float(quantities.engagement_range)
         self._melee_enabled = bool(config.melee.enabled)
+        self._charge_range = float(quantities.scale.to_units(config.melee.charge_range))
         # A model with a base cannot stand with half of it off the table.
         self._base_radius = quantities.base_radius
         # Resolved once, like every other rules distance. The mode is read here
@@ -582,6 +583,98 @@ class ActionHandler:
             )
             legality[index] = np.tile(allowed, self._n_angles)
         return legality
+
+    def charge_legality(
+        self, models: list[Any], enemy_models: list[Any] | None
+    ) -> np.ndarray:
+        """`(n_models, n_move_actions)` -- which charge moves the rules allow.
+
+        Two gates, mirroring `advance_legality`.
+
+        **Eligibility**, per `docs/rules/11-charge-phase.md`: a unit may declare
+        a charge only when it is within 12" of an enemy unit, is NOT already
+        engaged, and has neither advanced nor fallen back this turn. Measured
+        unit-to-unit like the shooting mask's range test -- reducing a per-model
+        answer over the unit is the coupling bug that function's own docstring
+        warns against.
+
+        **Distance**: the 2D6 is the charge move's maximum, so any speed bin
+        travelling further is masked out. This is why the roll is rolled at the
+        start of the side's turn and observable: legality is gated on it, so a
+        policy choosing before it could not know which of its actions exist.
+
+        Note the roll is a UNIT roll but the mask is per model, and a model with
+        a smaller Move has fewer legal bins for the same roll -- which is the
+        rules' own behaviour, since the cap is a distance and not a bin index.
+        """
+        n_models = len(models)
+        movement = self.movement_slice
+        legality = np.zeros((n_models, movement.size), dtype=bool)
+        if not self._melee_enabled or n_models == 0:
+            return legality
+        alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+        if not alive_enemies:
+            return legality
+
+        eligible_units = self._charge_eligible_units(models, alive_enemies)
+        if not eligible_units:
+            return legality
+
+        for index, model in enumerate(models):
+            if not model.is_alive or int(model.group_id) not in eligible_units:
+                continue
+            reach = float(getattr(model, "charge_roll", 0.0))
+            if reach <= 0.0:
+                continue
+            distances = np.linalg.norm(self._displacements_for(index), axis=-1)
+            legality[index] = (distances <= reach).reshape(-1)
+        return legality
+
+    def _displacements_for(self, model_idx: int) -> np.ndarray:
+        """This model's `(n_angles, n_speeds, 2)` displacement grid."""
+        if self._model_displacements is not None:
+            grid: np.ndarray = self._model_displacements[model_idx]
+            return grid
+        shared: np.ndarray = self._displacements
+        return shared
+
+    def _charge_eligible_units(
+        self, models: list[Any], alive_enemies: list[Any]
+    ) -> set[int]:
+        """Units that may declare a charge this turn."""
+        positions = np.array([m.location for m in models], dtype=float)
+        enemy_positions = np.array([m.location for m in alive_enemies], dtype=float)
+        enemy_alive = np.ones(len(alive_enemies), dtype=bool)
+        engaged = engaged_with_any(
+            positions,
+            enemy_positions,
+            enemy_alive,
+            engagement_range=self._engagement_range,
+            base_diameter=2.0 * self._base_radius,
+        )
+        gaps = (
+            np.linalg.norm(
+                positions[:, np.newaxis, :] - enemy_positions[np.newaxis, :, :], axis=2
+            )
+            - 2.0 * self._base_radius
+        )
+        within = (gaps <= self._charge_range).any(axis=1)
+
+        blocked: set[int] = set()
+        candidates: set[int] = set()
+        for index, model in enumerate(models):
+            group = int(model.group_id)
+            if not model.is_alive:
+                continue
+            if (
+                engaged[index]
+                or getattr(model, "advanced_this_turn", False)
+                or getattr(model, "fell_back_this_turn", False)
+            ):
+                blocked.add(group)
+            if within[index]:
+                candidates.add(group)
+        return candidates - blocked
 
     @property
     def movement_slice(self) -> ActionSlice:

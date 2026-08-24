@@ -466,6 +466,19 @@ class WargameEnv(gym.Env):
         return self._action_handler.advance_legality(self.wargame_models)
 
     @property
+    def player_charge_legality(self) -> np.ndarray:
+        """`(n_models, n_move_actions)` — which charge moves the rules allow.
+
+        On the view for the same reason `player_advance_legality` is: the
+        observation builder masks with it and must not reach into the action
+        handler, and the mirrored view has to answer for the OPPONENT's models
+        when the opponent seat asks.
+        """
+        return self._action_handler.charge_legality(
+            self.wargame_models, self.opponent_models
+        )
+
+    @property
     def opponent_max_ranges(self) -> np.ndarray:
         """Longest weapon range per opponent model, resolved once from config.
 
@@ -1208,6 +1221,14 @@ class WargameEnv(gym.Env):
             # receive a shorter move -- the asymmetry that voids a bar.
             mask[:, advance_slice.start : advance_slice.end] &= (
                 handler.advance_legality(self.opponent_models)
+            )
+        if self.config.melee.enabled and phase is BattlePhase.charge:
+            # Both seats or neither: an unmasked charge would let the opponent
+            # declare one its roll cannot reach, or from a unit the rules make
+            # ineligible, and nothing downstream re-checks.
+            movement_slice = handler.movement_slice
+            mask[:, movement_slice.start : movement_slice.end] &= (
+                handler.charge_legality(self.opponent_models, self.wargame_models)
             )
         shooting_slice = handler.shooting_slice
         if (

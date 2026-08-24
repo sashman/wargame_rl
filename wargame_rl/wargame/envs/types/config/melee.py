@@ -32,6 +32,15 @@ class MeleeConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    charge_range: float = Field(
+        default=12.0,
+        gt=0,
+        description=(
+            "How close, in inches, an enemy unit must be for a unit to declare "
+            "a charge against it (docs/rules/11-charge-phase.md). Read only "
+            "when `enabled`."
+        ),
+    )
     enabled: bool = Field(
         default=False,
         description=(

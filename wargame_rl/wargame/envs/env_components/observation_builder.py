@@ -493,6 +493,16 @@ def build_observation(
         action_mask = action_registry.get_model_action_masks(
             phase, len(view.player_models), alive_mask=player_alive
         )
+        if view.config.melee.enabled and phase == BattlePhase.charge:
+            # A charge is an ordinary movement action in an extraordinary phase,
+            # so the slice is already unmasked here -- what has to be added is
+            # the rules' own gates: the unit must be eligible to declare, and
+            # the 2D6 is the charge move's maximum.
+            movement_slice = action_registry.slice_for("movement")
+            action_mask[:, movement_slice.start : movement_slice.end] &= (
+                view.player_charge_legality
+            )
+
         if action_registry.has_slice("advance") and phase == BattlePhase.movement:
             # The advance rungs are ABSOLUTE distances above Move, so the turn's
             # D6 no longer changes what an action means -- it decides which
