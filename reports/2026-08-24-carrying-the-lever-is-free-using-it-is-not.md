@@ -125,3 +125,53 @@ Whether 1000 epochs closes the seed split — running. It answers the epoch-budg
 question and sharpens the equivalence test at the same time. ⚠ **A properly powered
 bound must be re-derived from the 1000-epoch spread before the result is read**; more
 epochs cuts noise but does not repair a criterion set tighter than the spread.
+
+---
+
+# Revised pre-registration for the 1000-epoch extension
+
+⚠ **Written 2026-08-24, while the runs are at epoch ~810 and BEFORE any 1000-epoch
+score exists.** The 300-epoch criterion ("paired difference >= -8 on 3 of 3 seeds")
+was measured to be unpassable: with a per-seed paired sd of 11.3, a lever costing
+exactly zero fails it 56% of the time. Replacing a broken rule is legitimate;
+replacing it *after seeing the new numbers* would not be, hence the timing.
+
+## The criterion
+
+This is an **equivalence** test — the claim is "carrying the lever costs nothing",
+so the burden is to **rule out a cost**, not to detect a difference.
+
+Compute the mean paired difference and its one-sided 95% lower bound
+(`mean - t(0.95, n-1) * SE`). Then:
+
+- **PASS** — the lower bound excludes a cost of **10 vp**, i.e. `mean - t*SE > -10`.
+  Carrying the lever demonstrably costs less than 10 vp.
+- **FAIL** — the *upper* side shows a real cost: `mean + t*SE < 0`, i.e. the
+  difference is significantly negative.
+- **UNDERPOWERED** — neither holds. Report it as that, and NOT as a pass. A null
+  result that cannot exclude the effect is not evidence of absence.
+
+## ⚠ n=3 is very probably UNDERPOWERED, and that is known in advance
+
+At the observed sd of 11.3, ruling out a 10 vp cost needs:
+
+| seeds | SE | t*SE | can a mean of 0 exclude a 10 vp cost? |
+|---|---|---|---|
+| 3 | 6.52 | 19.05 | **no** |
+| 5 | 5.05 | 10.76 | no |
+| **6** | 4.61 | 9.32 | **yes** |
+| 8 | 4.00 | 7.55 | yes (comfortably) |
+
+So unless 1000 epochs shrinks the per-seed spread substantially, the honest verdict
+will be **UNDERPOWERED**, and the remedy is **six seeds, not more epochs**. Recorded
+now so that a mean near zero at n=3 is not read as a pass.
+
+## What the extension CAN settle regardless of power
+
+- **Does s2's advance usage converge?** It was 7.9/4.8/7.8% over epochs 247-299 --
+  oscillating, not decaying, while s1 sat at 0.0% and s3 at 0.6%. If s2 falls to the
+  others' floor by epoch 1000, the 300-epoch split was under-training. If it does
+  not, the split is a real multi-modality in what these runs learn, which is a more
+  interesting and more awkward result.
+- **Does the epoch budget matter for a larger action space?** Compare each arm's own
+  300 vs 1000 score. That is a within-seed comparison and needs no equivalence bound.
