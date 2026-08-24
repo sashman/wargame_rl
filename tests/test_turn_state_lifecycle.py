@@ -95,12 +95,27 @@ def test_hoisting_the_hook_changed_no_flag_on_an_advance_off_config() -> None:
 
 def test_melee_requires_the_phases_it_is_played_in() -> None:
     """A feature whose actions are never legal measures nothing for hours."""
-    with pytest.raises(ValueError, match="remove charge, fight from skip_phases"):
+    with pytest.raises(ValueError, match="remove 'charge' from skip_phases"):
         WargameEnvConfig(
             number_of_wargame_models=4,
             melee=MeleeConfig(enabled=True),
             skip_phases=list(NON_MOVEMENT_PHASES),
         )
+
+
+def test_melee_does_NOT_require_the_fight_phase_to_be_stepped() -> None:
+    """⚠ The fight carries no agent action and resolves at the phase boundary.
+
+    An earlier validator demanded both phases, which rejected the config the
+    design actually wants -- fight skipped, charge stepped -- and would have
+    cost an agent step per round for a mask with one legal option.
+    """
+    config = WargameEnvConfig(
+        number_of_wargame_models=4,
+        melee=MeleeConfig(enabled=True),
+        skip_phases=[BattlePhase.command, BattlePhase.fight],
+    )
+    assert BattlePhase.fight in config.skip_phases
 
 
 def test_melee_off_does_not_care_what_is_skipped() -> None:

@@ -25,7 +25,7 @@ from wargame_rl.wargame.model.common.factory import create_environment
 LETHAL = MeleeWeaponProfile(attacks=6, melee_skill=2, strength=10, ap=6, damage=1)
 
 
-def _env(*, melee: bool, weapons: bool = True) -> WargameEnv:
+def _env(*, melee: bool, weapons: bool = True, skip_fight: bool = False) -> WargameEnv:
     profile = [LETHAL] if weapons else []
     config = WargameEnvConfig(
         number_of_wargame_models=2,
@@ -34,7 +34,8 @@ def _env(*, melee: bool, weapons: bool = True) -> WargameEnv:
         models=[ModelConfig(melee_weapons=profile) for _ in range(2)],
         opponent_models=[ModelConfig(melee_weapons=profile) for _ in range(2)],
         melee=MeleeConfig(enabled=melee),
-        skip_phases=[BattlePhase.command, BattlePhase.shooting],
+        skip_phases=[BattlePhase.command, BattlePhase.shooting]
+        + ([BattlePhase.fight] if skip_fight else []),
     )
     env = create_environment(config)
     env.reset(seed=3)
@@ -147,3 +148,32 @@ def test_the_fight_is_deterministic_given_the_seed(seed: int) -> None:
         return [m.stats["current_wounds"] for m in env.opponent_models]
 
     assert wounds() == wounds()
+
+
+def test_the_fight_resolves_even_when_the_fight_phase_is_SKIPPED() -> None:
+    """⚠ The load-bearing claim of the whole design, and it was nearly untested.
+
+    The fight carries no agent action, so it stays in `skip_phases` and resolves
+    in `_on_before_advance`, which fires on skipped phases -- exactly how
+    coherency attrition already works. Stepping the phase instead would cost an
+    agent step per round for a mask with one legal option.
+
+    A validator bug briefly REJECTED this config, and every fight test used the
+    stepped variant, so nothing would have noticed if boundary resolution had
+    never worked.
+    """
+    env = _env(melee=True, skip_fight=True)
+    assert BattlePhase.fight in env.config.skip_phases
+    _lock(env)
+    before = sum(m.stats["current_wounds"] for m in env.opponent_models)
+    blows = _step_to_end_of_turn(env)
+    after = sum(m.stats["current_wounds"] for m in env.opponent_models)
+    assert after < before, "no melee resolved while the fight phase was skipped"
+    assert blows, "no fight results recorded"
+
+
+def test_skipping_the_fight_phase_costs_no_agent_step() -> None:
+    """The reason the phase stays skipped, asserted as a number."""
+    stepped = _env(melee=True, skip_fight=False).max_turns
+    skipped = _env(melee=True, skip_fight=True).max_turns
+    assert skipped < stepped

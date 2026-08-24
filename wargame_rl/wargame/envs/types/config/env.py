@@ -780,29 +780,34 @@ class WargameEnvConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def validate_melee_needs_its_phases(self) -> "WargameEnvConfig":
-        """Melee needs the charge phase it is declared in and the fight it resolves in.
+    def validate_melee_needs_a_charge_phase(self) -> "WargameEnvConfig":
+        """Melee needs the charge phase, where a charge is declared and made.
 
         The same failure `validate_advance_needs_a_command_phase` catches: the
         actions would exist and never be legal, so a training run would spend
         hours measuring a feature it never had.
 
-        ⚠ **Only this direction is checked, deliberately.** Rejecting the
-        reverse -- charge or fight stepped while melee is off -- was proposed,
-        on the grounds that it costs an agent step per round that can only emit
-        STAY and so silently inflates `max_turns`. That is a real cost, but
-        `skip_phases: []` is a *documented* setting for full per-phase stepping
-        (`envs/CLAUDE.md`), five test modules construct it, and no shipped
-        config steps either phase. A validator that forbids it would reject
-        legitimate configs to guard against a mistake nothing has made.
+        ⚠ **The FIGHT phase is deliberately NOT required, and requiring it was a
+        bug.** The fight carries no agent action -- its mask offers exactly one
+        legal option per model (STAY) -- and it resolves in `_on_before_advance`,
+        which fires on skipped phases. So the correct melee config *skips*
+        fight and steps only charge. An earlier version of this validator
+        demanded both, which rejected that config and would have forced an extra
+        agent step per round, +33% of episode length, for a choice with one
+        option. Caught by validating a real config rather than by a test.
+
+        ⚠ **The reverse direction is also not checked.** Rejecting a stepped
+        charge or fight while melee is off was proposed, on the grounds that it
+        inflates `max_turns` for nothing. But `skip_phases: []` is a *documented*
+        setting for full per-phase stepping (`envs/CLAUDE.md`), five test modules
+        construct it, and no shipped config steps either phase -- so the check
+        would reject legitimate configs to guard against a mistake nothing has
+        made.
         """
-        missing = {BattlePhase.charge, BattlePhase.fight} & set(self.skip_phases)
-        if self.melee.enabled and missing:
-            names = ", ".join(sorted(p.value for p in missing))
+        if self.melee.enabled and BattlePhase.charge in self.skip_phases:
             raise ValueError(
-                f"melee.enabled needs the charge and fight phases, where a "
-                f"charge is declared and a fight resolves -- remove {names} "
-                f"from skip_phases"
+                "melee.enabled needs the charge phase, where a charge is "
+                "declared and made -- remove 'charge' from skip_phases"
             )
         return self
 
