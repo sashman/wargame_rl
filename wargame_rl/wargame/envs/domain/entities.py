@@ -73,6 +73,9 @@ class WargameModel:
         # (`docs/rules/09-movement-phase.md`). Before this existed an engaged
         # model simply took a normal move and walked out for free.
         self.fell_back_this_turn: bool = False
+        # This model's UNIT's 2D6 charge roll for the turn, in inches. 0 outside
+        # a charge phase and whenever the scenario does not fight in melee.
+        self.charge_roll: float = 0.0
 
     def set_previous_closest_objective_distance(self, distance: float) -> None:
         self.previous_closest_objective_distance = distance
@@ -91,6 +94,7 @@ class WargameModel:
         self.advance_roll = 0.0
         self.declared_advance = False
         self.fell_back_this_turn = False
+        self.charge_roll = 0.0
 
     def begin_turn(self) -> None:
         """Clear the per-TURN move state before this side moves again.
@@ -104,6 +108,7 @@ class WargameModel:
         self.advance_roll = 0.0
         self.declared_advance = False
         self.fell_back_this_turn = False
+        self.charge_roll = 0.0
 
     @property
     def is_alive(self) -> bool:

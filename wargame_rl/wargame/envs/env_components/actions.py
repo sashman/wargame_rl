@@ -72,6 +72,12 @@ def _base_arrays(models: list[Any] | None) -> tuple[np.ndarray, np.ndarray]:
 
 ALL_BATTLE_PHASES: frozenset[BattlePhase] = frozenset(BattlePhase)
 
+# The two phases in which a model actually moves. A charge is an ordinary move
+# except for where it is allowed to END -- see `apply`.
+_DISPLACING_PHASES: frozenset[BattlePhase] = frozenset(
+    {BattlePhase.movement, BattlePhase.charge}
+)
+
 
 @dataclass(frozen=True, slots=True)
 class ActionSlice:
@@ -290,10 +296,22 @@ class ActionHandler:
             return frozenset() if name in dark else valid
 
         self._registry.register("stay", 1, phases("stay", ALL_BATTLE_PHASES))
+        # ⚠ The charge MOVE reuses this slice rather than adding one. Reach is
+        # not the constraint it looks like: `back_off_to_unengaged` parks every
+        # mover 8.7 MICRO-inches outside contact, so the distance a charge has
+        # to cover is one speed bin, not a 2D6 roll. A dedicated absolute-rung
+        # ladder would be ~80 actions bought to cross a hundred-thousandth of an
+        # inch -- and it would change the output head's shape, which is what
+        # makes an action-space arm unpairable against its control.
         self._registry.register(
             "movement",
             self._n_move_actions,
-            phases("movement", frozenset({BattlePhase.movement})),
+            phases(
+                "movement",
+                _DISPLACING_PHASES
+                if config.melee.enabled
+                else frozenset({BattlePhase.movement}),
+            ),
         )
 
         if n_shoot_targets > 0:
@@ -678,6 +696,25 @@ class ActionHandler:
 
         return self._advance_slice.start + angle_idx * self._n_advance_bins + bin_idx
 
+    def _displaces_in(self, phase: BattlePhase) -> bool:
+        """Does a movement action actually move a model in this phase?
+
+        ⚠ Not simply "is this a displacing phase". `apply` validates an action
+        against the action SPACE, which is phase-independent, so a scripted
+        policy emitting a movement action in the charge phase would displace
+        even on a config where the charge phase is a stub. The authority is the
+        movement slice's own `valid_phases`, which is what the mask is built
+        from -- so the mask and the resolver cannot disagree.
+        """
+        if phase is BattlePhase.movement:
+            return True
+        movement = self.movement_slice
+        return (
+            phase in _DISPLACING_PHASES
+            and movement is not None
+            and phase in movement.valid_phases
+        )
+
     def _engaged_before_moving(
         self,
         phase: BattlePhase,
@@ -781,8 +818,18 @@ class ActionHandler:
         # A move must END unengaged (`09-movement-phase.md`); passing through an
         # engagement range is explicitly legal (`03-moving.md`). So the rings are
         # applied to the endpoint only, never to the path.
+        # ⚠ THE CHARGE EXEMPTION, and it is the whole mechanic. A charge is the
+        # one move whose endpoint MAY lie inside an enemy's engagement range --
+        # `11-charge-phase.md` requires it to. Dropping the rings here (and only
+        # here) is what lets contact happen at all; `back_off_to_unengaged`
+        # still receives the OCCUPIED bases, so an endpoint may be engaged but
+        # never inside another model. That primitive already existed: the
+        # function merges enemy rings and occupied bases into one walk, so empty
+        # rings plus populated bases is exactly "may be engaged, may not
+        # overlap" with no edit to it.
+        charging = phase is BattlePhase.charge and self._displaces_in(phase)
         alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
-        if self._engagement_range > 0.0 and alive_enemies:
+        if not charging and self._engagement_range > 0.0 and alive_enemies:
             engagement_centres = np.array(
                 [m.location for m in alive_enemies], dtype=float
             )
@@ -816,7 +863,7 @@ class ActionHandler:
                 raise ValueError(
                     f"Action {act} for wargame model {i} is out of bounds."
                 )
-            if phase is not BattlePhase.movement:
+            if not self._displaces_in(phase):
                 continue
             if (
                 self._shooting_slice is not None

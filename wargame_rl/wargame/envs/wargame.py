@@ -242,6 +242,9 @@ class WargameEnv(gym.Env):
         # Separate stream: see `_roll_advance_dice`. Never drawn from unless the
         # scenario registers advance bins, so existing configs are untouched.
         self._advance_rng: np.random.Generator = np.random.default_rng()
+        # Same discipline again for the charge's 2D6: drawn only when the
+        # scenario fights in melee, so no existing config's dice shift.
+        self._charge_rng: np.random.Generator = np.random.default_rng()
         self._last_player_shooting_results: list[PairedShootingResult] = []
         self._last_opponent_shooting_results: list[PairedShootingResult] = []
         # Melee results ride beside the shooting ones but in their own lists:
@@ -359,9 +362,12 @@ class WargameEnv(gym.Env):
         is exactly the separation `measure-noise-floor` is built on.
         """
         self._combat_rng = np.random.default_rng(seed)
-        # Offset so the advance stream is not a copy of the combat stream.
+        # Offsets so neither move stream is a copy of the combat stream.
         self._advance_rng = np.random.default_rng(
             None if seed is None else seed + 1_000_003
+        )
+        self._charge_rng = np.random.default_rng(
+            None if seed is None else seed + 2_000_003
         )
 
     @property
@@ -814,6 +820,31 @@ class WargameEnv(gym.Env):
                 rolls[group] = float(self._advance_rng.integers(1, 7))
             model.advance_roll = rolls[group]
 
+    def _roll_charge_dice(self, active_side: PlayerSide) -> None:
+        """Roll 2D6 per unit for the charge, at the start of the side's turn.
+
+        `docs/rules/11-charge-phase.md` rolls after the declaration and before
+        targets are chosen. Here the roll comes first and is visible in the
+        observation the charge action is chosen from -- the same divergence, and
+        for the same reason, as the advance roll: legality is gated on the roll,
+        so a declaration made before it would have no legal distance to take and
+        the policy could not condition on what it is committing to.
+        `DEFERRED: charge.blind_declaration`.
+
+        One roll per UNIT, shared by its models, from a dedicated stream drawn
+        only when the scenario fights in melee.
+        """
+        if not self.config.melee.enabled:
+            return
+        rolls: dict[int, float] = {}
+        for model in self._models_for(active_side):
+            group = int(model.group_id)
+            if group not in rolls:
+                rolls[group] = float(
+                    self._charge_rng.integers(1, 7) + self._charge_rng.integers(1, 7)
+                )
+            model.charge_roll = rolls[group]
+
     def _models_for(self, active_side: PlayerSide) -> list[WargameModel]:
         """The force belonging to `active_side`."""
         return (
@@ -865,6 +896,7 @@ class WargameEnv(gym.Env):
         self._rolled_for = key
         self._begin_side_turn(state.active_player)
         self._roll_advance_dice(state.active_player)
+        self._roll_charge_dice(state.active_player)
 
     def _on_before_advance(self, clock: GameClock) -> None:
         """Resolve the fight, regain coherency, and score VP at the command boundary."""
@@ -977,6 +1009,15 @@ class WargameEnv(gym.Env):
             else int(explicit_combat_seed)
         )
         self._combat_rng = np.random.default_rng(self._episode_combat_seed)
+        # ⚠ These two were NEVER seeded here. `_advance_rng` was built once in
+        # `__init__` from OS entropy and only ever re-seeded by `reseed_combat`,
+        # which `reset` does not call -- so advance dice were a continuing
+        # stream no seed named, and an advance episode could not be reproduced
+        # from `seed=` or replayed from `EpisodeProvenance` at all. Derived from
+        # the episode's combat seed with distinct offsets, so a seeded episode
+        # now reproduces its move dice as well as its shooting.
+        self._advance_rng = np.random.default_rng(self._episode_combat_seed + 1_000_003)
+        self._charge_rng = np.random.default_rng(self._episode_combat_seed + 2_000_003)
         self._last_player_shooting_results = []
         self._last_opponent_shooting_results = []
         self._last_player_fight_results = []
