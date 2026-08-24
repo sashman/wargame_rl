@@ -20,6 +20,7 @@ from wargame_rl.wargame.envs.types.config.battle import (
 )
 from wargame_rl.wargame.envs.types.config.coherency import CoherencyConfig
 from wargame_rl.wargame.envs.types.config.entities import ModelConfig, ObjectiveConfig
+from wargame_rl.wargame.envs.types.config.melee import MeleeConfig
 from wargame_rl.wargame.envs.types.config.terrain import (
     MapPoolConfig,
     RandomTerrainConfig,
@@ -510,6 +511,12 @@ class WargameEnvConfig(BaseModel):
         "consequence defaults to off, so the default is exactly the behaviour "
         "that predates it.",
     )
+    melee: MeleeConfig = Field(
+        default_factory=MeleeConfig,
+        description="Whether the charge and fight phases are played "
+        "(docs/rules/11-charge-phase.md, 12-fight-phase.md). Defaults off, "
+        "which is an exact no-op: no slice, no dice, no observation column.",
+    )
 
     @field_validator("blocking_mask", mode="before")
     @classmethod
@@ -769,6 +776,33 @@ class WargameEnvConfig(BaseModel):
                 f"map_pool is mutually exclusive with {' and '.join(conflicting)}: "
                 "terrain is drawn from the pool, fixed, or generated — not two of "
                 "those"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_melee_needs_its_phases(self) -> "WargameEnvConfig":
+        """Melee needs the charge phase it is declared in and the fight it resolves in.
+
+        The same failure `validate_advance_needs_a_command_phase` catches: the
+        actions would exist and never be legal, so a training run would spend
+        hours measuring a feature it never had.
+
+        ⚠ **Only this direction is checked, deliberately.** Rejecting the
+        reverse -- charge or fight stepped while melee is off -- was proposed,
+        on the grounds that it costs an agent step per round that can only emit
+        STAY and so silently inflates `max_turns`. That is a real cost, but
+        `skip_phases: []` is a *documented* setting for full per-phase stepping
+        (`envs/CLAUDE.md`), five test modules construct it, and no shipped
+        config steps either phase. A validator that forbids it would reject
+        legitimate configs to guard against a mistake nothing has made.
+        """
+        missing = {BattlePhase.charge, BattlePhase.fight} & set(self.skip_phases)
+        if self.melee.enabled and missing:
+            names = ", ".join(sorted(p.value for p in missing))
+            raise ValueError(
+                f"melee.enabled needs the charge and fight phases, where a "
+                f"charge is declared and a fight resolves -- remove {names} "
+                f"from skip_phases"
             )
         return self
 

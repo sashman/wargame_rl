@@ -7,6 +7,7 @@ invisible to them.
 
 - `battle`    — turn order, opponent policy, mission
 - `coherency` — the unit coherency rule's distances and enforcement switches
+- `melee`     — whether the charge and fight phases are played at all
 - `entities`  — weapon profiles, models, objectives
 - `terrain`   — fixed pieces, named maps, the random generator
 - `env`       — `WargameEnvConfig`, which composes all of the above
@@ -27,6 +28,7 @@ from wargame_rl.wargame.envs.types.config.entities import (
     WeaponProfile,
 )
 from wargame_rl.wargame.envs.types.config.env import WargameEnvConfig
+from wargame_rl.wargame.envs.types.config.melee import MeleeConfig
 from wargame_rl.wargame.envs.types.config.terrain import (
     DeploymentConfig,
     MapPoolConfig,
@@ -37,6 +39,7 @@ from wargame_rl.wargame.envs.types.config.terrain import (
 
 __all__ = [
     "CoherencyConfig",
+    "MeleeConfig",
     "MissionConfig",
     "ModelConfig",
     "ObjectiveConfig",

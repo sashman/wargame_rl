@@ -741,13 +741,7 @@ class WargameEnv(gym.Env):
         """
         if self._action_handler.advance_slice is None:
             return
-        models = (
-            self.wargame_models
-            if active_side == self._player_side
-            else self.opponent_models
-        )
-        for model in models:
-            model.begin_turn()
+        models = self._models_for(active_side)
         # One roll per UNIT, shared by its models -- the rules roll for the
         # unit, not the model.
         rolls: dict[int, float] = {}
@@ -756,6 +750,34 @@ class WargameEnv(gym.Env):
             if group not in rolls:
                 rolls[group] = float(self._advance_rng.integers(1, 7))
             model.advance_roll = rolls[group]
+
+    def _models_for(self, active_side: PlayerSide) -> list[WargameModel]:
+        """The force belonging to `active_side`."""
+        return (
+            self.wargame_models
+            if active_side == self._player_side
+            else self.opponent_models
+        )
+
+    def _begin_side_turn(self, active_side: PlayerSide) -> None:
+        """Clear every model's per-turn state, for one side, unconditionally.
+
+        ⚠ This loop used to live inside `_roll_advance_dice`, BEHIND its
+        `advance_slice is None` early return -- so on every config without
+        advance rungs, which is most of them, `begin_turn()` was never called at
+        all. That was harmless only by coincidence: the sole writer of
+        `advanced_this_turn` is `declare_move_types`, which is gated on the same
+        condition, so the flags it clears were provably already clear.
+
+        It stops being harmless the moment any OTHER mechanic keeps per-turn
+        state. A charge flag hung on `begin_turn()` would be set once and never
+        cleared again for the rest of the episode, on 20 of 22 shipped configs,
+        with nothing raising. Hoisting it is a no-op today and correct
+        tomorrow, which is the only reason to do it before the feature lands
+        rather than with it.
+        """
+        for model in self._models_for(active_side):
+            model.begin_turn()
 
     def _ensure_advance_rolls(self) -> None:
         """Roll each unit's D6 once, at the START of the side's turn.
@@ -778,6 +800,7 @@ class WargameEnv(gym.Env):
         if self._rolled_for == key:
             return
         self._rolled_for = key
+        self._begin_side_turn(state.active_player)
         self._roll_advance_dice(state.active_player)
 
     def _on_before_advance(self, clock: GameClock) -> None:
