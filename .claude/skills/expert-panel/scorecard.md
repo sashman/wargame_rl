@@ -30,3 +30,46 @@ result independently (−18.7 and −20.0, both 1/9).
 claiming, not on its parts; (2) NEVER measure a symmetric change with both sides changed at
 once — run the 2×2; (3) check both columns were measured on the same code.** And: a test that never calls `env.step` cannot see a composition defect —
 this project has now paid for that twice.
+
+## 2026-08-25 — melee implementation, AUDIT mode, two panels (8 agents each)
+
+Target: the twelve-commit melee feature on `feature/melee-stage-0`, before anything was
+measured. Panel A: rules fidelity / action space / architecture / exploitation / geometry /
+tests. Panel B: measurement / optimisation dynamics / observability / throughput / scenario
+design / this repo's own retraction history.
+
+**The audits landed again — 4 of 4 acted on.** Score to date: audits ~12 for ~12; headline
+nominations still 0 for 3.
+
+| finding | verdict after I verified it | action |
+|---|---|---|
+| A corpse shields its whole unit from shooting | **CONFIRMED**, reproduced in 12 lines | fixed; `subject_alive` now required on the predicate |
+| The 8.7-micro-inch premise is a MINIMUM read as a TYPICAL | **CONFIRMED**, and worse than stated: 0.0% of declarations within one speed bin, not 27.6% | retracted in 4 places |
+| "Zero inches in the charge phase" is a vacuous control | **CONFIRMED** — the policy returns STAY for that phase regardless | retracted; the test now claims only what it proves |
+| Register rows 62 and 92 are lying | **CONFIRMED** against the rule text and a live env | both rewritten |
+| `_rolled_for` is never cleared by `reset()`, so `turn_order: player` leaves charge_roll at 0 | **DID NOT REPRODUCE** — rolls fire every episode under all three turn orders. The staleness is real; the failure it predicts is not | reported, not fixed |
+| `_enforce_charge` trusts the action mask — 4 lenses rated FATAL | **OVERSTATED**; one lens rated it MINOR with the right reasoning, and no shipped actor takes that path | recorded, not fixed |
+
+**What made the difference this round.**
+
+- **The red team's dual mandate found the FATAL defect, and it was not in any proposal.**
+  It came from running the gate the brief's own no-op proof could not: *melee ON with a
+  policy that never charges must equal melee OFF*. 8 of 12 seeds differed. Naming specific
+  instruments and telling it to distrust the brief is what produced this.
+- **Naming my own suspected weak points in the brief paid.** I flagged the unverified
+  0.02415 lethality target and the missing `charge_roll` observation up front. The target
+  turned out **SOUND** — and three of five lenses "corrected" it WRONGLY by comparing
+  per-round melee against a per-fight target. Volunteering the doubt got it checked properly
+  instead of asserted.
+- ⚠ **Correlated error appeared exactly where the skill says to look.** Three lenses
+  converged on "melee is 1.92x too lethal" from one shared arithmetic slip. Two more
+  converged on "the corpse bug IS the charge mechanism" — both measured it with a
+  NON-CHARGING script, where live engagement is 0.0000% by construction, so the result is an
+  identity. **Counting votes would have funded both.**
+- ⚠ **Six hand-rolled charging scripts produced +6.5 to +88.8 vp for nominally the same
+  measurement — a 14x spread.** Nobody measured "the value of melee"; each measured their own
+  heuristic. Two chairs quoting +62.50 to the cent was *implementation* convergence, not
+  independent confirmation. **Quote the ablation and the 2x2, never one arm's number.**
+- Panel agents left 10 probe scripts and one config in the repo. Moved the scripts to the
+  scratchpad; kept the config after verifying it myself — it is a genuinely pairable dark
+  control, which this project rarely gets on an action-space change.
