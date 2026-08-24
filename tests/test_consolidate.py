@@ -14,9 +14,15 @@ reaches the state these tests are about.
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
+from scripts.scenario_overrides import load_env_config
 from wargame_rl.wargame.envs.domain.consolidate import consolidate_objective
 from wargame_rl.wargame.envs.domain.entities import WargameObjective
+from wargame_rl.wargame.envs.domain.shooting import (
+    DefenderStats,
+    expected_attack_damage,
+)
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.state.snapshot import GameStateSnapshot
@@ -265,3 +271,36 @@ def test_a_pre_2_7_recording_still_loads() -> None:
     assert restored.player_melee_results == []
     assert not restored.player_models[0].charged_this_turn
     assert not restored.player_models[0].fell_back_this_turn
+
+
+def test_the_shipped_melee_config_is_lethality_neutral() -> None:
+    """`configs/experiments/25v25_maps_melee.yaml` measures the MECHANIC.
+
+    ⚠ **`MeleeWeaponProfile`'s defaults are an ordinary weapon, not a neutral
+    one**, so a scenario that wants to price the charge rather than the blade
+    has to say so. `wound_roll_threshold` returns 6 whenever
+    `2 x strength <= toughness`, which is what makes `A1 / MS6+ / S1 / AP2`
+    land at 0.0232 against the ~0.0242 an engaged model forfeits in shooting.
+    Pinned because a later edit to the profile would silently turn a mechanic
+    arm into a lethality arm, and the score would move for the other reason.
+    """
+    # Arrange
+    config = load_env_config("configs/experiments/25v25_maps_melee.yaml")
+    player_models = config.models or []
+    opponent_models = config.opponent_models or []
+    assert player_models and opponent_models
+    blade = player_models[0].melee_weapons[0]
+    defender = DefenderStats(
+        toughness=player_models[0].toughness, save=player_models[0].save
+    )
+
+    # Act
+    per_fight = expected_attack_damage(blade.melee_skill, blade, defender)
+
+    # Assert
+    assert config.melee.enabled
+    assert BattlePhase.charge not in (config.skip_phases or [])
+    assert BattlePhase.fight in (config.skip_phases or [])
+    assert per_fight == pytest.approx(0.0232, abs=0.0005)
+    assert all(m.melee_weapons for m in player_models)
+    assert all(m.melee_weapons for m in opponent_models)

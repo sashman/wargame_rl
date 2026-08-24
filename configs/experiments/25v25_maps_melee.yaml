@@ -1,0 +1,598 @@
+# ===========================================================================
+# GOLDEN -- THE COHERENCY BASELINE OF RECORD, set 2026-08-19.
+#
+# ⚠⚠ TRAIN IT WITH `just train-coherency-baseline`, NOT `just train`.
+#
+#   just train-coherency-baseline 300 1        # one seed
+#
+# `ent_coef` is NOT an env-config field, and the PPO default is 0.03. This
+# baseline is the 0.003 arm, and the difference is not cosmetic: read PAIRED on
+# seed -- which is valid because `seed_everything` runs before the model is
+# built, so arms differing only in a scalar start from identical weights -- the
+# per-seed differences are +3.1 / +7.5 / +7.2, i.e. +5.9 +/- 2.5, t~4.1. Running
+# plain `just train` on this file silently trains the WORSE arm and nothing
+# warns you.
+#
+# WHAT IT SCORES. Nine HELD-OUT tables (`configs/evaluation/maps_heldout`),
+# n=30, three seeds, 300 epochs, played with the VERIFIED top-3 joint decode
+# (the default since 2026-08-19), under the spec's own `revert_unit` +
+# `attrition`:
+#
+#   opponent               agent   best script      verdict
+#   squad_march_take       +22.6      -1.1 (deny)     ahead by 23.7  (t=3.14, 8/9)
+#   squad_march_shoot      +40.2     +23.0 (take)     ahead by 17.2  (t=1.78, NOT settled)
+#   squad_march_deny       +24.4      -8.9 (take)     ahead by 33.4  (t=4.00, 8/9)
+#   contest_and_spread     +21.8     +30.2 (take)     BEHIND by 8.4  (t=-1.11, 3/9)
+#
+#   Re-measured 2026-08-21 on the GENERATED tables, three seeds of the documented
+#   recipe (wandb group `new-maps-baseline`), nine held-out tables, n=30, verified
+#   top-3 decode, scripts re-measured per opponent.
+#
+#   Intended unit coherency 0.950-0.954 on ALL FOUR -- formation holds even in the
+#   matchup it loses.
+#
+#   ⚠ The `contest_and_spread` loss is BACK. A previous note said it "no longer
+#   exists"; that was measured on the hand-traced tables. Do not treat it as
+#   retired.
+#
+# Score it with `just measure-maps <ckpt> configs/evaluation/25v25_maps_vs_*.yaml
+# 30 configs/evaluation/maps_heldout 3`, and re-measure the scripts on each
+# opponent -- swapping the opponent voids every baseline on that config.
+#
+# ⚠ MOST OF THE STRENGTH IS THE DECODE, NOT THE TRAINING. The same weights
+# decoded per-model independently score about -29. The joint constrained decode
+# (`model/common/decoding.py`) is worth ~+32, and verifying its candidates
+# against the endpoints the env actually produces is +6.4 of that. Do not read
+# these numbers as "300 epochs of PPO got here".
+#
+# ⚠ WHAT IS ALREADY CLOSED, so nobody spends GPU on it again:
+#   * over-stacking is NOT a defect. Forcing redistribution measured -3.6, and
+#     the stronger version -- every spare unit onto cheap ground -- measured
+#     -3.2 on 180 paired episodes. Cheap ground genuinely exists (2.4 undefended
+#     objectives in 96% of movement phases); taking it still loses, because own
+#     VP saturates at three objectives and units are shot crossing open ground.
+#   * the nearest-squadmate observation rescale is a null (+3.5 +/- 5.3).
+#   * training under ANY `enforce_move` mode, including `repair`.
+#   * cloning the decoder's own output (does not replicate across teachers).
+#
+# WHAT IS ACTUALLY LEFT: the agent has one mode. It plays the defensive game
+# better than any script and cannot switch to the aggressive one when ground is
+# cheap, which is the whole of the contest_and_spread loss. It needs ~+0.36
+# objectives held there -- arriving EARLIER and on the RIGHT ones, not sending
+# more models. Timing and target selection, untested.
+# ===========================================================================
+
+# ===========================================================================
+# GOLDEN — unit coherency on the real tables. This is the config to train on
+# for this scenario, and the one that backs the published coherency numbers.
+#
+# THE RULE. `docs/rules/03-moving.md` § Coherency: every model within 2" of a
+# squadmate, within 9" of all of them, one connected group. `domain/coherency.py`
+# evaluates it exactly; `just measure-coherency` reports it for any policy.
+#
+# THE ONE THING TO KNOW BEFORE EDITING THIS FILE
+#
+#   Do NOT add `coherency.enforce_move` here. Enforcement is a REFEREE, applied
+#   at PLAY. It guarantees a legal board and teaches nothing, and training under
+#   it makes the policy WORSE at formation than never training under it at all.
+#
+#   FOR PLAY, USE `enforce_move: revert_unit` — the spec's own mode. Measured on
+#   the nine held-out tables, four checkpoints, two per warm-start lineage:
+#
+#     referee off      87.2 vp_margin   (illegal boards)
+#     revert_model     80.4             (a divergence from the rule)
+#     revert_unit      79.4             (the rule as written)
+#
+#   The spec mode and the divergence tie -- 1 vp apart with the sign flipping
+#   across checkpoints -- so the divergence buys nothing and rules accuracy is
+#   free. The referee costs ~7 vp, and a policy with better formation pays far
+#   less of it (86/85 against 75/72), because it gives the referee less to do.
+#
+# Measured over ten runs on these tables, with the referee switched OFF so the
+# numbers describe the policy rather than the wrapper:
+#
+#   trained under enforcement, no penalty      0.569 coherent   70.3 held-out vp
+#   trained under enforcement, penalty -0.1    0.783 coherent   68.0 held-out vp
+#   THIS CONFIG (gate only, never enforced)    0.756-0.886      81.5 held-out vp
+#
+# The cause is structural, not a tuning miss: under `enforce_move` every
+# reverted action produces the identical outcome, so they share a return and an
+# advantage, and the policy gradient inside that whole set is exactly zero. Only
+# the entropy bonus acts there.
+#
+# ⚠ AND NEVER READ `eval/coherency_rate` FROM AN ENFORCED RUN. It is 1.000 by
+# construction whatever the policy does. That mistake produced a whole day of
+# retracted conclusions. Read `eval/intended_coherency_rate`, or measure offline
+# against a config with no `enforce_move`.
+#
+# THE LEVER HERE is `objective_hold.require_coherent`: a model outside its
+# unit's coherent body earns no objective income. Not less — none. It is the
+# only coherency lever measured to work, and it is free.
+#
+# Why the income-destruction precedent does not apply: `surplus_value` and
+# `closest_objective_v2.overstack_penalty` both halved objective occupancy
+# because they cut the pay for LEGAL behaviour, so the policy read them as
+# "objectives pay less". This zeroes an ILLEGAL position the policy can always
+# avoid at no cost, by keeping the model with its unit.
+#
+# WHAT IT SCORES, AGAINST THE FLOOR AND THE BAR. Nine HELD-OUT tables, n=10
+# each, on current physics. Read the agent against these, never on its own:
+#
+#                          referee off   revert_unit   the rule costs
+#   hold_deployment (STAY)         --         -55.7             --
+#   random                         --         -50.6             --
+#   squad_march                  82.2          81.1           -1.1
+#   squad_march_shoot (the BAR) 114.8         101.4          -13.4
+#   agent, best two seeds        89.2          84.4           -4.8
+#   agent, all four              87.2          79.4           -7.8
+#
+# ⚠ THE AGENT DOES NOT BEAT THE BAR HERE, and coherency is not why. The gap is
+# 25.6 vp with the referee OFF and only 17.0 with it ON -- obeying the rule
+# NARROWS it, because the bar pays -13.4 to the referee and the agent -4.8. The
+# bar has to break formation to get firing angles; the agent already holds it.
+# (`squad_march` pays just -1.1: marching keeps squads together by construction.)
+#
+# The deficit is GENERALISATION, and it predates all coherency work: the same
+# checkpoints score 95.0 on the 36 training tables against 79-89 held out, and
+# end with ~94% of their force alive against the bar's 78-83% while holding 3.3
+# objectives against 4.1. The agent preserves its army and under-contests
+# ground. More training layouts is the first thing to try; see also the
+# `max_groups` question -- five units against five objectives leave none spare.
+#
+#   formation, referee off, 2"/9"     0.657 .. 0.903 (six seeds)
+#
+# ⚠ THE SPREAD IS NOT NOISE AND IT IS NOT THE SEED — IT IS THE WARM START.
+# Outcomes are bimodal and the split tracks the warm-start checkpoint. Sixteen
+# runs, no overlap between the bands (0.657-0.720 against 0.853-0.903), and a
+# full crossover — every seed handed the other checkpoint — flipped every run
+# into its new lineage's band, so the training seed explains none of it.
+# Held-out vp follows: 86.0-88.7 against 73.7-83.8, eight runs, no overlap.
+#
+# The cause is AMPLIFICATION of a small head start. Over five seed sets, n=30
+# each, one warm start is ahead on all five by a mean of just +0.067; after 300
+# epochs its descendants are +0.19 ahead. This gate pays for legal positioning,
+# so a policy already marginally better at it collects more and reinforces.
+#
+# Practical consequence: expect roughly half of fresh runs to land near 0.70
+# rather than 0.88, and DO NOT read two seeds off one warm start as two
+# independent samples — they will agree tightly with each other while both
+# report their initialisation. Vary the warm start across seeds.
+#
+# WARM START IS REQUIRED for a different reason than enforcement's: this is a
+# reward gate, so a from-scratch run is not blocked, merely slower. Start from a
+# trained `25v25_maps_coherent.yaml` checkpoint as every measurement above did.
+# ===========================================================================
+
+config_name: 25v25_maps_melee
+#
+# 25v25 on THE REAL TABLES, drawn one per episode from `configs/evaluation/maps/`.
+#
+# Copied from `golden/25v25_shooting_opponent.yaml` on 2026-08-12 and identical
+# to it in every respect but the board: same opponent, same forces, same reward,
+# same rounds. What changes is where the fight happens — a layout is drawn from
+# a pool of 36 real tables instead of being generated from a fitted profile.
+#
+# THE OPEN QUESTION. The generated scenario and the real tables are different
+# missions, and the difference is not the terrain. The generator can only place
+# objectives in the contested middle (`eligible_objective_pieces` filters
+# candidates to pieces whose centre lies between the deployment edges), while
+# the real layouts put a third of them inside each player's own zone — 82 in the
+# player's, 82 in the middle, 82 in the opponent's, across 246 objectives on 45
+# tables, and every table mirror-symmetric. Measured before a single model
+# moves, the player already holds 1.98 objectives and the opponent 1.91, with
+# 1.58 empty. The generated mission starts 0-0 with everything to fight for.
+#
+# So this is the first config where holding ground you already have can score,
+# and no reward lesson from the generated scenario is known to carry over.
+#
+# WHAT EVERYTHING SCORES HERE -- THE BASELINE OF RECORD, remeasured 2026-08-16.
+# The nine HELD-OUT tables (05, 10, ... 45), **n=100 per map**, seeds 700000+,
+# error bars taken ACROSS MAPS (a map is the unit this generalises over; nine
+# maps at n=100 is nine samples of "an unseen table", not nine hundred):
+#
+#   policy                     vp_margin  +/-   plrVP  oppVP  held  alive
+#   hold_deployment (FLOOR)       -88.9   8.1   121.1  210.0  1.27  0.998
+#   random                        -26.4   6.4   182.2  208.6  1.96  0.823
+#   squad_march                   +79.4   5.7   270.3  190.9  3.50  0.673
+#   squad_march_shoot (the BAR)  +111.8   5.3   272.2  160.4  4.00  0.762
+#   squad_march_deny             +112.3   4.8   277.3  165.1  3.00  0.590
+#   squad_march_take (STRONGEST) +116.7   4.7   277.5  160.8  4.02  0.756
+#   ---
+#   PPO @300, four seeds       +75.9..84.7      263.9  181.6  3.24  0.954
+#   behaviour clone of `take`    +113.6   1.9*  273.8  158.0  3.82  0.673
+#     * the clone's +/- is ACROSS FIVE CLONES, not across maps: identical
+#       settings, seed only, they score 115.8/114.6/114.3/112.1/111.1.
+#
+# READ `plrVP` AND `oppVP`, NOT JUST THE MARGIN. VP is
+# `min(cap_per_turn, controlled * 5)` = `min(15, held * 5)`, so own score
+# SATURATES at three objectives (272-278 of a 285 ceiling for anything
+# competent) and every remaining point of margin comes from DENYING the
+# opponent. `held` therefore stops ranking policies here: `squad_march_deny`
+# holds 3.00 and `squad_march_shoot` 4.00, and they score level.
+#
+# THE TRAINED AGENT'S DEFICIT IS DENIAL, AND IT IS THE MOST REPRODUCIBLE NUMBER
+# ON THIS SCENARIO: four independently trained seeds concede 181.5 / 181.5 /
+# 181.1 / 182.4 opponent VP against the bar's 160.4 -- sd 0.6. Against a
+# do-nothing floor of 210.0 the agent achieves 57% of the bar's denial.
+#
+# ⚠ RAISING THE PAY FOR CONTESTED GROUND IS A MEASURED NULL. See
+# `docs/reward-phases.md` and the report: the committing squad DIES (it loses
+# 29.4 of its own income and 1.7 of 5 models), and this calculator pays only
+# living models, so no rate pays a corpse.
+#
+# ⚠ `ent_coef: 0.03` PINS THE POLICY. Movement entropy sits at 3.21-3.33 of a
+# 4.575 maximum for every trained seed -- that is the bonus's equilibrium, not
+# convergence, and a policy held near uniform cannot represent "march this
+# squad onto that objective". Both nulls above were measured under it. Use
+# `--ent-coef 0.003` or `0.0` when refining an already-good policy.
+#
+# THE ONLY THING THAT HAS BEATEN THE BAR IS BEHAVIOUR CLONING
+# (`just behaviour-clone squad_march_take <this config> 1200 60`): at 98.3%
+# action match it averages +113.6 over five clones, beating the bar by
+# +1.8 +/- 0.9. PPO refinement from a clone measured neutral-to-negative at
+# every setting tried, so the learning step has contributed nothing to it.
+#
+# ⚠ CLONE THE POLICY MORE THAN ONCE BEFORE QUOTING WHAT CLONING IS WORTH.
+# Clone-to-clone sd is 1.9 vp at fixed settings, and the first figure published
+# here (+115.8, paired +4.04 over the bar, ahead on 8 of 9 maps) was the best of
+# five draws -- correct for that checkpoint, wrong as the procedure's effect.
+# The same sd swallows the last rung of the fidelity ladder: 400 -> 700
+# demonstration episodes is worth +10.8 and stands, 700 -> 1200 is worth +1.4
+# and does not.
+#
+# THREE THINGS TO READ OFF THAT BEFORE USING THIS CONFIG:
+#
+#   Standing still loses every episode. That is the check this scenario needs
+#   and passes: objectives sit inside the deployment zones, so a player starts
+#   holding 1.98 of them, and the obvious worry is that the mission is won by
+#   deploying. It is not -- STAY ends on 1.63 with 99.8% of its force alive,
+#   because the opponent takes the middle uncontested and then comes for the
+#   home points. `hold_deployment` exists to keep that quotable.
+#
+#   Win rate cannot separate anything above the bar, which sits at 1.00. Read
+#   `vp_margin`. (An earlier n=1-per-map sweep over all 45 tables put `random`
+#   at 0.67 win / +12.6; that was 45 single episodes and too noisy to read a
+#   win rate off. These n=10 figures supersede it.)
+#
+#   The trained agent beats the opponent, and the gap to the bar is a
+#   GENERALISATION gap. On these nine HELD-OUT tables two seeds land at +84.5
+#   and +79.3 against the bar's +105.7. On nine TRAINING tables the same
+#   checkpoints score +89.5 and +90.3 against the bar's +91.2, and hold MORE
+#   objectives (3.64 v 3.57). It allocates correctly on ground it knows. On
+#   unfamiliar ground the failure is ALLOCATION, NOT COMBAT: the agent ends with ~92% of its force alive against the bar's 69%
+#   and a firepower ratio up to 8.5, then leaves ground uncontested. On
+#   table_05 it finishes with 6.3 of ~22 survivors on an objective while
+#   conceding three the opponent has ZERO models on. Note this is the failure
+#   `objective_hold.crowding_exponent` was meant to fix, and this config
+#   already sets it at a=1.0 -- the lever that worked on the generated scenario
+#   does not fix it here.
+#
+#   36 layouts is a small training distribution, and more of it -- more
+#   tables, or augmentation over these -- is the first thing to try, ahead of
+#   any reward change.
+#
+#   The plateau is at epoch ~140. Held-out vp_margin reads +81/+83 at epoch
+#   150, +83/+80 at 300 and +85/+79 at 1000: 850 epochs bought nothing. Do not
+#   spend compute on this gap; it needs a reward change.
+#
+# NOT COMPARABLE to any number measured on the generated scenario: different
+# objective count, different objective placement, different mission.
+#
+
+# ---------------------------------------------------------------------------
+# Scenario. Terrain is regenerated every episode rather than fixed, which is
+# what makes a positioning result falsifiable: with a fixed layout, "learned to
+# use the terrain" and "memorised the rectangles" produce the same numbers.
+# ---------------------------------------------------------------------------
+number_of_wargame_models: 25
+number_of_opponent_models: 25
+number_of_objectives: 3
+objective_radius_size: 3
+board_width: 60
+board_height: 44
+max_groups: 5
+turn_order: random
+number_of_battle_rounds: 20
+skip_phases:
+  - command
+  - fight
+
+# ⚠ `charge` is NOT skipped and `fight` still is, and both are deliberate.
+# The charge phase carries a real agent action; the fight phase's mask offers
+# exactly one legal action per model (STAY), so it resolves on the boundary
+# leaving it instead of costing an agent step per round. `melee.enabled`
+# validates that the charge phase is stepped, and says nothing about `fight`.
+#
+# ⚠ This is +50% episode length against the golden config: `max_turns` is
+# `n_rounds x (5 - len(skip_phases))`, so 40 becomes 60. Every baseline and
+# every agent score measured on `25v25_maps_two_mode` is VOID here.
+melee:
+  enabled: true
+  charge_range: 12.0
+  consolidate_distance: 3.0
+
+deployment_zone: [0, 0, 20, 44]
+opponent_deployment_zone: [40, 0, 60, 44]
+
+# THE ONLY DIFFERENCE FROM `golden/25v25_maps_coherency.yaml`. The opponent
+# plays `squad_march_take` -- the strongest scripted policy measured here --
+# instead of `scripted_advance_and_shoot`, which picks its target uniformly and
+# never revises where a squad is going.
+#
+# The question is whether the ceiling is the scenario. A two-rule heuristic
+# captures ~96% of the available value against the old opponent; if that is
+# because the opponent is weak rather than because the game is shallow, a
+# competent opponent should compress the whole ladder and leave room above it.
+#
+# ⚠ EVERY NUMBER MEASURED ON THE GOLDEN CONFIG IS VOID HERE, and the answer is
+# that the opponent WAS most of the ceiling. Same 60 layouts, seeds 700000+,
+# vp_margin with win rate in brackets:
+#
+#                          old opponent  coh    this one  coh
+#   random                  -23.1 (0.42) 0.026  -215.2 (0.00) 0.168
+#   greedy_nearest           +3.2 (0.30) 0.846  -161.6 (0.00) 0.897
+#   split_evenly            -24.6 (0.40) 0.125  -204.2 (0.00) 0.202
+#   squad_march             +81.1 (0.93) 0.843  -168.8 (0.00) 0.790
+#   squad_march_shoot (BAR)+104.9 (0.98) 0.830    -5.6 (0.48) 0.795
+#   contest_and_spread     +102.3 (0.98) 0.806   -48.8 (0.20) 0.729
+#   squad_march_take       +108.1          -     +9.9 (mirror)  -
+#
+# A COMPETENT OPPONENT COSTS FORMATION: every policy that holds coherency at
+# all holds it less here, because units get shot apart faster. `random`'s rate
+# RISES only because it is dead (alive 0.849 -> 0.105, and a unit shot down to
+# one model is coherent by definition) -- read the rate with `alive`.
+#
+# Six of seven policies beat the old opponent; none beats this one. The bar
+# gives up 110 points of margin and lands on an even game, and everything below
+# it stops being a contest at all -- `random` ends with 0.09 of its army alive
+# where it kept 0.84 before. THE SCRIPTED CEILING IS THEREFORE OPEN AGAIN: the
+# best hand-written play here scores about zero, so there is room above it for
+# something to find, which there was not at +115 against a saturated VP cap.
+#
+# ⚠ THIS IS NOT A TRAINED RESULT. Nothing has been trained on this config; the
+# table above is scripted play only. Whether PPO reaches or beats the mirror
+# here is the open question, not a claim made by shipping the file.
+#
+# Re-run `just measure-baselines configs/experiments/25v25_maps_take_opponent.yaml
+# 100 "" 700000` before quoting anything, and note `squad_march_take` is absent
+# from that recipe's `BASELINES` -- its rows above come from `measure-paired`.
+opponent_policy:
+  type: scripted_baseline
+  params:
+    baseline: squad_march_take
+
+# The layout is drawn from the real tables, one per episode, instead of being
+# generated. This is the third terrain mode and it is the only one that trains
+# on boards the game is actually played on.
+#
+# `names` is the split, and it is the whole reason this field exists. Training
+# on all 45 would leave no layout the agent has not seen and make a transfer
+# number meaningless. The rule is simple enough to restate: every table whose
+# number is divisible by 5 is held out (table_05, table_10, table_15, table_20, table_25, table_30, table_35, table_40, table_45),
+# leaving 36 to train on. Score the holdout with
+# `just measure-maps <ckpt> <this config> 100 configs/evaluation/maps`, which
+# builds its own per-map config and ignores the pool.
+#
+# Randomising *within* the pool keeps the falsifiability the generator gave:
+# 36 layouts is not one board to memorise, and `map_name` on the env
+# attributes an episode to the table it was played on.
+map_pool:
+  directory: configs/evaluation/maps
+  names:
+    - table_01
+    - table_02
+    - table_03
+    - table_04
+    - table_06
+    - table_07
+    - table_08
+    - table_09
+    - table_11
+    - table_12
+    - table_13
+    - table_14
+    - table_16
+    - table_17
+    - table_18
+    - table_19
+    - table_21
+    - table_22
+    - table_23
+    - table_24
+    - table_26
+    - table_27
+    - table_28
+    - table_29
+    - table_31
+    - table_32
+    - table_33
+    - table_34
+    - table_36
+    - table_37
+    - table_38
+    - table_39
+    - table_41
+    - table_42
+    - table_43
+    - table_44
+
+# The maps carry 5 objectives and 16 pieces each, generated from the layout
+# API. The budgets stay at 6 and 16 anyway: they are what lets one network
+# span counts the pool does not currently contain, and lowering the objective
+# budget would change the observation width and orphan every checkpoint.
+# They were mandatory when the tables were traced by hand and carried 5 or 6
+# objectives and 15 or 16 pieces, so the observation was a different width per
+# map -- which neither collates into one batch nor shares one network.
+objective_budget: 6
+terrain_budget: 16
+
+# Accumulate line-of-sight exposure and terrain proximity during shooting
+# phases. Measurement only — it does not change the game. Without it the
+# question this config exists to answer cannot be read off a run at all.
+track_exposure: true
+
+# 5 groups of 5. `weapons` is required for shooting to resolve at all — with an
+# empty list a model cannot shoot, which also makes terrain LOS inert.
+# range 12 on a 60x44 board puts the engagement band at a scale where a ~6-cell
+# ruin actually breaks a firing lane.
+# Objectives are drawn independently by default, which puts two of three discs
+# on top of each other in ~25% of episodes -- silently turning a three-objective
+# mission into a two-objective one. 6 = 2 x objective_radius_size, the smallest
+# separation that keeps the discs disjoint.
+objective_min_separation: null
+
+# Five squads of five, all one profile. The anchors single-source that: a
+# weapon change is one edit rather than fifty, and "every model is the same"
+# is visible instead of inferred. YAML resolves them at parse time, so the
+# config the env sees -- and the copy dumped beside each checkpoint -- is
+# unchanged.
+models:
+  - &squad_0 { group_id: 0, weapons: &rifle [{ range: 12, attacks: 1 }], melee_weapons: &blade [{ attacks: 1, melee_skill: 6, strength: 1, ap: 2, damage: 1 }] }
+  - *squad_0
+  - *squad_0
+  - *squad_0
+  - *squad_0
+  - &squad_1 { group_id: 1, weapons: *rifle, melee_weapons: *blade }
+  - *squad_1
+  - *squad_1
+  - *squad_1
+  - *squad_1
+  - &squad_2 { group_id: 2, weapons: *rifle, melee_weapons: *blade }
+  - *squad_2
+  - *squad_2
+  - *squad_2
+  - *squad_2
+  - &squad_3 { group_id: 3, weapons: *rifle, melee_weapons: *blade }
+  - *squad_3
+  - *squad_3
+  - *squad_3
+  - *squad_3
+  - &squad_4 { group_id: 4, weapons: *rifle, melee_weapons: *blade }
+  - *squad_4
+  - *squad_4
+  - *squad_4
+  - *squad_4
+
+opponent_models:
+  - &opp_squad_0 { group_id: 0, weapons: *rifle, melee_weapons: *blade }
+  - *opp_squad_0
+  - *opp_squad_0
+  - *opp_squad_0
+  - *opp_squad_0
+  - &opp_squad_1 { group_id: 1, weapons: *rifle, melee_weapons: *blade }
+  - *opp_squad_1
+  - *opp_squad_1
+  - *opp_squad_1
+  - *opp_squad_1
+  - &opp_squad_2 { group_id: 2, weapons: *rifle, melee_weapons: *blade }
+  - *opp_squad_2
+  - *opp_squad_2
+  - *opp_squad_2
+  - *opp_squad_2
+  - &opp_squad_3 { group_id: 3, weapons: *rifle, melee_weapons: *blade }
+  - *opp_squad_3
+  - *opp_squad_3
+  - *opp_squad_3
+  - *opp_squad_3
+  - &opp_squad_4 { group_id: 4, weapons: *rifle, melee_weapons: *blade }
+  - *opp_squad_4
+  - *opp_squad_4
+  - *opp_squad_4
+  - *opp_squad_4
+
+# No `objectives:` block -> the 3 objectives (number_of_objectives) are placed
+# randomly outside both deployment zones at the start of every episode.
+
+
+# ---------------------------------------------------------------------------
+# Single reward phase. Against ARM B
+# (25v25_stochastic_terrain_shooting_curriculum) this is the control for "does
+# the reward curriculum help when the opponent shoots back?"; against ARM C
+# (25v25_stochastic_terrain_control) it is the treatment for "does return fire
+# change how the policy positions?".
+#
+# Read eval/win_rate and eval/vp_margin against eval/baseline_* — never
+# success_rate, which changes definition across a ladder and is therefore not
+# comparable between this config and ARM B.
+#
+# Design rules, each traceable to a measurement:
+#   * Every phase keeps vp_gain. Nothing here trains away from the goal.
+#   * Every phase carries per-model terms. Only 3 of 8 calculators are
+#     per-model, and a phase built purely from global ones hands all 25 models
+#     a bit-identical reward, undoing per-model credit assignment by config.
+#   * No term integrates far above ~10 over an episode. The entire gap between
+#     a 0.53-win policy and a 0.78-win policy is worth ~3 reward units, so a
+#     large shaping term drowns the thing being taught.
+#   * models_at_objectives and objective_flip_bonus are deliberately absent:
+#     every competent baseline saturates the former at 1.000, making it unable
+#     to rank policies, and objective_hold covers the latter's contested-state
+#     gradient continuously rather than as a one-shot potential.
+# ---------------------------------------------------------------------------
+reward_phases:
+  - name: win
+    # Required for the terminal bonus to be delivered at full strength; with
+    # terminate_on_success true it is scaled by the remaining-turn fraction.
+    terminate_on_success: false
+    terminal_success_bonus: 2.0
+    reward_calculators:
+      # ---- per-model ----
+      # Potential-based, so policy-invariant: it can bias nothing and never
+      # needs decaying. fallback_to_nearest matters here because each objective
+      # is assigned to at most one group, and 5 groups over 3 objectives leaves
+      # two groups unassigned and unshaped without it.
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          # The anti-stack knob. Objective radius 3 holds 29 cells and models
+          # do not collide, so 25 models on one point is legal and scores 1.00
+          # on every occupancy metric.
+          overstack_penalty_per_extra: 0.01
+      # The only term that pays a model while it is stationary, and the only
+      # per-model path to the central behaviour. Scaled by control state, so it
+      # pays for holding a point rather than merely standing on one.
+      - type: objective_hold  # LEGALITY-GATED ARM: see header
+        weight: 1.25
+        params: { crowding_exponent: 1.0, require_coherent: true }
+      # Credits the model that actually fired. Shooting is half the agent's
+      # decisions; under the global `killing` term every model was paid the
+      # same whether it fired, missed, or stood still.
+      - type: model_kills
+        weight: 1.0
+        params: { bonus_per_kill: 2.0 }
+      # Coherency. Limit 6.0, not 5.0: squad_march measures 3.8 as a mean of
+      # per-episode maxima. Penalty -0.05, not -0.2: at -0.2 a strung-out model
+      # loses ~26 per episode, enough to rank split_evenly (148 VP) below
+      # greedy_nearest (126 VP).
+      - type: group_cohesion
+        weight: 0.3
+        params: { group_max_distance: 6.0, violation_penalty: -0.05 }
+      # ---- global (broadcast whole to each model, not divided by 25) ----
+      # The actual objective. Largest weight because its realistic dynamic
+      # range is the smallest.
+      - type: vp_gain
+        weight: 2.0
+      # Equals player coverage, where vp_gain is player minus opponent
+      # coverage. Paid every step against vp_gain's ~19 scoring events, so this
+      # weight keeps VP dominant while giving a per-step spreading gradient.
+      - type: objective_coverage
+        weight: 0.3
+    # Final phase: success_threshold, min_epochs and min_epochs_above_threshold
+    # are never read, because try_advance returns at is_final_phase. The
+    # criteria still selects terminal-bonus eligibility and defines the logged
+    # success_rate.
+    success_criteria:
+      type: player_ahead_on_vp
+      params: {}
+
+# See the header comment: this arm observes per-objective control state.
+observe_objective_control: true
+
+# `docs/rules/03-moving.md` § Setting up: a unit is placed in coherency. Default
+# placement anchors each model on one *random* already-placed squadmate, which
+# bounds the nearest neighbour and leaves the unit's span unbounded -- so squads
+# deploy strung out and in pieces, and no policy here has ever started a game
+# legal. Enforcing it is the whole arm.
+coherency:
+  enforce_at_deployment: true

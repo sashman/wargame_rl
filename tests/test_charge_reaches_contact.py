@@ -14,13 +14,16 @@ from __future__ import annotations
 import numpy as np
 
 from wargame_rl.wargame.envs.domain.engagement import engaged_with_any
-from wargame_rl.wargame.envs.env_components.actions import ActionHandler
+from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION, ActionHandler
 from wargame_rl.wargame.envs.types import WargameEnvAction
-from wargame_rl.wargame.envs.types.config import MeleeConfig
+from wargame_rl.wargame.envs.types.config import MeleeConfig, MeleeWeaponProfile
+from wargame_rl.wargame.envs.types.config.battle import OpponentPolicyConfig
 from wargame_rl.wargame.envs.types.config.entities import ModelConfig
 from wargame_rl.wargame.envs.types.config.env import WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
+from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.envs.wargame_model import WargameModel
+from wargame_rl.wargame.model.common.factory import create_environment
 
 ENGAGEMENT = 1.0
 
@@ -257,3 +260,101 @@ def test_the_revert_is_unconditional_and_not_the_coherency_referee() -> None:
     assert handler._coherency_mode.value == "off"
     movers, start = _unit_charge([(6.5, 1), (6.5, 2)])
     assert np.array_equal(movers[0].location, start[0])
+
+
+def _melee_env() -> WargameEnv:
+    """One model a side, melee on, an opponent that holds still."""
+    config = WargameEnvConfig(
+        number_of_wargame_models=1,
+        number_of_opponent_models=1,
+        number_of_objectives=1,
+        opponent_policy=OpponentPolicyConfig(
+            type="scripted_baseline", params={"baseline": "hold_deployment"}
+        ),
+        models=[ModelConfig(melee_weapons=[MeleeWeaponProfile()])],
+        opponent_models=[ModelConfig(melee_weapons=[MeleeWeaponProfile()])],
+        melee=MeleeConfig(enabled=True),
+        engagement_range=ENGAGEMENT,
+        base_radius=0.0,
+        skip_phases=[BattlePhase.command, BattlePhase.shooting],
+    )
+    env = create_environment(config)
+    env.reset(seed=5)
+    return env
+
+
+def test_a_charge_reaches_contact_through_env_step() -> None:
+    """The mechanic end to end, driven by `env.step` rather than by `apply`.
+
+    ⚠ **Every other test in this file calls `ActionHandler.apply` directly.**
+    This project has twice shipped a defect that a full suite of unit tests could
+    not see because none of them called `env.step` — the joint decoder judged
+    candidates against its own relaxation (worth +11.4 vp), and the endpoint
+    back-off walked models into friendly bases. A charge crosses the action
+    mask, the phase clock, the opponent seat and the referee, and only `step`
+    exercises all four.
+    """
+    # Arrange: 1.5" apart, so any legal charge rung reaches contact and no rung
+    # carries the model clean past the enemy and out the far side.
+    env = _melee_env()
+    player = env.wargame_models[0]
+    opponent = env.opponent_models[0]
+    player.location = np.array([10.0, 10.0], dtype=player.location.dtype)
+    opponent.location = np.array([11.5, 10.0], dtype=opponent.location.dtype)
+    # ⚠ Two inches, not `best_action_toward`, which returns the FASTEST rung.
+    # A 6" charge from 1.5" away lands at 16.0 — clean past the enemy and out
+    # the far side, which ends unengaged and is reverted whole. That is the rule
+    # working, and it would read here as the exemption failing.
+    east = env.player_action_handler.encode_action(0, 1)
+
+    # Act: STAY through movement, then charge east.
+    engaged = False
+    for _ in range(4):
+        phase = env.game_clock_state.phase
+        charging = phase is BattlePhase.charge
+        env.step(WargameEnvAction(actions=[east if charging else STAY_ACTION]))
+        if charging:
+            engaged = bool(
+                engaged_with_any(
+                    np.array([player.location], dtype=float),
+                    np.array([opponent.location], dtype=float),
+                    np.ones(1, dtype=bool),
+                    engagement_range=ENGAGEMENT,
+                )[0]
+            )
+            break
+
+    # Assert
+    assert engaged, "the charge did not reach contact through env.step"
+    assert player.charged_this_turn, "a charge that stood did not earn its flag"
+
+
+def test_the_charge_phase_grants_no_free_MOVE_to_a_unit_that_cannot_charge() -> None:
+    """The control that matters most for every existing scenario.
+
+    Making the movement slice valid in the charge phase is what avoids a new
+    action slice — and it would be worth nothing if a unit with no charge
+    available could simply take a second movement phase every turn.
+    """
+    # Arrange: the only enemy is 30" away, far outside the 12" declaration range.
+    env = _melee_env()
+    player = env.wargame_models[0]
+    opponent = env.opponent_models[0]
+    player.location = np.array([10.0, 10.0], dtype=player.location.dtype)
+    opponent.location = np.array([40.0, 10.0], dtype=opponent.location.dtype)
+    east = env.player_action_handler.best_action_toward(1.0, 0.0)
+
+    # Act
+    moved = 0.0
+    for _ in range(4):
+        phase = env.game_clock_state.phase
+        if phase is not BattlePhase.charge:
+            env.step(WargameEnvAction(actions=[STAY_ACTION]))
+            continue
+        before = player.location.copy()
+        env.step(WargameEnvAction(actions=[east]))
+        moved = float(np.linalg.norm(player.location - before))
+        break
+
+    # Assert
+    assert moved == 0.0, "an ineligible unit took a free move in the charge phase"
