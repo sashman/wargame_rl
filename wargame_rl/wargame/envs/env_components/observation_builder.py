@@ -513,8 +513,13 @@ def build_observation(
             player_positions = np.array([m.location for m in view.player_models])
             opponent_positions = np.array([m.location for m in view.opponent_models])
             player_ranges = view.player_max_ranges
+            # Advancing and falling back both cost the turn's shooting, so the
+            # mask takes their union -- `docs/rules/09-movement-phase.md`.
             player_advanced = np.array(
-                [m.advanced_this_turn for m in view.player_models]
+                [
+                    m.advanced_this_turn or m.fell_back_this_turn
+                    for m in view.player_models
+                ]
             )
             shooting_validity = compute_unit_shooting_masks(
                 player_positions,

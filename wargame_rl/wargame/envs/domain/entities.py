@@ -67,6 +67,12 @@ class WargameModel:
         # The declaration gates which movement rungs are legal; the shooting
         # forfeit is carried by `advanced_this_turn`, set at the same moment.
         self.declared_advance: bool = False
+        # Whether this model's UNIT fell back out of melee this turn. The rules
+        # make a fall-back move the ONLY move an engaged unit may make, and it
+        # costs the unit its shooting and its charge until end of turn
+        # (`docs/rules/09-movement-phase.md`). Before this existed an engaged
+        # model simply took a normal move and walked out for free.
+        self.fell_back_this_turn: bool = False
 
     def set_previous_closest_objective_distance(self, distance: float) -> None:
         self.previous_closest_objective_distance = distance
@@ -84,6 +90,7 @@ class WargameModel:
         self.advanced_this_turn = False
         self.advance_roll = 0.0
         self.declared_advance = False
+        self.fell_back_this_turn = False
 
     def begin_turn(self) -> None:
         """Clear the per-TURN move state before this side moves again.
@@ -96,6 +103,7 @@ class WargameModel:
         self.advanced_this_turn = False
         self.advance_roll = 0.0
         self.declared_advance = False
+        self.fell_back_this_turn = False
 
     @property
     def is_alive(self) -> bool:

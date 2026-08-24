@@ -23,6 +23,7 @@ from wargame_rl.wargame.envs.domain.coherency_enforcement import (
     CoherencyEnforcement,
     enforce_after_move,
 )
+from wargame_rl.wargame.envs.domain.engagement import engaged_with_any
 from wargame_rl.wargame.envs.domain.movement import back_off_to_unengaged, resolve_move
 from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
 from wargame_rl.wargame.envs.domain.value_objects import (
@@ -192,6 +193,7 @@ class ActionHandler:
         quantities = resolve_rules_quantities(config)
         max_speed = quantities.max_move_speed
         self._engagement_range = float(quantities.engagement_range)
+        self._melee_enabled = bool(config.melee.enabled)
         # A model with a base cannot stand with half of it off the table.
         self._base_radius = quantities.base_radius
         # Resolved once, like every other rules distance. The mode is read here
@@ -676,6 +678,71 @@ class ActionHandler:
 
         return self._advance_slice.start + angle_idx * self._n_advance_bins + bin_idx
 
+    def _engaged_before_moving(
+        self,
+        phase: BattlePhase,
+        wargame_models: list[Any],
+        enemy_models: list[Any] | None,
+    ) -> np.ndarray | None:
+        """Which models start this movement phase engaged, or None if it cannot matter.
+
+        Read BEFORE anything displaces: the rules make eligibility a property of
+        the unit's state at the start of its move, and by the end of the phase
+        the unit has (by construction) left engagement, since
+        `back_off_to_unengaged` guarantees every endpoint is clear.
+        """
+        if not self._melee_enabled or phase is not BattlePhase.movement:
+            return None
+        alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+        if not alive_enemies:
+            return None
+        return engaged_with_any(
+            np.array([m.location for m in wargame_models], dtype=float),
+            np.array([m.location for m in alive_enemies], dtype=float),
+            np.ones(len(alive_enemies), dtype=bool),
+            engagement_range=self._engagement_range,
+            base_diameter=2.0 * self._base_radius,
+        )
+
+    def _mark_fall_backs(
+        self, wargame_models: list[Any], began_engaged: np.ndarray | None
+    ) -> None:
+        """A unit that began the phase engaged and moved has fallen back.
+
+        `docs/rules/09-movement-phase.md`: a Normal move is eligible only for an
+        UNENGAGED unit, so the only move an engaged unit may make is a fall
+        back — M distance, must end unengaged, and **until the end of the turn
+        it cannot shoot or declare a charge**.
+
+        ⚠ The geometry needed nothing: `back_off_to_unengaged` already forces
+        every endpoint out of engagement, which IS the fall-back constraint.
+        What was missing is the COST. Before this, an engaged model took an
+        ordinary move, walked out for free, and shot in the same turn.
+
+        v1 infers the declaration rather than asking for one: a unit that began
+        engaged and moved has fallen back. The rules would have it *declare* a
+        move type, but a declaration lives in the command phase, which most
+        configs skip — and inferring it costs no action and no agent step.
+        `DEFERRED: fallback.declared_move_type`.
+
+        Unit-level, because the rule is: a model that did not move is still in a
+        unit that withdrew, and the unit is what loses its shooting.
+        """
+        if began_engaged is None or not began_engaged.any():
+            return
+        moved_units: set[int] = set()
+        for index, model in enumerate(wargame_models):
+            if not began_engaged[index] or not model.is_alive:
+                continue
+            previous = getattr(model, "previous_location", None)
+            if previous is not None and not np.array_equal(previous, model.location):
+                moved_units.add(int(model.group_id))
+        if not moved_units:
+            return
+        for model in wargame_models:
+            if int(model.group_id) in moved_units:
+                model.fell_back_this_turn = True
+
     def apply(
         self,
         action: WargameEnvAction,
@@ -735,6 +802,7 @@ class ActionHandler:
             [m.base_radius for m in wargame_models], dtype=float
         )
         friendly_alive = np.array([m.is_alive for m in wargame_models], dtype=bool)
+        began_engaged = self._engaged_before_moving(phase, wargame_models, enemy_models)
         if phase is BattlePhase.command:
             # No early return: the per-model loop below still validates every
             # action against its space before skipping non-movement phases, and
@@ -810,6 +878,8 @@ class ActionHandler:
                 occupied_centres,
                 occupied_reach,
             )
+
+        self._mark_fall_backs(wargame_models, began_engaged)
 
         # Every model in the force has now moved, which is the earliest point a
         # unit-level property of the *completed* move can be judged. Nothing to

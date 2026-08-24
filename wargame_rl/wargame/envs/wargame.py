@@ -1189,7 +1189,10 @@ class WargameEnv(gym.Env):
                 np.array([m.group_id for m in self.wargame_models], dtype=int),
                 shooting_slice.end - shooting_slice.start,
                 player_advanced=np.array(
-                    [m.advanced_this_turn for m in self.opponent_models]
+                    [
+                        m.advanced_this_turn or m.fell_back_this_turn
+                        for m in self.opponent_models
+                    ]
                 ),
                 engagement_range=self._rules_quantities.engagement_range,
                 base_diameter=2.0 * self._rules_quantities.base_radius,
