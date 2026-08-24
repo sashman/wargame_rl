@@ -1121,6 +1121,13 @@ class WargameEnv(gym.Env):
                 ),
                 engagement_range=self._rules_quantities.engagement_range,
                 base_diameter=2.0 * self._rules_quantities.base_radius,
+                # ⚠ Both seats or neither. This mask is a hand-written duplicate
+                # of the one `build_observation` applies to the player, and a
+                # legality overlay added to one and not the other is invisible:
+                # nothing downstream re-checks, so the opponent would simply
+                # shoot targets the rules forbid. Shooting alone already
+                # measures a 24.6 vp seat asymmetry on one golden config.
+                exclude_engaged_targets=self.config.melee.enabled,
             )
         )
         return mask

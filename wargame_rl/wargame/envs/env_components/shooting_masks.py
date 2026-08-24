@@ -11,6 +11,8 @@ from typing import NamedTuple
 
 import numpy as np
 
+from wargame_rl.wargame.envs.domain.engagement import engaged_units, engaged_with_any
+
 # Trace sight for many pairs at once: given ``(P, 2)`` origins, ``(Q, 2)``
 # targets and a ``(P, Q)`` mask of pairs worth tracing, return ``(P, Q)`` of
 # which are clear. A per-pair callable would be the natural signature and is the
@@ -62,16 +64,13 @@ def compute_shooting_masks(
         shooters &= ~np.asarray(player_advanced, dtype=bool)
     alive_targets = np.asarray(opponent_alive, dtype=bool)
     if engagement_range > 0:
-        # Engagement is measured base to base, not centre to centre: two models
-        # with `r`-radius bases are `2r` closer than their centres suggest.
-        # Only LIVING enemies engage: casualties are masked to infinity before
-        # the minimum, so a corpse lying next to a model cannot go on pinning
-        # it, and a model with no living enemy left reduces over an empty set
-        # to infinity -- not engaged, which is the right answer.
-        nearest_live = np.where(alive_targets[np.newaxis, :], distances, np.inf).min(
-            axis=1
+        shooters &= ~engaged_with_any(
+            player_positions,
+            opponent_positions,
+            alive_targets,
+            engagement_range=engagement_range,
+            base_diameter=base_diameter,
         )
-        shooters &= nearest_live - base_diameter > engagement_range
 
     candidates = (
         shooters[:, np.newaxis]
@@ -288,6 +287,7 @@ def compute_unit_shooting_masks(
     player_advanced: np.ndarray | None = None,
     engagement_range: float = 0.0,
     base_diameter: float = 0.0,
+    exclude_engaged_targets: bool = False,
 ) -> np.ndarray:
     """Which enemy **units** each model may declare against: ``(n_player, n_groups)``.
 
@@ -302,6 +302,20 @@ def compute_unit_shooting_masks(
     the batching the per-model version exists for -- tracing every pair on the
     board is the shape that measured a 3x regression -- while no longer letting
     an out-of-range model hide its unit from a shot the rules allow.
+
+    ⚠ `exclude_engaged_targets` closes a rules gap that has been open since
+    shooting shipped. `docs/rules/04-making-attacks.md` requires a target be
+    "visible, in range and **unengaged**", and `implementation-status.md` rated
+    that row *implemented* -- but the engagement term gated only the SHOOTER.
+    Nothing ever reduced the target axis by an engagement test, so a unit locked
+    in melee could be shot freely by everyone not themselves engaged.
+
+    It has been invisible rather than wrong: `back_off_to_unengaged` runs on
+    every mover on both seats, so engagement is 0.0000% of model-pairs and the
+    clause has never had an opportunity to bite. It is therefore off by default
+    and a **bit-identical no-op today**, and it is wired now rather than with
+    the charge so that the rules correction and the mechanic are separately
+    attributable.
     """
     n_player = len(player_positions)
     mask = np.zeros((n_player, n_groups), dtype=bool)
@@ -316,11 +330,13 @@ def compute_unit_shooting_masks(
     if player_advanced is not None:
         shooters &= ~np.asarray(player_advanced, dtype=bool)
     if engagement_range > 0:
-        # Only living enemies engage -- see `compute_shooting_masks`.
-        nearest_live = np.where(alive_targets[np.newaxis, :], distances, np.inf).min(
-            axis=1
+        shooters &= ~engaged_with_any(
+            player_positions,
+            opponent_positions,
+            alive_targets,
+            engagement_range=engagement_range,
+            base_diameter=base_diameter,
         )
-        shooters &= nearest_live - base_diameter > engagement_range
     if not shooters.any():
         return mask
 
@@ -347,7 +363,24 @@ def compute_unit_shooting_masks(
     visible = candidates & los_matrix_fn(
         player_positions, opponent_positions, candidates
     )
+    targetable_group = np.ones(n_groups, dtype=bool)
+    if exclude_engaged_targets and engagement_range > 0:
+        # A unit is engaged when any of its models is -- the rule is unit-level,
+        # so one model in contact shields the whole unit from shooting.
+        target_engaged = engaged_with_any(
+            opponent_positions,
+            player_positions,
+            np.asarray(player_alive, dtype=bool),
+            engagement_range=engagement_range,
+            base_diameter=base_diameter,
+        )
+        targetable_group = ~engaged_units(target_engaged, target_groups, n_groups)
+
     for group, member in enumerate(members):
         if member.any():
-            mask[:, group] = visible[:, member].any(axis=1) & group_in_range[:, group]
+            mask[:, group] = (
+                visible[:, member].any(axis=1)
+                & group_in_range[:, group]
+                & targetable_group[group]
+            )
     return mask
