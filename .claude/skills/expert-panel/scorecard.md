@@ -73,3 +73,35 @@ nominations still 0 for 3.
 - Panel agents left 10 probe scripts and one config in the repo. Moved the scripts to the
   scratchpad; kept the config after verifying it myself — it is a genuinely pairable dark
   control, which this project rarely gets on an action-space change.
+
+### Panel B (measurement / dynamics / cost / history) — same day
+
+**Independently reproduced the corpse shield by a different route** (a live-episode
+trace to a single wound at step 10 of seed 700001, vs Panel A's constructed state).
+Two panels that never met, two methods, same defect — this is the one place the
+convergence is *earned*.
+
+| finding | verdict after I verified it | action |
+|---|---|---|
+| Schema 2.7's melee flags never reach a replay | **CONFIRMED, but not by their mechanism** — they said the flag was cleared before the exporter; it is actually absent from the DELTA codec. Full snapshots carry it fine | fixed; tautological test replaced |
+| "Neutral" uses the wrong conditional — an engaged model is one that would certainly have shot | **CONFIRMED and it is the better critique.** ~10x, not ~1x | relabelled lethality-NEGLIGIBLE |
+| My power figures are 50%-power CI half-widths, not MDEs | **CONFIRMED** — 25.97 at n=3, not 19.05 | corrected |
+| `charge_roll` has no observation column; the mask is applied to final logits only | **CONFIRMED** at `net.py:711` — the trunk cannot condition on it, the critic cannot see it | recorded, not fixed (user's call) |
+| The joint decoder is inert in the charge phase | **CONFIRMED** at `decoding.py:272` | recorded |
+| Per-episode sd is 84-92 "on this config, not the 45-50 the rules assume" | **REJECTED by their own red team**: identical on the golden config, so it is the map-pool draw — and the wrong estimator anyway | not propagated |
+
+**Lessons this round adds to the skill.**
+
+- ⚠ **The two panels DISAGREED about my lethality figure and both were partly right.**
+  Panel A's chair defended the arithmetic (correct); Panel B's red team attacked the
+  conditional (also correct, and more important). Neither alone would have got me to the
+  right answer. **Run both panels even when the first one looks conclusive.**
+- ⚠ **A panel's mechanism can be wrong while its observation is right.** Panel B said the
+  charge flag was cleared before the exporter ran; I measured it True in the snapshot, then
+  found the real cause in the delta codec. **Verify the mechanism, not just the symptom —
+  had I trusted the stated cause I would have "fixed" the clear ordering and broken it.**
+- ⚠ **Five panels and I were mutating ONE working tree while measuring on it.** Panel B's red
+  team caught this and re-ran everything against a pinned `git archive`. Every other number in
+  both packets is dated to an unstated code state. **Pin the tree before a measuring panel.**
+- **A tautological assertion is worse than no test**, because it occupies the slot where the
+  real one would go. `assert flag in (True, False)` shipped and hid a live defect for a day.
