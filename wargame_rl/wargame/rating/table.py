@@ -102,9 +102,14 @@ def mean_coherency(legs: Sequence[LegResult]) -> dict[str, float | None]:
     opponent's. `pairings` lists each pair once in input order, so the entrant
     named *last* on the command line is entrant B in every one of its pairings
     and comes back with no coherency at all -- a real gap against this repo's
-    rule that no score is quoted without it. Closing it needs the arena to
-    track the opponent's coherency too, which the env does not currently
-    measure for that side.
+    rule that no score is quoted without it.
+
+    `CoherencyTracker` is already written as running totals for *one force*, so
+    a second instance is mechanically small; what is missing is the opponent's
+    **intended** coherency, which the player path reads off
+    `ActionHandler.intended_coherency_last_move` and the opponent path does not
+    record. See `docs/elo.md` § Open gaps -- this is the same seating asymmetry
+    that leaves the engine seat unbalanced, seen from the metrics side.
     """
     totals: dict[str, list[float]] = {}
     for leg in legs:
