@@ -120,11 +120,10 @@ def fight_eligible_units(
         np.array([m.location for m in attackers], dtype=float),
         np.array([m.location for m in defenders], dtype=float),
         np.array([m.is_alive for m in defenders], dtype=bool),
+        np.array([m.is_alive for m in attackers], dtype=bool),
         engagement_range=engagement_range,
         base_diameter=base_diameter,
     )
-    alive = np.array([m.is_alive for m in attackers], dtype=bool)
-    matrix &= alive[:, np.newaxis]
 
     units: dict[int, list[int]] = {}
     for attacker_idx in range(len(attackers)):
@@ -178,6 +177,7 @@ def resolve_fight(
         np.array([m.location for m in attackers], dtype=float),
         np.array([m.location for m in defenders], dtype=float),
         np.array([m.is_alive for m in defenders], dtype=bool),
+        np.array([m.is_alive for m in attackers], dtype=bool),
         engagement_range=engagement_range,
         base_diameter=base_diameter,
     )

@@ -68,6 +68,7 @@ def compute_shooting_masks(
             player_positions,
             opponent_positions,
             alive_targets,
+            np.asarray(player_alive, dtype=bool),
             engagement_range=engagement_range,
             base_diameter=base_diameter,
         )
@@ -334,6 +335,7 @@ def compute_unit_shooting_masks(
             player_positions,
             opponent_positions,
             alive_targets,
+            np.asarray(player_alive, dtype=bool),
             engagement_range=engagement_range,
             base_diameter=base_diameter,
         )
@@ -371,6 +373,10 @@ def compute_unit_shooting_masks(
             opponent_positions,
             player_positions,
             np.asarray(player_alive, dtype=bool),
+            # ⚠ The subject axis is the OPPONENT here, not the player. Omitting
+            # it let an enemy CORPSE beside one of my models shield its whole
+            # unit -- the 2026-08-19 corpse defect, on the target axis.
+            alive_targets,
             engagement_range=engagement_range,
             base_diameter=base_diameter,
         )

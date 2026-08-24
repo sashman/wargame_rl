@@ -17,6 +17,7 @@ import numpy as np
 import pytest
 
 from scripts.scenario_overrides import load_env_config
+from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
 from wargame_rl.wargame.envs.domain.consolidate import consolidate_objective
 from wargame_rl.wargame.envs.domain.entities import WargameObjective
 from wargame_rl.wargame.envs.domain.shooting import (
@@ -304,3 +305,48 @@ def test_the_shipped_melee_config_is_lethality_neutral() -> None:
     assert per_fight == pytest.approx(0.0232, abs=0.0005)
     assert all(m.melee_weapons for m in player_models)
     assert all(m.melee_weapons for m in opponent_models)
+
+
+def test_melee_ON_with_no_charges_is_the_SAME_GAME_as_melee_off() -> None:
+    """The gate the seeded-episode digest could not see, because it runs melee OFF.
+
+    ⚠ **This caught a real defect and the digest could not.** Before the corpse
+    fix, `25v25_maps_melee.yaml` and `25v25_maps_two_mode.yaml` scored
+    differently on 8 of 12 seeds for a policy that never charges — an enemy
+    casualty lying beside one of my models was shielding its whole unit from
+    shooting. The no-op digest proves melee OFF is byte-identical to `main`; it
+    is structurally blind to melee ON.
+
+    This is also the better cross-config bridge: 60 agent steps against 40, a
+    different `skip_phases`, and the same game to the point.
+    """
+    # Arrange
+    seeds = range(700000, 700006)
+    policy_name = "squad_march_take"
+
+    # Act
+    scores = {}
+    for path in (
+        "configs/experiments/25v25_maps_melee.yaml",
+        "configs/golden/25v25_maps_two_mode.yaml",
+    ):
+        env = create_environment(load_env_config(path))
+        policy = build_baseline_policy(policy_name)
+        margins = []
+        for seed in seeds:
+            observation, _ = env.reset(seed=seed)
+            terminated = truncated = False
+            while not (terminated or truncated):
+                action = policy.select_action(
+                    env.wargame_models, env, action_mask=observation.action_mask
+                )
+                observation, _r, terminated, truncated, _i = env.step(action)
+            margins.append(env.player_vp - env.opponent_vp)
+        scores[path] = margins
+
+    # Assert
+    melee_on, melee_off = scores.values()
+    assert melee_on == melee_off, (
+        "a policy that never charges scored differently with melee on: "
+        f"{melee_on} vs {melee_off}"
+    )

@@ -22,10 +22,20 @@ base sizes, and deliberately not folded in here, because collapsing it to one
 global would agree on every shipped config and diverge silently on the first
 that does not.
 
-⚠ **Only LIVING models engage.** A destroyed model keeps its position forever
-(`take_damage` writes only `current_wounds`), so a corpse would otherwise pin a
-model for the rest of the episode. That defect was real, fired on 8.74% of
-model-steps against the rule's 0.80%, and cost the agent 7.0 vp.
+⚠ **Only LIVING models engage, on BOTH axes, and both masks are REQUIRED.** A
+destroyed model keeps its position forever (`take_damage` writes only
+`current_wounds`), so a corpse would otherwise pin a model for the rest of the
+episode. That defect was real, fired on 8.74% of model-steps against the rule's
+0.80%, and cost the agent 7.0 vp.
+
+⚠ **It then happened a SECOND time, on the other axis, because only `other_alive`
+was a parameter.** The target-side shooting gate asks *is this enemy engaged*,
+whose subject is the ENEMY models -- and nothing masked them, so an enemy
+casualty lying beside one of my models made its whole unit unshootable,
+including a living squadmate thirty inches away. Every caller that got it right
+was masking the subject axis by hand afterwards, which is a convention rather
+than a rule. `subject_alive` is therefore **positional and required**: a caller
+can pass the wrong array, but it can no longer forget there is one.
 """
 
 from __future__ import annotations
@@ -37,13 +47,16 @@ def engagement_matrix(
     positions: np.ndarray,
     other_positions: np.ndarray,
     other_alive: np.ndarray,
+    subject_alive: np.ndarray,
     *,
     engagement_range: float,
     base_diameter: float = 0.0,
 ) -> np.ndarray:
     """``(n, n_other)`` bool — is each model within engagement range of each other.
 
-    Columns for destroyed models are False: a casualty engages nobody.
+    Rows AND columns for destroyed models are False: a casualty engages
+    nobody, and nobody engages a casualty. Both masks are required -- see the
+    module docstring for the two defects that bought that decision.
     """
     n, n_other = len(positions), len(other_positions)
     if n == 0 or n_other == 0 or engagement_range <= 0:
@@ -52,22 +65,25 @@ def engagement_matrix(
     distances = np.linalg.norm(deltas, axis=2)
     within = (distances - base_diameter) <= engagement_range
     alive = np.asarray(other_alive, dtype=bool)[np.newaxis, :]
-    return np.asarray(within & alive, dtype=bool)
+    mine = np.asarray(subject_alive, dtype=bool)[:, np.newaxis]
+    return np.asarray(within & alive & mine, dtype=bool)
 
 
 def engaged_with_any(
     positions: np.ndarray,
     other_positions: np.ndarray,
     other_alive: np.ndarray,
+    subject_alive: np.ndarray,
     *,
     engagement_range: float,
     base_diameter: float = 0.0,
 ) -> np.ndarray:
-    """``(n,)`` bool — is each model engaged with at least one living enemy."""
+    """``(n,)`` bool — is each LIVING model engaged with a living enemy."""
     matrix = engagement_matrix(
         positions,
         other_positions,
         other_alive,
+        subject_alive,
         engagement_range=engagement_range,
         base_diameter=base_diameter,
     )

@@ -652,6 +652,7 @@ class ActionHandler:
             positions,
             enemy_positions,
             enemy_alive,
+            np.array([m.is_alive for m in models], dtype=bool),
             engagement_range=self._engagement_range,
             base_diameter=2.0 * self._base_radius,
         )
@@ -890,6 +891,8 @@ class ActionHandler:
             positions,
             np.array([m.location for m in alive_enemies], dtype=float),
             np.ones(len(alive_enemies), dtype=bool),
+            # `members` is already filtered to the unit's living models.
+            np.ones(len(members), dtype=bool),
             engagement_range=self._engagement_range,
             base_diameter=2.0 * self._base_radius,
         )
@@ -951,6 +954,7 @@ class ActionHandler:
             np.array([m.location for m in wargame_models], dtype=float),
             np.array([m.location for m in alive_enemies], dtype=float),
             np.ones(len(alive_enemies), dtype=bool),
+            np.array([m.is_alive for m in wargame_models], dtype=bool),
             engagement_range=self._engagement_range,
             base_diameter=2.0 * self._base_radius,
         )

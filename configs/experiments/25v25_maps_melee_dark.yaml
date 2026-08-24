@@ -41,9 +41,11 @@
 # See `docs/melee.md`.
 # ===========================================================================
 #
-# THIS FILE: melee ON.
+# THIS FILE: the DARK CONTROL -- melee OFF, charge phase still stepped, so the
+# episode is the same length and the shape is the same. Everything melee costs
+# in EPISODE STRUCTURE is present here; everything it costs in RULES is not.
 # ===========================================================================
-config_name: 25v25_maps_melee
+config_name: 25v25_maps_melee_dark
 #
 # 25v25 on THE REAL TABLES, drawn one per episode from `configs/evaluation/maps/`.
 #
@@ -187,7 +189,7 @@ skip_phases:
 # `n_rounds x (5 - len(skip_phases))`, so 40 becomes 60. Every baseline and
 # every agent score measured on `25v25_maps_two_mode` is VOID here.
 melee:
-  enabled: true
+  enabled: false
   charge_range: 12.0
   consolidate_distance: 3.0
 

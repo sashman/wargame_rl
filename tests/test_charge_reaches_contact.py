@@ -80,6 +80,7 @@ def _walk_at(handler: ActionHandler, phase: BattlePhase) -> tuple[float, bool]:
             np.array([mover.location]),
             np.array([enemy.location]),
             np.array([True]),
+            np.array([True]),
             engagement_range=ENGAGEMENT,
         )[0]
     )
@@ -319,6 +320,7 @@ def test_a_charge_reaches_contact_through_env_step() -> None:
                     np.array([player.location], dtype=float),
                     np.array([opponent.location], dtype=float),
                     np.ones(1, dtype=bool),
+                    np.ones(1, dtype=bool),
                     engagement_range=ENGAGEMENT,
                 )[0]
             )
@@ -335,6 +337,21 @@ def test_the_charge_phase_grants_no_free_MOVE_to_a_unit_that_cannot_charge() -> 
     Making the movement slice valid in the charge phase is what avoids a new
     action slice — and it would be worth nothing if a unit with no charge
     available could simply take a second movement phase every turn.
+
+    ⚠ **This proves the REFEREE, not the mask, and the distinction was published
+    the wrong way round.** `ActionHandler.apply` never consults the action mask —
+    it is documented as deliberately not trusting it — so the move below IS
+    applied and then undone by `_enforce_charge`, which reverts any unit that
+    does not end engaged with exactly one enemy unit. Net displacement of zero
+    therefore cannot distinguish "the mask forbade it" from "the referee undid
+    it". The protection is real and is arguably the stronger of the two, since
+    the revert is unconditional while a mask only binds an actor that reads it.
+
+    ⚠ **A related claim is RETRACTED.** A smoke run reporting zero inches moved
+    in the charge phase by `squad_march_take` was offered as evidence the mask
+    works. It is vacuous: `BaselinePolicy.select_action` returns STAY for every
+    phase that is not command, movement or shooting, so that policy could not
+    have moved under no masking whatsoever.
     """
     # Arrange: the only enemy is 30" away, far outside the 12" declaration range.
     env = _melee_env()

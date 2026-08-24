@@ -17,10 +17,15 @@ class MeleeConfig(BaseModel):
     entered.** Not a rare one -- an unreached one. `back_off_to_unengaged` walks
     every mover on both seats back out of contact, so engagement is measured at
     **0.0000%** of model-pairs over 60,520 observations. What that number does
-    NOT mean is that contact is hard to reach: the minimum edge-to-edge gap is
-    **1.000008740"** against an engagement range of 1.0, i.e. the army parks
-    8.7 micro-inches outside contact and has done all along. A charge does not
-    need to cross a gap; it needs the back-off exemption.
+    NOT mean is that contact is unreachable: the closest pair sits
+    **1.000008740"** from an engagement range of 1.0, i.e. 8.7 micro-inches
+    outside contact. What a charge needs first is the back-off **exemption**.
+
+    ⚠ **RETRACTED: it needs the distance too.** That minimum was read as a
+    typical value and it is not one. Only **0.081%** of living pairs are within
+    1.001"; the median living pair is **27.25"** apart and the median
+    charge-ELIGIBLE unit is **5.99"** from its nearest enemy. See
+    `docs/melee.md`.
 
     So melee is opt-in per scenario and defaults **off**, like
     `n_advance_speed_bins`. Off, it registers no slice, draws no dice, adds no

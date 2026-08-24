@@ -15,6 +15,16 @@ Two guards, and the first is the one that earns its keep:
   usual direction — the test protects a **gap**, not a feature.
 * every row is well formed: a legal status, and a link that resolves to a real
   file and a real heading.
+
+⚠ **What the first guard CANNOT catch, established the day it shipped.** It fails
+only when a gap closes under a symbol NAMED after it. Row 62
+(`fallback.blocks_charge`) closed three commits before an expert panel noticed,
+because the rule was implemented inline inside `_charge_eligible_units` and no
+symbol was ever called `blocks_charge`. Nor can either guard see a row rated
+`implemented` that is not — row 92 asserted an engagement gate at unit
+granularity while the code was per-model. **These tests protect the register's
+gaps; they do not audit its claims.** Only reading the rule against the code does
+that.
 """
 
 from __future__ import annotations

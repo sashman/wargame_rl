@@ -12,18 +12,41 @@ Turning it on is **not a tuning change**. It steps a phase that was skipped, so
 `max_turns` changes, and it creates a board state this environment has never
 entered. Every baseline and every agent score on that config is void.
 
-## The fact the whole design turns on
+## The fact the whole design turns on, and the half of it that was wrong
 
 Engagement was measured at **0.0000%** of model-pairs over 60,520 observations,
-and the obvious reading — that contact is unreachable — is wrong. The minimum
-edge-to-edge gap is **1.000008740"** against an engagement range of 1.0:
+and the obvious reading — that contact is unreachable — is wrong.
 `back_off_to_unengaged` walks every mover on both seats to `min(lo) - 1e-6`, so
-the army parks **8.7 micro-inches** outside contact and always has.
+the closest pair on the board sits **1.000008740"** from an engagement range of
+1.0: 8.7 micro-inches outside contact. What a charge needs first is therefore the
+**exemption** from that back-off, which is one branch in `ActionHandler.apply`.
 
-A charge therefore does not need to cross a gap. It needs the **exemption** from
-that back-off, which is one branch in `ActionHandler.apply`. Every distance
-argument that assumed a real gap had to be crossed was answering a question that
-does not arise.
+⚠ **RETRACTED 2026-08-25, found by an expert panel: that minimum was read as a
+typical value, and the reading was load-bearing.** It justified the whole
+no-new-actions design in `docs/rules/implementation-status.md` with the sentence
+*"the distance a charge must cover is one speed bin"*. Measured over 10 episodes
+on `configs/experiments/25v25_maps_melee.yaml`:
+
+| | |
+|---|---|
+| living pairs within 1.001" | **0.081%** |
+| median living pair | **27.25"** |
+| median charge-ELIGIBLE unit to its nearest enemy | **5.99"** (mean 6.10, p90 11.01) |
+| eligible declarations within ONE speed bin (1.00") | **0.0%** |
+
+So a charge needs the exemption **and** the distance. The design conclusion
+survives — a dedicated rung ladder still changes the output head's shape, and
+that is what makes an action-space arm unpairable against its control — but it
+survives on the pairing argument alone, and the reach argument is withdrawn.
+
+⚠ **The measured price of adding no actions: 12.3 percentage points of
+reachability.** The charge reuses the movement slice, whose longest rung is the
+model's Move (6"), so a charge can never travel further than a walk however high
+the 2D6 lands — where the rules cap it at the roll alone, up to 12". Across 203
+eligible declarations the roll exceeds Move on **59.1%** of them and every inch
+above 6" is discarded; **12.3%** are blocked by the ladder and not by the dice.
+Reachability is **44.3%** where a true 2D6 ladder gives **56.7%**.
+`DEFERRED: charge.beyond_move_ladder`.
 
 ## What is implemented
 
@@ -74,10 +97,40 @@ non-vacuous: adding a `_pile_in` definition trips it by name.
   exactly as `advance_roll` is. Legality is gated on the roll, so a declaration
   taken before it would have no legal distance to take.
 - `consolidate.ongoing`, `consolidate.engaging` — see below.
+- `charge.beyond_move_ladder` — a charge cannot travel further than Move; see
+  above for the 12.3pp this costs.
+- `shooting.engaged_unit_cannot_shoot` — ⚠ **the most consequential item on this
+  list.** The shooter-side engagement gate is per-MODEL where
+  `docs/rules/10-shooting-phase.md` and the target side of the same function are
+  per-UNIT. Put one model of a five-model unit into contact and the enemy unit
+  becomes unshootable by everybody while four of your five keep firing. Inert
+  while engagement was 0.0000%; melee makes it the dominant term in the game.
+  Fixing it needs a `player_groups` argument threaded into both mask functions.
 - `consolidate.select_objective` — the env takes the nearest objective in range;
   the rules let the player choose.
 - `fallback.declared_move_type`, `fallback.reckless_break`,
   `fallback.blocks_charge`.
+
+## The value of a charge is the shooting shield, not the damage
+
+⚠ **Measured by an expert panel, and it is the finding that should govern the
+first experiment.** Paired, n=30 on the training config at argmax decode, a
+hand-rolled charging script scores **+62.50 ± 14.74 (t=4.24, 22/30)** against a
+walking opponent. With `exclude_engaged_targets` ablated it scores **−4.00 ±
+17.39 (t=−0.23, 14/30)**. Melee damage at the shipped lethality-neutral profile
+is worth about nothing; essentially all of the charge's value is that an engaged
+unit cannot be shot at.
+
+⚠ **Read the ablation and the 2×2, never a single arm's number.** Six
+independently hand-rolled charging scripts produced +6.5, +48.0, +52.0, +59.2,
++82.9 and +88.8 vp for nominally the same measurement — a 14× spread. Nobody has
+measured "the value of melee"; each measured their own heuristic.
+
+⚠ **And no scripted baseline or opponent policy can charge**, because
+`BaselinePolicy.select_action` returns STAY for every phase that is not command,
+movement or shooting. There is no bar. This is verbatim the failure this project
+already paid for on Advance — *a bar that cannot use a core rule is not a bar* —
+and a training arm launched today would measure `baseline/policy.py:48`.
 
 ## Two things that will surprise you
 

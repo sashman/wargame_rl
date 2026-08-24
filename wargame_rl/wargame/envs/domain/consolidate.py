@@ -86,6 +86,8 @@ def _within(
         positions,
         enemy_positions,
         np.ones(len(enemy_positions), dtype=bool),
+        # `positions` is built from `_unit_members`, which is alive-only.
+        np.ones(len(positions), dtype=bool),
         engagement_range=distance,
         base_diameter=base_diameter,
     )
