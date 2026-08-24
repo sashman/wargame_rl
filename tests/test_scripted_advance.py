@@ -27,6 +27,7 @@ from wargame_rl.wargame.envs.types import (
 from wargame_rl.wargame.envs.types.config import WeaponProfile
 from wargame_rl.wargame.envs.types.game_timing import NON_MOVEMENT_PHASES, BattlePhase
 from wargame_rl.wargame.model.common.factory import create_environment
+from wargame_rl.wargame.selectors import build_action_selector
 
 
 def _phases_with_command() -> list[BattlePhase]:
@@ -291,12 +292,19 @@ def test_the_opponents_advance_columns_are_zeroed_not_stale() -> None:
     no shape change.
     """
     env = create_environment(env_config=_config(3))
+    select = build_action_selector("squad_march", env).select
     observation, _ = env.reset(seed=2)
 
+    # Driven by a scripted policy rather than `action_space.sample()`.
+    # Gymnasium seeds a Space's generator **lazily, from OS entropy**, and
+    # `Env.reset(seed=...)` seeds `self.np_random` and not the action space --
+    # so sampling here is unseeded randomness, which this repo's testing rules
+    # forbid. It also samples *unmasked*: with three advance bins the action
+    # space outgrows the movement block, and a draw landing past it decoded as
+    # a heading raised `IndexError: index 24 is out of bounds for axis 0 with
+    # size 16`. Measured at 2 failures in 15 runs before this change.
     for _ in range(6):
-        observation, _r, done, _t, _i = env.step(
-            WargameEnvAction(actions=[int(a) for a in env.action_space.sample()])
-        )
+        observation, _r, done, _t, _i = env.step(select(observation, env))
         if done:
             break
         for model in observation.opponent_models:
