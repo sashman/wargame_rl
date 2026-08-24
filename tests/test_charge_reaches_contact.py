@@ -25,14 +25,14 @@ from wargame_rl.wargame.envs.wargame_model import WargameModel
 ENGAGEMENT = 1.0
 
 
-def _handler(melee: bool) -> ActionHandler:
+def _handler(melee: bool, n_models: int = 1) -> ActionHandler:
     skip = [BattlePhase.command, BattlePhase.shooting, BattlePhase.fight]
     if not melee:
         skip.append(BattlePhase.charge)
     return ActionHandler(
         WargameEnvConfig(
-            number_of_wargame_models=1,
-            models=[ModelConfig()],
+            number_of_wargame_models=n_models,
+            models=[ModelConfig() for _ in range(n_models)],
             melee=MeleeConfig(enabled=melee),
             engagement_range=ENGAGEMENT,
             base_radius=0.0,
@@ -197,3 +197,63 @@ def test_the_roll_caps_the_charge_distance() -> None:
 def test_a_roll_of_zero_leaves_no_legal_charge() -> None:
     """Nothing is rolled outside a charge phase, and nothing is then legal."""
     assert not _legality(gap=8.0, roll=0.0).any()
+
+
+def _unit_charge(
+    enemy_positions: list[tuple[float, int]], *, spread: float = 0.5
+) -> tuple[list[WargameModel], list[np.ndarray]]:
+    """Charge a two-model unit east; return the models and where they started."""
+    handler = _handler(melee=True, n_models=2)
+    movers = [_model(5.0), _model(5.0)]
+    movers[1].location = np.array([5.0, 10.0 + spread])
+    for m in movers:
+        m.charge_roll = 12.0
+    enemies = [_model(x, group=g) for x, g in enemy_positions]
+    start = [np.array(m.location, copy=True) for m in movers]
+    handler.apply(
+        WargameEnvAction(
+            actions=[handler.best_action_toward(1.0, 0.0, max_step_length=1.0)] * 2
+        ),
+        movers,
+        60,
+        44,
+        handler.action_space,
+        phase=BattlePhase.charge,
+        enemy_models=enemies,
+    )
+    return movers, start
+
+
+def test_a_charge_that_reaches_one_enemy_unit_stands() -> None:
+    movers, start = _unit_charge([(6.5, 1)])
+    assert not np.array_equal(movers[0].location, start[0]), "the charge was reverted"
+
+
+def test_a_charge_that_clips_a_SECOND_enemy_unit_is_reverted_entirely() -> None:
+    """`11-charge-phase.md`: engaged with no unit that was not a target.
+
+    This is what makes a charge fail even on a long roll, and the revert is
+    all-or-nothing — every model returns to where it started.
+    """
+    movers, start = _unit_charge([(6.5, 1), (6.5, 2)], spread=0.5)
+    for model, origin in zip(movers, start, strict=True):
+        assert np.array_equal(model.location, origin), "an illegal charge stood"
+
+
+def test_a_charge_that_reaches_nobody_is_reverted() -> None:
+    """A charge that ends unengaged did not happen."""
+    movers, start = _unit_charge([(40.0, 1)])
+    for model, origin in zip(movers, start, strict=True):
+        assert np.array_equal(model.location, origin)
+
+
+def test_the_revert_is_unconditional_and_not_the_coherency_referee() -> None:
+    """⚠ `coherency.enforce_move` defaults to `off` on every shipped config.
+
+    Routing the charge's own conditions through it would let an illegal charge
+    simply stand wherever enforcement is off — which is everywhere.
+    """
+    handler = _handler(melee=True, n_models=2)
+    assert handler._coherency_mode.value == "off"
+    movers, start = _unit_charge([(6.5, 1), (6.5, 2)])
+    assert np.array_equal(movers[0].location, start[0])

@@ -23,7 +23,10 @@ from wargame_rl.wargame.envs.domain.coherency_enforcement import (
     CoherencyEnforcement,
     enforce_after_move,
 )
-from wargame_rl.wargame.envs.domain.engagement import engaged_with_any
+from wargame_rl.wargame.envs.domain.engagement import (
+    engaged_with_any,
+    engagement_matrix,
+)
 from wargame_rl.wargame.envs.domain.movement import back_off_to_unengaged, resolve_move
 from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
 from wargame_rl.wargame.envs.domain.value_objects import (
@@ -808,6 +811,100 @@ class ActionHandler:
             and phase in movement.valid_phases
         )
 
+    def _enforce_charge(
+        self,
+        wargame_models: list[Any],
+        enemy_models: list[Any] | None,
+        start_positions: list[np.ndarray] | None,
+    ) -> None:
+        """A charge that does not end legally is not made at all.
+
+        `docs/rules/03-moving.md`: if any after-moving condition fails, *return
+        every model to where it started*. That is the rules' own all-or-nothing,
+        not a referee setting -- a charge ending unengaged is not a charge that
+        went badly, it is a charge that did not happen. So this reverts
+        unconditionally and is deliberately NOT routed through
+        `coherency.enforce_move`, which defaults to `off` on every shipped
+        config and would therefore let an illegal charge simply stand.
+
+        Two conditions per unit that moved:
+
+        * **coherency** -- the unit must still be one body;
+        * **engaged with exactly ONE enemy unit** -- which is both after-moving
+          conditions at once while a charge has a single target: engaged with
+          all of them, and with no non-target. A charge that clips a second unit
+          fails, which `11-charge-phase.md` calls out as what makes a charge
+          fail even on a long roll.
+
+        ⚠ **The target is DERIVED from where the unit ends, not declared, and
+        that is a measured decision rather than a shortcut.** A declaration
+        would have to be an action, one model would have to spend its action on
+        it, and that model could not then move -- and a model left behind while
+        its squadmates charge breaks the 2" chain at any distance beyond about
+        three inches, which reverts the whole charge. Measured directly against
+        `evaluate_coherency`: a five-model unit whose declarer stays put is
+        coherent at 2" and incoherent at 4", 8" and 12". So the declaration
+        slice would have made almost every charge fail.
+        `DEFERRED: charge.target_declaration`.
+        """
+        if start_positions is None:
+            return
+        moved = {
+            int(model.group_id)
+            for index, model in enumerate(wargame_models)
+            if model.is_alive
+            and not np.array_equal(start_positions[index], model.location)
+        }
+        if not moved:
+            return
+        alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+        for group in sorted(moved):
+            members = [
+                index
+                for index, model in enumerate(wargame_models)
+                if int(model.group_id) == group and model.is_alive
+            ]
+            if self._charge_is_legal(wargame_models, members, alive_enemies):
+                continue
+            for index in members:
+                wargame_models[index].location = np.array(
+                    start_positions[index], copy=True
+                )
+
+    def _charge_is_legal(
+        self,
+        wargame_models: list[Any],
+        members: list[int],
+        alive_enemies: list[Any],
+    ) -> bool:
+        """Did this unit's charge end in a legal position?"""
+        if not alive_enemies:
+            return False
+        positions = np.array([wargame_models[i].location for i in members], dtype=float)
+        contacts = engagement_matrix(
+            positions,
+            np.array([m.location for m in alive_enemies], dtype=float),
+            np.ones(len(alive_enemies), dtype=bool),
+            engagement_range=self._engagement_range,
+            base_diameter=2.0 * self._base_radius,
+        )
+        touched = {
+            int(alive_enemies[j].group_id) for j in np.nonzero(contacts.any(axis=0))[0]
+        }
+        if len(touched) != 1:
+            return False
+        report = evaluate_coherency(
+            positions=positions,
+            group_ids=np.zeros(len(members), dtype=np.intp),
+            alive_mask=np.ones(len(members), dtype=bool),
+            base_radii=np.array(
+                [wargame_models[i].base_radius for i in members], dtype=float
+            ),
+            nearest_distance=self._coherency_nearest,
+            furthest_distance=self._coherency_furthest,
+        )
+        return bool(report.all_coherent)
+
     def _engaged_before_moving(
         self,
         phase: BattlePhase,
@@ -943,6 +1040,11 @@ class ActionHandler:
         )
         friendly_alive = np.array([m.is_alive for m in wargame_models], dtype=bool)
         began_engaged = self._engaged_before_moving(phase, wargame_models, enemy_models)
+        charge_start = (
+            [np.array(m.location, copy=True) for m in wargame_models]
+            if phase is BattlePhase.charge and self._displaces_in(phase)
+            else None
+        )
         if phase is BattlePhase.command:
             # No early return: the per-model loop below still validates every
             # action against its space before skipping non-movement phases, and
@@ -1019,6 +1121,7 @@ class ActionHandler:
                 occupied_reach,
             )
 
+        self._enforce_charge(wargame_models, enemy_models, charge_start)
         self._mark_fall_backs(wargame_models, began_engaged)
 
         # Every model in the force has now moved, which is the earliest point a
