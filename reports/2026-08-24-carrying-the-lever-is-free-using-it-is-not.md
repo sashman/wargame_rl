@@ -175,3 +175,69 @@ now so that a mean near zero at n=3 is not read as a pass.
   interesting and more awkward result.
 - **Does the epoch budget matter for a larger action space?** Compare each arm's own
   300 vs 1000 score. That is a within-seed comparison and needs no equivalence bound.
+
+---
+
+# ⚠ RETRACTION — the 1000-epoch result reverses this report's headline
+
+**2026-08-24, later the same day.** All six runs resumed to epoch 1000 and rescored,
+refereed at K=3 on the held-out nine, n=30. **The title of this report does not
+survive.**
+
+| seed | advance | dark control | paired @1000 | paired @300 | usage @1000 | usage @300 |
+|---|---|---|---|---|---|---|
+| s1 | +26.7 | +33.6 | **−6.9** | +12.5 | 0.3% | 0.0% |
+| s2 | +9.9 | +17.9 | **−8.0** | −9.8 | 4.9% | 10.9% |
+| s3 | +1.6 | **+35.6** | **−34.0** | +4.0 | 5.1% | 0.6% |
+
+**Mean −16.3 ± 8.9, t = −1.84, all three seeds negative.** Against +2.2 ± 6.5 with
+flipping signs at 300 epochs.
+
+**Verdict against the criterion committed to git before these scores existed:
+UNDERPOWERED.** The one-sided 95% lower bound is −42.2, so it can neither exclude a
+10 vp cost nor demonstrate one. It is **not** reported as a pass.
+
+## What is retracted
+
+- ⚠ **"Carrying the lever is free."** At 300 epochs the paired difference was
+  +2.2 ± 6.5; at 1000 it is −16.3 ± 8.9. **s1 and s3 both flipped sign.** The
+  300-epoch reading was not a noisier version of this one — it pointed the other way.
+- ⚠ **"Two of three seeds learned to decline it entirely."** True at 300 (0.0%,
+  0.6%). At 1000 only s1 is still near zero (0.3%); s2 and s3 both sit near 5%.
+  **More training made them worse at leaving the option alone, not better.**
+- ⚠ **The prediction that s2 would fall to the others' floor by 1000 FAILED.** Its
+  usage went 7.8 → 6.6 → 3.2 → 4.2 → 4.9% — it halved, then plateaued and drifted
+  back up. Not under-training: a second mode that 700 extra epochs did not unlearn.
+
+## What survives
+
+- **The usage/score relationship, and it is now stronger.** The seed ending at 0.3%
+  usage lost least (−6.9); the two ending near 5% lost most (−8.0, −34.0). This is
+  the same direction as the forbid-at-play falsifier, which remains the cleanest
+  result here: same weights, advance masked at play, **+26.3 recovered** on the seed
+  that used it and −1.1/+2.7 on the seeds that did not.
+- **The four structural criteria.** Nothing above bears on dominated actions,
+  stationary semantics, the unit declaration or additive cost; those are verified in
+  code and unaffected.
+- ⚠ **The accept criterion at 300 epochs was unpassable** (a free lever fails
+  "−8 on 3/3" 56% of the time). That remains true and is why the equivalence rule
+  replaced it.
+
+## The hypothesis this raises, NOT a finding
+
+**The control gained more from the extra 700 epochs than the arm did, on every
+seed** — s1 +13.8 v −5.6, s2 +26.3 v +28.1, s3 **+19.7 v −18.3**. That is consistent
+with the extra option *slowing or destabilising* learning rather than costing at
+convergence, which is a different mechanism from anything measured here. Three seeds
+with sd 15.3 cannot establish it.
+
+## ⚠ What this costs the method, not just the claim
+
+**A three-seed screen was read as a result twice, and reversed both times.** The
+per-seed paired difference is not stable across seeds *or* across epoch budgets. The
+power table in the appendix said six seeds; it was written about the equivalence
+bound but applies to every number in this report.
+
+**Nothing here should move a design decision.** The honest state is: the encoding is
+structurally correct, the lever's cost is unresolved between "free" and "−16", and
+resolving it needs six seeds at 1000 epochs — not another three.

@@ -767,7 +767,7 @@ but it is a change, so re-measure rather than carry a figure across it.
 nets 8.68 → 10.00 ms per round. A 2048-step epoch is 9.5 s → 7.5 s but covers a
 third fewer rounds.
 
-### Carrying the advance lever is free; USING it is what costs
+### The advance lever at 300 epochs said FREE; at 1000 it says −16.3 (unresolved)
 
 Measured 2026-08-24, three seeds, 300 epochs, **paired**,
 [report](reports/2026-08-24-carrying-the-lever-is-free-using-it-is-not.md).
@@ -801,6 +801,28 @@ Measured 2026-08-24, three seeds, 300 epochs, **paired**,
 - ⚠ **The result MIXES converged and unconverged runs.** s2's usage across its last
   50 epochs is **7.9% → 4.8% → 7.8%** — oscillating, not decaying. Nearly all the
   noise in ±6.5 is that one seed; the other two agree at +12.5 and +4.0.
+- ⚠ **RETRACTED BY THE 1000-EPOCH RUN, SAME DAY.** Resumed to epoch 1000 and
+  rescored: paired **−16.3 ± 8.9, t=−1.84, all three seeds negative**, against
+  +2.2 ± 6.5 with flipping signs at 300. **s1 and s3 both flipped sign** (+12.5 →
+  −6.9, +4.0 → −34.0), so the 300-epoch reading was not a noisier version of this
+  one — it pointed the other way. Verdict against the criterion committed to git
+  before the scores existed: **UNDERPOWERED** (lower bound −42.2). Not a pass.
+- ⚠ **"Two of three seeds learned to decline it" is RETRACTED.** At 1000 only s1 is
+  near zero (0.3%); s2 and s3 sit near 5%. **More training made them WORSE at
+  leaving the option alone.** The prediction that s2 would fall to the others' floor
+  failed: 7.8 → 6.6 → 3.2 → 4.2 → 4.9%, a plateau and drift back up, i.e. a second
+  mode rather than under-training. **More epochs is not the lever; more seeds is.**
+- **What survives**: the usage/score relationship, now stronger (0.3% usage → −6.9;
+  ~5% → −8.0 and −34.0), and the forbid-at-play falsifier (**+26.3** recovered on
+  the seed that used it, −1.1/+2.7 on those that did not). The four structural
+  criteria are untouched by any of this.
+- ⚠ **HYPOTHESIS, NOT A FINDING: the extra option may SLOW learning.** The control
+  gained more from the extra 700 epochs than the arm on every seed (+13.8 v −5.6,
+  +26.3 v +28.1, **+19.7 v −18.3**). Three seeds at sd 15.3 cannot establish it.
+- ⚠ **A THREE-SEED SCREEN WAS READ AS A RESULT TWICE AND REVERSED BOTH TIMES.** The
+  per-seed paired difference is unstable across seeds *and* across epoch budgets.
+  **Nothing here should move a design decision** — resolving "free" versus "−16"
+  needs **six seeds at 1000 epochs**, not another three.
 - **NEW DIAGNOSTIC: lever usage is a convergence signal.** When the right answer is
   "rarely", a lever whose usage is still oscillating means the run has not settled,
   whatever the reward curve says. One inference run at two checkpoints. It would
