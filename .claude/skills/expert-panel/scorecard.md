@@ -31,6 +31,66 @@ claiming, not on its parts; (2) NEVER measure a symmetric change with both sides
 once — run the 2×2; (3) check both columns were measured on the same code.** And: a test that never calls `env.step` cannot see a composition defect —
 this project has now paid for that twice.
 
+## 2026-08-24 — melee scope + five-round statistics (mode: audit, two panels, 14 agents)
+
+**Nomination audited:** melee v1 (charge-as-target-slice, auto-resolved fight) and the
+five-round screen published the same day.
+
+**Verdict: WRONG SCOPE (design panel) / BUILD SOMETHING ELSE FIRST (spend panel).**
+Both panels reached it by disjoint routes, and the red team agreed with the conclusion
+while **rejecting most of the arguments** — the strongest convergence available, because
+the verdict is robust to which argument you delete.
+
+### Audits that landed (all verified by me before acting)
+
+1. **The melee premise was factually wrong.** "Engagement suppresses shooting, so contact
+   is a pure loss" — engagement is **0.0000%** and structurally unreachable. My own probe:
+   60,520 model-pair observations, zero engaged, minimum edge-to-edge gap **exactly
+   1.0000**. Melee does not rebalance a priced trade-off; it creates a state the env has
+   never entered. ⚠ **The evidence was in my own brief** (I quoted 7.52% → 0.00% and did
+   not draw the implication).
+2. **Design claim 1 (a charge needs no direction) — FALSE on the rules alone.** "Engaged
+   with all targets, not engaged with any non-target" are joint constraints on where the
+   unit *ends*: they pin a radius, not a bearing. I read a constraint set as a solution.
+   And whoever computes the bearing writes a **fourth movement solver**, forbidden by name.
+3. **The headline table was stale on FOUR of five rows, not one**, and the agent now
+   clears the best script on **one** opponent, not three. Reproduced by me row for row.
+4. **The red team BISECTED it** — the one thing nobody else did. Two causes, one of which
+   (`d607561`, the wholly-within deployment check, +2.6) was in **no** account.
+5. **"Five rounds cannot tell six agents apart" — refuted on the pre-registration's own
+   designated primary readout.** The noise term omitted the seed x map interaction, and
+   on `held` the seeds separate *better* at five rounds.
+6. **My melee gate could not have failed**: P(pass | melee does nothing) = **0.50**. That
+   is verbatim the defect logged five days earlier on the advance lever's −8 bound.
+7. Per-episode vp sd is **51–83** on the map-pool configs, not the doctrine's ~45–50.
+
+### Correlated error the chairs caught — the rule working as designed
+
+- **Every charge-geometry number in all four design-panel lenses** was computed on
+  trajectories from policies **that never charge**, forced unengaged by the very solver
+  melee would exempt. Four panels agreeing was **one invalid measurement repeated four
+  times**. Biased low in the dangerous direction, which killed one panel's own central case.
+- **"`normalized_round` is out of distribution"** — two lenses, full confidence, same
+  upstream premise, **neither did the arithmetic, both wrong.** The four-experts-one-premise
+  failure occurring *inside* the document that warns about it.
+- **"Melee fires on ~1% of model-steps"** — two lenses quoting a stale figure while
+  `_melee_census.py` sat unrun on disk. Real answer: 0.0000%.
+- **"Melee costs +41% throughput"** — priced `skip_phases: []`, which the plan does not
+  propose. Actual: **+19%**. The anti-melee case doubled its own strongest cost figure.
+
+### Cost of the arguments I should NOT repeat
+
+"It voids everything" is too broad — reward and observation goldens live on non-maps
+configs and stay bit-identical, `ratings/` holds only a README. The real casualty is
+narrow and permanent: **the checkpoint corpus can never warm-start or pair against a
+melee config**, because a new slice changes the head shape.
+
+### Running score
+
+Generate mode: still 0 for 3. Audit mode: **~13 of 13.** Two of the seven landed audits
+here were against claims I had published hours earlier, and one was against a claim I had
+already tried to correct and got backwards.
+
 ## 2026-08-25 — melee implementation, AUDIT mode, two panels (8 agents each)
 
 Target: the twelve-commit melee feature on `feature/melee-stage-0`, before anything was
@@ -38,8 +98,10 @@ measured. Panel A: rules fidelity / action space / architecture / exploitation /
 tests. Panel B: measurement / optimisation dynamics / observability / throughput / scenario
 design / this repo's own retraction history.
 
-**The audits landed again — 4 of 4 acted on.** Score to date: audits ~12 for ~12; headline
-nominations still 0 for 3.
+**The audits landed again — 4 of 4 acted on.** Score to date: audits **~17 of ~17**
+(the seven from 2026-08-24 above, plus these four and the three below that were verified
+and *rejected* — a rejection the panel earned is still an audit that worked); headline
+nominations still **0 for 3**.
 
 | finding | verdict after I verified it | action |
 |---|---|---|
