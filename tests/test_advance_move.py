@@ -30,6 +30,7 @@ from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.types.config.env import WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import NON_MOVEMENT_PHASES
 from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.common.observation import observation_to_tensor
 
@@ -659,3 +660,50 @@ class TestAdvanceIsResolvedPerUnit:
             assert not any(m.advanced_this_turn for m in env.wargame_models)
         finally:
             env.close()
+
+
+def test_a_declaration_action_in_the_movement_phase_does_not_decode_as_a_MOVE() -> None:
+    """Regression: `apply` guarded the shooting slice and nothing else.
+
+    ⚠ A real crash on `main`, found by `tests/test_scripted_advance.py` sampling
+    the raw action space: a `move_type` index reaching the movement phase fell
+    through to `decode_action`, which read it as `action - 1` into the angle
+    table and raised `IndexError: index 24 is out of bounds for axis 0 with size
+    16`. It fired on roughly 1 run in 8 because it needs an unmasked sample to
+    land in a 2-action slice.
+
+    Every phase-valid mask forbids this, which is why no policy hit it -- but
+    `apply` deliberately does not trust the mask for the shooting slice, and had
+    no reason to trust it here either. A declaration carries no displacement, so
+    outside the phase it is declared in it is simply nothing.
+    """
+    # Arrange
+    handler = _handler(3)
+    move_type = handler.move_type_slice
+    assert move_type is not None
+    models = [
+        WargameModel(
+            location=np.array([10.0 + index, 10.0]),
+            stats={"toughness": 3, "save": 4, "max_wounds": 1, "current_wounds": 1},
+            distances_to_objectives=np.zeros(1),
+            group_id=0,
+            base_radius=0.0,
+        )
+        for index in range(4)
+    ]
+    before = [model.location.copy() for model in models]
+
+    # Act
+    handler.apply(
+        WargameEnvAction(actions=[move_type.start] * len(models)),
+        models,
+        60,
+        44,
+        handler.action_space,
+        phase=BattlePhase.movement,
+        enemy_models=[],
+    )
+
+    # Assert
+    for start, model in zip(before, models):
+        np.testing.assert_array_equal(start, model.location)

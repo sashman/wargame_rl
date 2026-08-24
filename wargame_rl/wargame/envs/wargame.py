@@ -17,8 +17,13 @@ from wargame_rl.wargame.envs.domain.battle_factory import (
 )
 from wargame_rl.wargame.envs.domain.battle_factory import unit_count
 from wargame_rl.wargame.envs.domain.coherency_enforcement import apply_attrition
+from wargame_rl.wargame.envs.domain.consolidate import consolidate_objective
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
-from wargame_rl.wargame.envs.domain.fight import PairedFightResult, resolve_fight
+from wargame_rl.wargame.envs.domain.fight import (
+    PairedFightResult,
+    fight_eligible_units,
+    resolve_fight,
+)
 from wargame_rl.wargame.envs.domain.game_clock import GameClock
 from wargame_rl.wargame.envs.domain.placement import install_layout, place_for_episode
 from wargame_rl.wargame.envs.domain.rules_quantities import (
@@ -721,6 +726,22 @@ class WargameEnv(gym.Env):
             if state.active_player == self._player_side
             else [opponent_side, player_side]
         )
+        # Captured BEFORE anybody swings. `12-fight-phase.md` makes a unit
+        # eligible if it "was engaged at the start of this step", and the
+        # consolidate step then keys on "was eligible to fight this phase" --
+        # both of which are false of a unit whose only contact the first side to
+        # fight has already killed.
+        eligible = {
+            is_player: set(
+                fight_eligible_units(
+                    attackers,
+                    defenders,
+                    engagement_range=engagement_range,
+                    base_diameter=base_diameter,
+                )
+            )
+            for attackers, defenders, _weapons, is_player in order
+        }
         for attackers, defenders, weapons, is_player in order:
             results = resolve_fight(
                 attackers,
@@ -734,6 +755,58 @@ class WargameEnv(gym.Env):
                 self._last_player_fight_results.extend(results)
             else:
                 self._last_opponent_fight_results.extend(results)
+        # The rules' own order: pile-in, fight, THEN consolidate, with every
+        # unit fighting before any unit consolidates.
+        for attackers, defenders, _weapons, is_player in order:
+            self._consolidate(attackers, defenders, eligible[is_player])
+        # ⚠ Cleared for BOTH forces, here rather than in `begin_turn`. Both
+        # sides fight on the active player's boundary, and only the active
+        # player can have charged this turn -- but `begin_turn` clears the side
+        # whose turn is starting, so the opposing force's flag would survive
+        # into the next turn's fight and buy it a priority it did not earn.
+        for models in (self.wargame_models, self.opponent_models):
+            for model in models:
+                model.charged_this_turn = False
+
+    def _consolidate(
+        self,
+        models: list[WargameModel],
+        enemy_models: list[WargameModel],
+        eligible_units: set[int],
+    ) -> None:
+        """Run the consolidate step in Objective mode for one force.
+
+        ⚠ **Expect this to fire almost never, and that is the rule rather than a
+        limitation of the implementation.** The three modes are assessed in order
+        and the first match is compulsory, so a unit still in contact is in
+        Ongoing mode and a unit with any enemy within 3" is in Engaging mode --
+        neither of which reaches Objective. See `domain/consolidate.py` for what
+        is deferred and why.
+        """
+        consolidate_objective(
+            models,
+            enemy_models,
+            self.objectives,
+            eligible_units=eligible_units,
+            # Reads the board live, and through `compute_distances` -- so "in
+            # range of an objective" here is the same test scoring uses, rather
+            # than a fourth copy of it.
+            objective_offsets=lambda: (
+                compute_distances(models, self.objectives).model_obj_norms_offset
+            ),
+            max_distance=self._rules_quantities.scale.to_units(
+                self.config.melee.consolidate_distance
+            ),
+            engagement_range=self._rules_quantities.engagement_range,
+            base_radius=self._rules_quantities.base_radius,
+            board=(float(self.board_width), float(self.board_height)),
+            coherency_nearest=self._rules_quantities.scale.to_units(
+                self.config.coherency.nearest_distance
+            ),
+            coherency_furthest=self._rules_quantities.scale.to_units(
+                self.config.coherency.furthest_distance
+            ),
+        )
 
     def _regain_coherency(self, state: GameState) -> None:
         """Apply `03-moving.md` § Regaining coherency to the active player's force.

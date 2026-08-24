@@ -76,6 +76,13 @@ class WargameModel:
         # This model's UNIT's 2D6 charge roll for the turn, in inches. 0 outside
         # a charge phase and whenever the scenario does not fight in melee.
         self.charge_roll: float = 0.0
+        # Whether this model's UNIT made a charge move this turn -- the v1
+        # stand-in for Strikes First, which the rules grant to a charging unit
+        # (`docs/rules/16-ability-reference.md`). Read by `resolve_fight` to put
+        # chargers at the front of the order, and cleared as soon as the fight
+        # it governs has resolved, so it can never survive into the opposing
+        # player's turn.
+        self.charged_this_turn: bool = False
 
     def set_previous_closest_objective_distance(self, distance: float) -> None:
         self.previous_closest_objective_distance = distance
@@ -95,6 +102,7 @@ class WargameModel:
         self.declared_advance = False
         self.fell_back_this_turn = False
         self.charge_roll = 0.0
+        self.charged_this_turn = False
 
     def begin_turn(self) -> None:
         """Clear the per-TURN move state before this side moves again.
@@ -109,6 +117,7 @@ class WargameModel:
         self.declared_advance = False
         self.fell_back_this_turn = False
         self.charge_roll = 0.0
+        self.charged_this_turn = False
 
     @property
     def is_alive(self) -> bool:

@@ -865,6 +865,11 @@ class ActionHandler:
                 if int(model.group_id) == group and model.is_alive
             ]
             if self._charge_is_legal(wargame_models, members, alive_enemies):
+                # Only a charge that STOOD earns the fight-order priority. A
+                # reverted charge did not happen, so a unit that rolled short
+                # and snapped back must not strike first for having tried.
+                for index in members:
+                    wargame_models[index].charged_this_turn = True
                 continue
             for index in members:
                 wargame_models[index].location = np.array(
@@ -904,6 +909,25 @@ class ActionHandler:
             furthest_distance=self._coherency_furthest,
         )
         return bool(report.all_coherent)
+
+    def _is_displacement_action(self, action: int) -> bool:
+        """Does this index mean a MOVE, rather than a declaration or a shot?
+
+        ⚠ **Allow-list, not a deny-list, and that is the whole point.** This
+        guarded only the shooting slice and let everything else through to
+        `decode_action`, which reads an unrecognised index as `action - 1` into
+        the angle table -- so the `move_type` declaration, registered last,
+        crashed with `IndexError` whenever an unmasked sample put it in the
+        movement phase. Every phase mask forbids that, and `apply` deliberately
+        does not trust the mask; a deny-list has to be extended by whoever adds
+        the next slice, and the next slice will be `fall_back` or `charge`.
+        """
+        if action == STAY_ACTION:
+            return True
+        if action <= self._n_move_actions:
+            return True
+        advance = self._advance_slice
+        return advance is not None and advance.start <= action < advance.end
 
     def _engaged_before_moving(
         self,
@@ -1060,10 +1084,7 @@ class ActionHandler:
                 )
             if not self._displaces_in(phase):
                 continue
-            if (
-                self._shooting_slice is not None
-                and self._shooting_slice.start <= act < self._shooting_slice.end
-            ):
+            if not self._is_displacement_action(act):
                 continue
             model.previous_location = model.location.copy()
             displacement = self.decode_action(

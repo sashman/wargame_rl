@@ -11,10 +11,15 @@ What it reuses from `domain/shooting.py` is everything that is not ranged:
 cover — `12-fight-phase.md` grants none.
 
 ⚠ **Order is FIXED in v1: chargers first, then the rest, active player before
-the opposing one within each.** The rules alternate activation between players
-and return to the Strikes First sub-step whenever a new Strikes First unit
-becomes eligible; that needs a per-unit sequencing decision, which needs its own
-action space. Recorded as `DEFERRED: fight.alternating_activation`.
+the opposing one within each.** Charging units going first is the whole of what
+v1 implements of Strikes First — the rules grant the ability to a charging unit
+and then alternate activation between the players, returning to the Strikes
+First sub-step whenever a new Strikes First unit becomes eligible. That needs a
+per-unit sequencing decision, which needs its own action space. Recorded as
+`DEFERRED: fight.alternating_activation`.
+
+⚠ **`charged_this_turn` is set only by a charge that STOOD.** A charge that ends
+illegally is reverted whole and did not happen, so it earns no priority.
 
 ⚠ **A unit whose targets all died simply does not fight.** The rules would let
 it *pass* and wait for an enemy pile-in to bring something into reach; with no
@@ -130,6 +135,25 @@ def fight_eligible_units(
     return units
 
 
+def _fight_order(
+    attackers: list[WargameModel], units: dict[int, list[int]]
+) -> list[tuple[int, list[int]]]:
+    """Charging units first, then the rest, each in group order.
+
+    A unit counts as charging when ANY of its models does: the flag is written
+    per model but the charge is a unit action, so a squad that has since lost
+    the model carrying it has still charged.
+    """
+
+    def charged(members: list[int]) -> bool:
+        return any(attackers[index].charged_this_turn for index in members)
+
+    ordered = sorted(units.items())
+    return [entry for entry in ordered if charged(entry[1])] + [
+        entry for entry in ordered if not charged(entry[1])
+    ]
+
+
 def resolve_fight(
     attackers: list[WargameModel],
     defenders: list[WargameModel],
@@ -141,9 +165,10 @@ def resolve_fight(
 ) -> list[PairedFightResult]:
     """Every engaged attacking model strikes the unit it is in contact with.
 
-    Units resolve one at a time in group order, and models within a unit in
-    index order — the same determinism `resolve_shooting_phase` relies on, so a
-    seeded episode reproduces.
+    Units resolve one at a time — **units that charged this turn first**, then
+    the rest, each in group order, and models within a unit in index order. That
+    is the same determinism `resolve_shooting_phase` relies on, so a seeded
+    episode reproduces.
     """
     results: list[PairedFightResult] = []
     if not attackers or not defenders:
@@ -163,7 +188,7 @@ def resolve_fight(
         engagement_range=engagement_range,
         base_diameter=base_diameter,
     )
-    for _group, member_indices in sorted(units.items()):
+    for _group, member_indices in _fight_order(attackers, units):
         for attacker_idx in member_indices:
             attacker = attackers[attacker_idx]
             if not attacker.is_alive:

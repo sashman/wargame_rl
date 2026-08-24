@@ -41,6 +41,18 @@ class MeleeConfig(BaseModel):
             "when `enabled`."
         ),
     )
+    consolidate_distance: float = Field(
+        default=3.0,
+        gt=0,
+        description=(
+            "How far, in inches, a unit that fought may consolidate afterwards "
+            "(docs/rules/12-fight-phase.md). Only the Objective mode is "
+            "implemented, and it is the LAST of three ordered compulsory modes, "
+            "so it fires only for a unit that ends the fight engaged with "
+            "nobody and with no enemy within this distance. Read only when "
+            "`enabled`."
+        ),
+    )
     enabled: bool = Field(
         default=False,
         description=(

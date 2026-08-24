@@ -11,7 +11,11 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from wargame_rl.wargame.envs.domain.fight import PairedFightResult, resolve_fight
+from wargame_rl.wargame.envs.domain.fight import (
+    PairedFightResult,
+    _fight_order,
+    resolve_fight,
+)
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.types.config import MeleeConfig, MeleeWeaponProfile
@@ -20,9 +24,20 @@ from wargame_rl.wargame.envs.types.config.entities import ModelConfig
 from wargame_rl.wargame.envs.types.config.env import WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.model.common.factory import create_environment
 
 LETHAL = MeleeWeaponProfile(attacks=6, melee_skill=2, strength=10, ap=6, damage=1)
+
+
+def _model(x: float, group: int = 0) -> WargameModel:
+    return WargameModel(
+        location=np.array([x, 10.0]),
+        stats={"toughness": 3, "save": 4, "max_wounds": 1, "current_wounds": 1},
+        distances_to_objectives=np.zeros(1),
+        group_id=group,
+        base_radius=0.0,
+    )
 
 
 def _env(*, melee: bool, weapons: bool = True, skip_fight: bool = False) -> WargameEnv:
@@ -177,3 +192,35 @@ def test_skipping_the_fight_phase_costs_no_agent_step() -> None:
     stepped = _env(melee=True, skip_fight=False).max_turns
     skipped = _env(melee=True, skip_fight=True).max_turns
     assert skipped < stepped
+
+
+def test_a_charging_unit_strikes_before_a_unit_that_did_not_charge() -> None:
+    """Chargers first is the whole of what v1 implements of Strikes First.
+
+    ⚠ This was asserted in `domain/fight.py`'s docstring before it was true —
+    the loop sorted by group id and nothing read a charge flag at all. The claim
+    is now tested rather than stated.
+    """
+    # Arrange: unit 1 charged, unit 0 did not, and group order alone would put
+    # unit 0 first.
+    attackers = [_model(10.0, group=0), _model(10.0, group=1)]
+    for model in attackers:
+        model.charged_this_turn = model.group_id == 1
+
+    # Act
+    order = _fight_order(attackers, {0: [0], 1: [1]})
+
+    # Assert
+    assert [group for group, _members in order] == [1, 0]
+
+
+def test_a_charge_that_was_reverted_earns_no_priority() -> None:
+    """The control: without the flag, group order stands."""
+    # Arrange
+    attackers = [_model(10.0, group=0), _model(10.0, group=1)]
+
+    # Act
+    order = _fight_order(attackers, {0: [0], 1: [1]})
+
+    # Assert
+    assert [group for group, _members in order] == [0, 1]
