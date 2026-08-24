@@ -355,6 +355,12 @@ the matchup it is already worst at; spend the GPU elsewhere.
 
 ### Where the agent stands
 
+⚠ **STALE — re-measured 2026-08-24 and the `squad_march_take` row moved 13.2 vp**
+(agent +25.1 → **+19.4**, best script −1.1 → **+6.5**, gap +26.1 → **+13.0**). The
+`advance_and_shoot` row reproduced to 1.6 vp, so the instrument is sound and the
+movement changes of 2026-08-23 are what moved it. The other three rows were not
+re-measured. **Re-measure before comparing a new arm against any of this.**
+
 **Six seeds** of the documented recipe (`configs/golden/25v25_maps_two_mode.yaml`,
 `ent_coef` 0.003, 300 epochs, `just train-coherency-baseline`), held-out nine,
 n=30, verified top-3 decode, **refereed** eval configs, scripts re-measured per
@@ -1305,6 +1311,28 @@ project's effort has gone, and the shape of the problem is now settled.
   verified to catch a one-ULP change. See
   [docs/training-throughput.md](docs/training-throughput.md).
 
+### Five rounds is not a training scenario, and the offence deficit is not the clock
+
+Measured 2026-08-24, no GPU, six seeds x four scripts x two opponents x two horizons,
+[report](reports/2026-08-24-five-rounds-does-not-rescue-the-agent.md). Pre-registered
+before the numbers existed; the verdict against its own criteria is **MIXED**.
+
+- **`held` is nearly horizon-invariant.** Quarter the game and the agent goes 1.98 →
+  1.80 and 2.03 → 2.14 while the scripts go 2.46 → 2.61 and 3.84 → 3.51. The shortfall
+  is **−0.81 ± 0.04** and **−1.15 ± 0.11**, behind on **0 of 9** on both opponents. The
+  agent is not failing to *arrive*; it fails to spread just as badly when spreading is a
+  four-round problem. **The critic-probe conclusion needs no horizon caveat.**
+- **Shortening the game makes the agent WORSE where it currently wins**: +13.0 ahead on
+  7/9 against `squad_march_take` at twenty rounds, **−5.8 behind on 0/9** at five. Its
+  edge is denial and denial accrues per scoring event.
+- ⚠ **DECISIVE: five rounds cannot tell six trained agents apart.** True between-seed
+  policy spread collapses **12.27 → 0.72** and **23.70 → 0.75** while measurement noise
+  falls only 4.7x — so more episodes cannot buy it back. **Do not train there.**
+  `hold_deployment` separating from a marcher showed the horizon separates a *degenerate*
+  policy from a competent one; it does not follow that it separates two competent ones.
+- ⚠ **Raw vp is NOT comparable across horizons** (per-episode sd 61.7 → 12.6). Quote it
+  within a horizon, or normalised.
+
 ### The other scenarios
 
 `25v25_maps_two_mode` and `25v25_maps_coherency` draw from the eval tables;
@@ -1362,7 +1390,11 @@ Re-measure rather than carry a figure across one.
 - **2026-08-23 — the scripts learned to Advance, and a move must end unengaged.**
   The scripted bar moved **+1.3 to +32.6 vp** (4 of 4) and the movement rule changed
   on every config, so every scripted-bar figure on an advance config and every agent
-  score compared against one is void. Three goldens were regenerated deliberately;
+  score compared against one is void. ⚠ **This under-scopes itself, and the
+  counter-example is measured**: the endpoint rule is global, and on the
+  *non-advance* `take_opponent_refereed` config the scripts moved **+7.6 vp** and the
+  published agent gap **halved** (+26.1 → +13.0). Treat every 2026-08-21 row as stale
+  until re-measured. See [the report](reports/2026-08-24-five-rounds-does-not-rescue-the-agent.md). Three goldens were regenerated deliberately;
   the other three are byte-identical, which is the check that the movement change is
   targeted rather than global.
 - **2026-08-20 — the eval tables were regenerated**, and 2026-08-21 they were
