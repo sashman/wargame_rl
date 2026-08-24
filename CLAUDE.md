@@ -767,6 +767,46 @@ but it is a change, so re-measure rather than carry a figure across it.
 nets 8.68 → 10.00 ms per round. A 2048-step epoch is 9.5 s → 7.5 s but covers a
 third fewer rounds.
 
+### Carrying the advance lever is free; USING it is what costs
+
+Measured 2026-08-24, three seeds, 300 epochs, **paired**,
+[report](reports/2026-08-24-carrying-the-lever-is-free-using-it-is-not.md).
+`25v25_maps_advance` against `..._advance_dark` — identical but for
+`dark_action_slices`, so both are 152 actions with a bit-identical init.
+
+| seed | advance | dark | paired | usage | forbid-at-play |
+|---|---|---|---|---|---|
+| s1 | +32.3 | +19.8 | **+12.5** | **0.0%** | +31.2 (−1.1) |
+| s2 | −18.2 | −8.4 | **−9.8** | **10.9%** | **+8.1 (+26.3)** |
+| s3 | +19.9 | +15.9 | **+4.0** | **0.6%** | +22.6 (+2.7) |
+
+- **Paired +2.2 ± 6.5, t=+0.34, signs flipping.** The old encoding cost **−26.7**
+  and never flipped. **Pre-registered verdict: FAIL** — 2 of 3 seeds cleared the
+  −8 bound.
+- ⚠ **THE ACCEPT CRITERION COULD NOT HAVE PASSED RELIABLY.** Per-seed paired sd is
+  **11.3**, so a lever costing *exactly zero* lands a seed below −8 on 23.9% of
+  tries and fails "−8 on 3/3" **56% of the time**. The bound was tighter than the
+  estimator's own noise. Recorded as a defect in the rule, **not** as grounds to
+  overturn the verdict. **Power-check a per-seed bound against the expected spread
+  before writing it down.**
+- **The cost is in USING it, tested not inferred.** Usage and score order perfectly
+  (0.0/0.6/10.9% against +12.5/+4.0/−9.8), and that ordering was *not*
+  pre-registered — so it was checked by forbidding advance at PLAY on the same
+  weights (the dark config shares the 152-action shape). Prediction written first,
+  **confirmed 3/3**: the advancing seed recovers **+26.3**, the declining seeds move
+  −1.1 and +2.7.
+- **Two of three seeds learned to decline it entirely** — s1 chose **0 advances in
+  7,227 unit-turns**. ⚠ Verified this is refusal and not a mask: all 25 alive models
+  are offered the declaration in every command phase.
+- ⚠ **The result MIXES converged and unconverged runs.** s2's usage across its last
+  50 epochs is **7.9% → 4.8% → 7.8%** — oscillating, not decaying. Nearly all the
+  noise in ±6.5 is that one seed; the other two agree at +12.5 and +4.0.
+- **NEW DIAGNOSTIC: lever usage is a convergence signal.** When the right answer is
+  "rarely", a lever whose usage is still oscillating means the run has not settled,
+  whatever the reward curve says. One inference run at two checkpoints. It would
+  have flagged s2 as not-comparable before it entered the average, and it
+  generalises to every move type the rules add.
+
 ### Offence is not reward-shapeable here — three arms, one conclusion
 
 Measured 2026-08-22, [report](reports/2026-08-22-the-agent-is-never-paid-to-attack.md).
@@ -984,6 +1024,15 @@ paid for.
 - **Screening arms by their newest top-k checkpoint compares different epochs** —
   `ppo-NNN-*.ckpt` records the last epoch whose *training reward* improved, which
   differs per arm. Matching a comparison to `last.ckpt` once **reversed a ranking**.
+- ⚠ **`--resume-ckpt-path` was BROKEN for every checkpoint this repo writes, and
+  failed SILENTLY** (fixed 2026-08-24). Torch 2.6 flipped `torch.load`'s
+  `weights_only` default to True; a checkpoint pickles the whole `WargameEnv` as a
+  Lightning hparam, so Lightning's restore raised `UnpicklingError: Unsupported
+  global ... WargameEnv`. Every run died in ~6 seconds **and the launcher exited 0**,
+  printing its per-seed "done" lines — the same shape as `train-arm`'s silent
+  failure. Caught only by checking process count and GPU memory. **Never read a
+  launcher's exit code as evidence a run happened**; check `ps`, the GPU, and that
+  checkpoints advanced.
 - ⚠ **Score a killed run from its highest `ppo-NNN-*.ckpt`, not `last.ckpt`.**
   `PeriodicLastCheckpoint` writes every 25 epochs, at `on_train_end` and on
   `KeyboardInterrupt` — but **`SIGKILL` triggers none of those**, and SIGKILL is
