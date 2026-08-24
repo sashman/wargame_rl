@@ -72,18 +72,41 @@ def _displacement_table(env: WargameEnv) -> np.ndarray:
     combinations nobody can make. Every row is identical when the army is
     uniformly fast, which is every config shipped today.
 
-    Only the stay and movement slices are decodable — `decode_action` indexes the
-    displacement grid directly and raises on a shooting-slice action — so the
-    table is built over those and zero-padded to the full width. A shooting
-    action displaces nothing, which is what the zeros say.
+    Every slice that DISPLACES is built; the rest stay zero because they really
+    do displace nobody — a shooting action names a target and a `move_type`
+    action declares one.
+
+    ⚠ The advance slice is built here too, and for a long time it was not. The
+    loop ran over `1 + n_move_actions`, which is stay plus the movement slice
+    only, and the advance slice is registered *after* shooting — so every
+    advance action was modelled as a **zero displacement** while `env.step`
+    applied a real 8-12". That did not merely mis-score advances, it reversed
+    the decoder's opinion of them: `ends == positions` makes `_coherent_mask`
+    return True whenever the unit is *already* coherent, so advance combinations
+    were certified legal at ~90% against a true rate near 68%, and among legal
+    candidates the highest log-prob wins. Measured on the shipped table, the
+    executed advance share was inflated 1.32-1.43x. `verify_moves` could not
+    catch it because `_resolve_endpoints` is handed this same array.
+
+    `advance_roll` must be passed per model: the rung is absolute but
+    `decode_action` clamps it to `M + roll`, so a table built with the default
+    roll of 0 would model every advance as a normal move instead.
     """
     handler = env.player_action_handler
-    n_models = len(env.player_models)
-    table = np.zeros((n_models, handler.n_actions, 2), dtype=float)
-    for model_idx in range(n_models):
+    models = env.player_models
+    table = np.zeros((len(models), handler.n_actions, 2), dtype=float)
+    advance = handler.advance_slice
+    for model_idx, model in enumerate(models):
+        roll = float(getattr(model, "advance_roll", 0.0))
         for action in range(1 + handler.n_move_actions):
             table[model_idx, action] = handler.decode_action(
                 action, model_idx=model_idx
+            )
+        if advance is None:
+            continue
+        for action in range(advance.start, advance.end):
+            table[model_idx, action] = handler.decode_action(
+                action, model_idx=model_idx, advance_roll=roll
             )
     return table
 
