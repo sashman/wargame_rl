@@ -283,6 +283,12 @@ class WargameEnv(gym.Env):
         # once here rather than on every shooting phase.
         self._exposure_tracker = ExposureTracker()
         self._coherency_tracker = CoherencyTracker()
+        # The opponent force keeps its own totals. A rated leg reports the seat
+        # it played, and `evaluate_selector` only ever measures the player's --
+        # so an entrant seated only as B came back with no coherency figure at
+        # all, which is a score quoted without the claim that the moves earning
+        # it were legal.
+        self._opponent_coherency_tracker = CoherencyTracker()
         self._opponent_max_ranges = max_weapon_ranges(
             config.opponent_models, config.number_of_opponent_models
         )
@@ -529,6 +535,32 @@ class WargameEnv(gym.Env):
         return self._coherency_tracker.models_out_of_coherency
 
     @property
+    def opponent_coherency_rate(self) -> float | None:
+        """The same as `coherency_rate`, for the opponent force."""
+        return self._opponent_coherency_tracker.coherency_rate
+
+    @property
+    def opponent_models_out_of_coherency(self) -> float | None:
+        """Mean opponent models outside their unit's coherent body, per phase."""
+        return self._opponent_coherency_tracker.models_out_of_coherency
+
+    @property
+    def opponent_intended_coherency_rate(self) -> float | None:
+        """What the OPPONENT's policy intended, before the referee edited it.
+
+        The number a rated leg reports for entrant B, and the counterpart of
+        `intended_coherency_rate`. On a symmetric scenario with the same policy
+        on both seats the two agree within noise, which is what
+        `test_both_forces_report_their_own_coherency` asserts.
+        """
+        return self._opponent_coherency_tracker.intended_coherency_rate
+
+    @property
+    def opponent_intended_models_out_of_coherency(self) -> float | None:
+        """Mean opponent models the POLICY put outside their unit, per phase."""
+        return self._opponent_coherency_tracker.intended_models_out_of_coherency
+
+    @property
     def intended_coherency_rate(self) -> float | None:
         """Share of unit-samples the POLICY put in coherency, before the revert.
 
@@ -698,24 +730,43 @@ class WargameEnv(gym.Env):
             self._attrition_deaths_opponent += len(destroyed)
 
     def _record_coherency(self) -> None:
-        """Fold the player's formation into the episode's coherency totals.
+        """Fold the player's formation into the episode's coherency totals."""
+        self._record_force_coherency(
+            self._coherency_tracker, self._action_handler, self.wargame_models
+        )
+
+    def _record_opponent_coherency(self) -> None:
+        """The same, for the opponent force.
+
+        Costs one `evaluate_coherency` per opponent movement phase. It is
+        unconditional for the same reason the player's is: a score without a
+        coherency column reads as compliance and is not, and the seat an entrant
+        happened to be given is no reason to drop the column.
+        """
+        self._record_force_coherency(
+            self._opponent_coherency_tracker,
+            self._opponent_action_handler,
+            self.opponent_models,
+        )
+
+    def _record_force_coherency(
+        self,
+        tracker: CoherencyTracker,
+        handler: ActionHandler,
+        models: list[WargameModel],
+    ) -> None:
+        """Fold one force's formation into its own totals.
 
         Records BOTH the board after enforcement and the move the policy
         proposed before it. Under `enforce_move` those are different questions
         and only the second says anything about the policy.
         """
-        self._coherency_tracker.record_intent(
-            self._action_handler.intended_coherency_last_move
-        )
-        self._coherency_tracker.record(
-            positions=np.array([m.location for m in self.wargame_models], dtype=float),
-            group_ids=np.array(
-                [m.group_id for m in self.wargame_models], dtype=np.intp
-            ),
-            alive_mask=alive_mask_for(self.wargame_models),
-            base_radii=np.array(
-                [m.base_radius for m in self.wargame_models], dtype=float
-            ),
+        tracker.record_intent(handler.intended_coherency_last_move)
+        tracker.record(
+            positions=np.array([m.location for m in models], dtype=float),
+            group_ids=np.array([m.group_id for m in models], dtype=np.intp),
+            alive_mask=alive_mask_for(models),
+            base_radii=np.array([m.base_radius for m in models], dtype=float),
             nearest_distance=self._rules_quantities.scale.to_units(
                 self.config.coherency.nearest_distance
             ),
@@ -900,6 +951,7 @@ class WargameEnv(gym.Env):
         self.episode_reward = 0.0
         self._exposure_tracker.reset()
         self._coherency_tracker.reset()
+        self._opponent_coherency_tracker.reset()
 
         self._battle.reset_for_episode()
         self.phase_manager.reset_episode()
@@ -1148,6 +1200,8 @@ class WargameEnv(gym.Env):
                 phase=phase,
                 enemy_models=self.wargame_models,
             )
+            if phase == BattlePhase.movement:
+                self._record_opponent_coherency()
 
     def _initial_player_side(self) -> PlayerSide:
         """Deterministic side assignment used at __init__ time."""

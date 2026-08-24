@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import time
 from contextlib import nullcontext
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import gymnasium as gym
@@ -19,6 +20,7 @@ from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.lightning_base import WargameLightningBase
 from wargame_rl.wargame.model.common.observation import observations_to_tensor_batch
+from wargame_rl.wargame.model.common.self_play import OpponentScheduler, SelfPlayConfig
 from wargame_rl.wargame.model.ppo.agent import Agent
 from wargame_rl.wargame.types import Experience
 
@@ -139,6 +141,9 @@ class PPOLightning(WargameLightningBase):
         n_episodes: int = 10,
         eval_every_n_epochs: int = 1,
         show_inner_progress: bool = True,
+        self_play: SelfPlayConfig | None = None,
+        snapshot_dir: Path | None = None,
+        seed: int = 0,
         **kwargs: Any,
     ) -> None:
         """Initialize PPO Lightning Module.
@@ -164,6 +169,16 @@ class PPOLightning(WargameLightningBase):
             eval_every_n_epochs: Evaluate every Nth epoch instead of every one.
                 Single-phase configs only; raises on a curriculum config.
             show_inner_progress: Whether to show tqdm for rollout and PPO minibatch updates
+            self_play: Pool-and-PFSP settings. `None` or disabled means the
+                opponent is whatever the env config names, and **no scheduler
+                is constructed at all** -- so no stream is drawn from and the
+                run is bit-identical to one on a config with no self-play
+                block. Deliberately not opt-out; see
+                `model/common/self_play.py`.
+            snapshot_dir: Where frozen opponents are written. Required when
+                self-play is enabled.
+            seed: The run seed, used only to offset the opponent stream into
+                its own band so it cannot perturb layouts or dice.
         """
         super().__init__(
             env=env,
@@ -204,6 +219,18 @@ class PPOLightning(WargameLightningBase):
                 f"{self.hparams.get('num_rollout_envs')}). The serial path cannot "
                 "apply the start-state augmentation, so this run would silently "
                 "train the un-augmented control. Set num_rollout_envs > 1."
+            )
+        # Constructed only when self-play is enabled. The `None` is what makes
+        # "off changes nothing" checkable by reading rather than by measuring:
+        # there is no object to draw a random number from.
+        self._opponent_scheduler: OpponentScheduler | None = None
+        if self_play is not None and self_play.enabled:
+            if snapshot_dir is None:
+                raise ValueError(
+                    "self-play needs a snapshot_dir to freeze opponents into"
+                )
+            self._opponent_scheduler = OpponentScheduler(
+                self_play, snapshot_dir, seed=seed
             )
         # Built once, on first use, and kept for the whole run. See
         # _ensure_rollout_envs for why rebuilding them per step was a bug.
@@ -638,6 +665,54 @@ class PPOLightning(WargameLightningBase):
             self._rollout_obs.append(observation)
         self._rollout_envs = envs
         return envs
+
+    def on_train_epoch_start(self) -> None:
+        """Draw this epoch's opponents, one per rollout env.
+
+        Nothing happens without a scheduler, and there is no scheduler unless
+        self-play is enabled -- so a control run does not reach this branch and
+        cannot draw from any stream.
+
+        Per epoch rather than per episode, because seating a `model` opponent
+        loads a checkpoint and sizes a network; per episode would pay that on
+        every reset. Per env rather than per run, so one epoch's batch spans the
+        pool instead of betting on a single draw.
+        """
+        if self._opponent_scheduler is None:
+            return
+        drawn = self._opponent_scheduler.seat(self._ensure_rollout_envs())
+        self.log(
+            "self_play/pool_size",
+            float(len(self._opponent_scheduler.pool.entries)),
+            logger=True,
+        )
+        self.log(
+            "self_play/mean_opponent_epoch",
+            float(np.mean([entry.epoch for entry in drawn])),
+            logger=True,
+        )
+
+    def on_train_epoch_end(self) -> None:
+        """Freeze the learner into the pool on a snapshot epoch.
+
+        ⚠ A Lightning hook, so **`SIGKILL` writes nothing** -- and SIGKILL is
+        the prescribed way to stop these trainers. A pool is routinely up to
+        `snapshot_every_n_epochs` behind the run that produced it, exactly as
+        `last.ckpt` is up to 25 epochs stale for the same reason.
+        """
+        if self._opponent_scheduler is None:
+            return
+        if self._opponent_scheduler.should_snapshot(self.current_epoch):
+            # `self.state_dict()`, not `self.ppo_model.state_dict()`. A snapshot
+            # is read back by `NetworkOpponentPolicy`, which goes through
+            # `convert_state_dict` -- and that looks for `policy_net.` or
+            # `ppo_model.policy_network.`, the prefixes a real Lightning
+            # checkpoint carries. Saving the inner module gives bare
+            # `policy_network.` keys and raises on load. It raised loudly here
+            # only because this path loads STRICT; `_apply_warm_start_weights`
+            # uses `strict=False`, where the same mistake loads *nothing* and
+            # reports a warm start.
+            self._opponent_scheduler.snapshot(self.current_epoch, self.state_dict())
 
     def on_train_start(self) -> None:
         """Record the resolved rollout-env count before the first epoch.

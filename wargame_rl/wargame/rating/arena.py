@@ -56,6 +56,9 @@ class LegResult:
     wins: tuple[float, ...]
     objectives_held: tuple[float, ...]
     coherency_rate: float | None
+    # Defaulted so a hand-built LegResult in a test stays valid, as the
+    # per-episode columns on `BaselineResult` are.
+    opponent_coherency_rate: float | None = None
 
 
 class AsymmetricScenarioError(ValueError):
@@ -152,8 +155,11 @@ def play_leg(
         ),
         # Carried because a `vp_margin` on its own is a result plus an unstated
         # claim that the moves earning it were legal, and only this column
-        # carries the claim.
+        # carries the claim. **Both seats**, so an entrant that never played the
+        # player seat still gets one -- `pairings` lists each pair once in input
+        # order, so the last-named entrant is B in every one of its pairings.
         coherency_rate=result.coherency_rate,
+        opponent_coherency_rate=result.opponent_coherency_rate,
     )
 
 

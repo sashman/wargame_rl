@@ -66,6 +66,10 @@ class RatingScenarioMismatch(ValueError):
     """A leg was played on a different scenario from the ledger's."""
 
 
+class RatingDecodeMismatch(ValueError):
+    """One name, two decodes -- which is two players wearing one label."""
+
+
 class LedgerEntrant(BaseModel):
     """Who played, and how their actions were decoded."""
 
@@ -75,7 +79,13 @@ class LedgerEntrant(BaseModel):
     kind: str
     source: str | None = None
     parent: str | None = None
+    # How the actions were chosen. `decode_topk` > 1 is joint constrained
+    # decoding, worth +40.5 vp on this project's own measurement -- so the same
+    # weights at K=1 and K=3 are not the same player and must not share a
+    # rating. `sampled` is the other axis: self-play rollouts draw from the
+    # policy rather than taking its argmax, which is a third player again.
     decode_topk: int = 1
+    sampled: bool = False
 
 
 class LegRecord(BaseModel):
@@ -93,6 +103,7 @@ class LegRecord(BaseModel):
     wins: list[float]
     objectives_held: list[float]
     coherency_rate: float | None = None
+    opponent_coherency_rate: float | None = None
     code_revision: str | None = None
     recorded_at: str
 
@@ -184,13 +195,16 @@ def append(
         entrant.name: entrant for entrant in (existing.entrants if existing else [])
     }  # type: ignore[misc]
     for entrant in entrants:
-        known[entrant.name] = LedgerEntrant(  # type: ignore[assignment]
+        record = LedgerEntrant(
             name=entrant.name,
             kind=entrant.kind,
             source=entrant.source,
             parent=entrant.parent,
             decode_topk=entrant.decode_topk,
+            sampled=entrant.sampled,
         )
+        _require_same_decode(known.get(entrant.name), record)  # type: ignore[arg-type]
+        known[entrant.name] = record  # type: ignore[assignment]
 
     ledger = Ledger(
         fingerprint=digest,
@@ -217,6 +231,7 @@ def leg_results(ledger: Ledger) -> list[LegResult]:
             wins=tuple(record.wins),
             objectives_held=tuple(record.objectives_held),
             coherency_rate=record.coherency_rate,
+            opponent_coherency_rate=record.opponent_coherency_rate,
         )
         for record in ledger.legs
     ]
@@ -234,8 +249,37 @@ def _record(leg: LegResult, revision: str | None, stamp: str) -> LegRecord:
         wins=list(leg.wins),
         objectives_held=list(leg.objectives_held),
         coherency_rate=leg.coherency_rate,
+        opponent_coherency_rate=leg.opponent_coherency_rate,
         code_revision=revision,
         recorded_at=stamp,
+    )
+
+
+def _require_same_decode(
+    existing: LedgerEntrant | None, arriving: LedgerEntrant
+) -> None:
+    """Refuse one name recorded under two decodes.
+
+    CLAUDE.md's standing rule is never to quote a score without saying how it
+    was decoded, and a rating is a score. The same weights at K=1 and K=3 differ
+    by **+40.5 vp** here, which is larger than any policy difference this repo
+    has ever measured -- so a table holding both under one name would rank the
+    decode and call it skill. Refused rather than warned about, in the same
+    class as mixing two scenarios.
+    """
+    if existing is None:
+        return
+    if (existing.decode_topk, existing.sampled) == (
+        arriving.decode_topk,
+        arriving.sampled,
+    ):
+        return
+    raise RatingDecodeMismatch(
+        f"entrant {arriving.name!r} is already in this ledger decoded at "
+        f"topk={existing.decode_topk} sampled={existing.sampled}, but these "
+        f"legs were played at topk={arriving.decode_topk} "
+        f"sampled={arriving.sampled}. Those are different players; give the "
+        f"second one its own name."
     )
 
 
