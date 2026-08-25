@@ -142,6 +142,40 @@ not a 2×2, and the resolvable n is computable from the per-episode sd before yo
 "Record it as noise" was the wrong remedy when the right one cost four CPU-minutes and would
 have caught the opponent-seat defect before this document was committed.
 
+## The shield ablation, run at last — and the standing prior does NOT reproduce
+
+n=60 per cell, paired on layouts, seeds 700000+, argmax, on the shipped melee config.
+The first run of this measurement ever possible, because `shield_engaged_targets` did not
+exist until the audit found requirement 1 unsatisfiable.
+
+| player \ opponent | walks | charges | | walks (no shield) | charges (no shield) |
+|---|---|---|---|---|---|
+| **walks** | −2.58 | −55.67 | | −2.58 | −26.58 |
+| **charges** | +19.58 | −3.42 | | +10.08 | −6.92 |
+
+| what charging is worth | shield ON | shield OFF |
+|---|---|---|
+| against a walking opponent | **+22.17 ± 11.50** (t=1.93, **31/60**) | +12.67 ± 11.79 (t=1.07, 33/60) |
+| against a charging opponent | **+52.25 ± 12.02** (t=4.35, 39/60) | +19.67 ± 12.94 (t=1.52, 33/60) |
+
+⚠ **RETRACTED: "the charge's value is ENTIRELY the shooting shield (+62.50 → −4.00 when
+ablated)."** That does not reproduce. Ablated, charging is still worth **+12.67 and +19.67**,
+not −4.00. The shield is roughly **half** the effect, not all of it. The prior was measured
+with a different script on pre-per-unit-gate code, and this project's own caution applies to
+it — six hand-rolled charging scripts spanned 14×.
+
+⚠ **My reasoning that the per-unit gate makes a charge MORE valuable was unjustified in
+direction, and remains unresolved.** The gate silences the *charger's* whole unit too, not
+only the target's. The two measurements are not comparable (different script, different
+code), so nothing here settles it.
+
+**The mechanic is worth about zero, confirmed at an independent n.** Both-walk **−2.58**
+against both-charge **−3.42**. All of the apparent value is the *unilateral* cell.
+
+⚠ **Read the sign counts, not the means.** `+22.17` sits on **31 of 60** — a coin flip — so
+that cell is **tail-driven and is not a robust effect**, exactly what the standing rule
+"quote a t AND a sign count" exists to catch. Only the +52.25 cell (39/60, t=4.35) has both.
+
 ## Two more defects the audit found in this document
 
 ⚠ **Requirement 1 was unsatisfiable.** `exclude_engaged_targets` was hardwired to
