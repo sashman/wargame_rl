@@ -201,6 +201,153 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
             )
         return decisions
 
+    # ⚠ **A bar that cannot use a core rule is not a bar**, and until this
+    # existed no scripted baseline and no scripted opponent could charge at all.
+    # That is the same failure this project already paid for on Advance: an
+    # agent trained with melee on would have been scored against a policy
+    # physically incapable of the mechanic under test, so the arm would have
+    # measured `baseline/policy.py`, not the agent.
+    #
+    # Off by default, so every baseline figure ever measured here is unchanged
+    # and a charging bar is opt-in and separately attributable.
+    #
+    # ⚠ **This is ONE heuristic and must never be reported as "the value of
+    # melee".** Six independently hand-rolled charging scripts produced +6.5,
+    # +48.0, +52.0, +59.2, +82.9 and +88.8 vp for nominally the same
+    # measurement — a 14x spread — because each measured its own rule. Quote the
+    # ablation and the 2x2, never one arm.
+    charge_when_it_lands: bool = False
+
+    def _charge_target(
+        self, models: list[WargameModel], member_indices: list[int], env: WargameEnv
+    ) -> tuple[int, int] | None:
+        """The (member, enemy) pair this squad would charge, or None.
+
+        The closest living pair, which is also the pair that decides whether the
+        charge reaches: the referee asks that the unit end engaged with exactly
+        one enemy unit, and the nearest member is the one that gets there first.
+        """
+        best: tuple[float, int, int] | None = None
+        for i in member_indices:
+            for j, enemy in enumerate(env.opponent_models):
+                if not enemy.is_alive:
+                    continue
+                gap = float(
+                    np.linalg.norm(
+                        np.asarray(enemy.location, dtype=float)
+                        - np.asarray(models[i].location, dtype=float)
+                    )
+                )
+                if best is None or gap < best[0]:
+                    best = (gap, i, j)
+        return None if best is None else (best[1], best[2])
+
+    def select_charge(
+        self, models: list[WargameModel], env: WargameEnv
+    ) -> WargameEnvAction:
+        """Charge as a rigid body when the squad can actually reach contact.
+
+        Three properties, each of them measured rather than assumed:
+
+        - **Rigid translation.** Every member takes the same action, so relative
+          positions — and therefore coherency — are preserved exactly. A
+          per-model greedy charge stretches the squad, and a stretched squad
+          both fails the coherency clause and clips a second enemy unit; both
+          revert the whole charge.
+        - **Only when it lands.** The step is sized to put the nearest member
+          just inside engagement range, and the squad declines unless a legal
+          rung covers it. This is the charge's analogue of `advance_to_arrive`:
+          control is a headcount at the scoring moment, so being nearer buys
+          nothing and being THERE buys everything.
+        - **The mask decides legality, not this rule.** `charge_legality`
+          already encodes eligibility (within declaration range, not already
+          engaged, has not advanced or fallen back) and the 2D6 cap. Recomputing
+          any of that here would be a second source of truth for the rules.
+
+        ⚠ A declined or failed charge costs nothing: this phase runs after
+        shooting, and the referee reverts an illegal charge to where the unit
+        began. So the rule can afford to try. What a SUCCESSFUL charge costs is
+        the next turn — an engaged unit cannot shoot, and cannot be shot at.
+        That second half is the whole of the charge's measured value.
+        """
+        actions = [STAY_ACTION] * len(models)
+        if not self.charge_when_it_lands or not env.config.melee.enabled:
+            return WargameEnvAction(actions=actions)
+        handler = env.player_action_handler
+        legality = env.player_charge_legality
+        movement = handler.movement_slice
+        speeds = handler.move_speeds
+        # Base to base, as the engagement predicate itself measures it.
+        contact = float(env.rules_quantities.engagement_range) + 2.0 * float(
+            env.rules_quantities.base_radius
+        )
+
+        for group_id in sorted({model.group_id for model in models}):
+            member_indices = [
+                i
+                for i, model in enumerate(models)
+                if model.group_id == group_id and model.is_alive
+            ]
+            # A unit with no legal rung is ineligible -- out of declaration
+            # range, already engaged, or it advanced or fell back this turn.
+            if not member_indices or not legality[member_indices].any():
+                continue
+            pair = self._charge_target(models, member_indices, env)
+            if pair is None:
+                continue
+            lead_index, enemy_index = pair
+            lead = np.asarray(
+                env.opponent_models[enemy_index].location, dtype=float
+            ) - np.asarray(models[lead_index].location, dtype=float)
+            gap = float(np.linalg.norm(lead))
+            # Capped by the squad's slowest member, as the march is: a member
+            # that cannot cover the shared step is left behind, and a stretched
+            # squad fails the coherency clause the referee applies to all of it.
+            # ⚠ **`min`, not `+`.** A charge is capped by the 2D6 (the mask) AND
+            # by the movement ladder, whose longest rung is the model's Move
+            # (`DEFERRED: charge.beyond_move_ladder`) -- the roll exceeds Move on
+            # 59.1% of declarations, so it is usually Move that binds. Reading
+            # this as `Move + roll`, the advance's rule, made the policy declare
+            # charges from twice the distance it could cover and measured
+            # **55.9%** of moved charges touching nobody.
+            move = float(min(speeds[i] for i in member_indices)) if speeds.size else 0.0
+            reach = min(move, float(models[lead_index].charge_roll))
+            # The shortest step that can make contact. Below it the charge
+            # cannot stand however the rungs fall, so the unit declines rather
+            # than spending a declaration on it.
+            if gap - contact > reach:
+                continue
+            # ⚠ **Aim THROUGH the enemy, not short of it**, and let its base
+            # stop the move. Enemy bases are blockers in `resolve_move`, so a
+            # step aimed at the enemy's own position comes to rest at base
+            # contact -- inside engagement range by construction.
+            #
+            # Aiming at `gap - contact/2` instead, the obvious reading of "stop
+            # just inside", measured **44.8%** of moved charges touching NOBODY:
+            # `best_action_toward` rounds DOWN to a rung, so the deliberate
+            # margin was spent on rounding, and anything the resolver deflected
+            # fell short. Letting the blocker decide removes that whole class.
+            needed = min(gap, reach)
+            if needed <= 0.0:
+                continue
+            action = handler.best_action_toward(
+                float(lead[0]),
+                float(lead[1]),
+                max_step_length=needed,
+                model_idx=lead_index,
+            )
+            offset = action - movement.start
+            if action == STAY_ACTION or offset < 0 or offset >= movement.size:
+                continue
+            # The mask is the authority. A rung this rule likes but the rules
+            # forbid is not a charge, and emitting it would put an illegal
+            # action past a policy that is meant to be a reference.
+            if not all(legality[i][offset] for i in member_indices):
+                continue
+            for i in member_indices:
+                actions[i] = action
+        return WargameEnvAction(actions=actions)
+
     def select_command(
         self, models: list[WargameModel], env: WargameEnv
     ) -> WargameEnvAction:
