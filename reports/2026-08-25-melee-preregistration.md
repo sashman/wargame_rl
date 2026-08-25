@@ -142,6 +142,45 @@ not a 2×2, and the resolvable n is computable from the per-episode sd before yo
 "Record it as noise" was the wrong remedy when the right one cost four CPU-minutes and would
 have caught the opponent-seat defect before this document was committed.
 
+## ⚠ THE ARM MAY MEASURE THE COORDINATION CEILING, NOT THE MECHANIC
+
+Nominated by a second, uncoordinated audit panel as the reason not to fund the arm.
+**Verified by me**, n=20, referee's own verdict (not displacement), on the shipped config:
+take the bar's own charge order and perturb *j* of a unit's five members to a **different
+legal charge rung** — which is what a factored per-model policy emits the moment it is not
+unanimous.
+
+| j perturbed | standing fraction | vp_margin |
+|---|---|---|
+| **0** (unanimous, the script) | **0.842** | **+5.75** |
+| **1** | **0.472** | **−21.50** |
+| 2 | 0.522 | −18.75 |
+| 5 | 0.423 | −18.75 |
+
+**One dissenting model of five halves the standing fraction and costs 27 vp.** And the
+collapse is **not monotone** — j=2 and j=5 are no worse than j=1. The penalty is paid **in
+full at the first dissenter**: this is unanimity or nothing.
+
+That matters because the referee is an **all-or-nothing joint constraint over five
+independently sampled actions**, and this project has already measured what a factored
+network does with one: `clone_squad_march_take.ckpt` reproduces its rigid teacher's shared
+heading on **42.2% of unit-turns against the teacher's 91.8%**, and consensus decoding to
+force agreement lost **−4.8 / −4.1 / −9.1 vp on 3 of 3 seeds**.
+
+⚠ **So the bar's +31.5 may be architecturally unreachable, and no seed count or epoch budget
+would fix it.** Training decodes at **K=1**, where the untrained standing fraction is
+0.000–0.066 (measured above) — the joint decoder that rescues legality is a *play-time* tool
+and is explicitly excluded from training.
+
+**The decisive next experiment is therefore the CLONE CONTROL, not the arm** — behaviour-clone
+`squad_march_take_charge` and measure the clone's standing fraction at K=1. It costs about
+**1 GPU-hour against the arm's 49–74**, and its two outcomes point to different spends:
+a clone at K=1 ≥ 0.45 says the mechanic is expressible and the arm is funded; ≤ 0.25 says
+melee's measured value is a joint-action artefact of a rigid-body script, the arm would
+measure the coordination ceiling, and the finding generalises to **every move type the rules
+add**. CLAUDE.md already carries running the clone control as a standing rule; skipping it
+would be the third published explanation here checked against the wrong control.
+
 ## The shield ablation, run at last — and the standing prior does NOT reproduce
 
 n=60 per cell, paired on layouts, seeds 700000+, argmax, on the shipped melee config.

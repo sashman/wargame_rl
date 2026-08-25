@@ -91,6 +91,56 @@ Generate mode: still 0 for 3. Audit mode: **~13 of 13.** Two of the seven landed
 here were against claims I had published hours earlier, and one was against a claim I had
 already tried to correct and got backwards.
 
+## 2026-08-25 (second round, same day) — the charging bar and the melee pre-registration
+
+Two uncoordinated panels, 8 agents each, against a **pinned worktree** (the fix from the
+round above, applied). Target: the instrument I built to unblock melee, plus the gate I
+pre-registered for it.
+
+**Audits: 7 of 7 landed. My score for the round: I shipped four defects and the panels found
+all four.** Nominations still 0 for 3.
+
+| finding | verdict after I verified it | action |
+|---|---|---|
+| **The blocker was closed on the bar and left open on the OPPONENT** — both configs seat a non-charging policy, so the arm trains in the unilateral cell | **CONFIRMED** in one grep. Their 2×2 at n=100: unilateral **+23.95**, mutual **−13.10** | both configs reseated; pinned by a test |
+| **My charge decoder was a CHOOSER, not a filter** — `stands` rejects the all-STAY combination, which the env never judges | **CONFIRMED**: K=3 forced **47 of 112** model-charges against a strictly-STAY argmax; K=1 forced 0 | fixed, and the exemption had to appear **twice** — the verify loop overwrites `best`, so my first fix changed nothing and the probe still read 47 |
+| **My pre-registration's requirement 1 was unsatisfiable** — `exclude_engaged_targets` hardwired to `melee.enabled`, no config field | **CONFIRMED** | `melee.shield_engaged_targets` added; the ablation then ran for the first time |
+| **RETRACTED: "28.2% incoherent, so it is the RESOLVER — do not attempt a fourth movement fix"** | **CONFIRMED wrong on all three clauses.** My own re-derivation: **82.2%** were already incoherent *before* charging; 8 of 135 broken by the move | one policy-side clause: standing fraction **0.628 → 0.887** |
+| **My gates are cleared by a network that learned nothing** | **CONFIRMED, worse than stated.** Untrained at K=3: standing fraction reaches **0.815**; `declared` swings **7–15×** between K=1 and K=3 on identical weights | thresholds rewritten against the measured floor |
+| **The observation columns forked the melee family off the entire checkpoint corpus** (61 v 63) | **CONFIRMED** — and their fix (make it 63 everywhere) would have orphaned every existing checkpoint instead | `melee.observe_charge` escape hatch; pinned |
+| **The arm may measure the COORDINATION CEILING, not the mechanic** | **CONFIRMED**: perturbing **one of five** members to a different *legal* rung halves the standing fraction (0.842 → 0.472) and costs **27 vp** | the clone control is now the decisive next experiment, at ~1 GPU-hour against the arm's 49–74 |
+
+### What the two panels disagreed about, and both were useful
+
+Panel A said the gate is **unpowered**. Panel B said it **cannot fail**. Both are right about
+different halves: the *vp* readout is underpowered, and the *mechanism* readouts are passed
+by the machinery. I had designed against only the first.
+
+### Corrected against me, in my favour
+
+Doubt (c) — "the charging bar might be strictly bad, so using it as the bar flatters the
+agent for free" — **died**, four ways. It is a *good* policy. But it died the opposite way
+from the fear: it is good only against an opponent that cannot charge, which is the failure
+mode the doubt was about, arriving by a route the doubt did not anticipate.
+
+### Lessons this round adds
+
+- ⚠ **A 2×2 run below its resolvable n is not a 2×2**, and the resolvable n is computable
+  from the per-episode sd *before* you run it. I ran one at n=6 (SE ≈ 36 vp), recorded it as
+  noise, and then reasoned about the mechanic from a single cell anyway. The standing rule
+  "never measure a symmetric change with both sides changed at once" was on file; I followed
+  its letter and not its point.
+- ⚠ **Any behavioural readout that gates an arm must be floored on a random-init network
+  through the arm's own selector path.** One inference run. It would have caught all three of
+  my thresholded gates.
+- ⚠ **"Run the within-policy control" applies to MECHANISM COUNTS, not just vp.** Third time
+  a published explanation here was built against a missing control.
+- ⚠ **A decoder that filters in one phase can CHOOSE in another.** `decode_topk=3` is a
+  scoring convention everywhere else in this project; in the charge phase it was a treatment,
+  applied to the arm and not to its dark control, landing inside the paired estimator.
+- **Pinning the tree worked.** Both panels measured a fixed commit while I kept editing, and
+  every number they reported reproduced.
+
 ## 2026-08-25 — melee implementation, AUDIT mode, two panels (8 agents each)
 
 Target: the twelve-commit melee feature on `feature/melee-stage-0`, before anything was

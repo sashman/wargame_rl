@@ -20,6 +20,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from scripts.scenario_overrides import load_env_config
 from wargame_rl.wargame.envs.domain.engagement import engaged_with_any
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION, ActionHandler
 from wargame_rl.wargame.envs.types import WargameEnvAction
@@ -556,3 +557,44 @@ class TestChargeObservation:
 
         # Assert
         assert wide - narrow == 2
+
+
+def test_a_61_wide_CHECKPOINT_can_still_be_scored_on_a_melee_config() -> None:
+    """⚠ The columns forked the melee family off the whole checkpoint corpus.
+
+    They widen the per-model tensor 61 -> 63, so after they landed no existing
+    agent could be scored on a melee config at all — "what does melee do to our
+    agent" became answerable only by training a new one, and a melee arm's
+    numbers would have been an island with no allocation statistic, no
+    offence/defence split and no five-opponent table beside them. Found by an
+    audit panel.
+
+    Making the columns unconditional would have made every config 63 wide and
+    orphaned every 61-wide checkpoint instead, which is worse. `observe_charge`
+    is the escape hatch: the melee configs keep their columns and stay paired
+    with each other, and a scoring run can turn them off to match the corpus.
+    """
+    # Arrange
+    config = load_env_config("configs/experiments/25v25_maps_melee.yaml")
+    golden = load_env_config("configs/golden/25v25_maps_two_mode.yaml")
+
+    # Act
+    widths = {}
+    for label, cfg in (("golden", golden), ("melee", config)):
+        env = create_environment(cfg)
+        try:
+            observation, _ = env.reset(seed=3)
+            widths[label] = observation_to_tensor(observation)[2].shape[1]
+        finally:
+            env.close()
+    config.melee.observe_charge = False
+    env = create_environment(config)
+    try:
+        observation, _ = env.reset(seed=3)
+        widths["melee_narrowed"] = observation_to_tensor(observation)[2].shape[1]
+    finally:
+        env.close()
+
+    # Assert
+    assert widths["melee"] == widths["golden"] + 2
+    assert widths["melee_narrowed"] == widths["golden"]

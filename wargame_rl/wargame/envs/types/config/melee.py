@@ -66,6 +66,21 @@ class MeleeConfig(BaseModel):
             "exact no-op."
         ),
     )
+    observe_charge: bool | None = Field(
+        default=None,
+        description=(
+            "Put `charge_roll` and `fell_back_this_turn` on every model's token. "
+            "None (the default) means 'whenever the charge phase is stepped', "
+            "which is what keeps the arm and its dark control the same width and "
+            "therefore PAIRED. ⚠ Set it FALSE to score a checkpoint trained "
+            "without these columns on a melee config: they widen the per-model "
+            "tensor 61 -> 63, and an audit found that this had forked the melee "
+            "family off the entire checkpoint corpus -- no existing agent could "
+            "be scored on melee, so 'what does melee do to our agent' could only "
+            "be answered by training a new one. Making the columns unconditional "
+            "instead would have orphaned every 61-wide checkpoint, which is worse."
+        ),
+    )
     shield_engaged_targets: bool = Field(
         default=True,
         description=(

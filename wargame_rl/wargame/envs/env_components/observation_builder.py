@@ -615,7 +615,11 @@ def build_observation(
     # informationally identical to not having them, exactly as for the
     # opponent's zeroed columns below. Every golden config skips `charge`, so
     # none of them is touched.
-    observe_melee = BattlePhase.charge not in view.config.skip_phases
+    observe_melee = (
+        BattlePhase.charge not in view.config.skip_phases
+        if view.config.melee.observe_charge is None
+        else view.config.melee.observe_charge
+    )
     return WargameEnvObservation(
         current_turn=view.current_turn,
         wargame_models=_models_to_obs(
