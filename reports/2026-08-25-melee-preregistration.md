@@ -159,7 +159,29 @@ unanimous.
 
 **One dissenting model of five halves the standing fraction and costs 27 vp.** And the
 collapse is **not monotone** — j=2 and j=5 are no worse than j=1. The penalty is paid **in
-full at the first dissenter**: this is unanimity or nothing.
+full at the first dissenter**.
+
+⚠ **"Unanimity or nothing" is RETRACTED, by my own follow-up the same hour.** That
+perturbation moved the dissenter to a **uniformly random** legal rung, which is a large
+change — it measures *"one model does something quite different"*, not *"one model is
+slightly off"*, and the difference decides whether the problem is learnable at all. Perturbing
+one member by a **single bin** instead, n=20, referee's verdict:
+
+| one member perturbed by | standing fraction | vp |
+|---|---|---|
+| nothing (the script) | 0.842 | +5.75 |
+| **± one SPEED bin** | **0.757** | −10.75 |
+| **± one ANGLE bin** | **0.756** | +1.50 |
+| a random legal rung | 0.472 | −21.50 |
+
+**Near-agreement is worth ~90% of exact agreement.** The charge requires the unit to end in
+a *region*, not to emit identical actions, so a policy that is approximately unanimous keeps
+most of the value and only a *large* disagreement collapses it. That is a far weaker
+requirement than the first measurement implied, and it is the difference between "a factored
+policy cannot express this" and "a factored policy has to be roughly consistent".
+
+⚠ Read the standing fraction here, not vp: the two single-bin rows land at the same 0.757
+with vp −10.75 and +1.50, which at n=20 is the noise.
 
 That matters because the referee is an **all-or-nothing joint constraint over five
 independently sampled actions**, and this project has already measured what a factored
@@ -180,6 +202,58 @@ melee's measured value is a joint-action artefact of a rigid-body script, the ar
 measure the coordination ceiling, and the finding generalises to **every move type the rules
 add**. CLAUDE.md already carries running the clone control as a standing rule; skipping it
 would be the third published explanation here checked against the wrong control.
+
+## THE CLONE CONTROL, RUN — verdict INCONCLUSIVE, and the mechanism is not the one predicted
+
+Three behaviour clones of `squad_march_take_charge` (200 demonstration episodes, 8 epochs,
+seeds 0/1/2), ~2 minutes of GPU each. Pre-registered read: **accept ≥ 0.45**, **reject
+≤ 0.25**, between = inconclusive, on the clone's standing fraction at K=1.
+
+### As played, it rejects — but for the wrong reason
+
+| | declared/ep | stood/ep | standing fraction (K=1) | vp |
+|---|---|---|---|---|
+| teacher (the script) | 5.90 | 4.60 | **0.780** | +10.2 |
+| clone s0 / s1 / s2 | 0.53 / 0.50 / 1.17 | 0.00 / 0.03 / 0.00 | **0.000 / 0.067 / 0.000** | −71 / −49 / −36 |
+
+⚠ **The clone does not fail to coordinate — it fails to DECLARE.** Action match against the
+teacher on teacher-driven states, split by phase: shooting **0.988–0.990**, movement
+**0.628–0.638**, charge phase 0.940–0.945 — but that last figure is an artefact of class
+imbalance (most models are told STAY, so predicting STAY scores 94%). **Of the teacher's
+actual charge ORDERS, the clone echoes 0.8–2.4%.** A charge order is ~3.7% of charge-phase
+model-decisions and a plain imitation loss predicts STAY everywhere.
+
+### Forcing the declaration isolates the coordination, and it is HALFWAY THERE
+
+In every charge phase where the teacher would charge a unit, each of that unit's models takes
+its own argmax over **charge actions only**, and the referee judges the result. The decision
+to charge is taken out of the clone's hands; the coordination is entirely its own.
+
+| | standing fraction | unit picks one shared action |
+|---|---|---|
+| teacher (ceiling) | **0.849** | 1.000 (rigid by construction) |
+| clone s0 / s1 / s2 | **0.367 / 0.303 / 0.391** | 0.603 / 0.520 / 0.742 |
+
+Against an untrained network's K=1 floor of **0.000–0.066**, a clone with two minutes of naive
+imitation and no class weighting lands **5–6× the floor** and produces a unanimous unit on
+**52–74%** of charges.
+
+### Verdict, against the criterion committed before the numbers existed
+
+**INCONCLUSIVE** — 0.303–0.391 is inside the 0.25–0.45 band on 3 of 3. The pre-registration's
+own instruction for this band is *"run three more demonstration seed bases before any GPU is
+spent on the arm. Do not resolve it by training."*
+
+⚠ **But the panel's headline claim is NOT supported.** "The mechanic may be architecturally
+unreachable; melee's value is a joint-action artefact of a rigid-body script" predicts a clone
+that tries to charge and cannot coordinate. The measurement shows the opposite: it coordinates
+about half the time and barely tries. **The binding constraint is proposing a rare
+all-or-nothing action, not executing a coordinated one** — and that is an exploration and
+class-balance problem, which has different remedies from a coordination problem.
+
+This also joins the retraction above: near-agreement is worth ~90% of exact agreement, so a
+policy that is *approximately* unanimous keeps most of the value. Both measurements point the
+same way.
 
 ## The shield ablation, run at last — and the standing prior does NOT reproduce
 
