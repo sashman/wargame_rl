@@ -26,9 +26,11 @@ from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.model.common.factory import create_environment
 
 ENGAGEMENT = 1.0
+# The overlap test needs models with real extent; the rest of this file uses 0.
+BASE_RADIUS = 0.63
 
 
-def _handler(melee: bool, n_models: int = 1) -> ActionHandler:
+def _handler(melee: bool, n_models: int = 1, base_radius: float = 0.0) -> ActionHandler:
     skip = [BattlePhase.command, BattlePhase.shooting, BattlePhase.fight]
     if not melee:
         skip.append(BattlePhase.charge)
@@ -38,7 +40,7 @@ def _handler(melee: bool, n_models: int = 1) -> ActionHandler:
             models=[ModelConfig() for _ in range(n_models)],
             melee=MeleeConfig(enabled=melee),
             engagement_range=ENGAGEMENT,
-            base_radius=0.0,
+            base_radius=base_radius,
             skip_phases=skip,
         )
     )
@@ -375,3 +377,60 @@ def test_the_charge_phase_grants_no_free_MOVE_to_a_unit_that_cannot_charge() -> 
 
     # Assert
     assert moved == 0.0, "an ineligible unit took a free move in the charge phase"
+
+
+def _placed(spots: list[tuple[float, float, int]]) -> list[WargameModel]:
+    return [
+        WargameModel(
+            location=np.array([x, y]),
+            stats={"toughness": 3, "save": 4, "max_wounds": 1, "current_wounds": 1},
+            distances_to_objectives=np.zeros(1),
+            group_id=group,
+            base_radius=BASE_RADIUS,
+        )
+        for x, y, group in spots
+    ]
+
+
+def test_a_reverted_charge_does_not_land_on_top_of_another_unit() -> None:
+    """All-or-nothing must not put a unit back onto ground somebody else took.
+
+    ⚠ **Found in a demo recording, measured at 0.868in of base overlap** — 69% of
+    a 32mm base, player models only, in the charge phase only. Every model moves
+    before any unit is judged, so a unit whose charge fails is restored to a
+    start position that a LATER unit may have advanced into. The board then holds
+    two models inside each other, which no rule permits.
+
+    The geometry here is the one from that recording, reduced: unit 1 is behind
+    unit 0, unit 0 charges and cannot reach, unit 1 charges into the space unit 0
+    vacated and reaches an enemy. Unit 0 is judged first, fails, and is put back
+    on top of unit 1.
+    """
+    # Arrange
+    handler = _handler(melee=True, n_models=4, base_radius=BASE_RADIUS)
+    movers = _placed(
+        [(10.0, 10.0, 0), (10.0, 11.5, 0), (8.0, 10.4, 1), (8.0, 11.9, 1)],
+    )
+    # One enemy unit far away, and one placed to engage unit 1 where it lands
+    # WITHOUT engaging unit 0 where it starts — that is what lets unit 1 stand
+    # while unit 0 fails.
+    enemy = _placed([(15.0, 10.0, 0), (10.0, 14.0, 1), (10.0, 15.5, 1)])
+    east = handler.encode_action(0, 1)
+
+    # Act
+    handler.apply(
+        WargameEnvAction(actions=[east] * 4),
+        movers,
+        60,
+        44,
+        handler.action_space,
+        phase=BattlePhase.charge,
+        enemy_models=enemy,
+    )
+
+    # Assert
+    positions = np.array([m.location for m in movers], dtype=float)
+    gaps = np.linalg.norm(positions[:, None, :] - positions[None, :, :], axis=2)
+    gaps += np.eye(len(movers)) * 999.0
+    worst = float((2 * BASE_RADIUS - gaps).max())
+    assert worst <= 1e-9, f"models overlap by {worst:.4f}in after a reverted charge"

@@ -812,11 +812,34 @@ class ActionHandler:
             and phase in movement.valid_phases
         )
 
+    def _charge_batches(
+        self,
+        phase: BattlePhase,
+        wargame_models: list[Any],
+        action: WargameEnvAction,
+        charge_start: list[np.ndarray] | None,
+    ) -> list[list[int]]:
+        """Model indices to resolve together, in order.
+
+        One batch holding the whole force for every phase but the charge, which
+        keeps the existing index order and therefore every existing result. A
+        charge resolves one UNIT at a time, in group order, so that the referee
+        can put a failed unit back before the next unit has moved.
+        """
+        indices = list(range(len(action.actions)))
+        if charge_start is None or phase is not BattlePhase.charge:
+            return [indices]
+        units: dict[int, list[int]] = {}
+        for index in indices:
+            units.setdefault(int(wargame_models[index].group_id), []).append(index)
+        return [members for _group, members in sorted(units.items())]
+
     def _enforce_charge(
         self,
         wargame_models: list[Any],
         enemy_models: list[Any] | None,
         start_positions: list[np.ndarray] | None,
+        batch: list[int],
     ) -> None:
         """A charge that does not end legally is not made at all.
 
@@ -850,32 +873,22 @@ class ActionHandler:
         """
         if start_positions is None:
             return
-        moved = {
-            int(model.group_id)
-            for index, model in enumerate(wargame_models)
-            if model.is_alive
-            and not np.array_equal(start_positions[index], model.location)
-        }
-        if not moved:
+        members = [index for index in batch if wargame_models[index].is_alive]
+        if not members or not any(
+            not np.array_equal(start_positions[index], wargame_models[index].location)
+            for index in members
+        ):
             return
         alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
-        for group in sorted(moved):
-            members = [
-                index
-                for index, model in enumerate(wargame_models)
-                if int(model.group_id) == group and model.is_alive
-            ]
-            if self._charge_is_legal(wargame_models, members, alive_enemies):
-                # Only a charge that STOOD earns the fight-order priority. A
-                # reverted charge did not happen, so a unit that rolled short
-                # and snapped back must not strike first for having tried.
-                for index in members:
-                    wargame_models[index].charged_this_turn = True
-                continue
+        if self._charge_is_legal(wargame_models, members, alive_enemies):
+            # Only a charge that STOOD earns the fight-order priority. A
+            # reverted charge did not happen, so a unit that rolled short and
+            # snapped back must not strike first for having tried.
             for index in members:
-                wargame_models[index].location = np.array(
-                    start_positions[index], copy=True
-                )
+                wargame_models[index].charged_this_turn = True
+            return
+        for index in members:
+            wargame_models[index].location = np.array(start_positions[index], copy=True)
 
     def _charge_is_legal(
         self,
@@ -1078,75 +1091,91 @@ class ActionHandler:
             # action against its space before skipping non-movement phases, and
             # an unvalidated declaration would be a silent out-of-range action.
             self.declare_move_types(action, wargame_models)
-        for i, act in enumerate(action.actions):
-            model = wargame_models[i]
-            if not model.is_alive:
-                continue
-            if not action_space[i].contains(act):  # type: ignore
-                raise ValueError(
-                    f"Action {act} for wargame model {i} is out of bounds."
+
+        # ⚠ A charge resolves ONE UNIT AT A TIME, and every other phase
+        # resolves the whole force in index order exactly as before. The
+        # all-or-nothing revert puts a failed unit back where it began, so if
+        # a later unit has already advanced into that ground the board ends
+        # up holding two models inside each other -- measured at 0.868in of
+        # base overlap, 69% of a 32mm base, in a demo recording. Judging each
+        # unit before the next one moves removes the window entirely, and
+        # lets the next unit move against the RESTORED position rather than
+        # against ground that was only briefly empty.
+        def move_batch(indices: list[int]) -> None:
+            for i in indices:
+                act = action.actions[i]
+                model = wargame_models[i]
+                if not model.is_alive:
+                    continue
+                if not action_space[i].contains(act):  # type: ignore
+                    raise ValueError(
+                        f"Action {act} for wargame model {i} is out of bounds."
+                    )
+                if not self._displaces_in(phase):
+                    continue
+                if not self._is_displacement_action(act):
+                    continue
+                model.previous_location = model.location.copy()
+                displacement = self.decode_action(
+                    act, model_idx=i, advance_roll=model.advance_roll
                 )
-            if not self._displaces_in(phase):
-                continue
-            if not self._is_displacement_action(act):
-                continue
-            model.previous_location = model.location.copy()
-            displacement = self.decode_action(
-                act, model_idx=i, advance_roll=model.advance_roll
-            )
-            if not collides:
+                if not collides:
+                    model.location = back_off_to_unengaged(
+                        model.location,
+                        np.clip(model.location + displacement, lower, upper),
+                        engagement_centres,
+                        engagement_reach,
+                    )
+                    continue
+                # Read live each iteration: earlier models in this loop have already
+                # moved, and a model must not end on ground another just took. The
+                # arrays are rebuilt from a preallocated buffer rather than a fresh
+                # list comprehension per model -- that shape is O(n^2) in python and
+                # is what made two reward calculators 80% of a step once already.
+                for j, other in enumerate(wargame_models):
+                    friendly_buffer[j] = other.location
+                keep = friendly_alive.copy()
+                keep[i] = False
+                friendly_centres = friendly_buffer[keep]
+                friendly_radii = friendly_radius_buffer[keep]
+                # The board edge is clamped into the *displacement*, before
+                # collisions are resolved. Clamping the resolved point afterwards
+                # would slide a model along the edge and back into someone else --
+                # producing exactly the overlap the whole resolution just avoided,
+                # only near a board edge and only sometimes.
+                in_bounds = np.clip(model.location + displacement, lower, upper)
+                # The bases the endpoint may not land inside: enemies (which also
+                # block the path) and the moving army's own models (which may be
+                # crossed but not ended on). Passed in because backing off walks the
+                # endpoint into ground `resolve_move` had already cleared -- without
+                # them a model rescued from an engagement ring comes to rest inside
+                # a friendly base, measured at 0.18% of pairs.
+                occupied_centres = np.concatenate([blocker_centres, friendly_centres])
+                occupied_reach = (
+                    np.concatenate([blocker_radii, friendly_radii]) + model.base_radius
+                )
                 model.location = back_off_to_unengaged(
                     model.location,
-                    np.clip(model.location + displacement, lower, upper),
+                    resolve_move(
+                        model.location,
+                        in_bounds - model.location,
+                        model.base_radius,
+                        blocker_centres,
+                        blocker_radii,
+                        friendly_centres,
+                        friendly_radii,
+                    ),
                     engagement_centres,
                     engagement_reach,
+                    occupied_centres,
+                    occupied_reach,
                 )
-                continue
-            # Read live each iteration: earlier models in this loop have already
-            # moved, and a model must not end on ground another just took. The
-            # arrays are rebuilt from a preallocated buffer rather than a fresh
-            # list comprehension per model -- that shape is O(n^2) in python and
-            # is what made two reward calculators 80% of a step once already.
-            for j, other in enumerate(wargame_models):
-                friendly_buffer[j] = other.location
-            keep = friendly_alive.copy()
-            keep[i] = False
-            friendly_centres = friendly_buffer[keep]
-            friendly_radii = friendly_radius_buffer[keep]
-            # The board edge is clamped into the *displacement*, before
-            # collisions are resolved. Clamping the resolved point afterwards
-            # would slide a model along the edge and back into someone else --
-            # producing exactly the overlap the whole resolution just avoided,
-            # only near a board edge and only sometimes.
-            in_bounds = np.clip(model.location + displacement, lower, upper)
-            # The bases the endpoint may not land inside: enemies (which also
-            # block the path) and the moving army's own models (which may be
-            # crossed but not ended on). Passed in because backing off walks the
-            # endpoint into ground `resolve_move` had already cleared -- without
-            # them a model rescued from an engagement ring comes to rest inside
-            # a friendly base, measured at 0.18% of pairs.
-            occupied_centres = np.concatenate([blocker_centres, friendly_centres])
-            occupied_reach = (
-                np.concatenate([blocker_radii, friendly_radii]) + model.base_radius
-            )
-            model.location = back_off_to_unengaged(
-                model.location,
-                resolve_move(
-                    model.location,
-                    in_bounds - model.location,
-                    model.base_radius,
-                    blocker_centres,
-                    blocker_radii,
-                    friendly_centres,
-                    friendly_radii,
-                ),
-                engagement_centres,
-                engagement_reach,
-                occupied_centres,
-                occupied_reach,
-            )
 
-        self._enforce_charge(wargame_models, enemy_models, charge_start)
+        for batch in self._charge_batches(phase, wargame_models, action, charge_start):
+            move_batch(batch)
+            if charge_start is not None:
+                self._enforce_charge(wargame_models, enemy_models, charge_start, batch)
+
         self._mark_fall_backs(wargame_models, began_engaged)
 
         # Every model in the force has now moved, which is the earliest point a
