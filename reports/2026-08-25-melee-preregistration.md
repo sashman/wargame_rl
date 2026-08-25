@@ -321,6 +321,57 @@ is worth about zero, so a declaration that makes charging easy could teach a beh
 does not pay. What it changes is that the arm would now measure the *mechanic* rather than
 the agent's inability to express it.
 
+## THE CLONE CONTROL, RE-RUN UNDER THE DECLARATION — it fixed what it was built to fix
+
+Three fresh clones of the same teacher on the declaring config, n=20, K=1 (what training
+decodes at). ⚠ The demonstration cache had to be re-keyed first: it named the config *stem*,
+so the shape change would have fitted 102-action, 60-turn demonstrations to a 104-action,
+80-turn network with every recorded action indexing a different space. It now carries a
+config fingerprint.
+
+| | declares/ep | recall of the teacher's | stood/ep | standing fraction |
+|---|---|---|---|---|
+| teacher | 5.40 | 1.000 | 3.30 | **0.750** |
+| clone s0 / s1 / s2 | 14.9 / 22.3 / 15.9 | **0.428 / 0.563 / 0.367** | 0.55 / 0.95 / 0.60 | 0.069 / 0.075 / 0.074 |
+
+**The declaration fixed the declaring problem.** Before it, the clone echoed **0.8–2.4%** of
+its teacher's charge orders; now it reproduces **37–56%** of its declarations and *over*-declares
+by 3–4×. Fit fidelity rose across the board too — action-match 0.712 → **0.758–0.767**,
+unit-match 0.583 → **0.651–0.652**.
+
+**And the failure moved rather than disappeared.** Lending the clone the teacher's
+declarations while it still picks every rung:
+
+| clone | its own declarations | the teacher's declarations |
+|---|---|---|
+| s0 / s1 / s2 | 0.062 / 0.085 / 0.074 | **0.152 / 0.186 / 0.217** |
+
+So roughly half the shortfall is **precision** — declaring for units that cannot reach — and
+the rest is **execution**: even handed the right units it lands 15–22% against the teacher's
+75%. Rung choice is now the dominant term.
+
+⚠ **THE BINDING CUTS BOTH WAYS, and this is the design risk to carry forward.** A declared
+unit may not stand still, so a unit that declares and cannot reach is *forced* to move: it
+walks at nothing and reverts. The clone declares 3–4× too often, so the binding is actively
+costing it. **The feature helps a policy that declares well and punishes one that does not** —
+which is exactly the shape of a lever that looks free on a script and is not on an agent.
+
+### Verdict against the pre-registered read
+
+**REJECT on 3 of 3** (≤ 0.25), and still reject at 0.152–0.217 with declarations lent. But
+the reason has changed twice now, and neither time was it the one the criterion assumed:
+first the clone would not declare, now it declares badly and aims badly. **The coordination
+ceiling the panel nominated has not been the binding constraint at any point.**
+
+### The floor moved too, and the gate is cleaner for it
+
+Untrained networks on the declaring config, n=6: `declared/ep` is **bimodal** — 81.7 / 64.3 /
+**0.00** at K=1 — because it is now one argmax over two actions with arbitrary logits. But
+the standing fraction collapses to **0.003–0.013 at BOTH K**, against the old floor's
+0.226–0.815 at K=3. **The decoder can no longer manufacture a charge**, because it cannot
+retroactively declare one. `declared` is now useless as a gate and `standing fraction` is a
+much better one.
+
 ## The shield ablation, run at last — and the standing prior does NOT reproduce
 
 n=60 per cell, paired on layouts, seeds 700000+, argmax, on the shipped melee config.

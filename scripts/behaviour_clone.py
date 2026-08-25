@@ -50,6 +50,7 @@ The output is a checkpoint `train.py --warm-start-ckpt-path` accepts.
 
 from __future__ import annotations
 
+import hashlib
 import sys
 from pathlib import Path
 
@@ -450,12 +451,20 @@ def main() -> None:
         teacher, create_environment(env_config=config), decode_topk
     )
     select, teacher_label = resolved.select, resolved.label
-    # ⚠ `v2` because the payload gained `phases`. A cache key that did not change
-    # would hand a v1 payload to code that needs the new field, and the failure
-    # would be a KeyError at best and a silently unweighted fit at worst.
+    # ⚠ **The key carries a FINGERPRINT OF THE CONFIG, not just its filename.**
+    # It used to name the file stem, so editing a config in place produced a
+    # cache hit on demonstrations collected under the old one -- and when the
+    # charge declaration landed, that meant 102-action, 60-turn demonstrations
+    # being fitted to a 104-action, 80-turn network, with every recorded action
+    # indexing a different action space. Silent, and catastrophic.
+    #
+    # `v2` in the name is separate and still needed: the payload gained
+    # `phases`, and a v1 payload would KeyError at best and fit unweighted at
+    # worst.
+    fingerprint = hashlib.sha256(config.model_dump_json().encode()).hexdigest()[:12]
     cache = Path("checkpoints/clone_data") / (
         f"{teacher_label}-k{decode_topk}-{Path(config_path).stem}"
-        f"-{n_episodes}-g{gamma}-v2.pt"
+        f"-{n_episodes}-g{gamma}-{fingerprint}-v2.pt"
     )
     if cache.exists():
         print(f"reusing collected demonstrations from {cache}")
