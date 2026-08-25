@@ -21,6 +21,51 @@ from wargame_rl.wargame.envs.domain.engagement import engaged_units, engaged_wit
 LosMatrixFn = Callable[[np.ndarray, np.ndarray, np.ndarray], np.ndarray]
 
 
+def _engaged_shooters(
+    player_positions: np.ndarray,
+    opponent_positions: np.ndarray,
+    player_alive: np.ndarray,
+    alive_targets: np.ndarray,
+    player_groups: np.ndarray | None,
+    *,
+    engagement_range: float,
+    base_diameter: float,
+) -> np.ndarray:
+    """``(n_player,)`` — which of my models may not shoot because of contact.
+
+    ⚠ **The rule is per-UNIT and this gate was per-MODEL.** `04-making-attacks.md`
+    makes engagement a property of the unit — *those models, and their units, are
+    engaged* — so one model in contact silences all of its squadmates. Per model,
+    the other four kept firing while the fifth held the enemy in place: a strictly
+    better trade than the rules allow, and exactly the "send one model to lock
+    them and keep shooting" exploit the melee design named and did not close. The
+    TARGET side of this same file has always reduced over the unit
+    (`engaged_units`); the shooter side never did.
+
+    `player_groups=None` keeps the per-model behaviour, for callers with no unit
+    structure to reduce over — the pure-function tests, and nothing else.
+    """
+    engaged = np.asarray(
+        engaged_with_any(
+            player_positions,
+            opponent_positions,
+            alive_targets,
+            np.asarray(player_alive, dtype=bool),
+            engagement_range=engagement_range,
+            base_diameter=base_diameter,
+        ),
+        dtype=bool,
+    )
+    if player_groups is None:
+        return engaged
+    groups = np.asarray(player_groups, dtype=np.intp)
+    reduced = np.zeros_like(engaged)
+    for unit in np.unique(groups):
+        member = groups == unit
+        reduced[member] = bool(engaged[member].any())
+    return reduced
+
+
 def compute_shooting_masks(
     player_positions: np.ndarray,
     opponent_positions: np.ndarray,
@@ -30,6 +75,7 @@ def compute_shooting_masks(
     los_matrix_fn: LosMatrixFn,
     *,
     player_advanced: np.ndarray | None = None,
+    player_groups: np.ndarray | None = None,
     engagement_range: float = 0.0,
     base_diameter: float = 0.0,
 ) -> np.ndarray:
@@ -38,7 +84,8 @@ def compute_shooting_masks(
     A target K is valid for model M iff:
     - M is alive (player_alive[M] is True)
     - M has not advanced this turn (player_advanced[M] is not True)
-    - M is not within engagement_range of any opponent
+    - no model of M's UNIT is within engagement_range of any opponent (per model
+      when `player_groups` is not given)
     - K is alive (opponent_alive[K] is True)
     - Euclidean distance(M, K) <= player_max_ranges[M]
     - sight is clear from M to K
@@ -64,11 +111,12 @@ def compute_shooting_masks(
         shooters &= ~np.asarray(player_advanced, dtype=bool)
     alive_targets = np.asarray(opponent_alive, dtype=bool)
     if engagement_range > 0:
-        shooters &= ~engaged_with_any(
+        shooters &= ~_engaged_shooters(
             player_positions,
             opponent_positions,
+            player_alive,
             alive_targets,
-            np.asarray(player_alive, dtype=bool),
+            player_groups,
             engagement_range=engagement_range,
             base_diameter=base_diameter,
         )
@@ -286,6 +334,7 @@ def compute_unit_shooting_masks(
     n_groups: int,
     *,
     player_advanced: np.ndarray | None = None,
+    player_groups: np.ndarray | None = None,
     engagement_range: float = 0.0,
     base_diameter: float = 0.0,
     exclude_engaged_targets: bool = False,
@@ -331,11 +380,12 @@ def compute_unit_shooting_masks(
     if player_advanced is not None:
         shooters &= ~np.asarray(player_advanced, dtype=bool)
     if engagement_range > 0:
-        shooters &= ~engaged_with_any(
+        shooters &= ~_engaged_shooters(
             player_positions,
             opponent_positions,
+            player_alive,
             alive_targets,
-            np.asarray(player_alive, dtype=bool),
+            player_groups,
             engagement_range=engagement_range,
             base_diameter=base_diameter,
         )

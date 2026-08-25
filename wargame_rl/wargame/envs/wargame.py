@@ -1339,6 +1339,12 @@ class WargameEnv(gym.Env):
                         for m in self.opponent_models
                     ]
                 ),
+                # Both seats or neither, as below: the shooter-side engagement
+                # test reduces over the shooter's UNIT, and a reduction applied
+                # to one seat only is a rules difference between the two.
+                player_groups=np.array(
+                    [m.group_id for m in self.opponent_models], dtype=int
+                ),
                 engagement_range=self._rules_quantities.engagement_range,
                 base_diameter=2.0 * self._rules_quantities.base_radius,
                 # ⚠ Both seats or neither. This mask is a hand-written duplicate

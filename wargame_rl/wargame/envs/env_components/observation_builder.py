@@ -560,6 +560,11 @@ def build_observation(
                 np.array([m.group_id for m in view.opponent_models], dtype=int),
                 shooting_slice.end - shooting_slice.start,
                 player_advanced=player_advanced,
+                # The shooter's own unit, so that one model in contact silences
+                # its squadmates -- the rule is per unit, not per model.
+                player_groups=np.array(
+                    [m.group_id for m in view.player_models], dtype=int
+                ),
                 engagement_range=view.rules_quantities.engagement_range,
                 base_diameter=2.0 * view.rules_quantities.base_radius,
                 exclude_engaged_targets=view.config.melee.enabled,

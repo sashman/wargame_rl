@@ -99,21 +99,15 @@ non-vacuous: adding a `_pile_in` definition trips it by name.
 - `consolidate.ongoing`, `consolidate.engaging` — see below.
 - `charge.beyond_move_ladder` — a charge cannot travel further than Move; see
   above for the 12.3pp this costs.
-- `shooting.engaged_unit_cannot_shoot` — ⚠ **the most consequential item on this
-  list.** The shooter-side engagement gate is per-MODEL where
-  `docs/rules/10-shooting-phase.md` and the target side of the same function are
-  per-UNIT. Put one model of a five-model unit into contact and the enemy unit
-  becomes unshootable by everybody while four of your five keep firing. Inert
-  while engagement was 0.0000%; melee makes it the dominant term in the game.
-  Fixing it needs a `player_groups` argument threaded into both mask functions.
 - `consolidate.select_objective` — the env takes the nearest objective in range;
   the rules let the player choose.
 - `fallback.declared_move_type`, `fallback.reckless_break`.
 
-## ⚠ Three gaps an audit found that are NOT rules gaps
+## ⚠ Three gaps an audit found that are NOT rules gaps — ALL THREE NOW CLOSED
 
-Verified in the code on 2026-08-25. None is fixed; each would change what a
-training arm measures, so each is a decision rather than a tidy-up.
+Verified in the code on 2026-08-25, and fixed on 2026-08-25. Each changed what a
+training arm would measure, which is why none was left as a tidy-up. Kept here
+with the original diagnosis visible, because the reasoning is what generalises.
 
 1. **`charge_roll` has no observation column, and the action mask is not a
    substitute.** `advance_roll` has one (`observation_builder.py`, normalised by
@@ -122,17 +116,60 @@ training arm measures, so each is a decision rather than a tidy-up.
    **final logits only** (`model/net.py:711`) — it never enters the trunk, and
    `value_from_encoded` never touches it. So the critic cannot distinguish a
    unit three inches from an enemy holding a roll of 11 from the same unit
-   holding a roll of 2. ~10 lines, gated on `melee.enabled`, and every golden
-   stays bit-identical because no shipped config turns melee on.
+   holding a roll of 2.
+
+   ✅ **FIXED.** Two columns mirroring the advance pair: the 2D6 over
+   `CHARGE_DICE_MAX`, and `fell_back_this_turn` (which spends both the shooting
+   and the charge). `charged_this_turn` is deliberately excluded — it is cleared
+   the moment the fight it governs resolves, inside the same step, so an
+   observation could only ever read it False.
+
+   ⚠ **Gated on the CHARGE PHASE BEING STEPPED, not on `melee.enabled`, and the
+   first attempt got this wrong.** The arm and its dark control differ in
+   exactly that one scalar so they share an init; gating the columns on it would
+   have given them different tensor widths and **destroyed the pairing the pair
+   exists to provide**. Verified: both build a 63-wide per-model tensor, the
+   dark one carrying constant zeros. Every golden config skips `charge`, so all
+   three goldens stay bit-identical.
 2. **The joint decoder is inert in the charge phase.** `decoding.py:272` returns
    early unless the phase is `movement`. `decode_topk=3` is worth **+40.5 vp on
    45 of 45 tables** and this project's eval discipline makes it mandatory — yet
    it does nothing for the longest, all-or-nothing, coherency-refereed move in
    the game. **Any melee score quoted "at K=3" is a K=1 score in the phase the
    feature is about.**
+
+   ✅ **FIXED, and widening the gate alone would have been WRONG.** `_enforce_charge`
+   reverts a charge that is coherent but touches nobody, and one that clips a
+   second enemy unit — so a decoder optimising coherency alone would reliably
+   pick a combination the referee then threw away. `_ChargeReferee` tests what
+   the referee tests, through the same `engagement_matrix`, on both the relaxed
+   shortlist and the verified endpoints. Two details that are not free: the
+   coherency **safety margin is not applied to the contact clause** (a shortened
+   move can only *reduce* contact, so relaxing it would certify combinations
+   that reach nobody), and no-legal-combination stands the unit still
+   **unconditionally** in the charge phase, since the referee would revert it to
+   exactly where it stands. Screened at n=6 with a fixed random policy: 6.89 of
+   25 model-actions change per charge step against 0.00 before, all to STAY.
+   ⚠ Zero models charge successfully in *either* arm, so that screen shows the
+   path is live and **prices nothing**.
 3. **The shooter-side engagement gate is per-MODEL where the rule is per-UNIT**,
-   while the target side of the same function is per-unit. See
-   `DEFERRED: shooting.engaged_unit_cannot_shoot` in the register.
+   while the target side of the same function is per-unit. Put one model of a
+   five-model unit into contact and the enemy unit becomes unshootable by
+   everybody while four of your five keep firing — the "send one model to lock
+   them and keep shooting" exploit. Inert while engagement was 0.0000%; melee
+   makes it a live term.
+
+   ✅ **FIXED.** `_engaged_shooters` reduces the engagement test over the
+   shooter's own unit, wired on **both seats** — a reduction applied to one seat
+   only is a rules difference between them, and shooting alone already measures
+   a 24.6 vp seat asymmetry on one golden config. `player_groups=None` keeps the
+   per-model behaviour for the pure-function callers that have no units.
+
+   ⚠ **It is UNMEASURABLE with anything shipped today**, and that is the honest
+   statement of its status. Engagement is 0.0000% without a charging policy, so
+   the seeded digest is **9 of 9 identical to `main`** and every golden is
+   bit-identical. It is right by the rules and pinned by a test that fails on
+   the old gate; nobody has priced it, and nobody can until a policy charges.
 
 ## The value of a charge is the shooting shield, not the damage
 
