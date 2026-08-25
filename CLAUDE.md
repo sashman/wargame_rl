@@ -150,8 +150,13 @@ wargame_rl/
   needs the *exemption* first. ⚠ **RETRACTED: it needs the distance too.** That minimum was
   read as a typical value; the median charge-eligible unit is **5.99"** from its nearest
   enemy and **0.0%** of declarations are within one speed bin. ⚠ **Nothing has been measured
-  with melee on, and a training arm launched today would measure the BAR, not the agent** —
-  no scripted baseline or opponent can charge. An expert panel measured a charging script at
+  with melee on.** A training arm would have measured the BAR, not the agent, because no
+  scripted baseline or opponent could charge — **fixed 2026-08-25**: `select_charge` is a
+  hook defaulting to STAY (every baseline figure unchanged, digest 9 of 9 identical to
+  `main`) and `squad_march_take_charge` overrides it on **both seats**, cleared on four
+  mechanism gates written before it ran. The gate for the arm itself is **pre-registered**
+  ([report](reports/2026-08-25-melee-preregistration.md)): a vp gate is unpowered by
+  construction here (MDE **25.97** vp at n=3), so the primary readouts are mechanism counts. An expert panel measured a charging script at
   **+62.5 ± 14.7** whose value is **entirely the shooting shield** (−4.0 ± 17.4 with the
   target gate ablated). ⚠ **The three defects an audit found in it are now all
   closed** — the charge roll is an observation column and not just a logit mask; the joint

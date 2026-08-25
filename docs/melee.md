@@ -186,11 +186,29 @@ independently hand-rolled charging scripts produced +6.5, +48.0, +52.0, +59.2,
 +82.9 and +88.8 vp for nominally the same measurement — a 14× spread. Nobody has
 measured "the value of melee"; each measured their own heuristic.
 
-⚠ **And no scripted baseline or opponent policy can charge**, because
-`BaselinePolicy.select_action` returns STAY for every phase that is not command,
-movement or shooting. There is no bar. This is verbatim the failure this project
-already paid for on Advance — *a bar that cannot use a core rule is not a bar* —
-and a training arm launched today would measure `baseline/policy.py:48`.
+⚠ **No scripted baseline or opponent policy COULD charge until 2026-08-25**, because
+`BaselinePolicy.select_action` returned STAY for every phase that is not command,
+movement or shooting. There was no bar, which is verbatim the failure this project
+already paid for on Advance — *a bar that cannot use a core rule is not a bar*.
+
+✅ **FIXED.** `select_charge` is a hook defaulting to STAY, so every baseline figure
+ever measured here is unchanged (seeded digest 9 of 9 identical to `main`).
+`squad_march_take_charge` overrides it with a rigid squad translation onto the
+nearest enemy unit, declared only when a legal rung reaches contact, and it works
+on **both seats** (opponent models engaged after its charge phase: 0.0 → 6.2–8.0
+per episode).
+
+⚠ **It was gated on four mechanism criteria written before it ran, and it FAILED
+gate 2 twice** — 44.8% then 55.9% of moved charges touching nobody. Both were
+aiming errors, and the second was reading the charge cap as `Move + roll`, which is
+the *advance's* rule; a charge is capped by `min(Move, roll)`. Final: declared
+9.75/ep, standing 6.12/ep, **standing fraction 0.628**, coherency 0.864 against the
+walker's 0.803, byte-identical to `squad_march_take` with melee off. **28.2% of moved
+charges still end incoherent** — the resolver deflecting members, the same wall three
+movement-side fixes have already been measured away against.
+
+⚠ **Its number is one heuristic's number, never "the value of melee".** See the
+pre-registration: [reports/2026-08-25-melee-preregistration.md](../reports/2026-08-25-melee-preregistration.md).
 
 ## Two things that will surprise you
 
