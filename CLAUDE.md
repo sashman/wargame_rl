@@ -164,7 +164,12 @@ wargame_rl/
   K=3 is one; and the shooter-side engagement gate reduces over the shooter's UNIT, closing
   the "send one model to lock them and keep four firing" exploit. All three are
   **unpriced** — engagement stays 0.0000% without a charging policy, so the seeded digest
-  is 9 of 9 identical to `main`. [docs/melee.md](docs/melee.md)
+  is 9 of 9 identical to `main`. ⚠ **The charge is now DECLARED by the unit's leader in the
+  command phase and the declaration BINDS the unit** — a charge used to be declared
+  implicitly by picking a rung, so every model decided separately and a whole unit committed
+  on only **23–35%** of its charges against a rigid script's 100%. The melee configs
+  therefore step `command`: `max_turns` 60 → **80**, and **every melee figure measured before
+  it is void on that config**. [docs/melee.md](docs/melee.md)
 - **DDD layering** — `domain/` owns the rules (Battle aggregate, clock, placement, termination, LOS, shooting); `wargame.py` is a facade; reward/renders depend only on the `BattleView` protocol. See [docs/ddd-envs.md](docs/ddd-envs.md)
 - **Rules specification** — [docs/rules/](docs/rules/README.md) is the game's rules authority: a self-contained spec written for this project, with `constants.yaml` (every number, in inches) and [implementation-status.md](docs/rules/implementation-status.md) (per-rule: implemented / partial / divergent / absent). Before implementing a mechanic, read its chapter and its gap-map row. `tests/test_no_ip_references.py` keeps the repo free of references to the commercial product the rules derive from — the spec names no product, publisher, edition or faction, and neither should anything else
 - **Play doctrine** — [docs/play-doctrine.md](docs/play-doctrine.md) is how this game is *won*, as `docs/rules/` is how it is *played*: 43 numbered entries, each stating a claim, whether the environment can express it, which extension point it lands in, and what has already been measured about it. It is a store of **hypotheses, never of evidence** — price an entry as a scripted policy (`just measure-paired`, no GPU) before it becomes a reward term or a training run, and where an entry disagrees with the record below, **the record wins**

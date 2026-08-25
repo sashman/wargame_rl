@@ -171,6 +171,50 @@ with the original diagnosis visible, because the reasoning is what generalises.
    bit-identical. It is right by the rules and pinned by a test that fails on
    the old gate; nobody has priced it, and nobody can until a policy charges.
 
+## The charge is DECLARED, by the unit's leader, and the declaration BINDS
+
+Shipped 2026-08-25, and it is the fix the clone control pointed at rather than one
+anybody proposed up front.
+
+**The defect.** A charge was declared implicitly by choosing a rung, so *"charge or not"*
+was decided independently by every model. Measured on three behaviour clones of a rigid
+charging teacher: the teacher declares for **100%** of a unit's members every time, the
+clones for **54–62%**, and the **whole unit only 23–35%** of the time. A charge failed not
+because the rungs disagreed but because half the unit stood still, the unit stretched, and
+the referee reverted the lot. `P(any charge)` of 0.59 spread over ~48 rungs at ~0.012 each
+loses an argmax to STAY as **one** action at 0.41 — and it compounds per model.
+
+**The fix, in the machinery the advance already uses.** `MOVE_TYPE_CHARGE` joins the
+`move_type` slice, declared in the command phase by the unit's lowest-indexed alive model.
+Two halves:
+
+- a charge **rung** is legal only for a unit that declared, as an advance rung already was;
+- a declared unit **may not stand still**. Permitting a charge is not compelling one, and
+  permission alone leaves exactly the state above. STAY survives for a model the 2D6 cannot
+  carry into contact, because a mask must never empty a row. Both seats.
+
+⚠ **The slice is SIZED to the move types a scenario has.** `advance` is still offset 1 on an
+advance-only config, so every advance checkpoint still loads; a fixed 3-wide slice would have
+widened every advance config for a value it can never declare. `MOVE_TYPE_*` are therefore
+**offsets, not action indices** — resolve through `move_type_offset` / `move_type_action`.
+
+⚠ **Registration is gated on `melee.enabled` OR `move_type` in `dark_action_slices`**, which
+is what keeps the arm pairable: the dark control names it and gets the arm's exact 104
+actions with the declaration valid in no phase. Gating on *"the charge phase is stepped"* was
+tried and is wrong the other way — `skip_phases: []` is documented, five test modules use it,
+and it would have handed all of them an extra action and a real choice in a command phase
+that offered only STAY.
+
+⚠ **The melee configs now STEP the command phase**: `max_turns` 60 → **80**, +33% episode
+length, and the validator rejects `melee.enabled` with command skipped. **Every melee figure
+measured before this is void on that config** — including the gate table, the 2×2 and the
+shield ablation, all of which were taken at 60 turns.
+
+**What still holds.** The scripted bar charges under the declaration at 4.40 declared per
+episode and a standing fraction of **0.750**, so it still clears its own gate 2. Goldens and
+both advance configs are bit-identical in shape (102 / 152) and the seeded digest is 9 of 9
+identical to `main`.
+
 ## The value of a charge is the shooting shield, not the damage
 
 ⚠ **Measured by an expert panel, and it is the finding that should govern the

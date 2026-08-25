@@ -306,9 +306,20 @@ single binary unit choice. ⚠ It costs one action (102 → 103) so it is **not 
 the current control**, and a `dark_action_slices` control of identical shape is the bridge —
 the pattern this project already used for the advance.
 
-⚠ **Not implemented, and it should not be until someone decides melee is worth it**: the 2×2
-below still says the mechanic is worth about zero, and a declaration that makes charging easy
-would be teaching a behaviour that does not pay.
+✅ **IMPLEMENTED 2026-08-25.** `MOVE_TYPE_CHARGE` in the existing slice, declared by the
+leader in the command phase, with both halves: a rung is legal only for a declared unit, and
+a declared unit may not stand still. Sized so advance configs keep their 152 actions, and
+registered via `dark_action_slices` on the control so the pair stays at 104 each.
+
+⚠ **It voids every melee number in this document.** The melee configs now step `command`, so
+`max_turns` is 60 → **80** — the gate table, the 2×2 and the shield ablation were all taken
+at 60. The bar still clears gate 2 under the declaration (4.40 declared/ep, standing fraction
+**0.750**), which is the only figure re-measured so far.
+
+⚠ **And it does not settle whether melee is worth training.** The 2×2 still says the mechanic
+is worth about zero, so a declaration that makes charging easy could teach a behaviour that
+does not pay. What it changes is that the arm would now measure the *mechanic* rather than
+the agent's inability to express it.
 
 ## The shield ablation, run at last — and the standing prior does NOT reproduce
 
