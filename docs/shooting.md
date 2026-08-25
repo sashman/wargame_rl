@@ -75,6 +75,7 @@ During the shooting phase, a per-model **unit**-target validity mask is overlaid
 4. **Unit U has a living model** — a unit is a legal target while any model in it survives, so killing one model closes nothing
 5. **Some model of U is in range** — Euclidean distance from M ≤ max weapon range of M
 6. **Some model of U is visible** to M
+7. **Unit U is itself unengaged** — a unit locked in melee cannot be shot at ([rules/04](rules/04-making-attacks.md)). Unit-level via `engaged_units`, gated on `exclude_engaged_targets`, which the env sets from `melee.enabled`. ⚠ **Off, this condition does not exist**, which is what it was until melee landed: the engagement term gated only the shooter, so a unit locked in melee could be shot freely by everyone not themselves engaged. It is a bit-identical no-op on every config with melee off. ⚠ The subject axis of *this* test is the OPPONENT — omitting its alive mask let an enemy **corpse** beside one of my models shield that model's whole unit.
 
 **Conditions 5 and 6 are checked independently and need not be satisfied by the same model** — *"it is enough that some model in the target unit is visible and some model in it is in range"*. Reducing a per-model "visible AND in range" mask over the unit would quietly keep them coupled and reject legal targets.
 
