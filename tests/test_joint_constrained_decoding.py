@@ -400,6 +400,37 @@ class TestTheChargePhaseIsDecodedToo:
         # Assert
         assert decoded[:2] == [STAY_ACTION, STAY_ACTION]
 
+    def test_it_never_OVERRIDES_a_unit_that_declined_to_charge(self) -> None:
+        """⚠ The decoder must be a FILTER in this phase, never a chooser.
+
+        `_ChargeReferee.stands` rejects a combination that touches nobody, which
+        is right for a charge that MOVED — the env reverts it — and wrong for one
+        that did not: `_enforce_charge` early-returns when no member displaced,
+        so a unit that stays put is never judged at all. Without the decline
+        exemption the only surviving candidates were charges, so K=3 forced
+        charges a policy had declined — measured at 47 of 112 available
+        model-charges on the shipped config, where K=1 forced none. That
+        manufactures lever usage inside the arm and not inside its dark control,
+        so it lands in the paired difference instead of cancelling.
+        """
+        # Arrange: STAY is the strict argmax, a reaching charge a close second.
+        env = self._env(spacing=1.5)
+        log_probs, _ = self._preferring_west(env)
+        handler = env.player_action_handler
+        east = handler.best_action_toward(1.0, 0.0, max_step_length=2.0)
+        for index in range(len(env.player_models)):
+            log_probs[index][:] = -60.0
+            log_probs[index][STAY_ACTION] = 0.0
+            log_probs[index][east] = -1.0
+        actions = [int(a) for a in log_probs.argmax(axis=1)]
+        assert all(a == STAY_ACTION for a in actions), "setup: argmax must be STAY"
+
+        # Act
+        decoded = decode_joint_coherent(log_probs, actions, env, top_k=3)
+
+        # Assert
+        assert decoded[:2] == [STAY_ACTION, STAY_ACTION]
+
     def test_the_movement_phase_is_judged_on_coherency_alone(self) -> None:
         """The charge clause must not leak into the phase it does not govern."""
         # Arrange

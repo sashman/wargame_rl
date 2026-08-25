@@ -238,10 +238,29 @@ opponent_deployment_zone: [40, 0, 60, 44]
 # Re-run `just measure-baselines configs/experiments/25v25_maps_take_opponent.yaml
 # 100 "" 700000` before quoting anything, and note `squad_march_take` is absent
 # from that recipe's `BASELINES` -- its rows above come from `measure-paired`.
+# ⚠ **THE OPPONENT MUST BE ABLE TO CHARGE, and it could not until 2026-08-25.**
+# Both configs seated `squad_march_take`, whose `charge_when_it_lands` is False,
+# so the arm would have trained in the UNILATERAL cell of a mechanic whose whole
+# measured value is the ASYMMETRY between the seats. Measured n=100 per cell,
+# paired on seeds 700000+, argmax, vp_margin to the player:
+#
+#                       opponent walks   opponent charges
+#     player walks           +14.05            -51.55
+#     player charges         +38.00             +0.95
+#
+# Charging against a walker is worth +23.95 +/- 9.94; both charging against both
+# walking is -13.10 +/- 10.88. Reading the top row alone says melee is worth +24;
+# the mechanic is worth about zero. This is the Advance failure -- a bar that
+# could not use a core rule -- moved one seat over, and it was found by an audit
+# panel inside the commit that claimed to have closed it.
+#
+# ⚠ Both configs get the SAME opponent. With melee off `squad_march_take_charge`
+# is byte-identical to `squad_march_take` (verified on this dark config), so the
+# control is unchanged and the pair still differs in exactly one scalar.
 opponent_policy:
   type: scripted_baseline
   params:
-    baseline: squad_march_take
+    baseline: squad_march_take_charge
 
 # The layout is drawn from the real tables, one per episode, instead of being
 # generated. This is the third terrain mode and it is the only one that trains

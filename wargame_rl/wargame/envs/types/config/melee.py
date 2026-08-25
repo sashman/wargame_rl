@@ -66,3 +66,17 @@ class MeleeConfig(BaseModel):
             "exact no-op."
         ),
     )
+    shield_engaged_targets: bool = Field(
+        default=True,
+        description=(
+            "A unit locked in melee cannot be shot at, per "
+            "`docs/rules/04-making-attacks.md`. ⚠ This exists ONLY so it can be "
+            "ABLATED: a charging script measured +62.50 with it and -4.00 "
+            "without, which is the evidence that the charge's value is the "
+            "shooting shield and not the blade. Before this field the flag was "
+            "hardwired to `enabled` at both mask call sites, so the ablation "
+            "the melee pre-registration REQUIRES of every vp number was not "
+            "expressible -- a requirement nothing could satisfy. Read only when "
+            "`enabled`; turning it off is a deliberately incorrect game."
+        ),
+    )

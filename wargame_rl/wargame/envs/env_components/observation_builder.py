@@ -567,7 +567,8 @@ def build_observation(
                 ),
                 engagement_range=view.rules_quantities.engagement_range,
                 base_diameter=2.0 * view.rules_quantities.base_radius,
-                exclude_engaged_targets=view.config.melee.enabled,
+                exclude_engaged_targets=view.config.melee.enabled
+                and view.config.melee.shield_engaged_targets,
             )
             action_mask[:, shooting_slice.start : shooting_slice.end] &= (
                 shooting_validity

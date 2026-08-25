@@ -1353,7 +1353,8 @@ class WargameEnv(gym.Env):
                 # nothing downstream re-checks, so the opponent would simply
                 # shoot targets the rules forbid. Shooting alone already
                 # measures a 24.6 vp seat asymmetry on one golden config.
-                exclude_engaged_targets=self.config.melee.enabled,
+                exclude_engaged_targets=self.config.melee.enabled
+                and self.config.melee.shield_engaged_targets,
             )
         )
         return mask

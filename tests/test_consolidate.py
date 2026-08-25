@@ -360,6 +360,14 @@ def test_melee_ON_with_no_charges_is_the_SAME_GAME_as_melee_off() -> None:
 
     This is also the better cross-config bridge: 60 agent steps against 40, a
     different `skip_phases`, and the same game to the point.
+
+    ⚠ **BOTH seats have to be non-charging, and forcing that is not cosmetic.**
+    The shipped melee config seats `squad_march_take_charge` — it has to, or the
+    arm trains in the unilateral cell of a mechanic whose value is the asymmetry
+    between the seats. So "no charges" here means overriding the opponent too;
+    without that this test compares a charging opponent against a walking one and
+    measures the seat rather than melee. It failed exactly that way the moment
+    the seat was corrected, which is the test working.
     """
     # Arrange
     seeds = range(700000, 700006)
@@ -371,7 +379,12 @@ def test_melee_ON_with_no_charges_is_the_SAME_GAME_as_melee_off() -> None:
         "configs/experiments/25v25_maps_melee.yaml",
         "configs/golden/25v25_maps_two_mode.yaml",
     ):
-        env = create_environment(load_env_config(path))
+        config = load_env_config(path)
+        opponent = config.opponent_policy
+        assert opponent is not None
+        opponent.params = dict(opponent.params or {})
+        opponent.params["baseline"] = policy_name
+        env = create_environment(config)
         policy = build_baseline_policy(policy_name)
         margins = []
         for seed in seeds:

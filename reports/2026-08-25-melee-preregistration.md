@@ -79,8 +79,8 @@ Measured on the shipped melee config, n=8, seeds 700000+:
 | gate | criterion | measured | verdict |
 |---|---|---|---|
 | 1 | declared > 0 and standing > 0 | 9.75 and 6.12 per episode | **pass** |
-| 2 | standing fraction > 0.5 | **0.628** | **pass** |
-| 3 | `coherent` no lower than `squad_march_take` | 0.8636 v 0.8026 | **pass** |
+| 2 | standing fraction > 0.5 | **0.628**, and **0.887** after the audit fix below | **pass** |
+| 3 | `coherent` no lower than `squad_march_take` | 0.8636 v 0.8026 | **pass, but see below** |
 | 4 | melee off ⇒ byte-identical to `squad_march_take` | identical on the golden **and on the dark control** | **pass** |
 
 ⚠ **Gate 2 failed on the first two versions of the rule, and both failures were mine.**
@@ -92,16 +92,80 @@ is capped by `min(Move, roll)`, since the ladder's longest rung is Move
 The gate is what caught both. **A bar that has not been gated on its own mechanism counts is
 an unvalidated instrument, and its vp number means nothing.**
 
-**Still open at 28.2% of moved charges: ending incoherent.** Rigid translation preserves
-formation exactly, so this is the *resolver* deflecting members off friendly and enemy
-bases. It is the same wall three movement-side fixes have already been measured away
-against — **do not attempt a fourth.** It is a known, quantified property of the instrument.
+⚠ **RETRACTED, same day, by an audit panel — "still open at 28.2%: ending incoherent.
+Rigid translation preserves formation exactly, so this is the RESOLVER; do not attempt a
+fourth movement-side fix."** Wrong on all three clauses. Four panel probes at four
+different n (76.2%, 80.8%, 80.9%, 85.0%) and my own re-derivation (**82.2%**, n=12) agree
+that the incoherent failures were on units **already out of coherency before the charge
+began** — only 8 of 135 moved charges were broken *by* the move. The inference was
+backwards: rigid translation preserving formation is exactly *why* a squad that was broken
+when it declared is still broken when it lands. And the fix is policy-side, so the
+movement-side prohibition never applied to it. There is also a selection effect pulling the
+wrong way — a stretched squad's nearest member is nearer the enemy, so a broken unit looks
+*more* chargeable.
+
+**The fix is one clause: decline to charge with an incoherent unit.** Standing fraction
+**0.628 → 0.887**; incoherent failures 45 → 7 of 151 moved charges.
+
+⚠ **This is the third time on this project's record that a published explanation was built
+against a missing within-policy control** — after the angle-collapse statistic and the
+travel-reward gates. The standing rule *"run the within-policy control before building a
+diagnosis on a behavioural statistic"* applies to **mechanism counts exactly as it does to
+vp**, and the first version of this document did not carry it.
+
+## ⚠ The blocker was closed on the BAR and left open on the OPPONENT
+
+Found by an audit panel, inside the commit whose message says the blocker is closed.
+**Both melee configs seated `squad_march_take`**, whose `charge_when_it_lands` is False —
+so the arm would have trained in the **unilateral cell** of a mechanic whose entire measured
+value is the *asymmetry between the seats*. This is the Advance failure moved one seat over.
+
+The panel's 2×2, n=100 per cell, paired on seeds 700000+, argmax, vp_margin to the player:
+
+| | opponent walks | opponent charges |
+|---|---|---|
+| **player walks** | +14.05 | −51.55 |
+| **player charges** | **+38.00** | +0.95 |
+
+Charging against a walker is worth **+23.95 ± 9.94** (t = +2.41); both charging against both
+walking is **−13.10 ± 10.88**. Every same-row comparison in the top row says melee is worth
++24, and **the mechanic is worth about zero.** Both configs now seat
+`squad_march_take_charge`, pinned by a test. With melee off it is byte-identical to
+`squad_march_take`, so the dark control's digest is unchanged and the pair still differs in
+exactly one scalar.
+
+⚠ **The standing rule was on file and I did not apply it.** *"Never measure a symmetric
+change with both sides changed at once — run the 2×2."* I *did* run a 2×2 — at n=6, where
+the SE on a cell is ~36 vp — then recorded it as noise and reasoned about the mechanic from
+a single cell anyway. **The missing half of the rule: a 2×2 run below its resolvable n is
+not a 2×2, and the resolvable n is computable from the per-episode sd before you run it.**
+"Record it as noise" was the wrong remedy when the right one cost four CPU-minutes and would
+have caught the opponent-seat defect before this document was committed.
+
+## Two more defects the audit found in this document
+
+⚠ **Requirement 1 was unsatisfiable.** `exclude_engaged_targets` was hardwired to
+`config.melee.enabled` at both mask call sites and `MeleeConfig` had no such field, so *"the
+same arm with the shield ablated"* could not be expressed at all. Now
+`melee.shield_engaged_targets`, default True.
+
+⚠ **`declared` and `standing` are not decode-independent, and this document never states K.**
+A panel measured the same untrained weights declaring 25–35 charges per episode at K=1 and
+2.25–3.62 at K=3 — a 10× swing in the headline mechanism count from the decode setting
+alone. **Every readout here must be quoted with its K**, and the pre-registration's own
+central insight — a gate tighter than its estimator's noise is not a gate — applies to three
+of its four mechanism gates.
+
+## The control nobody ran: the untrained-network floor
+
+⚠ A randomly-initialised network passes **gate 1 and gate 3** having learned nothing
+(declared/ep 2.25–3.62, stood/ep 0.25–0.88, coherency 0.916–0.994 against gate 3's 0.803
+bar), because the decoder enforces coherency for it. **New standing rule: any behavioural
+readout that gates an arm must be floored on a random-init network through the arm's own
+selector path, before the arm launches.** It costs one inference run.
 
 ## What is NOT claimed here
 
-A 2×2 has been *run* — n=6, seeds 700000+, on the melee config — purely to show the
-instrument works on both seats. Its cells are internally inconsistent (both sides appear to
-gain from charging), which at n=6 against a per-episode vp sd of 51–83 is what noise looks
-like. **Those numbers are not reported as a finding and must not be quoted.** The opponent
-seat charges: models engaged after the opponent's charge phase go from 0.0 to 6.2–8.0 per
-episode.
+The 2×2 above is the panel's, at n=100. My own n=6 version was internally inconsistent and
+is superseded rather than retained. The opponent seat does charge: models engaged after the
+opponent's charge phase go from 0.0 to 6.2–8.0 per episode.

@@ -12,6 +12,7 @@ from wargame_rl.wargame.envs.baseline.policy import (
     step_toward_objective,
 )
 from wargame_rl.wargame.envs.baseline.registry import register_baseline
+from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
 from wargame_rl.wargame.envs.env_components.actions import (
     MOVE_TYPE_ADVANCE,
     STAY_ACTION,
@@ -291,6 +292,36 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
             # A unit with no legal rung is ineligible -- out of declaration
             # range, already engaged, or it advanced or fell back this turn.
             if not member_indices or not legality[member_indices].any():
+                continue
+            # ⚠ **Decline if the unit is ALREADY out of coherency.** The referee
+            # judges coherency at the END of the charge, and a rigid translation
+            # preserves formation exactly -- which is precisely why a squad that
+            # was broken when it declared is still broken when it lands, and the
+            # whole charge reverts.
+            #
+            # Measured: 82.2% of this policy's incoherent charge failures were on
+            # units already incoherent BEFORE the move, and only 8 of 135 moved
+            # charges were broken BY the move. There is also a selection effect
+            # pulling the wrong way -- a stretched squad's nearest member is
+            # nearer the enemy, so a broken unit looks MORE chargeable.
+            #
+            # ⚠ I published the opposite ("rigid translation preserves formation
+            # exactly, so this is the RESOLVER -- do not attempt a fourth
+            # movement-side fix") and an audit panel refuted it with four
+            # independent probes. The inference was backwards, and the fix is
+            # policy-side, so the movement prohibition never applied to it.
+            if not evaluate_coherency(
+                positions=np.array(
+                    [models[i].location for i in member_indices], dtype=float
+                ),
+                group_ids=np.zeros(len(member_indices), dtype=np.intp),
+                alive_mask=np.ones(len(member_indices), dtype=bool),
+                base_radii=np.array(
+                    [models[i].base_radius for i in member_indices], dtype=float
+                ),
+                nearest_distance=env.config.coherency.nearest_distance,
+                furthest_distance=env.config.coherency.furthest_distance,
+            ).all_coherent:
                 continue
             pair = self._charge_target(models, member_indices, env)
             if pair is None:

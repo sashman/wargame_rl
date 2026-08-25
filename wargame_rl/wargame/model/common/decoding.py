@@ -381,12 +381,37 @@ def decode_joint_coherent(
         member_rows = np.asarray(member_indices, dtype=int)[None, :]
         ends = positions[None, :, :] + displacements[member_rows, combos]
         legal = _coherent_mask(ends, radii, max(nearest - safety_margin, 0.0), furthest)
+        # Which candidates move nobody at all. Empty outside the charge phase,
+        # where declining is not a distinct outcome: a unit that stands still in
+        # the movement phase is judged by the coherency referee exactly as a
+        # moving one is.
+        declines = np.zeros(len(combos), dtype=bool)
         if referee is not None:
             # ⚠ The safety margin is NOT applied to the charge clause. It exists
             # because the env's resolution can shorten a move, and a shortened
             # move can only *reduce* contact — so relaxing the contact test the
             # same way would certify combinations that reach nobody.
-            legal &= referee.stands(ends, float(radii[0]), engagement)
+            #
+            # ⚠ **DECLINING IS ALWAYS LEGAL, and omitting that made the decoder a
+            # CHOOSER rather than a filter.** `stands` rejects a combination that
+            # touches nobody, which is right for a charge that MOVED — the env
+            # reverts it — and wrong for one that did not: `_enforce_charge`
+            # early-returns when no member displaced, so a unit that stays put is
+            # never judged at all. Without this clause the only surviving
+            # candidates were charges, so the decoder overrode a policy that had
+            # chosen to decline: measured, K=3 forced **47 of 112** available
+            # model-charges against log-probs whose argmax was strictly STAY,
+            # where K=1 forced none. That manufactures lever usage inside the
+            # arm and not inside its dark control, so it lands in the paired
+            # difference rather than cancelling — and this project prices
+            # "using a lever at play" at −13.4 vp.
+            declines = ~np.any(
+                np.linalg.norm(displacements[member_rows, combos], axis=2) > 0.0,
+                axis=1,
+            )
+            legal = (
+                legal & referee.stands(ends, float(radii[0]), engagement)
+            ) | declines
         if not legal.any():
             # A strict fallback, never a competitor: standing still is only ever
             # taken when the ranked set offers nothing legal, so it cannot make
@@ -420,6 +445,17 @@ def decode_joint_coherent(
             # passes -- and an unbounded walk would put 243 x k collision
             # resolutions on the hot path.
             for candidate in ranked_legal[:max_verifications]:
+                # ⚠ The decline exemption has to be repeated here. This loop
+                # OVERWRITES `best`, so applying the referee without it undid
+                # the clause above entirely: the all-STAY candidate was chosen
+                # on score, then rejected for touching nobody, and the first
+                # charge in score order took its place. The relaxed mask and the
+                # verified one must agree on what is legal, or the second wins
+                # silently. Verified: K=3 forced 47 of 112 available
+                # model-charges against a strictly-STAY argmax until this line.
+                if declines[candidate]:
+                    best = combos[candidate]
+                    break
                 resolved = _resolve_endpoints(
                     env, member_indices, combos[candidate], displacements
                 )

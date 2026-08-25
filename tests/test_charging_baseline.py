@@ -16,6 +16,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from scripts.scenario_overrides import load_env_config
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
 from wargame_rl.wargame.envs.domain.engagement import engaged_with_any
 from wargame_rl.wargame.envs.types import WargameEnvConfig
@@ -200,3 +201,39 @@ def test_the_opponent_seat_can_charge_too() -> None:
 
     # Assert
     assert moved, "the opponent seat never moved in the charge phase"
+
+
+def test_BOTH_melee_configs_seat_an_opponent_THAT_CAN_CHARGE() -> None:
+    """⚠ The blocker was closed on the bar and left open on the opponent.
+
+    Both configs seated `squad_march_take`, whose `charge_when_it_lands` is
+    False, so the arm would have trained in the UNILATERAL cell of a mechanic
+    whose whole measured value is the asymmetry between the seats. Measured
+    n=100 per cell, paired, argmax, vp_margin to the player:
+
+        player walks   / opponent walks    +14.05
+        player charges / opponent walks    +38.00
+        player walks   / opponent charges  -51.55
+        player charges / opponent charges   +0.95
+
+    Reading the top row alone says melee is worth +24; the mechanic is worth
+    about zero. This is the Advance failure — a bar that could not use a core
+    rule — moved one seat over, and an audit panel found it inside the commit
+    that claimed to have closed it.
+    """
+    # Arrange / Act
+    seated = {}
+    for path in (
+        "configs/experiments/25v25_maps_melee.yaml",
+        "configs/experiments/25v25_maps_melee_dark.yaml",
+    ):
+        opponent = load_env_config(path).opponent_policy
+        assert opponent is not None
+        seated[path] = build_baseline_policy((opponent.params or {})["baseline"])
+
+    # Assert
+    for path, policy in seated.items():
+        assert getattr(policy, "charge_when_it_lands", False), (
+            f"{path} seats an opponent that cannot charge, so the arm would "
+            "train in the unilateral cell"
+        )
