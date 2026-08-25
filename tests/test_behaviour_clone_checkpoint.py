@@ -15,12 +15,15 @@ start" was a no-op.
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 from scripts.behaviour_clone import (
     POLICY_PREFIX,
+    STAY_ACTION,
     VALUE_PREFIX,
     collect,
+    phase_balanced_weights,
     unit_match_counts,
 )
 from wargame_rl.wargame.envs.types import (
@@ -187,11 +190,112 @@ def test_collect_takes_any_selector_and_records_its_actions() -> None:
         played.append(chosen)
         return WargameEnvAction(actions=chosen)
 
-    states, masks, actions, returns = collect(select, config, n_episodes=1, gamma=0.9)
+    states, masks, actions, returns, phases = collect(
+        select, config, n_episodes=1, gamma=0.9
+    )
 
+    # The phase per step, recorded so the fit can balance target classes WITHIN
+    # a phase: STAY is the rare class in movement and the dominant one in the
+    # charge, and the mask cannot tell those two apart because a charge reuses
+    # the movement slice.
+    assert phases.shape[0] == actions.shape[0]
     assert actions.shape[0] == len(played)
     assert actions.shape[1] == config.number_of_wargame_models
     assert torch.equal(actions, torch.tensor(played, dtype=torch.long))
     assert masks.shape[0] == actions.shape[0]
     assert returns.shape == actions.shape
     assert all(tensor.shape[0] == actions.shape[0] for tensor in states)
+
+
+class TestPhaseBalancedWeights:
+    """A rare target must not be drowned by a common one — per PHASE.
+
+    Unweighted, the clone fit learned the charge phase as "always STAY": a charge
+    order is ~3.7% of that phase's deciding rows, so predicting STAY scores 94%
+    and the loss has almost nothing to gain from the rest. Measured, the clones
+    echoed 0.8–2.4% of their teacher's charge orders while matching its shooting
+    at 0.99 — they had not failed to coordinate, they had failed to declare.
+    """
+
+    @staticmethod
+    def _rows(stay_count: int, other_count: int, phase: int):  # type: ignore[no-untyped-def]
+        n = stay_count + other_count
+        actions = torch.tensor(
+            [[STAY_ACTION]] * stay_count + [[7]] * other_count, dtype=torch.long
+        )
+        masks = torch.ones((n, 1, 12), dtype=torch.bool)
+        phases = torch.full((n,), phase, dtype=torch.long)
+        return actions, masks, phases
+
+    def test_the_rare_target_is_weighted_up(self) -> None:
+        """96 STAY against 4 charges is the measured charge-phase balance."""
+        # Arrange
+        actions, masks, phases = self._rows(96, 4, phase=3)
+
+        # Act
+        weights = phase_balanced_weights(actions, masks, phases)
+
+        # Assert
+        assert weights[actions == 7].mean() > weights[actions == STAY_ACTION].mean()
+
+    def test_the_balance_is_PER_PHASE_and_not_global(self) -> None:
+        """⚠ STAY is rare in movement and dominant in the charge.
+
+        A single global balance would push in opposite directions in the two
+        phases and cancel, which is why the phase is recorded at collection
+        rather than inferred from the mask — a charge reuses the movement slice,
+        so the two are indistinguishable there.
+        """
+        # Arrange: charge phase 96/4 STAY-heavy, movement phase 4/96 STAY-light.
+        charge = self._rows(96, 4, phase=3)
+        movement = self._rows(4, 96, phase=1)
+        actions = torch.cat([charge[0], movement[0]])
+        masks = torch.cat([charge[1], movement[1]])
+        phases = torch.cat([charge[2], movement[2]])
+
+        # Act
+        weights = phase_balanced_weights(actions, masks, phases)
+
+        # Assert: the up-weighted class is the rare one in EACH phase.
+        in_charge = phases == 3
+        in_movement = phases == 1
+        charge_stay = weights[in_charge & (actions == STAY_ACTION).squeeze(-1)].mean()
+        charge_other = weights[in_charge & (actions == 7).squeeze(-1)].mean()
+        move_stay = weights[in_movement & (actions == STAY_ACTION).squeeze(-1)].mean()
+        move_other = weights[in_movement & (actions == 7).squeeze(-1)].mean()
+        assert charge_other > charge_stay
+        assert move_stay > move_other
+
+    def test_a_row_with_one_legal_action_is_not_counted(self) -> None:
+        """A destroyed model has only STAY and is excluded from the fit.
+
+        Counting it here would inflate the STAY share and under-weight the rare
+        class exactly where it matters most.
+        """
+        # Arrange
+        actions, masks, phases = self._rows(4, 4, phase=3)
+        corpses = torch.zeros((96, 1, 12), dtype=torch.bool)
+        corpses[:, :, STAY_ACTION] = True
+        masks = torch.cat([masks, corpses])
+        actions = torch.cat([actions, torch.full((96, 1), STAY_ACTION)])
+        phases = torch.cat([phases, torch.full((96,), 3)])
+
+        # Act
+        weights = phase_balanced_weights(actions, masks, phases)
+
+        # Assert: 4 v 4 among DECIDING rows, so the two classes weigh the same.
+        deciding = masks.sum(dim=-1) > 1
+        stay = weights[deciding & (actions == STAY_ACTION)].mean()
+        other = weights[deciding & (actions == 7)].mean()
+        assert stay == pytest.approx(float(other), rel=1e-6)
+
+    def test_the_mean_weight_is_one_so_the_learning_rate_carries_over(self) -> None:
+        """This changes the BALANCE of the loss, never its scale."""
+        # Arrange
+        actions, masks, phases = self._rows(96, 4, phase=3)
+
+        # Act
+        weights = phase_balanced_weights(actions, masks, phases)
+
+        # Assert
+        assert float(weights[masks.sum(dim=-1) > 1].mean()) == pytest.approx(1.0)

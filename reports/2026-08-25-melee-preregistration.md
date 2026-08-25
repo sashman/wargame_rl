@@ -255,6 +255,61 @@ This also joins the retraction above: near-agreement is worth ~90% of exact agre
 policy that is *approximately* unanimous keeps most of the value. Both measurements point the
 same way.
 
+## Two attempted fixes, and what they found: the CHARGE HAS NO DECLARATION
+
+### 1. Balancing the clone loss — moved the probability, not the argmax
+
+The unweighted clone learned "always STAY" in the charge phase because a charge order is
+~3.7% of that phase's deciding rows. `phase_balanced_weights` balances STAY against
+everything else **within each phase** (globally would cancel: STAY is rare in movement and
+dominant in the charge, and the mask cannot tell them apart because a charge reuses the
+movement slice).
+
+Measured in states where the teacher charges this model:
+
+| clone | P(stay) | P(any legal charge) | teacher's rung ranks |
+|---|---|---|---|
+| unweighted s0 / s1 | 0.637 / 0.613 | 0.363 / 0.387 | 16th / 16th |
+| **balanced** s0 / s1 / s2 | 0.413 / 0.396 / 0.464 | **0.587 / 0.605 / 0.536** | 14th / 13th / 18th |
+
+**The weighting flipped the mass onto charging — and the argmax still says STAY.** Charge
+declarations per episode rose 2–3× (0.50–1.17 → 1.75–3.20) and the standing fraction did
+not move off ~0. ⚠ **The class imbalance was real and was not the binding constraint.**
+
+### 2. The mechanism, and it is the ACTION SPACE
+
+`P(any charge)` of 0.59 is spread across ~48 individual rungs at ~0.012 each, against STAY
+as **one** action at 0.41. An argmax over a spread loses to a concentrated alternative even
+when the spread carries more total mass. And it compounds per model:
+
+| | declarations | mean share of the unit declaring | **whole unit declares** |
+|---|---|---|---|
+| teacher | 82 | **1.000** | **1.000** |
+| balanced clone s0 / s1 / s2 | 26 / 23 / 48 | 0.539 / 0.616 / 0.597 | **0.231 / 0.348 / 0.354** |
+
+**A charge fails because only half the unit charges at all.** The rest stay put, the unit
+stretches, and the referee reverts it however good the rung choice was. At a per-model
+declare rate of ~0.6 over ~3.3 living members, `0.6^3.3 ≈ 0.20` — against the measured
+0.23–0.35.
+
+⚠ **This is the defect CLAUDE.md already names for the advance, unfixed for the charge.**
+*"Leader-binds inside the movement slice would SHATTER formation — move type and displacement
+were the same action... That is why the declaration had to be split out into its own phase."*
+The advance got a 2-action `move_type` slice declared by the unit's leader, which **binds the
+whole unit**. The charge never did: its declaration *is* the choice of a rung, so "charge or
+not" is decided independently by every model.
+
+**The proposal that falls out, and it needs no new mechanism** — one more value in the
+existing `move_type` slice, declared by the leader, binding the unit, exactly as
+`MOVE_TYPE_ADVANCE` already is. It turns a 1-against-48 argmax repeated per model into a
+single binary unit choice. ⚠ It costs one action (102 → 103) so it is **not pairable against
+the current control**, and a `dark_action_slices` control of identical shape is the bridge —
+the pattern this project already used for the advance.
+
+⚠ **Not implemented, and it should not be until someone decides melee is worth it**: the 2×2
+below still says the mechanic is worth about zero, and a declaration that makes charging easy
+would be teaching a behaviour that does not pay.
+
 ## The shield ablation, run at last — and the standing prior does NOT reproduce
 
 n=60 per cell, paired on layouts, seeds 700000+, argmax, on the shipped melee config.
