@@ -192,11 +192,54 @@ of its four mechanism gates.
 
 ## The control nobody ran: the untrained-network floor
 
-⚠ A randomly-initialised network passes **gate 1 and gate 3** having learned nothing
-(declared/ep 2.25–3.62, stood/ep 0.25–0.88, coherency 0.916–0.994 against gate 3's 0.803
-bar), because the decoder enforces coherency for it. **New standing rule: any behavioural
-readout that gates an arm must be floored on a random-init network through the arm's own
-selector path, before the arm launches.** It costs one inference run.
+Three randomly-initialised `TransformerNetwork`s through the arm's **own** selector path
+(argmax on masked logits, then the joint decode), melee config, n=6 episodes, seeds 700000+.
+Measured by me after an audit panel named it as the missing control.
+
+| decode | declared/ep | stood/ep | standing fraction | coherent |
+|---|---|---|---|---|
+| **K=1** | 25.17 / 36.33 / 32.00 | 1.67 / 0.00 / 0.33 | 0.066 / 0.000 / 0.010 | 0.532 / 0.918 / 0.749 |
+| **K=3** | 4.50 / 5.17 / 2.33 | 3.67 / 1.17 / 1.50 | **0.815** / 0.226 / 0.643 | 0.809 / 0.991 / 0.937 |
+
+⚠ **`declared` swings 7–15× on identical weights from the decode setting alone**, and this
+document never stated K. A readout that moves an order of magnitude on a setting that is not
+the feature is not a readout.
+
+⚠ **All three thresholded gates are cleared by a network that has learned nothing.** Gate 1
+("declared > 0 and standing > 0") passes 3 of 3 at K=3. Gate 2 (standing fraction > 0.5)
+passes on the first seed at **0.815**. Gate 3 (coherency ≥ 0.803) passes on 2 of 3 and is
+marginal on the third — because at K=3 **the decoder enforces coherency for the network**.
+The pre-registration's own central insight — a gate tighter than its estimator's noise is not
+a gate — applies to its own gates, and one class harder: these are not merely noisy, they are
+*passed by the machinery*.
+
+**The conclusion the floor forces, and it is the useful one: at K=3 the mechanism counts
+measure the DECODER, not the policy.** An untrained network stands 1.17–3.67 charges an
+episode purely because the decoder picks legal combinations for it. At K=1 the same weights
+stand 0.00–1.67 at a standing fraction of 0.000–0.066 — *there* the policy's own competence
+shows.
+
+### The thresholds, written against that floor
+
+Every readout is quoted at **both** K, and the K=1 column is the one that decides.
+
+| readout | floor (K=1, untrained) | ACCEPT | notes |
+|---|---|---|---|
+| standing fraction, K=1 | 0.000–0.066 | **> 0.35** | ~5× the worst floor seed; the policy is choosing charges that land |
+| standing/ep, K=1 | 0.00–1.67 | **> 3.0** | above every floor seed |
+| declared/ep, K=1 | 25.2–36.3 | **< 15** | ⚠ **an upper bound.** The floor DECLARES constantly and lands nothing; learning shows as declaring *less* |
+| coherency | 0.532–0.918 | ≥ the walker's on the same layouts | K=3 is uninformative here — the decoder supplies it |
+| standing fraction, K=3 | 0.226–0.815 | **not a gate** | the floor spans it; report it, do not gate on it |
+
+⚠ **`declared` is an upper bound, not a lower one, and that inverts the obvious reading.**
+An untrained network declares 25–36 charges an episode and stands almost none. "Uses the
+lever a lot" is the *floor's* signature, not competence — the same shape as the advance
+lever, where two of three seeds drifted into *using* a move that does not pay and 700 extra
+epochs made it worse.
+
+**New standing rule, earned here: any behavioural readout that gates an arm must be floored
+on a random-init network through the arm's own selector path, before the arm launches.** It
+costs one inference run, and it would have caught all three of these.
 
 ## What is NOT claimed here
 
