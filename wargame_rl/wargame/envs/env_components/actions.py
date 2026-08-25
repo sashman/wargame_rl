@@ -43,6 +43,9 @@ STAY_ACTION = 0
 # advance can add to a model's Move is 6". The bin ladder is built from this,
 # which is what keeps an action index meaning the same distance every turn.
 ADVANCE_DIE_FACES = 6.0
+# The largest total the charge's two D6 can show. Used only to normalise the
+# roll for the observation -- the legality gate reads the roll in inches.
+CHARGE_DICE_MAX = 12.0
 
 # Every slice name `ActionHandler` can register. A name outside this set in
 # `dark_action_slices` is a typo that would silently darken nothing, so it

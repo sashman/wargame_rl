@@ -212,6 +212,15 @@ def _models_to_features(
         core_parts.append(
             np.array([[m.advanced_this_turn] for m in models], dtype=np.float32)
         )
+    # The melee trade, when the scenario fights in melee: what reach this model's
+    # unit rolled on 2D6, and whether it fell back and so spent both its shooting
+    # and its charge.
+    if models[0].charge_roll is not None:
+        core_parts.append(np.array([[m.charge_roll] for m in models], dtype=np.float32))
+    if models[0].fell_back_this_turn is not None:
+        core_parts.append(
+            np.array([[m.fell_back_this_turn] for m in models], dtype=np.float32)
+        )
     core = np.hstack(core_parts)
     alive_col = np.array([[m.alive] for m in models], dtype=np.float32)
     cw = np.array([[float(m.current_wounds)] for m in models], dtype=np.float32)
@@ -316,6 +325,14 @@ def _observation_to_numpy(
         for attribute in ("advance_roll", "advanced_this_turn")
         if probe and getattr(probe[0], attribute) is not None
     )
+    # The charge roll and the fell-back flag, when the scenario fights in melee.
+    # Two columns, for the same reason the advance pair is two: what reach is
+    # available, and whether the turn's shooting has already been given up.
+    n_melee = sum(
+        1
+        for attribute in ("charge_roll", "fell_back_this_turn")
+        if probe and getattr(probe[0], attribute) is not None
+    )
     base_feature_dim = (
         n_spatial
         + n_group
@@ -324,6 +341,7 @@ def _observation_to_numpy(
         + n_coherency
         + n_unit_centroid
         + n_advance
+        + n_melee
         + N_WOUND_FEATURES
         + N_COMBAT_STATS
     )

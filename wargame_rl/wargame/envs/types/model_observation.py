@@ -99,10 +99,27 @@ class WargameModelObservation:
     #                          shooting from one holding fire by choice.
     advance_roll: float | None = None
     advanced_this_turn: float | None = None
+    # The two halves of the melee trade, present only when the scenario fights
+    # in melee. They are the charge's exact analogues of the advance pair above,
+    # and they exist for the same reason: without them the trunk cannot condition
+    # on a roll that the action mask has already spent, and the value head cannot
+    # tell a model that has forfeited its shooting from one holding fire.
+    #   `charge_roll`         -- this model's UNIT's 2D6 for the turn, normalised
+    #                            by the maximum the two dice can show. The rules
+    #                            roll before the charge is declared, so it must be
+    #                            observable when the choice is made.
+    #   `fell_back_this_turn` -- whether its unit fell back out of melee, which
+    #                            costs it both its shooting and its charge.
+    #
+    # ⚠ `charged_this_turn` is deliberately NOT here. It is cleared the moment
+    # the fight it governs resolves, which happens inside the same step, so an
+    # observation could only ever read it as False -- a constant column.
+    charge_roll: float | None = None
+    fell_back_this_turn: float | None = None
 
     @property
     def size(self) -> int:
-        """Location + distances + group one-hot + same-group distance + alive + wound scalars (3) + combat stats (7), plus unit strength, objective-presence flags, the two coherency scalars and the two advance scalars when observed."""
+        """Location + distances + group one-hot + same-group distance + alive + wound scalars (3) + combat stats (7), plus unit strength, objective-presence flags, the two coherency scalars, the two advance scalars and the two melee scalars when observed."""
         return int(
             self.location.size
             + self.distances_to_objectives.size
@@ -117,4 +134,6 @@ class WargameModelObservation:
             + (0 if self.unit_offset is None else self.unit_offset.size)
             + (0 if self.advance_roll is None else 1)
             + (0 if self.advanced_this_turn is None else 1)
+            + (0 if self.charge_roll is None else 1)
+            + (0 if self.fell_back_this_turn is None else 1)
         )

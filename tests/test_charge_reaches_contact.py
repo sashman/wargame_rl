@@ -4,14 +4,21 @@
 
 `back_off_to_unengaged` runs on every mover on both seats, so engagement is
 0.0000% of model-pairs across 60,520 observations — and the minimum edge-to-edge
-gap is **1.000008740"** against an engagement range of 1.0. The army is not far
-from contact; it is parked 8.7 micro-inches outside it and always has been. So
-the charge does not need to cross a gap. It needs the exemption.
+gap is **1.000008740"** against an engagement range of 1.0. Contact is not
+unreachable; it is fenced off by one branch, and the charge is the exemption.
+
+⚠ **RETRACTED: "so the charge does not need to cross a gap".** That 8.7
+micro-inch figure is the MINIMUM pair on the board and was read as a typical
+one. The median charge-eligible unit is **5.99"** from its nearest enemy and
+**0.0%** of declarations are within one speed bin, so a charge needs the
+exemption *and* the distance. The no-new-actions design survives on the pairing
+argument alone — see `docs/melee.md`.
 """
 
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from wargame_rl.wargame.envs.domain.engagement import engaged_with_any
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION, ActionHandler
@@ -24,6 +31,7 @@ from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.model.common.factory import create_environment
+from wargame_rl.wargame.model.common.observation import observation_to_tensor
 
 ENGAGEMENT = 1.0
 # The overlap test needs models with real extent; the rest of this file uses 0.
@@ -434,3 +442,117 @@ def test_a_reverted_charge_does_not_land_on_top_of_another_unit() -> None:
     gaps += np.eye(len(movers)) * 999.0
     worst = float((2 * BASE_RADIUS - gaps).max())
     assert worst <= 1e-9, f"models overlap by {worst:.4f}in after a reverted charge"
+
+
+class TestChargeObservation:
+    """The 2D6 gates which rungs are legal, so the policy has to be able to see it.
+
+    ⚠ Before this, `charge_roll` reached the network **only** as a `masked_fill`
+    on the final logits (`net.py`). A mask is not an observation: it removes
+    illegal actions from the head, but it never enters the trunk, so no layer
+    could condition on the roll and the CRITIC could not see it at all. The value
+    of a state where the unit rolled 11 differs from one where it rolled 3, and
+    the critic was being asked to price both the same. `advance_roll` had this
+    right; the charge copied the mask and not the column.
+    """
+
+    @staticmethod
+    def _obs(melee: bool, charge_phase: bool = True):  # type: ignore[no-untyped-def]
+        config = WargameEnvConfig(
+            number_of_wargame_models=1,
+            number_of_opponent_models=1,
+            number_of_objectives=1,
+            opponent_policy=OpponentPolicyConfig(
+                type="scripted_baseline", params={"baseline": "hold_deployment"}
+            ),
+            models=[ModelConfig(melee_weapons=[MeleeWeaponProfile()])],
+            opponent_models=[ModelConfig(melee_weapons=[MeleeWeaponProfile()])],
+            melee=MeleeConfig(enabled=melee),
+            engagement_range=ENGAGEMENT,
+            base_radius=0.0,
+            skip_phases=(
+                [BattlePhase.command, BattlePhase.shooting]
+                if charge_phase
+                else [BattlePhase.command, BattlePhase.shooting, BattlePhase.charge]
+            ),
+        )
+        env = create_environment(config)
+        try:
+            observation, _info = env.reset(seed=11)
+            return observation, env.wargame_models[0].charge_roll
+        finally:
+            env.close()
+
+    def test_a_config_that_skips_the_charge_phase_adds_no_columns(self) -> None:
+        """The no-op guarantee: every golden config skips `charge`."""
+        # Arrange / Act
+        observation, _roll = self._obs(melee=False, charge_phase=False)
+
+        # Assert
+        model = observation.wargame_models[0]
+        assert model.charge_roll is None
+        assert model.fell_back_this_turn is None
+
+    def test_the_DARK_CONTROL_keeps_the_columns_so_the_pair_stays_paired(self) -> None:
+        """⚠ The gate is the PHASE, not `melee.enabled`, and this is why.
+
+        `25v25_maps_melee.yaml` and `..._melee_dark.yaml` differ in exactly one
+        scalar so that the arm and its control share an init and the per-seed
+        difference is a paired estimator. Gating these columns on that same
+        scalar would give them different tensor widths — different weights at
+        step 0 — and destroy the only thing the pair exists to provide.
+        """
+        # Arrange
+        arm, _ = self._obs(melee=True, charge_phase=True)
+        dark, _ = self._obs(melee=False, charge_phase=True)
+
+        # Act
+        arm_width = observation_to_tensor(arm)[2].shape[1]
+        dark_width = observation_to_tensor(dark)[2].shape[1]
+
+        # Assert
+        assert arm_width == dark_width
+        assert dark.wargame_models[0].charge_roll == 0.0, "no roll is ever taken"
+        assert dark.wargame_models[0].fell_back_this_turn == 0.0
+
+    def test_the_roll_is_observable_and_normalised_by_the_two_dice(self) -> None:
+        """2D6 raw would be 12x the scale of every neighbouring feature."""
+        # Arrange / Act
+        observation, raw_roll = self._obs(melee=True)
+
+        # Assert
+        model = observation.wargame_models[0]
+        assert raw_roll > 0.0, "the roll must have happened before the observation"
+        assert model.charge_roll is not None
+        assert model.charge_roll == pytest.approx(raw_roll / 12.0)
+        assert 0.0 < model.charge_roll <= 1.0
+
+    def test_the_fell_back_flag_is_observable(self) -> None:
+        """For the VALUE head: falling back spends the shooting AND the charge."""
+        # Arrange / Act
+        observation, _roll = self._obs(melee=True)
+
+        # Assert
+        assert observation.wargame_models[0].fell_back_this_turn == 0.0
+
+    def test_the_opponents_columns_are_zeroed_because_they_are_stale(self) -> None:
+        """Each side rolls at the start of its OWN turn, so theirs says nothing."""
+        # Arrange / Act
+        observation, _roll = self._obs(melee=True)
+
+        # Assert
+        assert observation.opponent_models[0].charge_roll == 0.0
+        assert observation.opponent_models[0].fell_back_this_turn == 0.0
+
+    def test_the_two_columns_widen_the_per_model_tensor_by_exactly_two(self) -> None:
+        """⚠ A tensor-shape change: it orphans a melee checkpoint deliberately."""
+        # Arrange
+        plain, _ = self._obs(melee=False, charge_phase=False)
+        fighting, _ = self._obs(melee=True)
+
+        # Act
+        narrow = observation_to_tensor(plain)[2].shape[1]
+        wide = observation_to_tensor(fighting)[2].shape[1]
+
+        # Assert
+        assert wide - narrow == 2

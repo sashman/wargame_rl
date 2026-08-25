@@ -19,6 +19,7 @@ from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.value_objects import POSITION_DTYPE
 from wargame_rl.wargame.envs.env_components.actions import (
     ADVANCE_DIE_FACES,
+    CHARGE_DICE_MAX,
     ActionRegistry,
 )
 from wargame_rl.wargame.envs.env_components.distance_cache import (
@@ -203,6 +204,7 @@ def _models_to_obs(
     unit_centroid_cap: float | None = None,
     observe_advance: bool = False,
     advance_is_known: bool = True,
+    observe_melee: bool = False,
 ) -> list[WargameModelObservation]:
     strengths = _unit_strengths(models) if observe_unit_strength else {}
     offsets = (
@@ -277,6 +279,23 @@ def _models_to_obs(
                     None
                     if not observe_advance
                     else (float(m.advanced_this_turn) if advance_is_known else 0.0)
+                ),
+                # The melee pair shares `advance_is_known`, not a flag of its
+                # own: both sides' per-turn state goes stale for exactly the same
+                # reason -- each rolls and spends at the start of its OWN turn.
+                charge_roll=(
+                    None
+                    if not observe_melee
+                    else (
+                        float(m.charge_roll) / CHARGE_DICE_MAX
+                        if advance_is_known
+                        else 0.0
+                    )
+                ),
+                fell_back_this_turn=(
+                    None
+                    if not observe_melee
+                    else (float(m.fell_back_this_turn) if advance_is_known else 0.0)
                 ),
                 coherency_spread=(None if spread is None else float(spread[i])),
                 coherency_component=(
@@ -577,6 +596,20 @@ def build_observation(
         if view.config.observe_unit_centroid
         else None
     )
+    # ⚠ Gated on the CHARGE PHASE BEING STEPPED, not on `melee.enabled`, and the
+    # difference is the whole point of the dark control. `25v25_maps_melee.yaml`
+    # and `..._melee_dark.yaml` differ in exactly one scalar -- `melee.enabled`
+    # -- so that the arm and its control share an init and the per-seed
+    # difference is a PAIRED estimator. Gating the columns on that same scalar
+    # would give the two configs different tensor widths, different input
+    # projections and therefore different weights at step 0, destroying the only
+    # thing the pair exists to provide.
+    #
+    # With melee off the roll is never taken, so both columns are constant zero:
+    # informationally identical to not having them, exactly as for the
+    # opponent's zeroed columns below. Every golden config skips `charge`, so
+    # none of them is touched.
+    observe_melee = BattlePhase.charge not in view.config.skip_phases
     return WargameEnvObservation(
         current_turn=view.current_turn,
         wargame_models=_models_to_obs(
@@ -589,6 +622,7 @@ def build_observation(
             coherency=coherency,
             unit_centroid_cap=unit_centroid_cap,
             observe_advance=view.config.n_advance_speed_bins > 0,
+            observe_melee=observe_melee,
         ),
         objectives=objectives_obs,
         board_width=view.board_width,
@@ -603,12 +637,13 @@ def build_observation(
             coherency=coherency,
             unit_centroid_cap=unit_centroid_cap,
             observe_advance=view.config.n_advance_speed_bins > 0,
-            # ⚠ The opponent's advance columns are ZEROED, not read. Each side
-            # rolls at the start of its OWN turn, so the opponent's values are
-            # zero in round 1 and one turn STALE thereafter -- they record what
-            # it rolled and did on its last turn, which says nothing about the
-            # turn it is about to take. A stale column is worse than no column:
-            # the network has to learn to ignore it.
+            observe_melee=observe_melee,
+            # ⚠ The opponent's advance AND melee columns are ZEROED, not read.
+            # Each side rolls at the start of its OWN turn, so the opponent's
+            # values are zero in round 1 and one turn STALE thereafter -- they
+            # record what it rolled and did on its last turn, which says nothing
+            # about the turn it is about to take. A stale column is worse than no
+            # column: the network has to learn to ignore it.
             #
             # Zeroed rather than dropped because the player and opponent tokens
             # share a feature width (`observation.py` asserts it), so removing
