@@ -13,7 +13,13 @@ import pytest
 from pydantic_yaml import parse_yaml_raw_as
 
 from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
+from wargame_rl.wargame.envs.domain.engagement import engaged_with_any
+from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
+from wargame_rl.wargame.envs.types.config import MeleeConfig, MeleeWeaponProfile
+from wargame_rl.wargame.envs.types.config.battle import OpponentPolicyConfig
+from wargame_rl.wargame.envs.types.config.entities import ModelConfig
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.decoding import decode_joint_coherent
 from wargame_rl.wargame.model.common.factory import create_environment
@@ -290,3 +296,121 @@ def test_a_decoded_move_is_legal_on_the_board_the_env_actually_builds(
     assert predicted.shape == realised.shape
     offsets = np.hypot(*(realised - predicted).T)
     assert np.all(np.isfinite(offsets))
+
+
+class TestTheChargePhaseIsDecodedToo:
+    """⚠ The decoder ran in the movement phase ONLY, so on a melee config every
+    charge was decoded at K=1 however the eval was invoked — a score quoted
+    "at K=3" was a K=1 score **in the phase the feature is about**.
+
+    Widening the gate alone would have been wrong. `_enforce_charge` reverts a
+    charge that is coherent but touches nobody, and reverts one that clips a
+    second enemy unit — so a decoder optimising coherency alone would reliably
+    pick combinations the referee then threw away. It judges what the referee
+    judges.
+    """
+
+    @staticmethod
+    def _env(spacing: float) -> WargameEnv:
+        """A two-model unit `spacing` inches from a two-model enemy unit."""
+        config = WargameEnvConfig(
+            number_of_wargame_models=2,
+            number_of_opponent_models=2,
+            number_of_objectives=1,
+            opponent_policy=OpponentPolicyConfig(
+                type="scripted_baseline", params={"baseline": "hold_deployment"}
+            ),
+            models=[
+                ModelConfig(group_id=0, melee_weapons=[MeleeWeaponProfile()])
+                for _ in range(2)
+            ],
+            opponent_models=[
+                ModelConfig(group_id=0, melee_weapons=[MeleeWeaponProfile()])
+                for _ in range(2)
+            ],
+            melee=MeleeConfig(enabled=True),
+            engagement_range=1.0,
+            base_radius=0.0,
+            skip_phases=[BattlePhase.command, BattlePhase.shooting],
+        )
+        env = create_environment(config)
+        env.reset(seed=4)
+        for index, model in enumerate(env.player_models):
+            model.location = np.array([10.0, 10.0 + index], dtype=model.location.dtype)
+            model.charge_roll = 12.0
+        for index, model in enumerate(env.opponent_models):
+            model.location = np.array(
+                [10.0 + spacing, 10.0 + index], dtype=model.location.dtype
+            )
+        while env.game_clock_state.phase is not BattlePhase.charge:
+            env.step(WargameEnvAction(actions=[0, 0]))
+        return env
+
+    @staticmethod
+    def _preferring_west(env: WargameEnv) -> tuple[np.ndarray, list[int]]:
+        """Rank a retreat top and an eastward step second, for both members.
+
+        The argmax charge therefore ends touching nobody, and the referee would
+        revert it. A legal combination is present in the K=2 set.
+        """
+        handler = env.player_action_handler
+        log_probs = np.full((len(env.player_models), handler.n_actions), -30.0)
+        west = handler.best_action_toward(-1.0, 0.0, max_step_length=1.0)
+        east = handler.best_action_toward(1.0, 0.0, max_step_length=1.0)
+        for index in range(len(env.player_models)):
+            log_probs[index][west] = 0.0
+            log_probs[index][east] = -1.0
+        return log_probs, [west, west]
+
+    def test_it_reranks_a_charge_that_would_touch_nobody(self) -> None:
+        """The K=1 charge ends unengaged; K=2 finds the one that lands."""
+        # Arrange
+        env = self._env(spacing=1.5)
+        log_probs, actions = self._preferring_west(env)
+
+        # Act
+        decoded = decode_joint_coherent(log_probs, actions, env, top_k=2)
+
+        # Assert
+        assert decoded[:2] != actions[:2], "the doomed charge was left in place"
+        # Through `env.step`, not `apply`: the referee, the mask and the clock
+        # are the three things a charge crosses, and only `step` runs all three.
+        env.step(WargameEnvAction(actions=decoded))
+
+        # Assert
+        assert engaged_with_any(
+            np.array([m.location for m in env.player_models], dtype=float),
+            np.array([m.location for m in env.opponent_models], dtype=float),
+            np.ones(len(env.opponent_models), dtype=bool),
+            np.ones(len(env.player_models), dtype=bool),
+            engagement_range=1.0,
+        ).all(), "the decoded charge did not survive the referee"
+
+    def test_a_charge_that_cannot_reach_anybody_is_declined_not_attempted(
+        self,
+    ) -> None:
+        """Standing still reaches the same board as the revert, without one."""
+        # Arrange: 30" away, so no rung in the ladder can make contact.
+        env = self._env(spacing=30.0)
+        log_probs, actions = self._preferring_west(env)
+
+        # Act
+        decoded = decode_joint_coherent(log_probs, actions, env, top_k=2)
+
+        # Assert
+        assert decoded[:2] == [STAY_ACTION, STAY_ACTION]
+
+    def test_the_movement_phase_is_judged_on_coherency_alone(self) -> None:
+        """The charge clause must not leak into the phase it does not govern."""
+        # Arrange
+        env = self._env(spacing=30.0)
+        while env.game_clock_state.phase is not BattlePhase.movement:
+            env.step(WargameEnvAction(actions=[0, 0]))
+        log_probs, actions = self._preferring_west(env)
+
+        # Act
+        decoded = decode_joint_coherent(log_probs, actions, env, top_k=2)
+
+        # Assert: both members march west together — legal, and nobody is
+        # required to reach an enemy 30" away.
+        assert decoded[:2] == actions[:2]

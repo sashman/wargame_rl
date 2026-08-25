@@ -36,10 +36,12 @@ unit-moves and finds no legal combination in 0.3-1.4%.
 from __future__ import annotations
 
 import itertools
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
 
+from wargame_rl.wargame.envs.domain.engagement import engagement_matrix
 from wargame_rl.wargame.envs.domain.movement import resolve_move
 from wargame_rl.wargame.envs.domain.value_objects import position
 from wargame_rl.wargame.envs.env_components.actions import _base_arrays
@@ -136,6 +138,63 @@ def _coherent_mask(
     connected = (power > 0).all(axis=(1, 2))
     result: np.ndarray = chain_ok & spread_ok & connected
     return result
+
+
+@dataclass(frozen=True)
+class _ChargeReferee:
+    """The charge's own after-moving conditions, as the decoder can test them.
+
+    ⚠ The decoder used to run in the movement phase ONLY, so on a melee config
+    every charge was decoded at K=1 however the eval was invoked — a score
+    quoted "at K=3" was a K=1 score **in the phase the feature is about**. The
+    fix is not simply to widen the phase gate: coherency is only one of the
+    charge's two after-moving conditions, and a decoder that optimised the wrong
+    predicate would reliably pick a coherent combination that the referee then
+    reverted for touching nobody. It has to judge what `_enforce_charge` judges.
+
+    The second condition is *engaged with exactly one enemy unit* — which is
+    both of the rules' clauses at once while a charge has a single derived
+    target: engaged with all of the target, and with no non-target.
+    """
+
+    centres: np.ndarray
+    reach: np.ndarray
+    groups: np.ndarray
+
+    @classmethod
+    def build(cls, env: WargameEnv) -> _ChargeReferee | None:
+        """Snapshot the living enemy, or `None` when there is nobody to charge."""
+        alive = [m for m in env.opponent_models if m.is_alive]
+        if not alive:
+            return None
+        return cls(
+            centres=np.array([m.location for m in alive], dtype=float),
+            reach=np.array([m.base_radius for m in alive], dtype=float),
+            groups=np.array([int(m.group_id) for m in alive], dtype=np.intp),
+        )
+
+    def stands(self, ends: np.ndarray, radius: float, engagement: float) -> np.ndarray:
+        """Which of `(C, k, 2)` candidate endings would survive the referee.
+
+        Vectorised over candidates by flattening the unit's members into the
+        subject axis and reshaping the contact matrix back — the same predicate
+        `_charge_is_legal` calls, so the two cannot drift on the geometry.
+        """
+        n_candidates, k, _ = ends.shape
+        contacts = engagement_matrix(
+            ends.reshape(-1, 2),
+            self.centres,
+            np.ones(len(self.centres), dtype=bool),
+            np.ones(n_candidates * k, dtype=bool),
+            engagement_range=engagement,
+            base_diameter=2.0 * radius,
+        ).reshape(n_candidates, k, len(self.centres))
+        touched_any = np.asarray(contacts.any(axis=1))
+        units = np.unique(self.groups)
+        per_unit = np.stack(
+            [touched_any[:, self.groups == unit].any(axis=1) for unit in units], axis=1
+        )
+        return np.asarray(per_unit.sum(axis=1) == 1, dtype=bool)
 
 
 def _resolve_endpoints(
@@ -269,8 +328,15 @@ def decode_joint_coherent(
         return list(actions)
     # Coherency is judged on where a *move* leaves the unit, so there is nothing
     # to decode in any other phase — and a shooting action displaces nobody.
-    if env.game_clock_state.phase is not BattlePhase.movement:
+    #
+    # ⚠ The charge phase belongs here too and for a long time did not, so on a
+    # melee config every charge was decoded at K=1 no matter how the eval was
+    # invoked. It is decoded against a STRICTER predicate — see `_ChargeReferee`
+    # — because coherency alone is not what `_enforce_charge` judges there.
+    phase = env.game_clock_state.phase
+    if phase not in (BattlePhase.movement, BattlePhase.charge):
         return list(actions)
+    charging = phase is BattlePhase.charge
 
     decoded = list(actions)
     models = env.player_models
@@ -278,6 +344,16 @@ def decode_joint_coherent(
     nearest = quantities.scale.to_units(env.config.coherency.nearest_distance)
     furthest = quantities.scale.to_units(env.config.coherency.furthest_distance)
     displacements = _displacement_table(env)
+    # ⚠ Through `rules_quantities`, not `config.engagement_range`. The config
+    # authors it in inches and every geometry consumer works in units; reading
+    # the raw field would compare a distance against a number on another scale.
+    engagement = float(quantities.engagement_range)
+    referee = _ChargeReferee.build(env) if charging else None
+    if charging and referee is None:
+        # Nobody left to charge, so every combination fails the referee and the
+        # decode has nothing to choose between. Leave the actions alone rather
+        # than standing the whole force still on the caller's behalf.
+        return list(actions)
 
     by_unit: dict[int, list[int]] = {}
     for index, model in enumerate(models):
@@ -305,6 +381,12 @@ def decode_joint_coherent(
         member_rows = np.asarray(member_indices, dtype=int)[None, :]
         ends = positions[None, :, :] + displacements[member_rows, combos]
         legal = _coherent_mask(ends, radii, max(nearest - safety_margin, 0.0), furthest)
+        if referee is not None:
+            # ⚠ The safety margin is NOT applied to the charge clause. It exists
+            # because the env's resolution can shorten a move, and a shortened
+            # move can only *reduce* contact — so relaxing the contact test the
+            # same way would certify combinations that reach nobody.
+            legal &= referee.stands(ends, float(radii[0]), engagement)
         if not legal.any():
             # A strict fallback, never a competitor: standing still is only ever
             # taken when the ranked set offers nothing legal, so it cannot make
@@ -313,7 +395,12 @@ def decode_joint_coherent(
             # which is exactly what attrition is for.
             # Judged at the TRUE distance: standing still moves nobody, so
             # nothing can back off and the margin has no work to do here.
-            if (
+            #
+            # In the CHARGE phase the guard does not apply and standing still is
+            # taken unconditionally: a charge with no legal combination is one
+            # `_enforce_charge` would revert to exactly where the unit already
+            # stands, so declining reaches the same board without the revert.
+            if charging or (
                 include_stay
                 and _coherent_mask(positions[None], radii, nearest, furthest)[0]
             ):
@@ -336,9 +423,17 @@ def decode_joint_coherent(
                 resolved = _resolve_endpoints(
                     env, member_indices, combos[candidate], displacements
                 )
-                if _coherent_mask(resolved[None], radii, nearest, furthest)[0]:
-                    best = combos[candidate]
-                    break
+                if not _coherent_mask(resolved[None], radii, nearest, furthest)[0]:
+                    continue
+                if (
+                    referee is not None
+                    and not referee.stands(resolved[None], float(radii[0]), engagement)[
+                        0
+                    ]
+                ):
+                    continue
+                best = combos[candidate]
+                break
         for j, index in enumerate(member_indices):
             decoded[index] = int(best[j])
     return decoded
