@@ -135,7 +135,7 @@ class GameStateSnapshot(BaseModel):
     player_action_descriptions: list[str] | None
     player_combat_results: list[CombatResultSnapshot]
     opponent_combat_results: list[CombatResultSnapshot]
-    player_melee_results: list[CombatResultSnapshot] = []   # 2.7: blows, not shots
+    player_melee_results: list[CombatResultSnapshot] = []  # 2.7: blows, not shots
     opponent_melee_results: list[CombatResultSnapshot] = []  # 2.7
     reward: RewardSnapshot
     is_terminated: bool
@@ -168,7 +168,7 @@ class ModelSnapshot(BaseModel):
     toughness: int
     save: int
     advanced_this_turn: bool
-    charged_this_turn: bool = False    # 2.7: this model's UNIT charged this turn
+    charged_this_turn: bool = False  # 2.7: this model's UNIT charged this turn
     fell_back_this_turn: bool = False  # 2.7: withdrew from melee, no shooting
     weapons: list[WeaponSnapshot]
     distances_to_objectives: list[float]
