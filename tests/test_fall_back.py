@@ -25,9 +25,9 @@ from wargame_rl.wargame.envs.wargame_model import WargameModel
 
 def _handler(melee: bool) -> ActionHandler:
     """Melee on needs the charge and fight phases stepped; the validator says so."""
-    skip = [BattlePhase.command, BattlePhase.shooting]
+    skip = [BattlePhase.shooting]
     if not melee:
-        skip += [BattlePhase.charge, BattlePhase.fight]
+        skip += [BattlePhase.command, BattlePhase.charge, BattlePhase.fight]
     return ActionHandler(
         WargameEnvConfig(
             number_of_wargame_models=2,

@@ -331,7 +331,7 @@ class TestTheChargePhaseIsDecodedToo:
             melee=MeleeConfig(enabled=True),
             engagement_range=1.0,
             base_radius=0.0,
-            skip_phases=[BattlePhase.command, BattlePhase.shooting],
+            skip_phases=[BattlePhase.shooting],
         )
         env = create_environment(config)
         env.reset(seed=4)

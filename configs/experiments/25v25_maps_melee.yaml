@@ -173,8 +173,18 @@ board_height: 44
 max_groups: 5
 turn_order: random
 number_of_battle_rounds: 20
+# ⚠ `command` is STEPPED now, and it costs +33% of episode length
+# (`max_turns` = n_rounds x (5 - len(skip_phases)), so 60 -> 80). A charge is
+# declared there by the unit's LEADER, which binds the whole unit -- and that
+# binding is the point. Measured on three behaviour clones of a rigid charging
+# teacher: the teacher declares for 100% of a unit's members every time, the
+# clones for 54-62%, and the WHOLE unit only 23-35% of the time. A charge fails
+# because half the unit charges and the rest stand still, so it stretches and
+# the referee reverts it however good the rung choice was.
+#
+# ⚠ Every melee figure measured before this is VOID on this config: the episode
+# is a third longer and the charge is a different decision.
 skip_phases:
-  - command
   - fight
 
 # ⚠ `charge` is NOT skipped and `fight` still is, and both are deliberate.

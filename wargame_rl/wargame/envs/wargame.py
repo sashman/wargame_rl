@@ -54,6 +54,7 @@ from wargame_rl.wargame.envs.env_components import (
     build_observation,
     compute_distances,
 )
+from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.env_components.coherency_tracker import CoherencyTracker
 from wargame_rl.wargame.envs.env_components.exposure import (
     ExposureTracker,
@@ -1313,6 +1314,22 @@ class WargameEnv(gym.Env):
             mask[:, movement_slice.start : movement_slice.end] &= (
                 handler.charge_legality(self.opponent_models, self.wargame_models)
             )
+            # And the binding half, for the same reason. A declared unit may
+            # not stand still, or half of it charges and the referee reverts
+            # the lot -- an asymmetry here would be a rules difference between
+            # the seats, which shooting alone already measures at 24.6 vp.
+            if handler.move_type_slice is not None:
+                declared = np.array(
+                    [
+                        bool(getattr(m, "declared_charge", False))
+                        for m in self.opponent_models
+                    ],
+                    dtype=bool,
+                )
+                has_rung = mask[:, movement_slice.start : movement_slice.end].any(
+                    axis=1
+                )
+                mask[declared & has_rung, STAY_ACTION] = False
         shooting_slice = handler.shooting_slice
         if (
             phase != BattlePhase.shooting

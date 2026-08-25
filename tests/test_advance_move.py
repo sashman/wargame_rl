@@ -22,7 +22,6 @@ from scripts.scenario_overrides import load_env_config
 from wargame_rl.wargame.envs.domain.game_clock import BattlePhase
 from wargame_rl.wargame.envs.env_components.actions import (
     MOVE_TYPE_ADVANCE,
-    MOVE_TYPE_NORMAL,
     STAY_ACTION,
     ActionHandler,
 )
@@ -35,6 +34,18 @@ from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.common.observation import observation_to_tensor
 
 SHOOT_TARGETS = 5
+
+
+def _declare(env: WargameEnv, kind: str) -> int:
+    """The action index that declares `kind`, asserted to exist.
+
+    ⚠ The move-type slice is sized to the move types the scenario HAS, so an
+    offset is no longer a constant: `advance` sits at 1 on an advance-only
+    config and would move if that scenario also fought in melee.
+    """
+    action = env.player_action_handler.move_type_action(kind)
+    assert action is not None
+    return action
 
 
 def _phases_with_command() -> list[BattlePhase]:
@@ -366,7 +377,7 @@ class TestAdvanceInAnEpisode:
             handler.apply(
                 WargameEnvAction(
                     actions=[
-                        move_type.start + MOVE_TYPE_ADVANCE for _ in env.wargame_models
+                        _declare(env, MOVE_TYPE_ADVANCE) for _ in env.wargame_models
                     ]
                 ),
                 env.wargame_models,
@@ -559,8 +570,8 @@ class TestAdvanceIsResolvedPerUnit:
             first = groups[0]
             assert groups.count(first) > 1, "need a unit of 2+ models"
 
-            actions = [move_type.start + MOVE_TYPE_NORMAL] * len(env.wargame_models)
-            actions[0] = move_type.start + MOVE_TYPE_ADVANCE  # the leader of unit 0
+            actions = [STAY_ACTION] * len(env.wargame_models)
+            actions[0] = _declare(env, MOVE_TYPE_ADVANCE)  # the leader of unit 0
 
             # Act
             self._apply(env, actions, phase=BattlePhase.command)
@@ -591,8 +602,8 @@ class TestAdvanceIsResolvedPerUnit:
             for index, model in enumerate(env.wargame_models):
                 model.group_id = index // 2
 
-            actions = [move_type.start + MOVE_TYPE_NORMAL] * len(env.wargame_models)
-            actions[1] = move_type.start + MOVE_TYPE_ADVANCE  # a FOLLOWER, not leader
+            actions = [STAY_ACTION] * len(env.wargame_models)
+            actions[1] = _declare(env, MOVE_TYPE_ADVANCE)  # a FOLLOWER, not leader
 
             # Act
             self._apply(env, actions, phase=BattlePhase.command)
@@ -621,8 +632,8 @@ class TestAdvanceIsResolvedPerUnit:
             for index, model in enumerate(env.wargame_models):
                 model.group_id = index // 2
                 model.advance_roll = 6.0
-            declare = [move_type.start + MOVE_TYPE_NORMAL] * len(env.wargame_models)
-            declare[0] = move_type.start + MOVE_TYPE_ADVANCE
+            declare = [STAY_ACTION] * len(env.wargame_models)
+            declare[0] = _declare(env, MOVE_TYPE_ADVANCE)
             self._apply(env, declare, phase=BattlePhase.command)
             before = [m.location.copy() for m in env.wargame_models]
 

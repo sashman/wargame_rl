@@ -194,7 +194,7 @@ def _env() -> WargameEnv:
         models=[ModelConfig(melee_weapons=[LETHAL])],
         opponent_models=[ModelConfig(melee_weapons=[])],
         melee=MeleeConfig(enabled=True),
-        skip_phases=[BattlePhase.command, BattlePhase.shooting],
+        skip_phases=[BattlePhase.shooting],
     )
     env = create_environment(config)
     env.reset(seed=7)
@@ -212,7 +212,10 @@ def test_consolidation_happens_through_env_step() -> None:
     objective.location = np.array([7.5, 10.0], dtype=objective.location.dtype)
     radius = objective.radius_size
 
-    for _ in range(3):
+    # ⚠ Eight, not three. The command phase is stepped now -- a charge is
+    # declared there -- so a round costs more agent steps and a budget sized to
+    # the old phase layout never reaches the fight boundary.
+    for _ in range(8):
         env.step(WargameEnvAction(actions=[STAY_ACTION]))
         if not opponent.is_alive:
             break
@@ -236,7 +239,7 @@ def test_a_melee_recording_carries_the_blows_and_the_flags() -> None:
     opponent.location = np.array([11.0, 10.0], dtype=opponent.location.dtype)
 
     # Act
-    for _ in range(3):
+    for _ in range(8):
         env.step(WargameEnvAction(actions=[STAY_ACTION]))
         snapshot = env.to_snapshot()
         if snapshot.player_melee_results:

@@ -20,6 +20,7 @@ from wargame_rl.wargame.envs.domain.value_objects import POSITION_DTYPE
 from wargame_rl.wargame.envs.env_components.actions import (
     ADVANCE_DIE_FACES,
     CHARGE_DICE_MAX,
+    STAY_ACTION,
     ActionRegistry,
 )
 from wargame_rl.wargame.envs.env_components.distance_cache import (
@@ -521,6 +522,27 @@ def build_observation(
             action_mask[:, movement_slice.start : movement_slice.end] &= (
                 view.player_charge_legality
             )
+            # ⚠ **A declared unit may NOT stand still**, and that clause is what
+            # makes the declaration BIND rather than merely permit. A charge is
+            # a unit move: half a unit charging while the rest hold is a unit
+            # that stretches and a charge the referee reverts, which is exactly
+            # how the measured 23-35% whole-unit commitment arises.
+            #
+            # STAY survives for a model with no legal rung at all -- the mask
+            # must never empty a row, and a unit whose leader declared can still
+            # contain a model the 2D6 cannot carry into contact.
+            if action_registry.has_slice("move_type"):
+                declared = np.array(
+                    [
+                        bool(getattr(m, "declared_charge", False))
+                        for m in view.player_models
+                    ],
+                    dtype=bool,
+                )
+                has_rung = action_mask[
+                    :, movement_slice.start : movement_slice.end
+                ].any(axis=1)
+                action_mask[declared & has_rung, STAY_ACTION] = False
 
         if action_registry.has_slice("advance") and phase == BattlePhase.movement:
             # The advance rungs are ABSOLUTE distances above Move, so the turn's

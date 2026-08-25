@@ -15,6 +15,7 @@ from wargame_rl.wargame.envs.baseline.registry import register_baseline
 from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
 from wargame_rl.wargame.envs.env_components.actions import (
     MOVE_TYPE_ADVANCE,
+    MOVE_TYPE_CHARGE,
     STAY_ACTION,
 )
 from wargame_rl.wargame.envs.types import WargameEnvAction
@@ -243,6 +244,69 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
                     best = (gap, i, j)
         return None if best is None else (best[1], best[2])
 
+    def _reachable_charge_units(
+        self, models: list[WargameModel], env: WargameEnv
+    ) -> set[int]:
+        """Units eligible to charge whose nearest member can actually reach.
+
+        The declaration and the charge must ask the SAME question, or a unit
+        declares a charge it then declines to make -- and a declaration makes
+        STAY illegal for its members, so declining is not available: the unit
+        would be forced into whatever rung the mask left rather than into no
+        move at all.
+
+        Asked from geometry rather than from `charge_legality`, because this
+        runs in the COMMAND phase where that mask is empty by construction: it
+        is gated on a declaration that has not been made yet.
+        """
+        handler = env.player_action_handler
+        eligible = handler.charge_eligible_units(models, env.opponent_models)
+        if not eligible:
+            return set()
+        quantities = env.rules_quantities
+        contact = float(quantities.engagement_range) + 2.0 * float(
+            quantities.base_radius
+        )
+        speeds = handler.move_speeds
+        enemies = [m for m in env.opponent_models if m.is_alive]
+        reachable: set[int] = set()
+        for group_id in sorted(eligible):
+            member_indices = [
+                i
+                for i, model in enumerate(models)
+                if model.group_id == group_id and model.is_alive
+            ]
+            if not member_indices:
+                continue
+            if not evaluate_coherency(
+                positions=np.array(
+                    [models[i].location for i in member_indices], dtype=float
+                ),
+                group_ids=np.zeros(len(member_indices), dtype=np.intp),
+                alive_mask=np.ones(len(member_indices), dtype=bool),
+                base_radii=np.array(
+                    [models[i].base_radius for i in member_indices], dtype=float
+                ),
+                nearest_distance=env.config.coherency.nearest_distance,
+                furthest_distance=env.config.coherency.furthest_distance,
+            ).all_coherent:
+                continue
+            gap = min(
+                float(
+                    np.linalg.norm(
+                        np.asarray(enemy.location, dtype=float)
+                        - np.asarray(models[i].location, dtype=float)
+                    )
+                )
+                for i in member_indices
+                for enemy in enemies
+            )
+            move = float(min(speeds[i] for i in member_indices)) if speeds.size else 0.0
+            reach = min(move, float(models[member_indices[0]].charge_roll))
+            if gap - contact <= reach:
+                reachable.add(group_id)
+        return reachable
+
     def select_charge(
         self, models: list[WargameModel], env: WargameEnv
     ) -> WargameEnvAction:
@@ -391,14 +455,40 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
         if move_type is None or BattlePhase.command not in move_type.valid_phases:
             return WargameEnvAction(actions=actions)
         decisions = self._squad_advance_decisions(models, env)
+        handler = env.player_action_handler
+        advance = handler.move_type_action(MOVE_TYPE_ADVANCE)
+        charge = handler.move_type_action(MOVE_TYPE_CHARGE)
         leaders: dict[int, int] = {}
         for index, model in enumerate(models):
             if model.is_alive:
                 leaders.setdefault(int(model.group_id), index)
+        # ⚠ A unit declares ONE move type, so advance wins where both apply --
+        # it is the older behaviour and the one every measured baseline was
+        # taken under. A charge declaration is only reached by a unit that was
+        # not going to advance anyway.
+        charging = self._squad_charge_declarations(models, env) if charge else {}
         for group_id, leader in leaders.items():
-            if decisions.get(group_id):
-                actions[leader] = move_type.start + MOVE_TYPE_ADVANCE
+            if decisions.get(group_id) and advance is not None:
+                actions[leader] = advance
+            elif charging.get(group_id) and charge is not None:
+                actions[leader] = charge
         return WargameEnvAction(actions=actions)
+
+    def _squad_charge_declarations(
+        self, models: list[WargameModel], env: WargameEnv
+    ) -> dict[int, bool]:
+        """Which squads would declare a charge this turn, per `select_charge`.
+
+        Asks the same question the charge itself asks, so a unit never declares
+        a charge it will then decline to make -- a declaration makes STAY
+        illegal for its members, so declaring and not charging would force the
+        unit into whatever rung the mask left rather than into no move at all.
+        """
+        if not self.charge_when_it_lands or not env.config.melee.enabled:
+            return {}
+        return {
+            group_id: True for group_id in self._reachable_charge_units(models, env)
+        }
 
     def select_movement(
         self, models: list[WargameModel], env: WargameEnv

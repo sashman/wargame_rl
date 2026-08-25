@@ -113,7 +113,7 @@ def test_melee_does_NOT_require_the_fight_phase_to_be_stepped() -> None:
     config = WargameEnvConfig(
         number_of_wargame_models=4,
         melee=MeleeConfig(enabled=True),
-        skip_phases=[BattlePhase.command, BattlePhase.fight],
+        skip_phases=[BattlePhase.fight],
     )
     assert BattlePhase.fight in config.skip_phases
 
@@ -133,6 +133,6 @@ def test_melee_on_with_both_phases_stepped_is_accepted() -> None:
     config = WargameEnvConfig(
         number_of_wargame_models=4,
         melee=MeleeConfig(enabled=True),
-        skip_phases=[BattlePhase.command, BattlePhase.shooting],
+        skip_phases=[BattlePhase.shooting],
     )
     assert config.melee.enabled

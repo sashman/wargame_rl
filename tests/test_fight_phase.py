@@ -49,7 +49,7 @@ def _env(*, melee: bool, weapons: bool = True, skip_fight: bool = False) -> Warg
         models=[ModelConfig(melee_weapons=profile) for _ in range(2)],
         opponent_models=[ModelConfig(melee_weapons=profile) for _ in range(2)],
         melee=MeleeConfig(enabled=melee),
-        skip_phases=[BattlePhase.command, BattlePhase.shooting]
+        skip_phases=[BattlePhase.shooting]
         + ([BattlePhase.fight] if skip_fight else []),
     )
     env = create_environment(config)

@@ -40,9 +40,9 @@ BASE_RADIUS = 0.63
 
 
 def _handler(melee: bool, n_models: int = 1, base_radius: float = 0.0) -> ActionHandler:
-    skip = [BattlePhase.command, BattlePhase.shooting, BattlePhase.fight]
+    skip = [BattlePhase.shooting, BattlePhase.fight]
     if not melee:
-        skip.append(BattlePhase.charge)
+        skip.extend([BattlePhase.command, BattlePhase.charge])
     return ActionHandler(
         WargameEnvConfig(
             number_of_wargame_models=n_models,
@@ -171,9 +171,15 @@ def _legality(
     advanced: bool = False,
     fell_back: bool = False,
 ) -> np.ndarray:
-    """One model, one enemy `gap` away; return its charge-move legality row."""
+    """One model, one enemy `gap` away; return its charge-move legality row.
+
+    ⚠ The mover is marked as having DECLARED. A rung is legal only for a unit
+    whose leader declared a charge in the command phase, so without this every
+    row is empty and these tests would all pass for the wrong reason.
+    """
     handler = _handler(melee=True)
     mover = _model(5.0)
+    mover.declared_charge = True
     mover.charge_roll = roll
     mover.advanced_this_turn = advanced
     mover.fell_back_this_turn = fell_back
@@ -288,7 +294,7 @@ def _melee_env() -> WargameEnv:
         melee=MeleeConfig(enabled=True),
         engagement_range=ENGAGEMENT,
         base_radius=0.0,
-        skip_phases=[BattlePhase.command, BattlePhase.shooting],
+        skip_phases=[BattlePhase.shooting],
     )
     env = create_environment(config)
     env.reset(seed=5)
@@ -472,7 +478,7 @@ class TestChargeObservation:
             engagement_range=ENGAGEMENT,
             base_radius=0.0,
             skip_phases=(
-                [BattlePhase.command, BattlePhase.shooting]
+                [BattlePhase.shooting]
                 if charge_phase
                 else [BattlePhase.command, BattlePhase.shooting, BattlePhase.charge]
             ),

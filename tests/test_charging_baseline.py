@@ -19,7 +19,8 @@ import pytest
 from scripts.scenario_overrides import load_env_config
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
 from wargame_rl.wargame.envs.domain.engagement import engaged_with_any
-from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.envs.env_components.observation_builder import build_observation
+from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import MeleeConfig, MeleeWeaponProfile
 from wargame_rl.wargame.envs.types.config.battle import OpponentPolicyConfig
 from wargame_rl.wargame.envs.types.config.entities import ModelConfig
@@ -50,8 +51,11 @@ def _env(melee: bool, opponent: str = "hold_deployment") -> WargameEnv:
         melee=MeleeConfig(enabled=melee),
         engagement_range=ENGAGEMENT,
         base_radius=0.0,
+        # ⚠ A stepped charge phase needs a stepped COMMAND phase: the unit's
+        # leader declares the charge there, and that declaration is what binds
+        # the whole unit into making it.
         skip_phases=(
-            [BattlePhase.command, BattlePhase.fight]
+            [BattlePhase.fight]
             if melee
             else [BattlePhase.command, BattlePhase.charge, BattlePhase.fight]
         ),
@@ -59,6 +63,11 @@ def _env(melee: bool, opponent: str = "hold_deployment") -> WargameEnv:
     env = create_environment(config)
     env.reset(seed=3)
     return env
+
+
+def _stay(env: WargameEnv) -> WargameEnvAction:
+    """Every model declines, in whatever phase the clock is in."""
+    return WargameEnvAction(actions=[0] * len(env.wargame_models))
 
 
 def _engaged(env: WargameEnv) -> int:
@@ -127,6 +136,12 @@ def test_the_charging_policy_reaches_contact_through_env_step() -> None:
         # The 2D6 is rolled at the start of the side's turn, before this
         # rearrangement; fix it so the test is about the policy, not the dice.
         model.charge_roll = 6.0
+        # ⚠ And the DECLARATION is made in the command phase, two phases before
+        # this arrangement exists — the movement phase sits between them and
+        # would march the squad off these spots. So the declaration is set
+        # here, and the leader's own decision is covered end to end by
+        # `test_the_leader_declares_and_the_whole_unit_charges`.
+        model.declared_charge = True
     assert _engaged(env) == 0, "the arrangement must start unengaged"
     before = [np.array(m.location, copy=True) for m in env.wargame_models]
 
@@ -237,3 +252,89 @@ def test_BOTH_melee_configs_seat_an_opponent_THAT_CAN_CHARGE() -> None:
             f"{path} seats an opponent that cannot charge, so the arm would "
             "train in the unilateral cell"
         )
+
+
+def test_the_leader_declares_and_the_WHOLE_UNIT_charges() -> None:
+    """The feature, end to end: one leader's choice binds every squadmate.
+
+    ⚠ **This is what the declaration is for.** Before it, a charge was declared
+    implicitly by picking a rung, so "charge or not" was decided independently
+    by every model. Measured on three behaviour clones of a rigid charging
+    teacher: the teacher declares for 100% of a unit's members every time, the
+    clones for 54-62%, and the WHOLE unit only 23-35% of the time — because
+    `P(any charge)` of 0.59 is spread over ~48 rungs at ~0.012 each while STAY
+    is ONE action at 0.41, and an argmax over a spread loses. A charge then
+    fails not because the rungs disagree but because half the unit stands still,
+    the unit stretches, and the referee reverts the lot.
+    """
+    # Arrange: two two-model squads, melee on, command stepped.
+    env = _env(melee=True)
+    handler = env.player_action_handler
+    declare = handler.move_type_action("charge")
+    assert declare is not None, "the melee config must carry the declaration"
+    while env.game_clock_state.phase is not BattlePhase.command:
+        env.step(_stay(env))
+    for index, model in enumerate(env.wargame_models):
+        model.charge_roll = 6.0
+    leader = 0
+    unit = [i for i, m in enumerate(env.wargame_models) if m.group_id == 0]
+    assert leader in unit and len(unit) > 1, "need a unit with a real follower"
+
+    # Act: ONLY the leader acts.
+    actions = [0] * len(env.wargame_models)
+    actions[leader] = declare
+    env.step(WargameEnvAction(actions=actions))
+
+    # Assert: every member of the leader's unit is bound, and no other unit is.
+    try:
+        assert all(env.wargame_models[i].declared_charge for i in unit)
+        assert not any(
+            m.declared_charge for i, m in enumerate(env.wargame_models) if i not in unit
+        )
+    finally:
+        env.close()
+
+
+def test_a_declared_unit_may_NOT_stand_still() -> None:
+    """The binding half — permitting a charge is not the same as compelling it.
+
+    A declaration that only *allowed* the rungs would leave every model free to
+    stay, which is exactly the state the measurement found: half the unit
+    charges, the unit stretches, and the referee reverts the lot. STAY survives
+    only for a model the 2D6 cannot carry into contact, because a mask must
+    never empty a row.
+    """
+    # Arrange: one squad in reach, declared; the other far away and not.
+    env = _env(melee=True)
+    try:
+        while env.game_clock_state.phase is not BattlePhase.charge:
+            env.step(_stay(env))
+        for index, model in enumerate(env.wargame_models):
+            near = model.group_id == 0
+            model.location = np.array(
+                [10.0 if near else 45.0, 10.0 + index], dtype=model.location.dtype
+            )
+            model.charge_roll = 6.0
+            model.declared_charge = bool(near)
+        for index, model in enumerate(env.opponent_models):
+            model.location = np.array([13.0, 10.0 + index], dtype=model.location.dtype)
+
+        # Act
+        # Through `build_observation`, which is what `step` calls -- reaching for
+        # a private env method would test a path no policy takes.
+        observation = build_observation(
+            env, action_registry=env.player_action_handler.registry
+        )
+        mask = np.asarray(observation.action_mask, dtype=bool)
+
+        # Assert
+        declared = [i for i, m in enumerate(env.wargame_models) if m.declared_charge]
+        others = [i for i, m in enumerate(env.wargame_models) if not m.declared_charge]
+        assert declared and others
+        for i in declared:
+            assert not mask[i, 0], "a declared model kept the option to stand still"
+            assert mask[i].any(), "the mask must never empty a row"
+        for i in others:
+            assert mask[i, 0], "an undeclared model must still be able to stay"
+    finally:
+        env.close()

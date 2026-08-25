@@ -50,15 +50,24 @@ CHARGE_DICE_MAX = 12.0
 # Every slice name `ActionHandler` can register. A name outside this set in
 # `dark_action_slices` is a typo that would silently darken nothing, so it
 # raises rather than doing nothing.
-KNOWN_ACTION_SLICES = frozenset({"stay", "movement", "shooting", "advance"})
+KNOWN_ACTION_SLICES = frozenset(
+    {"stay", "movement", "shooting", "advance", "move_type"}
+)
 
 # The move-type slice, in declaration order. `normal` first so that a policy
 # emitting the slice's first action declares the default, and STAY in the
 # command phase means the same thing -- which is what keeps every policy that
 # does not act in the command phase working unchanged.
-MOVE_TYPE_NORMAL = 0
-MOVE_TYPE_ADVANCE = 1
-N_MOVE_TYPES = 2
+# ⚠ These are OFFSETS INTO A SLICE WHOSE SIZE VARIES BY SCENARIO, not fixed
+# action indices. `normal` is always 0; `advance` and `charge` take the next
+# offsets only when the scenario actually has them. Sizing the slice to what
+# exists is what keeps an advance-only config at exactly the action count it
+# had before the charge declaration existed -- a fixed 3-wide slice would have
+# widened every advance config's output head and orphaned its checkpoints for a
+# value it can never declare. Resolve with `ActionHandler.move_type_offset`.
+MOVE_TYPE_NORMAL = "normal"
+MOVE_TYPE_ADVANCE = "advance"
+MOVE_TYPE_CHARGE = "charge"
 
 
 def _base_arrays(models: list[Any] | None) -> tuple[np.ndarray, np.ndarray]:
@@ -356,19 +365,62 @@ class ActionHandler:
         #
         # Darkening "advance" darkens this too, so the rungs become unreachable
         # by the same switch -- a rung is legal only where a declaration was made.
-        if n_advance_bins > 0:
+        # ⚠ Sized to the move types this scenario HAS. `normal` is free (it is
+        # what STAY declares), so the slice carries one action per *optional*
+        # type. An advance-only config therefore keeps exactly the 2-wide slice
+        # it had before the charge declaration existed, and its checkpoints
+        # still load.
+        # ⚠ **`or "move_type" in dark` is what keeps the arm PAIRABLE**, and it
+        # is the mechanism this repo already uses for the advance. The melee arm
+        # and its dark control differ in exactly one scalar -- `melee.enabled`
+        # -- so they share an init; registering the declaration on that scalar
+        # alone would give them 104 and 102 actions, different output heads and
+        # different weights at step 0. The control names `move_type` in
+        # `dark_action_slices`, which registers the slice and makes it valid in
+        # NO phase: same shape, permanently inert.
+        #
+        # Gating on "the charge phase is stepped" instead was tried and is
+        # WRONG in the other direction: `skip_phases: []` is a documented
+        # setting that five test modules use, and it would have quietly given
+        # every one of them an extra action and a real choice in a command
+        # phase that used to offer only STAY.
+        carries_charge = self._melee_enabled or "move_type" in dark
+        self._move_types: tuple[str, ...] = (
+            MOVE_TYPE_NORMAL,
+            *((MOVE_TYPE_ADVANCE,) if n_advance_bins > 0 else ()),
+            *((MOVE_TYPE_CHARGE,) if carries_charge else ()),
+        )
+        if len(self._move_types) > 1:
             self._move_type_slice: ActionSlice | None = self._registry.register(
                 "move_type",
-                N_MOVE_TYPES,
-                phases("advance", frozenset({BattlePhase.command})),
+                len(self._move_types),
+                phases("move_type", frozenset({BattlePhase.command})),
             )
         else:
             self._move_type_slice = None
 
     @property
     def move_type_slice(self) -> ActionSlice | None:
-        """Move-type declaration slice, or None when the scenario has no advance."""
+        """Move-type declaration slice, or None when nothing may be declared."""
         return self._move_type_slice
+
+    def move_type_offset(self, kind: str) -> int | None:
+        """This move type's offset into the slice, or None when unavailable.
+
+        Returns None rather than raising, so a scripted policy can ask for a
+        declaration the scenario does not carry and fall through to a normal
+        move -- the same contract `best_advance_toward` uses.
+        """
+        if self._move_type_slice is None or kind not in self._move_types:
+            return None
+        return self._move_types.index(kind)
+
+    def move_type_action(self, kind: str) -> int | None:
+        """The action index that declares `kind`, or None when unavailable."""
+        offset = self.move_type_offset(kind)
+        if offset is None or self._move_type_slice is None:
+            return None
+        return self._move_type_slice.start + offset
 
     def declare_move_types(
         self, action: WargameEnvAction, wargame_models: list[Any]
@@ -390,23 +442,39 @@ class ActionHandler:
         """
         if self._move_type_slice is None:
             return
-        start = self._move_type_slice.start
+        advance_action = self.move_type_action(MOVE_TYPE_ADVANCE)
+        charge_action = self.move_type_action(MOVE_TYPE_CHARGE)
         leaders: dict[int, int] = {}
         for index, model in enumerate(wargame_models):
             if not model.is_alive:
                 continue
             leaders.setdefault(int(model.group_id), index)
-        advancing = set()
+        advancing: set[int] = set()
+        charging: set[int] = set()
         for group, leader in leaders.items():
             if leader >= len(action.actions):
                 continue
-            if int(action.actions[leader]) == start + MOVE_TYPE_ADVANCE:
+            chosen = int(action.actions[leader])
+            if advance_action is not None and chosen == advance_action:
                 advancing.add(group)
+            elif charge_action is not None and chosen == charge_action:
+                charging.add(group)
         for model in wargame_models:
-            declared = int(model.group_id) in advancing
+            group = int(model.group_id)
+            declared = group in advancing
             model.declared_advance = declared
             if declared:
                 model.advanced_this_turn = True
+            # ⚠ The charge declaration BINDS THE WHOLE UNIT, and that is the
+            # entire point of putting it here. Measured on three behaviour
+            # clones of a rigid charging teacher: the teacher declares for
+            # 100% of a unit's members every time, the clones for 54-62%, and
+            # the WHOLE unit only 23-35% of the time. A charge fails because
+            # half the unit charges and the rest stand still, so the unit
+            # stretches and the referee reverts it however good the rung
+            # choice was. One leader-level binary choice replaces a 1-against-48
+            # argmax repeated per model.
+            model.declared_charge = group in charging
 
     @property
     def shooting_slice(self) -> ActionSlice | None:
@@ -629,6 +697,20 @@ class ActionHandler:
         for index, model in enumerate(models):
             if not model.is_alive or int(model.group_id) not in eligible_units:
                 continue
+            # ⚠ **Only a unit that DECLARED**, exactly as an advance rung is
+            # legal only for a unit that declared one. Without this the charge
+            # was declared implicitly by picking a rung, so "charge or not" was
+            # decided independently by every model -- and measured, a whole unit
+            # then committed on only 23-35% of its charges against a rigid
+            # teacher's 100%. See `declare_move_types`.
+            #
+            # Scenarios with no move-type slice keep the old behaviour, so every
+            # melee measurement taken before the declaration existed is still
+            # reproducible on its own config.
+            if self._move_type_slice is not None and not getattr(
+                model, "declared_charge", False
+            ):
+                continue
             reach = float(getattr(model, "charge_roll", 0.0))
             if reach <= 0.0:
                 continue
@@ -643,6 +725,23 @@ class ActionHandler:
             return grid
         shared: np.ndarray = self._displacements
         return shared
+
+    def charge_eligible_units(
+        self, models: list[Any], enemy_models: list[Any] | None
+    ) -> set[int]:
+        """Units the rules allow to DECLARE a charge, before any declaration.
+
+        Public because the declaration is made in the COMMAND phase, one phase
+        before `charge_legality` becomes meaningful: that mask is now gated on
+        a declaration, so at command time it is empty by construction and a
+        scripted policy asking it "may I charge?" would always hear no.
+        """
+        if not self._melee_enabled:
+            return set()
+        alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+        if not alive_enemies:
+            return set()
+        return self._charge_eligible_units(models, alive_enemies)
 
     def _charge_eligible_units(
         self, models: list[Any], alive_enemies: list[Any]

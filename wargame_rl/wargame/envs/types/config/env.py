@@ -826,6 +826,17 @@ class WargameEnvConfig(BaseModel):
                 "n_advance_speed_bins > 0 needs the command phase, where a unit "
                 "declares its move type -- remove 'command' from skip_phases"
             )
+        # ⚠ Melee needs it for the same reason. A charge rung is legal only for
+        # a unit that declared a charge, and the declaration is made in the
+        # command phase -- so a melee config that skips it steps the whole
+        # charge phase with exactly one option per model, and a training run
+        # would measure a mechanic it never had.
+        if self.melee.enabled and BattlePhase.command in self.skip_phases:
+            raise ValueError(
+                "a stepped charge phase needs the command phase, where a "
+                "unit's leader declares a charge and binds the unit -- remove "
+                "'command' from skip_phases"
+            )
         return self
 
     @model_validator(mode="after")

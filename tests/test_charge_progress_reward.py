@@ -50,8 +50,11 @@ def _env(melee: bool = True) -> WargameEnv:
         melee=MeleeConfig(enabled=melee),
         engagement_range=1.0,
         base_radius=0.0,
+        # ⚠ A stepped charge phase needs a stepped COMMAND phase: the charge
+        # is declared there by the unit's leader. Skipping charge is what lets
+        # the melee-off case keep command skipped.
         skip_phases=(
-            [BattlePhase.command, BattlePhase.shooting, BattlePhase.fight]
+            [BattlePhase.shooting, BattlePhase.fight]
             if melee
             else [
                 BattlePhase.command,
