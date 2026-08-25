@@ -239,18 +239,37 @@ class BasePresenter(Renderer):
         return ()
 
     def _age_of_volley(self, view: BattleView) -> int:
-        """Frames since the currently-reported shooting results first appeared.
+        """Frames since the currently-reported attacks first appeared.
 
         Identity is not enough — the env hands out a fresh list each call — so
         the results are compared by content. Two identical volleys in a row would
         read as one, which costs a re-flash and nothing else.
+
+        ⚠ **Melee results belong in this signature, and were missing.** The
+        clash markers share this fade and its `shot_fade > 0.0` guard, so on a
+        turn with fighting but no shooting the signature never changed, the age
+        climbed every frame, the fade decayed to zero — and the melee marker was
+        never drawn AT ALL. It went unseen because the only configs that fight
+        also shoot on most turns, so the fade was being kept alive by an
+        unrelated volley.
         """
+        # A shot and a blow are separate frozen dataclasses carrying the same
+        # four fields, so the mixed sequence widens to `object`. Read
+        # structurally, as `_draw_shots` and `_draw_clashes` already do.
+        attacks: tuple[object, ...] = (
+            *view.last_player_shooting_results,
+            *view.last_opponent_shooting_results,
+            *view.last_player_fight_results,
+            *view.last_opponent_fight_results,
+        )
         signature = tuple(
-            (r.attacker_idx, r.target_idx, r.result.damage_dealt, r.killed)
-            for r in (
-                *view.last_player_shooting_results,
-                *view.last_opponent_shooting_results,
+            (
+                r.attacker_idx,  # type: ignore[attr-defined]
+                r.target_idx,  # type: ignore[attr-defined]
+                r.result.damage_dealt,  # type: ignore[attr-defined]
+                r.killed,  # type: ignore[attr-defined]
             )
+            for r in attacks
         )
         if signature != self._shot_signature:
             self._shot_signature = signature

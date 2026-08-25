@@ -276,6 +276,14 @@ def _draw_models(
         prims.append(Disc((cx, cy), radius, (*color, 255), pal.model_rim, 1))
 
 
+# Blade length in BOARD UNITS (inches), so the glyph keeps its size relative to
+# the models at any zoom. A 32mm base is 1.26" across, and the glyph is tuned to
+# sit just INSIDE that: a clash wider than a base buries the two models making
+# it, which was the first version's flaw.
+_CLASH_SIZE = 0.62
+_CLASH_PER_DAMAGE = 0.08
+
+
 def _shot_endpoints(
     attacker: object, target: object
 ) -> tuple[tuple[float, float], tuple[float, float]]:
@@ -345,6 +353,61 @@ def _draw_shots(
         prims.append(Disc(end, radius, None, _toward(ring, pal.board_bg, fade), width))
 
 
+def _crossed_swords(
+    prims: list[Primitive],
+    midpoint: tuple[float, float],
+    axis: tuple[float, float],
+    length: float,
+    core: RGB,
+    rim: RGB,
+    guard: RGB,
+    width: int,
+) -> None:
+    """Two blades crossed at `midpoint`, at 45 degrees either side of `axis`.
+
+    Oriented to the contact rather than to the board: the blades straddle the
+    line joining the two models, so the glyph reads as *these two* fighting even
+    in a pile where several clashes overlap. Board-unit endpoints, so it scales
+    with the camera exactly as the models do.
+
+    Each sword is a blade plus a crossguard. The guard is what stops the pair
+    reading as a plain X -- an X is already the destroyed-model mark
+    (`dead_mark`), and two markers that resolve to the same shape at a glance
+    would be worse than no marker. It also carries the attacker's side colour,
+    which the blade cannot: see `Palette.melee_blade`.
+    """
+    ax, ay = axis
+    # +/-45 degrees off the contact axis, by the rotation identity, so this
+    # needs no trig call per blow.
+    root_half = 0.7071067811865476
+    for sign in (1.0, -1.0):
+        dx = root_half * (ax - sign * ay)
+        dy = root_half * (ay + sign * ax)
+        # The hilt runs a little longer than the point, which is what gives the
+        # crossing a centre rather than a symmetrical star.
+        tip = (midpoint[0] + dx * length * 0.58, midpoint[1] + dy * length * 0.58)
+        hilt = (midpoint[0] - dx * length * 0.62, midpoint[1] - dy * length * 0.62)
+        # Dark stroke first, light core over it. A single-colour blade is
+        # legible on some fills and invisible on others -- the models it lands
+        # between are saturated and the board is not -- and this is what an icon
+        # does about exactly that.
+        prims.append(Seg(hilt, tip, rim, width + 2))
+        prims.append(Seg(hilt, tip, core, width))
+        guard_at = (
+            midpoint[0] - dx * length * 0.44,
+            midpoint[1] - dy * length * 0.44,
+        )
+        span = length * 0.15
+        prims.append(
+            Seg(
+                (guard_at[0] - dy * span, guard_at[1] + dx * span),
+                (guard_at[0] + dy * span, guard_at[1] - dx * span),
+                guard,
+                max(1, width - 1),
+            )
+        )
+
+
 def _draw_clashes(
     prims: list[Primitive],
     results: Sequence[object],
@@ -355,14 +418,21 @@ def _draw_clashes(
     scale: float,
     fade: float,
 ) -> None:
-    """A burst between two bases for every melee blow that did damage.
+    """Crossed swords between two bases for every melee blow that did damage.
 
-    ⚠ **Not `_draw_shots`.** That draws a tracer from base edge to base edge and
-    its "misses are not drawn" tuning was measured on 25-shot volleys; melee
-    happens at contact, so the same primitive renders as an inch-long stub in a
-    pile of models — the one place on the board where a line cannot be read.
-    A marker at the midpoint of the contact says who is fighting whom without
-    needing length to do it.
+    ⚠ **Not `_draw_shots`, and not its impact ring either.** That draws a tracer
+    from base edge to base edge, and its "misses are not drawn" tuning was
+    measured on 25-shot volleys; melee happens *at contact*, so the same
+    primitive renders as an inch-long stub in a pile of models -- the one place
+    on the board where a line has no length to be read by. The first version of
+    this drew two concentric rings at the midpoint, which was legible but shared
+    a vocabulary with the shooting impact ring, so a glance could not tell a
+    volley landing from a melee landing.
+
+    Swords are the icon because the reader already knows them, and because the
+    glyph carries a *direction* -- it straddles the contact axis -- which a ring
+    cannot. Damage scales the glyph and a kill recolours it, exactly as with a
+    shot, so the two markers stay comparable while never being confusable.
     """
     pal = theme.palette
     for entry in results:
@@ -377,22 +447,27 @@ def _draw_clashes(
         killed = bool(getattr(entry, "killed", False))
         start, end = _shot_endpoints(attackers[attacker_idx], targets[target_idx])
         midpoint = ((start[0] + end[0]) / 2.0, (start[1] + end[1]) / 2.0)
-        width = max(2, int(scale * 0.10)) if killed else max(1, int(scale * 0.06))
-        ring = pal.shot_kill if killed else color
-        radius = 0.20 + 0.10 * min(damage, 4)
-        prims.append(
-            Disc(midpoint, radius, None, _toward(ring, pal.board_bg, fade), width)
-        )
-        # A second, tighter ring: one disc alone reads as an impact marker, and
-        # an impact marker is what shooting already uses.
-        prims.append(
-            Disc(
-                midpoint,
-                radius * 0.45,
-                None,
-                _toward(color, pal.board_bg, fade),
-                width,
-            )
+        dx, dy = end[0] - start[0], end[1] - start[1]
+        span = math.hypot(dx, dy)
+        # Bases in contact are a hair apart, so the contact axis can round to
+        # zero length. Fall back to a fixed orientation rather than dividing.
+        axis = (dx / span, dy / span) if span > 1e-9 else (1.0, 0.0)
+        core = pal.shot_kill if killed else pal.melee_blade
+        # The core must stay clearly wider than the rim that outlines it; at a
+        # 1px core the dark stroke swallows the blade and the glyph reads as a
+        # scratch rather than as steel.
+        width = max(3, int(scale * 0.09)) if killed else max(2, int(scale * 0.07))
+        _crossed_swords(
+            prims,
+            midpoint,
+            axis,
+            _CLASH_SIZE + _CLASH_PER_DAMAGE * min(damage, 4),
+            _toward(core, pal.board_bg, fade),
+            _toward(pal.model_rim, pal.board_bg, fade),
+            # The crossguard is where the attacker's side is stated, since the
+            # blade gave that up for legibility.
+            _toward(color, pal.board_bg, fade),
+            width,
         )
 
 
