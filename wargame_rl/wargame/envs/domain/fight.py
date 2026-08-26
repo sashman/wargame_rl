@@ -354,6 +354,59 @@ def _may_pass(
     return True
 
 
+def fight_dragged_in_units(
+    attackers: list[WargameModel],
+    defenders: list[WargameModel],
+    groups: set[int],
+    rng: np.random.Generator,
+    *,
+    engagement_range: float,
+    base_diameter: float,
+    attacker_weapons: Sequence[Sequence[MeleeStats]],
+) -> list[PairedFightResult]:
+    """Grant a swing to units an Engaging consolidation dragged into the fight.
+
+    `12-fight-phase.md` § Consolidation move, Engaging: *"If any of the enemy
+    units now engaged with it has not been selected to fight this phase, the
+    opposing player must select each of those units in turn; each becomes
+    eligible to fight and is selected to fight."*
+
+    That is the cost of the mode, and without it Engaging was strictly free --
+    a unit could walk into contact with a fresh enemy after the fight step had
+    closed and take no return blows for it. The caller supplies `groups`
+    already filtered to units that have not fought, which only the fight step
+    knows.
+    """
+    if not groups or not attackers or not defenders:
+        return []
+    matrix = _contact_matrix(
+        attackers,
+        defenders,
+        engagement_range=engagement_range,
+        base_diameter=base_diameter,
+    )
+    results: list[PairedFightResult] = []
+    for group in sorted(groups):
+        members = [
+            index
+            for index, model in enumerate(attackers)
+            if model.is_alive and int(model.group_id) == group
+        ]
+        if not members:
+            continue
+        results.extend(
+            fight_one_unit(
+                attackers,
+                defenders,
+                members,
+                rng,
+                matrix=matrix,
+                attacker_weapons=attacker_weapons,
+            )
+        )
+    return results
+
+
 def resolve_fight_step(
     sides: tuple[FightSide, FightSide],
     rng: np.random.Generator,
@@ -363,6 +416,7 @@ def resolve_fight_step(
     pass_range: float,
     started_eligible: tuple[set[int], set[int]] | None = None,
     overrun: OverrunRules | None = None,
+    record_fought: tuple[set[int], set[int]] | None = None,
 ) -> tuple[list[PairedFightResult], list[PairedFightResult]]:
     """The fight step, with players ALTERNATING one unit at a time.
 
@@ -552,4 +606,12 @@ def resolve_fight_step(
             )
         )
         turn = 1 - turn
+    # ⚠ Reported OUT rather than returned, so the return type stays the pair of
+    # result lists every caller already unpacks. The consolidate step needs it:
+    # an Engaging consolidation that newly engages a unit which has NOT been
+    # selected to fight this phase must grant that unit a fight, and "has not
+    # been selected" is knowable only here.
+    if record_fought is not None:
+        record_fought[0].update(fought[0])
+        record_fought[1].update(fought[1])
     return results

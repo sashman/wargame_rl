@@ -27,7 +27,7 @@ killed everything near it. This is scope, taken deliberately: Ongoing and
 Engaging both need a *pile-in style* move toward a selected enemy unit, and
 Engaging additionally drags fresh enemy units into the fight and grants them a
 swing, which needs the alternating activation that v1 does not have.
-`DEFERRED: consolidate.ongoing`, `DEFERRED: consolidate.engaging`.
+Both closed 2026-08-26, along with Engaging's drag-in clause.
 
 ⚠ **Which objective is chosen is the env's, not the agent's.** The rules let the
 controlling player select one of the objectives in range; there is no action for

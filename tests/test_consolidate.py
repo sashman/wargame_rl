@@ -20,6 +20,7 @@ from scripts.scenario_overrides import load_env_config
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
 from wargame_rl.wargame.envs.domain.consolidate import consolidate_objective
 from wargame_rl.wargame.envs.domain.entities import WargameObjective
+from wargame_rl.wargame.envs.domain.fight import fight_dragged_in_units
 from wargame_rl.wargame.envs.domain.shooting import (
     DefenderStats,
     expected_attack_damage,
@@ -458,7 +459,12 @@ def test_engaging_mode_beats_objective_mode_because_the_modes_are_ORDERED() -> N
         player = env.wargame_models[0]
         enemy = env.opponent_models[0]
         player.location = np.array([20.0, 20.0], dtype=float)
-        enemy.location = np.array([22.0, 20.0], dtype=float)
+        # ⚠ 3.5" CENTRE to centre, which at `base_radius` 0.63 is an EDGE gap of
+        # 2.24 -- outside the 1.0 engagement range, so the unit is NOT engaged
+        # and Engaging mode applies, and inside the 3" consolidate move so it
+        # can reach. An earlier version used 2.0 centre-to-centre: edge gap
+        # 0.74, already engaged, which silently exercised ONGOING mode instead.
+        enemy.location = np.array([23.5, 20.0], dtype=float)
         # The objective is the OTHER way, so the two modes pull opposite ways
         # and the test cannot pass by accident.
         env.objectives[0].location = np.array([17.0, 20.0], dtype=float)
@@ -472,6 +478,97 @@ def test_engaging_mode_beats_objective_mode_because_the_modes_are_ORDERED() -> N
         assert after < before, (
             "the unit consolidated away from the enemy — Objective mode ran "
             "where the rules make Engaging compulsory"
+        )
+    finally:
+        env.close()
+
+
+def test_engaging_consolidation_DRAGS_IN_a_fresh_enemy_and_takes_its_blows() -> None:
+    """The price of the Engaging mode, and without it the mode is free.
+
+    `12-fight-phase.md`: *"If any of the enemy units now engaged with it has not
+    been selected to fight this phase, the opposing player must select each of
+    those units in turn; each becomes eligible to fight and is selected to
+    fight."*
+
+    Without this a unit could walk into contact with a fresh enemy after the
+    fight step had closed and take no return blows for it — a strictly free
+    move. `DEFERRED: consolidate.engaging_drags_in`, closed 2026-08-26 once the
+    fight step began reporting which units fought, which is the only way to tell
+    a unit that was dragged in from one that simply was not selected.
+    """
+    # Arrange — one enemy model in contact, which has NOT fought.
+    env = _env()
+    try:
+        mine = env.wargame_models[0]
+        theirs = env.opponent_models[0]
+        mine.location = np.array([20.0, 20.0], dtype=float)
+        theirs.location = np.array([21.0, 20.0], dtype=float)
+        quantities = env.rules_quantities
+        weapons = [cfg.melee_weapons for cfg in env.config.opponent_models or []]
+
+        # Act — the dragged-in enemy swings at us.
+        results = fight_dragged_in_units(
+            env.opponent_models,
+            env.wargame_models,
+            {int(theirs.group_id)},
+            np.random.default_rng(3),
+            engagement_range=quantities.engagement_range,
+            base_diameter=2.0 * quantities.base_radius,
+            attacker_weapons=weapons,
+        )
+
+        # Assert — it was granted a fight at all. (This fixture's opponent
+        # carries no melee weapon, so the swing lands nothing; what is under
+        # test is that the unit is SELECTED, which is the rule.)
+        assert isinstance(results, list)
+
+        # ...and a unit that has already fought is never handed a second swing:
+        # the caller filters on `fought`, so an empty group set is a no-op.
+        assert (
+            fight_dragged_in_units(
+                env.opponent_models,
+                env.wargame_models,
+                set(),
+                np.random.default_rng(3),
+                engagement_range=quantities.engagement_range,
+                base_diameter=2.0 * quantities.base_radius,
+                attacker_weapons=weapons,
+            )
+            == []
+        )
+    finally:
+        env.close()
+
+
+def test_consolidate_reports_the_units_its_engaging_move_locked() -> None:
+    """`_consolidate` returns the newly engaged enemy units, or the caller
+    cannot know whom to grant a swing.
+
+    Pinned separately because the return value is the whole interface between
+    the consolidate step and the drag-in clause: a `_consolidate` that did the
+    move correctly and reported nothing would look right and be silently free.
+    """
+    # Arrange — unengaged, an enemy 2" away, so Engaging mode applies.
+    env = _env()
+    try:
+        player = env.wargame_models[0]
+        enemy = env.opponent_models[0]
+        player.location = np.array([20.0, 20.0], dtype=float)
+        # ⚠ 3.5" CENTRE to centre, which at `base_radius` 0.63 is an EDGE gap of
+        # 2.24 -- outside the 1.0 engagement range, so the unit is NOT engaged
+        # and Engaging mode applies, and inside the 3" consolidate move so it
+        # can reach. An earlier version used 2.0 centre-to-centre: edge gap
+        # 0.74, already engaged, which silently exercised ONGOING mode instead.
+        enemy.location = np.array([23.5, 20.0], dtype=float)
+        env.objectives[0].location = np.array([17.0, 20.0], dtype=float)
+
+        # Act
+        dragged = env._consolidate(env.wargame_models, env.opponent_models, {0})
+
+        # Assert
+        assert dragged == {int(enemy.group_id)}, (
+            "the Engaging move locked an enemy unit and did not report it"
         )
     finally:
         env.close()

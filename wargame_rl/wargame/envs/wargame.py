@@ -24,6 +24,7 @@ from wargame_rl.wargame.envs.domain.fight import (
     FightSide,
     OverrunRules,
     PairedFightResult,
+    fight_dragged_in_units,
     fight_eligible_units,
     resolve_fight,
     resolve_fight_step,
@@ -816,6 +817,10 @@ class WargameEnv(gym.Env):
         # `resolve_fight_step` implements the rules' sequence -- Strikes First
         # sub-step, alternate selection, re-entry when a Strikes First unit
         # becomes eligible, and passing.
+        # Which units were selected to fight, reported out of the step so the
+        # consolidate phase can tell a unit it DRAGGED IN from one that simply
+        # was not selected. Indices match `order`.
+        fought: tuple[set[int], set[int]] = (set(), set())
         if self.config.melee.alternating_activation:
             first, second = order
             side_results = resolve_fight_step(
@@ -852,6 +857,7 @@ class WargameEnv(gym.Env):
                     if self.config.melee.overrun
                     else None
                 ),
+                record_fought=fought,
             )
             for (_models, _enemies, _weapons, is_player), results in zip(
                 order, side_results, strict=True
@@ -876,8 +882,30 @@ class WargameEnv(gym.Env):
                     self._last_opponent_fight_results.extend(results)
         # The rules' own order: pile-in, fight, THEN consolidate, with every
         # unit fighting before any unit consolidates.
-        for attackers, defenders, _weapons, is_player in order:
-            self._consolidate(attackers, defenders, eligible[is_player])
+        for seat, (attackers, defenders, _weapons, is_player) in enumerate(order):
+            dragged = self._consolidate(attackers, defenders, eligible[is_player])
+            # ⚠ The dragged-in units are on the OTHER side -- this force walked
+            # into them -- and only those that were never selected to fight get
+            # a swing. `12-fight-phase.md` makes this the price of the Engaging
+            # mode; without it a unit could close on a fresh enemy after the
+            # fight step had shut and take no return blows for it.
+            owed = dragged - fought[1 - seat]
+            if not owed:
+                continue
+            fought[1 - seat].update(owed)
+            results = fight_dragged_in_units(
+                defenders,
+                attackers,
+                owed,
+                self._combat_rng,
+                engagement_range=engagement_range,
+                base_diameter=base_diameter,
+                attacker_weapons=order[1 - seat][2],
+            )
+            if order[1 - seat][3]:
+                self._last_player_fight_results.extend(results)
+            else:
+                self._last_opponent_fight_results.extend(results)
         # ⚠ Cleared for BOTH forces, here rather than in `begin_turn`. Both
         # sides fight on the active player's boundary, and only the active
         # player can have charged this turn -- but `begin_turn` clears the side
@@ -887,13 +915,30 @@ class WargameEnv(gym.Env):
             for model in models:
                 model.charged_this_turn = False
 
+    def _engaged_enemy_groups(
+        self, models: list[WargameModel], enemy_models: list[WargameModel]
+    ) -> set[int]:
+        """Enemy unit ids currently engaged with any alive model of `models`."""
+        mine = [m for m in models if m.is_alive]
+        theirs = [(i, m) for i, m in enumerate(enemy_models) if m.is_alive]
+        if not mine or not theirs:
+            return set()
+        ours = np.array([m.location for m in mine], dtype=float)
+        others = np.array([m.location for _, m in theirs], dtype=float)
+        gaps = (
+            np.linalg.norm(ours[:, np.newaxis, :] - others[np.newaxis, :, :], axis=2)
+            - 2.0 * self._rules_quantities.base_radius
+        )
+        touching = (gaps <= self._rules_quantities.engagement_range).any(axis=0)
+        return {int(theirs[column][1].group_id) for column in np.flatnonzero(touching)}
+
     def _consolidate(
         self,
         models: list[WargameModel],
         enemy_models: list[WargameModel],
         eligible_units: set[int],
-    ) -> None:
-        """Run the consolidate step in Objective mode for one force.
+    ) -> set[int]:
+        """Run the consolidate step for one force; report whom it dragged in.
 
         ⚠ **Expect this to fire almost never, and that is the rule rather than a
         limitation of the implementation.** The three modes are assessed in order
@@ -958,7 +1003,10 @@ class WargameEnv(gym.Env):
         # becomes eligible and is selected to fight. That re-enters the fight
         # step, which has already completed by the time consolidate runs, so it
         # lands with the work that makes the fight step agent-driven rather than
-        # bolted on beside it. `DEFERRED: consolidate.engaging_drags_in`.
+        # bolted on beside it. `DEFERRED: consolidate.engaging_drags_in` --
+        # CLOSED 2026-08-26: the fight step now reports which units fought,
+        # so a dragged-in unit can be told from one that simply did not.
+        engaged_before = self._engaged_enemy_groups(models, enemy_models)
         if self.config.melee.pile_in:
             consolidated |= set(
                 pile_in(
@@ -1010,6 +1058,9 @@ class WargameEnv(gym.Env):
                 self.config.coherency.furthest_distance
             ),
         )
+        # Whom the Engaging move dragged in: enemy units engaged now that
+        # were not before this force consolidated.
+        return self._engaged_enemy_groups(models, enemy_models) - engaged_before
 
     def _regain_coherency(self, state: GameState) -> None:
         """Apply `03-moving.md` § Regaining coherency to the active player's force.
