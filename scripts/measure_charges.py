@@ -17,17 +17,36 @@ FOR the network, so these counts measure the decoder: a randomly-initialised
 network stands 1.17-3.67 charges an episode at K=3 and 0.00-1.67 at K=1. Training
 decodes at K=1, so **K=1 is the column that decides**.
 
-⚠ **A charge STOOD iff the referee did not put its models back where they
-started.** Never read `charged_this_turn` after the charge step: with `fight` in
-`skip_phases` the fight resolves on the boundary inside the same step and clears
-the flag, so it always reads False. That has cost two measurements.
+⚠ **A charge STOOD iff the REFEREE SAYS SO.** `charged_this_turn` is set at
+`actions.py:1160` only when `_charge_preconditions_hold` and `_charge_is_legal`
+both pass; the reverting branch is its `else`. Read it *inside* the step, right
+after `_apply_player_action` returns.
+
+⚠ **DO NOT count a charge as stood because its models MOVED.** That was this
+script's rule until 2026-08-26 and it is wrong in a policy-dependent direction.
+One `env.step` also runs, after the charge referee has already reverted a failed
+charge: pile-in for both forces, the fight step, consolidate for both, and **the
+entire opponent turn** (`turn_execution.py:55-60`), whose own pile-in moves the
+player's models again. A unit whose charge was reverted and which the opponent
+then charged is displaced by pile-in and was scored as having STOOD.
+
+The false positives are drawn from the *failed-attempt* pool, so the error grows
+with incompetence: measured inflation was **+2.9% on the scripted teacher, +300%
+on an untrained network and +500% on the arm**. The old rule was therefore
+ANTI-monotone in competence -- the exact disease this docstring already warned
+about for the standing *fraction* while asserting the numerator was free of it.
+⚠ **A docstring that lists its author's past mistakes reads as audited and is
+not.** Six panellists trusted this one without validating it.
+
+⚠ **A probe needs a KNOWN-ANSWER row.** `squad_march_take_charge` must read
+close to its published `stood/ep`; if it does not, the instrument changed and
+not the policy.
 """
 
 from __future__ import annotations
 
 import sys
-
-import numpy as np
+from typing import Any
 
 from scripts.scenario_overrides import describe, load_env_config, parse_overrides
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
@@ -47,6 +66,24 @@ def measure(
     """Per-episode charge counts for one policy, judged by the referee's verdict."""
     env = create_environment(load_env_config(config_path, **overrides))
     declared = attempted = stood = 0
+
+    # The referee's verdict, captured before the fight boundary clears it.
+    # `_apply_player_action` runs the charge referee; `run_after_player_action`
+    # (the very next statement in `step`) resolves the fight and clears the
+    # flag, so this is the only window in which it can be read.
+    stood_units: set[int] = set()
+    apply_player_action = env._apply_player_action
+
+    def capture_referee_verdict(chosen: Any) -> None:
+        apply_player_action(chosen)
+        stood_units.clear()
+        stood_units.update(
+            int(model.group_id)
+            for model in env.wargame_models
+            if model.is_alive and getattr(model, "charged_this_turn", False)
+        )
+
+    env._apply_player_action = capture_referee_verdict  # type: ignore[assignment]
     vp = 0.0
     coherent_steps = 0.0
     coherent_total = 0
@@ -64,11 +101,6 @@ def measure(
                         if model.is_alive and getattr(model, "declared_charge", False):
                             units.setdefault(int(model.group_id), []).append(index)
                     declared += len(units)
-                before = {
-                    index: np.array(env.wargame_models[index].location, copy=True)
-                    for members in units.values()
-                    for index in members
-                }
                 moving = {
                     group
                     for group, members in units.items()
@@ -78,14 +110,10 @@ def measure(
 
                 observation, _r, terminated, truncated, info = env.step(action)
 
-                # The referee reverts the WHOLE unit, so a unit that attempted a
-                # charge and still sits on its start positions was reverted.
-                for group in moving:
-                    if any(
-                        not np.array_equal(before[i], env.wargame_models[i].location)
-                        for i in units[group]
-                    ):
-                        stood += 1
+                # `charged_this_turn` implies the unit moved, so this is a
+                # subset of `moving` -- but it is the REFEREE's subset, not
+                # every unit something displaced during the step.
+                stood += len(stood_units)
                 done = terminated or truncated
             # ⚠ The POLICY'S OWN figure, not the realised one. This config
             # referees with `enforce_move: revert_unit`, under which the

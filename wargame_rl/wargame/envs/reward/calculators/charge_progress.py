@@ -107,7 +107,11 @@ class ChargeProgressCalculator(PerModelRewardCalculator):
 
         models = view.player_models
         progress = np.zeros(len(models), dtype=float)
-        phase = view.game_clock_state.phase
+        # ⚠ NOT `view.game_clock_state.phase`. Reward is calculated after
+        # `run_after_player_action` advanced the clock, so the live phase on the
+        # charge step is already the NEXT one -- this term paid zero on every
+        # charge and fired on the shooting step at pre-charge positions instead.
+        phase = ctx.action_phase
         enemies = [m for m in view.opponent_models if m.is_alive]
         if (
             not view.config.melee.enabled

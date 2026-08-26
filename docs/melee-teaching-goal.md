@@ -416,3 +416,110 @@ The trajectory sample at epoch 433 — 27.44 declares, 1.44 stood, fraction **0.
 
 **It is learning the game and not learning the charge**, and neither half of that is visible
 without this control. ⚠ Provisional: one seed, mid-training, n=9.
+
+---
+
+## 14. ⚠ THE PRIMARY READOUT WAS BROKEN. Every mechanism figure above is superseded.
+
+Found 2026-08-26 by an adversarial panel's red team under a dual mandate to audit the
+*instruments*, not the reasoning. Verified independently in the code before acting, and every
+claim below was reproduced by hand.
+
+### The bug
+
+`scripts/measure_charges.py` scored a charge as **stood** if any member of a moving unit was
+not where it started **after `env.step` returned**. That window does not contain only the
+charge. After `_enforce_charge` has already reverted a failed charge, the same `env.step` runs
+pile-in for both forces, the fight step, consolidate for both, and **the entire opponent turn**
+(`turn_execution.py:55-60`), whose own pile-in moves the player's models again.
+
+So a unit whose charge the referee **reverted**, and which the opponent then charged, was
+displaced by pile-in and **scored as having stood**.
+
+The false positives are drawn from the *failed-attempt* pool, so **the error grows with
+incompetence**:
+
+| policy | stood/ep (broken) | stood/ep (referee) | inflation |
+|---|---|---|---|
+| `squad_march_take_charge` | 4.00 | **3.89** | +2.9% |
+| untrained `melee_floor_s2` | 0.89 | **0.22** | **+300%** |
+| arm s2 @ epoch ~520 | 2.67 (ep 475) | **0.33** | **~8x** |
+
+`stood/ep` was therefore **ANTI-monotone in competence** — the exact disease its own docstring
+attributed to the standing *fraction* while asserting the numerator was immune to it
+(*"the numerator alone, with a hard floor at zero"*).
+
+**The correct reading already existed.** `charged_this_turn` is set at `actions.py:1160` only
+when `_charge_preconditions_hold` **and** `_charge_is_legal` both pass — the reverting branch is
+its `else` — and it is cleared inside `_resolve_fight_phase`. The old docstring warned never to
+read it *after* the charge step and never tried reading it *inside* the step, which is the one
+window that works. Fixed there; the known-answer row reproduces the teacher's `vp` and
+`coherent` to the digit, so it is the same instrument with only the counting rule changed.
+
+### The corrected table — held-out nine, refereed, 9 episodes, K=1, seeds 700000+
+
+| policy | decl/ep | tried/ep | **stood/ep** | frac | coherent | vp |
+|---|---|---|---|---|---|---|
+| `squad_march_take_charge` | 4.44 | 4.22 | **3.89** | **0.921** | 0.878 | +13.3 |
+| `squad_march_take` | 0.00 | 0.00 | 0.00 | — | 0.904 | −11.1 |
+| floor s0 / s1 / s2 | 0.00 / 0.00 / 93.11 | — | **0.00 / 0.00 / 0.22** | 0.016 | — | −227.8 / −206.1 / −236.1 |
+| arm s1 / s2 / s3 (ep 521/520/383) | 21.9 / 21.1 / 44.1 | 13.2 / 5.8 / 15.2 | **0.67 / 0.33 / 0.78** | **0.050 / 0.058 / 0.051** | 0.805 / 0.722 / 0.764 | −19.4 / −65.6 / −17.8 |
+
+**The verdict is unchanged in direction and the numbers that argued it were all wrong.** The
+agent lands **~6% of the teacher's rate** while declaring 21–44 charges an episode. It is
+modestly above the floor (0.050–0.058 against 0.016), not at it.
+
+⚠ **The clone control's REJECT stands a fortiori** — its clone rows were measured on the broken
+instrument, so correction moves them *down*, further below their pre-registered bound. The
+`stood/ep` magnitudes in §12 are superseded; the verdict is not.
+
+### The mechanism this exposes — and it is not "the charge is hard to learn"
+
+Declaring is **free** (the charge phase runs after shooting, so it forfeits nothing) and
+**unmasked on eligibility**; a failed charge is restored to its exact start state, so it is a
+state no-op; and with no shaping term the reward delta is zero. **Free action + no-op outcome +
+no reward delta = no gradient.** 21–44 declarations an episode against 0.3–0.8 landings is
+precisely what a policy does when nothing pushes back against a spurious declaration.
+
+### Three more defects found in the same audit, each verified here
+
+1. ⚠ **`charge_progress` could not fire on a charge.** It gated on
+   `view.game_clock_state.phase`, and reward is calculated *after* `run_after_player_action`
+   advanced the clock — so on the charge step the live phase is already the next one. The term
+   paid **zero on every charge** and fired on the *shooting* step at pre-charge positions.
+   **This is the lever the next spend would have wired.** Fixed by adding
+   `StepContext.action_phase` (set from the value `_apply_player_action` already captures
+   before advancing) and gating on it. Reward and observation goldens are **bit-identical** —
+   the term is unwired, so nothing that ships changed.
+   ⚠ **Four unit tests covered this gate and none could see it**: they drove the live clock into
+   the charge phase and called the calculator directly, a state no real step ever produces.
+   Verbatim the defect this project has already paid for twice.
+2. ⚠ **"Held-out nine, n=9" visits FIVE tables.** `MapPool.draw` is uniform **with
+   replacement** (its docstring defends that for *training rollouts*). Seeds 700000–700008 draw
+   `table_25, table_25, table_40, table_05, table_35, table_30, table_05, table_05, table_40`
+   — `table_05` three times, and `table_10/15/20/45` never. **No per-table sign count is
+   obtainable**, so CLAUDE.md's own map-pool rule is inexpressible on this config. Every melee
+   row above is labelled with a coverage it does not have. `measure-maps`, which iterates
+   tables explicitly, is unaffected.
+3. ⚠ **The `coherent` clause of the PASS gate never sees the charge phase.**
+   `_record_coherency` fires only under `if phase == BattlePhase.movement`
+   (`wargame.py:1414`), while §9's stated rationale for the clause is *"a charge is a joint
+   move; formation is how it fails"*. The clause measures something else entirely.
+4. ⚠ **The comparator under-declares on a stale cap.** `scripted_squad_march.py:305` computes
+   the declaration's `reach = min(move, charge_roll)` while `select_charge` at `:416` uses the
+   full roll under a comment stating the `min(Move, roll)` reading **was the bug and is now
+   closed**. The file's own docstring promises both gates ask the same question. The bar sets
+   every target in this goal, including `stood/ep > 3.0`.
+
+### The lessons, as rules
+
+- ⚠ **A DOCSTRING THAT LISTS ITS AUTHOR'S PAST MISTAKES READS AS AUDITED AND IS NOT.** Six
+  panellists took `stood/ep` at its documentation's word and every one of them reached the
+  wrong verdict from it. **Discount a panel's agreement to the number of seats that
+  independently validated the instrument.**
+- ⚠ **A metric read AFTER `env.step` is a metric read after the opponent's entire turn.** Any
+  per-phase quantity has to be captured inside the step.
+- ⚠ **An error that lives in the FAILURE pool is anti-monotone in skill.** Ask of every
+  behavioural statistic: does its error rate depend on the competence it is measuring?
+- ⚠ **Check what a seeded episode count actually covers.** Sampling with replacement is right
+  for training rollouts and wrong for an eval label.

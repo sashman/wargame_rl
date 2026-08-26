@@ -69,18 +69,32 @@ def _env(melee: bool = True) -> WargameEnv:
     return env
 
 
-def _ctx(env: WargameEnv) -> StepContext:
+def _ctx(
+    env: WargameEnv, action_phase: BattlePhase | None = BattlePhase.charge
+) -> StepContext:
+    """The context as `step` builds it, for the phase whose action is priced.
+
+    ⚠ `action_phase` is NOT optional decoration. These tests used to omit it and
+    let the calculator read the live clock, which at reward time has ALREADY
+    advanced past the phase that acted -- so they exercised a state no real step
+    ever produces and could not see that the term paid zero on every charge.
+    """
     return StepContext(
         distance_cache=compute_distances(env.wargame_models, env.objectives),
         current_turn=env.current_turn,
         max_turns=env.max_turns,
         board_width=env.board_width,
         board_height=env.board_height,
+        action_phase=action_phase,
     )
 
 
 def _pay(
-    env: WargameEnv, gap: float, roll: float = 6.0, declared: bool = True
+    env: WargameEnv,
+    gap: float,
+    roll: float = 6.0,
+    declared: bool = True,
+    action_phase: BattlePhase | None = BattlePhase.charge,
 ) -> float:
     """This model's payment with the nearest living enemy `gap` inches away."""
     calculator = ChargeProgressCalculator(value=VALUE)
@@ -94,7 +108,7 @@ def _pay(
         model.charge_roll = roll
         model.declared_charge = declared
     calculator.reset_episode()
-    return calculator.calculate(0, player, env, _ctx(env))
+    return calculator.calculate(0, player, env, _ctx(env, action_phase))
 
 
 def _charge_phase(env: WargameEnv) -> None:
@@ -118,10 +132,14 @@ def test_it_pays_nothing_outside_the_charge_phase() -> None:
     # Arrange
     env = _env()
     try:
-        assert env.game_clock_state.phase is not BattlePhase.charge
-
+        # ⚠ The gate is the phase that ACTED, not the clock. At reward time the
+        # clock has already advanced, so a clock-based gate fired on the
+        # SHOOTING step -- at pre-charge positions -- and paid zero on every
+        # actual charge. Priced here as `step` prices it.
         # Act / Assert
-        assert _pay(env, gap=2.0) == 0.0
+        assert _pay(env, gap=2.0, action_phase=BattlePhase.movement) == 0.0
+        assert _pay(env, gap=2.0, action_phase=BattlePhase.shooting) == 0.0
+        assert _pay(env, gap=2.0, action_phase=None) == 0.0
     finally:
         env.close()
 

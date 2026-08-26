@@ -1677,6 +1677,7 @@ class WargameEnv(gym.Env):
             is_terminated=False,
             current_round=clock_state.battle_round or 0,
             battle_phase=phase,
+            action_phase=self._last_action_phase,
             player_damage_dealt=p_dmg,
             opponent_damage_dealt=o_dmg,
             player_models_killed=p_kills,

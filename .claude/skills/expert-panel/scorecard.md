@@ -301,3 +301,36 @@ measurement.**
 - ⚠ **A monitor that greps for success is indistinguishable from silence.** One armed here
   watched for `Epoch 599` in a log Lightning writes with carriage returns; it would have sat
   quiet for hours and read as "still training".
+
+## 2026-08-26 — melee: "the agent is learning the game and not the charge" (mode: audit)
+
+**Target:** the mid-flight reading that would decide the next 20–40 GPU-hours, plus the four
+measurements under it. Two uncoordinated panels, 7 lenses each, both with the dual-mandate red
+team. Run deliberately *while* the arm was still training so neither panel saw the outcome.
+
+**Verdict: the single most valuable round run here.** Panel B returned **FATAL** on the primary
+readout and it was **real** — `scripts/measure_charges.py` counted pile-in, consolidate and the
+whole opponent turn as evidence a charge had stood, inflating an untrained network **+300%** and
+the scripted teacher only **+2.9%**. Anti-monotone in competence. Four further defects, all
+verified in the code by hand before acting: `charge_progress` gated on a clock that had already
+advanced so it could not fire on a charge at all (**the lever the next spend would have wired**);
+"held-out nine, n=9" visits **five** tables (uniform draw *with replacement*); the PASS gate's
+coherency clause never sees the charge phase; the comparator under-declares on a stale cap.
+
+**The headline claim was UPHELD and every number used to argue it was wrong** — in the direction
+that weakened the author's own case.
+
+**The lesson that generalises, and it indicts the panel format itself:** six of Panel B's seats
+came in *against* the headline, and all six were wrong for one shared reason — they trusted
+`measure_charges.py`'s **docstring**, which lists three of its author's past measurement errors
+and therefore reads as audited. One seat touched the instrument and still landed one checkpoint
+away from the right answer. **Discount a panel's agreement to the number of seats that
+independently validated the instrument.** Convergence among seats reading the same unvalidated
+gauge is correlated error with extra steps.
+
+**Process notes.** Naming the instruments *by path* in the brief and ordering the red team to
+read them is what produced this; the same mandate produced this project's previous best round.
+Two throttling defects in my own brief: "run at most one measurement at a time" bounds per-agent
+load and not the aggregate (14 agents obeying it produced load average 160), and advising
+`CUDA_VISIBLE_DEVICES=` breaks checkpoint loading outright, since checkpoints saved on CUDA need
+`map_location`.
