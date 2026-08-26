@@ -127,3 +127,39 @@ def test_train_forwards_resume_ckpt_to_trainer(
     )
 
     assert fit_calls == [str(resume_ckpt)]
+
+
+def test_resume_can_load_a_checkpoint_that_pickles_the_env() -> None:
+    """⚠ Regression: `--resume-ckpt-path` was broken for EVERY checkpoint here.
+
+    PyTorch 2.6 flipped `torch.load`'s `weights_only` default to True, and these
+    checkpoints pickle the whole `WargameEnv` as a Lightning hparam, so
+    Lightning's internal restore raised `UnpicklingError: Unsupported global ...
+    WargameEnv`. The run died in seconds and the launcher still exited 0, which
+    is the silent-failure shape this project has been bitten by before.
+    """
+    import torch
+
+    from train import _trusted_checkpoint_load
+
+    class _OnlyWithWeightsOnlyFalse:
+        pass
+
+    original = torch.load
+    seen: dict[str, object] = {}
+
+    def fake_load(*args: object, **kwargs: object) -> str:
+        seen["weights_only"] = kwargs.get("weights_only")
+        return "loaded"
+
+    torch.load = fake_load  # type: ignore[assignment]
+    try:
+        with _trusted_checkpoint_load():
+            assert torch.load("anything.ckpt") == "loaded"
+        assert seen["weights_only"] is False, (
+            "the resume path must not use torch 2.6's weights_only default"
+        )
+        # ...and the patch must be undone, or every later load is unguarded.
+        assert torch.load is fake_load
+    finally:
+        torch.load = original  # type: ignore[assignment]

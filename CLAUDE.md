@@ -144,7 +144,7 @@ wargame_rl/
 - **Group cohesion** — optional penalty for unit separation
 - **DDD layering** — `domain/` owns the rules (Battle aggregate, clock, placement, termination, LOS, shooting); `wargame.py` is a facade; reward/renders depend only on the `BattleView` protocol. See [docs/ddd-envs.md](docs/ddd-envs.md)
 - **Rules specification** — [docs/rules/](docs/rules/README.md) is the game's rules authority: a self-contained spec written for this project, with `constants.yaml` (every number, in inches) and [implementation-status.md](docs/rules/implementation-status.md) (per-rule: implemented / partial / divergent / absent). Before implementing a mechanic, read its chapter and its gap-map row. `tests/test_no_ip_references.py` keeps the repo free of references to the commercial product the rules derive from — the spec names no product, publisher, edition or faction, and neither should anything else
-- **Play doctrine** — [docs/play-doctrine.md](docs/play-doctrine.md) is how this game is *won*, as `docs/rules/` is how it is *played*: 42 numbered entries, each stating a claim, whether the environment can express it, which extension point it lands in, and what has already been measured about it. It is a store of **hypotheses, never of evidence** — price an entry as a scripted policy (`just measure-paired`, no GPU) before it becomes a reward term or a training run, and where an entry disagrees with the record below, **the record wins**
+- **Play doctrine** — [docs/play-doctrine.md](docs/play-doctrine.md) is how this game is *won*, as `docs/rules/` is how it is *played*: 43 numbered entries, each stating a claim, whether the environment can express it, which extension point it lands in, and what has already been measured about it. It is a store of **hypotheses, never of evidence** — price an entry as a scripted policy (`just measure-paired`, no GPU) before it becomes a reward term or a training run, and where an entry disagrees with the record below, **the record wins**
 
 ### Game State I/O (`envs/state/`)
 
@@ -673,6 +673,18 @@ measure-advance-use` censuses what a policy buys with the advance and what it pa
   move the policy already uses sanely, and raises the value of *shrinking* it —
   32% of the action space is an option the policy must spend samples learning to
   decline, half of it strictly dominated.
+- ⚠ **A MOVE TYPE IS A LEVER, NOT AN ADVANTAGE — and the gate that assumed otherwise is
+  RETIRED.** The standing rule was "a scripted advance rule that prices the forfeited shooting
+  has to beat `squad_march_take` before anything trains". It bakes in the assumption the
+  evidence refutes, so no correct implementation can satisfy it. **Do not add scripted policies
+  whose purpose is to advance** — the two on file cost their own users −78 and −11.9 vp. The
+  right question is not *does the lever pay* but **does carrying it cost the agent anything**,
+  which needs no advance-seeking script: train against a `dark_action_slices` control of
+  identical shape and read the paired difference. See D-43.
+- ⚠ **NO MELEE, so every movement measurement here is PROVISIONAL.** A shooting army has no
+  reason to close except to stand on an objective, so closing is priced only by what it
+  captures and never by what it threatens. Any move type whose value is "arrive sooner" is
+  being measured in a game that does not yet reward arriving.
 - ⚠ **The only live explanation left for the −26.7 is the PATH, and nothing above
   prices it.** Every statistic here is taken at convergence; a 300-epoch screen
   prices sample efficiency.
@@ -770,6 +782,79 @@ but it is a change, so re-measure rather than carry a figure across it.
 *falls* 4.338 → 3.334 ms because command steps do almost nothing, so 1.5x the steps
 nets 8.68 → 10.00 ms per round. A 2048-step epoch is 9.5 s → 7.5 s but covers a
 third fewer rounds.
+
+### The advance lever at 300 epochs said FREE; at 1000 it says −16.3 (unresolved)
+
+Measured 2026-08-24, three seeds, 300 epochs, **paired**,
+[report](reports/2026-08-24-carrying-the-lever-is-free-using-it-is-not.md).
+`25v25_maps_advance` against `..._advance_dark` — identical but for
+`dark_action_slices`, so both are 152 actions with a bit-identical init.
+
+| seed | advance | dark | paired | usage | forbid-at-play |
+|---|---|---|---|---|---|
+| s1 | +32.3 | +19.8 | **+12.5** | **0.0%** | +31.2 (−1.1) |
+| s2 | −18.2 | −8.4 | **−9.8** | **10.9%** | **+8.1 (+26.3)** |
+| s3 | +19.9 | +15.9 | **+4.0** | **0.6%** | +22.6 (+2.7) |
+
+- **Paired +2.2 ± 6.5, t=+0.34, signs flipping.** The old encoding cost **−26.7**
+  and never flipped. **Pre-registered verdict: FAIL** — 2 of 3 seeds cleared the
+  −8 bound.
+- ⚠ **THE ACCEPT CRITERION COULD NOT HAVE PASSED RELIABLY.** Per-seed paired sd is
+  **11.3**, so a lever costing *exactly zero* lands a seed below −8 on 23.9% of
+  tries and fails "−8 on 3/3" **56% of the time**. The bound was tighter than the
+  estimator's own noise. Recorded as a defect in the rule, **not** as grounds to
+  overturn the verdict. **Power-check a per-seed bound against the expected spread
+  before writing it down.**
+- **The cost is in USING it, tested not inferred.** Usage and score order perfectly
+  (0.0/0.6/10.9% against +12.5/+4.0/−9.8), and that ordering was *not*
+  pre-registered — so it was checked by forbidding advance at PLAY on the same
+  weights (the dark config shares the 152-action shape). Prediction written first,
+  **confirmed 3/3**: the advancing seed recovers **+26.3**, the declining seeds move
+  −1.1 and +2.7.
+- **Two of three seeds learned to decline it entirely** — s1 chose **0 advances in
+  7,227 unit-turns**. ⚠ Verified this is refusal and not a mask: all 25 alive models
+  are offered the declaration in every command phase.
+- ⚠ **The result MIXES converged and unconverged runs.** s2's usage across its last
+  50 epochs is **7.9% → 4.8% → 7.8%** — oscillating, not decaying. Nearly all the
+  noise in ±6.5 is that one seed; the other two agree at +12.5 and +4.0.
+- ⚠ **RETRACTED BY THE 1000-EPOCH RUN, SAME DAY.** Resumed to epoch 1000 and
+  rescored: paired **−16.3 ± 8.9, t=−1.84, all three seeds negative**, against
+  +2.2 ± 6.5 with flipping signs at 300. **s1 and s3 both flipped sign** (+12.5 →
+  −6.9, +4.0 → −34.0), so the 300-epoch reading was not a noisier version of this
+  one — it pointed the other way. Verdict against the criterion committed to git
+  before the scores existed: **UNDERPOWERED** (lower bound −42.2). Not a pass.
+- ⚠ **"Two of three seeds learned to decline it" is RETRACTED.** At 1000 only s1 is
+  near zero (0.3%); s2 and s3 sit near 5%. **More training made them WORSE at
+  leaving the option alone.** The prediction that s2 would fall to the others' floor
+  failed: 7.8 → 6.6 → 3.2 → 4.2 → 4.9%, a plateau and drift back up, i.e. a second
+  mode rather than under-training. **More epochs is not the lever; more seeds is.**
+- **What survives**: the usage/score relationship, now stronger (0.3% usage → −6.9;
+  ~5% → −8.0 and −34.0), and the forbid-at-play falsifier (**+26.3** recovered on
+  the seed that used it, −1.1/+2.7 on those that did not). The four structural
+  criteria are untouched by any of this.
+- ⚠ **HYPOTHESIS, NOT A FINDING: the extra option may SLOW learning.** The control
+  gained more from the extra 700 epochs than the arm on every seed (+13.8 v −5.6,
+  +26.3 v +28.1, **+19.7 v −18.3**). Three seeds at sd 15.3 cannot establish it.
+- **VERDICT: REJECT.** Arm **+12.7** against the control's **+29.0** at 1000 epochs
+  (beats the old advance arm's −3.3, does not clear the control on any seed).
+- ⚠ **But the reject clause's own explanation — "~12 vp is the permanent cost of a
+  larger action space" — is REFUTED by the same run.** A pre-predicted falsifier,
+  confirmed 3/3: advance-trained weights with the lever masked at **play** land
+  within **1.8–4.1 vp** of the control (s3 alone recovers **+32.2**). Decomposed:
+  **carrying the option −2.9 ± 0.67 (lower bound −4.8)**; using it at play −13.4.
+  **Do not carry forward "the encoding costs ~12 vp", and do not re-open the
+  encoding** — the structure is not what loses. The open problem is that two of three
+  seeds drift into *using* a move that does not pay, and 700 extra epochs made that
+  worse, not better.
+- ⚠ **A THREE-SEED SCREEN WAS READ AS A RESULT TWICE AND REVERSED BOTH TIMES.** The
+  per-seed paired difference is unstable across seeds *and* across epoch budgets.
+  **Nothing here should move a design decision** — resolving "free" versus "−16"
+  needs **six seeds at 1000 epochs**, not another three.
+- **NEW DIAGNOSTIC: lever usage is a convergence signal.** When the right answer is
+  "rarely", a lever whose usage is still oscillating means the run has not settled,
+  whatever the reward curve says. One inference run at two checkpoints. It would
+  have flagged s2 as not-comparable before it entered the average, and it
+  generalises to every move type the rules add.
 
 ### Offence is not reward-shapeable here — three arms, one conclusion
 
@@ -988,6 +1073,15 @@ paid for.
 - **Screening arms by their newest top-k checkpoint compares different epochs** —
   `ppo-NNN-*.ckpt` records the last epoch whose *training reward* improved, which
   differs per arm. Matching a comparison to `last.ckpt` once **reversed a ranking**.
+- ⚠ **`--resume-ckpt-path` was BROKEN for every checkpoint this repo writes, and
+  failed SILENTLY** (fixed 2026-08-24). Torch 2.6 flipped `torch.load`'s
+  `weights_only` default to True; a checkpoint pickles the whole `WargameEnv` as a
+  Lightning hparam, so Lightning's restore raised `UnpicklingError: Unsupported
+  global ... WargameEnv`. Every run died in ~6 seconds **and the launcher exited 0**,
+  printing its per-seed "done" lines — the same shape as `train-arm`'s silent
+  failure. Caught only by checking process count and GPU memory. **Never read a
+  launcher's exit code as evidence a run happened**; check `ps`, the GPU, and that
+  checkpoints advanced.
 - ⚠ **Score a killed run from its highest `ppo-NNN-*.ckpt`, not `last.ckpt`.**
   `PeriodicLastCheckpoint` writes every 25 epochs, at `on_train_end` and on
   `KeyboardInterrupt` — but **`SIGKILL` triggers none of those**, and SIGKILL is

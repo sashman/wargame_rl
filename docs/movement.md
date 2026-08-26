@@ -6,13 +6,17 @@ Every model shares a single flat discrete action space. The space is partitioned
 
 Current slices:
 
-| Slice | Indices | Valid phases |
-|-------|---------|--------------|
-| `stay` | `0` | All phases |
-| `movement` | `1 .. N×S` | Movement phase only |
-| `shooting` | `N×S+1 .. N×S+T` | Shooting phase only (if opponents configured) |
+| Slice | Indices | Valid phases | Registered when |
+|-------|---------|--------------|-----------------|
+| `stay` | `0` | All phases | always |
+| `movement` | `1 .. N×S` | Movement phase only | always |
+| `shooting` | `N×S+1 .. N×S+T` | Shooting phase only | opponents configured |
+| `advance` | after `shooting`, `N×A` wide | Movement phase only | `n_advance_speed_bins > 0` |
+| `move_type` | last, 2 wide | **Command phase only** | `n_advance_speed_bins > 0` |
 
-With the defaults (`n_movement_angles=16`, `n_speed_bins=6`) and no opponents, the total action space is **97** (1 stay + 96 movement). With opponents, shooting target indices are appended (see [shooting.md](shooting.md)).
+With the defaults (`n_movement_angles=16`, `n_speed_bins=6`) and no opponents, the total action space is **97** (1 stay + 96 movement). With opponents, shooting target indices are appended (see [shooting.md](shooting.md)). On the 25v25 advance scenario it is **152** (1 + 96 + 5 + 48 + 2), against **102** with `n_advance_speed_bins: 0`.
+
+⚠ The last two are registered **after** shooting so that no pre-existing action index moves — `decode_action` is angle-major, speed-minor, so widening `n_speed_bins` instead would renumber the movement slice and `_apply_warm_start_weights` loads with `strict=False`, meaning every old checkpoint would load and be silently wrong.
 
 ### Action Masking
 
@@ -39,6 +43,13 @@ This appends the new actions after the existing slices. The mask generation, obs
 
 An action can be valid in multiple phases by including them in the `valid_phases` frozenset (e.g. `stay` is valid in all phases).
 
+⚠ **A new MOVE TYPE is not a new slice.** Fall back and charge are move types, not
+phases, and the pattern above is the wrong one for them: it is what Advance did
+first, and it cost 48 actions plus a bespoke unit-resolution rule. A move type is
+**one more value in `move_type`** (§ Move types below) — the declaration machinery,
+the unit resolution and the legality mask are already general. Reach for a new slice
+only when a phase needs genuinely new *targets*, as shooting does.
+
 ## Movement Encoding
 
 Each model's movement action is a single integer from `1` to `n_movement_angles × n_speed_bins` (index `0` is the phase-universal stay action):
@@ -54,6 +65,65 @@ For movement actions, the angle and speed indices are decoded as:
 angle_idx = (action - 1) // n_speed_bins
 speed_idx = (action - 1) %  n_speed_bins
 ```
+
+## Move types
+
+The rules make the **move type** a unit's choice, and this action space makes it one
+too — declared once, in the command phase, rather than inferred from what individual
+models did.
+
+| | |
+|---|---|
+| **Who decides** | the unit's lowest-indexed **alive** model (its leader) |
+| **When** | the command phase, before anything moves |
+| **How** | `move_type` slice: `MOVE_TYPE_NORMAL`, `MOVE_TYPE_ADVANCE` |
+| **Default** | `STAY` in the command phase declares `normal` |
+| **Cost** | declaring an advance sets `advanced_this_turn` for the whole unit immediately, forfeiting its shooting — the rules attach that to the move *type*, not to the distance travelled |
+
+`STAY` declaring `normal` is what keeps every policy written before the declaration
+existed working unchanged; a non-advancing script scores bit-identically across the
+change.
+
+⚠ **`n_advance_speed_bins > 0` requires the command phase.** A config that lists
+`command` in `skip_phases` is rejected at construction — otherwise the rungs are
+registered and no declaration is ever legal, so a run would spend hours measuring a
+feature it never had.
+
+### Advance rungs are absolute
+
+An advance bin is a **fixed distance above the model's Move**:
+
+```
+distance(bin) = M + (bin + 1) × (6 / n_advance_speed_bins)
+```
+
+At `M = 6` with three bins that is **8" / 10" / 12"**. The unit's D6
+(`model.advance_roll`, one roll per unit at the start of its turn) decides which
+rungs are **legal**, via `ActionHandler.advance_legality`, masked on both seats. It
+does not decide what an action *means*.
+
+Two properties follow, and both were defects of the earlier `fraction × (M + roll)`
+encoding:
+
+- **No dominated actions.** Every rung is beyond a normal move's reach, so no action
+  can spend the unit's shooting for a distance a walk already delivers. The old
+  ladder had ~50% of the slice dominated in expectation.
+- **Stationary semantics.** An index means the same displacement every turn. The old
+  ladder was the only slice in the game whose meaning changed turn to turn, so a
+  policy had to read `advance_roll` to know what its own action did.
+
+⚠ A rung is legal only for a unit that **declared**, *and* only within `M + roll`.
+The declaration gate is what makes the move type a unit decision; separating it from
+the distance is what keeps the unit able to move as a body. A leader-only rule that
+fused the two would cap every squadmate at `M` and shatter the 2" chain.
+
+⚠ At three bins a roll of 1 leaves **no** legal rung. The rules would permit a 7"
+advance and the ladder cannot express it — a resolution limit, not a bug, since a 1"
+gain never repays a turn of fire.
+
+⚠ **Advance is a lever, not an advantage.** See
+[play-doctrine D-43](play-doctrine.md); do not build policies whose purpose is to
+advance, and do not read low usage as a failure.
 
 ## Direction
 
@@ -186,8 +256,8 @@ Movement parameters are set via `WargameEnvConfig`:
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `n_movement_angles` | `16` | Number of angular bins (22.5° apart) |
-| `n_advance_speed_bins` | `0` | Advance bins, as their own action slice appended after shooting. 0 registers nothing, draws no dice and changes no action index |
-| `dark_action_slices` | `[]` | Slice names registered at full width but valid in **no** phase, so every one of their actions is masked all episode. Exists to restore *pairing* to an action-space arm: the arm and its control then share a parameter shape and start from bit-identical weights. ⚠ It does not make an existing control reusable — a narrower head consumes less RNG at init, so the control must be retrained with the slice darkened |
+| `n_advance_speed_bins` | `0` | Advance rungs, as their own slice appended after shooting, plus a 2-wide `move_type` slice for the declaration. Rungs are **absolute** (`M + (bin+1)×(6/bins)`), gated by the unit's D6 through a per-model mask. 0 registers nothing, draws no dice and changes no action index. ⚠ **> 0 requires `command` NOT in `skip_phases`**, enforced at construction |
+| `dark_action_slices` | `[]` | Slice names registered at full width but valid in **no** phase, so every one of their actions is masked all episode. Exists to restore *pairing* to an action-space arm: the arm and its control then share a parameter shape and start from bit-identical weights. ⚠ It does not make an existing control reusable — a narrower head consumes less RNG at init, so the control must be retrained with the slice darkened. ⚠ Darkening `"advance"` darkens the `move_type` slice too, so the rungs become unreachable by the same switch: a rung is legal only where a declaration was made |
 | `n_speed_bins` | `6` | Number of discrete speed levels |
 | `max_move_speed` | `6.0` | Maximum distance a model can move per step, in inches. The scenario-wide default for the rules' **Move (M)** characteristic |
 | `ModelConfig.move` | `None` | Per-model override of `max_move_speed`, in inches. `None` takes the scenario value |

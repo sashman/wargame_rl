@@ -1,4 +1,6 @@
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, cast
 
@@ -126,6 +128,37 @@ def _apply_warm_start_weights(
     model.load_state_dict(state_dict, strict=False)
 
 
+@contextmanager
+def _trusted_checkpoint_load() -> Iterator[None]:
+    """Let `torch.load` unpickle our own checkpoints during a Lightning resume.
+
+    PyTorch 2.6 flipped `torch.load`'s `weights_only` default to True, and a
+    checkpoint here pickles the whole `WargameEnv` (it is a Lightning hparam),
+    so Lightning's internal restore raises `UnpicklingError: Unsupported global
+    ... WargameEnv` on **every** checkpoint this repo has ever written. That
+    made `--resume-ckpt-path` unusable, silently: the run dies in seconds and
+    the launcher still exits 0.
+
+    Scoped to the resume call and restored afterwards, rather than allowlisting
+    globals, because the allowlist would have to name every config and geometry
+    type a checkpoint happens to contain and would break again on the next one.
+    `TransformerNetwork.from_checkpoint` already loads these files with
+    `weights_only=False` for the same reason -- this makes the resume path
+    consistent with the read path.
+    """
+    original = torch.load
+
+    def trusted(*args: Any, **kwargs: Any) -> Any:
+        kwargs["weights_only"] = False
+        return original(*args, **kwargs)
+
+    torch.load = trusted  # type: ignore[assignment]
+    try:
+        yield
+    finally:
+        torch.load = original  # type: ignore[assignment]
+
+
 def _fit_with_optional_resume(
     trainer: Trainer,
     model: LightningModule,
@@ -134,7 +167,8 @@ def _fit_with_optional_resume(
     if resume_ckpt_path is None:
         trainer.fit(model)
         return
-    trainer.fit(model, ckpt_path=resume_ckpt_path)
+    with _trusted_checkpoint_load():
+        trainer.fit(model, ckpt_path=resume_ckpt_path)
 
 
 def _resolve_optional_str(value: str | OptionInfo | None) -> str | None:

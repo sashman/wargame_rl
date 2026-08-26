@@ -64,7 +64,7 @@ Introduce ranged attacks so models can damage each other.
 - [x] **Wounds & elimination** — `max_wounds` / `current_wounds` are functional; models at 0 wounds are dead and masked out of actions, observations and reward.
 - [x] **Shooting action type** — A shooting slice in the union action space; each model picks a target within range, resolved with D6 hit / wound / save rolls (see [shooting.md](shooting.md)).
 - [x] **Line of sight** — Footprint-based LOS blocking in `domain/los.py`, with see-out / see-into exceptions (see [terrain.md](terrain.md)).
-- [x] **Action type selection** — The action space is a phase-gated union of `stay`, `movement` and `shooting` slices; the valid slice is masked per battle phase rather than chosen freely.
+- [x] **Action type selection** — The action space is a phase-gated union of `stay`, `movement`, `shooting`, and — when the scenario has advance rungs — `advance` and `move_type` slices; the valid slice is masked per battle phase rather than chosen freely. A new **move type** costs one value in `move_type`, not a new slice (see [movement.md](movement.md) § Move types).
 - [x] **Reward shaping for combat** — `model_kills` (per-model) and `killing` (global) calculators pay for opponents killed; opponent shooting is available via `scripted_advance_and_shoot`. Penalising own losses is still not modelled.
 
 ### Phase 3 — Terrain & Board Features
@@ -93,7 +93,7 @@ Layer in the remaining tabletop systems.
 - [ ] **Melee combat** — Close-range attacks when models are adjacent; higher damage, no LOS requirement.
 - [ ] **Morale / suppression** — Units that take casualties test their nerve; failures cost them objective control. See [rules/01-core-concepts.md](rules/01-core-concepts.md#suppression).
 - [ ] **Command abilities** — Special per-model actions (e.g. buff nearby allies, call in support) to increase tactical depth.
-- [x] **Multi-phase turns** — Each `env.step()` advances one battle phase (command → movement → shooting → charge → fight). The opponent's full turn is auto-executed after the player completes theirs. Non-movement phases are skipped by default (`skip_phases` config) until their mechanics are implemented; set `skip_phases: []` for full per-phase stepping. Only movement has real actions currently; other phases allow only "stay".
+- [x] **Multi-phase turns** — Each `env.step()` advances one battle phase (command → movement → shooting → charge → fight). The opponent's full turn is auto-executed after the player completes theirs. Non-movement phases are skipped by default (`skip_phases` config) until their mechanics are implemented; set `skip_phases: []` for full per-phase stepping. Movement, shooting and — on scenarios with advance rungs — **command** carry real actions; command is where a unit declares its move type, and `n_advance_speed_bins > 0` requires it not be skipped. Charge and fight allow only "stay".
 
 ### Phase 6 — Scale & Polish
 
