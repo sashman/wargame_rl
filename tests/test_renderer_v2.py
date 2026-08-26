@@ -428,8 +428,13 @@ def test_phase_chips_mark_skipped_phases(skipped: list[BattlePhase]) -> None:
     hud = build_scene(env, compute_objective_control(env), scale=51.2).hud
 
     assert len(hud.phase_chips) == len(BattlePhase)
+    # ⚠ Against the CONFIG's skip list, not the parameter. `pile_in` and
+    # `consolidate` are auto-skipped wherever melee is off, so the config's list
+    # is a superset of what the test asked for -- and the config is what the HUD
+    # is supposed to be reflecting.
+    config_skipped = set(env.config.skip_phases)
     assert [chip.is_skipped for chip in hud.phase_chips] == [
-        phase in skipped for phase in BattlePhase
+        phase in config_skipped for phase in BattlePhase
     ]
     assert sum(chip.is_current for chip in hud.phase_chips) == 1
 

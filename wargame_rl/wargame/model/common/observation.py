@@ -22,7 +22,20 @@ NORM_EXPECTED_DAMAGE = 10.0
 
 N_WOUND_FEATURES = 3  # alive, wound_ratio, max_wounds_norm
 N_COMBAT_STATS = 7  # attacks, bs, strength, ap, damage, toughness, save
-N_BATTLE_PHASES = 5  # command, movement, shooting, charge, fight
+# ⚠ **PINNED AT 5, and it is deliberately NOT `len(BattlePhase)`.** This is the
+# DIVISOR for the normalised phase scalar, and `pile_in` and `consolidate` were
+# added as phases 5 and 6 in 2026-08-26. Widening it to 7 would rescale the
+# scalar for `command`, `movement`, `shooting` and `charge` -- i.e. for EVERY
+# config in the repo, melee or not -- changing all three observation goldens and
+# making every existing checkpoint's scores incomparable, as collateral for a
+# feature only melee configs can reach.
+#
+# Left at 5, non-melee observations are BIT-IDENTICAL: those configs only ever
+# see phase indices 0-3, and inserting the new phases did not move them (the
+# enum grew in the middle, but `fight`, at index 5 now, is skipped wherever
+# melee is off). The melee phases normalise above 1.0, which is a scale the
+# network handles like any other and is the cheaper of the two costs.
+N_BATTLE_PHASES = 5
 # Padded outline vertices plus the real vertex count. This was 4 -- a bounding
 # box -- and that is the input every cover experiment in this repo was run
 # against: an L-shaped ruin and a solid block produced identical tokens, so no

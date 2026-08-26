@@ -26,7 +26,11 @@ from wargame_rl.wargame.envs.types.config.terrain import (
     RandomTerrainConfig,
     TerrainPieceConfig,
 )
-from wargame_rl.wargame.envs.types.game_timing import NON_MOVEMENT_PHASES, BattlePhase
+from wargame_rl.wargame.envs.types.game_timing import (
+    MELEE_ONLY_PHASES,
+    NON_MOVEMENT_PHASES,
+    BattlePhase,
+)
 
 # The rules' infantry base is 32mm across, so its radius is 16mm = 0.63".
 #
@@ -804,6 +808,18 @@ class WargameEnvConfig(BaseModel):
         would reject legitimate configs to guard against a mistake nothing has
         made.
         """
+        # ⚠ **AUTO-SKIPPED WHERE MELEE IS OFF, and that is what keeps every
+        # existing config a no-op.** `max_turns` is
+        # `n_rounds x (len(BATTLE_PHASE_ORDER) - len(skip_phases))`, so adding
+        # two phases would silently lengthen every episode in the repo. Skipping
+        # them when there is no melee keeps the stepped-phase count, and
+        # therefore `max_turns`, exactly as it was -- without editing dozens of
+        # configs that have no opinion about a phase they never reach.
+        if not self.melee.enabled:
+            for phase in MELEE_ONLY_PHASES:
+                if phase not in self.skip_phases:
+                    self.skip_phases.append(phase)
+
         if self.melee.enabled and BattlePhase.charge in self.skip_phases:
             raise ValueError(
                 "melee.enabled needs the charge phase, where a charge is "

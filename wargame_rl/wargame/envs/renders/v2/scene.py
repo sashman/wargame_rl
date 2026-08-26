@@ -121,7 +121,9 @@ _PHASE_LABELS: dict[BattlePhase, str] = {
     BattlePhase.movement: "MOVE",
     BattlePhase.shooting: "SHOOT",
     BattlePhase.charge: "CHRG",
+    BattlePhase.pile_in: "PILE",
     BattlePhase.fight: "FIGHT",
+    BattlePhase.consolidate: "CONS",
 }
 
 
@@ -491,7 +493,12 @@ def _reward_components(view: "BattleView") -> tuple[tuple[str, float], ...]:
 
 
 def _phase_chips(view: "BattleView") -> tuple[PhaseChip, ...]:
-    """The round's five phases, marking the current one and the skipped ones."""
+    """Every phase of the round, marking the current one and the skipped ones.
+
+    ⚠ Seven since `pile_in` and `consolidate` were promoted to phases; where
+    melee is off both are auto-skipped, so they render dimmed rather than
+    vanishing -- which is the point of drawing skipped phases at all.
+    """
     skipped = set(view.config.skip_phases)
     current = view.game_clock_state.phase
     return tuple(

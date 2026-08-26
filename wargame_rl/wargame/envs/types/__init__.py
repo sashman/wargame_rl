@@ -20,6 +20,7 @@ from .env_action import WargameEnvAction
 from .env_info import WargameEnvInfo
 from .env_observation import WargameEnvObservation
 from .game_timing import (
+    MELEE_ONLY_PHASES,
     NON_MOVEMENT_PHASES,
     BattlePhase,
     GamePhase,
@@ -37,6 +38,7 @@ __all__ = [
     "GameState",
     "MissionConfig",
     "ModelConfig",
+    "MELEE_ONLY_PHASES",
     "NON_MOVEMENT_PHASES",
     "ObjectiveConfig",
     "OpponentPolicyConfig",

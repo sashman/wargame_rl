@@ -24,7 +24,7 @@ from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import MeleeConfig, MeleeWeaponProfile
 from wargame_rl.wargame.envs.types.config.battle import OpponentPolicyConfig
 from wargame_rl.wargame.envs.types.config.entities import ModelConfig
-from wargame_rl.wargame.envs.types.game_timing import BattlePhase
+from wargame_rl.wargame.envs.types.game_timing import BATTLE_PHASE_ORDER, BattlePhase
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.factory import create_environment
 
@@ -201,21 +201,29 @@ def test_the_opponent_seat_can_charge_too() -> None:
         model.location = np.array([13.0, 10.0 + index], dtype=model.location.dtype)
 
     # Act
-    moved = False
-    for _ in range(8):
+    # ⚠ **DO NOT GATE ON THE PLAYER'S PHASE.** This test used to check for
+    # movement only on the step whose PLAYER phase was `charge`, and it passed
+    # by coincidence: `run_after_player_action` runs the opponent's ENTIRE turn
+    # inside one player step -- the last stepped phase of the player's turn --
+    # which happened to be `charge` while `fight` was skipped and there were
+    # five phases. Promoting `pile_in` and `consolidate` made `consolidate` the
+    # last phase, the opponent went on charging exactly as before, and the test
+    # reported that the opponent seat could not charge at all.
+    charged = False
+    steps_per_turn = len(BATTLE_PHASE_ORDER) - len(env.config.skip_phases)
+    for _ in range(2 * steps_per_turn):
         before = [np.array(m.location, copy=True) for m in env.opponent_models]
-        phase = env.game_clock_state.phase
         env.step(walker.select_action(env.wargame_models, env))
-        if phase is BattlePhase.charge:
-            moved = any(
-                not np.array_equal(before[i], m.location)
-                for i, m in enumerate(env.opponent_models)
-            )
-            if moved:
-                break
+        moved = any(
+            not np.array_equal(before[i], m.location)
+            for i, m in enumerate(env.opponent_models)
+        )
+        if moved and any(m.declared_charge for m in env.opponent_models):
+            charged = True
+            break
 
     # Assert
-    assert moved, "the opponent seat never moved in the charge phase"
+    assert charged, "the opponent seat never declared and made a charge"
 
 
 def test_BOTH_melee_configs_seat_an_opponent_THAT_CAN_CHARGE() -> None:

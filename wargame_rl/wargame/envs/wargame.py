@@ -744,7 +744,11 @@ class WargameEnv(gym.Env):
         """
         if not self.config.melee.enabled:
             return
-        if state.phase is not BATTLE_PHASE_ORDER[-1] or state.active_player is None:
+        # ⚠ **`BattlePhase.fight` BY NAME, not `BATTLE_PHASE_ORDER[-1]`.** It was
+        # the last phase until `consolidate` was promoted to one of its own; the
+        # positional read would now resolve the fight after consolidation, which
+        # is the wrong order and silently so.
+        if state.phase is not BattlePhase.fight or state.active_player is None:
             return
         engagement_range = self._rules_quantities.engagement_range
         base_diameter = 2.0 * self._rules_quantities.base_radius

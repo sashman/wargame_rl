@@ -22,7 +22,7 @@ from wargame_rl.wargame.envs.types.config import MeleeConfig, MeleeWeaponProfile
 from wargame_rl.wargame.envs.types.config.battle import OpponentPolicyConfig
 from wargame_rl.wargame.envs.types.config.entities import ModelConfig
 from wargame_rl.wargame.envs.types.config.env import WargameEnvConfig
-from wargame_rl.wargame.envs.types.game_timing import BattlePhase
+from wargame_rl.wargame.envs.types.game_timing import BATTLE_PHASE_ORDER, BattlePhase
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.model.common.factory import create_environment
@@ -75,7 +75,12 @@ def _step_to_end_of_turn(env: WargameEnv) -> list[PairedFightResult]:
     """
     n = len(env.wargame_models)
     seen: list[PairedFightResult] = []
-    for _ in range(4):
+    # ⚠ DERIVED, not the literal 4 this used to be. Four steps was "one full
+    # turn" only while there were five phases and this fixture skipped one;
+    # `pile_in` and `consolidate` becoming phases made it stop short of the
+    # fight boundary, and the test then reported that no fight had happened.
+    steps_per_turn = len(BATTLE_PHASE_ORDER) - len(env.config.skip_phases)
+    for _ in range(steps_per_turn):
         env.step(WargameEnvAction(actions=[STAY_ACTION] * n))
         seen.extend(env._last_player_fight_results)
     return seen
