@@ -940,6 +940,49 @@ class WargameEnv(gym.Env):
                     ),
                 )
             )
+        # ⚠ **ENGAGING MODE SECOND** (`DEFERRED: consolidate.engaging` closed
+        # 2026-08-26). Assessed only for a unit Ongoing did not take, because
+        # the modes are ordered and the first match is compulsory: Ongoing is
+        # for an ENGAGED unit, Engaging for one that is not engaged but stands
+        # within 3" of an enemy unit.
+        #
+        # It is `pile_in` again, with the selection range at the consolidate
+        # distance rather than zero -- which is exactly what the spec says the
+        # mode is: select one or more enemy units within 3", every moved model
+        # ends closer to the closest selected unit and engaged with it if
+        # possible, all-or-nothing at the unit. Ongoing passes 0.0 to suppress
+        # that branch; Engaging is the branch.
+        #
+        # ⚠ **The drag-in clause is NOT closed by this.** The spec adds that any
+        # enemy unit newly engaged here which has not yet been selected to fight
+        # becomes eligible and is selected to fight. That re-enters the fight
+        # step, which has already completed by the time consolidate runs, so it
+        # lands with the work that makes the fight step agent-driven rather than
+        # bolted on beside it. `DEFERRED: consolidate.engaging_drags_in`.
+        if self.config.melee.pile_in:
+            consolidated |= set(
+                pile_in(
+                    models,
+                    enemy_models,
+                    eligible_units=eligible_units - consolidated,
+                    max_distance=self._rules_quantities.scale.to_units(
+                        self.config.melee.consolidate_distance
+                    ),
+                    selection_range=self._rules_quantities.scale.to_units(
+                        self.config.melee.consolidate_distance
+                    ),
+                    engagement_range=self._rules_quantities.engagement_range,
+                    base_radius=self._rules_quantities.base_radius,
+                    board=(float(self.board_width), float(self.board_height)),
+                    coherency_nearest=self._rules_quantities.scale.to_units(
+                        self.config.coherency.nearest_distance
+                    ),
+                    coherency_furthest=self._rules_quantities.scale.to_units(
+                        self.config.coherency.furthest_distance
+                    ),
+                )
+            )
+
         consolidate_objective(
             models,
             enemy_models,

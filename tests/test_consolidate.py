@@ -415,3 +415,50 @@ def test_melee_ON_with_no_charges_is_the_SAME_GAME_as_melee_off() -> None:
         "a policy that never charges scored differently with melee on: "
         f"{melee_on} vs {melee_off}"
     )
+
+
+def test_engaging_mode_beats_objective_mode_because_the_modes_are_ORDERED() -> None:
+    """A unit within 3" of an enemy consolidates at the ENEMY, not the objective.
+
+    ⚠ **This was wrong until 2026-08-26.** Only Ongoing and Objective were
+    implemented, and Objective received every unit Ongoing had not taken — so a
+    unit that was unengaged but standing within 3" of an enemy, which
+    `12-fight-phase.md` puts squarely in **Engaging** mode, took an Objective
+    move instead. The modes are *assessed in order and the first whose
+    conditions are met is compulsory*, so that is not a near-miss: it is the
+    wrong mode entirely, and it moved the unit the wrong way.
+
+    Engaging is `pile_in` with the selection range at the consolidate distance
+    rather than zero — select one or more enemy units within 3", every moved
+    model ends closer to the closest selected unit and engaged with it if
+    possible. Ongoing passes 0.0 to suppress that branch; Engaging *is* the
+    branch.
+
+    Measured on the bar across this change: `squad_march_take_charge` went
+    +13.3 → **+23.9** vp and `squad_march_take` −11.1 → −8.3, so it is a real
+    rules change and not a tidy-up — both seats consolidate.
+    """
+    # Arrange — one model, unengaged, an enemy 2" away and an objective the
+    # OTHER way. Under the old code it walked to the objective.
+    env = _env()
+    try:
+        player = env.wargame_models[0]
+        enemy = env.opponent_models[0]
+        player.location = np.array([20.0, 20.0], dtype=float)
+        enemy.location = np.array([22.0, 20.0], dtype=float)
+        # The objective is the OTHER way, so the two modes pull opposite ways
+        # and the test cannot pass by accident.
+        env.objectives[0].location = np.array([17.0, 20.0], dtype=float)
+        before = float(np.linalg.norm(player.location - enemy.location))
+
+        # Act
+        env._consolidate(env.wargame_models, env.opponent_models, {0})
+
+        # Assert
+        after = float(np.linalg.norm(player.location - enemy.location))
+        assert after < before, (
+            "the unit consolidated away from the enemy — Objective mode ran "
+            "where the rules make Engaging compulsory"
+        )
+    finally:
+        env.close()

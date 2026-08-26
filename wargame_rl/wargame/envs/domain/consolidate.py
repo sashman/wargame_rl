@@ -10,6 +10,13 @@ first whose conditions are met is compulsory**:
 | **Engaging** | Otherwise, within 3" of one or more enemy units. |
 | **Objective** | Otherwise, within 3" of one or more objectives. |
 
+⚠ **Ongoing and Engaging closed 2026-08-26; only the Objective mode lives in
+this module.** Both of the others are `pile_in` — Ongoing with the selection
+range at zero (it selects only units it is already engaged with), Engaging with
+it at the consolidate distance (it selects enemy units within 3"). What remains
+below described the state before that, and is kept because the ORDER argument in
+it still governs how rarely Objective fires:
+
 ⚠ **Only Objective is implemented, and the ORDER is why that is nearly a no-op
 rather than a third of the rule.** A unit that charged, survived and is still in
 contact is in Ongoing mode, so it never reaches Objective; a unit that wiped its
