@@ -269,7 +269,6 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
         contact = float(quantities.engagement_range) + 2.0 * float(
             quantities.base_radius
         )
-        speeds = handler.move_speeds
         enemies = [m for m in env.opponent_models if m.is_alive]
         reachable: set[int] = set()
         for group_id in sorted(eligible):
@@ -303,8 +302,18 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
                 for i in member_indices
                 for enemy in enemies
             )
-            move = float(min(speeds[i] for i in member_indices)) if speeds.size else 0.0
-            reach = min(move, float(models[member_indices[0]].charge_roll))
+            # ⚠ **THE ROLL ALONE, and through the SCALE** -- this asked a
+            # different question from the aim below until 2026-08-26, and the
+            # docstring above promises they ask the same one. It carried the
+            # retired `min(Move, roll)` cap (closed with
+            # `DEFERRED: charge.beyond_move_ladder` at `5da54ed`, after which the
+            # charge ladder reaches `CHARGE_DICE_MAX` = 12") and compared a roll
+            # in INCHES against speeds in units. The unit under-declared by
+            # ~22%, and every target in `docs/melee-teaching-goal.md` -- including
+            # `stood/ep > 3.0` -- descends from this comparator.
+            reach = float(
+                quantities.scale.to_units(models[member_indices[0]].charge_roll)
+            )
             if gap - contact <= reach:
                 reachable.add(group_id)
         return reachable

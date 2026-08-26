@@ -767,3 +767,62 @@ def test_a_charge_may_not_travel_further_than_its_2D6() -> None:
         "a charge outran its 2D6 because only the mask was stopping it"
     )
     assert not mover.charged_this_turn
+
+
+def test_the_comparator_DECLARES_on_the_full_roll_not_on_min_move_roll() -> None:
+    """The declaration and the aim must ask the same question.
+
+    Regression, 2026-08-26. `ScriptedSquadMarch._reachable_charge_units` gated
+    the DECLARATION on `min(Move, charge_roll)` -- the cap retired at `5da54ed`,
+    when `DEFERRED: charge.beyond_move_ladder` closed and the charge ladder began
+    reaching `CHARGE_DICE_MAX` = 12" -- while `select_charge` aimed with the full
+    roll, through the scale. It also compared a roll in INCHES against speeds in
+    board units. The unit declined charges it could actually make: the
+    comparator under-declared by ~22%, and every target in
+    `docs/melee-teaching-goal.md`, including `stood/ep > 3.0`, descends from it.
+
+    ⚠ Fixing this MOVES THE SCRIPTED BAR on every melee config. That is the
+    point -- a bar that declines legal charges is not the bar.
+    """
+    # Arrange -- the enemy sits beyond Move but inside a maximum roll, which is
+    # exactly the band the retired cap discarded.
+    from wargame_rl.wargame.envs.baseline.scripted_squad_march import (
+        ScriptedSquadMarchPolicy,
+    )
+
+    env = _melee_env()
+    try:
+        env.reset(seed=3)
+        scripted = ScriptedSquadMarchPolicy()
+        models = env.wargame_models
+        move = float(env.player_action_handler.move_speeds.max())
+        scale = env.rules_quantities.scale
+        contact = float(env.rules_quantities.engagement_range) + 2.0 * float(
+            env.rules_quantities.base_radius
+        )
+        gap = move + 0.5 * move
+
+        for index, model in enumerate(models):
+            model.group_id = 0
+            model.location = np.array([10.0, 10.0 + index * 0.2], dtype=float)
+        for index, enemy in enumerate(env.opponent_models):
+            enemy.group_id = 0
+            enemy.location = np.array(
+                [10.0 + gap + contact, 10.0 + index * 0.2], dtype=float
+            )
+
+        # A roll that covers the gap, expressed in inches as the env stores it.
+        for model in models:
+            model.charge_roll = float(scale.to_inches(gap + contact)) + 1.0
+
+        # Act
+        reachable = scripted._reachable_charge_units(models, env)
+
+        # Assert -- the gap is beyond Move, so the retired cap declared nothing.
+        assert gap > move, "the fixture does not exercise the band the cap cut"
+        assert reachable, (
+            "a unit whose ROLL covers the gap was not declared reachable -- the "
+            "declaration is still capped at Move"
+        )
+    finally:
+        env.close()
