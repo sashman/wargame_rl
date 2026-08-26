@@ -214,8 +214,11 @@ def test_the_roll_decides_which_rungs_are_legal() -> None:
             self.declared_advance = True
 
     # Act — M = 6, so the ladder is 8/10/12 and needs rolls of 2/4/6
+    # `None` enemies: this test is about the ROLL gate, and an engaged unit
+    # may not advance at all — passing no opposing force says so explicitly
+    # rather than leaving the engagement check silently off.
     legality = handler.advance_legality(
-        [_Model(1.0), _Model(2.0), _Model(4.0), _Model(6.0)]
+        [_Model(1.0), _Model(2.0), _Model(4.0), _Model(6.0)], None
     )
 
     # Assert — one row per model, the first `n_bins` columns are the first angle

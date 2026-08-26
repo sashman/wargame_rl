@@ -22,7 +22,11 @@ import pytest
 
 from scripts.scenario_overrides import load_env_config
 from wargame_rl.wargame.envs.domain.engagement import engaged_with_any
-from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION, ActionHandler
+from wargame_rl.wargame.envs.env_components.actions import (
+    MOVE_TYPE_CHARGE,
+    STAY_ACTION,
+    ActionHandler,
+)
 from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.types.config import MeleeConfig, MeleeWeaponProfile
 from wargame_rl.wargame.envs.types.config.battle import OpponentPolicyConfig
@@ -73,6 +77,12 @@ def _walk_at(handler: ActionHandler, phase: BattlePhase) -> tuple[float, bool]:
     do with the rule under test.
     """
     mover = _model(5.0)
+    # ⚠ The declaration and the roll are BOTH preconditions the referee
+    # re-checks at resolution since 2026-08-25 (`apply` takes no mask, so the
+    # mask alone left a hole). A handler-level test has to supply what the
+    # command phase would.
+    mover.declared_charge = True
+    mover.charge_roll = 12.0
     enemy = _model(6.5, group=1)
     handler.apply(
         WargameEnvAction(
@@ -229,6 +239,11 @@ def _unit_charge(
     movers[1].location = np.array([5.0, 10.0 + spread])
     for m in movers:
         m.charge_roll = 12.0
+        # ⚠ The declaration is a real precondition, re-checked by the referee
+        # since 2026-08-25 -- `apply` takes no mask, so a policy bypassing one
+        # could otherwise charge without ever declaring. The env sets this in
+        # the command phase; a handler-level test has to set it itself.
+        m.declared_charge = True
     enemies = [_model(x, group=g) for x, g in enemy_positions]
     start = [np.array(m.location, copy=True) for m in movers]
     handler.apply(
@@ -294,6 +309,9 @@ def _melee_env() -> WargameEnv:
         melee=MeleeConfig(enabled=True),
         engagement_range=ENGAGEMENT,
         base_radius=0.0,
+        # ⚠ command is STEPPED: the charge is declared there by the unit's
+        # leader, so skipping it would leave no legal declaration and every
+        # charge would revert.
         skip_phases=[BattlePhase.shooting],
     )
     env = create_environment(config)
@@ -320,17 +338,34 @@ def test_a_charge_reaches_contact_through_env_step() -> None:
     player.location = np.array([10.0, 10.0], dtype=player.location.dtype)
     opponent.location = np.array([11.5, 10.0], dtype=opponent.location.dtype)
     # ⚠ Two inches, not `best_action_toward`, which returns the FASTEST rung.
-    # A 6" charge from 1.5" away lands at 16.0 — clean past the enemy and out
-    # the far side, which ends unengaged and is reverted whole. That is the rule
+    # A long charge from 1.5" away lands clean past the enemy and out the far
+    # side, which ends unengaged and is reverted whole. That is the rule
     # working, and it would read here as the exemption failing.
-    east = env.player_action_handler.encode_action(0, 1)
+    #
+    # ⚠ Rung 0, not rung 1, since 2026-08-26: in the charge phase the movement
+    # slice decodes to the CHARGE ladder, whose rungs are `(s + 1) x 2"` because
+    # the rules cap a charge at the 2D6 and not at Move. Rung 1 used to be 2"
+    # and is now 4".
+    east = env.player_action_handler.encode_action(0, 0)
+    # ⚠ The unit must DECLARE in the command phase or the referee reverts the
+    # charge -- the declaration is a precondition re-checked at resolution since
+    # 2026-08-25, not just a mask. Driving this end to end is the point of the
+    # test, and the declaration is part of "end to end".
+    declare = env.player_action_handler.move_type_action(MOVE_TYPE_CHARGE)
+    assert declare is not None, "the melee config must carry a charge declaration"
 
-    # Act: STAY through movement, then charge east.
+    # Act: declare in command, STAY through movement, then charge east.
     engaged = False
     for _ in range(4):
         phase = env.game_clock_state.phase
         charging = phase is BattlePhase.charge
-        env.step(WargameEnvAction(actions=[east if charging else STAY_ACTION]))
+        if phase is BattlePhase.command:
+            action = declare
+        elif charging:
+            action = east
+        else:
+            action = STAY_ACTION
+        env.step(WargameEnvAction(actions=[action]))
         if charging:
             engaged = bool(
                 engaged_with_any(
@@ -551,8 +586,20 @@ class TestChargeObservation:
         assert observation.opponent_models[0].charge_roll == 0.0
         assert observation.opponent_models[0].fell_back_this_turn == 0.0
 
-    def test_the_two_columns_widen_the_per_model_tensor_by_exactly_two(self) -> None:
-        """⚠ A tensor-shape change: it orphans a melee checkpoint deliberately."""
+    def test_the_melee_columns_widen_the_per_model_tensor_by_exactly_three(
+        self,
+    ) -> None:
+        """⚠ A tensor-shape change: it orphans a melee checkpoint deliberately.
+
+        ⚠ **Was two, and is three since 2026-08-25.** `declared_charge` joined
+        `charge_roll` and `fell_back_this_turn` because a charge-gated reward
+        term has to key on the declaration, and CLAUDE.md's cheapest standing
+        check — *"check the agent can OBSERVE what the lever keys on"* — has
+        burned ~10 GPU-hours twice on terms that keyed on invisible state. It
+        also fixes a real perceptual gap: the declaration binds a unit a whole
+        phase before the charge is aimed, so a model aiming one had no input
+        saying it was under one.
+        """
         # Arrange
         plain, _ = self._obs(melee=False, charge_phase=False)
         fighting, _ = self._obs(melee=True)
@@ -562,20 +609,20 @@ class TestChargeObservation:
         wide = observation_to_tensor(fighting)[2].shape[1]
 
         # Assert
-        assert wide - narrow == 2
+        assert wide - narrow == 3
 
 
 def test_a_61_wide_CHECKPOINT_can_still_be_scored_on_a_melee_config() -> None:
     """⚠ The columns forked the melee family off the whole checkpoint corpus.
 
-    They widen the per-model tensor 61 -> 63, so after they landed no existing
+    They widen the per-model tensor 61 -> 64, so after they landed no existing
     agent could be scored on a melee config at all — "what does melee do to our
     agent" became answerable only by training a new one, and a melee arm's
     numbers would have been an island with no allocation statistic, no
     offence/defence split and no five-opponent table beside them. Found by an
     audit panel.
 
-    Making the columns unconditional would have made every config 63 wide and
+    Making the columns unconditional would have made every config 64 wide and
     orphaned every 61-wide checkpoint instead, which is worse. `observe_charge`
     is the escape hatch: the melee configs keep their columns and stay paired
     with each other, and a scoring run can turn them off to match the corpus.
@@ -602,5 +649,121 @@ def test_a_61_wide_CHECKPOINT_can_still_be_scored_on_a_melee_config() -> None:
         env.close()
 
     # Assert
-    assert widths["melee"] == widths["golden"] + 2
+    assert widths["melee"] == widths["golden"] + 3
     assert widths["melee_narrowed"] == widths["golden"]
+
+
+def test_a_model_that_moves_AWAY_reverts_its_units_charge() -> None:
+    """`11-charge-phase.md` § Charge move, *While moving*.
+
+    *"Each model must end its move CLOSER to one or more charge targets."*
+
+    ⚠ **This condition did not exist until 2026-08-25 and no gap-map row
+    recorded its absence.** Without it a charge was satisfied by ONE model
+    reaching contact while its squadmates moved anywhere coherency allowed —
+    a materially easier charge than the rules', and the half of the mechanic a
+    learned policy is most likely to exploit. A rules-lawyer audit measured
+    2.4% of a rigid script's charging models (5.3% of its standing charges)
+    already violating it by accident.
+    """
+    # Arrange: m0 closes on the enemy, m1 walks the opposite way.
+    handler = _handler(melee=True, n_models=2)
+    movers = [_model(5.0), _model(5.0)]
+    movers[1].location = np.array([5.0, 10.5])
+    for model in movers:
+        model.charge_roll = 12.0
+        model.declared_charge = True
+    enemies = [_model(6.5, group=1)]
+    start = [np.array(m.location, copy=True) for m in movers]
+    east = handler.best_action_toward(1.0, 0.0, max_step_length=1.0)
+    west = handler.best_action_toward(-1.0, 0.0, max_step_length=1.0)
+
+    # Act
+    handler.apply(
+        WargameEnvAction(actions=[east, west]),
+        movers,
+        60,
+        44,
+        handler.action_space,
+        phase=BattlePhase.charge,
+        enemy_models=enemies,
+    )
+
+    # Assert — all or nothing, so BOTH models go back.
+    for model, origin in zip(movers, start, strict=True):
+        assert np.array_equal(model.location, origin), (
+            "a charge stood while one of its models moved away from the target"
+        )
+
+
+def test_an_UNDECLARED_unit_cannot_charge_even_if_the_mask_is_bypassed() -> None:
+    """The referee, not the mask, is the authority.
+
+    ⚠ `ActionHandler.apply` takes NO mask, so until 2026-08-25 the declaration
+    and the 2D6 cap lived only in `charge_legality` — a policy that bypassed the
+    mask could charge without declaring. That is the defect class this project
+    paid +11.4 vp for on the joint decoder and paid again on
+    `back_off_to_unengaged`: the constraint lived in one layer and the layer
+    that actually moved models did not know about it.
+    """
+    # Arrange
+    movers, start = _unit_charge([(6.5, 1)])
+    assert not np.array_equal(movers[0].location, start[0]), "the control failed"
+
+    # Act: the same charge from a unit that never declared.
+    handler = _handler(melee=True, n_models=2)
+    undeclared = [_model(5.0), _model(5.0)]
+    undeclared[1].location = np.array([5.0, 10.5])
+    for model in undeclared:
+        model.charge_roll = 12.0
+        model.declared_charge = False
+    origins = [np.array(m.location, copy=True) for m in undeclared]
+    handler.apply(
+        WargameEnvAction(
+            actions=[handler.best_action_toward(1.0, 0.0, max_step_length=1.0)] * 2
+        ),
+        undeclared,
+        60,
+        44,
+        handler.action_space,
+        phase=BattlePhase.charge,
+        enemy_models=[_model(6.5, group=1)],
+    )
+
+    # Assert
+    for model, origin in zip(undeclared, origins, strict=True):
+        assert np.array_equal(model.location, origin), "an undeclared unit charged"
+
+
+def test_a_charge_may_not_travel_further_than_its_2D6() -> None:
+    """`11-charge-phase.md`: *"Maximum distance | The charge roll."*
+
+    ⚠ Masked on both seats and, until 2026-08-25, enforced NOWHERE else — a
+    declared model with a roll of 2 handed the 6" rung travelled the full 6.0"
+    and was granted `charged_this_turn`. The advance has had belt-and-braces
+    since it shipped (`_advance_displacement` clamps at resolution as well as
+    masking); this gives the charge the same.
+    """
+    # Arrange: contact is reachable, but only by out-running the dice.
+    handler = _handler(melee=True, n_models=1)
+    mover = _model(5.0)
+    mover.declared_charge = True
+    mover.charge_roll = 2.0
+    origin = np.array(mover.location, copy=True)
+
+    # Act: a 6" rung, which the mask would have forbidden.
+    handler.apply(
+        WargameEnvAction(actions=[handler.best_action_toward(1.0, 0.0)]),
+        [mover],
+        60,
+        44,
+        handler.action_space,
+        phase=BattlePhase.charge,
+        enemy_models=[_model(10.5, group=1)],
+    )
+
+    # Assert
+    assert np.array_equal(mover.location, origin), (
+        "a charge outran its 2D6 because only the mask was stopping it"
+    )
+    assert not mover.charged_this_turn

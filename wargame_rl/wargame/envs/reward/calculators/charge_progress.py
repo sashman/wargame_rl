@@ -29,11 +29,17 @@ potential in `[0, value]` that is **maximal exactly when the model is engaged**,
 so a charge that stands pays every member the most this term can pay. Nothing
 here pays more for missing than for hitting.
 
-*Can the agent observe what it keys on?* Yes -- enemy positions are on the
-opponent tokens, and `charge_roll` reached the observation on 2026-08-25.
+*Can the agent observe what it keys on?* Yes, and this had to be MADE true:
+enemy positions are on the opponent tokens, `charge_roll` reached the
+observation on 2026-08-25, and `declared_charge` -- the state this term gates
+on -- reached it in the same change. ⚠ Before that a correctly-gated term would
+have keyed on something the network could not perceive, which is the cheapest
+standing check in CLAUDE.md and the one that has burned ~10 GPU-hours twice.
 
 ⚠ **Gated on the unit having DECLARED a charge**, and that gate is the whole
-difference between this and a travel reward. `closest_objective_v2` is the
+difference between this and a travel reward. It reads `model.declared_charge`,
+which the leader sets in the command phase and which is cleared at the start of
+its side's next turn -- so it is live for exactly the phases this term pays in. `closest_objective_v2` is the
 four-times-refuted "walk toward the thing" term, and a 2026-08-11 teleport audit
 priced walking a squad at defended ground at **−29.4 of its own income and 1.69
 of 5 models**. This pays only inside the charge phase, only to a unit that chose
@@ -136,6 +142,24 @@ class ChargeProgressCalculator(PerModelRewardCalculator):
                 continue
             if model.fell_back_this_turn:
                 continue
+            # ⚠ THE GATE, and it was ABSENT until 2026-08-25. This loop used to
+            # test `charge_roll <= 0.0` and call that the declaration check --
+            # but `_roll_charge_dice` rolls 2D6 for every unit of the active
+            # side unconditionally, and 2D6 is never <= 0, so it excluded
+            # nothing. The term paid every alive model for closing on the
+            # nearest enemy: `squad_march_take`, which declares ZERO charges,
+            # earned 5.713 per episode with 0.0% of it reaching a declared unit,
+            # against the charging script's 4.196. It paid the wrong behaviour
+            # 36% MORE, which makes it the four-times-refuted "walk toward the
+            # thing" term aimed at ENEMIES -- the direction the 2026-08-11
+            # teleport audit priced at -29.4 of the committing squad's own
+            # income.
+            if not model.declared_charge:
+                continue
+            # Kept BESIDE the declaration gate, not replaced by it. A roll of
+            # zero means this side has not rolled yet, and a declaration
+            # standing without a roll is an inconsistent state rather than a
+            # chargeable one.
             if float(model.charge_roll) <= 0.0:
                 continue
             progress[index] = float(np.clip((reach - gaps[index]) / span, 0.0, 1.0))

@@ -295,14 +295,28 @@ def test_the_leader_declares_and_the_WHOLE_UNIT_charges() -> None:
         env.close()
 
 
-def test_a_declared_unit_may_NOT_stand_still() -> None:
-    """The binding half — permitting a charge is not the same as compelling it.
+def test_a_declared_unit_MAY_decline_to_charge() -> None:
+    """`11-charge-phase.md` step 3 — declining after the roll is a right.
 
-    A declaration that only *allowed* the rungs would leave every model free to
-    stay, which is exactly the state the measurement found: half the unit
-    charges, the unit stretches, and the referee reverts the lot. STAY survives
-    only for a model the 2D6 cannot carry into contact, because a mask must
-    never empty a row.
+    *"If a legal charge move is possible AND THE CONTROLLING PLAYER STILL WANTS
+    TO MAKE IT, make it. Otherwise the unit does not move. Either way the charge
+    is resolved."*
+
+    ⚠ **This REPLACES `test_a_declared_unit_may_NOT_stand_still`**, which pinned
+    the opposite and pinned a rule the game does not have. That clause struck
+    STAY from every declared model holding a legal rung, on the reasoning that a
+    declaration should BIND rather than merely permit — but the rules grant the
+    decline explicitly, and the constraint was mine.
+
+    It was not harmless. A rules-lawyer audit measured it binding on **30 of 31**
+    declared units, and it compounds with the declaration sitting two phases
+    early: a unit that committed in the COMMAND phase, before it had moved or
+    shot, could not back out of a charge the movement phase had made hopeless.
+    It walked at nothing and the referee reverted it.
+
+    ⚠ Half a unit still may not charge — that is enforced in `_enforce_charge`,
+    where it belongs, because the unit must end coherent and engaged. The rule
+    was being enforced twice, and only one of the two was correct.
     """
     # Arrange: one squad in reach, declared; the other far away and not.
     env = _env(melee=True)
@@ -332,9 +346,17 @@ def test_a_declared_unit_may_NOT_stand_still() -> None:
         others = [i for i, m in enumerate(env.wargame_models) if not m.declared_charge]
         assert declared and others
         for i in declared:
-            assert not mask[i, 0], "a declared model kept the option to stand still"
+            assert mask[i, 0], "a declared model was denied the rules' decline"
             assert mask[i].any(), "the mask must never empty a row"
+            rungs = env.player_action_handler.movement_slice
+            assert mask[i, rungs.start : rungs.end].any(), (
+                "a declared model in reach must still be offered a charge rung"
+            )
         for i in others:
             assert mask[i, 0], "an undeclared model must still be able to stay"
+            rungs = env.player_action_handler.movement_slice
+            assert not mask[i, rungs.start : rungs.end].any(), (
+                "an UNdeclared unit must not be offered charge rungs"
+            )
     finally:
         env.close()

@@ -364,7 +364,8 @@ def test_melee_ON_with_no_charges_is_the_SAME_GAME_as_melee_off() -> None:
     This is also the better cross-config bridge: 60 agent steps against 40, a
     different `skip_phases`, and the same game to the point.
 
-    ⚠ **BOTH seats have to be non-charging, and forcing that is not cosmetic.**
+    ⚠ **Two things have to be forced, and neither is cosmetic: both seats must
+    be non-charging, and `engagement_range` must match across the bridge.**
     The shipped melee config seats `squad_march_take_charge` — it has to, or the
     arm trains in the unilateral cell of a mechanic whose value is the asymmetry
     between the seats. So "no charges" here means overriding the opponent too;
@@ -382,7 +383,14 @@ def test_melee_ON_with_no_charges_is_the_SAME_GAME_as_melee_off() -> None:
         "configs/experiments/25v25_maps_melee.yaml",
         "configs/golden/25v25_maps_two_mode.yaml",
     ):
-        config = load_env_config(path)
+        # ⚠ **`engagement_range` must be PINNED across the bridge**, and this is
+        # not incidental. The melee configs adopted the rules' 2" on
+        # 2026-08-26; `two_mode` keeps the repo default of 1". That scalar gates
+        # which SHOTS are legal, so without this the two configs are a different
+        # game for a reason that has nothing to do with melee, and the test
+        # fails while measuring the wrong thing. It failed exactly that way the
+        # hour the value changed, which is the test working twice.
+        config = load_env_config(path, engagement_range="1.0")
         opponent = config.opponent_policy
         assert opponent is not None
         opponent.params = dict(opponent.params or {})

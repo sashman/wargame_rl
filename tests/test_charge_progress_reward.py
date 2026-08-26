@@ -79,7 +79,9 @@ def _ctx(env: WargameEnv) -> StepContext:
     )
 
 
-def _pay(env: WargameEnv, gap: float, roll: float = 6.0) -> float:
+def _pay(
+    env: WargameEnv, gap: float, roll: float = 6.0, declared: bool = True
+) -> float:
     """This model's payment with the nearest living enemy `gap` inches away."""
     calculator = ChargeProgressCalculator(value=VALUE)
     player = env.wargame_models[0]
@@ -90,6 +92,7 @@ def _pay(env: WargameEnv, gap: float, roll: float = 6.0) -> float:
         )
     for model in env.wargame_models:
         model.charge_roll = roll
+        model.declared_charge = declared
     calculator.reset_episode()
     return calculator.calculate(0, player, env, _ctx(env))
 
@@ -197,5 +200,57 @@ def test_a_dead_model_earns_nothing() -> None:
 
         # Act / Assert
         assert calculator.calculate(0, player, env, _ctx(env)) == 0.0
+    finally:
+        env.close()
+
+
+def test_a_unit_that_did_NOT_declare_is_paid_NOTHING() -> None:
+    """The regression test for the gate that was missing, and the whole term.
+
+    ⚠ Shipped 2026-08-25 without this gate: the loop tested `charge_roll <= 0.0`
+    and called it the declaration check, but `_roll_charge_dice` rolls 2D6 for
+    every unit of the active side unconditionally, so it excluded nothing. The
+    term paid every alive model for closing on the nearest enemy. Measured on
+    the shipped melee config, `squad_march_take` -- which declares ZERO charges
+    -- earned **5.713 per episode with 0.0% of it reaching a declared unit**,
+    against `squad_march_take_charge`'s 4.196: the term paid the non-charging
+    policy **36% more** than the charging one.
+
+    ⚠ Six tests covered this module and none set `declared_charge`, so the
+    suite asserted the term against its own relaxation -- verbatim the defect
+    this project already paid +11.4 vp for on the joint decoder.
+    """
+    # Arrange
+    env = _env()
+    _charge_phase(env)
+    try:
+        # Act
+        declared = _pay(env, gap=3.0, declared=True)
+        undeclared = _pay(env, gap=3.0, declared=False)
+
+        # Assert
+        assert declared > 0.0
+        assert undeclared == 0.0
+    finally:
+        env.close()
+
+
+def test_the_declaration_it_gates_on_is_OBSERVABLE() -> None:
+    """A term keyed on state the network cannot see is the standing check.
+
+    ⚠ CLAUDE.md: "Check the agent can OBSERVE what the lever keys on. A desk
+    check that costs seconds and has burned ~10 GPU-hours." Fixing the gate
+    without this would have moved the term from paying the wrong behaviour to
+    paying for something invisible.
+    """
+    # Arrange
+    env = _env()
+    try:
+        # Act
+        observation = env._get_obs()
+
+        # Assert
+        assert observation.wargame_models[0].declared_charge is not None
+        assert observation.opponent_models[0].declared_charge is not None
     finally:
         env.close()

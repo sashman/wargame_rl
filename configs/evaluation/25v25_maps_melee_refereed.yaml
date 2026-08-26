@@ -1,3 +1,21 @@
+# The REFEREED melee evaluation: the held-out nine, both seats charging.
+#
+# ⚠ This is the scoring counterpart to `experiments/25v25_maps_melee.yaml`,
+# and it differs from it in exactly two ways: the map pool is the NINE tables
+# that config never trains on, and the coherency referee is on.
+#
+# ⚠ There is NO control arm and that is deliberate. Melee is a CORE RULE, so
+# there is no counterfactual game to compare against -- the agent is scored
+# against the scripted bar on this same config, exactly as every other
+# scenario in this project is. The retired arm/dark pair estimated a mirror
+# match instead, because `melee.enabled: false` disarms the OPPONENT too.
+# See docs/melee-teaching-goal.md.
+#
+# ⚠ Quote mechanism counts at decode_topk=1 and vp at K=3, both labelled. At
+# K=3 the joint decoder picks legal combinations FOR the network, so charges
+# declared and standing measure the decoder rather than the policy -- an
+# untrained net stands 1.17-3.67 charges an episode at K=3 and ~0 at K=1.
+#
 # ===========================================================================
 # EXPERIMENT -- MELEE. Not golden, not a baseline of record, and NOTHING has
 # been measured on it. Copied from `golden/25v25_maps_two_mode.yaml`.
@@ -41,11 +59,9 @@
 # See `docs/melee.md`.
 # ===========================================================================
 #
-# THIS FILE: the DARK CONTROL -- melee OFF, charge phase still stepped, so the
-# episode is the same length and the shape is the same. Everything melee costs
-# in EPISODE STRUCTURE is present here; everything it costs in RULES is not.
+# THIS FILE: melee ON.
 # ===========================================================================
-config_name: 25v25_maps_melee_dark
+config_name: 25v25_maps_melee_refereed
 #
 # 25v25 on THE REAL TABLES, drawn one per episode from `configs/evaluation/maps/`.
 #
@@ -198,14 +214,6 @@ skip_phases:
 # ⚠ This is +50% episode length against the golden config: `max_turns` is
 # `n_rounds x (5 - len(skip_phases))`, so 40 becomes 60. Every baseline and
 # every agent score measured on `25v25_maps_two_mode` is VOID here.
-# ⚠ `move_type` is DARKENED, not absent. The slice is registered so the
-# control has the arm's exact action count (104) and therefore its exact
-# init, and it is valid in no phase so the declaration can never be made.
-# Without this the pair would be 104 against 102 and would not be paired
-# at all -- the one thing this config exists to provide.
-dark_action_slices:
-  - move_type
-
 # ⚠ **`engagement_range: 2.0` — THE RULES' VALUE, NOT THE REPO DEFAULT OF 1.0.**
 # `docs/rules/` puts engagement at 2"; `WargameEnvConfig` defaults to 1" because
 # every baseline and every trained result in the repo was measured at 1, and
@@ -225,7 +233,7 @@ dark_action_slices:
 engagement_range: 2.0
 
 melee:
-  enabled: false
+  enabled: true
   charge_range: 12.0
   consolidate_distance: 3.0
 
@@ -284,15 +292,27 @@ opponent_deployment_zone: [40, 0, 60, 44]
 #     player walks           +14.05            -51.55
 #     player charges         +38.00             +0.95
 #
-# Charging against a walker is worth +23.95 +/- 9.94; both charging against both
-# walking is -13.10 +/- 10.88. Reading the top row alone says melee is worth +24;
-# the mechanic is worth about zero. This is the Advance failure -- a bar that
-# could not use a core rule -- moved one seat over, and it was found by an audit
-# panel inside the commit that claimed to have closed it.
+# ⚠ RE-MEASURED 2026-08-25 on THIS config (max_turns 80), n=200 paired, and the
+# figures below are VOID -- every cell moved and two changed sign:
+#     player walks  / opp walks   +5.17    player walks  / opp charges  -24.23
+#     player charges/ opp walks  +31.05    player charges/ opp charges   +7.10
+# SAME-ROW (the only contrast an agent can express) charging is worth +25.88
+# +/- 6.49 (t=3.99) and +31.33 +/- 5.26 (t=5.95). The DIAGONAL is +1.93 +/- 6.62,
+# median exactly 0.00 -- but a diagonal is a MIRROR MATCH and is near-zero by
+# symmetry for any symmetric mechanic, so "the mechanic is worth about zero" is
+# RETRACTED as a statement about the lever.
 #
-# ⚠ Both configs get the SAME opponent. With melee off `squad_march_take_charge`
-# is byte-identical to `squad_march_take` (verified on this dark config), so the
-# control is unchanged and the pair still differs in exactly one scalar.
+# Superseded: "charging against a walker is worth +23.95 +/- 9.94; both charging
+# against both walking is -13.10 +/- 10.88" (taken at max_turns 60, pre-command).
+#
+# ⚠ RETRACTED 2026-08-25 -- THIS COMMENT STATED THE FACT AND DREW THE OPPOSITE
+# CONCLUSION. With melee off `squad_march_take_charge` IS byte-identical to
+# `squad_march_take` (pinned by a test), which means the dark control's opponent
+# WALKS while this config's opponent CHARGES. So `arm - dark` is the DIAGONAL of
+# the 2x2, not the lever: its range is -29.4 to +2 and it contains no PASS. The
+# control is unchanged relative to a WALKING control; it is not this config's
+# opponent. Do not launch an arm on this pair -- seat a walking opponent in BOTH
+# members instead. See the 2026-08-25 audit section of the pre-registration.
 opponent_policy:
   type: scripted_baseline
   params:
@@ -316,50 +336,16 @@ opponent_policy:
 map_pool:
   directory: configs/evaluation/maps
   names:
-    - table_01
-    - table_02
-    - table_03
-    - table_04
-    - table_06
-    - table_07
-    - table_08
-    - table_09
-    - table_11
-    - table_12
-    - table_13
-    - table_14
-    - table_16
-    - table_17
-    - table_18
-    - table_19
-    - table_21
-    - table_22
-    - table_23
-    - table_24
-    - table_26
-    - table_27
-    - table_28
-    - table_29
-    - table_31
-    - table_32
-    - table_33
-    - table_34
-    - table_36
-    - table_37
-    - table_38
-    - table_39
-    - table_41
-    - table_42
-    - table_43
-    - table_44
+    - table_05
+    - table_10
+    - table_15
+    - table_20
+    - table_25
+    - table_30
+    - table_35
+    - table_40
+    - table_45
 
-# The maps carry 5 objectives and 16 pieces each, generated from the layout
-# API. The budgets stay at 6 and 16 anyway: they are what lets one network
-# span counts the pool does not currently contain, and lowering the objective
-# budget would change the observation width and orphan every checkpoint.
-# They were mandatory when the tables were traced by hand and carried 5 or 6
-# objectives and 15 or 16 pieces, so the observation was a different width per
-# map -- which neither collates into one batch nor shares one network.
 objective_budget: 6
 terrain_budget: 16
 
@@ -533,3 +519,10 @@ observe_objective_control: true
 # legal. Enforcing it is the whole arm.
 coherency:
   enforce_at_deployment: true
+  # ⚠ Enforcement is a REFEREE for PLAY, never a training lever: it supplies
+  # no gradient and makes formation WORSE (0.569 against 0.756-0.886 for
+  # `objective_hold.require_coherent` alone). Turning it OFF flatters the
+  # scripts by ~16 vp, which is why every agent number here is scored
+  # refereed and the training config is not.
+  enforce_move: revert_unit
+  attrition: true

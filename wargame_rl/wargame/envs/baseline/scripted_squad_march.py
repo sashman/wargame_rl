@@ -341,7 +341,9 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
         handler = env.player_action_handler
         legality = env.player_charge_legality
         movement = handler.movement_slice
-        speeds = handler.move_speeds
+        # ⚠ `move_speeds` is deliberately NOT read here any more. The charge is
+        # capped by the ROLL alone, so the squad's slowest member no longer
+        # binds it -- a charge ladder rung is the same distance for every model.
         # Base to base, as the engagement predicate itself measures it.
         contact = float(env.rules_quantities.engagement_range) + 2.0 * float(
             env.rules_quantities.base_radius
@@ -405,8 +407,15 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
             # this as `Move + roll`, the advance's rule, made the policy declare
             # charges from twice the distance it could cover and measured
             # **55.9%** of moved charges touching nobody.
-            move = float(min(speeds[i] for i in member_indices)) if speeds.size else 0.0
-            reach = min(move, float(models[lead_index].charge_roll))
+            # ⚠ **The charge is capped by the ROLL ALONE**, not by Move.
+            # `11-charge-phase.md`: *"Maximum distance | The charge roll."* This
+            # read `min(Move, roll)` while the ladder's longest rung was Move
+            # (`DEFERRED: charge.beyond_move_ladder`, now closed), so the rule
+            # declared charges it could not cover and 13.8-15.6% of eligible
+            # declarations were blocked by the cap rather than by the dice.
+            reach = float(
+                env.rules_quantities.scale.to_units(models[lead_index].charge_roll)
+            )
             # The shortest step that can make contact. Below it the charge
             # cannot stand however the rungs fall, so the unit declines rather
             # than spending a declaration on it.
@@ -430,6 +439,9 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
                 float(lead[1]),
                 max_step_length=needed,
                 model_idx=lead_index,
+                # The charge ladder, or the rule sizes its step against
+                # distances the env will not use in this phase.
+                charging=True,
             )
             offset = action - movement.start
             if action == STAY_ACTION or offset < 0 or offset >= movement.size:

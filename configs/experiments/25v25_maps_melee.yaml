@@ -9,17 +9,22 @@
 # file, replace this block.
 #
 # ⚠ NOT COMPARABLE TO ANYTHING MEASURED ON `25v25_maps_two_mode.yaml`.
-# `max_turns` is 60 here against 40 there, because `max_turns` is
-# `n_rounds x (5 - len(skip_phases))` and the charge phase is stepped.
+# `max_turns` is **80** here against 40 there, because `max_turns` is
+# `n_rounds x (5 - len(skip_phases))` and BOTH the command and charge phases
+# are stepped -- the charge is declared in the command phase.
 #
-# THE PAIR. `25v25_maps_melee.yaml` and `25v25_maps_melee_dark.yaml` are
-# byte-identical but for `config_name` and `melee.enabled`, and both report
-# n_actions=102, max_turns=60, skip=[command, fight]. The charge adds NO
-# actions -- it makes the movement slice valid in a second phase -- so the two
-# share a parameter shape and therefore a BIT-IDENTICAL init at a given seed.
-# That makes this the rare action-space change that is genuinely PAIRABLE, and
-# the dark half is what separates "what melee costs" from "what 50% more agent
-# steps costs". Read the per-seed difference.
+# ⚠ **THE DARK PAIR IS RETIRED. Do not launch an arm on it.** Verified:
+# n_actions=104, max_turns=80, skip=[fight] on BOTH members, and the init is
+# bit-identical (222 of 222 tensors). The PAIRING was never the problem -- the
+# ESTIMAND is. `melee.enabled: false` degenerates `squad_march_take_charge` to
+# `squad_march_take`, so the dark control's opponent WALKS while this config's
+# CHARGES: `arm - dark` is the DIAGONAL of the 2x2, spanning -29.4 to +2 and
+# containing no PASS at any seed count. The passing test that certifies the
+# pair is itself the proof of the confound.
+#
+# Melee is a CORE RULE, so there is no counterfactual game to compare against.
+# Score against the scripted bar on `configs/evaluation/25v25_maps_melee_refereed.yaml`.
+# See docs/melee-teaching-goal.md.
 #
 # ⚠ THERE IS NO SCRIPTED BAR ON THIS CONFIG. `BaselinePolicy.select_action`
 # returns STAY for every phase that is not command, movement or shooting, so no
@@ -196,6 +201,24 @@ skip_phases:
 # ⚠ This is +50% episode length against the golden config: `max_turns` is
 # `n_rounds x (5 - len(skip_phases))`, so 40 becomes 60. Every baseline and
 # every agent score measured on `25v25_maps_two_mode` is VOID here.
+# ⚠ **`engagement_range: 2.0` — THE RULES' VALUE, NOT THE REPO DEFAULT OF 1.0.**
+# `docs/rules/` puts engagement at 2"; `WargameEnvConfig` defaults to 1" because
+# every baseline and every trained result in the repo was measured at 1, and
+# changing it there would void all of them. **The melee family has no trained
+# lineage to void** -- no learned policy has ever been scored on a melee config
+# at all -- so the ordinary objection does not apply here, and training a charge
+# at half the rules' contact tolerance is difficulty the game does not ask for.
+#
+# Measured on the bar, held-out nine, n=9, K=1: standing fraction 0.667 -> 0.773
+# and stood/ep 3.11 -> 3.78. A charge must END inside this range, so halving it
+# roughly halves the target.
+#
+# ⚠ It is NOT charge-only: the same scalar gates which SHOTS are legal, on both
+# seats, and sets the hostile separation at placement. Treat it as a scenario
+# change -- re-measure the bar rather than carrying a figure across it. Revert
+# by deleting this line if the shooting side turns out to dominate.
+engagement_range: 2.0
+
 melee:
   enabled: true
   charge_range: 12.0
@@ -256,15 +279,27 @@ opponent_deployment_zone: [40, 0, 60, 44]
 #     player walks           +14.05            -51.55
 #     player charges         +38.00             +0.95
 #
-# Charging against a walker is worth +23.95 +/- 9.94; both charging against both
-# walking is -13.10 +/- 10.88. Reading the top row alone says melee is worth +24;
-# the mechanic is worth about zero. This is the Advance failure -- a bar that
-# could not use a core rule -- moved one seat over, and it was found by an audit
-# panel inside the commit that claimed to have closed it.
+# ⚠ RE-MEASURED 2026-08-25 on THIS config (max_turns 80), n=200 paired, and the
+# figures below are VOID -- every cell moved and two changed sign:
+#     player walks  / opp walks   +5.17    player walks  / opp charges  -24.23
+#     player charges/ opp walks  +31.05    player charges/ opp charges   +7.10
+# SAME-ROW (the only contrast an agent can express) charging is worth +25.88
+# +/- 6.49 (t=3.99) and +31.33 +/- 5.26 (t=5.95). The DIAGONAL is +1.93 +/- 6.62,
+# median exactly 0.00 -- but a diagonal is a MIRROR MATCH and is near-zero by
+# symmetry for any symmetric mechanic, so "the mechanic is worth about zero" is
+# RETRACTED as a statement about the lever.
 #
-# ⚠ Both configs get the SAME opponent. With melee off `squad_march_take_charge`
-# is byte-identical to `squad_march_take` (verified on this dark config), so the
-# control is unchanged and the pair still differs in exactly one scalar.
+# Superseded: "charging against a walker is worth +23.95 +/- 9.94; both charging
+# against both walking is -13.10 +/- 10.88" (taken at max_turns 60, pre-command).
+#
+# ⚠ RETRACTED 2026-08-25 -- THIS COMMENT STATED THE FACT AND DREW THE OPPOSITE
+# CONCLUSION. With melee off `squad_march_take_charge` IS byte-identical to
+# `squad_march_take` (pinned by a test), which means the dark control's opponent
+# WALKS while this config's opponent CHARGES. So `arm - dark` is the DIAGONAL of
+# the 2x2, not the lever: its range is -29.4 to +2 and it contains no PASS. The
+# control is unchanged relative to a WALKING control; it is not this config's
+# opponent. Do not launch an arm on this pair -- seat a walking opponent in BOTH
+# members instead. See the 2026-08-25 audit section of the pre-registration.
 opponent_policy:
   type: scripted_baseline
   params:

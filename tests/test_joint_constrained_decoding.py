@@ -14,7 +14,7 @@ from pydantic_yaml import parse_yaml_raw_as
 
 from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
 from wargame_rl.wargame.envs.domain.engagement import engaged_with_any
-from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
+from wargame_rl.wargame.envs.env_components.actions import MOVE_TYPE_CHARGE, STAY_ACTION
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import MeleeConfig, MeleeWeaponProfile
 from wargame_rl.wargame.envs.types.config.battle import OpponentPolicyConfig
@@ -342,8 +342,21 @@ class TestTheChargePhaseIsDecodedToo:
             model.location = np.array(
                 [10.0 + spacing, 10.0 + index], dtype=model.location.dtype
             )
+        # ⚠ DECLARE in the command phase. The declaration is a precondition the
+        # referee re-checks at resolution since 2026-08-25, so a unit that
+        # STAYed through command has its charge reverted whatever the decoder
+        # picks — which would make this test pass or fail for the wrong reason.
+        declare = env.player_action_handler.move_type_action(MOVE_TYPE_CHARGE)
+        assert declare is not None
         while env.game_clock_state.phase is not BattlePhase.charge:
-            env.step(WargameEnvAction(actions=[0, 0]))
+            declaring = env.game_clock_state.phase is BattlePhase.command
+            env.step(WargameEnvAction(actions=[declare if declaring else 0] * 2))
+        # The positions are set before the walk to the charge phase, and the
+        # command step does not move anybody, so re-assert them rather than
+        # assume: `charge_roll` is re-rolled at the start of the side's turn.
+        for index, model in enumerate(env.player_models):
+            model.location = np.array([10.0, 10.0 + index], dtype=model.location.dtype)
+            model.charge_roll = 12.0
         return env
 
     @staticmethod

@@ -476,3 +476,178 @@ costs one inference run, and it would have caught all three of these.
 The 2×2 above is the panel's, at n=100. My own n=6 version was internally inconsistent and
 is superseded rather than retained. The opponent seat does charge: models engaged after the
 opponent's charge phase go from 0.0 to 6.2–8.0 per episode.
+
+---
+
+# ⚠ AUDITED AGAIN, 2026-08-25 — THE ARM'S ESTIMATOR IS MIS-AIMED, NOT UNDERPOWERED
+
+Two uncoordinated panels, 14 agents. Red team **FATAL**. Both chairs: **do not train the arm as
+specified**. Every claim below was re-verified by me in code before it was written down.
+
+## 1. ⚠ RETRACTED: "the mechanic is worth about zero" — it reads the DIAGONAL
+
+The 2×2's diagonal compares *both sides walking* to *both sides charging*. That changes the
+player **and** the opponent, so it is a **mirror match, and near-zero by symmetry for any
+symmetric mechanic whatever the rules say**. It is not a statement about the lever, and quoting
+it as one violates this project's own bolded rule — *"Absolute score measures the OPPONENT, not
+the agent. Only the same-row comparison means anything."*
+
+Re-run on the **current** declaring config (`max_turns` 80, command stepped), n=200 paired,
+seeds 700000+, argmax — reproduced independently by five agents across both panels:
+
+| | opponent walks | opponent charges |
+|---|---|---|
+| **player walks** | +5.17 | −24.23 |
+| **player charges** | +31.05 | +7.10 |
+
+- **SAME-ROW, the only contrast an agent can express:** charging is worth **+25.88 ± 6.49**
+  (t=+3.99) against a walker and **+31.33 ± 5.26** (t=+5.95) against a charger.
+- **DIAGONAL:** +1.93 ± 6.62, t=+0.29, median **exactly 0.00**.
+- Every cell of the old 2×2 moved +7.8 to +31.4 and **two changed sign**. Two of its hedges are
+  also refuted: the walker cell is *not* a coin flip at n=200, and the 2.4× seat asymmetry
+  (+22.17 v +52.25) does not exist.
+- Charging raises **both** `held` (2.69 → 2.82; 2.25 → 2.58) **and** `alive` (0.426 → 0.501;
+  0.402 → 0.490). "It trades ground for survivors" is the diagonal artefact again.
+
+⚠ **Six CPU-minutes bought all of this, and I quoted void numbers to frame a days-long GPU
+commitment instead.** The rule "re-measure rather than carry a figure across a voiding change"
+was on file, in this document, naming this exact change.
+
+## 2. ⚠ FATAL: `arm − dark` ESTIMATES THAT DIAGONAL, so it cannot produce a PASS
+
+`melee.enabled: false` degenerates `squad_march_take_charge` to `squad_march_take`. So the
+arm's opponent **charges** and the dark control's **cannot**, and the paired difference is
+`[agent v a charging opponent, can charge] − [agent v a walking opponent, cannot charge]`.
+
+**Its whole dynamic range is negative**: floor ≈ **−29.4 to −44.3** (t = −4.5 to −5.8) if the
+agent never learns to charge, ceiling ≈ **+2** if it charges as well as the rigid teacher. The
+modal output is a large, confidently significant negative number that would be written up as
+*"melee costs the agent 44 vp"* when every point of it is the opponent's mechanic. It is also a
+**training** confound: the two arms would face opponents ~30–44 vp apart, which by this
+project's own `two_mode`-versus-`coherency` precedent makes them different scenarios.
+
+⚠ **THE TEST THAT CERTIFIES THE PAIR IS THE PROOF OF THE CONFOUND.**
+`tests/test_charging_baseline.py::test_with_melee_off_the_charging_policy_IS_squad_march_take`
+passes, and its docstring says why it matters. The config comment states the same fact —
+*"With melee off `squad_march_take_charge` is byte-identical to `squad_march_take`, so the
+control is unchanged and the pair still differs in exactly one scalar"* — **and draws the
+opposite conclusion from it.** The control is unchanged *relative to a walking control*; it is
+not the arm's opponent.
+
+⚠ **And the earlier audit fix that produced this was right about the arm and silent about the
+control.** Seating a charging opponent in both configs fixed the *training* environment and did
+nothing for the estimator, because `melee.enabled` — not the baseline's name — is what gates
+the opponent's charge. **A config-field test cannot pin a behavioural property**: the same class
+as the seven decoder tests that never called `env.step`, which this project already paid
++11.4 vp for.
+
+**The identifying control costs one config field:** seat a **walking** opponent in *both*
+members and darken `move_type` in the control. Verified identical to the melee-ON walk/walk cell
+on 40 of 40 episodes, both members at 104 actions and `max_turns` 80, init still bit-identical.
+Dynamic range ~26 vp instead of ~2.
+
+## 3. ⚠ FATAL: every melee number ever taken here is SCRIPT-EXEMPT
+
+The "a declared unit may not stand still" rule exists at **exactly two sites**
+(`observation_builder.py:545`, `wargame.py:1332`) and **both build masks**. `ActionHandler.apply`
+takes no mask. Measured independently by two panels at **14.7% and 14.8%** of the bar's declared model-rows
+that hold a legal rung and submit STAY anyway — and the env accepts it.
+
+⚠ **CORRECTED 2026-08-25, and the correction is mine to make: it is 1.8%, not 14.7%.**
+Both panels reported 14.7% and 14.8% for this quantity and I published theirs without
+re-measuring. Measured here (n=8, shipped melee config): **2 of 109 declared model-rows
+with a legal rung**, i.e. **1.8%** — the defect is real and its magnitude was overstated
+roughly **eightfold**. On the golden configs the scripted bar emits **0 of 2,660**
+mask-forbidden actions, so this was melee-only and no non-melee baseline is affected.
+**Two panels agreeing is not a measurement**, which is the exact caution the chairs raised
+about correlated error, applied to me.
+
+**So the 2×2s, the teacher's standing fraction and the pre-registered gates were all measured
+with both seats exempt from a rule the agent is bound by** — at 1.8% of declared rows, a
+systematic but small flattery of the scripts. This is the Advance failure — *"no scripted
+baseline could advance"* — **with the exemption on the other foot.**
+
+✅ **FIXED.** `ScriptedSquadMarchPolicy._commit_declared_units` forces a declared unit that the
+charge rule declined into the best shared legal rung, rigidly. Re-measured: **0 of 106**.
+⚠ The residue could **not** be removed by aligning the declaration test with the charge test:
+`_reachable_charge_units` runs in the COMMAND phase where `charge_legality` is empty *by
+construction*, since it is gated on a declaration not yet made. Some drift between them is
+structural, so the guard is a post-pass. `tests/test_scripts_obey_the_action_mask.py` now pins
+the whole class across configs × policies, so the next move type cannot reopen it.
+
+⚠ `apply`'s own docstring names this hazard for the sibling rule: *"the action mask already
+enforces that for a learned policy, but scripted policies bypass the mask, so honouring `phase`
+here keeps them on the same footing."* The repo had the mitigation, applied to the older rule
+and not the newer one.
+
+## 4. ⚠ FATAL: `charge_progress` never implements its declaration gate
+
+Found independently by five agents across both panels, by five different routes, and confirmed
+by me in the source. The docstring calls the gate *"the whole difference between this and a
+travel reward"*; line 129 comments *"⚠ Only a unit that DECLARED"*; **line 139 gates on
+`float(model.charge_roll) <= 0.0`** and `_roll_charge_dice` rolls 2D6 for every unit of the
+active side unconditionally, so it excludes nothing. `grep declared_charge
+wargame_rl/wargame/envs/reward/` returns **nothing**.
+
+Measured at the shipped default (`value=0.05`, seeds 700000+):
+
+| policy | income/ep | share going to a declared unit |
+|---|---|---|
+| `squad_march_take` (**declares zero charges**) | **5.713** | **0.0%** |
+| `squad_march_take_charge` | 4.196 | 10.9% |
+
+**The non-charging script earns 36% MORE from the charge term than the charging one.** The term
+is not merely undifferentiated, it is *anti-correlated* with the behaviour it exists to pay for
+— an undifferentiated "walk toward the thing" potential aimed at **enemies**, the direction the
+2026-08-11 teleport audit priced at −29.4 of the committing squad's own income.
+
+⚠ **And fixing the gate does not rescue it.** `declared_charge` is **not an observation column**
+— it appears in `observation_builder.py` only inside the mask code. A correctly-gated term would
+key on a state variable the network cannot perceive, failing the cheapest standing check in
+CLAUDE.md, the one that has already burned ~10 GPU-hours twice. Correctly gated its income would
+be ~0.05/ep against `objective_hold`'s +16.0.
+
+⚠ **It is also in NO config.** "Train the melee arm" and "train `charge_progress`" were never
+the same spend. Six unit tests set `charge_roll` by hand and **none** touches `declared_charge`,
+so the suite could not see any of this.
+
+## 5. ⚠ RETRACTED: C4's cost story — a declared unit that cannot reach is NOT forced to move
+
+STAY survives for a model with **no legal rung at all**, exactly as the comment above the mask
+says. Nothing else is spent either: the referee reverts the unit whole, the charge phase runs
+**after** shooting, and no reward term reads `previous_location`. C4's *instinct* — a lever that
+looks free on a rigid script and is not on an agent — survives and is **more** true than stated,
+but for the opposite mechanism: **the script is not lucky, it is exempt** (§3).
+
+## 6. What SURVIVES, and one thing that is stronger than claimed
+
+- **The melee-off no-op**, in a stronger form than the digest showed: melee **ON** with nobody
+  charging is identical to melee **OFF** on 100 of 100 episodes and every column, because the
+  charge dice draw from a dedicated RNG stream. **The carrying cost of the melee code is exactly
+  zero** — which argues for leaving it shipped and off, not for training it.
+- **The arm/dark pair really is bit-identical at init** — I verified 222 of 222 tensors, both at
+  104 actions and `max_turns` 80. The pairing was never the problem; the *estimand* is.
+- **C6's method** — floor every gating readout on a random-init network through the arm's own
+  selector path — is the best thing in this document and should be kept verbatim. What it needs
+  is a **ceiling clause and a monotonicity check**: 6 of 12 random inits pass `declared/ep < 15`
+  **by declaring nothing**, and the gate as written rejects policies that stand *more* charges.
+- **The clone REJECT is invalid as stated** and is retired: 200 episodes / 8 epochs against a
+  house recipe of 1200/60, and refitting the same cache to 48 epochs gives train 0.811 against
+  held-out 0.173 — pure underfit. ⚠ **But the repaired evidence is more pessimistic, not less:**
+  held-out within-one-bin is **flat at 0.30** across a 4× data sweep, and the discovery rate
+  under uniform sampling over legal actions is **0.0027** against the script's 0.662.
+
+## 7. The verdict
+
+**Do not train the arm as specified** — unanimous across both chairs and the red team. The
+estimator is not underpowered, it is **mis-aimed**; two live defects would corrupt the readouts;
+two of four gates are cleared by a network that has learned nothing; and the bar is exempt from
+a rule the agent is bound by.
+
+⚠ **New standing rule, earned here: a paired control must be certified on BEHAVIOUR, not on a
+config field.** Diff the two members' *episodes*, not their YAML. Both panels found this defect;
+the config comment and the passing test both assert the fact that breaks it.
+
+⚠ **Second standing rule: name the ESTIMAND before the n.** Every power calculation in this
+document — mine and three panels' — was arithmetic on the wrong quantity. No seed count fixes an
+estimator that is not estimating the lever.

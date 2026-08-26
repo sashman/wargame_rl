@@ -217,3 +217,47 @@ convergence is *earned*.
   both packets is dated to an unstated code state. **Pin the tree before a measuring panel.**
 - **A tautological assertion is worse than no test**, because it occupies the slot where the
   real one would go. `assert flag in (True, False)` shipped and hid a live defect for a day.
+
+## 2026-08-25 — audit — "is the melee arm worth training, or does the GPU go to allocation?"
+
+Two uncoordinated panels, 14 agents (5 experts + red team + chair each). Red team A: **FATAL**.
+Chair A: DROP_MELEE. Chair B: MORE_FREE_EVIDENCE_FIRST. **Both chairs: do not train the arm as
+specified.** Panel votes: 3 DROP / 2 SPEND_ON_ALLOCATION / 5 MORE_FREE_EVIDENCE_FIRST.
+
+**Audits that landed — 5 of 5, every one verified by me in code before acting.**
+
+1. ⚠ **The arm's estimator is MIS-AIMED, not underpowered.** `melee.enabled: false` degenerates
+   the charging opponent to a walking one, so `arm − dark` is the **diagonal** of the 2×2. Range
+   −29.4 to +2; **contains no PASS at any seed count**. The passing test and the config comment
+   that certify the pair both *state the fact that breaks it*.
+2. ⚠ **"The mechanic is worth about zero" read the diagonal** — a mirror match, near-zero by
+   symmetry for any symmetric mechanic. Same-row it is +25.88 (t=3.99) and +31.33 (t=5.95).
+3. ⚠ **The "declared unit may not STAY" rule is MASK-ONLY**, and `apply` takes no mask, so the
+   bar could break a rule the agent cannot. `apply`'s own docstring names the hazard for the
+   sibling rule. ⚠ **MAGNITUDE OVERSTATED ~8x: both panels said 14.7/14.8%, it is 1.8%** (2 of
+   109 declared rows), and golden configs were clean at 0 of 2,660. **Two panels agreeing is
+   not a measurement** — I published theirs before re-measuring, which is the correlated-error
+   caution the chairs raised, applied to me. All four defects fixed; digest still 9 of 9.
+4. ⚠ **`charge_progress` never implements its declaration gate.** The non-charging script earns
+   **36% more** from the charge term than the charging one. Fixing the gate does not rescue it —
+   `declared_charge` is not an observation column. It is also in no config.
+5. ⚠ **Two of four gates are cleared by declaring NOTHING**, and the gate as written rejects
+   policies that stand *more* charges — non-monotone in competence.
+
+**Correlated error, caught by both chairs:** three DROP votes shared ONE upstream premise (the
+diagonal framing) and were counted as three. Five agents "replicating" the 2×2 on identical seeds
+with deterministic scripts is **arithmetic, not replication** — the same error CLAUDE.md already
+records. One panel committed the config-field-for-behaviour error that a *different panel in the
+same batch* was diagnosing.
+
+**Running total: nominations 0 for 3. Audits ~13 of ~13.** The audit seat has still never been
+wasted; the generate seat has still never landed.
+
+**Rules earned:**
+- **Certify a paired control on BEHAVIOUR, not a config field.** Diff the episodes, not the YAML.
+- **Name the ESTIMAND before the n.** Every power calculation here — mine and three panels' —
+  was arithmetic on the wrong quantity.
+- **A mirror-match diagonal is near-zero by construction.** Only same-row means anything.
+- **A gating readout needs a ceiling clause and a monotonicity check**, not just a floor.
+- ⚠ **Re-measure a panel's number before publishing it, even when two panels agree.** Both
+  overstated one figure 8x, and I carried it into two documents before checking.

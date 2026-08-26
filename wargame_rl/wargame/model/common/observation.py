@@ -221,6 +221,10 @@ def _models_to_features(
         core_parts.append(
             np.array([[m.fell_back_this_turn] for m in models], dtype=np.float32)
         )
+    if models[0].declared_charge is not None:
+        core_parts.append(
+            np.array([[m.declared_charge] for m in models], dtype=np.float32)
+        )
     core = np.hstack(core_parts)
     alive_col = np.array([[m.alive] for m in models], dtype=np.float32)
     cw = np.array([[float(m.current_wounds)] for m in models], dtype=np.float32)
@@ -325,12 +329,12 @@ def _observation_to_numpy(
         for attribute in ("advance_roll", "advanced_this_turn")
         if probe and getattr(probe[0], attribute) is not None
     )
-    # The charge roll and the fell-back flag, when the scenario fights in melee.
-    # Two columns, for the same reason the advance pair is two: what reach is
-    # available, and whether the turn's shooting has already been given up.
+    # The melee trade, when the scenario fights in melee: what reach this unit
+    # rolled, whether the turn's shooting has already been given up, and whether
+    # the unit is under a charge declaration made in the previous phase.
     n_melee = sum(
         1
-        for attribute in ("charge_roll", "fell_back_this_turn")
+        for attribute in ("charge_roll", "fell_back_this_turn", "declared_charge")
         if probe and getattr(probe[0], attribute) is not None
     )
     base_feature_dim = (

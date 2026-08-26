@@ -110,16 +110,30 @@ class WargameModelObservation:
     #                            observable when the choice is made.
     #   `fell_back_this_turn` -- whether its unit fell back out of melee, which
     #                            costs it both its shooting and its charge.
+    #   `declared_charge`     -- whether this model's UNIT declared a charge in
+    #                            the command phase. The declaration binds the
+    #                            unit, spends its shooting and gates which rungs
+    #                            are legal, and it is decided a phase BEFORE the
+    #                            charge is aimed -- so a model aiming a charge
+    #                            had no input saying it was under one. It is
+    #                            also the state any charge-gated reward term
+    #                            keys on, and a term keyed on state the network
+    #                            cannot perceive is the failure this project has
+    #                            paid ~10 GPU-hours for twice.
     #
     # ⚠ `charged_this_turn` is deliberately NOT here. It is cleared the moment
     # the fight it governs resolves, which happens inside the same step, so an
     # observation could only ever read it as False -- a constant column.
+    # `declared_charge` has no such problem: it is set in the command phase and
+    # cleared at the START of its side's next turn, so it is live for every
+    # phase in between, which is exactly when it is needed.
     charge_roll: float | None = None
     fell_back_this_turn: float | None = None
+    declared_charge: float | None = None
 
     @property
     def size(self) -> int:
-        """Location + distances + group one-hot + same-group distance + alive + wound scalars (3) + combat stats (7), plus unit strength, objective-presence flags, the two coherency scalars, the two advance scalars and the two melee scalars when observed."""
+        """Location + distances + group one-hot + same-group distance + alive + wound scalars (3) + combat stats (7), plus unit strength, objective-presence flags, the two coherency scalars, the two advance scalars and the three melee scalars when observed."""
         return int(
             self.location.size
             + self.distances_to_objectives.size
@@ -136,4 +150,5 @@ class WargameModelObservation:
             + (0 if self.advanced_this_turn is None else 1)
             + (0 if self.charge_roll is None else 1)
             + (0 if self.fell_back_this_turn is None else 1)
+            + (0 if self.declared_charge is None else 1)
         )

@@ -82,7 +82,7 @@ class MirroredEnv:
     def player_advance_legality(self) -> np.ndarray:
         """Our models' legal advance rungs — the opponent handler's, not the player's."""
         return self._env.opponent_action_handler.advance_legality(
-            self._env.opponent_models
+            self._env.opponent_models, self._env.wargame_models
         )
 
     @property

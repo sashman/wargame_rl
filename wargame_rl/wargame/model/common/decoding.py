@@ -98,11 +98,19 @@ def _displacement_table(env: WargameEnv) -> np.ndarray:
     models = env.player_models
     table = np.zeros((len(models), handler.n_actions, 2), dtype=float)
     advance = handler.advance_slice
+    # ⚠ In the charge phase the movement slice decodes to the CHARGE ladder,
+    # which spans 2D6 (up to 12") rather than Move (6"). Building it with the
+    # movement ladder would model every charge rung SHORT -- the same shape as
+    # the advance bug two paragraphs down, where the decoder modelled an 8-12"
+    # advance as a zero displacement and manufactured 32-43% of the advances
+    # executed at play. `verify_moves` cannot catch it: `_resolve_endpoints` is
+    # handed this same array.
+    charging = env.game_clock_state.phase is BattlePhase.charge
     for model_idx, model in enumerate(models):
         roll = float(getattr(model, "advance_roll", 0.0))
         for action in range(1 + handler.n_move_actions):
             table[model_idx, action] = handler.decode_action(
-                action, model_idx=model_idx
+                action, model_idx=model_idx, charging=charging
             )
         if advance is None:
             continue
@@ -155,6 +163,15 @@ class _ChargeReferee:
     The second condition is *engaged with exactly one enemy unit* — which is
     both of the rules' clauses at once while a charge has a single derived
     target: engaged with all of the target, and with no non-target.
+
+    ⚠ **And the third is the *while moving* rule**, added 2026-08-25 with the
+    referee's own copy of it: *"Each model must end its move CLOSER to one or
+    more charge targets"* (`docs/rules/11-charge-phase.md`). It is modelled here
+    for exactly the reason in the paragraph above — a decoder that judged a
+    weaker predicate than `_charge_is_legal` would certify combinations the env
+    then reverted, which is the defect this project already paid **+11.4 vp**
+    for when the decoder judged candidates on `position + displacement` while
+    the env clamped and ran `resolve_move`.
     """
 
     centres: np.ndarray
@@ -173,12 +190,23 @@ class _ChargeReferee:
             groups=np.array([int(m.group_id) for m in alive], dtype=np.intp),
         )
 
-    def stands(self, ends: np.ndarray, radius: float, engagement: float) -> np.ndarray:
+    def stands(
+        self,
+        ends: np.ndarray,
+        radius: float,
+        engagement: float,
+        starts: np.ndarray | None = None,
+    ) -> np.ndarray:
         """Which of `(C, k, 2)` candidate endings would survive the referee.
 
         Vectorised over candidates by flattening the unit's members into the
         subject axis and reshaping the contact matrix back — the same predicate
         `_charge_is_legal` calls, so the two cannot drift on the geometry.
+
+        `starts` is the unit's `(k, 2)` positions before the move. Given it,
+        the *while moving* condition is checked too: every member that MOVED
+        must end nearer the touched unit than it began. Omitted, only the
+        engagement condition is tested, which is what the movement phase wants.
         """
         n_candidates, k, _ = ends.shape
         contacts = engagement_matrix(
@@ -194,7 +222,27 @@ class _ChargeReferee:
         per_unit = np.stack(
             [touched_any[:, self.groups == unit].any(axis=1) for unit in units], axis=1
         )
-        return np.asarray(per_unit.sum(axis=1) == 1, dtype=bool)
+        single = np.asarray(per_unit.sum(axis=1) == 1, dtype=bool)
+        if starts is None or not single.any():
+            return single
+        # The touched unit IS the derived charge target, so "closer to a target"
+        # is closer to that unit. Only candidates that pass the engagement test
+        # have one, which is why this runs second.
+        target_index = np.argmax(per_unit, axis=1)
+        for candidate in np.nonzero(single)[0]:
+            members = self.groups == units[target_index[candidate]]
+            target = self.centres[members]
+            for row in range(k):
+                end = ends[candidate, row]
+                start = starts[row]
+                if np.array_equal(end, start):
+                    continue
+                before = float(np.linalg.norm(target - start, axis=1).min())
+                after = float(np.linalg.norm(target - end, axis=1).min())
+                if after >= before:
+                    single[candidate] = False
+                    break
+        return single
 
 
 def _resolve_endpoints(
@@ -410,7 +458,8 @@ def decode_joint_coherent(
                 axis=1,
             )
             legal = (
-                legal & referee.stands(ends, float(radii[0]), engagement)
+                legal
+                & referee.stands(ends, float(radii[0]), engagement, starts=positions)
             ) | declines
         if not legal.any():
             # A strict fallback, never a competitor: standing still is only ever
@@ -463,9 +512,12 @@ def decode_joint_coherent(
                     continue
                 if (
                     referee is not None
-                    and not referee.stands(resolved[None], float(radii[0]), engagement)[
-                        0
-                    ]
+                    and not referee.stands(
+                        resolved[None],
+                        float(radii[0]),
+                        engagement,
+                        starts=positions,
+                    )[0]
                 ):
                     continue
                 best = combos[candidate]

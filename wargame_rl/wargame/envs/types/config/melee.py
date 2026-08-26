@@ -58,6 +58,52 @@ class MeleeConfig(BaseModel):
             "`enabled`."
         ),
     )
+    alternating_activation: bool = Field(
+        default=True,
+        description=(
+            "Players alternate selecting ONE unit at a time in the fight step, "
+            "with the Strikes First sub-step and passing "
+            "(`docs/rules/12-fight-phase.md`). ⚠ Default TRUE: v1 resolved the "
+            "active player's whole side and then the opponent's, which lets "
+            "whoever has the turn inflict every casualty before any opposing "
+            "unit swings back. A field so it can be ABLATED; melee has no "
+            "trained lineage to void. Read only when `enabled`."
+        ),
+    )
+    overrun: bool = Field(
+        default=True,
+        description=(
+            "Let a unit that is eligible to fight but engaged with nobody make "
+            "one additional pile-in move and then fight "
+            "(`docs/rules/12-fight-phase.md` § Overrun fight) -- how a unit "
+            "that killed its charge target, or was left behind when a target "
+            "died, reaches a new one. ⚠ Expect it to fire RARELY: it needs a "
+            "target to have died, and the shipped blade returns ~0.02 expected "
+            "wounds a swing. Read only when `enabled` and "
+            "`alternating_activation`."
+        ),
+    )
+    pile_in: bool = Field(
+        default=True,
+        description=(
+            "Run the pile-in step: engaged units close up before blows are "
+            "traded (`docs/rules/12-fight-phase.md`). ⚠ Defaults TRUE because it "
+            "is a core rule and melee has no trained lineage to protect -- no "
+            "learned policy has ever been scored on a melee config, so there is "
+            "no baseline to void. It is a field at all so it can be ABLATED: "
+            "without it a unit that lands at the outer edge of engagement range "
+            "fights from there and can never close. Read only when `enabled`."
+        ),
+    )
+    pile_in_distance: float = Field(
+        default=3.0,
+        gt=0,
+        description=(
+            "How far, in inches, a unit may pile in "
+            "(`docs/rules/12-fight-phase.md`). Read only when `enabled` and "
+            "`pile_in`."
+        ),
+    )
     enabled: bool = Field(
         default=False,
         description=(
@@ -69,7 +115,8 @@ class MeleeConfig(BaseModel):
     observe_charge: bool | None = Field(
         default=None,
         description=(
-            "Put `charge_roll` and `fell_back_this_turn` on every model's token. "
+            "Put `charge_roll`, `fell_back_this_turn` and `declared_charge` on "
+            "every model's token. "
             "None (the default) means 'whenever the charge phase is stepped', "
             "which is what keeps the arm and its dark control the same width and "
             "therefore PAIRED. ⚠ Set it FALSE to score a checkpoint trained "

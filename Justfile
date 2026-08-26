@@ -407,6 +407,16 @@ render-maps env_config='' maps_dir='':
 behaviour-clone policy env_config n_episodes='200' epochs='8' out='checkpoints/clone.ckpt' seed='0' decode_topk='1':
 	@uv run python -m scripts.behaviour_clone {{policy}} {{env_config}} {{n_episodes}} {{epochs}} {{out}} {{seed}} {{decode_topk}}
 
+# Does a policy USE the charge phase, and does it use it competently?
+# Read `stood/ep` (numerator only, hard floor at zero, monotone in competence),
+# NOT the standing fraction -- its denominator is the policy's own declaration
+# count, so it rises when a policy declares less. Quote the K: at topk 3 the
+# joint decoder picks legal combinations FOR the network, so the counts measure
+# the decoder. Training decodes at K=1.
+# Use: just measure-charges squad_march_take_charge configs/evaluation/25v25_maps_melee_refereed.yaml
+measure-charges policy env_config n_episodes='20' decode_topk='1' *overrides:
+	@uv run python -m scripts.measure_charges {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}} {{overrides}}
+
 measure-income-share policy env_config n_episodes='30':
 	@uv run python -m scripts.measure_income_share {{policy}} {{env_config}} {{n_episodes}}
 

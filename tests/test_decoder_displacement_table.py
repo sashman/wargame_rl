@@ -128,7 +128,9 @@ def test_the_table_predicts_where_env_step_actually_puts_the_model(
 
     # Angle bin 0 (east), the requested rung. Legality is gated on the roll.
     action = advance.start + bin_idx
-    legality = handler.advance_legality(env.player_models)
+    # Enemies are REQUIRED: an engaged unit may not advance, and passing None
+    # is the caller stating there is no opposing force to check against.
+    legality = handler.advance_legality(env.player_models, None)
     if not legality[0, action - advance.start]:
         pytest.skip("this rung is not legal at this turn's roll")
 

@@ -20,11 +20,19 @@ from wargame_rl.wargame.envs.domain.coherency_enforcement import apply_attrition
 from wargame_rl.wargame.envs.domain.consolidate import consolidate_objective
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.fight import (
+    PASS_RANGE_INCHES,
+    FightSide,
+    OverrunRules,
     PairedFightResult,
     fight_eligible_units,
     resolve_fight,
+    resolve_fight_step,
 )
 from wargame_rl.wargame.envs.domain.game_clock import GameClock
+from wargame_rl.wargame.envs.domain.pile_in import (
+    SELECTION_RANGE_INCHES as PILE_IN_SELECTION_RANGE_INCHES,
+)
+from wargame_rl.wargame.envs.domain.pile_in import pile_in
 from wargame_rl.wargame.envs.domain.placement import install_layout, place_for_episode
 from wargame_rl.wargame.envs.domain.rules_quantities import (
     RulesQuantities,
@@ -54,7 +62,6 @@ from wargame_rl.wargame.envs.env_components import (
     build_observation,
     compute_distances,
 )
-from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.env_components.coherency_tracker import CoherencyTracker
 from wargame_rl.wargame.envs.env_components.exposure import (
     ExposureTracker,
@@ -479,7 +486,9 @@ class WargameEnv(gym.Env):
         must not reach into the action handler, and because the mirrored view has
         to answer it for the opponent's own models rather than the player's.
         """
-        return self._action_handler.advance_legality(self.wargame_models)
+        return self._action_handler.advance_legality(
+            self.wargame_models, self.opponent_models
+        )
 
     @property
     def player_charge_legality(self) -> np.ndarray:
@@ -753,19 +762,100 @@ class WargameEnv(gym.Env):
             )
             for attackers, defenders, _weapons, is_player in order
         }
-        for attackers, defenders, weapons, is_player in order:
-            results = resolve_fight(
-                attackers,
-                defenders,
+        # ⚠ **PILE IN FIRST**, and in the same order. `12-fight-phase.md` runs
+        # the pile-in step before the fight step, active player's units first,
+        # and a unit that closes here fights from where it ends up. Doing it
+        # after would be a different game: a model pinned at the outer edge of
+        # engagement range would swing from there and never close.
+        if self.config.melee.pile_in:
+            for attackers, defenders, _weapons, is_player in order:
+                pile_in(
+                    attackers,
+                    defenders,
+                    eligible_units=eligible[is_player],
+                    max_distance=self._rules_quantities.scale.to_units(
+                        self.config.melee.pile_in_distance
+                    ),
+                    selection_range=self._rules_quantities.scale.to_units(
+                        PILE_IN_SELECTION_RANGE_INCHES
+                    ),
+                    engagement_range=engagement_range,
+                    base_radius=self._rules_quantities.base_radius,
+                    board=(float(self.board_width), float(self.board_height)),
+                    coherency_nearest=self._rules_quantities.scale.to_units(
+                        self.config.coherency.nearest_distance
+                    ),
+                    coherency_furthest=self._rules_quantities.scale.to_units(
+                        self.config.coherency.furthest_distance
+                    ),
+                )
+
+        # ⚠ **ALTERNATING, one unit at a time** (`fight.alternating_activation`,
+        # closed 2026-08-26). v1 resolved the active player's WHOLE side and
+        # then the opponent's, which is a materially different game: every one
+        # of the active player's casualties landed before any opposing unit
+        # swung back, so whoever had the turn also won every trade they started.
+        # `resolve_fight_step` implements the rules' sequence -- Strikes First
+        # sub-step, alternate selection, re-entry when a Strikes First unit
+        # becomes eligible, and passing.
+        if self.config.melee.alternating_activation:
+            first, second = order
+            side_results = resolve_fight_step(
+                (
+                    FightSide(models=first[0], weapons=first[2]),
+                    FightSide(models=second[0], weapons=second[2]),
+                ),
                 self._combat_rng,
-                attacker_weapons=weapons,
                 engagement_range=engagement_range,
                 base_diameter=base_diameter,
+                pass_range=self._rules_quantities.scale.to_units(PASS_RANGE_INCHES),
+                # ⚠ The units eligible when the step BEGAN. An overrun fight is
+                # for a unit that "was unengaged at the start, or became
+                # unengaged during the phase", and a live read cannot tell a
+                # unit that lost its target from one that never had one.
+                started_eligible=(eligible[first[3]], eligible[second[3]]),
+                overrun=(
+                    OverrunRules(
+                        pile_in_distance=self._rules_quantities.scale.to_units(
+                            self.config.melee.pile_in_distance
+                        ),
+                        selection_range=self._rules_quantities.scale.to_units(
+                            PILE_IN_SELECTION_RANGE_INCHES
+                        ),
+                        base_radius=self._rules_quantities.base_radius,
+                        board=(float(self.board_width), float(self.board_height)),
+                        coherency_nearest=self._rules_quantities.scale.to_units(
+                            self.config.coherency.nearest_distance
+                        ),
+                        coherency_furthest=self._rules_quantities.scale.to_units(
+                            self.config.coherency.furthest_distance
+                        ),
+                    )
+                    if self.config.melee.overrun
+                    else None
+                ),
             )
-            if is_player:
-                self._last_player_fight_results.extend(results)
-            else:
-                self._last_opponent_fight_results.extend(results)
+            for (_models, _enemies, _weapons, is_player), results in zip(
+                order, side_results, strict=True
+            ):
+                if is_player:
+                    self._last_player_fight_results.extend(results)
+                else:
+                    self._last_opponent_fight_results.extend(results)
+        else:
+            for attackers, defenders, weapons, is_player in order:
+                results = resolve_fight(
+                    attackers,
+                    defenders,
+                    self._combat_rng,
+                    attacker_weapons=weapons,
+                    engagement_range=engagement_range,
+                    base_diameter=base_diameter,
+                )
+                if is_player:
+                    self._last_player_fight_results.extend(results)
+                else:
+                    self._last_opponent_fight_results.extend(results)
         # The rules' own order: pile-in, fight, THEN consolidate, with every
         # unit fighting before any unit consolidates.
         for attackers, defenders, _weapons, is_player in order:
@@ -794,11 +884,52 @@ class WargameEnv(gym.Env):
         neither of which reaches Objective. See `domain/consolidate.py` for what
         is deferred and why.
         """
+        # ⚠ **ONGOING MODE FIRST, and it is `pile_in` verbatim.** The modes are
+        # assessed in order and the first match is compulsory, so an ENGAGED
+        # unit consolidates in Ongoing mode and never reaches Objective.
+        # `12-fight-phase.md` gives Ongoing exactly pile-in's conditions -- 3",
+        # every enemy unit it is engaged with, models in base contact pinned,
+        # every moved model closer to the closest selected unit and engaged if
+        # possible, and every model that started engaged with a unit still
+        # engaged with it afterwards. Reusing the primitive is what the spec
+        # licenses, not a shortcut: a second implementation of the same rule is
+        # how `objective_hold` and the observation builder came to disagree
+        # about who was standing on a point.
+        # `DEFERRED: consolidate.ongoing` closed 2026-08-26.
+        consolidated = set()
+        if self.config.melee.pile_in:
+            consolidated = set(
+                pile_in(
+                    models,
+                    enemy_models,
+                    eligible_units=eligible_units,
+                    max_distance=self._rules_quantities.scale.to_units(
+                        self.config.melee.consolidate_distance
+                    ),
+                    # ⚠ Zero, not 5". Ongoing selects ONLY the units it is
+                    # already engaged with; the 5" branch is pile-in's, and
+                    # letting it fire here would consolidate a disengaged unit
+                    # in a mode the rules put it in only when it is engaged.
+                    selection_range=0.0,
+                    engagement_range=self._rules_quantities.engagement_range,
+                    base_radius=self._rules_quantities.base_radius,
+                    board=(float(self.board_width), float(self.board_height)),
+                    coherency_nearest=self._rules_quantities.scale.to_units(
+                        self.config.coherency.nearest_distance
+                    ),
+                    coherency_furthest=self._rules_quantities.scale.to_units(
+                        self.config.coherency.furthest_distance
+                    ),
+                )
+            )
         consolidate_objective(
             models,
             enemy_models,
             self.objectives,
-            eligible_units=eligible_units,
+            # The modes are ORDERED and the first match is compulsory, so a unit
+            # that consolidated in Ongoing mode must not also take an Objective
+            # move.
+            eligible_units=eligible_units - consolidated,
             # Reads the board live, and through `compute_distances` -- so "in
             # range of an objective" here is the same test scoring uses, rather
             # than a fourth copy of it.
@@ -1304,7 +1435,7 @@ class WargameEnv(gym.Env):
             # let the opponent pick a rung its roll cannot reach and silently
             # receive a shorter move -- the asymmetry that voids a bar.
             mask[:, advance_slice.start : advance_slice.end] &= (
-                handler.advance_legality(self.opponent_models)
+                handler.advance_legality(self.opponent_models, self.wargame_models)
             )
         if self.config.melee.enabled and phase is BattlePhase.charge:
             # Both seats or neither: an unmasked charge would let the opponent
@@ -1314,22 +1445,13 @@ class WargameEnv(gym.Env):
             mask[:, movement_slice.start : movement_slice.end] &= (
                 handler.charge_legality(self.opponent_models, self.wargame_models)
             )
-            # And the binding half, for the same reason. A declared unit may
-            # not stand still, or half of it charges and the referee reverts
-            # the lot -- an asymmetry here would be a rules difference between
-            # the seats, which shooting alone already measures at 24.6 vp.
-            if handler.move_type_slice is not None:
-                declared = np.array(
-                    [
-                        bool(getattr(m, "declared_charge", False))
-                        for m in self.opponent_models
-                    ],
-                    dtype=bool,
-                )
-                has_rung = mask[:, movement_slice.start : movement_slice.end].any(
-                    axis=1
-                )
-                mask[declared & has_rung, STAY_ACTION] = False
+            # ⚠ **REMOVED 2026-08-26 on BOTH seats: a declared unit MAY decline.**
+            # `11-charge-phase.md` step 3 grants it in as many words -- *"and the
+            # controlling player still wants to make it ... Otherwise the unit
+            # does not move"*. The mirror of this removal is in
+            # `observation_builder`, and removing it on one seat only would be a
+            # rules difference between them, which shooting alone already
+            # measures at 24.6 vp.
         shooting_slice = handler.shooting_slice
         if (
             phase != BattlePhase.shooting
