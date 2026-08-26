@@ -593,3 +593,60 @@ precisely what a policy does when nothing pushes back against a spurious declara
   behavioural statistic: does its error rate depend on the competence it is measuring?
 - ⚠ **Check what a seeded episode count actually covers.** Sampling with replacement is right
   for training rollouts and wrong for an eval label.
+
+---
+
+## 15. The arm of record — the COMPLETE implementation, pre-registered
+
+Launched 2026-08-26 at `1cfebfa`. Three seeds, 600 epochs, `ent_coef 0.003`,
+**unshaped** (`charge_progress` stays unwired, so this arm is the control any shaping
+decision has to be measured against). `configs/experiments/25v25_maps_melee.yaml`,
+`max_turns` **140**.
+
+⚠ **EVERY EARLIER MELEE FIGURE IS VOID AGAINST THIS ONE**, and not merely stale. Six
+changes landed under it: the declaration mask, consolidate Engaging, the drag-in clause,
+activation priority, pile-in and consolidate as phases, and both as agent decisions. The
+bar moved from **+13.3 → +23.9 → −17.2** across them.
+
+### The bar, and the floor, both taken BEFORE any agent number exists
+
+Held-out nine, refereed, n=9, seeds 700000+, K=1:
+
+| policy | decl/ep | tried/ep | **stood/ep** | frac | coherent | vp |
+|---|---|---|---|---|---|---|
+| **`squad_march_take_charge`** (the comparator) | 8.00 | 7.00 | **3.67** | **0.524** | 0.850 | **−17.2** |
+| `squad_march_take` (never charges) | 0.00 | 0.00 | 0.00 | — | 0.895 | −57.8 |
+| floor s0 / s1 / s2 (random init) | 0.00 / 8.67 / 21.67 | — | **0.00 / 0.00 / 0.11** | 0.000–0.005 | 0.561–0.845 | −194.4 / −215.0 / −237.8 |
+
+Charging is worth **+40.6 same-row**, up from +26.7 — the mechanic got *more* valuable as
+the rules got more complete.
+
+⚠ **The absolute level fell ~40 vp when pile-in and consolidate became agent decisions,
+and that is the ENCODING, not the policy.** The scripted bar calls `domain.pile_in` for
+the move the engine itself would have made and encodes that displacement; a continuous 3"
+move quantised onto 16 angles × 6 rungs lands models slightly off, breaks unit coherency,
+and the referee reverts the whole unit. Recorded as a measured argument for reverting that
+one commit — the phases and the activation priority cost nothing and are kept either way.
+
+⚠ **`declared/ep` is USELESS as a gate**, again: the floor spans 0.00 to 21.67. Read
+`stood/ep` (floor **0.00–0.11**), the standing fraction (floor **0.000–0.005**) and vp
+(floor **−194 to −238**).
+
+### The trichotomy, unchanged from §9 and restated against these numbers
+
+- **PASS** — `stood/ep` **> 3.0** at K=1 *and* beats `squad_march_take_charge` on
+  `vp_margin` with a t and a sign count, on ≥ 3 seeds, with `coherent` no lower.
+- **FAIL** — does not clear the floor on `stood/ep`, **or** charges competently and still
+  loses on vp. ⚠ Different failures, reported as such: the first is about teaching, the
+  second about the scenario, and only the first is this goal's.
+- **UNDERPOWERED** — the interval contains both zero and the effect that would matter.
+  The likely outcome at n=3, and it must not be narrated into a PASS.
+
+⚠ **Scored at n=45 with REPEATS, not the n=9 of §9.** Two defects make n=9 unusable:
+`MapPool.draw` samples **with replacement**, so seeds 700000-700008 visit **five** of the
+held-out nine; and an agent row does not reproduce run to run while a scripted row does,
+so the noise floor is **asymmetric**. Both are recorded in `scripts/measure_charges.py`.
+
+⚠ **The §9 trichotomy has a gap, named before the numbers arrive.** An agent that clears
+the floor but comes nowhere near the bar is neither PASS nor FAIL as written. That state
+will be reported as what it is rather than forced into a bin.
