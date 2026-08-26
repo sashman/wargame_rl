@@ -198,6 +198,23 @@ all, and one closed item recorded as open.
 |---|---|---|
 | 1.2 → 1.3 | **target declaration → multi-target charge** | Adds actions. Measured opportunity is **7.5%** of eligible unit-turns with **0%** realised, and an expert review ranked it last on exactly those grounds. There is a real encoding worth trying — each unit member names a target in the command phase, **union = the target set**, which turns the factored policy from a liability into an advantage — but that is a design to measure, not a gap to close. |
 
+### Decided against, WITH MEASUREMENTS — 2026-08-26
+
+These are player choices in the rules that the ENGINE makes here. Each is a deliberate
+refusal with a number behind it, not an omission.
+
+| item | why the engine keeps it |
+|---|---|
+| **pile-in target selection and the pile-in move** | Measured on the bar, 6 episodes, held-out nine: **87.8% of pile-in opportunities have exactly ONE enemy unit within 5"**, so there is no target to choose; 12.2% have two and none has three. The move itself is then near-determined — at most 3", every moved model must end *closer to the closest selected target and engaged with it if possible*, and it is all-or-nothing at the unit. **The cost is two new battle phases.** One model gets one action per step and the fight phase's action is already the activation priority, so pile-in and consolidate movement each need their own phase; that takes `BATTLE_PHASE_ORDER` from 5 to 7 and changes `battle_phase_index / (N_BATTLE_PHASES - 1)` — the normalised phase scalar — in **every config's observation, goldens included**. Two phases and every observation golden, for a choice absent in 88% of the cases it could arise in. |
+| **consolidate selection** | Same mechanism, rarer still: **6 Engaging-consolidate opportunities across 6 episodes**, 83.3% of them single-target. Which objective an Objective-mode consolidation takes is likewise the nearest (`DEFERRED: consolidate.select_objective`) and fires on a unit that already has an objective within three inches. |
+| **normal versus overrun fight type** | Forced by state almost everywhere: `12-fight-phase.md` makes Normal eligible for an **engaged** unit and Overrun for an **unengaged** one, which are exclusive. The single overlap is a unit that was unengaged when the step began and became engaged during the phase, which is eligible for both — too narrow to buy an action for. |
+| **passing** | `_may_pass` fires only when the sequence returns to a player and **every** one of their eligible units is more than 5" from all enemies. The engine takes the rules' option automatically, which is the sensible default; making it a choice means folding it into `fight_order` (one action per model, so priority and pass-intent share the leader's single action) and doubling that slice from 4 to 8 for a rare decision. One config field away if a measurement ever shows it matters. |
+
+⚠ **Do not reopen any of these on the argument that "the rules give the player the choice".**
+They do; the question this table answers is what expressing it costs against how often the
+choice is real, and the numbers are above. Reopen one with a measurement that contradicts
+them.
+
 ### Out of scope, and honestly so
 
 Each of these needs a subsystem this game does not have, so "complete" cannot include them:
