@@ -93,6 +93,13 @@ class MirroredEnv:
         )
 
     @property
+    def player_declaration_legality(self) -> np.ndarray:
+        """Recomputed from the OPPONENT's handler and models, as the others are."""
+        return self._env.opponent_action_handler.declaration_legality(
+            self._env.opponent_models, self._env.wargame_models
+        )
+
+    @property
     def player_max_ranges(self) -> np.ndarray:
         """Our weapons' reach. Read by `build_observation` for the shooting mask."""
         return self._env.opponent_max_ranges

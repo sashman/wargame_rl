@@ -770,6 +770,81 @@ class ActionHandler:
             for index in np.nonzero(np.asarray(contacts).any(axis=1))[0]
         }
 
+    def declaration_legality(
+        self, models: list[Any], enemy_models: list[Any] | None
+    ) -> np.ndarray:
+        """`(n_models, n_move_types)` -- which move types each model may DECLARE.
+
+        ⚠ **The declaration was UNMASKED until 2026-08-26, on both seats.**
+        `ActionRegistry.get_action_mask` is purely phase-based and nothing
+        refined the `move_type` slice, so any alive model could declare any type
+        in any command phase. Eligibility was enforced only later, on the MOVE,
+        where an ineligible unit simply found no legal rung.
+
+        That is a rules divergence in both directions, and both cost something:
+
+        - **Charge.** `docs/rules/11-charge-phase.md` makes a unit ineligible if
+          it is not within 12" of an enemy unit, is engaged, or advanced or fell
+          back this turn. Declaring anyway is a *bit-exact no-op* -- it changes
+          no state and earns no reward difference -- so an unmasked declaration
+          hands the policy a free action with no consequence to learn from.
+          Measured on the first unshaped arm: **71.4% of declared model-steps
+          held zero legal rungs**, and declarations landed on eligible units
+          *below chance* (31.4%, z = −2.54) against the scripted teacher's 40/40.
+        - **Advance.** Worse, because it is not free. `declare_move_types` sets
+          `advanced_this_turn` immediately, which both shooting masks read, so an
+          ENGAGED unit -- barred from every rung by `advance_legality` -- could
+          declare an advance, forfeit its whole shooting phase, and then be
+          unable to move at all.
+
+        ⚠ The gap map rated charge eligibility **implemented**
+        (`implementation-status.md:103`). It was implemented for the *move*, not
+        the *declaration*, and the row was wrong.
+
+        `normal` is always legal: it is what STAY declares, so masking it would
+        make the command phase unsteppable for a unit with nothing else to do.
+        """
+        n_types = len(self._move_types)
+        legality = np.zeros((len(models), n_types), dtype=bool)
+        if self._move_type_slice is None or n_types == 0:
+            return legality
+        alive = np.array([bool(m.is_alive) for m in models], dtype=bool)
+        legality[:, self._move_types.index(MOVE_TYPE_NORMAL)] = alive
+
+        if MOVE_TYPE_ADVANCE in self._move_types:
+            column = self._move_types.index(MOVE_TYPE_ADVANCE)
+            engaged = self._engaged_units(models, enemy_models)
+            for index, model in enumerate(models):
+                if not model.is_alive:
+                    continue
+                if engaged and int(model.group_id) in engaged:
+                    continue
+                # ⚠ NOT a rules gate -- a REPRESENTATION one, and it diverges
+                # deliberately. The rules would let a unit rolling 1 advance 7";
+                # the absolute ladder cannot express that, so at three bins such
+                # a unit has no legal rung. Permitting the declaration there
+                # would spend its shooting for a move it cannot make, which is
+                # strictly dominated -- the exact class of action the absolute
+                # re-encoding removed (dominated advances went 3.5-13.8% to
+                # 0.0%). Masking is the smaller divergence of the two.
+                move = float(self._move_speeds[index])
+                reach = move + float(model.advance_roll)
+                if any(
+                    self.advance_distance(b, move) <= reach
+                    for b in range(self._n_advance_bins)
+                ):
+                    legality[index, column] = True
+
+        if MOVE_TYPE_CHARGE in self._move_types:
+            column = self._move_types.index(MOVE_TYPE_CHARGE)
+            alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+            if alive_enemies:
+                eligible = self._charge_eligible_units(models, alive_enemies)
+                for index, model in enumerate(models):
+                    if model.is_alive and int(model.group_id) in eligible:
+                        legality[index, column] = True
+        return legality
+
     def charge_legality(
         self, models: list[Any], enemy_models: list[Any] | None
     ) -> np.ndarray:

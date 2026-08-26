@@ -504,6 +504,19 @@ class WargameEnv(gym.Env):
         )
 
     @property
+    def player_declaration_legality(self) -> np.ndarray:
+        """`(n_models, n_move_types)` — which move types the rules let us declare.
+
+        On the view for the same reason the other two are. ⚠ Until 2026-08-26
+        nothing masked the `move_type` slice at all, so an ineligible unit could
+        declare a charge (a bit-exact no-op) or an advance (which spends its
+        shooting immediately, for a move it then could not make).
+        """
+        return self._action_handler.declaration_legality(
+            self.wargame_models, self.opponent_models
+        )
+
+    @property
     def opponent_max_ranges(self) -> np.ndarray:
         """Longest weapon range per opponent model, resolved once from config.
 
@@ -715,8 +728,13 @@ class WargameEnv(gym.Env):
         action is guarded), which is how `_regain_coherency` already works.
 
         Both players act in this phase per `docs/rules/12-fight-phase.md`, so
-        both forces swing on the same boundary; the ACTIVE player's units
-        resolve first, which is v1's stand-in for alternating activation.
+        both forces swing on the same boundary. ⚠ **Whole-side resolution was
+        v1's stand-in and is no longer what runs**: under
+        `melee.alternating_activation` (default on) `resolve_fight_step` picks
+        one eligible unit at a time, alternating between players, with the
+        Strikes First sub-step and passing. Whole-side resolution measured a
+        −25.0 vp seat asymmetry for the same policy on both seats; alternating
+        halves it.
 
         Dice come from `_combat_rng`. Unlike the advance roll this needs no
         dedicated stream: it draws only when a fight actually resolves, so a
@@ -1452,6 +1470,16 @@ class WargameEnv(gym.Env):
             # `observation_builder`, and removing it on one seat only would be a
             # rules difference between them, which shooting alone already
             # measures at 24.6 vp.
+        move_type_slice = handler.move_type_slice
+        if move_type_slice is not None and phase is BattlePhase.command:
+            # Both seats or neither. An unmasked declaration lets the opponent
+            # declare a charge from a unit the rules make ineligible, or an
+            # advance while engaged -- and a rules difference between the seats
+            # is worth 24.6 vp on shooting alone.
+            mask[:, move_type_slice.start : move_type_slice.end] &= (
+                handler.declaration_legality(self.opponent_models, self.wargame_models)
+            )
+
         shooting_slice = handler.shooting_slice
         if (
             phase != BattlePhase.shooting

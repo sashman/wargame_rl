@@ -555,6 +555,17 @@ def build_observation(
             # engaged, so a squad that half-commits stretches and reverts anyway.
             # The rule was being enforced twice, once correctly.
 
+        if action_registry.has_slice("move_type") and phase == BattlePhase.command:
+            # ⚠ The declaration was UNMASKED until 2026-08-26. A unit the rules
+            # make ineligible could still declare -- a charge declaration is a
+            # bit-exact no-op, so the policy got a free action with nothing to
+            # learn from, and an advance declaration spends the unit's shooting
+            # the moment it is made. See `ActionHandler.declaration_legality`.
+            move_type_slice = action_registry.slice_for("move_type")
+            action_mask[:, move_type_slice.start : move_type_slice.end] &= (
+                view.player_declaration_legality
+            )
+
         if action_registry.has_slice("advance") and phase == BattlePhase.movement:
             # The advance rungs are ABSOLUTE distances above Move, so the turn's
             # D6 no longer changes what an action means -- it decides which
