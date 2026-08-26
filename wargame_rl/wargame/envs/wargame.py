@@ -1132,16 +1132,21 @@ class WargameEnv(gym.Env):
         else:
             self._attrition_deaths_opponent += len(destroyed)
 
-    def _record_coherency(self) -> None:
+    def _record_coherency(self, include_intent: bool = True) -> None:
         """Fold the player's formation into the episode's coherency totals.
 
         Records BOTH the board after enforcement and the move the policy
         proposed before it. Under `enforce_move` those are different questions
         and only the second says anything about the policy.
+
+        `include_intent` is False for the melee phases: the handler computes
+        `intended_coherency_last_move` only in the movement phase, so recording
+        it elsewhere would replay the previous movement phase's intent.
         """
-        self._coherency_tracker.record_intent(
-            self._action_handler.intended_coherency_last_move
-        )
+        if include_intent:
+            self._coherency_tracker.record_intent(
+                self._action_handler.intended_coherency_last_move
+            )
         self._coherency_tracker.record(
             positions=np.array([m.location for m in self.wargame_models], dtype=float),
             group_ids=np.array(
@@ -1560,8 +1565,16 @@ class WargameEnv(gym.Env):
                 phase=phase,
                 enemy_models=self.opponent_models,
             )
-            if phase == BattlePhase.movement:
-                self._record_coherency()
+            # ⚠ EVERY displacing phase, not just movement -- until 2026-08-26
+            # this fired only under `phase == movement`, while the melee
+            # PASS gate's stated rationale is "a charge is a joint move;
+            # formation is how it fails". The clause measured something else:
+            # `coherent` on a melee config skipped 3 of the 4 phases that
+            # move models. Non-melee configs skip those phases, so their
+            # figures are untouched; melee `coherent` is NOT comparable
+            # across this date.
+            if self._action_handler.displaces_in(phase):
+                self._record_coherency(include_intent=phase == BattlePhase.movement)
 
     def _opponent_action_mask(
         self, phase: BattlePhase, opp_alive: np.ndarray
