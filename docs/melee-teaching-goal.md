@@ -1,8 +1,53 @@
 # Teach the agent to fight
 
-**Goal.** A trained agent that uses the **charge and fight phases** competently on a melee
-config — declaring when a charge can land, aiming so it lands, and beating the scripted bar
-on the same config while doing it.
+**Goal.** **Melee implemented as the rules define it**, and a trained agent that uses the
+**charge and fight phases** competently on it — declaring when a charge can land, aiming so
+it lands, and beating the scripted bar on the same config while doing it.
+
+⚠ **IMPLEMENTATION IS PART OF THE GOAL, NOT A PREREQUISITE TO IT.** Set 2026-08-26. The
+reason is measured, not stylistic: completing six rules moved charging from **−1.7 vp to
++24.4 vp same-row**, so an agent trained against a partial melee is trained against a
+different game, and a bar taken on one has been voided five times in a single day. The
+standing rule is this project's own — *measure the configuration that SHIPS*.
+
+### What "implemented as the rules define it" still requires
+
+⚠ **Checked against the code before each item is started, never trusted.** This inventory
+has been wrong in BOTH directions in one day: two rules had no row at all, and one closed
+item was recorded as open.
+
+**Open — rules-correctness bugs.** The implementation permits or forbids something the
+rules do not:
+
+| item | the divergence |
+|---|---|
+| **charge declaration is unmasked** | `11-charge-phase.md` §Eligibility makes a unit ineligible to declare if it is *not within 12" of any enemy*, is engaged, or advanced/fell back. `get_action_mask` is **purely phase-based** and `wargame.py` never masks the `move_type` slice on either seat, so any alive model may declare in any command phase. Eligibility is enforced only later, on the MOVE, where an ineligible unit finds no legal rung. Measured consequence: **71.4% of the agent's declared model-steps hold zero legal rungs** and declarations land on eligible units *below chance* (31.4%, z = −2.54) against the teacher's 40/40. ⚠ The gap map rates this row **implemented** (`implementation-status.md:103`) — it is implemented for the move, not the declaration, and the row is wrong. |
+| **3.2 consolidate Engaging** | The remaining consolidate mode; needs 2.3, which is done. |
+
+**Open — required by the fight clause of the goal.** The fight phase resolves but the agent
+decides none of it. Every one of these is a choice `12-fight-phase.md` gives a player and
+the engine currently makes:
+
+- which eligible unit activates next (the alternating-activation ordering)
+- pile-in target selection, and the pile-in move itself
+- the fight **type** — normal versus overrun — where a unit is eligible for both
+- whether to **pass**
+- the consolidate move
+
+Promoting these to agent actions is a **scope increase over the charge-only goal** and is
+what makes the fight clause achievable at all. ⚠ Until it lands, every fight-phase number
+measures the ENGINE's fight policy, not agent skill.
+
+**Design-uncertain — decide explicitly, do not slip in.** Target declaration → multi-target
+charge (§6). It adds actions, measured opportunity is 7.5% of eligible unit-turns with
+**0% realised**, and an expert review ranked it last on those grounds.
+
+**Out of scope, and named rather than forgotten** — each needs a subsystem this game does
+not have: sequential per-unit decisions (architecture), distance around obstacles
+(pathfinding), reckless break (suppression + backfire), vertical engagement (the board is
+2D), `MONSTER`/`VEHICLE` (no unit-type system), melee weapon selection and multiple profiles
+(a choice with no second case), and fighting after death — **a granted ABILITY no model
+has**, where implementing it as a default would make the game *incorrect*.
 
 ⚠ **"Melee" here means BOTH phases.** Charge and fight are one mechanic split across two
 phases by the rules, and a goal naming only the charge measures half of it.
