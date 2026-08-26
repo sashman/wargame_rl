@@ -137,13 +137,21 @@ def test_a_unit_with_no_enemy_within_charge_range_cannot_declare() -> None:
 
 
 def test_the_declaration_is_offered_once_an_enemy_is_within_range() -> None:
-    """The positive control: without it, a mask that refuses everything passes."""
+    """The positive control: without it, a mask that refuses everything passes.
+
+    ⚠ Updated 2026-08-26 with the roll gate: eligibility now also requires the
+    unit's 2D6 to cover the gap, so the fixture pins a covering roll explicitly
+    rather than inheriting whatever the reset rolled. The old fixture sat at
+    10" and passed or failed on the dice.
+    """
     # Arrange
     env = _env()
     try:
         _to_command_phase(env)
         _place(env.wargame_models, 5.0, 5.0)
         _place(env.opponent_models, 5.0 + CHARGE_RANGE - 2.0, 5.0)
+        for model in env.wargame_models:
+            model.charge_roll = 12.0
 
         # Act
         charge = _charge_column(env)
@@ -197,5 +205,53 @@ def test_both_seats_are_masked() -> None:
         assert slice_ is not None and action is not None
         column = action - slice_.start
         assert not legality[:, column].any(), "the opponent seat was left unmasked"
+    finally:
+        env.close()
+
+
+def test_a_unit_whose_roll_cannot_cover_the_gap_may_not_declare() -> None:
+    """A doomed declaration is masked, exactly as a doomed advance is.
+
+    Regression, 2026-08-26. Declaration eligibility checked the 12" range and
+    the blocked flags but never the ROLL -- so a unit at gap 10" that rolled 3
+    could declare a charge no rung could land, and the referee reverted the
+    move to a bit-exact no-op. Measured on the arm of record: 13.8% of the
+    trained agent's charge attempts were doomed at declaration, while the
+    scripted comparator has always declined them (`_reachable_charge_units`).
+    """
+    # Arrange -- one unit inside the 12" declaration range whose roll is short.
+    env = _env()
+    try:
+        handler = env.player_action_handler
+        models = env.wargame_models
+        enemies = env.opponent_models
+        for index, model in enumerate(models):
+            model.group_id = 0
+            model.location = np.array([10.0, 10.0 + index * 0.2], dtype=float)
+            model.charge_roll = 3.0
+        gap_units = env.rules_quantities.scale.to_units(8.0)
+        for index, enemy in enumerate(enemies):
+            enemy.location = np.array(
+                [10.0 + gap_units, 10.0 + index * 0.2], dtype=float
+            )
+        column = handler._move_types.index(MOVE_TYPE_CHARGE)
+
+        # Act
+        doomed = handler.declaration_legality(models, enemies)
+
+        # A roll that covers the gap flips it back on -- same geometry, bigger
+        # dice, so the test cannot pass by the unit being ineligible outright.
+        for model in models:
+            model.charge_roll = 12.0
+        winnable = handler.declaration_legality(models, enemies)
+
+        # Assert
+        assert not doomed[:, column].any(), (
+            "a unit whose roll cannot reach any enemy was allowed to declare"
+        )
+        assert winnable[:, column].any(), (
+            "the same unit with a covering roll could not declare -- the "
+            "fixture is testing ineligibility, not the roll gate"
+        )
     finally:
         env.close()

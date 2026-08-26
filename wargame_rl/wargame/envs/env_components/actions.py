@@ -1030,10 +1030,63 @@ class ActionHandler:
             alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
             if alive_enemies:
                 eligible = self._charge_eligible_units(models, alive_enemies)
+                # ⚠ NOT a rules gate -- a REPRESENTATION one, the same divergence
+                # the advance declaration makes above, in the same direction, for
+                # the same reason. The rules roll AFTER the declaration, so a
+                # doomed declaration is a legal play there; here the roll comes
+                # first (`DEFERRED: charge.blind_declaration`), so a unit whose
+                # roll cannot cover the gap to ANY enemy is declaring a charge
+                # that no rung can land. That declaration binds the unit into
+                # the charge phase for a move the referee must revert -- a
+                # zero-gradient trap, and 13.8% of a trained arm's attempts.
+                # The scripted comparator has always declined these
+                # (`_reachable_charge_units` asks gap <= roll); masking gives
+                # the learned policy the same information.
+                reachable = self._roll_reachable_units(models, alive_enemies)
                 for index, model in enumerate(models):
-                    if model.is_alive and int(model.group_id) in eligible:
+                    if (
+                        model.is_alive
+                        and int(model.group_id) in eligible
+                        and int(model.group_id) in reachable
+                    ):
                         legality[index, column] = True
         return legality
+
+    def _roll_reachable_units(
+        self, models: list[Any], alive_enemies: list[Any]
+    ) -> set[int]:
+        """Units whose charge roll can cover the gap to at least one enemy.
+
+        Reach is the ROLL alone, through the scale, exactly as
+        `_charge_reach` and the charge ladder read it; contact is the
+        engagement ring plus both bases, exactly as `_charge_is_legal`
+        judges it. A gate that asked a different question from the referee
+        would declare charges the referee must then revert.
+        """
+        positions = np.array([m.location for m in models], dtype=float)
+        enemy_positions = np.array([m.location for m in alive_enemies], dtype=float)
+        enemy_radii = np.array(
+            [float(m.base_radius) for m in alive_enemies], dtype=float
+        )
+        gaps = (
+            np.linalg.norm(
+                positions[:, np.newaxis, :] - enemy_positions[np.newaxis, :, :],
+                axis=2,
+            )
+            - enemy_radii[np.newaxis, :]
+            - self._base_radius
+        )
+        contact = self._engagement_range
+        reachable: set[int] = set()
+        for index, model in enumerate(models):
+            if not model.is_alive:
+                continue
+            group = int(model.group_id)
+            if group in reachable:
+                continue
+            if float(gaps[index].min()) - contact <= self._charge_reach(model):
+                reachable.add(group)
+        return reachable
 
     def charge_legality(
         self, models: list[Any], enemy_models: list[Any] | None
@@ -1286,6 +1339,11 @@ class ActionHandler:
             return None
 
         return self._advance_slice.start + angle_idx * self._n_advance_bins + bin_idx
+
+    def displaces_in(self, phase: BattlePhase) -> bool:
+        """Public form of `_displaces_in` -- the facade records per-phase
+        coherency for exactly the phases in which a model can move."""
+        return self._displaces_in(phase)
 
     def _displaces_in(self, phase: BattlePhase) -> bool:
         """Does a movement action actually move a model in this phase?
