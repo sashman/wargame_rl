@@ -38,6 +38,28 @@ about for the standing *fraction* while asserting the numerator was free of it.
 ⚠ **A docstring that lists its author's past mistakes reads as audited and is
 not.** Six panellists trusted this one without validating it.
 
+⚠ **AN AGENT ROW DOES NOT REPRODUCE AND A SCRIPTED ROW DOES.** Measured
+2026-08-26: `squad_march_take_charge` scored 4.44/4.22/3.89/+13.3 on three
+consecutive runs, identical to every digit, while the SAME checkpoint on the
+same config, seeds and `decode_topk` scored `stood/ep` 0.22, 0.22, 0.33 -- and
+declarations, coherency and vp moved with it, so whole episodes diverged. It
+varies **within one process** as well as across processes.
+
+Not the env: the dice, map draws and opponent are all seeded in `reset`
+(`wargame.py:1247-1248`), which is why the scripted rows are exact. Not
+sampling: `_resolve_checkpoint` is a per-model `argmax` under `no_grad` with
+`eval()`. The logits themselves differ between calls, and at K=1 one flipped
+near-tie diverges the episode. ⚠ **UNRESOLVED** --
+`torch.use_deterministic_algorithms(True, warn_only=False)`, `cudnn.deterministic`
+and `CUBLAS_WORKSPACE_CONFIG` set before the first matmul do **not** fix it, so
+the cause is not yet established and must not be asserted.
+
+**Until it is: quote an agent row from repeats, never from one run**, and prefer
+a larger `n`. At n=9 with `stood/ep` under 1.0 a single flipped charge is a
+30-50% relative move -- larger than most differences this goal cares about. The
+noise floor is ASYMMETRIC, so an agent-versus-script comparison inherits it on
+one side only.
+
 ⚠ **A probe needs a KNOWN-ANSWER row.** `squad_march_take_charge` must read
 close to its published `stood/ep`; if it does not, the instrument changed and
 not the policy.
