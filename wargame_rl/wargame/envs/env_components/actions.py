@@ -55,8 +55,19 @@ _CHARGE_REACH_EPSILON = 1e-6
 # `dark_action_slices` is a typo that would silently darken nothing, so it
 # raises rather than doing nothing.
 KNOWN_ACTION_SLICES = frozenset(
-    {"stay", "movement", "shooting", "advance", "move_type"}
+    {"stay", "movement", "shooting", "advance", "move_type", "fight_order"}
 )
+
+# How many activation priorities a unit can declare in the fight phase.
+# ⚠ The rules let the controlling player pick ANY eligible unit each time it is
+# their turn to select, which for k units is a k! ordering and cannot be a
+# simultaneous per-model action. A coarse PRIORITY is the expressible form of
+# the same decision: every unit commits a level up front, and the engine selects
+# the highest still eligible. Four levels keeps the slice at four actions while
+# giving a real ordering; ties fall back to the lowest unit index, which is
+# exactly what the engine did before, so a policy that declares nothing behaves
+# as it always did.
+FIGHT_ORDER_LEVELS = 4
 
 # The move-type slice, in declaration order. `normal` first so that a policy
 # emitting the slice's first action declares the default, and STAY in the
@@ -443,6 +454,60 @@ class ActionHandler:
             )
         else:
             self._move_type_slice = None
+
+        # ⚠ **WHO SWINGS FIRST WAS THE ENGINE'S CHOICE, and the rules make it the
+        # player's.** `resolve_fight_step` picked `min(pool)` -- the lowest-indexed
+        # eligible unit -- where `12-fight-phase.md` says *"players alternate
+        # selecting one friendly eligible unit"*. In a game where merely making
+        # activation alternate halved a 25.0 vp seat asymmetry, the order units
+        # swing in is not bookkeeping.
+        #
+        # Registered LAST, after `move_type`, so no existing action index moves.
+        # Declared by the unit's LEADER and binding the unit, exactly as the move
+        # type is: a per-model priority would be five votes on one unit-level fact.
+        # ⚠ STAY declares level 0 and ties break on the lowest unit index, which
+        # is what the engine already did -- so a policy that never acts in the
+        # fight phase selects in exactly the order it always did.
+        if carries_charge:
+            self._fight_order_slice: ActionSlice | None = self._registry.register(
+                "fight_order",
+                FIGHT_ORDER_LEVELS,
+                phases("fight_order", frozenset({BattlePhase.fight})),
+            )
+        else:
+            self._fight_order_slice = None
+
+    @property
+    def fight_order_slice(self) -> ActionSlice | None:
+        """Activation-priority slice, or None where nothing fights."""
+        return self._fight_order_slice
+
+    def declare_fight_order(
+        self, action: WargameEnvAction, wargame_models: list[Any]
+    ) -> None:
+        """Record each unit's activation priority from its LEADER's action.
+
+        Higher goes first. ⚠ Level 0 is what STAY declares, so a policy that does
+        not act in the fight phase leaves every unit level 0 and the engine falls
+        back to the lowest-index order it used before this existed.
+        """
+        if self._fight_order_slice is None:
+            return
+        start = self._fight_order_slice.start
+        end = self._fight_order_slice.end
+        leaders: dict[int, int] = {}
+        for index, model in enumerate(wargame_models):
+            if not model.is_alive:
+                continue
+            leaders.setdefault(int(model.group_id), index)
+        priorities: dict[int, int] = {}
+        for group, leader in leaders.items():
+            if leader >= len(action.actions):
+                continue
+            chosen = int(action.actions[leader])
+            priorities[group] = chosen - start if start <= chosen < end else 0
+        for model in wargame_models:
+            model.fight_priority = priorities.get(int(model.group_id), 0)
 
     @property
     def move_type_slice(self) -> ActionSlice | None:
@@ -1511,6 +1576,11 @@ class ActionHandler:
             # action against its space before skipping non-movement phases, and
             # an unvalidated declaration would be a silent out-of-range action.
             self.declare_move_types(action, wargame_models)
+        if phase is BattlePhase.fight:
+            # Read BEFORE the fight resolves, which happens on the boundary
+            # leaving this phase -- so the priorities the engine selects on are
+            # the ones this step's action declared.
+            self.declare_fight_order(action, wargame_models)
 
         # ⚠ A charge resolves ONE UNIT AT A TIME, and every other phase
         # resolves the whole force in index order exactly as before. The

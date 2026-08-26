@@ -511,7 +511,28 @@ def resolve_fight_step(
             turn = 1 - turn
             continue
         passed[turn] = False
-        group = min(pool)
+        # ⚠ **THE PLAYER'S CHOICE, NOT THE ENGINE'S.** `12-fight-phase.md` says
+        # *"players alternate selecting one friendly eligible unit to fight"*.
+        # This was `min(pool)` -- the lowest-indexed unit, every time -- which
+        # is an arbitrary engine answer to a decision the rules hand to the
+        # controlling player, in a game where merely making activation
+        # alternate halved a 25.0 vp seat asymmetry.
+        #
+        # A full ordering over k units is k! and cannot be one simultaneous
+        # per-model action, so the expressible form is a PRIORITY each unit
+        # declares up front (`ActionHandler.declare_fight_order`): select the
+        # highest still eligible, break ties on the lowest unit index.
+        # ⚠ Ties on index is exactly the old rule, and STAY declares level 0,
+        # so a force that declares nothing selects in the order it always did.
+        group = max(
+            pool,
+            key=lambda candidate: (
+                int(
+                    getattr(sides[turn].models[pool[candidate][0]], "fight_priority", 0)
+                ),
+                -candidate,
+            ),
+        )
         members = pool[group]
         fought[turn].add(group)
         matrix = _contact_matrix(

@@ -189,10 +189,19 @@ number_of_battle_rounds: 20
 #
 # ⚠ Every melee figure measured before this is VOID on this config: the episode
 # is a third longer and the charge is a different decision.
-skip_phases:
-  - fight
+# ⚠ **EMPTY, and `fight` is now STEPPED** (2026-08-26). It used to skip because
+# the phase's mask offered exactly one legal action per model -- STAY -- so
+# stepping it bought a decision with one option. That is no longer true: a unit
+# declares its ACTIVATION PRIORITY here (`fight_order`), which is the rules'
+# *"players alternate selecting one friendly eligible unit"* in the only form a
+# simultaneous per-model action space can express it. The engine used to answer
+# that with `min(pool)`, the lowest-indexed unit every time.
+# ⚠ This raises `max_turns` from 80 to 100 -- `max_turns` is
+# `n_rounds x (5 - len(skip_phases))` -- so it is +25% episode length again, and
+# every melee figure taken at 80 is void.
+skip_phases: []
 
-# ⚠ `charge` is NOT skipped and `fight` still is, and both are deliberate.
+# ⚠ Neither `charge` nor `fight` is skipped, and both carry real decisions.
 # The charge phase carries a real agent action; the fight phase's mask offers
 # exactly one legal action per model (STAY), so it resolves on the boundary
 # leaving it instead of costing an agent step per round. `melee.enabled`

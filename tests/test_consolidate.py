@@ -24,7 +24,7 @@ from wargame_rl.wargame.envs.domain.shooting import (
     DefenderStats,
     expected_attack_damage,
 )
-from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
+from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION, ActionHandler
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.state.events import (
     _apply_model_delta,
@@ -338,7 +338,20 @@ def test_the_shipped_melee_config_is_lethality_neutral() -> None:
     # Assert
     assert config.melee.enabled
     assert BattlePhase.charge not in (config.skip_phases or [])
-    assert BattlePhase.fight in (config.skip_phases or [])
+    # ⚠ **This asserted `fight in skip_phases` until 2026-08-26**, pinning a
+    # design decision as though it were a rule. The reason it was skipped was
+    # that its mask offered exactly one legal action per model, so stepping it
+    # bought a decision with one option -- and that reason expired when the
+    # activation-priority declaration gave the phase a real choice. Assert the
+    # REASON, which is what has to keep holding: a stepped phase must offer more
+    # than STAY, or it is pure episode length.
+    assert BattlePhase.fight not in (config.skip_phases or [])
+    handler = ActionHandler(config, n_models=len(player_models))
+    fight_mask = handler.registry.get_action_mask(BattlePhase.fight)
+    assert int(fight_mask.sum()) > 1, (
+        "the fight phase is stepped but offers only STAY, which is episode "
+        "length bought for nothing"
+    )
     # ⚠ Pinned as a NUMBER, not as a claim about neutrality. The 0.02415 target
     # this was chosen against is half of `0.163 x 0.296296` -- half the damage an
     # AVERAGE model's shooting is worth -- and an engaged model is not average:

@@ -135,7 +135,18 @@ def measure(
                 # `charged_this_turn` implies the unit moved, so this is a
                 # subset of `moving` -- but it is the REFEREE's subset, not
                 # every unit something displaced during the step.
-                stood += len(stood_units)
+                #
+                # ⚠ **GATED ON THE CHARGE PHASE, and it has to be.** The flag is
+                # set in the charge step and cleared in `_resolve_fight_phase`,
+                # which runs on the boundary leaving the FIGHT phase. While
+                # `fight` was skipped both happened inside one step; once it is
+                # stepped they are two, the flag survives into the fight step
+                # and an ungated count reports every charge TWICE. Caught by an
+                # impossible value -- a standing fraction of 1.636, stood 8.00
+                # against tried 4.89 -- which is the argument for printing a
+                # ratio whose bound is known.
+                if phase is BattlePhase.charge:
+                    stood += len(stood_units)
                 done = terminated or truncated
             # ⚠ The POLICY'S OWN figure, not the realised one. This config
             # referees with `enforce_move: revert_unit`, under which the

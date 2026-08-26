@@ -299,3 +299,72 @@ def test_overrun_is_OFF_by_the_flag() -> None:
             assert np.array_equal(before[row], env.wargame_models[index].location)
     finally:
         env.close()
+
+
+def test_the_unit_that_declared_a_higher_priority_swings_first() -> None:
+    """Which unit activates is the PLAYER's choice, not the engine's.
+
+    ⚠ **This was `min(pool)` until 2026-08-26** — the lowest-indexed eligible
+    unit, every single time — where `12-fight-phase.md` says *"players alternate
+    selecting one friendly eligible unit to fight"*. That is an arbitrary engine
+    answer to a decision the rules hand to the controlling player, in a game
+    where merely making activation alternate halved a 25.0 vp seat asymmetry.
+
+    A full ordering over k units is k! and cannot be one simultaneous per-model
+    action, so the expressible form is a priority each unit declares up front.
+    """
+    # Arrange — squad 1 declares above squad 0, reversing the index order.
+    env = _env(units=2)
+    try:
+        _lock(env)
+        for model in env.wargame_models:
+            model.fight_priority = 3 if int(model.group_id) == 1 else 0
+        quantities = env.rules_quantities
+
+        # Act
+        mine, _theirs = resolve_fight_step(
+            _sides(env),
+            np.random.default_rng(7),
+            engagement_range=quantities.engagement_range,
+            base_diameter=2.0 * quantities.base_radius,
+            pass_range=quantities.scale.to_units(5.0),
+        )
+
+        # Assert
+        assert mine, "nobody swung"
+        first = int(env.wargame_models[mine[0].attacker_idx].group_id)
+        assert first == 1, "the declared priority did not reorder activation"
+    finally:
+        env.close()
+
+
+def test_declaring_nothing_keeps_the_order_the_engine_always_used() -> None:
+    """The no-op guarantee: level 0 everywhere means ties break on unit index.
+
+    STAY declares level 0, so a policy that never acts in the fight phase must
+    select in exactly the order `min(pool)` gave it. Without this the priority
+    would be a silent behaviour change for every policy written before it.
+    """
+    # Arrange
+    env = _env(units=2)
+    try:
+        _lock(env)
+        for model in env.wargame_models:
+            model.fight_priority = 0
+        quantities = env.rules_quantities
+
+        # Act
+        mine, _theirs = resolve_fight_step(
+            _sides(env),
+            np.random.default_rng(7),
+            engagement_range=quantities.engagement_range,
+            base_diameter=2.0 * quantities.base_radius,
+            pass_range=quantities.scale.to_units(5.0),
+        )
+
+        # Assert
+        assert mine, "nobody swung"
+        first = int(env.wargame_models[mine[0].attacker_idx].group_id)
+        assert first == 0, "the lowest-indexed unit no longer goes first on a tie"
+    finally:
+        env.close()

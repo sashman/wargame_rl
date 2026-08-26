@@ -89,6 +89,9 @@ class WargameModel:
         # STAY illegal for the unit's models in the charge phase, because a
         # charge is a unit move and half a unit charging is a reverted charge.
         self.declared_charge: bool = False
+        # Activation priority for the fight phase; higher swings first,
+        # ties on unit index. 0 is what STAY declares.
+        self.fight_priority: int = 0
 
     def set_previous_closest_objective_distance(self, distance: float) -> None:
         self.previous_closest_objective_distance = distance
@@ -110,6 +113,7 @@ class WargameModel:
         self.charge_roll = 0.0
         self.charged_this_turn = False
         self.declared_charge = False
+        self.fight_priority = 0
 
     def begin_turn(self) -> None:
         """Clear the per-TURN move state before this side moves again.
@@ -126,6 +130,7 @@ class WargameModel:
         self.charge_roll = 0.0
         self.charged_this_turn = False
         self.declared_charge = False
+        self.fight_priority = 0
 
     @property
     def is_alive(self) -> bool:
