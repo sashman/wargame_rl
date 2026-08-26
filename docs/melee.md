@@ -1,3 +1,16 @@
+> ⚠ **STALE IN PLACES — READ THIS FIRST.** This document was written before the melee
+> completion of 2026-08-26 (`5da54ed`), which closed six gaps and changed three rules it
+> describes. The authority for what is implemented is
+> [rules/implementation-status.md](rules/implementation-status.md); the work list is
+> [melee-outstanding.md](melee-outstanding.md); the teaching goal and the bar of record are
+> [melee-teaching-goal.md](melee-teaching-goal.md).
+>
+> Specifically now WRONG below, each corrected in place:
+> `charge.beyond_move_ladder` is **closed** (the charge spans 2D6, not Move);
+> `fight.pile_in`, `fight.passing`, `fight.alternating_activation`, `fight.overrun` and
+> `consolidate.ongoing` are **implemented**; and a declared unit **MAY decline** — the
+> rules grant it and the no-stand-still clause was removed.
+
 # Melee: the charge phase and the fight phase
 
 `melee.enabled` defaults to **False**, and off it is an exact no-op — no slice
@@ -189,7 +202,12 @@ loses an argmax to STAY as **one** action at 0.41 — and it compounds per model
 Two halves:
 
 - a charge **rung** is legal only for a unit that declared, as an advance rung already was;
-- a declared unit **may not stand still**. Permitting a charge is not compelling one, and
+- ⚠ **RETRACTED 2026-08-26 — a declared unit MAY stand still.** `11-charge-phase.md` step 3
+  grants the decline explicitly (*"and the controlling player still wants to make it …
+  Otherwise the unit does not move"*), and this clause removed a right the game gives. It
+  bound 30 of 31 declared units and cost the scripted bar nothing when removed, so it only
+  ever penalised a policy that wanted to decline — i.e. the agent. Superseded reasoning:
+  permitting a charge is not compelling one, and
   permission alone leaves exactly the state above. STAY survives for a model the 2D6 cannot
   carry into contact, because a mask must never empty a row. Both seats.
 
@@ -245,7 +263,9 @@ per episode).
 ⚠ **It was gated on four mechanism criteria written before it ran, and it FAILED
 gate 2 twice** — 44.8% then 55.9% of moved charges touching nobody. Both were
 aiming errors, and the second was reading the charge cap as `Move + roll`, which is
-the *advance's* rule; a charge is capped by `min(Move, roll)`. Final: declared
+the *advance's* rule. ⚠ **`min(Move, roll)` is ALSO superseded**: since 2026-08-26 the
+charge has its own ladder spanning 2D6 (2"/4"/6"/8"/10"/12"), so it is capped by the
+**roll alone**, per `11-charge-phase.md` (*"Maximum distance | The charge roll"*). Final: declared
 9.75/ep, standing 6.12/ep, **standing fraction 0.628**, coherency 0.864 against the
 walker's 0.803, byte-identical to `squad_march_take` with melee off. **28.2% of moved
 charges still end incoherent** — the resolver deflecting members, the same wall three
