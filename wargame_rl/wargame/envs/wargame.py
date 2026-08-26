@@ -1392,6 +1392,16 @@ class WargameEnv(gym.Env):
         self._last_player_action = None
         self._last_opponent_action = None
         self._last_action_phase = None
+        # ⚠ MUST be cleared, and it was not until 2026-08-26. `_ensure_advance_rolls`
+        # memoises on `(battle_round, active_player)`, and `TransformerNetwork.from_env`
+        # sizes the network from an UNSEEDED `reset()`. That throwaway episode left the
+        # key set to `(1, <side>)`, so the first *seeded* episode of every measurement
+        # that builds a network skipped round 1's advance AND charge rolls for one side
+        # -- measured: the opponent's 25 models all rolled 0.0 -- while a scripted
+        # measurement, which never calls `from_env`, was unaffected. A one-sided bias
+        # between exactly the two columns of every comparison, and the direction was set
+        # by an unseeded player-side draw, so agent rows did not reproduce.
+        self._rolled_for = None
         self._last_terminated = False
 
         self.current_turn = 0
