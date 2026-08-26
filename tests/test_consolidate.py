@@ -25,7 +25,11 @@ from wargame_rl.wargame.envs.domain.shooting import (
     DefenderStats,
     expected_attack_damage,
 )
-from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION, ActionHandler
+from wargame_rl.wargame.envs.env_components.actions import (
+    STAY_ACTION,
+    ActionHandler,
+    MoveLadder,
+)
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.state.events import (
     _apply_model_delta,
@@ -37,7 +41,7 @@ from wargame_rl.wargame.envs.types.config import MeleeConfig, MeleeWeaponProfile
 from wargame_rl.wargame.envs.types.config.battle import OpponentPolicyConfig
 from wargame_rl.wargame.envs.types.config.entities import ModelConfig
 from wargame_rl.wargame.envs.types.config.env import WargameEnvConfig
-from wargame_rl.wargame.envs.types.game_timing import BattlePhase
+from wargame_rl.wargame.envs.types.game_timing import BATTLE_PHASE_ORDER, BattlePhase
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.model.common.factory import create_environment
@@ -202,8 +206,15 @@ def _env() -> WargameEnv:
     return env
 
 
-def test_consolidation_happens_through_env_step() -> None:
-    """The whole path: locked in melee, kill the target, walk onto the point."""
+def test_consolidation_is_now_the_AGENT_S_move_through_env_step() -> None:
+    """The whole path: locked in melee, kill the target, then WALK onto the point.
+
+    ⚠ **The engine used to make this move; now the agent does.** `consolidate`
+    became a phase of its own in 2026-08-26, so a policy that submits STAY
+    consolidates nowhere -- which is correct, and is why this test now issues a
+    real action in that phase instead of stepping STAY throughout and asserting
+    the engine had moved the survivor for it.
+    """
     env = _env()
     player = env.wargame_models[0]
     opponent = env.opponent_models[0]
@@ -216,9 +227,21 @@ def test_consolidation_happens_through_env_step() -> None:
     # ⚠ Eight, not three. The command phase is stepped now -- a charge is
     # declared there -- so a round costs more agent steps and a budget sized to
     # the old phase layout never reaches the fight boundary.
-    for _ in range(8):
-        env.step(WargameEnvAction(actions=[STAY_ACTION]))
-        if not opponent.is_alive:
+    handler = env.player_action_handler
+    steps = 4 * (len(BATTLE_PHASE_ORDER) - len(env.config.skip_phases))
+    for _ in range(steps):
+        if env.game_clock_state.phase is BattlePhase.consolidate and (
+            not opponent.is_alive
+        ):
+            delta = np.asarray(objective.location) - np.asarray(player.location)
+            action = handler.best_action_toward(
+                float(delta[0]), float(delta[1]), ladder=MoveLadder.short
+            )
+        else:
+            action = STAY_ACTION
+        env.step(WargameEnvAction(actions=[action]))
+        offset = compute_distances([player], [objective]).model_obj_norms_offset[0, 0]
+        if not opponent.is_alive and offset <= radius:
             break
 
     assert not opponent.is_alive, "the melee did not kill the target"

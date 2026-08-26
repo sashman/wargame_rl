@@ -55,6 +55,8 @@ class BaselinePolicy(ABC):
             return self.select_shooting(models, env, action_mask)
         if phase is BattlePhase.charge:
             return self.select_charge(models, env)
+        if phase in (BattlePhase.pile_in, BattlePhase.consolidate):
+            return self.select_short_move(models, env, phase)
         return WargameEnvAction(actions=[STAY_ACTION] * len(models))
 
     @abstractmethod
@@ -103,6 +105,23 @@ class BaselinePolicy(ABC):
         illegal one to where the unit started, and this turn's fire is already
         spent. What a *successful* charge costs is next turn — an engaged unit
         cannot shoot, and cannot be shot at.
+        """
+        return WargameEnvAction(actions=[STAY_ACTION] * len(models))
+
+    def select_short_move(
+        self, models: list[WargameModel], env: WargameEnv, phase: BattlePhase
+    ) -> WargameEnvAction:
+        """Return one pile-in or consolidate action per player model.
+
+        ⚠ **A bar that cannot pile in is not a bar.** Both were resolved by the
+        ENGINE for both forces until 2026-08-26; now they are agent decisions in
+        phases of their own, and a scripted policy that stays put while the
+        agent shuffles into contact is the Advance failure again -- an arm
+        measured against an opponent physically incapable of the mechanic.
+
+        Defaults to standing still, which is legal in both phases: the referee
+        only judges a unit that actually moved. Overriding it is what lets a bar
+        use the rule.
         """
         return WargameEnvAction(actions=[STAY_ACTION] * len(models))
 

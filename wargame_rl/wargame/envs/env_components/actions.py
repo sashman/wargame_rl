@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 import numpy as np
@@ -28,6 +29,10 @@ from wargame_rl.wargame.envs.domain.engagement import (
     engagement_matrix,
 )
 from wargame_rl.wargame.envs.domain.movement import back_off_to_unengaged, resolve_move
+from wargame_rl.wargame.envs.domain.pile_in import (
+    SELECTION_RANGE_INCHES,
+    agent_move_is_legal,
+)
 from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
 from wargame_rl.wargame.envs.domain.value_objects import (
     POSITION_DTYPE,
@@ -102,11 +107,61 @@ def _base_arrays(models: list[Any] | None) -> tuple[np.ndarray, np.ndarray]:
 
 ALL_BATTLE_PHASES: frozenset[BattlePhase] = frozenset(BattlePhase)
 
-# The two phases in which a model actually moves. A charge is an ordinary move
-# except for where it is allowed to END -- see `apply`.
+# The phases in which a model actually moves. A charge is an ordinary move
+# except for where it is allowed to END -- see `apply`. Pile-in and consolidate
+# are ordinary moves capped far shorter, with their own after-conditions.
 _DISPLACING_PHASES: frozenset[BattlePhase] = frozenset(
-    {BattlePhase.movement, BattlePhase.charge}
+    {
+        BattlePhase.movement,
+        BattlePhase.charge,
+        BattlePhase.pile_in,
+        BattlePhase.consolidate,
+    }
 )
+
+# `12-fight-phase.md`: a pile-in and a consolidation are both "Maximum distance
+# 3"". One ladder serves both.
+SHORT_MOVE_MAX_INCHES = 3.0
+
+
+class MoveLadder(str, Enum):
+    """Which distance table the movement slice decodes to.
+
+    ⚠ The same action index means a different DISTANCE in different phases, and
+    that is deliberate: it is what lets the charge and the pile-in reuse the
+    movement slice instead of buying new actions. It is safe here where it was
+    not for the advance because phase is deterministic, observable and constant
+    within a step, whereas the advance's old mapping moved with a per-turn die.
+    """
+
+    normal = "normal"
+    charge = "charge"
+    short = "short"
+
+
+# Phases whose move is judged as a WHOLE UNIT and reverted entire when illegal.
+_UNIT_REFEREED_PHASES: frozenset[BattlePhase] = frozenset(
+    {BattlePhase.charge, BattlePhase.pile_in, BattlePhase.consolidate}
+)
+
+_LADDER_FOR_PHASE: dict[BattlePhase, MoveLadder] = {
+    BattlePhase.charge: MoveLadder.charge,
+    BattlePhase.pile_in: MoveLadder.short,
+    BattlePhase.consolidate: MoveLadder.short,
+}
+
+
+def ladder_for_phase(phase: BattlePhase | None) -> MoveLadder:
+    """Which distance table the movement slice decodes to in `phase`.
+
+    Public because the joint decoder must build its forward model on the SAME
+    table the env will apply. It was handed a bool for the charge and would have
+    modelled every pile-in rung at Move -- the shape of the advance defect that
+    manufactured 32-43% of the advances executed at play.
+    """
+    if phase is None:
+        return MoveLadder.normal
+    return _LADDER_FOR_PHASE.get(phase, MoveLadder.normal)
 
 
 @dataclass(frozen=True, slots=True)
@@ -340,6 +395,15 @@ class ActionHandler:
         # The rules' *"end within 1 inch of a target if it can"* clause.
         self._charge_touch_range = float(quantities.scale.to_units(1.0))
         step = float(quantities.scale.to_units(CHARGE_DICE_MAX)) / n_speeds
+        # The pile-in / consolidate ladder: `SHORT_MOVE_MAX_INCHES` split into
+        # the same number of rungs, so rung `s` travels `(s + 1) x (3 / bins)`.
+        # Move-independent, like the charge: the rules cap both at a distance,
+        # not at the model's Move.
+        short_step = float(quantities.scale.to_units(SHORT_MOVE_MAX_INCHES)) / n_speeds
+        self._short_displacements = (
+            self._unit_directions[:, np.newaxis, :]
+            * (np.arange(1, n_speeds + 1) * short_step)[np.newaxis, :, np.newaxis]
+        ).astype(POSITION_DTYPE)
         self._charge_displacements = (
             self._unit_directions[:, np.newaxis, :]
             * (np.arange(1, n_speeds + 1) * step)[np.newaxis, :, np.newaxis]
@@ -660,7 +724,7 @@ class ActionHandler:
         action: int,
         model_idx: int | None = None,
         advance_roll: float = 0.0,
-        charging: bool = False,
+        ladder: MoveLadder = MoveLadder.normal,
     ) -> np.ndarray:
         """Return the (dx, dy) displacement for *action*.
 
@@ -689,9 +753,12 @@ class ActionHandler:
         # which spans the 2D6 (up to 12") rather than Move (6"). It is shared
         # across models because the rules cap a charge at the roll alone, so a
         # slow model charges exactly as far as a fast one.
-        if charging:
+        if ladder is MoveLadder.charge:
             charge: np.ndarray = self._charge_displacements[angle_idx, speed_idx]
             return charge
+        if ladder is MoveLadder.short:
+            short: np.ndarray = self._short_displacements[angle_idx, speed_idx]
+            return short
         if model_idx is not None and self._model_displacements is not None:
             per_model: np.ndarray = self._model_displacements[
                 model_idx, angle_idx, speed_idx
@@ -834,6 +901,58 @@ class ActionHandler:
             int(models[index].group_id)
             for index in np.nonzero(np.asarray(contacts).any(axis=1))[0]
         }
+
+    def short_move_legality(
+        self, models: list[Any], enemy_models: list[Any] | None, phase: BattlePhase
+    ) -> np.ndarray:
+        """`(n_models, n_move_actions)` -- who may pile in or consolidate at all.
+
+        ⚠ **Without this the phases are unmasked**, exactly as the charge
+        DECLARATION was: every alive model could move 3" toward anything, twice
+        a turn, whether or not the rules make its unit eligible. Measured when
+        it was missing -- a scripted policy that piled in unconditionally
+        dragged its army off the objectives and the bar fell from +23.9 to
+        -27.8 vp.
+
+        `12-fight-phase.md` § Pile-in move: eligible if the unit is engaged, or
+        made a charge move this turn. The consolidate step takes the units that
+        *were eligible to fight*, which is the same set plus those that fought
+        and are now disengaged -- `fought_this_phase` carries that.
+        """
+        width = self._n_move_actions
+        legality = np.zeros((len(models), width), dtype=bool)
+        if phase not in (BattlePhase.pile_in, BattlePhase.consolidate):
+            return legality
+        alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+        if not alive_enemies:
+            return legality
+        positions = np.array([m.location for m in models], dtype=float)
+        enemy_positions = np.array([m.location for m in alive_enemies], dtype=float)
+        engaged = engaged_with_any(
+            positions,
+            enemy_positions,
+            np.ones(len(alive_enemies), dtype=bool),
+            np.array([m.is_alive for m in models], dtype=bool),
+            engagement_range=self._engagement_range,
+            base_diameter=2.0 * self._base_radius,
+        )
+        eligible: set[int] = set()
+        for index, model in enumerate(models):
+            if not model.is_alive:
+                continue
+            if (
+                engaged[index]
+                or getattr(model, "charged_this_turn", False)
+                or (
+                    phase is BattlePhase.consolidate
+                    and getattr(model, "fought_this_phase", False)
+                )
+            ):
+                eligible.add(int(model.group_id))
+        for index, model in enumerate(models):
+            if model.is_alive and int(model.group_id) in eligible:
+                legality[index] = True
+        return legality
 
     def declaration_legality(
         self, models: list[Any], enemy_models: list[Any] | None
@@ -1063,12 +1182,12 @@ class ActionHandler:
         dy: float,
         max_step_length: float | None = None,
         model_idx: int | None = None,
-        charging: bool = False,
+        ladder: MoveLadder = MoveLadder.normal,
     ) -> int:
         """Return the action that moves closest to the direction (dx, dy).
 
         Picks the angle bin nearest to atan2(dy, dx). When max_step_length is
-        None, uses maximum speed. ``charging`` picks the CHARGE ladder, which
+        None, uses maximum speed. ``ladder`` picks the distance table, which
         spans 2D6 rather than Move -- a caller aiming a charge with the movement
         ladder would size its step against distances the env will not use.
         When max_step_length is set, chooses the
@@ -1091,7 +1210,7 @@ class ActionHandler:
                 disp = self.decode_action(
                     self.encode_action(angle_idx, s),
                     model_idx=model_idx,
-                    charging=charging,
+                    ladder=ladder,
                 )
                 if np.linalg.norm(disp) <= max_step_length:
                     speed_idx = s
@@ -1181,6 +1300,51 @@ class ActionHandler:
             and phase in movement.valid_phases
         )
 
+    def _enforce_short_move(
+        self,
+        wargame_models: list[Any],
+        enemy_models: list[Any] | None,
+        start_positions: list[np.ndarray] | None,
+        batch: list[int],
+    ) -> None:
+        """Referee one unit's pile-in or consolidation; revert it whole if illegal.
+
+        ⚠ **All-or-nothing at the UNIT**, exactly as the charge is. A pile-in is
+        one unit's move in the rules, and `03-moving.md` reverts a move whose
+        after-conditions fail rather than repairing it -- which also keeps this
+        off `coherency.enforce_move`, a referee that is `off` on every shipped
+        config and would let an illegal shuffle simply stand.
+
+        The predicate is `pile_in.agent_move_is_legal`, deliberately the SAME
+        `_is_legal` the engine's constructive `pile_in` obeys. Two
+        implementations of one rule is how three different answers to "on an
+        objective" came to coexist here.
+        """
+        if start_positions is None:
+            return
+        members = [index for index in batch if wargame_models[index].is_alive]
+        if not members or not any(
+            not np.array_equal(start_positions[index], wargame_models[index].location)
+            for index in members
+        ):
+            return
+        alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+        before = np.array([start_positions[index] for index in members], dtype=float)
+        if agent_move_is_legal(
+            wargame_models,
+            members,
+            before,
+            alive_enemies,
+            selection_range=self._charge_scale.to_units(SELECTION_RANGE_INCHES),
+            engagement_range=self._engagement_range,
+            base_radius=self._base_radius,
+            coherency_nearest=self._coherency_nearest,
+            coherency_furthest=self._coherency_furthest,
+        ):
+            return
+        for index in members:
+            wargame_models[index].location = np.array(start_positions[index], copy=True)
+
     def _charge_batches(
         self,
         phase: BattlePhase,
@@ -1190,13 +1354,14 @@ class ActionHandler:
     ) -> list[list[int]]:
         """Model indices to resolve together, in order.
 
-        One batch holding the whole force for every phase but the charge, which
-        keeps the existing index order and therefore every existing result. A
-        charge resolves one UNIT at a time, in group order, so that the referee
-        can put a failed unit back before the next unit has moved.
+        One batch holding the whole force for every phase that is not refereed
+        at unit level, which keeps the existing index order and therefore every
+        existing result. The charge, the pile-in and the consolidation each
+        resolve one UNIT at a time, in group order, so the referee can put a
+        failed unit back before the next unit has moved.
         """
         indices = list(range(len(action.actions)))
-        if charge_start is None or phase is not BattlePhase.charge:
+        if charge_start is None or phase not in _UNIT_REFEREED_PHASES:
             return [indices]
         units: dict[int, list[int]] = {}
         for index in indices:
@@ -1566,9 +1731,13 @@ class ActionHandler:
         )
         friendly_alive = np.array([m.is_alive for m in wargame_models], dtype=bool)
         began_engaged = self._engaged_before_moving(phase, wargame_models, enemy_models)
+        # ⚠ Every phase that is refereed at UNIT level needs its start
+        # positions: the revert puts the whole unit back, and `previous_location`
+        # is a single slot written once per movement phase, which would send a
+        # non-mover back two phases.
         charge_start = (
             [np.array(m.location, copy=True) for m in wargame_models]
-            if phase is BattlePhase.charge and self._displaces_in(phase)
+            if phase in _UNIT_REFEREED_PHASES and self._displaces_in(phase)
             else None
         )
         if phase is BattlePhase.command:
@@ -1610,7 +1779,7 @@ class ActionHandler:
                     act,
                     model_idx=i,
                     advance_roll=model.advance_roll,
-                    charging=phase is BattlePhase.charge,
+                    ladder=_LADDER_FOR_PHASE.get(phase, MoveLadder.normal),
                 )
                 if not collides:
                     model.location = back_off_to_unengaged(
@@ -1666,8 +1835,14 @@ class ActionHandler:
 
         for batch in self._charge_batches(phase, wargame_models, action, charge_start):
             move_batch(batch)
-            if charge_start is not None:
+            if charge_start is None:
+                continue
+            if phase is BattlePhase.charge:
                 self._enforce_charge(wargame_models, enemy_models, charge_start, batch)
+            else:
+                self._enforce_short_move(
+                    wargame_models, enemy_models, charge_start, batch
+                )
 
         self._mark_fall_backs(wargame_models, began_engaged)
 

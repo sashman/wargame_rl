@@ -13,10 +13,12 @@ from wargame_rl.wargame.envs.baseline.policy import (
 )
 from wargame_rl.wargame.envs.baseline.registry import register_baseline
 from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
+from wargame_rl.wargame.envs.domain.pile_in import SELECTION_RANGE_INCHES, pile_in
 from wargame_rl.wargame.envs.env_components.actions import (
     MOVE_TYPE_ADVANCE,
     MOVE_TYPE_CHARGE,
     STAY_ACTION,
+    MoveLadder,
 )
 from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
@@ -307,6 +309,85 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
                 reachable.add(group_id)
         return reachable
 
+    def select_short_move(
+        self,
+        models: list[WargameModel],
+        env: WargameEnv,
+        phase: BattlePhase,
+    ) -> WargameEnvAction:
+        """Pile in and consolidate using the ENGINE's own constructive rule.
+
+        ⚠ **A bar that cannot pile in is not a bar**, and a bar that piles in
+        BADLY is worse than one that cannot. Both moves were resolved by the
+        engine for both forces until they became phases of their own. The first
+        version of this rule aimed each model at its own nearest enemy, which
+        scattered squads, failed the unit referee and reverted whole units --
+        the bar fell from +23.9 to **-27.8** vp.
+
+        So this asks `domain.pile_in` -- the same constructive routine the
+        engine used -- where the unit WOULD have gone, restores the board, and
+        encodes that displacement as actions. The policy is then exactly as good
+        at piling in as the engine was, which is the only way a measurement
+        across this change means anything.
+
+        ⚠ The mask still decides eligibility: `pile_in` is handed only the units
+        the rules make eligible, and a proposal outside it would emit a
+        masked-out action.
+        """
+        actions = [STAY_ACTION] * len(models)
+        enemies = [m for m in env.opponent_models if m.is_alive]
+        if not enemies:
+            return WargameEnvAction(actions=actions)
+        handler = env.player_action_handler
+        legality = env.player_short_move_legality
+        eligible = {
+            int(model.group_id)
+            for index, model in enumerate(models)
+            if model.is_alive and legality[index].any()
+        }
+        if not eligible:
+            return WargameEnvAction(actions=actions)
+
+        quantities = env.rules_quantities
+        distance = (
+            env.config.melee.pile_in_distance
+            if phase is BattlePhase.pile_in
+            else env.config.melee.consolidate_distance
+        )
+        before = [np.array(m.location, copy=True) for m in models]
+        pile_in(
+            models,
+            enemies,
+            eligible_units=eligible,
+            max_distance=quantities.scale.to_units(distance),
+            selection_range=quantities.scale.to_units(SELECTION_RANGE_INCHES),
+            engagement_range=quantities.engagement_range,
+            base_radius=quantities.base_radius,
+            board=(float(env.board_width), float(env.board_height)),
+            coherency_nearest=quantities.scale.to_units(
+                env.config.coherency.nearest_distance
+            ),
+            coherency_furthest=quantities.scale.to_units(
+                env.config.coherency.furthest_distance
+            ),
+        )
+        for index, model in enumerate(models):
+            intended = np.asarray(model.location, dtype=float)
+            model.location = before[index]
+            if not model.is_alive or not legality[index].any():
+                continue
+            delta = intended - np.asarray(before[index], dtype=float)
+            if float(np.linalg.norm(delta)) <= 1e-9:
+                continue
+            actions[index] = handler.best_action_toward(
+                float(delta[0]),
+                float(delta[1]),
+                max_step_length=float(np.linalg.norm(delta)),
+                model_idx=index,
+                ladder=MoveLadder.short,
+            )
+        return WargameEnvAction(actions=actions)
+
     def select_charge(
         self, models: list[WargameModel], env: WargameEnv
     ) -> WargameEnvAction:
@@ -441,7 +522,7 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
                 model_idx=lead_index,
                 # The charge ladder, or the rule sizes its step against
                 # distances the env will not use in this phase.
-                charging=True,
+                ladder=MoveLadder.charge,
             )
             offset = action - movement.start
             if action == STAY_ACTION or offset < 0 or offset >= movement.size:

@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase
+
 if TYPE_CHECKING:
     import numpy as np
 
@@ -97,6 +99,15 @@ class MirroredEnv:
         """Recomputed from the OPPONENT's handler and models, as the others are."""
         return self._env.opponent_action_handler.declaration_legality(
             self._env.opponent_models, self._env.wargame_models
+        )
+
+    @property
+    def player_short_move_legality(self) -> np.ndarray:
+        """Recomputed from the OPPONENT's handler and models, as the others are."""
+        return self._env.opponent_action_handler.short_move_legality(
+            self._env.opponent_models,
+            self._env.wargame_models,
+            self._env.game_clock_state.phase or BattlePhase.movement,
         )
 
     @property

@@ -44,7 +44,10 @@ import numpy as np
 from wargame_rl.wargame.envs.domain.engagement import engagement_matrix
 from wargame_rl.wargame.envs.domain.movement import resolve_move
 from wargame_rl.wargame.envs.domain.value_objects import position
-from wargame_rl.wargame.envs.env_components.actions import _base_arrays
+from wargame_rl.wargame.envs.env_components.actions import (
+    _base_arrays,
+    ladder_for_phase,
+)
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 if TYPE_CHECKING:
@@ -105,12 +108,15 @@ def _displacement_table(env: WargameEnv) -> np.ndarray:
     # advance as a zero displacement and manufactured 32-43% of the advances
     # executed at play. `verify_moves` cannot catch it: `_resolve_endpoints` is
     # handed this same array.
-    charging = env.game_clock_state.phase is BattlePhase.charge
+    # ⚠ The pile-in and consolidate phases decode to a THIRD ladder, capped at
+    # 3", for the same reason: modelling those rungs at Move would overstate
+    # every one of them and certify moves the env will not produce.
+    ladder = ladder_for_phase(env.game_clock_state.phase)
     for model_idx, model in enumerate(models):
         roll = float(getattr(model, "advance_roll", 0.0))
         for action in range(1 + handler.n_move_actions):
             table[model_idx, action] = handler.decode_action(
-                action, model_idx=model_idx, charging=charging
+                action, model_idx=model_idx, ladder=ladder
             )
         if advance is None:
             continue

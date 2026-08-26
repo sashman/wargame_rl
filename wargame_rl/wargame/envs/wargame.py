@@ -271,6 +271,11 @@ class WargameEnv(gym.Env):
         self._last_player_action: WargameEnvAction | None = None
         self._last_opponent_action: WargameEnvAction | None = None
         self._last_action_phase: BattlePhase | None = None
+        # Carried from the fight boundary to the consolidate boundary; see
+        # `_resolve_consolidate_phase`.
+        self._fought_units: tuple[set[int], set[int]] | None = None
+        self._consolidate_order: Any = None
+        self._engaged_before_consolidate: tuple[set[int], ...] | None = None
         self._last_terminated: bool = False
 
         # Last reward from step(); None until first step after reset
@@ -515,6 +520,15 @@ class WargameEnv(gym.Env):
         """
         return self._action_handler.declaration_legality(
             self.wargame_models, self.opponent_models
+        )
+
+    @property
+    def player_short_move_legality(self) -> np.ndarray:
+        """`(n_models, n_move_actions)` — who may pile in or consolidate."""
+        return self._action_handler.short_move_legality(
+            self.wargame_models,
+            self.opponent_models,
+            self._game_clock.state.phase or BattlePhase.movement,
         )
 
     @property
@@ -785,34 +799,13 @@ class WargameEnv(gym.Env):
             )
             for attackers, defenders, _weapons, is_player in order
         }
-        # ⚠ **PILE IN FIRST**, and in the same order. `12-fight-phase.md` runs
-        # the pile-in step before the fight step, active player's units first,
-        # and a unit that closes here fights from where it ends up. Doing it
-        # after would be a different game: a model pinned at the outer edge of
-        # engagement range would swing from there and never close.
-        if self.config.melee.pile_in:
-            for attackers, defenders, _weapons, is_player in order:
-                pile_in(
-                    attackers,
-                    defenders,
-                    eligible_units=eligible[is_player],
-                    max_distance=self._rules_quantities.scale.to_units(
-                        self.config.melee.pile_in_distance
-                    ),
-                    selection_range=self._rules_quantities.scale.to_units(
-                        PILE_IN_SELECTION_RANGE_INCHES
-                    ),
-                    engagement_range=engagement_range,
-                    base_radius=self._rules_quantities.base_radius,
-                    board=(float(self.board_width), float(self.board_height)),
-                    coherency_nearest=self._rules_quantities.scale.to_units(
-                        self.config.coherency.nearest_distance
-                    ),
-                    coherency_furthest=self._rules_quantities.scale.to_units(
-                        self.config.coherency.furthest_distance
-                    ),
-                )
-
+        # ⚠ **THE ENGINE NO LONGER PILES IN.** `pile_in` is a phase of its own
+        # (2026-08-26) and both seats move in it through their own policies --
+        # the agent by its action, a scripted policy through
+        # `BaselinePolicy.select_short_move`. Doing it here as well would move
+        # every model twice. What survives is the REFEREE
+        # (`ActionHandler._enforce_short_move`), which judges the move each side
+        # actually made against the same `_is_legal` this engine path used.
         # ⚠ **ALTERNATING, one unit at a time** (`fight.alternating_activation`,
         # closed 2026-08-26). v1 resolved the active player's WHOLE side and
         # then the opponent's, which is a materially different game: every one
@@ -884,22 +877,58 @@ class WargameEnv(gym.Env):
                     self._last_player_fight_results.extend(results)
                 else:
                     self._last_opponent_fight_results.extend(results)
-        # The rules' own order: pile-in, fight, THEN consolidate, with every
-        # unit fighting before any unit consolidates.
-        for seat, (attackers, defenders, _weapons, is_player) in enumerate(order):
-            dragged = self._consolidate(attackers, defenders, eligible[is_player])
-            # ⚠ The dragged-in units are on the OTHER side -- this force walked
-            # into them -- and only those that were never selected to fight get
-            # a swing. `12-fight-phase.md` makes this the price of the Engaging
-            # mode; without it a unit could close on a fresh enemy after the
-            # fight step had shut and take no return blows for it.
+        # ⚠ **THE ENGINE NO LONGER CONSOLIDATES EITHER.** `consolidate` is a
+        # phase of its own and both seats move in it through their own policies.
+        # The drag-in clause still has to fire, but it can only be judged once
+        # BOTH sides have finished consolidating -- so what it needs is carried
+        # to the boundary leaving that phase and resolved in
+        # `_resolve_consolidate_phase`.
+        self._fought_units = (set(fought[0]), set(fought[1]))
+        self._consolidate_order = order
+        self._engaged_before_consolidate = tuple(
+            self._engaged_enemy_groups(force, foes) for force, foes, _w, _p in order
+        )
+
+        # ⚠ Cleared for BOTH forces, here rather than in `begin_turn`. Both
+        # sides fight on the active player's boundary, and only the active
+        # player can have charged this turn -- but `begin_turn` clears the side
+        # whose turn is starting, so the opposing force's flag would survive
+        # into the next turn's fight and buy it a priority it did not earn.
+        for models in (self.wargame_models, self.opponent_models):
+            for model in models:
+                model.charged_this_turn = False
+
+    def _resolve_consolidate_phase(self, state: GameState) -> None:
+        """Grant a swing to units an Engaging consolidation dragged into the fight.
+
+        `12-fight-phase.md` § Consolidation move, Engaging: any enemy unit now
+        engaged with the consolidating unit that has **not** been selected to
+        fight this phase becomes eligible and is selected to fight. Without it
+        Engaging is strictly free -- a unit walks into contact after the fight
+        step has shut and takes no return blows.
+
+        ⚠ Resolved HERE, on the boundary leaving `consolidate`, rather than
+        inside the consolidate step: both sides move in that phase through their
+        own policies, so "who is newly engaged" is only knowable once both have.
+        """
+        if not self.config.melee.enabled or self._consolidate_order is None:
+            return
+        if state.phase is not BattlePhase.consolidate or state.active_player is None:
+            return
+        order = self._consolidate_order
+        before = self._engaged_before_consolidate or ((set(), set()))
+        fought = self._fought_units or (set(), set())
+        engagement_range = self._rules_quantities.engagement_range
+        base_diameter = 2.0 * self._rules_quantities.base_radius
+        for seat, (force, foes, _weapons, _is_player) in enumerate(order):
+            dragged = self._engaged_enemy_groups(force, foes) - before[seat]
             owed = dragged - fought[1 - seat]
             if not owed:
                 continue
             fought[1 - seat].update(owed)
             results = fight_dragged_in_units(
-                defenders,
-                attackers,
+                foes,
+                force,
                 owed,
                 self._combat_rng,
                 engagement_range=engagement_range,
@@ -910,14 +939,7 @@ class WargameEnv(gym.Env):
                 self._last_player_fight_results.extend(results)
             else:
                 self._last_opponent_fight_results.extend(results)
-        # ⚠ Cleared for BOTH forces, here rather than in `begin_turn`. Both
-        # sides fight on the active player's boundary, and only the active
-        # player can have charged this turn -- but `begin_turn` clears the side
-        # whose turn is starting, so the opposing force's flag would survive
-        # into the next turn's fight and buy it a priority it did not earn.
-        for models in (self.wargame_models, self.opponent_models):
-            for model in models:
-                model.charged_this_turn = False
+        self._consolidate_order = None
 
     def _engaged_enemy_groups(
         self, models: list[WargameModel], enemy_models: list[WargameModel]
@@ -1252,6 +1274,7 @@ class WargameEnv(gym.Env):
         # same step, which is the rule. Reversing them would cull first and let
         # models that should have swung die before they did.
         self._resolve_fight_phase(state)
+        self._resolve_consolidate_phase(state)
         self._regain_coherency(state)
         if state.phase != BattlePhase.command or state.battle_round is None:
             return
@@ -1568,6 +1591,15 @@ class WargameEnv(gym.Env):
             # `observation_builder`, and removing it on one seat only would be a
             # rules difference between them, which shooting alone already
             # measures at 24.6 vp.
+        if phase in (BattlePhase.pile_in, BattlePhase.consolidate):
+            # Both seats or neither.
+            movement_slice = handler.movement_slice
+            mask[:, movement_slice.start : movement_slice.end] &= (
+                handler.short_move_legality(
+                    self.opponent_models, self.wargame_models, phase
+                )
+            )
+
         move_type_slice = handler.move_type_slice
         if move_type_slice is not None and phase is BattlePhase.command:
             # Both seats or neither. An unmasked declaration lets the opponent

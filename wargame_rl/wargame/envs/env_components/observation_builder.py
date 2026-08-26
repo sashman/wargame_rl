@@ -555,6 +555,16 @@ def build_observation(
             # engaged, so a squad that half-commits stretches and reverts anyway.
             # The rule was being enforced twice, once correctly.
 
+        if phase in (BattlePhase.pile_in, BattlePhase.consolidate):
+            # ⚠ Without this the phases are UNMASKED: every alive model could
+            # shuffle 3" toward anything twice a turn, eligible or not. Measured
+            # when it was missing -- a script piling in unconditionally dragged
+            # its army off the objectives and the bar fell +23.9 -> -27.8 vp.
+            movement_slice = action_registry.slice_for("movement")
+            action_mask[:, movement_slice.start : movement_slice.end] &= (
+                view.player_short_move_legality
+            )
+
         if action_registry.has_slice("move_type") and phase == BattlePhase.command:
             # ⚠ The declaration was UNMASKED until 2026-08-26. A unit the rules
             # make ineligible could still declare -- a charge declaration is a

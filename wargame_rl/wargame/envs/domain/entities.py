@@ -92,6 +92,10 @@ class WargameModel:
         # Activation priority for the fight phase; higher swings first,
         # ties on unit index. 0 is what STAY declares.
         self.fight_priority: int = 0
+        # Set when the unit is selected to fight; the consolidate step
+        # takes the units that WERE eligible to fight, which includes
+        # those now disengaged because they killed what they fought.
+        self.fought_this_phase: bool = False
 
     def set_previous_closest_objective_distance(self, distance: float) -> None:
         self.previous_closest_objective_distance = distance
@@ -114,6 +118,7 @@ class WargameModel:
         self.charged_this_turn = False
         self.declared_charge = False
         self.fight_priority = 0
+        self.fought_this_phase = False
 
     def begin_turn(self) -> None:
         """Clear the per-TURN move state before this side moves again.
@@ -131,6 +136,7 @@ class WargameModel:
         self.charged_this_turn = False
         self.declared_charge = False
         self.fight_priority = 0
+        self.fought_this_phase = False
 
     @property
     def is_alive(self) -> bool:

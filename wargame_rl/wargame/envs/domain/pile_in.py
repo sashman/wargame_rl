@@ -265,6 +265,125 @@ def _move_unit(
     return moved
 
 
+def agent_move_is_legal(
+    models: list[WargameModel],
+    members: list[int],
+    before: np.ndarray,
+    alive_enemies: list[WargameModel],
+    *,
+    selection_range: float,
+    engagement_range: float,
+    base_radius: float,
+    coherency_nearest: float,
+    coherency_furthest: float,
+) -> bool:
+    """Referee an AGENT-CHOSEN pile-in or consolidation, per `12-fight-phase.md`.
+
+    ⚠ **The engine's `pile_in` CONSTRUCTS a legal move; this JUDGES one.** They
+    have to share `_is_legal`, or the rule the agent is held to would drift from
+    the rule the scripts obey -- which is how three implementations of "on an
+    objective" came to disagree here.
+
+    Checks the while-moving conditions the constructive path gets for free, then
+    the same after-moving conditions:
+
+    - **models in base contact cannot be moved** -- the rules pin them, which is
+      what stops a pile-in dragging a locked model off its opponent;
+    - **every model that moved ends closer to its closest selected target**;
+    - then `_is_legal`: the unit is engaged, every model still engaged with the
+      unit it started engaged with, and the unit is still coherent.
+    """
+    if not alive_enemies:
+        # Nothing to be engaged with, so Ongoing and Engaging are both
+        # impossible and Objective is the only mode the unit can be in --
+        # the case of a unit that killed everything near it, which is
+        # `12-fight-phase.md`'s own example for why the mode exists. Judged the
+        # same way as the no-enemy-in-range branch below.
+        # `DEFERRED: consolidate.objective_conditions`.
+        return True
+    enemy_centres = np.array([m.location for m in alive_enemies], dtype=float)
+    enemy_radii = np.array([m.base_radius for m in alive_enemies], dtype=float)
+    enemy_groups = np.array([int(m.group_id) for m in alive_enemies], dtype=int)
+
+    contacts_before = np.asarray(
+        engagement_matrix(
+            before,
+            enemy_centres,
+            np.ones(len(enemy_centres), dtype=bool),
+            np.ones(len(members), dtype=bool),
+            engagement_range=engagement_range,
+            base_diameter=2.0 * base_radius,
+        )
+    )
+    # Target selection, per the spec: every unit it is engaged with, else the
+    # units within the selection range.
+    engaged_groups = {
+        int(enemy_groups[j]) for j in np.nonzero(contacts_before.any(axis=0))[0]
+    }
+    if engaged_groups:
+        target_rows = [
+            j
+            for j in range(len(alive_enemies))
+            if int(enemy_groups[j]) in engaged_groups
+        ]
+    else:
+        gaps = (
+            np.linalg.norm(
+                before[:, np.newaxis, :] - enemy_centres[np.newaxis, :, :], axis=2
+            )
+            - enemy_radii[np.newaxis, :]
+            - base_radius
+        )
+        near = {
+            int(enemy_groups[j])
+            for j in np.nonzero((gaps <= selection_range).any(axis=0))[0]
+        }
+        if not near:
+            return False
+        target_rows = [
+            j for j in range(len(alive_enemies)) if int(enemy_groups[j]) in near
+        ]
+
+    target_centres = enemy_centres[target_rows]
+    target_radii = enemy_radii[target_rows]
+    for row, index in enumerate(members):
+        model = models[index]
+        after = np.asarray(model.location, dtype=float)
+        start = before[row]
+        pinned = bool(contacts_before[row].any())
+        if pinned:
+            if not np.allclose(after, start):
+                return False
+            continue
+        if np.allclose(after, start):
+            continue
+        gaps_before = (
+            np.linalg.norm(target_centres - start, axis=1)
+            - target_radii
+            - model.base_radius
+        )
+        gaps_after = (
+            np.linalg.norm(target_centres - after, axis=1)
+            - target_radii
+            - model.base_radius
+        )
+        if gaps_after.min() >= gaps_before.min() - _CONTACT_TOLERANCE:
+            return False
+
+    return _is_legal(
+        models,
+        members,
+        before,
+        contacts_before=contacts_before,
+        enemy_centres=enemy_centres,
+        enemy_groups=enemy_groups,
+        engagement_range=engagement_range,
+        base_radius=base_radius,
+        coherency_nearest=coherency_nearest,
+        coherency_furthest=coherency_furthest,
+    )
+
+
 def _is_legal(
     models: list[WargameModel],
     members: list[int],
