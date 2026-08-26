@@ -1,8 +1,33 @@
-# Teach the agent to charge
+# Teach the agent to fight
 
-**Goal.** A trained agent that uses the charge phase competently on a melee config —
-declaring when a charge can land, aiming so it lands, and beating the scripted bar on the
-same config while doing it.
+**Goal.** A trained agent that uses the **charge and fight phases** competently on a melee
+config — declaring when a charge can land, aiming so it lands, and beating the scripted bar
+on the same config while doing it.
+
+⚠ **"Melee" here means BOTH phases.** Charge and fight are one mechanic split across two
+phases by the rules, and a goal naming only the charge measures half of it.
+
+⚠ **THE FIGHT PHASE IS NOT SKIPPED MECHANICALLY, AND IS SKIPPED AS A DECISION.** Both are
+true and the distinction is the whole of what this clause adds:
+
+- **It resolves.** `fight` is in `skip_phases`, but `on_before_advance` fires on skipped
+  phases and calls `_resolve_fight_phase` (`wargame.py:1138`), guarded on
+  `state.phase is BATTLE_PHASE_ORDER[-1]`. Pile-in, Strikes First, alternating activation,
+  passing, overrun, the attacks themselves and consolidate all execute. Independent
+  evidence: charging is worth **+24.4 vp same-row** on the bar, which it could not be if
+  no blow landed.
+- **The agent decides none of it.** `get_action_mask(BattlePhase.fight)` offers exactly one
+  legal action per model — STAY — because the `movement` slice is valid only in
+  `{movement, charge}`. Every choice `12-fight-phase.md` gives a player is made by the
+  engine: which eligible unit activates next, pile-in target selection and direction, the
+  fight **type** (normal versus overrun), whether to **pass**, and the consolidate move.
+
+**So this goal is not currently achievable as written, and that is the point of writing it
+this way.** "Uses the fight phase competently" cannot be true of an agent that has no fight
+action. Closing it needs fight-phase decisions promoted to agent actions — which is a
+scope increase over the charge-only goal, and is now the standing scope. ⚠ **Do not read a
+fight-phase result as agent skill until that lands**; until then every fight number
+measures the ENGINE's fight policy, exactly as the coherency referee measured itself.
 
 Melee is a **core rule**, not an experiment. It is staying. So this document asks *how best
 to teach it*, never *whether it is worth having*, and no measurement here compares a game
