@@ -650,3 +650,96 @@ so the noise floor is **asymmetric**. Both are recorded in `scripts/measure_char
 ⚠ **The §9 trichotomy has a gap, named before the numbers arrive.** An agent that clears
 the floor but comes nowhere near the bar is neither PASS nor FAIL as written. That state
 will be reported as what it is rather than forced into a bin.
+
+---
+
+## 16. The arm of record's VERDICT — the named gap, and the diagnosis that follows it
+
+Scored 2026-08-26 at `b133709`, all three seeds at epoch 599 (`last.ckpt`, written by
+`on_train_end` — clean completion verified per seed in `wandb-summary.json`). n=45, K=1,
+seeds 700000+, refereed. Two independent repeats of the s2 row agree **to every printed
+digit**, so the `_rolled_for` fix closed the irreproducibility and these rows are quotable.
+
+| policy | decl/ep | tried/ep | **stood/ep** | frac | coherent | vp |
+|---|---|---|---|---|---|---|
+| `squad_march_take_charge` (comparator, **fixed bar** — see below) | 8.67 | 7.89 | **5.56** | **0.704** | 0.870 | −14.0 |
+| `squad_march_take` (never charges) | 0.00 | 0.00 | 0.00 | — | 0.881 | −34.8 |
+| agent s1 | 9.58 | 8.98 | 0.71 | 0.079 | 0.714 | −81.3 |
+| agent s2 | 11.91 | 11.16 | **1.09** | 0.098 | 0.746 | −61.1 |
+| agent s3 | 6.67 | 6.09 | 0.47 | 0.077 | 0.749 | −81.1 |
+
+**VERDICT: the NAMED GAP.** Clears the untrained floor on `stood/ep` (0.47–1.09 against
+0.00–0.11) on 3 of 3 seeds; nowhere near the bar (12–20% of it). Neither PASS nor FAIL as
+§15 defines them, and §15 named this state in advance, so it is reported as what it is.
+
+⚠ **The bar in this table is NOT §15's bar.** `stood/ep` 3.67 → **5.56** because the
+comparator's declaration gate carried the retired `min(Move, roll)` cap and compared
+inches against board units (`68d5204`) — it under-declared by ~22% and every §15 target
+descends from it. The trichotomy's 3.0 was 82% of the throttled bar and is 54% of the
+real one. Same-row, charging is worth **+20.8** here (−14.0 v −34.8).
+
+### The diagnosis, by referee clause — and two hypotheses died on the way
+
+Instrumented `_enforce_charge` on s2, 20 episodes, per clause, **seat-separated** (⚠ the
+first run of this census read both seats and inflated the agent's conversion 12% → 43% —
+the opponent is the scripted bar and its charges land in the same instrument):
+
+| clause | agent (159 attempts) | bar (294 attempts) |
+|---|---|---|
+| **stood** | **11.9%** | 73.1% |
+| **reached NOBODY** | **76.7%** | 15.3% |
+| clipped a second unit | 1.9% | 4.4% |
+| a mover ended not-closer | 5.0% | 3.1% |
+| incoherent | 4.4% | 4.1% |
+
+- ⚠ **"The coherency regression causes the conversion failure" is REFUTED** — the clause
+  kills 4.4% of the agent's charges against the bar's 4.1%. (The 0.714–0.749 `coherent`
+  figures are a movement-phase statistic and a separate finding.)
+- Splitting `no_contact` by winnability: only **13.8%** of attempts were doomed at
+  declaration (gap > roll); **62.9% were REACHABLE AND MISSED.**
+- The geometry of those misses: the best-placed model's heading has **median angle error
+  92.2°** against the enemy it declared on (75% of movers > 45° off), and **102.9°**
+  against the nearest objective — so it is not walking to objectives either. Only 15.8%
+  aimed right and fell short. **The charge-phase action is simply unlearned**: headings
+  uncorrelated with anything, exactly what a 0.27%-discovery, all-or-nothing, unshaped
+  signal predicts.
+
+### What was done about it, same day (all verified to fail without their fix)
+
+1. **Doomed declarations are masked** (`2c1fb42`): a unit whose roll cannot cover the gap
+   to any enemy may not declare, mirroring the advance's own reachability mask and the
+   scripted comparator's own gate. Removes the 13.8% zero-gradient trap.
+2. **Coherency is recorded in every displacing phase** (`98df112`): the §15 `coherent`
+   clause measured the movement phase only — 0 of the 3 melee phases it was written for.
+   ⚠ Melee `coherent` is not comparable across this date.
+3. **Pile-in/consolidate actually move** (`2c8d402`): eligible was identical to pinned
+   (one predicate used twice in opposition) AND the endpoint was refused the engagement
+   exemption. **Neither fix works alone — the exemption alone is a REGRESSION** (94.9%
+   zero-delivery v 86.5%). Together: 0.103" → 0.525" mean, 86.5% → 28.3% zero. ⚠ Post-fix
+   the residual zeros are **21.0% of moving pile-in units reverted by the referee**
+   (quantisation misses the "end closer" clause) — so `1cfebfa`'s mechanism is real at the
+   ~20% level even though its 40 vp magnitude was the n=9 block draw. The revert decision
+   stays open; held to its own pre-registered criterion (mean < 1.0" → revert), 0.525"
+   **fails**, and the n≥100 paired score should decide it.
+4. **A seeded episode no longer depends on the reset before it** (`67e6838`).
+
+### The next arm, launched 2026-08-26 ~21:30 — `melee-shaping-v4`
+
+The diagnosis says the missing thing is a **gradient toward contact inside the declared
+charge**, which is `charge_progress` verbatim (§5b). Wired at `value: 0.25, weight: 1.0`
+(`configs/experiments/25v25_maps_melee_shaped.yaml`) — measured live at ~2–4/ep for the
+scripted charger against `objective_hold`'s ~16–31, confined by the declaration gate.
+**Paired control retrained on the same code** (the four fixes above void the arm of
+record as a control): 3 seeds × {control, shaped}, 600 epochs, `ent_coef` 0.003, same
+flags. Same action space (108), same seeds → identical inits → **paired estimator**.
+
+**Pre-registered readouts, written before any number exists:**
+
+- **Primary: `stood/ep` and conversion fraction at K=1, n=45**, shaped v paired control.
+  The bet is that shaping moves *conversion* (the 92° aiming error), not declarations.
+- **Reject** (the calculator's own rule): `vp_margin` falls against the paired control on
+  2 of 3 seeds, **or** declarations rise while `held` falls — buying charges with ground.
+- The §15 trichotomy still judges the shaped arm against the **fixed** bar (5.56), with
+  the same named-gap escape.
+- ⚠ Melee `coherent` now includes the melee phases for BOTH arms (fix 2), so neither is
+  comparable to any row above this section.
