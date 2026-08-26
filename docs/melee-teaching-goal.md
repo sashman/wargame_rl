@@ -314,3 +314,69 @@ by a change to the config.** Until the fingerprint covers the code, delete
 `checkpoints/clone_data/` by hand after any change to `actions.py`, `domain/`, or a baseline
 policy. ⚠ And do not launch a clone run while rules work is still in flight — this one was
 launched three hours before the audit that changed the rules it was learning.
+
+
+---
+
+## 12. THE CLONE CONTROL, on the completed implementation — REJECT on 3 of 3
+
+Measured 2026-08-26 at `5da54ed`. House fidelity (1200 demonstrations, 60 epochs), three seeds,
+held-out nine, n=9, **K=1** (what training decodes at).
+
+| | decl/ep | stood/ep | standing fraction | vp |
+|---|---|---|---|---|
+| teacher `squad_march_take_charge` | 4.22 | **3.89** | **0.921** | +13.3 |
+| clone s0 / s1 / s2 | 1.33 / 2.89 / 2.67 | **0.11 / 0.67 / 0.56** | 0.083 / 0.231 / 0.208 | −96.1 / −106.1 / −30.6 |
+
+**Verdict against the criterion committed before the numbers existed** (accept ≥ 0.45, reject
+≤ 0.25): **REJECT on 3 of 3.** The gate `stood/ep > 3.0` fails by a factor of six.
+
+### The clone is bad at EVERYTHING, and that is the finding
+
+⚠ The within-policy control, which had to be run because the clone scores vp **−30 to −106**
+against its teacher's +13.3 — *"it cannot charge"* and *"it cannot play"* predict the same
+charge number:
+
+| seed | movement agreement | charge agreement | gap |
+|---|---|---|---|
+| s0 | 0.529 | 0.448 | +0.081 |
+| s1 | 0.496 | **0.548** | **−0.051** |
+| s2 | 0.512 | 0.432 | +0.080 |
+
+**The charge is NOT specially hard.** The gap averages +0.04 and **flips sign** — on s1 the
+clone aims charges *better* than it walks. Imitation of this teacher lands at ~0.5 per-model
+agreement in both phases, and that is the ceiling the charge inherits.
+
+### `p^k` is one real term and not the dominant one
+
+Collapsing `k` to 1 — the clone's OWN preferred heading applied rigidly to its unit, so nothing
+about its judgement changes:
+
+| seed | as played | `k` = 1 |
+|---|---|---|
+| s0 | 0.083 | 0.273 |
+| s1 | 0.231 | 0.231 |
+| s2 | 0.208 | 0.417 |
+
+Roughly a doubling on average, **nothing at all on s1**, and it tops out at 0.42 against the
+teacher's 0.92. ⚠ An earlier version of this section named `p^k` as the mechanism on the
+strength of `0.448^3.47 = 0.062` matching a measured 0.083; that agreement was a coincidence
+and the falsifier written to test it refuted it. ⚠ **That probe's first run also reported the
+teacher at 0.079 against its own measured 0.947**, by counting the referee's REVERT as a stand
+— caught by the teacher row, which is in the table precisely as a known-answer check.
+
+### What this decides
+
+**Warm-start is not the route**, and neither is better aiming. The pre-registered rule
+*"aiming above 0.30 → warm-start"* is satisfied in the letter (0.448 / 0.548 / 0.461, against
+0.30 for the old underfit clones) and void in substance: a start that stands 8–23% of its
+charges and scores −30 to −106 vp is not a start worth taking, and the deficit is general
+rather than charge-specific.
+
+**So the first arm trains from scratch, with no shaping term.** `charge_progress` stays
+unwired: an unshaped arm is the control any shaping decision must be measured against, and the
+agent already has a reward path to charging — melee kills reach `model_kills` per model, and a
+standing charge shields its unit into surviving to hold objectives.
+
+⚠ **Read the seed spread before any of this is quoted.** Standing fraction runs 0.083–0.231 and
+vp −30.6 to −106.1 on three seeds of one recipe. Means over that spread are weak evidence.

@@ -261,3 +261,43 @@ wasted; the generate seat has still never landed.
 - **A gating readout needs a ceiling clause and a monotonicity check**, not just a floor.
 - ⚠ **Re-measure a panel's number before publishing it, even when two panels agree.** Both
   overstated one figure 8x, and I carried it into two documents before checking.
+
+
+## 2026-08-25/26 — follow-through: what the audits actually cost and bought
+
+The two panels above led to a **rules-lawyer subagent** and a **game-AI generate subagent**, and
+the follow-through is the part worth scoring.
+
+**The rules lawyer landed 3 of 3**, and its findings were larger than either panel's:
+the charge's *while-moving* condition implemented **nowhere** with no gap-map row; the
+declaration and 2D6 cap enforced **only in the mask** while `apply` takes none; and a gap-map
+row rated `implemented` that was mask-only. It also **refuted** three of my own suspicions
+(no seat asymmetry across 2,580 mask rows; Strikes First correct 37/37; no stale
+`previous_location`) — negative results I would otherwise have chased.
+
+**The generate seat broke its 0-for-3 streak**, and the reason is instructive: it ran probes
+instead of theorising, and **killed its own headline proposal** (a selective-charge veto,
+−3.56 ± 6.47). Its best finding — that the binding constraint is the ANGLE, not coordination
+— survived my check. ⚠ But it **overstated the STAY-exemption magnitude 8x** exactly as both
+panels had, and I published their figure before re-measuring. **Two panels agreeing is not a
+measurement.**
+
+**Running total: nominations 1 for 4. Audits ~16 of ~16.**
+
+### Rules earned in the follow-through
+
+- ⚠ **A probe needs a known-answer row.** My `p^k` falsifier counted the referee's REVERT as a
+  stand and reported the teacher at **0.079** against its own measured 0.947. The teacher row
+  is what caught it within one run.
+- ⚠ **Kill your own hypothesis with the falsifier you wrote for it.** `p^k` matched a measured
+  0.083 at `0.448^3.47 = 0.062` and was wrong: collapsing k to 1 buys 2x on average, **nothing**
+  on one seed, and tops out at 0.42 against 0.92.
+- ⚠ **Re-read the primary source before implementing.** *"Fighting after death"* is a granted
+  ABILITY, not a default; implementing it as one would have made the game incorrect. The
+  register's stated reason was wrong too.
+- ⚠ **Check the inventory against the code before working an item.** One listed as missing was
+  already implemented and already tested. The inventory has now been wrong in **both**
+  directions in one day.
+- ⚠ **A monitor that greps for success is indistinguishable from silence.** One armed here
+  watched for `Epoch 599` in a log Lightning writes with carriage returns; it would have sat
+  quiet for hours and read as "still training".
