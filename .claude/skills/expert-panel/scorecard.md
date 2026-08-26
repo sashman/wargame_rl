@@ -334,3 +334,61 @@ Two throttling defects in my own brief: "run at most one measurement at a time" 
 load and not the aggregate (14 agents obeying it produced load average 160), and advising
 `CUDA_VISIBLE_DEVICES=` breaks checkpoint loading outright, since checkpoints saved on CUDA need
 `map_location`.
+
+## 2026-08-26 — audit x2 (staggered): "is the melee approach right at a high level?"
+
+**Mode:** audit, two uncoordinated panels of 6 seats + red team + chair (16 agents total).
+Panel A: curriculum / mechanic-economics / action-space / rules-fidelity / strategy /
+methodologist. Panel B: credit-assignment / incentives / abandon-adversary / statistician /
+optimisation / architecture, fed Panel A's findings per §6.
+
+**Both red teams returned FATAL. Both chairs answered the commissioned question identically:
+the goal is right, the implementation HINDERS, keep building melee and stop training on it.**
+6 of 6 Panel B seats said HINDERS.
+
+**Audits that landed** (chair verified each in source or by running code):
+- `_rolled_for` leaks across `reset()` (`wargame.py:193`, `:1260-1262`); `from_env`'s unseeded
+  reset poisons episode 0 of every network-building measurement and none of a scripted one.
+  Reproduced: opponent charge rolls 0.0 on all 25 models.
+- `pile_in`/`consolidate` are **dead by construction** — `short_move_legality` offers the move
+  only to engaged models and `pile_in.py:353` pins exactly those models, ONE PREDICATE USED
+  TWICE IN OPPOSITION, at a radius 1.0" wider than `12-fight-phase.md:35`'s base contact.
+  40 of 140 decision steps decide nothing.
+- **`engaged` is nowhere in the observation tensor.** The model token carries `charge_roll`,
+  `fell_back_this_turn`, `declared_charge` — the three states carrying none of the value —
+  while the mechanic's entire measured worth is the shooting shield. The project's own
+  cheapest standing desk check, failed for the central mechanic.
+- `_record_coherency` fires only under `phase == BattlePhase.movement` (`wargame.py:1553`):
+  the `coherent` PASS clause covers 0 of 3 melee phases.
+- Episode length is **140 steps (7 phases x 20 rounds), 3.5x the golden 40** — not the 100 the
+  brief claimed. A `skip_phases` change is a reward-shaping AND discount change, invisible in
+  a config diff.
+- The comparator's declaration gate still uses the retired `min(move, roll)` cap
+  (`scripted_squad_march.py:307`) while aiming uses the full roll (`:497`).
+
+**Nominations REFUTED (0 for 3 again, and one was the brief's own):**
+- "The encoding costs 40 vp" — t=1.08 at n=9; 11 consecutive same-policy blocks span **63.9 vp**.
+- "Rigid charge raises discovery 0.0006 -> 0.153" — numerator and denominator measured on
+  different populations; same-population it is 7.0-15.5x. Direction real, ratio an artefact.
+- "vp_gain's income share fell 0.38 -> 0.06" — measured 0.143 -> 0.121. Three Panel B seats
+  "CONFIRMED" the compound claim by verifying only its true half.
+
+**Correlated error, and the headline lesson:** "retune gamma" was proposed by **6 of 6 Panel A
+seats and 3 of 6 Panel B seats — 9 of 12 across two panels that never met — and is wrong both
+times for two different reasons.** Panel A also had 6 of 6 agree the ladder fix was worth
++3.5%, all lifting one stale line from one file (~4x wrong). ⚠ **Unanimity was worth LESS than
+four-way agreement**, because the unanimous items came from a single shared source.
+
+**Chair errors caught by the panels** (the brief was written by the audited engineer):
+`beyond_move_ladder` was described as an open decision and had **already shipped** at
+`5da54ed`; episode length was given as 100 and is 140; `docs/melee-teaching-goal.md` §10 is
+stale on both counts.
+
+**Panel B's own headline was WRONG and the chair caught it**: it read
+`25v25_maps_melee_refereed.yaml`'s "do not launch an arm on this pair" as forbidding the
+running arm. That warning forbids an **arm-vs-dark-control pairing**; no dark control is in
+flight, and scoring against the scripted bar is what the pre-registration prescribes. **Verify
+a panel's headline, not just its findings.**
+
+**Cost:** ~3.0M subagent tokens, 939 tool calls, ~1h50m wall-clock staggered. Load stayed
+<=3.5 on 24 cores; the trainers lost nothing.
