@@ -380,3 +380,39 @@ standing charge shields its unit into surviving to hold objectives.
 
 ⚠ **Read the seed spread before any of this is quoted.** Standing fraction runs 0.083–0.231 and
 vp −30.6 to −106.1 on three seeds of one recipe. Means over that spread are weak evidence.
+
+
+---
+
+## 13. The untrained floor, on the COMPLETED implementation
+
+⚠ **Measured mid-arm, because I had launched without it.** The pre-registration's own rule is
+*"any behavioural readout that gates an arm must be floored on a random-init network through
+the arm's OWN selector path, **before the arm launches**"* — and every floor on file was taken
+before the 2D6 ladder, pile-in, alternating activation and `engagement_range` 2.0. None of them
+describes the game this arm trains on, so none of them could have interpreted its result.
+
+Three randomly-initialised `PPO_Transformer`s, saved with the Lightning prefix so they load
+through the same selector path as an agent checkpoint. Held-out nine, n=9, K=1:
+
+| random-init seed | decl/ep | stood/ep | standing fraction | coherent | vp |
+|---|---|---|---|---|---|
+| s0 | 0.00 | 0.00 | — | 0.574 | −227.8 |
+| s1 | 0.00 | 0.00 | — | 0.841 | −198.9 |
+| s2 | **93.11** | 0.89 | 0.065 | 0.816 | −236.1 |
+
+⚠ **`declared/ep` is USELESS as a gate on this config** — the floor is bimodal from 0 to 93,
+because the declaration is one argmax over two actions with arbitrary logits. Read `stood/ep`
+(floor **0.00–0.89**) and the standing fraction (floor **0.065**), and read vp against a floor
+of **−199 to −236**.
+
+### What it says about the arm in flight
+
+The trajectory sample at epoch 433 — 27.44 declares, 1.44 stood, fraction **0.052**, vp −39.4:
+
+- **vp −39.4 against a floor of −199 to −236**: the agent has emphatically learned to PLAY.
+- **standing fraction 0.052 against a floor of 0.065**: its charge competence is at the
+  UNTRAINED level.
+
+**It is learning the game and not learning the charge**, and neither half of that is visible
+without this control. ⚠ Provisional: one seed, mid-training, n=9.
