@@ -8,9 +8,16 @@ not see because none of them called `env.step`.
 
 from __future__ import annotations
 
-import numpy as np
+from typing import cast
 
-from wargame_rl.wargame.envs.domain.pile_in import SELECTION_RANGE_INCHES, pile_in
+import numpy as np
+from gymnasium import spaces
+
+from wargame_rl.wargame.envs.domain.pile_in import (
+    SELECTION_RANGE_INCHES,
+    agent_move_is_legal,
+    pile_in,
+)
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import MeleeConfig, MeleeWeaponProfile
 from wargame_rl.wargame.envs.types.config.battle import OpponentPolicyConfig
@@ -264,5 +271,151 @@ def test_an_ENGAGED_unit_may_not_ADVANCE_out_of_combat() -> None:
         # Assert
         assert unengaged[0].any(), "the control failed — no advance rungs at all"
         assert not engaged[0].any(), "an engaged model kept its advance rungs"
+    finally:
+        env.close()
+
+
+def test_a_model_ENGAGED_BUT_NOT_TOUCHING_is_NOT_pinned() -> None:
+    """The pin is BASE CONTACT, not engagement range — regression, 2026-08-26.
+
+    `12-fight-phase.md`: *"Models in base contact with an enemy model cannot be
+    moved."* `agent_move_is_legal` pinned on `engagement_matrix` at
+    `engagement_range`, which is the SAME predicate at the SAME threshold that
+    `ActionHandler.short_move_legality` uses to decide a model is ELIGIBLE to
+    pile in. One predicate used twice in opposition made **eligible identical to
+    pinned**, so an agent-chosen pile-in could never be legal unless it stood
+    still. Measured on the shipped melee config, 86.5% of ORDERED pile-in moves
+    delivered exactly 0.000" and the mean was 0.103" against a 3" ladder;
+    narrowing the pin took that to 28.3% and 0.525".
+
+    ⚠ This is the AGENT path (`1cfebfa`). The engine path (`pile_in`,
+    `9e11bf0`) constructs its own legal move and was never affected — a test
+    written against `pile_in` passes either way and is vacuous. Verified to fail
+    without the fix.
+    """
+    # Arrange — m0 engaged at 0.5 (< 1.0 engagement) but NOT touching at radius
+    # 0, then moved 0.2 closer to its target. Legal under the rules; refused by
+    # the old pin.
+    env = _env()
+    try:
+        m0, m1 = env.wargame_models
+        for index, enemy in enumerate(env.opponent_models):
+            enemy.location = np.array([10.5, 10.0 + index * 0.4], dtype=float)
+        before = np.array([[10.0, 10.0], [10.0, 10.6]], dtype=float)
+        m0.location = np.array([10.2, 10.0], dtype=m0.location.dtype)
+        m1.location = np.array([10.0, 10.6], dtype=m1.location.dtype)
+        quantities = env.rules_quantities
+
+        # Act
+        legal = agent_move_is_legal(
+            env.wargame_models,
+            [0, 1],
+            before,
+            [m for m in env.opponent_models if m.is_alive],
+            selection_range=quantities.scale.to_units(SELECTION_RANGE_INCHES),
+            engagement_range=quantities.engagement_range,
+            base_radius=quantities.base_radius,
+            coherency_nearest=quantities.scale.to_units(
+                env.config.coherency.nearest_distance
+            ),
+            coherency_furthest=quantities.scale.to_units(
+                env.config.coherency.furthest_distance
+            ),
+        )
+
+        # Assert
+        assert legal, "a model engaged but not in base contact was pinned"
+    finally:
+        env.close()
+
+
+def test_a_model_in_base_contact_is_STILL_pinned_for_an_agent_move() -> None:
+    """The other half: narrowing the pin must not delete the rule."""
+    # Arrange — m0 exactly touching (radius 0), then moved.
+    env = _env()
+    try:
+        m0, m1 = env.wargame_models
+        for index, enemy in enumerate(env.opponent_models):
+            enemy.location = np.array([10.0, 10.0 + index * 0.4], dtype=float)
+        before = np.array([[10.0, 10.0], [10.0, 10.6]], dtype=float)
+        m0.location = np.array([10.2, 10.0], dtype=m0.location.dtype)
+        m1.location = np.array([10.0, 10.6], dtype=m1.location.dtype)
+        quantities = env.rules_quantities
+
+        # Act
+        legal = agent_move_is_legal(
+            env.wargame_models,
+            [0, 1],
+            before,
+            [m for m in env.opponent_models if m.is_alive],
+            selection_range=quantities.scale.to_units(SELECTION_RANGE_INCHES),
+            engagement_range=quantities.engagement_range,
+            base_radius=quantities.base_radius,
+            coherency_nearest=quantities.scale.to_units(
+                env.config.coherency.nearest_distance
+            ),
+            coherency_furthest=quantities.scale.to_units(
+                env.config.coherency.furthest_distance
+            ),
+        )
+
+        # Assert
+        assert not legal, "a model in base contact was allowed to move"
+    finally:
+        env.close()
+
+
+def test_a_pile_in_ENDPOINT_may_lie_inside_an_enemy_engagement_range() -> None:
+    """The other half of the pair, and it lives in `ActionHandler.apply`.
+
+    Regression, 2026-08-26. `back_off_to_unengaged` was handed the enemy rings
+    for every phase but `charge`, and it returns `start` for a model that BEGINS
+    inside a ring -- which is every model a pile-in is offered to, since being
+    engaged is what makes it eligible. `12-fight-phase.md` requires these moves
+    to END engaged, exactly as the charge does.
+
+    ⚠ **Neither half of this fix works alone, and that is measured**: with the
+    pin narrowed but no exemption, delivery is bit-identical to the defect
+    (0.103", 86.5% zero); with the exemption but the old pin it gets WORSE
+    (0.051", 94.9%), because models can now move and the referee then reverts
+    their whole unit. Together: 0.525" and 28.3%.
+    """
+    # Arrange -- one model, engaged, ordered a pile-in that closes on the enemy.
+    env = _env(n=1)
+    try:
+        model = env.wargame_models[0]
+        enemy = env.opponent_models[0]
+        enemy.location = np.array([10.5, 10.0], dtype=float)
+        model.location = np.array([10.0, 10.0], dtype=model.location.dtype)
+        start = np.array(model.location, copy=True)
+        handler = env.player_action_handler
+        legality = handler.short_move_legality(
+            env.wargame_models, env.opponent_models, BattlePhase.pile_in
+        )
+        legal_actions = np.nonzero(legality[0])[0]
+        assert legal_actions.size > 0, "an engaged model was offered no pile-in"
+
+        # Act -- take a legal rung that is not STAY.
+        moved = False
+        for candidate in legal_actions:
+            model.location = np.array(start, dtype=model.location.dtype)
+            handler.apply(
+                WargameEnvAction(actions=[int(candidate)]),
+                env.wargame_models,
+                env.board_width,
+                env.board_height,
+                cast(spaces.Tuple, env.action_space),
+                phase=BattlePhase.pile_in,
+                enemy_models=env.opponent_models,
+            )
+            if not np.array_equal(model.location, start):
+                moved = True
+                break
+
+        # Assert
+        assert moved, (
+            "every legal pile-in rung was backed off to the model's start "
+            "position -- the endpoint exemption is missing"
+        )
     finally:
         env.close()

@@ -144,6 +144,12 @@ _UNIT_REFEREED_PHASES: frozenset[BattlePhase] = frozenset(
     {BattlePhase.charge, BattlePhase.pile_in, BattlePhase.consolidate}
 )
 
+# Phases whose move MAY end inside an enemy's engagement range -- the charge that
+# makes contact, and the two fight-phase moves that keep it.
+_ENGAGING_ENDPOINT_PHASES: frozenset[BattlePhase] = frozenset(
+    {BattlePhase.charge, BattlePhase.pile_in, BattlePhase.consolidate}
+)
+
 _LADDER_FOR_PHASE: dict[BattlePhase, MoveLadder] = {
     BattlePhase.charge: MoveLadder.charge,
     BattlePhase.pile_in: MoveLadder.short,
@@ -1708,7 +1714,16 @@ class ActionHandler:
         # function merges enemy rings and occupied bases into one walk, so empty
         # rings plus populated bases is exactly "may be engaged, may not
         # overlap" with no edit to it.
-        charging = phase is BattlePhase.charge and self._displaces_in(phase)
+        # ⚠ **AND the two fight-phase moves**, added 2026-08-26. `pile_in` and
+        # `consolidate` move models that are ALREADY inside an enemy's engagement
+        # ring -- that is what makes them eligible -- so applying the rings to
+        # their endpoint walked every one of them back to its start:
+        # `back_off_to_unengaged` returns `start` for a model that begins inside a
+        # ring it may not end in. Measured 87.3%/90.9% of ordered moves delivering
+        # exactly 0.000". `12-fight-phase.md` requires these moves to END engaged,
+        # exactly as the charge does. Occupied bases are still passed, so an
+        # endpoint may be engaged and may never overlap.
+        charging = phase in _ENGAGING_ENDPOINT_PHASES and self._displaces_in(phase)
         alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
         if not charging and self._engagement_range > 0.0 and alive_enemies:
             engagement_centres = np.array(

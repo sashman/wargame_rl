@@ -55,6 +55,15 @@ _CONTACT_TOLERANCE = 1e-6
 SELECTION_RANGE_INCHES = 5.0
 
 
+# Bases touching, in board units: `gap = centre_distance - enemy_radius -
+# base_radius <= 0`. A tolerance rather than exact equality because the gap is
+# a float difference of norms. ⚠ A charge in this implementation ends within
+# `engagement_range`, NOT in contact, so a model that has just charged is free
+# to pile in -- which is the mechanic, and is what the engagement-range pin
+# prevented.
+BASE_CONTACT_TOLERANCE = 1e-9
+
+
 def _members(models: list[WargameModel], group: int) -> list[int]:
     """Living members of `group`, in model index order."""
     return [
@@ -346,11 +355,30 @@ def agent_move_is_legal(
 
     target_centres = enemy_centres[target_rows]
     target_radii = enemy_radii[target_rows]
+    # ⚠ THE PIN IS BASE CONTACT, NOT ENGAGEMENT RANGE, and it was engagement
+    # range until 2026-08-26. `12-fight-phase.md`: *"Models in base contact with
+    # an enemy model cannot be moved."* Pinning on `contacts_before` -- the
+    # engagement matrix, at `engagement_range` -- made the pin radius 1.0" wider
+    # than the rule, and it is the SAME predicate at the SAME threshold that
+    # `ActionHandler.short_move_legality` uses to decide a model is ELIGIBLE to
+    # pile in. One predicate used twice in opposition: **eligible was identical
+    # to pinned**, so the mechanic was dead by construction and 87-91% of ordered
+    # pile-in and consolidate moves delivered exactly 0.000" against a 3" ladder.
+    # `contacts_before` still drives TARGET SELECTION above, which the spec does
+    # key on engagement.
+    pin_gaps = (
+        np.linalg.norm(
+            before[:, np.newaxis, :] - enemy_centres[np.newaxis, :, :], axis=2
+        )
+        - enemy_radii[np.newaxis, :]
+        - base_radius
+    )
+    in_base_contact = pin_gaps <= BASE_CONTACT_TOLERANCE
     for row, index in enumerate(members):
         model = models[index]
         after = np.asarray(model.location, dtype=float)
         start = before[row]
-        pinned = bool(contacts_before[row].any())
+        pinned = bool(in_base_contact[row].any())
         if pinned:
             if not np.allclose(after, start):
                 return False
