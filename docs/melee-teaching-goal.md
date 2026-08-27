@@ -743,3 +743,59 @@ flags. Same action space (108), same seeds → identical inits → **paired esti
   the same named-gap escape.
 - ⚠ Melee `coherent` now includes the melee phases for BOTH arms (fix 2), so neither is
   comparable to any row above this section.
+
+---
+
+## 17. melee-shaping-v4 VERDICT — the gradient works and the annuity is farmed: REJECT, iterate to the delta
+
+Scored 2026-08-27 ~04:30 at `e215a5a` + the calculator's delta patch (uninvolved in these
+runs). All six seeds verified at epoch 599 in their own `wandb-summary.json`. n=45, K=1,
+seeds 700000+, refereed; the repeat row again matches **to every digit**.
+
+| | decl/ep | stood/ep | frac | coherent | vp | held |
+|---|---|---|---|---|---|---|
+| bar `squad_march_take_charge` | 8.67 | 5.56 | 0.704 | 0.870 | −14.0 | — |
+| ctl s1 / s2 / s3 | 5.67 / 8.16 / 7.73 | 0.53 / 0.40 / 0.62 | 0.053–0.097 | 0.709–0.816 | −44.1 / −79.1 / −85.6 | 1.78 / 1.40 / 1.49 |
+| shp s1 / s2 / s3 | 14.60 / 14.02 / 15.29 | **1.76 / 1.31 / 1.69** | 0.100–0.128 | 0.715–0.743 | −66.6 / −83.9 / −66.6 | 1.60 / 1.58 / 1.49 |
+
+**Paired (shp − ctl), the estimator the identical inits buy:**
+
+- **`stood/ep` +1.23 / +0.91 / +1.07 — +1.07 ± 0.16, 3 of 3.** Conversion +0.031 / +0.047
+  / +0.032, 3 of 3. **The gradient works**: the shaped arms land 3.1× the control's
+  standing charges, and the pairing is tight enough that three seeds settle it.
+- vp **−22.5 / −4.8 / +19.0** — mean −2.8, signs flipping.
+- `held` −0.18 / +0.18 / 0.00 — flat.
+
+**Verdict against the pre-registered rules: REJECT, on clause 1's letter.** vp fell against
+the paired control on 2 of 3 seeds. Clause 2 (decl↑ while `held`↓) does **not** fire.
+⚠ Clause 1 is **underpowered by this project's own recorded standard** (−2.8 ± ~12 with a
+sign flip; the 2026-08-24 lesson says power-check a per-seed bound before writing it down,
+and this one was not). The reject is honoured as written — and the next rule gets
+power-checked.
+
+**The mechanism behind the reject was named from the mid-run trajectory before the
+endpoint existed**: the term pays the progress **LEVEL** every charge step, so a unit that
+declares and hovers near contact collects an annuity without landing — decl 14–15/ep
+against the bar's 8.67, conversion flat across epochs 90 → 294 → 430 while the control's
+doubled. Its docstring called it "a potential"; a potential-based term pays the
+**difference**, and a level on a repeatable state is farmable.
+
+### The iteration — `pay_delta` (v5, in flight)
+
+`charge_progress` gains `pay_delta: true`: pay the distance **closed by the charge move**
+(previous step's end positions are the charge move's start, because shooting displaces
+nobody), clipped at zero so the referee's revert is not a fine on the attempt. Closing
+pays once; hovering pays nothing. Tests drive both forms and fail without the feature.
+
+`configs/experiments/25v25_maps_melee_shaped_delta.yaml`, 3 seeds, 600 epochs, launched
+2026-08-27 ~04:45 (`melee-shaping-v5`). ⚠ **The v4 control is REUSED, not retrained** —
+training is deterministic given seed + config + code, and the only code change since it
+trained is inside a calculator its config never constructs. Same action space, same seeds,
+identical inits: paired.
+
+**Pre-registered for v5**: primary is `stood/ep` and conversion paired against the v4
+control; the reject rule is v4's verbatim; and the delta form's own bet, written before
+any number exists — **declarations land near the bar's 8.67** (the annuity was the
+inflation) **while `stood/ep` holds at or above the level form's 1.31–1.76.** If instead
+declarations stay at 14+ with the annuity gone, the inflation was never the annuity and
+the diagnosis is wrong — say so.

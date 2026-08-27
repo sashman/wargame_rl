@@ -75,7 +75,9 @@ if TYPE_CHECKING:
 class ChargeProgressCalculator(PerModelRewardCalculator):
     """Per-model payment for closing on the enemy during a declared charge."""
 
-    def __init__(self, weight: float = 1.0, value: float = 0.05) -> None:
+    def __init__(
+        self, weight: float = 1.0, value: float = 0.05, pay_delta: bool = False
+    ) -> None:
         """
         Args:
             weight: Scales the whole term, as for every calculator.
@@ -84,11 +86,25 @@ class ChargeProgressCalculator(PerModelRewardCalculator):
                 nudges a rare action into being proposed, and a term large
                 enough to make charging attractive on its own would be pricing
                 the mechanic rather than revealing it.
+            pay_delta: Pay the progress GAINED during the charge move rather
+                than the progress LEVEL. ⚠ The level form was REJECTED by its
+                own pre-registered rule on `melee-shaping-v4` (2026-08-27): a
+                level paid on a repeatable state is an annuity, and the shaped
+                arms declared 14-15 charges/ep against the bar's 8.7, hovering
+                near contact to collect it every turn (vp fell against the
+                paired control on 2 of 3 seeds). The delta pays closing once
+                and hovering nothing. It is the true potential-based form:
+                the previous step's end positions ARE the charge move's start
+                positions, because the phase before the charge (shooting)
+                displaces nobody.
         """
         super().__init__(weight=weight)
         if value < 0.0:
             raise ValueError(f"value must be >= 0, got {value}")
         self.value = value
+        self.pay_delta = pay_delta
+        # Gaps at the END of the previous step -- the charge move's own start.
+        self._prev_gaps: np.ndarray | None = None
         # One scan per step serves every model, keyed on StepContext identity.
         # Its own field: a key shared between two quantities computed at
         # different points in a step freezes the later one.
@@ -96,9 +112,10 @@ class ChargeProgressCalculator(PerModelRewardCalculator):
         self._cached_progress: np.ndarray | None = None
 
     def reset_episode(self) -> None:
-        """Drop the per-step cache."""
+        """Drop the per-step cache and the previous step's gaps."""
         self._cached_ctx = None
         self._cached_progress = None
+        self._prev_gaps = None
 
     def _progress(self, view: BattleView, ctx: StepContext) -> np.ndarray:
         """Per-model progress toward contact, in `[0, 1]`, zero off the charge."""
@@ -113,13 +130,10 @@ class ChargeProgressCalculator(PerModelRewardCalculator):
         # charge and fired on the shooting step at pre-charge positions instead.
         phase = ctx.action_phase
         enemies = [m for m in view.opponent_models if m.is_alive]
-        if (
-            not view.config.melee.enabled
-            or phase is not BattlePhase.charge
-            or not enemies
-        ):
+        if not view.config.melee.enabled or not enemies:
             self._cached_ctx = ctx
             self._cached_progress = progress
+            self._prev_gaps = None
             return progress
 
         quantities = view.rules_quantities
@@ -136,6 +150,16 @@ class ChargeProgressCalculator(PerModelRewardCalculator):
         gaps = np.linalg.norm(
             positions[:, np.newaxis, :] - enemy_positions[np.newaxis, :, :], axis=2
         ).min(axis=1)
+        # The charge-start gaps for the delta form: the end of the PREVIOUS
+        # step. Cached on every step (the shooting phase displaces nobody, so
+        # by the charge step this is exactly where the move began), consumed
+        # only on charge steps, and replaced below either way.
+        prev_gaps = self._prev_gaps
+        self._prev_gaps = gaps
+        if phase is not BattlePhase.charge:
+            self._cached_ctx = ctx
+            self._cached_progress = progress
+            return progress
         # ⚠ Only a unit that DECLARED. `charged_this_turn` is set by the referee
         # on a charge that STOOD, so it cannot be the gate -- it would pay only
         # the successes and give the near-misses nothing, which is the very
@@ -166,7 +190,17 @@ class ChargeProgressCalculator(PerModelRewardCalculator):
             # chargeable one.
             if float(model.charge_roll) <= 0.0:
                 continue
-            progress[index] = float(np.clip((reach - gaps[index]) / span, 0.0, 1.0))
+            if self.pay_delta:
+                if prev_gaps is None or len(prev_gaps) != len(gaps):
+                    continue
+                # Distance CLOSED by this model's charge move, as a fraction of
+                # the whole approach. Negative movement pays zero rather than
+                # fining -- a reverted charge restores the start position, and
+                # fining the referee's revert would punish the attempt itself.
+                closed = float(prev_gaps[index]) - float(gaps[index])
+                progress[index] = float(np.clip(closed / span, 0.0, 1.0))
+            else:
+                progress[index] = float(np.clip((reach - gaps[index]) / span, 0.0, 1.0))
 
         self._cached_ctx = ctx
         self._cached_progress = progress

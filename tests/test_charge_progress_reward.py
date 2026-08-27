@@ -272,3 +272,71 @@ def test_the_declaration_it_gates_on_is_OBSERVABLE() -> None:
         assert observation.opponent_models[0].declared_charge is not None
     finally:
         env.close()
+
+
+def _delta_pay(env: WargameEnv, gap_before: float, gap_after: float) -> float:
+    """One calculator, two consecutive steps: the second is the charge."""
+    calculator = ChargeProgressCalculator(value=VALUE, pay_delta=True)
+    calculator.reset_episode()
+    player = env.wargame_models[0]
+    for model in env.wargame_models:
+        model.charge_roll = 6.0
+        model.declared_charge = True
+    for index, model in enumerate(env.opponent_models):
+        model.location = np.array(
+            [10.0 + gap_before + index * 40.0, 10.0], dtype=model.location.dtype
+        )
+    # Step N-1 (any phase): positions cached as the charge move's start.
+    player.location = np.array([10.0, 10.0], dtype=player.location.dtype)
+    calculator.calculate(0, player, env, _ctx(env, BattlePhase.shooting))
+    # Step N (the charge): the model has moved so the gap is now `gap_after`.
+    player.location = np.array(
+        [10.0 + (gap_before - gap_after), 10.0], dtype=player.location.dtype
+    )
+    return calculator.calculate(0, player, env, _ctx(env, BattlePhase.charge))
+
+
+def test_DELTA_pays_the_distance_closed_not_the_level() -> None:
+    """The rejected level form's annuity: hovering near contact re-earned the
+    maximum every turn. The delta form pays closing once and hovering nothing.
+
+    Regression for the `melee-shaping-v4` REJECT (2026-08-27): shaped arms
+    declared 14-15 charges/ep against the bar's 8.7 and vp fell against the
+    paired control on 2 of 3 seeds, while `stood/ep` rose 3 of 3 -- the
+    gradient worked and the annuity was farmed.
+    """
+    env = _env()
+    try:
+        # Arrange / Act: a model that closes 3" of a 6" gap...
+        closed = _delta_pay(env, gap_before=6.0, gap_after=3.0)
+        # ...a model that hovers at the same near-contact gap it started at...
+        hovered = _delta_pay(env, gap_before=1.2, gap_after=1.2)
+        # ...and the LEVEL form's answer for that same hover, for contrast.
+        level = _pay(env, gap=1.2)
+
+        # Assert
+        assert closed > 0.0, "closing during the charge move paid nothing"
+        assert hovered == 0.0, "hovering re-earned payment under the delta form"
+        assert level > 0.0, "the level form's annuity is gone from the control"
+    finally:
+        env.close()
+
+
+def test_DELTA_pays_zero_on_the_first_charge_of_an_episode_only_if_unseen() -> None:
+    """No previous step on record means no delta to price -- pay zero, not crash."""
+    env = _env()
+    try:
+        calculator = ChargeProgressCalculator(value=VALUE, pay_delta=True)
+        calculator.reset_episode()
+        player = env.wargame_models[0]
+        for model in env.wargame_models:
+            model.charge_roll = 6.0
+            model.declared_charge = True
+
+        # Act — the very first priced step is already a charge.
+        paid = calculator.calculate(0, player, env, _ctx(env, BattlePhase.charge))
+
+        # Assert
+        assert paid == 0.0
+    finally:
+        env.close()
