@@ -291,6 +291,9 @@ class ActionHandler:
         max_speed = quantities.max_move_speed
         self._engagement_range = float(quantities.engagement_range)
         self._melee_enabled = bool(config.melee.enabled)
+        self._charge_approach_mask = bool(
+            config.melee.enabled and config.melee.charge_approach_mask
+        )
         self._charge_range = float(quantities.scale.to_units(config.melee.charge_range))
         # A model with a base cannot stand with half of it off the table.
         self._base_radius = quantities.base_radius
@@ -1148,7 +1151,69 @@ class ActionHandler:
             # at the roll alone, so its rungs span 2D6 rather than Move.
             distances = np.linalg.norm(self._charge_displacements, axis=-1)
             legality[index] = (distances <= reach + _CHARGE_REACH_EPSILON).reshape(-1)
+
+        if self._charge_approach_mask:
+            self._apply_charge_approach_mask(legality, models, alive_enemies)
         return legality
+
+    def _apply_charge_approach_mask(
+        self,
+        legality: np.ndarray,
+        models: list[Any],
+        alive_enemies: list[Any],
+    ) -> None:
+        """Keep only charge moves that END CLOSER to the unit's derived target.
+
+        Mirrors `_charge_is_legal`'s *while moving* clause exactly -- centre
+        distance to the target unit's members, strictly smaller after the move
+        than before -- so every action this removes is one the referee would
+        revert the whole charge for. STAY lives outside the movement slice and
+        is untouched: the clause binds movers, and a stationary squadmate does
+        not veto its unit's charge.
+
+        ⚠ Per-model and target-DERIVED, deliberately. This is NOT the joint
+        "if it can" mask that collapsed the bar 5.67 -> 1.67 -- that one
+        forced ENGAGEMENT, a joint property no per-model mask can see. The
+        target is the unit's nearest enemy unit at charge time, which also
+        points every member at ONE unit, the referee's exactly-one condition.
+        A unit left with no legal rung by this mask keeps whatever the distance
+        gate offered -- a mask that empties a declared unit's action set would
+        make the declaration unsteppable, the failure mode the advance's
+        no-legal-rung validator exists to prevent.
+        """
+        enemy_positions = np.array([m.location for m in alive_enemies], dtype=float)
+        enemy_groups = np.array([int(m.group_id) for m in alive_enemies], dtype=int)
+        flat_displacements = self._charge_displacements.reshape(-1, 2)
+
+        units: dict[int, list[int]] = {}
+        for index, model in enumerate(models):
+            if legality[index].any():
+                units.setdefault(int(model.group_id), []).append(index)
+
+        for _group, members in units.items():
+            positions = np.array([models[i].location for i in members], dtype=float)
+            gaps = np.linalg.norm(
+                positions[:, np.newaxis, :] - enemy_positions[np.newaxis, :, :],
+                axis=2,
+            )
+            # The derived target: the enemy UNIT nearest this unit, exactly the
+            # pair the referee's derived-target test will find.
+            nearest = int(np.argmin(gaps.min(axis=0)))
+            target_rows = np.nonzero(enemy_groups == enemy_groups[nearest])[0]
+            target_positions = enemy_positions[target_rows]
+            for row, index in enumerate(members):
+                before = float(
+                    np.linalg.norm(target_positions - positions[row], axis=1).min()
+                )
+                endpoints = positions[row][np.newaxis, :] + flat_displacements
+                after = np.linalg.norm(
+                    endpoints[:, np.newaxis, :] - target_positions[np.newaxis, :, :],
+                    axis=2,
+                ).min(axis=1)
+                approach = legality[index] & (after < before)
+                # Never empty a declared unit's set -- see the docstring.
+                if approach.any():
+                    legality[index] = approach
 
     def _charge_reach(self, model: Any) -> float:
         """This model's 2D6, in BOARD UNITS -- the roll is authored in inches."""

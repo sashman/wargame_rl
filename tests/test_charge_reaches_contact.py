@@ -826,3 +826,84 @@ def test_the_comparator_DECLARES_on_the_full_roll_not_on_min_move_roll() -> None
         )
     finally:
         env.close()
+
+
+def test_the_approach_mask_keeps_only_target_closing_moves() -> None:
+    """`charge_approach_mask`: every legal charge move ends closer to the target.
+
+    The referee's *while moving* clause reverts a whole charge when any mover
+    ends not-closer; the mask applies the same test at action time so the
+    policy cannot pick a self-voiding move. Measured motivation
+    (`docs/melee-teaching-goal.md` §16-18): 76.7% of a trained arm's failed
+    charges reached NOBODY, median heading error 92°, and both shaping forms
+    failed their pre-registrations.
+    """
+    # Arrange -- a declared unit due east of its target, roll covering the gap.
+    env = _melee_env()
+    try:
+        handler = env.player_action_handler
+        models = env.wargame_models
+        for index, model in enumerate(models):
+            model.group_id = 0
+            model.location = np.array([10.0, 10.0 + index * 0.2], dtype=float)
+            model.charge_roll = 12.0
+            model.declared_charge = True
+        for index, enemy in enumerate(env.opponent_models):
+            enemy.location = np.array([16.0, 10.0 + index * 0.2], dtype=float)
+
+        handler._charge_approach_mask = True
+        masked = handler.charge_legality(models, env.opponent_models)
+        handler._charge_approach_mask = False
+        unmasked = handler.charge_legality(models, env.opponent_models)
+
+        # Assert -- strictly fewer actions survive, and every survivor closes.
+        assert masked.sum() < unmasked.sum(), "the mask removed nothing"
+        assert masked.any(), "the mask emptied the action set entirely"
+        flat = handler._charge_displacements.reshape(-1, 2)
+        target = np.array([16.0, 10.0], dtype=float)
+        start = np.array(models[0].location, dtype=float)
+        before = float(np.linalg.norm(target - start))
+        for action_index in np.nonzero(masked[0])[0]:
+            endpoint = start + flat[action_index]
+            assert float(np.linalg.norm(target - endpoint)) < before + 1e-9, (
+                f"masked-legal action {action_index} does not approach the target"
+            )
+    finally:
+        env.close()
+
+
+def test_the_approach_mask_never_empties_a_declared_units_set() -> None:
+    """A unit with no approaching rung keeps the distance gate's actions.
+
+    ⚠ Driven at the guard's own contract, not through `charge_legality`: on
+    this ladder the case is geometrically unreachable from a legal position —
+    no rung approaches only when the gap is at most half the smallest rung
+    (r < 2·gap is the approach condition for the direct angle), and a unit
+    that close is ENGAGED and therefore ineligible to declare at all. The
+    guard is defensive, for geometries bases and misalignment could open.
+    """
+    # Arrange — a legality row of all-True and a target INSIDE the smallest
+    # rung's overshoot band, so nothing ends closer.
+    env = _melee_env()
+    try:
+        handler = env.player_action_handler
+        models = env.wargame_models[:1]
+        model = models[0]
+        model.group_id = 0
+        model.location = np.array([10.0, 10.0], dtype=model.location.dtype)
+        enemy = env.opponent_models[0]
+        enemy.group_id = 0
+        enemy.location = np.array([10.4, 10.0], dtype=enemy.location.dtype)
+        legality = np.ones((1, handler.movement_slice.size), dtype=bool)
+        before = legality.copy()
+
+        # Act
+        handler._apply_charge_approach_mask(legality, models, [enemy])
+
+        # Assert — no action approaches (gap 0.4 < rung 2 / 2), so the guard
+        # must leave the row exactly as the distance gate had it.
+        assert (legality == before).all(), (
+            "the guard emptied or altered a unit with no approaching rung"
+        )
+    finally:
+        env.close()

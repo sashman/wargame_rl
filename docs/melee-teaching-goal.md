@@ -799,3 +799,50 @@ any number exists — **declarations land near the bar's 8.67** (the annuity was
 inflation) **while `stood/ep` holds at or above the level form's 1.31–1.76.** If instead
 declarations stay at 14+ with the annuity gone, the inflation was never the annuity and
 the diagnosis is wrong — say so.
+
+---
+
+## 18. melee-shaping-v5 VERDICT — the delta form is a weak null, and the shaping family is exhausted
+
+Scored 2026-08-27 ~09:30, all three seeds verified at epoch 599. n=45, K=1, seeds
+700000+, refereed, paired against the reused v4 control:
+
+| seed | ctl stood | dlt stood | Δstood | Δvp | Δheld |
+|---|---|---|---|---|---|
+| s1 | 0.53 | 0.58 | +0.05 | −28.8 | −0.36 |
+| s2 | 0.40 | 0.71 | +0.31 | +4.5 | −0.02 |
+| s3 | 0.62 | 1.49 | +0.87 | +32.0 | +0.02 |
+
+- **The §17 bet FAILS on its stood half**: 0.58–1.49 sits below the level form's
+  1.31–1.76 on 2 of 3 seeds. Declarations (5.1–15.0, mean 9.2) did land near the bar's
+  8.67 — so the v4 inflation *was* partly the annuity — but the mechanism went with it.
+- Reject clause 1 does **not** fire (vp fell on 1 of 3). Clause 2 is marginal by means
+  (decl +2.0, held −0.12) and driven by different seeds on each half; not treated as a
+  reject on its own.
+- **The mechanism was predicted before the endpoint**: a reverted charge restores start
+  positions, so the delta pays **zero on every near-miss** — it is a success-only bonus,
+  the exact discontinuity the calculator's own docstring warns against. The mid-run
+  read (stood 1.89 at epoch ~215 on 2 seeds) reversed by 600 — ⚠ the third mid-run
+  reversal on file; screens are screens.
+
+**The shaping family is exhausted: the LEVEL form has a gradient and is farmable; the
+DELTA form is unfarmable and gradient-free.** Anything between (intended-position
+deltas) pays the referee's revert as if it stood, which is a different farm.
+
+### The action-space turn (v6) — mask the charge move to the referee's own clause
+
+The pooled-logit screen also ran (2026-08-27, frozen v4-shp weights, n=20 × 3 seeds):
+rigid-unit decoding lifts stood/ep **1.19–1.31×** against a pre-committed kill line of
+**2×** — **the rigid charge is dead by its own rule**. Coordination is worth ~25%;
+the failure is per-model DIRECTION, and averaging five wrong directions is a wrong
+direction.
+
+So v6 changes what a charge move can BE: `charge_legality` additionally masks, per
+model, every movement action whose endpoint does not end **closer to the unit's charge
+target** — the same "each model must end its move closer" clause the referee already
+enforces, applied at action time. It removes only moves that would void the charge
+anyway, adds no actions, keeps every checkpoint loadable, and turns the 77%
+reached-nobody failure into a distance-and-coherency problem, which is where the bar's
+0.704 conversion lives. ⚠ This is NOT the joint "if it can" mask that collapsed the bar
+5.67 → 1.67 — that one forced ENGAGEMENT, a joint property no per-model mask can see;
+"closer" is the rules' own per-model test.

@@ -37,6 +37,29 @@ class MeleeConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    charge_approach_mask: bool = Field(
+        default=False,
+        description=(
+            "Mask the charge move, per model, to actions whose endpoint ends "
+            "CLOSER to the unit's derived charge target -- the same 'each "
+            "model must end its move closer' clause the referee already "
+            "enforces after the move (`docs/rules/11-charge-phase.md` § While "
+            "moving), applied at action time so the policy cannot choose a "
+            "move that voids its own charge. ⚠ A REPRESENTATION gate, not a "
+            "rules gate, in the same family as the roll-reachability "
+            "declaration mask and the dominated-advance mask: it removes only "
+            "actions the referee would revert. The target is the unit's "
+            "NEAREST enemy unit at charge time, which is the derived target "
+            "of `charge.target_declaration` (absent). Default OFF: turning it "
+            "on changes which actions exist in the charge phase and voids "
+            "behavioural comparability of checkpoints trained without it, "
+            "though tensor shapes are unchanged. Motivation, measured "
+            "2026-08-27 (docs/melee-teaching-goal.md sections 16-18): 76.7% "
+            "of a trained arm's failed charges reached NOBODY with median "
+            "heading error 92 degrees, and both shaping forms failed their "
+            "pre-registrations. Read only when `enabled`."
+        ),
+    )
     charge_range: float = Field(
         default=12.0,
         gt=0,
