@@ -885,3 +885,34 @@ nothing to farm**. Against the trichotomy the verdict is still the NAMED GAP (ba
 The agent can now aim a charge; it still cannot SEE the shooting shield that makes one
 worth standing (probe AUC 0.75 on trained latents against a 0.95 kill line — funded).
 Zero-init makes the logits bit-identical at step 0, so **v6 is v7's paired control**.
+
+---
+
+## 20. v6 at SIX seeds — the approach mask replicates
+
+Seeds 4–6 trained 2026-08-27 (⚠ relaunched once: the first attempt's recording
+subprocesses crashed on a mid-run disk edit — the `observe_engaged` column landing under
+live runs — killed by PID at epoch ~10 and restarted on code digest-verified bit-identical
+for this config; partial checkpoints moved aside). All verified at epoch 599. n=45, K=1,
+masked eval:
+
+| seed | decl/ep | stood/ep | conv | coherent | vp | held |
+|---|---|---|---|---|---|---|
+| s1–s3 | (see §19) | 0.58 / 2.09 / 2.51 | 0.165 / 0.264 / 0.192 | | −67.9 / −62.2 / −65.2 | |
+| s4 | 4.51 | 0.93 | 0.215 | 0.730 | −89.3 | 1.24 |
+| s5 | 10.71 | 2.18 | 0.216 | 0.805 | −40.7 | 1.67 |
+| s6 | 10.04 | 2.13 | 0.226 | 0.663 | −54.7 | 1.60 |
+
+- **stood/ep 1.74 ± 0.80 against the control's 0.52 ± 0.11, unpaired t ≈ 3.7.**
+- **Conversion 0.165–0.264 on 6 of 6 seeds against the control's 0.053–0.097 — the bands
+  do not overlap.** The mask's effect on aim is no longer a screen; it is a replicated
+  result.
+- vp +6.3 against the control, not significant; no seed pays for the mechanism.
+- ⚠ The "never-charge basin" is a **continuum, not a binary**: declaration rates span
+  3.6–13.8/ep and s4 landed mid-range (0.93) rather than at zero. Do not model it as a
+  discrete collapse mode.
+- Against the bar (5.56 / 0.704): still the NAMED GAP, at 31% of the bar's standing rate
+  and 30% of its conversion on the six-seed means.
+
+**v8 launches on this baseline**: `25v25_maps_melee_engaged.yaml`, six seeds, unpaired
+against these six, pre-registration in its config header.
