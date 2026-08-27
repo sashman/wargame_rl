@@ -155,13 +155,26 @@ is visible in the dashboard rather than only in the score.
   for its own legs — it costs an extra coherency evaluation per opponent
   movement phase and nothing outside a rated leg reads it, so no training or
   scoring path pays for it. Off, no tracker object exists at all.
-- ⚠ **WP-4 is not run.** The throughput gate on the re-entrant
-  `active_side` / `observation_for` / `apply` refactor needs a `model` opponent
-  measured inside a rollout, and it must be reported either way (D-03). Until it
-  is, **do not attempt that refactor**. If the model opponent does turn out
+- ⚠ **WP-4 is deliberately NOT run, and the refactor stays gated.** The
+  throughput gate on the re-entrant `active_side` / `observation_for` / `apply`
+  refactor needs a `model` opponent measured inside a rollout, and D-03 says to
+  report it either way. **No figure is recorded, on purpose:** the env and the
+  action space are both being changed elsewhere, and a throughput number is a
+  property of the scenario that produced it. This repo's own rule is to *measure
+  what ships*, and what ships here is not settled — a figure taken now would be
+  quoted later against an env that no longer exists, which is worse than none.
+
+  When it is run, **the aggregate will not answer the question.** The refactor
+  removes the *second, mirrored observation build* the opponent seat needs; it
+  cannot touch a forward pass. So "a network opponent is expensive" is not on
+  its own an argument for it — the gate has to split the opponent's turn into
+  **building its view** and **choosing its move**, and only the first of those is
+  what the refactor removes. `measure-throughput` does not make that split
+  today; adding it is the first step of running WP-4.
+
+  Until then **do not attempt the refactor**. If a model opponent does prove
   expensive, the first thing to try is batching its forward pass across rollout
-  envs — the trick `_run_episodes_batched` already uses for evaluation — not the
-  refactor.
+  envs — the trick `_run_episodes_batched` already uses for evaluation.
 - **No self-play run has been trained.** Everything above is mechanism.
 - **`learner_side`** — training the opponent seat — is Phase 05, following the
   `augment_start` precedent.
