@@ -56,6 +56,15 @@ def test_training_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
         gamma=None,
         ent_coef=None,
         num_rollout_envs=None,
+        # A SMALL trunk. The default is 8 layers of 256 at 8 heads -- ~12.7M
+        # parameters -- and this test ran it on a 2-model 20x20 board, which
+        # made it the slowest test in the suite at 114s and wrote two 153 MB
+        # checkpoints. What it exists to verify is the `train()` WIRING: config
+        # to env to callbacks to Trainer to fit. None of that is a function of
+        # trunk depth. `test_network_size` pins that the production default is
+        # untouched by this.
+        n_layers=2,
+        embedding_size=32,
     )
 
     # The point of the chdir: assert the run actually landed here, so a future
