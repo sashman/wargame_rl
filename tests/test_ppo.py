@@ -372,14 +372,26 @@ def test_ppo_training_runs_without_error(
         num_rollout_envs=1,
     )
 
+    # ⚠ `logger=False`, NOT `logger=None`. Lightning reads None as "use the
+    # default", which is a TensorBoardLogger writing `lightning_logs/` relative
+    # to the working directory -- and `enable_checkpointing` then puts a
+    # checkpoint under it. This test wants neither, and left as None it dropped
+    # **242 MB** into the repo on every run: a 153 MB `epoch=0-step=2.ckpt` plus
+    # a ~100 MB `hparams.yaml`, the latter being the whole `WargameEnv` pickled
+    # as a Lightning hparam. `test_checkpoint_callback` already had this right.
     trainer = Trainer(
         accelerator="auto",
         max_epochs=1,
         val_check_interval=1,
-        logger=None,
+        logger=False,
+        enable_checkpointing=False,
     )
 
     trainer.fit(model)
+
+    # This test asserts `fit` does not raise; without the guard above it also
+    # silently wrote a quarter of a gigabyte, so pin that it does not.
+    assert not Path("lightning_logs").exists()
 
 
 # ---------------------------------------------------------------------------
