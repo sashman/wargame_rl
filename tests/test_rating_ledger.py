@@ -8,6 +8,7 @@ happens to warnings.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.rating.arena import LegResult
 from wargame_rl.wargame.rating.entrant import Entrant
 from wargame_rl.wargame.rating.ledger import (
+    RatingDecodeMismatch,
     RatingScenarioMismatch,
     append,
     canonical_scenario,
@@ -215,3 +217,73 @@ def test_the_ledger_records_the_code_revision(tmp_path: Path) -> None:
     ledger = append([_leg_result()], _base_config(), _entrants(), root=tmp_path)
 
     assert ledger.legs[0].code_revision
+
+
+def _checkpoint_entrant(**overrides: object) -> Entrant:
+    fields: dict[str, object] = {
+        "name": "run-armA",
+        "build": lambda env: None,
+        "kind": "checkpoint",
+        "source": "checkpoints/run/last.ckpt",
+    }
+    fields.update(overrides)
+    return Entrant(**fields)  # type: ignore[arg-type]
+
+
+def _leg_between(entrant_a: str, entrant_b: str) -> LegResult:
+    return replace(_leg_result(), entrant_a=entrant_a, entrant_b=entrant_b)
+
+
+def test_one_name_under_two_decodes_is_refused(tmp_path: Path) -> None:
+    """A rating is a score, and this repo never quotes one without its decode.
+
+    The same weights at K=1 and K=3 differ by **+40.5 vp**, larger than any
+    policy difference measured here -- so a table holding both under one name
+    would rank the decode and report it as skill. Refused rather than warned
+    about, in the same class as mixing two scenarios.
+    """
+    config = _base_config()
+    greedy = _checkpoint_entrant(decode_topk=1)
+    append([_leg_between("run-armA", "random")], config, [greedy], root=tmp_path)
+
+    with pytest.raises(RatingDecodeMismatch, match="different players"):
+        append(
+            [_leg_between("run-armA", "random")],
+            config,
+            [_checkpoint_entrant(decode_topk=3)],
+            root=tmp_path,
+        )
+
+
+def test_a_sampled_entrant_cannot_join_a_greedy_one(tmp_path: Path) -> None:
+    """The axis that matters for self-play: rollouts draw from the policy, every
+    scoring path in this repo takes its argmax."""
+    config = _base_config()
+    append(
+        [_leg_between("run-armA", "random")],
+        config,
+        [_checkpoint_entrant()],
+        root=tmp_path,
+    )
+
+    with pytest.raises(RatingDecodeMismatch):
+        append(
+            [_leg_between("run-armA", "random")],
+            config,
+            [_checkpoint_entrant(sampled=True)],
+            root=tmp_path,
+        )
+
+
+def test_the_same_decode_appends_as_before(tmp_path: Path) -> None:
+    """The control: the guard must not refuse the ordinary case of an entrant
+    playing more legs, which is the whole point of an append-only ledger."""
+    config = _base_config()
+    entrant = _checkpoint_entrant(decode_topk=3)
+    append([_leg_between("run-armA", "random")], config, [entrant], root=tmp_path)
+
+    ledger = append(
+        [_leg_between("run-armA", "random")], config, [entrant], root=tmp_path
+    )
+
+    assert len(ledger.legs) == 2

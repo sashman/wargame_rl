@@ -29,7 +29,9 @@ ends with a `sys.modules` alias for its old path for exactly this reason;
 `tests/test_checkpoint_module_alias.py` pins it, and it was found only by scoring
 a real trained run, since nothing in the suite loaded a pre-move checkpoint.
 Anything reachable from a Lightning module's constructor args carries the same
-hazard.
+hazard — `SelfPlayConfig` is the newest one, pickled into `hyper_parameters` on
+every checkpoint written since wave 4, so `model/common/self_play.py` may not
+move without an alias.
 
 ## PPO (`model/ppo/`)
 

@@ -10,9 +10,16 @@ scenario is measuring an implementation asymmetry instead of a policy.
 One policy plays **both seats** over the balanced four legs. Because it is the
 same policy, its rating difference is identically zero by construction, so
 whatever margin survives is the seat advantage and nothing else. That makes a
-self-pairing the cleanest estimator of `h_zone` and `h_turn` there is -- cleaner
-than any table over distinct entrants, where the two advantages are fitted
+self-pairing the cleanest estimator of all three structural advantages there is
+-- cleaner than any table over distinct entrants, where they are fitted
 alongside every rating at once.
+
+**The legs are appended to this scenario's ledger**, because they are the best
+evidence of `h_seat` there is: entrant A always takes the player seat, so in a
+table of distinct entrants that term is identified only through a cycle in the
+pairing graph and comes back at 2-3x the standard error of `h_turn`. One
+self-pairing roughly halves that. Throwing these legs away and then fitting the
+seat term from cycles would be waste.
 
 What to look for:
 
@@ -20,6 +27,10 @@ What to look for:
   zone / first-turn       real structural advantages; a table CORRECTS for
                           these, so a non-zero value here is a finding, not a
                           failure
+  player-seat adv.        the same quantity as the aggregate, in Elo rather
+                          than victory points. A table corrects for it too --
+                          but only once it has been measured, which is what
+                          these legs are for
 
 A non-zero **aggregate** margin is a bug, and it blocks rating this scenario.
 
@@ -37,6 +48,7 @@ from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.rating.arena import play_pairing, require_symmetric
 from wargame_rl.wargame.rating.elo import fit_ratings
 from wargame_rl.wargame.rating.entrant import Entrant
+from wargame_rl.wargame.rating.ledger import append, fingerprint, path_for
 from wargame_rl.wargame.rating.table import design_from_legs
 from wargame_rl.wargame.selectors import build_action_selector
 
@@ -89,6 +101,7 @@ def main() -> None:
     fit = fit_ratings(design, entrants, anchor=policy)
     print(f"\nzone advantage   {fit.h_zone:+.1f} Elo")
     print(f"first-turn adv.  {fit.h_turn:+.1f} Elo")
+    print(f"player-seat adv. {fit.h_seat:+.1f} Elo")
 
     verdict = (
         "the seats are fair; rating this scenario is sound"
@@ -97,8 +110,14 @@ def main() -> None:
     )
     print(f"\n{verdict}")
     print(
-        "the two advantages above are structural and a rating corrects for "
-        "them; only the aggregate has to be zero"
+        "the zone and first-turn advantages are structural and a rating "
+        "corrects for them; only the aggregate has to be zero"
+    )
+
+    append(legs, config, [entrant])
+    print(
+        f"\nappended {len(legs)} legs to {path_for(fingerprint(config))} -- "
+        "they are the direct evidence for the seat term in `just elo-table`"
     )
 
 

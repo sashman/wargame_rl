@@ -62,7 +62,8 @@ wargame_rl/
 ├── tests/                         # Pytest suite with conftest.py fixtures
 ├── docs/                          # Design docs (movement, reward phases, missions-and-vp,
 │                                  #   roadmap, metrics, shooting, expected-damage,
-│                                  #   terrain, training-throughput, play-doctrine, elo)
+│                                  #   terrain, training-throughput, play-doctrine, elo,
+│                                  #   self-play)
 │   └── rules/                     # Rules specification + constants.yaml + gap map
 ├── reports/                       # Experiment findings, kept for retrospection
 ├── ratings/                       # Rating ledgers, one per scenario fingerprint
@@ -151,9 +152,9 @@ Snapshot/event pipeline for recording and inspecting matches — `GameStateSnaps
 
 ### Ratings (`rating/`)
 
-Puts scripted baselines and learned checkpoints on **one scale**, so "did this get better" has an answer that does not depend on which opponent it happened to face. Bradley-Terry maximum likelihood with the deployment-zone and first-turn advantages as explicit fitted terms, a bootstrap over layouts, and an append-only ledger in `ratings/` keyed by a scenario fingerprint that **refuses** to mix scenarios. `score.py` and `elo.py` import numpy and nothing from this repo; `arena.py` is the only module that touches a live env, and it wraps `evaluate_selector` rather than reimplementing it. Recipes: `measure-seat-parity` · `measure-elo` · `elo-table`. See [docs/elo.md](docs/elo.md)
+Puts scripted baselines and learned checkpoints on **one scale**, so "did this get better" has an answer that does not depend on which opponent it happened to face. Bradley-Terry maximum likelihood with the deployment-zone, first-turn and **player-seat** advantages as explicit fitted terms, a bootstrap over layouts, and an append-only ledger in `ratings/` keyed by a scenario fingerprint that **refuses** to mix scenarios. `score.py` and `elo.py` import numpy and nothing from this repo; `arena.py` is the only module that touches a live env, and it wraps `evaluate_selector` rather than reimplementing it. Recipes: `measure-seat-parity` · `measure-elo` · `elo-table`. See [docs/elo.md](docs/elo.md) · [docs/self-play.md](docs/self-play.md)
 
-⚠ **A rating assumes the two seats are the same game, and nothing enforces that.** On `configs/golden/25v25_shooting_opponent.yaml` they are not — one policy played from both seats loses from the *player* seat by **−24.6 ± 9.4 vp**, and every number in this file is quoted from that seat. `just measure-seat-parity` is the gate and it is **advisory**: entrant A always takes the player seat and `pairings` lists each pair once in input order, so on a config that fails the gate, ratings are confounded by command-line position. No rating is published for this reason. See [the report](reports/2026-08-19-the-two-seats-are-not-the-same-game.md)
+⚠ **The two seats are not the same game, and `h_seat` only partly answers it.** On `configs/golden/25v25_shooting_opponent.yaml` one policy played from both seats loses from the *player* seat by **−24.6 ± 9.4 vp**, and every number in this file is quoted from that seat. `h_seat` absorbs the confound so ratings no longer depend on command-line position — it is identified through a **cycle** in the pairing graph (so **three entrants are required and two are refused**) or directly by a **self-pairing**, which is what `just measure-seat-parity` plays and which roughly halves its standard error; the gate now appends its legs to the ledger for exactly that reason. ⚠ **But the gate is still advisory** — nothing refuses to rate a scenario that fails it — and `h_seat` assumes the advantage is *constant in Elo across pairs*, which `h_turn` (measured to change sign with shooting) suggests may be false. Cross-check the fitted term against the gate's own aggregate. No rating is published. See [the report](reports/2026-08-19-the-two-seats-are-not-the-same-game.md)
 
 ### RL Algorithm
 
@@ -1246,6 +1247,14 @@ project's effort has gone, and the shape of the problem is now settled.
   `--max-grad-norm`, `--render-mode`, `--no-wandb`, `--run-suffix`,
   `--wandb-group`, `--warm-start-ckpt-path`, `--resume-ckpt-path`,
   `--record-threat-range`, `--record-engagement-range`.
+- **Self-play (opt-in, off by default):** `--self-play`,
+  `--snapshot-every-n-epochs`, `--pool-capacity`, `--pool-anchor`, `--pfsp-mode`
+  (`hard` | `even` | `uniform` — **`uniform` is the control**). Off builds no
+  scheduler at all, so no stream is drawn and a control run is bit-identical.
+  ⚠ **Do not start one on a scenario whose `just measure-seat-parity` gate
+  fails** — the learner only ever trains the player seat, so a snapshot on the
+  other seat plays a game it never practised. See
+  [docs/self-play.md](docs/self-play.md).
 - `just profile <config.yaml> [max_epochs]` writes `profile.html` (`--no-wandb`,
   capped at 5 epochs by default); `just simulate-latest` runs the newest
   checkpoint.

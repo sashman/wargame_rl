@@ -6,19 +6,48 @@ can be replayed, so a sequential rule would only make a rating depend on the
 *order* games were played in -- gratuitous irreproducibility in a project whose
 training is otherwise bit-reproducible.
 
-The model is Bradley-Terry with two explicit advantage terms::
+The model is Bradley-Terry with three explicit advantage terms::
 
-    E[s] = 1 / (1 + 10^(-(R_A - R_B + sz*h_zone + st*h_turn) / 400))
+    E[s] = 1 / (1 + 10^(-(R_A - R_B + sz*h_zone + st*h_turn + h_seat) / 400))
 
       sz = +1 if A deployed in zone 1, -1 if zone 2
       st = +1 if A moved first,        -1 otherwise
 
-`h_zone` and `h_turn` are the deployment-zone and first-turn advantages **in Elo
-points**, shared across all pairs. Rather than merely cancelling an imbalance
-known to exist, the fit *reports* it -- a result in its own right, available
-before any self-play training happens. Both are identified only because the
-schedule varies the two axes **independently**; swapping them together would
-confound them into one number from which neither is recoverable.
+`h_zone`, `h_turn` and `h_seat` are the deployment-zone, first-turn and
+**player-seat** advantages in Elo points, shared across all pairs. Rather than
+merely cancelling an imbalance known to exist, the fit *reports* it -- a result
+in its own right, available before any self-play training happens. Zone and
+first turn are identified because the schedule varies those two axes
+**independently**; swapping them together would confound them into one number
+from which neither is recoverable, and `_require_identifiable` refuses that.
+
+`h_seat` is different, and the difference matters when reading it. The arena
+always seats entrant A on the player seat, so its column is **constant at +1**
+-- there is no balancing to be had. It is identified anyway, two ways:
+
+- **Through the pairing graph.** A constant column lies in the span of the
+  `e_A - e_B` columns only if some rating vector has every pairwise difference
+  equal to one, which any cycle forbids: around a triangle the differences sum
+  to zero and the ones do not. So three entrants suffice, two do not.
+- **Directly, by a self-pairing.** One entrant on both seats has a rating
+  difference of identically zero, so whatever survives its balanced four legs is
+  the seat advantage and nothing else. That is exactly what
+  `just measure-seat-parity` plays.
+
+The two differ in power, and by a lot. Measured on the exact design this
+schedule produces, `se(h_seat)` against `se(h_turn)`:
+
+    entrants  no self-pairing   one self-pairing
+       2      not identified          1.41
+       3           3.00               1.73
+       4           2.45               1.87
+
+So **`h_seat` is the weakest column in any table without a self-pairing**, and
+feeding the seat-parity legs into the ledger is worth more than adding an
+entrant. It does not replace the gate: `measure-seat-parity` reports the same
+quantity in victory points, at higher power, and without assuming the advantage
+is constant in Elo across pairs -- an assumption that is live, since `h_turn`
+was measured to change sign with shooting.
 
 Nothing here imports from `wargame_rl`, and scipy is deliberately not a
 dependency of this project -- this is a well-behaved convex fit in a few dozen
@@ -85,6 +114,7 @@ class RatingFit:
     ratings: NDArray[np.float64]
     h_zone: float
     h_turn: float
+    h_seat: float
     standard_errors: NDArray[np.float64]
     n_games: int
     n_iterations: int
@@ -100,18 +130,27 @@ class RatingTable:
     upper: NDArray[np.float64]
     h_zone_interval: tuple[float, float]
     h_turn_interval: tuple[float, float]
+    h_seat_interval: tuple[float, float]
     n_bootstrap: int
     alpha: float
 
 
-def win_probability(rating_a: float, rating_b: float) -> float:
+def win_probability(rating_a: float, rating_b: float, advantage: float = 0.0) -> float:
     """A's expected score against B, on the Elo curve.
 
     This is what PFSP opponent sampling reads, so the rating table and the
     self-play sampler compose instead of maintaining two different win-rate
     estimates.
+
+    `advantage` is whatever structural terms apply to the seating actually being
+    played, in Elo points -- `h_seat` when A really is on the player seat, plus
+    `h_turn` if the turn order is pinned. It defaults to zero, which is the
+    **seat-neutral** comparison: "which policy is better", not "who wins this
+    particular arrangement". Self-play wants the first for ranking a pool and
+    the second for predicting a rollout, and they are not the same number.
     """
-    return float(1.0 / (1.0 + 10.0 ** (-(rating_a - rating_b) / ELO_SCALE)))
+    difference = rating_a - rating_b + advantage
+    return float(1.0 / (1.0 + 10.0 ** (-difference / ELO_SCALE)))
 
 
 def fit_ratings(
@@ -122,7 +161,7 @@ def fit_ratings(
     max_iter: int = 100,
     tol: float = 1e-9,
 ) -> RatingFit:
-    """Maximise the cross-entropy over ratings, `h_zone` and `h_turn`.
+    """Maximise the cross-entropy over ratings, `h_zone`, `h_turn` and `h_seat`.
 
     Two regularisers, both necessary:
 
@@ -145,15 +184,15 @@ def fit_ratings(
 
     n_entrants = len(names)
     anchor_index = names.index(anchor)
-    # Parameters are [ratings excluding the anchor, h_zone, h_turn]; striking
-    # the anchor's column out is what pins it at zero.
+    # Parameters are [ratings excluding the anchor, h_zone, h_turn, h_seat];
+    # striking the anchor's column out is what pins it at zero.
     free = [i for i in range(n_entrants) if i != anchor_index]
     n_free = len(free)
     matrix = _design_matrix(design, n_entrants, free)
     _require_identifiable(matrix, n_free, prior_sigma)
 
-    parameters = np.zeros(n_free + 2, dtype=np.float64)
-    curvature = np.zeros((n_free + 2, n_free + 2), dtype=np.float64)
+    parameters = np.zeros(n_free + 3, dtype=np.float64)
+    curvature = np.zeros((n_free + 3, n_free + 3), dtype=np.float64)
     converged = False
     iteration = 0
     # d(logit)/d(difference): the model is base-10 on a 400-point scale, so one
@@ -169,8 +208,11 @@ def fit_ratings(
         weights = rate**2 * expected * (1.0 - expected)
         curvature = (matrix.T * weights) @ matrix
 
-        # The prior applies to the ratings only -- the two advantage terms are
+        # The prior applies to the ratings only -- the three advantage terms are
         # structural quantities of the scenario, not entrants to be shrunk.
+        # `h_seat` in particular must NOT be shrunk: it is the term that absorbs
+        # the seating confound, and shrinking it would push that confound back
+        # into the ratings, silently.
         if prior_sigma > 0.0:
             precision = 1.0 / prior_sigma**2
             gradient[:n_free] -= parameters[:n_free] * precision
@@ -193,6 +235,7 @@ def fit_ratings(
         ratings=ratings,
         h_zone=float(parameters[n_free]),
         h_turn=float(parameters[n_free + 1]),
+        h_seat=float(parameters[n_free + 2]),
         standard_errors=standard_errors,
         n_games=design.n_games,
         n_iterations=iteration,
@@ -239,17 +282,18 @@ def bootstrap_ratings(
     rng = np.random.default_rng(seed)
 
     ratings = np.empty((n_bootstrap, len(point.entrants)), dtype=np.float64)
-    advantages = np.empty((n_bootstrap, 2), dtype=np.float64)
+    advantages = np.empty((n_bootstrap, 3), dtype=np.float64)
     for draw in range(n_bootstrap):
         drawn = rng.choice(layouts, size=layouts.size, replace=True)
         rows = np.concatenate([rows_by_layout[int(layout)] for layout in drawn])
         resampled = fit_ratings(_take(design, rows), entrants, **fit_kwargs)  # type: ignore[arg-type]
         ratings[draw] = resampled.ratings
-        advantages[draw] = (resampled.h_zone, resampled.h_turn)
+        advantages[draw] = (resampled.h_zone, resampled.h_turn, resampled.h_seat)
 
     low, high = 100.0 * alpha / 2.0, 100.0 * (1.0 - alpha / 2.0)
     zone_interval = np.percentile(advantages[:, 0], [low, high])
     turn_interval = np.percentile(advantages[:, 1], [low, high])
+    seat_interval = np.percentile(advantages[:, 2], [low, high])
 
     return RatingTable(
         fit=point,
@@ -257,6 +301,7 @@ def bootstrap_ratings(
         upper=np.percentile(ratings, high, axis=0),
         h_zone_interval=(float(zone_interval[0]), float(zone_interval[1])),
         h_turn_interval=(float(turn_interval[0]), float(turn_interval[1])),
+        h_seat_interval=(float(seat_interval[0]), float(seat_interval[1])),
         n_bootstrap=n_bootstrap,
         alpha=alpha,
     )
@@ -265,7 +310,7 @@ def bootstrap_ratings(
 def _design_matrix(
     design: Design, n_entrants: int, free: Sequence[int]
 ) -> NDArray[np.float64]:
-    """Rows of `[+1 for A, -1 for B, sigma_zone, sigma_turn]`, anchor dropped.
+    """Rows of `[+1 A, -1 B, sigma_zone, sigma_turn, 1]`, anchor dropped.
 
     Dense on purpose: a 100-layout, 9-entrant table is ~14k rows by ~11 columns,
     which is well under a megabyte and lets the Hessian be one `matmul`.
@@ -273,17 +318,25 @@ def _design_matrix(
     Built with `np.add.at` rather than assignment so that a **self-pairing**
     accumulates to zero instead of leaving a stray `+1`. That case is not
     hypothetical: an entrant played against itself is the seat-parity check, and
-    it is the cleanest estimator of `h_zone` and `h_turn` there is -- the rating
+    it is the cleanest estimator of all three advantages there is -- the rating
     difference is identically zero by construction, so whatever margin survives
-    the balanced four legs is the seat advantage and nothing else.
+    the balanced four legs is structural and nothing else.
+
+    The final column is **constant at 1**, not read off the design, because the
+    arena always seats entrant A on the player seat. It is a column rather than
+    an intercept-by-another-name for a reason: it means the seat advantage is a
+    *parameter with an interval* instead of a bias smeared across the ratings in
+    proportion to how often each entrant happened to be named first. Should a
+    schedule ever swap the seats, this becomes data and moves onto `Design`.
     """
-    full = np.zeros((design.n_games, n_entrants + 2), dtype=np.float64)
+    full = np.zeros((design.n_games, n_entrants + 3), dtype=np.float64)
     rows = np.arange(design.n_games)
     np.add.at(full, (rows, design.index_a), 1.0)
     np.add.at(full, (rows, design.index_b), -1.0)
     full[:, n_entrants] = design.sigma_zone
     full[:, n_entrants + 1] = design.sigma_turn
-    keep = list(free) + [n_entrants, n_entrants + 1]
+    full[:, n_entrants + 2] = 1.0
+    keep = list(free) + [n_entrants, n_entrants + 1, n_entrants + 2]
     return full[:, keep]
 
 
@@ -293,15 +346,24 @@ def _require_identifiable(
     """Refuse a design that cannot separate the parameters it is asked for.
 
     The prior makes the *rating* block full rank on its own, but nothing
-    regularises `h_zone` and `h_turn` -- they are structural quantities of the
-    scenario rather than entrants to be shrunk. So a schedule that varies the
-    two axes together leaves the pair identified only up to their sum, and
-    Newton hits a singular Hessian.
+    regularises the three advantage terms -- they are structural quantities of
+    the scenario rather than entrants to be shrunk. So a schedule that varies
+    the zone and turn axes together leaves that pair identified only up to their
+    sum, and Newton hits a singular Hessian.
 
     Refusing is the point. Regularising instead would return a plausible split
     of a quantity the data never separated, and a rating that reports a
     deployment-zone advantage it could not have measured is worse than no
     rating. The four-leg schedule exists precisely so this cannot happen.
+
+    **`h_seat` fails differently, and the prior makes it worse rather than
+    better.** Its column is constant, so with two entrants and no self-pairing
+    it is exactly collinear with the single free rating: the null direction has
+    a rating component, which means the prior *does* make the Hessian
+    invertible, and the split between "B is weaker" and "the player seat is
+    stronger" would then be decided by the prior rather than by any game. That
+    is the failure this function exists to prevent, so the rank check for the
+    seat column runs **whether or not there is a prior**.
     """
     advantages = matrix[:, n_free:]
     if np.linalg.matrix_rank(advantages) < advantages.shape[1]:
@@ -310,11 +372,23 @@ def _require_identifiable(
             "separately -- they vary together, so only their sum is measurable. "
             "Play all four legs (zone x first mover), not two."
         )
-    if prior_sigma <= 0.0 and np.linalg.matrix_rank(matrix) < matrix.shape[1]:
-        raise ValueError(
-            "the design does not identify every rating; with no prior, an "
-            "entrant needs at least one game against the connected pool"
-        )
+    if np.linalg.matrix_rank(matrix) < matrix.shape[1]:
+        without_seat = matrix[:, :-1]
+        if np.linalg.matrix_rank(without_seat) == without_seat.shape[1]:
+            raise ValueError(
+                "this table cannot separate the player-seat advantage from the "
+                "ratings themselves. Entrant A always takes the player seat, so "
+                "the seat term is identified only through a cycle in the pairing "
+                "graph -- which needs at least THREE entrants -- or through a "
+                "self-pairing, one entrant on both seats, which is what "
+                "`just measure-seat-parity` plays. Add a third entrant, or feed "
+                "the seat-parity legs into this ledger."
+            )
+        if prior_sigma <= 0.0:
+            raise ValueError(
+                "the design does not identify every rating; with no prior, an "
+                "entrant needs at least one game against the connected pool"
+            )
 
 
 def _rows_by_layout(design: Design) -> dict[int, NDArray[np.intp]]:

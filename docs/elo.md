@@ -14,6 +14,7 @@ possible. The result is comparable across opponents because *every* opponent is
 in the fit.
 
 - Related: [metrics.md](metrics.md) (what each measured column means) ·
+  [self-play.md](self-play.md) (what consumes a rating) ·
   [opponent-policies.md](opponent-policies.md) (who can sit on the other side) ·
   [ratings/README.md](../ratings/README.md) (the ledgers themselves)
 
@@ -237,6 +238,10 @@ wrong number.
 
 ## Open gaps
 
+> **Closed in wave 4.** The seat is now a fitted term (`h_seat`) and the
+> opponent force carries its own coherency column. What remains open below is
+> what the fix does *not* cover -- read it before quoting either.
+
 ### The seats are not a balanced axis, and the gate is advisory
 
 The four legs balance zone and turn order. They do **not** balance the engine
@@ -268,13 +273,15 @@ with `-` in the coherency column — a real gap against this repo's rule that **
 score is quoted without coherency**, since a `vp_margin` alone is a result plus an
 unstated claim that the moves earning it were legal.
 
-Closing it means tracking the opponent force's formation too. `CoherencyTracker`
-is already written as "running totals for **one force**", so a second instance is
-mechanically small; what it needs is the opponent's *intended* coherency, which
-the player path gets from `ActionHandler.intended_coherency_last_move` and the
-opponent path does not currently record.
+**Closed in wave 4.** The opponent force keeps its own `CoherencyTracker`, and
+`mean_coherency` fills the column from whichever seat an entrant occupied. It
+costs **+0.27 ms/step (+2.7%)** on `25v25_maps_two_mode`, unconditional on the
+same grounds the player's is.
 
-This is the same asymmetry as the gap above, seen from the metrics side.
+⚠ Read it with the standing warning: a coherency *rate* rises whenever an army
+dies, since a unit reduced to one model is coherent by definition. The
+opponent's `models_out_of_coherency` is carried for the same reason the
+player's is.
 
 ### The neutral cadence is not neutral
 

@@ -1,6 +1,7 @@
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, cast
 
 import torch
@@ -26,6 +27,7 @@ from wargame_rl.wargame.model.common.performance import configure_matmul_precisi
 from wargame_rl.wargame.model.common.record_episode_callback import (
     RecordEpisodeCallback,
 )
+from wargame_rl.wargame.model.common.self_play import SelfPlayConfig
 from wargame_rl.wargame.model.ppo.config import PPOConfig, PPOTrainingConfig
 from wargame_rl.wargame.model.ppo.lightning import PPOLightning
 from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
@@ -182,6 +184,16 @@ def _resolve_optional_float(value: float | OptionInfo | None) -> float | None:
     return value
 
 
+def _resolve_default(value: Any, default: Any) -> Any:
+    """Unwrap a Typer default to a concrete fallback, for direct callers.
+
+    `_resolve_optional_int` returns `None`, which is right for options whose
+    absence means "unset". These have real defaults, and a `SelfPlayConfig`
+    handed an `OptionInfo` fails validation rather than falling back.
+    """
+    return default if isinstance(value, OptionInfo) else value
+
+
 def _resolve_optional_int(value: int | OptionInfo | None) -> int | None:
     """Unwrap a Typer default for callers that invoke `train()` directly.
 
@@ -320,6 +332,40 @@ def train(
         None,
         help="Load model weights from checkpoint and start fresh optimizer/epoch state.",
     ),
+    self_play: bool = typer.Option(
+        False,
+        help="Train against a pool of the run's own frozen snapshots, sampled by "
+        "PFSP. OFF by default and a no-op when off: no scheduler is built and no "
+        "stream is drawn, so a control run is bit-identical to one on a build "
+        "without the feature. Do NOT start one on a scenario whose "
+        "`just measure-seat-parity` gate fails -- the learner only ever trains "
+        "the player seat, so a snapshot on the other seat plays a game it never "
+        "practised.",
+    ),
+    snapshot_every_n_epochs: int = typer.Option(
+        25,
+        help="How often to freeze the learner into the pool. Written from a "
+        "Lightning hook, so SIGKILL writes nothing and a pool is routinely this "
+        "many epochs stale -- the same hazard last.ckpt has.",
+    ),
+    pool_capacity: int = typer.Option(
+        8,
+        help="How many snapshots to keep, the anchor included. A snapshot is a "
+        "full checkpoint on local disk and `checkpoints/` is the only copy of any "
+        "weights here, so this is a disk budget before it is a statistical one.",
+    ),
+    pool_anchor: str = typer.Option(
+        "squad_march_take",
+        help="Pool entry zero, never evicted -- the floor a pool of nothing but "
+        "recent selves would not have.",
+    ),
+    pfsp_mode: str = typer.Option(
+        "hard",
+        help="Which opponents to prefer: `hard` (the ones the learner loses to), "
+        "`even` (level matchups), or `uniform` -- the CONTROL, which is what to "
+        "run an arm against, since a pool changes training on its own and the "
+        "schedule is a separate claim.",
+    ),
     run_name: str | None = typer.Option(
         None,
         help="Optional run name base. If omitted, a descriptive name is generated from algorithm/network/env settings.",
@@ -420,12 +466,30 @@ def train(
     # The config decides whether the model gets a shooting slice, and
     # therefore whether it decodes targets autoregressively.
     ppo_net = PPO_Transformer.from_env(env, ppo_config)
-    ppo_model = PPOLightning(env=env, ppo_model=ppo_net, **ppo_config.model_dump())
+    self_play_config = SelfPlayConfig(
+        enabled=_resolve_default(self_play, False),
+        snapshot_every_n_epochs=_resolve_default(snapshot_every_n_epochs, 25),
+        pool_capacity=_resolve_default(pool_capacity, 8),
+        anchor=_resolve_default(pool_anchor, "squad_march_take"),
+        sampling=cast(Any, _resolve_default(pfsp_mode, "hard")),
+    )
+    ppo_model = PPOLightning(
+        env=env,
+        ppo_model=ppo_net,
+        self_play=self_play_config,
+        # Named from the run base rather than from `run.name`, because the
+        # module is built before wandb assigns one and a pool has to be
+        # addressable from the moment training starts.
+        snapshot_dir=Path("checkpoints") / run_name_base / "pool",
+        seed=resolved_seed or 0,
+        **ppo_config.model_dump(),
+    )
 
     config = {
         "wargame": env_config.model_dump(),
         "ppo": ppo_config.model_dump(),
         "training": ppo_training_config.model_dump(),
+        "self_play": self_play_config.model_dump(),
     }
 
     with init_wandb(
