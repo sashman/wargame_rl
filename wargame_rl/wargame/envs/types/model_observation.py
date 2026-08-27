@@ -130,10 +130,15 @@ class WargameModelObservation:
     charge_roll: float | None = None
     fell_back_this_turn: float | None = None
     declared_charge: float | None = None
+    # Is this model within engagement range of a living enemy, base to base.
+    # Present only under `melee.observe_engaged`. Unlike the three columns
+    # above it is a pure function of CURRENT positions -- never stale, never
+    # gated on whose turn it is, populated genuinely on both sides.
+    engaged: float | None = None
 
     @property
     def size(self) -> int:
-        """Location + distances + group one-hot + same-group distance + alive + wound scalars (3) + combat stats (7), plus unit strength, objective-presence flags, the two coherency scalars, the two advance scalars and the three melee scalars when observed."""
+        """Location + distances + group one-hot + same-group distance + alive + wound scalars (3) + combat stats (7), plus unit strength, objective-presence flags, the two coherency scalars, the two advance scalars, the three melee scalars and the engaged flag when observed."""
         return int(
             self.location.size
             + self.distances_to_objectives.size
@@ -151,4 +156,5 @@ class WargameModelObservation:
             + (0 if self.charge_roll is None else 1)
             + (0 if self.fell_back_this_turn is None else 1)
             + (0 if self.declared_charge is None else 1)
+            + (0 if self.engaged is None else 1)
         )

@@ -15,6 +15,7 @@ from wargame_rl.wargame.envs.domain.coherency import (
     base_to_base_distances,
     evaluate_coherency,
 )
+from wargame_rl.wargame.envs.domain.engagement import engaged_with_any
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.value_objects import POSITION_DTYPE
 from wargame_rl.wargame.envs.env_components.actions import (
@@ -205,6 +206,7 @@ def _models_to_obs(
     observe_advance: bool = False,
     advance_is_known: bool = True,
     observe_melee: bool = False,
+    engaged_flags: np.ndarray | None = None,
 ) -> list[WargameModelObservation]:
     strengths = _unit_strengths(models) if observe_unit_strength else {}
     offsets = (
@@ -308,6 +310,10 @@ def _models_to_obs(
                     if not observe_melee
                     else (float(m.declared_charge) if advance_is_known else 0.0)
                 ),
+                # ⚠ NOT gated on `advance_is_known`: engagement is a pure
+                # function of current positions, identical from either seat,
+                # so both sides read it live. See `melee.observe_engaged`.
+                engaged=(None if engaged_flags is None else float(engaged_flags[i])),
                 coherency_spread=(None if spread is None else float(spread[i])),
                 coherency_component=(
                     None if component is None else float(component[i])
@@ -674,6 +680,37 @@ def build_observation(
         if view.config.melee.observe_charge is None
         else view.config.melee.observe_charge
     )
+    player_engaged: np.ndarray | None = None
+    opponent_engaged: np.ndarray | None = None
+    if view.config.melee.observe_engaged:
+        quantities = view.rules_quantities
+        player_positions = np.array(
+            [m.location for m in view.player_models], dtype=float
+        )
+        opponent_positions = np.array(
+            [m.location for m in view.opponent_models], dtype=float
+        )
+        player_alive = np.array([m.is_alive for m in view.player_models], dtype=bool)
+        opponent_alive = np.array(
+            [m.is_alive for m in view.opponent_models], dtype=bool
+        )
+        base_diameter = 2.0 * quantities.base_radius
+        player_engaged = engaged_with_any(
+            player_positions,
+            opponent_positions,
+            opponent_alive,
+            player_alive,
+            engagement_range=quantities.engagement_range,
+            base_diameter=base_diameter,
+        )
+        opponent_engaged = engaged_with_any(
+            opponent_positions,
+            player_positions,
+            player_alive,
+            opponent_alive,
+            engagement_range=quantities.engagement_range,
+            base_diameter=base_diameter,
+        )
     return WargameEnvObservation(
         current_turn=view.current_turn,
         wargame_models=_models_to_obs(
@@ -687,6 +724,7 @@ def build_observation(
             unit_centroid_cap=unit_centroid_cap,
             observe_advance=view.config.n_advance_speed_bins > 0,
             observe_melee=observe_melee,
+            engaged_flags=player_engaged,
         ),
         objectives=objectives_obs,
         board_width=view.board_width,
@@ -716,6 +754,7 @@ def build_observation(
             # so this is informationally identical to dropping it -- and unlike
             # dropping it, costs no shape change and orphans no checkpoint.
             advance_is_known=False,
+            engaged_flags=opponent_engaged,
         ),
         terrain=terrain_obs,
         action_mask=action_mask,

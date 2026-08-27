@@ -238,6 +238,8 @@ def _models_to_features(
         core_parts.append(
             np.array([[m.declared_charge] for m in models], dtype=np.float32)
         )
+    if models[0].engaged is not None:
+        core_parts.append(np.array([[m.engaged] for m in models], dtype=np.float32))
     core = np.hstack(core_parts)
     alive_col = np.array([[m.alive] for m in models], dtype=np.float32)
     cw = np.array([[float(m.current_wounds)] for m in models], dtype=np.float32)
@@ -347,7 +349,12 @@ def _observation_to_numpy(
     # the unit is under a charge declaration made in the previous phase.
     n_melee = sum(
         1
-        for attribute in ("charge_roll", "fell_back_this_turn", "declared_charge")
+        for attribute in (
+            "charge_roll",
+            "fell_back_this_turn",
+            "declared_charge",
+            "engaged",
+        )
         if probe and getattr(probe[0], attribute) is not None
     )
     base_feature_dim = (

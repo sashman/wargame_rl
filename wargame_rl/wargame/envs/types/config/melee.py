@@ -37,6 +37,26 @@ class MeleeConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    observe_engaged: bool = Field(
+        default=False,
+        description=(
+            "Put a per-model `engaged` column on BOTH sides' tokens: is this "
+            "model within engagement range of a living enemy, base to base -- "
+            "the same `engaged_with_any` the shooting gates and the charge "
+            "eligibility read. The mechanic's entire measured value on the "
+            "shipped profile is the SHOOTING SHIELD (+62.5 vp with the target "
+            "gate, -4.0 without), and nothing in the observation carried it: "
+            "a linear probe on trained latents reads AUC 0.75 against a 0.95 "
+            "kill line (docs/melee-teaching-goal.md section 16). Unlike the "
+            "per-turn charge columns this is a pure function of CURRENT "
+            "positions, so it is never stale and is populated genuinely on "
+            "both sides. ⚠ Widens the per-model tensor by one on both token "
+            "types: turning it on orphans checkpoints trained without it and "
+            "makes the arm UNPAIRABLE against them -- compare unpaired, with "
+            "more seeds, per the advance-arm precedent. Default OFF; every "
+            "existing config is bit-identical."
+        ),
+    )
     charge_approach_mask: bool = Field(
         default=False,
         description=(
