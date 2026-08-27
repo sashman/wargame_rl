@@ -677,7 +677,15 @@ class PPOLightning(WargameLightningBase):
         loads a checkpoint and sizes a network; per episode would pay that on
         every reset. Per env rather than per run, so one epoch's batch spans the
         pool instead of betting on a single draw.
+
+        ⚠ **`super()` first, unconditionally.** These hooks are overrides, not
+        additions: `WargameLightningBase.on_train_epoch_end` runs the per-epoch
+        evaluation and the reward-phase advancement, so an override that returns
+        early when self-play is off silently disables the curriculum on **every**
+        run. It survived a full suite because the base body is gated on
+        `do_log`, which the tests turn off.
         """
+        super().on_train_epoch_start()
         if self._opponent_scheduler is None:
             return
         drawn = self._opponent_scheduler.seat(self._ensure_rollout_envs())
@@ -699,7 +707,11 @@ class PPOLightning(WargameLightningBase):
         the prescribed way to stop these trainers. A pool is routinely up to
         `snapshot_every_n_epochs` behind the run that produced it, exactly as
         `last.ckpt` is up to 25 epochs stale for the same reason.
+
+        ⚠ **`super()` first**, which is where evaluation and reward-phase
+        advancement live. See `on_train_epoch_start`.
         """
+        super().on_train_epoch_end()
         if self._opponent_scheduler is None:
             return
         if self._opponent_scheduler.should_snapshot(self.current_epoch):

@@ -246,3 +246,45 @@ def test_a_snapshot_loads_back_as_an_opponent(tmp_path: Path) -> None:
                 break
     finally:
         play_env.close()
+
+
+def test_the_epoch_hooks_still_run_evaluation_and_phase_advancement() -> None:
+    """The self-play hooks are OVERRIDES, not additions.
+
+    `WargameLightningBase.on_train_epoch_end` runs the per-epoch evaluation and
+    the reward-phase advancement. The first version of the self-play wiring
+    returned early when no scheduler existed, which silently disabled the
+    curriculum on **every** run, self-play or not -- and a full suite stayed
+    green, because that base body is gated on `do_log` and the tests turn
+    logging off.
+
+    So this asserts through `do_log=True` and checks the base actually ran,
+    rather than checking that the override did nothing.
+    """
+    env = WargameEnv(config=_config())
+    module = PPOLightning(
+        env=env,
+        ppo_model=PPO_Transformer.from_env(env),
+        log=True,
+        n_steps=8,
+        batch_size=4,
+        n_epochs=1,
+        num_rollout_envs=2,
+        n_episodes=1,
+    )
+    evaluated: list[int] = []
+
+    def _record(n_episodes: int, epsilon: float = 0.0) -> float:
+        evaluated.append(n_episodes)
+        return 0.0
+
+    module.run_episodes = _record  # type: ignore[method-assign]
+    module.log = lambda *args, **kwargs: None  # type: ignore[method-assign,assignment]
+
+    module.on_train_epoch_start()
+    module.on_train_epoch_end()
+
+    assert evaluated, (
+        "the base hook did not run: an override that returns early when "
+        "self-play is off disables evaluation and phase advancement"
+    )
