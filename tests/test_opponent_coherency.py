@@ -66,17 +66,47 @@ def _entrant(name: str) -> Entrant:
     )
 
 
-def test_the_opponent_force_reports_a_coherency_rate() -> None:
-    env = WargameEnv(config=_config(), renderer=None)
+def _tracked_config() -> WargameEnvConfig:
+    config = _config()
+    config.track_opponent_coherency = True
+    return config
+
+
+def _play(config: WargameEnvConfig) -> WargameEnv:
+    env = WargameEnv(config=config, renderer=None)
+    evaluate_selector(
+        build_action_selector("squad_march", env).select,
+        env,
+        [900_000, 900_001],
+        "squad_march",
+    )
+    return env
+
+
+def test_the_opponent_force_reports_a_coherency_rate_when_asked() -> None:
+    env = _play(_tracked_config())
     try:
-        evaluate_selector(
-            build_action_selector("squad_march", env).select,
-            env,
-            [900_000, 900_001],
-            "squad_march",
-        )
         assert env.opponent_coherency_rate is not None
         assert env.opponent_models_out_of_coherency is not None
+    finally:
+        env.close()
+
+
+def test_it_is_off_by_default_and_reports_nothing() -> None:
+    """Opt-in, unlike the player's tracker.
+
+    The player's is the record of whether a *training* run held formation and
+    every run wants it. This one is needed by the rating arena and by nothing
+    else, and it costs an extra coherency evaluation per opponent movement
+    phase -- so off means no tracker object at all, which is checkable by
+    reading rather than by timing.
+    """
+    env = _play(_config())
+    try:
+        assert env.opponent_coherency_rate is None
+        assert env.opponent_models_out_of_coherency is None
+        assert env.opponent_intended_coherency_rate is None
+        assert env.opponent_intended_models_out_of_coherency is None
     finally:
         env.close()
 

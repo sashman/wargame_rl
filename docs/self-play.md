@@ -149,11 +149,12 @@ is visible in the dashboard rather than only in the score.
 
 ## Costs and open work
 
-- **The opponent force now keeps its own coherency tracker**, so an entrant
-  seated as B carries the legality column. Measured on
-  `configs/golden/25v25_maps_two_mode.yaml` with `squad_march_take`, that costs
-  **+0.27 ms/step (+2.7%)**, 9.94 → 10.21. Unconditional, on the same grounds
-  the player's is: a score without that column reads as compliance and is not.
+- **The opponent force keeps its own coherency tracker when asked**, so an
+  entrant seated as B carries the legality column. It is **opt-in**
+  (`track_opponent_coherency`, default off) and the rating arena switches it on
+  for its own legs — it costs an extra coherency evaluation per opponent
+  movement phase and nothing outside a rated leg reads it, so no training or
+  scoring path pays for it. Off, no tracker object exists at all.
 - ⚠ **WP-4 is not run.** The throughput gate on the re-entrant
   `active_side` / `observation_for` / `apply` refactor needs a `model` opponent
   measured inside a rollout, and it must be reported either way (D-03). Until it

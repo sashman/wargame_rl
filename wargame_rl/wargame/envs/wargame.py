@@ -283,12 +283,21 @@ class WargameEnv(gym.Env):
         # once here rather than on every shooting phase.
         self._exposure_tracker = ExposureTracker()
         self._coherency_tracker = CoherencyTracker()
-        # The opponent force keeps its own totals. A rated leg reports the seat
-        # it played, and `evaluate_selector` only ever measures the player's --
-        # so an entrant seated only as B came back with no coherency figure at
-        # all, which is a score quoted without the claim that the moves earning
-        # it were legal.
-        self._opponent_coherency_tracker = CoherencyTracker()
+        # The opponent force keeps its own totals, but only when asked. A rated
+        # leg reports the seat it played, and `evaluate_selector` only ever
+        # measures the player's -- so an entrant seated only as B would come
+        # back with no coherency figure at all, which is a score quoted without
+        # the claim that the moves earning it were legal.
+        #
+        # **Opt-in rather than unconditional**, unlike the player's. The
+        # player's is the record of whether a *training* run held formation and
+        # there is no run that does not want it; this one is needed by the
+        # rating arena and by nothing else, and it costs one extra coherency
+        # evaluation per opponent movement phase. `None` is what makes "off
+        # changes nothing" checkable by reading rather than by measuring.
+        self._opponent_coherency_tracker: CoherencyTracker | None = (
+            CoherencyTracker() if config.track_opponent_coherency else None
+        )
         self._opponent_max_ranges = max_weapon_ranges(
             config.opponent_models, config.number_of_opponent_models
         )
@@ -537,11 +546,15 @@ class WargameEnv(gym.Env):
     @property
     def opponent_coherency_rate(self) -> float | None:
         """The same as `coherency_rate`, for the opponent force."""
+        if self._opponent_coherency_tracker is None:
+            return None
         return self._opponent_coherency_tracker.coherency_rate
 
     @property
     def opponent_models_out_of_coherency(self) -> float | None:
         """Mean opponent models outside their unit's coherent body, per phase."""
+        if self._opponent_coherency_tracker is None:
+            return None
         return self._opponent_coherency_tracker.models_out_of_coherency
 
     @property
@@ -553,11 +566,15 @@ class WargameEnv(gym.Env):
         on both seats the two agree within noise, which is what
         `test_both_forces_report_their_own_coherency` asserts.
         """
+        if self._opponent_coherency_tracker is None:
+            return None
         return self._opponent_coherency_tracker.intended_coherency_rate
 
     @property
     def opponent_intended_models_out_of_coherency(self) -> float | None:
         """Mean opponent models the POLICY put outside their unit, per phase."""
+        if self._opponent_coherency_tracker is None:
+            return None
         return self._opponent_coherency_tracker.intended_models_out_of_coherency
 
     @property
@@ -736,13 +753,14 @@ class WargameEnv(gym.Env):
         )
 
     def _record_opponent_coherency(self) -> None:
-        """The same, for the opponent force.
+        """The same, for the opponent force, when `track_opponent_coherency`.
 
-        Costs one `evaluate_coherency` per opponent movement phase. It is
-        unconditional for the same reason the player's is: a score without a
-        coherency column reads as compliance and is not, and the seat an entrant
-        happened to be given is no reason to drop the column.
+        Costs one `evaluate_coherency` per opponent movement phase, which is why
+        it is opt-in. The caller that needs the column -- the rating arena --
+        switches it on; nothing else pays for it.
         """
+        if self._opponent_coherency_tracker is None:
+            return
         self._record_force_coherency(
             self._opponent_coherency_tracker,
             self._opponent_action_handler,
@@ -951,7 +969,8 @@ class WargameEnv(gym.Env):
         self.episode_reward = 0.0
         self._exposure_tracker.reset()
         self._coherency_tracker.reset()
-        self._opponent_coherency_tracker.reset()
+        if self._opponent_coherency_tracker is not None:
+            self._opponent_coherency_tracker.reset()
 
         self._battle.reset_for_episode()
         self.phase_manager.reset_episode()

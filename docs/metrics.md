@@ -140,7 +140,7 @@ the two are equal; prefer `_epoch`.
 | `eval/baseline_squad_march_shoot_*` | The bar: the only baseline that fires |
 | `eval/baseline_random_*` | The floor |
 | `eval/coherency_rate` | Share of unit-movement-phases where a unit satisfies the whole coherency rule (2" chain, 9" spread, one connected group). **Confounded with squad size** — read it with the next row |
-| `opponent_coherency_rate` / `opponent_models_out_of_coherency` | The same two, for the **opponent** force. Not logged during training; read off the env and carried on `BaselineResult` so a rated leg can report the seat entrant B played. Before these existed, an entrant seated only as B came back with the coherency column blank, which reads as compliance and is not. Same confound, same pairing rule |
+| `opponent_coherency_rate` / `opponent_models_out_of_coherency` | The same two, for the **opponent** force, and **`None` unless `track_opponent_coherency` is set** — the rating arena sets it, nothing else does. Not logged during training; read off the env and carried on `BaselineResult` so a rated leg can report the seat entrant B played. Before these existed, an entrant seated only as B came back with the coherency column blank, which reads as compliance and is not. Same confound, same pairing rule |
 | `eval/models_out_of_coherency` | Mean models outside their unit's coherent body, per movement phase. Unconfounded, because a dead model contributes nothing |
 
 Each baseline emits `_win_rate` (0–100), `_vp_margin`, `_at_objectives` (a
