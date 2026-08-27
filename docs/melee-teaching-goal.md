@@ -846,3 +846,42 @@ reached-nobody failure into a distance-and-coherency problem, which is where the
 0.704 conversion lives. ⚠ This is NOT the joint "if it can" mask that collapsed the bar
 5.67 → 1.67 — that one forced ENGAGEMENT, a joint property no per-model mask can see;
 "closer" is the rules' own per-model test.
+
+---
+
+## 19. melee-approach-v6 VERDICT — the mask is the first honest mechanism gain, a hair short of its own bet
+
+Scored 2026-08-27 ~14:45, three seeds verified at epoch 599, n=45, K=1, seeds 700000+,
+scored on the arm's OWN masked game (`25v25_maps_melee_approach_refereed.yaml` — ⚠ the
+scenario-override path SILENTLY DROPS nested keys, so the eval config exists rather than
+an override). Repeat row identical to every digit. Paired against the reused v4 control:
+
+| seed | ctl stood | apr stood | ctl→apr conv | Δvp | Δheld | apr decl |
+|---|---|---|---|---|---|---|
+| s1 | 0.53 | 0.58 | 0.097→0.165 | −23.8 | −0.34 | 3.64 |
+| s2 | 0.40 | **2.09** | 0.053→**0.264** | +16.9 | +0.49 | 8.58 |
+| s3 | 0.62 | **2.51** | 0.085→0.192 | +20.4 | +0.13 | 13.84 |
+
+- **The pre-registered bet fails by its letter, narrowly, on both halves**: stood ≥ 2.15
+  on 1 of 3 (s2 misses by 0.06), conversion > 0.20 on 1 of 3 (s3 misses by 0.008).
+- **The power-checked reject rule does NOT fire**: vp falls > 1 SE on 1 of 3 only, and no
+  seed reaches the 14–15/ep spam line.
+- **The two healthy seeds are the best honest melee rows ever trained here** — stood
+  2.09/2.51 (v4-shp's 1.31–1.76 was farmed; this is unshaped), conversion the highest
+  measured on any trained arm, vp and held both UP against the paired control.
+- ⚠ **s1 collapsed to low-declaration for the third time** (v3, v5, v6 — same seed
+  number, same init each time). The never-charge basin appears to be an INIT property.
+  Weigh seed counts, and consider excluding-and-reporting rather than averaging over it.
+- ⚠ **s1 also regressed between epoch 481 (stood 1.67, conv 0.203, decl 9.11 at n=9) and
+  599 (0.58, 0.165, 3.64 at n=45)** — late-training declaration decay, the v4-s1 pattern.
+  Lever-usage-as-convergence-signal applies: s1 was not settled at 599.
+
+**Arc across the arms (mean stood/ep, all at 600 epochs, n=45, K=1):** v3 0.76 →
+v4-level 1.59 (farmed, REJECTED) → v5-delta 0.93 (null) → **v6-mask 1.73, unshaped,
+nothing to farm**. Against the trichotomy the verdict is still the NAMED GAP (bar 5.56 /
+0.704), but the conversion gap closed from 7× to 2.7× on the best seed.
+
+**Next (v7): the `engaged` observation column, zero-initialised, on top of the mask.**
+The agent can now aim a charge; it still cannot SEE the shooting shield that makes one
+worth standing (probe AUC 0.75 on trained latents against a 0.95 kill line — funded).
+Zero-init makes the logits bit-identical at step 0, so **v6 is v7's paired control**.
