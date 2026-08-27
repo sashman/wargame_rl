@@ -20,6 +20,8 @@ from wargame_rl.wargame.envs.renders.v2.backends.pygame_aa_backend import (
 )
 from wargame_rl.wargame.envs.renders.v2.backends.pygame_backend import PygameBackend
 from wargame_rl.wargame.envs.renders.v2.control import (
+    THREAT_FIELD_BANDS,
+    THREAT_FIELD_SPACING,
     THREAT_SMOOTHING,
     THREAT_SPACING,
     ThreatOptions,
@@ -92,17 +94,30 @@ def threat_options(
     show_engagement: bool = False,
     grid: float = THREAT_SPACING,
     smoothing: int = THREAT_SMOOTHING,
+    show_threat_field: bool = False,
+    field_grid: float = THREAT_FIELD_SPACING,
+    field_bands: int = THREAT_FIELD_BANDS,
 ) -> ThreatOptions:
     """Build `ThreatOptions` from flat CLI values.
 
     One place, so `simulate`, `play`, `debug`, the training recorder and
-    `replay-render` cannot drift into parsing the same four switches
-    differently — and so a bad `--threat-grid` is rejected once, at build time,
-    with the same message everywhere.
+    `replay-render` cannot drift into parsing the same switches differently —
+    and so a bad `--threat-grid` is rejected once, at build time, with the same
+    message everywhere.
+
+    ⚠ `show_threat` and `show_threat_field` are different questions and both
+    switches exist on purpose. The first draws what bears *this instant*; the
+    second draws what bears after the opponent moves, which is the one to read
+    when choosing where to end a turn. The field samples coarser
+    (`THREAT_FIELD_SPACING`) because it needs a per-layout visibility cache and
+    an interactive window cannot stall while one is built at 1".
     """
     return ThreatOptions(
         show_threat=show_threat,
         show_engagement=show_engagement,
+        show_threat_field=show_threat_field,
         spacing=grid,
         smoothing=smoothing,
+        field_spacing=field_grid,
+        field_bands=field_bands,
     )

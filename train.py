@@ -223,6 +223,16 @@ def train(
             "A video has no keyboard, so this is the only way to get it there."
         ),
     ),
+    record_threat_field: bool = typer.Option(
+        False,
+        "--record-threat-field",
+        help=(
+            "Draw the opponent's NEXT-turn threat field -- after they move -- in "
+            "training recordings, as danger bands. Different from "
+            "--record-threat-range, which draws only what bears this instant. "
+            "Costs a per-layout visibility cache on the first recorded frame."
+        ),
+    ),
     record_engagement_range: bool = typer.Option(
         False,
         "--record-engagement-range",
@@ -519,6 +529,7 @@ def train(
                     overlays=ThreatOptions(
                         show_threat=record_threat_range,
                         show_engagement=record_engagement_range,
+                        show_threat_field=record_threat_field,
                     ),
                 )
             )

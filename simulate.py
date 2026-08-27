@@ -54,6 +54,7 @@ def simulate(
     theme: str = "default",
     show_threat_range: bool = False,
     show_engagement_range: bool = False,
+    show_threat_field: bool = False,
     threat_grid: float = THREAT_SPACING,
     threat_smoothing: int = THREAT_SMOOTHING,
 ) -> None:
@@ -91,7 +92,11 @@ def simulate(
             backend=backend,
             theme=theme,
             threat_options=threat_options(
-                show_threat_range, show_engagement_range, threat_grid, threat_smoothing
+                show_threat_range,
+                show_engagement_range,
+                threat_grid,
+                threat_smoothing,
+                show_threat_field=show_threat_field,
             ),
         )
         if render
@@ -271,6 +276,15 @@ def main(
         "--engagement-range",
         help="Shade each side's engagement range — inside it, a model may not shoot at all.",
     ),
+    show_threat_field: bool = typer.Option(
+        False,
+        "--threat-field",
+        help=(
+            "Shade the ground the opponent can shoot NEXT turn -- after they "
+            "move -- in danger bands. Different from --threat-range, which "
+            "shows only what bears this instant and so reads FALSE-SAFE."
+        ),
+    ),
     threat_grid: float = typer.Option(
         THREAT_SPACING,
         help="Sampling grid for the threat sweep, in inches. Coarser is cheaper and blurs small cover pockets.",
@@ -306,6 +320,7 @@ def main(
         theme=theme,
         show_threat_range=show_threat_range,
         show_engagement_range=show_engagement_range,
+        show_threat_field=show_threat_field,
         threat_grid=threat_grid,
         threat_smoothing=threat_smoothing,
     )

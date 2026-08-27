@@ -123,7 +123,10 @@ config directly and needs no observation change.
 force alive and still loses every episode, because the opponent takes the middle uncontested
 and then comes for the home points.
 
-**Cheapest test.** As a scripted policy first, reading zones from config — no tensor change.
+**Cheapest test.** Read the classification off the real tables first —
+`just measure-ground configs/golden/25v25_maps_two_mode.yaml configs/evaluation/maps_heldout`
+prints own-zone / contested / hostile per objective, and the arrival race beside it. Then as a
+scripted policy, reading zones from config — no tensor change.
 `docs/missions-design.md` Tier 1 warns that region membership is an objective-token widening,
 so if it ever becomes an observation, **buy one widening for every such feature at once**.
 
@@ -477,11 +480,15 @@ firer's own combat stats, not the opponent's.
 **Where it lands.** `ScriptedSquadMarchPolicy.squad_objectives`; as an observation, a widening
 of the opponent model token.
 
-**Already measured.** Not measured as a policy. The visualisation already exists: the `[R]`
-threat-range overlay and `--record-threat-range`.
+**Already measured.** Not measured as a policy. ⚠ **The `[R]` overlay is NOT this claim** — it
+draws range ∩ sight from where models *stand*, i.e. 12", while this entry is about move plus
+range. The `[T]` field is (`board/threat.py`, `ThreatHorizon.next_turn`): it traces sight from
+every cell a shooter can reach, which is the quantity named here.
 
-**Cheapest test.** **Look at a real board before writing anything.**
-`just play configs/golden/25v25_maps_two_mode.yaml squad_march_take tabletop R`.
+**Cheapest test.** **Look at a real board before writing anything**, with both overlays on — the
+ground between them is what this entry is about.
+`just play configs/golden/25v25_maps_two_mode.yaml squad_march_take tabletop "--threat-range --threat-field"`,
+then `just measure-threat-field squad_march_take configs/golden/25v25_maps_two_mode.yaml 5 configs/evaluation/maps_heldout`.
 
 ### D-15 — Stage outside threat range and arrive in one move
 
@@ -1176,7 +1183,9 @@ for a small score change.
 |---|---|
 | D-01, D-04 | `just measure-objective-split` — per-objective `(player, opponent)` counts and a redistribution ceiling |
 | D-09 | `just measure-shaping-gates` — the target-switching cost is already instrumented |
-| D-14, D-15 | the `[R]` threat overlay and `--record-threat-range`; `just play <config> squad_march_take tabletop R` |
+| D-01, D-04 (again) | `just measure-ground` — objective zones, and which side reaches each first |
+| D-14, D-15 | ⚠ the `[R]` overlay draws the **current** turn and reads false-safe for this. Use `[T]` / `just measure-threat-field`, which traces sight from where they can *get to* |
+| D-20, D-23 | `just measure-matchups` — unit-versus-unit casualties, reach margin and free rounds |
 | D-22 | `just measure-hold-hazard` — what holding a point earns against what it costs |
 | D-23 | `just measure-income-share` — which calculator pays, and how much is global |
 | D-27 | `just measure-noise-floor` — the dice already outspread the scenario; size the arm against that |
@@ -1227,6 +1236,8 @@ Stated as refusals so they survive a future editor. Each is paid for; the reason
 - [docs/opponent-policies.md](opponent-policies.md) — the scripted policies, several of which
   are entries here already implemented. A new one should name the entry it encodes.
 - [docs/missions-design.md](missions-design.md) — the unbuilt mission vocabulary D-31 needs.
+- [docs/agent-tooling.md](agent-tooling.md) — the tools that turn these claims into data, and the
+  `T-NN` catalogue. Every entry there names the `D-NN` it serves.
 - [docs/metrics.md](metrics.md) — what each measurement means and how to read it.
 - [CLAUDE.md](../CLAUDE.md) and [reports/](../reports/README.md) — the record. Where they
   disagree with an entry, they win.

@@ -472,6 +472,39 @@ render-coherency-figure env_config ckpt out seed='700000' step='20':
 measure-noise-floor env_config n_layouts='10' n_combat_seeds='10' policy='' *overrides:
 	@uv run python -m scripts.measure_noise_floor {{env_config}} {{n_layouts}} {{n_combat_seeds}} "{{policy}}" {{overrides}}
 
+# Which of our units wants to meet which of theirs, before a model has moved.
+# The unit-level REDUCTION of the per-model expected-damage matrix that already
+# ships as an observation input -- attacker axis sums, defender axis does not.
+# Static: reads the config, runs no episodes, needs no GPU.
+# Range is NEVER folded into the damage number; it appears as `reach` and `free`
+# (rounds of unanswered fire while the shorter gun closes) and as an exchange
+# ratio quoted at two distances. On a mirror config every cell is the same
+# number and the report says so.
+# Use: just measure-matchups configs/experiments/30v15_fast_horde_vs_elite.yaml
+measure-matchups env_config *overrides:
+	@uv run python -m scripts.measure_matchups {{env_config}} {{overrides}}
+
+# Read the table before the game: which zone each objective sits in, and the
+# earliest round each side's fastest unit could stand on it. Static -- one
+# deployment per table, no episodes, no dice, no GPU.
+# ⚠ Arrival rounds are a LOWER bound: coherency binds the unit, freezing eats
+# ~8% of ordered inches, and nothing routes around terrain. A margin of 0 is a
+# TIE, and a tie controls nothing -- control is a strict comparison.
+# Use: just measure-ground configs/golden/25v25_maps_two_mode.yaml configs/evaluation/maps_heldout
+measure-ground env_config maps_dir='' *overrides:
+	@uv run python -m scripts.measure_ground {{env_config}} "{{maps_dir}}" {{overrides}}
+
+# Where a policy stands, priced against where the opponent can shoot NEXT turn.
+# ⚠ THE OPPONENT MOVES BEFORE IT SHOOTS, so the current-turn threat map reads
+# FALSE-SAFE and this prints by how much. The census then splits every model's
+# exposure into on-objective and in-transit, which is the falsifier for "the
+# agent hoards because it is avoiding danger".
+# ⚠ Cover is not applied, and every objective on the real tables is a ruin, so
+# the on-objective column is OVERSTATED -- read it beside measure-hold-hazard.
+# Use: just measure-threat-field squad_march_take configs/golden/25v25_maps_two_mode.yaml 5 configs/evaluation/maps_heldout
+measure-threat-field policy env_config n_episodes='5' maps_dir='' decode_topk='1' *overrides:
+	@uv run python -m scripts.measure_threat_field {{policy}} {{env_config}} {{n_episodes}} "{{maps_dir}}" "{{decode_topk}}" {{overrides}}
+
 # Terrain-layout statistics for a random_terrain config: coverage, how often a
 # sightline is blocked, and how much of the board is genuinely out of sight.
 # Tune a terrain profile here, not after a thousand epochs of training.
