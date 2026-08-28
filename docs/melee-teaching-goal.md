@@ -1565,3 +1565,28 @@ It also carries the farm attribution. Judged on these same grids.
 struck as a general claim; and "the decode adds +12–17" must always be quoted **per
 policy** — its value is a property of the policy's allocation deficit, not of the rule,
 and on v10 it is zero.
+
+### §32a ⚠ CORRECTION, same day — the deny lead does not survive its own extension
+
+The §31 extend branch ran immediately (episodes are free): the deny and take rows at
+**n=90**, agent and bar on identical seeds 700000–700089.
+
+| row | n=45 gap | n=90 gap | verdict |
+|---|---|---|---|
+| deny | **+9.2 (4/6)** | **−2.7 ± 4.4, t=−0.62, 2/6** | **RETRACTED as a lead — a tie** |
+| take | −1.8 | −5.8 ± 4.4, t=−1.31, 2/6 | behind, not settled |
+
+**The n=45 lead was the layout-block trap this record already carries** (§"n=9 melee
+block spread is 63.9 vp"; §31 even quotes it) — and the landing table still stood on ONE
+45-episode block. Decomposed: the bar scores **+10.4 on episodes 0–44 and ≈+37.4 on
+45–89** — a 27-vp swing across blocks for a deterministic script — while the agent moves
+only +19.6 → ≈+22.8. The bar's value is far more layout-dependent than the agent's
+(consistent with §"the ~6 vp resolution floor is true for the agent and false for the
+scripts", in the inverse direction: here the *scripts* swing), and any same-row claim
+needs the block spread priced in.
+
+**What survives:** every §32 within-block comparison (A's pass, C's collapse, the
+screens) — those are paired on identical episodes and untouched. What changes is only
+the Level-3 narration: **no row leads the bar**; deny is a statistical tie (−2.7 ± 4.4),
+take −5.8 ± 4.4, and the standing rule gains a clause — **a same-row gap smaller than
+~10 vp cannot be signed at n=45; quote n=90+ or do not sign it.**
