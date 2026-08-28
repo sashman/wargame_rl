@@ -1288,6 +1288,7 @@ project's effort has gone, and the shape of the problem is now settled.
   [the report](reports/2026-08-09-tf32-costs-eight-vp.md).
 - **`--precision bf16-mixed` is another 1.8x on the update and is opt-in because
   only its SPEED has been measured** — A/B it over two seeds before trusting it.
+- **The trunk size is a parameter now, and the default is unchanged.** `train()` takes `--n-layers` / `--embedding-size`, threaded through `PPO_Transformer.from_env` to `TransformerNetwork.from_spec`. Omitting them is bit-identical to before they existed. ⚠ **They change the network**: a checkpoint trained at another size will not load into a default run and its scores are comparable to nothing here, which is why the flags warn. They exist so the test suite can stop building ~12.7M parameters on a 2-model 20x20 board — the five slowest tests were all trunk-bound. `tests/test_network_size.py` pins the shipped 8/8/256 so it cannot drift.
 - **`torch.compile` is deliberately not wired**: it prefixes every `state_dict`
   key with `_orig_mod.`, and `_apply_warm_start_weights` uses `strict=False`, so
   such a checkpoint would load as *nothing at all* and score a random network as a
