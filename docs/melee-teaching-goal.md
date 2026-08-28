@@ -1099,3 +1099,33 @@ no-realloc grid rows:
   The decode redistributes what the policy already holds; it does not make the policy
   attack. Level 2 with the decode active: `shoot` +19.4 (clearly ahead), `deny` ≈ 0,
   `take` behind.
+
+---
+
+## 26. CONTEST MODE — the first offence-side intervention ever to survive, at 4× spread
+
+Scored 2026-08-28. Same decode, same kill, one change: the target is the opponent's
+WEAKEST-HELD objective instead of an empty one — the attack the policy never makes.
+Six 1000-epoch seeds × four opponents, n=45, K=3, paired per cell against the same
+checkpoints' no-realloc rows (same seeds, same layouts — only the decode differs):
+
+| Δvp | vs `take` | vs `deny` | vs `shoot` | vs `take_charge` | overall |
+|---|---|---|---|---|---|
+| contest | +8.3 | +9.8 | +14.8 | +12.2 | **+11.30 ± 3.27** |
+| (spread) | (−3.1) | (+2.8) | (+9.6) | (+2.2) | (+2.86 ± 2.12) |
+
+- **Positive on 6 of 6 seeds and 22 of 24 cells, t ≈ 3.5.** The kill does not fire, by a
+  wide margin, and the effect is 4× spread mode's.
+- **The bet resolved exactly as posed.** The 2026-08-11 teleport audit priced FORCED
+  contests at −29.4 of the committing squad's income; the critic's sign gate refuses
+  ~33% of nominations, and what it approves pays. The audit measured the move without a
+  gatekeeper; the gatekeeper is what three reward arms could never express — a reward
+  term pays a *behaviour class*, the critic prices *this board*.
+- **This is the project's standing diagnosis cashed**: reward and critic both valued
+  attacking correctly, the policy could not act on it, and a decode that lets the critic
+  act at play recovers +11.3 vp without a single gradient step.
+- Absolute standing with contest active: `take` ≈ −2.0, `deny` ≈ +4.3, `shoot` ≈ +24.6,
+  `charge` ≈ −35.0 against the bar's +16.6 / +10.4 / +53.3 / −14.0. **The same-row gaps
+  are roughly halved; Level 3 is open but no longer static.**
+- Next: compose the modes (contest when a target exists, else spread), screen the
+  composition identically, and graduate the winner into the selector path.
