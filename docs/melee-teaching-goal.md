@@ -916,3 +916,53 @@ masked eval:
 
 **v8 launches on this baseline**: `25v25_maps_melee_engaged.yaml`, six seeds, unpaired
 against these six, pre-registration in its config header.
+
+---
+
+## 21. v8 REJECTED — and v6 at the PLAY decode converts at the bar's rate
+
+Scored 2026-08-28 ~03:45, six v8 seeds verified at 599, n=45, seeds 700000+.
+
+**v8 (`observe_engaged` on top of the mask): REJECT by both of its own clauses.** Six-seed
+means, unpaired against v6's six: stood 1.13 ± 0.52 v 1.74 ± 0.80 (the bet demanded an
+increase and measured a decrease), vp −78.7 v −63.3 (−15.4, beyond the ~10.5 unpaired SE
+— the reject clause as written). The AUC-0.75 funding argument did not cash:
+⚠ **a feature the network does not represent is not thereby a feature it needs** —
+visibility is not value, and the probe gate ("AUC > 0.95 kills it") only ever licensed
+the spend, never promised the return. `observe_engaged` stays in the codebase, default
+off; the v8 arm is retired.
+
+**The v6 residual, by referee clause** (s3, 20 episodes, seat-separated): `not_closer`
+is ELIMINATED (0.4%), and the failures moved DOWN the ladder — `no_contact` 76.7% → 53.9%
+(now pure distance shortfall, since every move approaches) and `incoherent` 4.4% →
+**19.9%** (five models converging on one point stretch the 2" chain — a failure the
+random-heading policy never survived long enough to reach). Both residuals are JOINT
+properties of the unit's combination.
+
+**And the play-time joint decoder resolves exactly those.** v6's six seeds at K=3 — the
+decode every published agent score uses:
+
+| seed | stood/ep | conversion | vp |
+|---|---|---|---|
+| s1 | 1.02 | 0.719 | −44.2 |
+| s2 | 4.24 | 0.872 | −64.8 |
+| s3 | **5.53** | 0.773 | −35.8 |
+| s4 | 1.67 | 0.676 | −31.6 |
+| s5 | 3.87 | 0.744 | −11.0 |
+| s6 | **5.67** | 0.787 | −36.1 |
+
+- **Conversion 0.676–0.872 on 6 of 6 seeds — at and above the bar's 0.704.** The best two
+  seeds stand 5.53/5.67 charges against the bar's 5.56.
+- ⚠ The §15 trichotomy's mechanism gate stays quoted at K=1 BY DESIGN (K=3 measures the
+  decoder as well as the policy), and at K=1 the verdict remains the NAMED GAP. Both
+  statements are true, and the honest claim is conditional: **at the decode that ships,
+  the agent executes the charge phase at the bar's conversion rate.** The mask is what
+  made this true — the same six checkpoints before it converted 0.05–0.10 raw and the
+  decoder cannot verify its way out of an empty candidate set.
+- vp at K=3: mean −37.3 against the bar's −14.0 — the agent still loses the GAME by ~23,
+  which is Level 2/3 territory (play quality), not phase-execution.
+
+**Where the goal stands.** Level 1 — the agent plays through every phase, both seats play
+every phase, and charge execution at the play decode is bar-adjacent: **substantially
+met**, with the K=1 raw-policy gap as the standing caveat. Level 2/3 (the ladder, the
+bar on vp) are open, and the next levers are play-quality ones, not phase-mechanics ones.
