@@ -9,11 +9,24 @@ reuses the exact functions the legacy renderer used so the results match.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, replace
 
 import numpy as np
 
+from wargame_rl.wargame.envs.board.grid import board_grid_for
+
+# `VisibilityCache` is imported here for this module's own use AND re-exported:
+# the rest of v2 reaches the board layer through this module and only this one,
+# which is the single-seam rule this file's docstring states and
+# `tests/test_board_layer_is_a_leaf.py` enforces.
+from wargame_rl.wargame.envs.board.threat import (
+    ThreatHorizon,
+    VisibilityCache,
+    attacker_stat_rows,
+    move_reach,
+    reference_model,
+    threat_field,
+)
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.domain.entities import WargameModel, alive_mask_for
 from wargame_rl.wargame.envs.domain.sight import BlockingMask, line_of_sight_matrix
@@ -146,19 +159,13 @@ def _cell_centres(view: BattleView, spacing: float) -> tuple[np.ndarray, int, in
     """``(Q, 2)`` cell centres covering the board, plus the grid shape.
 
     Shared by the sight shadow and the threat sweep so the two can never sample
-    different points and disagree about the same piece of ground.
-
-    Centres are clamped inside the board, so a partial edge cell is still
-    sampled somewhere it exists rather than off the table.
+    different points and disagree about the same piece of ground -- and, since
+    the arithmetic moved to `envs/board/grid.py`, by the threat *field* too.
+    That was the point of promoting it: `board/` is a leaf and cannot import the
+    renderer, so a field that needed this would otherwise have copied it.
     """
-    board_w = float(view.config.board_width)
-    board_h = float(view.config.board_height)
-    n_cols = max(1, math.ceil(board_w / spacing))
-    n_rows = max(1, math.ceil(board_h / spacing))
-    xs = np.minimum((np.arange(n_cols) + 0.5) * spacing, board_w)
-    ys = np.minimum((np.arange(n_rows) + 0.5) * spacing, board_h)
-    grid_x, grid_y = np.meshgrid(xs, ys, indexing="xy")
-    return np.column_stack([grid_x.ravel(), grid_y.ravel()]), n_rows, n_cols
+    grid = board_grid_for(view, spacing)
+    return grid.centres, grid.n_rows, grid.n_cols
 
 
 def _merge_hidden(
@@ -219,6 +226,20 @@ THREAT_SPACING = 1.0
 # vertex; see `_rings_from_mask`.
 THREAT_SMOOTHING = 3
 
+# The threat FIELD samples coarser than the threat REGION, and has to. The
+# region is a per-frame sweep from where models stand; the field is a two-hop
+# that needs a cell-to-cell visibility cache, and that cache costs ~16x more to
+# build at 1" than at 2". An interactive window cannot stall ten seconds on a
+# keypress, and a band boundary is a quantile of a continuous quantity rather
+# than a rules edge, so the coarser sample costs nothing anyone reads.
+THREAT_FIELD_SPACING = 2.0
+
+# Disjoint quantile bands, not nested level sets: every backend gives each
+# translucent primitive its own alpha, so overlapping "above q" regions double
+# their wash wherever they stack. Three reads as low/medium/high without
+# turning the board into a contour map.
+THREAT_FIELD_BANDS = 3
+
 # A closed ring of board-unit vertices.
 Ring = tuple[tuple[float, float], ...]
 
@@ -239,29 +260,45 @@ class ThreatOptions:
 
     show_threat: bool = False
     show_engagement: bool = False
+    show_threat_field: bool = False
     spacing: float = THREAT_SPACING
     smoothing: int = THREAT_SMOOTHING
+    field_spacing: float = THREAT_FIELD_SPACING
+    field_bands: int = THREAT_FIELD_BANDS
 
     def __post_init__(self) -> None:
         if self.spacing <= 0:
             raise ValueError(f"spacing must be positive, got {self.spacing}")
         if self.smoothing < 0:
             raise ValueError(f"smoothing must be >= 0, got {self.smoothing}")
+        if self.field_spacing <= 0:
+            raise ValueError(
+                f"field_spacing must be positive, got {self.field_spacing}"
+            )
+        if self.field_bands < 1:
+            raise ValueError(f"field_bands must be >= 1, got {self.field_bands}")
 
     @property
     def enabled(self) -> bool:
         """Whether anything would be drawn, and so whether to sweep at all."""
-        return self.show_threat or self.show_engagement
+        return self.show_threat or self.show_engagement or self.show_threat_field
 
     def toggled(
-        self, *, threat: bool | None = None, engagement: bool | None = None
+        self,
+        *,
+        threat: bool | None = None,
+        engagement: bool | None = None,
+        threat_field: bool | None = None,
     ) -> "ThreatOptions":
-        """A copy with one or both switches flipped — for the runtime keys."""
+        """A copy with any of the switches flipped — for the runtime keys."""
         return replace(
             self,
             show_threat=self.show_threat if threat is None else threat,
             show_engagement=(
                 self.show_engagement if engagement is None else engagement
+            ),
+            show_threat_field=(
+                self.show_threat_field if threat_field is None else threat_field
             ),
         )
 
@@ -279,6 +316,8 @@ class ThreatOverlay:
     engagement_radius: float = 0.0
     player_threat: tuple[Ring, ...] = ()
     opponent_threat: tuple[Ring, ...] = ()
+    threat_field: tuple[tuple[Ring, ...], ...] = ()
+    """Rings per danger band, lowest first. The opponent's NEXT-turn fire."""
 
     def is_empty(self) -> bool:
         """Whether there is nothing to draw."""
@@ -287,6 +326,7 @@ class ThreatOverlay:
             or self.opponent_engagement
             or self.player_threat
             or self.opponent_threat
+            or any(self.threat_field)
         )
 
 
@@ -374,11 +414,117 @@ def compute_threat_region(
     return tuple(_chaikin(ring, smooth, board_w, board_h) for ring in rings)
 
 
+def can_price_threat_field(view: BattleView) -> bool:
+    """Whether this view carries the stats the next-turn field needs.
+
+    True for a live env. **False for a replayed snapshot**, and deliberately so:
+    the recording carries every weapon and defensive stat but **not per-model
+    Move**, and Move is what the reachable-origin set is built from. Guessing it
+    from the scenario default would answer a different question convincingly --
+    the same reasoning that leaves pre-2.6 recordings drawing no threat region
+    rather than a region traced at a guessed sample step.
+
+    Drawing nothing is the correct failure here. A field drawn at the wrong Move
+    is wrong in the **false-safe** direction whenever the guess is low, which is
+    the one direction this whole module exists to remove.
+    """
+    config = getattr(view, "config", None)
+    return all(
+        hasattr(config, attribute)
+        for attribute in ("models", "opponent_models", "max_move_speed")
+    )
+
+
+def compute_threat_field_bands(
+    view: BattleView,
+    options: ThreatOptions,
+    cache: VisibilityCache | None = None,
+) -> tuple[tuple[Ring, ...], ...]:
+    """The opponent's NEXT-turn fire, as rings per danger band.
+
+    ⚠ **This is a different question from `compute_threat_region`, not a fancier
+    answer to the same one.** The region draws what bears *this instant*; the
+    field traces sight from every cell the opponent can walk to first, because
+    the opponent moves before it shoots. Ground the region calls safe is often
+    not, so the two are drawn on separate keys and neither replaces the other.
+
+    `cache` is the cell-to-cell visibility for this layout. Sight depends on
+    terrain alone here, so it survives every turn of the episode -- the
+    presenter builds it once and hands the same one back every frame. Without
+    it nothing is drawn rather than a current-turn field being substituted
+    silently, which would be the very confusion this exists to remove.
+
+    Bands are **disjoint quantile slices**, run through the same
+    `_rings_from_mask` and `_chaikin` path the region uses, so the field
+    inherits its already-verified rasterisation -- including the trap that rings
+    must keep every unit-cell vertex.
+    """
+    if cache is None or not can_price_threat_field(view):
+        return ()
+    shooters = view.opponent_models
+    ranges = np.asarray(view.opponent_max_ranges, dtype=float)
+    if not shooters or not ranges.size:
+        return ()
+    field = threat_field(
+        view,
+        shooters,
+        ranges,
+        attacker_stat_rows(view.config.opponent_models, len(shooters)),
+        reference_model(view.player_models, view.config.models),
+        horizon=ThreatHorizon.next_turn,
+        move=move_reach(view.config, view.config.opponent_models, len(shooters)),
+        spacing=options.field_spacing,
+        visibility=cache,
+    )
+    quantiles = [
+        (index + 1) / options.field_bands for index in range(options.field_bands - 1)
+    ]
+    board_w = float(view.config.board_width)
+    board_h = float(view.config.board_height)
+    bands: list[tuple[Ring, ...]] = []
+    for band in field.bands(quantiles):
+        rings = _rings_from_mask(
+            field.grid.as_image(band), options.field_spacing, board_w, board_h
+        )
+        if options.smoothing > 0:
+            rings = tuple(
+                _chaikin(ring, options.smoothing, board_w, board_h) for ring in rings
+            )
+        bands.append(rings)
+    return tuple(bands)
+
+
+def threat_field_cache(view: BattleView, options: ThreatOptions) -> VisibilityCache:
+    """The visibility cache one layout needs, at the field's own spacing.
+
+    Built by the caller and kept for the life of the layout. Gated at the
+    longest weapon range on the board and **not** at range plus move: the move
+    is spent reaching the origin cell, the shot is taken from there.
+    """
+    ranges = [
+        float(np.max(view.opponent_max_ranges))
+        if np.asarray(view.opponent_max_ranges).size
+        else 0.0,
+        float(np.max(view.player_max_ranges))
+        if np.asarray(view.player_max_ranges).size
+        else 0.0,
+    ]
+    return VisibilityCache.build(
+        view, spacing=options.field_spacing, max_range=max(ranges) or 1.0
+    )
+
+
 def compute_threat_overlay(
     view: BattleView,
     options: ThreatOptions,
+    field_cache: "VisibilityCache | None" = None,
 ) -> ThreatOverlay:
-    """Both overlays for one frame; each half is skipped when switched off."""
+    """Every overlay for one frame; each is skipped when switched off.
+
+    `field_cache` is only consulted for the next-turn field, and only when that
+    switch is on -- so a caller that never turns it on pays nothing for it and
+    an existing frame is unchanged.
+    """
     engagement = options.show_engagement
     threat = options.show_threat
     spacing = options.spacing
@@ -411,6 +557,11 @@ def compute_threat_overlay(
                 smooth=smooth,
             )
             if threat and view.opponent_models
+            else ()
+        ),
+        threat_field=(
+            compute_threat_field_bands(view, options, field_cache)
+            if options.show_threat_field
             else ()
         ),
     )
