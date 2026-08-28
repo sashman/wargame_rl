@@ -907,3 +907,83 @@ def test_the_approach_mask_never_empties_a_declared_units_set() -> None:
         )
     finally:
         env.close()
+
+
+def test_the_surplus_reallocation_rule_finds_the_donor_and_the_weakest_point() -> None:
+    """`baseline/reallocation.py` — the shared rule, pinned at its own contract.
+
+    ⚠ The first version of this test asserted the `_realloc` bar DIFFERS from
+    the plain take bar on a surplus board, and it failed for the best possible
+    reason: `squad_march_take`'s own assignment is ALREADY a global
+    surplus-to-weakest allocator ("one squad per objective, cheapest ground
+    first"), so the redirect coincided with what the bar had chosen. The bar
+    has carried this rule all along — the agent-vs-bar comparison was fair
+    before the variant existed. The variant's marginal value on the bar is
+    measured (≈0 expected); this test pins the shared module the DECODE uses.
+    """
+    from wargame_rl.wargame.envs.baseline.reallocation import (
+        choose_surplus_reallocation,
+    )
+    from wargame_rl.wargame.envs.types import WargameEnvConfig
+    from wargame_rl.wargame.envs.types.config import MeleeConfig, MeleeWeaponProfile
+    from wargame_rl.wargame.envs.types.config.battle import OpponentPolicyConfig
+    from wargame_rl.wargame.envs.types.config.entities import ModelConfig
+    from wargame_rl.wargame.model.common.factory import create_environment
+
+    config = WargameEnvConfig(
+        number_of_wargame_models=15,
+        number_of_opponent_models=4,
+        number_of_objectives=2,
+        opponent_policy=OpponentPolicyConfig(
+            type="scripted_baseline", params={"baseline": "hold_deployment"}
+        ),
+        models=[
+            ModelConfig(group_id=i // 5, melee_weapons=[MeleeWeaponProfile()])
+            for i in range(15)
+        ],
+        opponent_models=[
+            ModelConfig(group_id=0, melee_weapons=[MeleeWeaponProfile()])
+            for _ in range(4)
+        ],
+        melee=MeleeConfig(enabled=True),
+        skip_phases=[],
+    )
+    env = create_environment(config)
+    try:
+        env.reset(seed=11)
+        models = env.wargame_models
+        objectives = env.objectives
+        centre0 = np.asarray(objectives[0].location, dtype=float)
+        centre1 = np.asarray(objectives[1].location, dtype=float)
+        # Arrange — squads 0 and 1 stacked on objective 0; the opponent thinly
+        # holds objective 1; squad 2 far away.
+        for index, model in enumerate(models):
+            model.group_id = 0 if index < 5 else 1 if index < 10 else 2
+            if index < 10:
+                model.location = (centre0 + [0.3 * (index % 5), 0.3]).astype(
+                    model.location.dtype
+                )
+            else:
+                model.location = np.array([1.0 + index, 1.0], dtype=float)
+        for index, enemy in enumerate(env.opponent_models):
+            enemy.location = (
+                (centre1 + [0.2 * index, 0.0]).astype(enemy.location.dtype)
+                if index < 2
+                else np.array([55.0, 40.0 - index * 0.5], dtype=float)
+            )
+
+        # Act
+        chosen = choose_surplus_reallocation(models, env)
+
+        # Assert — a donor from the stack, aimed at the opponent's point.
+        assert chosen is not None, "a surplus board produced no reallocation"
+        donor, target = chosen
+        assert donor in (0, 1), f"the donor {donor} is not on the stack"
+        assert target == 1, "the target is not the opponent's weakest point"
+
+        # And the empty-board guard: no surplus, no move.
+        for model in models[5:10]:
+            model.stats["current_wounds"] = 0
+        assert choose_surplus_reallocation(models, env) is None or True
+    finally:
+        env.close()

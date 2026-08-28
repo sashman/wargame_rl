@@ -11,6 +11,7 @@ from wargame_rl.wargame.envs.baseline.policy import (
     objective_extent,
     step_toward_objective,
 )
+from wargame_rl.wargame.envs.baseline.reallocation import choose_surplus_reallocation
 from wargame_rl.wargame.envs.baseline.registry import register_baseline
 from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
 from wargame_rl.wargame.envs.domain.pile_in import SELECTION_RANGE_INCHES, pile_in
@@ -167,6 +168,12 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
         speeds = env.player_action_handler.move_speeds
         group_ids = sorted({model.group_id for model in models})
         targets = self.squad_objectives(models, env, group_ids)
+        if self.reallocate_surplus:
+            reallocation = choose_surplus_reallocation(models, env)
+            if reallocation is not None:
+                donor, objective_index = reallocation
+                if donor in group_ids:
+                    targets[group_ids.index(donor)] = env.objectives[objective_index]
         for squad_index, group_id in enumerate(group_ids):
             member_indices = [
                 i
@@ -221,6 +228,15 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
     # measurement — a 14x spread — because each measured its own rule. Quote the
     # ablation and the 2x2, never one arm.
     charge_when_it_lands: bool = False
+
+    # The surplus-reallocation rule (`baseline/reallocation.py`): one genuinely
+    # surplus squad marches at the opponent's weakest-held objective, else the
+    # nearest empty one. Off by default so every published bar figure is
+    # unchanged; the `_realloc` registry variant turns it on. It exists on the
+    # bar for FAIRNESS: the play-time decode built on the same rule measures
+    # +14.54 ± 3.81 vp for the agent, and "beats the bar" must be judged
+    # against a bar allowed the same rule.
+    reallocate_surplus: bool = False
 
     def _charge_target(
         self, models: list[WargameModel], member_indices: list[int], env: WargameEnv

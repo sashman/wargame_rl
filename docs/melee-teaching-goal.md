@@ -1226,3 +1226,30 @@ the first time), **`deny` +7.3** against the bar's +10.4 (gap −3.1, within one
 programme ends on its honest note: the probe's forked-game finding (direction right,
 ranking useless) was real, but at decode time even the direction subtracts value — the
 knowledge was in the *choice of rule*, and the rule needed no oracle.
+
+---
+
+## 29. The fairness audit closes — the bar has carried the rule all along
+
+Prompted by the user: *"add the rule to the scripted bar and re-measure."* Built
+(`baseline/reallocation.py`, the shared module; `squad_march_take_charge_realloc`, the
+flagged variant) — and the pinning test failed for the best possible reason: **on a
+surplus board the redirect coincides exactly with what `squad_march_take` already
+chose.** Its own assignment — *"one squad per objective, cheapest ground first, nearest
+squad to each"* — IS a global surplus-to-weakest allocator, documented in its docstring
+since the policy was written.
+
+Measured, n=45, K=1, all four opponents: the `_realloc` bar is **bit-identical to the
+plain bar on `take`/`deny`/`shoot`** (every printed digit) and within noise on the
+mirror. **Marginal value of the redirect on the bar: exactly zero.**
+
+- **The agent-vs-bar comparisons were fair all along** — the bar plays a stronger,
+  global form of the rule the decode gives the agent one squad at a time.
+- The +14.54 the decode buys the agent is the agent being handed a fraction of the
+  allocation doctrine the bar has had from birth — which is also a clean restatement of
+  WHY the bar wins: its edge is the allocator, not the executor.
+- `squad_march_take_charge_realloc` stays registered as the measured-redundant control,
+  and `baseline/reallocation.py` becomes the shared statement of the rule for the decode
+  and for the DECLARATION design that follows (§30, in progress): the agent learning to
+  make this choice itself, via a command-phase objective declaration and a
+  declaration-gated execution delta — the design the record's post-mortems point at.
