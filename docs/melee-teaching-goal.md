@@ -966,3 +966,34 @@ decode every published agent score uses:
 every phase, and charge execution at the play decode is bar-adjacent: **substantially
 met**, with the K=1 raw-policy gap as the standing caveat. Level 2/3 (the ladder, the
 bar on vp) are open, and the next levers are play-quality ones, not phase-mechanics ones.
+
+---
+
+## 22. Level 2 measured — positive against the ladder, and one Level-3 signal
+
+Scored 2026-08-28 ~04:45. v6 seeds 5 and 3 at K=3 (the play decode) against the
+non-charging ladder on the masked eval configs; the charging bar at K=1 for the same-row
+comparison. n=45, seeds 700000+, refereed.
+
+| opponent | agent s5 (stood/conv/coherent/vp) | agent s3 | bar `take_charge` |
+|---|---|---|---|
+| `squad_march_take` | 3.38 / 0.772 / 0.953 / **+4.7** | 4.62 / 0.715 / 0.956 / −5.8 | 6.71 / 0.851 / 0.882 / +16.6 |
+| `squad_march_deny` | 3.40 / 0.797 / 0.950 / **+24.7** | 4.62 / 0.717 / 0.947 / +4.1 | 6.07 / 0.794 / 0.882 / **+10.4** |
+| `squad_march_shoot` | 3.16 / 0.768 / 0.938 / **+32.4** | 4.11 / 0.743 / 0.954 / +17.4 | 5.96 / 0.709 / 0.887 / +53.3 |
+
+- **Positive vp in 5 of 6 agent cells.** Charge competence transfers across the ladder
+  (conversion 0.71–0.80 against every opponent), and the agent's historic coherency edge
+  is intact (0.938–0.956 v the bar's 0.882–0.887).
+- ⚠ **One Level-3 signal, not a claim**: s5 beats the bar same-row against `deny`
+  (+24.7 v +10.4) — one seed, one opponent, n=45, UNPAIRED, no t, no sign count. It also
+  echoes this project's oldest pattern (the agent has always been strongest where denial
+  pays), so treat it as the familiar trait resurfacing with a charge attached, and
+  demand the full apparatus before quoting it: all six seeds, per-table sign counts via
+  `measure-maps`, and the bar re-measured per opponent.
+- Agent rows at K=3, bar at K=1 — the house convention (an agent ships with its decoder;
+  a script is its own decode), stated because a table that does not name its decode gets
+  compared to the wrong one.
+
+**Level 2 — "reasonably perform against the opponent ladder" — is met on this evidence.**
+Level 3 needs the six-seed, all-opponents grid and the vp gap against the charging bar
+itself (−37.3 v −14.0 at K=3) closed.
