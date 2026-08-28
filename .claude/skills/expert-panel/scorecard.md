@@ -412,3 +412,20 @@ a panel's headline, not just its findings.**
   check killed a panel claim before it reached the record.
 - Pattern holds: audit seats landed ~everything; the one generative-style claim (a noise
   floor) was wrong. Chair-verification-before-synthesis caught it.
+
+## 2026-08-28 — audit (shadow) — panel A's own v10 landing protocol
+- Panel B (4 seats + chair, ~0.58M tokens, fed A's synthesis): every seat landed. The
+  headline: **panel A's draft clauses reproduced the exact defect class panel A had just
+  retired** — the +5.4 threshold was an 18/24-cell SE mix (→ +6.7); the "<5" charge guard
+  sat inside the bimodal 2.82–17.33 comparator band (≈91% false-excuse rate); the
+  decorative screen's 6/6-boxes reading was miscalibrated under any sd assumption; the
+  farm screen's army-mean income conjunct was provably blind to a one-unit farm (39% of
+  cap); the internalisation conjunction routed a +10–13 vp term to family death with
+  P=0.991 (→ funding follows A; B∧C label only).
+- Constructive survivors: conjunct-B threshold 6.6 vindicated by a measured positive
+  control (script 5.11); the −52 charge floor reached independently by two seats; the
+  decode-admissibility line (Level-N verdicts admit only sub-N decode content) which
+  re-scored §27's "Level 2 — MET" to PARTIAL.
+- Meta-lesson written into §31 itself: pre-registration fails at the moment of WRITING —
+  apply grid-by-name / false-fire-rate / instrument-existence checks to the prescription,
+  not just the experiment.
