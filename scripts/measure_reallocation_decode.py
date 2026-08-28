@@ -124,9 +124,10 @@ def measure(
             phase = env.game_clock_state.phase
             action = selector.select(observation, env)
             if phase is BattlePhase.movement:
-                if mode == "spread":
+                base_mode = mode.removesuffix("_ungated")
+                if base_mode == "spread":
                     branch = choose_branch(env, min_stack)
-                elif mode == "contest":
+                elif base_mode == "contest":
                     branch = choose_contest_branch(env, min_stack)
                 else:  # "both": contest when a target exists, else spread
                     branch = choose_contest_branch(env, min_stack) or choose_branch(
@@ -170,7 +171,7 @@ def measure(
                             v1 = army_value(critic, env)
                         for i, loc in zip(members, saved, strict=True):
                             env.player_models[i].location = loc
-                        if v1 > v0:
+                        if v1 > v0 or mode.endswith("_ungated"):
                             approvals += 1
                             # The ONE shared grid cell closest to the target.
                             best = int(

@@ -1169,3 +1169,38 @@ Absolute vp, six-seed means, n=45, K=3, composed decode active, against the bar 
   programme, with the decode's survival as its first funded hypothesis (what the critic
   can execute at play, training should be able to internalise; how, without the −51.8
   training-decode trap, is the open design question).
+
+---
+
+## 28. ⚠ CORRECTION to §26 — the gain is real, the MECHANISM claim was wrong
+
+Audited 2026-08-28 after the user asked "are you sure there isn't a bug there?" Two
+checks, one passed and one failed:
+
+- **Instrument parity: PASSED exactly.** The realloc script with redirects disabled
+  (`min_stack=99`) reproduces the `measure_charges` control rows **to the digit**
+  (−23.4/−23.4, +42.6/+42.6, zero redirects). The +11.55 is not measurement skew.
+- **The critic gate: DECORATION.** The ablation §26 never ran (approve-everything vs
+  gated, three probe cells): gate worth **+2.0 / −5.4 / −1.5 — mean −1.6.** Blind
+  redirection captures essentially the whole gain. §26's sentence "the critic's sign
+  gate refuses exactly those" is **RETRACTED**; the full-grid ungated screen is running
+  to size it properly.
+
+**What the +11.55 actually is**: a scripted micro-rule at decode time — *a genuinely
+surplus squad (source stays controlled) walks at the opponent's weakest-held point* —
+executed through the policy's own play. It does not contradict the teleport audit: that
+audit force-moved a squad onto ground held by 4.9 defenders; this rule picks the weakest
+target and never abandons a point. The choice-rule does the work; the critic co-signs.
+
+**What survives unchanged**: the gain itself (+11.55 ± 3.35, 0/6 negative, paired), the
+kill verdicts, the Level-2 standing, and v9's internalisation pre-registration (the
+redirects are what they are, whoever approves them). **What changes**: the "critic
+already knows → let the critic act" narrative loses its poster child — the decode is
+evidence that a good *allocation rule* beats no rule, not that the critic's judgement is
+extractable at play. The critic-probe's own finding (direction right, ranking useless)
+already pointed here.
+
+⚠ Lesson, and it is an old one here: **a mechanism story published beside a surviving
+number gets believed with the number. Ablate the mechanism before naming it.** This is
+the third wrong-mechanism claim this programme caught (1cfebfa's message, §17's
+annuity-inflation bet, now §26's gate) — all three numbers stood, all three stories fell.
