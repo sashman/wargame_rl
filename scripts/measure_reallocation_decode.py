@@ -129,7 +129,11 @@ def measure(
                             redirects += len(members)
             observation, _r, terminated, truncated, info = env.step(action)
             done = terminated or truncated
-        vp += float(info.get("vp_margin", 0.0))
+        # ⚠ NOT `info["vp_margin"]` -- the step info carries no such key and
+        # `dict.get`'s default silently scored every episode 0.0. Caught when a
+        # 24-cell screen printed +0.0 in every cell; `measure_charges` reads
+        # the env's own counters, so this does too.
+        vp += float(env.player_vp - env.opponent_vp)
 
     print(
         f"  realloc  vp={vp / n_episodes:+8.1f}  nominated/ep={nominations / n_episodes:.2f}  "
