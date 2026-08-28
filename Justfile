@@ -597,3 +597,7 @@ ship branch commit_message:
 	git commit -m "{{commit_message}}" -m "{{commit_message}}"
 	git push -u origin {{branch}}
 	gh pr create --fill
+
+# The declaration census -- s31's S1 farm screen + S2 one-hot ablation data source
+measure-declarations checkpoint env_config n_episodes='20' decode_topk='3' ablate='0' *overrides:
+	@uv run python -m scripts.measure_declarations {{checkpoint}} {{env_config}} {{n_episodes}} {{decode_topk}} {{ablate}} {{overrides}}
