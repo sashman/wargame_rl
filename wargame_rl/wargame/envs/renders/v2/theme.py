@@ -97,6 +97,18 @@ class Palette:
     # the most useful thing on the board, cannot be seen at all. Kept very low:
     # this sits under the models and must not compete with objective control.
     threat_fill_alpha: int = 22
+    # The NEXT-turn field, as a low/medium/high ramp. It answers a different
+    # question from the threat outlines above -- where can they shoot me after
+    # they move, rather than where can they shoot me now -- so it gets its own
+    # colours rather than a shade of `threat_opponent`, and a viewer with both
+    # on can tell which is which. Amber to red because the field is *about* the
+    # opponent's fire; the alphas stay under the terrain fill's 90 for the same
+    # reason the engagement wash does, since the bands blanket most of the board.
+    threat_field_bands: tuple[RGBA, ...] = (
+        (210, 170, 60, 26),
+        (215, 120, 45, 40),
+        (205, 55, 40, 56),
+    )
     engagement_player: RGBA = (60, 130, 255, 48)
     engagement_opponent: RGBA = (230, 60, 50, 48)
 

@@ -5,9 +5,9 @@ read the *same* board arithmetic. That only holds while the arrow points one
 way: `renders/` imports `board/`, and `board/` imports neither `renders/` nor
 `env_components/` nor the env facade.
 
-Without this test the rule is a comment. The first person who wants a `Ring`, or
-a board grid, will import `renders/v2/control.py` from inside `board/`, and the
-cycle arrives with no error message. `tests/test_import_direction.py` catches the
+Without this test the rule is a comment. The first person who wants a `Ring` will
+import `renders/v2/control.py`, which imports `board/grid.py`, and the cycle
+arrives with no error message. `tests/test_import_direction.py` catches the
 model/rating/torch half automatically because it walks `envs/**`; this catches
 the half that is specific to the new layer.
 

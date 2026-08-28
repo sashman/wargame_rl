@@ -529,6 +529,18 @@ def build_scene(
                 prims.append(
                     DiscUnion(tuple(centers), threat.engagement_radius, engagement_wash)
                 )
+        # The NEXT-turn field goes under the current-turn outlines, because the
+        # outlines are a line and the field is a wash: a wash over a line hides
+        # it, and with both on the reading that matters is where they differ.
+        # One Poly per ring with NO outline -- a band boundary is a quantile of a
+        # continuous quantity, not an edge of anything, and drawing it as one
+        # would read like the region's frontier.
+        for band, band_fill in zip(
+            threat.threat_field, pal.threat_field_bands, strict=False
+        ):
+            for ring in band:
+                prims.append(Poly(tuple(ring), band_fill, None, 0))
+
         threat_width = max(2, int(round(scale * 0.16)))
         for rings, threat_stroke in (
             (threat.opponent_threat, pal.threat_opponent),

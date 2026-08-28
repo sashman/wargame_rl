@@ -63,6 +63,7 @@ class InteractiveRenderer(BasePresenter):
             ("L", "line-of-sight debug ray"),
             ("R", "shooting threat range, both sides"),
             ("E", "engagement range, both sides"),
+            ("T", "threat NEXT turn (after they move)"),
             ("Click", "pin a model's tooltip"),
             ("Esc", "quit"),
         )
@@ -151,6 +152,8 @@ class InteractiveRenderer(BasePresenter):
             self.toggle_threat()
         elif event.key == pygame.K_e:
             self.toggle_engagement()
+        elif event.key == pygame.K_t:
+            self.toggle_threat_field()
         elif event.key == pygame.K_TAB:
             self._show_keys = not self._show_keys
 
