@@ -1489,3 +1489,79 @@ probe vs the charge bar (last, optional).
 opponent-side realloc decode re-run (§29: bit-identical); no train-longer response to a
 marginal read; no offence shaping; no scripted policies built to use the lever; no
 ~30-seed chase of the charge-cell gain; no GPU before the free screens run.
+
+## 32. v10 LANDS — conjunct A passes above its bound, and the decode's value is fully absorbed
+
+Measured 2026-08-29, read strictly in §31's bound order, every number n=45 at seeds
+700000+ on the P1-bridged declare eval family, no-decode rows at K=3 (the admissible
+decode), mode named on every with-decode figure. Six seeds × 600 epochs of
+`25v25_maps_melee_declare.yaml`, all verified epoch=599, judged at `last.ckpt`.
+
+**Preconditions.** P1 script bridge: **PASS, digit-identical on 4/4 cells**. P2 positive
+control: script nominated/ep **3.78–5.47 < 6.6** at n=45×3 — the B threshold stands as
+written. P3: three repeat runs of one v10 checkpoint are **byte-identical** — σ_run ≈ 0,
+single runs stand (the "agent rows do not reproduce" doctrine is now refuted for this
+lineage). P4: usage stable early→last checkpoint (declarations/ep 21.6–34.6 → 24.1–45.6,
+no oscillation, no collapse) — all six seeds admissible. P5: ⚠ **the equalisation premise
+is REFUTED** — v10's with-decode levels sit far above v6@600's, so the with-decode
+plateau is not arm-insensitive; C's reading is unaffected (it fell far below threshold).
+
+**Screens, farm first (P6).**
+- **S1 farm screen: DOES NOT FIRE, 6/6 seeds.** Top-unit income 25–33% of the 5.0 cap
+  against the 60% line; mean unit redeclarations 3.9–8.2/ep. The clipped term was NOT
+  farmed to the tripwire. Beside it: movement cosine +0.27–0.46 toward declared targets;
+  P(declared==nearest) 0.12–0.16 — declarations are mostly NOT the nearest marker, so the
+  plan is not a laundered travel gradient. decl_frac ≈ 1.00: units hold a declaration in
+  essentially every command phase.
+- **S2 decorative screen: NOT decorative.** One-hot zeroed at play: pooled paired Δvp
+  **+3.5** (just over the 3-line) with |Δheld| 0.02 — but the per-seed spread is huge
+  (s4 +42.9 and s5 +18.6 collapse without the one-hot; s6 −17.5 improves). The plan
+  feeds the policy on some seeds and not others. The price-war ratio stands disclosed
+  (0.0417/inch unsigned vs `closest_objective_v2`'s 0.0806 signed).
+- **S3 charge floor: HOLDS with room** — charge-cell mean **−24.4** against the −52
+  floor, and ABOVE v6@600's −37.3.
+- **S4 charge guard: FLAGGED** (5/6 seeds below the comparator median 9.3; mean decl/ep
+  5.89 ≥ 4.51) — recorded, and there is **no melee regression for it to excuse**: charge
+  vp improved and stood/ep 1.49 v 1.74 is within noise. The flag says charge
+  *declarations* thinned, not that melee got worse.
+
+**The conjunction.**
+- **A (vp — FUNDS): PASS, above every bound.** v10 no-decode K=3: take **+14.8** /
+  deny **+19.6** / shoot **+35.7** against v6@600's −8.1 / −2.5 / +16.0 — per-opponent
+  improvements +22.9 / +22.1 / +19.6 vs bounds ~8 / ~16 / ~10. Pooled per-seed
+  **+21.6 ± 7.5 SE, t=+2.89, 5/6 seeds up** (s5 the exception at −10.6) — above the
+  declared MDE ~18–22 and above 2× SE, so no replication detour.
+- **B (mechanism — LABELS): FAIL.** nominated/ep **7.97** on the 24-cell mean — down
+  from the 8.61–8.74 band but above 6.6. The board still reaches over-stacked states
+  more often than the script (5.1–5.5).
+- **C (decode dependence — LABELS): PASS, decisively.** 18-cell `contest_ungated` gain
+  **−0.13 ± 2.01 SE, 9/18 cells positive** — against +12.02 on v6@600 and +17.04 on v9.
+  **The hand-written reallocation rule adds NOTHING to this policy.** Everything the
+  decode was supplying, the trained policy now captures by itself. Charge-cell gain
+  (printed, never gated): +0.70.
+
+**Label: "improved play, not internalised"** — by the letter, B failed. The protocol
+said in advance this is the expected read for partial internalisation, and the substance
+is plain: the decode's *value* is fully absorbed (C ≈ 0), while stacking *frequency* has
+only partly closed toward the script (B at 7.97 vs 6.6). The design worked where it was
+aimed: the agent owns the allocation the decode used to hand it.
+
+**The Level-3 row, named comparators.** Same-row against `squad_march_take_charge`
+(n=45, seeds 700000+, script rows transfer exactly per P1): take **−1.8** · deny
+**+9.2 AHEAD (4/6 seeds above, t≈1.6 — ahead, not settled)** · shoot −17.7 · charge
+−10.4 (bar mirror −14.0, freshly measured on the declare config). Every row improved on
+v6@600's gaps (−13.1 / −3.1 / −25.3 / −19.9) **at the admissible decode, with no
+allocation rule in the loop**. The deny row is the first same-row lead over the bar ever
+recorded at an admissible decode.
+
+**Decision (branch 1, taken): the v10-dark pair is funded and LAUNCHED** — 6 seeds ×
+600 of `25v25_maps_melee_declare_dark.yaml` (the v10 config minus
+`declared_objective_progress`; 114-action head unchanged, so init-paired), pre-registered
+in its header: dark≈arm ⇒ the term is inert and A's gain belongs to the declaration
+action/observation alone; dark<arm ⇒ the term is causal and survives into successors.
+It also carries the farm attribution. Judged on these same grids.
+
+⚠ **Standing corrections this section forces:** the equalisation premise (§31 P5) is
+struck as a general claim; and "the decode adds +12–17" must always be quoted **per
+policy** — its value is a property of the policy's allocation deficit, not of the rule,
+and on v10 it is zero.
