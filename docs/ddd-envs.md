@@ -43,7 +43,7 @@ wargame_rl/wargame/envs/
 │   ├── shooting.py            # Attack sequence: hit → wound → save → damage
 │   └── turn_execution.py      # run_until_player_phase, run_after_player_action
 ├── board/                     # Board-wide reads: sampling grid, next-turn threat
-│                              #   field. A LEAF -- domain and types only
+│                              #   field, unit matchups. A LEAF -- domain and types only
 ├── env_components/            # Adapters: actions, observation, distances, shooting masks
 ├── map_pool.py                # Loads map files into MapLayouts, draws one per episode
 ├── opponent/                  # Opponent policies + registry

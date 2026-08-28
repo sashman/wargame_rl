@@ -1181,6 +1181,7 @@ for a small score change.
 | D-01, D-04 | `just measure-objective-split` — per-objective `(player, opponent)` counts and a redistribution ceiling |
 | D-09 | `just measure-shaping-gates` — the target-switching cost is already instrumented |
 | D-14, D-15 | ⚠ the `[R]` overlay draws the **current** turn and reads false-safe for this. Use `[T]` / `just measure-threat-field`, which traces sight from where they can *get to* |
+| D-20, D-23 | `just measure-matchups` — unit-versus-unit casualties, reach margin and free rounds |
 | D-22 | `just measure-hold-hazard` — what holding a point earns against what it costs |
 | D-23 | `just measure-income-share` — which calculator pays, and how much is global |
 | D-27 | `just measure-noise-floor` — the dice already outspread the scenario; size the arm against that |
