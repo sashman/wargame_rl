@@ -124,11 +124,14 @@ def measure(
             phase = env.game_clock_state.phase
             action = selector.select(observation, env)
             if phase is BattlePhase.movement:
-                branch = (
-                    choose_branch(env, min_stack)
-                    if mode == "spread"
-                    else choose_contest_branch(env, min_stack)
-                )
+                if mode == "spread":
+                    branch = choose_branch(env, min_stack)
+                elif mode == "contest":
+                    branch = choose_contest_branch(env, min_stack)
+                else:  # "both": contest when a target exists, else spread
+                    branch = choose_contest_branch(env, min_stack) or choose_branch(
+                        env, min_stack
+                    )
                 if branch is not None:
                     nominations += 1
                     donor, target = branch
