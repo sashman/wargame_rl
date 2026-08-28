@@ -1063,3 +1063,39 @@ signature checked explicitly), scored 2026-08-28 on the full grid, K=3, n=45:
 - **Level 2 — partial** (ahead of `shoot`, break-even `deny`, behind `take`).
 - **Level 3 — open, and now demonstrably NOT blocked on melee**: the binding constraint
   is the allocation/search problem, which predates melee and needs its own programme.
+
+---
+
+## 25. The reallocation decode SURVIVES its kill — the first allocation lever ever to do so
+
+Scored 2026-08-28. `scripts/measure_reallocation_decode.py` (recipe `measure-realloc`):
+per movement phase, `choose_branch` (the critic probe's own instrument, unchanged)
+nominates one surplus squad on the biggest stack and the cheapest empty objective; the
+critic prices a virtual full-move translation and approves on SIGN alone (corr(dV,dVP)≈0
+forbids ranking); approved members are redirected onto the one shared movement-grid cell
+nearest the target — rigid, referee still judges. Play-time only.
+
+⚠ The first 24-cell screen scored every episode **exactly 0.0** — `info.get("vp_margin",
+0.0)` on an info dict that carries no such key. Caught because a column of identical
+zeros is not a result; fixed to read the env's own counters (`d896b3a`); the sanity row
+went 0.0 → +3.9 with bit-identical mechanism counts. **A default on a `dict.get` is a
+silent instrument.**
+
+Six 1000-epoch seeds × four opponents, n=45, K=3, realloc minus the same checkpoints'
+no-realloc grid rows:
+
+| Δvp | vs `take` | vs `deny` | vs `shoot` | vs `take_charge` | overall |
+|---|---|---|---|---|---|
+| mean | −3.1 | +2.8 | **+9.6** | +2.2 | **+2.86 ± 2.12** |
+
+- **Pre-registered kill (mean < +1.0 OR ≥3 of 6 seeds negative): does NOT fire** — the
+  first allocation-side intervention on this project's record to survive its own screen,
+  after three reward arms, four movement fixes and `assignment_optimal` all died.
+- Sober: t ≈ 1.4 on the overall mean — clears the line, not significant on its own. The
+  clean result is **`shoot`: positive on 6 of 6 seeds** (+3.4 to +18.9) — redistribution
+  reliably pays against the opponent that punishes stacking hardest.
+- Usage: ~6.6 nominations/ep, ~75% critic-approved, ~23 model-moves redirected/ep.
+- **What it does NOT do**: close Level 3. The charge-bar column moves −47.2 → −45.0.
+  The decode redistributes what the policy already holds; it does not make the policy
+  attack. Level 2 with the decode active: `shoot` +19.4 (clearly ahead), `deny` ≈ 0,
+  `take` behind.
