@@ -34,6 +34,7 @@ wargame_rl/
 │       │   ├── wargame.py         # WargameEnv — facade, implements BattleView
 │       │   ├── domain/            # Battle aggregate, BattleView, clock, placement,
 │       │   │                      #   termination, LOS, shooting, terrain, turn execution
+│       │   ├── board/             # Board-wide reads (leaf): unit matchups
 │       │   ├── env_components/    # Adapters: actions, distance cache, observation builder
 │       │   ├── map_pool.py        # Draws a real table per episode from a pool of maps
 │       │   ├── baseline/          # Scripted baseline policies + registry + evaluate
@@ -73,6 +74,7 @@ wargame_rl/
 │                                  #   measure_noise_floor, measure_objective_split,
 │                                  #   measure_income_share, measure_maps,
 │                                  #   behaviour_clone, measure_seat_parity,
+│                                  #   measure_matchups,
 │                                  #   measure_elo, elo_table,
 │                                  #   measure_throughput)
 ├── train.py                       # Training entry point (Typer CLI)
@@ -121,6 +123,7 @@ wargame_rl/
 | What holding a point earns against what it costs | `just measure-hold-hazard <policy\|ckpt> <config.yaml> [n_episodes] [decode_topk]` |
 | How often a policy is in unit coherency | `just measure-coherency <policy\|ckpt> <config.yaml> [n_episodes]` |
 | Which calculator pays, and how much is global | `just measure-income-share <policy\|ckpt> <config.yaml> [n_episodes]` |
+| Which of our units beats which of theirs, pre-game | `just measure-matchups <config.yaml>` |
 | Clone a scripted policy into the network (warm-start checkpoint) | `just behaviour-clone <policy> <config.yaml> [n_episodes] [epochs] [out]` |
 | Two policies on identical layouts, paired per episode | `just measure-paired <policy\|ckpt> <policy\|ckpt> <config.yaml> [n_episodes] [seed_base] [key=value...]` |
 | Dice-vs-scenario noise floor | `just measure-noise-floor <config.yaml> [n_layouts] [n_combat_seeds] [policy] [key=value...]` |
@@ -145,6 +148,7 @@ wargame_rl/
 - **DDD layering** — `domain/` owns the rules (Battle aggregate, clock, placement, termination, LOS, shooting); `wargame.py` is a facade; reward/renders depend only on the `BattleView` protocol. See [docs/ddd-envs.md](docs/ddd-envs.md)
 - **Rules specification** — [docs/rules/](docs/rules/README.md) is the game's rules authority: a self-contained spec written for this project, with `constants.yaml` (every number, in inches) and [implementation-status.md](docs/rules/implementation-status.md) (per-rule: implemented / partial / divergent / absent). Before implementing a mechanic, read its chapter and its gap-map row. `tests/test_no_ip_references.py` keeps the repo free of references to the commercial product the rules derive from — the spec names no product, publisher, edition or faction, and neither should anything else
 - **Play doctrine** — [docs/play-doctrine.md](docs/play-doctrine.md) is how this game is *won*, as `docs/rules/` is how it is *played*: 43 numbered entries, each stating a claim, whether the environment can express it, which extension point it lands in, and what has already been measured about it. It is a store of **hypotheses, never of evidence** — price an entry as a scripted policy (`just measure-paired`, no GPU) before it becomes a reward term or a training run, and where an entry disagrees with the record below, **the record wins**
+- **Board-wide reads** — `envs/board/` is a **leaf** package (domain and types only, pinned by an AST walk) holding the data a plan is made of, as distinct from the state a step is made of. The first tool in it is the **unit matchup table** (`just measure-matchups`): a reduction of the per-model expected-damage matrix that already ships as an observation input, so the table a human reads and the number the network sees cannot disagree. ⚠ **It has no positions** — range never enters the damage scalar, and appears only as `reach`, `free` (rounds of unanswered fire while the shorter gun closes) and an exchange ratio quoted at two distances. ⚠ **On the config that trains it is 1×1**, since both armies are one profile; it says something only where the profiles differ
 
 ### Game State I/O (`envs/state/`)
 

@@ -42,6 +42,8 @@ wargame_rl/wargame/envs/
 │   ├── map_layout.py          # MapLayout: one fixed layout, drawn from a pool
 │   ├── shooting.py            # Attack sequence: hit → wound → save → damage
 │   └── turn_execution.py      # run_until_player_phase, run_after_player_action
+├── board/                     # Board-wide reads: unit matchups. A LEAF -- domain and
+│                              #   types only, and no positions
 ├── env_components/            # Adapters: actions, observation, distances, shooting masks
 ├── map_pool.py                # Loads map files into MapLayouts, draws one per episode
 ├── opponent/                  # Opponent policies + registry
@@ -129,8 +131,17 @@ Action space and phase-aware masking live in `env_components/actions.py` (Action
 ## Dependency direction
 
 - **Domain** → types (config, game timing, geometry). Domain does not import env_components, reward, or renders.
-- **Env** → domain, env_components, reward, renders, types. The env is the only place that ties them together.
-- **Reward / Renders** → `BattleView`, types. They do not import the env class or the aggregate; they receive a view.
+- **Env** → domain, board, env_components, reward, renders, types. The env is the only place that ties them together.
+- **Reward / Renders / Board** → `BattleView`, types. They do not import the env class or the aggregate; they receive a view.
+- **Renders may import Board; Board must never import Renders, `env_components`, `reward` or `wargame.py`.** `board/` is a
+  leaf, and `tests/test_board_layer_is_a_leaf.py` pins it with an AST walk. The arrow points that way because a board read
+  has to be shared: the same arithmetic must serve a report, a scripted policy and — eventually — an overlay, and only one
+  of those three can be imported from the other two. ⚠ Only `renders/v2/control.py` may take that import — it calls itself
+  "the one place v2 touches the domain", and a board read is a domain read like any other. The same test enforces that too.
+
+⚠ **The Reward/Renders bullet is aspirational for `renders/`, and knowingly so.** `renders/v2/control.py` already imports
+`env_components/distance_cache.py`. That predates the rule as written; it is recorded here rather than left silently false,
+because a reader who trusts the bullet will draw the boundary in the wrong place.
 
 This keeps the domain stable and testable in isolation, and makes it clear where to add new behaviour (domain vs adapters vs env wiring).
 
