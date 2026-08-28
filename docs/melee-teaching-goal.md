@@ -1382,10 +1382,17 @@ mode and K.
   |Δheld vs v6@600| < 0.15 at n=45 per-opponent ⇒ farm. Census prints
   cosine(displacement, declared direction) and net progress per redeclaration. A fired
   S1 **vetoes conjunct B** (shuttling deflates stacks — B is farm-confoundable) and
-  rejects the **clipped form only**. Pre-registered sole repair: the **signed-delta form**
-  (drop the zero clip — telescopes, farm ceiling → 0, no re-anchoring windfall, 114-action
-  head so init-PAIRED against v10); itself rejected if receding-while-declared > 20% of
-  declared-unit movement steps. **Never retune the clipped `value` upward** — the farm
+  rejects the **clipped form only**. Pre-registered sole repair: the **signed-delta form
+  WITH the redeclaration charge** — drop the zero clip AND price the switch itself at the
+  potential difference, (gap_old − gap_new)/span, in the command step that redeclares.
+  ⚠ The clip-drop ALONE does not telescope: a shuttler walking back toward its newly
+  declared target still books positive progress — verified arithmetically, a 20-leg
+  shuttle pays 10.0 value-units unclipped-unchanged against 0.5 with the switch charge.
+  With the charge the total is path-independent (potential-based, so optimal-policy
+  preserving): a squad that redeclares to a farther objective mid-game earns exactly what
+  declaring it from the start would have — replanning is never taxed, only laundering.
+  Init-PAIRED against v10 (114-action head unchanged); itself rejected if
+  receding-while-declared > 20% of declared-unit movement steps. **Never retune the clipped `value` upward** — the farm
   ceiling scales 1:1 with it (at 0.5 it out-earns `objective_hold` at stack k=10, inside
   the measured 12.9). False-fire on honest play < 10%; a non-fired screen is not evidence
   of no farm.
