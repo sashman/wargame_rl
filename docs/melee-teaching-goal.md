@@ -1164,6 +1164,11 @@ Absolute vp, six-seed means, n=45, K=3, composed decode active, against the bar 
   −1.2 against `take` — the agent performs reasonably against the whole ladder, with the
   composed decode as part of what ships (decode is already how every agent number here is
   quoted; this adds two critic-gated redirect rules to it).
+  ⚠ **RE-SCORED PARTIAL by §31's decode-admissibility line (2026-08-28)**: K=3+verify
+  injects Level-1 content (legality, move resolution) and is admissible in a Level-2
+  verdict; `contest_ungated` injects *target selection* — Level-2/3 content, verbatim the
+  bar's own allocation doctrine — so a Level-2 verdict quoted with it active measures the
+  rule, not the agent. At the admissible decode the means are −8.1 / −2.5 / +16.0.
 - **Level 3 — OPEN, gaps halved**: −6 to −29 same-row against the bar, from −14 to −47
   before the decode. The remaining distance is play quality under gradient — the next
   programme, with the decode's survival as its first funded hypothesis (what the critic
@@ -1327,3 +1332,153 @@ the design wants reallocating). Verified in `declared_objective_progress.py` (th
 re-anchoring windfall does NOT exist — `_prev_gaps` holds the full matrix). v10 trains
 on regardless: the farm screen in §31's landing protocol converts it into a readable
 outcome, and the term — not the declaration family — is what a fired screen rejects.
+
+## 31. The v10 landing protocol — bound before epoch 599 exists
+
+The declaration arm (`25v25_maps_melee_declare.yaml`, 6 seeds × 600, launched 2026-08-28,
+n_actions 114, model token 70) will be read by THIS section and nothing else. Written
+while the trainers were at ~epoch 140, by two uncoordinated adversarial panels: panel A
+(6 seats + red team + chair) drafted it; shadow panel B (4 seats + chair, fed A's
+synthesis) attacked it and produced the amendments below, each chair-verified against the
+raw files. ⚠ The deepest finding was reflexive: **panel A's own draft clauses reproduced
+the defect class panel A had just retired** — un-named grids, un-power-checked thresholds,
+a comparator line inside the empirical band (the "<5" guard sits inside a bimodal 2.82–
+17.33 twelve-seed band), and one arithmetic threshold mixing an 18-cell and a 24-cell SE
+(+5.4, struck). Pre-registration fails at the moment of writing, not reading; this
+version applies the discipline to itself.
+
+**Level definitions and decode admissibility (committed here, first).** Level 1: plays
+every phase legally. Level 2: performs against the opponent ladder. Level 3: beats
+`squad_march_take_charge` on the same config. **A decode is admissible in a Level-N
+verdict iff everything it injects is content of levels below N.** K=3+verify injects
+legality and move resolution (Level-1; the clone control showed it compensates
+architecture, not knowledge) — admissible everywhere. `contest_ungated` injects target
+selection, verbatim the bar's allocation doctrine (§29), the critic gate a measured pure
+tax (§28) — inadmissible in Level-2/3 verdicts about the *agent*. §27's "Level 2 — MET"
+is re-scored **PARTIAL** above. Every level verdict names its decode; every table names
+mode and K.
+
+**Preconditions (all before any conjunct is read):**
+- **P1 script bridge**: `squad_march_take` scores digit-identically on the new
+  `25v25_maps_melee_declare_vs_{take,deny,shoot}` + charge cell vs the existing melee
+  eval family (deterministic, so exact; the advance-arm precedent). Any digit moves ⇒
+  the ladder is unscoreable until the configs are repaired.
+- **P2 conjunct-B positive control**: script nominated/ep at n=45×3 lands < 6.6 (n=9
+  screen: 5.11); else recalibrate B to script_mean + 2×script_seed_sd.
+- **P3 σ_run repeats** (2–3 rows × 2–3 runs, one checkpoint): < 5 ⇒ single runs stand;
+  ≥ 10 ⇒ decisive cells are means of ≥2 runs. (The doctrine "an agent row does not
+  reproduce" is currently unquantified — the only on-disk repeat pair is byte-identical.)
+- **P4 usage-oscillation convergence** at two checkpoints per seed; an oscillating seed
+  enters no average.
+- **P5 equalisation fixed-point test** (with-decode plateau arm-insensitivity) evaluated
+  before C is read; the measured arm gap in the plateau (v6 +13.8 v v9 +11.3) noted.
+- **P6 the farm screen is evaluated and reported BEFORE the internalisation conjunction
+  is narrated.**
+
+**Screens:**
+- **S1 farm screen (per-unit — the army mean is provably blind: one farming unit reads
+  39% of cap)**: any unit with mean per-model `declared_objective_progress` income ≥ 60%
+  of the 5.0 cap AND redeclarations ≥ 10/ep, sustained across both P4 checkpoints, AND
+  |Δheld vs v6@600| < 0.15 at n=45 per-opponent ⇒ farm. Census prints
+  cosine(displacement, declared direction) and net progress per redeclaration. A fired
+  S1 **vetoes conjunct B** (shuttling deflates stacks — B is farm-confoundable) and
+  rejects the **clipped form only**. Pre-registered sole repair: the **signed-delta form**
+  (drop the zero clip — telescopes, farm ceiling → 0, no re-anchoring windfall, 114-action
+  head so init-PAIRED against v10); itself rejected if receding-while-declared > 20% of
+  declared-unit movement steps. **Never retune the clipped `value` upward** — the farm
+  ceiling scales 1:1 with it (at 0.5 it out-earns `objective_hold` at stack k=10, inside
+  the measured 12.9). False-fire on honest play < 10%; a non-fired screen is not evidence
+  of no farm.
+- **S2 decorative screen**: one-hot zeroed at play, frozen weights, paired, 6×45; verdict
+  on the **pooled paired mean** (SE ~1–1.5): decorative = pooled |Δvp| < 3 AND pooled
+  |Δheld| < 0.1; per-seed and per-opponent printed; the price-war ratio printed beside any
+  decorative verdict (the term pays 0.0417/inch unsigned vs `closest_objective_v2`'s
+  0.0806/inch signed, still live in the v10 config — the declaration is outbid ~2:1
+  exactly where it is informative). Routing: decorative + A-pass ⇒ **the reward-routing
+  channel succeeded without the observation channel — the design working, not dying**
+  (term survives; drop the one-hot in successors; dark pair attributes). Decorative +
+  A-fail + P(declared==nearest) ≥ 0.5 ⇒ laundering; clipped term dies; the S1 signed-form
+  arm is the one licensed repair; family verdict deferred to it. Decorative + A-fail +
+  P(declared==nearest) < 0.5 ⇒ **the declaration family dies — no retunes, no v11.**
+- **S3 charge-bar floor**: v10 no-decode K=3 `take_charge` six-seed mean ≥ **−52**
+  (v6@600 −37.3, sd 17.5, minus 1.5× unpaired-diff SE ≈ 15). Breach blocks adoption and
+  pauses every funding branch regardless of S4 (which then decides attribution only).
+  The charge-cell decode gain is printed beside the 18-cell verdict, pre-declared
+  unpowered (MDE ~14 at n=6), never gated, never pooled.
+- **S4 charge-interference guard (K=1, apr config)**: dilution flagged only if the
+  six-seed mean decl/ep < 4.51 OR ≥5/6 seeds below the twelve-seed comparator median 9.3;
+  all six inside one baseline cluster ⇒ **UNDECIDABLE at n=6**, recorded as such.
+  `stood/ep` and the conversion band read beside it; decl/ep alone is not a gate.
+
+**Primary internalisation readout** (raw decode-gain stays retired — confounded with
+base quality, corr −0.605):
+- **A (vp — FUNDS):** v10 no-decode K=3 on the 18-cell ladder (charge excluded BY NAME)
+  vs v6@600 means −8.1 / −2.5 / +16.0. PASS = beats all three AND pooled per-seed
+  improvement > 0, per-opponent CIs printed against bounds of 1.5× each opponent's own
+  unpaired SE (**~8 / ~16 / ~10 vp** — one pooled "~15" was 50% loose on two of three).
+  FAIL = pooled ≤ 0 or beats ≤ 1 of 3. Otherwise INDETERMINATE. Declared power: unpaired
+  MDE ~18–22 pooled; a sub-bound pass is screen grade and printed as such.
+- **B (mechanism — LABELS):** nominated/ep ≤ 6.6 on the **24-cell mean** (the 8.61–8.74
+  band's own grid; the script positive control sits at 5.11), subject to P2, not read if
+  S1 fired. The band was measured on decode-steered trajectories; steering only reduces
+  stacks, so the bias is conservative.
+- **C (decode dependence — LABELS):** 18-cell `contest_ungated` gain < **+6.7** (2× the
+  measured paired gain-difference SE 3.34; the draft's +5.4 was an 18/24-cell SE mix,
+  struck). Dead zone [+6.7, +12.02] declared UNDERPOWERED in advance — the modal C
+  readout under H0 (33–38%) — and routed, never narrated.
+
+**Labels:** internalised = A∧B∧C · A-pass with B or C failing = "improved play, not
+internalised" · C in dead zone = "internalisation underpowered". This conjunction detects
+FULL internalisation only (miss ~17% on a full internaliser, ~93% on a half); partial
+internalisation is expected to read "improved play, not internalised", and that is
+accepted. False-pass is locked by B (~1e-7); the hazard budget is all on the miss side
+and on routing — which is why **funding follows A, never B or C** (a v10 reproducing the
+decode's vp while only partially unstacking would otherwise be routed to family death
+with P=0.991).
+
+**Reporting:** vp on the no-decode AND with-decode grids separately, both verdicts
+printed, no post-hoc grid choice; sign counts always conjoined with the per-opponent mean
+bounds; hoarding on measured held/alive at n=45 both arms vs the v6@600 comparators; the
+decode's value quoted **per-opponent** wherever the product is named — v6@600: take +10.1
+/ deny +13.0 / shoot +13.0 / **charge +2.5 ± 5.5 (3/6, null)** — never pooled alone: the
+pooled +12.02 is earned entirely on the three opponents that never punish transit. ⚠ Fork
+(b)'s same-row gap digits (deny ~−3, take ~−13, shoot ~−25, charge ~−20) are
+chair-computed; a spot-check against `/tmp/melee_ladder/bar_vs_*.txt` confirms the
+ordering with digits moving ≤3 by bar row set — **recompute on the P1-bridged eval family
+at landing before quoting any of them.**
+
+**Decision rule:**
+1. **A PASS + S3 holds + S1/S2 clean or routed-survivable** ⇒ fund the **v10-dark pair**
+   (6 seeds — a 3-seed dark screen inherits the documented instability — init-paired,
+   ~14 GPU-h; pre-registered: dark≈arm ⇒ term inert, A belongs to the declaration
+   action/observation; dark<arm ⇒ term causal, survives into successors; carries the farm
+   attribution). If A's pooled margin < 2× its SE ⇒ **3 replication seeds first** (~7
+   GPU-h; three-seed screens reversed twice — more seeds is the lever).
+2. **A INDETERMINATE, or C in dead zone, or S4/P4 undecidable** ⇒ extend (free gain-cell
+   episodes and/or 3 replication seeds); fork (b) must not be taken on an underpowered
+   read.
+3. **A FAIL** ⇒ the clipped term is rejected on its merits; S2 routing decides the family
+   (laundering ⇒ one signed-form arm, family deferred; decorative without the pricing
+   signature ⇒ family dies). Then **decision (b): accept `contest_ungated` as the product
+   and re-aim the goal**, stated in the same-row convention with the landing-recomputed
+   gaps, the decode's charge-cell null named, and the delegation fire rate quoted from
+   the promoted min_stack dose-response, not assumed. The re-aim re-scopes Level 3 to the
+   shipped system's same-row gaps (deny first) and re-poses the teaching question as
+   internalising THIS rule (rule-agreement census at redirect states, sd ~1).
+4. At most **ONE** distribution-side member (partway-start OR choice-posing start,
+   selected by the free screens) may be funded afterward, and only if its screen passes.
+
+**Free-work queue** (all CPU, deferred until the trainers land): build + P1-bridge the
+declare eval family (~0.5 day) → declaration census incl. per-unit farm income,
+P(declared==nearest), cosine, net progress per redeclaration, nominated×farm cross-tab →
+S2 one-hot ablation → hoarding at n=45 both arms → P3 repeats → both_ungated-vs-contest
+on frozen v6@600 (>+3 forces a re-run of the v9 primary under the described instrument)
+→ min_stack dose-response (promoted: it defines fork (b)'s "fire rate") →
+rule-agreement census at redirect states (kill: v6 agreement > 60% ⇒ the deficit is
+aggregation, not allocation, and no distillation family is fundable) → redirect-fate
+probe vs the charge bar (last, optional).
+
+**Consolidated refusals (both panels):** no upward retune of the clipped term; no
+opponent-side realloc decode re-run (§29: bit-identical); no train-longer response to a
+marginal read; no offence shaping; no scripted policies built to use the lever; no
+~30-seed chase of the charge-cell gain; no GPU before the free screens run.
