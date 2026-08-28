@@ -997,3 +997,37 @@ comparison. n=45, seeds 700000+, refereed.
 **Level 2 — "reasonably perform against the opponent ladder" — is met on this evidence.**
 Level 3 needs the six-seed, all-opponents grid and the vp gap against the charging bar
 itself (−37.3 v −14.0 at K=3) closed.
+
+---
+
+## 23. ⚠ CORRECTION — §22's "Level 2 met" was WINNER-SELECTION BIAS. The six-seed grid.
+
+Scored 2026-08-28 ~05:30, all six v6 seeds × four opponents, K=3, n=45. §22's two agent
+rows were **s5 and s3, chosen as the best seeds by their K=3 vp** — the comparator error
+CLAUDE.md § How to measure names ("a best chosen by argmax on the same data changes
+identity between cells"), committed at seed level, by me, hours after quoting the rule.
+The original stands above, uncorrected, per house practice.
+
+| seed | vs `take` | vs `deny` | vs `shoot` | vs `take_charge` |
+|---|---|---|---|---|
+| s1 | −7.7 | −7.8 | +16.0 | −44.2 |
+| s2 | −24.8 | −31.9 | +2.3 | −64.8 |
+| s3 | −5.8 | +4.1 | +17.4 | −35.8 |
+| s4 | −6.9 | +1.1 | +13.0 | −31.6 |
+| s5 | +4.7 | +24.7 | +32.4 | −11.0 |
+| s6 | −8.2 | −5.3 | +15.0 | −36.1 |
+| **mean** | **−8.1** | **−2.5** | **+16.0** | **−37.3** |
+| bar (K=1) | +16.6 | +10.4 | +53.3 | −14.0 |
+
+- **What survives**: positive against `squad_march_shoot` on **6 of 6 seeds** (mean
+  +16.0); conversion 0.68–0.87 against every opponent; coherency 0.94–0.96 everywhere.
+  The charge SKILL is real and transfers.
+- **What dies**: "positive in 5 of 6 cells" (it is 9 of 24); the `deny` Level-3 signal
+  (s5's +24.7 is the seed tail — the six-seed mean is −2.5, 3 of 6 positive).
+- **Level 2 verdict, corrected: PARTIAL.** Competitive with the ladder (means −8 to +16),
+  clearly ahead of one opponent, behind the bar's same-row on all three.
+- **Level 3: open.** Behind the charging bar's mirror row on 5 of 6 seeds (s5's −11.0 v
+  −14.0 is one seed, 3 vp, n=45 — nothing).
+- ⚠ The standing pattern held where the §22 framing missed it: the agent's best opponent
+  is the one that shoots most (`shoot` — where its formation discipline and the shield
+  pay), not the one where denial pays. Re-derive doctrine from the six-seed grid only.
