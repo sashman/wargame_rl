@@ -1204,3 +1204,25 @@ already pointed here.
 number gets believed with the number. Ablate the mechanism before naming it.** This is
 the third wrong-mechanism claim this programme caught (1cfebfa's message, §17's
 annuity-inflation bet, now §26's gate) — all three numbers stood, all three stories fell.
+
+### §28 addendum — the full ungated screen: the gate is a TAX, and the bare heuristic wins
+
+24 cells, same kill, same pairing:
+
+| Δvp | vs `take` | vs `deny` | vs `shoot` | vs `take_charge` | overall |
+|---|---|---|---|---|---|
+| gated | +8.3 | +9.8 | +14.8 | +12.2 | +11.30 ± 3.27 |
+| **ungated** | **+13.8** | **+12.8** | **+18.2** | **+13.3** | **+14.54 ± 3.81** |
+
+Gate worth per seed: −3.7 / −3.0 / −0.8 / −4.4 / +0.8 / −8.3 — **mean −3.24 ± 1.29,
+negative on 5 of 6.** The critic's vetoes block profitable moves on net. The graduating
+decode is therefore the **bare heuristic**: surplus squad (source stays controlled) →
+opponent's weakest-held point, else nearest empty point — no critic call at all, two
+network evaluations per step cheaper.
+
+Absolute standing with the ungated decode (six-seed means): **`take` +3.5** (positive for
+the first time), **`deny` +7.3** against the bar's +10.4 (gap −3.1, within one SE),
+`shoot` +28.0 (bar +53.3), `charge` −33.9 (bar −14.0). ⚠ The critic-probe research
+programme ends on its honest note: the probe's forked-game finding (direction right,
+ranking useless) was real, but at decode time even the direction subtracts value — the
+knowledge was in the *choice of rule*, and the rule needed no oracle.
