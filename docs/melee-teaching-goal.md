@@ -1250,6 +1250,80 @@ mirror. **Marginal value of the redirect on the bar: exactly zero.**
   WHY the bar wins: its edge is the allocator, not the executor.
 - `squad_march_take_charge_realloc` stays registered as the measured-redundant control,
   and `baseline/reallocation.py` becomes the shared statement of the rule for the decode
-  and for the DECLARATION design that follows (§30, in progress): the agent learning to
+  and for the DECLARATION design that follows (§31: the v10 arm and its landing protocol): the agent learning to
   make this choice itself, via a command-phase objective declaration and a
   declaration-gated execution delta — the design the record's post-mortems point at.
+
+## 30. v9 — the objective-start augmentation: no detectable benefit, and nothing was internalised
+
+Measured 2026-08-28, audited the same day by an 8-agent adversarial panel (six seats +
+red team + chair) that recomputed every headline figure from the raw files to the
+decimal and read both instruments line by line. Six seeds × 600 epochs of
+`25v25_maps_melee_approach_aug.yaml` (the v6 recipe + `start_on_objective_probability
+0.25`), all verified epoch=599, judged at `last.ckpt`, scored n=45 at seeds 700000+ on
+the refereed eval family, **paired against v6@600 by seed** (config diff verified to be
+exactly `config_name` + the scalar; placement consumes rng only when p > 0, so eval
+layouts are bit-identical).
+
+**Verdict of record: no detectable benefit; mild-harm lean on the raw policy;
+UNDERPOWERED as a null.** Primary (with-decode, `contest_ungated`, K=3, 24 cells):
+per-seed aggregate **−1.2 ± 15.4 sd, t=−0.19, 4/6 up** — 95% CI [−17.4, +14.9],
+80%-power MDE ~22 vp, so "null" claims precision the design never had. Secondary
+(no-decode K=3): **−7.7 ± 20.4 sd, t=−0.92, 2/6 up**, all four opponent means negative;
+K=1 charge vp paired −7.4; `held` −0.24 and `alive` −0.038, both down 5/6 (n=9 screen).
+Do not adopt — safe at every point in the CI.
+
+**Internalisation did not occur, on corrected evidence.** The pre-registered signature
+(decode gain SHRINKS while absolute vp RISES) had **neither conjunct occur**. ⚠ The
+first-published form — "the decode gain GREW, +12.0 → +17.0" — is **STRUCK**: the
+difference is +5.02 ± 3.34 (t=+1.50) and is arithmetically identical to
+primaryΔ − secondaryΔ, so it is not independent evidence beside the vp rows. Quote
+"did not shrink". The carrying statistic is **decoder activity: nominated/ep 8.74 v
+8.61, paired +0.13 ± 0.96 sd** — ~16× less variance than vp, the best-powered readout
+in the programme — training under the augmentation left the board condition the reflex
+fires on exactly as frequent. **Raw decode-gain is RETIRED as an internalisation
+readout** (confounded with base quality, corr −0.605 with no-decode vp).
+
+⚠ **What v9 licenses is NARROW, and the general claim was REJECTED by the panel
+unanimously.** "Changing the training distribution does not teach allocation" does not
+follow — v10 is itself a distribution intervention, and v9's dose was small and
+misplaced: the augmentation moves **ONE uniformly-random squad to ONE uniformly-random
+objective** (not "each group" as first described), ~5% effective clean dose; on this
+config **22/40 sampled augmented starts sit in a kill-box and 12/40 have placed models
+already dead**. A probe showed v9 **did** learn a stay-tendency at augmented states
+(hold 0.240/0.070 v 0.022/0.020) that cannot transfer — the gifted squad dies, and
+travel-choice states get unchanged data. What died: **the endpoint-only, need-blind
+start-augmentation family at any p** (0.25 nulled at mechanism level, 1.0 is the
+measured kill-box). v10 stands on §29's own grounds — the bar's edge is its allocator —
+not as a consequence of this null.
+
+**Pre-registration defects, disclosed** (the 2026-08-24 post-mortem's list, repeated):
+(i) the executed primary was **`contest_ungated`** — contest-only, no empty-point
+fallback — where the header said "the composed decode"; bounded small (~+0.25) but a
+real substitution. **Every with-decode number now names its mode the way it names K.**
+(ii) The reject clause ("paired vp falls on 4+/6") named no grid: it does NOT fire on
+the primary (2/6) and DOES on the secondary (4/6); recorded as judged on the primary,
+with the false-fire rate stated — **a 4-of-6 sign count false-fires at 34.4% under a
+true null**, so the clause is retired as a template. (iii) The hoarding conjunct was
+unmeasurable at verdict time (`measure_charges` prints neither `held` nor `alive`);
+closed same-day at screen grade: **does not fire, 0/6 seeds**. (iv) Instruments audited
+SOUND — `charged_this_turn` has one write site (`actions.py:1676`; the docstring's
+`:1160` is stale), and the reallocation decode's redirects are legal in-action-space
+moves through the full referee.
+
+**Also established:** the KNOWN-NOISE doctrine ("an agent row does not reproduce") is
+**unquantified in either direction** — the only on-disk repeat pair is byte-identical;
+no noise floor may be imported until repeats are run. And **600 beats 1000 on
+everything that ships with the decode** (with-decode overall +1.67 v +1.21; deny +10.45
+v +7.23): §24's "consolidation" is true only of no-decode mechanics, and the 600-epoch
+checkpoints are the better product platform.
+
+⚠ **v10 landed a live defect during this audit: the config header's "unfarmable" is
+FALSE in code.** `declared_objective_progress` clips at zero and redeclaration is free,
+so a two-target shuttle is paid on every leg — ceiling ~5.0/model/episode against
+`objective_hold`'s ~6.8, and it beats honest play mainly for surplus models on crowded
+points (the crowding split makes their marginal hold income small — exactly the models
+the design wants reallocating). Verified in `declared_objective_progress.py` (the
+re-anchoring windfall does NOT exist — `_prev_gaps` holds the full matrix). v10 trains
+on regardless: the farm screen in §31's landing protocol converts it into a readable
+outcome, and the term — not the declaration family — is what a fired screen rejects.

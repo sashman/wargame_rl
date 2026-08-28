@@ -392,3 +392,23 @@ a panel's headline, not just its findings.**
 
 **Cost:** ~3.0M subagent tokens, 939 tool calls, ~1h50m wall-clock staggered. Load stayed
 <=3.5 on 24 cores; the trainers lost nothing.
+
+## 2026-08-28 — audit — the v9 verdict (C1 null / C2 no-internalisation / C3 family claim / C4 clause binding)
+- Panel A (6 seats + red team + chair, 8 agents, ~1.03M tokens): C1 SURVIVES REWORDED
+  (underpowered null, MDE ~22 — the "null" wording claimed unearned precision); C2 SURVIVES
+  ON CORRECTED EVIDENCE ("gain grew" struck as an arithmetic identity, t=+1.50; replaced by
+  the far better-powered decoder-activity statistic, nominated/ep paired +0.13 ± 0.96 sd);
+  C3 REJECTED unanimously (v9 tested one weak, need-blind dose — ~5% clean, kill-box at
+  p=1.0 — not the distribution family; and the general claim contradicted v10 itself);
+  C4 SURVIVES WITH DISCLOSURES (clause retired as a template: no grid named, 34.4%
+  false-fire, half unmeasurable at verdict time).
+- Audits that landed: the executed primary was contest_ungated, not the described composed
+  decode (mode now quoted like K); the v10 header's "unfarmable" is FALSE in code (shuttle
+  farm, verified by hand afterwards — clip-at-zero + free redeclaration); the hoarding
+  clause closed 0/6 by a panel probe; measure_charges docstring cite stale (:1160 → :1676);
+  "600 beats 1000 on everything that ships with the decode" surfaced from the panel's own
+  recomputation; the methodologist's σ_run ≈ 15.6 was itself refuted by the red team + chair
+  (misread file — the repeat pair is byte-identical), the second time a panel's internal
+  check killed a panel claim before it reached the record.
+- Pattern holds: audit seats landed ~everything; the one generative-style claim (a noise
+  floor) was wrong. Chair-verification-before-synthesis caught it.
