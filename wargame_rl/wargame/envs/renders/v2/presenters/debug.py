@@ -202,6 +202,7 @@ class DebugPresenter(InteractiveRenderer):
             ("L", "line-of-sight debug ray"),
             ("R", "shooting threat range, both sides"),
             ("E", "engagement range, both sides"),
+            ("T", "threat NEXT turn (after they move)"),
             ("Esc", "deselect, then quit"),
         )
 

@@ -477,11 +477,15 @@ firer's own combat stats, not the opponent's.
 **Where it lands.** `ScriptedSquadMarchPolicy.squad_objectives`; as an observation, a widening
 of the opponent model token.
 
-**Already measured.** Not measured as a policy. The visualisation already exists: the `[R]`
-threat-range overlay and `--record-threat-range`.
+**Already measured.** Not measured as a policy. ⚠ **The `[R]` overlay is NOT this claim** — it
+draws range intersected with sight from where models *stand*, i.e. 12", while this entry is
+about move plus range. The `[T]` field is (`envs/board/threat.py`, `ThreatHorizon.next_turn`):
+it traces sight from every cell a shooter can reach, which is the quantity named here.
 
-**Cheapest test.** **Look at a real board before writing anything.**
-`just play configs/golden/25v25_maps_two_mode.yaml squad_march_take tabletop R`.
+**Cheapest test.** **Look at a real board before writing anything**, with both overlays on — the
+ground between them is what this entry is about.
+`just play configs/golden/25v25_maps_two_mode.yaml squad_march_take tabletop "--threat-range --threat-field"`,
+then `just measure-threat-field squad_march_take configs/golden/25v25_maps_two_mode.yaml 5 configs/evaluation/maps_heldout`.
 
 ### D-15 — Stage outside threat range and arrive in one move
 
@@ -1176,7 +1180,7 @@ for a small score change.
 |---|---|
 | D-01, D-04 | `just measure-objective-split` — per-objective `(player, opponent)` counts and a redistribution ceiling |
 | D-09 | `just measure-shaping-gates` — the target-switching cost is already instrumented |
-| D-14, D-15 | the `[R]` threat overlay and `--record-threat-range`; `just play <config> squad_march_take tabletop R` |
+| D-14, D-15 | ⚠ the `[R]` overlay draws the **current** turn and reads false-safe for this. Use `[T]` / `just measure-threat-field`, which traces sight from where they can *get to* |
 | D-22 | `just measure-hold-hazard` — what holding a point earns against what it costs |
 | D-23 | `just measure-income-share` — which calculator pays, and how much is global |
 | D-27 | `just measure-noise-floor` — the dice already outspread the scenario; size the arm against that |

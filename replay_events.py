@@ -89,6 +89,15 @@ def render(
     show_engagement_range: bool = typer.Option(
         False, "--engagement-range", help="Shade each side's engagement range."
     ),
+    show_threat_field: bool = typer.Option(
+        False,
+        "--threat-field",
+        help=(
+            "Shade the ground the opponent can shoot NEXT turn -- after they "
+            "move -- in danger bands. Different from --threat-range, which "
+            "shows only what bears this instant and so reads FALSE-SAFE."
+        ),
+    ),
     fps: int = typer.Option(5, help="Playback / export frames per second"),
 ) -> None:
     """Replay a recording visually — an interactive window, or an MP4 with --out."""
@@ -111,7 +120,11 @@ def render(
         source,
         theme=resolve_theme(theme),
         fps=fps,
-        threat_options=threat_options(show_threat_range, show_engagement_range),
+        threat_options=threat_options(
+            show_threat_range,
+            show_engagement_range,
+            show_threat_field=show_threat_field,
+        ),
     )
 
     if out:
