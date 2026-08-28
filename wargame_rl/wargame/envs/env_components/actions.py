@@ -528,6 +528,29 @@ class ActionHandler:
         else:
             self._move_type_slice = None
 
+        # The squad's PLAN: which objective it is committed to, declared by its
+        # leader in the command phase, binding and PERSISTENT (STAY keeps it).
+        # Registered LAST so no existing index moves, and only under
+        # `declare_objectives` so every existing config keeps its exact action
+        # space. Size is the objective BUDGET -- the tensor width -- with
+        # legality masking off indices beyond the episode's real objectives.
+        budget = config.objective_budget
+        self._objective_budget = int(budget) if budget is not None else 0
+        # ⚠ `getattr`, not attribute access: a config PICKLED before this
+        # field existed (a checkpoint's hparams, a recording subprocess's
+        # snapshot from a live run) must construct under new code. The
+        # 2026-08-27 incident -- new builder code meeting an old config object
+        # in a recording subprocess -- recurred the moment this field landed
+        # under live trainers; a plain read crashes every such consumer.
+        if bool(getattr(config, "declare_objectives", False)):
+            self._objective_target_slice: ActionSlice | None = self._registry.register(
+                "objective_target",
+                self._objective_budget,
+                phases("objective_target", frozenset({BattlePhase.command})),
+            )
+        else:
+            self._objective_target_slice = None
+
         # ⚠ **WHO SWINGS FIRST WAS THE ENGINE'S CHOICE, and the rules make it the
         # player's.** `resolve_fight_step` picked `min(pool)` -- the lowest-indexed
         # eligible unit -- where `12-fight-phase.md` says *"players alternate
@@ -554,6 +577,65 @@ class ActionHandler:
     def fight_order_slice(self) -> ActionSlice | None:
         """Activation-priority slice, or None where nothing fights."""
         return self._fight_order_slice
+
+    def declare_objectives(
+        self, action: WargameEnvAction, wargame_models: list[Any]
+    ) -> None:
+        """Record each unit's declared OBJECTIVE from its leader's action.
+
+        The learning form of `baseline/reallocation.py`: the squad's plan as a
+        first-class, leader-declared, unit-binding action. ⚠ Unlike the move
+        type it PERSISTS -- `begin_turn` does not clear it -- so STAY means
+        "keep the plan", and a squad re-plans only by declaring again. That is
+        what makes it a commitment the execution reward can price rather than a
+        per-turn impulse.
+        """
+        if self._objective_target_slice is None:
+            return
+        start = self._objective_target_slice.start
+        end = self._objective_target_slice.end
+        leaders: dict[int, int] = {}
+        for index, model in enumerate(wargame_models):
+            if not model.is_alive:
+                continue
+            leaders.setdefault(int(model.group_id), index)
+        declared: dict[int, int] = {}
+        for group, leader in leaders.items():
+            if leader >= len(action.actions):
+                continue
+            chosen = int(action.actions[leader])
+            if start <= chosen < end:
+                declared[group] = chosen - start
+        if not declared:
+            return
+        for model in wargame_models:
+            group = int(model.group_id)
+            if group in declared:
+                model.declared_objective = declared[group]
+
+    def objective_target_legality(
+        self, models: list[Any], n_objectives: int
+    ) -> np.ndarray:
+        """`(n_models, budget)` -- which objective declarations exist to make.
+
+        The slice is sized to the BUDGET (the tensor width); an episode drawing
+        fewer objectives masks the padding indices off, exactly as the
+        observation zero-pads the same rows. Alive models only.
+        """
+        if self._objective_target_slice is None:
+            return np.zeros((len(models), 0), dtype=bool)
+        legality = np.zeros(
+            (len(models), self._objective_target_slice.size), dtype=bool
+        )
+        limit = min(int(n_objectives), self._objective_target_slice.size)
+        alive = np.array([bool(m.is_alive) for m in models], dtype=bool)
+        legality[alive, :limit] = True
+        return legality
+
+    @property
+    def objective_target_slice(self) -> ActionSlice | None:
+        """The objective-declaration slice, or None when the flag is off."""
+        return self._objective_target_slice
 
     def declare_fight_order(
         self, action: WargameEnvAction, wargame_models: list[Any]
@@ -1883,6 +1965,7 @@ class ActionHandler:
             # action against its space before skipping non-movement phases, and
             # an unvalidated declaration would be a silent out-of-range action.
             self.declare_move_types(action, wargame_models)
+            self.declare_objectives(action, wargame_models)
         if phase is BattlePhase.fight:
             # Read BEFORE the fight resolves, which happens on the boundary
             # leaving this phase -- so the priorities the engine selects on are

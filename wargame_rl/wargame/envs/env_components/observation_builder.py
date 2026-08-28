@@ -194,6 +194,14 @@ def _coherency_features(
 # other normalised feature, rather than being 6x the scale of its neighbours.
 
 
+def _declared_onehot(declared: int, budget: int) -> np.ndarray:
+    """The squad's declared objective as a one-hot over the budget (-1 = zeros)."""
+    onehot = np.zeros(budget, dtype=np.float32)
+    if 0 <= declared < budget:
+        onehot[declared] = 1.0
+    return onehot
+
+
 def _models_to_obs(
     models: list[WargameModel],
     max_groups: int,
@@ -207,6 +215,7 @@ def _models_to_obs(
     advance_is_known: bool = True,
     observe_melee: bool = False,
     engaged_flags: np.ndarray | None = None,
+    objective_declaration_budget: int | None = None,
 ) -> list[WargameModelObservation]:
     strengths = _unit_strengths(models) if observe_unit_strength else {}
     offsets = (
@@ -314,6 +323,14 @@ def _models_to_obs(
                 # function of current positions, identical from either seat,
                 # so both sides read it live. See `melee.observe_engaged`.
                 engaged=(None if engaged_flags is None else float(engaged_flags[i])),
+                declared_objective_onehot=(
+                    None
+                    if objective_declaration_budget is None
+                    else _declared_onehot(
+                        int(getattr(m, "declared_objective", -1)),
+                        objective_declaration_budget,
+                    )
+                ),
                 coherency_spread=(None if spread is None else float(spread[i])),
                 coherency_component=(
                     None if component is None else float(component[i])
@@ -582,6 +599,17 @@ def build_observation(
                 view.player_declaration_legality
             )
 
+        if (
+            action_registry.has_slice("objective_target")
+            and phase == BattlePhase.command
+        ):
+            # An objective declaration beyond the episode's real objective
+            # count is a plan for a marker that does not exist.
+            target_slice = action_registry.slice_for("objective_target")
+            action_mask[:, target_slice.start : target_slice.end] &= (
+                view.player_objective_target_legality
+            )
+
         if action_registry.has_slice("advance") and phase == BattlePhase.movement:
             # The advance rungs are ABSOLUTE distances above Move, so the turn's
             # D6 no longer changes what an action means -- it decides which
@@ -680,6 +708,13 @@ def build_observation(
         if view.config.melee.observe_charge is None
         else view.config.melee.observe_charge
     )
+    declaration_budget: int | None = (
+        int(view.config.objective_budget)
+        # `getattr`: configs pickled before the field existed must still build.
+        if getattr(view.config, "declare_objectives", False)
+        and view.config.objective_budget
+        else None
+    )
     player_engaged: np.ndarray | None = None
     opponent_engaged: np.ndarray | None = None
     if view.config.melee.observe_engaged:
@@ -725,6 +760,7 @@ def build_observation(
             observe_advance=view.config.n_advance_speed_bins > 0,
             observe_melee=observe_melee,
             engaged_flags=player_engaged,
+            objective_declaration_budget=declaration_budget,
         ),
         objectives=objectives_obs,
         board_width=view.board_width,
@@ -755,6 +791,7 @@ def build_observation(
             # dropping it, costs no shape change and orphans no checkpoint.
             advance_is_known=False,
             engaged_flags=opponent_engaged,
+            objective_declaration_budget=declaration_budget,
         ),
         terrain=terrain_obs,
         action_mask=action_mask,

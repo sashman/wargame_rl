@@ -523,6 +523,13 @@ class WargameEnv(gym.Env):
         )
 
     @property
+    def player_objective_target_legality(self) -> np.ndarray:
+        """`(n_models, budget)` — which objective declarations exist to make."""
+        return self._action_handler.objective_target_legality(
+            self.wargame_models, len(self.objectives)
+        )
+
+    @property
     def player_short_move_legality(self) -> np.ndarray:
         """`(n_models, n_move_actions)` — who may pile in or consolidate."""
         return self._action_handler.short_move_legality(
@@ -1631,6 +1638,15 @@ class WargameEnv(gym.Env):
             # is worth 24.6 vp on shooting alone.
             mask[:, move_type_slice.start : move_type_slice.end] &= (
                 handler.declaration_legality(self.opponent_models, self.wargame_models)
+            )
+
+        target_slice = handler.objective_target_slice
+        if target_slice is not None and phase is BattlePhase.command:
+            # Both seats or neither, as above.
+            mask[:, target_slice.start : target_slice.end] &= (
+                handler.objective_target_legality(
+                    self.opponent_models, len(self.objectives)
+                )
             )
 
         shooting_slice = handler.shooting_slice

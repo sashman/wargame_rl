@@ -89,6 +89,11 @@ class WargameModel:
         # STAY illegal for the unit's models in the charge phase, because a
         # charge is a unit move and half a unit charging is a reverted charge.
         self.declared_charge: bool = False
+        # The squad's declared OBJECTIVE (-1 = none). ⚠ PERSISTS across turns
+        # -- a plan is state, not a per-turn impulse -- so `begin_turn` leaves
+        # it alone and only `reset_for_episode` clears it. Re-declared any
+        # command phase; STAY keeps it.
+        self.declared_objective: int = -1
         # Activation priority for the fight phase; higher swings first,
         # ties on unit index. 0 is what STAY declares.
         self.fight_priority: int = 0
@@ -110,6 +115,7 @@ class WargameModel:
         self.best_closest_objective_distance = None
         self.stats["current_wounds"] = self.stats["max_wounds"]
         self.model_rewards_history.clear()
+        self.declared_objective = -1
         self.advanced_this_turn = False
         self.advance_roll = 0.0
         self.declared_advance = False

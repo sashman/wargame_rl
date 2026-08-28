@@ -369,6 +369,28 @@ class WargameEnvConfig(BaseModel):
             "are legal. See docs/rules/implementation-status.md."
         ),
     )
+    declare_objectives: bool = Field(
+        default=False,
+        description=(
+            "Register an OBJECTIVE-DECLARATION slice (size = objective_budget, "
+            "valid in the command phase): each squad's LEADER may declare which "
+            "objective the squad is committed to, the declaration binds the "
+            "unit and PERSISTS until re-declared (STAY keeps the current one; "
+            "no squad is ever forced to hold a plan it wants to change). The "
+            "agent's own allocation plan, as a first-class action -- the "
+            "learning form of the surplus-reallocation rule "
+            "(baseline/reallocation.py) whose play-time decode measures "
+            "+14.54 +/- 3.81 vp, and the design the four failed travel terms "
+            "point at: they paid approach toward targets a heuristic imposed, "
+            "where `declared_objective_progress` pays the agent for executing "
+            "a commitment it chose itself (the charge_progress post-mortem: "
+            "'the declaration gate is the entire difference'). False (the "
+            "default) registers NO slice and adds NO observation column: every "
+            "existing config keeps its exact action space and checkpoints. "
+            "Turning it on is UNPAIRABLE against a config without it (new "
+            "actions change the output head)."
+        ),
+    )
     n_advance_speed_bins: int = Field(
         ge=0,
         default=0,
@@ -853,6 +875,21 @@ class WargameEnvConfig(BaseModel):
                 "unit's leader declares a charge and binds the unit -- remove "
                 "'command' from skip_phases"
             )
+        # ⚠ The objective declaration lives in the command phase too, and its
+        # slice is sized to the objective BUDGET -- both must exist, or a run
+        # trains a plan it can never make (or a slice of size zero).
+        if self.declare_objectives:
+            if BattlePhase.command in self.skip_phases:
+                raise ValueError(
+                    "declare_objectives needs the command phase, where a "
+                    "unit's leader declares its objective -- remove 'command' "
+                    "from skip_phases"
+                )
+            if self.objective_budget is None:
+                raise ValueError(
+                    "declare_objectives sizes its action slice to "
+                    "objective_budget, which is unset -- set objective_budget"
+                )
         return self
 
     @model_validator(mode="after")

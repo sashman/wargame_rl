@@ -135,6 +135,13 @@ class WargameModelObservation:
     # above it is a pure function of CURRENT positions -- never stale, never
     # gated on whose turn it is, populated genuinely on both sides.
     engaged: float | None = None
+    # One-hot of the squad's DECLARED objective over the budget (all zeros =
+    # no plan yet). Present only under `declare_objectives`. The distances to
+    # every objective are already on the token; this column says which one the
+    # squad is committed to -- the state `declared_objective_progress` keys on,
+    # and a term keyed on state the network cannot perceive is the failure this
+    # project has paid ~10 GPU-hours for twice.
+    declared_objective_onehot: np.ndarray | None = None
 
     @property
     def size(self) -> int:
@@ -157,4 +164,9 @@ class WargameModelObservation:
             + (0 if self.fell_back_this_turn is None else 1)
             + (0 if self.declared_charge is None else 1)
             + (0 if self.engaged is None else 1)
+            + (
+                0
+                if self.declared_objective_onehot is None
+                else self.declared_objective_onehot.size
+            )
         )
