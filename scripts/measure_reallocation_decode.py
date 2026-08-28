@@ -36,12 +36,64 @@ import sys
 import numpy as np
 import torch
 
-from scripts.measure_critic_probe import army_value, choose_branch, load_value_network
+from scripts.measure_critic_probe import (
+    army_value,
+    choose_branch,
+    in_range_counts,
+    load_value_network,
+)
 from scripts.scenario_overrides import describe, load_env_config, parse_overrides
 from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.selectors import build_action_selector
+
+
+def choose_contest_branch(env, min_stack: int):  # type: ignore[no-untyped-def]
+    """A surplus donor squad and the opponent's WEAKEST-held objective.
+
+    The contest form of `choose_branch`: same donor rule (the biggest friendly
+    stack, which must stay controlled after the donor leaves), but the target
+    is an objective the opponent holds with the fewest defenders rather than an
+    empty one. ⚠ The 2026-08-11 teleport audit priced FORCED contests at −29.4
+    of the committing squad's own income — the bet here is that the critic's
+    sign gate refuses exactly those and approves only the contests that pay.
+    Either answer is informative; the kill decides.
+    """
+    from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+    from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
+
+    player_counts = in_range_counts(env.player_models, env)
+    opponent_counts = in_range_counts(env.opponent_models, env)
+    stacked = [
+        i
+        for i in range(len(env.objectives))
+        if player_counts[i] >= min_stack and player_counts[i] > opponent_counts[i]
+    ]
+    theirs = [
+        i for i in range(len(env.objectives)) if opponent_counts[i] > player_counts[i]
+    ]
+    if not stacked or not theirs:
+        return None
+    source = max(stacked, key=lambda i: player_counts[i])
+    cache = compute_distances(
+        env.player_models,
+        env.objectives,
+        alive_mask=alive_mask_for(env.player_models),
+    )
+    on_source = cache.model_obj_norms_offset[:, source] <= cache.obj_radii[source]
+    alive = alive_mask_for(env.player_models)
+    by_group: dict[int, int] = {}
+    for index, model in enumerate(env.player_models):
+        if alive[index] and on_source[index]:
+            by_group[int(model.group_id)] = by_group.get(int(model.group_id), 0) + 1
+    if not by_group:
+        return None
+    donor = max(by_group, key=lambda g: by_group[g])
+    if player_counts[source] - by_group[donor] <= opponent_counts[source]:
+        return None
+    target = min(theirs, key=lambda i: int(opponent_counts[i]))
+    return donor, target
 
 
 def measure(
@@ -51,6 +103,7 @@ def measure(
     decode_topk: int,
     min_stack: int,
     overrides: dict[str, str],
+    mode: str = "spread",
 ) -> None:
     """Score one checkpoint with the reallocation decode active."""
     env = create_environment(load_env_config(config_path, **overrides))
@@ -71,7 +124,11 @@ def measure(
             phase = env.game_clock_state.phase
             action = selector.select(observation, env)
             if phase is BattlePhase.movement:
-                branch = choose_branch(env, min_stack)
+                branch = (
+                    choose_branch(env, min_stack)
+                    if mode == "spread"
+                    else choose_contest_branch(env, min_stack)
+                )
                 if branch is not None:
                     nominations += 1
                     donor, target = branch
@@ -136,7 +193,7 @@ def measure(
         vp += float(env.player_vp - env.opponent_vp)
 
     print(
-        f"  realloc  vp={vp / n_episodes:+8.1f}  nominated/ep={nominations / n_episodes:.2f}  "
+        f"  realloc[{mode}]  vp={vp / n_episodes:+8.1f}  nominated/ep={nominations / n_episodes:.2f}  "
         f"approved={approvals}/{nominations}  models_redirected/ep={redirects / n_episodes:.1f}"
     )
 
@@ -149,11 +206,14 @@ def main() -> None:
     n_episodes = int(positionals[2]) if len(positionals) > 2 else 20
     decode_topk = int(positionals[3]) if len(positionals) > 3 else 3
     min_stack = int(positionals[4]) if len(positionals) > 4 else 4
+    mode = positionals[5] if len(positionals) > 5 else "spread"
     print(
         f"{config_path}{describe(overrides)}  "
         f"(n={n_episodes}, seeds 700000+, K={decode_topk}, min_stack={min_stack})"
     )
-    measure(checkpoint, config_path, n_episodes, decode_topk, min_stack, overrides)
+    measure(
+        checkpoint, config_path, n_episodes, decode_topk, min_stack, overrides, mode
+    )
 
 
 if __name__ == "__main__":
