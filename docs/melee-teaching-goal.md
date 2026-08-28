@@ -1031,3 +1031,35 @@ The original stands above, uncorrected, per house practice.
 - ⚠ The standing pattern held where the §22 framing missed it: the agent's best opponent
   is the one that shoots most (`shoot` — where its formation discipline and the shield
   pay), not the one where denial pays. Re-derive doctrine from the six-seed grid only.
+
+---
+
+## 24. The 1000-epoch extension — "train longer" is REFUTED as the route to Level 3
+
+All six v6 seeds resumed 599 → 999 (resume verified advancing past 599 — the silent-death
+signature checked explicitly), scored 2026-08-28 on the full grid, K=3, n=45:
+
+| vp mean | vs `take` | vs `deny` | vs `shoot` | vs `take_charge` |
+|---|---|---|---|---|
+| @600 | −8.1 | −2.5 | +16.0 | −37.3 |
+| **@1000** | −10.3 | −5.5 | +9.8 | −47.2 |
+
+- **Every column flat or worse; 15 of 24 per-seed deltas negative.** The vp gap is NOT
+  undertraining — the same shape as the advance arm, where 700 extra epochs also hurt.
+- **What the extension DID buy: consolidation of the mechanics.** No collapse seeds
+  remain (min stood 2.29 v 1.02 at 600), conversion 0.693–0.845, and coherency
+  **0.916–0.948** against 0.685–0.805 at 600 — the agent's historic formation discipline
+  restored on the melee game, with the charge skill intact.
+- **The diagnosis this closes**: at 1000 epochs the agent is a disciplined, bar-adjacent
+  charger that loses on PLAY QUALITY. The remaining Level-2/3 gap is the project's
+  standing pre-melee problem — the allocation/search failure (§ The critic already
+  knows) — not a melee mechanic. No melee-side iteration is likely to move it, and the
+  record already shows three reward arms and four movement-side fixes failing against
+  that wall.
+
+**Where the goal's levels stand, on six-seed 1000-epoch evidence:**
+- **Level 1 — met at the play decode** (all phases, both seats, rules-true, bar-adjacent
+  charge execution, formation discipline restored).
+- **Level 2 — partial** (ahead of `shoot`, break-even `deny`, behind `take`).
+- **Level 3 — open, and now demonstrably NOT blocked on melee**: the binding constraint
+  is the allocation/search problem, which predates melee and needs its own programme.
