@@ -417,6 +417,10 @@ behaviour-clone policy env_config n_episodes='200' epochs='8' out='checkpoints/c
 measure-charges policy env_config n_episodes='20' decode_topk='1' *overrides:
 	@uv run python -m scripts.measure_charges {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}} {{overrides}}
 
+# Does a critic-directed reallocation decode buy vp at play (the panel's R5 kill screen)
+measure-realloc checkpoint env_config n_episodes='20' decode_topk='3' min_stack='4' *overrides:
+	@uv run python -m scripts.measure_reallocation_decode {{checkpoint}} {{env_config}} {{n_episodes}} {{decode_topk}} {{min_stack}} {{overrides}}
+
 measure-income-share policy env_config n_episodes='30':
 	@uv run python -m scripts.measure_income_share {{policy}} {{env_config}} {{n_episodes}}
 
