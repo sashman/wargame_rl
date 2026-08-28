@@ -44,6 +44,28 @@ the functions concerned:
   against the overstatements above, and at a coarser spacing it is not. This is
   the reason not to draw the field coarser than the overlay already does.
 
+ADDING A SECOND KIND OF THREAT (a charge, when melee lands). This module is
+shooting only, deliberately -- the charge and fight phases are `absent` in the
+gap map. The seam is already here and is one function:
+
+* **Share** `BoardGrid`, `move_reach` and `reachable_cells`. Every threat starts
+  with the same question -- where can they be -- and differs only in what it can
+  do from there. Fire asks what it can see and shoot; a charge asks what it can
+  roll far enough to reach.
+* ⚠ **Do NOT share `VisibilityCache`.** Charge eligibility never tests line of
+  sight -- it tests the gap, whether the unit is already engaged, and whether it
+  advanced or fell back. Reusing the cache would quietly make a charge field
+  terrain-shaped, and wrong in the **safe** direction: the ruin that shelters a
+  square from fire does nothing against a charge, so the charge field is the
+  wider of the two at the same Move.
+* ⚠ **Do not widen `ThreatField` with a nullable charge column.** Its scalar is
+  expected casualties; a charge's is a probability. They are different
+  quantities, and a struct that holds both invites summing them or reading one
+  as more of the other. A second field type is the cheaper mistake.
+* The distances are already computed: `VisibilityCache.distances` is a pure
+  function of the grid, so a charge layer can take that array without the sight
+  half. Splitting it out is the refactor to make at that point, not before.
+
 WHAT IT UNDERSTATES: **cover is not applied**, so every entry is the expectation
 against a target in the open -- the same choice, for a different reason, that
 `expected_damage_matrix` documents. Here it is not a memoisation argument: the
@@ -367,6 +389,29 @@ def _per_shooter_expectation(
     return wounds[np.ravel(inverse)], casualties[np.ravel(inverse)]
 
 
+def reachable_cells(grid: BoardGrid, position: np.ndarray, move: float) -> np.ndarray:
+    """Indices of the cells a model at `position` could stand on after moving.
+
+    The **origin set**: every threat this module computes starts by asking where
+    the opponent can be before it does anything, and only then what it can do
+    from there. Fire asks what it can see and shoot from those cells; a charge
+    would ask what it can roll far enough to reach. Naming it separates the two
+    questions, which were tangled in one loop.
+
+    ⚠ Sampled at cell centres, so this **understates**: a model may stop anywhere
+    within its Move, and a firing position half a cell past the last centre is
+    not in the set. The error is bounded by the grid spacing and shrinks with it.
+
+    ⚠ A free disc per model also **overstates**, because coherency binds the unit
+    -- a 2" chain and a 9" span mean it travels roughly together. Projecting the
+    unit centroid is the honest form and is not built. The two errors run in
+    opposite directions and are not claimed to cancel.
+    """
+    if move <= 0.0:
+        return np.zeros(0, dtype=np.intp)
+    return np.flatnonzero(np.linalg.norm(grid.centres - position, axis=1) <= move)
+
+
 def _origin_visibility(
     view: BattleView,
     origins: np.ndarray,
@@ -516,13 +561,10 @@ def _bearing_mask(
         )
 
     moves = np.asarray(move, dtype=float)[alive]
-    centres = grid.centres
     for index in range(len(positions)):
         if ranges[index] <= 0.0:
             continue
-        reachable = np.flatnonzero(
-            np.linalg.norm(centres - positions[index], axis=1) <= moves[index]
-        )
+        reachable = reachable_cells(grid, positions[index], moves[index])
         if reachable.size == 0:
             continue
         rows = visibility.visible[reachable]

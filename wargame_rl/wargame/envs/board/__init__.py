@@ -44,6 +44,7 @@ from wargame_rl.wargame.envs.board.threat import (
     VisibilityCache,
     attacker_stat_rows,
     move_reach,
+    reachable_cells,
     reference_model,
     threat_field,
 )
@@ -67,6 +68,7 @@ __all__ = [
     "matchup_table",
     "move_reach",
     "objective_reach",
+    "reachable_cells",
     "reference_model",
     "threat_field",
     "unit_profiles",

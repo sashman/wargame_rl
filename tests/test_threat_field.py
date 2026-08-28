@@ -20,13 +20,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from wargame_rl.wargame.envs.board.grid import board_grid_for
+from wargame_rl.wargame.envs.board.grid import board_grid, board_grid_for
 from wargame_rl.wargame.envs.board.threat import (
     ReferenceModel,
     ThreatHorizon,
     VisibilityCache,
     attacker_stat_rows,
     move_reach,
+    reachable_cells,
     reference_model,
     threat_field,
 )
@@ -431,6 +432,56 @@ class TestBands:
         )
 
         assert not any(band.any() for band in field.bands([0.5]))
+
+
+class TestTheOriginSet:
+    """`reachable_cells` is the seam a charge layer plugs into.
+
+    It is tested on its own because both threats start with the same question --
+    where can the opponent be -- and only then diverge on what it can do from
+    there. A charge shares this and must NOT share the visibility cache.
+    """
+
+    def test_a_stationary_model_reaches_nothing(self) -> None:
+        """Move 0 is an empty origin set, not the cell it happens to stand on.
+
+        The caller unions the exact position in separately, so returning a cell
+        here would double-count it -- and a model that cannot move has no *new*
+        firing position, which is the thing this set exists to enumerate.
+        """
+        grid = board_grid(20, 20, 1.0)
+
+        assert reachable_cells(grid, np.array([10.0, 10.0]), 0.0).size == 0
+
+    def test_it_grows_monotonically_with_the_move(self) -> None:
+        grid = board_grid(40, 40, 1.0)
+
+        def at(move: float) -> set[int]:
+            return set(reachable_cells(grid, np.array([20.0, 20.0]), move).tolist())
+
+        near, far = at(3.0), at(6.0)
+
+        assert near < far
+
+    def test_every_cell_returned_is_within_the_move(self) -> None:
+        """The set is the contract; a cell outside it would invent a shot."""
+        grid = board_grid(40, 40, 1.0)
+        origin = np.array([12.0, 17.0])
+
+        cells = reachable_cells(grid, origin, 5.0)
+
+        assert cells.size > 0
+        assert (
+            np.linalg.norm(grid.centres[cells] - origin, axis=1) <= 5.0 + 1e-9
+        ).all()
+
+    def test_a_disc_of_radius_six_is_about_its_area(self) -> None:
+        """~pi r^2 cells at 1 inch spacing -- catches an off-by-one on the radius."""
+        grid = board_grid(60, 44, 1.0)
+
+        cells = reachable_cells(grid, np.array([30.0, 22.0]), 6.0)
+
+        assert 0.8 * np.pi * 36 < cells.size < 1.2 * np.pi * 36
 
 
 def test_move_reach_agrees_with_the_action_handler(board: WargameEnv) -> None:

@@ -202,11 +202,25 @@ implemented on `feature/melee-stage-0`, where declaration needs a unit-to-unit g
 `melee.charge_range`, the unit not already engaged and not having advanced or fallen back, and
 **2D6 caps the charge move**.
 
-**What it gets wrong.** Not yet built, so nothing measured. Two things to write into it when it
-is: the same coherency and freezing overstatements as T-02, and the fact that on that branch
-**the charge's value is the shooting shield rather than the blade** — so a charge-threat layer is
-really "they can lock my unit out of shooting", and reading it as expected damage would badly
-misprice it.
+**Already exists — the seam, not the layer.** `board/threat.py::reachable_cells` is the origin
+set: *where can they be after moving*. Both threats start there and differ only in what they can
+do from it, so a charge layer shares that, `BoardGrid` and `move_reach`, and needs no new
+geometry. The module's docstring carries the plug-in point.
+
+⚠ **Three traps, recorded now because they are cheap to write and expensive to discover.**
+`VisibilityCache` must **not** be reused — charge eligibility never tests line of sight, so
+sharing it would make the charge field terrain-shaped and wrong in the **safe** direction.
+`ThreatField` must **not** gain a nullable charge column — its scalar is expected casualties and
+a charge's is a probability, and one struct holding both invites summing them. And
+`VisibilityCache.distances` is a pure function of the grid, so the charge half can take it
+without the sight half; splitting that out is the refactor to make then, not now.
+
+**What it gets wrong.** Not yet built, so nothing measured. Three things to write into it when it
+is: the same coherency and freezing overstatements as T-02; that the demo's approximation is an
+**upper bound**, because it prices a per-model gap where the engine's predicate is unit-to-unit
+and also excludes units already engaged or that advanced; and that on that branch **the charge's
+value is the shooting shield rather than the blade** — so a charge-threat layer is really "they
+can lock my unit out of shooting", and reading it as expected damage would badly misprice it.
 
 **Cheapest test.** `do not build until melee merges.` Building against an unmerged, still-moving
 shape buys a rewrite.
