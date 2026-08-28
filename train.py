@@ -21,6 +21,7 @@ from wargame_rl.wargame.model.common import (
     get_logger,
     init_wandb,
 )
+from wargame_rl.wargame.model.common.config import TransformerConfig
 from wargame_rl.wargame.model.common.event_log_callback import EventLogCallback
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.common.performance import configure_matmul_precision
@@ -85,6 +86,58 @@ def get_env_config(
     env_config.render_mode = render_mode
 
     return WargameEnvConfig(**env_config.model_dump())
+
+
+def _resolve_transformer_config(
+    n_layers: int | None,
+    embedding_size: int | None,
+) -> TransformerConfig | None:
+    """The trunk size to build, or None for the production default.
+
+    Returns **None** when nothing was overridden, rather than an equal
+    `TransformerConfig()`. The two build the same network, but None is what
+    every caller before these flags existed passed, so the untouched path stays
+    literally the untouched path.
+
+    ⚠ Typer fills a default only when *it* invokes the command. Called directly
+    -- as `tests/test_z_e2e_training.py` does -- an option nobody passed is an
+    `OptionInfo`, which is `not None` and would sail through a plain guard and
+    reach Pydantic as a field value. Every override in this file has that trap;
+    this one checks the *type* rather than the identity, so a direct caller that
+    omits these is right rather than merely lucky.
+    """
+    # `isinstance(..., int)` rather than `is not None`: see the docstring.
+    given = [n_layers, embedding_size]
+    if not any(isinstance(value, int) for value in given):
+        return None
+
+    defaults = TransformerConfig()
+    config = TransformerConfig(
+        n_layers=n_layers if isinstance(n_layers, int) else defaults.n_layers,
+        embedding_size=(
+            embedding_size
+            if isinstance(embedding_size, int)
+            else defaults.embedding_size
+        ),
+    )
+    # ⚠ There is no --n-heads, on purpose: the head count changes no parameter
+    # shape, so a checkpoint written at another one would load SILENTLY and
+    # compute differently. Every size these flags can write,
+    # `trunk_config_from_state_dict` can read back. The divisibility check
+    # remains because the default 8 heads still have to divide a custom width,
+    # and Pydantic cannot catch it -- both fields are valid ints alone and only
+    # their ratio is wrong, so it would surface as a reshape inside attention.
+    if config.embedding_size % config.n_heads != 0:
+        raise ValueError(
+            f"embedding_size {config.embedding_size} is not divisible by "
+            f"n_heads {config.n_heads}"
+        )
+    log.warning(
+        "⚠ NON-DEFAULT NETWORK: {}. Its checkpoint will not load into a default "
+        "run and its scores are not comparable to any recorded number.",
+        config,
+    )
+    return config
 
 
 def _validate_checkpoint_mode(
@@ -334,6 +387,21 @@ def train(
             "from hardware (defaults to PPOConfig value)"
         ),
     ),
+    n_layers: int | None = typer.Option(
+        None,
+        help=(
+            "Transformer depth. ⚠ CHANGES THE NETWORK: a checkpoint trained at "
+            "another size will not load into a default run, and no score is "
+            "comparable across it. Defaults to TransformerConfig's 8."
+        ),
+    ),
+    embedding_size: int | None = typer.Option(
+        None,
+        help=(
+            "Transformer width. ⚠ Changes the network -- see --n-layers. "
+            "Defaults to TransformerConfig's 256."
+        ),
+    ),
     resume_ckpt_path: str | None = typer.Option(
         None,
         help="Resume full training state (model, optimizer, epoch/step) from a Lightning checkpoint.",
@@ -435,6 +503,7 @@ def train(
     )
 
     ppo_config = PPOConfig()
+    transformer_config = _resolve_transformer_config(n_layers, embedding_size)
     if no_inner_progress:
         ppo_config.show_inner_progress = False
     if n_steps is not None:
@@ -475,7 +544,7 @@ def train(
 
     # The config decides whether the model gets a shooting slice, and
     # therefore whether it decodes targets autoregressively.
-    ppo_net = PPO_Transformer.from_env(env, ppo_config)
+    ppo_net = PPO_Transformer.from_env(env, ppo_config, transformer_config)
     self_play_config = SelfPlayConfig(
         enabled=_resolve_default(self_play, False),
         snapshot_every_n_epochs=_resolve_default(snapshot_every_n_epochs, 25),
