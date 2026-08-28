@@ -80,16 +80,25 @@ class RL_Network(nn.Module, ABC):
 
     @classmethod
     @abstractmethod
-    def from_env(cls, env: WargameEnv, is_policy: bool) -> Self:
+    def from_env(
+        cls,
+        env: WargameEnv,
+        is_policy: bool,
+        transformer_config: TransformerConfig | None = None,
+    ) -> Self:
         pass
 
     @classmethod
-    def policy_from_env(cls, env: WargameEnv) -> Self:
-        return cls.from_env(env, is_policy=True)
+    def policy_from_env(
+        cls, env: WargameEnv, transformer_config: TransformerConfig | None = None
+    ) -> Self:
+        return cls.from_env(env, is_policy=True, transformer_config=transformer_config)
 
     @classmethod
-    def value_from_env(cls, env: WargameEnv) -> Self:
-        return cls.from_env(env, is_policy=False)
+    def value_from_env(
+        cls, env: WargameEnv, transformer_config: TransformerConfig | None = None
+    ) -> Self:
+        return cls.from_env(env, is_policy=False, transformer_config=transformer_config)
 
     @classmethod
     def from_checkpoint(cls, env: WargameEnv, checkpoint_path: str) -> Self:
@@ -104,9 +113,66 @@ class RL_Network(nn.Module, ABC):
     def from_state_dict(
         cls, env: WargameEnv, state_dict: dict, is_policy: bool = True
     ) -> Self:
-        net = cls.from_env(env, is_policy=is_policy)
+        """Rebuild a network and load these weights into it.
+
+        The trunk is sized from **the state dict**, not from the default. A
+        checkpoint knows its own shape, and building the production trunk to
+        receive a smaller one fails with a wall of missing keys that names every
+        layer and never names the cause.
+        """
+        net = cls.from_env(
+            env,
+            is_policy=is_policy,
+            transformer_config=trunk_config_from_state_dict(state_dict),
+        )
         net.load_state_dict(state_dict)
         return net
+
+
+def trunk_config_from_state_dict(state_dict: dict) -> TransformerConfig | None:
+    """The trunk size these weights were built at, or None to use the default.
+
+    Two of the three trunk fields are recoverable from parameter shapes:
+    `embedding_size` is the width of any embedding, and `n_layers` is the
+    highest block index. Both change the shapes, so both must be right or the
+    load fails.
+
+    ⚠ **`n_heads` is NOT recoverable and is deliberately left at its default.**
+    Attention packs all heads into one `(3E, E)` projection, so the head count
+    changes no shape at all -- a checkpoint written at another head count would
+    load *silently* and compute differently. That is why `train()` exposes
+    `--n-layers` and `--embedding-size` and **not** `--n-heads`: every size it
+    can write, it can read back. If a head-count knob is ever wanted, the count
+    has to be recorded in the checkpoint rather than inferred here.
+
+    Returns None when the weights already match the default, so the untouched
+    path stays untouched.
+    """
+    width_key = next(
+        (key for key in state_dict if key.endswith("game_embedding.weight")), None
+    )
+    if width_key is None:
+        return None
+    embedding_size = int(state_dict[width_key].shape[0])
+    blocks = {
+        int(key.split("transformer.h.")[1].split(".")[0])
+        for key in state_dict
+        if "transformer.h." in key
+    }
+    if not blocks:
+        return None
+    n_layers = max(blocks) + 1
+
+    defaults = TransformerConfig()
+    if (n_layers, embedding_size) == (defaults.n_layers, defaults.embedding_size):
+        return None
+    if embedding_size % defaults.n_heads != 0:
+        raise ValueError(
+            f"checkpoint has embedding_size {embedding_size}, which "
+            f"{defaults.n_heads} heads do not divide. The head count is not "
+            "recorded in a checkpoint and cannot be inferred from its shapes."
+        )
+    return TransformerConfig(n_layers=n_layers, embedding_size=embedding_size)
 
 
 @dataclass(frozen=True, slots=True)
@@ -778,9 +844,27 @@ class TransformerNetwork(RL_Network):
     #     return optimizer
 
     @classmethod
-    def from_spec(cls, spec: NetworkSpec, is_policy: bool) -> Self:
-        """Build a network from measured input widths and an action space."""
-        transformer_config = TransformerConfig()
+    def from_spec(
+        cls,
+        spec: NetworkSpec,
+        is_policy: bool,
+        transformer_config: TransformerConfig | None = None,
+    ) -> Self:
+        """Build a network from measured input widths and an action space.
+
+        `transformer_config` is **the depth and width of the trunk**, and `None`
+        means `TransformerConfig()` -- the production size, bit-identical to
+        before this parameter existed. It is a parameter at all so a *test* can
+        ask for a small trunk: the defaults are 8 layers of 256 at 8 heads, or
+        ~12.7M parameters, and the suite paid that on a 2-model 20x20 board,
+        where it dominated both runtime and the 153 MB a checkpoint costs.
+
+        ⚠ **A network built at another size is a different network.** Its
+        checkpoint will not load into a production run and its scores are not
+        comparable to anything in `CLAUDE.md`. This exists for tests and for a
+        deliberate architecture experiment, never as a default to tune.
+        """
+        transformer_config = transformer_config or TransformerConfig()
         return cls(
             game_size=spec.game_size,
             objective_size=spec.objective_size,
@@ -797,7 +881,12 @@ class TransformerNetwork(RL_Network):
         )
 
     @classmethod
-    def from_env(cls, env: WargameEnv, is_policy: bool) -> Self:
+    def from_env(
+        cls,
+        env: WargameEnv,
+        is_policy: bool,
+        transformer_config: TransformerConfig | None = None,
+    ) -> Self:
         """Size a network from a fresh episode of `env`.
 
         **Resets the env**, which is why anything that must not disturb the
@@ -819,9 +908,10 @@ class TransformerNetwork(RL_Network):
             f"opponent_model_size: {spec.opponent_model_size}, "
             f"terrain_size: {spec.terrain_size}, "
             f"shooting_slice: {env._action_handler.shooting_slice}, "
-            f"transformer_config: {TransformerConfig()}, n_actions: {spec.n_actions}"
+            f"transformer_config: {transformer_config or TransformerConfig()}, "
+            f"n_actions: {spec.n_actions}"
         )
-        return cls.from_spec(spec, is_policy)
+        return cls.from_spec(spec, is_policy, transformer_config)
 
 
 # PPO wraps the policy network as `ppo_model.policy_network`. `policy_net.` is
