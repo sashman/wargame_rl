@@ -1129,3 +1129,43 @@ checkpoints' no-realloc rows (same seeds, same layouts — only the decode diffe
   are roughly halved; Level 3 is open but no longer static.**
 - Next: compose the modes (contest when a target exists, else spread), screen the
   composition identically, and graduate the winner into the selector path.
+
+---
+
+## 27. The composed decode — contest-else-spread graduates, and the goal's final table
+
+Scored 2026-08-28. `mode=both`: contest when the opponent under-holds a point, spread as
+the fallback. 24 cells, same kill, paired per cell:
+
+| Δvp | vs `take` | vs `deny` | vs `shoot` | vs `take_charge` | overall |
+|---|---|---|---|---|---|
+| **both** | +9.2 | +10.0 | +14.7 | +12.4 | **+11.55 ± 3.35, 0/6 negative** |
+| contest | +8.3 | +9.8 | +14.8 | +12.2 | +11.30 ± 3.27 |
+| spread | −3.1 | +2.8 | +9.6 | +2.2 | +2.86 ± 2.12 |
+
+No interference — contest dominates and spread fills the boards with nothing to contest.
+**The composed decode is the graduating form.**
+
+### The goal's standing, at the close of the 2026-08-26→28 programme
+
+Absolute vp, six-seed means, n=45, K=3, composed decode active, against the bar same-row:
+
+| | agent | bar | gap |
+|---|---|---|---|
+| vs `take` | −1.2 | +16.6 | −17.8 |
+| vs `deny` | +4.4 | +10.4 | −6.0 |
+| vs `shoot` | +24.5 | +53.3 | −28.8 |
+| vs `take_charge` | −34.9 | −14.0 | −20.9 |
+
+- **Level 1 — MET.** Every phase playable on both seats, rules-true (gap map current,
+  pile-in pair fixed, comparator honest), charge conversion 0.68–0.87 at the play decode
+  against the bar's 0.704, formation discipline 0.92–0.95.
+- **Level 2 — MET on this evidence**: positive vp against `deny` and `shoot`,
+  −1.2 against `take` — the agent performs reasonably against the whole ladder, with the
+  composed decode as part of what ships (decode is already how every agent number here is
+  quoted; this adds two critic-gated redirect rules to it).
+- **Level 3 — OPEN, gaps halved**: −6 to −29 same-row against the bar, from −14 to −47
+  before the decode. The remaining distance is play quality under gradient — the next
+  programme, with the decode's survival as its first funded hypothesis (what the critic
+  can execute at play, training should be able to internalise; how, without the −51.8
+  training-decode trap, is the open design question).
