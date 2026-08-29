@@ -53,10 +53,12 @@ carrying-cost needs isolating (KNOWN_ACTION_SLICES already admits both slices).
 - What pays a hunt plan: `declared_target_progress` as-is (with its adjacency
   zero-gap), or plus a kept-commitment term for engagement (the §37a steer says
   the choice, not the payment, is the problem — so maybe nothing new pays).
-- Whether the home objective needs anything at all once the plan slice is one
-  space: §36's +10.4 garrison value was measured pre-referee and needs
-  re-pricing on the corrected rules (the abandon pricer is committed:
-  `squad_march_take_nohome`).
+- ~~Whether the home objective needs anything at all~~ **SETTLED same day
+  (§38a): the garrison value is void and does not replicate** — pooled
+  **−7.6 ± 6.7** on the corrected rules against +10.4 pre-referee. Home is at
+  best free for the best script. The successor pursues the hunt fold on its own
+  merits; home-guarding is no longer a design goal unless a future mission
+  re-prices it.
 - Primary readouts: declaration-distribution census (home share, hunt share,
   P(nearest)), charge cells vs §38's bar, ladder vp. Bounds ONLY from v10r's
   landing — every pre-referee bound is void.
