@@ -1648,12 +1648,16 @@ class ActionHandler:
 
         One batch holding the whole force for every phase that is not refereed
         at unit level, which keeps the existing index order and therefore every
-        existing result. The charge, the pile-in and the consolidation each
+        existing result. The charge, the pile-in, the consolidation — and, when
+        any model began the movement phase engaged, the fall back — each
         resolve one UNIT at a time, in group order, so the referee can put a
-        failed unit back before the next unit has moved.
+        failed unit back before the next unit has moved. Group ids are assigned
+        in index-contiguous blocks, so unit batches in group order visit models
+        in the same sequence the single batch did and a run with no revert is
+        bit-identical either way.
         """
         indices = list(range(len(action.actions)))
-        if charge_start is None or phase not in _UNIT_REFEREED_PHASES:
+        if charge_start is None:
             return [indices]
         units: dict[int, list[int]] = {}
         for index in indices:
@@ -1758,6 +1762,99 @@ class ActionHandler:
             return
         for index in members:
             wargame_models[index].location = np.array(start_positions[index], copy=True)
+
+    def _enforce_fall_back(
+        self,
+        wargame_models: list[Any],
+        enemy_models: list[Any] | None,
+        start_positions: list[np.ndarray] | None,
+        batch: list[int],
+        began_engaged: np.ndarray | None,
+    ) -> None:
+        """A fall back that does not end legally is not made at all.
+
+        `docs/rules/09-movement-phase.md` § Fall-back move: *after moving, the
+        unit must be unengaged*, and the move is one under `03-moving.md`, so
+        the unit must also end in coherency — all-or-nothing, every model back
+        to its start if either fails. A reverted fall back did not happen: the
+        unit remained stationary, still engaged, and `_mark_fall_backs` never
+        marks it because no location differs from `previous_location`.
+
+        ⚠ **This referee did not exist until 2026-08-29, and the claim that the
+        geometry already enforced the rule was FALSE.** `back_off_to_unengaged`
+        clears every endpoint that MOVED; a member that stood still — or was
+        blocked by friendly bases and backed off to zero — stayed engaged while
+        its free squadmates marched away. Measured on the v12 arm with the
+        agent as player: every zero-death coherency break on the opponent seat
+        was a `fell_back_this_turn` unit with 1–2 members still engaged after
+        the move, tearing 5–7" per turn and compounding to 16.7–20.0" chain
+        gaps (9.0% of opponent unit-steps beyond twice the 2" chain, against
+        3.6% and a 6.3" worst case — casualty holes only — on the non-melee
+        control). Same defect class as the charge's missing third condition:
+        a move type whose after-move conditions were never wired to a referee.
+
+        Unconditional and deliberately not routed through
+        `coherency.enforce_move` (off on every shipped config), exactly as the
+        charge, pile-in and consolidate referees are. Fires only for a unit
+        that began the phase engaged and moved, so a config without melee — or
+        a phase with nothing engaged — never reaches it.
+        """
+        if start_positions is None or began_engaged is None:
+            return
+        members = [index for index in batch if wargame_models[index].is_alive]
+        if not members or not any(began_engaged[index] for index in members):
+            return
+        if not any(
+            not np.array_equal(start_positions[index], wargame_models[index].location)
+            for index in members
+        ):
+            # Remained stationary: legal for an engaged unit, and not a fall
+            # back at all.
+            return
+        alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+        if self._fall_back_is_legal(wargame_models, members, alive_enemies):
+            return
+        for index in members:
+            wargame_models[index].location = np.array(start_positions[index], copy=True)
+
+    def _fall_back_is_legal(
+        self,
+        wargame_models: list[Any],
+        members: list[int],
+        alive_enemies: list[Any],
+    ) -> bool:
+        """Did this unit's fall back end unengaged and in coherency?
+
+        Both conditions read the unit whole — *every* alive member must be
+        clear of every engagement range, not just the members that moved,
+        because "the unit must be unengaged" is a property of the unit. A unit
+        already torn by casualties therefore cannot fall back legally; that is
+        the rules' own position (attrition is their repair, and it is a config
+        choice here), not a new restriction.
+        """
+        positions = np.array([wargame_models[i].location for i in members], dtype=float)
+        if alive_enemies:
+            contacts = engagement_matrix(
+                positions,
+                np.array([m.location for m in alive_enemies], dtype=float),
+                np.ones(len(alive_enemies), dtype=bool),
+                np.ones(len(members), dtype=bool),
+                engagement_range=self._engagement_range,
+                base_diameter=2.0 * self._base_radius,
+            )
+            if np.asarray(contacts).any():
+                return False
+        report = evaluate_coherency(
+            positions=positions,
+            group_ids=np.zeros(len(members), dtype=np.intp),
+            alive_mask=np.ones(len(members), dtype=bool),
+            base_radii=np.array(
+                [wargame_models[i].base_radius for i in members], dtype=float
+            ),
+            nearest_distance=self._coherency_nearest,
+            furthest_distance=self._coherency_furthest,
+        )
+        return bool(report.all_coherent)
 
     def _charge_preconditions_hold(
         self,
@@ -2035,10 +2132,15 @@ class ActionHandler:
         # ⚠ Every phase that is refereed at UNIT level needs its start
         # positions: the revert puts the whole unit back, and `previous_location`
         # is a single slot written once per movement phase, which would send a
-        # non-mover back two phases.
+        # non-mover back two phases. The movement phase joins the unit-refereed
+        # set exactly when a fall back is possible — melee on, and at least one
+        # model beginning the phase engaged — so every other movement phase
+        # resolves as one batch, bit-identical to before the referee existed.
+        fall_back_possible = began_engaged is not None and bool(began_engaged.any())
         charge_start = (
             [np.array(m.location, copy=True) for m in wargame_models]
-            if phase in _UNIT_REFEREED_PHASES and self._displaces_in(phase)
+            if (phase in _UNIT_REFEREED_PHASES or fall_back_possible)
+            and self._displaces_in(phase)
             else None
         )
         if phase is BattlePhase.command:
@@ -2142,6 +2244,10 @@ class ActionHandler:
                 continue
             if phase is BattlePhase.charge:
                 self._enforce_charge(wargame_models, enemy_models, charge_start, batch)
+            elif phase is BattlePhase.movement:
+                self._enforce_fall_back(
+                    wargame_models, enemy_models, charge_start, batch, began_engaged
+                )
             else:
                 self._enforce_short_move(
                     wargame_models, enemy_models, charge_start, batch
