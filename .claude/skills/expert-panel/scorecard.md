@@ -450,3 +450,22 @@ a panel's headline, not just its findings.**
 - Survivor: the turn-0 garrison pricer (script prices doctrine, n=90 × 3 seed bases) as C2's
   gate; v12-lite only if it clears. Author's plan mostly demolished before any code existed —
   the cheapest demolition on record.
+
+## 2026-08-29 — audit (shadow) — panel A's home-round survivors
+- Panel B (4 seats + chair, ~0.67M tokens): the headline repeats 08-28's reflexive pattern at
+  a higher level — **panel A's own replacement experiment was degenerate**: the garrison
+  pricer's control already garrisons (stock take allocator, verified at source, bar home
+  held-rate 0.912), so the pin had an 0.088 lever arm and its kill would have fired ~85-90%
+  regardless of truth, with terminal authority over v12. Replaced by the abandon pricer
+  (lever arm 0.912). Also landed: the sign-flip kill clause carries no information (LR 0.87);
+  the laundering kill as drafted fires on the SUCCESS mode (~0.9); kill authority split — the
+  agent-side forced-STAY override made co-primary (a script pricer prices the script's
+  equilibrium); the S5 M-dilated charge form refused at source (pre-move ≤12" declaration
+  gate caps next-turn charge reach at 13.26"; the origin-main seam notes predate this
+  branch's mechanics — 5.5× overstatement at the boundary).
+- Same-day resolution by the chair-mandated validator: home identity is well-posed 45/45
+  (exactly one marker per side inside each deployment outline); the ~1.82 expectation was
+  the zone-thirds arithmetic, struck; the probe's 1.00 was correct.
+- Running pattern, three rounds: whoever writes the decision rule reproduces the defect
+  class last retired. The fix that keeps working: hand the rule to a panel that did not
+  write it, before any number exists.
