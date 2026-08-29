@@ -94,6 +94,10 @@ class WargameModel:
         # it alone and only `reset_for_episode` clears it. Re-declared any
         # command phase; STAY keeps it.
         self.declared_objective: int = -1
+        # The squad's declared enemy-unit TARGET (-1 = none). Same contract as
+        # the objective: leader-declared, unit-binding, persists until
+        # re-declared; only `reset_for_episode` clears it.
+        self.declared_target: int = -1
         # Activation priority for the fight phase; higher swings first,
         # ties on unit index. 0 is what STAY declares.
         self.fight_priority: int = 0
@@ -116,6 +120,7 @@ class WargameModel:
         self.stats["current_wounds"] = self.stats["max_wounds"]
         self.model_rewards_history.clear()
         self.declared_objective = -1
+        self.declared_target = -1
         self.advanced_this_turn = False
         self.advance_roll = 0.0
         self.declared_advance = False

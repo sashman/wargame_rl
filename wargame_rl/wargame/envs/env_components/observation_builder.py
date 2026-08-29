@@ -216,6 +216,7 @@ def _models_to_obs(
     observe_melee: bool = False,
     engaged_flags: np.ndarray | None = None,
     objective_declaration_budget: int | None = None,
+    target_declaration_budget: int | None = None,
 ) -> list[WargameModelObservation]:
     strengths = _unit_strengths(models) if observe_unit_strength else {}
     offsets = (
@@ -329,6 +330,14 @@ def _models_to_obs(
                     else _declared_onehot(
                         int(getattr(m, "declared_objective", -1)),
                         objective_declaration_budget,
+                    )
+                ),
+                declared_target_onehot=(
+                    None
+                    if target_declaration_budget is None
+                    else _declared_onehot(
+                        int(getattr(m, "declared_target", -1)),
+                        target_declaration_budget,
                     )
                 ),
                 coherency_spread=(None if spread is None else float(spread[i])),
@@ -610,6 +619,13 @@ def build_observation(
                 view.player_objective_target_legality
             )
 
+        if action_registry.has_slice("charge_target") and phase == BattlePhase.command:
+            # A hunt for a wiped enemy unit is a plan for nothing.
+            hunt_slice = action_registry.slice_for("charge_target")
+            action_mask[:, hunt_slice.start : hunt_slice.end] &= (
+                view.player_charge_target_legality
+            )
+
         if action_registry.has_slice("advance") and phase == BattlePhase.movement:
             # The advance rungs are ABSOLUTE distances above Move, so the turn's
             # D6 no longer changes what an action means -- it decides which
@@ -715,6 +731,13 @@ def build_observation(
         and view.config.objective_budget
         else None
     )
+    target_budget: int | None = (
+        int(view.config.max_groups)
+        # `getattr`: configs pickled before the field existed must still build.
+        if getattr(view.config, "declare_targets", False)
+        and getattr(view.config, "max_groups", 0)
+        else None
+    )
     player_engaged: np.ndarray | None = None
     opponent_engaged: np.ndarray | None = None
     if view.config.melee.observe_engaged:
@@ -761,6 +784,7 @@ def build_observation(
             observe_melee=observe_melee,
             engaged_flags=player_engaged,
             objective_declaration_budget=declaration_budget,
+            target_declaration_budget=target_budget,
         ),
         objectives=objectives_obs,
         board_width=view.board_width,
@@ -792,6 +816,7 @@ def build_observation(
             advance_is_known=False,
             engaged_flags=opponent_engaged,
             objective_declaration_budget=declaration_budget,
+            target_declaration_budget=target_budget,
         ),
         terrain=terrain_obs,
         action_mask=action_mask,

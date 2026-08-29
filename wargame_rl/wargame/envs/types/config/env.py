@@ -391,6 +391,19 @@ class WargameEnvConfig(BaseModel):
             "actions change the output head)."
         ),
     )
+    declare_targets: bool = Field(
+        default=False,
+        description=(
+            "Register an ENEMY-TARGET declaration slice (size = max_groups, "
+            "valid in the command phase): each squad's LEADER may declare which "
+            "enemy unit the squad is hunting; the declaration binds the unit "
+            "and PERSISTS until re-declared (STAY keeps it). The hunt analog "
+            "of declare_objectives, priced by declared_target_progress -- the "
+            "movement-phase channel is the one that never reverts, which is "
+            "what made the objective form trainable where the charge-phase "
+            "forms (level: farmed; delta: revert-blanked) were not."
+        ),
+    )
     n_advance_speed_bins: int = Field(
         ge=0,
         default=0,
@@ -889,6 +902,18 @@ class WargameEnvConfig(BaseModel):
                 raise ValueError(
                     "declare_objectives sizes its action slice to "
                     "objective_budget, which is unset -- set objective_budget"
+                )
+        if self.declare_targets:
+            if BattlePhase.command in self.skip_phases:
+                raise ValueError(
+                    "declare_targets needs the command phase, where a unit's "
+                    "leader declares its hunt -- remove 'command' from "
+                    "skip_phases"
+                )
+            if not self.melee.enabled:
+                raise ValueError(
+                    "declare_targets is a hunt declaration; without "
+                    "melee.enabled the charge it aims at does not exist"
                 )
         return self
 

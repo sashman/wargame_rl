@@ -551,6 +551,23 @@ class ActionHandler:
         else:
             self._objective_target_slice = None
 
+        # The squad's HUNT: which enemy unit it is committed to closing on,
+        # same contract as the objective declaration (leader-declared in the
+        # command phase, unit-binding, persistent). Sized to `max_groups` (the
+        # unit-count tensor width); legality masks off groups with no alive
+        # member. Registered after `objective_target` so that slice's indices
+        # never move; only under `declare_targets` so every existing config
+        # keeps its exact action space.
+        self._target_budget = int(getattr(config, "max_groups", 0) or 0)
+        if bool(getattr(config, "declare_targets", False)):
+            self._charge_target_slice: ActionSlice | None = self._registry.register(
+                "charge_target",
+                self._target_budget,
+                phases("charge_target", frozenset({BattlePhase.command})),
+            )
+        else:
+            self._charge_target_slice = None
+
         # ⚠ **WHO SWINGS FIRST WAS THE ENGINE'S CHOICE, and the rules make it the
         # player's.** `resolve_fight_step` picked `min(pool)` -- the lowest-indexed
         # eligible unit -- where `12-fight-phase.md` says *"players alternate
@@ -636,6 +653,61 @@ class ActionHandler:
     def objective_target_slice(self) -> ActionSlice | None:
         """The objective-declaration slice, or None when the flag is off."""
         return self._objective_target_slice
+
+    def declare_targets(
+        self, action: WargameEnvAction, wargame_models: list[Any]
+    ) -> None:
+        """Record each unit's declared enemy-unit TARGET from its leader.
+
+        The hunt analog of `declare_objectives`: identical leader resolution,
+        identical persistence (STAY keeps the target; only re-declaring
+        replaces it), so the execution reward prices a commitment.
+        """
+        if self._charge_target_slice is None:
+            return
+        start = self._charge_target_slice.start
+        end = self._charge_target_slice.end
+        leaders: dict[int, int] = {}
+        for index, model in enumerate(wargame_models):
+            if not model.is_alive:
+                continue
+            leaders.setdefault(int(model.group_id), index)
+        declared: dict[int, int] = {}
+        for group, leader in leaders.items():
+            if leader >= len(action.actions):
+                continue
+            chosen = int(action.actions[leader])
+            if start <= chosen < end:
+                declared[group] = chosen - start
+        if not declared:
+            return
+        for model in wargame_models:
+            group = int(model.group_id)
+            if group in declared:
+                model.declared_target = declared[group]
+
+    def charge_target_legality(
+        self, models: list[Any], enemy_models: list[Any]
+    ) -> np.ndarray:
+        """`(n_models, budget)` — which enemy-unit declarations exist to make.
+
+        A group index is declarable only while it has an alive member; a hunt
+        for a wiped unit is a plan for nothing. Alive declarers only.
+        """
+        if self._charge_target_slice is None:
+            return np.zeros((len(models), 0), dtype=bool)
+        legality = np.zeros((len(models), self._charge_target_slice.size), dtype=bool)
+        alive_groups = {int(m.group_id) for m in enemy_models if m.is_alive}
+        alive = np.array([bool(m.is_alive) for m in models], dtype=bool)
+        for group in alive_groups:
+            if 0 <= group < self._charge_target_slice.size:
+                legality[alive, group] = True
+        return legality
+
+    @property
+    def charge_target_slice(self) -> ActionSlice | None:
+        """The enemy-target declaration slice, or None when the flag is off."""
+        return self._charge_target_slice
 
     def declare_fight_order(
         self, action: WargameEnvAction, wargame_models: list[Any]
@@ -1966,6 +2038,7 @@ class ActionHandler:
             # an unvalidated declaration would be a silent out-of-range action.
             self.declare_move_types(action, wargame_models)
             self.declare_objectives(action, wargame_models)
+            self.declare_targets(action, wargame_models)
         if phase is BattlePhase.fight:
             # Read BEFORE the fight resolves, which happens on the boundary
             # leaving this phase -- so the priorities the engine selects on are

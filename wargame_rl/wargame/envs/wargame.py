@@ -530,6 +530,13 @@ class WargameEnv(gym.Env):
         )
 
     @property
+    def player_charge_target_legality(self) -> np.ndarray:
+        """`(n_models, budget)` — which enemy-unit declarations exist to make."""
+        return self._action_handler.charge_target_legality(
+            self.wargame_models, self.opponent_models
+        )
+
+    @property
     def player_short_move_legality(self) -> np.ndarray:
         """`(n_models, n_move_actions)` — who may pile in or consolidate."""
         return self._action_handler.short_move_legality(
@@ -1646,6 +1653,16 @@ class WargameEnv(gym.Env):
             mask[:, target_slice.start : target_slice.end] &= (
                 handler.objective_target_legality(
                     self.opponent_models, len(self.objectives)
+                )
+            )
+
+        hunt_slice = handler.charge_target_slice
+        if hunt_slice is not None and phase is BattlePhase.command:
+            # Both seats or neither, as above; the opponent's enemies are the
+            # player's models.
+            mask[:, hunt_slice.start : hunt_slice.end] &= (
+                handler.charge_target_legality(
+                    self.opponent_models, self.wargame_models
                 )
             )
 

@@ -142,6 +142,9 @@ class WargameModelObservation:
     # and a term keyed on state the network cannot perceive is the failure this
     # project has paid ~10 GPU-hours for twice.
     declared_objective_onehot: np.ndarray | None = None
+    # The squad's declared enemy-unit TARGET as a one-hot over `max_groups` --
+    # the state `declared_target_progress` keys on; same observability rule.
+    declared_target_onehot: np.ndarray | None = None
 
     @property
     def size(self) -> int:
@@ -168,5 +171,10 @@ class WargameModelObservation:
                 0
                 if self.declared_objective_onehot is None
                 else self.declared_objective_onehot.size
+            )
+            + (
+                0
+                if self.declared_target_onehot is None
+                else self.declared_target_onehot.size
             )
         )

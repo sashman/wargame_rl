@@ -244,6 +244,10 @@ def _models_to_features(
         core_parts.append(
             np.array([m.declared_objective_onehot for m in models], dtype=np.float32)
         )
+    if models[0].declared_target_onehot is not None:
+        core_parts.append(
+            np.array([m.declared_target_onehot for m in models], dtype=np.float32)
+        )
     core = np.hstack(core_parts)
     alive_col = np.array([[m.alive] for m in models], dtype=np.float32)
     cw = np.array([[float(m.current_wounds)] for m in models], dtype=np.float32)
@@ -366,6 +370,11 @@ def _observation_to_numpy(
         if probe and probe[0].declared_objective_onehot is not None
         else 0
     )
+    n_declared_target = (
+        int(probe[0].declared_target_onehot.size)
+        if probe and probe[0].declared_target_onehot is not None
+        else 0
+    )
     base_feature_dim = (
         n_spatial
         + n_group
@@ -376,6 +385,7 @@ def _observation_to_numpy(
         + n_advance
         + n_melee
         + n_declared_objective
+        + n_declared_target
         + N_WOUND_FEATURES
         + N_COMBAT_STATS
     )
