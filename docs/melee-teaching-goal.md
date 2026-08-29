@@ -1633,3 +1633,13 @@ it internalises.
 −17.7 (n=90 for the first two). The successor question is no longer *which ingredient* —
 it is where to aim the working design next: the shoot row (the largest gap, an offence
 question) or the charge row (the goal's constitutive matchup).
+
+**§33 addendum, same day — the successor is launched.** v11 "hunt"
+(`25v25_maps_melee_hunt.yaml`): `declare_targets` — a command-phase enemy-unit
+declaration with the identical leader-binds/persists/one-hot contract — plus
+`declared_target_progress` at the objective term's exact price, paying the march INTO
+charge range through the channel that never reverts. Pre-registration in the config
+header (stood/ep ≥ 2.4 to pass on mechanism, ladder must not fall, charge floor −32,
+combined-income farm screen at a 10.0 cap with the census extension named as required
+instrument work). Bridge verified digit-identical 4/4 cells before launch. 6 seeds ×
+600, `melee-hunt-v11`, n_actions 119.
