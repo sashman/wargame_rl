@@ -15,6 +15,9 @@ from wargame_rl.wargame.envs.reward.calculators.closest_objective import (
 from wargame_rl.wargame.envs.reward.calculators.closest_objective_v2 import (
     ClosestObjectiveV2Calculator,
 )
+from wargame_rl.wargame.envs.reward.calculators.declared_objective_hold import (
+    DeclaredObjectiveHoldCalculator,
+)
 from wargame_rl.wargame.envs.reward.calculators.declared_objective_progress import (
     DeclaredObjectiveProgressCalculator,
 )
@@ -57,6 +60,7 @@ CALCULATOR_REGISTRY: dict[str, type[RewardCalculatorType]] = {
     "objective_flip_bonus": ObjectiveFlipBonusCalculator,
     "objective_hold": ObjectiveHoldCalculator,
     "charge_progress": ChargeProgressCalculator,
+    "declared_objective_hold": DeclaredObjectiveHoldCalculator,
     "declared_objective_progress": DeclaredObjectiveProgressCalculator,
     "declared_target_progress": DeclaredTargetProgressCalculator,
     "unit_coherency": UnitCoherencyCalculator,
