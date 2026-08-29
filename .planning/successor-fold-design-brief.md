@@ -75,12 +75,16 @@ carrying-cost needs isolating (KNOWN_ACTION_SLICES already admits both slices).
 - What pays a hunt plan: `declared_target_progress` as-is (with its adjacency
   zero-gap), or plus a kept-commitment term for engagement (the §37a steer says
   the choice, not the payment, is the problem — so maybe nothing new pays).
-- ~~Whether the home objective needs anything at all~~ **SETTLED same day
-  (§38a): the garrison value is void and does not replicate** — pooled
-  **−7.6 ± 6.7** on the corrected rules against +10.4 pre-referee. Home is at
-  best free for the best script. The successor pursues the hunt fold on its own
-  merits; home-guarding is no longer a design goal unless a future mission
-  re-prices it.
+- ⚠ **§38a WAS A SIGN FLIP — struck by §38b (panel A red team, chair-verified,
+  hand-verified).** Corrected: post-referee garrisoning is worth **+7.6 ± 6.7**,
+  the same sign as §36's +10.4, attenuated within noise. The garrison value
+  REPLICATES. Licensed claim: "consistent with §36", never "proven". The fold
+  still stands on §35's slot economics, not on home-guarding — but the
+  correction revives the hold-plus-pin composite that plan exclusivity forbids;
+  panel F2 (on-objective charge share) is pre-launch, with the pre-committed
+  trigger: ≥70% on-objective standing charges AND retention failing at verdict
+  ⇒ redesign plan semantics (objective plan with hunt rider) before any further
+  12-seed round.
 - Primary readouts: declaration-distribution census (home share, hunt share,
   P(nearest)), charge cells vs §38's bar, ladder vp. Bounds ONLY from v10r's
   landing — every pre-referee bound is void.
@@ -122,3 +126,42 @@ carrying-cost needs isolating (KNOWN_ACTION_SLICES already admits both slices).
   charge referee), not a training referee — it stays on everywhere.
 - A three-seed screen is a screen. Mode/usage oscillation is the convergence
   diagnostic (§35's lever-usage signal).
+
+## Panel A verdict (2026-08-30, wf_bc5da8e3-5c3): LAUNCH_MODIFIED, unanimous 5/5, red team SERIOUS
+
+Full output: workflow journal wf_bc5da8e3-5c3. The modifications are all header text,
+census labels, and record corrections — no code redesign, no GPU. Apply M1–M8 in the
+landing window before the first fold seed:
+
+- **M1** farm screen: gains a declared_target income rider (or re-registers as
+  objective+hold with the target column as NAMED DEBT) — as committed it references a
+  column no instrument computes and cannot fire.
+- **M2** eval assignment pinned: arm on fold_refereed, control on hunt_refereed;
+  cross-decode is a labeled falsifier, never a primary.
+- **M3** PRIMARY B → non-inferiority guardrail (pooled > −1.5× pooled SE AND no column
+  below 1.5× its paired SE) — as committed it rejected a true-zero-vp mechanism win >50%
+  of the time (the design's own most likely success mode for a lethality-neutral
+  mechanic). Bounds power-checked against the PAIR's own spread; v10r numbers marked
+  PROVISIONAL (melee family per-episode sd is 79–101, not the doctrine ~45–50).
+- **M4** fold-vs-v10r ADOPTION GATE restored as pre-registered secondary (non-inferiority,
+  1.5× unpaired SE; UNDERPOWERED clause if SE > ~15).
+- **M5** screen kills THE FOLD ONLY (control runs to 600 — it is the only planned test of
+  whether v11's rejection was partly a pre-referee artifact); screen ckpt = highest
+  ppo-NNN ≥ 290; attrition rule written.
+- **M6** six labels, one definition each — headlined by THE MISMATCH CENSUS: share of
+  stood charges landing on the DECLARED group (the shipped grant is proximity-shaped:
+  any-enemy gates + nearest-unit approach mask — three seats converged independently);
+  pre-committed: >50% mismatched stood charges ⇒ A is not read as "declaration
+  distribution improved"; follow-up is a target-gated grant, not a relaunch.
+- **M7** licensed claim: full PASS = "enabled charging without slot cost", NEVER "learned
+  hunt allocation" (one-profile armies make targeting degenerate); the flag bundles TWO
+  mechanisms (grant + exclusivity) with the frozen-weights attribution probe pre-named;
+  the pre-registration binds the SHIPPED form (two slices + post-hoc exclusivity).
+- **M8** record corrections: §38b (done, dd75285); entities.py stale STAY comment and the
+  misnamed test_out_of_range_hunts_are_not_granted_a_charge queued for the landing window.
+
+Free work F2–F5 (CPU, one at a time, before launch): F2 on-objective charge share of the
+bar; F3 six-seed frozen swap (the mechanical-floor comparator column); F4 hunt-plan vs
+objective-plan per-model income on v11 seeds; F5 P(declared target = nearest). F6 the
+scripted explicit-hunt pricer in the landing window. F7 epoch-0 state_dict assert at
+launch. What died and the standing-belief challenges: see the chair's sections 6–7.
