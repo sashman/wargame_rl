@@ -34,6 +34,14 @@ from wargame_rl.wargame.selectors import build_action_selector
 VALUE = 0.25  # the trained term's params (declare config: value 0.25, span 6.0)
 SPAN = 6.0
 CAP = 5.0  # value * ~20 movement steps: the farm ceiling §31 S1 prices against
+# The hold term (`declared_objective_hold`, §34's v12-lite): a constant pot per
+# objective per step, split among its alive declaring holders. Recomputed here
+# by the calculator's own formula, so the census reads it on configs without
+# the term (it is then the counterfactual: what a hold term WOULD have paid).
+HOLD_POT = 0.25
+# §37's re-derived combined farm ceiling: march 5.0 + hold pot x ~24
+# scoring-adjacent steps ~6.0. The farm screen reads the 60% line against it.
+COMBINED_CAP = 11.0
 
 
 def measure(
@@ -63,6 +71,8 @@ def measure(
     declared_nearest = 0
     cosines: list[float] = []
     incomes: list[dict[int, float]] = []  # per episode: unit -> summed income
+    hold_incomes: list[dict[int, float]] = []  # unit -> summed hold-pot income
+    hold_alive_counts: list[dict[int, list[float]]] = []
     unit_alive_counts: list[dict[int, list[float]]] = []
     redecl_by_episode: list[dict[int, int]] = []
     vp_total = 0.0
@@ -72,6 +82,8 @@ def measure(
         observation, _ = env.reset(seed=700000 + episode)
         prev_declared: dict[int, int] = {}
         income: dict[int, float] = {}
+        hold_income: dict[int, float] = {}
+        hold_alive: dict[int, list[float]] = {}
         alive_steps: dict[int, list[float]] = {}
         episode_redecl: dict[int, int] = {}
         done = False
@@ -100,6 +112,31 @@ def measure(
             done = terminated or truncated
 
             post_models = env.wargame_models
+            # Hold income accrues EVERY step, whatever the phase — that is the
+            # calculator's contract. Holders of one objective split its pot.
+            hold_cache = compute_distances(post_models, env.objectives)
+            holders_by_obj: dict[int, list[int]] = {}
+            for index, model in enumerate(post_models):
+                declared = int(model.declared_objective)
+                if not model.is_alive or declared < 0:
+                    continue
+                if declared >= hold_cache.model_obj_norms_offset.shape[1]:
+                    continue
+                gap = float(hold_cache.model_obj_norms_offset[index, declared])
+                if gap <= float(hold_cache.obj_radii[declared]):
+                    holders_by_obj.setdefault(declared, []).append(index)
+            for holder_rows in holders_by_obj.values():
+                share = HOLD_POT / len(holder_rows)
+                for index in holder_rows:
+                    group = int(post_models[index].group_id)
+                    hold_income[group] = hold_income.get(group, 0.0) + share
+            for group in {int(m.group_id) for m in post_models if m.is_alive}:
+                members = sum(
+                    1 for m in post_models if m.is_alive and int(m.group_id) == group
+                )
+                totals = hold_alive.setdefault(group, [0.0, 0.0])
+                totals[0] += float(members)
+                totals[1] += 1.0
             if phase is BattlePhase.command:
                 post_declared: dict[int, int] = {}
                 leader_row: dict[int, int] = {}
@@ -184,11 +221,34 @@ def measure(
         ).sum(axis=0)
         held_total += float((ours > theirs).sum())
         incomes.append(income)
+        hold_incomes.append(hold_income)
+        hold_alive_counts.append(hold_alive)
         unit_alive_counts.append(alive_steps)
         redecl_by_episode.append(episode_redecl)
 
     per_model_ep: list[float] = []
     top_unit_ep: list[float] = []
+    hold_model_ep: list[float] = []
+    combined_top_ep: list[float] = []
+    for income, hold_income, hold_alive, alive_steps in zip(
+        incomes, hold_incomes, hold_alive_counts, unit_alive_counts
+    ):
+        hold_per_unit: dict[int, float] = {}
+        for group, total in hold_income.items():
+            members_sum, steps = hold_alive.get(group, [1.0, 1.0])
+            hold_per_unit[group] = total / max(members_sum / max(steps, 1.0), 1e-9)
+        hold_model_ep.append(
+            float(np.mean(list(hold_per_unit.values()))) if hold_per_unit else 0.0
+        )
+        march_per_unit: dict[int, float] = {}
+        for group, total in income.items():
+            members_sum, phases = alive_steps.get(group, [1.0, 1.0])
+            march_per_unit[group] = total / max(members_sum / max(phases, 1.0), 1e-9)
+        combined = {
+            group: march_per_unit.get(group, 0.0) + hold_per_unit.get(group, 0.0)
+            for group in set(march_per_unit) | set(hold_per_unit)
+        }
+        combined_top_ep.append(max(combined.values()) if combined else 0.0)
     for income, alive_steps in zip(incomes, unit_alive_counts):
         # per-model income = unit income / mean alive members over its
         # declared movement phases (counted directly, never inferred from a
@@ -216,6 +276,12 @@ def measure(
         f"income/model/ep={np.mean(per_model_ep):.3f}  "
         f"top_unit/model/ep={np.mean(top_unit_ep):.3f}  cap={CAP}  "
         f"top_unit_frac_of_cap={np.mean(top_unit_ep) / CAP:.3f}"
+    )
+    print(
+        f"  hold/model/ep={np.mean(hold_model_ep):.3f}  "
+        f"combined_top_unit/model/ep={np.mean(combined_top_ep):.3f}  "
+        f"combined_cap={COMBINED_CAP}  "
+        f"combined_frac_of_cap={np.mean(combined_top_ep) / COMBINED_CAP:.3f}"
     )
     print(
         f"  mean_unit_redecl/ep={np.mean([v for d in redecl_by_episode for v in d.values()]) if any(redecl_by_episode) else 0.0:.2f}  "
