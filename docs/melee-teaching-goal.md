@@ -1734,3 +1734,47 @@ conditions play always looks worst under. v11's pre-registered ladder guardrail 
 exactly this trade and will price it at landing. ⚠ Do NOT remove the overstack penalty on
 this reading — its removal is REJECTED on file (−12.2 ± 5.5); what this section licenses is
 only the honest rename of what the term now is.
+
+## 35. v11 "hunt" REJECTED — and the command slot is a measured bottleneck
+
+Measured 2026-08-29 at landing, six seeds verified epoch=599, scored on the P1-bridged hunt
+eval family at n=45 against the pre-registration in the config header. Verdict against its
+own criteria, both primaries failing:
+
+- **PRIMARY A (mechanism) FAIL, inverted**: charge-cell stood/ep at K=1 mean **0.69**
+  (seeds 1.29/0.33/1.67/0.53/0.33/0.00) against the ≥2.4 pass bound, v10's 1.49 and the
+  bar's 5.56. The arm built to increase charging **halved** it.
+- **GUARDRAIL B FAIL, 0/6**: the ladder fell on every opponent (take −15.5, deny −10.2,
+  shoot −11.9; pooled **−12.5 ± 4.1 sd, 0/6 seeds up**) — take breaches its bound, the
+  other two sit at theirs.
+- Charge floor −31.8 vs −32: holds by 0.2 — nominal, and moot beside A+B.
+- S4 charge-interference guard: **FIRES** (decl/ep 2.68 < 4.51), exactly the dilution it
+  was built to catch.
+- Farm screen: does not fire on the objective term (top unit ≤ 0.376 of cap). ⚠ The
+  combined-income instrument named as required work in the v11 header was not built —
+  an instrument debt, moot for this verdict, still owed for any successor.
+- Hunt usage itself is healthy (decl_frac 0.61–0.96, cosine +0.25–0.48): the mechanism was
+  used and did not pay.
+
+**THE MECHANISM, measured as a dose-response across three lineages**: charge
+declarations/ep at K=1 by number of extra command-phase slices — v6 (move_type only)
+**8.55** → v10 (+objective_target) **5.89** → v11 (+charge_target) **2.68**; stood/ep
+1.74 → 1.49 → 0.69. **The unit leader has ONE action per command phase, and the charge
+declaration, the move type, the objective plan and the hunt all compete for it** — each
+added declaration slice displaces charge declarations roughly proportionally. v10's own S4
+flag (§32, "no melee regression to excuse") was this same effect one dose earlier.
+
+**Falsifier, run same-day on frozen weights**: masking the hunt slice at PLAY recovers
+only ~35% of the displaced declarations (2.68 → 3.61) and **costs** vp (−41.5 → −49.5) —
+the policy trained under slot competition internalised the displaced behaviour, the same
+carrying-vs-using structure as the advance lever. The slot is causal for the floor; the
+training baked in the rest. (`objective_target`/`charge_target` are now darkenable —
+KNOWN_ACTION_SLICES extended for this probe.)
+
+**What survives v11**: the declaration RECIPE is not impugned (v10's +30.4 dark-pair
+attribution stands — that arm's slot cost was already paid in its own comparison); what
+died is **stacking declarations into one command slot**. Any successor that wants both a
+plan and a charge must either fold the hunt INTO the charge declaration (one commitment,
+not two competing ones), give declarations distinct sub-steps, or price the slot
+explicitly. ⚠ Also void: nothing — v11 changed no shared config; every v6/v10 number
+stands.

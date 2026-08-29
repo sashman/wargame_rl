@@ -60,7 +60,16 @@ _CHARGE_REACH_EPSILON = 1e-6
 # `dark_action_slices` is a typo that would silently darken nothing, so it
 # raises rather than doing nothing.
 KNOWN_ACTION_SLICES = frozenset(
-    {"stay", "movement", "shooting", "advance", "move_type", "fight_order"}
+    {
+        "stay",
+        "movement",
+        "shooting",
+        "advance",
+        "move_type",
+        "fight_order",
+        "objective_target",
+        "charge_target",
+    }
 )
 
 # How many activation priorities a unit can declare in the fight phase.
