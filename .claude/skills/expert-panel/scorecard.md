@@ -469,3 +469,18 @@ a panel's headline, not just its findings.**
 - Running pattern, three rounds: whoever writes the decision rule reproduces the defect
   class last retired. The fix that keeps working: hand the rule to a panel that did not
   write it, before any number exists.
+
+## 2026-08-30 — audit — the folded-commitment successor (pre-launch)
+- Nomination under audit: the fold design + its two-stage pre-registration (author: session).
+- Verdict: LAUNCH_MODIFIED, unanimous 5/5 seats; red team SERIOUS overall.
+- Audits that landed: **FATAL — §38a garrison-void was a sign flip** (measure_paired prints
+  B−A; corrected +7.6 ± 6.7, replicates §36), caught only by the red team reading raw files
+  while 4/4 seats inherited the brief's error — the correlated-premise vector was the
+  brief's own MEASURED FACTS list. Farm screen gate couldn't fire (named column computed by
+  no instrument). PRIMARY B rejected the design's most likely success mode >50% at true
+  zero. Kill-both screen destroyed the control exactly when the control wins. Any-enemy
+  grant vs target-shaped semantics (3 seats converged independently, probe-verified).
+  Bridge pass shown guaranteed-by-construction. Melee-family sd 79–101 vs doctrine ~45–50.
+- Rules adopted: paired-pricer quotes name B + reproduce a raw line; one seat per panel
+  re-derives the brief's facts from raw files; power-check the decision PROCEDURE, not just
+  bounds.
