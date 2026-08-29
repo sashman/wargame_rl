@@ -175,7 +175,12 @@ wargame_rl/
   implicitly by picking a rung, so every model decided separately and a whole unit committed
   on only **23–35%** of its charges against a rigid script's 100%. The melee configs
   therefore step `command`: `max_turns` 60 → **80**, and **every melee figure measured before
-  it is void on that config**. [docs/melee.md](docs/melee.md)
+  it is void on that config**. ⚠ **The fall back is refereed as of 2026-08-29**
+  (`_enforce_fall_back`: unit must end unengaged AND coherent, whole-unit revert, both
+  seats) — before it, a unit with a pinned member tore itself to 16.7–20" chain gaps
+  "falling back" while a member stayed engaged, and **every melee figure measured before
+  the referee is void on melee configs** (non-melee configs are untouched — the path is
+  gated on engagement). [docs/melee.md](docs/melee.md)
 - **DDD layering** — `domain/` owns the rules (Battle aggregate, clock, placement, termination, LOS, shooting); `wargame.py` is a facade; reward/renders depend only on the `BattleView` protocol. See [docs/ddd-envs.md](docs/ddd-envs.md)
 - **Rules specification** — [docs/rules/](docs/rules/README.md) is the game's rules authority: a self-contained spec written for this project, with `constants.yaml` (every number, in inches) and [implementation-status.md](docs/rules/implementation-status.md) (per-rule: implemented / partial / divergent / absent). Before implementing a mechanic, read its chapter and its gap-map row. `tests/test_no_ip_references.py` keeps the repo free of references to the commercial product the rules derive from — the spec names no product, publisher, edition or faction, and neither should anything else
 - **Play doctrine** — [docs/play-doctrine.md](docs/play-doctrine.md) is how this game is *won*, as `docs/rules/` is how it is *played*: 43 numbered entries, each stating a claim, whether the environment can express it, which extension point it lands in, and what has already been measured about it. It is a store of **hypotheses, never of evidence** — price an entry as a scripted policy (`just measure-paired`, no GPU) before it becomes a reward term or a training run, and where an entry disagrees with the record below, **the record wins**
