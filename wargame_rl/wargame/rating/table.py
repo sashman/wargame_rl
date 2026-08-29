@@ -97,24 +97,21 @@ def mean_coherency(legs: Sequence[LegResult]) -> dict[str, float | None]:
     claim that the moves earning it were legal, and only this column carries the
     claim.
 
-    ⚠ **It is `None` for an entrant only ever seated as B**, because
-    `evaluate_selector` measures the player seat and nothing measures the
-    opponent's. `pairings` lists each pair once in input order, so the entrant
-    named *last* on the command line is entrant B in every one of its pairings
-    and comes back with no coherency at all -- a real gap against this repo's
-    rule that no score is quoted without it.
+    Both seats, so an entrant that never took the player seat still gets one.
+    `pairings` lists each pair once in input order, so the entrant named *last*
+    on the command line is entrant B in every one of its pairings -- and a
+    `vp_margin` with a blank coherency column is a result plus an unstated claim
+    that the moves earning it were legal.
 
-    `CoherencyTracker` is already written as running totals for *one force*, so
-    a second instance is mechanically small; what is missing is the opponent's
-    **intended** coherency, which the player path reads off
-    `ActionHandler.intended_coherency_last_move` and the opponent path does not
-    record. See `docs/elo.md` § Open gaps -- this is the same seating asymmetry
-    that leaves the engine seat unbalanced, seen from the metrics side.
+    Still `None` for an entrant every one of whose legs reported nothing, which
+    happens only when no movement phase was ever sampled.
     """
     totals: dict[str, list[float]] = {}
     for leg in legs:
         if leg.coherency_rate is not None:
             totals.setdefault(leg.entrant_a, []).append(leg.coherency_rate)
+        if leg.opponent_coherency_rate is not None:
+            totals.setdefault(leg.entrant_b, []).append(leg.opponent_coherency_rate)
     return {name: float(np.mean(values)) for name, values in totals.items()}
 
 
@@ -155,6 +152,11 @@ def format_table(
         f"[{table.h_turn_interval[0]:+.1f}, {table.h_turn_interval[1]:+.1f}]"
     )
     lines.append(
+        f"player-seat adv. {table.fit.h_seat:+.1f} Elo  "
+        f"[{table.h_seat_interval[0]:+.1f}, {table.h_seat_interval[1]:+.1f}]"
+        f"{_seat_caveat(legs)}"
+    )
+    lines.append(
         f"\n{table.fit.n_games} games, margin scale {margin_scale:g}, "
         f"{table.n_bootstrap} bootstrap resamples over layouts"
     )
@@ -163,6 +165,21 @@ def format_table(
         "failure as a success_rate with no floor and no bar"
     )
     return "\n".join(lines)
+
+
+def _seat_caveat(legs: Sequence[LegResult]) -> str:
+    """Say how the seat term was identified, because it changes what it is worth.
+
+    Entrant A always takes the player seat, so this column is constant and is
+    identified either through a cycle in the pairing graph -- weakly, at 2-3x
+    the standard error of `h_turn` -- or directly by a **self-pairing**, one
+    entrant on both seats, which is what `just measure-seat-parity` plays and
+    which roughly halves that. A reader cannot tell the two apart from the
+    interval alone, so the table says which it had.
+    """
+    if any(leg.entrant_a == leg.entrant_b for leg in legs):
+        return "  (from a self-pairing)"
+    return "  (weakest column: no self-pairing in this ledger)"
 
 
 def _games_per_entrant(legs: Sequence[LegResult]) -> dict[str, int]:

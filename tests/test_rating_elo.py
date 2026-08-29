@@ -31,6 +31,8 @@ def _synthetic_design(
     entrants: tuple[str, ...] = ENTRANTS,
     noise: float = 0.0,
     layout_noise: float = 0.0,
+    seat_advantage: float = 0.0,
+    self_pairings: tuple[int, ...] = (),
 ) -> Design:
     """Every pairing over the balanced four legs, scored from planted values.
 
@@ -38,6 +40,11 @@ def _synthetic_design(
     `noise` perturbs each game independently; `layout_noise` is a shock *shared*
     by every game on a layout, which is the correlation a layout bootstrap
     exists to capture and a row bootstrap cannot see.
+
+    `seat_advantage` is added to **every** row, because entrant A always takes
+    the player seat. `self_pairings` names entrants to also play against
+    themselves, which is what `just measure-seat-parity` does and what pins the
+    seat term with direct evidence rather than through the pairing graph.
     """
     rng = np.random.default_rng(seed)
     layout_shock = (
@@ -50,34 +57,38 @@ def _synthetic_design(
     score: list[float] = []
     layout: list[int] = []
 
+    pairs = [
+        (a, b) for a in range(len(entrants)) for b in range(a + 1, len(entrants))
+    ] + [(who, who) for who in self_pairings]
+
     for layout_index in range(n_layouts):
-        for a in range(len(entrants)):
-            for b in range(a + 1, len(entrants)):
-                for zone in (1.0, -1.0):
-                    for turn in (1.0, -1.0):
-                        difference = (
-                            ratings[entrants[a]]
-                            - ratings[entrants[b]]
-                            + zone * zone_advantage
-                            + turn * turn_advantage
+        for a, b in pairs:
+            for zone in (1.0, -1.0):
+                for turn in (1.0, -1.0):
+                    difference = (
+                        ratings[entrants[a]]
+                        - ratings[entrants[b]]
+                        + zone * zone_advantage
+                        + turn * turn_advantage
+                        + seat_advantage
+                    )
+                    expected = 1.0 / (1.0 + 10.0 ** (-difference / 400.0))
+                    if noise > 0.0 or layout_shock is not None:
+                        shock = (
+                            0.0
+                            if layout_shock is None
+                            else float(layout_shock[layout_index])
                         )
-                        expected = 1.0 / (1.0 + 10.0 ** (-difference / 400.0))
-                        if noise > 0.0 or layout_shock is not None:
-                            shock = (
-                                0.0
-                                if layout_shock is None
-                                else float(layout_shock[layout_index])
-                            )
-                            jitter = rng.normal(0.0, noise) if noise > 0.0 else 0.0
-                            expected = float(
-                                np.clip(expected + shock + jitter, 0.001, 0.999)
-                            )
-                        index_a.append(a)
-                        index_b.append(b)
-                        sigma_zone.append(zone)
-                        sigma_turn.append(turn)
-                        score.append(expected)
-                        layout.append(layout_index)
+                        jitter = rng.normal(0.0, noise) if noise > 0.0 else 0.0
+                        expected = float(
+                            np.clip(expected + shock + jitter, 0.001, 0.999)
+                        )
+                    index_a.append(a)
+                    index_b.append(b)
+                    sigma_zone.append(zone)
+                    sigma_turn.append(turn)
+                    score.append(expected)
+                    layout.append(layout_index)
 
     return Design(
         index_a=np.array(index_a, dtype=np.intp),
@@ -90,6 +101,13 @@ def _synthetic_design(
 
 
 def test_the_fit_recovers_known_ratings() -> None:
+    """Tolerance is the prior's shrinkage, not error in the fit.
+
+    With `prior_sigma=0` this is exact to machine precision. The seat column is
+    constant, so it takes a share of that shrinkage -- which is the same weak
+    identification measured in `test_a_self_pairing_sharpens_the_seat_term`,
+    where a self-pairing cuts the residual from 6.7 Elo to 1.3.
+    """
     planted = {"random": 0.0, "squad_march": 250.0, "squad_march_shoot": 500.0}
     design = _synthetic_design(planted, zone_advantage=0.0, turn_advantage=0.0)
 
@@ -97,7 +115,12 @@ def test_the_fit_recovers_known_ratings() -> None:
 
     assert fit.converged
     for name, value in planted.items():
-        assert fit.ratings[ENTRANTS.index(name)] == pytest.approx(value, abs=6.0)
+        assert fit.ratings[ENTRANTS.index(name)] == pytest.approx(value, abs=8.0)
+
+    exact = fit_ratings(design, ENTRANTS, anchor="random", prior_sigma=0.0)
+    for name, value in planted.items():
+        assert exact.ratings[ENTRANTS.index(name)] == pytest.approx(value, abs=1e-6)
+    assert exact.h_seat == pytest.approx(0.0, abs=1e-6)
 
 
 def test_the_fit_recovers_the_zone_and_turn_advantages() -> None:
@@ -130,14 +153,17 @@ def test_an_undefeated_entrant_stays_finite() -> None:
     """Without a prior, an entrant that never loses runs to infinity.
     `squad_march_shoot` has genuinely scored a 1.00 win rate on some configs
     here, so this is the ordinary case rather than a pathological one."""
-    # Entrant 1 is A in every row and scores 1.0 in every row: undefeated.
+    # Entrant 1 is A in every head-to-head row and scores 1.0 in every one of
+    # them: undefeated. The anchor's self-pairing rows carry no information
+    # about either rating -- they are there only so the seat term is identified,
+    # since two entrants alone cannot separate it from the rating difference.
     design = Design(
-        index_a=np.ones(40, dtype=np.intp),
-        index_b=np.zeros(40, dtype=np.intp),
-        sigma_zone=np.tile([1.0, -1.0], 20),
-        sigma_turn=np.tile([1.0, 1.0, -1.0, -1.0], 10),
-        score=np.ones(40),
-        layout=np.arange(40, dtype=np.intp) // 4,
+        index_a=np.concatenate([np.ones(40, dtype=np.intp), np.zeros(40, np.intp)]),
+        index_b=np.zeros(80, dtype=np.intp),
+        sigma_zone=np.tile([1.0, -1.0], 40),
+        sigma_turn=np.tile([1.0, 1.0, -1.0, -1.0], 20),
+        score=np.concatenate([np.ones(40), np.full(40, 0.5)]),
+        layout=np.arange(80, dtype=np.intp) // 4,
     )
 
     fit = fit_ratings(design, ("random", "unbeaten"), anchor="random")
@@ -257,13 +283,20 @@ def test_delta_elo_matches_the_linear_approximation() -> None:
     margin_scale = 50.0
     mean_margin = 10.0
     scores = margin_score(np.full(4000, mean_margin), margin_scale)
+    # Half the rows are `a` mirrored against itself at a dead-level 0.5, which
+    # pins the seat term at zero. Without them the bridge would measure
+    # `dR + h_seat`, since entrant `b` takes the player seat in every
+    # head-to-head row -- which is the confound the seat term exists to remove.
+    mirror = np.full(scores.size, 0.5)
     design = Design(
-        index_a=np.zeros(scores.size, dtype=np.intp),
-        index_b=np.ones(scores.size, dtype=np.intp),
-        sigma_zone=np.tile([1.0, -1.0], scores.size // 2),
-        sigma_turn=np.tile([1.0, 1.0, -1.0, -1.0], scores.size // 4),
-        score=scores,
-        layout=np.arange(scores.size, dtype=np.intp) // 4,
+        index_a=np.zeros(2 * scores.size, dtype=np.intp),
+        index_b=np.concatenate(
+            [np.ones(scores.size, dtype=np.intp), np.zeros(scores.size, np.intp)]
+        ),
+        sigma_zone=np.tile([1.0, -1.0], scores.size),
+        sigma_turn=np.tile([1.0, 1.0, -1.0, -1.0], scores.size // 2),
+        score=np.concatenate([scores, mirror]),
+        layout=np.arange(2 * scores.size, dtype=np.intp) // 4,
     )
 
     fit = fit_ratings(design, ("b", "a"), anchor="a")

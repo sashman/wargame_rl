@@ -22,9 +22,12 @@ from wargame_rl.wargame.envs.renders.v2.control import (
     ShadowRect,
     ThreatOptions,
     ThreatOverlay,
+    VisibilityCache,
+    can_price_threat_field,
     compute_objective_control,
     compute_threat_overlay,
     probe_debug_los,
+    threat_field_cache,
 )
 from wargame_rl.wargame.envs.renders.v2.scene import (
     Control,
@@ -116,6 +119,8 @@ class BasePresenter(Renderer):
         self.threat_options = threat_options or ThreatOptions()
         self._threat_key: tuple[object, ...] | None = None
         self._threat_cache: ThreatOverlay | None = None
+        self._field_cache_key: tuple[object, ...] | None = None
+        self._field_cache_value: VisibilityCache | None = None
         self.epoch: int | None = None
         # Free-text provenance for the context slot (the training run's name, a
         # config stem, a seed) — set by whoever drives the renderer.
@@ -213,8 +218,33 @@ class BasePresenter(Renderer):
         )
         if key != self._threat_key:
             self._threat_key = key
-            self._threat_cache = compute_threat_overlay(view, options)
+            self._threat_cache = compute_threat_overlay(
+                view, options, self._field_cache(view, options)
+            )
         return self._threat_cache
+
+    def _field_cache(
+        self, view: BattleView, options: ThreatOptions
+    ) -> VisibilityCache | None:
+        """Cell-to-cell sight for this layout, built at most once per table.
+
+        The next-turn field traces sight from ground the opponent can walk to,
+        which is a two-hop -- affordable only because sight here depends on
+        terrain and nothing else, so the answer outlives every turn on the same
+        table. Keyed on the terrain outlines and the field spacing for exactly
+        that reason: a new layout invalidates it and a new turn does not.
+
+        ⚠ Built lazily, on the first frame the switch is on, and it takes about
+        a second. Building it eagerly would make every window that never presses
+        the key pay for it.
+        """
+        if not options.show_threat_field or not can_price_threat_field(view):
+            return None
+        key = (view.terrain.outlines.tobytes(), options.field_spacing)
+        if key != self._field_cache_key:
+            self._field_cache_key = key
+            self._field_cache_value = threat_field_cache(view, options)
+        return self._field_cache_value
 
     def toggle_threat(self) -> None:
         """Flip the shooting-threat overlay. Bound to `[R]` where there are keys."""
@@ -226,6 +256,18 @@ class BasePresenter(Renderer):
         """Flip the engagement overlay. Bound to `[E]` where there are keys."""
         self.threat_options = self.threat_options.toggled(
             engagement=not self.threat_options.show_engagement
+        )
+
+    def toggle_threat_field(self) -> None:
+        """Flip the NEXT-turn threat field. Bound to `[T]` where there are keys.
+
+        Deliberately a separate key from `[R]`. `[R]` draws what bears this
+        instant and `[T]` draws what bears after they move, and the ground
+        between the two is the point -- collapsing them onto one key would hide
+        the disagreement rather than show it.
+        """
+        self.threat_options = self.threat_options.toggled(
+            threat_field=not self.threat_options.show_threat_field
         )
 
     def _los_shadow(self, view: BattleView) -> tuple[ShadowRect, ...]:

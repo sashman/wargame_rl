@@ -86,6 +86,14 @@ class BaselineResult:
     # such failure mode, since a dead model contributes nothing to it.
     coherency_rate: float | None = None
     models_out_of_coherency: float | None = None
+    # The same two columns for the OPPONENT force. A rated leg seats entrant B
+    # there and nothing else measured it, so an entrant that never took the
+    # player seat came back with the coherency column blank -- a score without
+    # the claim that the moves earning it were legal, which is the one thing
+    # this column exists to carry. Every other consumer ignores them, exactly as
+    # it ignores `exposure_rate` on a config that does not track it.
+    opponent_coherency_rate: float | None = None
+    opponent_models_out_of_coherency: float | None = None
     # Per-episode values, in seed order, kept so a result can carry an error bar
     # and so two results measured on the same seeds can be paired. The loop
     # already builds these lists; discarding them is why no figure in this
@@ -284,6 +292,8 @@ def evaluate_selector(
     held: list[float] = []
     coherency: list[float | None] = []
     models_out: list[float | None] = []
+    opponent_coherency: list[float | None] = []
+    opponent_models_out: list[float | None] = []
 
     for index, seed in enumerate(seeds):
         options = None if combat_seeds is None else {"combat_seed": combat_seeds[index]}
@@ -325,6 +335,16 @@ def evaluate_selector(
             if env.intended_models_out_of_coherency is not None
             else env.models_out_of_coherency
         )
+        opponent_coherency.append(
+            env.opponent_intended_coherency_rate
+            if env.opponent_intended_coherency_rate is not None
+            else env.opponent_coherency_rate
+        )
+        opponent_models_out.append(
+            env.opponent_intended_models_out_of_coherency
+            if env.opponent_intended_models_out_of_coherency is not None
+            else env.opponent_models_out_of_coherency
+        )
 
         # Control is a strict count comparison, so an objective with equal
         # numbers on it scores for nobody.
@@ -358,6 +378,8 @@ def evaluate_selector(
         objectives_held=float(np.mean(held)),
         coherency_rate=mean_of_measured(coherency),
         models_out_of_coherency=mean_of_measured(models_out),
+        opponent_coherency_rate=mean_of_measured(opponent_coherency),
+        opponent_models_out_of_coherency=mean_of_measured(opponent_models_out),
         vp_margin_per_episode=tuple(
             player - opponent for player, opponent in zip(player_vps, opponent_vps)
         ),

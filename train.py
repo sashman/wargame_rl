@@ -1,6 +1,7 @@
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, cast
 
 import torch
@@ -20,12 +21,14 @@ from wargame_rl.wargame.model.common import (
     get_logger,
     init_wandb,
 )
+from wargame_rl.wargame.model.common.config import TransformerConfig
 from wargame_rl.wargame.model.common.event_log_callback import EventLogCallback
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.common.performance import configure_matmul_precision
 from wargame_rl.wargame.model.common.record_episode_callback import (
     RecordEpisodeCallback,
 )
+from wargame_rl.wargame.model.common.self_play import SelfPlayConfig
 from wargame_rl.wargame.model.ppo.config import PPOConfig, PPOTrainingConfig
 from wargame_rl.wargame.model.ppo.lightning import PPOLightning
 from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
@@ -83,6 +86,58 @@ def get_env_config(
     env_config.render_mode = render_mode
 
     return WargameEnvConfig(**env_config.model_dump())
+
+
+def _resolve_transformer_config(
+    n_layers: int | None,
+    embedding_size: int | None,
+) -> TransformerConfig | None:
+    """The trunk size to build, or None for the production default.
+
+    Returns **None** when nothing was overridden, rather than an equal
+    `TransformerConfig()`. The two build the same network, but None is what
+    every caller before these flags existed passed, so the untouched path stays
+    literally the untouched path.
+
+    ⚠ Typer fills a default only when *it* invokes the command. Called directly
+    -- as `tests/test_z_e2e_training.py` does -- an option nobody passed is an
+    `OptionInfo`, which is `not None` and would sail through a plain guard and
+    reach Pydantic as a field value. Every override in this file has that trap;
+    this one checks the *type* rather than the identity, so a direct caller that
+    omits these is right rather than merely lucky.
+    """
+    # `isinstance(..., int)` rather than `is not None`: see the docstring.
+    given = [n_layers, embedding_size]
+    if not any(isinstance(value, int) for value in given):
+        return None
+
+    defaults = TransformerConfig()
+    config = TransformerConfig(
+        n_layers=n_layers if isinstance(n_layers, int) else defaults.n_layers,
+        embedding_size=(
+            embedding_size
+            if isinstance(embedding_size, int)
+            else defaults.embedding_size
+        ),
+    )
+    # ⚠ There is no --n-heads, on purpose: the head count changes no parameter
+    # shape, so a checkpoint written at another one would load SILENTLY and
+    # compute differently. Every size these flags can write,
+    # `trunk_config_from_state_dict` can read back. The divisibility check
+    # remains because the default 8 heads still have to divide a custom width,
+    # and Pydantic cannot catch it -- both fields are valid ints alone and only
+    # their ratio is wrong, so it would surface as a reshape inside attention.
+    if config.embedding_size % config.n_heads != 0:
+        raise ValueError(
+            f"embedding_size {config.embedding_size} is not divisible by "
+            f"n_heads {config.n_heads}"
+        )
+    log.warning(
+        "⚠ NON-DEFAULT NETWORK: {}. Its checkpoint will not load into a default "
+        "run and its scores are not comparable to any recorded number.",
+        config,
+    )
+    return config
 
 
 def _validate_checkpoint_mode(
@@ -182,6 +237,16 @@ def _resolve_optional_float(value: float | OptionInfo | None) -> float | None:
     return value
 
 
+def _resolve_default(value: Any, default: Any) -> Any:
+    """Unwrap a Typer default to a concrete fallback, for direct callers.
+
+    `_resolve_optional_int` returns `None`, which is right for options whose
+    absence means "unset". These have real defaults, and a `SelfPlayConfig`
+    handed an `OptionInfo` fails validation rather than falling back.
+    """
+    return default if isinstance(value, OptionInfo) else value
+
+
 def _resolve_optional_int(value: int | OptionInfo | None) -> int | None:
     """Unwrap a Typer default for callers that invoke `train()` directly.
 
@@ -209,6 +274,16 @@ def train(
         help=(
             "Draw each side's shooting threat footprint in training recordings. "
             "A video has no keyboard, so this is the only way to get it there."
+        ),
+    ),
+    record_threat_field: bool = typer.Option(
+        False,
+        "--record-threat-field",
+        help=(
+            "Draw the opponent's NEXT-turn threat field -- after they move -- in "
+            "training recordings, as danger bands. Different from "
+            "--record-threat-range, which draws only what bears this instant. "
+            "Costs a per-layout visibility cache on the first recorded frame."
         ),
     ),
     record_engagement_range: bool = typer.Option(
@@ -312,6 +387,21 @@ def train(
             "from hardware (defaults to PPOConfig value)"
         ),
     ),
+    n_layers: int | None = typer.Option(
+        None,
+        help=(
+            "Transformer depth. ⚠ CHANGES THE NETWORK: a checkpoint trained at "
+            "another size will not load into a default run, and no score is "
+            "comparable across it. Defaults to TransformerConfig's 8."
+        ),
+    ),
+    embedding_size: int | None = typer.Option(
+        None,
+        help=(
+            "Transformer width. ⚠ Changes the network -- see --n-layers. "
+            "Defaults to TransformerConfig's 256."
+        ),
+    ),
     resume_ckpt_path: str | None = typer.Option(
         None,
         help="Resume full training state (model, optimizer, epoch/step) from a Lightning checkpoint.",
@@ -319,6 +409,40 @@ def train(
     warm_start_ckpt_path: str | None = typer.Option(
         None,
         help="Load model weights from checkpoint and start fresh optimizer/epoch state.",
+    ),
+    self_play: bool = typer.Option(
+        False,
+        help="Train against a pool of the run's own frozen snapshots, sampled by "
+        "PFSP. OFF by default and a no-op when off: no scheduler is built and no "
+        "stream is drawn, so a control run is bit-identical to one on a build "
+        "without the feature. Do NOT start one on a scenario whose "
+        "`just measure-seat-parity` gate fails -- the learner only ever trains "
+        "the player seat, so a snapshot on the other seat plays a game it never "
+        "practised.",
+    ),
+    snapshot_every_n_epochs: int = typer.Option(
+        25,
+        help="How often to freeze the learner into the pool. Written from a "
+        "Lightning hook, so SIGKILL writes nothing and a pool is routinely this "
+        "many epochs stale -- the same hazard last.ckpt has.",
+    ),
+    pool_capacity: int = typer.Option(
+        8,
+        help="How many snapshots to keep, the anchor included. A snapshot is a "
+        "full checkpoint on local disk and `checkpoints/` is the only copy of any "
+        "weights here, so this is a disk budget before it is a statistical one.",
+    ),
+    pool_anchor: str = typer.Option(
+        "squad_march_take",
+        help="Pool entry zero, never evicted -- the floor a pool of nothing but "
+        "recent selves would not have.",
+    ),
+    pfsp_mode: str = typer.Option(
+        "hard",
+        help="Which opponents to prefer: `hard` (the ones the learner loses to), "
+        "`even` (level matchups), or `uniform` -- the CONTROL, which is what to "
+        "run an arm against, since a pool changes training on its own and the "
+        "schedule is a separate claim.",
     ),
     run_name: str | None = typer.Option(
         None,
@@ -379,6 +503,7 @@ def train(
     )
 
     ppo_config = PPOConfig()
+    transformer_config = _resolve_transformer_config(n_layers, embedding_size)
     if no_inner_progress:
         ppo_config.show_inner_progress = False
     if n_steps is not None:
@@ -419,13 +544,31 @@ def train(
 
     # The config decides whether the model gets a shooting slice, and
     # therefore whether it decodes targets autoregressively.
-    ppo_net = PPO_Transformer.from_env(env, ppo_config)
-    ppo_model = PPOLightning(env=env, ppo_model=ppo_net, **ppo_config.model_dump())
+    ppo_net = PPO_Transformer.from_env(env, ppo_config, transformer_config)
+    self_play_config = SelfPlayConfig(
+        enabled=_resolve_default(self_play, False),
+        snapshot_every_n_epochs=_resolve_default(snapshot_every_n_epochs, 25),
+        pool_capacity=_resolve_default(pool_capacity, 8),
+        anchor=_resolve_default(pool_anchor, "squad_march_take"),
+        sampling=cast(Any, _resolve_default(pfsp_mode, "hard")),
+    )
+    ppo_model = PPOLightning(
+        env=env,
+        ppo_model=ppo_net,
+        self_play=self_play_config,
+        # Named from the run base rather than from `run.name`, because the
+        # module is built before wandb assigns one and a pool has to be
+        # addressable from the moment training starts.
+        snapshot_dir=Path("checkpoints") / run_name_base / "pool",
+        seed=resolved_seed or 0,
+        **ppo_config.model_dump(),
+    )
 
     config = {
         "wargame": env_config.model_dump(),
         "ppo": ppo_config.model_dump(),
         "training": ppo_training_config.model_dump(),
+        "self_play": self_play_config.model_dump(),
     }
 
     with init_wandb(
@@ -455,6 +598,7 @@ def train(
                     overlays=ThreatOptions(
                         show_threat=record_threat_range,
                         show_engagement=record_engagement_range,
+                        show_threat_field=record_threat_field,
                     ),
                 )
             )

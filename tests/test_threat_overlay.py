@@ -588,3 +588,90 @@ def test_a_pre_2_6_replay_frame_is_the_overlay_off_frame() -> None:
     np.testing.assert_array_equal(
         _replayed_frame(old, _ON), _replayed_frame(source, ThreatOptions())
     )
+
+
+# --- the NEXT-turn threat field --------------------------------------------
+#
+# A different question from the region above, on its own key. The region draws
+# what bears this instant; the field draws what bears after the opponent MOVES,
+# which is the horizon that matters when choosing where to end a turn. Both are
+# drawn because the ground between them is the finding.
+
+_FIELD_ON = ThreatOptions(show_threat_field=True, field_spacing=2.0)
+
+
+def _live_field_frame(env: WargameEnv, options: ThreatOptions) -> np.ndarray:
+    from wargame_rl.wargame.envs.renders.v2.factory import build_backend
+    from wargame_rl.wargame.envs.renders.v2.presenters.interactive import (
+        InteractiveRenderer,
+    )
+
+    backend = build_backend("pillow")
+    presenter = InteractiveRenderer(backend, threat_options=options)
+    presenter.setup(env)
+    return np.asarray(backend.to_rgb_array(presenter._compose(env)), dtype=int)
+
+
+class TestTheThreatFieldReachesTheFrame:
+    def test_the_field_changes_the_live_frame(self) -> None:
+        """Computing bands is not drawing them.
+
+        The sibling assertion to `test_the_overlay_actually_reaches_the_replayed
+        _frame`: geometry that never reaches the scene passes every unit test
+        while the picture comes out untouched.
+        """
+        env = _walled_env()
+        env.reset(seed=5)
+
+        off = _live_field_frame(env, ThreatOptions())
+        on = _live_field_frame(env, _FIELD_ON)
+
+        assert (np.abs(on - off).sum(axis=2) > 6).mean() > 0.02
+
+    def test_a_replayed_frame_is_the_field_off_frame(self) -> None:
+        """A recording carries no per-model Move, so the field is NOT drawn.
+
+        Degrading has to mean *identical*, not "did not crash". The reachable
+        set is built from Move, the snapshot does not record it, and a field
+        traced at a guessed Move is wrong in the FALSE-SAFE direction whenever
+        the guess is low -- the one direction this feature exists to remove.
+        """
+        env = _walled_env()
+        env.reset(seed=5)
+        source = _replay_source(env)
+
+        np.testing.assert_array_equal(
+            _replayed_frame(source, _FIELD_ON),
+            _replayed_frame(source, ThreatOptions()),
+        )
+
+    def test_the_board_with_every_overlay_off_is_untouched(self) -> None:
+        """The whole feature is off by default and costs the default frame nothing."""
+        env = _walled_env()
+        env.reset(seed=5)
+
+        np.testing.assert_array_equal(
+            _live_field_frame(env, ThreatOptions()),
+            _live_field_frame(env, ThreatOptions(show_threat_field=False)),
+        )
+
+
+class TestTheFieldOptions:
+    def test_a_non_positive_field_spacing_is_refused_at_construction(self) -> None:
+        """Validated when the renderer is built, not several thousand frames later."""
+        with pytest.raises(ValueError, match="field_spacing must be positive"):
+            ThreatOptions(field_spacing=0.0)
+
+    def test_fewer_than_one_band_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="field_bands must be >= 1"):
+            ThreatOptions(field_bands=0)
+
+    def test_the_field_switch_toggles_independently_of_the_region(self) -> None:
+        """`[R]` and `[T]` are different questions and must not share a switch."""
+        options = ThreatOptions()
+
+        with_field = options.toggled(threat_field=True)
+
+        assert with_field.show_threat_field
+        assert not with_field.show_threat
+        assert with_field.enabled

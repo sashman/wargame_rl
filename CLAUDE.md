@@ -34,6 +34,8 @@ wargame_rl/
 │       │   ├── wargame.py         # WargameEnv — facade, implements BattleView
 │       │   ├── domain/            # Battle aggregate, BattleView, clock, placement,
 │       │   │                      #   termination, LOS, shooting, terrain, turn execution
+│       │   ├── board/             # Board-wide reads (leaf): sampling grid, the
+│       │   │                      #   next-turn threat field, unit matchups
 │       │   ├── env_components/    # Adapters: actions, distance cache, observation builder
 │       │   ├── map_pool.py        # Draws a real table per episode from a pool of maps
 │       │   ├── baseline/          # Scripted baseline policies + registry + evaluate
@@ -62,7 +64,8 @@ wargame_rl/
 ├── tests/                         # Pytest suite with conftest.py fixtures
 ├── docs/                          # Design docs (movement, reward phases, missions-and-vp,
 │                                  #   roadmap, metrics, shooting, expected-damage,
-│                                  #   terrain, training-throughput, play-doctrine, elo)
+│                                  #   terrain, training-throughput, play-doctrine, elo,
+│                                  #   self-play)
 │   └── rules/                     # Rules specification + constants.yaml + gap map
 ├── reports/                       # Experiment findings, kept for retrospection
 ├── ratings/                       # Rating ledgers, one per scenario fingerprint
@@ -72,6 +75,7 @@ wargame_rl/
 │                                  #   measure_noise_floor, measure_objective_split,
 │                                  #   measure_income_share, measure_maps,
 │                                  #   behaviour_clone, measure_seat_parity,
+│                                  #   measure_matchups, measure_threat_field,
 │                                  #   measure_elo, elo_table,
 │                                  #   measure_throughput)
 ├── train.py                       # Training entry point (Typer CLI)
@@ -120,6 +124,8 @@ wargame_rl/
 | What holding a point earns against what it costs | `just measure-hold-hazard <policy\|ckpt> <config.yaml> [n_episodes] [decode_topk]` |
 | How often a policy is in unit coherency | `just measure-coherency <policy\|ckpt> <config.yaml> [n_episodes]` |
 | Which calculator pays, and how much is global | `just measure-income-share <policy\|ckpt> <config.yaml> [n_episodes]` |
+| Which of our units beats which of theirs, pre-game | `just measure-matchups <config.yaml>` |
+| Where it is dangerous to stand NEXT turn, and a policy's exposure | `just measure-threat-field <policy\|ckpt> <config.yaml> [n] [maps_dir] [decode_topk]` |
 | Clone a scripted policy into the network (warm-start checkpoint) | `just behaviour-clone <policy> <config.yaml> [n_episodes] [epochs] [out]` |
 | Two policies on identical layouts, paired per episode | `just measure-paired <policy\|ckpt> <policy\|ckpt> <config.yaml> [n_episodes] [seed_base] [key=value...]` |
 | Dice-vs-scenario noise floor | `just measure-noise-floor <config.yaml> [n_layouts] [n_combat_seeds] [policy] [key=value...]` |
@@ -173,6 +179,8 @@ wargame_rl/
 - **DDD layering** — `domain/` owns the rules (Battle aggregate, clock, placement, termination, LOS, shooting); `wargame.py` is a facade; reward/renders depend only on the `BattleView` protocol. See [docs/ddd-envs.md](docs/ddd-envs.md)
 - **Rules specification** — [docs/rules/](docs/rules/README.md) is the game's rules authority: a self-contained spec written for this project, with `constants.yaml` (every number, in inches) and [implementation-status.md](docs/rules/implementation-status.md) (per-rule: implemented / partial / divergent / absent). Before implementing a mechanic, read its chapter and its gap-map row. `tests/test_no_ip_references.py` keeps the repo free of references to the commercial product the rules derive from — the spec names no product, publisher, edition or faction, and neither should anything else
 - **Play doctrine** — [docs/play-doctrine.md](docs/play-doctrine.md) is how this game is *won*, as `docs/rules/` is how it is *played*: 43 numbered entries, each stating a claim, whether the environment can express it, which extension point it lands in, and what has already been measured about it. It is a store of **hypotheses, never of evidence** — price an entry as a scripted policy (`just measure-paired`, no GPU) before it becomes a reward term or a training run, and where an entry disagrees with the record below, **the record wins**
+- **Threat field** — `envs/board/` is a **leaf** package of board-wide reads, and its first tool is the next-turn threat field (`just measure-threat-field`, the `[T]` overlay). ⚠ **Threat is a NEXT-TURN quantity: the opponent moves before it shoots**, so the `[R]` overlay — range ∩ sight from where models *stand* — reads **false-safe** for anyone choosing where to end a turn. Measured on the golden config's held-out nine, `[R]` calls **18.7%** of the board clear where the next-turn field does not, and mean expected casualties roughly doubles. Cover is not applied and *cannot* be, which biases the field **against objectives** — read it beside `just measure-hold-hazard`
+- **Unit matchups** — the other `envs/board/` tool, and the one that has **no positions**: `just measure-matchups` reads the two armies' stat lines before a model has moved. It is a *reduction* of the per-model expected-damage matrix that already ships as an observation input, so the table a human reads and the number the network sees cannot disagree — attacker axis **sums**, defender axis does **not**. ⚠ **Range never enters the damage scalar**; it appears as `reach`, `free` (rounds of unanswered fire while the shorter gun closes) and an exchange ratio quoted at two distances. ⚠ **On the config that trains it is 1×1**, since both armies are one profile — it says something only where the profiles differ
 
 ### Game State I/O (`envs/state/`)
 
@@ -180,9 +188,9 @@ Snapshot/event pipeline for recording and inspecting matches — `GameStateSnaps
 
 ### Ratings (`rating/`)
 
-Puts scripted baselines and learned checkpoints on **one scale**, so "did this get better" has an answer that does not depend on which opponent it happened to face. Bradley-Terry maximum likelihood with the deployment-zone and first-turn advantages as explicit fitted terms, a bootstrap over layouts, and an append-only ledger in `ratings/` keyed by a scenario fingerprint that **refuses** to mix scenarios. `score.py` and `elo.py` import numpy and nothing from this repo; `arena.py` is the only module that touches a live env, and it wraps `evaluate_selector` rather than reimplementing it. Recipes: `measure-seat-parity` · `measure-elo` · `elo-table`. See [docs/elo.md](docs/elo.md)
+Puts scripted baselines and learned checkpoints on **one scale**, so "did this get better" has an answer that does not depend on which opponent it happened to face. Bradley-Terry maximum likelihood with the deployment-zone, first-turn and **player-seat** advantages as explicit fitted terms, a bootstrap over layouts, and an append-only ledger in `ratings/` keyed by a scenario fingerprint that **refuses** to mix scenarios. `score.py` and `elo.py` import numpy and nothing from this repo; `arena.py` is the only module that touches a live env, and it wraps `evaluate_selector` rather than reimplementing it. Recipes: `measure-seat-parity` · `measure-elo` · `elo-table`. See [docs/elo.md](docs/elo.md) · [docs/self-play.md](docs/self-play.md)
 
-⚠ **A rating assumes the two seats are the same game, and nothing enforces that.** On `configs/golden/25v25_shooting_opponent.yaml` they are not — one policy played from both seats loses from the *player* seat by **−24.6 ± 9.4 vp**, and every number in this file is quoted from that seat. `just measure-seat-parity` is the gate and it is **advisory**: entrant A always takes the player seat and `pairings` lists each pair once in input order, so on a config that fails the gate, ratings are confounded by command-line position. No rating is published for this reason. See [the report](reports/2026-08-19-the-two-seats-are-not-the-same-game.md)
+⚠ **The two seats are not the same game, and `h_seat` only partly answers it.** On `configs/golden/25v25_shooting_opponent.yaml` one policy played from both seats loses from the *player* seat by **−24.6 ± 9.4 vp**, and every number in this file is quoted from that seat. `h_seat` absorbs the confound so ratings no longer depend on command-line position — it is identified through a **cycle** in the pairing graph (so **three entrants are required and two are refused**) or directly by a **self-pairing**, which is what `just measure-seat-parity` plays and which roughly halves its standard error; the gate now appends its legs to the ledger for exactly that reason. ⚠ **But the gate is still advisory** — nothing refuses to rate a scenario that fails it — and `h_seat` assumes the advantage is *constant in Elo across pairs*, which `h_turn` (measured to change sign with shooting) suggests may be false. Cross-check the fitted term against the gate's own aggregate. No rating is published. See [the report](reports/2026-08-19-the-two-seats-are-not-the-same-game.md)
 
 ### RL Algorithm
 
@@ -1322,6 +1330,14 @@ project's effort has gone, and the shape of the problem is now settled.
   `--max-grad-norm`, `--render-mode`, `--no-wandb`, `--run-suffix`,
   `--wandb-group`, `--warm-start-ckpt-path`, `--resume-ckpt-path`,
   `--record-threat-range`, `--record-engagement-range`.
+- **Self-play (opt-in, off by default):** `--self-play`,
+  `--snapshot-every-n-epochs`, `--pool-capacity`, `--pool-anchor`, `--pfsp-mode`
+  (`hard` | `even` | `uniform` — **`uniform` is the control**). Off builds no
+  scheduler at all, so no stream is drawn and a control run is bit-identical.
+  ⚠ **Do not start one on a scenario whose `just measure-seat-parity` gate
+  fails** — the learner only ever trains the player seat, so a snapshot on the
+  other seat plays a game it never practised. See
+  [docs/self-play.md](docs/self-play.md).
 - `just profile <config.yaml> [max_epochs]` writes `profile.html` (`--no-wandb`,
   capped at 5 epochs by default); `just simulate-latest` runs the newest
   checkpoint.
@@ -1347,6 +1363,7 @@ project's effort has gone, and the shape of the problem is now settled.
   [the report](reports/2026-08-09-tf32-costs-eight-vp.md).
 - **`--precision bf16-mixed` is another 1.8x on the update and is opt-in because
   only its SPEED has been measured** — A/B it over two seeds before trusting it.
+- **The trunk size is a parameter now, and the default is unchanged.** `train()` takes `--n-layers` / `--embedding-size`, threaded through `PPO_Transformer.from_env` to `TransformerNetwork.from_spec`. Omitting them is bit-identical to before they existed. ⚠ **They change the network**: a checkpoint trained at another size will not load into a default run and its scores are comparable to nothing here, which is why the flags warn. They exist so the test suite can stop building ~12.7M parameters on a 2-model 20x20 board — the five slowest tests were all trunk-bound. `tests/test_network_size.py` pins the shipped 8/8/256 so it cannot drift.
 - **`torch.compile` is deliberately not wired**: it prefixes every `state_dict`
   key with `_orig_mod.`, and `_apply_warm_start_weights` uses `strict=False`, so
   such a checkpoint would load as *nothing at all* and score a random network as a

@@ -26,6 +26,11 @@ class Entrant:
     kind: Literal["baseline", "checkpoint"]
     source: str | None = None
     decode_topk: int = 1
+    # True when the selector draws from the policy rather than taking its
+    # argmax. Self-play rollouts do; every scoring path in this repo does not.
+    # It is recorded because a sampled player and a greedy one are two different
+    # players, and a ledger holding both under one name would rank the decode.
+    sampled: bool = False
     # Which checkpoint this descended from. Two seeds off one warm start are not
     # two independent samples -- checkpoints differing by +0.067 in unit
     # coherency produced descendants differing by +0.19 after 300 epochs -- so a
