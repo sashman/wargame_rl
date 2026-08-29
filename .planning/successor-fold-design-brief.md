@@ -165,3 +165,22 @@ bar; F3 six-seed frozen swap (the mechanical-floor comparator column); F4 hunt-p
 objective-plan per-model income on v11 seeds; F5 P(declared target = nearest). F6 the
 scripted explicit-hunt pricer in the landing window. F7 epoch-0 state_dict assert at
 launch. What died and the standing-belief challenges: see the chair's sections 6–7.
+
+## Free-work results (2026-08-30 ~02:00, /tmp/panel_fold/out/)
+
+- **F3 frozen-swap floor: +1.81 ± 0.29 stood/ep, 6/6 positive** (K=1, n=20/seed).
+  The floor is real and large; it enters the verdict table as PRIMARY A's named
+  comparator column. vp deltas at n=20 are noise and are not quoted.
+- **F2 on-objective charge share: 70.2%** (33/47 standing charges of the bar
+  engage a unit holding an objective). The pre-committed trigger's first
+  conjunct (≥70%) is SATISFIED at the threshold — the redesign (objective plan
+  with hunt rider) fires if hunt retention fails at verdict.
+- **F4 income asymmetry SURVIVES its kill-check**: hunt-plan units earn
+  0.0071–0.0092/model-step in the declared channels vs objective plans'
+  0.0133–0.0281 — 2–3× less, 5/5 seeds so far. ⚠ Caveat: v11 has no
+  exclusivity, so both-plan units classify as hunts in the probe — directional
+  evidence, not confirmatory. Stays a LABEL risk, not a pot (per the nulls).
+- **F5 march-annuity story KILLED**: P(new hunt = nearest enemy) 0.14–0.27
+  across seeds, vs the objection's predicted >0.8. v11 target selection is
+  already diverse; the gamma/march-dominance explanation for the declaration
+  distribution is refuted at its own criterion.
