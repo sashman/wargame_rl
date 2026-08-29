@@ -2,14 +2,18 @@
 
 ## Goal-level status (as of 2026-08-30, `ce1e441`)
 
-- **Level 1 (the agent CAN play correctly): MET, and now provable.** A trained
-  melee agent steps every phase — declares plans (13–17/ep), declares and
-  lands charges the REFEREE certifies (stood 0.73–3.27/ep at K=3, apr grids),
-  fights, piles in, consolidates — and illegal play is impossible by
-  construction: charge, pile-in, consolidate and (since `507d510`) the fall
-  back all revert whole-unit on any after-move violation, verified through
-  `env.step`. What L1 lacked was rules fidelity on the ENGINE side, and the
-  fall-back audit closed it (opponent tears 9.0% → 0.5%, control level).
+- **Level 1 (the agent CAN play correctly): MET, certified on a trained
+  agent 2026-08-30.** Direct phase-participation census (v12 s5 last.ckpt,
+  declare_refereed, n=10, K=3, casualties attributed to the phase they land
+  in): the agent kills **13.0/ep shooting, 1.0/ep in its own FIGHT phase, and
+  2.4/ep striking back in the opponent's fight phase** — it fights in melee
+  on both sides of the engagement — while declaring plans (13–17/ep, apr
+  census) and standing referee-certified charges (1.69/ep at n=45). Illegal
+  play is impossible by construction: charge, pile-in, consolidate and (since
+  `507d510`) the fall back all revert whole-unit on any after-move violation,
+  each verified through `env.step`; the fall-back audit closed the last
+  engine-side fidelity gap (opponent tears 9.0% → 0.5%, control level).
+  Probe: session scratchpad `probe_l1_phases.py`.
 - **Level 2 (reasonable vs the ladder): OPEN.** v12-lite REJECTED on every
   gate; every pre-referee number void; v10r retraining under corrected rules
   re-establishes the learned reference tonight.
