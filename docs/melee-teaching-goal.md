@@ -1814,3 +1814,55 @@ collect the garrison's value because the rest of the policy does not replan arou
 the same lesson as §33's dark declarations. If the constant-pot term works, it will be
 because training moves the whole equilibrium, not one squad; the census-primary readouts
 (home held-rate, per-objective attribution) are aimed at exactly that.
+
+## 37. v12-lite REJECTED on every gate — the hold pot bought no garrison and cost the ladder
+
+Landed 2026-08-29 ~23:07, six seeds × 600 epochs, judged at `last.ckpt` (epoch verified
+599 ×6 by the detached watcher and re-verified from the checkpoints). Every readout below
+is the pre-registration in the config header, executed as bound.
+
+**PRIMARY (mode membership, n=45, K=3, declare_refereed, threshold 0.40): FAIL, 1/6.**
+`home_held_frac` = 0.119 / 0.125 / 0.175 / 0.108 / **0.548** / 0.112 (s1–s6) against
+PASS ≥5/6, FAIL ≤2/6. Both mid-flight peeks (n=15 at ~ep 300 and ~ep 450) forecast this:
+0/6 garrison both times, with the ~ep-300 cohort's slight elevation (0.18–0.20) *fading*
+by ep 450 — the term's pull weakened as training continued. ⚠ s5 flipped late (0.129 at
+~ep 450 → 0.548 at 599) and sits **between** the modal clusters the census defined
+(≤0.144 / ≥0.622, "nothing between"), sd 0.368 — per-episode bimodality, not a settled
+garrison seed. Neither footnote moves the verdict.
+
+**vp GUARDRAIL (init-paired vs v10, 18-cell ladder K=3): FAIL, pooled −21.6 < −10.**
+Per-seed pooled (v12 − v10): −12.5 / −0.6 / **−51.8** / −19.1 / −30.4 / −15.4 — five of
+six negative, and the worst hit lands on s3, **v10's strongest seed** (+37.1/+43.7/+52.4
+→ −17.6/−6.3/+1.7). A mode-shift bought below −10 would have been rejected; this bought
+*no* mode-shift and still cost 22 vp.
+
+**CHARGE FLOOR (apr K=3 six-seed mean ≥ −32): FAIL, −37.7.** v10's own mean on the same
+cell is −24.4, so the hold term deepened the charge cell by ~13 vp. Consistent with the
+mechanism: a per-step pot for *standing* on the declared point is a static-play subsidy —
+it competes with leaving the point to charge, the exact behaviour this goal line exists
+to teach.
+
+**FARM SCREEN: PASS (moot).** Top-unit declared income 0.22–0.27 of even the march-only
+5.0 cap, nowhere near the 60% line. ⚠ Instrument debt stands: the census still prints
+march income only — the combined march+hold column against the re-derived 11.0 cap was
+owed before landing and remains owed. At these fractions no plausible hold income closes
+the gap, so the screen is read PASS with the debt named. **LAUNDERING KILL: not
+consulted** — amended to fire only on the success mode, and there is none.
+
+**VERDICT: REJECT, and the rejection is informative in a way §34's panels predicted
+against.** The term did exactly what it said (constant pot, split among declaring
+holders, conserved) and the policy declined it everywhere: declarations stayed live
+(13–17/ep, redecl 8–12), P(declared==nearest) 0.23–0.34, but no seed converted the
+income into staying home. Read with §36(b)'s null — a forced garrison on frozen weights
+is a coin flip — the account is now consistent from three directions: the garrison's
+value (+10.4 to the best script) exists only inside a policy that replans around it, and
+neither a play-time override (§36b) nor a marginal per-step payment (this section) moves
+the equilibrium. The 0.25 pot is ~0.9 income/model/ep realised against global streams
+carrying 36–45% of gross (§34a) — underdosed by an order of magnitude, but the guardrail
+says the *direction* of more dose is priced at −22 vp per unit of nothing, so a re-dose
+arm is NOT the next move without a mechanism change.
+
+⚠ **What this voids: nothing.** v12-lite changed no shared config; every v6/v10/v11
+number stands. The v12 checkpoints score comparably to nothing once the queued fall-back
+referee lands (next code change; user-approved 2026-08-29) — that referee voids every
+melee-config score including these, which is why it was sequenced after this verdict.
