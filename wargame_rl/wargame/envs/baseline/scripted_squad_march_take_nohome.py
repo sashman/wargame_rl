@@ -45,7 +45,9 @@ class ScriptedSquadMarchTakeNoHomePolicy(ScriptedSquadMarchTakePolicy):
 
         def centre(objective: WargameObjective) -> np.ndarray:
             if objective.area is not None:
-                return np.mean(np.asarray(objective.area.vertices, dtype=float), axis=0)
+                return np.asarray(
+                    np.mean(np.asarray(objective.area.vertices, dtype=float), axis=0)
+                )
             return np.asarray(objective.location, dtype=float)
 
         away = [
