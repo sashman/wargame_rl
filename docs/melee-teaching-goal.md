@@ -1892,3 +1892,39 @@ and lock are worth what they say. Coherency 0.92–0.95 for the charger against
   recipe retrained from scratch under the referee, launched 2026-08-29 23:32
   (6 seeds × 600 epochs, group `melee-declare-v10r`), which re-establishes the
   learned reference any folded-commitment successor (§35's lesson) pairs against.
+
+## 37a. Correction — the farm screen fires on s5, and "underdosed" is retracted
+
+The combined march+hold census column §37 named as an unpaid instrument debt was
+built the same day (`1d30ba0`) and run on all six seeds (n=15, K=3, refereed).
+Two of §37's readings do not survive it.
+
+| seed | combined frac of 11.0 cap | hold/model/ep | march/model/ep | home_held_frac |
+|---|---|---|---|---|
+| s1 | 0.462 | 2.72 | 0.87 | 0.119 |
+| s2 | 0.565 | 2.61 | 0.86 | 0.125 |
+| s3 | 0.452 | 2.28 | 0.95 | 0.175 |
+| s4 | 0.486 | 2.63 | 0.90 | 0.108 |
+| s5 | **0.686** | **3.64** | 0.69 | **0.548** |
+| s6 | 0.543 | 3.10 | 0.89 | 0.112 |
+
+- ⚠ **"FARM SCREEN: PASS (moot)" is CORRECTED: it fires on s5.** §37 read the
+  march-only column (0.22–0.27 of cap) and reasoned "no plausible hold income
+  closes the gap" — wrong by measurement: s5's top unit collects **0.686** of
+  the combined cap, over the 60% line. The one seed the primary census scored
+  garrison-mode is the one whose top unit harvests the pot, so its 0.548
+  home_held_frac (already flagged as sitting between the modes) reads as *paid
+  standing*, not learned garrisoning. The REJECT stands and is strengthened —
+  arguably 0/6 garrison seeds, and the verdict needs no arguably.
+- ⚠ **"Underdosed by an order of magnitude" is RETRACTED.** The hold term paid
+  **2.3–3.6 /model/ep — three to five times the march term — on every seed.**
+  It was the dominant declared-income channel, and the policies visibly kept
+  their commitments (that is what hold income *is*). What never happened is
+  **choosing home as the commitment**: hold income accrues on any declared
+  objective, and the declarations went elsewhere. The failure is in the
+  DECLARATION DISTRIBUTION, not the execution payment — so a successor that
+  re-prices execution (any pot, any dose) is aimed at the wrong stage. The
+  §35-shaped successor should target the declaration choice itself.
+- **Rule earned, twice now in one arm: an instrument debt named in a verdict is
+  a verdict at risk.** §37 shipped with the debt named and both of the readings
+  that leaned on the missing column were wrong. Build the column first.
