@@ -1928,3 +1928,27 @@ Two of §37's readings do not survive it.
 - **Rule earned, twice now in one arm: an instrument debt named in a verdict is
   a verdict at risk.** §37 shipped with the debt named and both of the readings
   that leaned on the missing column were wrong. Build the column first.
+
+## 38a. The garrison value did not survive the referee — §36's +10.4 is void and does not replicate
+
+Re-priced 2026-08-30 at `e843d35` on the corrected rules, §36's own protocol
+(`squad_march_take` minus `squad_march_take_nohome`, paired, n=90 × 3 seed
+bases, `25v25_maps_melee_declare_refereed` — opponent `squad_march_take_charge`
+by name): **+1.4 / −7.3 / −16.9, pooled −7.6 ± 6.7** (t +0.12 / −0.64 / −1.49,
+nohome ahead in 40–43 of ~90 pairs per base). Pre-referee the same contrast
+read −1.2 / +14.0 / +18.5, pooled **+10.4**.
+
+- **Garrisoning home is now at best FREE for the best script, plausibly a small
+  cost.** Not a demonstrated negative (the bases are heterogeneous and no base
+  is individually significant) — but the +5 pass bound §36 cleared is now
+  cleanly failed, and the sign of the point estimate flipped.
+- **The mechanism is consistent with §38**: the fall-back referee makes melee
+  locks binding and charging worth +28–33, so the freed squad's forward value
+  rose while home's safety rose with it (enemies get locked before they arrive).
+- ⚠ **This dissolves the home-objective motivation for the successor.** The
+  user-observed "agent ignores home" is, on the corrected game, no longer
+  measurably leaving VP on the table for a script — the v12 REJECT is
+  overdetermined, and the successor brief
+  (`.planning/successor-fold-design-brief.md`) should pursue the hunt fold on
+  its own merits, not as a home-guarding vehicle. If a future mission makes
+  home pay differently, re-price then — the pricer is one committed command.
