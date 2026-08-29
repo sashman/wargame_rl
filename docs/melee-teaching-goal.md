@@ -1866,3 +1866,29 @@ arm is NOT the next move without a mechanism change.
 number stands. The v12 checkpoints score comparably to nothing once the queued fall-back
 referee lands (next code change; user-approved 2026-08-29) — that referee voids every
 melee-config score including these, which is why it was sequenced after this verdict.
+
+## 38. The post-referee bar — melee finally has a price, and it is large
+
+Measured 2026-08-30 at `bb798eb`, n=45, seeds 700000+, scripts (no decode). The
+fall-back referee (`507d510`, §37's queued fix) voided every earlier melee figure;
+these are the first rows on the corrected game and the comparators for every
+successor arm.
+
+| player | refereed | vs_take | vs_deny | vs_shoot | decl→stood /ep |
+|---|---|---|---|---|---|
+| `squad_march_take_charge` | **−5.3** | +20.2 | +11.8 | +56.6 | 8.5–9.8 → 5.8–6.3 |
+| `squad_march_take` | −33.6 | +6.1 | −21.0 | +23.8 | 0 |
+
+**Charging beats walking by +28.3 / +14.1 / +32.8 / +32.8 on the four cells** — the
+largest melee value ever measured here, and the first measured on rules where a
+pinned unit cannot tear itself free: engagement now binds, so the charge's shield
+and lock are worth what they say. Coherency 0.92–0.95 for the charger against
+0.89–0.93 walking — the referee costs it nothing it wasn't already paying.
+
+- ⚠ These rows are NOT comparable to any pre-`507d510` figure, including every
+  number in §30–§37 — that is the point of re-measuring them.
+- ⚠ The old charge floor (apr K=3 ≥ −32) was derived on void rules; successor
+  pre-registrations must re-derive bounds from the **v10r** lineage — the v10
+  recipe retrained from scratch under the referee, launched 2026-08-29 23:32
+  (6 seeds × 600 epochs, group `melee-declare-v10r`), which re-establishes the
+  learned reference any folded-commitment successor (§35's lesson) pairs against.
