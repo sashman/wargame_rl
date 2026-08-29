@@ -1929,7 +1929,9 @@ Two of §37's readings do not survive it.
   a verdict at risk.** §37 shipped with the debt named and both of the readings
   that leaned on the missing column were wrong. Build the column first.
 
-## 38a. The garrison value did not survive the referee — §36's +10.4 is void and does not replicate
+## 38a. ⚠ STRUCK BY §38b — a sign-transcription artifact. The garrison value REPLICATES. Kept visible per house rule; cite §38b, never this section.
+
+## 38a-original. The garrison value did not survive the referee — §36's +10.4 is void and does not replicate
 
 Re-priced 2026-08-30 at `e843d35` on the corrected rules, §36's own protocol
 (`squad_march_take` minus `squad_march_take_nohome`, paired, n=90 × 3 seed
@@ -1952,3 +1954,32 @@ read −1.2 / +14.0 / +18.5, pooled **+10.4**.
   (`.planning/successor-fold-design-brief.md`) should pursue the hunt fold on
   its own merits, not as a home-guarding vehicle. If a future mission makes
   home pay differently, re-price then — the pricer is one committed command.
+
+## 38b. Correction — §38a was a SIGN FLIP; the garrison value replicates post-referee
+
+Found by panel A's red team (2026-08-30), verified independently by the panel chair at
+source and by hand: `measure_paired_policies.py:97` prints `delta = B − A`, i.e.
+**nohome − take**. §36 correctly negated the printed diffs; §38a quoted them verbatim as
+the garrison value. The marginal means settle it beyond convention (base 810000: take
+−36.7 vs nohome −44.1 — garrisoning HELPED by +7.4).
+
+**Corrected: post-referee garrisoning is worth −1.4 / +7.3 / +16.9, pooled +7.6 ± 6.7
+(t ≈ +1.1)** — the SAME sign as §36's +10.4, attenuated ~27%, within noise, heterogeneity
+preserved (one base ~zero). The internal tell §38a missed: its own "nohome ahead in only
+40–43 of ~90 pairs" — a minority — sat beside a negative pooled quote.
+
+- **What un-dies**: the garrison value is consistent across the rules change. The licensed
+  claim is "consistent with §36, not refuted by the referee" — NEVER "garrison pays,
+  proven" (it is not independently significant).
+- **What stays dead regardless**: the v12-lite REJECT (its gates never touched §38a), and
+  the fold's rationale (§35 slot economics, not home-guarding).
+- **What it revives**: the composite hold-plus-pin play — home pays ~+7.6 to the best
+  script AND the fold's plan exclusivity structurally forbids holding an objective while
+  hunting its attacker. The panel's F2 census (share of standing charges that are
+  on-objective) is promoted to pre-launch for exactly this.
+- ⚠ **STANDING RULE (panel-proposed, adopted)**: any quote of a paired pricer names which
+  policy is B and reproduces one raw output line beside the quoted value; any doc-level
+  negation is marked as such.
+- ⚠ **CORRELATED-PREMISE LESSON**: 4 of 4 panel seats inherited §38a's error from the
+  brief's measured-facts list; only the red team opened the raw files. Adopted: every
+  panel assigns at least one seat to re-derive the brief's facts from raw files.
