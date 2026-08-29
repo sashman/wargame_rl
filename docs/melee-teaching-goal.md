@@ -1590,3 +1590,46 @@ screens) — those are paired on identical episodes and untouched. What changes 
 the Level-3 narration: **no row leads the bar**; deny is a statistical tie (−2.7 ± 4.4),
 take −5.8 ± 4.4, and the standing rule gains a clause — **a same-row gap smaller than
 ~10 vp cannot be signed at n=45; quote n=90+ or do not sign it.**
+
+## 33. The dark pair reports — the reward term is the engine, and it is what absorbs the allocation
+
+Measured 2026-08-29 on the §31 grids, n=45, no-decode K=3, init-paired per seed
+(114-action head identical; the only difference is `declared_objective_progress`).
+Six seeds × 600 of `25v25_maps_melee_declare_dark.yaml`, all epoch=599.
+
+**Pre-registered fork: dark < arm ⇒ the term is CAUSAL. It fired on every cell.**
+
+| row | arm | dark | paired Δ | t | up |
+|---|---|---|---|---|---|
+| take | +14.8 | −14.8 | **+29.6** | +3.74 | 5/6 |
+| deny | +19.6 | −15.3 | **+34.9** | +6.73 | 6/6 |
+| shoot | +35.7 | +8.8 | **+26.8** | +3.06 | 6/6 |
+| charge | −24.4 | −52.8 | **+28.4** | — | 6/6 |
+| **pooled** | | | **+30.4 ± 6.7 SE** | **+4.56** | **6/6** |
+
+Three further facts sharpen it:
+
+- ⚠ **The mechanics WITHOUT the term are baggage, not a benefit.** Dark loses to
+  v6@600 on all three ladder rows (−14.8 v −8.1, −15.3 v −2.5, +8.8 v +16.0) — carrying
+  a declaration slice and a one-hot that nothing pays for made the policy *worse* than
+  not having them. The §32 S2 reading ("the one-hot feeds some seeds") stands, but the
+  channel is only worth feeding when the term gives the plan meaning.
+- **The dose-response on decode dependence is exact.** 18-cell `contest_ungated` gain:
+  v6@600 **+12.0** → v10 **−0.1** → dark **+12.8** (16/18 positive). Remove the term and
+  the hand-written allocator's full value returns to the digit. **The term is not just
+  causal for vp — it is the thing that absorbs the allocation.**
+- **Dark still declares (decl_frac 0.93–1.00) but the plans are noise**: movement cosine
+  0.10–0.23 against the arm's 0.27–0.46. The slice gets used because it exists;
+  commitment without payment produces plans nothing follows.
+
+**Verdict of record: the declaration DESIGN is the declaration ACTION + the payment
+term, inseparable — the term survives into every successor, and the §31 S2 successor
+note ("drop the one-hot") is NOT licensed: that clause keyed on decorative+A-pass, which
+did not occur.** What §30 proposed on the panel's grounds is now measured on its own:
+the agent owns the plan because it is paid to execute it, and what it is paid to execute
+it internalises.
+
+**Level-3 state after §32a:** deny tied with the bar, take −5.8, charge −10.4, shoot
+−17.7 (n=90 for the first two). The successor question is no longer *which ingredient* —
+it is where to aim the working design next: the shoot row (the largest gap, an offence
+question) or the charge row (the goal's constitutive matchup).
