@@ -1712,3 +1712,25 @@ instrument in the census family could name an objective — identity-keyed colum
 class fix; and a pre-registered bound imported from another estimator's SE is the same
 defect three rounds running — every bound derives from its own estimator's first-block
 spread.
+
+### §34a — the "aimless meandering" audit: no regression; the movement economy is just flat
+
+2026-08-29, from a user observation on the v11 mid-training recordings. Audited: goldens
+(bit-identical, verified sensitive — every pre-existing reward/observation/action path is
+mechanically unregressed), the hunt config delta (exactly the target term, no weight drift),
+the new term's casualty edge cases (no fine, no windfall — desk-verified), and the live
+income shares (n=9, v11@ppo-284 vs v10-final control).
+
+**The finding is a quantification, not a bug.** On both configs the movement economy is
+nearly flat: total declared-march income is ~0.9–2.4/model/ep against `objective_hold`'s
+15–23 and a 36–45% global floor paid for standing still — and `closest_objective_v2` is a
+**net tax masquerading as a travel term** (progress +0.23–0.34/ep against its own overstack
+penalty −3.6 to −4.9; the record's "largely inert, nets negative" verdict, now measured on
+the melee lineage). On v11 specifically, enemy-facing marginal income (kills 2.28 + target
+march 1.27) outpays objective-facing march (1.14 + 0.23) about **2.6×** — "charging the
+centre head-on, sometimes an objective" is the paid optimum of the mid-training weights,
+not a defect. The watched recordings compound it: epoch ~310, K=1, unrefereed — the three
+conditions play always looks worst under. v11's pre-registered ladder guardrail exists for
+exactly this trade and will price it at landing. ⚠ Do NOT remove the overstack penalty on
+this reading — its removal is REJECTED on file (−12.2 ± 5.5); what this section licenses is
+only the honest rename of what the term now is.
