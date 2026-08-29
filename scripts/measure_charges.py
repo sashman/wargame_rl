@@ -70,6 +70,8 @@ from __future__ import annotations
 import sys
 from typing import Any
 
+import numpy as np
+
 from scripts.scenario_overrides import describe, load_env_config, parse_overrides
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.model.common.factory import create_environment
@@ -88,6 +90,11 @@ def measure(
     """Per-episode charge counts for one policy, judged by the referee's verdict."""
     env = create_environment(load_env_config(config_path, **overrides))
     declared = attempted = stood = 0
+    # §34's charge census rider: per declared unit, the PRE-move edge gap to
+    # its nearest alive enemy, the 2D6 it rolled, and the referee's verdict.
+    # This is the calibration dataset the branch-true ChargeField is specified
+    # against — its P_2D6 must beat the empirical P(stood | gap) printed here.
+    charge_rows: list[tuple[float, float, bool]] = []
 
     # The referee's verdict, captured before the fight boundary clears it.
     # `_apply_player_action` runs the charge referee; `run_after_player_action`
@@ -118,11 +125,32 @@ def measure(
                 phase = env.game_clock_state.phase
                 action = selector.select(observation, env)
                 units: dict[int, list[int]] = {}
+                unit_gaps: dict[int, tuple[float, float]] = {}
                 if phase is BattlePhase.charge:
                     for index, model in enumerate(env.wargame_models):
                         if model.is_alive and getattr(model, "declared_charge", False):
                             units.setdefault(int(model.group_id), []).append(index)
                     declared += len(units)
+                    enemies = [m for m in env.opponent_models if m.is_alive]
+                    for group, members in units.items():
+                        gaps = [
+                            float(
+                                np.linalg.norm(
+                                    np.asarray(enemy.location, dtype=float)
+                                    - np.asarray(
+                                        env.wargame_models[i].location, dtype=float
+                                    )
+                                )
+                                - enemy.base_radius
+                                - env.wargame_models[i].base_radius
+                            )
+                            for i in members
+                            for enemy in enemies
+                        ]
+                        roll = float(
+                            getattr(env.wargame_models[members[0]], "charge_roll", 0.0)
+                        )
+                        unit_gaps[group] = (min(gaps) if gaps else float("inf"), roll)
                 moving = {
                     group
                     for group, members in units.items()
@@ -147,6 +175,9 @@ def measure(
                 # ratio whose bound is known.
                 if phase is BattlePhase.charge:
                     stood += len(stood_units)
+                    for group in moving:
+                        gap, roll = unit_gaps.get(group, (float("inf"), 0.0))
+                        charge_rows.append((gap, roll, group in stood_units))
                 done = terminated or truncated
             # ⚠ The POLICY'S OWN figure, not the realised one. This config
             # referees with `enforce_move: revert_unit`, under which the
@@ -161,6 +192,7 @@ def measure(
             vp += float(env.player_vp - env.opponent_vp)
     finally:
         env.close()
+    _print_charge_census(charge_rows)
     return {
         "declared": declared / n_episodes,
         "attempted": attempted / n_episodes,
@@ -169,6 +201,29 @@ def measure(
         "vp": vp / n_episodes,
         "coherent": coherent_steps / coherent_total if coherent_total else float("nan"),
     }
+
+
+def _print_charge_census(rows: list[tuple[float, float, bool]]) -> None:
+    """The gap-binned calibration table: n, P(stood), mean roll per gap bin.
+
+    Gaps are in board units, which is inches on every shipped melee config
+    (`inches_per_unit` 1.0). Nothing prints when nothing charged.
+    """
+    if not rows:
+        return
+    edges = [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0, float("inf")]
+    print("  charge census (attempted, by pre-move edge gap):")
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        binned = [r for r in rows if lo <= r[0] < hi]
+        if not binned:
+            continue
+        stood_rate = sum(1 for r in binned if r[2]) / len(binned)
+        mean_roll = float(np.mean([r[1] for r in binned]))
+        label = f'{lo:g}-{hi:g}"' if np.isfinite(hi) else f'{lo:g}"+'
+        print(
+            f"    gap {label:>7s}  n={len(binned):4d}  "
+            f"P(stood)={stood_rate:.3f}  mean_roll={mean_roll:.2f}"
+        )
 
 
 def main() -> None:
