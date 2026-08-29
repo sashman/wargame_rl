@@ -1643,3 +1643,72 @@ header (stood/ep ≥ 2.4 to pass on mechanism, ladder must not fall, charge floo
 combined-income farm screen at a 10.0 cap with the census extension named as required
 instrument work). Bridge verified digit-identical 4/4 cells before launch. 6 seeds ×
 600, `melee-hunt-v11`, n_actions 119.
+
+## 34. The home-objective round — two panels demolish the plan, and what survived is bound here
+
+2026-08-29, from a user observation (recordings: the agent ignores the home objective) while
+v11 trains. The proposed v12 (mission-priced declared-hold + value/threat observation
+columns) went to two uncoordinated adversarial panels BEFORE any code existed. Almost all of
+it died; this section binds the survivors' pre-registration before v11 lands and before any
+adjudicating number exists.
+
+**What died (panel A, 6 seats + red team; every load-bearing claim chair-verified at source):**
+mission-priced pots in any form (`vp_calculator.py:111` is `min(cap, count×5)` — a total over
+a count; per-objective marginal worth does not exist, and a faithful pot under a count-cap is
+an income-destroying lever on success); the VALUE column (zero variance under the only
+registered mission — an input must vary across the choice AND a lever must key on it, the new
+dual of the observability rule); the THREAT column (mis-signed at objective cells — cover
+unmodelled and every marker sits in a ruin — and false-safe against charges on melee
+configs); the "pairing via zero-init embedding rows" claim (**triple-refuted**:
+`apply(_init_weights)` re-draws every Gaussian on any width change; a bit-identity harness is
+specified and mandatory before any future column comparison is called paired); and C1's
+causal framing — home neglect PREDATES the declaration term, home is declared at chance, and
+`objective_hold` already pays a lone home garrison the steepest stationary income in the
+game, which the agent declines (the home-starting squad walks off in 9/9 probe episodes,
+quoted ≥0.70 by rule-of-three). What survives of C1 has teeth: **the only channel ever
+measured to steer allocation (§33) cannot pay a zero-travel commitment — a home declaration
+inside a live policy is a dark declaration.**
+
+**What panel B then killed of panel A's own plan (verified at source here):** the garrison
+pricer was DEGENERATE — stock `squad_march_take`'s allocator (cheapest-ground-first,
+`(opponent_counts, index)` sort) already garrisons home at **0.912**, so pin-vs-stock had a
+0.088 lever arm and its +5 pass bound sat above the contrast's own ceiling (the kill would
+have fired ~85–90% regardless of the truth, with terminal authority). Replaced by the
+**abandon pricer** (`squad_march_take_nohome`, lever arm 0.912). Panel B also: deleted the
+sign-flip kill clause (likelihood ratio 0.87 — no information), added the EXTEND branch and
+the between-base interaction clause, re-conditioned the laundering kill so it cannot fire on
+the success mode (honest garrisoning IS `declared==held` sustained), made the **agent-side
+forced-STAY override co-primary** (a script pricer prices the script's equilibrium, not the
+agent's — kill authority is split, both must null for v12-lite to die), and REFUSED the
+M-dilated charge field (verified: charge declaration is gated at PRE-move positions ≤12", so
+next-turn charge reach caps at 13.26" centre distance — the seam notes on main predate this
+branch's mechanics and overstate 5.5× at the boundary).
+
+**Resolved same day:** the home-identity rule (marker area-centroid inside the side's
+deployment outline, edge-inclusive) is validated **45/45 tables = exactly one home marker per
+side** — no zero-home or two-home tables; the ~1.82 expectation was the zone-split thirds,
+struck. The probe rows (bar garrisons home 0.912; opponent captures the abandoned point
+0.084 of steps, shooting-era) stand.
+
+**The bound pre-registration** (full text in the round archive; summary): C2 is adjudicated
+co-primarily by (a) the abandon pricer at n=90 × 3 seed bases vs `squad_march_take_charge`
+by name — pass ≥ +5 with the bound re-derived from the melee home-capture rate before the
+first base is read; kill only on a powered pooled negative; EXTEND on the limbo zone or a
+between-base blowup — and (b) the forced-STAY override on frozen v10 weights (≥45 forked
+pairs × 3 checkpoints). Both null ⇒ **v12-lite is not built** and the home observation files
+under the standing search failure. Either passes ⇒ v12-lite (constant pot, no mission query,
+no columns, init-paired, census-primary with vp as guardrail at stated MDE 19–23) becomes
+eligible, its census bounds written only after s_seed is measured on the 12 existing
+arm+dark checkpoints — a screen that doubles as the dark-control split adjudicating C1's
+residual. Charge work: a ~20-line census rider ships with the landing batch; the branch-true
+ChargeField (P_2D6 over the env's own gates, calibration-gated, with an inverse-gap baseline
+it must beat to live) is specified and UNFUNDED until a threat observation is next proposed.
+
+**Rules this round adds to the book:** an input must vary across the choice AND a lever must
+key on it; the declared channel must price every commitment the head can express (the
+gap-zero hole is a property of the whole progress-term family — **v11 inherits it at
+adjacency**, and its landing census must print declared-target distance distributions); no
+instrument in the census family could name an objective — identity-keyed columns are the
+class fix; and a pre-registered bound imported from another estimator's SE is the same
+defect three rounds running — every bound derives from its own estimator's first-block
+spread.
