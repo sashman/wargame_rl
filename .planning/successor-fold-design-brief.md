@@ -1,5 +1,23 @@
 # The folded-commitment successor — design brief (pre-panel, pre-v10r)
 
+## Goal-level status (as of 2026-08-30, `ce1e441`)
+
+- **Level 1 (the agent CAN play correctly): MET, and now provable.** A trained
+  melee agent steps every phase — declares plans (13–17/ep), declares and
+  lands charges the REFEREE certifies (stood 0.73–3.27/ep at K=3, apr grids),
+  fights, piles in, consolidates — and illegal play is impossible by
+  construction: charge, pile-in, consolidate and (since `507d510`) the fall
+  back all revert whole-unit on any after-move violation, verified through
+  `env.step`. What L1 lacked was rules fidelity on the ENGINE side, and the
+  fall-back audit closed it (opponent tears 9.0% → 0.5%, control level).
+- **Level 2 (reasonable vs the ladder): OPEN.** v12-lite REJECTED on every
+  gate; every pre-referee number void; v10r retraining under corrected rules
+  re-establishes the learned reference tonight.
+- **Level 3 (beats the bar): OPEN.** The corrected bar is §38 (charging
+  script: −5.3 refereed / +20.2 / +11.8 / +56.6). The fold arm is the funded
+  attempt: mechanics landed (`58e6afe`), configs + two-stage pre-registration
+  landed (`ce1e441`), launch blocked only on v10r's bounds.
+
 Written 2026-08-30 at `e843d35`, while v10r trains. This is the starting document
 for the successor's panel round and pre-registration. It captures the evidence
 steers so they survive context loss; it decides nothing the panel should decide.
