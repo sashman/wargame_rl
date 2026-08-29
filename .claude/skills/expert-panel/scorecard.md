@@ -429,3 +429,24 @@ a panel's headline, not just its findings.**
 - Meta-lesson written into §31 itself: pre-registration fails at the moment of WRITING —
   apply grid-by-name / false-fire-rate / instrument-existence checks to the prescription,
   not just the experiment.
+
+## 2026-08-29 — audit — the v12 plan (home-objective diagnosis + hold term + value/threat columns)
+- Panel A (6 seats + red team + chair, ~1.25M tokens): C1 mechanism CONFIRMED, causal framing
+  REFUTED (home neglect predates the term; total income already favours garrisoning and is
+  declined; home declared at chance, not below); C2 UNADJUDICATED (the spread screen was the
+  wrong estimator on a saturated platform — struck, not underpowered); C3 FATAL as specified
+  (mission-pricing ill-posed under the count-cap — verified at vp_calculator.py:111; the term
+  double-pays a declined state; free redeclaration = launderable annuity), one stripped
+  descendant survives conditionally (constant-pot declared_objective_hold); C4 DIES both
+  columns (value = zero bits under the single mission; threat = mis-signed at objective cells
+  and false-safe vs charges); C5 FATAL, triple-confirmed by concordant probes (apply(_init_weights)
+  re-draws every Gaussian on any width change; "rows" was the wrong axis too) — repair harness
+  specified, mandatory for any future column.
+- Audits that landed: the spread-screen dichotomy in the brief was FALSE (wrong estimator, not
+  blind-vs-real); the split instrument cannot name an objective (a CLASS blind spot across
+  three instruments); two seats' census kill-gates would have fired against an already-dead
+  claim (divergence caught by the probe); v11 inherits the zero-at-adjacency bias and its
+  census must measure declared-target distances.
+- Survivor: the turn-0 garrison pricer (script prices doctrine, n=90 × 3 seed bases) as C2's
+  gate; v12-lite only if it clears. Author's plan mostly demolished before any code existed —
+  the cheapest demolition on record.
