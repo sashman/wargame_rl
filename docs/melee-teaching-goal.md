@@ -1778,3 +1778,39 @@ plan and a charge must either fold the hunt INTO the charge declaration (one com
 not two competing ones), give declarations distinct sub-steps, or price the slot
 explicitly. ⚠ Also void: nothing — v11 changed no shared config; every v6/v10 number
 stands.
+
+## 36. C2 adjudicated — garrisoning pays the script, is null for the agent, and v12-lite is ELIGIBLE
+
+Measured 2026-08-29 under §34's bound pre-registration, both co-primaries run as specified.
+
+**(a) The abandon pricer: PASS.** `squad_march_take` minus `squad_march_take_nohome`
+(the variant committed and manipulation-checked: home held-rate 0.912 → 0.094), paired,
+n=90 × 3 seed bases vs `squad_march_take_charge` by name: garrisoning is worth
+**−1.2 / +14.0 / +18.5** (per-base SE 12.8/11.2/12.6), pooled **+10.4** — clears the +5
+bound. Between-base sd 10.4 < 2× the within-base SE, so the interaction clause does not
+fire; the deleted sign-flip clause is not consulted. Heterogeneity noted honestly: one
+base reads the garrison as free. Supporting rate from the manipulation probe: the
+abandoned home is captured by the opponent only **0.02–0.09** of steps in the melee
+regime — the forfeit is own-channel VP under the cap, not denial, exactly as the bound
+re-derivation assumed.
+
+**(b) The forced-STAY override on frozen v10 weights: NULL under its own power.**
+Home-starting squad pinned in movement phases, 45 paired episodes × 3 checkpoints at
+K=3: **+2.8 ± 13.8 / +10.1 ± 15.7 / −12.2 ± 15.0**, pooled ≈ **+0.2 ± 8.6**. The
+per-pair sd is ~93–105 — at the agent's current play, garrisoning-by-force is a coin
+flip: the diverted squad's forward value cancels the home income, precisely panel A's
+equilibrium caveat measured.
+
+**Verdict per the kill rule ("either passes ⇒ eligible"): v12-lite is ELIGIBLE.** The
+value exists in the game (+10.4 for the best script); the agent's search does not
+currently collect it (0 ± 9); the eligible design is the one §34 bound — constant-pot
+`declared_objective_hold`, no mission query, no columns, init-paired, census-primary —
+built only after the s_seed census screen (the dark-control split over the 12 existing
+arm+dark checkpoints) writes its bounds, on the v10@114 base per the first clause (v11
+was rejected in §35 and its head with it).
+
+**What (b)'s null adds to the case rather than subtracts**: a play-time override cannot
+collect the garrison's value because the rest of the policy does not replan around it —
+the same lesson as §33's dark declarations. If the constant-pot term works, it will be
+because training moves the whole equilibrium, not one squad; the census-primary readouts
+(home held-rate, per-objective attribution) are aimed at exactly that.
