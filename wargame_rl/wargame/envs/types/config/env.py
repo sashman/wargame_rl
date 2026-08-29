@@ -404,6 +404,19 @@ class WargameEnvConfig(BaseModel):
             "forms (level: farmed; delta: revert-blanked) were not."
         ),
     )
+    hunt_declares_charge: bool = Field(
+        default=False,
+        description=(
+            "THE FOLD (s35's command-slot lesson): a unit whose leader has "
+            "declared an enemy target auto-declares its charge in every "
+            "command phase in which the charge is legal, WITHOUT spending the "
+            "leader's command action -- a hunt IS charge-intent. The override "
+            "lives at the plan level: re-declaring an objective drops the "
+            "hunt (and vice versa, the plan is ONE commitment). Adds no "
+            "actions, so it is init-PAIRABLE against the same config with it "
+            "off. Requires declare_targets."
+        ),
+    )
     n_advance_speed_bins: int = Field(
         ge=0,
         default=0,
@@ -915,6 +928,12 @@ class WargameEnvConfig(BaseModel):
                     "declare_targets is a hunt declaration; without "
                     "melee.enabled the charge it aims at does not exist"
                 )
+        if self.hunt_declares_charge and not self.declare_targets:
+            raise ValueError(
+                "hunt_declares_charge folds the charge into the hunt "
+                "declaration, so it needs declare_targets -- without a hunt "
+                "there is nothing to fold"
+            )
         return self
 
     @model_validator(mode="after")

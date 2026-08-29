@@ -300,6 +300,9 @@ class ActionHandler:
         max_speed = quantities.max_move_speed
         self._engagement_range = float(quantities.engagement_range)
         self._melee_enabled = bool(config.melee.enabled)
+        self._hunt_declares_charge = bool(
+            getattr(config, "hunt_declares_charge", False)
+        )
         self._charge_approach_mask = bool(
             config.melee.enabled and config.melee.charge_approach_mask
         )
@@ -606,7 +609,7 @@ class ActionHandler:
 
     def declare_objectives(
         self, action: WargameEnvAction, wargame_models: list[Any]
-    ) -> None:
+    ) -> set[int]:
         """Record each unit's declared OBJECTIVE from its leader's action.
 
         The learning form of `baseline/reallocation.py`: the squad's plan as a
@@ -615,9 +618,12 @@ class ActionHandler:
         "keep the plan", and a squad re-plans only by declaring again. That is
         what makes it a commitment the execution reward can price rather than a
         per-turn impulse.
+
+        Returns the group ids that declared THIS call, for the plan-exclusivity
+        step the fold (`hunt_declares_charge`) applies.
         """
         if self._objective_target_slice is None:
-            return
+            return set()
         start = self._objective_target_slice.start
         end = self._objective_target_slice.end
         leaders: dict[int, int] = {}
@@ -633,11 +639,12 @@ class ActionHandler:
             if start <= chosen < end:
                 declared[group] = chosen - start
         if not declared:
-            return
+            return set()
         for model in wargame_models:
             group = int(model.group_id)
             if group in declared:
                 model.declared_objective = declared[group]
+        return set(declared)
 
     def objective_target_legality(
         self, models: list[Any], n_objectives: int
@@ -665,15 +672,18 @@ class ActionHandler:
 
     def declare_targets(
         self, action: WargameEnvAction, wargame_models: list[Any]
-    ) -> None:
+    ) -> set[int]:
         """Record each unit's declared enemy-unit TARGET from its leader.
 
         The hunt analog of `declare_objectives`: identical leader resolution,
         identical persistence (STAY keeps the target; only re-declaring
         replaces it), so the execution reward prices a commitment.
+
+        Returns the group ids that declared THIS call, as `declare_objectives`
+        does and for the same fold step.
         """
         if self._charge_target_slice is None:
-            return
+            return set()
         start = self._charge_target_slice.start
         end = self._charge_target_slice.end
         leaders: dict[int, int] = {}
@@ -689,11 +699,78 @@ class ActionHandler:
             if start <= chosen < end:
                 declared[group] = chosen - start
         if not declared:
-            return
+            return set()
         for model in wargame_models:
             group = int(model.group_id)
             if group in declared:
                 model.declared_target = declared[group]
+        return set(declared)
+
+    def apply_plan_fold(
+        self,
+        wargame_models: list[Any],
+        enemy_models: list[Any] | None,
+        declared_objectives: set[int],
+        declared_targets: set[int],
+    ) -> None:
+        """The FOLD (`hunt_declares_charge`): one plan, and a hunt IS charge-intent.
+
+        §35's command-slot lesson, mechanised. Two effects, both gated on the
+        config flag and applied on both seats (this runs inside `apply`, which
+        both seats share):
+
+        * **Plan exclusivity** — a unit's plan is ONE commitment. Declaring an
+          objective this phase drops its hunt; declaring a hunt drops its
+          objective. That is also the override: the policy un-hunts by
+          re-planning, so charge-intent is never forced on a unit that has
+          changed its mind (§36b's lesson — a forced override the policy does
+          not replan around collects nothing).
+        * **Auto-declared charges** — every unit whose declared target is an
+          alive enemy unit, and which the rules allow to declare a charge this
+          turn (`charge_eligible_units`, the same predicate the manual
+          declaration is masked on), has `declared_charge` set WITHOUT its
+          leader spending the command action. The leader's slot is freed for
+          the plan, which is the whole point: v6 → v10 → v11 measured charge
+          declarations/ep falling 8.55 → 5.89 → 2.68 as each stacked slice
+          displaced them.
+
+        Runs AFTER `declare_move_types`, which overwrites `declared_charge`
+        for every unit each command phase — so the fold's grant survives and a
+        manual `MOVE_TYPE_CHARGE` declaration is simply subsumed.
+        """
+        if not self._hunt_declares_charge:
+            return
+        for model in wargame_models:
+            group = int(model.group_id)
+            if group in declared_objectives:
+                model.declared_target = -1
+            elif group in declared_targets:
+                model.declared_objective = -1
+        alive_enemy_groups = {
+            int(m.group_id) for m in (enemy_models or []) if m.is_alive
+        }
+        hunting = {
+            int(model.group_id)
+            for model in wargame_models
+            if model.is_alive
+            and int(getattr(model, "declared_target", -1)) in alive_enemy_groups
+        }
+        if not hunting:
+            return
+        # Both gates the MANUAL declaration is masked on: rules eligibility
+        # AND roll-reachability. A laxer auto-grant would hand out the doomed
+        # declarations the mask exists to forbid (13.8% of a trained arm's
+        # attempts were zero-gradient traps before that gate).
+        eligible = self.charge_eligible_units(wargame_models, enemy_models)
+        alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+        if alive_enemies:
+            eligible &= self._roll_reachable_units(wargame_models, alive_enemies)
+        granted = hunting & eligible
+        if not granted:
+            return
+        for model in wargame_models:
+            if int(model.group_id) in granted:
+                model.declared_charge = True
 
     def charge_target_legality(
         self, models: list[Any], enemy_models: list[Any]
@@ -2148,8 +2225,11 @@ class ActionHandler:
             # action against its space before skipping non-movement phases, and
             # an unvalidated declaration would be a silent out-of-range action.
             self.declare_move_types(action, wargame_models)
-            self.declare_objectives(action, wargame_models)
-            self.declare_targets(action, wargame_models)
+            declared_objectives = self.declare_objectives(action, wargame_models)
+            declared_targets = self.declare_targets(action, wargame_models)
+            self.apply_plan_fold(
+                wargame_models, enemy_models, declared_objectives, declared_targets
+            )
         if phase is BattlePhase.fight:
             # Read BEFORE the fight resolves, which happens on the boundary
             # leaving this phase -- so the priorities the engine selects on are
