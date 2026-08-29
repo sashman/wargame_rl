@@ -177,7 +177,8 @@ launch. What died and the standing-belief challenges: see the chair's sections 6
   with hunt rider) fires if hunt retention fails at verdict.
 - **F4 income asymmetry SURVIVES its kill-check**: hunt-plan units earn
   0.0071–0.0092/model-step in the declared channels vs objective plans'
-  0.0133–0.0281 — 2–3× less, 5/5 seeds so far. ⚠ Caveat: v11 has no
+  0.0133–0.0285 — 2–4× less, **6/6 seeds** (s6 the widest: 0.0067 vs 0.0285).
+  ⚠ Caveat: v11 has no
   exclusivity, so both-plan units classify as hunts in the probe — directional
   evidence, not confirmatory. Stays a LABEL risk, not a pot (per the nulls).
 - **F5 march-annuity story KILLED**: P(new hunt = nearest enemy) 0.14–0.27
