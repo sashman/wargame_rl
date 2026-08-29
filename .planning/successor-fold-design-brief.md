@@ -73,6 +73,24 @@ carrying-cost needs isolating (KNOWN_ACTION_SLICES already admits both slices).
 - The declaration census (`measure-declarations`) now prints the combined
   march+hold farm column — the §37a instrument.
 
+## Iteration-speed rules (adopted 2026-08-30, user-prompted)
+
+- **Two-stage pre-registration**: every arm binds a SCREEN clause at epoch 300
+  (kill on unambiguous failure of the primary with all seeds trending against;
+  else extend to 600) and a VERDICT clause at 600. Most arms fail; stop paying
+  full price to confirm forecasts. Kill thresholds conservative — mode-settling
+  is late (s5 flipped after epoch 450).
+- **Standing auto-peek**: a detached script scores each live seed's newest
+  checkpoint on the arm's primary every ~90 min into `trends.txt`. Peeks are
+  forecasts, never verdicts.
+- **CPU-first, always**: a script that can falsify the design (§38a killed the
+  home motivation for 30 min of CPU) runs before anything trains.
+- **One-time throughput buys, owed**: profile the melee config's step
+  (`measure-throughput`, never run on it); A/B `bf16-mixed` over two seeds;
+  `--eval-every-n-epochs 4` (legal on these single-phase configs, ~16%).
+- NOT adopted: smaller-game screens (measures a different scenario — the
+  costliest recorded error class), fewer seeds (seeds are the power lever).
+
 ## Standing traps this design must not re-trip
 
 - Power-check every per-seed bound against the measured seed spread before
