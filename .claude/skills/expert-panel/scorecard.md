@@ -484,3 +484,15 @@ a panel's headline, not just its findings.**
 - Rules adopted: paired-pricer quotes name B + reproduce a raw line; one seat per panel
   re-derives the brief's facts from raw files; power-check the decision PROCEDURE, not just
   bounds.
+
+## 2026-08-30 — audit — shadow panel B on the completed fold pre-registration
+- Verdict: LAUNCH_MODIFIED 4/4 + red team; zero BLOCK. Fact re-derivation seat: every filled
+  bound re-derives to the digit — no inherited errors this round (the new practice worked).
+- Audits that landed: panel A's "exclusivity forbids hold-plus-pin" REFUTED on two
+  code-verified routes (manual-charge subsumption; ungated objective_hold + delta-paid
+  march); the 0.897 "double-collection" motivator was ~82% counterfactual hold income
+  (attribution flip — the s38a defect class recurring in a new form); PRIMARY B's
+  per-column clause failed the procedure power-check (~20–25% family false-reject);
+  the header's decomposition sentence false as written (the swap decomposes
+  learned-vs-mechanical only). The brief's dormant-hunt exploit refuted 5/5.
+- Amendments B-1..B-6 recorded in the config header before epoch 0.
