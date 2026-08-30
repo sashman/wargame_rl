@@ -73,6 +73,7 @@ from typing import Any
 import numpy as np
 
 from scripts.scenario_overrides import describe, load_env_config, parse_overrides
+from wargame_rl.wargame.envs.domain.engagement import engagement_matrix
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.selectors import build_action_selector
@@ -95,6 +96,12 @@ def measure(
     # This is the calibration dataset the branch-true ChargeField is specified
     # against — its P_2D6 must beat the empirical P(stood | gap) printed here.
     charge_rows: list[tuple[float, float, bool]] = []
+    # The fold pre-registration's LABEL (i), pinned by panel B's B-4: stood
+    # charges split by route (grant-attributable = the unit held a declared
+    # enemy target; manual = it did not), and — within the grant route — by
+    # whether the unit ended engaged with its DECLARED group or a bystander.
+    # The mismatch denominator is the grant route ONLY.
+    stood_grant = stood_manual = stood_on_declared = 0
 
     # The referee's verdict, captured before the fight boundary clears it.
     # `_apply_player_action` runs the charge referee; `run_after_player_action`
@@ -178,6 +185,49 @@ def measure(
                     for group in moving:
                         gap, roll = unit_gaps.get(group, (float("inf"), 0.0))
                         charge_rows.append((gap, roll, group in stood_units))
+                    for group in stood_units:
+                        declared_tgt = next(
+                            (
+                                int(getattr(m, "declared_target", -1))
+                                for m in env.wargame_models
+                                if m.is_alive and int(m.group_id) == group
+                            ),
+                            -1,
+                        )
+                        if declared_tgt < 0:
+                            stood_manual += 1
+                            continue
+                        stood_grant += 1
+                        member_locs = np.array(
+                            [
+                                m.location
+                                for m in env.wargame_models
+                                if m.is_alive and int(m.group_id) == group
+                            ],
+                            dtype=float,
+                        )
+                        alive_enemies = [m for m in env.opponent_models if m.is_alive]
+                        if not len(member_locs) or not alive_enemies:
+                            continue
+                        contacts = np.asarray(
+                            engagement_matrix(
+                                member_locs,
+                                np.array(
+                                    [m.location for m in alive_enemies],
+                                    dtype=float,
+                                ),
+                                np.ones(len(alive_enemies), dtype=bool),
+                                np.ones(len(member_locs), dtype=bool),
+                                engagement_range=env.config.engagement_range,
+                                base_diameter=2.0 * env.config.base_radius,
+                            )
+                        )
+                        engaged_groups = {
+                            int(alive_enemies[j].group_id)
+                            for j in np.nonzero(contacts.any(axis=0))[0]
+                        }
+                        if declared_tgt in engaged_groups:
+                            stood_on_declared += 1
                 done = terminated or truncated
             # ⚠ The POLICY'S OWN figure, not the realised one. This config
             # referees with `enforce_move: revert_unit`, under which the
@@ -193,6 +243,13 @@ def measure(
     finally:
         env.close()
     _print_charge_census(charge_rows)
+    if stood_grant or stood_manual:
+        mismatch = 1.0 - stood_on_declared / max(stood_grant, 1)
+        print(
+            f"  stood by route: grant={stood_grant} manual={stood_manual}  "
+            f"on_declared={stood_on_declared}  "
+            f"mismatch(grant)={mismatch:.3f}"
+        )
     return {
         "declared": declared / n_episodes,
         "attempted": attempted / n_episodes,

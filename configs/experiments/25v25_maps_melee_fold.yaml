@@ -98,6 +98,51 @@
 #
 # 6+6 seeds, 600 epochs (screen at 300), judged at last.ckpt verified.
 # ===========================================================================
+# PANEL B AMENDMENTS (wf_a0ad759f-415, LAUNCH_MODIFIED 4/4 + red team, recorded
+# BEFORE epoch 0; where these conflict with the block above, THESE BIND):
+# B-1 FARM SCREEN gates on PAID channels only: (objective march + target march)
+#     against paid caps (control 10.0; arm 5.0 -- exclusivity forbids
+#     simultaneous channels) at the 60% line. Hold is printed as counterfactual
+#     context and never gates (neither arm carries declared_objective_hold; the
+#     0.897 read decomposes as hold 8.08 / paid <= 2.2 of 9.87).
+# B-2 PRIMARY B bounds capped: pooled bound = max(-1.5 x pooled SE, -10.8);
+#     per-column bound = -2.33 x that column's own paired SE, and a column
+#     REJECTs only if it breaches at BOTH the 300 screen and the 600 verdict
+#     (as written the family false-REJECT on the design's own most-likely
+#     truth was ~20-25%).
+# B-3 PRIMARY A usage clause (carried up from the v10 header): if
+#     hunt-declaration usage still oscillates across the last 50 epochs on 2+
+#     arm seeds, A is reported UNDERPOWERED, not pass/fail. Label (vii):
+#     hunt-plan prevalence + declarations/ep, arm vs control, both
+#     checkpoints; pre-committed reading -- collapsed arm prevalence means an
+#     A-fail is income re-pricing evidence (indicts the exclusivity cut, not
+#     the grant) and is NOT grounds for the target-gated redesign.
+# B-4 LABEL (i) pinned: mismatch denominator = GRANT-attributable stood
+#     charges only (unit held declared_target >= 0); manual-route stood
+#     charges are a separate named column, never in the denominator. If >50%
+#     of the arm's stood charges are manual-route, neither an A-pass nor the
+#     70.2% trigger is attributable to the grant. Instrument must be landed
+#     and verified on a v11 checkpoint before the 300 screen or the >50%
+#     trigger is NAMED DEBT and may not be applied post hoc.
+# B-5 DECOMPOSITION honesty: the frozen-weights flag swap decomposes
+#     learned-vs-mechanical ONLY; grant-vs-exclusivity within the learned
+#     difference is undecomposable by any registered instrument. Pre-named
+#     follow-up on A-pass + B-fail with control double-plan PAID income above
+#     ~3 units/ep: a grant-only third config; below that line the REJECT
+#     stands. Label (ii) x per-channel income is reported beside B as the free
+#     bound on the exclusivity cut, whose SIGN on the paired difference is
+#     unknown and must not be framed as a handicap.
+# B-6 WORDING: the s38 stood/ep comparator is the band 5.8-6.3 (not 6.00);
+#     the hold-plus-pin redesign trigger is RE-PREMISED -- the fold PERMITS
+#     the composite (manual charge subsumption + ungated objective_hold +
+#     delta-paid march terms; panel A's "forbids" is refuted) and merely
+#     declines to subsidise it; add the pin-skew label: stood charges split by
+#     charger-on-own-objective, >70% reads an A-pass as pin-enablement, <50%
+#     kills the pin-skew account. Divergence begins BEFORE the first grant
+#     (exclusivity mutates observed plan state at the first declaration), so
+#     early epochs are not comparable trajectories.
+# ===========================================================================
+# ===========================================================================
 # ARM v10: 25v25_maps_melee_approach + the OBJECTIVE DECLARATION.
 # Copied 2026-08-28; differences: config_name, declare_objectives: true, and
 # the declared_objective_progress calculator.
