@@ -147,6 +147,40 @@ wargame_rl/
 - **VP reward and success** — `vp_gain` calculator, `player_vp_min` success criteria, optional terminal VP bonus; observation includes `player_vp_delta` for step-wise VP signal
 - **Deployment zones** — configurable spawn areas for player and opponent
 - **Group cohesion** — optional penalty for unit separation
+- **Melee, off by default** — `melee.enabled` steps the charge phase, resolves fights,
+  lets a move end in contact, costs an engaged unit that withdraws its shooting, and stops
+  engaged models being shot at. Off it registers no slice, draws no dice and leaves
+  `skip_phases` alone, so every golden config and every golden fixture is bit-identical.
+  ⚠ Engagement was 0.0000% of model-pairs not because contact is unreachable but because
+  `back_off_to_unengaged` parks the CLOSEST pair **8.7 micro-inches** outside it — a charge
+  needs the *exemption* first. ⚠ **RETRACTED: it needs the distance too.** That minimum was
+  read as a typical value; the median charge-eligible unit is **5.99"** from its nearest
+  enemy and **0.0%** of declarations are within one speed bin. ⚠ **Nothing has been measured
+  with melee on.** A training arm would have measured the BAR, not the agent, because no
+  scripted baseline or opponent could charge — **fixed 2026-08-25**: `select_charge` is a
+  hook defaulting to STAY (every baseline figure unchanged, digest 9 of 9 identical to
+  `main`) and `squad_march_take_charge` overrides it on **both seats**, cleared on four
+  mechanism gates written before it ran. The gate for the arm itself is **pre-registered**
+  ([report](reports/2026-08-25-melee-preregistration.md)): a vp gate is unpowered by
+  construction here (MDE **25.97** vp at n=3), so the primary readouts are mechanism counts. An expert panel measured a charging script at
+  **+62.5 ± 14.7** whose value is **entirely the shooting shield** (−4.0 ± 17.4 with the
+  target gate ablated). ⚠ **The three defects an audit found in it are now all
+  closed** — the charge roll is an observation column and not just a logit mask; the joint
+  decoder runs in the charge phase against the charge's OWN referee, so a melee score at
+  K=3 is one; and the shooter-side engagement gate reduces over the shooter's UNIT, closing
+  the "send one model to lock them and keep four firing" exploit. All three are
+  **unpriced** — engagement stays 0.0000% without a charging policy, so the seeded digest
+  is 9 of 9 identical to `main`. ⚠ **The charge is now DECLARED by the unit's leader in the
+  command phase and the declaration BINDS the unit** — a charge used to be declared
+  implicitly by picking a rung, so every model decided separately and a whole unit committed
+  on only **23–35%** of its charges against a rigid script's 100%. The melee configs
+  therefore step `command`: `max_turns` 60 → **80**, and **every melee figure measured before
+  it is void on that config**. ⚠ **The fall back is refereed as of 2026-08-29**
+  (`_enforce_fall_back`: unit must end unengaged AND coherent, whole-unit revert, both
+  seats) — before it, a unit with a pinned member tore itself to 16.7–20" chain gaps
+  "falling back" while a member stayed engaged, and **every melee figure measured before
+  the referee is void on melee configs** (non-melee configs are untouched — the path is
+  gated on engagement). [docs/melee.md](docs/melee.md)
 - **DDD layering** — `domain/` owns the rules (Battle aggregate, clock, placement, termination, LOS, shooting); `wargame.py` is a facade; reward/renders depend only on the `BattleView` protocol. See [docs/ddd-envs.md](docs/ddd-envs.md)
 - **Rules specification** — [docs/rules/](docs/rules/README.md) is the game's rules authority: a self-contained spec written for this project, with `constants.yaml` (every number, in inches) and [implementation-status.md](docs/rules/implementation-status.md) (per-rule: implemented / partial / divergent / absent). Before implementing a mechanic, read its chapter and its gap-map row. `tests/test_no_ip_references.py` keeps the repo free of references to the commercial product the rules derive from — the spec names no product, publisher, edition or faction, and neither should anything else
 - **Play doctrine** — [docs/play-doctrine.md](docs/play-doctrine.md) is how this game is *won*, as `docs/rules/` is how it is *played*: 43 numbered entries, each stating a claim, whether the environment can express it, which extension point it lands in, and what has already been measured about it. It is a store of **hypotheses, never of evidence** — price an entry as a scripted policy (`just measure-paired`, no GPU) before it becomes a reward term or a training run, and where an entry disagrees with the record below, **the record wins**
@@ -349,6 +383,35 @@ tables**. Training against the weaker opponent would produce a weaker agent at
 the matchup it is already worst at; spend the GPU elsewhere.
 
 ### Where the agent stands
+
+⚠ **REISSUED 2026-08-24 at `f741e14`. FOUR OF FIVE ROWS MOVED and the headline claim
+is now carried by ONE row.** Re-measured independently twice (an audit panel and by
+hand), agreeing row for row. Bisected: `squad_march_deny` on the take config reads
+**−1.1 at the publishing commit** — the published value to the decimal — and +6.5 at HEAD,
+in two steps: the endpoint rule **+5.0** and **`d607561`** (the wholly-within deployment
+check, a fix **nobody named**) **+2.6**. The command-phase change contributes **0.0**.
+⚠ **ALWAYS STAMP A REVISION ON A QUOTED TABLE**, and bisect a staleness claim — scripted
+policies are deterministic and git is free, so it costs about a minute per point.
+
+| opponent | agent | best script | gap | t | sign | was | moved |
+|---|---|---|---|---|---|---|---|
+| `squad_march_deny` | **+20.0** | −6.1 (`take`) | **+26.1** | 3.51 | 7/9 | +35.4 | −9.3 |
+| `squad_march_take` | +19.4 | +6.5 (`deny`) | +13.0 | 1.44 | 7/9 | +26.1 | −13.1 |
+| `squad_march_shoot` | +33.2 | +27.7 (`deny`) | **+5.5** | **0.58** | **3/9** | +16.2 | −10.7 |
+| `contest_and_spread` | +16.7 | **+30.5** (`take`) | −13.8 | −1.61 | 4/9 | −9.5 | −4.3 |
+| `advance_and_shoot` | +61.4 | **+135.6** (`take`) | **−74.3** | **−6.98** | **0/9** | −75.9 | +1.6 |
+
+⚠ **THE AGENT NOW CLEARS THE BEST SCRIPT SIGNIFICANTLY ON ONE OF FIVE OPPONENTS, NOT
+THREE.** The `shoot` row is a **null** (t=+0.58, 3 of 9). "A better defensive player than
+any script" now rests on `squad_march_deny` alone. Coherency is unchanged and still wins
+everywhere (agent 0.937–0.954 against 0.863–0.911).
+
+The agent moved **−6.4 / −5.7 / −6.0 / −4.1** on the four `squad_march` opponents and
+**exactly 0.0** on `advance_and_shoot` — a one-directional signature: the changed policy
+is on the *opponent* side in the first four and is a different family in the fifth.
+
+The offence/defence split below and the r=+0.991 correlation were fitted on the OLD rows
+and have not been refitted. Treat both as provisional.
 
 **Six seeds** of the documented recipe (`configs/golden/25v25_maps_two_mode.yaml`,
 `ent_coef` 0.003, 300 epochs, `just train-coherency-baseline`), held-out nine,
@@ -688,10 +751,16 @@ measure-advance-use` censuses what a policy buys with the advance and what it pa
   right question is not *does the lever pay* but **does carrying it cost the agent anything**,
   which needs no advance-seeking script: train against a `dark_action_slices` control of
   identical shape and read the paired difference. See D-43.
-- ⚠ **NO MELEE, so every movement measurement here is PROVISIONAL.** A shooting army has no
-  reason to close except to stand on an objective, so closing is priced only by what it
-  captures and never by what it threatens. Any move type whose value is "arrive sooner" is
-  being measured in a game that does not yet reward arriving.
+- ⚠ **NO MELEE IN ANY MEASURED CONFIG, so every movement measurement here is
+  PROVISIONAL.** A shooting army has no reason to close except to stand on an objective, so
+  closing is priced only by what it captures and never by what it threatens. Any move type
+  whose value is "arrive sooner" is being measured in a game that does not yet reward
+  arriving. ⚠ The charge and fight phases now **exist** behind `melee.enabled` (default
+  **False**, an exact no-op verified byte-identical to a pre-melee `main`) — but nothing has
+  been measured with them on, and turning them on voids every baseline and every agent score
+  on that config. See [docs/melee.md](docs/melee.md), which also records what is still
+  outstanding and why a **vp gate is unpowered by construction** for a lethality-neutral
+  mechanic.
 - ⚠ **The only live explanation left for the −26.7 is the PATH, and nothing above
   prices it.** Every statistic here is taken at convergence; a 300-epoch screen
   prices sample efficiency.
@@ -1054,7 +1123,19 @@ paid for.
   one.
 - **n=100.** `measure-checkpoint` and `measure-baselines` default there, not 30:
   per-episode `vp_margin` sd is ~45–50, so n=30 gives SE ~8–9, larger than most
-  arm differences ever measured here.
+  arm differences ever measured here. ⚠ **That ~45–50 is LOW BY ~1.7x on the
+  map-pool configs** — measured 2026-08-24 it is **80.9–83.1 for the scripts** and
+  62.3–67.1 for the agent on `take_opponent_refereed`. Every n and every gate sized
+  off the doctrine number is under-powered there.
+- ⚠ **The ~6 vp resolution floor is TRUE FOR THE AGENT AND FALSE FOR THE SCRIPTS**,
+  which is the inverse of the reason on file: between-table sd is **0–6** for the
+  scripts against **8.5–22.0** for the agent (F 1.49–4.60). The learned lineage is
+  table-dependent; the scripts are not.
+- **Fix the comparator BY NAME before measuring, and select it on the statistic you
+  will report.** A "best script" chosen by argmax on the same data changes identity
+  between cells and turns a magnitude into an artefact — it did exactly that in the
+  five-round report. Winner-selection bias measured **+1.4 to +2.9**, and it
+  **inflates the script**, so it flatters nothing about the agent.
 - **Score agent and baseline on identical layouts.** `just measure-checkpoint
   <ckpt> <config> 30` uses seeds 700000+, so pair it with `just measure-baselines
   <config> 30 "" 700000`. **The bar is a distribution over layout sets, never a
@@ -1303,6 +1384,47 @@ project's effort has gone, and the shape of the problem is now settled.
   verified to catch a one-ULP change. See
   [docs/training-throughput.md](docs/training-throughput.md).
 
+### Five rounds is not a training scenario, and the offence deficit is not the clock
+
+Measured 2026-08-24, no GPU, six seeds x four scripts x two opponents x two horizons,
+[report](reports/2026-08-24-five-rounds-does-not-rescue-the-agent.md). Pre-registered
+before the numbers existed; the verdict against its own criteria is **MIXED**.
+
+- **`held` is nearly horizon-invariant.** Quarter the game and the agent goes 1.98 →
+  1.80 and 2.03 → 2.14 while the scripts go 2.46 → 2.61 and 3.84 → 3.51. The shortfall
+  is **−0.81 ± 0.04** and **−1.15 ± 0.11**, behind on **0 of 9** on both opponents. The
+  agent is not failing to *arrive*; it fails to spread just as badly when spreading is a
+  four-round problem. **The critic-probe conclusion needs no horizon caveat.**
+- **Shortening the game makes the agent WORSE where it currently wins**: +13.0 ahead on
+  7/9 against `squad_march_take` at twenty rounds, **−5.8 behind on 0/9** at five. Its
+  edge is denial and denial accrues per scoring event.
+- ⚠ **RETRACTED SAME DAY: "five rounds cannot tell six trained agents apart."** Wrong
+  twice. The noise term omitted the **seed x map interaction** (sd 4.32 and 18.32 at
+  twenty rounds, **0.00** at five), so the two biases run in opposite directions by
+  horizon and both inflate the ratio; corrected the collapse is 12.13 → 0.81, not
+  12.27 → 0.72. And **on `held` — the primary readout the pre-registration designated —
+  the seeds separate slightly BETTER at five rounds** (F 7.96 → 9.70), as do four
+  scripted policies, the fixed-policy control that should have been run (F 33.68 →
+  **57.54**). The decisive table also compared **raw vp across horizons**, which the
+  pre-registration forbids in bold; normalised the collapse is 3.2–5.9x.
+- **What survives is a claim about SCORING, not resolution**: the agent's edge is denial,
+  denial accrues per scoring event, and five rounds has four events against twenty's
+  nineteen. Five rounds may still be wrong to train at — **it is not closed by this
+  evidence**, and nothing has ever been trained there.
+- ⚠ **The comparator was selected by `vp` while the readout was `held`, and switched
+  identity between the cells being compared.** Fixed to `squad_march_take` the shortfall
+  reads −0.73 → −0.82 (grew 12%, not 67%) and −1.81 → −1.37 (shrank 24%, not 37%); fixed
+  to `deny` the sign of the change flips. The **verdict** is robust — no comparator rule
+  gives a ≥50% shrink on both opponents — but every magnitude was an artefact.
+- **NEW, and the sharpest statement of the search failure on file: the board is STATIC
+  after round 8.** `held` by round (2/5/8/12/16/20) is 2.28 / 2.61 / 2.81 / 2.74 / 2.73 /
+  2.70 for `squad_march_take` and 1.92 / 1.93 / 2.06 / 2.19 / 2.13 / 2.10 for the agent.
+  Twelve of twenty rounds are a constant-rate replay of a frozen board, and **the agent's
+  allocation is fixed by round 2** — it gains +0.18 objectives over the remaining eighteen
+  rounds against the script's +0.53 by round 8.
+- ⚠ **Raw vp is NOT comparable across horizons** (per-episode sd 61.7 → 12.6). Quote it
+  within a horizon, or normalised.
+
 ### The other scenarios
 
 `25v25_maps_two_mode` and `25v25_maps_coherency` draw from the eval tables;
@@ -1360,7 +1482,13 @@ Re-measure rather than carry a figure across one.
 - **2026-08-23 — the scripts learned to Advance, and a move must end unengaged.**
   The scripted bar moved **+1.3 to +32.6 vp** (4 of 4) and the movement rule changed
   on every config, so every scripted-bar figure on an advance config and every agent
-  score compared against one is void. Three goldens were regenerated deliberately;
+  score compared against one is void. ⚠ **This under-scopes itself, and the
+  counter-example is measured**, and **bisecting found a SECOND cause nobody named**:
+  `d607561`, the wholly-within deployment-zone check, worth **+2.6** beside the
+  endpoint rule's +5.0. The endpoint rule is global, and on the
+  *non-advance* `take_opponent_refereed` config the scripts moved **+7.6 vp** and the
+  published agent gap **halved** (+26.1 → +13.0). Treat every 2026-08-21 row as stale
+  until re-measured. See [the report](reports/2026-08-24-five-rounds-does-not-rescue-the-agent.md). Three goldens were regenerated deliberately;
   the other three are byte-identical, which is the check that the movement change is
   targeted rather than global.
 - **2026-08-20 — the eval tables were regenerated**, and 2026-08-21 they were

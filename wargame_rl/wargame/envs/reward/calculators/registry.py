@@ -6,11 +6,23 @@ from wargame_rl.wargame.envs.reward.calculators.base import (
     GlobalRewardCalculator,
     PerModelRewardCalculator,
 )
+from wargame_rl.wargame.envs.reward.calculators.charge_progress import (
+    ChargeProgressCalculator,
+)
 from wargame_rl.wargame.envs.reward.calculators.closest_objective import (
     ClosestObjectiveCalculator,
 )
 from wargame_rl.wargame.envs.reward.calculators.closest_objective_v2 import (
     ClosestObjectiveV2Calculator,
+)
+from wargame_rl.wargame.envs.reward.calculators.declared_objective_hold import (
+    DeclaredObjectiveHoldCalculator,
+)
+from wargame_rl.wargame.envs.reward.calculators.declared_objective_progress import (
+    DeclaredObjectiveProgressCalculator,
+)
+from wargame_rl.wargame.envs.reward.calculators.declared_target_progress import (
+    DeclaredTargetProgressCalculator,
 )
 from wargame_rl.wargame.envs.reward.calculators.group_cohesion import (
     GroupCohesionCalculator,
@@ -47,6 +59,10 @@ CALCULATOR_REGISTRY: dict[str, type[RewardCalculatorType]] = {
     "objective_coverage": ObjectiveCoverageCalculator,
     "objective_flip_bonus": ObjectiveFlipBonusCalculator,
     "objective_hold": ObjectiveHoldCalculator,
+    "charge_progress": ChargeProgressCalculator,
+    "declared_objective_hold": DeclaredObjectiveHoldCalculator,
+    "declared_objective_progress": DeclaredObjectiveProgressCalculator,
+    "declared_target_progress": DeclaredTargetProgressCalculator,
     "unit_coherency": UnitCoherencyCalculator,
     "vp_gain": VPGainCalculator,
     "killing": KillingReward,

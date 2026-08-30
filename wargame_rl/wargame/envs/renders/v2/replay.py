@@ -133,6 +133,11 @@ class _SnapshotView:
     last_reward: float | None
     last_player_shooting_results: tuple[_Shot, ...]
     last_opponent_shooting_results: tuple[_Shot, ...]
+    # Empty on every pre-2.7 recording and on every melee-off config, which is
+    # every config shipped today -- so a replay of one draws no clashes rather
+    # than inventing them.
+    last_player_fight_results: tuple[_Shot, ...]
+    last_opponent_fight_results: tuple[_Shot, ...]
     last_reward_breakdown: dict[str, float]
     episode_reward: float | None
     game_clock_state: _ClockView
@@ -294,6 +299,8 @@ def _snapshot_to_view(snapshot: GameStateSnapshot) -> _SnapshotView:
         last_reward=snapshot.reward.total,
         last_player_shooting_results=_shots(snapshot.player_combat_results),
         last_opponent_shooting_results=_shots(snapshot.opponent_combat_results),
+        last_player_fight_results=_shots(snapshot.player_melee_results),
+        last_opponent_fight_results=_shots(snapshot.opponent_melee_results),
         last_reward_breakdown=dict(snapshot.reward.breakdown),
         episode_reward=snapshot.reward.episode_total,
         game_clock_state=_ClockView(

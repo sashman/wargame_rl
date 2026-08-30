@@ -48,6 +48,45 @@ independently made the *same wrong argument* because they shared one upstream as
 experts agreeing is only evidence if they did not share the mistaken premise. When
 agreement appears, check the premise before counting the votes.
 
+### 2b. Budget the machine BEFORE launching — and stagger unless it is idle
+
+⚠ **A panel is a fan-out of heavy jobs onto a box that is usually already busy.** Measured
+2026-08-26: two 7-expert panels launched together drove load average to **160 on 24 cores**
+(~6.7x oversubscribed) while three PPO runs were training. Cost: training fell 1.9 → 1.47
+epochs/min and GPU utilisation dropped 11% → 3% — the trainers were starved of CPU for env
+stepping. Nothing crashed and memory never tightened (17 GB free, zero swap I/O throughout),
+so the whole bill was ~40 minutes of someone else's wall-clock. Cheap, avoidable, and paid
+for no benefit: nothing depended on the two panels finishing in parallel.
+
+**Check first, then decide.** One command, before the first `Workflow` call:
+
+    uptime; nproc; free -g; nvidia-smi --query-gpu=memory.free,utilization.gpu --format=csv
+
+Read it against what is already running:
+
+| what you find | what to do |
+|---|---|
+| box idle, nothing training | launch both panels together — this is the fast path |
+| training or another long job live | **stagger**: run panel A, wait for it, then panel B |
+| load already > cores | stagger *and* cut each panel to 4–5 seats |
+| memory tight or swap I/O non-zero | do not launch; that is the one that actually crashes things |
+
+Staggering costs a panel's wall-clock and buys back the host job's throughput. It also
+**improves** panel B: feed it panel A's findings, per §6, and the second panel is sharper for
+having something to attack.
+
+⚠ **A per-agent cap does not bound a fan-out.** The brief said *"run at most one measurement
+at a time"* and every agent obeyed it — 14 agents × 1 job = 14 concurrent jobs. If you need a
+ceiling, cap the number of *seats*, not each seat's behaviour.
+
+⚠ **Tell agents which resource is contended, and check which one that actually is.** The same
+brief told agents to prefer `CUDA_VISIBLE_DEVICES=` "so you do not contend with training".
+That was backwards twice over: the training here is **CPU-bound on env stepping** while the
+GPU sat at 11% with 13.6 GB free, so it pushed work onto the scarce resource and away from
+the idle one — and it broke checkpoint loading outright, because checkpoints saved on CUDA
+need `map_location` to load on CPU. Every checkpoint probe an agent attempted would have
+died. **Name the contended resource only after measuring which one it is.**
+
 ### 3. Every proposal ships with a zero-cost falsifier
 
 The single highest-value rule. Three theories were eliminated for **zero GPU** because each
@@ -133,7 +172,12 @@ Notes paid for in blood:
 - Panel agents write files into the repo. Check `git status` afterwards and move throwaway
   probes to a scratchpad — they are useful provenance but not repo-quality.
 - Keep each panel to 6–8 agents. Two panels plus chairs lands around 14, which is a
-  reasonable ceiling.
+  reasonable ceiling **for a machine with nothing else running** — see §2b, which is
+  where that number goes wrong.
+- **Give every brief an environment-safety block** naming what must not be touched: live
+  training processes, the only copy of the weights, destructive recipes, git state, and any
+  API known to destabilise running jobs. Fourteen agents with full tool access on a box
+  carrying live runs broke nothing, and that block is why.
 
 ## Choosing lenses
 

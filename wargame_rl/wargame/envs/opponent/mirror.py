@@ -18,10 +18,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase
+
 if TYPE_CHECKING:
     import numpy as np
 
     from wargame_rl.wargame.envs.domain.entities import WargameModel
+    from wargame_rl.wargame.envs.domain.fight import PairedFightResult
     from wargame_rl.wargame.envs.domain.shooting import PairedShootingResult
     from wargame_rl.wargame.envs.wargame import WargameEnv
 
@@ -81,7 +84,30 @@ class MirroredEnv:
     def player_advance_legality(self) -> np.ndarray:
         """Our models' legal advance rungs — the opponent handler's, not the player's."""
         return self._env.opponent_action_handler.advance_legality(
-            self._env.opponent_models
+            self._env.opponent_models, self._env.wargame_models
+        )
+
+    @property
+    def player_charge_legality(self) -> np.ndarray:
+        """Recomputed from the OPPONENT's handler and models, as advance is."""
+        return self._env.opponent_action_handler.charge_legality(
+            self._env.opponent_models, self._env.wargame_models
+        )
+
+    @property
+    def player_declaration_legality(self) -> np.ndarray:
+        """Recomputed from the OPPONENT's handler and models, as the others are."""
+        return self._env.opponent_action_handler.declaration_legality(
+            self._env.opponent_models, self._env.wargame_models
+        )
+
+    @property
+    def player_short_move_legality(self) -> np.ndarray:
+        """Recomputed from the OPPONENT's handler and models, as the others are."""
+        return self._env.opponent_action_handler.short_move_legality(
+            self._env.opponent_models,
+            self._env.wargame_models,
+            self._env.game_clock_state.phase or BattlePhase.movement,
         )
 
     @property
@@ -131,6 +157,18 @@ class MirroredEnv:
     def last_opponent_shooting_results(self) -> list[PairedShootingResult]:
         """Theirs."""
         return self._env.last_player_shooting_results
+
+    # ---- melee results -----------------------------------------------------
+
+    @property
+    def last_player_fight_results(self) -> list[PairedFightResult]:
+        """Our last melee."""
+        return self._env.last_opponent_fight_results
+
+    @property
+    def last_opponent_fight_results(self) -> list[PairedFightResult]:
+        """Theirs."""
+        return self._env.last_player_fight_results
 
     # ---- deployment zones --------------------------------------------------
     #

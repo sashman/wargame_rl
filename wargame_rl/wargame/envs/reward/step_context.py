@@ -29,6 +29,11 @@ class StepContext:
     is_terminated: bool = False
     current_round: int = 1
     battle_phase: BattlePhase = BattlePhase.command
+    # ⚠ `battle_phase` is the phase that will execute NEXT -- the clock has
+    # already advanced by the time a reward is calculated. A term that pays for
+    # what an action DID must read `action_phase`, or it prices the wrong step
+    # at the wrong positions. Same distinction the snapshot draws.
+    action_phase: BattlePhase | None = None
     player_damage_dealt: int = 0
     opponent_damage_dealt: int = 0
     player_models_killed: int = 0

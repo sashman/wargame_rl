@@ -20,12 +20,17 @@ from wargame_rl.wargame.envs.types.config.battle import (
 )
 from wargame_rl.wargame.envs.types.config.coherency import CoherencyConfig
 from wargame_rl.wargame.envs.types.config.entities import ModelConfig, ObjectiveConfig
+from wargame_rl.wargame.envs.types.config.melee import MeleeConfig
 from wargame_rl.wargame.envs.types.config.terrain import (
     MapPoolConfig,
     RandomTerrainConfig,
     TerrainPieceConfig,
 )
-from wargame_rl.wargame.envs.types.game_timing import NON_MOVEMENT_PHASES, BattlePhase
+from wargame_rl.wargame.envs.types.game_timing import (
+    MELEE_ONLY_PHASES,
+    NON_MOVEMENT_PHASES,
+    BattlePhase,
+)
 
 # The rules' infantry base is 32mm across, so its radius is 16mm = 0.63".
 #
@@ -364,6 +369,54 @@ class WargameEnvConfig(BaseModel):
             "are legal. See docs/rules/implementation-status.md."
         ),
     )
+    declare_objectives: bool = Field(
+        default=False,
+        description=(
+            "Register an OBJECTIVE-DECLARATION slice (size = objective_budget, "
+            "valid in the command phase): each squad's LEADER may declare which "
+            "objective the squad is committed to, the declaration binds the "
+            "unit and PERSISTS until re-declared (STAY keeps the current one; "
+            "no squad is ever forced to hold a plan it wants to change). The "
+            "agent's own allocation plan, as a first-class action -- the "
+            "learning form of the surplus-reallocation rule "
+            "(baseline/reallocation.py) whose play-time decode measures "
+            "+14.54 +/- 3.81 vp, and the design the four failed travel terms "
+            "point at: they paid approach toward targets a heuristic imposed, "
+            "where `declared_objective_progress` pays the agent for executing "
+            "a commitment it chose itself (the charge_progress post-mortem: "
+            "'the declaration gate is the entire difference'). False (the "
+            "default) registers NO slice and adds NO observation column: every "
+            "existing config keeps its exact action space and checkpoints. "
+            "Turning it on is UNPAIRABLE against a config without it (new "
+            "actions change the output head)."
+        ),
+    )
+    declare_targets: bool = Field(
+        default=False,
+        description=(
+            "Register an ENEMY-TARGET declaration slice (size = max_groups, "
+            "valid in the command phase): each squad's LEADER may declare which "
+            "enemy unit the squad is hunting; the declaration binds the unit "
+            "and PERSISTS until re-declared (STAY keeps it). The hunt analog "
+            "of declare_objectives, priced by declared_target_progress -- the "
+            "movement-phase channel is the one that never reverts, which is "
+            "what made the objective form trainable where the charge-phase "
+            "forms (level: farmed; delta: revert-blanked) were not."
+        ),
+    )
+    hunt_declares_charge: bool = Field(
+        default=False,
+        description=(
+            "THE FOLD (s35's command-slot lesson): a unit whose leader has "
+            "declared an enemy target auto-declares its charge in every "
+            "command phase in which the charge is legal, WITHOUT spending the "
+            "leader's command action -- a hunt IS charge-intent. The override "
+            "lives at the plan level: re-declaring an objective drops the "
+            "hunt (and vice versa, the plan is ONE commitment). Adds no "
+            "actions, so it is init-PAIRABLE against the same config with it "
+            "off. Requires declare_targets."
+        ),
+    )
     n_advance_speed_bins: int = Field(
         ge=0,
         default=0,
@@ -509,6 +562,12 @@ class WargameEnvConfig(BaseModel):
         "distances, and which of its consequences are enforced. Every "
         "consequence defaults to off, so the default is exactly the behaviour "
         "that predates it.",
+    )
+    melee: MeleeConfig = Field(
+        default_factory=MeleeConfig,
+        description="Whether the charge and fight phases are played "
+        "(docs/rules/11-charge-phase.md, 12-fight-phase.md). Defaults off, "
+        "which is an exact no-op: no slice, no dice, no observation column.",
     )
 
     @field_validator("blocking_mask", mode="before")
@@ -773,6 +832,50 @@ class WargameEnvConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def validate_melee_needs_a_charge_phase(self) -> "WargameEnvConfig":
+        """Melee needs the charge phase, where a charge is declared and made.
+
+        The same failure `validate_advance_needs_a_command_phase` catches: the
+        actions would exist and never be legal, so a training run would spend
+        hours measuring a feature it never had.
+
+        ⚠ **The FIGHT phase is deliberately NOT required, and requiring it was a
+        bug.** The fight carries no agent action -- its mask offers exactly one
+        legal option per model (STAY) -- and it resolves in `_on_before_advance`,
+        which fires on skipped phases. So the correct melee config *skips*
+        fight and steps only charge. An earlier version of this validator
+        demanded both, which rejected that config and would have forced an extra
+        agent step per round, +33% of episode length, for a choice with one
+        option. Caught by validating a real config rather than by a test.
+
+        ⚠ **The reverse direction is also not checked.** Rejecting a stepped
+        charge or fight while melee is off was proposed, on the grounds that it
+        inflates `max_turns` for nothing. But `skip_phases: []` is a *documented*
+        setting for full per-phase stepping (`envs/CLAUDE.md`), five test modules
+        construct it, and no shipped config steps either phase -- so the check
+        would reject legitimate configs to guard against a mistake nothing has
+        made.
+        """
+        # ⚠ **AUTO-SKIPPED WHERE MELEE IS OFF, and that is what keeps every
+        # existing config a no-op.** `max_turns` is
+        # `n_rounds x (len(BATTLE_PHASE_ORDER) - len(skip_phases))`, so adding
+        # two phases would silently lengthen every episode in the repo. Skipping
+        # them when there is no melee keeps the stepped-phase count, and
+        # therefore `max_turns`, exactly as it was -- without editing dozens of
+        # configs that have no opinion about a phase they never reach.
+        if not self.melee.enabled:
+            for phase in MELEE_ONLY_PHASES:
+                if phase not in self.skip_phases:
+                    self.skip_phases.append(phase)
+
+        if self.melee.enabled and BattlePhase.charge in self.skip_phases:
+            raise ValueError(
+                "melee.enabled needs the charge phase, where a charge is "
+                "declared and made -- remove 'charge' from skip_phases"
+            )
+        return self
+
+    @model_validator(mode="after")
     def validate_advance_needs_a_command_phase(self) -> "WargameEnvConfig":
         """A scenario with advance rungs must let its units declare a move type.
 
@@ -786,6 +889,50 @@ class WargameEnvConfig(BaseModel):
             raise ValueError(
                 "n_advance_speed_bins > 0 needs the command phase, where a unit "
                 "declares its move type -- remove 'command' from skip_phases"
+            )
+        # ⚠ Melee needs it for the same reason. A charge rung is legal only for
+        # a unit that declared a charge, and the declaration is made in the
+        # command phase -- so a melee config that skips it steps the whole
+        # charge phase with exactly one option per model, and a training run
+        # would measure a mechanic it never had.
+        if self.melee.enabled and BattlePhase.command in self.skip_phases:
+            raise ValueError(
+                "a stepped charge phase needs the command phase, where a "
+                "unit's leader declares a charge and binds the unit -- remove "
+                "'command' from skip_phases"
+            )
+        # ⚠ The objective declaration lives in the command phase too, and its
+        # slice is sized to the objective BUDGET -- both must exist, or a run
+        # trains a plan it can never make (or a slice of size zero).
+        if self.declare_objectives:
+            if BattlePhase.command in self.skip_phases:
+                raise ValueError(
+                    "declare_objectives needs the command phase, where a "
+                    "unit's leader declares its objective -- remove 'command' "
+                    "from skip_phases"
+                )
+            if self.objective_budget is None:
+                raise ValueError(
+                    "declare_objectives sizes its action slice to "
+                    "objective_budget, which is unset -- set objective_budget"
+                )
+        if self.declare_targets:
+            if BattlePhase.command in self.skip_phases:
+                raise ValueError(
+                    "declare_targets needs the command phase, where a unit's "
+                    "leader declares its hunt -- remove 'command' from "
+                    "skip_phases"
+                )
+            if not self.melee.enabled:
+                raise ValueError(
+                    "declare_targets is a hunt declaration; without "
+                    "melee.enabled the charge it aims at does not exist"
+                )
+        if self.hunt_declares_charge and not self.declare_targets:
+            raise ValueError(
+                "hunt_declares_charge folds the charge into the hunt "
+                "declaration, so it needs declare_targets -- without a hunt "
+                "there is nothing to fold"
             )
         return self
 

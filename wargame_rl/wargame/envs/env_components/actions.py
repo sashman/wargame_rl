@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 import numpy as np
@@ -23,7 +24,15 @@ from wargame_rl.wargame.envs.domain.coherency_enforcement import (
     CoherencyEnforcement,
     enforce_after_move,
 )
+from wargame_rl.wargame.envs.domain.engagement import (
+    engaged_with_any,
+    engagement_matrix,
+)
 from wargame_rl.wargame.envs.domain.movement import back_off_to_unengaged, resolve_move
+from wargame_rl.wargame.envs.domain.pile_in import (
+    SELECTION_RANGE_INCHES,
+    agent_move_is_legal,
+)
 from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
 from wargame_rl.wargame.envs.domain.value_objects import (
     POSITION_DTYPE,
@@ -39,19 +48,55 @@ STAY_ACTION = 0
 # advance can add to a model's Move is 6". The bin ladder is built from this,
 # which is what keeps an action index meaning the same distance every turn.
 ADVANCE_DIE_FACES = 6.0
+# The largest total the charge's two D6 can show. Used only to normalise the
+# roll for the observation -- the legality gate reads the roll in inches.
+CHARGE_DICE_MAX = 12.0
+# Floating-point slack for the charge-distance re-check. `resolve_move` clamps
+# and backs off, so a legal move's realised length can differ from its rung's
+# nominal length in the last bits; a bare `>` would revert legal charges.
+_CHARGE_REACH_EPSILON = 1e-6
 
 # Every slice name `ActionHandler` can register. A name outside this set in
 # `dark_action_slices` is a typo that would silently darken nothing, so it
 # raises rather than doing nothing.
-KNOWN_ACTION_SLICES = frozenset({"stay", "movement", "shooting", "advance"})
+KNOWN_ACTION_SLICES = frozenset(
+    {
+        "stay",
+        "movement",
+        "shooting",
+        "advance",
+        "move_type",
+        "fight_order",
+        "objective_target",
+        "charge_target",
+    }
+)
+
+# How many activation priorities a unit can declare in the fight phase.
+# ⚠ The rules let the controlling player pick ANY eligible unit each time it is
+# their turn to select, which for k units is a k! ordering and cannot be a
+# simultaneous per-model action. A coarse PRIORITY is the expressible form of
+# the same decision: every unit commits a level up front, and the engine selects
+# the highest still eligible. Four levels keeps the slice at four actions while
+# giving a real ordering; ties fall back to the lowest unit index, which is
+# exactly what the engine did before, so a policy that declares nothing behaves
+# as it always did.
+FIGHT_ORDER_LEVELS = 4
 
 # The move-type slice, in declaration order. `normal` first so that a policy
 # emitting the slice's first action declares the default, and STAY in the
 # command phase means the same thing -- which is what keeps every policy that
 # does not act in the command phase working unchanged.
-MOVE_TYPE_NORMAL = 0
-MOVE_TYPE_ADVANCE = 1
-N_MOVE_TYPES = 2
+# ⚠ These are OFFSETS INTO A SLICE WHOSE SIZE VARIES BY SCENARIO, not fixed
+# action indices. `normal` is always 0; `advance` and `charge` take the next
+# offsets only when the scenario actually has them. Sizing the slice to what
+# exists is what keeps an advance-only config at exactly the action count it
+# had before the charge declaration existed -- a fixed 3-wide slice would have
+# widened every advance config's output head and orphaned its checkpoints for a
+# value it can never declare. Resolve with `ActionHandler.move_type_offset`.
+MOVE_TYPE_NORMAL = "normal"
+MOVE_TYPE_ADVANCE = "advance"
+MOVE_TYPE_CHARGE = "charge"
 
 
 def _base_arrays(models: list[Any] | None) -> tuple[np.ndarray, np.ndarray]:
@@ -70,6 +115,68 @@ def _base_arrays(models: list[Any] | None) -> tuple[np.ndarray, np.ndarray]:
 
 
 ALL_BATTLE_PHASES: frozenset[BattlePhase] = frozenset(BattlePhase)
+
+# The phases in which a model actually moves. A charge is an ordinary move
+# except for where it is allowed to END -- see `apply`. Pile-in and consolidate
+# are ordinary moves capped far shorter, with their own after-conditions.
+_DISPLACING_PHASES: frozenset[BattlePhase] = frozenset(
+    {
+        BattlePhase.movement,
+        BattlePhase.charge,
+        BattlePhase.pile_in,
+        BattlePhase.consolidate,
+    }
+)
+
+# `12-fight-phase.md`: a pile-in and a consolidation are both "Maximum distance
+# 3"". One ladder serves both.
+SHORT_MOVE_MAX_INCHES = 3.0
+
+
+class MoveLadder(str, Enum):
+    """Which distance table the movement slice decodes to.
+
+    ⚠ The same action index means a different DISTANCE in different phases, and
+    that is deliberate: it is what lets the charge and the pile-in reuse the
+    movement slice instead of buying new actions. It is safe here where it was
+    not for the advance because phase is deterministic, observable and constant
+    within a step, whereas the advance's old mapping moved with a per-turn die.
+    """
+
+    normal = "normal"
+    charge = "charge"
+    short = "short"
+
+
+# Phases whose move is judged as a WHOLE UNIT and reverted entire when illegal.
+_UNIT_REFEREED_PHASES: frozenset[BattlePhase] = frozenset(
+    {BattlePhase.charge, BattlePhase.pile_in, BattlePhase.consolidate}
+)
+
+# Phases whose move MAY end inside an enemy's engagement range -- the charge that
+# makes contact, and the two fight-phase moves that keep it.
+_ENGAGING_ENDPOINT_PHASES: frozenset[BattlePhase] = frozenset(
+    {BattlePhase.charge, BattlePhase.pile_in, BattlePhase.consolidate}
+)
+
+_LADDER_FOR_PHASE: dict[BattlePhase, MoveLadder] = {
+    BattlePhase.charge: MoveLadder.charge,
+    BattlePhase.pile_in: MoveLadder.short,
+    BattlePhase.consolidate: MoveLadder.short,
+}
+
+
+def ladder_for_phase(phase: BattlePhase | None) -> MoveLadder:
+    """Which distance table the movement slice decodes to in `phase`.
+
+    Public because the joint decoder must build its forward model on the SAME
+    table the env will apply. It was handed a bool for the charge and would have
+    modelled every pile-in rung at Move -- the shape of the advance defect that
+    manufactured 32-43% of the advances executed at play.
+    """
+    if phase is None:
+        return MoveLadder.normal
+    return _LADDER_FOR_PHASE.get(phase, MoveLadder.normal)
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,6 +299,14 @@ class ActionHandler:
         quantities = resolve_rules_quantities(config)
         max_speed = quantities.max_move_speed
         self._engagement_range = float(quantities.engagement_range)
+        self._melee_enabled = bool(config.melee.enabled)
+        self._hunt_declares_charge = bool(
+            getattr(config, "hunt_declares_charge", False)
+        )
+        self._charge_approach_mask = bool(
+            config.melee.enabled and config.melee.charge_approach_mask
+        )
+        self._charge_range = float(quantities.scale.to_units(config.melee.charge_range))
         # A model with a base cannot stand with half of it off the table.
         self._base_radius = quantities.base_radius
         # Resolved once, like every other rules distance. The mode is read here
@@ -265,6 +380,56 @@ class ActionHandler:
             )  # (n_models, n_angles, n_speeds, 2)
             self._model_displacements = per_model.astype(POSITION_DTYPE)
 
+        # ⚠ **THE CHARGE LADDER, and it is MOVE-INDEPENDENT on purpose.**
+        # `docs/rules/11-charge-phase.md` § Charge move: *"Maximum distance |
+        # The charge roll."* Move does not cap a charge in the rules, so this
+        # grid spans the 2D6's own range -- rung `s` travels
+        # `(s + 1) x (12 / n_speeds)`, i.e. 2"/4"/6"/8"/10"/12" at six bins.
+        # The 2D6 mask in `charge_legality` decides which of them are LEGAL.
+        #
+        # ⚠ **This closes `DEFERRED: charge.beyond_move_ladder`**, which made
+        # the charge reuse the *movement* ladder and so capped it at Move (6").
+        # Measured on the shipped config: the roll exceeds Move on **57.5-59.1%**
+        # of declarations and **13.8-15.6%** of eligible declarations were
+        # blocked by the cap rather than by the dice. The rules' whole reason to
+        # declare a charge is that 2D6 can carry a unit FURTHER than it could
+        # walk; capped at Move the gamble had its upside removed.
+        #
+        # ⚠ **It makes the movement slice mean a different DISTANCE in the
+        # charge phase**, which is the defect the advance re-encoding removed --
+        # so the distinction matters. The advance ladder changed meaning with a
+        # per-turn DIE, so a policy had to read `advance_roll` to know what its
+        # own action did, and the mapping moved under it turn to turn. Phase is
+        # deterministic, observable (`normalized_phase` is in the game tensor)
+        # and constant within a step, and in the charge phase the movement slice
+        # is legal ONLY for a declared unit -- so there is no state in which the
+        # two meanings compete. It costs **zero** new actions, where a dedicated
+        # ladder would add 96 and orphan nothing only because no melee
+        # checkpoint exists.
+        # ⚠ Through the SCALE, like every other rules distance. `CHARGE_DICE_MAX`
+        # is 2D6's maximum in INCHES; the displacement grid is in board units.
+        # An audit found `charge_roll` itself still compared raw against board
+        # units -- a latent trap while `inches_per_unit` is 1 everywhere, and a
+        # silent one the moment a board uses another unit. `_charge_reach`
+        # converts on the other side of the same comparison.
+        self._charge_scale = quantities.scale
+        # The rules' *"end within 1 inch of a target if it can"* clause.
+        self._charge_touch_range = float(quantities.scale.to_units(1.0))
+        step = float(quantities.scale.to_units(CHARGE_DICE_MAX)) / n_speeds
+        # The pile-in / consolidate ladder: `SHORT_MOVE_MAX_INCHES` split into
+        # the same number of rungs, so rung `s` travels `(s + 1) x (3 / bins)`.
+        # Move-independent, like the charge: the rules cap both at a distance,
+        # not at the model's Move.
+        short_step = float(quantities.scale.to_units(SHORT_MOVE_MAX_INCHES)) / n_speeds
+        self._short_displacements = (
+            self._unit_directions[:, np.newaxis, :]
+            * (np.arange(1, n_speeds + 1) * short_step)[np.newaxis, :, np.newaxis]
+        ).astype(POSITION_DTYPE)
+        self._charge_displacements = (
+            self._unit_directions[:, np.newaxis, :]
+            * (np.arange(1, n_speeds + 1) * step)[np.newaxis, :, np.newaxis]
+        ).astype(POSITION_DTYPE)
+
         self._n_move_actions = n_angles * n_speeds
         self._n_speed_bins = n_speeds
         self._n_angles = n_angles
@@ -288,10 +453,22 @@ class ActionHandler:
             return frozenset() if name in dark else valid
 
         self._registry.register("stay", 1, phases("stay", ALL_BATTLE_PHASES))
+        # ⚠ The charge MOVE reuses this slice rather than adding one. Reach is
+        # not the constraint it looks like: `back_off_to_unengaged` parks every
+        # mover 8.7 MICRO-inches outside contact, so the distance a charge has
+        # to cover is one speed bin, not a 2D6 roll. A dedicated absolute-rung
+        # ladder would be ~80 actions bought to cross a hundred-thousandth of an
+        # inch -- and it would change the output head's shape, which is what
+        # makes an action-space arm unpairable against its control.
         self._registry.register(
             "movement",
             self._n_move_actions,
-            phases("movement", frozenset({BattlePhase.movement})),
+            phases(
+                "movement",
+                _DISPLACING_PHASES
+                if config.melee.enabled
+                else frozenset({BattlePhase.movement}),
+            ),
         )
 
         if n_shoot_targets > 0:
@@ -329,19 +506,344 @@ class ActionHandler:
         #
         # Darkening "advance" darkens this too, so the rungs become unreachable
         # by the same switch -- a rung is legal only where a declaration was made.
-        if n_advance_bins > 0:
+        # ⚠ Sized to the move types this scenario HAS. `normal` is free (it is
+        # what STAY declares), so the slice carries one action per *optional*
+        # type. An advance-only config therefore keeps exactly the 2-wide slice
+        # it had before the charge declaration existed, and its checkpoints
+        # still load.
+        # ⚠ **`or "move_type" in dark` is what keeps the arm PAIRABLE**, and it
+        # is the mechanism this repo already uses for the advance. The melee arm
+        # and its dark control differ in exactly one scalar -- `melee.enabled`
+        # -- so they share an init; registering the declaration on that scalar
+        # alone would give them 104 and 102 actions, different output heads and
+        # different weights at step 0. The control names `move_type` in
+        # `dark_action_slices`, which registers the slice and makes it valid in
+        # NO phase: same shape, permanently inert.
+        #
+        # Gating on "the charge phase is stepped" instead was tried and is
+        # WRONG in the other direction: `skip_phases: []` is a documented
+        # setting that five test modules use, and it would have quietly given
+        # every one of them an extra action and a real choice in a command
+        # phase that used to offer only STAY.
+        carries_charge = self._melee_enabled or "move_type" in dark
+        self._move_types: tuple[str, ...] = (
+            MOVE_TYPE_NORMAL,
+            *((MOVE_TYPE_ADVANCE,) if n_advance_bins > 0 else ()),
+            *((MOVE_TYPE_CHARGE,) if carries_charge else ()),
+        )
+        if len(self._move_types) > 1:
             self._move_type_slice: ActionSlice | None = self._registry.register(
                 "move_type",
-                N_MOVE_TYPES,
-                phases("advance", frozenset({BattlePhase.command})),
+                len(self._move_types),
+                phases("move_type", frozenset({BattlePhase.command})),
             )
         else:
             self._move_type_slice = None
 
+        # The squad's PLAN: which objective it is committed to, declared by its
+        # leader in the command phase, binding and PERSISTENT (STAY keeps it).
+        # Registered LAST so no existing index moves, and only under
+        # `declare_objectives` so every existing config keeps its exact action
+        # space. Size is the objective BUDGET -- the tensor width -- with
+        # legality masking off indices beyond the episode's real objectives.
+        budget = config.objective_budget
+        self._objective_budget = int(budget) if budget is not None else 0
+        # ⚠ `getattr`, not attribute access: a config PICKLED before this
+        # field existed (a checkpoint's hparams, a recording subprocess's
+        # snapshot from a live run) must construct under new code. The
+        # 2026-08-27 incident -- new builder code meeting an old config object
+        # in a recording subprocess -- recurred the moment this field landed
+        # under live trainers; a plain read crashes every such consumer.
+        if bool(getattr(config, "declare_objectives", False)):
+            self._objective_target_slice: ActionSlice | None = self._registry.register(
+                "objective_target",
+                self._objective_budget,
+                phases("objective_target", frozenset({BattlePhase.command})),
+            )
+        else:
+            self._objective_target_slice = None
+
+        # The squad's HUNT: which enemy unit it is committed to closing on,
+        # same contract as the objective declaration (leader-declared in the
+        # command phase, unit-binding, persistent). Sized to `max_groups` (the
+        # unit-count tensor width); legality masks off groups with no alive
+        # member. Registered after `objective_target` so that slice's indices
+        # never move; only under `declare_targets` so every existing config
+        # keeps its exact action space.
+        self._target_budget = int(getattr(config, "max_groups", 0) or 0)
+        if bool(getattr(config, "declare_targets", False)):
+            self._charge_target_slice: ActionSlice | None = self._registry.register(
+                "charge_target",
+                self._target_budget,
+                phases("charge_target", frozenset({BattlePhase.command})),
+            )
+        else:
+            self._charge_target_slice = None
+
+        # ⚠ **WHO SWINGS FIRST WAS THE ENGINE'S CHOICE, and the rules make it the
+        # player's.** `resolve_fight_step` picked `min(pool)` -- the lowest-indexed
+        # eligible unit -- where `12-fight-phase.md` says *"players alternate
+        # selecting one friendly eligible unit"*. In a game where merely making
+        # activation alternate halved a 25.0 vp seat asymmetry, the order units
+        # swing in is not bookkeeping.
+        #
+        # Registered LAST, after `move_type`, so no existing action index moves.
+        # Declared by the unit's LEADER and binding the unit, exactly as the move
+        # type is: a per-model priority would be five votes on one unit-level fact.
+        # ⚠ STAY declares level 0 and ties break on the lowest unit index, which
+        # is what the engine already did -- so a policy that never acts in the
+        # fight phase selects in exactly the order it always did.
+        if carries_charge:
+            self._fight_order_slice: ActionSlice | None = self._registry.register(
+                "fight_order",
+                FIGHT_ORDER_LEVELS,
+                phases("fight_order", frozenset({BattlePhase.fight})),
+            )
+        else:
+            self._fight_order_slice = None
+
+    @property
+    def fight_order_slice(self) -> ActionSlice | None:
+        """Activation-priority slice, or None where nothing fights."""
+        return self._fight_order_slice
+
+    def declare_objectives(
+        self, action: WargameEnvAction, wargame_models: list[Any]
+    ) -> set[int]:
+        """Record each unit's declared OBJECTIVE from its leader's action.
+
+        The learning form of `baseline/reallocation.py`: the squad's plan as a
+        first-class, leader-declared, unit-binding action. ⚠ Unlike the move
+        type it PERSISTS -- `begin_turn` does not clear it -- so STAY means
+        "keep the plan", and a squad re-plans only by declaring again. That is
+        what makes it a commitment the execution reward can price rather than a
+        per-turn impulse.
+
+        Returns the group ids that declared THIS call, for the plan-exclusivity
+        step the fold (`hunt_declares_charge`) applies.
+        """
+        if self._objective_target_slice is None:
+            return set()
+        start = self._objective_target_slice.start
+        end = self._objective_target_slice.end
+        leaders: dict[int, int] = {}
+        for index, model in enumerate(wargame_models):
+            if not model.is_alive:
+                continue
+            leaders.setdefault(int(model.group_id), index)
+        declared: dict[int, int] = {}
+        for group, leader in leaders.items():
+            if leader >= len(action.actions):
+                continue
+            chosen = int(action.actions[leader])
+            if start <= chosen < end:
+                declared[group] = chosen - start
+        if not declared:
+            return set()
+        for model in wargame_models:
+            group = int(model.group_id)
+            if group in declared:
+                model.declared_objective = declared[group]
+        return set(declared)
+
+    def objective_target_legality(
+        self, models: list[Any], n_objectives: int
+    ) -> np.ndarray:
+        """`(n_models, budget)` -- which objective declarations exist to make.
+
+        The slice is sized to the BUDGET (the tensor width); an episode drawing
+        fewer objectives masks the padding indices off, exactly as the
+        observation zero-pads the same rows. Alive models only.
+        """
+        if self._objective_target_slice is None:
+            return np.zeros((len(models), 0), dtype=bool)
+        legality = np.zeros(
+            (len(models), self._objective_target_slice.size), dtype=bool
+        )
+        limit = min(int(n_objectives), self._objective_target_slice.size)
+        alive = np.array([bool(m.is_alive) for m in models], dtype=bool)
+        legality[alive, :limit] = True
+        return legality
+
+    @property
+    def objective_target_slice(self) -> ActionSlice | None:
+        """The objective-declaration slice, or None when the flag is off."""
+        return self._objective_target_slice
+
+    def declare_targets(
+        self, action: WargameEnvAction, wargame_models: list[Any]
+    ) -> set[int]:
+        """Record each unit's declared enemy-unit TARGET from its leader.
+
+        The hunt analog of `declare_objectives`: identical leader resolution,
+        identical persistence (STAY keeps the target; only re-declaring
+        replaces it), so the execution reward prices a commitment.
+
+        Returns the group ids that declared THIS call, as `declare_objectives`
+        does and for the same fold step.
+        """
+        if self._charge_target_slice is None:
+            return set()
+        start = self._charge_target_slice.start
+        end = self._charge_target_slice.end
+        leaders: dict[int, int] = {}
+        for index, model in enumerate(wargame_models):
+            if not model.is_alive:
+                continue
+            leaders.setdefault(int(model.group_id), index)
+        declared: dict[int, int] = {}
+        for group, leader in leaders.items():
+            if leader >= len(action.actions):
+                continue
+            chosen = int(action.actions[leader])
+            if start <= chosen < end:
+                declared[group] = chosen - start
+        if not declared:
+            return set()
+        for model in wargame_models:
+            group = int(model.group_id)
+            if group in declared:
+                model.declared_target = declared[group]
+        return set(declared)
+
+    def apply_plan_fold(
+        self,
+        wargame_models: list[Any],
+        enemy_models: list[Any] | None,
+        declared_objectives: set[int],
+        declared_targets: set[int],
+    ) -> None:
+        """The FOLD (`hunt_declares_charge`): one plan, and a hunt IS charge-intent.
+
+        §35's command-slot lesson, mechanised. Two effects, both gated on the
+        config flag and applied on both seats (this runs inside `apply`, which
+        both seats share):
+
+        * **Plan exclusivity** — a unit's plan is ONE commitment. Declaring an
+          objective this phase drops its hunt; declaring a hunt drops its
+          objective. That is also the override: the policy un-hunts by
+          re-planning, so charge-intent is never forced on a unit that has
+          changed its mind (§36b's lesson — a forced override the policy does
+          not replan around collects nothing).
+        * **Auto-declared charges** — every unit whose declared target is an
+          alive enemy unit, and which the rules allow to declare a charge this
+          turn (`charge_eligible_units`, the same predicate the manual
+          declaration is masked on), has `declared_charge` set WITHOUT its
+          leader spending the command action. The leader's slot is freed for
+          the plan, which is the whole point: v6 → v10 → v11 measured charge
+          declarations/ep falling 8.55 → 5.89 → 2.68 as each stacked slice
+          displaced them.
+
+        Runs AFTER `declare_move_types`, which overwrites `declared_charge`
+        for every unit each command phase — so the fold's grant survives and a
+        manual `MOVE_TYPE_CHARGE` declaration is simply subsumed.
+        """
+        if not self._hunt_declares_charge:
+            return
+        for model in wargame_models:
+            group = int(model.group_id)
+            if group in declared_objectives:
+                model.declared_target = -1
+            elif group in declared_targets:
+                model.declared_objective = -1
+        alive_enemy_groups = {
+            int(m.group_id) for m in (enemy_models or []) if m.is_alive
+        }
+        hunting = {
+            int(model.group_id)
+            for model in wargame_models
+            if model.is_alive
+            and int(getattr(model, "declared_target", -1)) in alive_enemy_groups
+        }
+        if not hunting:
+            return
+        # Both gates the MANUAL declaration is masked on: rules eligibility
+        # AND roll-reachability. A laxer auto-grant would hand out the doomed
+        # declarations the mask exists to forbid (13.8% of a trained arm's
+        # attempts were zero-gradient traps before that gate).
+        eligible = self.charge_eligible_units(wargame_models, enemy_models)
+        alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+        if alive_enemies:
+            eligible &= self._roll_reachable_units(wargame_models, alive_enemies)
+        granted = hunting & eligible
+        if not granted:
+            return
+        for model in wargame_models:
+            if int(model.group_id) in granted:
+                model.declared_charge = True
+
+    def charge_target_legality(
+        self, models: list[Any], enemy_models: list[Any]
+    ) -> np.ndarray:
+        """`(n_models, budget)` — which enemy-unit declarations exist to make.
+
+        A group index is declarable only while it has an alive member; a hunt
+        for a wiped unit is a plan for nothing. Alive declarers only.
+        """
+        if self._charge_target_slice is None:
+            return np.zeros((len(models), 0), dtype=bool)
+        legality = np.zeros((len(models), self._charge_target_slice.size), dtype=bool)
+        alive_groups = {int(m.group_id) for m in enemy_models if m.is_alive}
+        alive = np.array([bool(m.is_alive) for m in models], dtype=bool)
+        for group in alive_groups:
+            if 0 <= group < self._charge_target_slice.size:
+                legality[alive, group] = True
+        return legality
+
+    @property
+    def charge_target_slice(self) -> ActionSlice | None:
+        """The enemy-target declaration slice, or None when the flag is off."""
+        return self._charge_target_slice
+
+    def declare_fight_order(
+        self, action: WargameEnvAction, wargame_models: list[Any]
+    ) -> None:
+        """Record each unit's activation priority from its LEADER's action.
+
+        Higher goes first. ⚠ Level 0 is what STAY declares, so a policy that does
+        not act in the fight phase leaves every unit level 0 and the engine falls
+        back to the lowest-index order it used before this existed.
+        """
+        if self._fight_order_slice is None:
+            return
+        start = self._fight_order_slice.start
+        end = self._fight_order_slice.end
+        leaders: dict[int, int] = {}
+        for index, model in enumerate(wargame_models):
+            if not model.is_alive:
+                continue
+            leaders.setdefault(int(model.group_id), index)
+        priorities: dict[int, int] = {}
+        for group, leader in leaders.items():
+            if leader >= len(action.actions):
+                continue
+            chosen = int(action.actions[leader])
+            priorities[group] = chosen - start if start <= chosen < end else 0
+        for model in wargame_models:
+            model.fight_priority = priorities.get(int(model.group_id), 0)
+
     @property
     def move_type_slice(self) -> ActionSlice | None:
-        """Move-type declaration slice, or None when the scenario has no advance."""
+        """Move-type declaration slice, or None when nothing may be declared."""
         return self._move_type_slice
+
+    def move_type_offset(self, kind: str) -> int | None:
+        """This move type's offset into the slice, or None when unavailable.
+
+        Returns None rather than raising, so a scripted policy can ask for a
+        declaration the scenario does not carry and fall through to a normal
+        move -- the same contract `best_advance_toward` uses.
+        """
+        if self._move_type_slice is None or kind not in self._move_types:
+            return None
+        return self._move_types.index(kind)
+
+    def move_type_action(self, kind: str) -> int | None:
+        """The action index that declares `kind`, or None when unavailable."""
+        offset = self.move_type_offset(kind)
+        if offset is None or self._move_type_slice is None:
+            return None
+        return self._move_type_slice.start + offset
 
     def declare_move_types(
         self, action: WargameEnvAction, wargame_models: list[Any]
@@ -363,23 +865,39 @@ class ActionHandler:
         """
         if self._move_type_slice is None:
             return
-        start = self._move_type_slice.start
+        advance_action = self.move_type_action(MOVE_TYPE_ADVANCE)
+        charge_action = self.move_type_action(MOVE_TYPE_CHARGE)
         leaders: dict[int, int] = {}
         for index, model in enumerate(wargame_models):
             if not model.is_alive:
                 continue
             leaders.setdefault(int(model.group_id), index)
-        advancing = set()
+        advancing: set[int] = set()
+        charging: set[int] = set()
         for group, leader in leaders.items():
             if leader >= len(action.actions):
                 continue
-            if int(action.actions[leader]) == start + MOVE_TYPE_ADVANCE:
+            chosen = int(action.actions[leader])
+            if advance_action is not None and chosen == advance_action:
                 advancing.add(group)
+            elif charge_action is not None and chosen == charge_action:
+                charging.add(group)
         for model in wargame_models:
-            declared = int(model.group_id) in advancing
+            group = int(model.group_id)
+            declared = group in advancing
             model.declared_advance = declared
             if declared:
                 model.advanced_this_turn = True
+            # ⚠ The charge declaration BINDS THE WHOLE UNIT, and that is the
+            # entire point of putting it here. Measured on three behaviour
+            # clones of a rigid charging teacher: the teacher declares for
+            # 100% of a unit's members every time, the clones for 54-62%, and
+            # the WHOLE unit only 23-35% of the time. A charge fails because
+            # half the unit charges and the rest stand still, so the unit
+            # stretches and the referee reverts it however good the rung
+            # choice was. One leader-level binary choice replaces a 1-against-48
+            # argmax repeated per model.
+            model.declared_charge = group in charging
 
     @property
     def shooting_slice(self) -> ActionSlice | None:
@@ -455,6 +973,7 @@ class ActionHandler:
         action: int,
         model_idx: int | None = None,
         advance_roll: float = 0.0,
+        ladder: MoveLadder = MoveLadder.normal,
     ) -> np.ndarray:
         """Return the (dx, dy) displacement for *action*.
 
@@ -479,6 +998,16 @@ class ActionHandler:
         move_idx = action - 1
         angle_idx = move_idx // self._n_speed_bins
         speed_idx = move_idx % self._n_speed_bins
+        # ⚠ In the charge phase the movement slice decodes to the CHARGE ladder,
+        # which spans the 2D6 (up to 12") rather than Move (6"). It is shared
+        # across models because the rules cap a charge at the roll alone, so a
+        # slow model charges exactly as far as a fast one.
+        if ladder is MoveLadder.charge:
+            charge: np.ndarray = self._charge_displacements[angle_idx, speed_idx]
+            return charge
+        if ladder is MoveLadder.short:
+            short: np.ndarray = self._short_displacements[angle_idx, speed_idx]
+            return short
         if model_idx is not None and self._model_displacements is not None:
             per_model: np.ndarray = self._model_displacements[
                 model_idx, angle_idx, speed_idx
@@ -533,7 +1062,9 @@ class ActionHandler:
         displacement: np.ndarray = (direction * distance).astype(POSITION_DTYPE)
         return displacement
 
-    def advance_legality(self, models: list[Any]) -> np.ndarray:
+    def advance_legality(
+        self, models: list[Any], enemy_models: list[Any] | None
+    ) -> np.ndarray:
         """`(n_models, n_advance_actions)` -- which rungs this turn's rolls allow.
 
         Two gates, and both are the point. A rung is legal only for a model
@@ -551,8 +1082,32 @@ class ActionHandler:
             return np.zeros((len(models), 0), dtype=bool)
         n_bins = self._n_advance_bins
         legality = np.zeros((len(models), self._advance_slice.size), dtype=bool)
+        # ⚠ **An ENGAGED unit may not advance**, and until 2026-08-26 it could.
+        # `09-movement-phase.md` makes a Normal move eligible only for an
+        # unengaged unit, so an engaged unit's only move is a FALL BACK -- which
+        # `implementation-status.md` row 63 records as capped at M. Without this
+        # an engaged model kept all 48 advance rungs (measured) and could
+        # therefore withdraw `M + roll`, which is the rules violation that row
+        # names as the observable difference.
+        #
+        # Behaviourally a no-op wherever melee is off: `back_off_to_unengaged`
+        # runs on every mover, so engagement is 0.0000% of model-pairs without
+        # the charge's exemption, and the seeded digest is unchanged. It bites
+        # exactly where it should -- a melee scenario where units are locked.
+        # ⚠ `enemy_models` is REQUIRED, not defaulted, and that is the point.
+        # An optional argument that silently disables a rule is exactly the trap
+        # this file has now been caught by twice in one day -- the declaration
+        # and the 2D6 cap were enforced only in the mask because `apply` never
+        # received one. Passing `None` here is legitimate (no opposing force is
+        # a real state) but it has to be a decision the caller writes down.
+        engaged = self._engaged_units(models, enemy_models)
         for index, model in enumerate(models):
             if not getattr(model, "declared_advance", False):
+                continue
+            # Guarded on `engaged` being non-empty so the common case -- no
+            # enemies passed, which is every non-melee path -- reads nothing off
+            # the model at all.
+            if engaged and int(model.group_id) in engaged:
                 continue
             move = float(self._move_speeds[index])
             reach = move + float(model.advance_roll)
@@ -562,6 +1117,414 @@ class ActionHandler:
             )
             legality[index] = np.tile(allowed, self._n_angles)
         return legality
+
+    def _engaged_units(
+        self, models: list[Any], enemy_models: list[Any] | None
+    ) -> set[int]:
+        """Which of `models`' units are currently in engagement range.
+
+        Unit-level, like every other engagement test in this file: reducing a
+        per-model answer over the unit is the coupling bug `shooting_masks`'
+        own docstring warns against, and it is the one an audit found live at
+        `_engaged_shooters` -- one model locking an enemy while four squadmates
+        fired.
+        """
+        # ⚠ The enemy check comes FIRST and returns before touching `models`.
+        # Callers that pass no enemies at all -- every non-melee path, and the
+        # handler-level tests -- must not need a model to answer "is anyone
+        # engaged", and one of those tests uses a stub without `is_alive`.
+        if not models or not enemy_models:
+            return set()
+        alive_enemies = [m for m in enemy_models if m.is_alive]
+        if not alive_enemies:
+            return set()
+        contacts = engagement_matrix(
+            np.array([m.location for m in models], dtype=float),
+            np.array([m.location for m in alive_enemies], dtype=float),
+            np.ones(len(alive_enemies), dtype=bool),
+            np.array([m.is_alive for m in models], dtype=bool),
+            engagement_range=self._engagement_range,
+            base_diameter=2.0 * self._base_radius,
+        )
+        return {
+            int(models[index].group_id)
+            for index in np.nonzero(np.asarray(contacts).any(axis=1))[0]
+        }
+
+    def short_move_legality(
+        self, models: list[Any], enemy_models: list[Any] | None, phase: BattlePhase
+    ) -> np.ndarray:
+        """`(n_models, n_move_actions)` -- who may pile in or consolidate at all.
+
+        ⚠ **Without this the phases are unmasked**, exactly as the charge
+        DECLARATION was: every alive model could move 3" toward anything, twice
+        a turn, whether or not the rules make its unit eligible. Measured when
+        it was missing -- a scripted policy that piled in unconditionally
+        dragged its army off the objectives and the bar fell from +23.9 to
+        -27.8 vp.
+
+        `12-fight-phase.md` § Pile-in move: eligible if the unit is engaged, or
+        made a charge move this turn. The consolidate step takes the units that
+        *were eligible to fight*, which is the same set plus those that fought
+        and are now disengaged -- `fought_this_phase` carries that.
+        """
+        width = self._n_move_actions
+        legality = np.zeros((len(models), width), dtype=bool)
+        if phase not in (BattlePhase.pile_in, BattlePhase.consolidate):
+            return legality
+        alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+        if not alive_enemies:
+            return legality
+        positions = np.array([m.location for m in models], dtype=float)
+        enemy_positions = np.array([m.location for m in alive_enemies], dtype=float)
+        engaged = engaged_with_any(
+            positions,
+            enemy_positions,
+            np.ones(len(alive_enemies), dtype=bool),
+            np.array([m.is_alive for m in models], dtype=bool),
+            engagement_range=self._engagement_range,
+            base_diameter=2.0 * self._base_radius,
+        )
+        eligible: set[int] = set()
+        for index, model in enumerate(models):
+            if not model.is_alive:
+                continue
+            if (
+                engaged[index]
+                or getattr(model, "charged_this_turn", False)
+                or (
+                    phase is BattlePhase.consolidate
+                    and getattr(model, "fought_this_phase", False)
+                )
+            ):
+                eligible.add(int(model.group_id))
+        for index, model in enumerate(models):
+            if model.is_alive and int(model.group_id) in eligible:
+                legality[index] = True
+        return legality
+
+    def declaration_legality(
+        self, models: list[Any], enemy_models: list[Any] | None
+    ) -> np.ndarray:
+        """`(n_models, n_move_types)` -- which move types each model may DECLARE.
+
+        ⚠ **The declaration was UNMASKED until 2026-08-26, on both seats.**
+        `ActionRegistry.get_action_mask` is purely phase-based and nothing
+        refined the `move_type` slice, so any alive model could declare any type
+        in any command phase. Eligibility was enforced only later, on the MOVE,
+        where an ineligible unit simply found no legal rung.
+
+        That is a rules divergence in both directions, and both cost something:
+
+        - **Charge.** `docs/rules/11-charge-phase.md` makes a unit ineligible if
+          it is not within 12" of an enemy unit, is engaged, or advanced or fell
+          back this turn. Declaring anyway is a *bit-exact no-op* -- it changes
+          no state and earns no reward difference -- so an unmasked declaration
+          hands the policy a free action with no consequence to learn from.
+          Measured on the first unshaped arm: **71.4% of declared model-steps
+          held zero legal rungs**, and declarations landed on eligible units
+          *below chance* (31.4%, z = −2.54) against the scripted teacher's 40/40.
+        - **Advance.** Worse, because it is not free. `declare_move_types` sets
+          `advanced_this_turn` immediately, which both shooting masks read, so an
+          ENGAGED unit -- barred from every rung by `advance_legality` -- could
+          declare an advance, forfeit its whole shooting phase, and then be
+          unable to move at all.
+
+        ⚠ The gap map rated charge eligibility **implemented**
+        (`implementation-status.md:103`). It was implemented for the *move*, not
+        the *declaration*, and the row was wrong.
+
+        `normal` is always legal: it is what STAY declares, so masking it would
+        make the command phase unsteppable for a unit with nothing else to do.
+        """
+        n_types = len(self._move_types)
+        legality = np.zeros((len(models), n_types), dtype=bool)
+        if self._move_type_slice is None or n_types == 0:
+            return legality
+        alive = np.array([bool(m.is_alive) for m in models], dtype=bool)
+        legality[:, self._move_types.index(MOVE_TYPE_NORMAL)] = alive
+
+        if MOVE_TYPE_ADVANCE in self._move_types:
+            column = self._move_types.index(MOVE_TYPE_ADVANCE)
+            engaged = self._engaged_units(models, enemy_models)
+            for index, model in enumerate(models):
+                if not model.is_alive:
+                    continue
+                if engaged and int(model.group_id) in engaged:
+                    continue
+                # ⚠ NOT a rules gate -- a REPRESENTATION one, and it diverges
+                # deliberately. The rules would let a unit rolling 1 advance 7";
+                # the absolute ladder cannot express that, so at three bins such
+                # a unit has no legal rung. Permitting the declaration there
+                # would spend its shooting for a move it cannot make, which is
+                # strictly dominated -- the exact class of action the absolute
+                # re-encoding removed (dominated advances went 3.5-13.8% to
+                # 0.0%). Masking is the smaller divergence of the two.
+                move = float(self._move_speeds[index])
+                reach = move + float(model.advance_roll)
+                if any(
+                    self.advance_distance(b, move) <= reach
+                    for b in range(self._n_advance_bins)
+                ):
+                    legality[index, column] = True
+
+        if MOVE_TYPE_CHARGE in self._move_types:
+            column = self._move_types.index(MOVE_TYPE_CHARGE)
+            alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+            if alive_enemies:
+                eligible = self._charge_eligible_units(models, alive_enemies)
+                # ⚠ NOT a rules gate -- a REPRESENTATION one, the same divergence
+                # the advance declaration makes above, in the same direction, for
+                # the same reason. The rules roll AFTER the declaration, so a
+                # doomed declaration is a legal play there; here the roll comes
+                # first (`DEFERRED: charge.blind_declaration`), so a unit whose
+                # roll cannot cover the gap to ANY enemy is declaring a charge
+                # that no rung can land. That declaration binds the unit into
+                # the charge phase for a move the referee must revert -- a
+                # zero-gradient trap, and 13.8% of a trained arm's attempts.
+                # The scripted comparator has always declined these
+                # (`_reachable_charge_units` asks gap <= roll); masking gives
+                # the learned policy the same information.
+                reachable = self._roll_reachable_units(models, alive_enemies)
+                for index, model in enumerate(models):
+                    if (
+                        model.is_alive
+                        and int(model.group_id) in eligible
+                        and int(model.group_id) in reachable
+                    ):
+                        legality[index, column] = True
+        return legality
+
+    def _roll_reachable_units(
+        self, models: list[Any], alive_enemies: list[Any]
+    ) -> set[int]:
+        """Units whose charge roll can cover the gap to at least one enemy.
+
+        Reach is the ROLL alone, through the scale, exactly as
+        `_charge_reach` and the charge ladder read it; contact is the
+        engagement ring plus both bases, exactly as `_charge_is_legal`
+        judges it. A gate that asked a different question from the referee
+        would declare charges the referee must then revert.
+        """
+        positions = np.array([m.location for m in models], dtype=float)
+        enemy_positions = np.array([m.location for m in alive_enemies], dtype=float)
+        enemy_radii = np.array(
+            [float(m.base_radius) for m in alive_enemies], dtype=float
+        )
+        gaps = (
+            np.linalg.norm(
+                positions[:, np.newaxis, :] - enemy_positions[np.newaxis, :, :],
+                axis=2,
+            )
+            - enemy_radii[np.newaxis, :]
+            - self._base_radius
+        )
+        contact = self._engagement_range
+        reachable: set[int] = set()
+        for index, model in enumerate(models):
+            if not model.is_alive:
+                continue
+            group = int(model.group_id)
+            if group in reachable:
+                continue
+            if float(gaps[index].min()) - contact <= self._charge_reach(model):
+                reachable.add(group)
+        return reachable
+
+    def charge_legality(
+        self, models: list[Any], enemy_models: list[Any] | None
+    ) -> np.ndarray:
+        """`(n_models, n_move_actions)` -- which charge moves the rules allow.
+
+        Two gates, mirroring `advance_legality`.
+
+        **Eligibility**, per `docs/rules/11-charge-phase.md`: a unit may declare
+        a charge only when it is within 12" of an enemy unit, is NOT already
+        engaged, and has neither advanced nor fallen back this turn. Measured
+        unit-to-unit like the shooting mask's range test -- reducing a per-model
+        answer over the unit is the coupling bug that function's own docstring
+        warns against.
+
+        **Distance**: the 2D6 is the charge move's maximum, so any speed bin
+        travelling further is masked out. This is why the roll is rolled at the
+        start of the side's turn and observable: legality is gated on it, so a
+        policy choosing before it could not know which of its actions exist.
+
+        Note the roll is a UNIT roll but the mask is per model, and a model with
+        a smaller Move has fewer legal bins for the same roll -- which is the
+        rules' own behaviour, since the cap is a distance and not a bin index.
+        """
+        n_models = len(models)
+        movement = self.movement_slice
+        legality = np.zeros((n_models, movement.size), dtype=bool)
+        if not self._melee_enabled or n_models == 0:
+            return legality
+        alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+        if not alive_enemies:
+            return legality
+
+        eligible_units = self._charge_eligible_units(models, alive_enemies)
+        if not eligible_units:
+            return legality
+
+        for index, model in enumerate(models):
+            if not model.is_alive or int(model.group_id) not in eligible_units:
+                continue
+            # ⚠ **Only a unit that DECLARED**, exactly as an advance rung is
+            # legal only for a unit that declared one. Without this the charge
+            # was declared implicitly by picking a rung, so "charge or not" was
+            # decided independently by every model -- and measured, a whole unit
+            # then committed on only 23-35% of its charges against a rigid
+            # teacher's 100%. See `declare_move_types`.
+            #
+            # Scenarios with no move-type slice keep the old behaviour, so every
+            # melee measurement taken before the declaration existed is still
+            # reproducible on its own config.
+            if self._move_type_slice is not None and not getattr(
+                model, "declared_charge", False
+            ):
+                continue
+            reach = self._charge_reach(model)
+            if reach <= 0.0:
+                continue
+            # ⚠ The CHARGE ladder, not the movement one. The rules cap a charge
+            # at the roll alone, so its rungs span 2D6 rather than Move.
+            distances = np.linalg.norm(self._charge_displacements, axis=-1)
+            legality[index] = (distances <= reach + _CHARGE_REACH_EPSILON).reshape(-1)
+
+        if self._charge_approach_mask:
+            self._apply_charge_approach_mask(legality, models, alive_enemies)
+        return legality
+
+    def _apply_charge_approach_mask(
+        self,
+        legality: np.ndarray,
+        models: list[Any],
+        alive_enemies: list[Any],
+    ) -> None:
+        """Keep only charge moves that END CLOSER to the unit's derived target.
+
+        Mirrors `_charge_is_legal`'s *while moving* clause exactly -- centre
+        distance to the target unit's members, strictly smaller after the move
+        than before -- so every action this removes is one the referee would
+        revert the whole charge for. STAY lives outside the movement slice and
+        is untouched: the clause binds movers, and a stationary squadmate does
+        not veto its unit's charge.
+
+        ⚠ Per-model and target-DERIVED, deliberately. This is NOT the joint
+        "if it can" mask that collapsed the bar 5.67 -> 1.67 -- that one
+        forced ENGAGEMENT, a joint property no per-model mask can see. The
+        target is the unit's nearest enemy unit at charge time, which also
+        points every member at ONE unit, the referee's exactly-one condition.
+        A unit left with no legal rung by this mask keeps whatever the distance
+        gate offered -- a mask that empties a declared unit's action set would
+        make the declaration unsteppable, the failure mode the advance's
+        no-legal-rung validator exists to prevent.
+        """
+        enemy_positions = np.array([m.location for m in alive_enemies], dtype=float)
+        enemy_groups = np.array([int(m.group_id) for m in alive_enemies], dtype=int)
+        flat_displacements = self._charge_displacements.reshape(-1, 2)
+
+        units: dict[int, list[int]] = {}
+        for index, model in enumerate(models):
+            if legality[index].any():
+                units.setdefault(int(model.group_id), []).append(index)
+
+        for _group, members in units.items():
+            positions = np.array([models[i].location for i in members], dtype=float)
+            gaps = np.linalg.norm(
+                positions[:, np.newaxis, :] - enemy_positions[np.newaxis, :, :],
+                axis=2,
+            )
+            # The derived target: the enemy UNIT nearest this unit, exactly the
+            # pair the referee's derived-target test will find.
+            nearest = int(np.argmin(gaps.min(axis=0)))
+            target_rows = np.nonzero(enemy_groups == enemy_groups[nearest])[0]
+            target_positions = enemy_positions[target_rows]
+            for row, index in enumerate(members):
+                before = float(
+                    np.linalg.norm(target_positions - positions[row], axis=1).min()
+                )
+                endpoints = positions[row][np.newaxis, :] + flat_displacements
+                after = np.linalg.norm(
+                    endpoints[:, np.newaxis, :] - target_positions[np.newaxis, :, :],
+                    axis=2,
+                ).min(axis=1)
+                approach = legality[index] & (after < before)
+                # Never empty a declared unit's set -- see the docstring.
+                if approach.any():
+                    legality[index] = approach
+
+    def _charge_reach(self, model: Any) -> float:
+        """This model's 2D6, in BOARD UNITS -- the roll is authored in inches."""
+        roll = float(getattr(model, "charge_roll", 0.0))
+        if roll <= 0.0:
+            return 0.0
+        return float(self._charge_scale.to_units(roll))
+
+    def _displacements_for(self, model_idx: int) -> np.ndarray:
+        """This model's `(n_angles, n_speeds, 2)` displacement grid."""
+        if self._model_displacements is not None:
+            grid: np.ndarray = self._model_displacements[model_idx]
+            return grid
+        shared: np.ndarray = self._displacements
+        return shared
+
+    def charge_eligible_units(
+        self, models: list[Any], enemy_models: list[Any] | None
+    ) -> set[int]:
+        """Units the rules allow to DECLARE a charge, before any declaration.
+
+        Public because the declaration is made in the COMMAND phase, one phase
+        before `charge_legality` becomes meaningful: that mask is now gated on
+        a declaration, so at command time it is empty by construction and a
+        scripted policy asking it "may I charge?" would always hear no.
+        """
+        if not self._melee_enabled:
+            return set()
+        alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+        if not alive_enemies:
+            return set()
+        return self._charge_eligible_units(models, alive_enemies)
+
+    def _charge_eligible_units(
+        self, models: list[Any], alive_enemies: list[Any]
+    ) -> set[int]:
+        """Units that may declare a charge this turn."""
+        positions = np.array([m.location for m in models], dtype=float)
+        enemy_positions = np.array([m.location for m in alive_enemies], dtype=float)
+        enemy_alive = np.ones(len(alive_enemies), dtype=bool)
+        engaged = engaged_with_any(
+            positions,
+            enemy_positions,
+            enemy_alive,
+            np.array([m.is_alive for m in models], dtype=bool),
+            engagement_range=self._engagement_range,
+            base_diameter=2.0 * self._base_radius,
+        )
+        gaps = (
+            np.linalg.norm(
+                positions[:, np.newaxis, :] - enemy_positions[np.newaxis, :, :], axis=2
+            )
+            - 2.0 * self._base_radius
+        )
+        within = (gaps <= self._charge_range).any(axis=1)
+
+        blocked: set[int] = set()
+        candidates: set[int] = set()
+        for index, model in enumerate(models):
+            group = int(model.group_id)
+            if not model.is_alive:
+                continue
+            if (
+                engaged[index]
+                or getattr(model, "advanced_this_turn", False)
+                or getattr(model, "fell_back_this_turn", False)
+            ):
+                blocked.add(group)
+            if within[index]:
+                candidates.add(group)
+        return candidates - blocked
 
     @property
     def movement_slice(self) -> ActionSlice:
@@ -583,11 +1546,15 @@ class ActionHandler:
         dy: float,
         max_step_length: float | None = None,
         model_idx: int | None = None,
+        ladder: MoveLadder = MoveLadder.normal,
     ) -> int:
         """Return the action that moves closest to the direction (dx, dy).
 
         Picks the angle bin nearest to atan2(dy, dx). When max_step_length is
-        None, uses maximum speed. When max_step_length is set, chooses the
+        None, uses maximum speed. ``ladder`` picks the distance table, which
+        spans 2D6 rather than Move -- a caller aiming a charge with the movement
+        ladder would size its step against distances the env will not use.
+        When max_step_length is set, chooses the
         largest speed bin whose displacement norm does not exceed that length;
         if no bin fits, returns the minimum-speed action in that direction so
         the caller can still make progress (e.g. step into an objective).
@@ -605,7 +1572,9 @@ class ActionHandler:
             speed_idx = self._n_speed_bins - 1
             for s in range(self._n_speed_bins - 1, -1, -1):
                 disp = self.decode_action(
-                    self.encode_action(angle_idx, s), model_idx=model_idx
+                    self.encode_action(angle_idx, s),
+                    model_idx=model_idx,
+                    ladder=ladder,
                 )
                 if np.linalg.norm(disp) <= max_step_length:
                     speed_idx = s
@@ -676,6 +1645,488 @@ class ActionHandler:
 
         return self._advance_slice.start + angle_idx * self._n_advance_bins + bin_idx
 
+    def displaces_in(self, phase: BattlePhase) -> bool:
+        """Public form of `_displaces_in` -- the facade records per-phase
+        coherency for exactly the phases in which a model can move."""
+        return self._displaces_in(phase)
+
+    def _displaces_in(self, phase: BattlePhase) -> bool:
+        """Does a movement action actually move a model in this phase?
+
+        ⚠ Not simply "is this a displacing phase". `apply` validates an action
+        against the action SPACE, which is phase-independent, so a scripted
+        policy emitting a movement action in the charge phase would displace
+        even on a config where the charge phase is a stub. The authority is the
+        movement slice's own `valid_phases`, which is what the mask is built
+        from -- so the mask and the resolver cannot disagree.
+        """
+        if phase is BattlePhase.movement:
+            return True
+        movement = self.movement_slice
+        return (
+            phase in _DISPLACING_PHASES
+            and movement is not None
+            and phase in movement.valid_phases
+        )
+
+    def _enforce_short_move(
+        self,
+        wargame_models: list[Any],
+        enemy_models: list[Any] | None,
+        start_positions: list[np.ndarray] | None,
+        batch: list[int],
+    ) -> None:
+        """Referee one unit's pile-in or consolidation; revert it whole if illegal.
+
+        ⚠ **All-or-nothing at the UNIT**, exactly as the charge is. A pile-in is
+        one unit's move in the rules, and `03-moving.md` reverts a move whose
+        after-conditions fail rather than repairing it -- which also keeps this
+        off `coherency.enforce_move`, a referee that is `off` on every shipped
+        config and would let an illegal shuffle simply stand.
+
+        The predicate is `pile_in.agent_move_is_legal`, deliberately the SAME
+        `_is_legal` the engine's constructive `pile_in` obeys. Two
+        implementations of one rule is how three different answers to "on an
+        objective" came to coexist here.
+        """
+        if start_positions is None:
+            return
+        members = [index for index in batch if wargame_models[index].is_alive]
+        if not members or not any(
+            not np.array_equal(start_positions[index], wargame_models[index].location)
+            for index in members
+        ):
+            return
+        alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+        before = np.array([start_positions[index] for index in members], dtype=float)
+        if agent_move_is_legal(
+            wargame_models,
+            members,
+            before,
+            alive_enemies,
+            selection_range=self._charge_scale.to_units(SELECTION_RANGE_INCHES),
+            engagement_range=self._engagement_range,
+            base_radius=self._base_radius,
+            coherency_nearest=self._coherency_nearest,
+            coherency_furthest=self._coherency_furthest,
+        ):
+            return
+        for index in members:
+            wargame_models[index].location = np.array(start_positions[index], copy=True)
+
+    def _charge_batches(
+        self,
+        phase: BattlePhase,
+        wargame_models: list[Any],
+        action: WargameEnvAction,
+        charge_start: list[np.ndarray] | None,
+    ) -> list[list[int]]:
+        """Model indices to resolve together, in order.
+
+        One batch holding the whole force for every phase that is not refereed
+        at unit level, which keeps the existing index order and therefore every
+        existing result. The charge, the pile-in, the consolidation — and, when
+        any model began the movement phase engaged, the fall back — each
+        resolve one UNIT at a time, in group order, so the referee can put a
+        failed unit back before the next unit has moved. Group ids are assigned
+        in index-contiguous blocks, so unit batches in group order visit models
+        in the same sequence the single batch did and a run with no revert is
+        bit-identical either way.
+        """
+        indices = list(range(len(action.actions)))
+        if charge_start is None:
+            return [indices]
+        units: dict[int, list[int]] = {}
+        for index in indices:
+            units.setdefault(int(wargame_models[index].group_id), []).append(index)
+        return [members for _group, members in sorted(units.items())]
+
+    def _enforce_charge(
+        self,
+        wargame_models: list[Any],
+        enemy_models: list[Any] | None,
+        start_positions: list[np.ndarray] | None,
+        batch: list[int],
+    ) -> None:
+        """A charge that does not end legally is not made at all.
+
+        `docs/rules/03-moving.md`: if any after-moving condition fails, *return
+        every model to where it started*. That is the rules' own all-or-nothing,
+        not a referee setting -- a charge ending unengaged is not a charge that
+        went badly, it is a charge that did not happen. So this reverts
+        unconditionally and is deliberately NOT routed through
+        `coherency.enforce_move`, which defaults to `off` on every shipped
+        config and would therefore let an illegal charge simply stand.
+
+        Three conditions per unit that moved:
+
+        * **coherency** -- the unit must still be one body;
+        * **engaged with exactly ONE enemy unit** -- which covers the two
+          after-moving conditions while a charge has a single DERIVED target:
+          engaged with all of them, and with no non-target. ⚠ It also refuses a
+          charge that clips a second unit, which the rules would ALLOW if both
+          were declared targets (`11-charge-phase.md` selects *one or more*).
+          With targets derived rather than declared a unit ending on two enemy
+          units has by construction charged both, so this is a divergence of the
+          derived-target model, not the rule it is named after;
+        * **every model that moved ended CLOSER to the target unit** --
+          `11-charge-phase.md` § Charge move, *While moving*: *"Each model must
+          end its move closer to one or more charge targets."*
+
+        ⚠ **That third condition did not exist until 2026-08-25**, and no gap-map
+        row recorded its absence. Without it a charge was satisfied by ONE model
+        reaching contact while its squadmates moved anywhere coherency allowed --
+        a materially easier charge than the rules', and the half of the mechanic
+        a learned policy is most likely to exploit. Measured before it landed: a
+        two-model unit whose second model walked 1" directly AWAY from the only
+        enemy still had its charge stand, and 2.4% of a rigid script's charging
+        models (5.3% of its standing charges) already violated it by accident.
+        Found by a rules-lawyer audit.
+
+        ⚠ **The two *"if it can"* clauses remain DEFERRED, and the reason is
+        now measured rather than assumed.** `DEFERRED: charge.while_moving_best_effort`.
+
+        They are *end within 1" of a target if it can* and *end ENGAGED with one
+        if it can*. Both were implemented as a per-model mask on 2026-08-26 --
+        keep only the rungs that satisfy the clause, when any rung does -- and
+        the result collapsed the mechanic: the scripted bar's attempts fell
+        **5.67 -> 1.67** per episode and its standing charges **4.56 -> 1.11**.
+
+        The mask is not too aggressive by accident; *"if it can"* is a **joint**
+        property and a per-model mask cannot see it. A model can end engaged
+        only if a legal UNIT move exists in which it does -- and forcing all
+        five members onto contact scatters the squad, breaks the 2" chain, and
+        the referee then reverts the whole charge. So the mask forbade the very
+        moves that were legal.
+
+        Expressing it needs the joint candidate set, which exists only in the
+        play-time decoder (`model/common/decoding.py`), and folding decoding
+        into training measured **-51.8 vp**. Until then the referee's coherency
+        and engagement conditions carry it: a charge that could have reached
+        contact and did not is not punished, which is a divergence in the
+        permissive direction.
+
+        ⚠ **The target is DERIVED from where the unit ends, not declared, and
+        that is a measured decision rather than a shortcut.** A declaration
+        would have to be an action, one model would have to spend its action on
+        it, and that model could not then move -- and a model left behind while
+        its squadmates charge breaks the 2" chain at any distance beyond about
+        three inches, which reverts the whole charge. Measured directly against
+        `evaluate_coherency`: a five-model unit whose declarer stays put is
+        coherent at 2" and incoherent at 4", 8" and 12". So the declaration
+        slice would have made almost every charge fail.
+        `DEFERRED: charge.target_declaration`.
+        """
+        if start_positions is None:
+            return
+        members = [index for index in batch if wargame_models[index].is_alive]
+        if not members or not any(
+            not np.array_equal(start_positions[index], wargame_models[index].location)
+            for index in members
+        ):
+            return
+        alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+        if self._charge_preconditions_hold(
+            wargame_models, members, start_positions
+        ) and self._charge_is_legal(
+            wargame_models, members, alive_enemies, start_positions
+        ):
+            # Only a charge that STOOD earns the fight-order priority. A
+            # reverted charge did not happen, so a unit that rolled short and
+            # snapped back must not strike first for having tried.
+            for index in members:
+                wargame_models[index].charged_this_turn = True
+            return
+        for index in members:
+            wargame_models[index].location = np.array(start_positions[index], copy=True)
+
+    def _enforce_fall_back(
+        self,
+        wargame_models: list[Any],
+        enemy_models: list[Any] | None,
+        start_positions: list[np.ndarray] | None,
+        batch: list[int],
+        began_engaged: np.ndarray | None,
+    ) -> None:
+        """A fall back that does not end legally is not made at all.
+
+        `docs/rules/09-movement-phase.md` § Fall-back move: *after moving, the
+        unit must be unengaged*, and the move is one under `03-moving.md`, so
+        the unit must also end in coherency — all-or-nothing, every model back
+        to its start if either fails. A reverted fall back did not happen: the
+        unit remained stationary, still engaged, and `_mark_fall_backs` never
+        marks it because no location differs from `previous_location`.
+
+        ⚠ **This referee did not exist until 2026-08-29, and the claim that the
+        geometry already enforced the rule was FALSE.** `back_off_to_unengaged`
+        clears every endpoint that MOVED; a member that stood still — or was
+        blocked by friendly bases and backed off to zero — stayed engaged while
+        its free squadmates marched away. Measured on the v12 arm with the
+        agent as player: every zero-death coherency break on the opponent seat
+        was a `fell_back_this_turn` unit with 1–2 members still engaged after
+        the move, tearing 5–7" per turn and compounding to 16.7–20.0" chain
+        gaps (9.0% of opponent unit-steps beyond twice the 2" chain, against
+        3.6% and a 6.3" worst case — casualty holes only — on the non-melee
+        control). Same defect class as the charge's missing third condition:
+        a move type whose after-move conditions were never wired to a referee.
+
+        Unconditional and deliberately not routed through
+        `coherency.enforce_move` (off on every shipped config), exactly as the
+        charge, pile-in and consolidate referees are. Fires only for a unit
+        that began the phase engaged and moved, so a config without melee — or
+        a phase with nothing engaged — never reaches it.
+        """
+        if start_positions is None or began_engaged is None:
+            return
+        members = [index for index in batch if wargame_models[index].is_alive]
+        if not members or not any(began_engaged[index] for index in members):
+            return
+        if not any(
+            not np.array_equal(start_positions[index], wargame_models[index].location)
+            for index in members
+        ):
+            # Remained stationary: legal for an engaged unit, and not a fall
+            # back at all.
+            return
+        alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+        if self._fall_back_is_legal(wargame_models, members, alive_enemies):
+            return
+        for index in members:
+            wargame_models[index].location = np.array(start_positions[index], copy=True)
+
+    def _fall_back_is_legal(
+        self,
+        wargame_models: list[Any],
+        members: list[int],
+        alive_enemies: list[Any],
+    ) -> bool:
+        """Did this unit's fall back end unengaged and in coherency?
+
+        Both conditions read the unit whole — *every* alive member must be
+        clear of every engagement range, not just the members that moved,
+        because "the unit must be unengaged" is a property of the unit. A unit
+        already torn by casualties therefore cannot fall back legally; that is
+        the rules' own position (attrition is their repair, and it is a config
+        choice here), not a new restriction.
+        """
+        positions = np.array([wargame_models[i].location for i in members], dtype=float)
+        if alive_enemies:
+            contacts = engagement_matrix(
+                positions,
+                np.array([m.location for m in alive_enemies], dtype=float),
+                np.ones(len(alive_enemies), dtype=bool),
+                np.ones(len(members), dtype=bool),
+                engagement_range=self._engagement_range,
+                base_diameter=2.0 * self._base_radius,
+            )
+            if np.asarray(contacts).any():
+                return False
+        report = evaluate_coherency(
+            positions=positions,
+            group_ids=np.zeros(len(members), dtype=np.intp),
+            alive_mask=np.ones(len(members), dtype=bool),
+            base_radii=np.array(
+                [wargame_models[i].base_radius for i in members], dtype=float
+            ),
+            nearest_distance=self._coherency_nearest,
+            furthest_distance=self._coherency_furthest,
+        )
+        return bool(report.all_coherent)
+
+    def _charge_preconditions_hold(
+        self,
+        wargame_models: list[Any],
+        members: list[int],
+        start_positions: list[np.ndarray],
+    ) -> bool:
+        """Was this unit allowed to make this charge at all?
+
+        ⚠ **The mask was the ONLY thing enforcing either of these until
+        2026-08-25.** `charge_legality` masks out an undeclared unit and every
+        rung longer than the unit's 2D6 -- but `ActionHandler.apply` takes no
+        mask, so a policy that bypasses one could charge without declaring, or
+        travel 6" on a roll of 2, and the env accepted it. Measured: a declared
+        model with `charge_roll = 2.0` is correctly masked out of the 6" rung
+        and, handed that action anyway, travelled the full 6.0" and was granted
+        `charged_this_turn`.
+
+        That is the defect class this project has already paid for twice -- the
+        joint decoder judged candidates against its own relaxation (+11.4 vp),
+        and six unit tests missed a movement bug because none called `env.step`.
+        Both times the constraint lived in one layer and the layer that actually
+        moved models did not know about it. The advance has belt-and-braces
+        already: `_advance_displacement` clamps to `min(distance, move + roll)`
+        at resolution as well as masking. This gives the charge the same.
+
+        Found by a rules-lawyer audit. It changes no shipped measurement --
+        every current selector plays under the mask -- which is exactly why it
+        needs a test rather than a score.
+        """
+        for index in members:
+            model = wargame_models[index]
+            if not getattr(model, "declared_charge", False):
+                return False
+            travelled = float(
+                np.linalg.norm(
+                    np.asarray(model.location, dtype=float)
+                    - np.asarray(start_positions[index], dtype=float)
+                )
+            )
+            # The rules cap the charge at the roll alone; this ladder also caps
+            # it at Move (`DEFERRED: charge.beyond_move_ladder`), and the mask
+            # already applies that half. Here only the roll is re-checked, so
+            # the referee never rejects a move the ladder itself permitted.
+            if travelled > self._charge_reach(model) + _CHARGE_REACH_EPSILON:
+                return False
+        return True
+
+    def _charge_is_legal(
+        self,
+        wargame_models: list[Any],
+        members: list[int],
+        alive_enemies: list[Any],
+        start_positions: list[np.ndarray],
+    ) -> bool:
+        """Did this unit's charge end in a legal position?
+
+        `start_positions` is required, not optional: the *while moving* rule is
+        a per-model comparison against where that model began, and a referee
+        that cannot see the start cannot judge the move. Passing it is what
+        closed the gap described in `_enforce_charge`.
+        """
+        if not alive_enemies:
+            return False
+        positions = np.array([wargame_models[i].location for i in members], dtype=float)
+        contacts = engagement_matrix(
+            positions,
+            np.array([m.location for m in alive_enemies], dtype=float),
+            np.ones(len(alive_enemies), dtype=bool),
+            # `members` is already filtered to the unit's living models.
+            np.ones(len(members), dtype=bool),
+            engagement_range=self._engagement_range,
+            base_diameter=2.0 * self._base_radius,
+        )
+        touched = {
+            int(alive_enemies[j].group_id) for j in np.nonzero(contacts.any(axis=0))[0]
+        }
+        if len(touched) != 1:
+            return False
+        # ⚠ *While moving*: every model that MOVED must end closer to the target
+        # unit. A model that stood still is not "moved", and the rules put the
+        # condition on the model's own move -- so a stationary squadmate does
+        # not veto its unit's charge, but a squadmate that walked away does.
+        target = int(next(iter(touched)))
+        target_positions = np.array(
+            [m.location for m in alive_enemies if int(m.group_id) == target],
+            dtype=float,
+        )
+        for row, index in enumerate(members):
+            start = np.asarray(start_positions[index], dtype=float)
+            if np.array_equal(start, positions[row]):
+                continue
+            before = float(np.linalg.norm(target_positions - start, axis=1).min())
+            after = float(
+                np.linalg.norm(target_positions - positions[row], axis=1).min()
+            )
+            if after >= before:
+                return False
+        report = evaluate_coherency(
+            positions=positions,
+            group_ids=np.zeros(len(members), dtype=np.intp),
+            alive_mask=np.ones(len(members), dtype=bool),
+            base_radii=np.array(
+                [wargame_models[i].base_radius for i in members], dtype=float
+            ),
+            nearest_distance=self._coherency_nearest,
+            furthest_distance=self._coherency_furthest,
+        )
+        return bool(report.all_coherent)
+
+    def _is_displacement_action(self, action: int) -> bool:
+        """Does this index mean a MOVE, rather than a declaration or a shot?
+
+        ⚠ **Allow-list, not a deny-list, and that is the whole point.** This
+        guarded only the shooting slice and let everything else through to
+        `decode_action`, which reads an unrecognised index as `action - 1` into
+        the angle table -- so the `move_type` declaration, registered last,
+        crashed with `IndexError` whenever an unmasked sample put it in the
+        movement phase. Every phase mask forbids that, and `apply` deliberately
+        does not trust the mask; a deny-list has to be extended by whoever adds
+        the next slice, and the next slice will be `fall_back` or `charge`.
+        """
+        if action == STAY_ACTION:
+            return True
+        if action <= self._n_move_actions:
+            return True
+        advance = self._advance_slice
+        return advance is not None and advance.start <= action < advance.end
+
+    def _engaged_before_moving(
+        self,
+        phase: BattlePhase,
+        wargame_models: list[Any],
+        enemy_models: list[Any] | None,
+    ) -> np.ndarray | None:
+        """Which models start this movement phase engaged, or None if it cannot matter.
+
+        Read BEFORE anything displaces: the rules make eligibility a property of
+        the unit's state at the start of its move, and by the end of the phase
+        the unit has (by construction) left engagement, since
+        `back_off_to_unengaged` guarantees every endpoint is clear.
+        """
+        if not self._melee_enabled or phase is not BattlePhase.movement:
+            return None
+        alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
+        if not alive_enemies:
+            return None
+        return engaged_with_any(
+            np.array([m.location for m in wargame_models], dtype=float),
+            np.array([m.location for m in alive_enemies], dtype=float),
+            np.ones(len(alive_enemies), dtype=bool),
+            np.array([m.is_alive for m in wargame_models], dtype=bool),
+            engagement_range=self._engagement_range,
+            base_diameter=2.0 * self._base_radius,
+        )
+
+    def _mark_fall_backs(
+        self, wargame_models: list[Any], began_engaged: np.ndarray | None
+    ) -> None:
+        """A unit that began the phase engaged and moved has fallen back.
+
+        `docs/rules/09-movement-phase.md`: a Normal move is eligible only for an
+        UNENGAGED unit, so the only move an engaged unit may make is a fall
+        back — M distance, must end unengaged, and **until the end of the turn
+        it cannot shoot or declare a charge**.
+
+        ⚠ The geometry needed nothing: `back_off_to_unengaged` already forces
+        every endpoint out of engagement, which IS the fall-back constraint.
+        What was missing is the COST. Before this, an engaged model took an
+        ordinary move, walked out for free, and shot in the same turn.
+
+        v1 infers the declaration rather than asking for one: a unit that began
+        engaged and moved has fallen back. The rules would have it *declare* a
+        move type, but a declaration lives in the command phase, which most
+        configs skip — and inferring it costs no action and no agent step.
+        `DEFERRED: fallback.declared_move_type`.
+
+        Unit-level, because the rule is: a model that did not move is still in a
+        unit that withdrew, and the unit is what loses its shooting.
+        """
+        if began_engaged is None or not began_engaged.any():
+            return
+        moved_units: set[int] = set()
+        for index, model in enumerate(wargame_models):
+            if not began_engaged[index] or not model.is_alive:
+                continue
+            previous = getattr(model, "previous_location", None)
+            if previous is not None and not np.array_equal(previous, model.location):
+                moved_units.add(int(model.group_id))
+        if not moved_units:
+            return
+        for model in wargame_models:
+            if int(model.group_id) in moved_units:
+                model.fell_back_this_turn = True
+
     def apply(
         self,
         action: WargameEnvAction,
@@ -714,8 +2165,27 @@ class ActionHandler:
         # A move must END unengaged (`09-movement-phase.md`); passing through an
         # engagement range is explicitly legal (`03-moving.md`). So the rings are
         # applied to the endpoint only, never to the path.
+        # ⚠ THE CHARGE EXEMPTION, and it is the whole mechanic. A charge is the
+        # one move whose endpoint MAY lie inside an enemy's engagement range --
+        # `11-charge-phase.md` requires it to. Dropping the rings here (and only
+        # here) is what lets contact happen at all; `back_off_to_unengaged`
+        # still receives the OCCUPIED bases, so an endpoint may be engaged but
+        # never inside another model. That primitive already existed: the
+        # function merges enemy rings and occupied bases into one walk, so empty
+        # rings plus populated bases is exactly "may be engaged, may not
+        # overlap" with no edit to it.
+        # ⚠ **AND the two fight-phase moves**, added 2026-08-26. `pile_in` and
+        # `consolidate` move models that are ALREADY inside an enemy's engagement
+        # ring -- that is what makes them eligible -- so applying the rings to
+        # their endpoint walked every one of them back to its start:
+        # `back_off_to_unengaged` returns `start` for a model that begins inside a
+        # ring it may not end in. Measured 87.3%/90.9% of ordered moves delivering
+        # exactly 0.000". `12-fight-phase.md` requires these moves to END engaged,
+        # exactly as the charge does. Occupied bases are still passed, so an
+        # endpoint may be engaged and may never overlap.
+        charging = phase in _ENGAGING_ENDPOINT_PHASES and self._displaces_in(phase)
         alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
-        if self._engagement_range > 0.0 and alive_enemies:
+        if not charging and self._engagement_range > 0.0 and alive_enemies:
             engagement_centres = np.array(
                 [m.location for m in alive_enemies], dtype=float
             )
@@ -735,81 +2205,135 @@ class ActionHandler:
             [m.base_radius for m in wargame_models], dtype=float
         )
         friendly_alive = np.array([m.is_alive for m in wargame_models], dtype=bool)
+        began_engaged = self._engaged_before_moving(phase, wargame_models, enemy_models)
+        # ⚠ Every phase that is refereed at UNIT level needs its start
+        # positions: the revert puts the whole unit back, and `previous_location`
+        # is a single slot written once per movement phase, which would send a
+        # non-mover back two phases. The movement phase joins the unit-refereed
+        # set exactly when a fall back is possible — melee on, and at least one
+        # model beginning the phase engaged — so every other movement phase
+        # resolves as one batch, bit-identical to before the referee existed.
+        fall_back_possible = began_engaged is not None and bool(began_engaged.any())
+        charge_start = (
+            [np.array(m.location, copy=True) for m in wargame_models]
+            if (phase in _UNIT_REFEREED_PHASES or fall_back_possible)
+            and self._displaces_in(phase)
+            else None
+        )
         if phase is BattlePhase.command:
             # No early return: the per-model loop below still validates every
             # action against its space before skipping non-movement phases, and
             # an unvalidated declaration would be a silent out-of-range action.
             self.declare_move_types(action, wargame_models)
-        for i, act in enumerate(action.actions):
-            model = wargame_models[i]
-            if not model.is_alive:
-                continue
-            if not action_space[i].contains(act):  # type: ignore
-                raise ValueError(
-                    f"Action {act} for wargame model {i} is out of bounds."
-                )
-            if phase is not BattlePhase.movement:
-                continue
-            if (
-                self._shooting_slice is not None
-                and self._shooting_slice.start <= act < self._shooting_slice.end
-            ):
-                continue
-            model.previous_location = model.location.copy()
-            displacement = self.decode_action(
-                act, model_idx=i, advance_roll=model.advance_roll
+            declared_objectives = self.declare_objectives(action, wargame_models)
+            declared_targets = self.declare_targets(action, wargame_models)
+            self.apply_plan_fold(
+                wargame_models, enemy_models, declared_objectives, declared_targets
             )
-            if not collides:
+        if phase is BattlePhase.fight:
+            # Read BEFORE the fight resolves, which happens on the boundary
+            # leaving this phase -- so the priorities the engine selects on are
+            # the ones this step's action declared.
+            self.declare_fight_order(action, wargame_models)
+
+        # ⚠ A charge resolves ONE UNIT AT A TIME, and every other phase
+        # resolves the whole force in index order exactly as before. The
+        # all-or-nothing revert puts a failed unit back where it began, so if
+        # a later unit has already advanced into that ground the board ends
+        # up holding two models inside each other -- measured at 0.868in of
+        # base overlap, 69% of a 32mm base, in a demo recording. Judging each
+        # unit before the next one moves removes the window entirely, and
+        # lets the next unit move against the RESTORED position rather than
+        # against ground that was only briefly empty.
+        def move_batch(indices: list[int]) -> None:
+            for i in indices:
+                act = action.actions[i]
+                model = wargame_models[i]
+                if not model.is_alive:
+                    continue
+                if not action_space[i].contains(act):  # type: ignore
+                    raise ValueError(
+                        f"Action {act} for wargame model {i} is out of bounds."
+                    )
+                if not self._displaces_in(phase):
+                    continue
+                if not self._is_displacement_action(act):
+                    continue
+                model.previous_location = model.location.copy()
+                displacement = self.decode_action(
+                    act,
+                    model_idx=i,
+                    advance_roll=model.advance_roll,
+                    ladder=_LADDER_FOR_PHASE.get(phase, MoveLadder.normal),
+                )
+                if not collides:
+                    model.location = back_off_to_unengaged(
+                        model.location,
+                        np.clip(model.location + displacement, lower, upper),
+                        engagement_centres,
+                        engagement_reach,
+                    )
+                    continue
+                # Read live each iteration: earlier models in this loop have already
+                # moved, and a model must not end on ground another just took. The
+                # arrays are rebuilt from a preallocated buffer rather than a fresh
+                # list comprehension per model -- that shape is O(n^2) in python and
+                # is what made two reward calculators 80% of a step once already.
+                for j, other in enumerate(wargame_models):
+                    friendly_buffer[j] = other.location
+                keep = friendly_alive.copy()
+                keep[i] = False
+                friendly_centres = friendly_buffer[keep]
+                friendly_radii = friendly_radius_buffer[keep]
+                # The board edge is clamped into the *displacement*, before
+                # collisions are resolved. Clamping the resolved point afterwards
+                # would slide a model along the edge and back into someone else --
+                # producing exactly the overlap the whole resolution just avoided,
+                # only near a board edge and only sometimes.
+                in_bounds = np.clip(model.location + displacement, lower, upper)
+                # The bases the endpoint may not land inside: enemies (which also
+                # block the path) and the moving army's own models (which may be
+                # crossed but not ended on). Passed in because backing off walks the
+                # endpoint into ground `resolve_move` had already cleared -- without
+                # them a model rescued from an engagement ring comes to rest inside
+                # a friendly base, measured at 0.18% of pairs.
+                occupied_centres = np.concatenate([blocker_centres, friendly_centres])
+                occupied_reach = (
+                    np.concatenate([blocker_radii, friendly_radii]) + model.base_radius
+                )
                 model.location = back_off_to_unengaged(
                     model.location,
-                    np.clip(model.location + displacement, lower, upper),
+                    resolve_move(
+                        model.location,
+                        in_bounds - model.location,
+                        model.base_radius,
+                        blocker_centres,
+                        blocker_radii,
+                        friendly_centres,
+                        friendly_radii,
+                    ),
                     engagement_centres,
                     engagement_reach,
+                    occupied_centres,
+                    occupied_reach,
                 )
+
+        for batch in self._charge_batches(phase, wargame_models, action, charge_start):
+            move_batch(batch)
+            if charge_start is None:
                 continue
-            # Read live each iteration: earlier models in this loop have already
-            # moved, and a model must not end on ground another just took. The
-            # arrays are rebuilt from a preallocated buffer rather than a fresh
-            # list comprehension per model -- that shape is O(n^2) in python and
-            # is what made two reward calculators 80% of a step once already.
-            for j, other in enumerate(wargame_models):
-                friendly_buffer[j] = other.location
-            keep = friendly_alive.copy()
-            keep[i] = False
-            friendly_centres = friendly_buffer[keep]
-            friendly_radii = friendly_radius_buffer[keep]
-            # The board edge is clamped into the *displacement*, before
-            # collisions are resolved. Clamping the resolved point afterwards
-            # would slide a model along the edge and back into someone else --
-            # producing exactly the overlap the whole resolution just avoided,
-            # only near a board edge and only sometimes.
-            in_bounds = np.clip(model.location + displacement, lower, upper)
-            # The bases the endpoint may not land inside: enemies (which also
-            # block the path) and the moving army's own models (which may be
-            # crossed but not ended on). Passed in because backing off walks the
-            # endpoint into ground `resolve_move` had already cleared -- without
-            # them a model rescued from an engagement ring comes to rest inside
-            # a friendly base, measured at 0.18% of pairs.
-            occupied_centres = np.concatenate([blocker_centres, friendly_centres])
-            occupied_reach = (
-                np.concatenate([blocker_radii, friendly_radii]) + model.base_radius
-            )
-            model.location = back_off_to_unengaged(
-                model.location,
-                resolve_move(
-                    model.location,
-                    in_bounds - model.location,
-                    model.base_radius,
-                    blocker_centres,
-                    blocker_radii,
-                    friendly_centres,
-                    friendly_radii,
-                ),
-                engagement_centres,
-                engagement_reach,
-                occupied_centres,
-                occupied_reach,
-            )
+            if phase is BattlePhase.charge:
+                self._enforce_charge(wargame_models, enemy_models, charge_start, batch)
+            elif phase is BattlePhase.movement:
+                self._enforce_fall_back(
+                    wargame_models, enemy_models, charge_start, batch, began_engaged
+                )
+            else:
+                self._enforce_short_move(
+                    wargame_models, enemy_models, charge_start, batch
+                )
+
+        self._mark_fall_backs(wargame_models, began_engaged)
 
         # Every model in the force has now moved, which is the earliest point a
         # unit-level property of the *completed* move can be judged. Nothing to

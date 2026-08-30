@@ -67,6 +67,47 @@ class WargameModel:
         # The declaration gates which movement rungs are legal; the shooting
         # forfeit is carried by `advanced_this_turn`, set at the same moment.
         self.declared_advance: bool = False
+        # Whether this model's UNIT fell back out of melee this turn. The rules
+        # make a fall-back move the ONLY move an engaged unit may make, and it
+        # costs the unit its shooting and its charge until end of turn
+        # (`docs/rules/09-movement-phase.md`). Before this existed an engaged
+        # model simply took a normal move and walked out for free.
+        self.fell_back_this_turn: bool = False
+        # This model's UNIT's 2D6 charge roll for the turn, in inches. 0 outside
+        # a charge phase and whenever the scenario does not fight in melee.
+        self.charge_roll: float = 0.0
+        # Whether this model's UNIT made a charge move this turn -- the v1
+        # stand-in for Strikes First, which the rules grant to a charging unit
+        # (`docs/rules/16-ability-reference.md`). Read by `resolve_fight` to put
+        # chargers at the front of the order, and cleared as soon as the fight
+        # it governs has resolved, so it can never survive into the opposing
+        # player's turn.
+        self.charged_this_turn: bool = False
+        # Whether this model's UNIT declared a charge in the command phase.
+        # Gates which charge rungs are legal, exactly as `declared_advance`
+        # gates the advance rungs. ⚠ STAY remains LEGAL in the charge phase
+        # for a declared unit -- the rules grant a declared unit the right to
+        # decline, and the no-stand-still clause was removed (docs/melee.md
+        # header). A stale claim here said otherwise until 2026-08-30; a
+        # comment pinning a property the code does not have is how audits get
+        # misdirected (panel A, M8).
+        self.declared_charge: bool = False
+        # The squad's declared OBJECTIVE (-1 = none). ⚠ PERSISTS across turns
+        # -- a plan is state, not a per-turn impulse -- so `begin_turn` leaves
+        # it alone and only `reset_for_episode` clears it. Re-declared any
+        # command phase; STAY keeps it.
+        self.declared_objective: int = -1
+        # The squad's declared enemy-unit TARGET (-1 = none). Same contract as
+        # the objective: leader-declared, unit-binding, persists until
+        # re-declared; only `reset_for_episode` clears it.
+        self.declared_target: int = -1
+        # Activation priority for the fight phase; higher swings first,
+        # ties on unit index. 0 is what STAY declares.
+        self.fight_priority: int = 0
+        # Set when the unit is selected to fight; the consolidate step
+        # takes the units that WERE eligible to fight, which includes
+        # those now disengaged because they killed what they fought.
+        self.fought_this_phase: bool = False
 
     def set_previous_closest_objective_distance(self, distance: float) -> None:
         self.previous_closest_objective_distance = distance
@@ -81,9 +122,17 @@ class WargameModel:
         self.best_closest_objective_distance = None
         self.stats["current_wounds"] = self.stats["max_wounds"]
         self.model_rewards_history.clear()
+        self.declared_objective = -1
+        self.declared_target = -1
         self.advanced_this_turn = False
         self.advance_roll = 0.0
         self.declared_advance = False
+        self.fell_back_this_turn = False
+        self.charge_roll = 0.0
+        self.charged_this_turn = False
+        self.declared_charge = False
+        self.fight_priority = 0
+        self.fought_this_phase = False
 
     def begin_turn(self) -> None:
         """Clear the per-TURN move state before this side moves again.
@@ -96,6 +145,12 @@ class WargameModel:
         self.advanced_this_turn = False
         self.advance_roll = 0.0
         self.declared_advance = False
+        self.fell_back_this_turn = False
+        self.charge_roll = 0.0
+        self.charged_this_turn = False
+        self.declared_charge = False
+        self.fight_priority = 0
+        self.fought_this_phase = False
 
     @property
     def is_alive(self) -> bool:

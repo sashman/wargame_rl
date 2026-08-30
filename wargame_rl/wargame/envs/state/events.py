@@ -30,6 +30,8 @@ class ModelDelta(BaseModel):
     alive: bool | None = None
     current_wounds: int | None = None
     advanced_this_turn: bool | None = None
+    charged_this_turn: bool | None = None
+    fell_back_this_turn: bool | None = None
     distances_to_objectives: list[float] | None = None
     at_objective: list[bool] | None = None
     closest_objective_idx: int | None = None
@@ -274,6 +276,14 @@ def _compute_model_delta(
         changes["current_wounds"] = cur.current_wounds
     if cur.advanced_this_turn != prev.advanced_this_turn:
         changes["advanced_this_turn"] = cur.advanced_this_turn
+    # ⚠ Both added to `ModelSnapshot` in schema 2.7 and NOT to this codec, so
+    # every delta silently dropped them and a replay reconstructed from deltas
+    # carried the anchor's value forever -- a charge could never read True.
+    # The test that should have caught it asserted `flag in (True, False)`.
+    if cur.charged_this_turn != prev.charged_this_turn:
+        changes["charged_this_turn"] = cur.charged_this_turn
+    if cur.fell_back_this_turn != prev.fell_back_this_turn:
+        changes["fell_back_this_turn"] = cur.fell_back_this_turn
     if cur.distances_to_objectives != prev.distances_to_objectives:
         changes["distances_to_objectives"] = cur.distances_to_objectives
     if cur.at_objective != prev.at_objective:
@@ -301,6 +311,10 @@ def _apply_model_delta(model: ModelSnapshot, md: ModelDelta) -> ModelSnapshot:
         updates["current_wounds"] = md.current_wounds
     if md.advanced_this_turn is not None:
         updates["advanced_this_turn"] = md.advanced_this_turn
+    if md.charged_this_turn is not None:
+        updates["charged_this_turn"] = md.charged_this_turn
+    if md.fell_back_this_turn is not None:
+        updates["fell_back_this_turn"] = md.fell_back_this_turn
     if md.distances_to_objectives is not None:
         updates["distances_to_objectives"] = md.distances_to_objectives
     if md.at_objective is not None:

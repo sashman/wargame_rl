@@ -97,9 +97,17 @@ A complete, serialisable Pydantic model of the game at one point in time. This i
 
 #### Schema
 
+**2.7 adds melee.** `player_melee_results` / `opponent_melee_results` are separate
+lists rather than a flag on `CombatResultSnapshot`, because the renderer draws a
+*tracer* for a damaging shot and a *clash marker* for a damaging blow — melee
+happens at contact, where a line has no length to be read by. Both are empty on
+pre-2.7 recordings and on every melee-off config, which is every config shipped
+today, so a replay of one draws no clashes rather than inventing them.
+
+
 ```python
 class GameStateSnapshot(BaseModel):
-    schema_version: str = "2.6"
+    schema_version: str = "2.7"
     step: int
     max_steps: int
     clock: ClockSnapshot
@@ -127,6 +135,8 @@ class GameStateSnapshot(BaseModel):
     player_action_descriptions: list[str] | None
     player_combat_results: list[CombatResultSnapshot]
     opponent_combat_results: list[CombatResultSnapshot]
+    player_melee_results: list[CombatResultSnapshot] = []  # 2.7: blows, not shots
+    opponent_melee_results: list[CombatResultSnapshot] = []  # 2.7
     reward: RewardSnapshot
     is_terminated: bool
     is_truncated: bool
@@ -158,6 +168,8 @@ class ModelSnapshot(BaseModel):
     toughness: int
     save: int
     advanced_this_turn: bool
+    charged_this_turn: bool = False  # 2.7: this model's UNIT charged this turn
+    fell_back_this_turn: bool = False  # 2.7: withdrew from melee, no shooting
     weapons: list[WeaponSnapshot]
     distances_to_objectives: list[float]
     at_objective: list[bool]

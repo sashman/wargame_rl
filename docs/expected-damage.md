@@ -14,6 +14,13 @@ the no-abilities case — hit, wound, save and Damage only, with `g_shrug = 1`. 
 the generalisation: each ability is one cell edit, so extending that function as abilities land is a
 table lookup rather than a rederivation. See [shooting.md](shooting.md).
 
+`domain.shooting.expected_attack_damage(skill, weapon, defender, *, in_cover=False)` is the same
+equation with the hit gate handed in, and `expected_damage` is now a one-line call to it passing
+`weapon.ballistic_skill`. Melee uses it with `melee_skill` and `in_cover=False` — `12-fight-phase.md`
+grants no cover — so a blade and a bow cannot end up with two copies of this arithmetic that drift
+apart. ⚠ A melee expectation is therefore **not** comparable to a shooting one measured with cover
+in play. See [melee.md](melee.md).
+
 `in_cover` is the one **Modifier** the env implements, and it is a scalar shift of the hit gate
 rather than a cell edit — which is the whole of what that family needs. The two structural facts
 below are already load-bearing in it: `hit_probability` pins the failing 1 and the always-hitting 6,

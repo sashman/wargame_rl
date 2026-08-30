@@ -113,9 +113,10 @@ class ScriptedAdvanceToObjectivePolicy(OpponentPolicy):
         for index, model in enumerate(opponent_models):
             if model.is_alive:
                 leaders.setdefault(int(model.group_id), index)
+        declare = handler.move_type_action(MOVE_TYPE_ADVANCE)
         for group_id, leader in leaders.items():
-            if group_id in advancing:
-                actions[leader] = move_type.start + MOVE_TYPE_ADVANCE
+            if group_id in advancing and declare is not None:
+                actions[leader] = declare
         return WargameEnvAction(actions=actions)
 
     def select_action(
