@@ -2012,3 +2012,70 @@ fall-back referee (`507d510`): 6 seeds × 600 epochs, epoch=599 verified ×6. Sc
 - **The fold's bounds are filled from these rows** (charge floor −46.7; adoption gate
   −10.8 at unpaired SE ~7.2, POWERED) and marked provisional pending the pair's own
   spread at the epoch-300 screen. The frozen-swap floor comparator is +1.81 ± 0.29.
+
+## 40. The fold PASSES every pre-registered gate — and both interpretive caps fire
+
+Verdict 2026-08-30, six seed pairs × 600 epochs (all `last.ckpt` at epoch=599
+verified from the orchestrator's landing record), scored n=45 seeds 700000+ on the
+assigned evals (arm on `fold_*`, control on `hunt_*`). Pre-registration of record:
+the fold.yaml v2 header + its PANEL B AMENDMENTS, both written before epoch 0.
+⚠ The epoch-300 screen was INAPPLICABLE by its own minimum-4-live-pairs clause
+(the 12-trainer OOM broke epoch alignment; recorded in the brief at `8126e25`), so
+B-2's both-checkpoint column rule could not bind — noted below, it never mattered.
+
+| seed | fold take/deny/shoot | ctl take/deny/shoot | fold apr vp (stood K3/K1) | ctl apr vp (stood K3/K1) |
+|---|---|---|---|---|
+| s1 | −7.7 / −10.3 / −9.4 | +4.8 / +3.2 / +8.1 | −25.9 (2.73/1.33) | −29.9 (1.58/1.13) |
+| s2 | −5.6 / −10.9 / −2.4 | +10.3 / +10.7 / +23.7 | −47.3 (5.11/2.96) | −4.7 (0.64/0.33) |
+| s3 | +17.8 / +5.7 / +32.4 | −7.8 / +2.7 / +24.3 | **−6.4** (3.76/1.69) | −41.2 (1.87/0.78) |
+| s4 | −2.1 / +22.4 / +26.3 | +4.9 / +7.3 / +11.6 | −22.3 (5.18/2.82) | −44.1 (0.29/0.27) |
+| s5 | +15.7 / +24.8 / +43.4 | −1.4 / +9.2 / +23.1 | −29.9 (3.16/2.09) | −43.8 (0.29/0.13) |
+| s6 | +0.2 / +19.0 / +19.6 | +19.4 / +16.9 / +41.1 | −14.3 (4.89/2.64) | −14.1 (1.11/0.53) |
+
+- **PRIMARY A (mechanism) PASS.** Paired stood/ep at K=1: +1.73 ± 0.40 SE, 6/6
+  pairs positive, bound +0.59. ⚠ The stood/ep pairing correlation is **negative**
+  (r=−0.75), which per the header voids the paired bound — recomputed UNPAIRED the
+  bound is +0.46 and it still passes. Fold declares 5.5–12.5 hunts/ep against the
+  control's 0.6–3.8, so hunt rates are retained, which is the registered mechanism.
+- ⚠ **The learned difference (+1.73) sits AT the frozen-swap floor (+1.81 ± 0.29).**
+  The stood-charge gain is what the flag buys mechanically on any weights; 600
+  epochs of training added no charge-seeking beyond it. The header pre-registered
+  exactly this outcome as reportable-not-a-gate, and it is the honest headline.
+- **PRIMARY B (vp guardrail) PASS.** Paired ladder pooled −1.84 vs bound
+  max(−1.5×SE, −10.8) = −9.97 (pooled vp pairing r=+0.03 — pairing bought nothing
+  but is not voided). No column breaches: take −1.98 (bound −17.8), deny +0.12
+  (−14.3), shoot −3.67 (−19.3). The fold costs no play quality.
+- **CHARGE FLOOR PASS** (apr K=3 mean −24.4 ≥ −46.7). **ADOPTION GATE PASS** (fold
+  pooled +9.94 vs v10r +9.3, diff +0.64 ≥ −10.8). **FARM SCREEN B-1 PASS 12/12**:
+  paid channels 20–35% of cap everywhere vs the 60% line; hold is context per B-1.
+  The exclusivity cut is visible where B-5 said to look — fold target income
+  0.25–0.75/model/ep against the control's 0.55–1.10.
+- **B-3 usage: no oscillation evidence, A stands.** Fold decl/ep between the two
+  per-seed checkpoints: mild decline on five seeds, s1 −41% (9.40 → 5.53 across
+  epochs 407→599, a drift caution). ⚠ Instrument limitation: the periodic
+  `last.ckpt` overwrite leaves exactly two checkpoints, so a last-50-epochs
+  oscillation is unobservable in principle; B-3 as written needs a usage trace.
+- ⚠ **LABEL i CAP FIRES: mismatch 0.65–0.88 on every grid of every seed.** More
+  than half of grant-attributable stood charges engage a NON-declared unit, so per
+  the pre-commitment the A-pass is **NOT** read as "the declaration distribution
+  improved" and the bound follow-up is the **TARGET-GATED grant** — not a relaunch.
+- ⚠ **B-4 CAP FIRES on s4: manual-route dominated** (78–81% of its stood charges
+  bypass the grant; every other seed is 0–34%). s4's A contribution is not
+  attributable to the grant. Dropping s4 entirely: paired stood +1.56 ± 0.48,
+  still a PASS — the verdict does not lean on it.
+- **Coherency: the fold is BETTER on all six pairs** (0.951–0.967 vs 0.924–0.958)
+  while standing ~4× the charges — declared charging substitutes for the incoherent
+  scramble, exactly the §35 slot-economics account.
+- **The control ties v10r** (+11.78 ± 3.13 vs +9.3): the hunt declaration is not
+  harmful post-referee, mild support for v11's rejection being partly a
+  pre-`507d510` artifact. This was the control's registered second purpose.
+- **LICENSED CLAIM, verbatim from the header**: the fold enables charging without
+  slot cost. NOT licensed: any allocation or hunt-learning claim (one-profile
+  armies; mismatch cap). NAMED DEBT: the B-6 pin-skew label (stood charges split
+  by charger-on-own-objective) was never landed in `measure_charges` and is
+  unreported; land it before the target-gated arm quotes an A-pass.
+- **Level-3 position**: fold s3 reads −6.4 refereed against the bar's −5.3 with
+  +17.8/+5.7/+32.4 on the ladder — at or above the bar on two of four cells. The
+  six-seed means are not (apr −24.4; stood 4.14 vs the bar band 5.8–6.3). The
+  fold is the lineage the Level-3 levers build on, and the first lever is the
+  mismatch cap's own follow-up.
