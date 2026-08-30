@@ -1,61 +1,112 @@
 # ===========================================================================
-# ARM 'FOLD-TB' v1 header -- DRAFT pre-registration, written 2026-08-30 before
-# any panel and before epoch 0. Level-3 lever 1: the target-gated grant, the
-# fold verdict's pre-named follow-up (s40, mismatch cap) and the rules-true
-# form of 11-charge-phase.md's target selection (gap-map rows
-# charge.target_declaration / after-moving conditions).
+# ARM 'FOLD-TB' v2 header -- the panel-amended pre-registration. Two
+# uncoordinated audit panels (12 seats + 2 red teams, 2026-08-30, both
+# LAUNCH_MODIFIED; scorecard entry of the same date) rewrote the v1 draft:
+# every amendment below is theirs, landed BEFORE epoch 0. Code commit of
+# record: 42c1b25 (M0 + the instrument slate). ⚠ Every figure is labelled
+# with its decode K and given seed-ordered (s1..s6) -- the v1 draft mixed
+# K=1 stood with K=3 mismatch unlabelled, and its "mismatch <= 0.50
+# mechanically near-guaranteed" was breached FROZEN (K=1 s4 read 0.545).
 #
-# WHAT SHIPS: `charge_target_binds: true` on the fold config and NOTHING else.
-# Three coordinated effects, both seats, only for units whose declared target
-# is alive: the grant requires the DECLARED unit to be roll-reachable; the
-# charge approach mask aims at the declared unit; the referee holds the charge
-# to it by name (touched == {declared}). Undeclared charges (every script)
-# keep the derived referee -- the bar is BIT-IDENTICAL across the two configs
-# (verified: squad_march_take_charge, n=20 K=1, every printed digit).
+# WHAT SHIPS: `charge_target_binds: true` on the fold config and nothing
+# else. Grant, approach mask, manual-declaration mask (M0) and referee all
+# key on the unit's declared hunt target while it is ALIVE; a dead or absent
+# declaration falls through to the derived referee. The M0 fix is
+# load-bearing: the referee binds ANY charge by a live-declaration holder --
+# manual route included -- so the manual mask must ask the grant's question
+# or it offers a guaranteed-revert declaration (the zero-gradient trap,
+# reopened). Scripts never declare: the bar is BIT-IDENTICAL across the two
+# configs, re-verified post-M0 to every printed digit.
 #
-# PAIRED AGAINST THE EXISTING FOLD ARM -- no control retrains. The flag adds
-# no actions and flag-off is exactly the old computation (goldens pass; the
-# bridge above), so the six fold checkpoints (s1-s6, 600 epochs, s40) are the
-# paired comparator: same seeds, 222/222 tensors bit-identical at epoch 0,
-# verified across all six seeds on 2026-08-30. Divergence begins at the first
-# GRANT decision (earlier than the fold pair's -- the tb grant refuses some
-# grants the fold made in the very first command phase).
+# PAIRED AGAINST THE EXISTING FOLD ARM (s40): same six seeds, 222/222
+# tensors bit-identical at epoch 0, re-asserted at 42c1b25 on all six.
+# Divergence begins at the first grant decision. Negative measured pairing
+# correlation at verdict drops that estimator to unpaired (the fold's own A
+# hit r=-0.75 and survived unpaired; do the same, say so).
 #
-# FROZEN-WEIGHTS SCREEN (informative, run before this header): on the six
-# fold checkpoints the flag costs stood/ep K=1 2.26 -> 1.24 (still 2.3x the
-# control's 0.53), collapses mismatch 0.73 -> 0.08-0.18 (mechanically
-# forced), and moves vp K=3 by -5.6 mean, worst s1 -20.5. The arm exists to
-# test whether TRAINING recovers what the stricter referee costs frozen
-# weights -- the approach mask aiming at the declaration is the corrective
-# signal frozen weights never had.
+# FROZEN FLOORS (post-M0, the six fold checkpoints under this config,
+# n=45 seeds 700000+; paired tb-minus-fold, seed-ordered):
+#   K=1 stood/ep: -1.02/-2.12/-0.76/+0.11/-0.89/-1.08  mean -0.96 SE 0.29
+#   K=1 vp:       +4.1/-9.2/-7.2/+9.7/+17.5/-4.9       mean +1.7  SE 4.3
+#   K=3 stood/ep: -2.11/-3.49/-1.89/-0.96/-1.07/-2.00  mean -1.92 SE 0.37
+#   K=3 vp:       -20.5/+1.1/-5.0/-7.0/-1.2/-10.1      mean -7.1  SE 3.1
+# The stood halving is the one solid frozen fact; the K=1 vp cost is ~zero.
+# mismatch(bound) reads 0.000 on 6/6 (the construction check) and
+# bind_violations 0 on 6/6.
 #
-# PRIMARY A (mechanism, paired vs fold, stood/ep K=1, n=45 assigned evals):
-# NON-INFERIORITY -- the arm must not lose the fold's mechanism: paired
-# tb-minus-fold >= -1.5x the pair's own SE. ⚠ mismatch <= 0.50 at verdict is
-# mechanically near-guaranteed and is REPORTED, never read as learning (the
-# fold round's lesson about gating on the construction).
-# PRIMARY B (vp guardrail, paired ladder pooled vp K=3): pooled >=
-# max(-1.5x pooled SE, -10.8); per-column -2.33x own paired SE. An
-# IMPROVEMENT is the hoped-for outcome and is not required: the flag is
-# lethality-neutral and the fold's B-round showed a superiority form
-# false-rejects a true-zero win.
-# LEARNING LABEL (the actual question): share of hunt declarations whose
-# declared unit is roll-reachable at declaration, arm vs fold, both
-# checkpoints -- the policy learning to declare chargeable hunts is the
-# mechanism the lever pays for. Reported beside grant volume/ep.
+# PRIMARY A (mechanism): raw paired stood/ep at K=1, arm minus fold, n=45,
+# read THREE-WAY against the frozen floor (-0.96 +/- 0.29):
+#   RECOVERY   if the paired mean clears the floor by +1.5x the pair's SE;
+#   AT-FLOOR   reads "mechanics only, no learning" -- reported, not
+#              rejected, absent a B breach;
+#   LOST       if below the floor by more than 1.5x the pair's SE.
+# Labels beside A, with pre-committed readings, NEVER gates: the
+# bound/stale/manual route split (>50% of a seed's stood charges from units
+# with no live declaration -> that seed's A is not attributable to the
+# binding); report A with and without s4 (manual-dominated at the fold
+# verdict, 78-81%).
+#
+# PRIMARY B (vp guardrail): paired ladder pooled vp at K=3, bound -10.8
+# FLAT (a -1.5xSE form is tighter than the harm line it descends from and
+# false-rejects the frozen-floor truth ~40%); per-column -2.33x its own
+# paired SE, a column REJECTs only on breach at BOTH the 300 screen and the
+# 600 verdict (if the screen is inapplicable, columns are judged at 600
+# alone and the verdict says so). A-pass + B-fail = REJECT. The frozen
+# baseline beside B: K=3 -7.1 +/- 3.1 -- B distinguishes "training did not
+# widen the frozen cost" from "training recovered it"; recovery is hoped
+# for, not required.
+#
+# SCREEN at epoch 300 (vp only -- the stood conjunct is mechanically
+# negative under the flag, 5/6 frozen, and no fold-side 300 checkpoint
+# exists): KILL only if paired pooled vp sits below that seed's post-M0
+# frozen K=3 delta on all-but-one live pairs, minimum 4 live pairs --
+# training doing worse than not training. Screen survival is not evidence.
+#
 # CHARGE FLOOR: apr K=3 six-seed mean >= -46.7 (unchanged from the fold).
-# BAR GAP (Level 3, reported): arm vs squad_march_take_charge on the tb
-# ladder + refereed head-to-head; the bar's rows equal the fold's by the
-# bridge. No gate -- the record decides when the gap is closed.
-# USAGE CLAUSE: hunt-declaration usage oscillating across the last 50 epochs
-# on 2+ seeds -> A reported UNDERPOWERED (standing rule).
-# LABELS: mismatch + manual-route share (B-4 form); pin-skew (s40a: fold
-# reads 0.60-0.72); P(declared = nearest); hunts of dead groups; farm screen
-# B-1 paid channels (arm cap 5.0, 60% line).
-# SCREEN at epoch 300 (kill clause): paired stood/ep K=1 AND paired pooled
-# ladder vp both negative on all-but-one live pairs, minimum 4 live pairs --
-# else the screen is inapplicable and all seeds run to 600 (the fold's own
-# clause, which its OOM waves triggered).
+#
+# LEARNING LABEL (the arm's question, via the hunt census landed at
+# 42c1b25): reachable_share -- held hunts whose declared unit is
+# roll-reachable, the grant's own predicate -- arm vs fold at both per-seed
+# checkpoints. Pre-committed: LEARNING only if the arm exceeds the fold's
+# share by more than the frozen-swap difference on 5+/6 seeds. Frozen
+# baseline: fold s5 reads 0.259. Guards, both landed: base_P(nearest_
+# reachable) (frozen 0.788) and the roll-tercile split -- a label rise
+# carried by the high-roll tercile with P(new=nearest) flat is ROLL-READING,
+# not targeting, and no targeting claim survives it.
+#
+# ESCAPE LABEL: the STALE column (dead-declared at referee time, with its
+# same-turn-kill sub-column). Pre-committed: >1/3 of the arm's stood
+# declared charges stale at verdict -> A is not attributable to the binding
+# and the pre-named follow-up is "the grant dies with its target" (clear
+# declared_charge on wipe), not a relaunch. bind_violations must read 0;
+# a single violation voids the verdict read and reopens the referee.
+#
+# INCOME LABEL (M10): target-income granted/refused split. Frozen fold s5:
+# 0.27 granted vs 7.23 refused /ep. Pre-committed: majority of the arm's
+# hunt-march income on grant-REFUSED hunts with reachable_share not above
+# the fold's = march-farming; the follow-up is income-side (gate or decay
+# the term on refused hunts), not another referee change.
+#
+# OTHER LABELS: pin-skew POOLED across seeds on the grant-route denominator
+# (per-seed counts 14-65 flip B-6's lines on binomial noise; fold frozen
+# context 0.60-0.72 at K=3); farm screen B-1 form (paid channels, cap 5.0,
+# 60% line); usage clause over the TWO retained per-seed checkpoints
+# (oscillation -> A reported UNDERPOWERED); granted-but-declared-
+# unreachable-at-charge-entry share (the movement-induced ceiling -- the
+# commitment predates the unit's own movement and nothing re-checks it).
+#
+# NAMED DIVERGENCES the v1 draft omitted: the target commitment is made in
+# the COMMAND phase, before movement and before the rules' charge-step
+# selection point; the rules' 12" target-selection limit is not enforced on
+# the declared target (reachability allows gap <= roll + engagement, i.e.
+# up to 14" -- expected <1% of grants; clamp if >2%); multi-target charges
+# are inexpressible; "both seats" is code-true but behaviourally
+# player-only against this scripted opponent (it never declares).
+#
+# LICENSED CLAIM: a full pass licenses "the target binding is learnable at
+# no play cost" -- never "the agent learned target selection" (one-profile
+# armies; the roll-reading guard) and never an allocation claim.
+#
 # 6 seeds (1-6), 600 epochs, judged at last.ckpt with epoch verified.
 # ===========================================================================
 # ===========================================================================

@@ -510,3 +510,26 @@ a panel's headline, not just its findings.**
   the learned stood gain equals the mechanical floor.
 - Debt the panels created and the verdict inherited: the B-6 pin-skew label named an
   instrument nobody landed — unreported at verdict, now blocking the follow-up arm.
+
+## 2026-08-30 — audit — two panels on the fold-tb (charge_target_binds) pre-registration
+- Verdict: LAUNCH_MODIFIED, both panels 4/4 + both red teams; zero BLOCK, zero FATAL.
+- Audits that landed: panel A M0 — a real code defect (the manual MOVE_TYPE_CHARGE mask had
+  no tb branch, so a hunt-holder with an unreachable target could declare a guaranteed-revert
+  charge: the zero-gradient trap the roll gate was built to remove, reopened on the route
+  carrying most stood charges on 3/6 seeds); the header quoted K=3 mismatch beside K=1 stood
+  unlabelled, and "mismatch <= 0.50 mechanically near-guaranteed" was breached FROZEN (K=1
+  s4 0.545 at grant=11); the dead-declared escape (kill your target, keep the grant, charge a
+  bystander under the derived fall-through) — the entire residual mismatch under tb; the
+  learning label had NO instrument (grep-confirmed by three seats); pile-in moved models
+  between the referee and the census's engagement read (M14), biasing mismatch/pin-skew;
+  the frozen vp cost is decode-dependent (K=3 −5.6 t=−1.4; K=1 +0.1 — the stood halving is
+  the only solid frozen fact); the 300-screen stood conjunct is mechanically negative under
+  the flag (6/6 frozen) and the fold-side 300 comparators do not exist (only s4 retains one).
+- Panel self-corrections worth keeping: panel A's chair caught THREE of its own seats sharing
+  a false code premise ("manual charges keep the derived referee" — the referee binds by
+  declared_target on every route) and rejected a seat's amended Primary A as gating on the
+  construction — "the audit nearly installed the defect class it existed to remove". Panel
+  B's red team corrected a seat's seed attribution (the 0.545 is s4, not s5).
+- Cost: ~1.8M subagent tokens, ~22 min wall-clock each, box idle. Both chairs' slates
+  overlapped heavily (convergence from disjoint lenses); merged as M0 + instruments + header
+  rewrite, all CPU, all landed before epoch 0.
