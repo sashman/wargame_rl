@@ -85,9 +85,12 @@ class WargameModel:
         self.charged_this_turn: bool = False
         # Whether this model's UNIT declared a charge in the command phase.
         # Gates which charge rungs are legal, exactly as `declared_advance`
-        # gates the advance rungs -- and, unlike the advance, it also makes
-        # STAY illegal for the unit's models in the charge phase, because a
-        # charge is a unit move and half a unit charging is a reverted charge.
+        # gates the advance rungs. ⚠ STAY remains LEGAL in the charge phase
+        # for a declared unit -- the rules grant a declared unit the right to
+        # decline, and the no-stand-still clause was removed (docs/melee.md
+        # header). A stale claim here said otherwise until 2026-08-30; a
+        # comment pinning a property the code does not have is how audits get
+        # misdirected (panel A, M8).
         self.declared_charge: bool = False
         # The squad's declared OBJECTIVE (-1 = none). ⚠ PERSISTS across turns
         # -- a plan is state, not a per-turn impulse -- so `begin_turn` leaves

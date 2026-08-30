@@ -120,7 +120,14 @@ def test_declaring_an_objective_drops_the_hunt_and_its_charge() -> None:
         env.close()
 
 
-def test_out_of_range_hunts_are_not_granted_a_charge() -> None:
+def test_a_hunt_with_no_enemy_in_charge_range_is_not_granted() -> None:
+    """RENAMED from `test_out_of_range_hunts_are_not_granted_a_charge` (panel
+    A, M8): the old name implied the grant is gated on the DECLARED target's
+    range, which the code does not do — the gates are ANY-enemy proximity and
+    roll-reach (`charge_eligible_units` / `_roll_reachable_units`), so this
+    test passes only because EVERY enemy is far. A hunt of a far group with a
+    near bystander IS granted; that mismatch is priced by the fold
+    pre-registration's mismatch census, not forbidden by code."""
     env = _env(fold=True)
     try:
         handler = env.player_action_handler
@@ -128,7 +135,8 @@ def test_out_of_range_hunts_are_not_granted_a_charge() -> None:
         assert hunt is not None
         _to_phase(env, BattlePhase.command)
         _pin_close(env)
-        # Beyond the 12" charge range: the hunt stands, the grant does not.
+        # Every enemy beyond the 12" charge range: the hunt stands, the grant
+        # does not.
         env.opponent_models[0].location = np.array([40.0, 10.0])
         env.opponent_models[1].location = np.array([40.0, 11.0])
 
