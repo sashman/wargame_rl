@@ -1305,6 +1305,35 @@ class ActionHandler:
                 # (`_reachable_charge_units` asks gap <= roll); masking gives
                 # the learned policy the same information.
                 reachable = self._roll_reachable_units(models, alive_enemies)
+                if self._charge_target_binds:
+                    # The referee binds ANY charge by a unit holding a live
+                    # declaration -- manual route included -- so the manual
+                    # mask must ask the same question as the grant: can the
+                    # roll reach the DECLARED unit. Without this branch a
+                    # hunt-holder whose target is out of reach but with a
+                    # reachable bystander could declare a manual charge that
+                    # the approach mask aims at the unreachable unit and the
+                    # referee is guaranteed to revert -- the zero-gradient
+                    # trap this mask exists to remove, reopened (panel M0).
+                    alive_groups = {int(m.group_id) for m in alive_enemies}
+                    bound: dict[int, set[int]] = {}
+                    for model in models:
+                        group = int(model.group_id)
+                        declared = int(getattr(model, "declared_target", -1))
+                        if (
+                            model.is_alive
+                            and group not in bound
+                            and declared in alive_groups
+                        ):
+                            target_members = [
+                                m for m in alive_enemies if int(m.group_id) == declared
+                            ]
+                            bound[group] = self._roll_reachable_units(
+                                models, target_members
+                            )
+                    for group, group_reach in bound.items():
+                        if group in reachable and group not in group_reach:
+                            reachable = reachable - {group}
                 for index, model in enumerate(models):
                     if (
                         model.is_alive

@@ -180,3 +180,55 @@ def test_the_derived_referee_lets_the_same_charge_stand() -> None:
         assert all(getattr(m, "charged_this_turn", False) for m in env.wargame_models)
     finally:
         env.close()
+
+
+def test_a_hunt_holder_with_an_unreachable_target_may_not_declare_manually() -> None:
+    """Panel M0: the referee binds ANY charge by a unit holding a live
+    declaration -- manual route included -- so the manual mask must ask the
+    grant's question (can the roll reach the DECLARED unit) or it offers a
+    declaration whose only outcome is a guaranteed whole-unit revert."""
+    from wargame_rl.wargame.envs.env_components.actions import MOVE_TYPE_CHARGE
+
+    for binds, expected in [(True, False), (False, True)]:
+        env = _env(binds=binds)
+        try:
+            _to_phase(env, BattlePhase.command)
+            _place(env, declared_group_near=False)
+            _declare_hunt_of_group_1(env)
+            _to_phase(env, BattlePhase.command)
+            _place(env, declared_group_near=False)
+            handler = env.player_action_handler
+            legality = handler.declaration_legality(
+                env.wargame_models, env.opponent_models
+            )
+            column = handler._move_types.index(MOVE_TYPE_CHARGE)
+            assert bool(legality[:, column].any()) is expected, (
+                f"binds={binds}: manual charge declarable={legality[:, column].any()}"
+            )
+        finally:
+            env.close()
+
+
+def test_a_dead_declared_target_falls_through_to_the_derived_referee() -> None:
+    """The rules select targets among ALIVE units; a hunt whose unit died is a
+    plan for nothing, and the charge is judged as an undeclared one."""
+    env = _env(binds=True)
+    try:
+        _to_phase(env, BattlePhase.command)
+        _place(env, declared_group_near=True)
+        _declare_hunt_of_group_1(env)
+        assert all(m.declared_charge for m in env.wargame_models)
+        # Group 1 dies between the declaration and the charge.
+        for m in env.opponent_models[2:]:
+            m.stats["current_wounds"] = 0
+        starts = [m.location.copy() for m in env.wargame_models]
+
+        _charge_at_the_bystander(env)
+
+        moved = any(
+            not np.allclose(m.location, s) for m, s in zip(env.wargame_models, starts)
+        )
+        assert moved
+        assert all(getattr(m, "charged_this_turn", False) for m in env.wargame_models)
+    finally:
+        env.close()
