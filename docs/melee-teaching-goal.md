@@ -2079,3 +2079,27 @@ B-2's both-checkpoint column rule could not bind — noted below, it never matte
   six-seed means are not (apr −24.4; stood 4.14 vs the bar band 5.8–6.3). The
   fold is the lineage the Level-3 levers build on, and the first lever is the
   mismatch cap's own follow-up.
+
+## 40a. The pin-skew debt is paid — the account is alive, not established
+
+Measured 2026-08-30, hours after the verdict named it as debt. `measure_charges`
+now prints the B-6 label: stood charges split by whether the charging unit began
+the charge step with a member on an objective its side CONTROLS (membership is
+THE control rule — `norms_offset <= obj_radii`, base edge, alive only).
+
+Six fold verdict checkpoints, `fold_refereed`, n=45 K=3:
+**0.650 / 0.617 / 0.716 / 0.605 / 0.599 / 0.723** (s1–s6), mean ≈ 0.65.
+
+- Per B-6's own thresholds: **>70% fires on 2 of 6 seeds, <50% on none.** The
+  pin-enablement reading of the A-pass is neither established nor killed —
+  about two-thirds of the fold's stood charges launch from ground it holds,
+  so charging-as-hold-shield is a large share of what the grant is used for,
+  consistent with the panel's original finding that a charging script's value
+  is entirely the shooting shield.
+- ⚠ Label computed at `last.ckpt` only (one checkpoint, not the two the other
+  labels use) and AFTER the verdict — it can inform the follow-up's design
+  and must not be read back into §40's gate outcomes.
+- Design consequence: the target-gated grant should not assume charges are
+  offensive. A grant gated on the DECLARED unit's reachability prices pinning
+  correctly anyway (the declared unit is usually the one walking at your
+  objective), so the lever needs no pin-specific term.

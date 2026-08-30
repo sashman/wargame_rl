@@ -74,6 +74,8 @@ import numpy as np
 
 from scripts.scenario_overrides import describe, load_env_config, parse_overrides
 from wargame_rl.wargame.envs.domain.engagement import engagement_matrix
+from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.selectors import build_action_selector
@@ -102,6 +104,12 @@ def measure(
     # whether the unit ended engaged with its DECLARED group or a bystander.
     # The mismatch denominator is the grant route ONLY.
     stood_grant = stood_manual = stood_on_declared = 0
+    # Panel B-6's PIN-SKEW label: stood charges split by whether the charging
+    # unit began the charge step with a member on an objective its side
+    # CONTROLS (the hold-plus-pin composite). >70% reads an A-pass as
+    # pin-enablement; <50% kills the pin-skew account. Membership uses THE
+    # control rule (`norms_offset <= obj_radii`, base edge, alive only).
+    stood_from_own_objective = 0
 
     # The referee's verdict, captured before the fight boundary clears it.
     # `_apply_player_action` runs the charge referee; `run_after_player_action`
@@ -133,6 +141,7 @@ def measure(
                 action = selector.select(observation, env)
                 units: dict[int, list[int]] = {}
                 unit_gaps: dict[int, tuple[float, float]] = {}
+                pinner_units: set[int] = set()
                 if phase is BattlePhase.charge:
                     for index, model in enumerate(env.wargame_models):
                         if model.is_alive and getattr(model, "declared_charge", False):
@@ -158,6 +167,28 @@ def measure(
                             getattr(env.wargame_models[members[0]], "charge_roll", 0.0)
                         )
                         unit_gaps[group] = (min(gaps) if gaps else float("inf"), roll)
+                    if units and env.objectives:
+                        alive = alive_mask_for(env.wargame_models)
+                        cache = compute_distances(
+                            env.wargame_models, env.objectives, alive_mask=alive
+                        )
+                        on_objective = cache.model_obj_norms_offset <= cache.obj_radii
+                        player_counts = on_objective[alive].sum(axis=0)
+                        opp_alive = alive_mask_for(env.opponent_models)
+                        opponent_counts = (
+                            compute_distances(
+                                env.opponent_models,
+                                env.objectives,
+                                alive_mask=opp_alive,
+                            ).model_obj_norms_offset
+                            <= cache.obj_radii
+                        ).sum(axis=0)
+                        controlled = player_counts > opponent_counts
+                        pinner_units = {
+                            group
+                            for group, members in units.items()
+                            if bool(on_objective[members][:, controlled].any())
+                        }
                 moving = {
                     group
                     for group, members in units.items()
@@ -182,6 +213,7 @@ def measure(
                 # ratio whose bound is known.
                 if phase is BattlePhase.charge:
                     stood += len(stood_units)
+                    stood_from_own_objective += len(stood_units & pinner_units)
                     for group in moving:
                         gap, roll = unit_gaps.get(group, (float("inf"), 0.0))
                         charge_rows.append((gap, roll, group in stood_units))
@@ -249,6 +281,11 @@ def measure(
             f"  stood by route: grant={stood_grant} manual={stood_manual}  "
             f"on_declared={stood_on_declared}  "
             f"mismatch(grant)={mismatch:.3f}"
+        )
+        pin_share = stood_from_own_objective / max(stood_grant + stood_manual, 1)
+        print(
+            f"  pin-skew: from_own_objective={stood_from_own_objective}  "
+            f"share={pin_share:.3f}"
         )
     return {
         "declared": declared / n_episodes,
