@@ -2103,3 +2103,53 @@ Six fold verdict checkpoints, `fold_refereed`, n=45 K=3:
   offensive. A grant gated on the DECLARED unit's reachability prices pinning
   correctly anyway (the declared unit is usually the one walking at your
   objective), so the lever needs no pin-specific term.
+
+## 40b. Allocation, not melee, is where the remaining VP is — re-measured post-referee
+
+Prompted by the user, who read it off the recordings before any statistic said it:
+*"in most of recordings i can still see abandoned objectives which can be controlled
+for +5 vp every turn"*. Three reads, all on the six fold verdict checkpoints, all
+zero-GPU, 2026-08-30.
+
+**1. Hunting bought no ground and no points — the fold IS the experiment.** Fold vs
+its init-paired control, `held` at n=45 on the assigned evals: **1.50 vs 1.52**
+(per-seed 1.38/1.07/1.87/1.60/1.67/1.42 against 1.24/1.71/1.51/1.49/1.42/1.76),
+paired mean −0.02. §40 already had the ladder pooled at −1.84. So **4× the standing
+charges moved neither objectives held nor score.**
+
+**2. The charges are DEFENSIVE, which is why.** §40a's pin-skew label: 60–72% of
+stood charges launch from an objective the side already controls. That is the
+shooting shield the expert panel priced (a charging script's value was
+**entirely** the shield: −4.0 ± 17.4 with the target gate ablated), not ground-taking.
+
+**3. The pot the user pointed at, sized.** The agent holds **~1.5 of the table's 5–6
+objectives** and the VP cap binds at three, so the whole of 1.5 → 3.0 is **uncapped**
+— worth ~+7.5 per scoring event over ~19 events. No melee mechanism measured here is
+that size.
+
+**4. The allocation reflex still pays after the fall-back referee, at about half its
+old value.** `just measure-realloc ... contest_ungated`, n=45 K=3 on
+`fold_refereed`, paired against the same checkpoints' plain rows:
+
+| | s1 | s2 | s3 | s4 | s5 | s6 | mean |
+|---|---|---|---|---|---|---|---|
+| plain | −25.9 | −47.3 | −6.4 | −22.3 | −29.9 | −14.3 | −24.3 |
+| + reflex | −13.4 | −22.1 | **+6.0** | −19.8 | −30.0 | −16.9 | **−16.0** |
+| gain | +12.5 | +25.2 | +12.4 | +2.5 | −0.1 | −2.6 | **+8.3 ± 4.25** |
+
+t = 1.95, positive on 4 of 6. It **survives its own pre-registered kill** (mean ≥
++1.0 and not negative on 3+ seeds), and it closes **44% of the gap to the §38 bar**
+on this cell (−19.0 → −10.7) with **no weights changed at all**.
+⚠ **Not the pre-referee +14.54 ± 3.81** — that figure is void on melee configs and
+this replaces it. ⚠ Refereed cell only; the three ladder cells are unmeasured here.
+⚠ It is a play-time hand-hold, not learned: it is a measurement of the HEADROOM in
+allocation, not a shippable result (the user's standing direction is that the agent
+must learn the choice).
+
+**Consequence for Level 3.** The bar's edge was always its allocator (§29). Melee is
+now correct, certified and worth ~0 vp on its own; the remaining gap is allocation,
+and the record's diagnosis is that this is a **SEARCH** failure, not a reward one —
+the critic prices spreading correctly (+2.63, realising +3.85) and the policy will
+not do it, while four reward levers aimed at the same wall all failed. **The next
+lever should attack exploration/decision structure for allocation, not another melee
+mechanism, and not a fifth reward term.**
