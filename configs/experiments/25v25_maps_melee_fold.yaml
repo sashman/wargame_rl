@@ -1,45 +1,97 @@
 # ===========================================================================
-# ARM 'FOLD': 25v25_maps_melee_hunt + hunt_declares_charge — a hunt IS
-# charge-intent. Created 2026-08-30 at 58e6afe, under the corrected rules
-# (fall-back referee 507d510; every pre-referee figure void, s38 is the bar).
+# ARM 'FOLD' v2 header — the panel-A-reconciled pre-registration (M1–M7,
+# wf_bc5da8e3-5c3, LAUNCH_MODIFIED unanimous). Replaces the ce1e441 header.
+# Numbers marked [v10r] are filled at v10r's landing and marked PROVISIONAL:
+# the melee family's per-episode vp sd is 79–101 (pricer files), NOT the
+# doctrine ~45–50, and v10r (different head) is not this pair's estimator —
+# final bounds are re-checked against the PAIR'S OWN spread at the 300 screen.
 #
-# WHY: s35 measured the command-slot bottleneck (charge declarations/ep fell
-# 8.55 -> 5.89 -> 2.68 as v6 -> v10 -> v11 stacked slices; forbid-at-play
-# recovered only ~35%) and prescribed the fold; s37a located the failure in
-# the DECLARATION DISTRIBUTION, not execution payment. The fold frees the
-# leader's slot: a unit with a declared enemy target auto-declares its charge
-# whenever eligible AND roll-reachable (the manual mask's exact gates), and
-# the plan is ONE commitment (objective drops hunt, hunt drops objective —
-# the s36b-safe override). Adds NO actions (119 = v11's head).
+# WHAT SHIPS (the pre-registration binds the SHIPPED form): TWO declaration
+# slices with post-hoc plan exclusivity + an auto-grant — NOT the design
+# brief's merged plan slice. The auto-grant is PROXIMITY-shaped (any-enemy
+# eligibility + roll gates; nearest-unit approach mask), not target-shaped:
+# 'a hunt IS charge-intent' describes the intent, not the aim. The mismatch
+# census (label i) prices exactly that gap.
 #
-# PAIRED CONTROL: 25v25_maps_melee_hunt (this file minus the flag) retrained
-# under the corrected rules — same head, same seed => bit-identical init, so
-# the per-seed difference is a PAIRED estimator (the first paired arm in the
-# melee line; v10/v11/v12 were all unpairable or config-diffed).
+# PAIRED: arm vs 25v25_maps_melee_hunt (this file minus the flag), same
+# seeds. INIT-paired only — shared init and layouts, diverging play from the
+# first grant. At launch, an epoch-0 state_dict assert runs across every
+# seed pair; any differing tensor, or a negative measured paired correlation
+# at verdict, drops the analysis to unpaired and voids every paired bound.
 #
-# PRE-REGISTERED FORMULAS (numbers filled from v10r's landing BEFORE launch;
-# each bound must be power-checked against the pair's own measured spread —
-# the -8/3-seeds bound failed 56% on a true zero):
-# - TWO-STAGE (the 2026-08-30 iteration rule): SCREEN at epoch 300 — kill
-#   BOTH arms iff the fold-minus-control paired charge-cell stood/ep at K=1
-#   is negative on >= 5 of 6 seeds AND paired vp is negative on >= 5 of 6;
-#   else extend to 600. VERDICT at last.ckpt, epoch verified.
-# - PRIMARY A (mechanism): paired stood/ep at K=1 on the fold's refereed
-#   eval, fold minus control. PASS bound = +1.5x the paired-seed SE measured
-#   on the pair itself; the s38 bar's 6.00 printed beside it.
-# - PRIMARY B (vp, funds): paired pooled vp on the 18-cell ladder K=3.
-#   PASS = pooled > 0 AND no opponent column falls > 1.5x its paired SE.
-#   A-pass with B-fail = mechanics bought at play quality's expense: REJECT.
-# - CHARGE FLOOR: apr K=3 six-seed mean >= [v10r's mean - 1.5x SE, TBD].
-# - FARM SCREEN: combined objective+target+hold income census (the s37a
-#   column) at the 60% line, s31 S1 conjuncts.
-# - BRIDGE (before any seed trains): squad_march_take scores bit-identically
-#   on the fold eval family vs the hunt eval family — scripts declare no
-#   targets, so the flag must be inert for them; a digit moving means the
-#   fold leaks outside the hunt channel and NOTHING LAUNCHES.
-# - Labels only: hunt usage (decl_frac, share of plans that are hunts),
-#   auto-grant rate, P4 oscillation at two checkpoints per seed.
-# - 6+6 seeds, 600 epochs (screen at 300), judged at last.ckpt verified.
+# EVAL ASSIGNMENT (pinned): the arm scores on the fold_* eval family (flag
+# on), the control on the hunt_* family (flag off) — each arm on the game it
+# trained in. The cross-decode (control under the flag; arm with it off) is a
+# labeled frozen-weights falsifier at verdict, never a primary.
+#
+# TWO-STAGE:
+# - SCREEN at epoch 300, checkpoint = highest ppo-NNN with epoch >= 290
+#   (last.ckpt is routinely stale under SIGKILL). Estimator: paired stood/ep
+#   at K=1 (n=45, seeds 700000+, assigned evals) AND paired ladder pooled vp
+#   at K=3 (18 cells, n=45). KILL THE FOLD ONLY iff both are negative on
+#   all-but-one live pairs (minimum 4 pairs). The CONTROL runs to 600
+#   regardless (it is the only planned test of whether v11's rejection was
+#   partly a pre-referee-rules artifact) unless it breaches the charge floor
+#   on its own.
+# - VERDICT at 600, last.ckpt with epoch verified.
+#
+# PRIMARY A (mechanism, a PLUMBING gate by design): paired fold-minus-control
+# stood/ep at K=1. PASS at +1.5x the pair's own measured SE. Read beside two
+# named comparator columns: the 6-seed FROZEN-SWAP floor (fold flag flipped
+# on untrained-for weights — what the grant buys with zero learning) and the
+# s38 bar's 6.00. An A-pass on retained hunt rates is the registered
+# mechanism working; 'the GPU bought nothing the flag did not' is a
+# reportable outcome, not a gate.
+#
+# PRIMARY B (vp guardrail, NON-INFERIORITY): paired ladder pooled vp at K=3
+# must satisfy pooled > -1.5x its pooled SE AND no opponent column below
+# -1.5x its own paired SE. False-reject arithmetic: a superiority form
+# (pooled > 0) rejects a TRUE-ZERO-vp mechanism win >= 50% of the time by
+# symmetry — the design's own most likely success mode for a lethality-
+# neutral mechanic — which is why B is non-inferiority. A-pass with B-fail
+# = REJECT (mechanics bought at play quality's expense, i.e. measured harm).
+#
+# CHARGE FLOOR: apr K=3 six-seed mean >= [v10r mean - 1.5x SE; PROVISIONAL].
+#
+# ADOPTION GATE (secondary): fold vs v10r, six-seed ladder pooled vp,
+# unpaired, non-inferiority at 1.5x the unpaired-diff SE. If v10r's landing
+# spread puts that SE above ~15 vp, this is pre-registered as a REPORTED
+# comparison with an explicit UNDERPOWERED clause. The fold must not be
+# adoptable by beating only a recipe this project rejected.
+#
+# FARM SCREEN: per-unit COMBINED declared income (objective march + target
+# march + hold) against the re-derived cap at the 60% line, s31 S1
+# conjuncts — REQUIRES the declared_target income rider in
+# measure_declarations.py (landing-window instrument work; if the rider is
+# not landed before launch, the screen is re-registered as objective+hold
+# with the target column as NAMED DEBT and this line says so). Under fold
+# exclusivity a hunting unit reads ZERO in the objective channels, so the
+# rider is what makes the gate able to fire at all. The target term's
+# zero-clip (retreat charges nothing) is the oscillation exposure the rider
+# must price.
+#
+# LABELS (one definition each; computed at the two per-seed checkpoints):
+# (i) MISMATCH CENSUS: share of stood charges engaging the DECLARED group,
+#     and share of grants where the declared group is itself unreachable.
+#     Pre-committed: if > 50% of the verdict run's stood charges engage a
+#     non-declared unit, PRIMARY A is NOT read as 'the declaration
+#     distribution improved'; the follow-up is a TARGET-GATED grant, not a
+#     relaunch.
+# (ii) double-plan share on the CONTROL (unit-turns holding both
+#     declarations) — prices the exclusivity half of the bundled flag.
+# (iii) the frozen-swap floor as a comparator column.
+# (iv) P(hunt kept | engaged with target), and re-charges after a fall back.
+# (v) P(declared target = nearest enemy unit).
+# (vi) share of unit-turns hunting a wiped group.
+#
+# LICENSED CLAIM: a full PASS licenses 'the fold enables charging without
+# slot cost' and NEVER 'the agent learned hunt allocation' — one-profile
+# armies make target selection degenerate; any allocation claim requires a
+# mixed-profile config first. The flag bundles TWO mechanisms (auto-grant +
+# plan exclusivity); the pre-named decomposition probe is the frozen-weights
+# flag swap on the verdict checkpoints.
+#
+# 6+6 seeds, 600 epochs (screen at 300), judged at last.ckpt verified.
 # ===========================================================================
 # ARM v10: 25v25_maps_melee_approach + the OBJECTIVE DECLARATION.
 # Copied 2026-08-28; differences: config_name, declare_objectives: true, and

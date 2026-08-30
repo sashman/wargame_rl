@@ -44,6 +44,32 @@ HOLD_POT = 0.25
 COMBINED_CAP = 11.0
 
 
+def _target_gaps(models: list, enemies: list, n_groups: int) -> np.ndarray:
+    """(n_models, n_groups) edge gap to each enemy group's nearest alive member.
+
+    The `declared_target_progress` calculator's own geometry (edge to edge,
+    clipped at zero), so the census's hunt-income column prices exactly what
+    the term pays. Groups with no alive member read inf.
+    """
+    locs = np.array([m.location for m in models], dtype=float)
+    radii = np.array([float(m.base_radius) for m in models], dtype=float)
+    gaps = np.full((len(models), n_groups), np.inf, dtype=float)
+    for group in range(n_groups):
+        member = [
+            (np.asarray(m.location, dtype=float), float(m.base_radius))
+            for m in enemies
+            if m.is_alive and int(m.group_id) == group
+        ]
+        if not member:
+            continue
+        enemy_locs = np.array([loc for loc, _ in member], dtype=float)
+        enemy_radii = np.array([r for _, r in member], dtype=float)
+        dists = np.linalg.norm(locs[:, None, :] - enemy_locs[None, :, :], axis=2)
+        edge = dists - radii[:, None] - enemy_radii[None, :]
+        gaps[:, group] = np.maximum(edge.min(axis=1), 0.0)
+    return gaps
+
+
 def measure(
     selector_spec: str,
     config_path: str,
@@ -71,6 +97,7 @@ def measure(
     declared_nearest = 0
     cosines: list[float] = []
     incomes: list[dict[int, float]] = []  # per episode: unit -> summed income
+    target_incomes: list[dict[int, float]] = []  # unit -> summed hunt-march income
     hold_incomes: list[dict[int, float]] = []  # unit -> summed hold-pot income
     hold_alive_counts: list[dict[int, list[float]]] = []
     unit_alive_counts: list[dict[int, list[float]]] = []
@@ -82,6 +109,7 @@ def measure(
         observation, _ = env.reset(seed=700000 + episode)
         prev_declared: dict[int, int] = {}
         income: dict[int, float] = {}
+        target_income: dict[int, float] = {}
         hold_income: dict[int, float] = {}
         hold_alive: dict[int, list[float]] = {}
         alive_steps: dict[int, list[float]] = {}
@@ -98,6 +126,7 @@ def measure(
                     continue
                 group = int(model.group_id)
                 unit_declared.setdefault(group, int(model.declared_objective))
+            pre_tgaps = None
             if phase is BattlePhase.movement:
                 for group in unit_declared:
                     member_locs = [
@@ -106,6 +135,8 @@ def measure(
                         if m.is_alive and int(m.group_id) == group
                     ]
                     pre_centroids[group] = np.mean(np.array(member_locs), axis=0)
+                n_enemy_groups = env.config.max_groups
+                pre_tgaps = _target_gaps(models, env.opponent_models, n_enemy_groups)
 
             action = selector.select(observation, env)
             observation, _r, terminated, truncated, _info = env.step(action)
@@ -176,6 +207,28 @@ def measure(
                     pay = VALUE * float(np.clip(closed / SPAN, 0.0, 1.0))
                     group = int(model.group_id)
                     income[group] = income.get(group, 0.0) + pay
+                # The hunt-march channel (M1's rider): the target term's own
+                # formula on the same within-step delta the objective column
+                # uses. Fires only where declare_targets exists.
+                if pre_tgaps is not None:
+                    post_tgaps = _target_gaps(
+                        post_models, env.opponent_models, pre_tgaps.shape[1]
+                    )
+                    for index, model in enumerate(post_models):
+                        tgt = int(getattr(model, "declared_target", -1))
+                        if not model.is_alive or tgt < 0:
+                            continue
+                        if tgt >= pre_tgaps.shape[1]:
+                            continue
+                        gap_before = float(pre_tgaps[index, tgt])
+                        gap_after = float(post_tgaps[index, tgt])
+                        if not np.isfinite(gap_before) or not np.isfinite(gap_after):
+                            continue
+                        pay = VALUE * float(
+                            np.clip((gap_before - gap_after) / SPAN, 0, 1)
+                        )
+                        group = int(model.group_id)
+                        target_income[group] = target_income.get(group, 0.0) + pay
                 for group, declared in unit_declared.items():
                     if declared < 0 or group not in pre_centroids:
                         continue
@@ -221,6 +274,7 @@ def measure(
         ).sum(axis=0)
         held_total += float((ours > theirs).sum())
         incomes.append(income)
+        target_incomes.append(target_income)
         hold_incomes.append(hold_income)
         hold_alive_counts.append(hold_alive)
         unit_alive_counts.append(alive_steps)
@@ -229,9 +283,10 @@ def measure(
     per_model_ep: list[float] = []
     top_unit_ep: list[float] = []
     hold_model_ep: list[float] = []
+    target_model_ep: list[float] = []
     combined_top_ep: list[float] = []
-    for income, hold_income, hold_alive, alive_steps in zip(
-        incomes, hold_incomes, hold_alive_counts, unit_alive_counts
+    for income, target_inc, hold_income, hold_alive, alive_steps in zip(
+        incomes, target_incomes, hold_incomes, hold_alive_counts, unit_alive_counts
     ):
         hold_per_unit: dict[int, float] = {}
         for group, total in hold_income.items():
@@ -244,9 +299,18 @@ def measure(
         for group, total in income.items():
             members_sum, phases = alive_steps.get(group, [1.0, 1.0])
             march_per_unit[group] = total / max(members_sum / max(phases, 1.0), 1e-9)
+        target_per_unit: dict[int, float] = {}
+        for group, total in target_inc.items():
+            members_sum, phases = alive_steps.get(group, [1.0, 1.0])
+            target_per_unit[group] = total / max(members_sum / max(phases, 1.0), 1e-9)
+        target_model_ep.append(
+            float(np.mean(list(target_per_unit.values()))) if target_per_unit else 0.0
+        )
         combined = {
-            group: march_per_unit.get(group, 0.0) + hold_per_unit.get(group, 0.0)
-            for group in set(march_per_unit) | set(hold_per_unit)
+            group: march_per_unit.get(group, 0.0)
+            + target_per_unit.get(group, 0.0)
+            + hold_per_unit.get(group, 0.0)
+            for group in set(march_per_unit) | set(target_per_unit) | set(hold_per_unit)
         }
         combined_top_ep.append(max(combined.values()) if combined else 0.0)
     for income, alive_steps in zip(incomes, unit_alive_counts):
@@ -279,6 +343,7 @@ def measure(
     )
     print(
         f"  hold/model/ep={np.mean(hold_model_ep):.3f}  "
+        f"target/model/ep={np.mean(target_model_ep):.3f}  "
         f"combined_top_unit/model/ep={np.mean(combined_top_ep):.3f}  "
         f"combined_cap={COMBINED_CAP}  "
         f"combined_frac_of_cap={np.mean(combined_top_ep) / COMBINED_CAP:.3f}"
