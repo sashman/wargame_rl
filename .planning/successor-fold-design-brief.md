@@ -185,3 +185,18 @@ launch. What died and the standing-belief challenges: see the chair's sections 6
   across seeds, vs the objection's predicted >0.8. v11 target selection is
   already diverse; the gamma/march-dominance explanation for the declaration
   distribution is refuted at its own criterion.
+
+## Screen-300 disposition (2026-08-30 18:03, recorded at fire time)
+
+The pre-registered screen assumed twelve runs in lockstep; the OOM recovery split
+them into waves, so at the marker only ONE live pair is epoch-comparable (s5:
+fold and control both in wave 2 at ~300). Wave-1 partners are at 600 and their
+~300-epoch checkpoints no longer exist (top-k rotation) — comparing a 300-epoch
+fold against a 600-epoch control is the screening-at-different-epochs trap in
+its exact recorded form, biased AGAINST the fold. Per the screen's own
+minimum-4-live-pairs clause it therefore CANNOT FIRE: no kill, all runs continue
+to 600, verdict on complete pairs as registered. (Wave-1 finals, already scored,
+show the fold healthy — stood K=1 1.69–2.82 vs control 0.33–1.13, ladder pooled
+dead even — so the un-fireable screen forgoes no plausible saving.)
+Rule for next time: pair-aligned waves make the screen fire per-wave; that is
+already in the iteration rules.
