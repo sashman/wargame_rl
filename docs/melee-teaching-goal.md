@@ -2153,3 +2153,40 @@ the critic prices spreading correctly (+2.63, realising +3.85) and the policy wi
 not do it, while four reward levers aimed at the same wall all failed. **The next
 lever should attack exploration/decision structure for allocation, not another melee
 mechanism, and not a fifth reward term.**
+
+## 40c. Taking the abandoned points is a NULL; contesting theirs is the lever
+
+The user's read of the recordings — *"abandoned objectives which can be controlled
+for +5 vp every turn"* — tested directly, prediction committed first
+(`/tmp/melee_realloc/PREDICTION.md`, "spread positive but smaller, +2 to +6").
+Six fold checkpoints, n=45, K=3, `fold_refereed`, play-time reflex on frozen
+weights, paired against the same checkpoints' plain rows:
+
+| decode | per-seed gain (s1–s6) | mean | t | positive |
+|---|---|---|---|---|
+| **contest** (surplus → opponent's WEAKEST-held point) | +12.5/+25.2/+12.4/+2.5/−0.1/−2.6 | **+8.32 ± 4.25** | +1.95 | 4/6 |
+| **spread** (surplus → nearest EMPTY point) | −2.9/+17.3/−8.9/+5.5/+12.5/−13.9 | **+1.60 ± 5.00** | +0.32 | 3/6 |
+| spread − contest | −15.4/−7.9/−21.3/+3.0/+12.6/−11.3 | −6.72 ± 5.09 | −1.32 | 2/6 |
+
+- **`spread` is DEAD on the instrument's own pre-registered kill** (negative on 3 of
+  6 seeds). `contest` survives it. The head-to-head favours contest but is **not**
+  statistically settled (t=−1.32) — the sound statement is "one clears its kill and
+  the other does not", not "contest beats spread".
+- ⚠ **My own prediction was wrong in magnitude** (+2 to +6 predicted, +1.6 measured
+  and failing its kill), and the framing it rested on was wrong too: I argued D-08's
+  settled-negative verdict should not transfer to the agent because that verdict was
+  measured on SCRIPTS sitting at the 3-objective VP cap while the agent holds ~1.5.
+  **The saturation argument was not the mechanism.** The agent is nowhere near the
+  cap and taking empty ground still pays nothing.
+- **D-08's claimed ORDER is refuted** ("neutral ground first, then enemy ground by
+  ascending defender count"). Measured on the trained agent it is the reverse:
+  enemy-weakest-first pays +8.3, neutral-first pays ~0. Doctrine entry updated.
+- **What survives, and it is the user's underlying point**: the agent has spare
+  squads doing nothing worth ~+8 vp, and a crude reflex collects it with no weights
+  changed — 44% of the gap to the §38 bar on this cell. The error is allocation. The
+  destination is denial, not acquisition.
+- **Open, not measured here**: why an empty objective pays nothing. The standing
+  candidate is the hold-hazard finding — the models that die are the ones walking
+  *between* points — plus the possibility that a point still empty by round 8 is the
+  one neither side can reach safely. Both need an instrument that does not exist yet
+  (distance-to-nominated-target and en-route casualties on the reflex's own moves).

@@ -318,8 +318,19 @@ overstack penalty that discourages piling **was paying for itself**: removing it
 **−12.2 ± 5.5, 3 of 3 seeds negative**, with offence +2.9 and defence −15.1. The travel term
 did pay more for movement, and the agent conceded fifteen VP for it.
 
-**Cheapest test.** Do not re-run the blunt form. Only worth revisiting bundled with D-26
-(timing), which is what neither attempt varied.
+⚠ **The ORDER in the claim is REFUTED, and the entry's own reasoning was wrong (2026-08-31).**
+Both halves tested as a play-time reflex on six trained agents (n=45, K=3, refereed melee
+cell, paired on frozen weights): surplus → **opponent's weakest-held** point measures
+**+8.3 ± 4.25** and clears the instrument's pre-registered kill; surplus → **nearest empty**
+point measures **+1.6 ± 5.00** and FAILS it (negative on 3 of 6 seeds). So the ordering is
+the reverse of the claim — enemy ground first, neutral ground never. The entry attributed
+the blunt form's failure to own-VP saturating at three; the agent holds **~1.5** and is
+nowhere near the cap, and empty ground still pays nothing there, so **saturation was not the
+mechanism**. See `docs/melee-teaching-goal.md` §40c.
+
+**Cheapest test.** Do not re-run the blunt form, on scripts OR on an agent. The live question
+is *why* neutral ground pays nothing — hold-hazard (deaths happen walking between points) is
+the standing candidate and needs the reflex's own en-route casualties instrumented.
 
 ### D-09 — Re-allocate against the board as it is, not as it was on departure
 
