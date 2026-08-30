@@ -2178,9 +2178,10 @@ weights, paired against the same checkpoints' plain rows:
   measured on SCRIPTS sitting at the 3-objective VP cap while the agent holds ~1.5.
   **The saturation argument was not the mechanism.** The agent is nowhere near the
   cap and taking empty ground still pays nothing.
-- **D-08's claimed ORDER is refuted** ("neutral ground first, then enemy ground by
-  ascending defender count"). Measured on the trained agent it is the reverse:
-  enemy-weakest-first pays +8.3, neutral-first pays ~0. Doctrine entry updated.
+- **D-08's claimed ORDER is refuted** (recorded in `docs/play-doctrine-findings.md`; the
+  doctrine itself is an immutable reference and is not edited): "neutral ground first, then enemy
+  ground by ascending defender count" is the reverse of what pays — enemy-weakest-first
+  measures +8.3, neutral-first ~0.
 - **What survives, and it is the user's underlying point**: the agent has spare
   squads doing nothing worth ~+8 vp, and a crude reflex collects it with no weights
   changed — 44% of the gap to the §38 bar on this cell. The error is allocation. The
