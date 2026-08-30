@@ -1983,3 +1983,32 @@ preserved (one base ~zero). The internal tell §38a missed: its own "nohome ahea
 - ⚠ **CORRELATED-PREMISE LESSON**: 4 of 4 panel seats inherited §38a's error from the
   brief's measured-facts list; only the red team opened the raw files. Adopted: every
   panel assigns at least one seat to re-derive the brief's facts from raw files.
+
+## 39. v10r landed — the reference lineage under the corrected rules, and the fold's bounds
+
+Trained 2026-08-29 23:32 → 2026-08-30 06:19, the v10 recipe from scratch under the
+fall-back referee (`507d510`): 6 seeds × 600 epochs, epoch=599 verified ×6. Scored at
+`last.ckpt`, n=45, seeds 700000+ (the first learned rows comparable to §38's bar):
+
+| readout | per-seed (s1–s6) | mean ± sd |
+|---|---|---|
+| ladder vs_take K=3 | −21.7 / +2.2 / +24.7 / −7.9 / +4.6 / −1.8 | +0.0 ± 15.3 |
+| ladder vs_deny K=3 | −15.9 / +7.6 / +29.6 / +8.1 / −6.2 / +18.6 | +7.0 ± 16.4 |
+| ladder vs_shoot K=3 | +5.2 / +27.8 / +24.8 / +35.1 / +8.2 / +24.6 | +20.9 ± 11.7 |
+| apr stood/ep K=3 | 1.16 / 2.07 / 3.16 / 0.82 / 1.24 / 2.20 | 1.77 ± 0.87 |
+| apr stood/ep K=1 | 0.58 / 1.16 / 1.98 / 0.31 / 0.62 / 1.22 | 0.98 ± 0.60 |
+| apr vp K=3 | −51.1 / −25.9 / −8.4 / −46.4 / −47.7 / −40.2 | **−36.6 ± 16.4** |
+
+- **The corrected rules cost the learned recipe on every ladder cell** vs v10's void
+  rows (+14.8/+19.6/+35.7 → +0.0/+7.0/+20.9) while the charging *script* gained (§38):
+  the referee closed an escape the learned lineage was leaning on harder than the bar.
+  Coherency holds at 0.94–0.96 throughout.
+- ⚠ Not comparable to any pre-`507d510` number, which is their purpose: these ARE the
+  reference rows. Seed spread (sd 12–16 on ladder cells) again dwarfs most effects —
+  six seeds minimum stands.
+- **Level-2 note**: v10r's best seed (s3: +24.7/+29.6/+24.8, apr vp −8.4) plays every
+  phase and sits at or above the §38 charging bar on two of three ladder cells — the
+  first learned policy in this line to do so on the corrected rules.
+- **The fold's bounds are filled from these rows** (charge floor −46.7; adoption gate
+  −10.8 at unpaired SE ~7.2, POWERED) and marked provisional pending the pair's own
+  spread at the epoch-300 screen. The frozen-swap floor comparator is +1.81 ± 0.29.

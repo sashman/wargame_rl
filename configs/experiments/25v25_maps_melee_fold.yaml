@@ -51,13 +51,18 @@
 # neutral mechanic — which is why B is non-inferiority. A-pass with B-fail
 # = REJECT (mechanics bought at play quality's expense, i.e. measured harm).
 #
-# CHARGE FLOOR: apr K=3 six-seed mean >= [v10r mean - 1.5x SE; PROVISIONAL].
+# CHARGE FLOOR: apr K=3 six-seed mean >= -46.7 [v10r landed 2026-08-30:
+# mean -36.6, sd 16.4, SE 6.7; PROVISIONAL until re-checked at the screen].
 #
 # ADOPTION GATE (secondary): fold vs v10r, six-seed ladder pooled vp,
-# unpaired, non-inferiority at 1.5x the unpaired-diff SE. If v10r's landing
-# spread puts that SE above ~15 vp, this is pre-registered as a REPORTED
-# comparison with an explicit UNDERPOWERED clause. The fold must not be
-# adoptable by beating only a recipe this project rejected.
+# unpaired, non-inferiority at 1.5x the unpaired-diff SE = -10.8 [v10r
+# pooled/seed +9.3, sd 12.5, SE 5.1; unpaired-diff SE ~7.2 assuming equal
+# spreads — under the ~15 cap, so the gate is POWERED, not reported-only].
+# v10r reference rows (n=45, K=3): vs_take +0.0 (sd 15.3), vs_deny +7.0
+# (16.4), vs_shoot +20.9 (11.7); apr stood K=3 1.77 (0.87), K=1 0.98 (0.60);
+# frozen-swap floor comparator +1.81 +/- 0.29 (6/6, /tmp/panel_fold/out/f3).
+# The fold must not be adoptable by beating only a recipe this project
+# rejected while regressing against the line's best (the s38 bar).
 #
 # FARM SCREEN: per-unit COMBINED declared income (objective march + target
 # march + hold) against the re-derived cap at the 60% line, s31 S1
