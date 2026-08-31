@@ -74,6 +74,8 @@ import numpy as np
 
 from scripts.scenario_overrides import describe, load_env_config, parse_overrides
 from wargame_rl.wargame.envs.domain.engagement import engagement_matrix
+from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.selectors import build_action_selector
@@ -102,22 +104,76 @@ def measure(
     # whether the unit ended engaged with its DECLARED group or a bystander.
     # The mismatch denominator is the grant route ONLY.
     stood_grant = stood_manual = stood_on_declared = 0
+    # Panel B-6's PIN-SKEW label: stood charges split by whether the charging
+    # unit began the charge step with a member on an objective its side
+    # CONTROLS (the hold-plus-pin composite). >70% reads an A-pass as
+    # pin-enablement; <50% kills the pin-skew account. Membership uses THE
+    # control rule (`norms_offset <= obj_radii`, base edge, alive only).
+    stood_from_own_objective = 0
+    # The tb-round THREE-WAY route split (panel B M9): a stood charge is
+    # BOUND (declared target alive at referee time -- under charge_target_binds
+    # the referee held it to that unit by name), STALE (a declaration whose
+    # unit was dead by referee time, so the referee fell through to derived),
+    # or MANUAL (no declaration). The old grant/manual columns are kept for
+    # s40 comparability -- their "grant" is bound+stale.
+    stood_bound = stood_stale = stood_same_turn_kill = 0
+    stood_bound_on_declared = 0
+    # M13's invariant: under the binding referee no stood charge may engage a
+    # non-declared unit while its declared target is alive. One violation
+    # voids the verdict read and reopens the referee.
+    bound_violations = 0
+    # Enemy groups alive at this player turn's COMMAND phase -- a stale
+    # declaration whose unit was in this set is a SAME-TURN kill (the unit
+    # shot its own declared target dead, then charged a bystander).
+    turn_start_alive_groups: set[int] = set()
 
-    # The referee's verdict, captured before the fight boundary clears it.
-    # `_apply_player_action` runs the charge referee; `run_after_player_action`
-    # (the very next statement in `step`) resolves the fight and clears the
-    # flag, so this is the only window in which it can be read.
+    # The referee's verdict AND the referee-time engagement picture, captured
+    # inside the step, before the fight boundary moves anything. Everything
+    # after `_apply_player_action` in `step()` can displace models -- pile-in
+    # walks engaged units up to 3" -- so an engagement read taken after
+    # `env.step` returns measures the post-fight board, not the charge the
+    # referee judged (panel B M14; the first pin-skew/mismatch riders had
+    # exactly this bias).
     stood_units: set[int] = set()
+    stood_referee: dict[int, tuple[int, bool, frozenset[int]]] = {}
     apply_player_action = env._apply_player_action
 
     def capture_referee_verdict(chosen: Any) -> None:
         apply_player_action(chosen)
         stood_units.clear()
-        stood_units.update(
-            int(model.group_id)
-            for model in env.wargame_models
-            if model.is_alive and getattr(model, "charged_this_turn", False)
-        )
+        stood_referee.clear()
+        members_by_group: dict[int, list[Any]] = {}
+        for model in env.wargame_models:
+            if model.is_alive and getattr(model, "charged_this_turn", False):
+                members_by_group.setdefault(int(model.group_id), []).append(model)
+        stood_units.update(members_by_group)
+        if not members_by_group:
+            return
+        alive_enemies = [m for m in env.opponent_models if m.is_alive]
+        alive_groups = {int(m.group_id) for m in alive_enemies}
+        for group, unit_members in members_by_group.items():
+            declared_tgt = int(getattr(unit_members[0], "declared_target", -1))
+            engaged_groups: frozenset[int] = frozenset()
+            if alive_enemies:
+                contacts = np.asarray(
+                    engagement_matrix(
+                        np.array([m.location for m in unit_members], dtype=float),
+                        np.array([m.location for m in alive_enemies], dtype=float),
+                        np.ones(len(alive_enemies), dtype=bool),
+                        np.ones(len(unit_members), dtype=bool),
+                        engagement_range=env.config.engagement_range,
+                        base_diameter=2.0 * env.config.base_radius,
+                    )
+                )
+                engaged_groups = frozenset(
+                    int(alive_enemies[j].group_id)
+                    for j in np.nonzero(contacts.any(axis=0))[0]
+                )
+            stood_referee[group] = (
+                declared_tgt,
+                declared_tgt in alive_groups,
+                engaged_groups,
+            )
 
     env._apply_player_action = capture_referee_verdict  # type: ignore[assignment]
     vp = 0.0
@@ -133,6 +189,7 @@ def measure(
                 action = selector.select(observation, env)
                 units: dict[int, list[int]] = {}
                 unit_gaps: dict[int, tuple[float, float]] = {}
+                pinner_units: set[int] = set()
                 if phase is BattlePhase.charge:
                     for index, model in enumerate(env.wargame_models):
                         if model.is_alive and getattr(model, "declared_charge", False):
@@ -158,6 +215,28 @@ def measure(
                             getattr(env.wargame_models[members[0]], "charge_roll", 0.0)
                         )
                         unit_gaps[group] = (min(gaps) if gaps else float("inf"), roll)
+                    if units and env.objectives:
+                        alive = alive_mask_for(env.wargame_models)
+                        cache = compute_distances(
+                            env.wargame_models, env.objectives, alive_mask=alive
+                        )
+                        on_objective = cache.model_obj_norms_offset <= cache.obj_radii
+                        player_counts = on_objective[alive].sum(axis=0)
+                        opp_alive = alive_mask_for(env.opponent_models)
+                        opponent_counts = (
+                            compute_distances(
+                                env.opponent_models,
+                                env.objectives,
+                                alive_mask=opp_alive,
+                            ).model_obj_norms_offset
+                            <= cache.obj_radii
+                        ).sum(axis=0)
+                        controlled = player_counts > opponent_counts
+                        pinner_units = {
+                            group
+                            for group, members in units.items()
+                            if bool(on_objective[members][:, controlled].any())
+                        }
                 moving = {
                     group
                     for group, members in units.items()
@@ -180,54 +259,39 @@ def measure(
                 # impossible value -- a standing fraction of 1.636, stood 8.00
                 # against tried 4.89 -- which is the argument for printing a
                 # ratio whose bound is known.
+                if phase is BattlePhase.command:
+                    turn_start_alive_groups = {
+                        int(m.group_id) for m in env.opponent_models if m.is_alive
+                    }
                 if phase is BattlePhase.charge:
                     stood += len(stood_units)
+                    stood_from_own_objective += len(stood_units & pinner_units)
                     for group in moving:
                         gap, roll = unit_gaps.get(group, (float("inf"), 0.0))
                         charge_rows.append((gap, roll, group in stood_units))
+                    # Everything below reads the REFEREE-TIME capture, not the
+                    # post-step board -- pile-in and the fight boundary move
+                    # models between the referee and `env.step` returning.
                     for group in stood_units:
-                        declared_tgt = next(
-                            (
-                                int(getattr(m, "declared_target", -1))
-                                for m in env.wargame_models
-                                if m.is_alive and int(m.group_id) == group
-                            ),
-                            -1,
+                        declared_tgt, declared_alive, engaged = stood_referee.get(
+                            group, (-1, False, frozenset())
                         )
                         if declared_tgt < 0:
                             stood_manual += 1
                             continue
                         stood_grant += 1
-                        member_locs = np.array(
-                            [
-                                m.location
-                                for m in env.wargame_models
-                                if m.is_alive and int(m.group_id) == group
-                            ],
-                            dtype=float,
-                        )
-                        alive_enemies = [m for m in env.opponent_models if m.is_alive]
-                        if not len(member_locs) or not alive_enemies:
-                            continue
-                        contacts = np.asarray(
-                            engagement_matrix(
-                                member_locs,
-                                np.array(
-                                    [m.location for m in alive_enemies],
-                                    dtype=float,
-                                ),
-                                np.ones(len(alive_enemies), dtype=bool),
-                                np.ones(len(member_locs), dtype=bool),
-                                engagement_range=env.config.engagement_range,
-                                base_diameter=2.0 * env.config.base_radius,
-                            )
-                        )
-                        engaged_groups = {
-                            int(alive_enemies[j].group_id)
-                            for j in np.nonzero(contacts.any(axis=0))[0]
-                        }
-                        if declared_tgt in engaged_groups:
+                        if declared_tgt in engaged:
                             stood_on_declared += 1
+                        if declared_alive:
+                            stood_bound += 1
+                            if declared_tgt in engaged:
+                                stood_bound_on_declared += 1
+                            elif getattr(env.config, "charge_target_binds", False):
+                                bound_violations += 1
+                        else:
+                            stood_stale += 1
+                            if declared_tgt in turn_start_alive_groups:
+                                stood_same_turn_kill += 1
                 done = terminated or truncated
             # ⚠ The POLICY'S OWN figure, not the realised one. This config
             # referees with `enforce_move: revert_unit`, under which the
@@ -244,11 +308,35 @@ def measure(
         env.close()
     _print_charge_census(charge_rows)
     if stood_grant or stood_manual:
-        mismatch = 1.0 - stood_on_declared / max(stood_grant, 1)
+        # Legacy columns first, unchanged, for s40 comparability ("grant"
+        # there = any live-or-stale declaration, i.e. bound + stale here).
+        if stood_grant:
+            mismatch = 1.0 - stood_on_declared / stood_grant
+            print(
+                f"  stood by route: grant={stood_grant} manual={stood_manual}  "
+                f"on_declared={stood_on_declared}  "
+                f"mismatch(grant)={mismatch:.3f}"
+            )
+        else:
+            print(f"  stood by route: grant=0 manual={stood_manual}")
+        # The tb three-way split (aliveness at REFEREE time): mismatch is
+        # meaningful only on the BOUND route -- under charge_target_binds it
+        # is ~0 by construction (the construction check), and the STALE column
+        # is the dead-declared escape whose same-turn-kill share is the
+        # pre-committed trigger.
+        bound_mismatch = (
+            1.0 - stood_bound_on_declared / stood_bound if stood_bound else float("nan")
+        )
         print(
-            f"  stood by route: grant={stood_grant} manual={stood_manual}  "
-            f"on_declared={stood_on_declared}  "
-            f"mismatch(grant)={mismatch:.3f}"
+            f"  stood by aliveness: bound={stood_bound} stale={stood_stale} "
+            f"(same_turn_kill={stood_same_turn_kill}) manual={stood_manual}  "
+            f"mismatch(bound)={bound_mismatch:.3f}  "
+            f"bind_violations={bound_violations}"
+        )
+        pin_share = stood_from_own_objective / max(stood_grant + stood_manual, 1)
+        print(
+            f"  pin-skew: from_own_objective={stood_from_own_objective}  "
+            f"share={pin_share:.3f}"
         )
     return {
         "declared": declared / n_episodes,
@@ -296,8 +384,13 @@ def main() -> None:
 
     print(
         f"{config_path}{describe(overrides)}  ({n_episodes} episodes, "
-        f"seeds 700000+, decode_topk={decode_topk})\n"
+        f"seeds 700000+, decode_topk={decode_topk})"
     )
+    # The full selector, un-truncated: the result row clips it to column
+    # width, and a score file whose checkpoint cannot be recovered from its
+    # own text is a provenance hole (a verification glob once matched nothing
+    # and exited 0 against exactly such a file).
+    print(f"selector: {selector_spec}\n")
     result = measure(selector_spec, config_path, n_episodes, decode_topk, overrides)
     print(
         f"  {'policy':38s} {'decl/ep':>8s} {'tried/ep':>9s} {'stood/ep':>9s} "

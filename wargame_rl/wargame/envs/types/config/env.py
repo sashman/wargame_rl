@@ -428,6 +428,26 @@ class WargameEnvConfig(BaseModel):
             "off. Requires declare_targets."
         ),
     )
+    charge_target_binds: bool = Field(
+        default=False,
+        description=(
+            "The declared hunt target IS the charge target, in the rules' "
+            "sense (11-charge-phase.md: a charge selects targets, must end "
+            "engaged with ALL of them and with NO non-target). Three effects, "
+            "both seats, only for units whose declared target is alive: the "
+            "fold's grant requires the DECLARED unit to be roll-reachable "
+            "(not any enemy); the charge approach mask aims at the declared "
+            "unit (not the nearest); and the referee requires the charge to "
+            "end engaged with exactly the declared unit. Units with no "
+            "declared target keep the derived-target referee (the recorded "
+            "divergence for manual charges). Closes the mismatch defect the "
+            "fold verdict measured at 0.65-0.88 (s40) and the gap-map rows "
+            "charge.target_declaration / after-moving conditions, through "
+            "the command-phase declaration that did not exist when a "
+            "movement-slice declaration was measured and refused. Requires "
+            "declare_targets. Default off: bit-identical to before it existed."
+        ),
+    )
     n_advance_speed_bins: int = Field(
         ge=0,
         default=0,
@@ -944,6 +964,12 @@ class WargameEnvConfig(BaseModel):
                 "hunt_declares_charge folds the charge into the hunt "
                 "declaration, so it needs declare_targets -- without a hunt "
                 "there is nothing to fold"
+            )
+        if self.charge_target_binds and not self.declare_targets:
+            raise ValueError(
+                "charge_target_binds makes the declared hunt target the "
+                "charge target, so it needs declare_targets -- without a "
+                "declaration there is no target to bind"
             )
         return self
 

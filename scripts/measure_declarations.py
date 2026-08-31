@@ -95,6 +95,29 @@ def measure(
     redeclarations = 0
     declarations = 0
     declared_nearest = 0
+    # The HUNT census (fold-tb pre-registration, panel M8): the learning label
+    # is the share of held hunts whose DECLARED unit is roll-reachable at the
+    # command phase, computed with the grant's own predicate
+    # (`_roll_reachable_units`, never a reimplementation). Beside it: the full
+    # grant conjunct (also rules-eligible), the realised grant, dead-target
+    # hunts, P(new hunt = nearest enemy unit), and two roll-reading guards --
+    # the base rate of nearest-unit reachability over ALL unit-command-phases
+    # and the reachable share split by roll tercile (a label rise carried
+    # entirely by high rolls with P(nearest) flat is roll-reading, not
+    # targeting; pre-committed).
+    hunt_phases = 0  # unit-command-phases holding a hunt of any group
+    hunt_dead = 0  # ...whose declared group has no alive member
+    hunt_reachable = 0  # ...alive and roll-reachable (THE learning label)
+    hunt_conjunct = 0  # ...reachable AND rules-eligible (the grant's gate)
+    hunt_granted = 0  # ...actually holding declared_charge after the step
+    hunt_new = 0  # new or changed hunts (declaration events)
+    hunt_new_nearest = 0  # ...whose target is the nearest enemy unit
+    base_nearest_reachable = 0  # ALL unit-phases: nearest enemy reachable
+    tercile_counts = [0, 0, 0]  # hunt phases by roll bucket (<=5, 6-8, >=9)
+    tercile_reachable = [0, 0, 0]
+    prev_hunts: dict[int, int] = {}
+    target_income_granted = 0.0  # M10: hunt-march pay while the grant stood
+    target_income_refused = 0.0  # ...while it did not (march-farming exposure)
     cosines: list[float] = []
     incomes: list[dict[int, float]] = []  # per episode: unit -> summed income
     target_incomes: list[dict[int, float]] = []  # unit -> summed hunt-march income
@@ -108,6 +131,7 @@ def measure(
     for episode in range(n_episodes):
         observation, _ = env.reset(seed=700000 + episode)
         prev_declared: dict[int, int] = {}
+        prev_hunts.clear()
         income: dict[int, float] = {}
         target_income: dict[int, float] = {}
         hold_income: dict[int, float] = {}
@@ -193,6 +217,84 @@ def measure(
                         if int(np.argmin(gaps)) == declared:
                             declared_nearest += 1
                     prev_declared[group] = declared
+                # The hunt census (M8/M11): the grant's own predicates, once
+                # per queried enemy group per phase.
+                handler = env.player_action_handler
+                alive_enemies = [m for m in env.opponent_models if m.is_alive]
+                alive_groups = {int(m.group_id) for m in alive_enemies}
+                if alive_enemies:
+                    eligible = handler.charge_eligible_units(
+                        post_models, env.opponent_models
+                    )
+                    reach_cache: dict[int, set[int]] = {}
+
+                    def _reach(group: int) -> set[int]:
+                        if group not in reach_cache:
+                            members = [
+                                m for m in alive_enemies if int(m.group_id) == group
+                            ]
+                            # The grant's predicate itself (private access is
+                            # deliberate -- a reimplementation could disagree
+                            # with the gate it claims to measure).
+                            reach_cache[group] = handler._roll_reachable_units(
+                                post_models, members
+                            )
+                        return reach_cache[group]
+
+                    unit_hunt: dict[int, tuple[int, int, float]] = {}
+                    for index, model in enumerate(post_models):
+                        if not model.is_alive:
+                            continue
+                        group = int(model.group_id)
+                        if group not in unit_hunt:
+                            unit_hunt[group] = (
+                                int(getattr(model, "declared_target", -1)),
+                                index,
+                                float(getattr(model, "charge_roll", 0.0)),
+                            )
+                    enemy_locs = np.array(
+                        [m.location for m in alive_enemies], dtype=float
+                    )
+                    enemy_group_ids = np.array(
+                        [int(m.group_id) for m in alive_enemies], dtype=int
+                    )
+                    for group, (target, leader, roll) in unit_hunt.items():
+                        leader_gaps = np.linalg.norm(
+                            enemy_locs
+                            - np.asarray(post_models[leader].location, dtype=float),
+                            axis=1,
+                        )
+                        nearest_group = int(
+                            enemy_group_ids[int(np.argmin(leader_gaps))]
+                        )
+                        if group in _reach(nearest_group):
+                            base_nearest_reachable += 1
+                        if target < 0:
+                            prev_hunts.pop(group, None)
+                            continue
+                        hunt_phases += 1
+                        bucket = 0 if roll <= 5 else (1 if roll <= 8 else 2)
+                        tercile_counts[bucket] += 1
+                        if target not in alive_groups:
+                            hunt_dead += 1
+                        else:
+                            reachable = group in _reach(target)
+                            if reachable:
+                                hunt_reachable += 1
+                                tercile_reachable[bucket] += 1
+                                if group in eligible:
+                                    hunt_conjunct += 1
+                        if any(
+                            getattr(m, "declared_charge", False)
+                            for m in post_models
+                            if m.is_alive and int(m.group_id) == group
+                        ):
+                            hunt_granted += 1
+                        if prev_hunts.get(group, -1) != target:
+                            hunt_new += 1
+                            if target == nearest_group:
+                                hunt_new_nearest += 1
+                        prev_hunts[group] = target
             elif phase is BattlePhase.movement:
                 post_cache = compute_distances(post_models, env.objectives)
                 for index, model in enumerate(post_models):
@@ -229,6 +331,14 @@ def measure(
                         )
                         group = int(model.group_id)
                         target_income[group] = target_income.get(group, 0.0) + pay
+                        # M10: the same pay split by whether this turn's grant
+                        # fired for the unit -- majority income on
+                        # grant-REFUSED hunts is march-farming, not targeting
+                        # (pre-committed reading; the follow-up is income-side).
+                        if getattr(model, "declared_charge", False):
+                            target_income_granted += pay
+                        else:
+                            target_income_refused += pay
                 for group, declared in unit_declared.items():
                     if declared < 0 or group not in pre_centroids:
                         continue
@@ -353,6 +463,27 @@ def measure(
         f"max_unit_redecl/ep={max((max(d.values()) for d in redecl_by_episode if d), default=0)}  "
         f"vp={vp_total / n_episodes:+.1f}  held={held_total / n_episodes:.2f}"
     )
+    if hunt_phases or hunt_new:
+        live = max(hunt_phases - hunt_dead, 1)
+        print(
+            f"  hunts: held/ep={hunt_phases / n_episodes:.2f}  "
+            f"new/ep={hunt_new / n_episodes:.2f}  "
+            f"reachable_share={hunt_reachable / live:.3f}  "
+            f"grant_conjunct={hunt_conjunct / live:.3f}  "
+            f"granted/ep={hunt_granted / n_episodes:.2f}  "
+            f"dead_share={hunt_dead / max(hunt_phases, 1):.3f}  "
+            f"P(new=nearest)={hunt_new_nearest / max(hunt_new, 1):.3f}"
+        )
+        terciles = "/".join(
+            f"{tercile_reachable[b] / max(tercile_counts[b], 1):.2f}" for b in range(3)
+        )
+        print(
+            f"  hunt guards: base_P(nearest_reachable)="
+            f"{base_nearest_reachable / max(unit_command_phases, 1):.3f}  "
+            f"reachable_by_roll(<=5/6-8/>=9)={terciles}  "
+            f"target_income granted={target_income_granted / n_episodes:.3f} "
+            f"refused={target_income_refused / n_episodes:.3f} /ep"
+        )
 
 
 def main() -> None:
@@ -370,6 +501,7 @@ def main() -> None:
         f"{config_path}{describe(overrides)}  (n={n_episodes}, seeds 700000+, "
         f"K={decode_topk}, onehot={'ABLATED' if ablate_onehot else 'live'})"
     )
+    print(f"selector: {selector_spec}")
     measure(
         selector_spec, config_path, n_episodes, decode_topk, ablate_onehot, overrides
     )

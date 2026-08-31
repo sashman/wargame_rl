@@ -303,6 +303,7 @@ class ActionHandler:
         self._hunt_declares_charge = bool(
             getattr(config, "hunt_declares_charge", False)
         )
+        self._charge_target_binds = bool(getattr(config, "charge_target_binds", False))
         self._charge_approach_mask = bool(
             config.melee.enabled and config.melee.charge_approach_mask
         )
@@ -749,12 +750,13 @@ class ActionHandler:
         alive_enemy_groups = {
             int(m.group_id) for m in (enemy_models or []) if m.is_alive
         }
-        hunting = {
-            int(model.group_id)
+        hunts: dict[int, int] = {
+            int(model.group_id): int(getattr(model, "declared_target", -1))
             for model in wargame_models
             if model.is_alive
             and int(getattr(model, "declared_target", -1)) in alive_enemy_groups
         }
+        hunting = set(hunts)
         if not hunting:
             return
         # Both gates the MANUAL declaration is masked on: rules eligibility
@@ -763,7 +765,24 @@ class ActionHandler:
         # attempts were zero-gradient traps before that gate).
         eligible = self.charge_eligible_units(wargame_models, enemy_models)
         alive_enemies = [m for m in (enemy_models or []) if m.is_alive]
-        if alive_enemies:
+        if self._charge_target_binds:
+            # The declared unit is the charge target (11-charge-phase.md), so
+            # the grant fires only when THAT unit is roll-reachable -- a grant
+            # reachable only via a bystander is the mismatch defect (s40:
+            # 0.65-0.88 of stood charges engaged a non-declared unit).
+            reachable: set[int] = set()
+            for target in set(hunts.values()):
+                target_members = [m for m in alive_enemies if int(m.group_id) == target]
+                if target_members:
+                    reachable |= {
+                        group
+                        for group in self._roll_reachable_units(
+                            wargame_models, target_members
+                        )
+                        if hunts.get(group) == target
+                    }
+            eligible &= reachable
+        elif alive_enemies:
             eligible &= self._roll_reachable_units(wargame_models, alive_enemies)
         granted = hunting & eligible
         if not granted:
@@ -1286,6 +1305,35 @@ class ActionHandler:
                 # (`_reachable_charge_units` asks gap <= roll); masking gives
                 # the learned policy the same information.
                 reachable = self._roll_reachable_units(models, alive_enemies)
+                if self._charge_target_binds:
+                    # The referee binds ANY charge by a unit holding a live
+                    # declaration -- manual route included -- so the manual
+                    # mask must ask the same question as the grant: can the
+                    # roll reach the DECLARED unit. Without this branch a
+                    # hunt-holder whose target is out of reach but with a
+                    # reachable bystander could declare a manual charge that
+                    # the approach mask aims at the unreachable unit and the
+                    # referee is guaranteed to revert -- the zero-gradient
+                    # trap this mask exists to remove, reopened (panel M0).
+                    alive_groups = {int(m.group_id) for m in alive_enemies}
+                    bound: dict[int, set[int]] = {}
+                    for model in models:
+                        group = int(model.group_id)
+                        declared = int(getattr(model, "declared_target", -1))
+                        if (
+                            model.is_alive
+                            and group not in bound
+                            and declared in alive_groups
+                        ):
+                            target_members = [
+                                m for m in alive_enemies if int(m.group_id) == declared
+                            ]
+                            bound[group] = self._roll_reachable_units(
+                                models, target_members
+                            )
+                    for group, group_reach in bound.items():
+                        if group in reachable and group not in group_reach:
+                            reachable = reachable - {group}
                 for index, model in enumerate(models):
                     if (
                         model.is_alive
@@ -1436,10 +1484,18 @@ class ActionHandler:
                 positions[:, np.newaxis, :] - enemy_positions[np.newaxis, :, :],
                 axis=2,
             )
-            # The derived target: the enemy UNIT nearest this unit, exactly the
-            # pair the referee's derived-target test will find.
-            nearest = int(np.argmin(gaps.min(axis=0)))
-            target_rows = np.nonzero(enemy_groups == enemy_groups[nearest])[0]
+            declared = int(getattr(models[members[0]], "declared_target", -1))
+            if self._charge_target_binds and declared in enemy_groups:
+                # The declared unit IS the charge target, so the approach
+                # aims there -- pointing it at the nearest unit is what made
+                # the grant land on bystanders (s40's mismatch label).
+                target_rows = np.nonzero(enemy_groups == declared)[0]
+            else:
+                # The derived target: the enemy UNIT nearest this unit,
+                # exactly the pair the referee's derived-target test will
+                # find.
+                nearest = int(np.argmin(gaps.min(axis=0)))
+                target_rows = np.nonzero(enemy_groups == enemy_groups[nearest])[0]
             target_positions = enemy_positions[target_rows]
             for row, index in enumerate(members):
                 before = float(
@@ -1530,6 +1586,17 @@ class ActionHandler:
     def movement_slice(self) -> ActionSlice:
         """The normal-move action slice. Always registered."""
         return self._registry.slice_for("movement")
+
+    def movement_displacements(self) -> np.ndarray:
+        """`(n_move_actions, 2)` — the movement slice's grid, index-aligned.
+
+        Row `i` is what movement action `movement_slice.start + i` displaces a
+        model by, so a caller can pick an action by geometry. Public because
+        two decodes and one measurement script were each reaching into
+        `_displacements` and reshaping it themselves.
+        """
+        grid: np.ndarray = self._displacements.reshape(-1, 2)
+        return grid
 
     @property
     def advance_slice(self) -> ActionSlice | None:
@@ -2009,6 +2076,17 @@ class ActionHandler:
         touched = {
             int(alive_enemies[j].group_id) for j in np.nonzero(contacts.any(axis=0))[0]
         }
+        if self._charge_target_binds:
+            # The declared hunt target is the charge target, so the rules'
+            # two after-moving conditions apply to IT by name: engaged with
+            # all targets, engaged with no non-target (11-charge-phase.md).
+            # A unit whose declared target is dead (or never declared) falls
+            # through to the derived-target test -- the recorded divergence
+            # for a charge with no declaration to miss.
+            declared = int(getattr(wargame_models[members[0]], "declared_target", -1))
+            alive_groups = {int(m.group_id) for m in alive_enemies}
+            if declared in alive_groups and touched != {declared}:
+                return False
         if len(touched) != 1:
             return False
         # ⚠ *While moving*: every model that MOVED must end closer to the target

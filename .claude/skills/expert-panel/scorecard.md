@@ -496,3 +496,40 @@ a panel's headline, not just its findings.**
   the header's decomposition sentence false as written (the swap decomposes
   learned-vs-mechanical only). The brief's dormant-hunt exploit refuted 5/5.
 - Amendments B-1..B-6 recorded in the config header before epoch 0.
+
+## 2026-08-30 — outcome — the fold verdict against both panels' pre-registration
+- The panel-hardened gates all fired correctly at verdict: A PASS (+1.73 ± 0.40, 6/6),
+  B PASS under the B-2 caps (pooled −1.84 vs −9.97), farm screen 12/12 under B-1's
+  paid-channel form, adoption gate +0.64. Both interpretive caps the panels demanded
+  FIRED: mismatch 0.65–0.88 (label i → target-gated grant, not an allocation claim)
+  and B-4's manual-route clause on s4 (78–81% manual; verdict robust without it).
+- Panel value confirmed by counterfactual: as-first-written, PRIMARY B would have been
+  judged at −1.5× per-column SE with no cap — the shoot column (−3.67, SE 8.29) passes
+  either way, but a true-zero mechanic had ~20–25% family false-reject before B-2.
+  The frozen-swap floor comparator (a panel-A demand) is what exposed the headline:
+  the learned stood gain equals the mechanical floor.
+- Debt the panels created and the verdict inherited: the B-6 pin-skew label named an
+  instrument nobody landed — unreported at verdict, now blocking the follow-up arm.
+
+## 2026-08-30 — audit — two panels on the fold-tb (charge_target_binds) pre-registration
+- Verdict: LAUNCH_MODIFIED, both panels 4/4 + both red teams; zero BLOCK, zero FATAL.
+- Audits that landed: panel A M0 — a real code defect (the manual MOVE_TYPE_CHARGE mask had
+  no tb branch, so a hunt-holder with an unreachable target could declare a guaranteed-revert
+  charge: the zero-gradient trap the roll gate was built to remove, reopened on the route
+  carrying most stood charges on 3/6 seeds); the header quoted K=3 mismatch beside K=1 stood
+  unlabelled, and "mismatch <= 0.50 mechanically near-guaranteed" was breached FROZEN (K=1
+  s4 0.545 at grant=11); the dead-declared escape (kill your target, keep the grant, charge a
+  bystander under the derived fall-through) — the entire residual mismatch under tb; the
+  learning label had NO instrument (grep-confirmed by three seats); pile-in moved models
+  between the referee and the census's engagement read (M14), biasing mismatch/pin-skew;
+  the frozen vp cost is decode-dependent (K=3 −5.6 t=−1.4; K=1 +0.1 — the stood halving is
+  the only solid frozen fact); the 300-screen stood conjunct is mechanically negative under
+  the flag (6/6 frozen) and the fold-side 300 comparators do not exist (only s4 retains one).
+- Panel self-corrections worth keeping: panel A's chair caught THREE of its own seats sharing
+  a false code premise ("manual charges keep the derived referee" — the referee binds by
+  declared_target on every route) and rejected a seat's amended Primary A as gating on the
+  construction — "the audit nearly installed the defect class it existed to remove". Panel
+  B's red team corrected a seat's seed attribution (the 0.545 is s4, not s5).
+- Cost: ~1.8M subagent tokens, ~22 min wall-clock each, box idle. Both chairs' slates
+  overlapped heavily (convergence from disjoint lenses); merged as M0 + instruments + header
+  rewrite, all CPU, all landed before epoch 0.

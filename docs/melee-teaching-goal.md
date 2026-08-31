@@ -2012,3 +2012,720 @@ fall-back referee (`507d510`): 6 seeds × 600 epochs, epoch=599 verified ×6. Sc
 - **The fold's bounds are filled from these rows** (charge floor −46.7; adoption gate
   −10.8 at unpaired SE ~7.2, POWERED) and marked provisional pending the pair's own
   spread at the epoch-300 screen. The frozen-swap floor comparator is +1.81 ± 0.29.
+
+## 40. The fold PASSES every pre-registered gate — and both interpretive caps fire
+
+Verdict 2026-08-30, six seed pairs × 600 epochs (all `last.ckpt` at epoch=599
+verified from the orchestrator's landing record), scored n=45 seeds 700000+ on the
+assigned evals (arm on `fold_*`, control on `hunt_*`). Pre-registration of record:
+the fold.yaml v2 header + its PANEL B AMENDMENTS, both written before epoch 0.
+⚠ The epoch-300 screen was INAPPLICABLE by its own minimum-4-live-pairs clause
+(the 12-trainer OOM broke epoch alignment; recorded in the brief at `8126e25`), so
+B-2's both-checkpoint column rule could not bind — noted below, it never mattered.
+
+| seed | fold take/deny/shoot | ctl take/deny/shoot | fold apr vp (stood K3/K1) | ctl apr vp (stood K3/K1) |
+|---|---|---|---|---|
+| s1 | −7.7 / −10.3 / −9.4 | +4.8 / +3.2 / +8.1 | −25.9 (2.73/1.33) | −29.9 (1.58/1.13) |
+| s2 | −5.6 / −10.9 / −2.4 | +10.3 / +10.7 / +23.7 | −47.3 (5.11/2.96) | −4.7 (0.64/0.33) |
+| s3 | +17.8 / +5.7 / +32.4 | −7.8 / +2.7 / +24.3 | **−6.4** (3.76/1.69) | −41.2 (1.87/0.78) |
+| s4 | −2.1 / +22.4 / +26.3 | +4.9 / +7.3 / +11.6 | −22.3 (5.18/2.82) | −44.1 (0.29/0.27) |
+| s5 | +15.7 / +24.8 / +43.4 | −1.4 / +9.2 / +23.1 | −29.9 (3.16/2.09) | −43.8 (0.29/0.13) |
+| s6 | +0.2 / +19.0 / +19.6 | +19.4 / +16.9 / +41.1 | −14.3 (4.89/2.64) | −14.1 (1.11/0.53) |
+
+- **PRIMARY A (mechanism) PASS.** Paired stood/ep at K=1: +1.73 ± 0.40 SE, 6/6
+  pairs positive, bound +0.59. ⚠ The stood/ep pairing correlation is **negative**
+  (r=−0.75), which per the header voids the paired bound — recomputed UNPAIRED the
+  bound is +0.46 and it still passes. Fold declares 5.5–12.5 hunts/ep against the
+  control's 0.6–3.8, so hunt rates are retained, which is the registered mechanism.
+- ⚠ **The learned difference (+1.73) sits AT the frozen-swap floor (+1.81 ± 0.29).**
+  The stood-charge gain is what the flag buys mechanically on any weights; 600
+  epochs of training added no charge-seeking beyond it. The header pre-registered
+  exactly this outcome as reportable-not-a-gate, and it is the honest headline.
+- **PRIMARY B (vp guardrail) PASS.** Paired ladder pooled −1.84 vs bound
+  max(−1.5×SE, −10.8) = −9.97 (pooled vp pairing r=+0.03 — pairing bought nothing
+  but is not voided). No column breaches: take −1.98 (bound −17.8), deny +0.12
+  (−14.3), shoot −3.67 (−19.3). The fold costs no play quality.
+- **CHARGE FLOOR PASS** (apr K=3 mean −24.4 ≥ −46.7). **ADOPTION GATE PASS** (fold
+  pooled +9.94 vs v10r +9.3, diff +0.64 ≥ −10.8). **FARM SCREEN B-1 PASS 12/12**:
+  paid channels 20–35% of cap everywhere vs the 60% line; hold is context per B-1.
+  The exclusivity cut is visible where B-5 said to look — fold target income
+  0.25–0.75/model/ep against the control's 0.55–1.10.
+- **B-3 usage: no oscillation evidence, A stands.** Fold decl/ep between the two
+  per-seed checkpoints: mild decline on five seeds, s1 −41% (9.40 → 5.53 across
+  epochs 407→599, a drift caution). ⚠ Instrument limitation: the periodic
+  `last.ckpt` overwrite leaves exactly two checkpoints, so a last-50-epochs
+  oscillation is unobservable in principle; B-3 as written needs a usage trace.
+- ⚠ **LABEL i CAP FIRES: mismatch 0.65–0.88 on every grid of every seed.** More
+  than half of grant-attributable stood charges engage a NON-declared unit, so per
+  the pre-commitment the A-pass is **NOT** read as "the declaration distribution
+  improved" and the bound follow-up is the **TARGET-GATED grant** — not a relaunch.
+- ⚠ **B-4 CAP FIRES on s4: manual-route dominated** (78–81% of its stood charges
+  bypass the grant; every other seed is 0–34%). s4's A contribution is not
+  attributable to the grant. Dropping s4 entirely: paired stood +1.56 ± 0.48,
+  still a PASS — the verdict does not lean on it.
+- **Coherency: the fold is BETTER on all six pairs** (0.951–0.967 vs 0.924–0.958)
+  while standing ~4× the charges — declared charging substitutes for the incoherent
+  scramble, exactly the §35 slot-economics account.
+- **The control ties v10r** (+11.78 ± 3.13 vs +9.3): the hunt declaration is not
+  harmful post-referee, mild support for v11's rejection being partly a
+  pre-`507d510` artifact. This was the control's registered second purpose.
+- **LICENSED CLAIM, verbatim from the header**: the fold enables charging without
+  slot cost. NOT licensed: any allocation or hunt-learning claim (one-profile
+  armies; mismatch cap).
+- ⚠ **CORRECTION 2026-08-31: this section recorded the B-6 pin-skew label as
+  "never landed in `measure_charges` and unreported". BOTH HALVES ARE FALSE** —
+  it was landed before the fold verdict (§40a) and the arm's own grids carried it
+  all along; I wrote the debt without checking the output I already had. The
+  fold-tb values, apr K=1, six seeds: **0.393 / 0.527 / 0.569 / 0.708 / 0.562 /
+  0.676, mean 0.573**. Read against B-6's lines (>0.70 reads an A-pass as
+  pin-enablement, <0.50 kills the account): **one seed above, one below, four in
+  between — the label discriminates nothing at this arm's volumes**, which is
+  what panel B predicted when it warned the thresholds were set at fold volumes
+  and would flip on binomial noise at smaller ones. The §40a fold reading
+  (0.60–0.72) and this one (mean 0.573) agree that charges launch from held
+  ground about two-thirds of the time in both arms.
+- **Level-3 position**: fold s3 reads −6.4 refereed against the bar's −5.3 with
+  +17.8/+5.7/+32.4 on the ladder — at or above the bar on two of four cells. The
+  six-seed means are not (apr −24.4; stood 4.14 vs the bar band 5.8–6.3). The
+  fold is the lineage the Level-3 levers build on, and the first lever is the
+  mismatch cap's own follow-up.
+
+## 40a. The pin-skew debt is paid — the account is alive, not established
+
+Measured 2026-08-30, hours after the verdict named it as debt. `measure_charges`
+now prints the B-6 label: stood charges split by whether the charging unit began
+the charge step with a member on an objective its side CONTROLS (membership is
+THE control rule — `norms_offset <= obj_radii`, base edge, alive only).
+
+Six fold verdict checkpoints, `fold_refereed`, n=45 K=3:
+**0.650 / 0.617 / 0.716 / 0.605 / 0.599 / 0.723** (s1–s6), mean ≈ 0.65.
+
+- Per B-6's own thresholds: **>70% fires on 2 of 6 seeds, <50% on none.** The
+  pin-enablement reading of the A-pass is neither established nor killed —
+  about two-thirds of the fold's stood charges launch from ground it holds,
+  so charging-as-hold-shield is a large share of what the grant is used for,
+  consistent with the panel's original finding that a charging script's value
+  is entirely the shooting shield.
+- ⚠ Label computed at `last.ckpt` only (one checkpoint, not the two the other
+  labels use) and AFTER the verdict — it can inform the follow-up's design
+  and must not be read back into §40's gate outcomes.
+- Design consequence: the target-gated grant should not assume charges are
+  offensive. A grant gated on the DECLARED unit's reachability prices pinning
+  correctly anyway (the declared unit is usually the one walking at your
+  objective), so the lever needs no pin-specific term.
+
+## 40b. Allocation, not melee, is where the remaining VP is — re-measured post-referee
+
+Prompted by the user, who read it off the recordings before any statistic said it:
+*"in most of recordings i can still see abandoned objectives which can be controlled
+for +5 vp every turn"*. Three reads, all on the six fold verdict checkpoints, all
+zero-GPU, 2026-08-30.
+
+**1. Hunting bought no ground and no points — the fold IS the experiment.** Fold vs
+its init-paired control, `held` at n=45 on the assigned evals: **1.50 vs 1.52**
+(per-seed 1.38/1.07/1.87/1.60/1.67/1.42 against 1.24/1.71/1.51/1.49/1.42/1.76),
+paired mean −0.02. §40 already had the ladder pooled at −1.84. So **4× the standing
+charges moved neither objectives held nor score.**
+
+**2. The charges are DEFENSIVE, which is why.** §40a's pin-skew label: 60–72% of
+stood charges launch from an objective the side already controls. That is the
+shooting shield the expert panel priced (a charging script's value was
+**entirely** the shield: −4.0 ± 17.4 with the target gate ablated), not ground-taking.
+
+**3. The pot the user pointed at, sized.** The agent holds **~1.5 of the table's 5–6
+objectives** and the VP cap binds at three, so the whole of 1.5 → 3.0 is **uncapped**
+— worth ~+7.5 per scoring event over ~19 events. No melee mechanism measured here is
+that size.
+
+**4. The allocation reflex still pays after the fall-back referee, at about half its
+old value.** `just measure-realloc ... contest_ungated`, n=45 K=3 on
+`fold_refereed`, paired against the same checkpoints' plain rows:
+
+| | s1 | s2 | s3 | s4 | s5 | s6 | mean |
+|---|---|---|---|---|---|---|---|
+| plain | −25.9 | −47.3 | −6.4 | −22.3 | −29.9 | −14.3 | −24.3 |
+| + reflex | −13.4 | −22.1 | **+6.0** | −19.8 | −30.0 | −16.9 | **−16.0** |
+| gain | +12.5 | +25.2 | +12.4 | +2.5 | −0.1 | −2.6 | **+8.3 ± 4.25** |
+
+t = 1.95, positive on 4 of 6. It **survives its own pre-registered kill** (mean ≥
++1.0 and not negative on 3+ seeds), and it closes **44% of the gap to the §38 bar**
+on this cell (−19.0 → −10.7) with **no weights changed at all**.
+⚠ **Not the pre-referee +14.54 ± 3.81** — that figure is void on melee configs and
+this replaces it. ⚠ Refereed cell only; the three ladder cells are unmeasured here.
+⚠ It is a play-time hand-hold, not learned: it is a measurement of the HEADROOM in
+allocation, not a shippable result (the user's standing direction is that the agent
+must learn the choice).
+
+**Consequence for Level 3.** The bar's edge was always its allocator (§29). Melee is
+now correct, certified and worth ~0 vp on its own; the remaining gap is allocation,
+and the record's diagnosis is that this is a **SEARCH** failure, not a reward one —
+the critic prices spreading correctly (+2.63, realising +3.85) and the policy will
+not do it, while four reward levers aimed at the same wall all failed. **The next
+lever should attack exploration/decision structure for allocation, not another melee
+mechanism, and not a fifth reward term.**
+
+## 40c. Taking the abandoned points is a NULL; contesting theirs is the lever
+
+The user's read of the recordings — *"abandoned objectives which can be controlled
+for +5 vp every turn"* — tested directly, prediction committed first
+(`/tmp/melee_realloc/PREDICTION.md`, "spread positive but smaller, +2 to +6").
+Six fold checkpoints, n=45, K=3, `fold_refereed`, play-time reflex on frozen
+weights, paired against the same checkpoints' plain rows:
+
+| decode | per-seed gain (s1–s6) | mean | t | positive |
+|---|---|---|---|---|
+| **contest** (surplus → opponent's WEAKEST-held point) | +12.5/+25.2/+12.4/+2.5/−0.1/−2.6 | **+8.32 ± 4.25** | +1.95 | 4/6 |
+| **spread** (surplus → nearest EMPTY point) | −2.9/+17.3/−8.9/+5.5/+12.5/−13.9 | **+1.60 ± 5.00** | +0.32 | 3/6 |
+| spread − contest | −15.4/−7.9/−21.3/+3.0/+12.6/−11.3 | −6.72 ± 5.09 | −1.32 | 2/6 |
+
+- **`spread` is DEAD on the instrument's own pre-registered kill** (negative on 3 of
+  6 seeds). `contest` survives it. The head-to-head favours contest but is **not**
+  statistically settled (t=−1.32) — the sound statement is "one clears its kill and
+  the other does not", not "contest beats spread".
+- ⚠ **My own prediction was wrong in magnitude** (+2 to +6 predicted, +1.6 measured
+  and failing its kill), and the framing it rested on was wrong too: I argued D-08's
+  settled-negative verdict should not transfer to the agent because that verdict was
+  measured on SCRIPTS sitting at the 3-objective VP cap while the agent holds ~1.5.
+  **The saturation argument was not the mechanism.** The agent is nowhere near the
+  cap and taking empty ground still pays nothing.
+- **D-08's claimed ORDER is refuted** (recorded in `docs/play-doctrine-findings.md`; the
+  doctrine itself is an immutable reference and is not edited): "neutral ground first, then enemy
+  ground by ascending defender count" is the reverse of what pays — enemy-weakest-first
+  measures +8.3, neutral-first ~0.
+- **What survives, and it is the user's underlying point**: the agent has spare
+  squads doing nothing worth ~+8 vp, and a crude reflex collects it with no weights
+  changed — 44% of the gap to the §38 bar on this cell. The error is allocation. The
+  destination is denial, not acquisition.
+- **Open, not measured here**: why an empty objective pays nothing. The standing
+  candidate is the hold-hazard finding — the models that die are the ones walking
+  *between* points — plus the possibility that a point still empty by round 8 is the
+  one neither side can reach safely. Both need an instrument that does not exist yet
+  (distance-to-nominated-target and en-route casualties on the reflex's own moves).
+
+## 40d. The +8.3 is NOT allocation — it is denial and attrition, and four explanations died
+
+Follow-up to §40c, 2026-08-31, no GPU. Three fold checkpoints (s1/s3/s5),
+n=45 K=3 on `fold_refereed` for the state columns, n=10 for the nomination
+census. **Every hypothesis for "why does taking an empty objective pay nothing"
+was refuted, and the question turned out to be the wrong one.**
+
+**What the two reflexes actually change** (contest − spread, paired, 3 seeds):
+
+| | mean | per-seed | reads |
+|---|---|---|---|
+| **our** objectives held | +0.09 ± 0.10 | +0.24/+0.11/−0.09 | nothing |
+| **their** objectives held | **−0.17 ± 0.06** | −0.29/−0.09/−0.14 | **3/3** |
+| **their** army alive | **−4.3% ± 0.6%** | −5.3/−3.3/−4.3 pp | **3/3** |
+
+⚠ **NEITHER reflex raises the agent's own held count.** Against the same
+checkpoints' plain rows: contest **+0.02 ± 0.09**, spread **−0.06 ± 0.12**. Both
+redirect 35–46 models an episode and neither converts that into ground. So the
++8.3 vp of §40c is **denial plus attrition**, not acquisition — the reflex is a
+GUN-POINTING rule wearing an allocation costume.
+
+**Four refuted explanations, all measured, none survives:**
+1. *"Empty points are far."* They are **closer**: travel median 17.6–21.6" for
+   spread against 19.0–21.9" for contest.
+2. *"Empty points are dangerous."* They are **~5× safer**: 0.89–1.33 enemy models
+   can shoot the destination, against 4.41–5.26 for the contested one.
+3. *"The agent is already at the 3-objective VP cap."* It holds **1.42–1.77** when
+   the reflex fires and is at the cap on **2.2–16.9%** of nominations, so ~90% of
+   those empty points really would pay +5.
+4. *"The nomination churns, so the 3-turn journey never completes."* Persistence is
+   **the same for both**: spread keeps the same (donor, target) on 50.6–68.4% of
+   consecutive phases and the same target on 57.8–86.8%, against contest's
+   51.2–67.9% / 63.4–76.8% — and contest works.
+
+**What this reframes.** §40b said "allocation, not melee, is where the remaining
+VP is". The allocation half is now **wrong as stated**: no redirect measured here
+raises objectives held, and the value that exists comes from putting surplus
+squads where they SHOOT. It converges with the melee line rather than competing
+with it — and it is a direct confirmation of doctrine **D-02** (*"take the cap's
+worth of ground and no more; spend the rest on denial"*), recorded in
+[play-doctrine-findings.md](play-doctrine-findings.md).
+
+**The Level-3 lever this points at, and why it is cheap.** The fold's hunt
+declaration was worth ~0 vp (§40) — but it lets ANY unit declare and targets ANY
+enemy unit. The rule that pays is narrower on both axes: **a SURPLUS unit**
+(its objective stays controlled without it) hunting **an enemy that is HOLDING an
+objective**. That is a change to what the existing declaration is masked on, not
+a new action and not a new reward term — the two things this project's record
+most warns against. ⚠ Unmeasured as a training arm; the frozen reflex is the
+evidence and it is 3 seeds for the mechanism, 6 for the vp.
+
+### §40d addendum — re-checked against a true control and a per-step instrument
+
+⚠ Two defects in §40d's own evidence, found and fixed before it hardened:
+`held` there was an **end-state snapshot** while VP accrues every round (a reflex
+could hold ground for twelve rounds, lose it at the end and read as "changed
+nothing"), and the "plain" comparator came from a **different script's rollouts**
+rather than the same code path with the redirect disabled.
+
+Both closed: an `off` mode (same rollout, no redirect) and `held` accumulated at
+**every step**. The `off` arm reproduces the plain rows **exactly** (−25.9 / −6.4 /
+−29.9), which retroactively validates every comparator used in §40b–§40d.
+
+Paired against `off`, 3 seeds, n=45 K=3:
+
+| | contest | spread |
+|---|---|---|
+| vp | **+8.27 ± 4.18** | +0.23 ± 6.37 |
+| **our** held, per-step mean | **+0.002 ± 0.039** | +0.014 ± 0.065 |
+| **their** held, per-step mean | **−0.053 ± 0.028** | +0.001 ± 0.022 |
+
+- **§40d survives its own re-check.** Our held does not move even averaged over the
+  whole game — +0.002 objectives, an order of magnitude smaller than its own SE. The
+  end-state snapshot was not hiding transient allocation; there is none to hide.
+- The opponent's per-step holding falls **−0.053**, which at 5 vp an objective over
+  ~19 scoring events is ~5 vp — the right order for the measured +8.3 once attrition
+  (§40d: −4.3 pp of their army) is added beside it.
+- ⚠ **3 seeds, and one of them reads +0.0** (per-seed vp +12.5 / +12.4 / −0.1). The
+  mechanism is consistent across all three; the magnitude is not settled.
+- **Method note earned twice tonight**: a silently-unmatched patch printed
+  `held_MEAN=0.000` in a first pass and was caught only because a genuinely-zero
+  mean is impossible beside an end-state 1.4. **Give a new column a value you know
+  is impossible if it is not wired up.**
+
+## 41. fold-tb verdict — the binding is CORRECT and FREE, and it taught nothing
+
+Six seeds × 600 epochs of `configs/experiments/25v25_maps_melee_fold_tb.yaml`
+(`charge_target_binds`), launched 2026-08-30 21:52, all **verified epoch=599**,
+judged at `last.ckpt`, n=45 seeds 700000+ on the `fold_tb_*` eval family, paired
+against the fold arm (§40). Pre-registration: that config's **v2 header**, written
+before epoch 0 after two audit panels. Code of record `42c1b25`, header `159e4ac`.
+
+| seed | vs_take | vs_deny | vs_shoot | apr K=3 | coherency |
+|---|---|---|---|---|---|
+| s1 | −10.0 | −1.8 | +11.3 | −34.9 | 0.974 |
+| s2 | +15.7 | +10.6 | +14.6 | −34.2 | 0.958 |
+| s3 | +1.3 | +16.0 | +16.8 | −13.6 | 0.942 |
+| s4 | +9.3 | **+22.7** | +35.0 | −22.0 | 0.970 |
+| s5 | +10.9 | −3.0 | **+42.4** | −28.7 | 0.960 |
+| s6 | +1.3 | −11.7 | +29.9 | −37.6 | 0.961 |
+| **mean** | **+4.75 ± 3.74** | **+5.47 ± 5.33** | **+25.00 ± 5.13** | **−28.50 ± 3.74** | 0.942–0.974 |
+
+**Gates, against the v2 header:**
+- **PRIMARY A: AT-FLOOR.** Paired stood/ep K=1 vs fold **−1.18 ± 0.21** against the
+  post-M0 frozen floor **−0.96 ± 0.29** — inside the band on both sides
+  (RECOVERY needed > −0.64, LOST below −1.28). Reads, per the header's own wording,
+  *"mechanics only, no learning"*. Unchanged without s4 (−1.17 ± 0.26).
+- **PRIMARY B: PASS.** Paired pooled ladder vp **+1.80 ± 4.91** against the −10.8
+  flat bound; no column breaches (take +1.70, deny −2.98, shoot +6.68). ⚠ **And it
+  is a real recovery**: frozen weights under the flag lost **−7.1** on this
+  estimator, trained weights gain **+1.8** — training bought back ~9 vp of the
+  binding's mechanical cost.
+- **CHARGE FLOOR: PASS** (apr K=3 −28.50 ≥ −46.7).
+- **THE RULES FIX WORKS EXACTLY AS BUILT.** `bind_violations = 0` on **6 of 6** —
+  no stood charge ever engaged a non-declared unit while its declared target lived.
+  The escape label is clean too: stale (dead-declared) share **0.00–0.19**, every
+  seed far under the 1/3 trigger.
+- **LEARNING LABEL: NOT LEARNED.** `reachable_share` — held hunts whose declared
+  unit the roll can actually reach — is **0.249 mean against the fold's 0.259**, above
+  it on **3 of 6** seeds against the pre-committed "5+ of 6". The binding did not
+  make the agent declare better targets.
+- **B-4 attribution**: manual-route share exceeds 0.50 on **s1 (0.54) and s2 (0.89)**,
+  so those two seeds' A is not attributable to the binding. The other four run
+  0.00–0.47.
+- **USAGE**: decl/ep between the two retained checkpoints moves 3.56→2.40, 5.13→5.00,
+  6.76→5.89, 8.02→8.91, 6.11→7.33, 4.33→5.44 — mixed in direction, no large swings.
+  ⚠ Two checkpoints cannot show oscillation *within* the last 50 epochs; the clause
+  remains weakly evaluable, as panel amendment M5 warned, and per-epoch usage logging
+  is still unbuilt.
+
+**INCOME LABEL — the pre-registered diagnosis, and it fires.** Hunt-march income
+splits granted/refused as 0.39/10.08, 0.22/7.69, 0.62/11.49, 0.73/8.93, 0.93/13.35,
+0.51/7.33 per episode: **~93% of the declaration channel's pay goes to hunts that
+never earn a charge grant.** Both pre-committed conditions hold (majority on refused,
+`reachable_share` not above the fold's), so the reading committed before epoch 0
+applies: **this is march-farming**, and the follow-up is **income-side — gate or decay
+`declared_target_progress` on refused hunts — not another referee change.**
+
+**VERDICT: the rules half PASSES, the learning half does not.** The declared target
+now genuinely binds the charge on both seats with zero violations and, after
+training, at no cost in play quality (B +1.8, coherency 0.942–0.974, the highest
+recorded in this line). What it did not do is teach target selection: the agent
+declares hunts it cannot reach at the same rate as before, and is paid ~13× more for
+walking at them than for charging them. **The lever is not the referee; it is what
+the walk pays.**
+
+**LEVEL 3 — not met, and the distance is now honest.** Against the §38 bar
+(bridge-verified identical on the tb evals):
+
+| cell | arm (6-seed) | best seed | bar | gap |
+|---|---|---|---|---|
+| `vs_take` | +4.75 | +15.7 | +20.2 | −15.5 |
+| `vs_deny` | +5.47 | **+22.7 (beats it)** | +11.8 | −6.3 |
+| `vs_shoot` | +25.00 | +42.4 | +56.6 | −31.6 |
+| refereed | −28.50 | −13.6 | −5.3 | −23.2 |
+
+One seed clears the bar on one cell; no six-seed mean clears it anywhere. ⚠ The
+§40b–§40d line says why the remaining distance is unlikely to close from here: the
+agent's spare capacity is worth ~+8 vp pointed at the enemy and ~0 pointed at empty
+ground, and **no lever measured in this line raises objectives held at all.**
+
+## 42. Charge VOLUME is not the lever — three independent tests, all null
+
+Assembled 2026-08-31 after the §41 verdict, chasing the last 15–32 vp to the bar.
+Everything below is on the fold-tb arm's six verdict checkpoints.
+
+**The gap that looked actionable.** At K=1 the agent declares up to **8.9**
+charges an episode — the bar declares 8.5–9.8 — and stands only **0.62–1.60**
+against the bar's **5.8–6.3**. It attempts as many charges as the script and
+fails four times as often.
+
+**Three candidate causes, each measured, each dead:**
+1. **Target choice.** Hunts land on an objective-HOLDING enemy on **0.523–0.605**
+   of declarations against a chance rate of **0.499–0.551** — the agent does not
+   select for it, so a target-quality mask has behavioural headroom (57% → 100%),
+   but §41's diagnosis says target choice is not the binding constraint.
+2. **Grant timing** (the divergence named in the v2 header and never priced): the
+   commitment is made in the command phase, before the unit's own movement, and
+   nothing re-checks it. **Refuted** — **88.4–94.2%** of granted charges are still
+   roll-reachable when the charge phase arrives, and the median gap to the declared
+   target changes by **0.00"**. The units do not lose position; they decline to move.
+3. **Joint-search depth.** At K=3 the decoder converts attempted charges at
+   **43–82%** against the bar's ~65%, so execution is not the problem; and raising
+   the search to **K=5** does convert more — paired **+0.32 stood/ep ± 0.10,
+   t=+3.23, 5 of 6 seeds** — for **−4.2 ± 7.5 vp, 3 of 6**. ⚠ Read the matched
+   n=20 pair; a first look compared K=5 at n=20 against K=3 at n=45 and was
+   meaningless.
+
+**So charging more, charging better-targeted, and charging with the rules enforced
+are each worth ~0 vp to this agent**, measured three ways:
+| test | mechanism moved | vp |
+|---|---|---|
+| the fold (§40) | stood ×4 | pooled −1.84 (ns) |
+| `charge_target_binds` (§41) | binding exact, 0 violations | +1.80 ± 4.91 (ns) |
+| K=5 decode (§42) | +0.32 stood/ep, t=3.2 | −4.2 ± 7.5 (ns) |
+
+⚠ **This is NOT "melee is worthless"** — the same rules pay the SCRIPT **+32.8 vp
+vs_shoot** for charging (§38). The value is real and the agent cannot reach it,
+because a charge is only worth what its position is worth, and the agent charges
+from wherever it happens to be clumped. Every melee lever is downstream of the
+positional trait §40b–§40d measured and no lever here moved: **the agent does not
+spend its army.**
+
+**Standing conclusion for Level 3: the melee line is exhausted as a vp lever.** The
+only measured positive left on file is the imposed contest reflex (+8.3, §40c/§40d),
+which is a policy-improvement operator the agent does not learn from. The remaining
+candidate is therefore **distillation** — clone the reflex-augmented policy into the
+weights, the one prescription the record's own "the failure is SEARCH, not reward"
+diagnosis licenses and nobody has tried.
+
+## 43. Distilling the reallocation decode — first attempt is NEGATIVE
+
+The §42 conclusion named distillation as the one remaining prescription: the
+reallocation decode is a policy-improvement operator worth **+7.5 to +8.3 vp** on
+frozen weights, and folding a decode into PPO measured −51.8, so cloning the
+decoded policy is the supported route into the weights.
+
+**Built 2026-08-31** (`3937eed`, `model/common/reallocation_decode.py`, selector
+`reallocate=True`, `just behaviour-clone ... <reallocate>`), verified against the
+ad-hoc script it replaces: **+11.7 / +11.4 / −0.7, mean +7.5** against the
+script's +8.3.
+
+⚠ **A defect the tests did not catch and the verification did.** The first cut
+had no movement-phase gate — its own docstring claimed the no-op — so the redirect
+overwrote the shooting slice and the charge ladder with movement indices, scoring
+**−16 to −24 vp** against the same weights undecoded. Three `env.step` tests
+passed throughout, because all three exercised the movement phase. **A decode that
+is a no-op in phases X, Y, Z needs a test per phase, not a test of the phase it
+works in.**
+
+**The clone, 2 seeds, 120 episodes × 8 epochs, K=3 teacher with the decode on,
+scored undecoded at n=45:**
+
+| | s3 | s4 |
+|---|---|---|
+| teacher, plain | −6.4 | −22.3 |
+| teacher + decode | **+5.0** | — |
+| **clone** | **−10.3** | **−48.8** |
+| action-match / unit-match | 0.679 / 0.429 | 0.679 / 0.429 |
+
+**The clone loses the operator's gain and falls below the plain teacher** by 3.9
+and 26.5 vp. Fidelity is poor: 67.9% of actions and **42.9% of unit-moves**
+matched — far under the 98.3%-action-match clone the record already showed can
+hold coherency 0.40 against a teacher's 0.95. So this is not a subtle failure of
+transfer; the clone is simply not the teacher.
+
+⚠ **Not yet a settled null**: 2 seeds at 120 episodes / 8 epochs, under the
+recipe's own 200-episode default and untuned. A retry at 300 × 16 is running. If
+that also loses the gain, distillation of THIS operator is dead and the reason is
+worth stating precisely — the redirect is a **discontinuous function of board
+state** (one squad, chosen by a global argmax over stacks and enemy holdings),
+which is a harder target for a per-model policy than the joint coherency decode
+that distilled successfully.
+
+## 44. Cloning the BAR — gate 1 FAILS, and the clone still beats the bar on 2 of 4 cells
+
+The record's own §5(a) — *"warm-start from a clone of the charging script — strongest
+candidate"* — executed for the first time 2026-08-31. Its blocking objection is
+conditional (*"with a COLD critic"*), and `behaviour_clone` now fits a critic
+(explained variance **0.893**) and writes all 222 tensors, **verified** to load into
+the Lightning module (222/222, 113 policy + 109 value). Pre-registration written
+before any score: `/tmp/melee_distil/PREREGISTRATION_BARCLONE.md`.
+
+Teacher `squad_march_take_charge`, 300 episodes × 16 epochs, on
+`25v25_maps_melee_approach.yaml`. Final fidelity **action 0.852 / unit 0.790** —
+roughly double the agent-distillation clone of §43 (0.679 / 0.429).
+
+Scored K=3, n=45, seeds 700000+, `approach` eval family:
+
+| cell | clone | bar (§38) | gap |
+|---|---|---|---|
+| refereed | **−36.9** | −5.3 | **−31.6** |
+| vs_take | +2.6 | +20.2 | −17.6 |
+| vs_deny | **+13.7** | +11.8 | **+1.9** |
+| vs_shoot | **+65.6** | +56.6 | **+9.0** |
+| stood charges/ep | **1.58–2.02** | **5.8–6.3** | **−4** |
+
+- **GATE 1 FAILS as written**: refereed −36.9 clears neither the ≥ −20.3 bound nor
+  the "must beat the trained lineage's −28.5" clause. **Per the pre-registration, no
+  GPU goes into gate 2 (PPO from this clone).** The bound was committed before the
+  numbers and it binds.
+- ⚠ **AND the clone beats the bar on TWO cells** — the first time anything in this
+  project has done so on more than one. Both are cells where the opponent does not
+  charge. ⚠ **Caveat, stated rather than buried**: the §38 bar rows are scripts at
+  no decode while the clone is at K=3, so the clone has the joint decoder and the
+  script does not. That IS the goal's stated protocol (agent at K=3 vs the script
+  rows) and it is how §41 was judged — but it is not a like-for-like decode.
+- **THE FIDELITY FAILURE IS SPECIFICALLY CHARGING.** The clone stands **1.58–2.02**
+  charges an episode against its own teacher's **5.8–6.3** — it learned the marching
+  and the shooting and did not learn the charge. That is exactly where it loses: the
+  two cells it fails are the mirror (opponent = the charging bar) and `vs_take`,
+  and under-charging is punished hardest against a charging opponent.
+- ⚠ **MY FIRST DIAGNOSIS WAS WRONG AND THE CODE SAYS SO.** I wrote "class imbalance…
+  nothing in `behaviour_clone` weights or oversamples by phase". **False.**
+  `phase_balanced_weights` (line 213) has existed and been applied since the charge
+  work, is documented against this exact teacher (*"STAY is 96.3% of deciding
+  charge-phase rows"*), and was introduced precisely because unweighted clones
+  echoed **0.8–2.4%** of the teacher's charge orders. The mechanism I "diagnosed"
+  is already there — and it is *working*: this clone echoes **27–34%** of the
+  teacher's charge rate, an order of magnitude better than the unweighted fit.
+  **Read the module before naming its missing feature.**
+- **What IS left of the diagnosis, precisely.** Balance needs
+  `(stay + other) / (2 × other)` = **1 / (2 × 0.037) ≈ 13.5**, and
+  `MAX_CLASS_WEIGHT` caps it at **12.0** — so charge orders are under-weighted, but
+  only by ~11%, not by the order of magnitude the shortfall would need. The phases
+  are also equally represented by construction (25 model-rows per phase per round),
+  so there is no cross-phase imbalance to fix either. **The cap is a real but small
+  miss; it is not the explanation for standing 1/3 of the teacher's charges.**
+- **Next**: raise the cap to full balance as the cheap check, and expect it to be
+  insufficient. The honest open question is why a 0.85-action / 0.79-unit clone
+  reproduces marching and shooting and only a third of charging.
+
+## 45. The charge is a JOINT move, and no learned policy here can make one
+
+The sharpest mechanism found in this line, and it explains §40/§41/§42's three
+nulls at once. Measured 2026-08-31; module `model/common/charge_decode.py`
+(`e952c0e`), selector flag `charge_decode=True`, six tests including a no-op
+assertion **per phase**.
+
+**Every policy measured here DECLARES charges and then does not make them:**
+
+| policy | declares/ep | stands/ep | conversion |
+|---|---|---|---|
+| the bar (`squad_march_take_charge`) | 8.5–9.8 | **5.8–6.3** | ~65% |
+| a CLONE of that same bar (§44) | **12.9–13.9** | 1.4–2.0 | ~13% |
+| fold-tb agents, K=1 (§41) | 2.4–8.9 | 0.6–1.6 | 15–27% |
+| fold-tb agents + charge decode, 6 seeds | 2.0–2.8 | ~1.3 | — |
+
+**The declaration is learnable and the move is not.** The clone declares *more*
+than its teacher and converts a fifth as often, so this is not a failure of
+willingness, of targeting or of the rules — it is the move itself.
+
+**Why: a charge is a joint move that a factored policy cannot express.** A legal
+charge needs every member to end engaged with ONE enemy unit, each closer than
+it started, with the unit still coherent. The script solves it constructively as
+a **rigid translation** — one shared (angle, rung) for the whole unit, sized to
+land the nearest member just inside engagement range. A product of five
+independent softmaxes rarely puts that one bin in every member's top-K, which is
+why joint decoding at K=3 leaves ~80% of declarations unattempted and K=5
+recovers only **+0.32 stood/ep for −4.2 vp** (§42). It is the same architectural
+limit the record measured for squad headings, where **83%** of a script-agent
+behavioural gap was the factored policy rather than skill.
+
+**Supplying the joint move fixes it completely.** Bar clone, refereed, n=20 K=3,
+same weights, decode off → on:
+
+| | off | on |
+|---|---|---|
+| tried/ep | 1.65 | **8.95** |
+| stood/ep | 1.40 | **6.25** (the bar's own band) |
+| vp | −55.5 | **−4.0** (bar −5.3) |
+
+- ⚠ **It only executes what the policy DECLARED**, so its value scales with the
+  declaration rate: the clone declares 12–13 and gains ~+51; the trained agents
+  declare 2 and gain ~+6 (six seeds, all four cells, still behind the bar).
+  **That is the cleanest statement of where the agents' remaining gap lives —
+  they do not commit.**
+- ⚠ **It BORROWS the bar's charge geometry**, and every quotation of it must say
+  so. The choice to charge stays the policy's; the move is constructed. The
+  unborrowed follow-ups are named: `charge_target_binds` (target choice returns
+  to the policy) and a generic constructive rule rather than a call into the
+  scripted baseline.
+- **The family this joins**: formation needed `decode_joint_coherent` (+40.5),
+  surplus reallocation needed a rigid redirect (+8.3), and the charge needs a
+  constructed unit move (+51 where declarations exist). **Three separate joint
+  problems, three decodes, and in all three the policy supplies the decision
+  while something else supplies the joint execution.** That is now the strongest
+  regularity on file about this architecture.
+
+## 46. The bar clone + charge decode — THREE of four cells, and the head-to-head is not one
+
+Pre-registration `/tmp/melee_cd/PREREG_CLONE6.md`, written before any six-seed
+clone existed. Six independent clones of `squad_march_take_charge` (300 episodes
+× 16 epochs, policy + critic), played at K=3 with `charge_decode=True`, scored
+n=45 seeds 700000+ on the `approach` eval family.
+
+| cell | six-seed mean | SE | bar (§38) | read |
+|---|---|---|---|---|
+| `vs_take` | **+28.82** | 2.67 | +20.2 | **ahead +8.6** |
+| `vs_deny` | **+19.07** | 4.03 | +11.8 | **ahead +7.3** |
+| `vs_shoot` | +58.45 | 1.89 | +56.6 | **+1.9, one SE — a tie** |
+| **refereed** | **−10.67** | 2.99 | −5.3 | **behind 5.4** |
+
+Per-seed refereed: +2.2 / −16.2 / −13.2 / −11.9 / −17.8 / −7.1 — one seed above
+the bar, five below.
+
+**VERDICT: NOT MET.** The goal is conjunctive and the head-to-head fails. Read
+strictly, this is **two cells won, one tied, one lost** — `vs_shoot`'s +1.9 at
+SE 1.89 is not a win and must not be quoted as one.
+
+- **The charge problem IS solved.** Standing charges **7.02/ep** against the
+  bar's 5.8–6.3, from policies standing **1.4** without the decode, at coherency
+  **0.967**. §45's mechanism holds at six seeds: supply the joint move and a
+  learned policy charges at the script's rate.
+- **And solving it was worth a great deal**: the same clones scored −36.9 /
+  +2.6 / +13.7 / +65.6 without the decode (§44). The decode moves the ladder
+  cells **+26.2 / +5.4 / −7.2** and the head-to-head **+26.2**.
+- ⚠ **What loses is the mirror**, and the reason is unsurprising: a clone at
+  **0.85 action / 0.79 unit** fidelity plays the policy it copied and loses the
+  straight fight by ~5 vp. Against every OTHER opponent the same fidelity is
+  enough to clear the teacher's own score.
+- ⚠ **BORROWED GEOMETRY, stated where the numbers are.** The charge move comes
+  from the scripted rule; the clone supplies the decision to charge (it declares
+  9.3–14.0/ep, more than its teacher's 8.5–9.8) and everything else. This is
+  **not** "a learned policy beats the bar unaided" and must never be quoted as
+  such. It is "a learned policy, executing charges with the script's geometry,
+  beats the script on two of four cells and ties a third."
+- ⚠ Two further caveats committed in advance: the bar's rows are scripts at **no
+  decode** while these play at K=3 plus the charge decode; and six clone seeds
+  share one teacher, so they are less independent than six training seeds.
+- **The open cell is the head-to-head, and the gap is ~5 vp** — the smallest
+  remaining anywhere in this line. The named routes: raise clone fidelity
+  (0.79 unit-match is the ceiling on how well it can play its teacher), or run
+  PPO from the clone, which the record forbade only under a **cold** critic and
+  which the §44 gate deferred rather than refuted.
+
+## 47. PPO from the clone DESTROYS it — the record's claim holds, its stated CAUSE is refuted
+
+Six seeds warm-started 1:1 from the §46 clones, `25v25_maps_melee_approach.yaml`,
+300 epochs, **all six verified `Epoch 299`, zero error lines**. Pre-registration
+`/tmp/melee_ppo/PREREG.md`, written before launch. Scored K=3 + charge decode,
+n=45, seeds 700000+ — identically to §46, so the two tables are comparable.
+
+| cell | §46 clone | after 300 epochs of PPO | change | bar |
+|---|---|---|---|---|
+| refereed | −10.67 | **−25.58 ± 7.00** | **−14.9** | −5.3 |
+| `vs_take` | +28.82 | **+5.87 ± 5.69** | **−22.9** | +20.2 |
+| `vs_deny` | +19.07 | **+4.08 ± 5.46** | **−15.0** | +11.8 |
+| `vs_shoot` | +58.45 | **+34.03 ± 7.13** | **−24.4** | +56.6 |
+
+**VERDICT: NOT MET, and worse than the clone it started from on all four cells.**
+The §46 clone remains the best policy in this line.
+
+- ⚠ **THE RECORD'S CONCLUSION SURVIVES AND ITS EXPLANATION DOES NOT.** CLAUDE.md:
+  *"PPO cannot improve a behaviour-cloned policy here — **with a cold critic** it
+  destroys a 115.8 clone at every `ent_coef`."* Here the critic was **warm**
+  (explained variance 0.83–0.89) and **verified loaded** (222/222 tensors, 113
+  policy + 109 value, checked against the exact training config because
+  `_apply_warm_start_weights` uses `strict=False` and logs nothing). It destroyed
+  the clone anyway. **Delete "with a cold critic" as the mechanism; the cause is
+  unknown.**
+- ⚠ **My pre-registered DESTROYS bound was ">15 vp below the clone on refereed"
+  and the result is −14.91 — inside it by 0.09.** By the letter that reads HOLDS.
+  It does not: the other three cells fell 15.0–24.4. **A single-cell bound on a
+  four-cell conjunctive goal was the wrong instrument**, and reporting the letter
+  over the picture would have been a lie of construction. Recorded as a defect in
+  the rule, not as grounds to soften the verdict.
+- ⚠ **The decay mechanism I predicted is NOT what happened.** I registered that
+  PPO would erode the charge commitment (the clone's charging lives in the decode,
+  and PPO cannot reinforce what the weights never emit). Charges largely held:
+  **5.76 stood/ep** against the clone's 7.02, still inside the bar's 5.8–6.3 band,
+  at coherency 0.962. The mid-run peek did show that decay on s1 (declarations
+  10.6 → 6.1) — but it was not the general mechanism. **The degradation is broad
+  policy loss, not charge loss.**
+- **What this closes.** Every route from below has now been measured: reward
+  shaping (4 nulls, historical), charge volume/targeting/legality (§40–§42),
+  allocation reflexes (§40c–§40d), distillation of a decode (§43), and now
+  improvement-on-a-clone (§47). **The only thing that has ever beaten the bar here
+  is a clone plus a joint-move decode, and only on 2 of 4 cells.**
+- **Open, and now the whole question**: why gradient descent cannot hold a basin
+  it was placed in, with a fitted critic. That is a learning-dynamics question,
+  not a rules or reward one, and nothing in this line has probed it.
+
+## 48. WHERE LEVEL 3 STANDS — the consolidated position, 2026-08-31
+
+The goal (user-set): **beat `squad_march_take_charge` on all four cells** —
+`vs_take`, `vs_deny`, `vs_shoot` and the refereed head-to-head — at K=3, n=45,
+six seeds, pre-registered bounds. It is **conjunctive** and it is **NOT MET**.
+
+### The best policy on file (§46): clone of the bar + charge decode
+
+| cell | six-seed mean | bar (§38) | read |
+|---|---|---|---|
+| `vs_take` | **+28.82 ± 2.67** | +20.2 | **won** |
+| `vs_deny` | **+19.07 ± 4.03** | +11.8 | **won** |
+| `vs_shoot` | +58.45 ± 1.89 | +56.6 | **tied** (+1.9 at SE 1.9) |
+| refereed | **−10.67 ± 2.99** | −5.3 | **lost by 5.4** |
+
+Two won, one tied, one lost. At the start of this line every cell was behind by
+**6 to 32**. ⚠ Caveats that travel with these numbers: the charge move is the
+SCRIPT'S geometry supplied by a decode (the policy chooses whether and when to
+charge; it declares more than its teacher), the bar's rows are scripts at **no
+decode**, and six clone seeds share one teacher.
+
+### Why the head-to-head is the hard cell
+It is the MIRROR: the bar's −5.3 is that script playing **itself** from the
+disadvantaged player seat. A perfect imitation therefore scores −5.3 and no
+better — **cloning cannot win this cell by construction**, only improving on the
+clone can. §47 tried that and failed.
+
+### The mechanism that produced the gains (§45)
+**A charge is a JOINT move and no learned policy here can make one.** Every
+policy declares charges and then does not execute them — the bar declares 8.5–9.8
+and stands 5.8–6.3; a clone of that same bar declares **12.9–13.9** and stands
+1.4–2.0; trained agents declare 2 and stand 1. A legal charge needs five models
+to translate as one body, all ending engaged with one unit, formation intact;
+K=5 joint search recovers only +0.32 stood/ep. Supplying the rigid move takes
+standing charges **1.40 → 6.25** and the head-to-head **−55.5 → −4.0** on one
+policy. **THE FAMILY**: formation → `decode_joint_coherent` (+40.5); surplus
+reallocation → rigid redirect (+8.3); charge → constructed unit move. In all
+three the policy supplies the DECISION and a decode supplies the JOINT EXECUTION.
+That is the strongest regularity on file about this architecture.
+
+### Everything measured and rejected this round — do not re-run
+| lever | result |
+|---|---|
+| charge volume (the fold, §40) | ×4 charges, pooled vp −1.84 (ns) |
+| `charge_target_binds` (§41) | rules-correct, 0 violations, **taught nothing** |
+| deeper joint search K=5 (§42) | +0.32 stood/ep, **−4.2 vp** |
+| taking empty objectives (§40c) | +1.6 ± 5.0, **fails its own kill** |
+| distilling the reallocation decode (§43) | clone lands **below** its teacher |
+| trained agents + charge decode | behind on all four (they declare only 2/ep) |
+| **PPO from the clone (§47)** | **destroys it on all four cells** |
+
+### What is genuinely open
+Not rules, not reward, not targeting — all measured nulls. It is **learning
+dynamics**: §47 shows gradient descent cannot hold a basin it was *placed* in,
+**with a fitted critic** (explained variance 0.83–0.89, 222/222 tensors verified
+loaded). The record's standing explanation for that — *"with a cold critic"* — is
+**refuted**; the conclusion stands and the cause is unknown. Nothing in this line
+has probed learning dynamics directly, and the remaining 5.4 vp live there.
+
+### Rules fidelity delivered alongside (the goal's other half)
+`charge_target_binds` makes the declared hunt target the charge target — grant,
+approach mask, manual-declaration mask and referee — closing the gap-map rows
+`charge.target_declaration` and *after-moving conditions*. **Zero bind violations
+across six seeds**, no cost in play quality (§41: paired +1.80 ± 4.91).
