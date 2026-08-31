@@ -56,6 +56,7 @@ lines of numpy.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -151,6 +152,42 @@ def win_probability(rating_a: float, rating_b: float, advantage: float = 0.0) ->
     """
     difference = rating_a - rating_b + advantage
     return float(1.0 / (1.0 + 10.0 ** (-difference / ELO_SCALE)))
+
+
+def rating_from_score(
+    score: float,
+    opponent_rating: float = 0.0,
+    advantage: float = 0.0,
+    max_points: float = 3.0 * ELO_SCALE,
+) -> float:
+    """The rating whose expected score against `opponent_rating` is `score`.
+
+    The exact inverse of `win_probability`, so the two compose. This is how a
+    measured score becomes a rating **without a fit** -- one opponent, no design
+    matrix, no identifiability question -- which is all an in-run readout can
+    afford between epochs.
+
+    ⚠ **It is not a Bradley-Terry rating and must not be quoted as one.** There
+    is no `h_seat`, no `h_turn`, no `h_zone` and no bootstrap, so it inherits
+    every confound of the single pairing it was measured on, and it is
+    comparable across runs only where the opponent and the margin scale are the
+    same. `fit_ratings` is what produces a publishable number.
+
+    `max_points` clamps the saturated ends: a score of exactly 0 or 1 inverts to
+    infinity, and a mean over a handful of blowouts reaches it in float long
+    before a policy is infinitely good. Three times the Elo scale is 1200
+    points, past which the difference no longer carries information anyone reads.
+    """
+    if max_points <= 0.0:
+        raise ValueError(f"max_points must be positive, got {max_points}")
+    if score <= 0.0:
+        difference = -max_points
+    elif score >= 1.0:
+        difference = max_points
+    else:
+        difference = ELO_SCALE * math.log10(score / (1.0 - score))
+        difference = max(-max_points, min(max_points, difference))
+    return float(opponent_rating - advantage + difference)
 
 
 def fit_ratings(

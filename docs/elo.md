@@ -278,6 +278,31 @@ wrong number.
 > opponent force carries its own coherency column. What remains open below is
 > what the fix does *not* cover -- read it before quoting either.
 
+### The in-run rating is not this rating
+
+A training run logs two numbers with "elo" in the name. Neither is fitted here,
+and the distinction is the whole reason this file exists.
+
+| | `eval/elo` · `self_play/learner_elo` | `just measure-elo` |
+|---|---|---|
+| how | invert `win_probability` on games already played | Bradley-Terry maximum likelihood |
+| opponents | one fixed script, or the run's own pool | every entrant, through a pairing graph |
+| structural terms | **none** | `h_zone`, `h_turn`, `h_seat`, fitted |
+| interval | none | bootstrap over layouts |
+| comparable to | itself, within a run | every other entrant in the ledger |
+
+`rating_from_score` is the exact inverse of `win_probability`, so a rating fed
+through one and back through the other is unchanged — that is all it is. It
+needs no design matrix and raises no identifiability question, which is what
+makes it affordable between epochs and also what makes it **not a rating on this
+scale**. It inherits every confound of the single pairing it was measured on,
+including the seat.
+
+⚠ **Do not put an in-run number in the ledger, and do not compare one to a
+fitted one.** The ledger fingerprints a scenario and refuses to mix scenarios
+for the same reason: a rating means "against these entrants, under these
+structural terms", and an in-run ladder has neither.
+
 ### The seats are not a balanced axis, and the gate is advisory
 
 The four legs balance zone and turn order. They do **not** balance the engine

@@ -22,6 +22,7 @@ from wargame_rl.wargame.model.common.lightning_base import WargameLightningBase
 from wargame_rl.wargame.model.common.observation import observations_to_tensor_batch
 from wargame_rl.wargame.model.common.self_play import OpponentScheduler, SelfPlayConfig
 from wargame_rl.wargame.model.ppo.agent import Agent
+from wargame_rl.wargame.rating.pool import Snapshot
 from wargame_rl.wargame.types import Experience
 
 if TYPE_CHECKING:
@@ -224,6 +225,11 @@ class PPOLightning(WargameLightningBase):
         # "off changes nothing" checkable by reading rather than by measuring:
         # there is no object to draw a random number from.
         self._opponent_scheduler: OpponentScheduler | None = None
+        # This epoch's seating, by rollout-env index, and the finished episodes
+        # attributed to it. Both stay empty without a scheduler, so a control
+        # run allocates nothing and records nothing.
+        self._drawn_opponents: list[Snapshot] | None = None
+        self._rollout_margins: dict[str, list[float]] = {}
         if self_play is not None and self_play.enabled:
             if snapshot_dir is None:
                 raise ValueError(
@@ -666,6 +672,23 @@ class PPOLightning(WargameLightningBase):
         self._rollout_envs = envs
         return envs
 
+    def _record_rollout_outcome(self, env_index: int, env: WargameEnv) -> None:
+        """Bank a finished rollout episode as a rated game against its opponent.
+
+        Read **before** `reset()`, which is the only moment the finished
+        episode's victory points are still on the env.
+
+        The rollout is already a rated match and its result was being thrown
+        away: no extra games are played for the rating, which is what keeps an
+        in-run Elo affordable at all. Costs nothing with self-play off -- there
+        is no seating to attribute a result to, so the method returns at once.
+        """
+        if self._drawn_opponents is None:
+            return
+        name = self._drawn_opponents[env_index].name
+        margin = float(env.player_vp - env.opponent_vp)
+        self._rollout_margins.setdefault(name, []).append(margin)
+
     def on_train_epoch_start(self) -> None:
         """Draw this epoch's opponents, one per rollout env.
 
@@ -689,6 +712,7 @@ class PPOLightning(WargameLightningBase):
         if self._opponent_scheduler is None:
             return
         drawn = self._opponent_scheduler.seat(self._ensure_rollout_envs())
+        self._drawn_opponents = drawn
         self.log(
             "self_play/pool_size",
             float(len(self._opponent_scheduler.pool.entries)),
@@ -714,6 +738,17 @@ class PPOLightning(WargameLightningBase):
         super().on_train_epoch_end()
         if self._opponent_scheduler is None:
             return
+        # Rate first, snapshot second. A snapshot inherits the learner's rating
+        # at the moment it is frozen, so it has to be the rating that includes
+        # the epoch just played -- otherwise every pool member is one epoch's
+        # results stale and the ladder measures the wrong self.
+        if self._rollout_margins:
+            self.log(
+                "self_play/learner_elo",
+                self._opponent_scheduler.record_outcomes(self._rollout_margins),
+                logger=True,
+            )
+            self._rollout_margins = {}
         if self._opponent_scheduler.should_snapshot(self.current_epoch):
             # `self.state_dict()`, not `self.ppo_model.state_dict()`. A snapshot
             # is read back by `NetworkOpponentPolicy`, which goes through
@@ -866,6 +901,7 @@ class PPOLightning(WargameLightningBase):
                     total_steps += 1
 
                     if done:
+                        self._record_rollout_outcome(env_i, env)
                         next_obs, _ = env.reset(options=_AUGMENT_START)
                     obs_list[env_i] = next_obs
 
