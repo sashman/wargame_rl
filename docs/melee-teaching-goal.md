@@ -2503,3 +2503,60 @@ Scored K=3, n=45, seeds 700000+, `approach` eval family:
 - **Next**: raise the cap to full balance as the cheap check, and expect it to be
   insufficient. The honest open question is why a 0.85-action / 0.79-unit clone
   reproduces marching and shooting and only a third of charging.
+
+## 45. The charge is a JOINT move, and no learned policy here can make one
+
+The sharpest mechanism found in this line, and it explains §40/§41/§42's three
+nulls at once. Measured 2026-08-31; module `model/common/charge_decode.py`
+(`e952c0e`), selector flag `charge_decode=True`, six tests including a no-op
+assertion **per phase**.
+
+**Every policy measured here DECLARES charges and then does not make them:**
+
+| policy | declares/ep | stands/ep | conversion |
+|---|---|---|---|
+| the bar (`squad_march_take_charge`) | 8.5–9.8 | **5.8–6.3** | ~65% |
+| a CLONE of that same bar (§44) | **12.9–13.9** | 1.4–2.0 | ~13% |
+| fold-tb agents, K=1 (§41) | 2.4–8.9 | 0.6–1.6 | 15–27% |
+| fold-tb agents + charge decode, 6 seeds | 2.0–2.8 | ~1.3 | — |
+
+**The declaration is learnable and the move is not.** The clone declares *more*
+than its teacher and converts a fifth as often, so this is not a failure of
+willingness, of targeting or of the rules — it is the move itself.
+
+**Why: a charge is a joint move that a factored policy cannot express.** A legal
+charge needs every member to end engaged with ONE enemy unit, each closer than
+it started, with the unit still coherent. The script solves it constructively as
+a **rigid translation** — one shared (angle, rung) for the whole unit, sized to
+land the nearest member just inside engagement range. A product of five
+independent softmaxes rarely puts that one bin in every member's top-K, which is
+why joint decoding at K=3 leaves ~80% of declarations unattempted and K=5
+recovers only **+0.32 stood/ep for −4.2 vp** (§42). It is the same architectural
+limit the record measured for squad headings, where **83%** of a script-agent
+behavioural gap was the factored policy rather than skill.
+
+**Supplying the joint move fixes it completely.** Bar clone, refereed, n=20 K=3,
+same weights, decode off → on:
+
+| | off | on |
+|---|---|---|
+| tried/ep | 1.65 | **8.95** |
+| stood/ep | 1.40 | **6.25** (the bar's own band) |
+| vp | −55.5 | **−4.0** (bar −5.3) |
+
+- ⚠ **It only executes what the policy DECLARED**, so its value scales with the
+  declaration rate: the clone declares 12–13 and gains ~+51; the trained agents
+  declare 2 and gain ~+6 (six seeds, all four cells, still behind the bar).
+  **That is the cleanest statement of where the agents' remaining gap lives —
+  they do not commit.**
+- ⚠ **It BORROWS the bar's charge geometry**, and every quotation of it must say
+  so. The choice to charge stays the policy's; the move is constructed. The
+  unborrowed follow-ups are named: `charge_target_binds` (target choice returns
+  to the policy) and a generic constructive rule rather than a call into the
+  scripted baseline.
+- **The family this joins**: formation needed `decode_joint_coherent` (+40.5),
+  surplus reallocation needed a rigid redirect (+8.3), and the charge needs a
+  constructed unit move (+51 where declarations exist). **Three separate joint
+  problems, three decodes, and in all three the policy supplies the decision
+  while something else supplies the joint execution.** That is now the strongest
+  regularity on file about this architecture.
