@@ -126,6 +126,42 @@ train-arm max_epochs n_seeds group tag flags *configs:
 		wait; \
 	done
 
+# The self-play MECHANISM SCREEN, pre-registered in
+# reports/2026-08-31-self-play-preregistration.md. Launches the ARM and its
+# CONTROL for one seed with BYTE-IDENTICAL flags apart from `--self-play`.
+#
+# ⚠ **Run both sides through THIS recipe, never one here and one through
+# `train-coherency-baseline`.** That recipe adds `--record-every-n-epochs 10`,
+# and a differing recording cadence is not something to assume is free -- the
+# pair is a paired estimator only while the flags match. `--self-play` off
+# constructs no scheduler at all, so the two runs start from bit-identical
+# weights (`train.py` seeds before it builds the model).
+#
+# ⚠ **This stage returns NO VERDICT.** It passes if snapshots write and load
+# back, the pool spans the run rather than collapsing onto its newest member,
+# and nothing raises. Three seeds cannot resolve a difference under ~28 vp, so
+# a score from it is not quoted. The deciding run is 6 seeds at 1000 epochs.
+#
+# ⚠ SIGKILL writes no snapshot -- the pool hook is a Lightning callback, same
+# trap as `last.ckpt`. Score a killed run from its highest `ppo-NNN-*.ckpt`.
+#
+# Two concurrent runs per seed, ~3.8 GB of VRAM each.
+#
+# Use: just train-self-play-screen 300 1
+train-self-play-screen max_epochs='300' seed='1' group='self-play-screen' env_config='configs/golden/25v25_maps_two_mode.yaml':
+	@trap 'kill 0' INT TERM && \
+	uv run train.py --record-during-training --record-threat-range --record-engagement-range \
+		--env-config-path {{env_config}} --max-epochs {{max_epochs}} --n-eval-episodes 30 \
+		--seed {{seed}} --ent-coef 0.003 --no-tf32 \
+		--self-play --pfsp-mode uniform --snapshot-every-n-epochs 25 \
+		--pool-capacity 8 --pool-anchor squad_march_take \
+		--run-suffix "s{{seed}}-selfplay" --wandb-group "{{group}}" & \
+	uv run train.py --record-during-training --record-threat-range --record-engagement-range \
+		--env-config-path {{env_config}} --max-epochs {{max_epochs}} --n-eval-episodes 30 \
+		--seed {{seed}} --ent-coef 0.003 --no-tf32 \
+		--run-suffix "s{{seed}}-control" --wandb-group "{{group}}" & \
+	wait
+
 # One seed of each config, with an explicit tag and extra train.py flags, in an
 # existing wandb group. `train-arm` covers the same ground but runs its seeds
 # sequentially, so a two-seed arm costs two full training windows; invoking this

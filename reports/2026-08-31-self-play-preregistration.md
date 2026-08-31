@@ -96,6 +96,47 @@ schedule is a separate claim; `hard` and `even` are a second experiment that
 should not start until this one has an answer. Running them together would leave
 a null unattributable between the two.
 
+## How to run it — needs a GPU
+
+```
+just train-self-play-screen 300 1     # arm + control, seed 1
+just train-self-play-screen 300 2
+just train-self-play-screen 300 3
+```
+
+Two concurrent runs per seed (~3.8 GB VRAM each): the arm and its control, with
+**byte-identical flags apart from `--self-play`**.
+
+⚠ **Do not launch the control through `just train-coherency-baseline`.** It adds
+`--record-every-n-epochs 10`, and the Justfile's own note says a differing
+recording cadence is not something to assume is free. The pair is a paired
+estimator only while the flags match; that is why both sides go through one
+recipe.
+
+Then score, once the screen has cleared mechanism and the 6x1000 runs exist:
+
+```
+just measure-checkpoint <ckpt> configs/evaluation/25v25_maps_take_opponent_refereed.yaml 30 "" 3
+just measure-baselines  configs/evaluation/25v25_maps_take_opponent_refereed.yaml 30 "" 700000
+```
+
+### What the screen has to show before the deciding run starts
+
+- Snapshots appear in `checkpoints/<run>/pool/` and load back as an opponent.
+- `self_play/pool_size` reaches capacity and `self_play/mean_opponent_epoch`
+  keeps rising — a pool collapsed onto its newest member is a mechanism failure
+  a score cannot distinguish from a null.
+- `vp_margin` does not fall off a cliff against the control.
+- Nothing raises.
+
+⚠ **SIGKILL writes no snapshot** — the pool hook is a Lightning callback, the
+same trap as `last.ckpt`, and SIGKILL is the prescribed way to stop these
+trainers. Score a killed run from its highest `ppo-NNN-*.ckpt`, and check the
+pool directory before believing a pool-size figure.
+
+⚠ **No verdict comes out of this stage.** Three seeds cannot resolve a
+difference under ~28 vp (see the power check), so a score from it is not quoted.
+
 ## What this does NOT void, which is more than expected
 
 ⚠ The original design (`docs/self-play.md`, superseded draft) states that a
