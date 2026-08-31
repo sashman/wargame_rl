@@ -108,6 +108,17 @@ class WargameEnvConfig(BaseModel):
         "statistics during shooting phases. Measurement only — it does not affect "
         "the game, but it costs an extra shooting-mask build per shooting phase.",
     )
+    track_opponent_coherency: bool = Field(
+        default=False,
+        description="Accumulate the OPPONENT force's unit-coherency totals as "
+        "well as the player's. Measurement only -- it changes no outcome -- but "
+        "it costs one extra coherency evaluation per opponent movement phase, "
+        "so it is off by default and switched on by the code that needs the "
+        "column. A rated leg needs it: `evaluate_selector` measures the player "
+        "seat, so an entrant seated only as B would otherwise carry no coherency "
+        "figure, and a vp_margin without one is a result plus an unstated claim "
+        "that the moves earning it were legal.",
+    )
     start_on_objective_probability: float = Field(
         default=0.0,
         ge=0.0,
