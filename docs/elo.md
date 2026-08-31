@@ -274,9 +274,12 @@ score is quoted without coherency**, since a `vp_margin` alone is a result plus 
 unstated claim that the moves earning it were legal.
 
 **Closed in wave 4.** The opponent force keeps its own `CoherencyTracker`, and
-`mean_coherency` fills the column from whichever seat an entrant occupied. It
-costs **+0.27 ms/step (+2.7%)** on `25v25_maps_two_mode`, unconditional on the
-same grounds the player's is.
+`mean_coherency` fills the column from whichever seat an entrant occupied. It is
+**opt-in** — `track_opponent_coherency`, default off, switched on by `play_leg`
+because a rated leg is the only caller that needs it. The flag is dropped from
+the scenario fingerprint: it is instrumentation and changes no outcome, and
+leaving it in would fingerprint every rated leg differently from the same
+scenario measured any other way.
 
 ⚠ Read it with the standing warning: a coherency *rate* rises whenever an army
 dies, since a unit reduced to one model is coherent by definition. The
