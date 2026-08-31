@@ -135,13 +135,15 @@ def test_fixed_model_positions_are_refused() -> None:
 
 
 def test_a_map_pool_is_refused() -> None:
-    """A drawn table carries its own deployment *outlines*, and those stay bound
-    to the player and opponent seats across the swap.
+    """A drawn table's own deployment outlines govern placement, and the config
+    rectangles are ignored outright, so the swap is a **total no-op**.
 
-    The config rectangles survive only as placement's sampling bounds, so
-    swapping them moves the box without moving the zone -- and samples one army
-    against the other side's outline. `h_zone` would be fitted from noise on
-    exactly the configs that train.
+    Measured on `25v25_maps_two_mode.yaml`: both armies' positions and the
+    outline itself are bit-identical across the swap on 10 of 10 layouts. Same
+    failure as the `None` case, reached by a different route -- `h_zone` would
+    be fitted from noise on exactly the configs that train, and on this pool its
+    true value is zero anyway, the two outlines being 180-degree rotations of
+    each other on 45 of 45 tables.
     """
     base = _base_config()
     base.map_pool = MapPoolConfig(directory="configs/evaluation/maps")

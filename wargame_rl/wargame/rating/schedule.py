@@ -110,17 +110,25 @@ def config_for_leg(base: WargameEnvConfig, leg: Leg) -> WargameEnvConfig:
     - **Fixed model positions.** With explicit per-model coordinates the zones
       are decorative and the armies deploy where they are told regardless.
     - **A map pool.** A drawn table carries its own deployment *outlines*
-      (`TerrainMapConfig.deployment`), and those are what placement accepts
-      against; the config rectangles survive only as the sampling bounds
-      (`domain/placement.py`, `WargameEnv.deployment_outline`). The outlines
-      stay bound to the player and opponent seats across this swap, so the zone
-      axis moves the sampling box and not the zone -- and swapping the boxes
-      alone samples one army against the *other* side's outline.
+      (`TerrainMapConfig.deployment`), and those govern placement's sampling
+      *and* its acceptance; the config rectangles are ignored outright. So the
+      swap is a **total no-op** -- measured on `25v25_maps_two_mode.yaml`, both
+      armies' positions and the outline itself are bit-identical across it on 10
+      of 10 layouts. This is the same failure as the `None` case above, reached
+      by a different route.
 
     The map-pool case is why this check exists in its current form: it was
     written when the rectangles were the zones, and the tables were regenerated
     with their own polygons three days later. Rating a pool config in between
     would have fitted `h_zone` from noise on the config that trains.
+
+    ⚠ **`h_zone`'s true value is ZERO by construction on this pool**, which is a
+    stronger statement than "unmeasured": the two deployment outlines are 180
+    degree rotations of each other on **45 of 45** tables. There is nothing for
+    the axis to measure even in principle. (The *terrain* is rotation-invariant
+    on only 34 of 45, so the two SEATS still face different games on eleven
+    tables -- that asymmetry is `h_seat`'s to carry, not `h_zone`'s, and on a
+    pool config the seat is perfectly confounded with the side of the table.)
 
     ⚠ The refusal is on `map_pool` itself, not on whether its maps carry
     outlines -- this module may import `envs/types` and nothing else, so it
@@ -146,10 +154,11 @@ def config_for_leg(base: WargameEnvConfig, leg: Leg) -> WargameEnvConfig:
         )
     if base.map_pool is not None:
         raise InertLegError(
-            "a map pool draws its own deployment outlines per episode, and "
-            "those stay bound to the player and opponent seats: swapping the "
-            "config rectangles moves the sampling bounds without moving the "
-            "zone, so h_zone would be fitted from noise. Rate a config that "
+            "a map pool draws its own deployment outlines per episode and "
+            "ignores the config rectangles entirely, so swapping them is a "
+            "total no-op and h_zone would be fitted from noise. On this pool "
+            "its true value is zero anyway -- the two outlines are 180-degree "
+            "rotations of each other on 45 of 45 tables. Rate a config that "
             "deploys under its own deployment_zone rectangles, or teach the "
             "pool to swap its outlines first"
         )

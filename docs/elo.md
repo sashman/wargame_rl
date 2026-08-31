@@ -136,15 +136,30 @@ axis were inert, `h_zone` would fit noise and report it as a number.
 
 ⚠ **The map-pool case is why this section needed revising, and it means the
 `maps` family cannot be rated as things stand.** A drawn table carries its own
-deployment *outlines* (`TerrainMapConfig.deployment`), and placement accepts
-against those; the config's `deployment_zone` rectangles survive only as the
-sampling bounds. The outlines stay bound to the player and opponent seats across
-the swap, so swapping the rectangles moves the box and not the zone — and
-swapping the boxes alone samples one army against the *other* side's outline.
-The schedule was written on 2026-08-17, when the rectangles *were* the zones;
-the tables were regenerated with their own polygons on 2026-08-20 and this was
-not revisited. Rating a pool config in between would have fitted `h_zone` from
-noise **on the config that trains**.
+deployment *outlines* (`TerrainMapConfig.deployment`), and those govern
+placement's sampling *and* its acceptance; the config's `deployment_zone`
+rectangles are ignored outright. The swap is therefore a **total no-op** —
+measured on `25v25_maps_two_mode.yaml`, both armies' positions and the outline
+itself come out bit-identical across it on 10 of 10 layouts. The schedule was
+written on 2026-08-17, when the rectangles *were* the zones; the tables were
+regenerated with their own polygons on 2026-08-20 and this was not revisited.
+Rating a pool config in between would have fitted `h_zone` from noise **on the
+config that trains**.
+
+⚠ **A first version of this paragraph said the swap "samples one army against
+the other side's outline". That was wrong and is retracted** — it predicted a
+placement failure, and placement is untouched. The rectangles are simply not
+read. Recorded because the mechanism was published before it was measured, which
+is the error this file exists to stop.
+
+⚠ **On this pool `h_zone`'s true value is ZERO BY CONSTRUCTION**, which is
+stronger than "unmeasured": the two deployment outlines are **180-degree
+rotations of each other on 45 of 45 tables**. There is nothing for the axis to
+measure even in principle, so the four legs collapse to two. ⚠ The *terrain* is
+rotation-invariant on only **34 of 45**, so the two seats still face different
+games on eleven tables — but on a pool config the seat is perfectly confounded
+with the side of the table, so that asymmetry is `h_seat`'s to carry and cannot
+be separated from it here.
 
 The refusal keys on `map_pool` itself rather than on whether the pool's maps
 carry outlines: `rating/` may import `envs/types` and nothing else, so it cannot
