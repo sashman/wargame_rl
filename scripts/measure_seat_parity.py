@@ -73,10 +73,17 @@ def main() -> None:
         build=lambda env: build_action_selector(policy, env).select,
         kind="baseline",
     )
-    legs = play_pairing(entrant, entrant, config, n_layouts)
+    # A drawn table brings its own deployment outlines and ignores the config
+    # rectangles, so the zone swap is a total no-op there. The gate does not
+    # consume `h_zone` -- its verdict is the aggregate -- so it plays the
+    # turn-order pair and declines to report a term it never varied.
+    zone_axis_live = config.map_pool is None
+    legs = play_pairing(
+        entrant, entrant, config, n_layouts, require_live_zone_axis=zone_axis_live
+    )
 
     print(f"\n{config_path}   {policy} on both seats")
-    print(f"{n_layouts} layouts x 4 legs\n")
+    print(f"{n_layouts} layouts x {len(legs)} legs\n")
 
     header = f"{'leg':<28}{'mean margin':>13}{'wins':>8}"
     print(header)
@@ -97,11 +104,29 @@ def main() -> None:
     error = float(np.std(every_margin, ddof=1) / np.sqrt(every_margin.size))
     print(f"{'aggregate':<28}{aggregate:>+13.1f}   +/- {error:.1f} (1 se)")
 
-    design, entrants = design_from_legs(legs)
-    fit = fit_ratings(design, entrants, anchor=policy)
-    print(f"\nzone advantage   {fit.h_zone:+.1f} Elo")
-    print(f"first-turn adv.  {fit.h_turn:+.1f} Elo")
-    print(f"player-seat adv. {fit.h_seat:+.1f} Elo")
+    if zone_axis_live:
+        design, entrants = design_from_legs(legs)
+        fit = fit_ratings(design, entrants, anchor=policy)
+        print(f"\nzone advantage   {fit.h_zone:+.1f} Elo")
+        print(f"first-turn adv.  {fit.h_turn:+.1f} Elo")
+        print(f"player-seat adv. {fit.h_seat:+.1f} Elo")
+    else:
+        print("\nzone advantage   -- not measurable here")
+        print(
+            "                 this config draws from a map pool, and a drawn "
+            "table brings its\n                 own deployment outlines: the "
+            "config rectangles are ignored, so\n                 swapping them "
+            "changes nothing. The two outlines are 180-degree\n                 "
+            "rotations of each other on 45 of 45 tables, so the advantage is\n"
+            "                 zero by construction rather than merely unmeasured."
+        )
+        print("\nfirst-turn adv.  -- not reported\nplayer-seat adv. -- not reported")
+        print(
+            "                 the Elo decomposition needs all four legs; with a "
+            "dead zone\n                 axis the design has a constant column "
+            "and `fit_ratings` refuses\n                 it, which is correct. "
+            "The aggregate above is the verdict."
+        )
 
     verdict = (
         "the seats are fair; rating this scenario is sound"
@@ -114,11 +139,19 @@ def main() -> None:
         "corrects for them; only the aggregate has to be zero"
     )
 
-    append(legs, config, [entrant])
-    print(
-        f"\nappended {len(legs)} legs to {path_for(fingerprint(config))} -- "
-        "they are the direct evidence for the seat term in `just elo-table`"
-    )
+    if zone_axis_live:
+        append(legs, config, [entrant])
+        print(
+            f"\nappended {len(legs)} legs to {path_for(fingerprint(config))} -- "
+            "they are the direct evidence for the seat term in `just elo-table`"
+        )
+    else:
+        print(
+            "\nNOT appended to a ledger -- these legs never varied the zone, so "
+            "a later fit\nover them would report an `h_zone` it could not have "
+            "measured. The gate still\nstands on its own: the aggregate is what "
+            "decides whether the seats are fair."
+        )
 
 
 if __name__ == "__main__":

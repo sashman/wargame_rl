@@ -29,6 +29,7 @@ from wargame_rl.wargame.rating.schedule import (
     combat_seeds_for,
     config_for_leg,
     layout_seeds,
+    legs_for,
     pairings,
     with_opponent,
 )
@@ -162,6 +163,51 @@ def test_a_map_pool_is_refused_on_every_leg_including_the_unswapped_ones() -> No
     for leg in FOUR_LEGS:
         with pytest.raises(InertLegError):
             config_for_leg(base, leg)
+
+
+def test_a_caller_that_does_not_consume_h_zone_may_opt_out() -> None:
+    """`just measure-seat-parity` is that caller, and it is the only one.
+
+    Its verdict is the aggregate margin over the legs; the zone term is a line
+    it prints beside that and never reads.
+    """
+    base = _base_config()
+    base.map_pool = MapPoolConfig(directory="configs/evaluation/maps")
+
+    config = config_for_leg(
+        base, Leg(Zone.zone_2, Seat.a), require_live_zone_axis=False
+    )
+
+    assert config.turn_order is TurnOrder.player
+    assert config.deployment_zone == base.deployment_zone
+
+
+def test_opting_out_drops_to_the_turn_order_pair() -> None:
+    """Two legs, not four, and both in zone 1 so `sigma_zone` is honest."""
+    assert len(legs_for(require_live_zone_axis=True)) == 4
+    assert legs_for(require_live_zone_axis=False) == (
+        Leg(Zone.zone_1, Seat.a),
+        Leg(Zone.zone_1, Seat.b),
+    )
+
+
+def test_why_the_pair_and_not_all_four_on_a_dead_axis() -> None:
+    """The reason is double-counting, not thrift.
+
+    With the axis dead, legs 1 and 3 differ only in a zone that does nothing, so
+    they are the *same config* -- and `play_pairing` gives every leg the same
+    layout and combat seeds, making them bit-identical episodes. Averaging all
+    four would count every game twice and understate the standard error by
+    sqrt(2), which is exactly the direction that turns a fair pair of seats into
+    a failed gate.
+    """
+    base = _base_config()
+    base.map_pool = MapPoolConfig(directory="configs/evaluation/maps")
+
+    first = config_for_leg(base, Leg(Zone.zone_1, Seat.a), require_live_zone_axis=False)
+    third = config_for_leg(base, Leg(Zone.zone_2, Seat.a), require_live_zone_axis=False)
+
+    assert first.model_dump() == third.model_dump()
 
 
 def test_the_opponent_is_seated_separately_from_the_leg() -> None:

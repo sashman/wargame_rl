@@ -92,13 +92,38 @@ FOUR_LEGS: tuple[Leg, Leg, Leg, Leg] = (
     Leg(Zone.zone_2, Seat.b),
 )
 
+# The turn-order pair, for a scenario whose zone axis does nothing. Both sit in
+# zone 1 so the recorded `sigma_zone` is honest about not having varied -- which
+# is also why `fit_ratings` refuses such a design: a constant column cannot
+# separate `h_zone` from `h_turn`. A caller playing these reports the aggregate
+# and skips the Elo decomposition rather than fitting a term it did not vary.
+ZONE_BLIND_LEGS: tuple[Leg, Leg] = (
+    Leg(Zone.zone_1, Seat.a),
+    Leg(Zone.zone_1, Seat.b),
+)
+
 
 class InertLegError(ValueError):
     """The config would make a leg's axis do nothing, silently."""
 
 
-def config_for_leg(base: WargameEnvConfig, leg: Leg) -> WargameEnvConfig:
+def config_for_leg(
+    base: WargameEnvConfig, leg: Leg, require_live_zone_axis: bool = True
+) -> WargameEnvConfig:
     """A copy of `base` set up for one leg.
+
+    `require_live_zone_axis` is what a caller sets to **False** when it does not
+    consume `h_zone`. `just measure-seat-parity` is the only such caller: its
+    verdict is the aggregate margin over the legs, and the zone term is a line
+    it prints beside that and never reads. A caller that does read `h_zone`
+    leaves this True and is refused, which is the default.
+
+    ⚠ **Turning it off does not make the axis work -- it makes the schedule
+    honest about the axis being dead.** Pair it with `legs_for`, which drops to
+    the turn-order pair: with an inert zone axis legs 1 and 3 are the same
+    config on the same layout and combat seeds, so they are the *same episode*
+    played twice, and averaging all four would count every game twice and
+    understate the standard error by a factor of sqrt(2).
 
     Raises `InertLegError` rather than producing a config on which the zone axis
     does nothing. Three ways that happens, all silent:
@@ -140,6 +165,8 @@ def config_for_leg(base: WargameEnvConfig, leg: Leg) -> WargameEnvConfig:
     Refusing is the point: a rating that reports a deployment-zone advantage it
     never varied is worse than no rating at all.
     """
+    if not require_live_zone_axis:
+        return _with_turn_order(base, leg)
     if base.deployment_zone is None or base.opponent_deployment_zone is None:
         raise InertLegError(
             "both deployment_zone and opponent_deployment_zone must be set "
@@ -163,15 +190,37 @@ def config_for_leg(base: WargameEnvConfig, leg: Leg) -> WargameEnvConfig:
             "pool to swap its outlines first"
         )
 
+    config = _with_turn_order(base, leg)
+    if leg.a_zone is Zone.zone_2:
+        config.deployment_zone = base.opponent_deployment_zone
+        config.opponent_deployment_zone = base.deployment_zone
+    return config
+
+
+def _with_turn_order(base: WargameEnvConfig, leg: Leg) -> WargameEnvConfig:
+    """A render-free copy of `base` carrying only the leg's turn order.
+
+    The whole of a leg on a config with no live zone axis, and the first half of
+    one on a config that has it.
+    """
     config = cast(WargameEnvConfig, base.model_copy(deep=True))
     config.render_mode = None
     config.turn_order = (
         TurnOrder.player if leg.first_mover is Seat.a else TurnOrder.opponent
     )
-    if leg.a_zone is Zone.zone_2:
-        config.deployment_zone = base.opponent_deployment_zone
-        config.opponent_deployment_zone = base.deployment_zone
     return config
+
+
+def legs_for(require_live_zone_axis: bool = True) -> tuple[Leg, ...]:
+    """The legs a pairing plays, given whether its zone axis does anything.
+
+    Four when it does. **Two when it does not** -- the turn-order pair, both in
+    zone 1. Playing all four on a dead axis does not merely waste half the
+    games: legs 1 and 3 become the same config on the same layout and combat
+    seeds, so they are bit-identical episodes, and an aggregate over all four
+    counts every game twice while its standard error assumes it did not.
+    """
+    return FOUR_LEGS if require_live_zone_axis else ZONE_BLIND_LEGS
 
 
 def with_opponent(
