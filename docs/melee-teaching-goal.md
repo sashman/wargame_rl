@@ -2607,3 +2607,50 @@ SE 1.89 is not a win and must not be quoted as one.
   (0.79 unit-match is the ceiling on how well it can play its teacher), or run
   PPO from the clone, which the record forbade only under a **cold** critic and
   which the §44 gate deferred rather than refuted.
+
+## 47. PPO from the clone DESTROYS it — the record's claim holds, its stated CAUSE is refuted
+
+Six seeds warm-started 1:1 from the §46 clones, `25v25_maps_melee_approach.yaml`,
+300 epochs, **all six verified `Epoch 299`, zero error lines**. Pre-registration
+`/tmp/melee_ppo/PREREG.md`, written before launch. Scored K=3 + charge decode,
+n=45, seeds 700000+ — identically to §46, so the two tables are comparable.
+
+| cell | §46 clone | after 300 epochs of PPO | change | bar |
+|---|---|---|---|---|
+| refereed | −10.67 | **−25.58 ± 7.00** | **−14.9** | −5.3 |
+| `vs_take` | +28.82 | **+5.87 ± 5.69** | **−22.9** | +20.2 |
+| `vs_deny` | +19.07 | **+4.08 ± 5.46** | **−15.0** | +11.8 |
+| `vs_shoot` | +58.45 | **+34.03 ± 7.13** | **−24.4** | +56.6 |
+
+**VERDICT: NOT MET, and worse than the clone it started from on all four cells.**
+The §46 clone remains the best policy in this line.
+
+- ⚠ **THE RECORD'S CONCLUSION SURVIVES AND ITS EXPLANATION DOES NOT.** CLAUDE.md:
+  *"PPO cannot improve a behaviour-cloned policy here — **with a cold critic** it
+  destroys a 115.8 clone at every `ent_coef`."* Here the critic was **warm**
+  (explained variance 0.83–0.89) and **verified loaded** (222/222 tensors, 113
+  policy + 109 value, checked against the exact training config because
+  `_apply_warm_start_weights` uses `strict=False` and logs nothing). It destroyed
+  the clone anyway. **Delete "with a cold critic" as the mechanism; the cause is
+  unknown.**
+- ⚠ **My pre-registered DESTROYS bound was ">15 vp below the clone on refereed"
+  and the result is −14.91 — inside it by 0.09.** By the letter that reads HOLDS.
+  It does not: the other three cells fell 15.0–24.4. **A single-cell bound on a
+  four-cell conjunctive goal was the wrong instrument**, and reporting the letter
+  over the picture would have been a lie of construction. Recorded as a defect in
+  the rule, not as grounds to soften the verdict.
+- ⚠ **The decay mechanism I predicted is NOT what happened.** I registered that
+  PPO would erode the charge commitment (the clone's charging lives in the decode,
+  and PPO cannot reinforce what the weights never emit). Charges largely held:
+  **5.76 stood/ep** against the clone's 7.02, still inside the bar's 5.8–6.3 band,
+  at coherency 0.962. The mid-run peek did show that decay on s1 (declarations
+  10.6 → 6.1) — but it was not the general mechanism. **The degradation is broad
+  policy loss, not charge loss.**
+- **What this closes.** Every route from below has now been measured: reward
+  shaping (4 nulls, historical), charge volume/targeting/legality (§40–§42),
+  allocation reflexes (§40c–§40d), distillation of a decode (§43), and now
+  improvement-on-a-clone (§47). **The only thing that has ever beaten the bar here
+  is a clone plus a joint-move decode, and only on 2 of 4 cells.**
+- **Open, and now the whole question**: why gradient descent cannot hold a basin
+  it was placed in, with a fitted critic. That is a learning-dynamics question,
+  not a rules or reward one, and nothing in this line has probed it.
