@@ -2071,9 +2071,19 @@ B-2's both-checkpoint column rule could not bind — noted below, it never matte
   pre-`507d510` artifact. This was the control's registered second purpose.
 - **LICENSED CLAIM, verbatim from the header**: the fold enables charging without
   slot cost. NOT licensed: any allocation or hunt-learning claim (one-profile
-  armies; mismatch cap). NAMED DEBT: the B-6 pin-skew label (stood charges split
-  by charger-on-own-objective) was never landed in `measure_charges` and is
-  unreported; land it before the target-gated arm quotes an A-pass.
+  armies; mismatch cap).
+- ⚠ **CORRECTION 2026-08-31: this section recorded the B-6 pin-skew label as
+  "never landed in `measure_charges` and unreported". BOTH HALVES ARE FALSE** —
+  it was landed before the fold verdict (§40a) and the arm's own grids carried it
+  all along; I wrote the debt without checking the output I already had. The
+  fold-tb values, apr K=1, six seeds: **0.393 / 0.527 / 0.569 / 0.708 / 0.562 /
+  0.676, mean 0.573**. Read against B-6's lines (>0.70 reads an A-pass as
+  pin-enablement, <0.50 kills the account): **one seed above, one below, four in
+  between — the label discriminates nothing at this arm's volumes**, which is
+  what panel B predicted when it warned the thresholds were set at fold volumes
+  and would flip on binomial noise at smaller ones. The §40a fold reading
+  (0.60–0.72) and this one (mean 0.573) agree that charges launch from held
+  ground about two-thirds of the time in both arms.
 - **Level-3 position**: fold s3 reads −6.4 refereed against the bar's −5.3 with
   +17.8/+5.7/+32.4 on the ladder — at or above the bar on two of four cells. The
   six-seed means are not (apr −24.4; stood 4.14 vs the bar band 5.8–6.3). The
