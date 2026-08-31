@@ -50,6 +50,15 @@ first, and it cost 48 actions plus a bespoke unit-resolution rule. A move type i
 the unit resolution and the legality mask are already general. Reach for a new slice
 only when a phase needs genuinely new *targets*, as shooting does.
 
+⚠ **The charge, as shipped, took a third route and added NO actions at all**
+(`melee.enabled`, default off — see [melee.md](melee.md)). The charge is a phase in
+`BattlePhase`, so the `movement` slice was simply made valid there and the 2D6 masks
+its speed bins, exactly as `advance_roll` masks the advance rungs. That keeps the
+parameter shape identical, which is the only way an arm here is **pairable** against
+its control. Fall back needed no action either: it is inferred from a unit that began
+its move engaged. So of the three move types named above, one is a `move_type` value
+and two are not — reach for whichever costs no actions.
+
 ## Movement Encoding
 
 Each model's movement action is a single integer from `1` to `n_movement_angles × n_speed_bins` (index `0` is the phase-universal stay action):

@@ -94,6 +94,12 @@ def _fit(
     spy = _RecordLastCkptPresence(last.checkpoint_path)
     trainer = Trainer(
         accelerator="cpu",
+        # `PeriodicLastCheckpoint` is a plain `Callback`, so Lightning sees no
+        # user checkpointer and injects its own — and with no logger that one
+        # resolves its directory to `default_root_dir/checkpoints`. Left unset
+        # it is the cwd, so the repo's own `checkpoints/` collected a stray
+        # `epoch=N-step=M.ckpt` per run, `-vN`-suffixed and never overwritten.
+        default_root_dir=str(directory),
         max_epochs=max_epochs,
         logger=False,
         enable_checkpointing=True,

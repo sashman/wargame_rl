@@ -82,6 +82,13 @@ class Palette:
     # event on the board, and reading it should not depend on knowing whose
     # tracer it was — the line already carries the shooter's side.
     shot_kill: RGB = (255, 240, 120)
+    # The blade of a melee clash. Its own colour rather than the attacker's,
+    # because a clash sits ON the two models making it: a player-blue blade
+    # drawn over a player-blue base is invisible, which a tracer spanning open
+    # board never is. Painted as a light core over a `model_rim` stroke so it
+    # reads on the board, on either side's models and on a casualty alike; the
+    # attacker's side is carried by the crossguard instead.
+    melee_blade: RGB = (238, 241, 247)
     # Threat overlays. By side, like the tracers and for the same reason: the
     # shape is one army's reach and merging is per side, so a group ramp has
     # nothing to say about it. The shooting threat is a line on a busy board, so
@@ -97,6 +104,18 @@ class Palette:
     # the most useful thing on the board, cannot be seen at all. Kept very low:
     # this sits under the models and must not compete with objective control.
     threat_fill_alpha: int = 22
+    # The NEXT-turn field, as a low/medium/high ramp. It answers a different
+    # question from the threat outlines above -- where can they shoot me after
+    # they move, rather than where can they shoot me now -- so it gets its own
+    # colours rather than a shade of `threat_opponent`, and a viewer with both
+    # on can tell which is which. Amber to red because the field is *about* the
+    # opponent's fire; the alphas stay under the terrain fill's 90 for the same
+    # reason the engagement wash does, since the bands blanket most of the board.
+    threat_field_bands: tuple[RGBA, ...] = (
+        (210, 170, 60, 26),
+        (215, 120, 45, 40),
+        (205, 55, 40, 56),
+    )
     engagement_player: RGBA = (60, 130, 255, 48)
     engagement_opponent: RGBA = (230, 60, 50, 48)
 
@@ -185,6 +204,9 @@ TABLETOP_PALETTE = Palette(
     shot_player=(46, 92, 148),
     shot_opponent=(176, 48, 38),
     shot_kill=(206, 138, 47),
+    # Warmer than the default's cool white: on parchment a blue-white blade
+    # reads as a hole in the board rather than as steel.
+    melee_blade=(250, 246, 236),
     # A little more alpha than the default theme: the parchment ground is warm
     # and swallows a cool wash.
     threat_player=(36, 74, 122),

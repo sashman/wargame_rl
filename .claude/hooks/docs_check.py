@@ -34,7 +34,15 @@ LIVE_DOC_PATHS = (
     "wargame_rl/wargame/envs/CLAUDE.md",
     "wargame_rl/wargame/model/CLAUDE.md",
 )
-LIVE_DOC_GLOBS = ("docs/*.md",)
+# ⚠ `**` and not `*`. `docs/*.md` does not recurse, so for as long as this hook
+# has existed it has been blind to `docs/rules/` -- 20 of the 39 live docs,
+# including `implementation-status.md`, the per-rule gap map that is this
+# repo's register of what is NOT implemented. That is not an incidental gap: the
+# one doc whose whole job is to say which rules are missing was the one doc the
+# drift check could not read, which is how it came to rate "targets must be
+# visible, in range and unengaged" as implemented when the unengaged clause was
+# never written.
+LIVE_DOC_GLOBS = ("docs/**/*.md",)
 
 # `reports/` and `.planning/` are dated records of what was believed at the
 # time. Editing them to match new code destroys their only value, so they are

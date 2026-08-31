@@ -33,10 +33,18 @@ class BaselinePolicy(ABC):
     ) -> WargameEnvAction:
         """Return one action per player model.
 
-        Movement and shooting are dispatched separately; every other phase
-        yields ``STAY``. Most baselines do not shoot, which makes them a
-        conservative positional bar — see `ScriptedSquadMarchShootPolicy` for
-        the one that does.
+        Command, movement, shooting and charge are dispatched separately; every
+        other phase yields ``STAY``. Most baselines do not shoot, which makes
+        them a conservative positional bar — see `ScriptedSquadMarchShootPolicy`
+        for the one that does.
+
+        ⚠ **The charge branch is the one that was missing, and its absence was
+        a measurement blocker rather than a gap in coverage.** This method
+        returned STAY for every phase outside command, movement and shooting,
+        so **no scripted baseline and no scripted opponent could charge at
+        all**. An agent trained with melee on would have been scored against a
+        bar that cannot use a core rule — verbatim the failure this project
+        already paid for on Advance. See `docs/melee.md`.
         """
         phase = env.game_clock_state.phase
         if phase is BattlePhase.command:
@@ -45,6 +53,10 @@ class BaselinePolicy(ABC):
             return self.select_movement(models, env)
         if phase is BattlePhase.shooting:
             return self.select_shooting(models, env, action_mask)
+        if phase is BattlePhase.charge:
+            return self.select_charge(models, env)
+        if phase in (BattlePhase.pile_in, BattlePhase.consolidate):
+            return self.select_short_move(models, env, phase)
         return WargameEnvAction(actions=[STAY_ACTION] * len(models))
 
     @abstractmethod
@@ -76,6 +88,40 @@ class BaselinePolicy(ABC):
 
         Defaults to holding fire, so existing baselines are unchanged and stay
         a pure measure of positional play.
+        """
+        return WargameEnvAction(actions=[STAY_ACTION] * len(models))
+
+    def select_charge(
+        self, models: list[WargameModel], env: WargameEnv
+    ) -> WargameEnvAction:
+        """Return one charge-phase action per player model.
+
+        Defaults to declining every charge, which is what every baseline did
+        before this hook existed — so adding it changes no measured number.
+        Overriding it is what makes a bar able to use the rule.
+
+        The charge phase runs **after** shooting, so a declined or failed
+        charge costs a scripted policy nothing at all: the referee reverts an
+        illegal one to where the unit started, and this turn's fire is already
+        spent. What a *successful* charge costs is next turn — an engaged unit
+        cannot shoot, and cannot be shot at.
+        """
+        return WargameEnvAction(actions=[STAY_ACTION] * len(models))
+
+    def select_short_move(
+        self, models: list[WargameModel], env: WargameEnv, phase: BattlePhase
+    ) -> WargameEnvAction:
+        """Return one pile-in or consolidate action per player model.
+
+        ⚠ **A bar that cannot pile in is not a bar.** Both were resolved by the
+        ENGINE for both forces until 2026-08-26; now they are agent decisions in
+        phases of their own, and a scripted policy that stays put while the
+        agent shuffles into contact is the Advance failure again -- an arm
+        measured against an opponent physically incapable of the mechanic.
+
+        Defaults to standing still, which is legal in both phases: the referee
+        only judges a unit that actually moved. Overriding it is what lets a bar
+        use the rule.
         """
         return WargameEnvAction(actions=[STAY_ACTION] * len(models))
 

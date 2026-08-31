@@ -99,10 +99,56 @@ class WargameModelObservation:
     #                          shooting from one holding fire by choice.
     advance_roll: float | None = None
     advanced_this_turn: float | None = None
+    # The two halves of the melee trade, present only when the scenario fights
+    # in melee. They are the charge's exact analogues of the advance pair above,
+    # and they exist for the same reason: without them the trunk cannot condition
+    # on a roll that the action mask has already spent, and the value head cannot
+    # tell a model that has forfeited its shooting from one holding fire.
+    #   `charge_roll`         -- this model's UNIT's 2D6 for the turn, normalised
+    #                            by the maximum the two dice can show. The rules
+    #                            roll before the charge is declared, so it must be
+    #                            observable when the choice is made.
+    #   `fell_back_this_turn` -- whether its unit fell back out of melee, which
+    #                            costs it both its shooting and its charge.
+    #   `declared_charge`     -- whether this model's UNIT declared a charge in
+    #                            the command phase. The declaration binds the
+    #                            unit, spends its shooting and gates which rungs
+    #                            are legal, and it is decided a phase BEFORE the
+    #                            charge is aimed -- so a model aiming a charge
+    #                            had no input saying it was under one. It is
+    #                            also the state any charge-gated reward term
+    #                            keys on, and a term keyed on state the network
+    #                            cannot perceive is the failure this project has
+    #                            paid ~10 GPU-hours for twice.
+    #
+    # ⚠ `charged_this_turn` is deliberately NOT here. It is cleared the moment
+    # the fight it governs resolves, which happens inside the same step, so an
+    # observation could only ever read it as False -- a constant column.
+    # `declared_charge` has no such problem: it is set in the command phase and
+    # cleared at the START of its side's next turn, so it is live for every
+    # phase in between, which is exactly when it is needed.
+    charge_roll: float | None = None
+    fell_back_this_turn: float | None = None
+    declared_charge: float | None = None
+    # Is this model within engagement range of a living enemy, base to base.
+    # Present only under `melee.observe_engaged`. Unlike the three columns
+    # above it is a pure function of CURRENT positions -- never stale, never
+    # gated on whose turn it is, populated genuinely on both sides.
+    engaged: float | None = None
+    # One-hot of the squad's DECLARED objective over the budget (all zeros =
+    # no plan yet). Present only under `declare_objectives`. The distances to
+    # every objective are already on the token; this column says which one the
+    # squad is committed to -- the state `declared_objective_progress` keys on,
+    # and a term keyed on state the network cannot perceive is the failure this
+    # project has paid ~10 GPU-hours for twice.
+    declared_objective_onehot: np.ndarray | None = None
+    # The squad's declared enemy-unit TARGET as a one-hot over `max_groups` --
+    # the state `declared_target_progress` keys on; same observability rule.
+    declared_target_onehot: np.ndarray | None = None
 
     @property
     def size(self) -> int:
-        """Location + distances + group one-hot + same-group distance + alive + wound scalars (3) + combat stats (7), plus unit strength, objective-presence flags, the two coherency scalars and the two advance scalars when observed."""
+        """Location + distances + group one-hot + same-group distance + alive + wound scalars (3) + combat stats (7), plus unit strength, objective-presence flags, the two coherency scalars, the two advance scalars, the three melee scalars and the engaged flag when observed."""
         return int(
             self.location.size
             + self.distances_to_objectives.size
@@ -117,4 +163,18 @@ class WargameModelObservation:
             + (0 if self.unit_offset is None else self.unit_offset.size)
             + (0 if self.advance_roll is None else 1)
             + (0 if self.advanced_this_turn is None else 1)
+            + (0 if self.charge_roll is None else 1)
+            + (0 if self.fell_back_this_turn is None else 1)
+            + (0 if self.declared_charge is None else 1)
+            + (0 if self.engaged is None else 1)
+            + (
+                0
+                if self.declared_objective_onehot is None
+                else self.declared_objective_onehot.size
+            )
+            + (
+                0
+                if self.declared_target_onehot is None
+                else self.declared_target_onehot.size
+            )
         )

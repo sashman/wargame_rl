@@ -204,7 +204,10 @@ class TestAdvanceToPhase:
     def test_total_steps_accounts_for_skipped(self, clock: GameClock) -> None:
         clock.skip_setup()
         clock.advance_to_phase(BattlePhase.fight)
-        assert clock.total_steps == 1 + 4  # skip_setup + 4 phases skipped
+        # skip_setup + the five phases before `fight`: command, movement,
+        # shooting, charge and pile_in. It was four before `pile_in` became
+        # a phase of its own.
+        assert clock.total_steps == 1 + 5
 
 
 class TestAdvanceToNextPlayerTurn:

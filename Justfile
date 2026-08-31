@@ -407,6 +407,20 @@ render-maps env_config='' maps_dir='':
 behaviour-clone policy env_config n_episodes='200' epochs='8' out='checkpoints/clone.ckpt' seed='0' decode_topk='1':
 	@uv run python -m scripts.behaviour_clone {{policy}} {{env_config}} {{n_episodes}} {{epochs}} {{out}} {{seed}} {{decode_topk}}
 
+# Does a policy USE the charge phase, and does it use it competently?
+# Read `stood/ep` (numerator only, hard floor at zero, monotone in competence),
+# NOT the standing fraction -- its denominator is the policy's own declaration
+# count, so it rises when a policy declares less. Quote the K: at topk 3 the
+# joint decoder picks legal combinations FOR the network, so the counts measure
+# the decoder. Training decodes at K=1.
+# Use: just measure-charges squad_march_take_charge configs/evaluation/25v25_maps_melee_refereed.yaml
+measure-charges policy env_config n_episodes='20' decode_topk='1' *overrides:
+	@uv run python -m scripts.measure_charges {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}} {{overrides}}
+
+# Does a critic-directed reallocation decode buy vp at play (the panel's R5 kill screen)
+measure-realloc checkpoint env_config n_episodes='20' decode_topk='3' min_stack='4' *overrides:
+	@uv run python -m scripts.measure_reallocation_decode {{checkpoint}} {{env_config}} {{n_episodes}} {{decode_topk}} {{min_stack}} {{overrides}}
+
 measure-income-share policy env_config n_episodes='30':
 	@uv run python -m scripts.measure_income_share {{policy}} {{env_config}} {{n_episodes}}
 
@@ -471,6 +485,29 @@ render-coherency-figure env_config ckpt out seed='700000' step='20':
 # the noise floor any arm-to-arm difference has to clear.
 measure-noise-floor env_config n_layouts='10' n_combat_seeds='10' policy='' *overrides:
 	@uv run python -m scripts.measure_noise_floor {{env_config}} {{n_layouts}} {{n_combat_seeds}} "{{policy}}" {{overrides}}
+
+# Which of our units wants to meet which of theirs, before a model has moved.
+# The unit-level REDUCTION of the per-model expected-damage matrix that already
+# ships as an observation input -- attacker axis sums, defender axis does not.
+# Static: reads the config, runs no episodes, needs no GPU.
+# Range is NEVER folded into the damage number; it appears as `reach` and `free`
+# (rounds of unanswered fire while the shorter gun closes) and as an exchange
+# ratio quoted at two distances. On a mirror config every cell is the same
+# number and the report says so.
+# Use: just measure-matchups configs/experiments/30v15_fast_horde_vs_elite.yaml
+measure-matchups env_config *overrides:
+	@uv run python -m scripts.measure_matchups {{env_config}} {{overrides}}
+
+# Where a policy stands, priced against where the opponent can shoot NEXT turn.
+# ⚠ THE OPPONENT MOVES BEFORE IT SHOOTS, so the current-turn threat map reads
+# FALSE-SAFE and this prints by how much. The census then splits every model's
+# exposure into on-objective and in-transit, which is the falsifier for "the
+# agent hoards because it is avoiding danger".
+# ⚠ Cover is not applied, and every objective on the real tables is a ruin, so
+# the on-objective column is OVERSTATED -- read it beside measure-hold-hazard.
+# Use: just measure-threat-field squad_march_take configs/golden/25v25_maps_two_mode.yaml 5 configs/evaluation/maps_heldout
+measure-threat-field policy env_config n_episodes='5' maps_dir='' decode_topk='1' *overrides:
+	@uv run python -m scripts.measure_threat_field {{policy}} {{env_config}} {{n_episodes}} "{{maps_dir}}" "{{decode_topk}}" {{overrides}}
 
 # Terrain-layout statistics for a random_terrain config: coverage, how often a
 # sightline is blocked, and how much of the board is genuinely out of sight.
@@ -583,3 +620,7 @@ ship branch commit_message:
 	git commit -m "{{commit_message}}" -m "{{commit_message}}"
 	git push -u origin {{branch}}
 	gh pr create --fill
+
+# The declaration census -- s31's S1 farm screen + S2 one-hot ablation data source
+measure-declarations checkpoint env_config n_episodes='20' decode_topk='3' ablate='0' *overrides:
+	@uv run python -m scripts.measure_declarations {{checkpoint}} {{env_config}} {{n_episodes}} {{decode_topk}} {{ablate}} {{overrides}}

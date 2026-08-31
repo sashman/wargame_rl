@@ -1,0 +1,342 @@
+"""`charge_progress`: a gradient toward a feasible charge, where the referee gives none.
+
+`_enforce_charge` is all-or-nothing — a unit that ends coherent and engaged with
+exactly one enemy unit keeps its move, and one that misses by a hair is put back
+where it started. So a near-miss and a wild miss produce identical feedback, and
+the only signal a policy gets about charging is one it almost never observes.
+
+⚠ Measured: three clones of a charging teacher reproduced its shooting at 0.99
+and echoed **0.8–2.4%** of its charge orders. The bottleneck is *proposing* a
+rare all-or-nothing action, which is what this term is for.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
+from wargame_rl.wargame.envs.reward.calculators.charge_progress import (
+    ChargeProgressCalculator,
+)
+from wargame_rl.wargame.envs.reward.step_context import StepContext
+from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.envs.types.config import MeleeConfig, MeleeWeaponProfile
+from wargame_rl.wargame.envs.types.config.battle import OpponentPolicyConfig
+from wargame_rl.wargame.envs.types.config.entities import ModelConfig
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase
+from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.model.common.factory import create_environment
+
+VALUE = 0.05
+
+
+def _env(melee: bool = True) -> WargameEnv:
+    config = WargameEnvConfig(
+        number_of_wargame_models=2,
+        number_of_opponent_models=2,
+        number_of_objectives=1,
+        opponent_policy=OpponentPolicyConfig(
+            type="scripted_baseline", params={"baseline": "hold_deployment"}
+        ),
+        models=[
+            ModelConfig(group_id=0, melee_weapons=[MeleeWeaponProfile()])
+            for _ in range(2)
+        ],
+        opponent_models=[
+            ModelConfig(group_id=0, melee_weapons=[MeleeWeaponProfile()])
+            for _ in range(2)
+        ],
+        melee=MeleeConfig(enabled=melee),
+        engagement_range=1.0,
+        base_radius=0.0,
+        # ⚠ A stepped charge phase needs a stepped COMMAND phase: the charge
+        # is declared there by the unit's leader. Skipping charge is what lets
+        # the melee-off case keep command skipped.
+        skip_phases=(
+            [BattlePhase.shooting, BattlePhase.fight]
+            if melee
+            else [
+                BattlePhase.command,
+                BattlePhase.shooting,
+                BattlePhase.charge,
+                BattlePhase.fight,
+            ]
+        ),
+    )
+    env = create_environment(config)
+    env.reset(seed=5)
+    return env
+
+
+def _ctx(
+    env: WargameEnv, action_phase: BattlePhase | None = BattlePhase.charge
+) -> StepContext:
+    """The context as `step` builds it, for the phase whose action is priced.
+
+    ⚠ `action_phase` is NOT optional decoration. These tests used to omit it and
+    let the calculator read the live clock, which at reward time has ALREADY
+    advanced past the phase that acted -- so they exercised a state no real step
+    ever produces and could not see that the term paid zero on every charge.
+    """
+    return StepContext(
+        distance_cache=compute_distances(env.wargame_models, env.objectives),
+        current_turn=env.current_turn,
+        max_turns=env.max_turns,
+        board_width=env.board_width,
+        board_height=env.board_height,
+        action_phase=action_phase,
+    )
+
+
+def _pay(
+    env: WargameEnv,
+    gap: float,
+    roll: float = 6.0,
+    declared: bool = True,
+    action_phase: BattlePhase | None = BattlePhase.charge,
+) -> float:
+    """This model's payment with the nearest living enemy `gap` inches away."""
+    calculator = ChargeProgressCalculator(value=VALUE)
+    player = env.wargame_models[0]
+    player.location = np.array([10.0, 10.0], dtype=player.location.dtype)
+    for index, model in enumerate(env.opponent_models):
+        model.location = np.array(
+            [10.0 + gap + index * 40.0, 10.0], dtype=model.location.dtype
+        )
+    for model in env.wargame_models:
+        model.charge_roll = roll
+        model.declared_charge = declared
+    calculator.reset_episode()
+    return calculator.calculate(0, player, env, _ctx(env, action_phase))
+
+
+def _charge_phase(env: WargameEnv) -> None:
+    while env.game_clock_state.phase is not BattlePhase.charge:
+        env.step(env.action_space.sample() and _stay(env))
+
+
+def _stay(env: WargameEnv):  # type: ignore[no-untyped-def]
+    from wargame_rl.wargame.envs.types import WargameEnvAction
+
+    return WargameEnvAction(actions=[0] * len(env.wargame_models))
+
+
+def test_it_pays_nothing_outside_the_charge_phase() -> None:
+    """The gate that separates this from a travel reward.
+
+    `closest_objective_v2` is the four-times-refuted "walk toward the thing"
+    term, and a teleport audit priced walking a squad at defended ground at
+    −29.4 of its own income. This pays only where the charge decision is made.
+    """
+    # Arrange
+    env = _env()
+    try:
+        # ⚠ The gate is the phase that ACTED, not the clock. At reward time the
+        # clock has already advanced, so a clock-based gate fired on the
+        # SHOOTING step -- at pre-charge positions -- and paid zero on every
+        # actual charge. Priced here as `step` prices it.
+        # Act / Assert
+        assert _pay(env, gap=2.0, action_phase=BattlePhase.movement) == 0.0
+        assert _pay(env, gap=2.0, action_phase=BattlePhase.shooting) == 0.0
+        assert _pay(env, gap=2.0, action_phase=None) == 0.0
+    finally:
+        env.close()
+
+
+def test_it_pays_nothing_when_melee_is_off() -> None:
+    """The no-op guarantee: every golden config must be untouched."""
+    # Arrange
+    env = _env(melee=False)
+    try:
+        # Act / Assert
+        assert _pay(env, gap=2.0) == 0.0
+    finally:
+        env.close()
+
+
+def test_closing_pays_MORE_which_is_the_whole_gradient() -> None:
+    """A near-miss must be worth more than a wild miss — the referee says neither."""
+    # Arrange
+    env = _env()
+    _charge_phase(env)
+    try:
+        # Act
+        far = _pay(env, gap=11.0)
+        near = _pay(env, gap=3.0)
+        touching = _pay(env, gap=0.5)
+
+        # Assert
+        assert far < near < touching
+    finally:
+        env.close()
+
+
+def test_it_is_MAXIMAL_when_engaged_so_landing_beats_missing() -> None:
+    """Nothing may pay more for missing than for hitting.
+
+    Contact is base to base, exactly as the engagement predicate measures it —
+    a centre-to-centre reading would make the maximum unreachable.
+    """
+    # Arrange
+    env = _env()
+    _charge_phase(env)
+    try:
+        # Act / Assert
+        assert _pay(env, gap=0.5) == pytest.approx(VALUE)
+        assert _pay(env, gap=0.0) == pytest.approx(VALUE)
+    finally:
+        env.close()
+
+
+def test_a_unit_the_rules_forbid_to_charge_is_paid_nothing() -> None:
+    """Advancing or falling back spends the charge, and a roll of zero is no roll."""
+    # Arrange
+    env = _env()
+    _charge_phase(env)
+    try:
+        assert _pay(env, gap=3.0) > 0.0
+
+        # Act / Assert
+        assert _pay(env, gap=3.0, roll=0.0) == 0.0
+        for model in env.wargame_models:
+            model.fell_back_this_turn = True
+        assert _pay(env, gap=3.0) == 0.0
+    finally:
+        env.close()
+
+
+def test_a_dead_model_earns_nothing() -> None:
+    """`phase_manager` iterates alive models; this must agree with it."""
+    # Arrange
+    env = _env()
+    _charge_phase(env)
+    try:
+        calculator = ChargeProgressCalculator(value=VALUE)
+        player = env.wargame_models[0]
+        player.stats["current_wounds"] = 0
+
+        # Act / Assert
+        assert calculator.calculate(0, player, env, _ctx(env)) == 0.0
+    finally:
+        env.close()
+
+
+def test_a_unit_that_did_NOT_declare_is_paid_NOTHING() -> None:
+    """The regression test for the gate that was missing, and the whole term.
+
+    ⚠ Shipped 2026-08-25 without this gate: the loop tested `charge_roll <= 0.0`
+    and called it the declaration check, but `_roll_charge_dice` rolls 2D6 for
+    every unit of the active side unconditionally, so it excluded nothing. The
+    term paid every alive model for closing on the nearest enemy. Measured on
+    the shipped melee config, `squad_march_take` -- which declares ZERO charges
+    -- earned **5.713 per episode with 0.0% of it reaching a declared unit**,
+    against `squad_march_take_charge`'s 4.196: the term paid the non-charging
+    policy **36% more** than the charging one.
+
+    ⚠ Six tests covered this module and none set `declared_charge`, so the
+    suite asserted the term against its own relaxation -- verbatim the defect
+    this project already paid +11.4 vp for on the joint decoder.
+    """
+    # Arrange
+    env = _env()
+    _charge_phase(env)
+    try:
+        # Act
+        declared = _pay(env, gap=3.0, declared=True)
+        undeclared = _pay(env, gap=3.0, declared=False)
+
+        # Assert
+        assert declared > 0.0
+        assert undeclared == 0.0
+    finally:
+        env.close()
+
+
+def test_the_declaration_it_gates_on_is_OBSERVABLE() -> None:
+    """A term keyed on state the network cannot see is the standing check.
+
+    ⚠ CLAUDE.md: "Check the agent can OBSERVE what the lever keys on. A desk
+    check that costs seconds and has burned ~10 GPU-hours." Fixing the gate
+    without this would have moved the term from paying the wrong behaviour to
+    paying for something invisible.
+    """
+    # Arrange
+    env = _env()
+    try:
+        # Act
+        observation = env._get_obs()
+
+        # Assert
+        assert observation.wargame_models[0].declared_charge is not None
+        assert observation.opponent_models[0].declared_charge is not None
+    finally:
+        env.close()
+
+
+def _delta_pay(env: WargameEnv, gap_before: float, gap_after: float) -> float:
+    """One calculator, two consecutive steps: the second is the charge."""
+    calculator = ChargeProgressCalculator(value=VALUE, pay_delta=True)
+    calculator.reset_episode()
+    player = env.wargame_models[0]
+    for model in env.wargame_models:
+        model.charge_roll = 6.0
+        model.declared_charge = True
+    for index, model in enumerate(env.opponent_models):
+        model.location = np.array(
+            [10.0 + gap_before + index * 40.0, 10.0], dtype=model.location.dtype
+        )
+    # Step N-1 (any phase): positions cached as the charge move's start.
+    player.location = np.array([10.0, 10.0], dtype=player.location.dtype)
+    calculator.calculate(0, player, env, _ctx(env, BattlePhase.shooting))
+    # Step N (the charge): the model has moved so the gap is now `gap_after`.
+    player.location = np.array(
+        [10.0 + (gap_before - gap_after), 10.0], dtype=player.location.dtype
+    )
+    return calculator.calculate(0, player, env, _ctx(env, BattlePhase.charge))
+
+
+def test_DELTA_pays_the_distance_closed_not_the_level() -> None:
+    """The rejected level form's annuity: hovering near contact re-earned the
+    maximum every turn. The delta form pays closing once and hovering nothing.
+
+    Regression for the `melee-shaping-v4` REJECT (2026-08-27): shaped arms
+    declared 14-15 charges/ep against the bar's 8.7 and vp fell against the
+    paired control on 2 of 3 seeds, while `stood/ep` rose 3 of 3 -- the
+    gradient worked and the annuity was farmed.
+    """
+    env = _env()
+    try:
+        # Arrange / Act: a model that closes 3" of a 6" gap...
+        closed = _delta_pay(env, gap_before=6.0, gap_after=3.0)
+        # ...a model that hovers at the same near-contact gap it started at...
+        hovered = _delta_pay(env, gap_before=1.2, gap_after=1.2)
+        # ...and the LEVEL form's answer for that same hover, for contrast.
+        level = _pay(env, gap=1.2)
+
+        # Assert
+        assert closed > 0.0, "closing during the charge move paid nothing"
+        assert hovered == 0.0, "hovering re-earned payment under the delta form"
+        assert level > 0.0, "the level form's annuity is gone from the control"
+    finally:
+        env.close()
+
+
+def test_DELTA_pays_zero_on_the_first_charge_of_an_episode_only_if_unseen() -> None:
+    """No previous step on record means no delta to price -- pay zero, not crash."""
+    env = _env()
+    try:
+        calculator = ChargeProgressCalculator(value=VALUE, pay_delta=True)
+        calculator.reset_episode()
+        player = env.wargame_models[0]
+        for model in env.wargame_models:
+            model.charge_roll = 6.0
+            model.declared_charge = True
+
+        # Act — the very first priced step is already a charge.
+        paid = calculator.calculate(0, player, env, _ctx(env, BattlePhase.charge))
+
+        # Assert
+        assert paid == 0.0
+    finally:
+        env.close()

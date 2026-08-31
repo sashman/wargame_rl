@@ -50,6 +50,7 @@ The output is a checkpoint `train.py --warm-start-ckpt-path` accepts.
 
 from __future__ import annotations
 
+import hashlib
 import sys
 from pathlib import Path
 
@@ -58,7 +59,9 @@ from pydantic_yaml import parse_yaml_raw_as
 from torch import nn
 
 from wargame_rl.wargame.envs.baseline.evaluate import ActionSelector
+from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.model.common.device import auto_device
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.common.observation import observation_to_tensor
@@ -128,7 +131,7 @@ def unit_match_counts(
 
 def collect(
     select: ActionSelector, config: WargameEnvConfig, n_episodes: int, gamma: float
-) -> tuple[list[torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[list[torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Play the demonstrator and record what it saw, what it did, and what it earned.
 
     Returns the five state tensors stacked over steps, the action mask, the
@@ -142,6 +145,11 @@ def collect(
     game-feature vector, so one network learns both and the clone reproduces the
     whole policy rather than half of it.
 
+    The phase index is returned **separately** as well, because the fit needs to
+    balance the target classes *within* a phase and cannot recover the phase from
+    the mask: a charge reuses the movement slice, so the two phases have the same
+    legal-action shape and differ only in which rungs the 2D6 left open.
+
     The selector is passed in rather than built here, because the demonstrator
     is no longer necessarily a scripted policy: a checkpoint played under joint
     constrained decoding is one too, and it is the interesting one.
@@ -152,6 +160,7 @@ def collect(
     masks: list[torch.Tensor] = []
     actions: list[torch.Tensor] = []
     returns: list[torch.Tensor] = []
+    phases: list[int] = []
 
     for index in range(n_episodes):
         observation, _ = env.reset(seed=CLONE_SEED_BASE + index)
@@ -159,6 +168,11 @@ def collect(
         episode_rewards: list[torch.Tensor] = []
         while not (terminated or truncated):
             tensors = observation_to_tensor(observation)
+            phases.append(
+                list(BattlePhase).index(
+                    env.game_clock_state.phase or BattlePhase.movement
+                )
+            )
             action = select(observation, env)
             states.append([t.detach().clone() for t in tensors[:5]])
             masks.append(tensors[5].detach().clone())
@@ -180,7 +194,69 @@ def collect(
 
     env.close()
     stacked = [torch.stack([s[i] for s in states]) for i in range(5)]
-    return stacked, torch.stack(masks), torch.stack(actions), torch.stack(returns)
+    return (
+        stacked,
+        torch.stack(masks),
+        torch.stack(actions),
+        torch.stack(returns),
+        torch.tensor(phases, dtype=torch.long),
+    )
+
+
+# Above this a single rare row would dominate its batch and the step goes
+# unstable. At the measured 3.7% charge-order rate the uncapped weight is ~26,
+# so this binds -- deliberately: the aim is to make the rare action *visible*,
+# not to make it the only thing the fit sees.
+MAX_CLASS_WEIGHT = 12.0
+
+
+def phase_balanced_weights(
+    actions: torch.Tensor, masks: torch.Tensor, phases: torch.Tensor
+) -> torch.Tensor:
+    """Per-row loss weights that balance STAY against everything else, per phase.
+
+    ⚠ **Per PHASE, not globally, and the distinction is the whole point.** STAY
+    is the *rare* class in the movement phase (the script always moves) and the
+    *dominant* one in the charge phase (only an eligible unit in reach declares).
+    One global balance would therefore push in opposite directions in the two
+    phases and cancel. Measured on the charging teacher: STAY is 96.3% of
+    deciding charge-phase rows and a few per cent of movement-phase rows.
+
+    Counted over rows the mask leaves a real choice on, matching what the fit
+    actually trains on -- a destroyed model has only STAY and is excluded there,
+    so counting it here would inflate the STAY share and under-weight the rare
+    class exactly where it matters most.
+
+    Weights are normalised to mean 1 over the deciding rows, so this changes the
+    BALANCE of the loss and not its scale, and the learning rate carries over.
+    """
+    # ⚠ Normalised to one device first. The collected tensors do not all live on
+    # the same one -- `observation_to_tensor` can return CUDA tensors while the
+    # phase index is built on the CPU here -- and a comparison across the two
+    # raises rather than broadcasting. This is a one-off precompute, so the CPU
+    # is the cheap and safe place to do it.
+    home = actions.device
+    actions = actions.cpu()
+    masks = masks.cpu()
+    phases = phases.cpu()
+    deciding = masks.sum(dim=-1) > 1
+    is_stay = actions == STAY_ACTION
+    weights = torch.ones_like(actions, dtype=torch.float32)
+    for phase in phases.unique():
+        rows = (phases == phase).unsqueeze(-1) & deciding
+        if not bool(rows.any()):
+            continue
+        stay = int((rows & is_stay).sum())
+        other = int((rows & ~is_stay).sum())
+        if stay == 0 or other == 0:
+            continue
+        # Balance the two classes against each other, then cap.
+        stay_w = min((stay + other) / (2.0 * stay), MAX_CLASS_WEIGHT)
+        other_w = min((stay + other) / (2.0 * other), MAX_CLASS_WEIGHT)
+        weights[rows & is_stay] = stay_w
+        weights[rows & ~is_stay] = other_w
+    mean = weights[deciding].mean() if bool(deciding.any()) else torch.tensor(1.0)
+    return (weights / mean.clamp(min=1e-8)).to(home)
 
 
 def train(
@@ -189,6 +265,7 @@ def train(
     masks: torch.Tensor,
     actions: torch.Tensor,
     group_ids: torch.Tensor,
+    phases: torch.Tensor,
     epochs: int,
     batch_size: int,
     device: torch.device,
@@ -205,11 +282,20 @@ def train(
     member agreed. Read the second one when the clone has to satisfy anything
     joint -- see `unit_match_counts` for why the first is blind to it. The loss
     is still per model: this is a measurement, not an objective.
+
+    ⚠ **The rows are WEIGHTED so a rare target is not drowned by a common one.**
+    Unweighted, this fit learned the charge phase as "always STAY": a charge
+    order is ~3.7% of the deciding rows in that phase, so predicting STAY scores
+    94% and the loss has almost nothing to gain from the other 6%. Measured, the
+    resulting clones echoed **0.8-2.4%** of the teacher's charge orders while
+    matching its shooting at 0.99 -- they had not failed to coordinate, they had
+    failed to *declare*. `phase_balanced_weights` is the fix.
     """
     net.to(device).train()
     optimiser = torch.optim.AdamW(net.parameters(), lr=3e-4, weight_decay=0.01)
-    loss_fn = nn.CrossEntropyLoss()
+    loss_fn = nn.CrossEntropyLoss(reduction="none")
     n_steps = actions.shape[0]
+    weights = phase_balanced_weights(actions, masks, phases)
 
     group_ids = group_ids.to(device)
     for epoch in range(epochs):
@@ -241,7 +327,9 @@ def train(
                 continue
             flat_logits = logits[choosing]
             flat_actions = batch_actions[choosing]
-            loss = loss_fn(flat_logits, flat_actions)
+            flat_weights = weights[index].to(device)[choosing]
+            per_row = loss_fn(flat_logits, flat_actions)
+            loss = (per_row * flat_weights).sum() / flat_weights.sum().clamp(min=1e-8)
 
             optimiser.zero_grad(set_to_none=True)
             loss.backward()
@@ -363,25 +451,39 @@ def main() -> None:
         teacher, create_environment(env_config=config), decode_topk
     )
     select, teacher_label = resolved.select, resolved.label
+    # ⚠ **The key carries a FINGERPRINT OF THE CONFIG, not just its filename.**
+    # It used to name the file stem, so editing a config in place produced a
+    # cache hit on demonstrations collected under the old one -- and when the
+    # charge declaration landed, that meant 102-action, 60-turn demonstrations
+    # being fitted to a 104-action, 80-turn network, with every recorded action
+    # indexing a different action space. Silent, and catastrophic.
+    #
+    # `v2` in the name is separate and still needed: the payload gained
+    # `phases`, and a v1 payload would KeyError at best and fit unweighted at
+    # worst.
+    fingerprint = hashlib.sha256(config.model_dump_json().encode()).hexdigest()[:12]
     cache = Path("checkpoints/clone_data") / (
         f"{teacher_label}-k{decode_topk}-{Path(config_path).stem}"
-        f"-{n_episodes}-g{gamma}.pt"
+        f"-{n_episodes}-g{gamma}-{fingerprint}-v2.pt"
     )
     if cache.exists():
         print(f"reusing collected demonstrations from {cache}")
         payload = torch.load(cache, weights_only=False)
-        states, masks, actions, returns = (
+        states, masks, actions, returns, phases = (
             payload["states"],
             payload["masks"],
             payload["actions"],
             payload["returns"],
+            payload["phases"],
         )
     else:
         print(
             f"collecting {n_episodes} episodes of '{teacher_label}' "
             f"(decode_topk={decode_topk}) on {config_path}"
         )
-        states, masks, actions, returns = collect(select, config, n_episodes, gamma)
+        states, masks, actions, returns, phases = collect(
+            select, config, n_episodes, gamma
+        )
         cache.parent.mkdir(parents=True, exist_ok=True)
         torch.save(
             {
@@ -389,6 +491,7 @@ def main() -> None:
                 "masks": masks,
                 "actions": actions,
                 "returns": returns,
+                "phases": phases,
             },
             cache,
         )
@@ -409,7 +512,17 @@ def main() -> None:
     env.close()
 
     print(f"cloning on {device} (seed {seed})")
-    train(net, states, masks, actions, group_ids, epochs, batch_size=32, device=device)
+    train(
+        net,
+        states,
+        masks,
+        actions,
+        group_ids,
+        phases,
+        epochs,
+        batch_size=32,
+        device=device,
+    )
 
     print("fitting the critic on the demonstrator's own returns")
     value_env = create_environment(env_config=config)

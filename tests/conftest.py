@@ -7,6 +7,7 @@ import torch
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.model.common.config import TransformerConfig
 from wargame_rl.wargame.model.net import RL_Network, TransformerNetwork
 from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
 from wargame_rl.wargame.types import Experience
@@ -75,21 +76,45 @@ def experiences(_session_env: WargameEnv) -> list[Experience]:
     return output
 
 
+# The trunk every network fixture here is built with, and it is NOT the
+# production one. `TransformerConfig()` defaults to 8 layers of 256 at 8 heads
+# -- ~12.7M parameters -- and the suite was paying that on a 2-model 20x20
+# board, where it dominated both runtime and the 153 MB a checkpoint costs.
+# Measured: the whole suite went from 155s to ~100s wall clock under `-n auto`,
+# and `test_z_e2e_training` from 66.0s to 1.2s run on its own. ⚠ Read `--durations`
+# under `-n auto` as wall time including worker starvation, not as a test's own
+# cost -- the e2e test still reports ~40s there while taking 1.2s alone.
+#
+# ⚠ Any test asserting on a NUMBER a trained network produces must build its own
+# production-sized trunk, because this one is a different network. Nothing here
+# does: these tests assert on shapes, dtypes, wiring and invariances, none of
+# which the trunk's depth changes. `test_network_size` pins that the production
+# default is still 8/8/256, so shrinking the *fixtures* can never quietly shrink
+# what ships.
+#
+# `n_heads` must divide `embedding_size`; 32 / 2 = 16 per head.
+TEST_TRANSFORMER_CONFIG = TransformerConfig(n_layers=2, n_heads=2, embedding_size=32)
+
+
 @pytest.fixture
 @lru_cache(maxsize=1)
 def transformer_net(env: WargameEnv) -> TransformerNetwork:
-    return TransformerNetwork.policy_from_env(env=env)
+    return TransformerNetwork.policy_from_env(
+        env=env, transformer_config=TEST_TRANSFORMER_CONFIG
+    )
 
 
 @pytest.fixture
 def policy_net(env: WargameEnv) -> RL_Network:
     """A bare policy network, for tests that take any `RL_Network`."""
-    return TransformerNetwork.policy_from_env(env=env)
+    return TransformerNetwork.policy_from_env(
+        env=env, transformer_config=TEST_TRANSFORMER_CONFIG
+    )
 
 
 @pytest.fixture
 def ppo_transformer_net(env: WargameEnv) -> PPO_Transformer:
-    net = PPO_Transformer.from_env(env=env)
+    net = PPO_Transformer.from_env(env=env, transformer_config=TEST_TRANSFORMER_CONFIG)
     return cast(PPO_Transformer, net.to("cpu"))
 
 
@@ -101,4 +126,9 @@ def ppo_transformer_net(env: WargameEnv) -> PPO_Transformer:
 def ppo_net(request: pytest.FixtureRequest, env: WargameEnv) -> PPO_Transformer:
     """Parametrized fixture for PPO_Transformer."""
     assert request.param == "ppo_transformer_net"
-    return cast(PPO_Transformer, PPO_Transformer.from_env(env=env).to("cpu"))
+    return cast(
+        PPO_Transformer,
+        PPO_Transformer.from_env(
+            env=env, transformer_config=TEST_TRANSFORMER_CONFIG
+        ).to("cpu"),
+    )

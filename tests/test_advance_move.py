@@ -22,7 +22,6 @@ from scripts.scenario_overrides import load_env_config
 from wargame_rl.wargame.envs.domain.game_clock import BattlePhase
 from wargame_rl.wargame.envs.env_components.actions import (
     MOVE_TYPE_ADVANCE,
-    MOVE_TYPE_NORMAL,
     STAY_ACTION,
     ActionHandler,
 )
@@ -30,10 +29,23 @@ from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.types.config.env import WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import NON_MOVEMENT_PHASES
 from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.envs.wargame_model import WargameModel
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.common.observation import observation_to_tensor
 
 SHOOT_TARGETS = 5
+
+
+def _declare(env: WargameEnv, kind: str) -> int:
+    """The action index that declares `kind`, asserted to exist.
+
+    ⚠ The move-type slice is sized to the move types the scenario HAS, so an
+    offset is no longer a constant: `advance` sits at 1 on an advance-only
+    config and would move if that scenario also fought in melee.
+    """
+    action = env.player_action_handler.move_type_action(kind)
+    assert action is not None
+    return action
 
 
 def _phases_with_command() -> list[BattlePhase]:
@@ -202,8 +214,11 @@ def test_the_roll_decides_which_rungs_are_legal() -> None:
             self.declared_advance = True
 
     # Act — M = 6, so the ladder is 8/10/12 and needs rolls of 2/4/6
+    # `None` enemies: this test is about the ROLL gate, and an engaged unit
+    # may not advance at all — passing no opposing force says so explicitly
+    # rather than leaving the engagement check silently off.
     legality = handler.advance_legality(
-        [_Model(1.0), _Model(2.0), _Model(4.0), _Model(6.0)]
+        [_Model(1.0), _Model(2.0), _Model(4.0), _Model(6.0)], None
     )
 
     # Assert — one row per model, the first `n_bins` columns are the first angle
@@ -365,7 +380,7 @@ class TestAdvanceInAnEpisode:
             handler.apply(
                 WargameEnvAction(
                     actions=[
-                        move_type.start + MOVE_TYPE_ADVANCE for _ in env.wargame_models
+                        _declare(env, MOVE_TYPE_ADVANCE) for _ in env.wargame_models
                     ]
                 ),
                 env.wargame_models,
@@ -558,8 +573,8 @@ class TestAdvanceIsResolvedPerUnit:
             first = groups[0]
             assert groups.count(first) > 1, "need a unit of 2+ models"
 
-            actions = [move_type.start + MOVE_TYPE_NORMAL] * len(env.wargame_models)
-            actions[0] = move_type.start + MOVE_TYPE_ADVANCE  # the leader of unit 0
+            actions = [STAY_ACTION] * len(env.wargame_models)
+            actions[0] = _declare(env, MOVE_TYPE_ADVANCE)  # the leader of unit 0
 
             # Act
             self._apply(env, actions, phase=BattlePhase.command)
@@ -590,8 +605,8 @@ class TestAdvanceIsResolvedPerUnit:
             for index, model in enumerate(env.wargame_models):
                 model.group_id = index // 2
 
-            actions = [move_type.start + MOVE_TYPE_NORMAL] * len(env.wargame_models)
-            actions[1] = move_type.start + MOVE_TYPE_ADVANCE  # a FOLLOWER, not leader
+            actions = [STAY_ACTION] * len(env.wargame_models)
+            actions[1] = _declare(env, MOVE_TYPE_ADVANCE)  # a FOLLOWER, not leader
 
             # Act
             self._apply(env, actions, phase=BattlePhase.command)
@@ -620,8 +635,8 @@ class TestAdvanceIsResolvedPerUnit:
             for index, model in enumerate(env.wargame_models):
                 model.group_id = index // 2
                 model.advance_roll = 6.0
-            declare = [move_type.start + MOVE_TYPE_NORMAL] * len(env.wargame_models)
-            declare[0] = move_type.start + MOVE_TYPE_ADVANCE
+            declare = [STAY_ACTION] * len(env.wargame_models)
+            declare[0] = _declare(env, MOVE_TYPE_ADVANCE)
             self._apply(env, declare, phase=BattlePhase.command)
             before = [m.location.copy() for m in env.wargame_models]
 
@@ -659,3 +674,50 @@ class TestAdvanceIsResolvedPerUnit:
             assert not any(m.advanced_this_turn for m in env.wargame_models)
         finally:
             env.close()
+
+
+def test_a_declaration_action_in_the_movement_phase_does_not_decode_as_a_MOVE() -> None:
+    """Regression: `apply` guarded the shooting slice and nothing else.
+
+    ⚠ A real crash on `main`, found by `tests/test_scripted_advance.py` sampling
+    the raw action space: a `move_type` index reaching the movement phase fell
+    through to `decode_action`, which read it as `action - 1` into the angle
+    table and raised `IndexError: index 24 is out of bounds for axis 0 with size
+    16`. It fired on roughly 1 run in 8 because it needs an unmasked sample to
+    land in a 2-action slice.
+
+    Every phase-valid mask forbids this, which is why no policy hit it -- but
+    `apply` deliberately does not trust the mask for the shooting slice, and had
+    no reason to trust it here either. A declaration carries no displacement, so
+    outside the phase it is declared in it is simply nothing.
+    """
+    # Arrange
+    handler = _handler(3)
+    move_type = handler.move_type_slice
+    assert move_type is not None
+    models = [
+        WargameModel(
+            location=np.array([10.0 + index, 10.0]),
+            stats={"toughness": 3, "save": 4, "max_wounds": 1, "current_wounds": 1},
+            distances_to_objectives=np.zeros(1),
+            group_id=0,
+            base_radius=0.0,
+        )
+        for index in range(4)
+    ]
+    before = [model.location.copy() for model in models]
+
+    # Act
+    handler.apply(
+        WargameEnvAction(actions=[move_type.start] * len(models)),
+        models,
+        60,
+        44,
+        handler.action_space,
+        phase=BattlePhase.movement,
+        enemy_models=[],
+    )
+
+    # Assert
+    for start, model in zip(before, models):
+        np.testing.assert_array_equal(start, model.location)

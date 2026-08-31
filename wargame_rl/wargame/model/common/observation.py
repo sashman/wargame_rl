@@ -22,7 +22,20 @@ NORM_EXPECTED_DAMAGE = 10.0
 
 N_WOUND_FEATURES = 3  # alive, wound_ratio, max_wounds_norm
 N_COMBAT_STATS = 7  # attacks, bs, strength, ap, damage, toughness, save
-N_BATTLE_PHASES = 5  # command, movement, shooting, charge, fight
+# ⚠ **PINNED AT 5, and it is deliberately NOT `len(BattlePhase)`.** This is the
+# DIVISOR for the normalised phase scalar, and `pile_in` and `consolidate` were
+# added as phases 5 and 6 in 2026-08-26. Widening it to 7 would rescale the
+# scalar for `command`, `movement`, `shooting` and `charge` -- i.e. for EVERY
+# config in the repo, melee or not -- changing all three observation goldens and
+# making every existing checkpoint's scores incomparable, as collateral for a
+# feature only melee configs can reach.
+#
+# Left at 5, non-melee observations are BIT-IDENTICAL: those configs only ever
+# see phase indices 0-3, and inserting the new phases did not move them (the
+# enum grew in the middle, but `fight`, at index 5 now, is skipped wherever
+# melee is off). The melee phases normalise above 1.0, which is a scale the
+# network handles like any other and is the cheaper of the two costs.
+N_BATTLE_PHASES = 5
 # Padded outline vertices plus the real vertex count. This was 4 -- a bounding
 # box -- and that is the input every cover experiment in this repo was run
 # against: an L-shaped ruin and a solid block produced identical tokens, so no
@@ -212,6 +225,29 @@ def _models_to_features(
         core_parts.append(
             np.array([[m.advanced_this_turn] for m in models], dtype=np.float32)
         )
+    # The melee trade, when the scenario fights in melee: what reach this model's
+    # unit rolled on 2D6, and whether it fell back and so spent both its shooting
+    # and its charge.
+    if models[0].charge_roll is not None:
+        core_parts.append(np.array([[m.charge_roll] for m in models], dtype=np.float32))
+    if models[0].fell_back_this_turn is not None:
+        core_parts.append(
+            np.array([[m.fell_back_this_turn] for m in models], dtype=np.float32)
+        )
+    if models[0].declared_charge is not None:
+        core_parts.append(
+            np.array([[m.declared_charge] for m in models], dtype=np.float32)
+        )
+    if models[0].engaged is not None:
+        core_parts.append(np.array([[m.engaged] for m in models], dtype=np.float32))
+    if models[0].declared_objective_onehot is not None:
+        core_parts.append(
+            np.array([m.declared_objective_onehot for m in models], dtype=np.float32)
+        )
+    if models[0].declared_target_onehot is not None:
+        core_parts.append(
+            np.array([m.declared_target_onehot for m in models], dtype=np.float32)
+        )
     core = np.hstack(core_parts)
     alive_col = np.array([[m.alive] for m in models], dtype=np.float32)
     cw = np.array([[float(m.current_wounds)] for m in models], dtype=np.float32)
@@ -316,6 +352,29 @@ def _observation_to_numpy(
         for attribute in ("advance_roll", "advanced_this_turn")
         if probe and getattr(probe[0], attribute) is not None
     )
+    # The melee trade, when the scenario fights in melee: what reach this unit
+    # rolled, whether the turn's shooting has already been given up, and whether
+    # the unit is under a charge declaration made in the previous phase.
+    n_melee = sum(
+        1
+        for attribute in (
+            "charge_roll",
+            "fell_back_this_turn",
+            "declared_charge",
+            "engaged",
+        )
+        if probe and getattr(probe[0], attribute) is not None
+    )
+    n_declared_objective = (
+        int(probe[0].declared_objective_onehot.size)
+        if probe and probe[0].declared_objective_onehot is not None
+        else 0
+    )
+    n_declared_target = (
+        int(probe[0].declared_target_onehot.size)
+        if probe and probe[0].declared_target_onehot is not None
+        else 0
+    )
     base_feature_dim = (
         n_spatial
         + n_group
@@ -324,6 +383,9 @@ def _observation_to_numpy(
         + n_coherency
         + n_unit_centroid
         + n_advance
+        + n_melee
+        + n_declared_objective
+        + n_declared_target
         + N_WOUND_FEATURES
         + N_COMBAT_STATS
     )

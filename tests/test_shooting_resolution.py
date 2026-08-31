@@ -834,6 +834,63 @@ class TestShootingMaskExtensions:
         )
         assert not m.any(), "no living target, so no shot -- but no crash either"
 
+    def test_one_model_in_contact_silences_its_whole_UNIT(self) -> None:
+        """⚠ The rule is per-UNIT and this gate was per-MODEL.
+
+        Three models in one squad, only the first in contact. Per model the
+        other two kept firing while the first held the enemy in place — a
+        strictly better trade than the rules allow, and the "send one model to
+        lock them and keep shooting" exploit named in the melee design and left
+        open. The TARGET side of this file already reduced over the unit.
+        """
+        # Arrange: models 0-2 are squad 0, model 3 is squad 1 and far away.
+        # Only model 0 is inside the 2" ring — 1 and 2 sit at 4" and 8", which
+        # is what makes the two reductions give different answers at all.
+        pp = np.array([[0.0, 0.0], [4.0, 0.0], [8.0, 0.0], [30.0, 30.0]])
+        op = np.array([[1.0, 0.0], [40.0, 40.0]])
+        pa = np.array([True, True, True, True])
+        oa = np.array([True, True])
+        pr = np.array([80.0, 80.0, 80.0, 80.0])
+        groups = np.array([0, 0, 0, 1])
+
+        # Act
+        per_unit = compute_shooting_masks(
+            pp,
+            op,
+            pa,
+            oa,
+            pr,
+            _all_visible,
+            player_groups=groups,
+            engagement_range=2.0,
+        )
+        per_model = compute_shooting_masks(
+            pp, op, pa, oa, pr, _all_visible, engagement_range=2.0
+        )
+
+        # Assert
+        assert not per_unit[:3].any(), "a squadmate in contact must silence the unit"
+        assert per_unit[3].any(), "the OTHER squad is untouched"
+        assert per_model[2].any(), "the per-model gate let the squadmate fire"
+
+    def test_without_groups_the_gate_stays_per_model(self) -> None:
+        """The pure-function callers have no unit structure to reduce over."""
+        # Arrange
+        pp = np.array([[0.0, 0.0], [10.0, 0.0]])
+        op = np.array([[1.0, 0.0]])
+        pa = np.array([True, True])
+        oa = np.array([True])
+        pr = np.array([50.0, 50.0])
+
+        # Act
+        m = compute_shooting_masks(
+            pp, op, pa, oa, pr, _all_visible, engagement_range=2.0
+        )
+
+        # Assert
+        assert not m[0, 0]
+        assert m[1, 0]
+
     def test_backward_compat_no_new_params(self) -> None:
         pp = np.array([[0, 0]])
         op = np.array([[5, 0]])

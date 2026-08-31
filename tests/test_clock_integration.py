@@ -8,13 +8,18 @@ auto-executed before the observation is returned.
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import (
     BATTLE_PHASE_ORDER,
+    MELEE_ONLY_PHASES,
     NON_MOVEMENT_PHASES,
     BattlePhase,
     GamePhase,
 )
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
-N_PHASES = len(BATTLE_PHASE_ORDER)
+# ⚠ STEPPED phases, not enum members. `pile_in` and `consolidate` exist only
+# where melee is enabled and are auto-skipped otherwise, so a melee-off env
+# steps five of the seven. Counting enum members here asserted 7 and measured 5.
+STEPPED_PHASES = tuple(p for p in BATTLE_PHASE_ORDER if p not in MELEE_ONLY_PHASES)
+N_PHASES = len(STEPPED_PHASES)
 
 
 def _make_env(n_rounds: int = 10, **overrides: object) -> WargameEnv:
@@ -84,7 +89,7 @@ class TestClockAdvancesPerStep:
     def test_phase_cycles_through_all(self) -> None:
         env = _make_env(n_rounds=10)
         env.reset(seed=42)
-        for i, expected_phase in enumerate(BATTLE_PHASE_ORDER):
+        for i, expected_phase in enumerate(STEPPED_PHASES):
             assert env._game_clock.state.phase is expected_phase, (
                 f"Step {i}: expected {expected_phase}, got {env._game_clock.state.phase}"
             )

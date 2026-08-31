@@ -97,9 +97,17 @@ A complete, serialisable Pydantic model of the game at one point in time. This i
 
 #### Schema
 
+**2.7 adds melee.** `player_melee_results` / `opponent_melee_results` are separate
+lists rather than a flag on `CombatResultSnapshot`, because the renderer draws a
+*tracer* for a damaging shot and a *clash marker* for a damaging blow — melee
+happens at contact, where a line has no length to be read by. Both are empty on
+pre-2.7 recordings and on every melee-off config, which is every config shipped
+today, so a replay of one draws no clashes rather than inventing them.
+
+
 ```python
 class GameStateSnapshot(BaseModel):
-    schema_version: str = "2.6"
+    schema_version: str = "2.7"
     step: int
     max_steps: int
     clock: ClockSnapshot
@@ -127,6 +135,8 @@ class GameStateSnapshot(BaseModel):
     player_action_descriptions: list[str] | None
     player_combat_results: list[CombatResultSnapshot]
     opponent_combat_results: list[CombatResultSnapshot]
+    player_melee_results: list[CombatResultSnapshot] = []  # 2.7: blows, not shots
+    opponent_melee_results: list[CombatResultSnapshot] = []  # 2.7
     reward: RewardSnapshot
     is_terminated: bool
     is_truncated: bool
@@ -158,6 +168,8 @@ class ModelSnapshot(BaseModel):
     toughness: int
     save: int
     advanced_this_turn: bool
+    charged_this_turn: bool = False  # 2.7: this model's UNIT charged this turn
+    fell_back_this_turn: bool = False  # 2.7: withdrew from melee, no shooting
     weapons: list[WeaponSnapshot]
     distances_to_objectives: list[float]
     at_objective: list[bool]
@@ -338,7 +350,7 @@ The analysis output is available as:
 | `just record-sim <ckpt> <config> [n] [net]` | Record N episodes from a trained checkpoint, no rendering |
 | `just replay <file>` | Narrate a recorded match step-by-step |
 | `just replay-summary <file>` | Match metadata overview |
-| `just replay-render <file> [out.mp4] [theme] [overlays]` | Replay visually — interactive window (play/pause/step/scrub) or MP4. Uses the v2 renderer; reads terrain from schema-2.1 recordings (pre-2.1 draw no ruins) and the reward ledger + skipped phases from 2.2 (earlier ones show neither). `theme` is `default` or `tabletop`; the latter colours models by *side* rather than by squad, so it reads like a table but cannot show which unit a model belongs to. `overlays` passes renderer flags through — `--threat-range` / `--engagement-range` need schema 2.6 for the rules distances, and older recordings render exactly as they do with the overlays off |
+| `just replay-render <file> [out.mp4] [theme] [overlays]` | Replay visually — interactive window (play/pause/step/scrub) or MP4. Uses the v2 renderer; reads terrain from schema-2.1 recordings (pre-2.1 draw no ruins) and the reward ledger + skipped phases from 2.2 (earlier ones show neither). `theme` is `default` or `tabletop`; the latter colours models by *side* rather than by squad, so it reads like a table but cannot show which unit a model belongs to. `overlays` passes renderer flags through — `--threat-range` / `--engagement-range` need schema 2.6 for the rules distances, and older recordings render exactly as they do with the overlays off. ⚠ **`--threat-field` draws nothing on a replay at any schema version**: the next-turn field builds its reachable set from **per-model Move**, which no snapshot records, and tracing it at a guessed Move would be wrong in the *false-safe* direction — so it degrades to the overlays-off frame exactly, pinned by `test_a_replayed_frame_is_the_field_off_frame` |
 | `just analyze <file>` | Full analysis report (text) |
 | `just analyze-json <file>` | Analysis report as JSON |
 | `just analyze-compare f1 f2` | Side-by-side metric comparison |

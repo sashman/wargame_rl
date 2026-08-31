@@ -15,10 +15,12 @@ from wargame_rl.wargame.envs.domain.coherency import (
     base_to_base_distances,
     evaluate_coherency,
 )
+from wargame_rl.wargame.envs.domain.engagement import engaged_with_any
 from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.value_objects import POSITION_DTYPE
 from wargame_rl.wargame.envs.env_components.actions import (
     ADVANCE_DIE_FACES,
+    CHARGE_DICE_MAX,
     ActionRegistry,
 )
 from wargame_rl.wargame.envs.env_components.distance_cache import (
@@ -192,6 +194,14 @@ def _coherency_features(
 # other normalised feature, rather than being 6x the scale of its neighbours.
 
 
+def _declared_onehot(declared: int, budget: int) -> np.ndarray:
+    """The squad's declared objective as a one-hot over the budget (-1 = zeros)."""
+    onehot = np.zeros(budget, dtype=np.float32)
+    if 0 <= declared < budget:
+        onehot[declared] = 1.0
+    return onehot
+
+
 def _models_to_obs(
     models: list[WargameModel],
     max_groups: int,
@@ -203,6 +213,10 @@ def _models_to_obs(
     unit_centroid_cap: float | None = None,
     observe_advance: bool = False,
     advance_is_known: bool = True,
+    observe_melee: bool = False,
+    engaged_flags: np.ndarray | None = None,
+    objective_declaration_budget: int | None = None,
+    target_declaration_budget: int | None = None,
 ) -> list[WargameModelObservation]:
     strengths = _unit_strengths(models) if observe_unit_strength else {}
     offsets = (
@@ -277,6 +291,54 @@ def _models_to_obs(
                     None
                     if not observe_advance
                     else (float(m.advanced_this_turn) if advance_is_known else 0.0)
+                ),
+                # The melee pair shares `advance_is_known`, not a flag of its
+                # own: both sides' per-turn state goes stale for exactly the same
+                # reason -- each rolls and spends at the start of its OWN turn.
+                charge_roll=(
+                    None
+                    if not observe_melee
+                    else (
+                        float(m.charge_roll) / CHARGE_DICE_MAX
+                        if advance_is_known
+                        else 0.0
+                    )
+                ),
+                fell_back_this_turn=(
+                    None
+                    if not observe_melee
+                    else (float(m.fell_back_this_turn) if advance_is_known else 0.0)
+                ),
+                # ⚠ Gated on `advance_is_known` exactly like the two above,
+                # and for the same reason: a declaration is spent by the end of
+                # the turn it is made in, so on the side whose turn it is NOT it
+                # would report a charge the unit is no longer under. (An earlier
+                # comment here claimed the opposite of the code beside it; the
+                # code was right. A rules-lawyer audit caught the contradiction.)
+                declared_charge=(
+                    None
+                    if not observe_melee
+                    else (float(m.declared_charge) if advance_is_known else 0.0)
+                ),
+                # ⚠ NOT gated on `advance_is_known`: engagement is a pure
+                # function of current positions, identical from either seat,
+                # so both sides read it live. See `melee.observe_engaged`.
+                engaged=(None if engaged_flags is None else float(engaged_flags[i])),
+                declared_objective_onehot=(
+                    None
+                    if objective_declaration_budget is None
+                    else _declared_onehot(
+                        int(getattr(m, "declared_objective", -1)),
+                        objective_declaration_budget,
+                    )
+                ),
+                declared_target_onehot=(
+                    None
+                    if target_declaration_budget is None
+                    else _declared_onehot(
+                        int(getattr(m, "declared_target", -1)),
+                        target_declaration_budget,
+                    )
                 ),
                 coherency_spread=(None if spread is None else float(spread[i])),
                 coherency_component=(
@@ -493,6 +555,77 @@ def build_observation(
         action_mask = action_registry.get_model_action_masks(
             phase, len(view.player_models), alive_mask=player_alive
         )
+        if view.config.melee.enabled and phase == BattlePhase.charge:
+            # A charge is an ordinary movement action in an extraordinary phase,
+            # so the slice is already unmasked here -- what has to be added is
+            # the rules' own gates: the unit must be eligible to declare, and
+            # the 2D6 is the charge move's maximum.
+            movement_slice = action_registry.slice_for("movement")
+            action_mask[:, movement_slice.start : movement_slice.end] &= (
+                view.player_charge_legality
+            )
+            # ⚠ **REMOVED 2026-08-26: a declared unit MAY decline.** This used to
+            # strike STAY from every declared model that held a legal rung, on
+            # the reasoning that a declaration should BIND rather than merely
+            # permit. The rules say otherwise, explicitly:
+            # `11-charge-phase.md` step 3 -- *"If a legal charge move is possible
+            # AND THE CONTROLLING PLAYER STILL WANTS TO MAKE IT, make it.
+            # Otherwise the unit does not move. Either way the charge is
+            # resolved."* Declining after the roll is a right the game grants and
+            # this took it away.
+            #
+            # It was not a harmless extra: a rules-lawyer audit measured it
+            # binding on **30 of 31** declared units, and it compounds with the
+            # declaration sitting two phases early -- a unit committed in the
+            # COMMAND phase, before it has moved or shot, could not then back out
+            # of a charge that the movement phase had made hopeless. It walked at
+            # nothing and the referee reverted it.
+            #
+            # ⚠ It does not follow that half a unit may charge. That is enforced
+            # where it belongs, in `_enforce_charge`: a stationary model does not
+            # veto its unit's charge, but the unit must still end COHERENT and
+            # engaged, so a squad that half-commits stretches and reverts anyway.
+            # The rule was being enforced twice, once correctly.
+
+        if phase in (BattlePhase.pile_in, BattlePhase.consolidate):
+            # ⚠ Without this the phases are UNMASKED: every alive model could
+            # shuffle 3" toward anything twice a turn, eligible or not. Measured
+            # when it was missing -- a script piling in unconditionally dragged
+            # its army off the objectives and the bar fell +23.9 -> -27.8 vp.
+            movement_slice = action_registry.slice_for("movement")
+            action_mask[:, movement_slice.start : movement_slice.end] &= (
+                view.player_short_move_legality
+            )
+
+        if action_registry.has_slice("move_type") and phase == BattlePhase.command:
+            # ⚠ The declaration was UNMASKED until 2026-08-26. A unit the rules
+            # make ineligible could still declare -- a charge declaration is a
+            # bit-exact no-op, so the policy got a free action with nothing to
+            # learn from, and an advance declaration spends the unit's shooting
+            # the moment it is made. See `ActionHandler.declaration_legality`.
+            move_type_slice = action_registry.slice_for("move_type")
+            action_mask[:, move_type_slice.start : move_type_slice.end] &= (
+                view.player_declaration_legality
+            )
+
+        if (
+            action_registry.has_slice("objective_target")
+            and phase == BattlePhase.command
+        ):
+            # An objective declaration beyond the episode's real objective
+            # count is a plan for a marker that does not exist.
+            target_slice = action_registry.slice_for("objective_target")
+            action_mask[:, target_slice.start : target_slice.end] &= (
+                view.player_objective_target_legality
+            )
+
+        if action_registry.has_slice("charge_target") and phase == BattlePhase.command:
+            # A hunt for a wiped enemy unit is a plan for nothing.
+            hunt_slice = action_registry.slice_for("charge_target")
+            action_mask[:, hunt_slice.start : hunt_slice.end] &= (
+                view.player_charge_target_legality
+            )
+
         if action_registry.has_slice("advance") and phase == BattlePhase.movement:
             # The advance rungs are ABSOLUTE distances above Move, so the turn's
             # D6 no longer changes what an action means -- it decides which
@@ -513,8 +646,13 @@ def build_observation(
             player_positions = np.array([m.location for m in view.player_models])
             opponent_positions = np.array([m.location for m in view.opponent_models])
             player_ranges = view.player_max_ranges
+            # Advancing and falling back both cost the turn's shooting, so the
+            # mask takes their union -- `docs/rules/09-movement-phase.md`.
             player_advanced = np.array(
-                [m.advanced_this_turn for m in view.player_models]
+                [
+                    m.advanced_this_turn or m.fell_back_this_turn
+                    for m in view.player_models
+                ]
             )
             shooting_validity = compute_unit_shooting_masks(
                 player_positions,
@@ -526,8 +664,15 @@ def build_observation(
                 np.array([m.group_id for m in view.opponent_models], dtype=int),
                 shooting_slice.end - shooting_slice.start,
                 player_advanced=player_advanced,
+                # The shooter's own unit, so that one model in contact silences
+                # its squadmates -- the rule is per unit, not per model.
+                player_groups=np.array(
+                    [m.group_id for m in view.player_models], dtype=int
+                ),
                 engagement_range=view.rules_quantities.engagement_range,
                 base_diameter=2.0 * view.rules_quantities.base_radius,
+                exclude_engaged_targets=view.config.melee.enabled
+                and view.config.melee.shield_engaged_targets,
             )
             action_mask[:, shooting_slice.start : shooting_slice.end] &= (
                 shooting_validity
@@ -561,6 +706,69 @@ def build_observation(
         if view.config.observe_unit_centroid
         else None
     )
+    # ⚠ Gated on the CHARGE PHASE BEING STEPPED, not on `melee.enabled`, and the
+    # difference is the whole point of the dark control. `25v25_maps_melee.yaml`
+    # and `..._melee_dark.yaml` differ in exactly one scalar -- `melee.enabled`
+    # -- so that the arm and its control share an init and the per-seed
+    # difference is a PAIRED estimator. Gating the columns on that same scalar
+    # would give the two configs different tensor widths, different input
+    # projections and therefore different weights at step 0, destroying the only
+    # thing the pair exists to provide.
+    #
+    # With melee off the roll is never taken, so both columns are constant zero:
+    # informationally identical to not having them, exactly as for the
+    # opponent's zeroed columns below. Every golden config skips `charge`, so
+    # none of them is touched.
+    observe_melee = (
+        BattlePhase.charge not in view.config.skip_phases
+        if view.config.melee.observe_charge is None
+        else view.config.melee.observe_charge
+    )
+    declaration_budget: int | None = (
+        int(view.config.objective_budget)
+        # `getattr`: configs pickled before the field existed must still build.
+        if getattr(view.config, "declare_objectives", False)
+        and view.config.objective_budget
+        else None
+    )
+    target_budget: int | None = (
+        int(view.config.max_groups)
+        # `getattr`: configs pickled before the field existed must still build.
+        if getattr(view.config, "declare_targets", False)
+        and getattr(view.config, "max_groups", 0)
+        else None
+    )
+    player_engaged: np.ndarray | None = None
+    opponent_engaged: np.ndarray | None = None
+    if view.config.melee.observe_engaged:
+        quantities = view.rules_quantities
+        player_positions = np.array(
+            [m.location for m in view.player_models], dtype=float
+        )
+        opponent_positions = np.array(
+            [m.location for m in view.opponent_models], dtype=float
+        )
+        player_alive = np.array([m.is_alive for m in view.player_models], dtype=bool)
+        opponent_alive = np.array(
+            [m.is_alive for m in view.opponent_models], dtype=bool
+        )
+        base_diameter = 2.0 * quantities.base_radius
+        player_engaged = engaged_with_any(
+            player_positions,
+            opponent_positions,
+            opponent_alive,
+            player_alive,
+            engagement_range=quantities.engagement_range,
+            base_diameter=base_diameter,
+        )
+        opponent_engaged = engaged_with_any(
+            opponent_positions,
+            player_positions,
+            player_alive,
+            opponent_alive,
+            engagement_range=quantities.engagement_range,
+            base_diameter=base_diameter,
+        )
     return WargameEnvObservation(
         current_turn=view.current_turn,
         wargame_models=_models_to_obs(
@@ -573,6 +781,10 @@ def build_observation(
             coherency=coherency,
             unit_centroid_cap=unit_centroid_cap,
             observe_advance=view.config.n_advance_speed_bins > 0,
+            observe_melee=observe_melee,
+            engaged_flags=player_engaged,
+            objective_declaration_budget=declaration_budget,
+            target_declaration_budget=target_budget,
         ),
         objectives=objectives_obs,
         board_width=view.board_width,
@@ -587,12 +799,13 @@ def build_observation(
             coherency=coherency,
             unit_centroid_cap=unit_centroid_cap,
             observe_advance=view.config.n_advance_speed_bins > 0,
-            # ⚠ The opponent's advance columns are ZEROED, not read. Each side
-            # rolls at the start of its OWN turn, so the opponent's values are
-            # zero in round 1 and one turn STALE thereafter -- they record what
-            # it rolled and did on its last turn, which says nothing about the
-            # turn it is about to take. A stale column is worse than no column:
-            # the network has to learn to ignore it.
+            observe_melee=observe_melee,
+            # ⚠ The opponent's advance AND melee columns are ZEROED, not read.
+            # Each side rolls at the start of its OWN turn, so the opponent's
+            # values are zero in round 1 and one turn STALE thereafter -- they
+            # record what it rolled and did on its last turn, which says nothing
+            # about the turn it is about to take. A stale column is worse than no
+            # column: the network has to learn to ignore it.
             #
             # Zeroed rather than dropped because the player and opponent tokens
             # share a feature width (`observation.py` asserts it), so removing
@@ -601,6 +814,9 @@ def build_observation(
             # so this is informationally identical to dropping it -- and unlike
             # dropping it, costs no shape change and orphans no checkpoint.
             advance_is_known=False,
+            engaged_flags=opponent_engaged,
+            objective_declaration_budget=declaration_budget,
+            target_declaration_budget=target_budget,
         ),
         terrain=terrain_obs,
         action_mask=action_mask,

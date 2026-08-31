@@ -40,6 +40,7 @@ from wargame_rl.wargame.envs.types.config import TurnOrder, WargameEnvConfig
 KNOWN_OVERRIDES = (
     "rounds",
     "weapon_range",
+    "engagement_range",
     "turn_order",
     "cap_per_turn",
     "vp_per_objective",
@@ -84,6 +85,16 @@ def apply_overrides(config: WargameEnvConfig, **overrides: str) -> WargameEnvCon
 
     if "rounds" in overrides:
         varied.number_of_battle_rounds = int(overrides["rounds"])
+
+    # ⚠ **The rules say 2"; this defaults to 1"**, because every baseline and
+    # every trained result in the repo was measured at 1 and adopting the rules
+    # value changes which shots are legal. It is a self-contained scalar like
+    # `weapon_range`, so it is safe to vary for scoring -- and it is the single
+    # dial that decides how much precision a CHARGE needs, since a charge must
+    # end inside it. Overridable so "is our env harder than the rules?" can be
+    # answered by measurement rather than by argument.
+    if "engagement_range" in overrides:
+        varied.engagement_range = float(overrides["engagement_range"])
 
     if "turn_order" in overrides:
         # Pinnable because `turn_order: random` is drawn from the *layout* RNG,
