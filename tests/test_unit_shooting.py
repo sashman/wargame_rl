@@ -15,7 +15,11 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from wargame_rl.wargame.envs.domain.battle_factory import n_groups_for, unit_count
+from wargame_rl.wargame.envs.domain.battle_factory import (
+    group_span,
+    n_groups_for,
+    unit_count,
+)
 from wargame_rl.wargame.envs.domain.entities import WargameModel
 from wargame_rl.wargame.envs.domain.shooting import resolve_shooting_phase
 from wargame_rl.wargame.envs.types.config import ModelConfig, WeaponProfile
@@ -163,18 +167,77 @@ class TestTheDefenderAllocates:
 class TestUnitCountSizesTheActionSpace:
     @pytest.mark.parametrize(
         ("n_models", "max_groups", "expected"),
-        [(25, 5, 5), (2, 5, 2), (7, 5, 7), (1, 5, 1), (0, 5, 0)],
+        [(25, 5, 5), (2, 5, 2), (7, 5, 4), (1, 5, 1), (0, 5, 0)],
     )
     def test_the_split_is_derived_not_assumed(
         self, n_models: int, max_groups: int, expected: int
     ) -> None:
         """`max_groups` is a cap, not the answer.
 
-        The split is ``group_id = i // (n // max_groups)``, so a 7-model army
-        capped at 5 gets an increment of 1 and lands in *seven* units. An action
-        space sized from `max_groups` could not name three of them.
+        The split is ``group_id = i // group_span(n, max_groups)``, and an
+        uneven span leaves a short final unit: 7 models capped at 5 have a span
+        of 2 and land in *four* units. An action space sized from `max_groups`
+        would name one that does not exist.
+
+        ⚠ **Replaces a case asserting ``(7, 5) -> 7``**, which pinned the
+        aliasing bug rather than the intent: seven units exceed the cap, and
+        `_group_ids_to_one_hot` clips to ``max_groups - 1``, so three of them
+        shared one observation column. See `TestGroupIdsNeverAliasOntoOneColumn`.
         """
         assert n_groups_for(n_models, max_groups) == expected
+
+
+class TestGroupIdsNeverAliasOntoOneColumn:
+    """Regression for the group-id aliasing bug, fixed by rounding `group_span` up.
+
+    `_group_ids_to_one_hot` **clips** ids to ``max_groups - 1`` rather than
+    raising, so an army splitting into more units than the cap encoded two
+    distinct units as one column -- silently, with no exception, while
+    `unit_count` sized the shooting slice at the true count. The network could
+    name units its observation could not tell apart.
+
+    Measured live before the fix on `configs/experiments/30v15_fast_horde_vs_elite.yaml`:
+    15 elites at ``max_groups: 6`` split into 8 units, ids 0..7, clipped to 0..5.
+    """
+
+    @pytest.mark.parametrize("max_groups", [2, 3, 5, 6, 8, 10])
+    @pytest.mark.parametrize("n_models", list(range(1, 200)))
+    def test_no_army_splits_into_more_units_than_the_cap(
+        self, n_models: int, max_groups: int
+    ) -> None:
+        """The property that makes the one-hot's clip unreachable."""
+        assert n_groups_for(n_models, max_groups) <= max_groups
+
+    @pytest.mark.parametrize("max_groups", [2, 3, 5, 6, 8, 10])
+    @pytest.mark.parametrize("n_models", list(range(1, 200)))
+    def test_no_model_carries_a_group_id_the_one_hot_would_clip(
+        self, n_models: int, max_groups: int
+    ) -> None:
+        """`_build_models` assigns ``group_id = i // span``; the highest must fit.
+
+        Asserted against the split itself rather than against `n_groups_for`, so
+        the two cannot drift apart and both be wrong.
+        """
+        span = group_span(n_models, max_groups)
+        highest_id = (n_models - 1) // span
+
+        assert highest_id <= max_groups - 1
+
+    @pytest.mark.parametrize(
+        ("n_models", "max_groups"),
+        [(25, 5), (24, 8), (30, 6), (20, 5), (4, 2), (2, 1), (25, 25)],
+    )
+    def test_the_fix_is_bit_identical_where_the_cap_divides_the_army(
+        self, n_models: int, max_groups: int
+    ) -> None:
+        """Every golden, evaluation and dev config is one of these shapes.
+
+        Rounding up changes the span only when `max_groups` divides `n_models`
+        unevenly, so the reward and observation goldens are untouched and no
+        checkpoint is orphaned. The seven configs that *do* move are all under
+        `configs/experiments/`, and all of them were aliasing.
+        """
+        assert group_span(n_models, max_groups) == n_models // max_groups
 
     def test_explicit_group_ids_win_over_the_count_split(self) -> None:
         """The action index *is* the group id, so the highest id sets the width.

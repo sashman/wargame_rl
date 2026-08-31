@@ -337,8 +337,11 @@ class WargameEnvConfig(BaseModel):
             "armies**, and it is load-bearing twice over: the one-hot is the "
             "same width on the player and opponent blocks, which is what keeps "
             "their token widths equal, and where no model names its own group "
-            "`group_span = n // max_groups` splits each army, so two armies of "
-            "different sizes get differently-sized units from the same cap."
+            "`group_span = ceil(n / max_groups)` splits each army, so two armies "
+            "of different sizes get differently-sized units from the same cap. "
+            "It rounds UP so the cap is a real one: flooring let an army split "
+            "into more units than the one-hot has columns, and the encoding "
+            "clips, so two distinct units shared a code."
         ),
     )
     n_movement_angles: int = Field(

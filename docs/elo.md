@@ -129,10 +129,31 @@ not new env code** — which is why the whole subsystem landed with nothing chan
 under `envs/` except one latent bug it exposed.
 
 `config_for_leg` **raises** rather than producing a config on which the zone axis
-does nothing. Two ways that happens, both silent: a `None` deployment zone (the
-battle factory derives the defaults, so swapping two `None`s is a no-op), and
-fixed model positions (which override the zone entirely). If the axis were inert,
-`h_zone` would fit noise and report it as a number.
+does nothing. Three ways that happens, all silent: a `None` deployment zone (the
+battle factory derives the defaults, so swapping two `None`s is a no-op), fixed
+model positions (which override the zone entirely), and **a map pool**. If the
+axis were inert, `h_zone` would fit noise and report it as a number.
+
+⚠ **The map-pool case is why this section needed revising, and it means the
+`maps` family cannot be rated as things stand.** A drawn table carries its own
+deployment *outlines* (`TerrainMapConfig.deployment`), and placement accepts
+against those; the config's `deployment_zone` rectangles survive only as the
+sampling bounds. The outlines stay bound to the player and opponent seats across
+the swap, so swapping the rectangles moves the box and not the zone — and
+swapping the boxes alone samples one army against the *other* side's outline.
+The schedule was written on 2026-08-17, when the rectangles *were* the zones;
+the tables were regenerated with their own polygons on 2026-08-20 and this was
+not revisited. Rating a pool config in between would have fitted `h_zone` from
+noise **on the config that trains**.
+
+The refusal keys on `map_pool` itself rather than on whether the pool's maps
+carry outlines: `rating/` may import `envs/types` and nothing else, so it cannot
+read the map files. A pool whose maps all left `deployment` unset would be safe
+and is refused anyway — no shipped pool is like that (54 of 54 map files carry
+one), and over-refusing costs a config while under-refusing costs a published
+number. The first ledger therefore goes on a config that deploys under its own
+rectangles, such as `25v25_shooting_opponent.yaml` or `25v25_cover_control.yaml`
+— ⚠ noting that the first of those is the config that **fails** seat parity.
 
 Layout seeds come from the **900 000** band, disjoint from rollout (0), in-run
 baselines (10k), in-run eval (500k), held-out scoring (700k) and behaviour

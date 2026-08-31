@@ -619,6 +619,18 @@ Move 12 against 15 elites at 24" reach — trained three seeds, 300 epochs, scor
   not just a config field.
 - **Untested: the elite side.** Only the horde was trained. The denial-price account
   predicts an elite agent wins by *less*; that is one training run.
+- ⚠ **THE ELITE ARMY'S UNIT ENCODING WAS ALIASED FOR EVERY NUMBER ABOVE** (bug
+  fixed 2026-08-31). `group_span` floored, so 15 elites at `max_groups: 6` split
+  into **8 units, ids 0..7**, while `_group_ids_to_one_hot` **clips** to
+  `max_groups - 1` — units 6 and 7 both encoded as column 5, silently, while
+  `unit_count` sized the shooting slice at the true 8. The network could name
+  three units its observation could not tell apart. The horde side (30 at cap 6)
+  is clean, so the agent played a correct encoding against a scrambled one.
+  **The margin as measured stands; "the horde is the agent's best matchup" now
+  has a competing partial explanation.** Re-measure before quoting it, and note
+  the fix *changes the scenario* — the elites become 5 units of 3, not 8 of 2 —
+  so it voids rather than repairs those figures. The untested elite-side run
+  would have trained straight through it.
 
 ### Freezing is friendly gridlock, and only deterministic policies suffer it
 
@@ -1493,6 +1505,17 @@ Re-measure rather than carry a figure across one.
   targeted rather than global.
 - **2026-08-20 — the eval tables were regenerated**, and 2026-08-21 they were
   re-measured against their own deployment zones. See § The board.
+- **2026-08-31 — `group_span` rounds UP, so `max_groups` is a real cap.** It
+  floored, and an army splitting into more units than the cap has one-hot columns
+  had two units share a code (`_group_ids_to_one_hot` clips rather than raising)
+  while `unit_count` sized the shooting slice at the true count. **Bit-identical
+  wherever the cap divides the army — every golden, evaluation and dev config,
+  both goldens verified unchanged.** It changes **seven configs under
+  `configs/experiments/`**, all of which were aliasing: the three `30v15` /
+  `15v30` asymmetric arms (15 at cap 6: 8 units → 5) and
+  `25v25_maps_take_small_units.yaml` (25 at cap 8: 9 units → 7, **both armies**).
+  Every figure measured on those seven is void — the split changed, so the units
+  changed.
 
 ### The bar was playing a different game — Advance, and the endpoint rule
 

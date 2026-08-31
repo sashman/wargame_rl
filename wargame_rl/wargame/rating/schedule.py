@@ -101,7 +101,7 @@ def config_for_leg(base: WargameEnvConfig, leg: Leg) -> WargameEnvConfig:
     """A copy of `base` set up for one leg.
 
     Raises `InertLegError` rather than producing a config on which the zone axis
-    does nothing. Two ways that happens, both silent:
+    does nothing. Three ways that happens, all silent:
 
     - **Zones left at their defaults.** `battle_factory.from_config` derives
       `(0, 0, W//3, H)` and `(W*2//3, 0, W, H)` when the fields are `None`, so
@@ -109,6 +109,25 @@ def config_for_leg(base: WargameEnvConfig, leg: Leg) -> WargameEnvConfig:
       whatever noise it found to `h_zone` and report it as a measurement.
     - **Fixed model positions.** With explicit per-model coordinates the zones
       are decorative and the armies deploy where they are told regardless.
+    - **A map pool.** A drawn table carries its own deployment *outlines*
+      (`TerrainMapConfig.deployment`), and those are what placement accepts
+      against; the config rectangles survive only as the sampling bounds
+      (`domain/placement.py`, `WargameEnv.deployment_outline`). The outlines
+      stay bound to the player and opponent seats across this swap, so the zone
+      axis moves the sampling box and not the zone -- and swapping the boxes
+      alone samples one army against the *other* side's outline.
+
+    The map-pool case is why this check exists in its current form: it was
+    written when the rectangles were the zones, and the tables were regenerated
+    with their own polygons three days later. Rating a pool config in between
+    would have fitted `h_zone` from noise on the config that trains.
+
+    ⚠ The refusal is on `map_pool` itself, not on whether its maps carry
+    outlines -- this module may import `envs/types` and nothing else, so it
+    cannot read the map files. A pool whose maps all leave `deployment` unset
+    would be safe to rate and is refused anyway. No shipped pool is like that
+    (54 of 54 map files carry one), and over-refusing costs a config while
+    under-refusing costs a published number.
 
     Refusing is the point: a rating that reports a deployment-zone advantage it
     never varied is worse than no rating at all.
@@ -124,6 +143,15 @@ def config_for_leg(base: WargameEnvConfig, leg: Leg) -> WargameEnvConfig:
         raise InertLegError(
             "fixed model positions make the zone swap inert -- the armies "
             "deploy where they are told regardless of which zone is whose"
+        )
+    if base.map_pool is not None:
+        raise InertLegError(
+            "a map pool draws its own deployment outlines per episode, and "
+            "those stay bound to the player and opponent seats: swapping the "
+            "config rectangles moves the sampling bounds without moving the "
+            "zone, so h_zone would be fitted from noise. Rate a config that "
+            "deploys under its own deployment_zone rectangles, or teach the "
+            "pool to swap its outlines first"
         )
 
     config = cast(WargameEnvConfig, base.model_copy(deep=True))

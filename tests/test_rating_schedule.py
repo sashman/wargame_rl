@@ -17,6 +17,7 @@ from wargame_rl.wargame.envs.types import (
     TurnOrder,
     WargameEnvConfig,
 )
+from wargame_rl.wargame.envs.types.config.terrain import MapPoolConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.rating.schedule import (
     ELO_SEED_BASE,
@@ -131,6 +132,34 @@ def test_fixed_model_positions_are_refused() -> None:
     assert base.has_fixed_model_positions
     with pytest.raises(InertLegError, match="inert"):
         config_for_leg(base, Leg(Zone.zone_2, Seat.a))
+
+
+def test_a_map_pool_is_refused() -> None:
+    """A drawn table carries its own deployment *outlines*, and those stay bound
+    to the player and opponent seats across the swap.
+
+    The config rectangles survive only as placement's sampling bounds, so
+    swapping them moves the box without moving the zone -- and samples one army
+    against the other side's outline. `h_zone` would be fitted from noise on
+    exactly the configs that train.
+    """
+    base = _base_config()
+    base.map_pool = MapPoolConfig(directory="configs/evaluation/maps")
+
+    with pytest.raises(InertLegError, match="deployment outlines"):
+        config_for_leg(base, Leg(Zone.zone_2, Seat.a))
+
+
+def test_a_map_pool_is_refused_on_every_leg_including_the_unswapped_ones() -> None:
+    """Zone 1 legs do not swap anything, so it would be tempting to let them
+    through -- but a pairing needs all four legs to identify `h_zone`, and two
+    legs that silently measure nothing are worse than a refusal."""
+    base = _base_config()
+    base.map_pool = MapPoolConfig(directory="configs/evaluation/maps")
+
+    for leg in FOUR_LEGS:
+        with pytest.raises(InertLegError):
+            config_for_leg(base, leg)
 
 
 def test_the_opponent_is_seated_separately_from_the_leg() -> None:
