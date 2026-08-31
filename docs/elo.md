@@ -293,6 +293,18 @@ played from both seats over the balanced four legs loses from the player seat by
 ([report](../reports/2026-08-19-the-two-seats-are-not-the-same-game.md)). On such
 a config, ratings are confounded by command-line position.
 
+**But that is a property of that scenario, not of the engine.** The same gate on
+`configs/golden/25v25_maps_two_mode.yaml` — the config that trains — reads
+**+6.5 ± 6.1 vp** (`squad_march_take` on both seats, 120 layouts), inside its own
+2 se threshold, so it **passes**. ⚠ **Quote the interval, not the point**: the
+95% bound is roughly [−5.5, +18.5]. ⚠ **Run this gate at n ≥ 100.** At n=30 it
+read **+19.1 ± 11.2** on the same config, within 15% of failing, and the estimate
+did not survive quadrupling the layouts — at n=30 the threshold sits at 22.4 vp,
+so the −24.6 above would have been about a coin-flip to catch. ⚠ On a map-pool
+config the gate measures the seat **and the side of the table** together, plays
+the turn-order pair only, and appends nothing to a ledger — see the zone-axis
+refusal above.
+
 `just measure-seat-parity` is the gate, and **nothing calls it**. It is a
 precondition a human is expected to check before rating a scenario. Options, none
 taken yet: refuse to rate a scenario with no recorded passing gate; record the

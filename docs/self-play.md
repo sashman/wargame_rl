@@ -145,9 +145,13 @@ Snapshots land in `checkpoints/<run>/pool/`. The pool logs its size and the mean
 epoch of the opponents drawn, so a pool that has collapsed onto its newest member
 is visible in the dashboard rather than only in the score.
 
-⚠ **Run `just measure-seat-parity` on the scenario first.** § 4 is the reason,
-and the gate has still only ever been run on `25v25_shooting_opponent.yaml`,
-where it fails. It costs minutes and no GPU.
+⚠ **Run `just measure-seat-parity` on the scenario first.** § 4 is the reason.
+It costs minutes and no GPU. Run 2026-08-31 on two configs: it **fails** on
+`25v25_shooting_opponent.yaml` (**−24.6 ± 9.4 vp**) and **passes** on
+`25v25_maps_two_mode.yaml`, the config that trains (**+6.5 ± 6.1 vp**,
+`squad_march_take` on both seats, 120 layouts). ⚠ **Run it at n ≥ 100** — the
+same gate at n=30 read +19.1 ± 11.2, within 15% of failing, and that estimate did
+not survive quadrupling the layouts.
 
 ### What a self-play run does and does not void
 
