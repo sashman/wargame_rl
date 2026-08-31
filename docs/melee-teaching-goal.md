@@ -2654,3 +2654,68 @@ The §46 clone remains the best policy in this line.
 - **Open, and now the whole question**: why gradient descent cannot hold a basin
   it was placed in, with a fitted critic. That is a learning-dynamics question,
   not a rules or reward one, and nothing in this line has probed it.
+
+## 48. WHERE LEVEL 3 STANDS — the consolidated position, 2026-08-31
+
+The goal (user-set): **beat `squad_march_take_charge` on all four cells** —
+`vs_take`, `vs_deny`, `vs_shoot` and the refereed head-to-head — at K=3, n=45,
+six seeds, pre-registered bounds. It is **conjunctive** and it is **NOT MET**.
+
+### The best policy on file (§46): clone of the bar + charge decode
+
+| cell | six-seed mean | bar (§38) | read |
+|---|---|---|---|
+| `vs_take` | **+28.82 ± 2.67** | +20.2 | **won** |
+| `vs_deny` | **+19.07 ± 4.03** | +11.8 | **won** |
+| `vs_shoot` | +58.45 ± 1.89 | +56.6 | **tied** (+1.9 at SE 1.9) |
+| refereed | **−10.67 ± 2.99** | −5.3 | **lost by 5.4** |
+
+Two won, one tied, one lost. At the start of this line every cell was behind by
+**6 to 32**. ⚠ Caveats that travel with these numbers: the charge move is the
+SCRIPT'S geometry supplied by a decode (the policy chooses whether and when to
+charge; it declares more than its teacher), the bar's rows are scripts at **no
+decode**, and six clone seeds share one teacher.
+
+### Why the head-to-head is the hard cell
+It is the MIRROR: the bar's −5.3 is that script playing **itself** from the
+disadvantaged player seat. A perfect imitation therefore scores −5.3 and no
+better — **cloning cannot win this cell by construction**, only improving on the
+clone can. §47 tried that and failed.
+
+### The mechanism that produced the gains (§45)
+**A charge is a JOINT move and no learned policy here can make one.** Every
+policy declares charges and then does not execute them — the bar declares 8.5–9.8
+and stands 5.8–6.3; a clone of that same bar declares **12.9–13.9** and stands
+1.4–2.0; trained agents declare 2 and stand 1. A legal charge needs five models
+to translate as one body, all ending engaged with one unit, formation intact;
+K=5 joint search recovers only +0.32 stood/ep. Supplying the rigid move takes
+standing charges **1.40 → 6.25** and the head-to-head **−55.5 → −4.0** on one
+policy. **THE FAMILY**: formation → `decode_joint_coherent` (+40.5); surplus
+reallocation → rigid redirect (+8.3); charge → constructed unit move. In all
+three the policy supplies the DECISION and a decode supplies the JOINT EXECUTION.
+That is the strongest regularity on file about this architecture.
+
+### Everything measured and rejected this round — do not re-run
+| lever | result |
+|---|---|
+| charge volume (the fold, §40) | ×4 charges, pooled vp −1.84 (ns) |
+| `charge_target_binds` (§41) | rules-correct, 0 violations, **taught nothing** |
+| deeper joint search K=5 (§42) | +0.32 stood/ep, **−4.2 vp** |
+| taking empty objectives (§40c) | +1.6 ± 5.0, **fails its own kill** |
+| distilling the reallocation decode (§43) | clone lands **below** its teacher |
+| trained agents + charge decode | behind on all four (they declare only 2/ep) |
+| **PPO from the clone (§47)** | **destroys it on all four cells** |
+
+### What is genuinely open
+Not rules, not reward, not targeting — all measured nulls. It is **learning
+dynamics**: §47 shows gradient descent cannot hold a basin it was *placed* in,
+**with a fitted critic** (explained variance 0.83–0.89, 222/222 tensors verified
+loaded). The record's standing explanation for that — *"with a cold critic"* — is
+**refuted**; the conclusion stands and the cause is unknown. Nothing in this line
+has probed learning dynamics directly, and the remaining 5.4 vp live there.
+
+### Rules fidelity delivered alongside (the goal's other half)
+`charge_target_binds` makes the declared hunt target the charge target — grant,
+approach mask, manual-declaration mask and referee — closing the gap-map rows
+`charge.target_declaration` and *after-moving conditions*. **Zero bind violations
+across six seeds**, no cost in play quality (§41: paired +1.80 ± 4.91).
