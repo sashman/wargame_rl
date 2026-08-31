@@ -108,6 +108,17 @@ class WargameEnvConfig(BaseModel):
         "statistics during shooting phases. Measurement only — it does not affect "
         "the game, but it costs an extra shooting-mask build per shooting phase.",
     )
+    track_opponent_coherency: bool = Field(
+        default=False,
+        description="Accumulate the OPPONENT force's unit-coherency totals as "
+        "well as the player's. Measurement only -- it changes no outcome -- but "
+        "it costs one extra coherency evaluation per opponent movement phase, "
+        "so it is off by default and switched on by the code that needs the "
+        "column. A rated leg needs it: `evaluate_selector` measures the player "
+        "seat, so an entrant seated only as B would otherwise carry no coherency "
+        "figure, and a vp_margin without one is a result plus an unstated claim "
+        "that the moves earning it were legal.",
+    )
     start_on_objective_probability: float = Field(
         default=0.0,
         ge=0.0,
@@ -415,6 +426,26 @@ class WargameEnvConfig(BaseModel):
             "hunt (and vice versa, the plan is ONE commitment). Adds no "
             "actions, so it is init-PAIRABLE against the same config with it "
             "off. Requires declare_targets."
+        ),
+    )
+    charge_target_binds: bool = Field(
+        default=False,
+        description=(
+            "The declared hunt target IS the charge target, in the rules' "
+            "sense (11-charge-phase.md: a charge selects targets, must end "
+            "engaged with ALL of them and with NO non-target). Three effects, "
+            "both seats, only for units whose declared target is alive: the "
+            "fold's grant requires the DECLARED unit to be roll-reachable "
+            "(not any enemy); the charge approach mask aims at the declared "
+            "unit (not the nearest); and the referee requires the charge to "
+            "end engaged with exactly the declared unit. Units with no "
+            "declared target keep the derived-target referee (the recorded "
+            "divergence for manual charges). Closes the mismatch defect the "
+            "fold verdict measured at 0.65-0.88 (s40) and the gap-map rows "
+            "charge.target_declaration / after-moving conditions, through "
+            "the command-phase declaration that did not exist when a "
+            "movement-slice declaration was measured and refused. Requires "
+            "declare_targets. Default off: bit-identical to before it existed."
         ),
     )
     n_advance_speed_bins: int = Field(
@@ -933,6 +964,12 @@ class WargameEnvConfig(BaseModel):
                 "hunt_declares_charge folds the charge into the hunt "
                 "declaration, so it needs declare_targets -- without a hunt "
                 "there is nothing to fold"
+            )
+        if self.charge_target_binds and not self.declare_targets:
+            raise ValueError(
+                "charge_target_binds makes the declared hunt target the "
+                "charge target, so it needs declare_targets -- without a "
+                "declaration there is no target to bind"
             )
         return self
 

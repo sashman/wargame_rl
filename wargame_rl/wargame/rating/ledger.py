@@ -47,6 +47,10 @@ _DROPPED_FIELDS = frozenset(
         "turn_order",
         # Measurement instrumentation; it changes no outcome.
         "track_exposure",
+        # Also instrumentation, and the arena switches it on for its own legs --
+        # so leaving it in would fingerprint every rated leg differently from
+        # the same scenario measured any other way.
+        "track_opponent_coherency",
         # Shapes training, not an argmax playout.
         "reward_phases",
         "terminal_success_bonus",

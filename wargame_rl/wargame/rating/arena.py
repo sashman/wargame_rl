@@ -130,6 +130,10 @@ def play_leg(
     # Importing it here would point `rating -> model` and make the arrow
     # two-way. Registering an opponent policy that *does* need the model layer
     # is the entry point's job, not this module's.
+    # Switched on here rather than left on globally: this is the only caller
+    # that needs entrant B's coherency, and it costs one extra coherency
+    # evaluation per opponent movement phase everywhere else.
+    config.track_opponent_coherency = True
     env = WargameEnv(config=config, renderer=None)
     try:
         result = evaluate_selector(

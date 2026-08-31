@@ -78,6 +78,8 @@ def build_action_selector(
     env: WargameEnv,
     decode_topk: int = 1,
     decode_stay: bool = False,
+    reallocate: bool = False,
+    charge_decode: bool = False,
 ) -> ResolvedSelector:
     """Resolve `spec` against the filesystem first, then the baseline registry.
 
@@ -93,9 +95,17 @@ def build_action_selector(
     constrained decoding (`model/common/decoding.py`); `decode_stay` stands a
     unit still when the top-K set yields no legal combination at all. Both are
     ignored on the baseline branch.
+
+    `reallocate` applies the surplus-reallocation decode AFTER the joint one
+    (`model/common/reallocation_decode.py`), worth **+8.3 ± 4.25 vp** on frozen
+    weights. It is ignored on the baseline branch too — the scripted bar
+    already allocates globally, and the redirect on it measured **exactly
+    zero** (docs/melee-teaching-goal.md §29).
     """
     if is_checkpoint(spec) or Path(spec).exists():
-        return _resolve_checkpoint(spec, env, decode_topk, decode_stay)
+        return _resolve_checkpoint(
+            spec, env, decode_topk, decode_stay, reallocate, charge_decode
+        )
     return _resolve_baseline(spec)
 
 
@@ -120,6 +130,8 @@ def _resolve_checkpoint(
     env: WargameEnv,
     decode_topk: int,
     decode_stay: bool,
+    reallocate: bool = False,
+    charge_decode: bool = False,
 ) -> ResolvedSelector:
     """Load a policy network and wrap it as an `ActionSelector`.
 
@@ -134,8 +146,10 @@ def _resolve_checkpoint(
     import torch
 
     from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvObservation
+    from wargame_rl.wargame.model.common.charge_decode import apply_charge_decode
     from wargame_rl.wargame.model.common.decoding import decode_joint_coherent
     from wargame_rl.wargame.model.common.observation import observation_to_tensor
+    from wargame_rl.wargame.model.common.reallocation_decode import apply_reallocation
     from wargame_rl.wargame.model.net import TransformerNetwork
 
     policy_net = TransformerNetwork.from_checkpoint(env, spec)
@@ -157,6 +171,15 @@ def _resolve_checkpoint(
                     decode_topk,
                     include_stay=decode_stay,
                 )
+            if charge_decode:
+                # The JOINT move a factored policy cannot express, for units
+                # the policy itself declared. Execution only, never the choice.
+                actions = apply_charge_decode(actions, env_)
+            if reallocate:
+                # AFTER the joint decode: the redirect is rigid, so a squad the
+                # joint decode certified coherent stays coherent, and the env's
+                # referee judges the result either way.
+                actions = apply_reallocation(actions, env_)
         return WargameEnvAction(actions=actions)
 
     return ResolvedSelector(
