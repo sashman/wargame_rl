@@ -2242,3 +2242,36 @@ objective**. That is a change to what the existing declaration is masked on, not
 a new action and not a new reward term — the two things this project's record
 most warns against. ⚠ Unmeasured as a training arm; the frozen reflex is the
 evidence and it is 3 seeds for the mechanism, 6 for the vp.
+
+### §40d addendum — re-checked against a true control and a per-step instrument
+
+⚠ Two defects in §40d's own evidence, found and fixed before it hardened:
+`held` there was an **end-state snapshot** while VP accrues every round (a reflex
+could hold ground for twelve rounds, lose it at the end and read as "changed
+nothing"), and the "plain" comparator came from a **different script's rollouts**
+rather than the same code path with the redirect disabled.
+
+Both closed: an `off` mode (same rollout, no redirect) and `held` accumulated at
+**every step**. The `off` arm reproduces the plain rows **exactly** (−25.9 / −6.4 /
+−29.9), which retroactively validates every comparator used in §40b–§40d.
+
+Paired against `off`, 3 seeds, n=45 K=3:
+
+| | contest | spread |
+|---|---|---|
+| vp | **+8.27 ± 4.18** | +0.23 ± 6.37 |
+| **our** held, per-step mean | **+0.002 ± 0.039** | +0.014 ± 0.065 |
+| **their** held, per-step mean | **−0.053 ± 0.028** | +0.001 ± 0.022 |
+
+- **§40d survives its own re-check.** Our held does not move even averaged over the
+  whole game — +0.002 objectives, an order of magnitude smaller than its own SE. The
+  end-state snapshot was not hiding transient allocation; there is none to hide.
+- The opponent's per-step holding falls **−0.053**, which at 5 vp an objective over
+  ~19 scoring events is ~5 vp — the right order for the measured +8.3 once attrition
+  (§40d: −4.3 pp of their army) is added beside it.
+- ⚠ **3 seeds, and one of them reads +0.0** (per-seed vp +12.5 / +12.4 / −0.1). The
+  mechanism is consistent across all three; the magnitude is not settled.
+- **Method note earned twice tonight**: a silently-unmatched patch printed
+  `held_MEAN=0.000` in a first pass and was caught only because a genuinely-zero
+  mean is impossible beside an end-state 1.4. **Give a new column a value you know
+  is impossible if it is not wired up.**
