@@ -2275,3 +2275,80 @@ Paired against `off`, 3 seeds, n=45 K=3:
   `held_MEAN=0.000` in a first pass and was caught only because a genuinely-zero
   mean is impossible beside an end-state 1.4. **Give a new column a value you know
   is impossible if it is not wired up.**
+
+## 41. fold-tb verdict — the binding is CORRECT and FREE, and it taught nothing
+
+Six seeds × 600 epochs of `configs/experiments/25v25_maps_melee_fold_tb.yaml`
+(`charge_target_binds`), launched 2026-08-30 21:52, all **verified epoch=599**,
+judged at `last.ckpt`, n=45 seeds 700000+ on the `fold_tb_*` eval family, paired
+against the fold arm (§40). Pre-registration: that config's **v2 header**, written
+before epoch 0 after two audit panels. Code of record `42c1b25`, header `159e4ac`.
+
+| seed | vs_take | vs_deny | vs_shoot | apr K=3 | coherency |
+|---|---|---|---|---|---|
+| s1 | −10.0 | −1.8 | +11.3 | −34.9 | 0.974 |
+| s2 | +15.7 | +10.6 | +14.6 | −34.2 | 0.958 |
+| s3 | +1.3 | +16.0 | +16.8 | −13.6 | 0.942 |
+| s4 | +9.3 | **+22.7** | +35.0 | −22.0 | 0.970 |
+| s5 | +10.9 | −3.0 | **+42.4** | −28.7 | 0.960 |
+| s6 | +1.3 | −11.7 | +29.9 | −37.6 | 0.961 |
+| **mean** | **+4.75 ± 3.74** | **+5.47 ± 5.33** | **+25.00 ± 5.13** | **−28.50 ± 3.74** | 0.942–0.974 |
+
+**Gates, against the v2 header:**
+- **PRIMARY A: AT-FLOOR.** Paired stood/ep K=1 vs fold **−1.18 ± 0.21** against the
+  post-M0 frozen floor **−0.96 ± 0.29** — inside the band on both sides
+  (RECOVERY needed > −0.64, LOST below −1.28). Reads, per the header's own wording,
+  *"mechanics only, no learning"*. Unchanged without s4 (−1.17 ± 0.26).
+- **PRIMARY B: PASS.** Paired pooled ladder vp **+1.80 ± 4.91** against the −10.8
+  flat bound; no column breaches (take +1.70, deny −2.98, shoot +6.68). ⚠ **And it
+  is a real recovery**: frozen weights under the flag lost **−7.1** on this
+  estimator, trained weights gain **+1.8** — training bought back ~9 vp of the
+  binding's mechanical cost.
+- **CHARGE FLOOR: PASS** (apr K=3 −28.50 ≥ −46.7).
+- **THE RULES FIX WORKS EXACTLY AS BUILT.** `bind_violations = 0` on **6 of 6** —
+  no stood charge ever engaged a non-declared unit while its declared target lived.
+  The escape label is clean too: stale (dead-declared) share **0.00–0.19**, every
+  seed far under the 1/3 trigger.
+- **LEARNING LABEL: NOT LEARNED.** `reachable_share` — held hunts whose declared
+  unit the roll can actually reach — is **0.249 mean against the fold's 0.259**, above
+  it on **3 of 6** seeds against the pre-committed "5+ of 6". The binding did not
+  make the agent declare better targets.
+- **B-4 attribution**: manual-route share exceeds 0.50 on **s1 (0.54) and s2 (0.89)**,
+  so those two seeds' A is not attributable to the binding. The other four run
+  0.00–0.47.
+- **USAGE**: decl/ep between the two retained checkpoints moves 3.56→2.40, 5.13→5.00,
+  6.76→5.89, 8.02→8.91, 6.11→7.33, 4.33→5.44 — mixed in direction, no large swings.
+  ⚠ Two checkpoints cannot show oscillation *within* the last 50 epochs; the clause
+  remains weakly evaluable, as panel amendment M5 warned, and per-epoch usage logging
+  is still unbuilt.
+
+**INCOME LABEL — the pre-registered diagnosis, and it fires.** Hunt-march income
+splits granted/refused as 0.39/10.08, 0.22/7.69, 0.62/11.49, 0.73/8.93, 0.93/13.35,
+0.51/7.33 per episode: **~93% of the declaration channel's pay goes to hunts that
+never earn a charge grant.** Both pre-committed conditions hold (majority on refused,
+`reachable_share` not above the fold's), so the reading committed before epoch 0
+applies: **this is march-farming**, and the follow-up is **income-side — gate or decay
+`declared_target_progress` on refused hunts — not another referee change.**
+
+**VERDICT: the rules half PASSES, the learning half does not.** The declared target
+now genuinely binds the charge on both seats with zero violations and, after
+training, at no cost in play quality (B +1.8, coherency 0.942–0.974, the highest
+recorded in this line). What it did not do is teach target selection: the agent
+declares hunts it cannot reach at the same rate as before, and is paid ~13× more for
+walking at them than for charging them. **The lever is not the referee; it is what
+the walk pays.**
+
+**LEVEL 3 — not met, and the distance is now honest.** Against the §38 bar
+(bridge-verified identical on the tb evals):
+
+| cell | arm (6-seed) | best seed | bar | gap |
+|---|---|---|---|---|
+| `vs_take` | +4.75 | +15.7 | +20.2 | −15.5 |
+| `vs_deny` | +5.47 | **+22.7 (beats it)** | +11.8 | −6.3 |
+| `vs_shoot` | +25.00 | +42.4 | +56.6 | −31.6 |
+| refereed | −28.50 | −13.6 | −5.3 | −23.2 |
+
+One seed clears the bar on one cell; no six-seed mean clears it anywhere. ⚠ The
+§40b–§40d line says why the remaining distance is unlikely to close from here: the
+agent's spare capacity is worth ~+8 vp pointed at the enemy and ~0 pointed at empty
+ground, and **no lever measured in this line raises objectives held at all.**
