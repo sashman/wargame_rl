@@ -2560,3 +2560,50 @@ same weights, decode off → on:
   problems, three decodes, and in all three the policy supplies the decision
   while something else supplies the joint execution.** That is now the strongest
   regularity on file about this architecture.
+
+## 46. The bar clone + charge decode — THREE of four cells, and the head-to-head is not one
+
+Pre-registration `/tmp/melee_cd/PREREG_CLONE6.md`, written before any six-seed
+clone existed. Six independent clones of `squad_march_take_charge` (300 episodes
+× 16 epochs, policy + critic), played at K=3 with `charge_decode=True`, scored
+n=45 seeds 700000+ on the `approach` eval family.
+
+| cell | six-seed mean | SE | bar (§38) | read |
+|---|---|---|---|---|
+| `vs_take` | **+28.82** | 2.67 | +20.2 | **ahead +8.6** |
+| `vs_deny` | **+19.07** | 4.03 | +11.8 | **ahead +7.3** |
+| `vs_shoot` | +58.45 | 1.89 | +56.6 | **+1.9, one SE — a tie** |
+| **refereed** | **−10.67** | 2.99 | −5.3 | **behind 5.4** |
+
+Per-seed refereed: +2.2 / −16.2 / −13.2 / −11.9 / −17.8 / −7.1 — one seed above
+the bar, five below.
+
+**VERDICT: NOT MET.** The goal is conjunctive and the head-to-head fails. Read
+strictly, this is **two cells won, one tied, one lost** — `vs_shoot`'s +1.9 at
+SE 1.89 is not a win and must not be quoted as one.
+
+- **The charge problem IS solved.** Standing charges **7.02/ep** against the
+  bar's 5.8–6.3, from policies standing **1.4** without the decode, at coherency
+  **0.967**. §45's mechanism holds at six seeds: supply the joint move and a
+  learned policy charges at the script's rate.
+- **And solving it was worth a great deal**: the same clones scored −36.9 /
+  +2.6 / +13.7 / +65.6 without the decode (§44). The decode moves the ladder
+  cells **+26.2 / +5.4 / −7.2** and the head-to-head **+26.2**.
+- ⚠ **What loses is the mirror**, and the reason is unsurprising: a clone at
+  **0.85 action / 0.79 unit** fidelity plays the policy it copied and loses the
+  straight fight by ~5 vp. Against every OTHER opponent the same fidelity is
+  enough to clear the teacher's own score.
+- ⚠ **BORROWED GEOMETRY, stated where the numbers are.** The charge move comes
+  from the scripted rule; the clone supplies the decision to charge (it declares
+  9.3–14.0/ep, more than its teacher's 8.5–9.8) and everything else. This is
+  **not** "a learned policy beats the bar unaided" and must never be quoted as
+  such. It is "a learned policy, executing charges with the script's geometry,
+  beats the script on two of four cells and ties a third."
+- ⚠ Two further caveats committed in advance: the bar's rows are scripts at **no
+  decode** while these play at K=3 plus the charge decode; and six clone seeds
+  share one teacher, so they are less independent than six training seeds.
+- **The open cell is the head-to-head, and the gap is ~5 vp** — the smallest
+  remaining anywhere in this line. The named routes: raise clone fidelity
+  (0.79 unit-match is the ceiling on how well it can play its teacher), or run
+  PPO from the clone, which the record forbade only under a **cold** critic and
+  which the §44 gate deferred rather than refuted.
