@@ -2484,10 +2484,22 @@ Scored K=3, n=45, seeds 700000+, `approach` eval family:
   and the shooting and did not learn the charge. That is exactly where it loses: the
   two cells it fails are the mirror (opponent = the charging bar) and `vs_take`,
   and under-charging is punished hardest against a charging opponent.
-- **Diagnosed cause, and it is cheap to test: CLASS IMBALANCE.** A charge is ~6
-  unit-decisions per episode inside ~100 steps × 25 models of demonstration, so the
-  charge phase is a fraction of a percent of the cloning signal. Nothing in
-  `behaviour_clone` weights or oversamples by phase.
-- **Next, per that diagnosis**: phase-weighted or oversampled cloning of the charge
-  phase, then re-run gate 1. It changes no rules, no reward and no action space —
-  it changes which demonstrations the clone is fitted on.
+- ⚠ **MY FIRST DIAGNOSIS WAS WRONG AND THE CODE SAYS SO.** I wrote "class imbalance…
+  nothing in `behaviour_clone` weights or oversamples by phase". **False.**
+  `phase_balanced_weights` (line 213) has existed and been applied since the charge
+  work, is documented against this exact teacher (*"STAY is 96.3% of deciding
+  charge-phase rows"*), and was introduced precisely because unweighted clones
+  echoed **0.8–2.4%** of the teacher's charge orders. The mechanism I "diagnosed"
+  is already there — and it is *working*: this clone echoes **27–34%** of the
+  teacher's charge rate, an order of magnitude better than the unweighted fit.
+  **Read the module before naming its missing feature.**
+- **What IS left of the diagnosis, precisely.** Balance needs
+  `(stay + other) / (2 × other)` = **1 / (2 × 0.037) ≈ 13.5**, and
+  `MAX_CLASS_WEIGHT` caps it at **12.0** — so charge orders are under-weighted, but
+  only by ~11%, not by the order of magnitude the shortfall would need. The phases
+  are also equally represented by construction (25 model-rows per phase per round),
+  so there is no cross-phase imbalance to fix either. **The cap is a real but small
+  miss; it is not the explanation for standing 1/3 of the teacher's charges.**
+- **Next**: raise the cap to full balance as the cheap check, and expect it to be
+  insufficient. The honest open question is why a 0.85-action / 0.79-unit clone
+  reproduces marching and shooting and only a third of charging.
