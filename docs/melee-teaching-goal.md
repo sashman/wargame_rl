@@ -2352,3 +2352,52 @@ One seed clears the bar on one cell; no six-seed mean clears it anywhere. ⚠ Th
 §40b–§40d line says why the remaining distance is unlikely to close from here: the
 agent's spare capacity is worth ~+8 vp pointed at the enemy and ~0 pointed at empty
 ground, and **no lever measured in this line raises objectives held at all.**
+
+## 42. Charge VOLUME is not the lever — three independent tests, all null
+
+Assembled 2026-08-31 after the §41 verdict, chasing the last 15–32 vp to the bar.
+Everything below is on the fold-tb arm's six verdict checkpoints.
+
+**The gap that looked actionable.** At K=1 the agent declares up to **8.9**
+charges an episode — the bar declares 8.5–9.8 — and stands only **0.62–1.60**
+against the bar's **5.8–6.3**. It attempts as many charges as the script and
+fails four times as often.
+
+**Three candidate causes, each measured, each dead:**
+1. **Target choice.** Hunts land on an objective-HOLDING enemy on **0.523–0.605**
+   of declarations against a chance rate of **0.499–0.551** — the agent does not
+   select for it, so a target-quality mask has behavioural headroom (57% → 100%),
+   but §41's diagnosis says target choice is not the binding constraint.
+2. **Grant timing** (the divergence named in the v2 header and never priced): the
+   commitment is made in the command phase, before the unit's own movement, and
+   nothing re-checks it. **Refuted** — **88.4–94.2%** of granted charges are still
+   roll-reachable when the charge phase arrives, and the median gap to the declared
+   target changes by **0.00"**. The units do not lose position; they decline to move.
+3. **Joint-search depth.** At K=3 the decoder converts attempted charges at
+   **43–82%** against the bar's ~65%, so execution is not the problem; and raising
+   the search to **K=5** does convert more — paired **+0.32 stood/ep ± 0.10,
+   t=+3.23, 5 of 6 seeds** — for **−4.2 ± 7.5 vp, 3 of 6**. ⚠ Read the matched
+   n=20 pair; a first look compared K=5 at n=20 against K=3 at n=45 and was
+   meaningless.
+
+**So charging more, charging better-targeted, and charging with the rules enforced
+are each worth ~0 vp to this agent**, measured three ways:
+| test | mechanism moved | vp |
+|---|---|---|
+| the fold (§40) | stood ×4 | pooled −1.84 (ns) |
+| `charge_target_binds` (§41) | binding exact, 0 violations | +1.80 ± 4.91 (ns) |
+| K=5 decode (§42) | +0.32 stood/ep, t=3.2 | −4.2 ± 7.5 (ns) |
+
+⚠ **This is NOT "melee is worthless"** — the same rules pay the SCRIPT **+32.8 vp
+vs_shoot** for charging (§38). The value is real and the agent cannot reach it,
+because a charge is only worth what its position is worth, and the agent charges
+from wherever it happens to be clumped. Every melee lever is downstream of the
+positional trait §40b–§40d measured and no lever here moved: **the agent does not
+spend its army.**
+
+**Standing conclusion for Level 3: the melee line is exhausted as a vp lever.** The
+only measured positive left on file is the imposed contest reflex (+8.3, §40c/§40d),
+which is a policy-improvement operator the agent does not learn from. The remaining
+candidate is therefore **distillation** — clone the reflex-augmented policy into the
+weights, the one prescription the record's own "the failure is SEARCH, not reward"
+diagnosis licenses and nobody has tried.
