@@ -2401,3 +2401,47 @@ which is a policy-improvement operator the agent does not learn from. The remain
 candidate is therefore **distillation** — clone the reflex-augmented policy into the
 weights, the one prescription the record's own "the failure is SEARCH, not reward"
 diagnosis licenses and nobody has tried.
+
+## 43. Distilling the reallocation decode — first attempt is NEGATIVE
+
+The §42 conclusion named distillation as the one remaining prescription: the
+reallocation decode is a policy-improvement operator worth **+7.5 to +8.3 vp** on
+frozen weights, and folding a decode into PPO measured −51.8, so cloning the
+decoded policy is the supported route into the weights.
+
+**Built 2026-08-31** (`3937eed`, `model/common/reallocation_decode.py`, selector
+`reallocate=True`, `just behaviour-clone ... <reallocate>`), verified against the
+ad-hoc script it replaces: **+11.7 / +11.4 / −0.7, mean +7.5** against the
+script's +8.3.
+
+⚠ **A defect the tests did not catch and the verification did.** The first cut
+had no movement-phase gate — its own docstring claimed the no-op — so the redirect
+overwrote the shooting slice and the charge ladder with movement indices, scoring
+**−16 to −24 vp** against the same weights undecoded. Three `env.step` tests
+passed throughout, because all three exercised the movement phase. **A decode that
+is a no-op in phases X, Y, Z needs a test per phase, not a test of the phase it
+works in.**
+
+**The clone, 2 seeds, 120 episodes × 8 epochs, K=3 teacher with the decode on,
+scored undecoded at n=45:**
+
+| | s3 | s4 |
+|---|---|---|
+| teacher, plain | −6.4 | −22.3 |
+| teacher + decode | **+5.0** | — |
+| **clone** | **−10.3** | **−48.8** |
+| action-match / unit-match | 0.679 / 0.429 | 0.679 / 0.429 |
+
+**The clone loses the operator's gain and falls below the plain teacher** by 3.9
+and 26.5 vp. Fidelity is poor: 67.9% of actions and **42.9% of unit-moves**
+matched — far under the 98.3%-action-match clone the record already showed can
+hold coherency 0.40 against a teacher's 0.95. So this is not a subtle failure of
+transfer; the clone is simply not the teacher.
+
+⚠ **Not yet a settled null**: 2 seeds at 120 episodes / 8 epochs, under the
+recipe's own 200-episode default and untuned. A retry at 300 × 16 is running. If
+that also loses the gain, distillation of THIS operator is dead and the reason is
+worth stating precisely — the redirect is a **discontinuous function of board
+state** (one squad, chosen by a global argmax over stacks and enemy holdings),
+which is a harder target for a per-model policy than the joint coherency decode
+that distilled successfully.
