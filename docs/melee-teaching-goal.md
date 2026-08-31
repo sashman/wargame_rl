@@ -2445,3 +2445,49 @@ worth stating precisely — the redirect is a **discontinuous function of board
 state** (one squad, chosen by a global argmax over stacks and enemy holdings),
 which is a harder target for a per-model policy than the joint coherency decode
 that distilled successfully.
+
+## 44. Cloning the BAR — gate 1 FAILS, and the clone still beats the bar on 2 of 4 cells
+
+The record's own §5(a) — *"warm-start from a clone of the charging script — strongest
+candidate"* — executed for the first time 2026-08-31. Its blocking objection is
+conditional (*"with a COLD critic"*), and `behaviour_clone` now fits a critic
+(explained variance **0.893**) and writes all 222 tensors, **verified** to load into
+the Lightning module (222/222, 113 policy + 109 value). Pre-registration written
+before any score: `/tmp/melee_distil/PREREGISTRATION_BARCLONE.md`.
+
+Teacher `squad_march_take_charge`, 300 episodes × 16 epochs, on
+`25v25_maps_melee_approach.yaml`. Final fidelity **action 0.852 / unit 0.790** —
+roughly double the agent-distillation clone of §43 (0.679 / 0.429).
+
+Scored K=3, n=45, seeds 700000+, `approach` eval family:
+
+| cell | clone | bar (§38) | gap |
+|---|---|---|---|
+| refereed | **−36.9** | −5.3 | **−31.6** |
+| vs_take | +2.6 | +20.2 | −17.6 |
+| vs_deny | **+13.7** | +11.8 | **+1.9** |
+| vs_shoot | **+65.6** | +56.6 | **+9.0** |
+| stood charges/ep | **1.58–2.02** | **5.8–6.3** | **−4** |
+
+- **GATE 1 FAILS as written**: refereed −36.9 clears neither the ≥ −20.3 bound nor
+  the "must beat the trained lineage's −28.5" clause. **Per the pre-registration, no
+  GPU goes into gate 2 (PPO from this clone).** The bound was committed before the
+  numbers and it binds.
+- ⚠ **AND the clone beats the bar on TWO cells** — the first time anything in this
+  project has done so on more than one. Both are cells where the opponent does not
+  charge. ⚠ **Caveat, stated rather than buried**: the §38 bar rows are scripts at
+  no decode while the clone is at K=3, so the clone has the joint decoder and the
+  script does not. That IS the goal's stated protocol (agent at K=3 vs the script
+  rows) and it is how §41 was judged — but it is not a like-for-like decode.
+- **THE FIDELITY FAILURE IS SPECIFICALLY CHARGING.** The clone stands **1.58–2.02**
+  charges an episode against its own teacher's **5.8–6.3** — it learned the marching
+  and the shooting and did not learn the charge. That is exactly where it loses: the
+  two cells it fails are the mirror (opponent = the charging bar) and `vs_take`,
+  and under-charging is punished hardest against a charging opponent.
+- **Diagnosed cause, and it is cheap to test: CLASS IMBALANCE.** A charge is ~6
+  unit-decisions per episode inside ~100 steps × 25 models of demonstration, so the
+  charge phase is a fraction of a percent of the cloning signal. Nothing in
+  `behaviour_clone` weights or oversamples by phase.
+- **Next, per that diagnosis**: phase-weighted or oversampled cloning of the charge
+  phase, then re-run gate 1. It changes no rules, no reward and no action space —
+  it changes which demonstrations the clone is fitted on.
