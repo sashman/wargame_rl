@@ -21,6 +21,8 @@ from wargame_rl.wargame.envs.domain.entities import alive_mask_for
 from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.agent_base import BaseAgent
+from wargame_rl.wargame.rating.elo import rating_from_score
+from wargame_rl.wargame.rating.score import margin_score
 
 # The floor (`random`), the movement-only bar (`squad_march`) and the real bar
 # (`squad_march_shoot`, the only baseline that fires). Against an opponent that
@@ -432,6 +434,29 @@ class WargameLightningBase(LightningModule, ABC):
                 100.0
                 * sum(1.0 for p, o in zip(player_vps, opponent_vps) if p > o)
                 / len(player_vps),
+                prog_bar=False,
+            )
+            # The same games as `vp_margin`, read as a rating against this
+            # config's own opponent, which is the scale's origin at zero.
+            #
+            # ⚠ **It is a monotone transform of the margin and carries no new
+            # information about this pairing.** What it adds is a bounded,
+            # saturating scale -- per-episode `vp_margin` sd is 45-50, so one
+            # blowout moves a mean margin in a way it cannot move a mean win
+            # probability -- and a unit that can be compared to a rating.
+            # ⚠ **Not a Bradley-Terry rating**: one opponent, no `h_seat`, no
+            # bootstrap. Comparable across runs only where the opponent is the
+            # same, and never to a published number from `just elo-table`.
+            self.log(
+                f"eval/{prefix}elo",
+                rating_from_score(
+                    float(
+                        margin_score(
+                            np.asarray(player_vps, dtype=np.float64)
+                            - np.asarray(opponent_vps, dtype=np.float64)
+                        ).mean()
+                    )
+                ),
                 prog_bar=False,
             )
             self._log_cover_metrics(stats, prefix)
