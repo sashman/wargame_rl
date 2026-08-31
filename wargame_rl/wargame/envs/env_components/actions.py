@@ -1587,6 +1587,17 @@ class ActionHandler:
         """The normal-move action slice. Always registered."""
         return self._registry.slice_for("movement")
 
+    def movement_displacements(self) -> np.ndarray:
+        """`(n_move_actions, 2)` — the movement slice's grid, index-aligned.
+
+        Row `i` is what movement action `movement_slice.start + i` displaces a
+        model by, so a caller can pick an action by geometry. Public because
+        two decodes and one measurement script were each reaching into
+        `_displacements` and reshaping it themselves.
+        """
+        grid: np.ndarray = self._displacements.reshape(-1, 2)
+        return grid
+
     @property
     def advance_slice(self) -> ActionSlice | None:
         """Advance action slice, or None when the scenario has no advance bins."""
