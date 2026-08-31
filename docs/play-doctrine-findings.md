@@ -44,10 +44,15 @@ rows. Prediction committed before the run (`/tmp/melee_realloc/PREDICTION.md`).
   agent for zero training, i.e. **44% of the remaining gap to the §38 bar** on that
   cell. **Forbidden next**: re-running the neutral-ground form, on scripts or on an
   agent.
-- **Open**: *why* neutral ground pays nothing. Standing candidate is the hold-hazard
-  result (deaths happen walking *between* points) plus the possibility that a point
-  still empty by round 8 is one neither side can cross to safely. Needs the reflex's
-  own travel distance and en-route casualties instrumented; neither exists.
+- **CLOSED same day by §40d, and the question was the wrong one.** Four candidate
+  explanations were measured and every one refuted: the empty point is *closer*
+  (17.6–21.6" against 19.0–21.9"), ~5× *safer* (0.89–1.33 enemies covering the
+  destination against 4.41–5.26), the agent is *not* at the VP cap (holds 1.42–1.77,
+  at cap on 2.2–16.9% of nominations), and the nomination does *not* churn more
+  (same target on 57.8–86.8% of consecutive phases against contest's 63.4–76.8%).
+  What is true instead: **neither** reflex raises our own held count (contest
+  +0.02 ± 0.09, spread −0.06 ± 0.12), so no redirect measured here buys ground at
+  all — the contest gain is denial and attrition. See D-02 below.
 
 Full write-up: [melee-teaching-goal.md](melee-teaching-goal.md) §40c. The reflex's
 post-referee value and the fold's zero-allocation result are §40b.
