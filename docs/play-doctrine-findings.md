@@ -51,3 +51,23 @@ rows. Prediction committed before the run (`/tmp/melee_realloc/PREDICTION.md`).
 
 Full write-up: [melee-teaching-goal.md](melee-teaching-goal.md) §40c. The reflex's
 post-referee value and the fold's zero-allocation result are §40b.
+
+## D-02 — "Take the cap's worth of ground and no more; spend the rest on denial"
+
+**Confirmed, on the trained agent, by the mechanism split of the reallocation reflex.**
+
+Measured 2026-08-31 (details in [melee-teaching-goal.md](melee-teaching-goal.md) §40d).
+Sending a surplus squad at the opponent's weakest-held objective is worth **+8.3 ± 4.25**
+vp; sending the same squad to the nearest empty objective is worth **+1.6 ± 5.00** and
+fails its kill. The paired mechanism split (3 seeds, n=45) shows the gain is **not**
+ground taken — our own held moves **+0.02 ± 0.09** — but ground **denied** (**−0.17 ±
+0.06** of theirs, 3/3) and army **destroyed** (**−4.3 ± 0.6 pp** of theirs, 3/3).
+
+- The entry's prescription and its *reason* both hold here: spare capacity is worth more
+  spent against the opponent's scoring than on adding to our own.
+- ⚠ It holds for a reason the entry does not claim: the surplus squad's value at the
+  contested point is largely that it **shoots**, not that it contests. Four candidate
+  explanations for the empty-ground null (distance, destination danger, own VP cap,
+  nomination churn) were each measured and each refuted — see §40d.
+- **Licensed next**: narrowing the melee hunt declaration to *surplus units hunting
+  objective-holding enemies* — a mask change on machinery that already exists.

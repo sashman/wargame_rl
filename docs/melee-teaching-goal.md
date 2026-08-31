@@ -2191,3 +2191,54 @@ weights, paired against the same checkpoints' plain rows:
   *between* points — plus the possibility that a point still empty by round 8 is the
   one neither side can reach safely. Both need an instrument that does not exist yet
   (distance-to-nominated-target and en-route casualties on the reflex's own moves).
+
+## 40d. The +8.3 is NOT allocation — it is denial and attrition, and four explanations died
+
+Follow-up to §40c, 2026-08-31, no GPU. Three fold checkpoints (s1/s3/s5),
+n=45 K=3 on `fold_refereed` for the state columns, n=10 for the nomination
+census. **Every hypothesis for "why does taking an empty objective pay nothing"
+was refuted, and the question turned out to be the wrong one.**
+
+**What the two reflexes actually change** (contest − spread, paired, 3 seeds):
+
+| | mean | per-seed | reads |
+|---|---|---|---|
+| **our** objectives held | +0.09 ± 0.10 | +0.24/+0.11/−0.09 | nothing |
+| **their** objectives held | **−0.17 ± 0.06** | −0.29/−0.09/−0.14 | **3/3** |
+| **their** army alive | **−4.3% ± 0.6%** | −5.3/−3.3/−4.3 pp | **3/3** |
+
+⚠ **NEITHER reflex raises the agent's own held count.** Against the same
+checkpoints' plain rows: contest **+0.02 ± 0.09**, spread **−0.06 ± 0.12**. Both
+redirect 35–46 models an episode and neither converts that into ground. So the
++8.3 vp of §40c is **denial plus attrition**, not acquisition — the reflex is a
+GUN-POINTING rule wearing an allocation costume.
+
+**Four refuted explanations, all measured, none survives:**
+1. *"Empty points are far."* They are **closer**: travel median 17.6–21.6" for
+   spread against 19.0–21.9" for contest.
+2. *"Empty points are dangerous."* They are **~5× safer**: 0.89–1.33 enemy models
+   can shoot the destination, against 4.41–5.26 for the contested one.
+3. *"The agent is already at the 3-objective VP cap."* It holds **1.42–1.77** when
+   the reflex fires and is at the cap on **2.2–16.9%** of nominations, so ~90% of
+   those empty points really would pay +5.
+4. *"The nomination churns, so the 3-turn journey never completes."* Persistence is
+   **the same for both**: spread keeps the same (donor, target) on 50.6–68.4% of
+   consecutive phases and the same target on 57.8–86.8%, against contest's
+   51.2–67.9% / 63.4–76.8% — and contest works.
+
+**What this reframes.** §40b said "allocation, not melee, is where the remaining
+VP is". The allocation half is now **wrong as stated**: no redirect measured here
+raises objectives held, and the value that exists comes from putting surplus
+squads where they SHOOT. It converges with the melee line rather than competing
+with it — and it is a direct confirmation of doctrine **D-02** (*"take the cap's
+worth of ground and no more; spend the rest on denial"*), recorded in
+[play-doctrine-findings.md](play-doctrine-findings.md).
+
+**The Level-3 lever this points at, and why it is cheap.** The fold's hunt
+declaration was worth ~0 vp (§40) — but it lets ANY unit declare and targets ANY
+enemy unit. The rule that pays is narrower on both axes: **a SURPLUS unit**
+(its objective stays controlled without it) hunting **an enemy that is HOLDING an
+objective**. That is a change to what the existing declaration is masked on, not
+a new action and not a new reward term — the two things this project's record
+most warns against. ⚠ Unmeasured as a training arm; the frozen reflex is the
+evidence and it is 3 seeds for the mechanism, 6 for the vp.
