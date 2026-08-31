@@ -34,18 +34,38 @@ that was called in advance rather than a disappointment.
 
 ## Preconditions — all three must pass before the run starts
 
-Two are new as of this document, and one is not yet done.
+**All three now pass.** Two were found by writing this document; the third was
+the standing gate nobody had run on this config.
 
-1. ⚠ **`just measure-seat-parity configs/golden/25v25_maps_two_mode.yaml squad_march_take 30` — NOT YET RUN.**
-   The gate has only ever been run on `25v25_shooting_opponent.yaml`, where it
-   **fails** by **−24.6 ± 9.4 vp**. `h_seat` (wave 4) absorbs that confound for
-   *ratings* and does nothing for *training*: the learner only ever trains the
-   player seat (`learner_side` does not exist — `model/common/self_play.py:120`
-   records it as a later phase), so a snapshot seated as the opponent plays a
-   seat it never practised. On a config where the seats differ, the pool is
-   systematically handicapped and "beat your past self" is not the game it
-   sounds like. **If the gate fails on the training config, this arm does not
-   run there.** Costs minutes and no GPU.
+1. **Seat parity on the training config — RUN 2026-08-31, and it PASSES.**
+   `squad_march_take` on both seats, `25v25_maps_two_mode.yaml`, 120 layouts:
+   **aggregate +6.5 ± 6.1 vp (1 se), t=1.07**, against a threshold of 2 se.
+   For contrast the gate **fails** on `25v25_shooting_opponent.yaml` by
+   **−24.6 ± 9.4**. So the learner's seat is not a structural advantage here,
+   and a snapshot seated as the opponent is playing approximately the same game
+   — which matters because the learner only ever trains the player seat
+   (`learner_side` does not exist; `model/common/self_play.py:120` records it as
+   a later phase).
+
+   ⚠ **Quote it with its interval, not as "fair".** The 95% bound is roughly
+   **[−5.5, +18.5]**, so a gap up to ~19 vp in the *player's* favour is not
+   excluded — and that is the direction that would flatter a self-play run,
+   inflating PFSP's `p` with seating rather than skill. It is comfortably short
+   of the −24.6 that condemned the other config, and that is the claim.
+
+   ⚠ **A first pass at n=30 read +19.1 ± 11.2 and was nearly a fail.** It did
+   not survive quadrupling the layouts: the estimate fell to +6.5 as the error
+   halved, and the leg disagreement (+10.7 / +27.5) collapsed to +0.2 / +12.8.
+   **n=30 cannot run this gate** — the repo's own n=100 rule applies here too,
+   and at n=30 the threshold sits at 22.4 vp, so the −24.6 that failed elsewhere
+   would have been about a coin-flip to catch.
+
+   ⚠ **On a map-pool config this number is the SEAT AND THE SIDE OF THE TABLE
+   lumped together**, because the drawn outlines stay bound to the seats and the
+   zone axis cannot separate them. For this precondition that is the right
+   quantity — a snapshot on the opponent seat suffers both — but it is not a
+   seat term and must not be quoted as one. Terrain is 180-degree rotation
+   invariant on only **34 of 45** tables, so a real side asymmetry is inside it.
 2. **Group-id aliasing — FIXED in this branch.** `group_span` floored, so an
    army could split into more units than `max_groups` has one-hot columns, and
    `_group_ids_to_one_hot` **clips** rather than raising. Measured live: 15
