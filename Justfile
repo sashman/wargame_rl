@@ -148,13 +148,20 @@ train-arm max_epochs n_seeds group tag flags *configs:
 # Two concurrent runs per seed, ~3.8 GB of VRAM each.
 #
 # Use: just train-self-play-screen 300 1
-train-self-play-screen max_epochs='300' seed='1' group='self-play-screen' env_config='configs/golden/25v25_maps_two_mode.yaml':
+# With melee: just train-self-play-screen 300 1 melee-screen configs/experiments/25v25_maps_melee_approach.yaml squad_march_take_charge
+# ⚠ The ANCHOR must be able to use the features the config enables. It is the
+# pool's permanent floor, never evicted, so on a melee config the default
+# `squad_march_take` -- whose `select_charge` returns STAY -- pins the floor to
+# a policy that never charges, and the learner can top the ladder without ever
+# meeting a charge. Pass `squad_march_take_charge` there instead.
+# ⚠ Run seeds SEQUENTIALLY: two runs per seed is ~7 GB of VRAM.
+train-self-play-screen max_epochs='300' seed='1' group='self-play-screen' env_config='configs/golden/25v25_maps_two_mode.yaml' anchor='squad_march_take':
 	@trap 'kill 0' INT TERM && \
 	uv run train.py --record-during-training --record-threat-range --record-engagement-range \
 		--env-config-path {{env_config}} --max-epochs {{max_epochs}} --n-eval-episodes 30 \
 		--seed {{seed}} --ent-coef 0.003 --no-tf32 \
 		--self-play --pfsp-mode uniform --snapshot-every-n-epochs 25 \
-		--pool-capacity 8 --pool-anchor squad_march_take \
+		--pool-capacity 8 --pool-anchor {{anchor}} \
 		--run-suffix "s{{seed}}-selfplay" --wandb-group "{{group}}" & \
 	uv run train.py --record-during-training --record-threat-range --record-engagement-range \
 		--env-config-path {{env_config}} --max-epochs {{max_epochs}} --n-eval-episodes 30 \

@@ -81,6 +81,16 @@ a `p = 0.1` opponent is the *hardest* and the *least* even.
 pool changes training on its own; the schedule is a separate claim, and this
 repo's most expensive class of error is a comparison against the wrong control.
 
+⚠ **The anchor must be able to use the features the config enables.** It is the
+pool's permanent floor and is never evicted, so it sets what "no better than
+where we started" means. On a melee config the default `squad_march_take` has a
+`select_charge` that returns STAY, so the floor would be a policy that **never
+charges** — and the learner could climb the whole ladder without meeting a
+charge, while the config's own opponent charges every turn.
+`squad_march_take_charge` is the anchor there, and `just train-self-play-screen`
+takes it as an argument. The same question has to be asked of any future move
+type: a floor that cannot use a rule is not a floor for a game that has it.
+
 A `uniform_floor` (default 0.1) keeps any snapshot from being starved — an
 opponent that is never sampled cannot catch the learner forgetting how to beat
 it, and forgetting is what a pool exists to prevent. A pool the learner has
