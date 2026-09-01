@@ -188,7 +188,14 @@ uv run train.py --env-config-path <config> --self-play \
     --pool-anchor squad_march_take --pfsp-mode hard --seed 1
 ```
 
-Snapshots land in `checkpoints/<run>/pool/`. The pool logs its size and the mean
+Snapshots land in `checkpoints/<run>/pool/`, beside that run's checkpoints —
+`<run>` being the full name, timestamp and `--run-suffix` included. ⚠ **It was
+the run *base* until 2026-09-01**, so the pool went to a sibling directory and
+every self-play run on one env config wrote the same filenames into it. A pool
+entry holds a path loaded lazily at seating time, so two **concurrent** runs
+would have seated each other's weights as their own past selves, silently.
+Sequential runs were unaffected — the pool is in-memory and never scans its
+directory. Pinned by `tests/test_train_run_name.py`. The pool logs its size and the mean
 epoch of the opponents drawn, so a pool that has collapsed onto its newest member
 is visible in the dashboard rather than only in the score.
 
