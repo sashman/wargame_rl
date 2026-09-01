@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from typing import Any
 
@@ -27,18 +28,35 @@ def group_span(n_models: int, max_groups: int) -> int:
     Mirrors the split `_build_models` performs. Exposed so that anything sized
     per *unit* -- the shooting action space, its mask -- derives the same number
     the models were built with rather than assuming one.
+
+    **Rounds up, so `max_groups` is a real cap.** Flooring made it an
+    approximate one: at 15 models capped at 6 the span was 2 and the army landed
+    in *eight* units, ids 0..7. `_group_ids_to_one_hot` clips to
+    `max_groups - 1`, so units 6 and 7 both encoded as column 5 -- two distinct
+    units sharing one observation code, silently, while `unit_count` sized the
+    shooting slice at the true 8. The network could name three units it could
+    not tell apart. Rounding up guarantees `group_id <= max_groups - 1`, so the
+    one-hot never clips and the two counts agree by construction.
+
+    Bit-identical wherever `max_groups` divides `n_models`, which is every
+    golden, evaluation and dev config in the repo; it changes seven configs
+    under `configs/experiments/`, all of which were aliasing.
     """
-    return max(1, n_models // max_groups)
+    return max(1, math.ceil(n_models / max_groups))
 
 
 def n_groups_for(n_models: int, max_groups: int) -> int:
     """The number of units an army of `n_models` actually splits into.
 
-    **Not `max_groups`.** The split is `group_id = i // (n // max_groups)`, so a
-    7-model army with a cap of 5 gets an increment of 1 and ends up with *seven*
-    units, one per model. Anything sized on the unit count has to ask, not
-    assume: an action space built from `max_groups` would silently be unable to
-    name three of those units.
+    **Not `max_groups`, though it can no longer exceed it.** The split is
+    `group_id = i // group_span(n, max_groups)`, and a span that divides
+    unevenly leaves a short final unit: a 7-model army capped at 5 has a span of
+    2 and lands in *four* units, not five. Anything sized on the unit count has
+    to ask rather than assume `max_groups`.
+
+    It used to be able to *exceed* the cap -- the same 7-model army landed in
+    seven units under a flooring span -- which aliased two units onto one
+    observation column. See `group_span`.
     """
     if n_models <= 0:
         return 0

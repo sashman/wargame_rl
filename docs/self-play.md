@@ -145,6 +145,36 @@ Snapshots land in `checkpoints/<run>/pool/`. The pool logs its size and the mean
 epoch of the opponents drawn, so a pool that has collapsed onto its newest member
 is visible in the dashboard rather than only in the score.
 
+⚠ **Run `just measure-seat-parity` on the scenario first.** § 4 is the reason.
+It costs minutes and no GPU. Run 2026-08-31 on two configs: it **fails** on
+`25v25_shooting_opponent.yaml` (**−24.6 ± 9.4 vp**) and **passes** on
+`25v25_maps_two_mode.yaml`, the config that trains (**+6.5 ± 6.1 vp**,
+`squad_march_take` on both seats, 120 layouts). ⚠ **Run it at n ≥ 100** — the
+same gate at n=30 read +19.1 ± 11.2, within 15% of failing, and that estimate did
+not survive quadrupling the layouts.
+
+### What a self-play run does and does not void
+
+**It changes who the learner trains against, and nothing else.** The scheduler
+seats only `_ensure_rollout_envs()` (`model/ppo/lightning.py:691`); `_eval_envs`
+is a separate list built in `lightning_base.py:215` and is never touched. So
+held-out scoring runs on the `configs/evaluation/` family against their own fixed
+scripted opponents, exactly as every published row did.
+
+**The existing agent table is therefore the comparator, and no bar needs
+re-measuring.** That is worth stating because the default assumption in this
+repo — earned four times over — is that a change of this size voids the
+baselines. An earlier draft of this document said so too, and it over-scoped
+itself.
+
+What it *does* void is the reading of the in-run `eval/baseline_*` keys: those
+are still measured against the config's own opponent and no longer describe what
+the learner faced.
+
+The arm, its criteria and its power check are pre-registered in
+[reports/2026-08-31-self-play-preregistration.md](../reports/2026-08-31-self-play-preregistration.md),
+written before any number existed.
+
 ---
 
 ## Costs and open work

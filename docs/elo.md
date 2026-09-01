@@ -129,10 +129,46 @@ not new env code** — which is why the whole subsystem landed with nothing chan
 under `envs/` except one latent bug it exposed.
 
 `config_for_leg` **raises** rather than producing a config on which the zone axis
-does nothing. Two ways that happens, both silent: a `None` deployment zone (the
-battle factory derives the defaults, so swapping two `None`s is a no-op), and
-fixed model positions (which override the zone entirely). If the axis were inert,
-`h_zone` would fit noise and report it as a number.
+does nothing. Three ways that happens, all silent: a `None` deployment zone (the
+battle factory derives the defaults, so swapping two `None`s is a no-op), fixed
+model positions (which override the zone entirely), and **a map pool**. If the
+axis were inert, `h_zone` would fit noise and report it as a number.
+
+⚠ **The map-pool case is why this section needed revising, and it means the
+`maps` family cannot be rated as things stand.** A drawn table carries its own
+deployment *outlines* (`TerrainMapConfig.deployment`), and those govern
+placement's sampling *and* its acceptance; the config's `deployment_zone`
+rectangles are ignored outright. The swap is therefore a **total no-op** —
+measured on `25v25_maps_two_mode.yaml`, both armies' positions and the outline
+itself come out bit-identical across it on 10 of 10 layouts. The schedule was
+written on 2026-08-17, when the rectangles *were* the zones; the tables were
+regenerated with their own polygons on 2026-08-20 and this was not revisited.
+Rating a pool config in between would have fitted `h_zone` from noise **on the
+config that trains**.
+
+⚠ **A first version of this paragraph said the swap "samples one army against
+the other side's outline". That was wrong and is retracted** — it predicted a
+placement failure, and placement is untouched. The rectangles are simply not
+read. Recorded because the mechanism was published before it was measured, which
+is the error this file exists to stop.
+
+⚠ **On this pool `h_zone`'s true value is ZERO BY CONSTRUCTION**, which is
+stronger than "unmeasured": the two deployment outlines are **180-degree
+rotations of each other on 45 of 45 tables**. There is nothing for the axis to
+measure even in principle, so the four legs collapse to two. ⚠ The *terrain* is
+rotation-invariant on only **34 of 45**, so the two seats still face different
+games on eleven tables — but on a pool config the seat is perfectly confounded
+with the side of the table, so that asymmetry is `h_seat`'s to carry and cannot
+be separated from it here.
+
+The refusal keys on `map_pool` itself rather than on whether the pool's maps
+carry outlines: `rating/` may import `envs/types` and nothing else, so it cannot
+read the map files. A pool whose maps all left `deployment` unset would be safe
+and is refused anyway — no shipped pool is like that (54 of 54 map files carry
+one), and over-refusing costs a config while under-refusing costs a published
+number. The first ledger therefore goes on a config that deploys under its own
+rectangles, such as `25v25_shooting_opponent.yaml` or `25v25_cover_control.yaml`
+— ⚠ noting that the first of those is the config that **fails** seat parity.
 
 Layout seeds come from the **900 000** band, disjoint from rollout (0), in-run
 baselines (10k), in-run eval (500k), held-out scoring (700k) and behaviour
@@ -256,6 +292,18 @@ played from both seats over the balanced four legs loses from the player seat by
 **−24.6 ± 9.4 vp**, and the residual survives averaging turn order out
 ([report](../reports/2026-08-19-the-two-seats-are-not-the-same-game.md)). On such
 a config, ratings are confounded by command-line position.
+
+**But that is a property of that scenario, not of the engine.** The same gate on
+`configs/golden/25v25_maps_two_mode.yaml` — the config that trains — reads
+**+6.5 ± 6.1 vp** (`squad_march_take` on both seats, 120 layouts), inside its own
+2 se threshold, so it **passes**. ⚠ **Quote the interval, not the point**: the
+95% bound is roughly [−5.5, +18.5]. ⚠ **Run this gate at n ≥ 100.** At n=30 it
+read **+19.1 ± 11.2** on the same config, within 15% of failing, and the estimate
+did not survive quadrupling the layouts — at n=30 the threshold sits at 22.4 vp,
+so the −24.6 above would have been about a coin-flip to catch. ⚠ On a map-pool
+config the gate measures the seat **and the side of the table** together, plays
+the turn-order pair only, and appends nothing to a ledger — see the zone-axis
+refusal above.
 
 `just measure-seat-parity` is the gate, and **nothing calls it**. It is a
 precondition a human is expected to check before rating a scenario. Options, none

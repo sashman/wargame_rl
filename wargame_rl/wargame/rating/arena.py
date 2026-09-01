@@ -30,11 +30,11 @@ from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.rating.entrant import Entrant
 from wargame_rl.wargame.rating.schedule import (
     ELO_SEED_BASE,
-    FOUR_LEGS,
     Leg,
     combat_seeds_for,
     config_for_leg,
     layout_seeds,
+    legs_for,
     with_opponent,
 )
 
@@ -115,15 +115,21 @@ def play_leg(
     leg: Leg,
     seeds: Sequence[int],
     combat_seeds: Sequence[int],
+    require_live_zone_axis: bool = True,
 ) -> LegResult:
     """Play one leg and return its per-layout rows.
 
     One env for the whole leg, which is what lets a network entrant load its
     checkpoint once rather than once per layout.
+
+    `require_live_zone_axis=False` is for a caller that does not consume
+    `h_zone` -- `just measure-seat-parity` and nothing else. See
+    `schedule.config_for_leg`.
     """
     require_symmetric(base_config)
     config = with_opponent(
-        config_for_leg(base_config, leg), opponent_config_for(entrant_b)
+        config_for_leg(base_config, leg, require_live_zone_axis),
+        opponent_config_for(entrant_b),
     )
     # Constructed directly rather than through `model.common.factory`, which is
     # a bare `WargameEnv(...)` wrapper that happens to live in the model layer.
@@ -173,11 +179,25 @@ def play_pairing(
     base_config: WargameEnvConfig,
     n_layouts: int,
     seed_base: int = ELO_SEED_BASE,
+    require_live_zone_axis: bool = True,
 ) -> list[LegResult]:
-    """All four legs of one pairing, on identical layouts and dice."""
+    """All four legs of one pairing, on identical layouts and dice.
+
+    **Two legs, not four, when the zone axis is declared dead** -- see
+    `schedule.legs_for`. On a dead axis legs 1 and 3 are bit-identical episodes,
+    so playing all four would count every game twice.
+    """
     seeds = layout_seeds(n_layouts, seed_base)
     combat = combat_seeds_for(seeds)
     return [
-        play_leg(entrant_a, entrant_b, base_config, leg, seeds, combat)
-        for leg in FOUR_LEGS
+        play_leg(
+            entrant_a,
+            entrant_b,
+            base_config,
+            leg,
+            seeds,
+            combat,
+            require_live_zone_axis,
+        )
+        for leg in legs_for(require_live_zone_axis)
     ]

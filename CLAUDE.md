@@ -195,7 +195,7 @@ Snapshot/event pipeline for recording and inspecting matches — `GameStateSnaps
 
 Puts scripted baselines and learned checkpoints on **one scale**, so "did this get better" has an answer that does not depend on which opponent it happened to face. Bradley-Terry maximum likelihood with the deployment-zone, first-turn and **player-seat** advantages as explicit fitted terms, a bootstrap over layouts, and an append-only ledger in `ratings/` keyed by a scenario fingerprint that **refuses** to mix scenarios. `score.py` and `elo.py` import numpy and nothing from this repo; `arena.py` is the only module that touches a live env, and it wraps `evaluate_selector` rather than reimplementing it. Recipes: `measure-seat-parity` · `measure-elo` · `elo-table`. See [docs/elo.md](docs/elo.md) · [docs/self-play.md](docs/self-play.md)
 
-⚠ **The two seats are not the same game, and `h_seat` only partly answers it.** On `configs/golden/25v25_shooting_opponent.yaml` one policy played from both seats loses from the *player* seat by **−24.6 ± 9.4 vp**, and every number in this file is quoted from that seat. `h_seat` absorbs the confound so ratings no longer depend on command-line position — it is identified through a **cycle** in the pairing graph (so **three entrants are required and two are refused**) or directly by a **self-pairing**, which is what `just measure-seat-parity` plays and which roughly halves its standard error; the gate now appends its legs to the ledger for exactly that reason. ⚠ **But the gate is still advisory** — nothing refuses to rate a scenario that fails it — and `h_seat` assumes the advantage is *constant in Elo across pairs*, which `h_turn` (measured to change sign with shooting) suggests may be false. Cross-check the fitted term against the gate's own aggregate. No rating is published. See [the report](reports/2026-08-19-the-two-seats-are-not-the-same-game.md)
+⚠ **The two seats are not the same game, and `h_seat` only partly answers it.** On `configs/golden/25v25_shooting_opponent.yaml` one policy played from both seats loses from the *player* seat by **−24.6 ± 9.4 vp**, and every number in this file is quoted from that seat. `h_seat` absorbs the confound so ratings no longer depend on command-line position — it is identified through a **cycle** in the pairing graph (so **three entrants are required and two are refused**) or directly by a **self-pairing**, which is what `just measure-seat-parity` plays and which roughly halves its standard error; the gate now appends its legs to the ledger for exactly that reason. ⚠ **But the gate is still advisory** — nothing refuses to rate a scenario that fails it — and `h_seat` assumes the advantage is *constant in Elo across pairs*, which `h_turn` (measured to change sign with shooting) suggests may be false. Cross-check the fitted term against the gate's own aggregate. ⚠ **The −24.6 is a property of THAT scenario, not of the engine: `25v25_maps_two_mode` — the config that trains — PASSES the gate**, measured 2026-08-31 at **+6.5 ± 6.1 vp** (`squad_march_take` both seats, 120 layouts; 95% bound roughly [−5.5, +18.5]). ⚠ **Run the gate at n≥100.** The same gate at n=30 read **+19.1 ± 11.2**, within 15% of failing, and the estimate did not survive quadrupling the layouts — at n=30 the threshold is 22.4 vp, so the −24.6 that condemned the shooting config would have been about a coin-flip to catch. ⚠ On a **map-pool** config the gate measures the seat **and the side of the table** lumped together — the drawn outlines stay bound to the seats, so the zone axis is a no-op and cannot separate them; there it plays the **turn-order pair only** (four legs would double-count every game) and appends **nothing** to a ledger. No rating is published. See [the report](reports/2026-08-19-the-two-seats-are-not-the-same-game.md)
 
 ### RL Algorithm
 
@@ -619,6 +619,18 @@ Move 12 against 15 elites at 24" reach — trained three seeds, 300 epochs, scor
   not just a config field.
 - **Untested: the elite side.** Only the horde was trained. The denial-price account
   predicts an elite agent wins by *less*; that is one training run.
+- ⚠ **THE ELITE ARMY'S UNIT ENCODING WAS ALIASED FOR EVERY NUMBER ABOVE** (bug
+  fixed 2026-08-31). `group_span` floored, so 15 elites at `max_groups: 6` split
+  into **8 units, ids 0..7**, while `_group_ids_to_one_hot` **clips** to
+  `max_groups - 1` — units 6 and 7 both encoded as column 5, silently, while
+  `unit_count` sized the shooting slice at the true 8. The network could name
+  three units its observation could not tell apart. The horde side (30 at cap 6)
+  is clean, so the agent played a correct encoding against a scrambled one.
+  **The margin as measured stands; "the horde is the agent's best matchup" now
+  has a competing partial explanation.** Re-measure before quoting it, and note
+  the fix *changes the scenario* — the elites become 5 units of 3, not 8 of 2 —
+  so it voids rather than repairs those figures. The untested elite-side run
+  would have trained straight through it.
 
 ### Freezing is friendly gridlock, and only deterministic policies suffer it
 
@@ -1493,6 +1505,17 @@ Re-measure rather than carry a figure across one.
   targeted rather than global.
 - **2026-08-20 — the eval tables were regenerated**, and 2026-08-21 they were
   re-measured against their own deployment zones. See § The board.
+- **2026-08-31 — `group_span` rounds UP, so `max_groups` is a real cap.** It
+  floored, and an army splitting into more units than the cap has one-hot columns
+  had two units share a code (`_group_ids_to_one_hot` clips rather than raising)
+  while `unit_count` sized the shooting slice at the true count. **Bit-identical
+  wherever the cap divides the army — every golden, evaluation and dev config,
+  both goldens verified unchanged.** It changes **seven configs under
+  `configs/experiments/`**, all of which were aliasing: the three `30v15` /
+  `15v30` asymmetric arms (15 at cap 6: 8 units → 5) and
+  `25v25_maps_take_small_units.yaml` (25 at cap 8: 9 units → 7, **both armies**).
+  Every figure measured on those seven is void — the split changed, so the units
+  changed.
 
 ### The bar was playing a different game — Advance, and the endpoint rule
 
