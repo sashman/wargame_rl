@@ -280,3 +280,80 @@ phase was renamed, so this is a risk to note rather than a reason to wait.
   that and neither has been measured.
 - Anything about the opponent seat. `learner_side` does not exist, so every
   statement here is about a learner pinned to the player seat.
+
+---
+
+## Addendum, 2026-09-01 — three corrections, written after the screen ran
+
+Appended rather than merged into the text above. A pre-registration is worth
+having because it still says what it said before the numbers existed, so
+nothing before this line has been edited.
+
+### 1. The pool is not where this document says to look
+
+"Snapshots appear in `checkpoints/<run>/pool/`" is wrong, and that directory is
+**empty**. `snapshot_dir` was named from the run *base* — no timestamp, no
+`--run-suffix` — while the checkpoint directory carries both, so the pool went
+to a sibling. Following the instruction, one finds nothing and concludes the
+mechanism failed when it worked.
+
+⚠ **The larger consequence: every self-play run on one env config wrote the
+same filenames into one shared directory.** A pool entry holds a *path*, loaded
+lazily when the opponent is seated, so two **concurrent** runs would seat each
+other's weights as their own past selves with nothing raised.
+
+**This screen is unaffected, and only because its seeds ran sequentially.**
+`SnapshotPool` is in-memory and never scans its directory, so each run's pool is
+its anchor plus its own snapshots, and seed 2 overwrote seed 1's files long
+before it could draw one. ⚠ The runbook above prints its three
+`just train-self-play-screen` lines as a block, and running them in parallel is
+the natural reading — it was a memory-budget decision, not a precaution, that
+kept this arm clean. Fixed, with a regression test that two runs differing only
+in `--run-suffix` cannot share a pool.
+
+### 2. A rising `mean_opponent_epoch` is NOT the collapse test
+
+Both places this document states the check — "`self_play/pool_size` reaches
+capacity and `self_play/mean_opponent_epoch` keeps rising" — are too weak. **A
+healthy pool's drawn mean rises too**, simply because its newest member does, so
+both the healthy and the collapsed case satisfy it.
+
+What discriminates is the mean **relative to the newest snapshot**. Measured on
+seed 1 at epoch 299: pool epochs `[0, 50, 100, 150, 200, 225, 250, 275]`, pool
+mean **156.2**, logged draw **200**, newest **275** — spanning, not collapsed. A
+mean converging on 275 would be the failure. The
+`self-play pool: N entries spanning epochs A-B` log line is the sharper read and
+is what the screen was actually judged on.
+
+⚠ It is also an **8-sample point value logged every epoch** (one draw per
+rollout env), with a sampling SE of ~33 epochs on a full pool. The 200 above
+sits ~1.3 SE from its own expectation, so it means nothing on its own.
+
+### 3. `--pfsp-mode` was inert when this was written
+
+`SnapshotPool.sample` reads an unrated entry as an even match (`p = 0.5`) and
+**nothing called `rate()`**, so `pfsp_weights` returned a uniform vector for all
+three modes — verified directly. `hard`, the **default**, drew uniformly, as did
+`even`.
+
+For this document specifically: "`hard` and `even` are a second experiment"
+would have been a **null by construction**. The arm named here is `uniform`,
+which ignores ratings by definition, so **the screen measured what it says it
+did** and nothing in the design section is invalidated. The modes are live from
+the in-run rating work, which makes that second experiment real for the first
+time.
+
+### What the screen showed
+
+Mechanism, which is all this stage decides: **PASS.** Three seeds, arm and
+control each, `rc=0` throughout, zero exceptions. Every arm filled its pool to
+capacity 8 and ended `spanning epochs 0-275` — no collapse. Snapshots load back,
+evidenced by ~250 epochs of seating them without a raise.
+
+⚠ **No verdict, as pre-registered.** For the record and not as a result, the
+in-run final-epoch `eval/vp_margin` paired differences were **−20.5 / −34.2 /
++2.5** — signs flipping, which is the UNDERPOWERED signature this document
+defines, at a stage it says returns no verdict. These are single-epoch point
+values against the *training* opponent on the *unrefereed* training config, at
+an SE of ~15 per cell; the pre-registered readout is the held-out nine,
+refereed, at K=3.

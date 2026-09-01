@@ -12,8 +12,9 @@ from pathlib import Path
 import pytest
 from pydantic_yaml import parse_yaml_raw_as
 
-from train import _build_default_run_base_name
+from train import _build_default_run_base_name, _run_paths
 from wargame_rl.wargame.envs.types import OpponentPolicyConfig, WargameEnvConfig
+from wargame_rl.wargame.model.common import init_wandb
 
 
 def test_build_default_run_base_name_without_opponent_policy() -> None:
@@ -90,3 +91,57 @@ def test_arms_of_one_batch_get_distinct_run_names(config_names: list[str]) -> No
     }
 
     assert len(names) == len(config_names), sorted(names)
+
+
+class TestThePoolSitsBesideTheCheckpoints:
+    """The self-play snapshot directory and the run's checkpoints must agree.
+
+    This file already exists because four arms once shared one checkpoint
+    directory. The pool repeated it: `snapshot_dir` was named from the run
+    *base*, with no timestamp and no `--run-suffix`, while the checkpoint
+    directory carries both. So the documented path `checkpoints/<run>/pool/`
+    was empty, and every self-play run on one env config wrote the same
+    filenames into one shared directory.
+
+    ⚠ The consequence is worse than a misplaced file. A pool entry holds a
+    **path**, loaded lazily when the opponent is seated, so two concurrent runs
+    would seat each other's weights as their own past selves and nothing would
+    raise. Found by following the pre-registration's own check and finding an
+    empty directory.
+    """
+
+    def test_two_runs_of_one_config_do_not_share_a_pool(self) -> None:
+        """The regression. Arms differ by `--run-suffix` and nothing else."""
+        _, arm = _run_paths("ppo-transformer-m4-opp0-obj2-b60x44-ph1", "s1-selfplay")
+        _, control = _run_paths(
+            "ppo-transformer-m4-opp0-obj2-b60x44-ph1", "s2-selfplay"
+        )
+
+        assert arm != control
+
+    def test_the_pool_is_a_child_of_the_run_directory(self) -> None:
+        """`checkpoints/<run>/pool/` -- the path the pre-registration documents
+        and a reader checks the mechanism against."""
+        run_name, pool = _run_paths("ppo-transformer-m4-opp0-obj2-b60x44-ph1", "s1")
+
+        assert pool.name == "pool"
+        assert pool.parent.name == run_name
+        assert pool.parent.parent == Path("checkpoints")
+
+    def test_the_suffix_reaches_the_name(self) -> None:
+        run_name, _ = _run_paths(
+            "ppo-transformer-m4-opp0-obj2-b60x44-ph1", "s3-control"
+        )
+
+        assert run_name.endswith("-s3-control")
+
+    def test_wandb_takes_the_name_it_is_given(self) -> None:
+        """The other half of the invariant, and the reason `_run_paths` returns
+        the name at all: `make_run_name` stamps wall-clock time, so a second
+        call can land in the next second and name a different directory. The
+        run and its pool must come from ONE call.
+        """
+        run_name, _ = _run_paths("ppo-transformer-m4-opp0-obj2-b60x44-ph1", "s1")
+
+        with init_wandb(disabled=True, run_name=run_name) as run:
+            assert run.name == run_name

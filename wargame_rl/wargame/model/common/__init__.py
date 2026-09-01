@@ -3,7 +3,7 @@
 from wargame_rl.wargame.model.common.checkpoint_callback import get_checkpoint_callback
 from wargame_rl.wargame.model.common.device import Device, auto_device, get_device
 from wargame_rl.wargame.model.common.env_config_callback import EnvConfigCallback
-from wargame_rl.wargame.model.common.wandb import get_logger, init_wandb
+from wargame_rl.wargame.model.common.wandb import get_logger, init_wandb, make_run_name
 
 __all__ = [
     "Device",
@@ -12,5 +12,6 @@ __all__ = [
     "get_device",
     "get_logger",
     "init_wandb",
+    "make_run_name",
     "auto_device",
 ]
