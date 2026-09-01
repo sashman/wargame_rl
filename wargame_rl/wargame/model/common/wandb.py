@@ -3,9 +3,8 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, Generator
 
-from pytorch_lightning.loggers import CSVLogger, WandbLogger
-
 import wandb
+from pytorch_lightning.loggers import CSVLogger, WandbLogger
 
 # mypy: disable-error-code=attr-defined
 
@@ -14,7 +13,7 @@ DEFAULT_NAME = "policy-ppo-env-v2"
 ENTITY = "wargame_rl"
 
 
-def _make_run_name(name: str | None, run_suffix: str | None = None) -> str:
+def make_run_name(name: str | None, run_suffix: str | None = None) -> str:
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     base = name if name else DEFAULT_NAME
     run_name = f"{base}-{timestamp}"
@@ -30,13 +29,20 @@ def init_wandb(
     disabled: bool = False,
     group: str | None = None,
     run_suffix: str | None = None,
+    run_name: str | None = None,
 ) -> Generator[Any, None, None]:
     """Initialize a wandb run or yield a lightweight stub when disabled.
 
     When disabled, yields a SimpleNamespace with a `.name` attribute so
     callers can use the same interface for checkpoint / callback naming.
+
+    `run_name` is for a caller that has already made one and needs the SAME
+    string for something else -- self-play's snapshot directory, which has to
+    sit beside this run's checkpoints. ⚠ It cannot recompute it: `make_run_name`
+    stamps wall-clock time, so a second call can land in the next second and
+    name a different directory.
     """
-    run_name = _make_run_name(name, run_suffix)
+    run_name = run_name if run_name is not None else make_run_name(name, run_suffix)
 
     if disabled:
         yield SimpleNamespace(name=run_name)

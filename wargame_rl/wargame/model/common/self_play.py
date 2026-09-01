@@ -30,7 +30,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from wargame_rl.wargame.envs.opponent.registry import build_opponent_policy
 from wargame_rl.wargame.envs.types import OpponentPolicyConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
+from wargame_rl.wargame.rating.elo import win_probability
 from wargame_rl.wargame.rating.pool import Snapshot, SnapshotPool, spans
+from wargame_rl.wargame.rating.score import margin_score
 
 # Disjoint from every seed band this repo already uses -- rollout 0, in-run
 # baselines 10k, in-run eval 500k, held-out 700k, cloning 800k, ratings 900k.
@@ -69,6 +71,11 @@ class SelfPlayConfig(BaseModel):
     # `K^k` forward-model evaluations per unit, and the opponent pays it on
     # every step of every rollout.
     decode_topk: int = Field(default=1, ge=1)
+    # How fast the learner's own rating tracks its results. Elo's own K, and
+    # 16 is the conventional slow setting -- an epoch here is a few dozen
+    # games, so a large K would make the curve a plot of the last epoch's dice.
+    # Zero pins the rating at its start and is the no-op control.
+    elo_k_factor: float = Field(default=16.0, ge=0.0)
 
 
 class OpponentScheduler:
@@ -108,6 +115,66 @@ class OpponentScheduler:
         """The frozen opponents, oldest first, anchor at index zero."""
         return self._pool
 
+    @property
+    def learner_rating(self) -> float:
+        """The learner's rating on the pool's own scale, anchor pinned at zero.
+
+        A **ladder** reading, not a fitted one: it says how far the learner has
+        pulled ahead of the frozen selves and the scripted anchor it has
+        actually played, which is the thing a self-play run is supposed to move
+        and which `eval/vp_margin` against one fixed opponent cannot see.
+        """
+        return self._learner_rating
+
+    def record_outcomes(self, margins: Mapping[str, Sequence[float]]) -> float:
+        """Update the learner's rating from games it has already played.
+
+        `margins` is victory-point margin from the LEARNER's side, keyed by the
+        pool entry it was played against, so no extra games are needed -- the
+        rollout is a rated match that was being thrown away.
+
+        **One batched update per call, not one per game.** An epoch's games are
+        played in parallel across the rollout envs, so there is no chronological
+        order to honour, and Elo updates do not commute: applying them in
+        sequence would make the rating depend on which env happened to finish an
+        episode, which is not a fact about the policy. Summing `(s - E[s])` over
+        the games and stepping once is order-independent and has the same
+        expectation.
+
+        Opponents are **not** updated. A snapshot is frozen weights: its rating
+        is whatever the learner's was at the moment it was frozen, set in
+        `snapshot`, and letting it drift afterwards would move the scale the
+        learner is being measured against.
+        """
+        residuals: list[float] = []
+        for name, entry_margins in margins.items():
+            if not entry_margins:
+                continue
+            opponent_rating = self._rating_of(name)
+            expected = win_probability(
+                self._learner_rating, opponent_rating, self._seat_advantage
+            )
+            for score in margin_score(np.asarray(entry_margins, dtype=np.float64)):
+                residuals.append(float(score) - expected)
+        if not residuals:
+            return self._learner_rating
+        # Elo's own rule, `R + K (s - E[s])`, summed over the epoch's games.
+        mean_residual = sum(residuals) / len(residuals)
+        self._learner_rating += self._config.elo_k_factor * mean_residual
+        return self._learner_rating
+
+    def _rating_of(self, name: str) -> float:
+        """A pool entry's rating, with the anchor pinned at zero.
+
+        An unrated entry reads zero rather than raising: the anchor starts the
+        run as the only member and is the scale's origin by definition, and a
+        snapshot is rated the moment it is written.
+        """
+        for entry in self._pool.entries:
+            if entry.name == name:
+                return 0.0 if entry.rating is None else float(entry.rating)
+        return 0.0
+
     def rate(
         self,
         ratings: dict[str, float],
@@ -142,6 +209,10 @@ class OpponentScheduler:
         torch.save({"state_dict": state_dict}, path)
         entry = Snapshot(name=f"epoch_{epoch}", checkpoint=str(path), epoch=epoch)
         self._pool.add(entry)
+        # Frozen weights get the rating the learner held when they were frozen,
+        # which is what makes the pool a ladder rather than a bag: a later self
+        # that beats an earlier one gains points against a fixed reference.
+        self._pool.rate({entry.name: self._learner_rating})
         earliest, latest = spans(self._pool.entries)
         logger.info(
             "self-play pool: {} entries spanning epochs {}-{}, newest {}",

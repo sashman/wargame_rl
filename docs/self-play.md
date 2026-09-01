@@ -92,6 +92,53 @@ snapshot is taken.
 win-rate counter kept alongside it. One estimator, fitted from every game either
 policy has played.
 
+⚠ **Until the in-run ladder landed, that table was empty, and all three modes
+were the same policy.** `SnapshotPool.sample` reads an unrated entry as an even
+match — `p = 0.5`, deliberately, since refusing to play an unrated snapshot is a
+deadlock — and *nothing called `rate()`*. With every member at `p = 0.5`,
+`pfsp_weights` returns a uniform vector for `hard`, `even` and `uniform` alike,
+verified directly. So `sampling: "hard"`, the **default**, drew uniformly.
+
+What that means for anyone reading a self-play result:
+
+- Any `hard` or `even` arm run before the ladder measured `uniform` under
+  another name, and a `hard`-vs-`uniform` comparison would have been a **null
+  by construction**. Nothing has been run, so nothing is voided.
+- `uniform` is unaffected — it ignores ratings by definition. The pre-registered
+  screen names `uniform` as its arm, so it is measuring what it says it is.
+- The modes are live now, which makes "does the schedule matter" a real second
+  experiment rather than a comparison of a thing with itself.
+
+### The learner's own rating
+
+`self_play/learner_elo`. The rollout is already a rated match — the learner
+plays a seated pool member every epoch — and its result was being thrown away.
+Each finished rollout episode is banked as a game against whichever entry that
+env was seated with, and the learner's rating steps once per epoch by Elo's own
+rule, `R + K (s − E[s])`, with `s` a `margin_score` rather than a win indicator
+for the reason the fit uses one: win rate cannot resolve differences under ~7pp
+here.
+
+Three choices worth stating, because each is a place this could have measured
+something else:
+
+- **One batched update per epoch, not one per game.** Elo updates do not
+  commute, and an epoch's games are played in parallel across rollout envs, so a
+  sequential update would make the rating depend on which env happened to finish
+  an episode first — not a fact about the policy.
+- **A snapshot inherits the learner's rating at the moment it is frozen**, and
+  frozen weights never re-rate afterwards. That is what makes the pool a
+  *ladder* rather than a bag: a later self that beats an earlier one gains
+  points against a fixed reference. The anchor is the origin and never moves.
+- **The rating is updated before the snapshot is written**, so a snapshot
+  carries the epoch it was actually frozen at rather than being one epoch stale.
+
+⚠ **It is a ladder, not a rating on the published scale.** It says how far the
+learner has pulled ahead of its own history and one scripted anchor. Two runs'
+ladders are not comparable to each other unless they share an anchor *and* a
+history, which two runs never do. `just measure-elo` is what puts policies on
+one scale.
+
 ## 4. The seat, which is the live risk
 
 ⚠ **The learner only ever trains the player seat.** A `learner_side` reset
@@ -141,7 +188,14 @@ uv run train.py --env-config-path <config> --self-play \
     --pool-anchor squad_march_take --pfsp-mode hard --seed 1
 ```
 
-Snapshots land in `checkpoints/<run>/pool/`. The pool logs its size and the mean
+Snapshots land in `checkpoints/<run>/pool/`, beside that run's checkpoints —
+`<run>` being the full name, timestamp and `--run-suffix` included. ⚠ **It was
+the run *base* until 2026-09-01**, so the pool went to a sibling directory and
+every self-play run on one env config wrote the same filenames into it. A pool
+entry holds a path loaded lazily at seating time, so two **concurrent** runs
+would have seated each other's weights as their own past selves, silently.
+Sequential runs were unaffected — the pool is in-memory and never scans its
+directory. Pinned by `tests/test_train_run_name.py`. The pool logs its size and the mean
 epoch of the opponents drawn, so a pool that has collapsed onto its newest member
 is visible in the dashboard rather than only in the score.
 

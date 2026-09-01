@@ -20,6 +20,7 @@ import numpy as np
 import pytest
 import torch
 from pydantic_yaml import parse_yaml_raw_as
+from pytorch_lightning import Trainer
 
 from wargame_rl.wargame.envs.opponent.registry import build_opponent_policy
 from wargame_rl.wargame.envs.opponent.scripted_baseline_policy import (
@@ -288,3 +289,95 @@ def test_the_epoch_hooks_still_run_evaluation_and_phase_advancement() -> None:
         "the base hook did not run: an override that returns early when "
         "self-play is off disables evaluation and phase advancement"
     )
+
+
+def _short_config() -> WargameEnvConfig:
+    """The arena config cut to two battle rounds.
+
+    An episode has to actually END inside one epoch's rollout, because the
+    rating is banked from finished episodes -- a test on a twenty-round game
+    would collect a rollout in which nothing is ever scored and assert nothing.
+    """
+    config = _config()
+    config.number_of_battle_rounds = 2
+    return config
+
+
+@pytest.mark.parametrize("self_play_on", [True, False])
+def test_the_run_rates_itself_only_when_it_has_a_pool(
+    tmp_path: Path, self_play_on: bool
+) -> None:
+    """`self_play/learner_elo` is a ladder against the pool, so a control run
+    must not publish one -- there is nothing for it to be a ladder against.
+
+    Driven through a real `Trainer` rather than by calling the hooks, because
+    the outcome is banked inside the parallel rollout collector: a test that
+    called the hooks directly would pass on wiring that never records a game.
+    """
+    env = WargameEnv(config=_short_config())
+    module = PPOLightning(
+        env=env,
+        ppo_model=PPO_Transformer.from_env(env),
+        log=True,
+        n_steps=64,
+        batch_size=16,
+        n_epochs=1,
+        num_rollout_envs=2,
+        n_episodes=1,
+        self_play=SelfPlayConfig(enabled=self_play_on, snapshot_every_n_epochs=1),
+        snapshot_dir=tmp_path / "pool",
+    )
+    trainer = Trainer(
+        max_epochs=1,
+        logger=False,
+        enable_checkpointing=False,
+        enable_progress_bar=False,
+        default_root_dir=str(tmp_path),
+    )
+    trainer.fit(module)
+
+    assert ("self_play/learner_elo" in trainer.logged_metrics) is self_play_on
+    # `eval/elo` is the other half, and it is NOT conditional: it rates the
+    # eval games against the config's own opponent, which every run has.
+    assert "eval/elo" in trainer.logged_metrics
+
+
+def test_the_rating_is_credited_to_the_opponent_that_was_actually_seated(
+    tmp_path: Path,
+) -> None:
+    """A margin banked against the wrong pool member rates the wrong game.
+
+    With one entry in the pool every draw is the anchor, so the recorded key is
+    checkable without depending on the sampler.
+    """
+    env = WargameEnv(config=_short_config())
+    module = PPOLightning(
+        env=env,
+        ppo_model=PPO_Transformer.from_env(env),
+        log=True,
+        n_steps=64,
+        batch_size=16,
+        n_epochs=1,
+        num_rollout_envs=2,
+        n_episodes=1,
+        self_play=SelfPlayConfig(enabled=True, anchor="squad_march_take"),
+        snapshot_dir=tmp_path / "pool",
+    )
+    seen: dict[str, list[float]] = {}
+    original = module._opponent_scheduler.record_outcomes  # type: ignore[union-attr]
+
+    def _capture(margins: dict[str, list[float]]) -> float:
+        seen.update(margins)
+        return original(margins)
+
+    module._opponent_scheduler.record_outcomes = _capture  # type: ignore[union-attr,method-assign]
+    Trainer(
+        max_epochs=1,
+        logger=False,
+        enable_checkpointing=False,
+        enable_progress_bar=False,
+        default_root_dir=str(tmp_path),
+    ).fit(module)
+
+    assert list(seen) == ["squad_march_take"]
+    assert seen["squad_march_take"], "no finished episode was banked as a game"

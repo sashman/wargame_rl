@@ -20,6 +20,7 @@ from wargame_rl.wargame.model.common import (
     get_checkpoint_callback,
     get_logger,
     init_wandb,
+    make_run_name,
 )
 from wargame_rl.wargame.model.common.config import TransformerConfig
 from wargame_rl.wargame.model.common.event_log_callback import EventLogCallback
@@ -545,6 +546,7 @@ def train(
     # The config decides whether the model gets a shooting slice, and
     # therefore whether it decodes targets autoregressively.
     ppo_net = PPO_Transformer.from_env(env, ppo_config, transformer_config)
+    run_name, snapshot_dir = _run_paths(run_name_base, run_suffix)
     self_play_config = SelfPlayConfig(
         enabled=_resolve_default(self_play, False),
         snapshot_every_n_epochs=_resolve_default(snapshot_every_n_epochs, 25),
@@ -556,10 +558,7 @@ def train(
         env=env,
         ppo_model=ppo_net,
         self_play=self_play_config,
-        # Named from the run base rather than from `run.name`, because the
-        # module is built before wandb assigns one and a pool has to be
-        # addressable from the moment training starts.
-        snapshot_dir=Path("checkpoints") / run_name_base / "pool",
+        snapshot_dir=snapshot_dir,
         seed=resolved_seed or 0,
         **ppo_config.model_dump(),
     )
@@ -573,10 +572,9 @@ def train(
 
     with init_wandb(
         config=config,
-        name=run_name_base,
         disabled=no_wandb,
         group=wandb_group,
-        run_suffix=run_suffix,
+        run_name=run_name,
     ) as run:
         env_config_callback = EnvConfigCallback(run.name, env_config)
         ppo_callbacks = cast(
@@ -619,6 +617,27 @@ def train(
 
     if event_exporter and len(event_exporter.log) > 0:
         _write_event_log(event_exporter, run_name_base)
+
+
+def _run_paths(run_name_base: str, run_suffix: str | None) -> tuple[str, Path]:
+    """This run's name, and the directory its self-play pool goes in.
+
+    Derived together from **one** call to `make_run_name`, which is the whole
+    point of the helper: that function stamps wall-clock time, so calling it
+    twice can land in the next second and put the pool somewhere the
+    checkpoints are not.
+
+    ⚠ The pool used to be named from `run_name_base` -- no timestamp and no
+    `--run-suffix`, while the checkpoint directory carries both. Two
+    consequences, both silent. The documented path `checkpoints/<run>/pool/` was
+    empty, so a reader checking the mechanism found nothing and would conclude
+    it had failed. And **every self-play run on one env config wrote the same
+    filenames into one shared directory**: a pool entry holds a path that is
+    loaded lazily when the opponent is seated, so two concurrent runs would seat
+    each other's weights as their own past selves, with nothing raised.
+    """
+    run_name = make_run_name(run_name_base, run_suffix)
+    return run_name, Path("checkpoints") / run_name / "pool"
 
 
 def _write_event_log(exporter: EventLogExporter, run_name: str) -> None:
