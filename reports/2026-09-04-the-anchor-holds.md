@@ -83,22 +83,51 @@ toward coherency, a legal combination is often not in the top-K to choose. So:
 That also explains why the anchor works: it holds the policy where the decode
 still has good candidates.
 
-## Where the goal stands, on one reading rule applied to every route
+## THE SIX-SEED VERDICT — 2 of 4 cells WON, 0 LOST. GOAL NOT MET.
 
-| route | refereed | `vs_take` | `vs_deny` | `vs_shoot` | seeds |
-|---|---|---|---|---|---|
-| §46 clone | **LOST** | WON | ahead | tie | 6 |
-| interpolation α=0.1 | tie | tie | **WON** | tie | 6 |
-| **KL-anchored self-play** | tie | ahead | **WON** | tie | **3** |
+All six at a **verified epoch 300**, n=45, seeds 700000+, `K=3` + charge decode.
 
-**NOT MET.** The goal is conjunctive and needs 4/4 WON at six seeds. Seeds 4–6
-are running.
+| cell | mean | SE | bar | gap | SEs | read | per-seed |
+|---|---|---|---|---|---|---|---|
+| refereed | +1.45 | 6.07 | −5.3 | +6.75 | 1.11 | ahead | +0.4 / −17.7 / +24.7 / +8.8 / +2.9 / −10.4 |
+| `vs_take` | **+34.60** | 6.74 | +20.2 | **+14.40** | 2.14 | **WON** | +35.9 / +20.9 / +55.2 / +24.0 / +53.6 / +18.0 |
+| `vs_deny` | **+32.70** | 3.01 | +11.8 | **+20.90** | 6.95 | **WON** | +30.9 / +27.6 / +38.4 / +38.6 / +39.4 / +21.3 |
+| `vs_shoot` | +56.03 | 3.70 | +56.6 | −0.57 | −0.15 | tie | +69.4 / +61.3 / +52.6 / +55.1 / +42.2 / +55.6 |
 
-⚠ **Projection committed before they land**: if per-seed variance holds, six
-seeds give refereed ~0.89 SE (still a tie), `vs_take` ~2.4 SE (could become
-WON), `vs_shoot` ~1.3 SE (ahead, not won). Most likely **2 WON / 1 ahead /
-1 tie** — a real advance and still not the goal.
+**VERDICT: NOT MET.** The goal is conjunctive and needs 4/4 above 2 SE.
+
+⚠ **The projection committed before seeds 4–6 landed was "2 WON / 1 ahead /
+1 tie". That is exactly what happened.** Recorded because a projection is only
+worth anything if it is checkable afterwards.
+
+**Decode headroom: +78.43** (per-seed +76.8 / +63.5 / +80.1 / +74.8 / +90.5 /
++84.9) — *above* the clone's +74.87, against the control's +49.9 and plain PPO's
++40.23. The pre-registered mechanism is confirmed at six seeds, not three.
+
+### What it changes, on one reading rule applied to every route
+
+| route | refereed | `vs_take` | `vs_deny` | `vs_shoot` | won | lost |
+|---|---|---|---|---|---|---|
+| §46 clone — the previous best | **LOST** | WON | ahead | tie | 1 | **1** |
+| interpolation α=0.1 | tie | tie | **WON** | tie | 1 | 0 |
+| **KL-anchored self-play** | **ahead** | **WON** | **WON** | tie | **2** | **0** |
+
+**This is the best policy on file in this line** — it doubles the won cells and
+loses none. The head-to-head, which §48 named the hard cell and which a clone
+**cannot win by construction**, moves from LOST to ahead (+6.75). `vs_deny` goes
+from ahead to won at 6.95 SE.
+
+### The blocker is `vs_shoot`, and it is not close to moving
+
++56.03 against a bar of +56.6: **−0.15 SE, the flattest tie in the table.** Every
+route lands there — clone +58.45, interpolation +56.50, the arm +56.03. Nothing
+measured this session moves it, and one thing that looked like an explanation was
+refuted: charging is worth **+32.8 vp** on that cell, so the deficit is not
+wasted declarations. The bar simply plays that matchup well, and imitation-based
+policies inherit its ceiling rather than exceeding it.
 
 ⚠ §46's caveat governs every row: the charge move is the **script's geometry**
 supplied by the charge decode, the bar's rows are scripts at no decode, and six
-seeds warm-started from six clones share one teacher.
+seeds warm-started from six clones share one teacher. This is *"a learned
+policy, executing charges with the script's geometry, beats the script on two of
+four cells and loses none"* — never "unaided".
