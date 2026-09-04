@@ -141,6 +141,19 @@ def _resolve_transformer_config(
     return config
 
 
+def _anchor_list(value: str) -> list[str]:
+    """Split a comma-separated `--pool-anchor` into the pool's fixed floor.
+
+    Comma-separated rather than a repeated option so every existing invocation
+    and Justfile recipe keeps working unchanged: a single name parses to a
+    one-element list, which is exactly what the field held before it was a list.
+    """
+    names = [name.strip() for name in value.split(",") if name.strip()]
+    if not names:
+        raise ValueError("--pool-anchor needs at least one policy name")
+    return names
+
+
 def _validate_kl_anchor(
     kl_ref_coef: float | None,
     warm_start_ckpt_path: str | None,
@@ -590,7 +603,7 @@ def train(
         enabled=_resolve_default(self_play, False),
         snapshot_every_n_epochs=_resolve_default(snapshot_every_n_epochs, 25),
         pool_capacity=_resolve_default(pool_capacity, 8),
-        anchor=_resolve_default(pool_anchor, "squad_march_take"),
+        anchors=_anchor_list(_resolve_default(pool_anchor, "squad_march_take")),
         sampling=cast(Any, _resolve_default(pfsp_mode, "hard")),
     )
     ppo_model = PPOLightning(

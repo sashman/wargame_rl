@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from pydantic_yaml import parse_yaml_raw_as
 
-from train import _build_default_run_base_name, _run_paths
+from train import _anchor_list, _build_default_run_base_name, _run_paths
 from wargame_rl.wargame.envs.types import OpponentPolicyConfig, WargameEnvConfig
 from wargame_rl.wargame.model.common import init_wandb
 
@@ -145,3 +145,29 @@ class TestThePoolSitsBesideTheCheckpoints:
 
         with init_wandb(disabled=True, run_name=run_name) as run:
             assert run.name == run_name
+
+
+class TestThePoolAnchorList:
+    """`--pool-anchor` takes a comma-separated floor, not just one policy.
+
+    The ladder a run is judged on has four opponents; a single-policy floor
+    cannot carry them, and the one matchup the pool never held was the one
+    matchup six seeds could only tie (docs/melee-teaching-goal.md §51).
+    """
+
+    def test_a_single_name_is_a_one_element_list(self) -> None:
+        """Every existing invocation and recipe passes exactly this."""
+        assert _anchor_list("squad_march_take") == ["squad_march_take"]
+
+    def test_several_names_split_and_keep_their_order(self) -> None:
+        assert _anchor_list("squad_march_take_charge,squad_march_shoot") == [
+            "squad_march_take_charge",
+            "squad_march_shoot",
+        ]
+
+    def test_whitespace_and_empty_entries_are_dropped(self) -> None:
+        assert _anchor_list(" a , , b ") == ["a", "b"]
+
+    def test_an_empty_value_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="at least one policy"):
+            _anchor_list("  ,  ")
