@@ -88,6 +88,31 @@ by *not leaving the decodable region*, and the region is very small — the
 control run has already drifted to 0.255 by epoch 25 and lost two thirds of its
 headroom there.
 
+## ⚠ It does NOT replicate on the self-play line — and the test could not have shown it
+
+Pre-registered before the endpoints existed: interpolate the same three clones
+toward the **self-play controls'** endpoints instead of §47's, same α=0.1.
+Criterion: replicates at ≥ +4.0 with 3/3 seeds positive.
+
+**Result: −1.80 ± 10.29, t=−0.17, 2/3 positive.** By the letter, FAILS.
+
+⚠ **But the criterion was inside the estimator's own noise, and I did not
+power-check it** — the same defect this record already logged for the advance
+lever's accept bound. At three seeds the SE is **10.29**, so the 95% interval
+runs roughly −22 to +19: this test cannot tell +4 from −4 and its "failure"
+carries almost no information. Recorded as a defect in the test, not as evidence
+against the method.
+
+What the registration *did* anticipate is real: the self-play endpoints are
+**worse** than §47's on the same three seeds (**−27.17** against −18.47), so
+there is less worth stepping toward. That reading is admissible only because it
+was written down first.
+
+**Also measured here, and it is a result in its own right:** self-play from the
+clone, unanchored, ends at **−27.17** against those clones' **−9.07** — it
+destroys the clone exactly as fixed-opponent PPO does (§47: −10.67 → −25.58),
+slightly worse. **Changing the opponent distribution is not the fix.**
+
 ## What this is NOT
 
 - ⚠ **Not self-play.** These are §47's fixed-opponent PPO endpoints. The
