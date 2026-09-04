@@ -2862,3 +2862,59 @@ tenth as far. Interpolate `barclone-s{1..6}` toward their own §47 endpoints.
   here is what the KL-anchor arm tests, and that is open.
 - ⚠ §46's borrowed-geometry caveat governs verbatim: the charge move is the
   script's, supplied by the charge decode.
+
+## 51. The KL anchor — 2 of 4 cells WON, 0 LOST, at six seeds. GOAL NOT MET.
+
+Measured 2026-09-04, six seeds, **verified epoch 300**, n=45, seeds 700000+,
+`K=3` + charge decode. Pre-registration committed to git at `71011a0` **while
+seeds 2–6 were still training**.
+[Report](../reports/2026-09-04-the-anchor-holds.md). Follows §49: if PPO destroys
+a clone by travelling too far from a decodable policy, hold it near one.
+
+⚠ **Self-play alone is the CONTROL, not the treatment.** Unanchored self-play
+from the §46 clones ends at **−27.17** against those clones' −9.07 — it destroys
+them slightly faster than §47's fixed opponent did.
+
+| cell | mean | SE | bar | gap | SEs | read |
+|---|---|---|---|---|---|---|
+| refereed | +1.45 | 6.07 | −5.3 | +6.75 | 1.11 | ahead |
+| `vs_take` | **+34.60** | 6.74 | +20.2 | **+14.40** | 2.14 | **WON** |
+| `vs_deny` | **+32.70** | 3.01 | +11.8 | **+20.90** | 6.95 | **WON** |
+| `vs_shoot` | +56.03 | 3.70 | +56.6 | −0.57 | −0.15 | tie |
+
+**VERDICT: NOT MET** — conjunctive, needs 4/4 above 2 SE.
+
+| route | refereed | `vs_take` | `vs_deny` | `vs_shoot` | won | lost |
+|---|---|---|---|---|---|---|
+| §46 clone (the previous best) | **LOST** | WON | ahead | tie | 1 | **1** |
+| interpolation α=0.1 (§50) | tie | tie | **WON** | tie | 1 | 0 |
+| **KL-anchored self-play** | **ahead** | **WON** | **WON** | tie | **2** | **0** |
+
+- **Best policy on file in this line.** It doubles the clone's won cells and
+  loses none, and the **head-to-head — the cell §48 named hard, which a clone
+  cannot win by construction — moves from LOST to ahead** (+6.75).
+- **Screen against its own control: +29.63 ± 1.74, t=17.0, 3/3.**
+- **Mechanism confirmed at six seeds**: headroom **+78.43**, *above* the clone's
+  +74.87, against the control's +49.9 and plain PPO's +40.23. Drift 0.039 at
+  epoch 125 against the control's 1.770. The anchor does exactly what it was
+  built to do and the vp follow.
+- ⚠ **The projection committed before seeds 4–6 landed — "2 WON / 1 ahead /
+  1 tie" — is exactly what happened.**
+- ⚠ **`vs_shoot` is THE blocker and nothing moves it.** Every route lands on the
+  bar: clone +58.45, interpolation +56.50, arm +56.03, bar +56.6. Winning it
+  needs a mean above +64, i.e. a real +8, not noise reduction. One candidate
+  explanation was **refuted** the same day — charging is worth **+32.8 vp** on
+  that cell, so the deficit is not wasted declarations against a non-charging
+  opponent. The bar plays that matchup well and imitation inherits its ceiling.
+- ⚠ **ARM 2 REJECTED — `require_coherent: false` in training** (one seed):
+  −19.6 / −14.0 / +0.9 / +7.7, and its **decoded** coherency is only
+  **0.906–0.921** against the arm's 0.960–0.976. **This corrects §49's
+  corollary.** "A play-time decode makes the corresponding training-time skill
+  worthless" is too strong: the decode chooses the most probable *legal*
+  combination from each model's top-K, and a policy never pushed toward
+  coherency does not have one there to choose. **A decode substitutes for a
+  skill's EXECUTION, not for the training pressure that makes the skill
+  REPRESENTABLE.** That is also why the anchor works.
+- ⚠ §46's caveat governs every row: the charge is the **script's geometry** via
+  the charge decode, the bar's rows are scripts at no decode, and six seeds off
+  six clones share one teacher.

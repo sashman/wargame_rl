@@ -1263,6 +1263,32 @@ Measured 2026-09-04, **no GPU**, six paired seeds, n=45,
   `--kl-ref-target` (adaptive, targets nats of drift; unanchored PPO drifts to
   **2.0–2.6 nats per model**). ⚠ **Its arm is in flight — no result yet.**
 
+### The KL anchor — the best melee policy on file, and the goal is still not met
+
+Measured 2026-09-04, six seeds, verified epoch 300,
+[report](reports/2026-09-04-the-anchor-holds.md) · melee-teaching-goal §51.
+
+- ⚠ **SELF-PLAY ALONE IS THE CONTROL, NOT THE TREATMENT.** Unanchored self-play
+  from the §46 clones ends at **−27.17** against those clones' −9.07 — it
+  destroys them slightly faster than a fixed opponent does.
+- **With `--kl-ref-target 0.03` it wins 2 of 4 ladder cells and loses none**
+  (`vs_take` +14.40 at 2.14 SE, `vs_deny` +20.90 at 6.95 SE), and the **refereed
+  head-to-head moves from the clone's LOST to ahead** (+6.75, 1.11 SE). Against
+  its own control, paired: **+29.63 ± 1.74, t=17.0, 3/3**.
+- ⚠ **GOAL NOT MET** — it is conjunctive, and **`vs_shoot` ties at −0.15 SE**.
+  Every route lands on that bar (clone +58.45, interpolation +56.50, arm +56.03,
+  bar +56.6); winning it needs a real +8, not noise reduction. Charging is worth
+  **+32.8 vp** there, so the deficit is **not** wasted declarations — that was
+  measured and refuted.
+- **Mechanism confirmed**: decode headroom **+78.43**, above the clone's +74.87
+  (control +49.9, plain PPO +40.23); drift 0.039 against the control's 1.770.
+- ⚠ **`require_coherent: false` in training is REJECTED, and it corrects the
+  rule above it.** Its *decoded* coherency is only 0.906–0.921 — the decode
+  cannot repair a policy that never learned formation, because it picks the most
+  probable **legal** combination from each model's top-K and there is none
+  there. **A decode substitutes for a skill's EXECUTION, not for the training
+  pressure that makes the skill REPRESENTABLE.**
+
 ### Coherency
 
 The rule is the game's own formation constraint. It is where most of the
