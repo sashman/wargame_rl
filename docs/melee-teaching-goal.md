@@ -2812,3 +2812,53 @@ reallocation, and the charge.
 weights (`--kl-ref-coef`, `--kl-ref-target`), self-play from the §46 clones with
 `squad_march_take_charge` as the pool anchor, three seeds against three
 unanchored controls.
+
+## 50. A tenth of the step — the first policy here with NO losing cell. Goal still NOT MET.
+
+Measured 2026-09-04, **no GPU training**, six seeds, n=45, `K=3` + charge
+decode. [Report](../reports/2026-09-04-a-tenth-of-the-step.md). Follows from
+§49: if PPO's failure is travelling too far from a decodable policy, travel a
+tenth as far. Interpolate `barclone-s{1..6}` toward their own §47 endpoints.
+
+**Refereed cell, dose-response over a grid fixed before any number existed:**
+
+| α | mean | paired v clone | t | signs |
+|---|---|---|---|---|
+| 0.0 (clone) | −10.67 | — | — | — |
+| **0.1** | **−2.02** | **+8.65** | **3.15** | **6/6** |
+| 0.25 | −2.85 | +7.82 | 1.58 | 5/6 |
+| 0.5 | −20.70 | −10.03 | −1.98 | 1/6 |
+| 1.0 (§47) | −25.58 | — | — | — |
+
+**All four cells at α=0.1** (WON = gap > 2 SE, ahead > 1 SE, tie within 1 SE):
+
+| cell | α=0.1 | bar | v bar | read | clone read | paired v clone |
+|---|---|---|---|---|---|---|
+| refereed | −2.02 | −5.3 | +3.28 | tie | **LOST** | **+8.65** (t 3.15) |
+| `vs_take` | +22.80 | +20.2 | +2.60 | tie | **WON** | −6.02 |
+| `vs_deny` | **+28.02** | +11.8 | **+16.22** | **WON** | ahead | +8.95 |
+| `vs_shoot` | +56.50 | +56.6 | −0.10 | tie | tie | −1.95 |
+
+- **VERDICT: NOT MET.** The goal is conjunctive and three cells are ties.
+- **What DID change: the clone reads 1 won / 1 ahead / 1 tie / 1 LOST; α=0.1
+  reads 1 won / 3 ties / 0 LOST.** First policy in this line with no losing
+  cell, and the repaired cell is the **head-to-head** — the one a clone cannot
+  win by construction (§46). It paid with `vs_take`, which fell from a win to a
+  tie.
+- ⚠ **α=0.25 LOSES `vs_shoot`** (−4.53). Both doses passed the refereed screen
+  so both were carried to all four cells; neither is quoted alone.
+- ⚠ **The falsifier partly fires.** A random displacement of the same per-tensor
+  size gives **+2.91 (t=1.21, ns)**; interpolation minus noise is **+5.74
+  (t=2.10, 5/6)**. So ~2/3 of the gain is PPO's *direction* and ~1/3 is
+  displacement of any kind, indistinguishable from zero. ⚠ At six draws the two
+  were **not** separable (t=0.86); it took **18**. Never quote the direction
+  effect without the control.
+- **Mechanism, pre-registered and confirmed**: headroom **+74.87 (clone) →
+  +65.40 (α=0.1) → +40.23 (§47)**, at **0.0155 nats** of drift against the
+  self-play control's 0.255 by epoch 25. It works by not leaving the decodable
+  region, and that region is **very small**.
+- ⚠ **This is NOT self-play** — these are fixed-opponent endpoints — and NOT a
+  training method. Whether a run *trained* under an equivalent constraint lands
+  here is what the KL-anchor arm tests, and that is open.
+- ⚠ §46's borrowed-geometry caveat governs verbatim: the charge move is the
+  script's, supplied by the charge decode.
