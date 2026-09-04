@@ -71,15 +71,39 @@ warm-started, scored decoded both times
 ([report](2026-08-20-decoding-does-not-belong-in-training.md)). So the training
 regime cannot be made equal to the play regime by any route currently on file.
 
+## Headroom decays over training, on 6 of 6 seeds
+
+The endpoint comparison above is two points. Scoring all 18 `ppo-NNN`
+intermediates in **both** regimes gives 30 (seed, epoch) points across six
+seeds:
+
+| epochs | n | decoded | undecoded | **headroom** |
+|---|---|---|---|---|
+| 0 (the clone) | 6 | −10.67 | −85.53 | **+74.87** |
+| 1–100 | 5 | −7.32 | −58.34 | **+51.02** |
+| 101–250 | 5 | −27.32 | −66.98 | **+39.66** |
+| 251–300 | 14 | −24.14 | −69.26 | **+45.12** |
+
+- **Headroom fell from the clone to epoch 300 on 6 of 6 seeds.**
+- `corr(epoch, headroom) = −0.628`; `corr(headroom, decoded) = **+0.638**`.
+  Headroom is not a bookkeeping identity here — it *predicts* the score the
+  goal is measured by.
+- **Two thirds of the loss happens in the first 100 epochs** (74.87 → 51.02).
+  Whatever bounds the drift has to bind from the first epoch, not anneal in.
+
+⚠ These checkpoints are `ppo-NNN` — kept on *training reward* — so their epochs
+are seed-specific and not a random sample of training. The 6-of-6 endpoint fall
+does not depend on that; the shape of the curve between does.
+
+⚠ **The 1–100 bucket scoring −7.32 against the clone's −10.67 is NOT a result.**
+n=5, SE ≈ 4 on the bucket mean against a difference of 3.35, on checkpoints
+selected by training reward. "PPO helps early" remains unestablished, exactly as
+it was before these 18 runs.
+
 ## What is left: bound the drift
 
-The §47 runs' intermediate checkpoints say the damage is **progressive**.
-Scored at `K=3 cd=1`: epochs ≤100 mean **−7.3** (5 checkpoints), epochs >100
-mean **−24.7** (13). ⚠ Those epochs are `ppo-NNN` — top-k by *training reward* —
-so they are seed-specific and not a clean curve, and **"the early window beats
-the clone" is NOT established**: at n=45 a single point carries SE ≈ 9, and 5
-points at −7.3 against the clone's −10.67 is well inside noise. It is enough to
-motivate a trust-region intervention and no more.
+The decay table above is the case for a trust-region fix, and it is the whole
+of it.
 
 The drift itself is enormous. `KL(ppo ‖ clone)` on real states, per model:
 **mean 2.06 / 2.65 / 2.34 nats** across three seeds (median 1.1–1.8, p90
@@ -89,6 +113,17 @@ policy is effectively unrecognisable.
 A KL anchor to the warm-start weights is shipped as `--kl-ref-coef` /
 `--kl-ref-target`. Its arm is pre-registered and in flight; nothing here is a
 result about whether it works.
+
+## Inference here DOES reproduce, contra the standing warning
+
+`scripts/measure_charges.py`'s docstring records agent rows varying *within one
+process* and marks the cause unresolved. That would put a large error bar on
+every number above, so it was checked rather than assumed: four repeat runs at
+n=45 (two checkpoints x two regimes) returned **every digit unchanged**, and the
+six clone seeds reproduce §46's published per-seed list exactly. On this config,
+harness and K, agent rows are deterministic. ⚠ That is **not** evidence the
+warning was wrong where it was taken — a different config, and possibly a
+different K.
 
 ## ⚠ Training is NOT bit-reproducible, and the record says it is
 

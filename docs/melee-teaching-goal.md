@@ -2772,10 +2772,27 @@ probed it."* The probe was one column nobody had printed.
   and its exact per-seed list, §47's checkpoints reproduce −25.58, and the
   scripted bar reproduces §38's **−5.3 / +20.2 / +11.8 / +56.6** on all four
   cells at today's revision.
-- ⚠ **The §47 damage is PROGRESSIVE** — epochs ≤100 mean −7.3, >100 mean −24.7 —
-  but those are `ppo-NNN` checkpoints chosen by *training reward*, so they are
-  seed-specific, and at SE ≈ 9 per point **"an early window beats the clone" is
-  NOT established.** It motivates a trust-region fix and nothing more.
+- **Headroom DECAYS over training, on 6 of 6 seeds.** All 18 `ppo-NNN`
+  intermediates scored in both regimes, 30 (seed, epoch) points:
+
+  | epochs | n | decoded | undecoded | headroom |
+  |---|---|---|---|---|
+  | 0 (clone) | 6 | −10.67 | −85.53 | **+74.87** |
+  | 1–100 | 5 | −7.32 | −58.34 | **+51.02** |
+  | 101–250 | 5 | −27.32 | −66.98 | **+39.66** |
+  | 251–300 | 14 | −24.14 | −69.26 | **+45.12** |
+
+  `corr(epoch, headroom) = −0.628`, and `corr(headroom, decoded) = **+0.638**` —
+  headroom *predicts* the scored value rather than merely accounting for it.
+  **Two thirds of the loss is gone by epoch 100**, so anything that bounds the
+  drift has to bind from the first epoch. ⚠ These are top-k-by-training-reward
+  checkpoints, so the curve's shape between the endpoints is not a random
+  sample, and **"PPO helps early" (the 1–100 bucket at −7.32) is NOT
+  established** — n=5, SE ≈ 4 against a difference of 3.35.
+- ⚠ **Inference reproduces here**, contra `measure_charges`'s standing warning:
+  four repeat runs at n=45 returned every digit unchanged and the clone seeds
+  reproduced §46's per-seed list. Not evidence the warning was wrong where it
+  was taken.
 - ⚠ **TRAINING IS NOT BIT-REPRODUCIBLE HERE.** Identical code, seed, config and
   flags gave **0 of 222 identical tensors** on `25v25_maps_melee_approach`
   (mean relative difference 0.0064) against 110 of 222 and one ULP on the golden
