@@ -13,6 +13,43 @@ seeds / decode / config, the verdict, and what it licenses or forbids next.
 
 ---
 
+## PREMISE ROWS — "There is no melee" / "There is no charge phase and no fight phase"
+
+**Both premises are now FALSE on melee configs, and the closing they assumed away
+is worth ~+30 vp.**
+
+These are not numbered claims but *environment facts* the doctrine's table asserts,
+and two of its strongest consequences hang off them: *"every measurement of a
+movement feature here is provisional"* (because closing is priced only by what it
+captures, never by what it threatens) and *"ground is sticky — nothing is levered
+off a point except by being shot off it"*.
+
+Measured 2026-09-04 at `d5ec7d4`, n=45, seeds 700000+, no decode, on
+`configs/evaluation/25v25_maps_melee_approach_*`. The two scripts differ **only**
+in whether `select_charge` returns a charge:
+
+| cell | `squad_march_take` (never charges) | `squad_march_take_charge` | charging is worth |
+|---|---|---|---|
+| `vs_shoot` | +23.8 | **+56.6** | **+32.8** |
+| refereed | −33.6 | **−5.3** | **+28.3** |
+
+- **The premises are lifted where melee is on.** Closing now threatens as well as
+  captures, and ground is no longer sticky: a unit can be levered off a point by
+  contact.
+- ⚠ **They still hold everywhere else.** `melee.enabled` defaults to False, so every
+  golden config — and therefore most of the movement record, including the whole
+  advance-move line — still sits inside the doctrine's premise. The provisionality
+  warning it attaches is **not** retired; it is now scoped.
+- ⚠ **This refutes a hypothesis of mine the same day.** I proposed that against a
+  *non-charging* opponent (`vs_shoot`) declaring charges wastes the unit's shooting,
+  and that this was why no policy beats the bar on that cell. Charging is worth
+  **+32.8** there. **REFUTED** — the cell is hard because the bar plays it well
+  (+56.6), not because charging costs anything.
+- **Licensed next**: pricing any move type whose value is "arrive sooner" on a melee
+  config, which the doctrine's own note says was impossible before.
+  **Forbidden next**: quoting a pre-melee movement result as though the premise had
+  been lifted for it.
+
 ## D-08 — "A surplus unit goes to the cheapest unheld point, then the cheapest enemy-held one"
 
 **The claim's ordering is REFUTED for the trained agent; its priority is the reverse.**
