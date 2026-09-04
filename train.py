@@ -141,6 +141,24 @@ def _resolve_transformer_config(
     return config
 
 
+def _validate_kl_anchor(
+    kl_ref_coef: float | None,
+    warm_start_ckpt_path: str | None,
+) -> None:
+    """Refuse a KL anchor with nothing to anchor to.
+
+    Caught at startup rather than at the first minibatch, because the failure
+    is otherwise silent and expensive: the run would anchor to whatever random
+    initialisation `seed_everything` produced and spend a training window
+    holding itself near it.
+    """
+    if kl_ref_coef is not None and kl_ref_coef > 0.0 and warm_start_ckpt_path is None:
+        raise ValueError(
+            "kl_ref_coef > 0 requires warm_start_ckpt_path: the anchor is the "
+            "weights the run starts from, and there are none to hold onto"
+        )
+
+
 def _validate_checkpoint_mode(
     resume_ckpt_path: str | None,
     warm_start_ckpt_path: str | None,
@@ -411,6 +429,20 @@ def train(
         None,
         help="Load model weights from checkpoint and start fresh optimizer/epoch state.",
     ),
+    kl_ref_target: float | None = typer.Option(
+        None,
+        help="Drift to hold, in nats per model, adapting --kl-ref-coef each "
+        "epoch to reach it. 0.0 (the default) keeps the coefficient fixed. "
+        "Unpenalised PPO from a clone drifts to 2.0-2.6 nats here.",
+    ),
+    kl_ref_coef: float | None = typer.Option(
+        None,
+        help="Weight on KL(policy || the warm-started weights), holding the run "
+        "near the policy it started from. 0.0 (the default) builds no reference "
+        "network and adds no term, so a control run is bit-identical to a build "
+        "without the anchor. Requires --warm-start-ckpt-path: anchoring to a "
+        "random initialisation is meaningless.",
+    ),
     self_play: bool = typer.Option(
         False,
         help="Train against a pool of the run's own frozen snapshots, sampled by "
@@ -484,6 +516,7 @@ def train(
     warm_start_ckpt_path = _resolve_optional_str(warm_start_ckpt_path)
 
     _validate_checkpoint_mode(resume_ckpt_path, warm_start_ckpt_path)
+    _validate_kl_anchor(_resolve_optional_float(kl_ref_coef), warm_start_ckpt_path)
 
     # Process-wide, so it is set before any model is constructed.
     configure_matmul_precision(enabled=tf32)
@@ -517,6 +550,12 @@ def train(
     resolved_eval_interval = _resolve_optional_int(eval_every_n_epochs)
     if resolved_eval_interval is not None:
         ppo_config.eval_every_n_epochs = resolved_eval_interval
+    resolved_kl_ref_coef = _resolve_optional_float(kl_ref_coef)
+    if resolved_kl_ref_coef is not None:
+        ppo_config.kl_ref_coef = resolved_kl_ref_coef
+    resolved_kl_ref_target = _resolve_optional_float(kl_ref_target)
+    if resolved_kl_ref_target is not None:
+        ppo_config.kl_ref_target = resolved_kl_ref_target
     if gamma is not None:
         ppo_config.gamma = gamma
     resolved_gae_lambda = _resolve_optional_float(gae_lambda)
@@ -613,6 +652,10 @@ def train(
 
         if warm_start_ckpt_path is not None:
             _apply_warm_start_weights(ppo_model, warm_start_ckpt_path)
+            # Inside this branch, not after it: the anchor is the weights the
+            # run began FROM, and `_validate_kl_anchor` has already refused a
+            # coefficient without a warm start to hold onto.
+            ppo_model.attach_kl_reference()
         _fit_with_optional_resume(trainer, ppo_model, resume_ckpt_path)
 
     if event_exporter and len(event_exporter.log) > 0:
