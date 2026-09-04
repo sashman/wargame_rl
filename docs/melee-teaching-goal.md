@@ -2729,3 +2729,69 @@ has probed learning dynamics directly, and the remaining 5.4 vp live there.
 approach mask, manual-declaration mask and referee — closing the gap-map rows
 `charge.target_declaration` and *after-moving conditions*. **Zero bind violations
 across six seeds**, no cost in play quality (§41: paired +1.80 ± 4.91).
+
+## 49. §48's "whole question" is ANSWERED — PPO spends the decode's headroom
+
+Measured 2026-09-04 at `d5ec7d4`, **no GPU training**, six paired seeds, n=45,
+seeds 700000+, refereed cell, through the §46/§47 harness.
+[Report](../reports/2026-09-04-ppo-spends-the-decodes-headroom.md).
+
+§48: *"why gradient descent cannot hold a basin it was placed in, with a fitted
+critic. That is a learning-dynamics question ... and nothing in this line has
+probed it."* The probe was one column nobody had printed.
+
+| regime | clone | after PPO (§47) | paired Δ | t | signs |
+|---|---|---|---|---|---|
+| `K=1 cd=0` — **PPO's own regime** | −85.53 | −65.82 | **+19.72** | 8.22 | **6/6** |
+| `K=1 cd=1` | −69.05 | −50.83 | +18.22 | 3.50 | 6/6 |
+| `K=3 cd=0` | −32.18 | −28.72 | +3.47 | 0.52 | 2/6 |
+| `K=3 cd=1` — **the scored regime** | −10.67 | −25.58 | −14.92 | −2.60 | 1/6 |
+
+- **PPO did not fail.** It improved the policy by **+19.7 vp on 6 of 6 seeds at
+  t=8.2** in the regime it actually rolls out in, and lost 14.9 in the regime it
+  is scored in. **Decode headroom fell +74.87 → +40.23**: it bought 19.7 vp of
+  unaided skill and spent **34.6 vp of headroom** doing it.
+- **What it learned, the decode already supplied.** Unaided coherency 0.754 →
+  0.818 and unaided standing charges 0.95 → 2.04/ep — real skill — but **both
+  policies reach 0.96 coherency once decoded**. The capacity went into
+  reproducing what the decode gives free, and came out of the property the
+  decode needs.
+- ⚠ **PRE-REGISTERED AND FALSIFIED: the charge decode is NOT the lever.** I
+  registered `Δ(K=1, cd=1) ≤ +5.0` on the theory that failed declarations are
+  what PPO learns to avoid; measured **+18.22**. Declarations do fall as
+  predicted (12.98 → 10.71/ep) and it is not where the vp are. The **joint
+  coherent decode** is: Δ collapses +19.7 → +3.5 the moment formation is
+  decoded.
+- **And that one cannot be moved into training** — constrained sampling is
+  −51.8 from scratch and −43.7 warm-started, scored decoded both times. So the
+  training regime cannot be made to equal the play regime by any route on file.
+  What is left is to **bound the drift**, which is enormous: `KL(ppo ‖ clone)`
+  is **2.06 / 2.65 / 2.34 nats per model**, comparable to the policy's whole
+  entropy.
+- **Harness validated against the record**: the clone reproduces §46's −10.67
+  and its exact per-seed list, §47's checkpoints reproduce −25.58, and the
+  scripted bar reproduces §38's **−5.3 / +20.2 / +11.8 / +56.6** on all four
+  cells at today's revision.
+- ⚠ **The §47 damage is PROGRESSIVE** — epochs ≤100 mean −7.3, >100 mean −24.7 —
+  but those are `ppo-NNN` checkpoints chosen by *training reward*, so they are
+  seed-specific, and at SE ≈ 9 per point **"an early window beats the clone" is
+  NOT established.** It motivates a trust-region fix and nothing more.
+- ⚠ **TRAINING IS NOT BIT-REPRODUCIBLE HERE.** Identical code, seed, config and
+  flags gave **0 of 222 identical tensors** on `25v25_maps_melee_approach`
+  (mean relative difference 0.0064) against 110 of 222 and one ULP on the golden
+  shooting config. The rollout envs are seeded; this is GPU float
+  nondeterminism amplified chaotically. Pairing still holds **at
+  initialisation**, but a paired difference carries an unmeasured rerun-noise
+  term, and CLAUDE.md's "never retrain a control" is unsafe on map-pool configs.
+
+**The rule.** *Measure a policy in the regime it is TRAINED in, not only the one
+it is scored in, whenever a play-time decode stands between the two.* And its
+corollary: **a play-time decode makes the corresponding training-time skill
+worthless** — capacity spent acquiring it is spent twice, and here against
+itself. That applies to all three decodes on file: formation, surplus
+reallocation, and the charge.
+
+**In flight, pre-registered, no result yet**: a KL anchor to the warm-start
+weights (`--kl-ref-coef`, `--kl-ref-target`), self-play from the §46 clones with
+`squad_march_take_charge` as the pool anchor, three seeds against three
+unanchored controls.
