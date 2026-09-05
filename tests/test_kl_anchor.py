@@ -231,6 +231,18 @@ class TestTheStartupGuard:
     ) -> None:
         _validate_kl_anchor(coefficient, warm_start)
 
+    def test_a_resume_is_a_legitimate_source_of_the_anchor(self) -> None:
+        """The first version of this guard refused every resumed anchored run.
+
+        On a resume the anchor comes from the checkpoint, not a warm start --
+        which is the whole case `on_load_checkpoint` exists to serve.
+        """
+        _validate_kl_anchor(0.1, None, "resume.ckpt")
+
+    def test_neither_source_is_still_refused(self) -> None:
+        with pytest.raises(ValueError, match="none\\s+to hold onto"):
+            _validate_kl_anchor(0.1, None, None)
+
 
 def _state_tensors(
     observation: WargameEnvObservation, module: PPOLightning

@@ -157,6 +157,7 @@ def _anchor_list(value: str) -> list[str]:
 def _validate_kl_anchor(
     kl_ref_coef: float | None,
     warm_start_ckpt_path: str | None,
+    resume_ckpt_path: str | None = None,
 ) -> None:
     """Refuse a KL anchor with nothing to anchor to.
 
@@ -164,11 +165,19 @@ def _validate_kl_anchor(
     is otherwise silent and expensive: the run would anchor to whatever random
     initialisation `seed_everything` produced and spend a training window
     holding itself near it.
+
+    ⚠ A **resume** is the other legitimate source of an anchor, and the first
+    version of this guard did not know that: it refused every resumed anchored
+    run, which is exactly the case `on_load_checkpoint` exists to serve. The
+    anchor then comes from the checkpoint rather than from a warm start.
     """
-    if kl_ref_coef is not None and kl_ref_coef > 0.0 and warm_start_ckpt_path is None:
+    if kl_ref_coef is None or kl_ref_coef <= 0.0:
+        return
+    if warm_start_ckpt_path is None and resume_ckpt_path is None:
         raise ValueError(
-            "kl_ref_coef > 0 requires warm_start_ckpt_path: the anchor is the "
-            "weights the run starts from, and there are none to hold onto"
+            "kl_ref_coef > 0 requires warm_start_ckpt_path or resume_ckpt_path: "
+            "the anchor is the weights the run starts from, and there are none "
+            "to hold onto"
         )
 
 
@@ -529,7 +538,9 @@ def train(
     warm_start_ckpt_path = _resolve_optional_str(warm_start_ckpt_path)
 
     _validate_checkpoint_mode(resume_ckpt_path, warm_start_ckpt_path)
-    _validate_kl_anchor(_resolve_optional_float(kl_ref_coef), warm_start_ckpt_path)
+    _validate_kl_anchor(
+        _resolve_optional_float(kl_ref_coef), warm_start_ckpt_path, resume_ckpt_path
+    )
 
     # Process-wide, so it is set before any model is constructed.
     configure_matmul_precision(enabled=tf32)
