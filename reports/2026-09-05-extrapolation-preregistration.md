@@ -43,3 +43,35 @@ first one measured here that does not spend headroom.
 for**, which is exactly the winner-selection this repo prices at +1.4 to +2.9 vp.
 A PASS therefore requires the other three cells scored at that same α, and the
 result reported as selected-then-confirmed, never as a clean six-seed win.
+
+
+---
+
+# RESULT, 2026-09-05 — FAIL. The anchored direction is only LOCALLY good.
+
+Refereed cell, six seeds, n=45, K=3 + charge decode, no training.
+
+| α | mean | SE | gap v bar | SEs | v arm 1 |
+|---|---|---|---|---|---|
+| **1.00** (arm 1 itself) | **+1.45** | 6.07 | +6.75 | 1.11 | — |
+| 1.25 | −5.85 | 5.81 | −0.55 | −0.09 | **−7.30** |
+| 1.5 | −3.50 | 4.36 | +1.80 | 0.41 | **−4.95** |
+| 2.0 | **−19.48** | 7.04 | −14.18 | −2.01 | **−20.93** |
+
+**No α beats arm 1's +1.45** — the registered FAIL condition, met on all three
+doses. Degradation is **monotone in α** and collapses at 2.0.
+
+**What it answers.** The premise was that the anchored direction is different in
+kind from plain PPO's: it *preserves* headroom (+78.43 against the clone's
++74.87) where plain PPO spends it, so walking further along it might keep
+paying. **It does not.** The direction is good over exactly the distance
+training took it and no further. Arm 1 sits at or near the best point on its own
+line, not partway along a good one.
+
+Read with §50: interpolation toward a **bad** endpoint peaked at α=0.1, and
+extrapolation past a **good** one peaks at α=1.0. Both say the same thing —
+**the useful region is a narrow band around where training actually stopped**,
+and neither shrinking nor extending the step finds anything better.
+
+**Forbidden next**: α > 1 on any line here. Three doses, monotone decline,
+−20.93 at the end of it.
