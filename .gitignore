@@ -319,3 +319,9 @@ recordings/
 # External terrain scrape: local intermediate, not committed (also keeps
 # external product/edition markers out of the no-IP guard, which scans untracked files).
 /data/
+
+# Understand-Anything knowledge graph: generated from the codebase by the
+# plugin, ~9 MB with a 1.2 MB graph that trips the large-file hook, and
+# regenerable at any time. Ignored for the same second reason as /data/ above:
+# it keeps generated prose out of the no-IP guard, which scans untracked files.
+.ua/
