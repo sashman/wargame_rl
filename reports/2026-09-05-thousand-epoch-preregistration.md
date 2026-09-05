@@ -117,3 +117,43 @@ the shortfall is small enough that a modest overall improvement would close it.
 **Next**: seeds 4–6 of this arm, launched. `vs_shoot`'s three-seed spread is
 wide (+65 / +59 / +43) and its mean sits 0.9 below the bar, so six seeds may
 land either side.
+
+
+---
+
+# Addendum — the mirror's 44% IS par, and margin hides it
+
+Prompted by a plain question ("does the agent now reliably win games?"), which
+the margins invite you to answer yes to and which is **wrong**. Best checkpoint,
+45 games per opponent, K=3 + charge decode:
+
+| opponent | mean margin | won | drew | lost | win rate |
+|---|---|---|---|---|---|
+| refereed (the mirror) | **+2.33** | 20 | 2 | 23 | **44%** |
+| `vs_take` | +34.22 | 30 | 1 | 14 | 67% |
+| `vs_deny` | +50.56 | 35 | 0 | 10 | 78% |
+| `vs_shoot` | +65.22 | 33 | 1 | 11 | 73% |
+
+**In the mirror the agent finishes ahead on points while losing more games than
+it wins.** It wins its wins by more than it loses its losses. A positive
+`vp_margin` and a losing record are not in tension here, and every headline
+figure in this record is the former.
+
+**And 44% is PAR for that seat**, measured rather than assumed:
+
+| in the mirror seat | won | drew | lost | win rate | mean |
+|---|---|---|---|---|---|
+| **the bar** (`squad_march_take_charge` vs itself) | 20 | 1 | 24 | **44%** | −5.33 |
+| **the agent** | 20 | 2 | 23 | **44%** | **+2.33** |
+| `squad_march_take` (never charges) | 13 | 1 | 31 | 29% | −33.56 |
+
+The agent **matches the script's record exactly — 20 wins each — while scoring
++7.7 more per game.** 44% is the going-second handicap, not weakness; the 29%
+row proves the seat is not doing all the work, since a worse policy really does
+fall away.
+
+⚠ **The rule this earns.** `vp_margin` is the right instrument for this project
+(win rate cannot resolve differences under ~7pp here) but it is **not** an
+answer to "does it win". Quote a win/draw/loss record whenever the question is
+about games rather than points — and quote the BAR's record beside it, because
+in a near-draw matchup the absolute rate is mostly the seat.
