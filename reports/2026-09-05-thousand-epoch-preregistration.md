@@ -53,3 +53,67 @@ anchor and not a fluke to be re-run.
   yesterday).
 - Decode headroom reported whatever it says. If the cells improve while headroom
   collapses, the anchor stopped being the mechanism and that must be said.
+
+
+---
+
+# RESULT — the mirror is WON, and `vs_shoot` is given back. Still 3 of 4.
+
+⚠ **FIRST ATTEMPT RETRACTED, and it is the important part of this entry.** The
+launch script dropped `--kl-ref-target`/`--kl-ref-coef` on the resume. The
+reference loaded from the checkpoint, nothing errored, and the term was
+multiplied by **zero**: three 1000-epoch runs completed looking healthy, lost
+all four cells, and drifted to **2.69 nats against a 0.03 target** — worse than
+the never-anchored control's 1.77. That collapse was one step from being written
+up as *"training longer destroys the policy"*. **It measured nothing of the
+sort.** What caught it was the mechanism check, not the score: a drift of 2.69
+against a 2.61-nat *total action entropy* is not a bad number, it is an
+impossible one. Two guard bugs were fixed as a result (a resume at coefficient
+zero is now refused; a resume is now an accepted source of the anchor).
+
+Rerun with the flags verified present and the leash verified holding
+(0.045 → 0.055 → 0.043 across epochs 300→675). Three seeds, epoch 1000.
+
+| cell | 300 ep | 1000 ep | change | bar | gap | read |
+|---|---|---|---|---|---|---|
+| **refereed** | −3.77 | **+8.77** | **+12.53** | −5.3 | **+14.07** | **WON** (4.05 SE) |
+| `vs_take` | +30.37 | +32.63 | +2.27 | +20.2 | +12.43 | WON |
+| `vs_deny` | +32.47 | +40.87 | +8.40 | +11.8 | +29.07 | WON |
+| `vs_shoot` | +67.87 | **+55.70** | **−12.17** | +56.6 | −0.90 | tie |
+
+**VERDICT: FAIL against the committed bound** (refereed ≥ +6.0 **and**
+`vs_shoot` above +60). Refereed passed handsomely — **the mirror is won for the
+first time in this line** — and `vs_shoot` fell below both +60 and its own bar.
+Still 3 of 4, a *different* 3.
+
+**Headroom +80.67**, the highest recorded here (clone +74.87, arm 3 +67.27,
+the unanchored 1000-epoch run +34.90). The anchor held across 700 extra epochs.
+
+## The finding: refereed and `vs_shoot` are a measured TRADE-OFF
+
+Paired, same seeds (the extension is a resume, so fully paired):
+
+| cell | change | t | signs |
+|---|---|---|---|
+| refereed | +12.53 | +1.68 | **3/3** |
+| `vs_shoot` | **−12.17** | **−2.05** | **0/3** |
+
+`vs_take` and `vs_deny` did not move resolvably. **Two independent levers —
+pool composition and training length — move these two cells in OPPOSITE
+directions**, at roughly 1.5 vp of refereed per 1 vp of `vs_shoot`:
+
+| arm | refereed | `vs_shoot` |
+|---|---|---|
+| 100% charge floor, 300ep | +1.45 | +56.03 |
+| 50/50 floor, 300ep | −5.95 | **+65.55** |
+| 50/50 floor, 1000ep | **+8.77** | +55.70 |
+
+⚠ **The frontier does not reach the winning region.** Winning both needs
+refereed ≥ +5.1 and `vs_shoot` ≥ +59.8. Sliding along the measured frontier
+from arm 3, buying refereed's 11.1 vp costs 7.4 of `vs_shoot` and lands at
+**+58.1 — short by ~1.7 vp**. No point on the observed trade-off wins both, and
+the shortfall is small enough that a modest overall improvement would close it.
+
+**Next**: seeds 4–6 of this arm, launched. `vs_shoot`'s three-seed spread is
+wide (+65 / +59 / +43) and its mean sits 0.9 below the bar, so six seeds may
+land either side.
