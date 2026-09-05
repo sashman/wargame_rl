@@ -105,3 +105,68 @@ anchored policy allocates better than the §40 lineage did, and because §40d
 attributes the gain to denial and attrition rather than ground taken — the
 anchored lineage's advantage is already denial. I am **not** predicting a sign
 for `refereed`, where the opponent is a mirror that reallocates too.
+
+---
+
+# Screen result — three seeds, recorded before seeds 4–6 exist
+
+Written immediately after the three-seed screen finished and **before** the
+six-seed numbers existed, so nothing below can be retro-fitted to them. This is
+the screen, not the verdict; the pre-registration above forbids it becoming the
+published number.
+
+## Validity check, passed
+
+The `ra=0` CPU control reproduces the on-disk GPU table **exactly** on all four
+cells — +8.77 / +32.63 / +40.87 / +55.70, every printed digit — so the device is
+not confounding the operator, and the CPU arm is comparable to the record.
+
+## The paired numbers
+
+n=45, K=3, charge decode on, arm 4 seeds 1–3 at epoch 1000, CPU both arms.
+
+| cell | ra=0 | ra=1 | Δ | per-seed Δ | signs | bar | gap at ra=1 |
+|---|---|---|---|---|---|---|---|
+| `refereed` | +8.77 | +9.33 | **+0.57** | +1.50, +0.80, −0.60 | 2/3 | −5.3 | +14.63 (5.05 SE) |
+| `vs_take` | +32.63 | +51.53 | **+18.90** | +3.40, +39.10, +14.20 | 3/3 | +20.2 | +31.33 (4.40 SE) |
+| `vs_deny` | +40.87 | +51.23 | **+10.37** | +1.50, +4.50, +25.10 | 3/3 | +11.8 | +39.43 (10.60 SE) |
+| `vs_shoot` | +55.70 | **+73.97** | **+18.27** | +14.20, +16.70, +23.90 | 3/3 | +56.6 | +17.37 (4.60 SE) |
+
+Coherency falls slightly everywhere (−0.006 to −0.018) — the redirect is rigid
+but it is still overwriting a chosen move. At 0.94–0.97 the agent remains far
+above the scripts' 0.86–0.91.
+
+## ⚠ MY OWN SCREEN RULE HAS A HOLE, and it is a defect in the rule, not a result
+
+The rule reads: **INCLUDE** if Δ ≥ 0 on `vs_shoot` **and** `refereed` for 3/3;
+**EXCLUDE** if Δ < 0 on 2+ of 3 on any cell.
+
+`refereed` came in at **2/3** (one seed at −0.60). So INCLUDE does not fire, and
+EXCLUDE does not fire either. **The rule has an unhandled middle and I wrote
+it.** Recorded here as a defect in the test, in the same terms this project has
+recorded two before it — an underpowered replication criterion, and a per-seed
+bound tighter than its own estimator.
+
+What actually resolves the decision is a different clause of the same
+pre-registration: *"either way the six-seed run scores both arms."* The design
+was robust where the rule was not. The seeds-4–6 pass is armed for both arms.
+
+## What must NOT be concluded yet
+
+All four cells read WON at three seeds. **That is not the goal met.** The goal
+is six seeds, and this project has twice read a three-seed screen as a result
+and reversed it. The `vs_take` and `vs_deny` columns are visibly heavy-tailed
+(per-seed Δ spanning +3.4 to +39.1 and +1.5 to +25.1, sd 18.3 and 12.9); only
+`vs_shoot` is tight (sd 5.04).
+
+## One pattern that is data, and one explanation that is NOT
+
+**Data:** the operator is worth +10 to +19 vp against the three non-charging
+scripts and **+0.57** against `squad_march_take_charge`. `refereed` is the only
+cell whose opponent charges (verified in the four eval configs).
+
+**Hypothesis, untested:** a redirected squad is walking, and a charging opponent
+punishes walking. Equally consistent: the charging bar contests more points, so
+the "weakest-held objective" the operator targets is not weakly held. Nothing
+here distinguishes these, and `stood` moves in both directions across seeds. It
+is recorded as an open question, not as a mechanism.
