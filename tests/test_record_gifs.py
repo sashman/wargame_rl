@@ -24,9 +24,11 @@ import imageio_ffmpeg
 import numpy as np
 import pytest
 from PIL import Image
+from pydantic_yaml import parse_yaml_raw_as
 
 from scripts.record_gifs import write_gif
 from wargame_rl.wargame.envs.renders.v2.theme import THEMES
+from wargame_rl.wargame.envs.types import WargameEnvConfig
 
 TABLETOP = THEMES["tabletop"].palette
 FLAT_FILLS = (
@@ -117,3 +119,41 @@ def test_a_video_round_trip_is_what_drifts_them(tmp_path: Path) -> None:
 def test_no_frames_is_an_error_not_an_empty_file(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="no frames"):
         write_gif([], tmp_path / "empty.gif")
+
+
+def test_the_recorded_policy_gets_the_same_charge_decode_as_a_scored_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`record_episode` must build its selector with the charge decode on.
+
+    The README's GIFs are the only picture anyone sees of how this agent plays,
+    and they were being recorded through a selector built without
+    `charge_decode` while every score in the record was taken with it on — so
+    the illustrations showed a policy that could not execute the joint charge.
+    The argument is passed unconditionally (the decode is a no-op outside the
+    charge phase), which is what this pins: the assertion does not depend on
+    the config being a melee one.
+    """
+    from scripts.measure_maps import load_maps
+    from scripts.record_gifs import record_episode
+
+    config = parse_yaml_raw_as(
+        WargameEnvConfig, Path("configs/golden/25v25_maps_two_mode.yaml").read_text()
+    )
+    terrain_map = load_maps(Path("configs/evaluation/maps"))[0]
+
+    captured: dict[str, object] = {}
+
+    class _Stop(Exception):
+        pass
+
+    def _capture(*args: object, **kwargs: object) -> None:
+        captured.update(kwargs)
+        raise _Stop
+
+    monkeypatch.setattr("wargame_rl.wargame.selectors.build_action_selector", _capture)
+
+    with pytest.raises(_Stop):
+        record_episode(config, terrain_map, "squad_march_take", 0, 3)
+
+    assert captured["charge_decode"] is True

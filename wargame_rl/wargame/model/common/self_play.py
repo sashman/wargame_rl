@@ -223,12 +223,19 @@ class OpponentScheduler:
         # that beats an earlier one gains points against a fixed reference.
         self._pool.rate({entry.name: self._learner_rating})
         earliest, latest = spans(self._pool.entries)
+        # The anchors are named, not just counted. A pool floor is set from the
+        # command line and nothing downstream reveals it, so a run carrying the
+        # wrong floor used to look identical in the log to one carrying the
+        # right one -- confirming a 2:1 floor took a separate process reading
+        # the trainer's own argv.
         logger.info(
-            "self-play pool: {} entries spanning epochs {}-{}, newest {}",
+            "self-play pool: {} entries spanning epochs {}-{}, newest {}, "
+            "anchored on [{}]",
             len(self._pool.entries),
             earliest,
             latest,
             entry.name,
+            ", ".join(anchor.name for anchor in self._pool.anchors),
         )
         return entry
 
