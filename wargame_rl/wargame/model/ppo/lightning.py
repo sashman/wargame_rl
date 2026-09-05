@@ -349,6 +349,19 @@ class PPOLightning(WargameLightningBase):
         state_dict = checkpoint.get("state_dict", {})
         if not any(key.startswith("_kl_reference.") for key in state_dict):
             return
+        if self.kl_ref_coef <= 0.0:
+            # The checkpoint was anchored and this run is not. Refuse, loudly:
+            # the reference would load, nothing would error, and the term would
+            # be multiplied by zero -- an unanchored run wearing an anchored
+            # run's checkpoint. That happened once (a launch script dropped
+            # `--kl-ref-target`/`--kl-ref-coef` on a resume) and it cost three
+            # 1000-epoch runs whose collapse was very nearly written up as
+            # "training longer destroys the policy".
+            raise ValueError(
+                "this checkpoint was trained with a KL anchor but kl_ref_coef "
+                "is 0.0 -- pass --kl-ref-coef (and --kl-ref-target) to resume "
+                "it, or the anchor is silently switched off"
+            )
         reference = copy.deepcopy(self.ppo_model)
         reference.eval()
         for parameter in reference.parameters():

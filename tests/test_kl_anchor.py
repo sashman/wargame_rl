@@ -276,3 +276,33 @@ class TestResumingAnAnchoredRun:
         fresh.on_load_checkpoint(checkpoint)
         assert fresh._kl_reference is None
         fresh.load_state_dict(checkpoint["state_dict"])
+
+
+class TestResumingWithoutTheAnchorIsRefused:
+    """An anchored checkpoint resumed at coefficient 0 is silently unanchored.
+
+    The reference loads, nothing errors, and the term is multiplied by zero, so
+    the run looks completed and its collapse looks like a finding about
+    training length. That is exactly what happened once: a launch script
+    dropped the flags on a resume and three 1000-epoch runs measured nothing.
+    """
+
+    def test_an_anchored_checkpoint_at_zero_coefficient_raises(
+        self, env: WargameEnv
+    ) -> None:
+        anchored = _module(env, 0.1)
+        anchored.attach_kl_reference()
+        checkpoint = {"state_dict": anchored.state_dict()}
+        unanchored = _module(env, 0.0)
+        with pytest.raises(ValueError, match="silently switched off"):
+            unanchored.on_load_checkpoint(checkpoint)
+
+    def test_an_anchored_checkpoint_with_a_coefficient_is_fine(
+        self, env: WargameEnv
+    ) -> None:
+        anchored = _module(env, 0.1)
+        anchored.attach_kl_reference()
+        checkpoint = {"state_dict": anchored.state_dict()}
+        resumed = _module(env, 0.1)
+        resumed.on_load_checkpoint(checkpoint)
+        assert resumed._kl_reference is not None
