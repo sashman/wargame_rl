@@ -327,6 +327,35 @@ class PPOLightning(WargameLightningBase):
         self._kl_reference = reference
         logger.info(f"KL reference attached, coef={self.kl_ref_coef}")
 
+    def on_load_checkpoint(self, checkpoint: dict[str, Any]) -> None:
+        """Give a resumed run somewhere to put its saved KL reference.
+
+        The frozen reference is a real submodule, so it is saved with the rest
+        of the state dict -- which is correct, because it IS training state: a
+        resumed run has to be held to the same anchor it started under, and
+        that anchor is not recoverable from anything else in the checkpoint.
+
+        But `attach_kl_reference` only runs on the warm-start path, and resume
+        and warm start are mutually exclusive. So on a resume the attribute
+        does not exist yet and Lightning's restore dies with `Unexpected
+        key(s) in state_dict: "_kl_reference...."` -- **every anchored run was
+        un-resumable**, which is the same class of silent-until-you-need-it
+        failure `--resume-ckpt-path` already had once. Attaching an
+        empty reference here gives the load somewhere to land; the values it
+        carries then overwrite it.
+        """
+        if self._kl_reference is not None:
+            return
+        state_dict = checkpoint.get("state_dict", {})
+        if not any(key.startswith("_kl_reference.") for key in state_dict):
+            return
+        reference = copy.deepcopy(self.ppo_model)
+        reference.eval()
+        for parameter in reference.parameters():
+            parameter.requires_grad_(False)
+        self._kl_reference = reference
+        logger.info("KL reference slot rebuilt for resume")
+
     def _adapt_kl_coefficient(self, measured_drift: float) -> None:
         """Move the coefficient toward whatever holds drift at the target.
 

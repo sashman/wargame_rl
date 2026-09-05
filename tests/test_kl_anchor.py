@@ -239,3 +239,40 @@ def _state_tensors(
 
     encoded = observation_to_tensor(observation, torch.device("cpu"))
     return list(encoded)
+
+
+class TestResumingAnAnchoredRun:
+    """The reference is a submodule, so it lands in the checkpoint.
+
+    `attach_kl_reference` only runs on the warm-start path, and warm start and
+    resume are mutually exclusive -- so without a slot rebuilt at load time the
+    restore fails with `Unexpected key(s) in state_dict: "_kl_reference...."`
+    and every anchored run is un-resumable. Caught by trying to resume one.
+    """
+
+    def test_the_reference_is_saved_with_the_state_dict(self, env: WargameEnv) -> None:
+        module = _module(env, 0.1)
+        module.attach_kl_reference()
+        keys = module.state_dict().keys()
+        assert any(k.startswith("_kl_reference.") for k in keys)
+
+    def test_a_checkpoint_carrying_a_reference_rebuilds_the_slot(
+        self, env: WargameEnv
+    ) -> None:
+        saved = _module(env, 0.1)
+        saved.attach_kl_reference()
+        checkpoint = {"state_dict": saved.state_dict()}
+        fresh = _module(env, 0.1)
+        assert fresh._kl_reference is None
+        fresh.on_load_checkpoint(checkpoint)
+        assert fresh._kl_reference is not None
+        fresh.load_state_dict(checkpoint["state_dict"])
+
+    def test_a_checkpoint_without_one_is_left_alone(self, env: WargameEnv) -> None:
+        """A run that never had an anchor must not grow one on resume."""
+        plain = _module(env, 0.0)
+        checkpoint = {"state_dict": plain.state_dict()}
+        fresh = _module(env, 0.0)
+        fresh.on_load_checkpoint(checkpoint)
+        assert fresh._kl_reference is None
+        fresh.load_state_dict(checkpoint["state_dict"])
