@@ -52,3 +52,41 @@ that cell.
   surprise. That is why the bound has a no-collapse clause on the other cells.
 - If `vs_shoot` rises and `vs_take`/`vs_deny` fall, the honest reading is that
   the pool trades matchups, not that the arm improved.
+
+---
+
+# AMENDMENT 2026-09-05 — seeds 4-6 launched, and a correction to my own reading
+
+**What I got wrong.** On seeing the three-seed screen I reported that arm 3
+"trades matchups, not an improvement", citing `vs_shoot` +6.77 against `vs_take`
+−6.97. Tested rather than eyeballed, only ONE cell moved:
+
+| cell | paired diff v arm 1 | SE | t | signs |
+|---|---|---|---|---|
+| refereed | −6.23 | 7.58 | −0.82 | 2/3 |
+| `vs_take` | −6.97 | 12.52 | −0.56 | 2/3 |
+| `vs_deny` | +0.17 | 9.87 | +0.02 | 2/3 |
+| **`vs_shoot`** | **+6.77** | 3.90 | **+1.73** | **3/3** |
+
+The losses are **indistinguishable from zero**. I had pre-registered that a
+trade was the predicted risk, then read the prediction into point estimates that
+do not carry it. ⚠ **Registering a risk in advance makes it easier to see, not
+truer** — the test still has to be run.
+
+**The no-collapse clause still fails by the letter**: refereed is 5.22 below arm
+1's six-seed mean against a 5.0 allowance. It fails on a difference that is
+statistically zero, which is a defect in the clause — an absolute vp bound on a
+cell whose three-seed SE is 7.58 cannot separate 5.22 from 0.
+
+**Decision: take arm 3 to six seeds.** `vs_shoot` is the only cell blocking the
+goal and this is the only intervention that has moved it. Seeds 4-6 launched on
+the same config, clones, anchor list and dose.
+
+**Bounds for the six-seed table, fixed now**, using the same rule as every other
+route (WON = gap to bar > 2 SE):
+- The claim to be tested is **`vs_shoot` WON**, i.e. six-seed mean above
+  `+56.6 + 2 SE`.
+- Report all four cells. If refereed or `vs_take` are genuinely below arm 1 at
+  six seeds, the trade reading becomes admissible **then**, not now.
+- ⚠ Arm 1 and arm 3 share seeds 1-3 clones and differ only in the pool's floor,
+  so the per-seed difference is paired and is the estimator to quote.

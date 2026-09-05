@@ -2918,3 +2918,60 @@ them slightly faster than §47's fixed opponent did.
 - ⚠ §46's caveat governs every row: the charge is the **script's geometry** via
   the charge decode, the bar's rows are scripts at no decode, and six seeds off
   six clones share one teacher.
+
+## 52. The two-anchor pool WINS `vs_shoot` — 3 of 4 cells, and the blocker moves to the mirror
+
+Measured 2026-09-05, six seeds, **verified epoch 300**, n=45, seeds 700000+,
+`K=3` + charge decode. Pre-registration and its amendment:
+[reports/2026-09-04-two-anchor-preregistration.md](../reports/2026-09-04-two-anchor-preregistration.md),
+committed before the seeds existed.
+
+§51 won `vs_take` and `vs_deny` and could only tie `vs_shoot` — **the one ladder
+matchup the pool never contained**, its floor being `squad_march_take_charge`
+plus the learner's own snapshots. `SnapshotPool` now takes a **list** of
+never-evicted anchors; arm 3 is arm 1 with
+`--pool-anchor squad_march_take_charge,squad_march_shoot`.
+
+| cell | mean | SE | bar | gap | SEs | read | paired v §51 | t | signs |
+|---|---|---|---|---|---|---|---|---|---|
+| refereed | −5.95 | 5.22 | −5.3 | −0.65 | −0.12 | tie | −7.40 | −1.11 | 3/6 |
+| `vs_take` | **+30.62** | 4.44 | +20.2 | **+10.42** | 2.34 | **WON** | −3.98 | −0.41 | 3/6 |
+| `vs_deny` | **+30.90** | 6.30 | +11.8 | **+19.10** | 3.03 | **WON** | −1.80 | −0.32 | 4/6 |
+| `vs_shoot` | **+65.55** | 1.62 | +56.6 | **+8.95** | **5.54** | **WON** | **+9.52** | **+4.14** | **6/6** |
+
+**VERDICT: 3 of 4 WON, 1 tie. GOAL NOT MET** — it is conjunctive.
+
+- **`vs_shoot` IS SETTLED.** +9.52 paired on **6 of 6 seeds at t=4.14**, and
+  5.54 SE clear of the bar. Every prior route tied that cell (clone +58.45,
+  interpolation +56.50, §51 +56.03, bar +56.6). **The pool's composition was the
+  cause**: a learner scored against an opponent type its pool never held cannot
+  beat it.
+- **The blocker is now the MIRROR.** refereed −5.95 is a tie at −0.12 SE where
+  §51 was ahead at +1.45. Winning it needs roughly **+5 to +7** more than either
+  arm reaches — a real improvement, not more seeds.
+- ⚠ **The "it trades matchups" reading is STILL NOT ESTABLISHED**, and I asserted
+  it once prematurely at three seeds. At six the refereed difference is
+  **−7.40 ± 6.68, t=−1.11, 3/6** — the point estimate persisted and the cell's
+  *classification* changed, but the difference is not significant. `vs_shoot` is
+  the only cell whose movement is demonstrated. **Registering a risk in advance
+  makes it easier to see, not truer.**
+- **Headroom +67.27** against §51's +78.43 and the clone's +74.87 — a real drop,
+  consistent with a second anchor pulling the policy further from its clone.
+- ⚠ **The pre-registered no-collapse clause failed by the letter at three seeds**
+  (refereed 5.22 below against a 5.0 allowance) on a difference whose SE was
+  7.58. An absolute vp bound on a cell that noisy cannot separate 5.22 from 0 —
+  a defect in the clause, recorded as such.
+
+### Where the goal stands after both arms
+
+| route | refereed | `vs_take` | `vs_deny` | `vs_shoot` | won | lost |
+|---|---|---|---|---|---|---|
+| §46 clone | **LOST** | WON | ahead | tie | 1 | **1** |
+| §50 interpolation α=0.1 | tie | tie | **WON** | tie | 1 | 0 |
+| §51 KL anchor | ahead | **WON** | **WON** | tie | 2 | 0 |
+| **§52 two-anchor pool** | tie | **WON** | **WON** | **WON** | **3** | **0** |
+
+**The open cell is the refereed head-to-head, and it is the one §48 named at the
+start.** It is the MIRROR: the bar's −5.3 is that script playing itself from the
+disadvantaged seat, so a policy that merely imitates it scores −5.3 and no
+better. Both arms sit within a few vp of exactly that.
