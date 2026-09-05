@@ -49,6 +49,26 @@ class PPOConfig(BaseModel):
     # else: at 0.75 movement entropy stayed flat at 4.52 and the agent won 0%
     # of episodes; at 0.03 it fell 4.52 -> 3.95 and win rate reached ~55%.
     ent_coef: float = 0.03
+    # Strength of a KL pull back to a frozen REFERENCE policy -- the weights
+    # the run warm-started from. 0.0 means no anchor, and at 0.0 no reference
+    # network is built at all, so the run is bit-identical to one compiled
+    # before the anchor existed.
+    #
+    # It exists for a measured failure. PPO from a behaviour clone destroys it
+    # (docs/melee-teaching-goal.md 47), and the diagnosis is that PPO optimises
+    # the policy it *rolls out* -- argmax, undecoded -- while the policy is
+    # *scored* through a joint decode. Measured over six paired seeds, PPO
+    # gained +19.7 vp in the regime it trains in and lost 34.6 vp of decode
+    # headroom doing it. The anchor bounds that drift.
+    kl_ref_coef: float = 0.0
+    # Target drift, in nats per model, for the adaptive controller. When > 0
+    # `kl_ref_coef` stops being a fixed weight and becomes the controller's
+    # starting point, doubled or halved each epoch until the measured drift
+    # sits near this. That replaces a coefficient nobody can pick a priori
+    # with a quantity that has units and a measurement behind it: PPO from a
+    # clone drifts to a mean 2.0-2.6 nats per model unpenalised, and destroys
+    # 34.6 vp of decode headroom getting there.
+    kl_ref_target: float = 0.0
     max_grad_norm: float = 0.5  # Gradient Stabilization (prevent exploding gradients)
     n_epochs: int = 5
     n_steps: int = 2048

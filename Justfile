@@ -460,6 +460,13 @@ behaviour-clone policy env_config n_episodes='200' epochs='8' out='checkpoints/c
 measure-charges policy env_config n_episodes='20' decode_topk='1' *overrides:
 	@uv run python -m scripts.measure_charges {{policy}} {{env_config}} {{n_episodes}} {{decode_topk}} {{overrides}}
 
+# The melee goal's FOUR cells together, plus the decode headroom that says
+# whether a gain is the policy or the decode. The goal is conjunctive, so the
+# cells are scored and printed together -- quoting the best one is selection.
+# Use: just measure-melee-ladder checkpoints/barclone-s1.ckpt approach 45 3 1
+measure-melee-ladder policy family='approach' n_episodes='45' decode_topk='3' charge_decode='1' *overrides:
+	@uv run python -m scripts.measure_melee_ladder {{policy}} {{family}} {{n_episodes}} {{decode_topk}} {{charge_decode}} {{overrides}}
+
 # Does a critic-directed reallocation decode buy vp at play (the panel's R5 kill screen)
 measure-realloc checkpoint env_config n_episodes='20' decode_topk='3' min_stack='4' *overrides:
 	@uv run python -m scripts.measure_reallocation_decode {{checkpoint}} {{env_config}} {{n_episodes}} {{decode_topk}} {{min_stack}} {{overrides}}

@@ -1216,8 +1216,78 @@ paid for.
   segfaulted within 20 seconds of two `wandb.Api()` calls. Causation is unproven
   but the shared wandb service is the only thing that explains it; read
   `wandb/run-*/files/output.log` instead.
-- **Training is deterministic given seed + config + code** (within one setting of
-  `--tf32`). Never retrain a control that already exists at the same epoch budget.
+- ⚠ **Training is NOT bit-reproducible, and this line used to say it was.**
+  Measured 2026-09-04, two independent pairs of 2-epoch runs at identical code,
+  seed, config and flags: on `configs/golden/25v25_shooting_opponent.yaml`
+  **110 of 222** tensors came back bit-identical with a max difference of one
+  ULP (1.19e-07), but on `configs/experiments/25v25_maps_melee_approach.yaml`
+  **0 of 222** did, at a mean relative difference of **0.0064**. The rollout
+  envs *are* seeded (`ROLLOUT_SEED_BASE + env_idx` — note that base does **not**
+  depend on `--seed`), so this is GPU float nondeterminism amplified
+  chaotically: a last-bit change flips a sampled action and the episode
+  diverges. **Pairing two arms by seed still holds at INITIALISATION**, which is
+  where its measured value came from — but the trajectories are not shared, so
+  every paired difference here carries a rerun-noise term **nobody has
+  measured**. Re-running a control is therefore legitimate and sometimes
+  necessary; the old rule ("never retrain a control that already exists at the
+  same epoch budget") is unsafe on map-pool configs. It also makes a
+  bit-identical no-op digest impossible for any training-loop change — such a
+  flag has to be argued from static reading instead (nothing constructed, no
+  stream drawn, identical expression), which is the standard `--self-play`
+  already meets.
+
+### PPO spends the decode's headroom — §48's open question, answered
+
+Measured 2026-09-04, **no GPU**, six paired seeds, n=45,
+[report](reports/2026-09-04-ppo-spends-the-decodes-headroom.md).
+
+- **PPO rolls out at `K=1` undecoded and is scored at `K=3` + charge decode, and
+  the two objectives oppose each other.** On the refereed melee cell, PPO from
+  the §46 clone gained **+19.72 vp (6/6 seeds, t=8.2)** in the regime it trains
+  in and lost **14.92** in the regime it is scored in.
+- ⚠ **Decode headroom is the quantity being spent: +74.87 vp for the clone,
+  +40.23 after PPO.** It bought 19.7 vp of unaided skill with 34.6 vp of
+  headroom. Unaided coherency rose 0.754 → 0.818 — real skill — but **both
+  policies reach 0.96 once decoded**, so what it learned the decode already
+  supplied.
+- ⚠ **The lever is the JOINT COHERENT decode, not the charge decode** —
+  pre-registered and falsified: Δ is **+18.22** at `K=1 cd=1` against a ≤+5.0
+  bound. And the joint decode **cannot** be moved into training (−51.8 from
+  scratch, −43.7 warm-started, scored decoded both times).
+- **THE RULE: measure a policy in the regime it is TRAINED in, not only the one
+  it is scored in, whenever a play-time decode stands between the two.** Its
+  corollary — **a play-time decode makes the corresponding training-time skill
+  worthless** — applies to all three decodes on file (formation, surplus
+  reallocation, charge).
+- A KL anchor to the warm-start weights ships as `--kl-ref-coef` /
+  `--kl-ref-target` (adaptive, targets nats of drift; unanchored PPO drifts to
+  **2.0–2.6 nats per model**). ⚠ **Its arm is in flight — no result yet.**
+
+### The KL anchor — the best melee policy on file, and the goal is still not met
+
+Measured 2026-09-04, six seeds, verified epoch 300,
+[report](reports/2026-09-04-the-anchor-holds.md) · melee-teaching-goal §51.
+
+- ⚠ **SELF-PLAY ALONE IS THE CONTROL, NOT THE TREATMENT.** Unanchored self-play
+  from the §46 clones ends at **−27.17** against those clones' −9.07 — it
+  destroys them slightly faster than a fixed opponent does.
+- **With `--kl-ref-target 0.03` it wins 2 of 4 ladder cells and loses none**
+  (`vs_take` +14.40 at 2.14 SE, `vs_deny` +20.90 at 6.95 SE), and the **refereed
+  head-to-head moves from the clone's LOST to ahead** (+6.75, 1.11 SE). Against
+  its own control, paired: **+29.63 ± 1.74, t=17.0, 3/3**.
+- ⚠ **GOAL NOT MET** — it is conjunctive, and **`vs_shoot` ties at −0.15 SE**.
+  Every route lands on that bar (clone +58.45, interpolation +56.50, arm +56.03,
+  bar +56.6); winning it needs a real +8, not noise reduction. Charging is worth
+  **+32.8 vp** there, so the deficit is **not** wasted declarations — that was
+  measured and refuted.
+- **Mechanism confirmed**: decode headroom **+78.43**, above the clone's +74.87
+  (control +49.9, plain PPO +40.23); drift 0.039 against the control's 1.770.
+- ⚠ **`require_coherent: false` in training is REJECTED, and it corrects the
+  rule above it.** Its *decoded* coherency is only 0.906–0.921 — the decode
+  cannot repair a policy that never learned formation, because it picks the most
+  probable **legal** combination from each model's top-K and there is none
+  there. **A decode substitutes for a skill's EXECUTION, not for the training
+  pressure that makes the skill REPRESENTABLE.**
 
 ### Coherency
 

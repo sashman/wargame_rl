@@ -2729,3 +2729,249 @@ has probed learning dynamics directly, and the remaining 5.4 vp live there.
 approach mask, manual-declaration mask and referee — closing the gap-map rows
 `charge.target_declaration` and *after-moving conditions*. **Zero bind violations
 across six seeds**, no cost in play quality (§41: paired +1.80 ± 4.91).
+
+## 49. §48's "whole question" is ANSWERED — PPO spends the decode's headroom
+
+Measured 2026-09-04 at `d5ec7d4`, **no GPU training**, six paired seeds, n=45,
+seeds 700000+, refereed cell, through the §46/§47 harness.
+[Report](../reports/2026-09-04-ppo-spends-the-decodes-headroom.md).
+
+§48: *"why gradient descent cannot hold a basin it was placed in, with a fitted
+critic. That is a learning-dynamics question ... and nothing in this line has
+probed it."* The probe was one column nobody had printed.
+
+| regime | clone | after PPO (§47) | paired Δ | t | signs |
+|---|---|---|---|---|---|
+| `K=1 cd=0` — **PPO's own regime** | −85.53 | −65.82 | **+19.72** | 8.22 | **6/6** |
+| `K=1 cd=1` | −69.05 | −50.83 | +18.22 | 3.50 | 6/6 |
+| `K=3 cd=0` | −32.18 | −28.72 | +3.47 | 0.52 | 2/6 |
+| `K=3 cd=1` — **the scored regime** | −10.67 | −25.58 | −14.92 | −2.60 | 1/6 |
+
+- **PPO did not fail.** It improved the policy by **+19.7 vp on 6 of 6 seeds at
+  t=8.2** in the regime it actually rolls out in, and lost 14.9 in the regime it
+  is scored in. **Decode headroom fell +74.87 → +40.23**: it bought 19.7 vp of
+  unaided skill and spent **34.6 vp of headroom** doing it.
+- **What it learned, the decode already supplied.** Unaided coherency 0.754 →
+  0.818 and unaided standing charges 0.95 → 2.04/ep — real skill — but **both
+  policies reach 0.96 coherency once decoded**. The capacity went into
+  reproducing what the decode gives free, and came out of the property the
+  decode needs.
+- ⚠ **PRE-REGISTERED AND FALSIFIED: the charge decode is NOT the lever.** I
+  registered `Δ(K=1, cd=1) ≤ +5.0` on the theory that failed declarations are
+  what PPO learns to avoid; measured **+18.22**. Declarations do fall as
+  predicted (12.98 → 10.71/ep) and it is not where the vp are. The **joint
+  coherent decode** is: Δ collapses +19.7 → +3.5 the moment formation is
+  decoded.
+- **And that one cannot be moved into training** — constrained sampling is
+  −51.8 from scratch and −43.7 warm-started, scored decoded both times. So the
+  training regime cannot be made to equal the play regime by any route on file.
+  What is left is to **bound the drift**, which is enormous: `KL(ppo ‖ clone)`
+  is **2.06 / 2.65 / 2.34 nats per model**, comparable to the policy's whole
+  entropy.
+- **Harness validated against the record**: the clone reproduces §46's −10.67
+  and its exact per-seed list, §47's checkpoints reproduce −25.58, and the
+  scripted bar reproduces §38's **−5.3 / +20.2 / +11.8 / +56.6** on all four
+  cells at today's revision.
+- **Headroom DECAYS over training, on 6 of 6 seeds.** All 18 `ppo-NNN`
+  intermediates scored in both regimes, 30 (seed, epoch) points:
+
+  | epochs | n | decoded | undecoded | headroom |
+  |---|---|---|---|---|
+  | 0 (clone) | 6 | −10.67 | −85.53 | **+74.87** |
+  | 1–100 | 5 | −7.32 | −58.34 | **+51.02** |
+  | 101–250 | 5 | −27.32 | −66.98 | **+39.66** |
+  | 251–300 | 14 | −24.14 | −69.26 | **+45.12** |
+
+  `corr(epoch, headroom) = −0.628`, and `corr(headroom, decoded) = **+0.638**` —
+  headroom *predicts* the scored value rather than merely accounting for it.
+  **Two thirds of the loss is gone by epoch 100**, so anything that bounds the
+  drift has to bind from the first epoch. ⚠ These are top-k-by-training-reward
+  checkpoints, so the curve's shape between the endpoints is not a random
+  sample, and **"PPO helps early" (the 1–100 bucket at −7.32) is NOT
+  established** — n=5, SE ≈ 4 against a difference of 3.35.
+- ⚠ **Inference reproduces here**, contra `measure_charges`'s standing warning:
+  four repeat runs at n=45 returned every digit unchanged and the clone seeds
+  reproduced §46's per-seed list. Not evidence the warning was wrong where it
+  was taken.
+- ⚠ **TRAINING IS NOT BIT-REPRODUCIBLE HERE.** Identical code, seed, config and
+  flags gave **0 of 222 identical tensors** on `25v25_maps_melee_approach`
+  (mean relative difference 0.0064) against 110 of 222 and one ULP on the golden
+  shooting config. The rollout envs are seeded; this is GPU float
+  nondeterminism amplified chaotically. Pairing still holds **at
+  initialisation**, but a paired difference carries an unmeasured rerun-noise
+  term, and CLAUDE.md's "never retrain a control" is unsafe on map-pool configs.
+
+**The rule.** *Measure a policy in the regime it is TRAINED in, not only the one
+it is scored in, whenever a play-time decode stands between the two.* And its
+corollary: **a play-time decode makes the corresponding training-time skill
+worthless** — capacity spent acquiring it is spent twice, and here against
+itself. That applies to all three decodes on file: formation, surplus
+reallocation, and the charge.
+
+**In flight, pre-registered, no result yet**: a KL anchor to the warm-start
+weights (`--kl-ref-coef`, `--kl-ref-target`), self-play from the §46 clones with
+`squad_march_take_charge` as the pool anchor, three seeds against three
+unanchored controls.
+
+## 50. A tenth of the step — the first policy here with NO losing cell. Goal still NOT MET.
+
+Measured 2026-09-04, **no GPU training**, six seeds, n=45, `K=3` + charge
+decode. [Report](../reports/2026-09-04-a-tenth-of-the-step.md). Follows from
+§49: if PPO's failure is travelling too far from a decodable policy, travel a
+tenth as far. Interpolate `barclone-s{1..6}` toward their own §47 endpoints.
+
+**Refereed cell, dose-response over a grid fixed before any number existed:**
+
+| α | mean | paired v clone | t | signs |
+|---|---|---|---|---|
+| 0.0 (clone) | −10.67 | — | — | — |
+| **0.1** | **−2.02** | **+8.65** | **3.15** | **6/6** |
+| 0.25 | −2.85 | +7.82 | 1.58 | 5/6 |
+| 0.5 | −20.70 | −10.03 | −1.98 | 1/6 |
+| 1.0 (§47) | −25.58 | — | — | — |
+
+**All four cells at α=0.1** (WON = gap > 2 SE, ahead > 1 SE, tie within 1 SE):
+
+| cell | α=0.1 | bar | v bar | read | clone read | paired v clone |
+|---|---|---|---|---|---|---|
+| refereed | −2.02 | −5.3 | +3.28 | tie | **LOST** | **+8.65** (t 3.15) |
+| `vs_take` | +22.80 | +20.2 | +2.60 | tie | **WON** | −6.02 |
+| `vs_deny` | **+28.02** | +11.8 | **+16.22** | **WON** | ahead | +8.95 |
+| `vs_shoot` | +56.50 | +56.6 | −0.10 | tie | tie | −1.95 |
+
+- **VERDICT: NOT MET.** The goal is conjunctive and three cells are ties.
+- **What DID change: the clone reads 1 won / 1 ahead / 1 tie / 1 LOST; α=0.1
+  reads 1 won / 3 ties / 0 LOST.** First policy in this line with no losing
+  cell, and the repaired cell is the **head-to-head** — the one a clone cannot
+  win by construction (§46). It paid with `vs_take`, which fell from a win to a
+  tie.
+- ⚠ **α=0.25 LOSES `vs_shoot`** (−4.53). Both doses passed the refereed screen
+  so both were carried to all four cells; neither is quoted alone.
+- ⚠ **The falsifier partly fires.** A random displacement of the same per-tensor
+  size gives **+2.91 (t=1.21, ns)**; interpolation minus noise is **+5.74
+  (t=2.10, 5/6)**. So ~2/3 of the gain is PPO's *direction* and ~1/3 is
+  displacement of any kind, indistinguishable from zero. ⚠ At six draws the two
+  were **not** separable (t=0.86); it took **18**. Never quote the direction
+  effect without the control.
+- **Mechanism, pre-registered and confirmed**: headroom **+74.87 (clone) →
+  +65.40 (α=0.1) → +40.23 (§47)**, at **0.0155 nats** of drift against the
+  self-play control's 0.255 by epoch 25. It works by not leaving the decodable
+  region, and that region is **very small**.
+- ⚠ **This is NOT self-play** — these are fixed-opponent endpoints — and NOT a
+  training method. Whether a run *trained* under an equivalent constraint lands
+  here is what the KL-anchor arm tests, and that is open.
+- ⚠ §46's borrowed-geometry caveat governs verbatim: the charge move is the
+  script's, supplied by the charge decode.
+
+## 51. The KL anchor — 2 of 4 cells WON, 0 LOST, at six seeds. GOAL NOT MET.
+
+Measured 2026-09-04, six seeds, **verified epoch 300**, n=45, seeds 700000+,
+`K=3` + charge decode. Pre-registration committed to git at `71011a0` **while
+seeds 2–6 were still training**.
+[Report](../reports/2026-09-04-the-anchor-holds.md). Follows §49: if PPO destroys
+a clone by travelling too far from a decodable policy, hold it near one.
+
+⚠ **Self-play alone is the CONTROL, not the treatment.** Unanchored self-play
+from the §46 clones ends at **−27.17** against those clones' −9.07 — it destroys
+them slightly faster than §47's fixed opponent did.
+
+| cell | mean | SE | bar | gap | SEs | read |
+|---|---|---|---|---|---|---|
+| refereed | +1.45 | 6.07 | −5.3 | +6.75 | 1.11 | ahead |
+| `vs_take` | **+34.60** | 6.74 | +20.2 | **+14.40** | 2.14 | **WON** |
+| `vs_deny` | **+32.70** | 3.01 | +11.8 | **+20.90** | 6.95 | **WON** |
+| `vs_shoot` | +56.03 | 3.70 | +56.6 | −0.57 | −0.15 | tie |
+
+**VERDICT: NOT MET** — conjunctive, needs 4/4 above 2 SE.
+
+| route | refereed | `vs_take` | `vs_deny` | `vs_shoot` | won | lost |
+|---|---|---|---|---|---|---|
+| §46 clone (the previous best) | **LOST** | WON | ahead | tie | 1 | **1** |
+| interpolation α=0.1 (§50) | tie | tie | **WON** | tie | 1 | 0 |
+| **KL-anchored self-play** | **ahead** | **WON** | **WON** | tie | **2** | **0** |
+
+- **Best policy on file in this line.** It doubles the clone's won cells and
+  loses none, and the **head-to-head — the cell §48 named hard, which a clone
+  cannot win by construction — moves from LOST to ahead** (+6.75).
+- **Screen against its own control: +29.63 ± 1.74, t=17.0, 3/3.**
+- **Mechanism confirmed at six seeds**: headroom **+78.43**, *above* the clone's
+  +74.87, against the control's +49.9 and plain PPO's +40.23. Drift 0.039 at
+  epoch 125 against the control's 1.770. The anchor does exactly what it was
+  built to do and the vp follow.
+- ⚠ **The projection committed before seeds 4–6 landed — "2 WON / 1 ahead /
+  1 tie" — is exactly what happened.**
+- ⚠ **`vs_shoot` is THE blocker and nothing moves it.** Every route lands on the
+  bar: clone +58.45, interpolation +56.50, arm +56.03, bar +56.6. Winning it
+  needs a mean above +64, i.e. a real +8, not noise reduction. One candidate
+  explanation was **refuted** the same day — charging is worth **+32.8 vp** on
+  that cell, so the deficit is not wasted declarations against a non-charging
+  opponent. The bar plays that matchup well and imitation inherits its ceiling.
+- ⚠ **ARM 2 REJECTED — `require_coherent: false` in training** (one seed):
+  −19.6 / −14.0 / +0.9 / +7.7, and its **decoded** coherency is only
+  **0.906–0.921** against the arm's 0.960–0.976. **This corrects §49's
+  corollary.** "A play-time decode makes the corresponding training-time skill
+  worthless" is too strong: the decode chooses the most probable *legal*
+  combination from each model's top-K, and a policy never pushed toward
+  coherency does not have one there to choose. **A decode substitutes for a
+  skill's EXECUTION, not for the training pressure that makes the skill
+  REPRESENTABLE.** That is also why the anchor works.
+- ⚠ §46's caveat governs every row: the charge is the **script's geometry** via
+  the charge decode, the bar's rows are scripts at no decode, and six seeds off
+  six clones share one teacher.
+
+## 52. The two-anchor pool WINS `vs_shoot` — 3 of 4 cells, and the blocker moves to the mirror
+
+Measured 2026-09-05, six seeds, **verified epoch 300**, n=45, seeds 700000+,
+`K=3` + charge decode. Pre-registration and its amendment:
+[reports/2026-09-04-two-anchor-preregistration.md](../reports/2026-09-04-two-anchor-preregistration.md),
+committed before the seeds existed.
+
+§51 won `vs_take` and `vs_deny` and could only tie `vs_shoot` — **the one ladder
+matchup the pool never contained**, its floor being `squad_march_take_charge`
+plus the learner's own snapshots. `SnapshotPool` now takes a **list** of
+never-evicted anchors; arm 3 is arm 1 with
+`--pool-anchor squad_march_take_charge,squad_march_shoot`.
+
+| cell | mean | SE | bar | gap | SEs | read | paired v §51 | t | signs |
+|---|---|---|---|---|---|---|---|---|---|
+| refereed | −5.95 | 5.22 | −5.3 | −0.65 | −0.12 | tie | −7.40 | −1.11 | 3/6 |
+| `vs_take` | **+30.62** | 4.44 | +20.2 | **+10.42** | 2.34 | **WON** | −3.98 | −0.41 | 3/6 |
+| `vs_deny` | **+30.90** | 6.30 | +11.8 | **+19.10** | 3.03 | **WON** | −1.80 | −0.32 | 4/6 |
+| `vs_shoot` | **+65.55** | 1.62 | +56.6 | **+8.95** | **5.54** | **WON** | **+9.52** | **+4.14** | **6/6** |
+
+**VERDICT: 3 of 4 WON, 1 tie. GOAL NOT MET** — it is conjunctive.
+
+- **`vs_shoot` IS SETTLED.** +9.52 paired on **6 of 6 seeds at t=4.14**, and
+  5.54 SE clear of the bar. Every prior route tied that cell (clone +58.45,
+  interpolation +56.50, §51 +56.03, bar +56.6). **The pool's composition was the
+  cause**: a learner scored against an opponent type its pool never held cannot
+  beat it.
+- **The blocker is now the MIRROR.** refereed −5.95 is a tie at −0.12 SE where
+  §51 was ahead at +1.45. Winning it needs roughly **+5 to +7** more than either
+  arm reaches — a real improvement, not more seeds.
+- ⚠ **The "it trades matchups" reading is STILL NOT ESTABLISHED**, and I asserted
+  it once prematurely at three seeds. At six the refereed difference is
+  **−7.40 ± 6.68, t=−1.11, 3/6** — the point estimate persisted and the cell's
+  *classification* changed, but the difference is not significant. `vs_shoot` is
+  the only cell whose movement is demonstrated. **Registering a risk in advance
+  makes it easier to see, not truer.**
+- **Headroom +67.27** against §51's +78.43 and the clone's +74.87 — a real drop,
+  consistent with a second anchor pulling the policy further from its clone.
+- ⚠ **The pre-registered no-collapse clause failed by the letter at three seeds**
+  (refereed 5.22 below against a 5.0 allowance) on a difference whose SE was
+  7.58. An absolute vp bound on a cell that noisy cannot separate 5.22 from 0 —
+  a defect in the clause, recorded as such.
+
+### Where the goal stands after both arms
+
+| route | refereed | `vs_take` | `vs_deny` | `vs_shoot` | won | lost |
+|---|---|---|---|---|---|---|
+| §46 clone | **LOST** | WON | ahead | tie | 1 | **1** |
+| §50 interpolation α=0.1 | tie | tie | **WON** | tie | 1 | 0 |
+| §51 KL anchor | ahead | **WON** | **WON** | tie | 2 | 0 |
+| **§52 two-anchor pool** | tie | **WON** | **WON** | **WON** | **3** | **0** |
+
+**The open cell is the refereed head-to-head, and it is the one §48 named at the
+start.** It is the MIRROR: the bar's −5.3 is that script playing itself from the
+disadvantaged seat, so a policy that merely imitates it scores −5.3 and no
+better. Both arms sit within a few vp of exactly that.

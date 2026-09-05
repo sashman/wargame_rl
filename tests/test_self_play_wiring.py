@@ -126,7 +126,7 @@ def test_the_anchor_is_seated_as_a_scripted_baseline(tmp_path: Path) -> None:
     This is also the case a fresh run spends its first epochs in: the pool holds
     only the anchor until the first snapshot epoch.
     """
-    scheduler = _scheduler(tmp_path, anchor="squad_march_take")
+    scheduler = _scheduler(tmp_path, anchors=["squad_march_take"])
     env = WargameEnv(config=_config(), renderer=None)
     try:
         drawn = scheduler.seat([env])
@@ -360,7 +360,7 @@ def test_the_rating_is_credited_to_the_opponent_that_was_actually_seated(
         n_epochs=1,
         num_rollout_envs=2,
         n_episodes=1,
-        self_play=SelfPlayConfig(enabled=True, anchor="squad_march_take"),
+        self_play=SelfPlayConfig(enabled=True, anchors=["squad_march_take"]),
         snapshot_dir=tmp_path / "pool",
     )
     seen: dict[str, list[float]] = {}

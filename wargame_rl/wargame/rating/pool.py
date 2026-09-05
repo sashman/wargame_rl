@@ -64,11 +64,35 @@ class SnapshotPool:
     anchor at index zero.
     """
 
-    def __init__(self, anchor: Snapshot, capacity: int = DEFAULT_CAPACITY) -> None:
+    def __init__(
+        self,
+        anchors: Snapshot | Sequence[Snapshot],
+        capacity: int = DEFAULT_CAPACITY,
+    ) -> None:
+        """`anchors` are the fixed floor: never evicted, always at the front.
+
+        More than one because the ladder a run is judged on has several
+        opponents and a single-policy floor cannot carry them. Measured
+        2026-09-04: a learner whose pool held only `squad_march_take_charge`
+        plus its own snapshots won `vs_take` and `vs_deny` and could only tie
+        `vs_shoot` -- the one matchup it never practised.
+        """
+        fixed = [anchors] if isinstance(anchors, Snapshot) else list(anchors)
+        if not fixed:
+            raise ValueError("a pool needs at least one anchor")
         if capacity < 1:
             raise ValueError(f"capacity must be at least 1, got {capacity}")
+        if capacity < len(fixed):
+            raise ValueError(
+                f"capacity {capacity} cannot hold {len(fixed)} anchors; the "
+                f"anchors are never evicted, so the pool could never accept a "
+                f"snapshot"
+            )
         self._capacity = capacity
-        self._entries: list[Snapshot] = [replace(anchor, is_anchor=True)]
+        self._n_anchors = len(fixed)
+        self._entries: list[Snapshot] = [
+            replace(entry, is_anchor=True) for entry in fixed
+        ]
 
     @property
     def capacity(self) -> int:
@@ -82,8 +106,13 @@ class SnapshotPool:
 
     @property
     def anchor(self) -> Snapshot:
-        """The fixed reference, which eviction never removes."""
+        """The first fixed reference, which eviction never removes."""
         return self._entries[0]
+
+    @property
+    def anchors(self) -> tuple[Snapshot, ...]:
+        """Every fixed reference, in the order given."""
+        return tuple(self._entries[: self._n_anchors])
 
     def add(self, snapshot: Snapshot) -> None:
         """Append a snapshot, thinning to capacity if it no longer fits."""
@@ -152,9 +181,9 @@ class SnapshotPool:
         a sliding window over the recent past, which is the opposite of what it
         is for.
         """
-        candidates = range(1, len(self._entries) - 1)
+        candidates = range(self._n_anchors, len(self._entries) - 1)
         if not candidates:
-            # Only the anchor and one other: the anchor stays, so the other goes.
+            # Only the anchors and one other: the anchors stay, so it goes.
             return self._entries[:-1]
         gaps = {
             index: self._entries[index + 1].epoch - self._entries[index - 1].epoch

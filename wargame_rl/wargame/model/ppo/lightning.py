@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import os
 import time
 from contextlib import nullcontext
@@ -72,6 +73,40 @@ class _PPODummyDataset(Dataset[Tensor]):
         return torch.tensor(0.0)
 
 
+# Bounds on the adaptive coefficient. The floor keeps a run that has drifted
+# back inside its target from setting the weight to zero and losing the anchor
+# entirely; the ceiling stops a policy that cannot reach the target from
+# doubling the weight without limit until the return is invisible beside it.
+_KL_COEF_MIN = 1e-4
+_KL_COEF_MAX = 1e4
+
+
+def masked_categorical_kl(policy_logits: Tensor, reference_logits: Tensor) -> Tensor:
+    """Mean per-row exact `KL(policy || reference)` over masked categoricals.
+
+    The exact divergence rather than a sampled estimate: the action space is
+    ~150 wide, so summing the whole row costs nothing and removes a variance
+    term the anchor would otherwise have to fight.
+
+    ⚠ The network applies the action mask INSIDE its forward pass, so an
+    illegal action arrives as `-inf` in both rows and their difference is
+    `nan`. The probability there is exactly 0, so the contribution should be
+    0 -- but `0 * nan` is `nan`, which would poison the whole loss. Both
+    policies are evaluated on the same state and therefore under the same
+    mask, so finiteness is a property of the ENTRY: zeroing the difference
+    where either row is infinite is exact, not a guard against error.
+    """
+    policy_log_probs = torch.log_softmax(policy_logits, dim=-1)
+    reference_log_probs = torch.log_softmax(reference_logits, dim=-1)
+    both_finite = torch.isfinite(policy_log_probs) & torch.isfinite(reference_log_probs)
+    difference = torch.where(
+        both_finite,
+        policy_log_probs - reference_log_probs,
+        torch.zeros_like(policy_log_probs),
+    )
+    return (policy_log_probs.exp() * difference).sum(dim=-1).mean()
+
+
 class PPOLightning(WargameLightningBase):
     """PPO Lightning Module for training PPO agents."""
 
@@ -135,6 +170,8 @@ class PPOLightning(WargameLightningBase):
         eps_clip: float = 0.2,
         vf_coef: float = 0.5,
         ent_coef: float = 0.01,
+        kl_ref_coef: float = 0.0,
+        kl_ref_target: float = 0.0,
         max_grad_norm: float = 0.5,
         n_epochs: int = 4,
         n_steps: int = 2048,
@@ -160,6 +197,10 @@ class PPOLightning(WargameLightningBase):
             eps_clip: PPO clipping parameter
             vf_coef: Value function coefficient
             ent_coef: Entropy coefficient
+            kl_ref_coef: Weight on KL(policy || frozen reference). 0.0 builds
+                no reference network and adds no term.
+            kl_ref_target: Drift to hold, in nats per model. 0.0 keeps
+                `kl_ref_coef` fixed.
             max_grad_norm: Maximum gradient norm
             n_epochs: Number of epochs for PPO updates
             n_steps: Number of steps to collect before each update
@@ -258,9 +299,104 @@ class PPOLightning(WargameLightningBase):
         self.value_loss_fn = nn.MSELoss()
         self.vf_coef = vf_coef
         self.ent_coef = ent_coef
+        self.kl_ref_coef = kl_ref_coef
+        self.kl_ref_target = kl_ref_target
+        # Attached explicitly after any warm start, never here: anchoring to a
+        # random initialisation is meaningless, and the weights this pulls
+        # towards are the ones the run started FROM.
+        self._kl_reference: PPOModel | None = None
         self.eps_clip = eps_clip
         self.gamma = gamma
         self.gae_lambda = gae_lambda
+
+    def attach_kl_reference(self) -> None:
+        """Freeze the CURRENT policy as the KL anchor for the rest of the run.
+
+        Call once, after any warm start has been applied and before `fit`. A
+        no-op at `kl_ref_coef == 0.0`, which is what makes the anchor off a
+        provable no-op rather than a measured one -- nothing is copied, no
+        parameter is read, and the loss is assembled by the same expression as
+        before the feature existed.
+        """
+        if self.kl_ref_coef <= 0.0:
+            return
+        reference = copy.deepcopy(self.ppo_model)
+        reference.eval()
+        for parameter in reference.parameters():
+            parameter.requires_grad_(False)
+        self._kl_reference = reference
+        logger.info(f"KL reference attached, coef={self.kl_ref_coef}")
+
+    def on_load_checkpoint(self, checkpoint: dict[str, Any]) -> None:
+        """Give a resumed run somewhere to put its saved KL reference.
+
+        The frozen reference is a real submodule, so it is saved with the rest
+        of the state dict -- which is correct, because it IS training state: a
+        resumed run has to be held to the same anchor it started under, and
+        that anchor is not recoverable from anything else in the checkpoint.
+
+        But `attach_kl_reference` only runs on the warm-start path, and resume
+        and warm start are mutually exclusive. So on a resume the attribute
+        does not exist yet and Lightning's restore dies with `Unexpected
+        key(s) in state_dict: "_kl_reference...."` -- **every anchored run was
+        un-resumable**, which is the same class of silent-until-you-need-it
+        failure `--resume-ckpt-path` already had once. Attaching an
+        empty reference here gives the load somewhere to land; the values it
+        carries then overwrite it.
+        """
+        if self._kl_reference is not None:
+            return
+        state_dict = checkpoint.get("state_dict", {})
+        if not any(key.startswith("_kl_reference.") for key in state_dict):
+            return
+        if self.kl_ref_coef <= 0.0:
+            # The checkpoint was anchored and this run is not. Refuse, loudly:
+            # the reference would load, nothing would error, and the term would
+            # be multiplied by zero -- an unanchored run wearing an anchored
+            # run's checkpoint. That happened once (a launch script dropped
+            # `--kl-ref-target`/`--kl-ref-coef` on a resume) and it cost three
+            # 1000-epoch runs whose collapse was very nearly written up as
+            # "training longer destroys the policy".
+            raise ValueError(
+                "this checkpoint was trained with a KL anchor but kl_ref_coef "
+                "is 0.0 -- pass --kl-ref-coef (and --kl-ref-target) to resume "
+                "it, or the anchor is silently switched off"
+            )
+        reference = copy.deepcopy(self.ppo_model)
+        reference.eval()
+        for parameter in reference.parameters():
+            parameter.requires_grad_(False)
+        self._kl_reference = reference
+        logger.info("KL reference slot rebuilt for resume")
+
+    def _adapt_kl_coefficient(self, measured_drift: float) -> None:
+        """Move the coefficient toward whatever holds drift at the target.
+
+        Schulman's original PPO KL-penalty rule: halve the weight when the
+        policy is staying closer than asked, double it when it is drifting
+        further. A no-op at `kl_ref_target == 0.0`, which keeps a fixed
+        coefficient available as the simpler thing to reason about.
+
+        The band is deliberately wide (1.5x either side). A tight band makes
+        the coefficient oscillate by a factor of four every other epoch, and
+        the policy then sees a penalty changing faster than it can respond to
+        -- which is a different experiment from the one intended.
+        """
+        if self.kl_ref_target <= 0.0:
+            return
+        if measured_drift < self.kl_ref_target / 1.5:
+            self.kl_ref_coef = max(self.kl_ref_coef / 2.0, _KL_COEF_MIN)
+        elif measured_drift > self.kl_ref_target * 1.5:
+            self.kl_ref_coef = min(self.kl_ref_coef * 2.0, _KL_COEF_MAX)
+
+    def _kl_divergence_to_reference(
+        self, new_logits: Tensor, state_tensors: list[Tensor]
+    ) -> Tensor:
+        """Mean per-model `KL(policy || reference)` over the minibatch."""
+        assert self._kl_reference is not None
+        with torch.no_grad():
+            reference_logits, _ = self._kl_reference(state_tensors)
+        return masked_categorical_kl(new_logits, reference_logits)
 
     def forward(self, x: list[Tensor]) -> Tensor:
         """Forward pass through the policy network.
@@ -483,6 +619,7 @@ class PPOLightning(WargameLightningBase):
         epoch_policy_loss = 0.0
         epoch_value_loss = 0.0
         epoch_entropy_loss = 0.0
+        epoch_kl_ref = 0.0
         epoch_clip_fraction = 0.0
         epoch_approx_kl = 0.0
         epoch_grad_norm = 0.0
@@ -553,6 +690,13 @@ class PPOLightning(WargameLightningBase):
 
                     loss = policy_loss + value_loss + entropy_loss
 
+                    if self._kl_reference is not None:
+                        kl_to_reference = self._kl_divergence_to_reference(
+                            new_logits, mb_state_tensors
+                        )
+                        loss = loss + self.kl_ref_coef * kl_to_reference
+                        epoch_kl_ref += float(kl_to_reference)
+
                     optimizer.zero_grad()  # type: ignore[union-attr]
                     self.manual_backward(loss)
 
@@ -611,6 +755,24 @@ class PPOLightning(WargameLightningBase):
                 logger=True,
                 on_epoch=True,
             )
+            if self._kl_reference is not None:
+                # In nats per model. The anchor is doing nothing if this sits
+                # at zero, and is overwhelming the return if it dominates the
+                # policy loss -- both are visible only if it is logged.
+                measured_drift = epoch_kl_ref / n_updates
+                self.log(
+                    "loss/kl_to_reference",
+                    measured_drift,
+                    prog_bar=False,
+                    logger=True,
+                )
+                self._adapt_kl_coefficient(measured_drift)
+                self.log(
+                    "loss/kl_ref_coef",
+                    self.kl_ref_coef,
+                    prog_bar=False,
+                    logger=True,
+                )
             # Update health. clip_fraction above ~0.3 means the trust region is
             # being saturated and much of each minibatch contributes nothing;
             # at the bottom of the band it is not binding at all and the step
