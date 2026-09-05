@@ -8,11 +8,16 @@
           {
             "type": "command",
             "command": "python3",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/docs_check.py"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/docs_check.py"
+            ],
             "timeout": 30
           }
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "understand-anything@understand-anything": true
   }
 }
