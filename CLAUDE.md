@@ -1129,6 +1129,15 @@ paid for.
   effect predicts 24.4/45 and a true +15.6 predicts 25.9/45; observed 22 and 25.
   The standing "quote a t AND a sign count" rule assumes the count is
   informative, and at this noise level it is not.
+- ⚠ **A TUNING SWEEP NEEDS THE SAME n DISCIPLINE AS THE ARM IT FEEDS.** A
+  held-out sweep at n=90 x 3 seeds put `min_stack` 4 → 2 at **+5.2, 3/3,
+  t≈2.9** on `vs_shoot` and slightly *negative* on `refereed`; confirmed at
+  n=180 x 6 it is **+0.51 (t=0.45)** and **+1.51 (t=2.40)** — the tuning
+  transferred in **neither magnitude nor location**. Tune-then-confirm on a
+  disjoint seed band is what caught it (bands: evaluation 700000+, in-run
+  eval 500000+, baselines 10000+, clone 800000+, tuning 900000+), and
+  adopting a threshold from a sweep alone would have put a false positive on
+  the record. See [the report](reports/2026-09-06-the-tuning-band-picked-the-wrong-cells.md).
 - **n=45 cannot resolve this game.** Per-scenario sd is 81–89, so SE ≈ 89/√n:
   ±12.7 at n=45, ±6.3 at n=180, ±3.2 at n=720. Margins of 5–15 vp — which is
   every arm difference ever measured here — need **n ≥ 180 on both sides**.
