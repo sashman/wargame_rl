@@ -13,6 +13,21 @@ body:
         pre-registration file below resolves on `main` — the commit timestamp is
         the proof the criterion predates the numbers.
 
+  - type: textarea
+    id: tldr
+    attributes:
+      label: TL;DR
+      description: >-
+        Two or three sentences, **no jargon**, for someone with no context on
+        this repo. What is this about, and why does it matter? Everything below
+        can be as technical as it needs to be — this part cannot.
+      placeholder: |
+        Train the agent with one setting changed and compare it against an
+        otherwise identical run. If the changed version scores better, we keep
+        the setting; if not, we drop it. Takes about a day on the training machine.
+    validations:
+      required: true
+
   - type: input
     id: parent
     attributes:

@@ -1666,6 +1666,11 @@ attributed.
   pre-registration path resolves on `main` — the commit timestamp is what proves
   the criterion predates the numbers. `gh issue list --label needs:prereg` is the
   list of arms that are unsafe to launch.
+- **Every issue opens with a TL;DR: two or three sentences, no jargon**, for
+  someone with no context on this repo — what it is about and why it matters.
+  It is a required field on every template. The body below it can be as
+  technical as it needs to be; the TL;DR cannot. An issue nobody can grasp in
+  fifteen seconds is a note to yourself, not a tracker entry.
 - **An issue is for work intended and not done.** Shipped behaviour goes in
   `docs/`; what was measured goes in `reports/`; the roadmap is
   `docs/goals-and-roadmap.md`. When work lands, close the issue and write the doc.
@@ -1682,6 +1687,13 @@ attributed.
   that orders the finding before its retraction. The tripwire is the index row: if
   a claim reached `reports/README.md` it gets the full ceremony; if not, it is a
   draft, so correct it in place.
+- **The board is [Wargame RL](https://github.com/users/sashman/projects/2)**
+  (`gh project item-list 2 --owner sashman`), linked to the repo. Columns:
+  Backlog · Blocked · In progress · **Measured, not landed** · Done.
+  ⚠ **That fourth column is the one this repo actually needs** — a generic board
+  files a finished-but-unwritten experiment under Done and the debt disappears.
+  It is the board view of `needs:writeup`, as `Blocked` is of `hold`.
+  ⚠ Projects needs the `project` token scope: `gh auth refresh -h github.com -s project`.
 - Labels and required fields live in `.github/ISSUE_TEMPLATE/` and `gh label list`,
   and are **not restated here**, so they cannot drift.
 

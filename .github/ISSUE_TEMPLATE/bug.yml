@@ -4,6 +4,21 @@ title: "fix: "
 labels: ["kind:bug"]
 body:
   - type: textarea
+    id: tldr
+    attributes:
+      label: TL;DR
+      description: >-
+        Two or three sentences, **no jargon**, for someone with no context on
+        this repo. What is this about, and why does it matter? Everything below
+        can be as technical as it needs to be — this part cannot.
+      placeholder: |
+        The game is doing something the rules say it should not. It has been
+        happening since <when>, and it means <what it costs>. Fixing it may make
+        some past measurements no longer comparable.
+    validations:
+      required: true
+
+  - type: textarea
     id: symptom
     attributes:
       label: What is wrong
