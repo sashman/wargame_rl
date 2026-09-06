@@ -9,7 +9,7 @@ import numpy as np
 from wargame_rl.wargame.envs.baseline.policy import (
     BaselinePolicy,
     objective_extent,
-    step_toward_objective,
+    steps_toward_objective,
 )
 from wargame_rl.wargame.envs.baseline.reallocation import choose_surplus_reallocation
 from wargame_rl.wargame.envs.baseline.registry import register_baseline
@@ -658,38 +658,45 @@ class ScriptedSquadMarchPolicy(BaselinePolicy):
             # a long rung is masked for a squad that declared a normal move.
             squad_advances = bool(models[member_indices[0]].declared_advance)
 
+            if lead_distance <= radius:
+                # The squad has arrived; each model settles onto the disc
+                # individually so the whole body ends up inside it. Batched
+                # per squad — every member settles onto the SAME objective,
+                # and the polygon passes are the expensive half.
+                for i, action in zip(
+                    member_indices,
+                    steps_toward_objective(models, member_indices, objective, env),
+                ):
+                    actions[i] = action
+                continue
+
             for i in member_indices:
-                if lead_distance <= radius:
-                    # The squad has arrived; each model settles onto the disc
-                    # individually so the whole body ends up inside it.
-                    actions[i] = step_toward_objective(models[i], objective, env, i)
-                else:
-                    # Every model follows the same squad vector, which keeps
-                    # relative positions — and therefore coherency — intact.
-                    step = min(max_step, lead_distance)
-                    advance = (
-                        env.player_action_handler.best_advance_toward(
-                            float(lead[0]),
-                            float(lead[1]),
-                            advance_roll=float(models[i].advance_roll),
-                            max_step_length=min(
-                                lead_distance, max_step + float(models[i].advance_roll)
-                            ),
-                            model_idx=i,
-                        )
-                        if squad_advances
-                        else None
+                # Every model follows the same squad vector, which keeps
+                # relative positions — and therefore coherency — intact.
+                step = min(max_step, lead_distance)
+                advance = (
+                    env.player_action_handler.best_advance_toward(
+                        float(lead[0]),
+                        float(lead[1]),
+                        advance_roll=float(models[i].advance_roll),
+                        max_step_length=min(
+                            lead_distance, max_step + float(models[i].advance_roll)
+                        ),
+                        model_idx=i,
                     )
-                    actions[i] = (
-                        advance
-                        if advance is not None
-                        else env.player_action_handler.best_action_toward(
-                            float(lead[0]),
-                            float(lead[1]),
-                            max_step_length=step,
-                            model_idx=i,
-                        )
+                    if squad_advances
+                    else None
+                )
+                actions[i] = (
+                    advance
+                    if advance is not None
+                    else env.player_action_handler.best_action_toward(
+                        float(lead[0]),
+                        float(lead[1]),
+                        max_step_length=step,
+                        model_idx=i,
                     )
+                )
 
         return WargameEnvAction(actions=actions)
 

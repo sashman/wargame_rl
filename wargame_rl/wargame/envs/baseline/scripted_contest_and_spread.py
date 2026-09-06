@@ -20,7 +20,7 @@ import numpy as np
 from wargame_rl.wargame.envs.baseline.policy import (
     BaselinePolicy,
     objective_extent,
-    step_toward_objective,
+    steps_toward_objective,
 )
 from wargame_rl.wargame.envs.baseline.registry import register_baseline
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
@@ -164,18 +164,24 @@ class ScriptedContestAndSpreadPolicy(BaselinePolicy):
             lead = np.asarray(objective.location, dtype=float) - centroid
             lead_distance = float(np.linalg.norm(lead))
 
+            if lead_distance <= radius:
+                # Arrived: settle each member onto the same objective, batched
+                # per squad — the polygon passes are the expensive half.
+                for i, action in zip(
+                    member_indices,
+                    steps_toward_objective(models, member_indices, objective, env),
+                ):
+                    actions[i] = action
+                continue
             for i in member_indices:
-                if lead_distance <= radius:
-                    actions[i] = step_toward_objective(models[i], objective, env, i)
-                else:
-                    # One squad vector for every member keeps relative positions,
-                    # and therefore coherency, intact.
-                    actions[i] = env.player_action_handler.best_action_toward(
-                        float(lead[0]),
-                        float(lead[1]),
-                        max_step_length=min(max_step, lead_distance),
-                        model_idx=i,
-                    )
+                # One squad vector for every member keeps relative positions,
+                # and therefore coherency, intact.
+                actions[i] = env.player_action_handler.best_action_toward(
+                    float(lead[0]),
+                    float(lead[1]),
+                    max_step_length=min(max_step, lead_distance),
+                    model_idx=i,
+                )
 
         return WargameEnvAction(actions=actions)
 
