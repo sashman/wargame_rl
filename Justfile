@@ -474,6 +474,12 @@ measure-realloc checkpoint env_config n_episodes='20' decode_topk='3' min_stack=
 measure-income-share policy env_config n_episodes='30':
 	@uv run python -m scripts.measure_income_share {{policy}} {{env_config}} {{n_episodes}}
 
+# Strip training checkpoints to release weights, verifying every tensor is
+# bit-identical and writing SHA256SUMS.txt.
+# Use: just prepare-release dist melee_selfplay checkpoints/run/last.ckpt
+prepare-release out_dir label *checkpoints:
+	@uv run python -m scripts.prepare_release_checkpoints {{out_dir}} {{label}} {{checkpoints}}
+
 # Two scripted policies over the SAME seed list, differenced per episode.
 # `measure-baselines` prints one aggregate row each, and on 25v25 the
 # per-episode vp_margin sd is ~45-90, so two such rows cannot resolve anything
