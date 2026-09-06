@@ -16,6 +16,13 @@ own objectives held move **+0.002 ± 0.039** per step. It is denial (**−0.053*
 of theirs) plus attrition (**−4.3 pp** of their army) (§40d). Do not describe it
 as allocation.
 
+⚠ **ITERATING IT IS MEASURED AND REJECTED.** `max_redirects` > 1 redirects
+further squads in the same phase; at n=180 on six seeds it is **−1.28 ± 0.76**
+overall and **−4.33 (t=−3.17, 1 of 6 seeds)** on `vs_deny`. The default of 1 is
+the shipped rule and the parameter is kept only as the measured-rejected
+control, the way `squad_march_take_charge_realloc` is. See
+`reports/2026-09-06-three-decode-knobs-and-none-of-them-pays.md`.
+
 ⚠ **PLAY-TIME ONLY, like every other decode here.** Folding a decode into PPO
 means the executed action is not the sampled one, which measured **−51.8 vp**
 from scratch (`reports/2026-08-20-decoding-does-not-belong-in-training.md`).
