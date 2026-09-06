@@ -1,0 +1,72 @@
+# Every issue opens with a jargon-free TL;DR (CLAUDE.md § Tracking work).
+#
+# The issue FORMS make it a required field -- but forms only run in the web UI.
+# `gh issue create` bypasses them entirely, which is how #277, #278 and #281 were
+# opened without one. This is the backstop for everything the forms never see.
+#
+# It labels rather than blocks: an issue with no TL;DR is still a real issue, and
+# refusing it would lose the content. `needs:tldr` follows the same rule as the
+# other `needs:` labels -- applied automatically, removed by fixing the thing.
+name: Issue TL;DR
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  tldr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || "";
+            // A heading, not a bare mention: "## TL;DR" / "**TL;DR**" / "TL;DR:".
+            const hasTldr = /^\s*(#{1,4}\s*|\*\*)?TL;?DR\b/im.test(body);
+            const label = "needs:tldr";
+            const labels = context.payload.issue.labels.map(l => l.name);
+            const has = labels.includes(label);
+            const issue = {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+            };
+
+            if (hasTldr && has) {
+              await github.rest.issues.removeLabel({ ...issue, name: label });
+              core.info("TL;DR present -- label removed.");
+              return;
+            }
+            if (hasTldr || has) {
+              core.info(hasTldr ? "TL;DR present." : "Already labelled.");
+              return;
+            }
+
+            await github.rest.issues.addLabels({ ...issue, labels: [label] });
+
+            // Comment only on open, never on edit, so fixing it in several
+            // passes does not produce several comments.
+            if (context.payload.action === "opened") {
+              await github.rest.issues.createComment({
+                ...issue,
+                body: [
+                  "**This issue has no TL;DR.**",
+                  "",
+                  "Every issue opens with two or three sentences, **no jargon**, for",
+                  "someone with no context on this repo: what it is about and why it",
+                  "matters. Put it at the top, above a `---`, and leave the technical",
+                  "body untouched below.",
+                  "",
+                  "The test: could someone who has never seen this repo read it and know",
+                  "what this is about? If it contains `vp`, `K=3`, `paired`, `refereed`,",
+                  "`decode` or a config filename, it does not pass.",
+                  "",
+                  "Editing the body removes this label automatically.",
+                  "",
+                  "<sub>`CLAUDE.md` § Tracking work · `.claude/skills/issue/SKILL.md`</sub>",
+                ].join("\n"),
+              });
+            }

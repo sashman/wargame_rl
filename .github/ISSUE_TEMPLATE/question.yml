@@ -14,6 +14,21 @@ body:
         the title (`Q: D-08 — ...`), never by title: titles get edited.
 
   - type: textarea
+    id: tldr
+    attributes:
+      label: TL;DR
+      description: >-
+        Two or three sentences, **no jargon**, for someone with no context on
+        this repo. What is this about, and why does it matter? Everything below
+        can be as technical as it needs to be — this part cannot.
+      placeholder: |
+        We do not know whether X is worth doing. Right now the agent does Y,
+        which costs us Z. Answering this decides whether we spend machine time
+        on it or drop the idea.
+    validations:
+      required: true
+
+  - type: textarea
     id: question
     attributes:
       label: The question, in one sentence

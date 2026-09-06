@@ -10,6 +10,20 @@ body:
         (`feature/<topic>`, `refactor/<topic>`).
 
   - type: textarea
+    id: tldr
+    attributes:
+      label: TL;DR
+      description: >-
+        Two or three sentences, **no jargon**, for someone with no context on
+        this repo. What is this about, and why does it matter? Everything below
+        can be as technical as it needs to be — this part cannot.
+      placeholder: |
+        Add <thing> so we can <do what>. This does not change how the game plays
+        or what any past experiment measured — it is plumbing.
+    validations:
+      required: true
+
+  - type: textarea
     id: what
     attributes:
       label: What ships
