@@ -282,6 +282,101 @@ def enforce_after_move(
     return reverted
 
 
+def enforce_unit_after_move(
+    models: list[WargameModel],
+    member_indices: list[int],
+    nearest_distance: float,
+    furthest_distance: float,
+    mode: CoherencyEnforcement,
+) -> int:
+    """Per-unit form of :func:`enforce_after_move`, judged as the unit's move ends.
+
+    The per-model facade closes one unit at a time (its selector's unit lock
+    keeps a unit's members consecutive), so it referees each unit the moment its
+    last member has acted — which is the rules' own timing: coherency is checked
+    "after you have finished moving all of the models in a unit". The
+    whole-force form stays untouched and is what the whole-phase facade runs.
+
+    ⚠ **The two timings are NOT the same game once a revert fires.** Under the
+    whole-force form a later unit resolves against an earlier unit's *moved*
+    positions and the revert then cascades; here the earlier unit is already
+    judged — and possibly back at its start — before the later one moves. On a
+    config with ``enforce_move: off`` (every shipped training config) both are
+    no-ops and the two facades are bit-identical; on a refereed config the
+    per-unit timing is the deliberate, rules-exact divergence recorded in
+    `docs/rules/implementation-status.md`.
+
+    **No overlap cascade, by construction rather than omission.** Every revert
+    here lands on the unit's own phase-start ground: models that have not moved
+    yet still stand where this unit's members resolved against, and every unit
+    that moved earlier resolved *its* moves while this unit occupied that very
+    ground — `resolve_move` forbids ending on an occupied base — so the
+    restored positions cannot overlap anyone.
+
+    Returns how many models were sent back, as the whole-force form does.
+    """
+    if mode is CoherencyEnforcement.off or not member_indices:
+        return 0
+
+    unit = [models[i] for i in member_indices]
+
+    if mode is CoherencyEnforcement.repair:
+        # Compose exactly as the whole-force form does: gather what can be
+        # gathered, then hand what is still broken to the spec's own revert.
+        # `_repair_stragglers` mutates the shared model objects, so handing it
+        # the unit's own slice scopes it without a second implementation.
+        repaired = _repair_stragglers(unit, nearest_distance, furthest_distance)
+        return repaired + enforce_unit_after_move(
+            models,
+            member_indices,
+            nearest_distance,
+            furthest_distance,
+            CoherencyEnforcement.revert_unit,
+        )
+
+    positions = np.array([m.location for m in unit], dtype=float)
+    group_ids = np.array([m.group_id for m in unit], dtype=np.intp)
+    alive_mask = np.array([m.is_alive for m in unit], dtype=bool)
+    base_radii = np.array([m.base_radius for m in unit], dtype=float)
+    if not alive_mask.any():
+        return 0
+
+    # The same selection loop as `_select_reverting`, scoped to one unit:
+    # re-evaluate against tentatively reverted positions each pass, escalate
+    # `revert_model` to the whole unit once its breaching models are all back
+    # and it is still broken.
+    reverting: set[int] = set()
+    for _ in range(len(unit) + 1):
+        report = evaluate_coherency(
+            positions=positions,
+            group_ids=group_ids,
+            alive_mask=alive_mask,
+            base_radii=base_radii,
+            nearest_distance=nearest_distance,
+            furthest_distance=furthest_distance,
+        )
+        added = False
+        for unit_report in report.units:
+            if unit_report.coherent:
+                continue
+            targets = _targets_for(unit_report, reverting, mode)
+            for index in targets:
+                if index in reverting:
+                    continue
+                reverting.add(index)
+                start = unit[index].previous_location
+                if start is not None:
+                    positions[index] = start
+                added = True
+        if not added:
+            break
+
+    reverted = 0
+    for index in sorted(reverting):
+        reverted += _return_to_start(unit[index])
+    return reverted
+
+
 def _select_reverting(
     models: list[WargameModel],
     reverting: set[int],

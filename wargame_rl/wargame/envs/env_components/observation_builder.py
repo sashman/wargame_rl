@@ -535,6 +535,138 @@ def _objectives_to_obs(
     return _pad_objectives(observations, view, with_control)
 
 
+def compute_player_action_mask(
+    view: BattleView,
+    action_registry: ActionRegistry,
+) -> np.ndarray:
+    """``(n_models, n_actions)`` legality for the player's models, this phase.
+
+    Extracted from ``build_observation`` (which still routes through it) so
+    the per-model facade offers its policy exactly the mask the whole-phase
+    facade puts on the observation -- a legality overlay applied to one
+    facade and not the other is a rules difference between the two, the
+    class of defect already measured at 24.6 vp on shooting alone.
+    """
+    phase = view.game_clock_state.phase or BattlePhase.movement
+    player_alive = alive_mask_for(view.player_models)
+    action_mask = action_registry.get_model_action_masks(
+        phase, len(view.player_models), alive_mask=player_alive
+    )
+    if view.config.melee.enabled and phase == BattlePhase.charge:
+        # A charge is an ordinary movement action in an extraordinary phase,
+        # so the slice is already unmasked here -- what has to be added is
+        # the rules' own gates: the unit must be eligible to declare, and
+        # the 2D6 is the charge move's maximum.
+        movement_slice = action_registry.slice_for("movement")
+        action_mask[:, movement_slice.start : movement_slice.end] &= (
+            view.player_charge_legality
+        )
+        # ⚠ **REMOVED 2026-08-26: a declared unit MAY decline.** This used to
+        # strike STAY from every declared model that held a legal rung, on
+        # the reasoning that a declaration should BIND rather than merely
+        # permit. The rules say otherwise, explicitly:
+        # `11-charge-phase.md` step 3 -- *"If a legal charge move is possible
+        # AND THE CONTROLLING PLAYER STILL WANTS TO MAKE IT, make it.
+        # Otherwise the unit does not move. Either way the charge is
+        # resolved."* Declining after the roll is a right the game grants and
+        # this took it away.
+        #
+        # It was not a harmless extra: a rules-lawyer audit measured it
+        # binding on **30 of 31** declared units, and it compounds with the
+        # declaration sitting two phases early -- a unit committed in the
+        # COMMAND phase, before it has moved or shot, could not then back out
+        # of a charge that the movement phase had made hopeless. It walked at
+        # nothing and the referee reverted it.
+        #
+        # ⚠ It does not follow that half a unit may charge. That is enforced
+        # where it belongs, in `_enforce_charge`: a stationary model does not
+        # veto its unit's charge, but the unit must still end COHERENT and
+        # engaged, so a squad that half-commits stretches and reverts anyway.
+        # The rule was being enforced twice, once correctly.
+
+    if phase in (BattlePhase.pile_in, BattlePhase.consolidate):
+        # ⚠ Without this the phases are UNMASKED: every alive model could
+        # shuffle 3" toward anything twice a turn, eligible or not. Measured
+        # when it was missing -- a script piling in unconditionally dragged
+        # its army off the objectives and the bar fell +23.9 -> -27.8 vp.
+        movement_slice = action_registry.slice_for("movement")
+        action_mask[:, movement_slice.start : movement_slice.end] &= (
+            view.player_short_move_legality
+        )
+
+    if action_registry.has_slice("move_type") and phase == BattlePhase.command:
+        # ⚠ The declaration was UNMASKED until 2026-08-26. A unit the rules
+        # make ineligible could still declare -- a charge declaration is a
+        # bit-exact no-op, so the policy got a free action with nothing to
+        # learn from, and an advance declaration spends the unit's shooting
+        # the moment it is made. See `ActionHandler.declaration_legality`.
+        move_type_slice = action_registry.slice_for("move_type")
+        action_mask[:, move_type_slice.start : move_type_slice.end] &= (
+            view.player_declaration_legality
+        )
+
+    if action_registry.has_slice("objective_target") and phase == BattlePhase.command:
+        # An objective declaration beyond the episode's real objective
+        # count is a plan for a marker that does not exist.
+        target_slice = action_registry.slice_for("objective_target")
+        action_mask[:, target_slice.start : target_slice.end] &= (
+            view.player_objective_target_legality
+        )
+
+    if action_registry.has_slice("charge_target") and phase == BattlePhase.command:
+        # A hunt for a wiped enemy unit is a plan for nothing.
+        hunt_slice = action_registry.slice_for("charge_target")
+        action_mask[:, hunt_slice.start : hunt_slice.end] &= (
+            view.player_charge_target_legality
+        )
+
+    if action_registry.has_slice("advance") and phase == BattlePhase.movement:
+        # The advance rungs are ABSOLUTE distances above Move, so the turn's
+        # D6 no longer changes what an action means -- it decides which
+        # rungs are reachable. Without this mask a policy could pick a 12"
+        # advance on a roll of 1 and silently receive a 7" one, which is the
+        # non-stationary semantics the absolute ladder exists to remove.
+        advance_slice = action_registry.slice_for("advance")
+        action_mask[:, advance_slice.start : advance_slice.end] &= (
+            view.player_advance_legality
+        )
+    if (
+        action_registry.has_slice("shooting")
+        and phase == BattlePhase.shooting
+        and view.opponent_models
+    ):
+        shooting_slice = action_registry.slice_for("shooting")
+        opponent_alive = alive_mask_for(view.opponent_models)
+        player_positions = np.array([m.location for m in view.player_models])
+        opponent_positions = np.array([m.location for m in view.opponent_models])
+        player_ranges = view.player_max_ranges
+        # Advancing and falling back both cost the turn's shooting, so the
+        # mask takes their union -- `docs/rules/09-movement-phase.md`.
+        player_advanced = np.array(
+            [m.advanced_this_turn or m.fell_back_this_turn for m in view.player_models]
+        )
+        shooting_validity = compute_unit_shooting_masks(
+            player_positions,
+            opponent_positions,
+            player_alive,
+            opponent_alive,
+            player_ranges,
+            view.line_of_sight_matrix,
+            np.array([m.group_id for m in view.opponent_models], dtype=int),
+            shooting_slice.end - shooting_slice.start,
+            player_advanced=player_advanced,
+            # The shooter's own unit, so that one model in contact silences
+            # its squadmates -- the rule is per unit, not per model.
+            player_groups=np.array([m.group_id for m in view.player_models], dtype=int),
+            engagement_range=view.rules_quantities.engagement_range,
+            base_diameter=2.0 * view.rules_quantities.base_radius,
+            exclude_engaged_targets=view.config.melee.enabled
+            and view.config.melee.shield_engaged_targets,
+        )
+        action_mask[:, shooting_slice.start : shooting_slice.end] &= shooting_validity
+    return action_mask
+
+
 def build_observation(
     view: BattleView,
     distance_cache: DistanceCache | None = None,
@@ -550,133 +682,7 @@ def build_observation(
 
     action_mask: np.ndarray | None = None
     if action_registry is not None:
-        phase = view.game_clock_state.phase or BattlePhase.movement
-        player_alive = alive_mask_for(view.player_models)
-        action_mask = action_registry.get_model_action_masks(
-            phase, len(view.player_models), alive_mask=player_alive
-        )
-        if view.config.melee.enabled and phase == BattlePhase.charge:
-            # A charge is an ordinary movement action in an extraordinary phase,
-            # so the slice is already unmasked here -- what has to be added is
-            # the rules' own gates: the unit must be eligible to declare, and
-            # the 2D6 is the charge move's maximum.
-            movement_slice = action_registry.slice_for("movement")
-            action_mask[:, movement_slice.start : movement_slice.end] &= (
-                view.player_charge_legality
-            )
-            # ⚠ **REMOVED 2026-08-26: a declared unit MAY decline.** This used to
-            # strike STAY from every declared model that held a legal rung, on
-            # the reasoning that a declaration should BIND rather than merely
-            # permit. The rules say otherwise, explicitly:
-            # `11-charge-phase.md` step 3 -- *"If a legal charge move is possible
-            # AND THE CONTROLLING PLAYER STILL WANTS TO MAKE IT, make it.
-            # Otherwise the unit does not move. Either way the charge is
-            # resolved."* Declining after the roll is a right the game grants and
-            # this took it away.
-            #
-            # It was not a harmless extra: a rules-lawyer audit measured it
-            # binding on **30 of 31** declared units, and it compounds with the
-            # declaration sitting two phases early -- a unit committed in the
-            # COMMAND phase, before it has moved or shot, could not then back out
-            # of a charge that the movement phase had made hopeless. It walked at
-            # nothing and the referee reverted it.
-            #
-            # ⚠ It does not follow that half a unit may charge. That is enforced
-            # where it belongs, in `_enforce_charge`: a stationary model does not
-            # veto its unit's charge, but the unit must still end COHERENT and
-            # engaged, so a squad that half-commits stretches and reverts anyway.
-            # The rule was being enforced twice, once correctly.
-
-        if phase in (BattlePhase.pile_in, BattlePhase.consolidate):
-            # ⚠ Without this the phases are UNMASKED: every alive model could
-            # shuffle 3" toward anything twice a turn, eligible or not. Measured
-            # when it was missing -- a script piling in unconditionally dragged
-            # its army off the objectives and the bar fell +23.9 -> -27.8 vp.
-            movement_slice = action_registry.slice_for("movement")
-            action_mask[:, movement_slice.start : movement_slice.end] &= (
-                view.player_short_move_legality
-            )
-
-        if action_registry.has_slice("move_type") and phase == BattlePhase.command:
-            # ⚠ The declaration was UNMASKED until 2026-08-26. A unit the rules
-            # make ineligible could still declare -- a charge declaration is a
-            # bit-exact no-op, so the policy got a free action with nothing to
-            # learn from, and an advance declaration spends the unit's shooting
-            # the moment it is made. See `ActionHandler.declaration_legality`.
-            move_type_slice = action_registry.slice_for("move_type")
-            action_mask[:, move_type_slice.start : move_type_slice.end] &= (
-                view.player_declaration_legality
-            )
-
-        if (
-            action_registry.has_slice("objective_target")
-            and phase == BattlePhase.command
-        ):
-            # An objective declaration beyond the episode's real objective
-            # count is a plan for a marker that does not exist.
-            target_slice = action_registry.slice_for("objective_target")
-            action_mask[:, target_slice.start : target_slice.end] &= (
-                view.player_objective_target_legality
-            )
-
-        if action_registry.has_slice("charge_target") and phase == BattlePhase.command:
-            # A hunt for a wiped enemy unit is a plan for nothing.
-            hunt_slice = action_registry.slice_for("charge_target")
-            action_mask[:, hunt_slice.start : hunt_slice.end] &= (
-                view.player_charge_target_legality
-            )
-
-        if action_registry.has_slice("advance") and phase == BattlePhase.movement:
-            # The advance rungs are ABSOLUTE distances above Move, so the turn's
-            # D6 no longer changes what an action means -- it decides which
-            # rungs are reachable. Without this mask a policy could pick a 12"
-            # advance on a roll of 1 and silently receive a 7" one, which is the
-            # non-stationary semantics the absolute ladder exists to remove.
-            advance_slice = action_registry.slice_for("advance")
-            action_mask[:, advance_slice.start : advance_slice.end] &= (
-                view.player_advance_legality
-            )
-        if (
-            action_registry.has_slice("shooting")
-            and phase == BattlePhase.shooting
-            and view.opponent_models
-        ):
-            shooting_slice = action_registry.slice_for("shooting")
-            opponent_alive = alive_mask_for(view.opponent_models)
-            player_positions = np.array([m.location for m in view.player_models])
-            opponent_positions = np.array([m.location for m in view.opponent_models])
-            player_ranges = view.player_max_ranges
-            # Advancing and falling back both cost the turn's shooting, so the
-            # mask takes their union -- `docs/rules/09-movement-phase.md`.
-            player_advanced = np.array(
-                [
-                    m.advanced_this_turn or m.fell_back_this_turn
-                    for m in view.player_models
-                ]
-            )
-            shooting_validity = compute_unit_shooting_masks(
-                player_positions,
-                opponent_positions,
-                player_alive,
-                opponent_alive,
-                player_ranges,
-                view.line_of_sight_matrix,
-                np.array([m.group_id for m in view.opponent_models], dtype=int),
-                shooting_slice.end - shooting_slice.start,
-                player_advanced=player_advanced,
-                # The shooter's own unit, so that one model in contact silences
-                # its squadmates -- the rule is per unit, not per model.
-                player_groups=np.array(
-                    [m.group_id for m in view.player_models], dtype=int
-                ),
-                engagement_range=view.rules_quantities.engagement_range,
-                base_diameter=2.0 * view.rules_quantities.base_radius,
-                exclude_engaged_targets=view.config.melee.enabled
-                and view.config.melee.shield_engaged_targets,
-            )
-            action_mask[:, shooting_slice.start : shooting_slice.end] &= (
-                shooting_validity
-            )
+        action_mask = compute_player_action_mask(view, action_registry)
 
     clock = view.game_clock_state
     phase = clock.phase or BattlePhase.movement

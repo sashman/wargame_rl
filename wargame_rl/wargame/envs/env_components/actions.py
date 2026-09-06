@@ -179,6 +179,34 @@ def ladder_for_phase(phase: BattlePhase | None) -> MoveLadder:
     return _LADDER_FOR_PHASE.get(phase, MoveLadder.normal)
 
 
+@dataclass(slots=True)
+class MovePhaseContext:
+    """Everything one model's move resolution needs, captured at the phase's start.
+
+    Extracted from ``ActionHandler.apply`` so the per-model facade can resolve
+    one model at a time through **the same code** the whole-phase facade runs —
+    two implementations of movement resolution is how the joint decoder came to
+    judge candidates against its own relaxation (+11.4 vp). Everything here is
+    constant for the duration of one side's phase: the other army does not move
+    or die while this one moves, so capturing at the phase's start is exact,
+    not an approximation.
+    """
+
+    phase: BattlePhase
+    lower: np.ndarray
+    upper: np.ndarray
+    collides: bool
+    blocker_centres: np.ndarray
+    blocker_radii: np.ndarray
+    engagement_centres: np.ndarray
+    engagement_reach: np.ndarray
+    friendly_buffer: np.ndarray
+    friendly_radius_buffer: np.ndarray
+    friendly_alive: np.ndarray
+    began_engaged: np.ndarray | None
+    charge_start: list[np.ndarray] | None
+
+
 @dataclass(frozen=True, slots=True)
 class ActionSlice:
     """A contiguous range of action indices belonging to one action type."""
@@ -2205,30 +2233,19 @@ class ActionHandler:
             if int(model.group_id) in moved_units:
                 model.fell_back_this_turn = True
 
-    def apply(
+    def begin_move_context(
         self,
-        action: WargameEnvAction,
+        phase: BattlePhase,
         wargame_models: list[Any],
+        enemy_models: list[Any] | None,
         board_width: int,
         board_height: int,
-        action_space: spaces.Tuple,
-        *,
-        phase: BattlePhase = BattlePhase.movement,
-        enemy_models: list[Any] | None = None,
-    ) -> None:
-        """Apply the action tuple to the wargame models (mutates locations).
+    ) -> MovePhaseContext:
+        """Capture everything a phase's move resolution reads, once.
 
-        Dead models are skipped — they do not move regardless of the action.
-        Shooting-slice actions are no-ops (Phase 5 adds resolution).
-        Models displace only in the movement phase: the action mask already
-        enforces that for a learned policy, but scripted policies bypass the
-        mask, so honouring `phase` here keeps them on the same footing.
-
-        With bases, moves are resolved against the other models: `enemy_models`
-        stop a move on contact, the moving army's own models may be passed
-        through but not ended on. Resolution runs in model index order, which
-        gives model 0 a documented right of way — the price of a deterministic
-        board.
+        Shared by ``apply`` (which resolves the whole force in one call) and the
+        per-model facade (which resolves one model per step); both must read the
+        same captures or the two facades drift on what a move is.
         """
         # Hoisted, and typed: python-list bounds become int64 arrays, so passing
         # them to `np.clip` would widen the result whatever the inputs are.
@@ -2298,6 +2315,168 @@ class ActionHandler:
             and self._displaces_in(phase)
             else None
         )
+        return MovePhaseContext(
+            phase=phase,
+            lower=lower,
+            upper=upper,
+            collides=collides,
+            blocker_centres=blocker_centres,
+            blocker_radii=blocker_radii,
+            engagement_centres=engagement_centres,
+            engagement_reach=engagement_reach,
+            friendly_buffer=friendly_buffer,
+            friendly_radius_buffer=friendly_radius_buffer,
+            friendly_alive=friendly_alive,
+            began_engaged=began_engaged,
+            charge_start=charge_start,
+        )
+
+    def resolve_one_move(
+        self,
+        ctx: MovePhaseContext,
+        act: int,
+        i: int,
+        wargame_models: list[Any],
+        action_space: spaces.Tuple,
+    ) -> None:
+        """Resolve model *i*'s action against the live board. Mutates locations.
+
+        The body of ``apply``'s per-model loop, extracted verbatim so the
+        per-model facade steps one model through exactly the resolution the
+        whole-phase facade runs. Dead models are skipped; the action is
+        validated against the space (the mask is deliberately not trusted);
+        non-displacing phases and non-displacement actions are no-ops.
+        """
+        phase = ctx.phase
+        model = wargame_models[i]
+        if not model.is_alive:
+            return
+        if not action_space[i].contains(act):  # type: ignore
+            raise ValueError(f"Action {act} for wargame model {i} is out of bounds.")
+        if not self._displaces_in(phase):
+            return
+        if not self._is_displacement_action(act):
+            return
+        model.previous_location = model.location.copy()
+        displacement = self.decode_action(
+            act,
+            model_idx=i,
+            advance_roll=model.advance_roll,
+            ladder=_LADDER_FOR_PHASE.get(phase, MoveLadder.normal),
+        )
+        if not ctx.collides:
+            model.location = back_off_to_unengaged(
+                model.location,
+                np.clip(model.location + displacement, ctx.lower, ctx.upper),
+                ctx.engagement_centres,
+                ctx.engagement_reach,
+            )
+            return
+        # Read live each iteration: earlier models in this loop have already
+        # moved, and a model must not end on ground another just took. The
+        # arrays are rebuilt from a preallocated buffer rather than a fresh
+        # list comprehension per model -- that shape is O(n^2) in python and
+        # is what made two reward calculators 80% of a step once already.
+        for j, other in enumerate(wargame_models):
+            ctx.friendly_buffer[j] = other.location
+        keep = ctx.friendly_alive.copy()
+        keep[i] = False
+        friendly_centres = ctx.friendly_buffer[keep]
+        friendly_radii = ctx.friendly_radius_buffer[keep]
+        # The board edge is clamped into the *displacement*, before
+        # collisions are resolved. Clamping the resolved point afterwards
+        # would slide a model along the edge and back into someone else --
+        # producing exactly the overlap the whole resolution just avoided,
+        # only near a board edge and only sometimes.
+        in_bounds = np.clip(model.location + displacement, ctx.lower, ctx.upper)
+        # The bases the endpoint may not land inside: enemies (which also
+        # block the path) and the moving army's own models (which may be
+        # crossed but not ended on). Passed in because backing off walks the
+        # endpoint into ground `resolve_move` had already cleared -- without
+        # them a model rescued from an engagement ring comes to rest inside
+        # a friendly base, measured at 0.18% of pairs.
+        occupied_centres = np.concatenate([ctx.blocker_centres, friendly_centres])
+        occupied_reach = (
+            np.concatenate([ctx.blocker_radii, friendly_radii]) + model.base_radius
+        )
+        model.location = back_off_to_unengaged(
+            model.location,
+            resolve_move(
+                model.location,
+                in_bounds - model.location,
+                model.base_radius,
+                ctx.blocker_centres,
+                ctx.blocker_radii,
+                friendly_centres,
+                friendly_radii,
+            ),
+            ctx.engagement_centres,
+            ctx.engagement_reach,
+            occupied_centres,
+            occupied_reach,
+        )
+
+    def referee_unit_move(
+        self,
+        ctx: MovePhaseContext,
+        wargame_models: list[Any],
+        enemy_models: list[Any] | None,
+        members: list[int],
+    ) -> None:
+        """Judge one unit's completed move under its phase's own referee.
+
+        The per-batch dispatch from ``apply``, shared with the per-model facade
+        so a unit closed one model at a time meets exactly the referee a
+        whole-phase batch does. A no-op when the phase captured no start
+        positions — which is every phase that is not unit-refereed.
+        """
+        if ctx.charge_start is None:
+            return
+        if ctx.phase is BattlePhase.charge:
+            self._enforce_charge(
+                wargame_models, enemy_models, ctx.charge_start, members
+            )
+        elif ctx.phase is BattlePhase.movement:
+            self._enforce_fall_back(
+                wargame_models,
+                enemy_models,
+                ctx.charge_start,
+                members,
+                ctx.began_engaged,
+            )
+        else:
+            self._enforce_short_move(
+                wargame_models, enemy_models, ctx.charge_start, members
+            )
+
+    def apply(
+        self,
+        action: WargameEnvAction,
+        wargame_models: list[Any],
+        board_width: int,
+        board_height: int,
+        action_space: spaces.Tuple,
+        *,
+        phase: BattlePhase = BattlePhase.movement,
+        enemy_models: list[Any] | None = None,
+    ) -> None:
+        """Apply the action tuple to the wargame models (mutates locations).
+
+        Dead models are skipped — they do not move regardless of the action.
+        Shooting-slice actions are no-ops (Phase 5 adds resolution).
+        Models displace only in the movement phase: the action mask already
+        enforces that for a learned policy, but scripted policies bypass the
+        mask, so honouring `phase` here keeps them on the same footing.
+
+        With bases, moves are resolved against the other models: `enemy_models`
+        stop a move on contact, the moving army's own models may be passed
+        through but not ended on. Resolution runs in model index order, which
+        gives model 0 a documented right of way — the price of a deterministic
+        board.
+        """
+        ctx = self.begin_move_context(
+            phase, wargame_models, enemy_models, board_width, board_height
+        )
         if phase is BattlePhase.command:
             # No early return: the per-model loop below still validates every
             # action against its space before skipping non-movement phases, and
@@ -2323,95 +2502,16 @@ class ActionHandler:
         # unit before the next one moves removes the window entirely, and
         # lets the next unit move against the RESTORED position rather than
         # against ground that was only briefly empty.
-        def move_batch(indices: list[int]) -> None:
-            for i in indices:
-                act = action.actions[i]
-                model = wargame_models[i]
-                if not model.is_alive:
-                    continue
-                if not action_space[i].contains(act):  # type: ignore
-                    raise ValueError(
-                        f"Action {act} for wargame model {i} is out of bounds."
-                    )
-                if not self._displaces_in(phase):
-                    continue
-                if not self._is_displacement_action(act):
-                    continue
-                model.previous_location = model.location.copy()
-                displacement = self.decode_action(
-                    act,
-                    model_idx=i,
-                    advance_roll=model.advance_roll,
-                    ladder=_LADDER_FOR_PHASE.get(phase, MoveLadder.normal),
+        for batch in self._charge_batches(
+            phase, wargame_models, action, ctx.charge_start
+        ):
+            for i in batch:
+                self.resolve_one_move(
+                    ctx, action.actions[i], i, wargame_models, action_space
                 )
-                if not collides:
-                    model.location = back_off_to_unengaged(
-                        model.location,
-                        np.clip(model.location + displacement, lower, upper),
-                        engagement_centres,
-                        engagement_reach,
-                    )
-                    continue
-                # Read live each iteration: earlier models in this loop have already
-                # moved, and a model must not end on ground another just took. The
-                # arrays are rebuilt from a preallocated buffer rather than a fresh
-                # list comprehension per model -- that shape is O(n^2) in python and
-                # is what made two reward calculators 80% of a step once already.
-                for j, other in enumerate(wargame_models):
-                    friendly_buffer[j] = other.location
-                keep = friendly_alive.copy()
-                keep[i] = False
-                friendly_centres = friendly_buffer[keep]
-                friendly_radii = friendly_radius_buffer[keep]
-                # The board edge is clamped into the *displacement*, before
-                # collisions are resolved. Clamping the resolved point afterwards
-                # would slide a model along the edge and back into someone else --
-                # producing exactly the overlap the whole resolution just avoided,
-                # only near a board edge and only sometimes.
-                in_bounds = np.clip(model.location + displacement, lower, upper)
-                # The bases the endpoint may not land inside: enemies (which also
-                # block the path) and the moving army's own models (which may be
-                # crossed but not ended on). Passed in because backing off walks the
-                # endpoint into ground `resolve_move` had already cleared -- without
-                # them a model rescued from an engagement ring comes to rest inside
-                # a friendly base, measured at 0.18% of pairs.
-                occupied_centres = np.concatenate([blocker_centres, friendly_centres])
-                occupied_reach = (
-                    np.concatenate([blocker_radii, friendly_radii]) + model.base_radius
-                )
-                model.location = back_off_to_unengaged(
-                    model.location,
-                    resolve_move(
-                        model.location,
-                        in_bounds - model.location,
-                        model.base_radius,
-                        blocker_centres,
-                        blocker_radii,
-                        friendly_centres,
-                        friendly_radii,
-                    ),
-                    engagement_centres,
-                    engagement_reach,
-                    occupied_centres,
-                    occupied_reach,
-                )
+            self.referee_unit_move(ctx, wargame_models, enemy_models, batch)
 
-        for batch in self._charge_batches(phase, wargame_models, action, charge_start):
-            move_batch(batch)
-            if charge_start is None:
-                continue
-            if phase is BattlePhase.charge:
-                self._enforce_charge(wargame_models, enemy_models, charge_start, batch)
-            elif phase is BattlePhase.movement:
-                self._enforce_fall_back(
-                    wargame_models, enemy_models, charge_start, batch, began_engaged
-                )
-            else:
-                self._enforce_short_move(
-                    wargame_models, enemy_models, charge_start, batch
-                )
-
-        self._mark_fall_backs(wargame_models, began_engaged)
+        self._mark_fall_backs(wargame_models, ctx.began_engaged)
 
         # Every model in the force has now moved, which is the earliest point a
         # unit-level property of the *completed* move can be judged. Nothing to

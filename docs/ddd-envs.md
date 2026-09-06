@@ -56,6 +56,8 @@ wargame_rl/wargame/envs/
 ├── renders/                   # Pygame etc. (use BattleView)
 ├── types/                     # Shared kernel: config, observation/info types,
 │                              #   game timing, and geometry (see below)
+├── per_model/                 # SECOND facade: one step is one model's action
+│                              #   (PerModelEnv + the scripted adapter; see below)
 └── wargame.py                 # WargameEnv: facade that implements BattleView
 ```
 
@@ -63,6 +65,27 @@ wargame_rl/wargame/envs/
 - **Env** and **env_components** create and use the domain (Battle, factory, placement, clock, termination, turn execution).
 - **Reward** and **renders** depend only on `BattleView` (and types); they receive a view in `calculate_reward` / `check_success` / `setup` / `render`.
 - **debug** drives a live env, so like `baseline/` it may import `WargameEnv`. This is what splits the debug mode across two packages: its presenter reads a `BattleView` and therefore lives under `renders/`, while the undo stack and session loop hold the env and live here.
+
+## Two facades over one domain
+
+`per_model/` is a **second facade** over the unchanged domain layer (issue
+#283/#284): `PerModelEnv` steps **one model's action at a time** — selector
+mask with a unit lock, unit declarations on a unit's opening step, a
+turn-closing step after the opponent's turn, no play-time decode — while
+`WargameEnv` steps a whole phase. Every rule stays single-sourced: the two
+share the domain services *and* the extracted resolution path
+(`ActionHandler.begin_move_context` / `resolve_one_move` /
+`referee_unit_move`, `compute_player_action_mask`), so they cannot drift on
+what the game **is**, only on how it is stepped. `PerModelEnv` subclasses
+`WargameEnv` for construction, reset, opponent execution and the `BattleView`
+surface; the stepping is what it replaces.
+
+`per_model/adapter.py` seats a whole-phase `BaselinePolicy` in the new facade
+(plan once per phase, replay in the engine's own resolution order), and
+`tests/test_per_model_bridge.py` pins the identity: the replayed episode is
+**bit-for-bit** the whole-phase facade's on the same layout and dice, wherever
+`coherency.enforce_move` is off. The whole-phase facade stays the default and
+is untouched until the architecture race (issue #288) is decided.
 
 ## Key concepts
 

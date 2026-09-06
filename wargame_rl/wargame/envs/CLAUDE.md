@@ -5,6 +5,22 @@ Applies to everything under `wargame_rl/wargame/envs/`.
 ## Structure
 
 - `WargameEnv` extends `gymnasium.Env`; typed obs/action/info/config (all Pydantic)
+- **`per_model/` is a SECOND facade** (issue #283/#284, opt-in, nothing else constructs
+  it): `PerModelEnv` steps **one model's action at a time** — selector mask with a unit
+  lock, unit declarations on a unit's opening step, a turn-closing step after the
+  opponent's turn, no play-time decode. It subclasses `WargameEnv` for construction /
+  reset / opponent execution and replaces only the stepping; movement resolution and the
+  player mask are shared through `ActionHandler.begin_move_context` / `resolve_one_move`
+  / `referee_unit_move` and `compute_player_action_mask`, so the two facades cannot
+  drift on what the game is. `ScriptedPolicyAdapter` seats a whole-phase baseline in it
+  (plan once per phase, replay in the engine's own resolution order — shooting is
+  (unit, target unit, index) order, NOT raw index order, or the dice stream shifts);
+  `tests/test_per_model_bridge.py` pins the episode **bit-for-bit** against the
+  whole-phase facade wherever `coherency.enforce_move` is off. On refereed configs the
+  coherency referee deliberately fires per unit at unit close (rules-exact) instead of
+  whole-force at phase end, so refereed episodes diverge when a revert fires — the
+  refereed scripted bar must be re-measured in the new facade, never carried. See
+  [docs/ddd-envs.md](../../../docs/ddd-envs.md) § Two facades
 - Config: `WargameEnvConfig` (pydantic-yaml) from `configs/`
 - Actions: polar (angle, speed) pairs per model via `ActionHandler(config, n_models=..., n_shoot_targets=...)`; a `shooting` slice is registered only when `n_shoot_targets > 0`
   - `ActionHandler.best_action_toward(dx, dy, max_step_length=None)` for scripted policies; never hardcode action counts — use `ActionHandler.n_actions`
