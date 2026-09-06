@@ -101,8 +101,10 @@ A complete, serialisable Pydantic model of the game at one point in time. This i
 lists rather than a flag on `CombatResultSnapshot`, because the renderer draws a
 *tracer* for a damaging shot and a *clash marker* for a damaging blow — melee
 happens at contact, where a line has no length to be read by. Both are empty on
-pre-2.7 recordings and on every melee-off config, which is every config shipped
-today, so a replay of one draws no clashes rather than inventing them.
+pre-2.7 recordings and on every melee-off config — melee is off by default and
+off in every golden config, though the melee arms under `configs/experiments/`
+and their eval configs do enable it — so a replay of a melee-off match draws no
+clashes rather than inventing them.
 
 
 ```python
@@ -159,8 +161,9 @@ class ClockSnapshot(BaseModel):
 
 
 class ModelSnapshot(BaseModel):
-    location: list[int]
-    previous_location: list[int] | None
+    location: list[float]  # 2.0: the board is continuous
+    previous_location: list[float] | None
+    base_radius: float = 0.0  # 2.0: models occupy a base, not a point
     group_id: int
     alive: bool
     current_wounds: int
@@ -178,10 +181,11 @@ class ModelSnapshot(BaseModel):
 
 
 class ObjectiveSnapshot(BaseModel):
-    location: list[int]
-    radius_size: int
+    location: list[float]
+    radius_size: float
     player_models_in_range: list[int]
     opponent_models_in_range: list[int]
+    area: list[list[float]] | None = None  # 2.0: outline when the objective IS ground
 
 
 class WeaponSnapshot(BaseModel):
@@ -220,11 +224,11 @@ class RewardSnapshot(BaseModel):
 | Group | Fields | Purpose |
 |-------|--------|---------|
 | **Timing** | `step`, `max_steps`, `clock`, `action_phase`, `n_rounds` | Where in the episode and game clock |
-| **Board** | `board_width`, `board_height`, `deployment_zone`, `opponent_deployment_zone`, `terrain_footprints` | Static geometry (terrain footprints recorded on the reset + anchors only, not deltas) |
+| **Board** | `board_width`, `board_height`, `deployment_zone`, `opponent_deployment_zone`, `terrain_footprints`, `deployment_outline`, `opponent_deployment_outline`, `rules` | Static geometry and rules distances (recorded on the reset + anchors only, not deltas) |
 | **Units** | `player_models`, `opponent_models` | Full per-model state inc. weapons, wounds, distances |
 | **Objectives** | `objectives`, `objective_control` | Positions, radii, ownership |
 | **Actions** | `player_actions`, `opponent_actions`, `player_action_descriptions` | Raw + decoded actions taken |
-| **Combat** | `player_combat_results`, `opponent_combat_results` | Hits, wounds, damage with expected-value analytics |
+| **Combat** | `player_combat_results`, `opponent_combat_results`, `player_melee_results`, `opponent_melee_results` | Hits, wounds, damage with expected-value analytics; melee blows in separate lists |
 | **Reward** | `reward` | Per-calculator breakdown and active phase |
 | **VP** | `player_vp`, `opponent_vp`, `*_vp_delta` | Victory point state and step-wise change |
 | **Terminal** | `is_terminated`, `is_truncated` | Episode end flags |
@@ -347,14 +351,14 @@ The analysis output is available as:
 | Command | Purpose |
 |---------|---------|
 | `just record <config>` | Train 1 epoch with event recording, no wandb (quick E2E test) |
-| `just record-sim <ckpt> <config> [n] [net]` | Record N episodes from a trained checkpoint, no rendering |
+| `just record-sim <ckpt> <config> [n]` | Record N episodes from a trained checkpoint, no rendering |
 | `just replay <file>` | Narrate a recorded match step-by-step |
 | `just replay-summary <file>` | Match metadata overview |
 | `just replay-render <file> [out.mp4] [theme] [overlays]` | Replay visually — interactive window (play/pause/step/scrub) or MP4. Uses the v2 renderer; reads terrain from schema-2.1 recordings (pre-2.1 draw no ruins) and the reward ledger + skipped phases from 2.2 (earlier ones show neither). `theme` is `default` or `tabletop`; the latter colours models by *side* rather than by squad, so it reads like a table but cannot show which unit a model belongs to. `overlays` passes renderer flags through — `--threat-range` / `--engagement-range` need schema 2.6 for the rules distances, and older recordings render exactly as they do with the overlays off. ⚠ **`--threat-field` draws nothing on a replay at any schema version**: the next-turn field builds its reachable set from **per-model Move**, which no snapshot records, and tracing it at a guessed Move would be wrong in the *false-safe* direction — so it degrades to the overlays-off frame exactly, pinned by `test_a_replayed_frame_is_the_field_off_frame` |
 | `just analyze <file>` | Full analysis report (text) |
 | `just analyze-json <file>` | Analysis report as JSON |
 | `just analyze-compare f1 f2` | Side-by-side metric comparison |
-| `just debug-recording <file> [driver] [theme]` | Recreate the episode exactly and step it by hand. Needs a recording with header provenance |
+| `just debug-recording <file> [policy\|ckpt] [theme] [overlays]` | Recreate the episode exactly and step it by hand. Needs a recording with header provenance |
 
 `simulate.py` takes `--seed`, and **a recording is only reproducible if it was
 given one** — without it the layout comes from process entropy. Training
