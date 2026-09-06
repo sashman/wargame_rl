@@ -13,7 +13,14 @@ purpose: the reward loop makes ~100 `calculate()` calls per step, and cProfile's
 per-call overhead inflates exactly that shape by ~3x, which would point the
 optimisation at the wrong place.
 
-Usage: just measure-throughput <env_config> [n_steps] [engaged]
+Usage: just measure-throughput <env_config> [n_steps] [engaged|per_model]
+
+`per_model` measures the PER-MODEL facade instead (issue #287): the cost of
+one single-model step — resolution, the actor's reward terms, the token
+observation build — and what a whole round costs against the whole-phase
+facade's two steps. The design's cost model predicts 15-20x per round; this is
+the instrument that replaces that prediction with a number (mitigation 4:
+measure before optimising).
 
 `engaged` forces every model within weapon range of every opponent before
 stepping. Sight barely registers under random play because range gating rules
@@ -300,13 +307,70 @@ def _print_report(
     )
 
 
+def _run_per_model(config_path: Path, n_steps: int) -> None:
+    """Time the per-model facade: model steps, boundaries, closes, token obs."""
+    from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
+    from wargame_rl.wargame.envs.per_model import PerModelEnv, ScriptedPolicyAdapter
+    from wargame_rl.wargame.envs.per_model.observation import build_token_observation
+
+    config = parse_yaml_raw_as(WargameEnvConfig, config_path.read_text())
+    env = PerModelEnv(config, build_info=False)
+    adapter = ScriptedPolicyAdapter(build_baseline_policy("squad_march_take"))
+    timings = _Timings()
+    timings.wrap(env, "_resolve_model_action", "resolve model action")
+    timings.wrap(env._reward_timer, "model_step_reward", "actor reward terms")
+    timings.wrap(env._reward_timer, "closing_reward", "closing reward")
+    timings.wrap(env, "_complete_player_phase", "phase boundary (incl. opponent)")
+
+    observation, _ = env.reset(seed=SEED, options={"combat_seed": COMBAT_SEED})
+    steps = 0
+    closes = 0
+    token_seconds = 0.0
+    total_start = time.perf_counter()
+    while steps < n_steps:
+        began = time.perf_counter()
+        build_token_observation(env, observation)
+        token_seconds += time.perf_counter() - began
+        action = adapter.next_action(env, observation)
+        if action.model_index is None:
+            closes += 1
+        observation, _reward, terminated, _tr, _ = env.step(action)
+        steps += 1
+        if terminated:
+            observation, _ = env.reset(
+                seed=SEED + steps, options={"combat_seed": COMBAT_SEED + steps}
+            )
+            adapter = ScriptedPolicyAdapter(build_baseline_policy("squad_march_take"))
+    total_seconds = time.perf_counter() - total_start
+
+    per_step_ms = 1000.0 * total_seconds / steps
+    rounds = max(closes, 1)
+    print(f"per-model facade throughput -- {config_path}")
+    print(f"  steps timed          {steps} ({closes} turn closes)")
+    print(f"  mean per step        {per_step_ms:8.3f} ms (incl. token obs build)")
+    print(f"  mean per ROUND       {1000.0 * total_seconds / rounds:8.3f} ms")
+    print(f"  token observation    {1000.0 * token_seconds / steps:8.3f} ms/step")
+    for label in sorted(timings.total):
+        calls = timings.calls[label]
+        if not calls:
+            continue
+        print(
+            f"  {label:32s} {1000.0 * timings.total[label] / steps:8.3f} ms/step"
+            f"  ({calls} calls)"
+        )
+
+
 def main(argv: list[str]) -> int:
     if not argv:
         print(__doc__)
         return 1
     config_path = Path(argv[0])
     n_steps = int(argv[1]) if len(argv) > 1 and argv[1] else DEFAULT_STEPS
-    engaged = len(argv) > 2 and argv[2].lower() in {"engaged", "true", "1"}
+    mode = argv[2].lower() if len(argv) > 2 else ""
+    if mode == "per_model":
+        _run_per_model(config_path, n_steps)
+        return 0
+    engaged = mode in {"engaged", "true", "1"}
 
     mean_step, mean_reset, timings, env, observation = _run(
         config_path, n_steps, engaged

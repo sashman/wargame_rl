@@ -233,8 +233,15 @@ class GameStateSnapshot(BaseModel):
     attributing ``player_actions`` to a phase.
     """
 
-    schema_version: str = "2.7"
+    schema_version: str = "2.8"
     step: int
+    model_step: int | None = None
+    """The per-model sub-step counter (schema 2.8): how many single-model steps
+    the per-model facade has taken this episode, at the moment this snapshot
+    was built. ``None`` on every whole-phase recording — the second clock
+    exists only where a step is one model's action (`envs/per_model/`), and
+    ``step`` keeps counting phases either way, so every ``max_turns`` reader
+    keeps its meaning."""
     max_steps: int
     clock: ClockSnapshot
     action_phase: str | None = None
@@ -716,6 +723,7 @@ def build_snapshot(
     opponent_deployment_outline: "Polygon | None" = None,
     player_fight_results: list[PairedFightResult] | None = None,
     opponent_fight_results: list[PairedFightResult] | None = None,
+    model_step: int | None = None,
 ) -> GameStateSnapshot:
     """Build a complete game-state snapshot from env internals."""
     player_configs = config.models
@@ -817,6 +825,7 @@ def build_snapshot(
 
     return GameStateSnapshot(
         step=step,
+        model_step=model_step,
         max_steps=max_steps,
         clock=clock,
         action_phase=action_phase,

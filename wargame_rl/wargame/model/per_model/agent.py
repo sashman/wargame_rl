@@ -189,6 +189,65 @@ class SetAgent:
         )  # the pointer's candidate order (ascending unit id)
         return shooting_slice.start + unit_ids[choice - 1]
 
+    @torch.no_grad()
+    def act_batched(
+        self, pairs: list[tuple[PerModelEnv, PerModelObservation]]
+    ) -> list[PerModelAction]:
+        """Greedy decisions for several envs in ONE forward pass.
+
+        The batched evaluation path: per-model episodes take different step
+        counts, so waves run until the last env finishes with finished envs
+        simply absent from the batch — this decides one step for every env
+        still in flight. Greedy only; the sampling path stays `act`.
+        """
+        observations = [
+            build_token_observation(env, observation) for env, observation in pairs
+        ]
+        batch = collate(observations, device=self.device)
+        output = self.network(batch)
+        chosen: list[int] = []
+        for row, (_env, observation) in enumerate(pairs):
+            if observation.kind is StepKind.turn_close:
+                chosen.append(0)  # placeholder; the row's heads are unread
+            else:
+                chosen.append(int(torch.argmax(output.selector_logits[row])))
+        logits = self.network.action_logits(
+            output, batch, torch.tensor(chosen, device=self.device)
+        )
+        actions: list[PerModelAction] = []
+        for row, (env, observation) in enumerate(pairs):
+            if observation.kind is StepKind.turn_close:
+                actions.append(PerModelAction(model_index=None))
+                continue
+            model_index = chosen[row]
+            phase = observation.phase or BattlePhase.movement
+            declaration: int | None = None
+            if env.unit_needs_declaration(model_index):
+                declaration = _pick(logits.declaration[row], True, None)[0]
+            action = 0
+            skip = declaration is not None and declaration in _SKIP_DECLARATIONS.get(
+                phase, frozenset()
+            )
+            if phase is BattlePhase.fight or skip:
+                pass
+            elif phase is BattlePhase.shooting:
+                choice = _pick(logits.target[row], True, None)[0]
+                action = self._shooting_action(env, choice)
+            else:
+                combined = _combined_movement_logits(
+                    logits.displacement[row],
+                    logits.advance[row],
+                    self.advance_rungs_offered(env, model_index, declaration),
+                )
+                choice = _pick(combined, True, None)[0]
+                action = self._movement_action(env, choice)
+            actions.append(
+                PerModelAction(
+                    model_index=model_index, action=action, declaration=declaration
+                )
+            )
+        return actions
+
 
 def _combined_movement_logits(
     displacement: torch.Tensor, advance: torch.Tensor, advance_offered: bool

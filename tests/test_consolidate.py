@@ -270,7 +270,7 @@ def test_a_melee_recording_carries_the_blows_and_the_flags() -> None:
             break
 
     # Assert
-    assert snapshot.schema_version == "2.7"
+    assert snapshot.schema_version == "2.8"
     assert snapshot.player_melee_results, "the melee never reached the snapshot"
     blow = snapshot.player_melee_results[0]
     assert blow.expected_damage > 0.0, "melee expectation was not computed"

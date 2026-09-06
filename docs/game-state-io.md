@@ -97,6 +97,15 @@ A complete, serialisable Pydantic model of the game at one point in time. This i
 
 #### Schema
 
+**2.8 adds the second clock.** `model_step: int | None` is the per-model
+facade's sub-step counter (`envs/per_model/`, issue #287) — how many
+single-model steps the episode had taken when the snapshot was built. `None`
+on every whole-phase recording, and `step` keeps counting phases either way,
+so every `max_turns` reader keeps its meaning. Recording **cadence** is a
+`PerModelEnv` constructor setting (`record_model_steps`, default off): per
+phase boundary by default — today's schema semantics — with per-model-step
+snapshots added for debugging.
+
 **2.7 adds melee.** `player_melee_results` / `opponent_melee_results` are separate
 lists rather than a flag on `CombatResultSnapshot`, because the renderer draws a
 *tracer* for a damaging shot and a *clash marker* for a damaging blow — melee
@@ -109,7 +118,7 @@ clashes rather than inventing them.
 
 ```python
 class GameStateSnapshot(BaseModel):
-    schema_version: str = "2.7"
+    schema_version: str = "2.8"
     step: int
     max_steps: int
     clock: ClockSnapshot

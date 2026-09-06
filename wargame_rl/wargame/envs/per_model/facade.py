@@ -81,6 +81,7 @@ from wargame_rl.wargame.envs.per_model.types import (
     StepKind,
 )
 from wargame_rl.wargame.envs.reward.step_context import StepContext
+from wargame_rl.wargame.envs.state.snapshot import GameStateSnapshot
 from wargame_rl.wargame.envs.types import (
     BattlePhase,
     WargameEnvAction,
@@ -112,7 +113,12 @@ class PerModelEnv(WargameEnv):
     entirely; nothing here changes the parent's behaviour for other callers.
     """
 
-    def __init__(self, config: WargameEnvConfig, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        config: WargameEnvConfig,
+        record_model_steps: bool = False,
+        **kwargs: Any,
+    ) -> None:
         if bool(getattr(config, "declare_objectives", False)) or bool(
             getattr(config, "declare_targets", False)
         ):
@@ -160,6 +166,12 @@ class PerModelEnv(WargameEnv):
         self._cycle_kills_by_model = np.zeros(n_models, dtype=np.int64)
         self._step_kills = 0
         self._step_damage = 0
+        # Recording cadence (#287): per PHASE BOUNDARY by default, which keeps
+        # today's snapshot schema semantics; per model step for debugging. A
+        # constructor argument, not a config field, for the same reason
+        # `ThreatOptions` is not one: it changes what a recording looks like,
+        # never what the scenario is.
+        self._record_model_steps = bool(record_model_steps)
         self._coherency_nearest = self._rules_quantities.scale.to_units(
             config.coherency.nearest_distance
         )
@@ -235,6 +247,8 @@ class PerModelEnv(WargameEnv):
             self, self._model_step_context(index), index
         )
         self._record_step_reward(reward, breakdown, actor=index)
+        if self._record_model_steps:
+            self._export_and_render_model_step()
 
         members = self._members_of(unit)
         if any(self.wargame_models[i].is_alive and not self._acted[i] for i in members):
@@ -264,6 +278,8 @@ class PerModelEnv(WargameEnv):
             self, self._closing_context()
         )
         self._record_step_reward(reward, breakdown, actor=None)
+        if self._record_model_steps:
+            self._export_and_render_model_step()
         self._close_vp_base = (self.player_vp, self.opponent_vp)
         self._battle.reset_vp_deltas()
         self._reset_cycle_tallies()
@@ -897,6 +913,26 @@ class PerModelEnv(WargameEnv):
             self.player_vp - self._close_vp_base[0],
             self.opponent_vp - self._close_vp_base[1],
         )
+
+    def _export_and_render_model_step(self) -> None:
+        """The per-model-step recording cadence: one snapshot per model step.
+
+        Additive to the phase-boundary cadence, which still fires — a boundary
+        snapshot is the only one that carries the opponent's turn.
+        """
+        if self._state_exporters:
+            snapshot = self.to_snapshot()
+            for exporter in self._state_exporters:
+                exporter.on_step(snapshot)
+        if self.renderer is not None:
+            self.renderer.render(self)
+
+    def to_snapshot(self) -> GameStateSnapshot:
+        """The whole-phase snapshot plus the second clock (schema 2.8)."""
+        snapshot: GameStateSnapshot = (
+            super().to_snapshot().model_copy(update={"model_step": self.model_steps})
+        )
+        return snapshot
 
     def _observe(self) -> PerModelObservation:
         state = self._game_clock.state

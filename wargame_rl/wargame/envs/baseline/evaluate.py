@@ -188,6 +188,122 @@ def _worst_cohesion_gap(env: WargameEnv) -> float:
     return float(distances[alive].max())
 
 
+@dataclass(frozen=True)
+class EpisodeMetrics:
+    """One finished episode's readouts, extracted from the env's end state.
+
+    Extracted from `evaluate_selector`'s loop so the per-model facade's
+    evaluator (`model/per_model/evaluate.py`) aggregates through exactly the
+    same arithmetic — two metric extractors is how the observed control count
+    came to disagree with the scored one.
+    """
+
+    fraction_at_objectives: float
+    win: float
+    player_vp: float
+    opponent_vp: float
+    cohesion_gap: float
+    survival: float
+    exposure: float | None
+    proximity: float | None
+    firepower: float | None
+    held: float
+    coherency: float | None
+    models_out: float | None
+    opponent_coherency: float | None
+    opponent_models_out: float | None
+
+
+def episode_metrics(env: WargameEnv) -> EpisodeMetrics:
+    """Read one finished episode's metrics off the env."""
+    alive = alive_mask_for(env.wargame_models)
+    cache = compute_distances(env.wargame_models, env.objectives, alive_mask=alive)
+    at_objective = np.atleast_1d(
+        (cache.model_obj_norms_offset <= cache.obj_radii).any(axis=1)
+    )
+    # Control is a strict count comparison, so an objective with equal
+    # numbers on it scores for nobody.
+    opponent_alive = alive_mask_for(env.opponent_models)
+    if env.opponent_models:
+        opponent_norms = compute_distances(
+            env.opponent_models, env.objectives, alive_mask=opponent_alive
+        ).model_obj_norms_offset
+        opponent_counts = (opponent_norms <= cache.obj_radii).sum(axis=0)
+    else:
+        opponent_counts = np.zeros(len(env.objectives), dtype=int)
+    player_counts = (cache.model_obj_norms_offset[alive] <= cache.obj_radii).sum(axis=0)
+    return EpisodeMetrics(
+        fraction_at_objectives=(
+            float(at_objective[alive].mean()) if alive.any() else 0.0
+        ),
+        win=1.0 if env.player_vp > env.opponent_vp else 0.0,
+        player_vp=float(env.player_vp),
+        opponent_vp=float(env.opponent_vp),
+        cohesion_gap=_worst_cohesion_gap(env),
+        survival=float(alive.mean()),
+        exposure=env.exposure_rate,
+        proximity=env.terrain_proximity,
+        firepower=env.firepower_ratio,
+        held=float((player_counts > opponent_counts).sum()),
+        # Intent first: under `enforce_move` the realised rate is 1.000 however
+        # the policy played, so reading it would report the referee. With no
+        # referee `intended_*` is None and the two are the same board anyway.
+        coherency=(
+            env.intended_coherency_rate
+            if env.intended_coherency_rate is not None
+            else env.coherency_rate
+        ),
+        models_out=(
+            env.intended_models_out_of_coherency
+            if env.intended_models_out_of_coherency is not None
+            else env.models_out_of_coherency
+        ),
+        opponent_coherency=(
+            env.opponent_intended_coherency_rate
+            if env.opponent_intended_coherency_rate is not None
+            else env.opponent_coherency_rate
+        ),
+        opponent_models_out=(
+            env.opponent_intended_models_out_of_coherency
+            if env.opponent_intended_models_out_of_coherency is not None
+            else env.opponent_models_out_of_coherency
+        ),
+    )
+
+
+def aggregate_result(name: str, metrics: list[EpisodeMetrics]) -> BaselineResult:
+    """Fold per-episode metrics into a `BaselineResult`, seed order preserved."""
+    return BaselineResult(
+        name=name,
+        n_episodes=len(metrics),
+        final_fraction_at_objectives=float(
+            np.mean([m.fraction_at_objectives for m in metrics])
+        ),
+        win_rate=float(np.mean([m.win for m in metrics])),
+        player_vp=float(np.mean([m.player_vp for m in metrics])),
+        opponent_vp=float(np.mean([m.opponent_vp for m in metrics])),
+        worst_cohesion_gap=float(np.mean([m.cohesion_gap for m in metrics])),
+        final_fraction_alive=float(np.mean([m.survival for m in metrics])),
+        # Stays None when the config did not measure it — averaging an
+        # unmeasured metric to a number would invent data.
+        exposure_rate=mean_of_measured([m.exposure for m in metrics]),
+        terrain_proximity=mean_of_measured([m.proximity for m in metrics]),
+        firepower_ratio=mean_of_measured([m.firepower for m in metrics]),
+        objectives_held=float(np.mean([m.held for m in metrics])),
+        coherency_rate=mean_of_measured([m.coherency for m in metrics]),
+        models_out_of_coherency=mean_of_measured([m.models_out for m in metrics]),
+        opponent_coherency_rate=mean_of_measured(
+            [m.opponent_coherency for m in metrics]
+        ),
+        opponent_models_out_of_coherency=mean_of_measured(
+            [m.opponent_models_out for m in metrics]
+        ),
+        vp_margin_per_episode=tuple(m.player_vp - m.opponent_vp for m in metrics),
+        objectives_held_per_episode=tuple(m.held for m in metrics),
+        win_per_episode=tuple(m.win for m in metrics),
+    )
+
+
 def selector_for(policy: BaselinePolicy) -> ActionSelector:
     """Adapt a scripted baseline to the `ActionSelector` calling convention."""
 
@@ -280,21 +396,7 @@ def evaluate_selector(
             f"combat_seeds must match seeds in length: "
             f"{len(combat_seeds)} != {len(seeds)}"
         )
-    fractions: list[float] = []
-    wins: list[float] = []
-    player_vps: list[float] = []
-    opponent_vps: list[float] = []
-    cohesion_gaps: list[float] = []
-    survivals: list[float] = []
-    exposures: list[float | None] = []
-    proximities: list[float | None] = []
-    firepower: list[float | None] = []
-    held: list[float] = []
-    coherency: list[float | None] = []
-    models_out: list[float | None] = []
-    opponent_coherency: list[float | None] = []
-    opponent_models_out: list[float | None] = []
-
+    metrics: list[EpisodeMetrics] = []
     for index, seed in enumerate(seeds):
         options = None if combat_seeds is None else {"combat_seed": combat_seeds[index]}
         observation, _ = env.reset(seed=seed, options=options)
@@ -305,84 +407,5 @@ def evaluate_selector(
             # baseline plays by exactly the rules the learned policy does.
             action = select(observation, env)
             observation, _reward, terminated, truncated, _info = env.step(action)
-
-        alive = alive_mask_for(env.wargame_models)
-        cache = compute_distances(env.wargame_models, env.objectives, alive_mask=alive)
-        at_objective = np.atleast_1d(
-            (cache.model_obj_norms_offset <= cache.obj_radii).any(axis=1)
-        )
-        fractions.append(
-            float(at_objective[alive].mean()) if alive.any() else 0.0,
-        )
-        wins.append(1.0 if env.player_vp > env.opponent_vp else 0.0)
-        player_vps.append(float(env.player_vp))
-        opponent_vps.append(float(env.opponent_vp))
-        cohesion_gaps.append(_worst_cohesion_gap(env))
-        survivals.append(float(alive.mean()))
-        exposures.append(env.exposure_rate)
-        proximities.append(env.terrain_proximity)
-        firepower.append(env.firepower_ratio)
-        # Intent first: under `enforce_move` the realised rate is 1.000 however
-        # the policy played, so reading it would report the referee. With no
-        # referee `intended_*` is None and the two are the same board anyway.
-        coherency.append(
-            env.intended_coherency_rate
-            if env.intended_coherency_rate is not None
-            else env.coherency_rate
-        )
-        models_out.append(
-            env.intended_models_out_of_coherency
-            if env.intended_models_out_of_coherency is not None
-            else env.models_out_of_coherency
-        )
-        opponent_coherency.append(
-            env.opponent_intended_coherency_rate
-            if env.opponent_intended_coherency_rate is not None
-            else env.opponent_coherency_rate
-        )
-        opponent_models_out.append(
-            env.opponent_intended_models_out_of_coherency
-            if env.opponent_intended_models_out_of_coherency is not None
-            else env.opponent_models_out_of_coherency
-        )
-
-        # Control is a strict count comparison, so an objective with equal
-        # numbers on it scores for nobody.
-        opponent_alive = alive_mask_for(env.opponent_models)
-        if env.opponent_models:
-            opponent_norms = compute_distances(
-                env.opponent_models, env.objectives, alive_mask=opponent_alive
-            ).model_obj_norms_offset
-            opponent_counts = (opponent_norms <= cache.obj_radii).sum(axis=0)
-        else:
-            opponent_counts = np.zeros(len(env.objectives), dtype=int)
-        player_counts = (cache.model_obj_norms_offset[alive] <= cache.obj_radii).sum(
-            axis=0
-        )
-        held.append(float((player_counts > opponent_counts).sum()))
-
-    return BaselineResult(
-        name=name,
-        n_episodes=len(seeds),
-        final_fraction_at_objectives=float(np.mean(fractions)),
-        win_rate=float(np.mean(wins)),
-        player_vp=float(np.mean(player_vps)),
-        opponent_vp=float(np.mean(opponent_vps)),
-        worst_cohesion_gap=float(np.mean(cohesion_gaps)),
-        final_fraction_alive=float(np.mean(survivals)),
-        # Stays None when the config did not measure it — averaging an unmeasured
-        # metric to a number would invent data.
-        exposure_rate=mean_of_measured(exposures),
-        terrain_proximity=mean_of_measured(proximities),
-        firepower_ratio=mean_of_measured(firepower),
-        objectives_held=float(np.mean(held)),
-        coherency_rate=mean_of_measured(coherency),
-        models_out_of_coherency=mean_of_measured(models_out),
-        opponent_coherency_rate=mean_of_measured(opponent_coherency),
-        opponent_models_out_of_coherency=mean_of_measured(opponent_models_out),
-        vp_margin_per_episode=tuple(
-            player - opponent for player, opponent in zip(player_vps, opponent_vps)
-        ),
-        objectives_held_per_episode=tuple(held),
-        win_per_episode=tuple(wins),
-    )
+        metrics.append(episode_metrics(env))
+    return aggregate_result(name, metrics)
