@@ -14,12 +14,19 @@ When the user invokes this skill, run the full ship workflow: **branch only from
 1. **Get branch name and commit message**
    - If the user provided them (e.g. `/ship feature/my-feature Add reward shaping`), use those.
    - Otherwise ask: "Branch name (e.g. feature/my-feature)?" and "Commit message (imperative, e.g. Add reward shaping)?"
+   - **If the work closes a tracked issue, get its number too** (`gh issue list`).
+     Use it only when the PR fully resolves the issue; otherwise mention `Refs #N`
+     in the body by hand.
 
 2. **Run the ship**
    - In the project root, run:
      ```bash
-     just ship <branch> "<commit message>"
+     just ship <branch> "<commit message>" [<issue>]
      ```
+   - With an issue number the recipe adds a `Closes #N` trailer to the **commit
+     body**. It goes in the commit, not just the PR, because most merges here are
+     merge commits rather than squashes — the trailer reaching `main` is what
+     closes the issue.
    - This stashes the working tree (`git stash -u`), checks out `main`, pulls latest, creates the new branch from `main`, restores the stash, stages all changes, commits with the message as both title and body, pushes, and runs `gh pr create --fill` so the PR title and description are populated from the commit.
    - The checkout-and-pull of `main` happens unconditionally, so the new branch is always created from up-to-date `main`.
    - **If the branch already exists**, the recipe silently checks it out instead of creating it — so the "always from main" guarantee does not hold for a name you have used before. Pick a fresh name for each PR.
@@ -37,6 +44,12 @@ When the user invokes this skill, run the full ship workflow: **branch only from
      REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
      gh api -X PATCH "repos/$REPO/pulls/$PR" -F body=@/tmp/pr-body.md --jq '.html_url'
      ```
+   - ⚠ **If you shipped with an issue number, end the new body with the same
+     `Closes #N` line.** This PATCH replaces the body **wholesale** and will
+     otherwise silently delete the link `--fill` just put there. Verify with
+     `gh api "repos/$REPO/pulls/$PR" --jq .body | grep -c 'Closes #'`. (The commit
+     trailer still closes the issue on merge, so this is belt-and-braces — but a
+     PR that shows no link is what people actually read.)
    - **Do not use `gh pr edit --body`.** On this repo it fails with a deprecated Projects (classic) GraphQL error (`repository.pullRequest.projectCards`) and leaves the body unchanged — the command reports the error but the PR silently keeps the `--fill` body. The REST endpoint above is unaffected.
    - Verify it applied: `gh api "repos/$REPO/pulls/$PR" --jq '.body | length'` should match the body you wrote, not the shorter commit-derived one.
    - Using a heredoc file rather than an inline `--body` string also avoids shell-quoting damage to markdown tables, backticks, and emoji.
@@ -52,6 +65,13 @@ When the user invokes this skill, run the full ship workflow: **branch only from
 5. **If something fails**
    - If pre-commit or commit fails, suggest running `just validate` first and fixing any issues, then try again.
    - If the user has nothing staged and doesn't want to commit everything, suggest staging with `git add <paths>` then running `just ship` again (note: `just ship` runs `git add -A`, so they may prefer to run the git/gh steps manually for partial commits).
+
+## Issues
+
+GitHub Issues is the tracker; there is no `.planning/` directory. Before starting,
+check `gh issue list` — if what you are about to build is already an issue, ship
+against it. If you discover work you are not going to do now, **open an issue**
+rather than leaving a note in a doc. See `CLAUDE.md` § Tracking work.
 
 ## Branch naming (reminder)
 

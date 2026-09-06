@@ -1372,6 +1372,34 @@ project's effort has gone, and the shape of the problem is now settled.
   point value. `just measure-phase-gates <ckpt> <config> 40` for per-phase
   criteria rates. See [docs/metrics.md](docs/metrics.md) for what each key means.
 
+### Where a finding lands — all four, or it is not landed
+
+This is the step that slips. PR #259 rescued a report stranded on a branch for
+nine days, absent from `reports/` and unlisted in the index the whole time.
+
+1. **`reports/<YYYY-MM-DD>-<slug>.md`**, carrying its provenance: date · GPU or
+   no-GPU · seeds and seed base · n · config path and whether refereed · decode
+   `K` and `verify_moves` · paired or not · the comparator **named by name** ·
+   opponent · epoch · code revision · which checkpoint · coherency · t AND a sign
+   count · Wandb run id.
+2. **A one-row index entry in `reports/README.md`**, verdict **bold and first**.
+   ⚠ **The index row is the edited surface**: on a retraction the report body
+   gains an appended `## ⚠ RETRACTION` and keeps its original text, while the row
+   is rewritten so the top-level view is never stale.
+3. **A distilled standing rule in `CLAUDE.md`** — § How to measure here, § What
+   voids a number, § Settled — do not re-run, or a new section. If no rule
+   changed, write that explicitly rather than skipping the step.
+4. **The live doc** — `docs/play-doctrine-findings.md` if a `D-NN` was priced (one
+   additive entry, never rewriting the claim), `configs/README.md` if a config was
+   added or retired, `docs/rules/implementation-status.md` if a gap-map row moved.
+
+Then set the `outcome:` label and remove `needs:writeup` (see § Tracking work).
+
+⚠ `kind:bug` and `kind:build` do **not** use this list. Theirs is shorter: a test
+pinning the behaviour, a § What voids a number bullet if it voids, a gap-map row,
+and goldens byte-identical or deliberately regenerated. Ticking boxes that do not
+apply is how the real list stops being read.
+
 ### Performance and numerics
 
 - ⚠ **TF32 is off by default because it costs ~8.5 vp.** At epoch 1000, n=100
@@ -1615,6 +1643,48 @@ retracts most pre-2026-08-04 conclusions, including the claims that `gamma` 0.99
 and `ent_coef` 0.01 were refuted (they were measured under a training loop that
 never applied the reward being tuned).
 
+## Tracking work
+
+**GitHub Issues is the tracker.** ⚠ From 2026-09-06 there is no planning
+directory: `.planning/` was a GSD artifact for `/gsd-*` slash commands that no
+longer exist, and it was removed. `git show <sha>^:.planning/` recovers any of it.
+
+Four kinds, one per issue, and the label name is the enforcement:
+
+| `kind:` | is | closes when |
+|---|---|---|
+| `question` | a question the record will answer; owns arms | its falsifier is answered — **including with a null** |
+| `arm` | ONE change, ONE comparator, ONE provenance tuple | its finding lands in all four places |
+| `bug` | behaviour diverges from `docs/rules/` or its own spec | the fix ships with a test pinning it |
+| `build` | feature or refactor; ships behaviour, no verdict | it ships |
+
+⚠ **There is deliberately no `experiment` label.** An experiment is a question
+with N arms. You cannot file a bundle, because a bundled change cannot be
+attributed.
+
+- **`kind:arm` opens carrying `needs:prereg`.** Remove it only once the
+  pre-registration path resolves on `main` — the commit timestamp is what proves
+  the criterion predates the numbers. `gh issue list --label needs:prereg` is the
+  list of arms that are unsafe to launch.
+- **An issue is for work intended and not done.** Shipped behaviour goes in
+  `docs/`; what was measured goes in `reports/`; the roadmap is
+  `docs/goals-and-roadmap.md`. When work lands, close the issue and write the doc.
+- **Unimplemented design proposals go in issues, not `docs/`** — `docs/**/*.md` is
+  the drift check's live set and describes behaviour the env actually has, so a
+  proposal parked there gets "corrected" to match code that does not implement it.
+  If a live doc must point at one, link the full issue URL.
+- **Link the PR:** `just ship <branch> "<msg>" <issue>` appends a `Closes #N`
+  trailer to the commit body. It goes in the commit, not only the PR — most merges
+  here are merge commits, so the trailer is what reaches `main`.
+- **Retraction mirrors the report rule.** Never edit an issue body; comment. Edit
+  the **labels**, which are the issue's index row. ⚠ **Never reopen** — open a new
+  issue saying `Retracts #N`. Reopening destroys the close date, the timestamp
+  that orders the finding before its retraction. The tripwire is the index row: if
+  a claim reached `reports/README.md` it gets the full ceremony; if not, it is a
+  draft, so correct it in place.
+- Labels and required fields live in `.github/ISSUE_TEMPLATE/` and `gh label list`,
+  and are **not restated here**, so they cannot drift.
+
 ## Git Workflow
 
 - Always verify the current branch before committing (especially after a PR merge)
@@ -1625,7 +1695,7 @@ never applied the reward being tuned).
 - After pushing a new feature branch, always create a PR using `gh pr create`
 - Run `just validate` (format + lint + test) before pushing; `just format && just lint` for quick iteration
 - **Shipping:** always create a new branch from up-to-date `main` — never reuse an existing feature branch for a new PR. Checkout `main`, pull latest, then branch. Never push directly on an in-progress branch from another workflow. The `/ship` skill (`.claude/skills/ship/`) automates this via `just ship`
-- **Docs-drift check:** a `PostToolUse` hook (`.claude/settings.json` → `.claude/hooks/docs_check.py`) fires after `gh pr create` and `just ship`. It diffs the branch against `main` and names the live docs that cite the changed paths, symbols, recipes or config fields. Fix mechanical drift (renamed symbol, changed default, missing table row) directly; only *suggest* anything asserting behaviour. It is silent when nothing is implicated, and never fails a ship. `reports/`, `.planning/` and `ratings/` are exempt — they record what was measured or believed at the time, under a named code revision; `configs/` is exempt too. Run it by hand with `python3 .claude/hooks/docs_check.py --dry-run [<base>..<head>]`
+- **Docs-drift check:** a `PostToolUse` hook (`.claude/settings.json` → `.claude/hooks/docs_check.py`) fires after `gh pr create` and `just ship`. It diffs the branch against `main` and names the live docs that cite the changed paths, symbols, recipes or config fields. Fix mechanical drift (renamed symbol, changed default, missing table row) directly; only *suggest* anything asserting behaviour. It is silent when nothing is implicated, and never fails a ship. `reports/`, `ratings/` and `configs/` are exempt — they record what was measured or believed at the time, under a named code revision. Run it by hand with `python3 .claude/hooks/docs_check.py --dry-run [<base>..<head>]`
 
 ## CUDA Environment
 

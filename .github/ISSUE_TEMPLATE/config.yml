@@ -1,0 +1,16 @@
+# A blank issue is an issue with no comparator, no seeds and no
+# pre-registration. Every kind of work here has a form.
+blank_issues_enabled: false
+contact_links:
+  - name: How to measure here
+    url: https://github.com/sashman/wargame_rl/blob/main/CLAUDE.md#how-to-measure-here
+    about: Every rule in it was paid for. Read before opening an arm.
+  - name: Settled — do not re-run
+    url: https://github.com/sashman/wargame_rl/blob/main/CLAUDE.md#settled--do-not-re-run
+    about: Check before opening a question. It may already be answered.
+  - name: What voids a number
+    url: https://github.com/sashman/wargame_rl/blob/main/CLAUDE.md#what-voids-a-number
+    about: If your change belongs on this list, it needs the voids-numbers label.
+  - name: The report index
+    url: https://github.com/sashman/wargame_rl/blob/main/reports/README.md
+    about: Issues track work; reports hold evidence. Findings live there.

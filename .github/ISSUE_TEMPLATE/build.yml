@@ -1,0 +1,93 @@
+name: Feature / refactor
+description: Ships behaviour. Produces no verdict. If it would move a score, open an arm instead.
+title: "feat: "
+labels: ["kind:build"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Title with `feat:` or `refactor:`, matching the branch prefix
+        (`feature/<topic>`, `refactor/<topic>`).
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What ships
+    validations:
+      required: true
+
+  - type: textarea
+    id: no_verdict
+    attributes:
+      label: Why this needs no verdict
+      description: >-
+        The discriminator, and the point of this form. If landing this could move
+        a measured number, it is an arm, not a build — close this and open an arm
+        with a comparator and a pre-registration.
+      placeholder: |
+        Pure plumbing: `just fetch-maps` generates the eval tables that were
+        previously traced by hand. Observation width unchanged (budgets stay
+        6/16), so checkpoints still load and arms still pair.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: voids
+    attributes:
+      label: Does this void numbers already on file?
+      description: >-
+        A refactor can. `group_span` rounding UP was bit-identical on every
+        golden, evaluation and dev config — and voided every figure on seven
+        configs under configs/experiments/, because the unit split changed.
+      options:
+        - "No — bit-identical, and I verified it on the goldens"
+        - "Yes — name the affected configs; add the bullet at close"
+        - "Unknown — must be measured before landing"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: switched
+    attributes:
+      label: Off by default?
+      description: >-
+        The house convention: a new mechanic ships behind a switch that is
+        byte-identical when off, so a control run is comparable to one on a build
+        without the feature.
+      options:
+        - "Yes — off by default, and verified byte-identical when off"
+        - "No — this changes behaviour unconditionally, and that is intended"
+        - "N/A — tooling or measurement instrument, not a game mechanic"
+    validations:
+      required: true
+
+  - type: textarea
+    id: surface
+    attributes:
+      label: Docs implicated
+      description: >-
+        The docs_check hook fires after `gh pr create` / `just ship` and names
+        live docs citing changed paths, symbols, recipes or config fields. List
+        what you already know is implicated.
+      placeholder: "configs/README.md (new evaluation config); docs/rules/implementation-status.md (row 09-3 moves absent -> implemented)"
+
+  - type: dropdown
+    id: compute
+    attributes:
+      label: Compute
+      options:
+        - "No GPU"
+        - "GPU — 4090"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: gates
+    attributes:
+      label: "Close-out (builds do NOT use the four-destination list — this is the whole list)"
+      options:
+        - label: Not bundled with an arm. A code change and a measurement do not share a PR.
+          required: true
+        - label: "`just validate` passes."
+        - label: "Goldens byte-identical, or regenerated deliberately and named in the PR."
+        - label: "PR body says `Closes #<this>`."
