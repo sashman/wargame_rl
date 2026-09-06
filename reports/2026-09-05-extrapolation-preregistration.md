@@ -75,3 +75,22 @@ and neither shrinking nor extending the step finds anything better.
 
 **Forbidden next**: α > 1 on any line here. Three doses, monotone decline,
 −20.93 at the end of it.
+
+
+## ⚠ RETRACTION (appended 2026-09-06) — the cell verdicts, not the mechanism
+
+Every ladder verdict in this report is **n=45** with the gap taken over an
+**across-seed** SE. Both are wrong:
+
+- the comparator was a **single n=45 estimate treated as a constant** — the bar's
+  `vs_deny` value moved **+11.8 → +36.8** when remeasured at n=180;
+- an **across-seed SE omits scenario noise**, which is common-mode because every
+  seed is scored on the *same* scenarios, so it does not shrink with seeds.
+
+Per-scenario sd is 81–89, so SE ≈ 89/√n: **±12.7 at n=45**. Re-measured at
+n=180 with both sides paired per scenario, **no cell resolves** — `refereed`
++4.21 (t=0.65), `vs_take` +6.73 (t=1.08), `vs_deny` +7.45 (t=1.12), `vs_shoot`
+**−0.19** (t=−0.03).
+
+**The mechanism this report describes stands. Its cell verdicts do not.**
+See `reports/2026-09-06-the-ladder-was-measurement-noise.md`.

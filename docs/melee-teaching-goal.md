@@ -2865,6 +2865,15 @@ tenth as far. Interpolate `barclone-s{1..6}` toward their own §47 endpoints.
 
 ## 51. The KL anchor — 2 of 4 cells WON, 0 LOST, at six seeds. GOAL NOT MET.
 
+⚠ **VOID AS A VERDICT — read §53 first.** Every ladder row in this section is
+n=45 with the gap taken over an **across-seed** SE, and both are wrong here: the
+comparator was a single n=45 estimate treated as a constant (its `vs_deny` value
+moved **+11.8 → +36.8** on remeasurement), and an across-seed SE omits scenario
+noise, which is common-mode because every seed is scored on the same scenarios.
+Re-measured at n=180 with both sides paired per scenario, **no cell resolves**.
+The **mechanism** described below stands; the **cell verdicts do not**.
+
+
 Measured 2026-09-04, six seeds, **verified epoch 300**, n=45, seeds 700000+,
 `K=3` + charge decode. Pre-registration committed to git at `71011a0` **while
 seeds 2–6 were still training**.
@@ -2920,6 +2929,15 @@ them slightly faster than §47's fixed opponent did.
   six clones share one teacher.
 
 ## 52. The two-anchor pool WINS `vs_shoot` — 3 of 4 cells, and the blocker moves to the mirror
+
+⚠ **VOID AS A VERDICT — read §53 first.** Every ladder row in this section is
+n=45 with the gap taken over an **across-seed** SE, and both are wrong here: the
+comparator was a single n=45 estimate treated as a constant (its `vs_deny` value
+moved **+11.8 → +36.8** on remeasurement), and an across-seed SE omits scenario
+noise, which is common-mode because every seed is scored on the same scenarios.
+Re-measured at n=180 with both sides paired per scenario, **no cell resolves**.
+The **mechanism** described below stands; the **cell verdicts do not**.
+
 
 Measured 2026-09-05, six seeds, **verified epoch 300**, n=45, seeds 700000+,
 `K=3` + charge decode. Pre-registration and its amendment:
