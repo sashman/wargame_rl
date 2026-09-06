@@ -1661,6 +1661,23 @@ measurements skipped (`25v25_maps_advance_refereed`, held-out nine, n=10,
 
 ### Settled — do not re-run
 
+- **Distillation at house fidelity CARRIES a decoded policy — §46's contrary
+  result is a power artefact.** A clone of the agent played with K=3 +
+  reallocation + charge decode reaches **action-match 0.973 / unit-match 0.933**
+  and, at n=180 paired, is **not worse than its teacher on any of four cells**.
+  §46's "falls below the plain teacher by 3.9" used **120 demonstrations x 8
+  epochs** against house fidelity's **1200 x 60**. ⚠ **The standing rule "a
+  per-model fit does not inherit a joint property" is now bounded**: it holds
+  for an under-powered fit, not for a properly-sized one. That makes the
+  **policy-improvement loop** (decode to improve, distil to project back into
+  the weights, repeat) viable here — the step believed blocked is not. Whether
+  iterating it compounds is **untested**. See
+  [the report](reports/2026-09-06-the-clone-carries-the-decoded-policy.md).
+- ⚠ **Difference against the SAME SEED SET, never against a published row.**
+  The clone (3 seeds) against the agent's published 6-seed row read +12.8 where
+  the matched-subset gain is +6.9 — a doubling manufactured purely by comparing
+  different seed counts.
+
 - **The decode stack is at its ceiling for the melee ladder.** Three knobs
   measured at n=180, six seeds, paired, pre-registered: `decode_stay` is a null
   (**+0.52 ± 0.31**), **iterating the reallocation is NEGATIVE** (−1.28 ± 0.76,
