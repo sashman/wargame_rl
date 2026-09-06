@@ -2756,6 +2756,11 @@ unpropagated ±12.7 and should be read as unresolved until remeasured.
   at n=180 — the only claim of the day to survive its own remeasurement.
 - **The decode stack is at its ceiling.** `decode_stay` null (+0.52 ± 0.31);
   **iterating the reallocation is negative** (−1.28, and −4.33 / t=−3.17 on
-  `vs_deny`); `min_stack` 4 → 2 is +5.2 on `vs_shoot` and ~0 on `refereed`,
-  against the +13 and +8 the goal needs. Closing the gap requires a better
-  policy, measured at n ≥ 180 on both sides.
+  `vs_deny`); and **`min_stack` 4 → 2 is NOT CONFIRMED** — a held-out sweep put
+  it at +5.2 on `vs_shoot` (3/3, t≈2.9) and the evaluation band gives **+0.51
+  (t=0.45)**, with the real effect on two *other* cells (`refereed` +1.51,
+  `vs_deny` +2.52). ⚠ **The tuning transferred in neither magnitude nor
+  location**, so a sweep needs the same n discipline as the arm it feeds
+  ([report](../reports/2026-09-06-the-tuning-band-picked-the-wrong-cells.md)).
+  No decode configuration reaches the bar significantly on any cell; closing the
+  gap requires a better policy, measured at n ≥ 180 on both sides.
