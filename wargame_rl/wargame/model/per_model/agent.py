@@ -269,5 +269,8 @@ def _pick(
     if greedy:
         index = int(torch.argmax(log_probs))
     else:
-        index = int(torch.multinomial(probs, 1, generator=generator))
+        # Sampling happens on CPU whatever device the network runs on: a CUDA
+        # multinomial refuses a CPU generator, and a CPU draw keeps a seeded
+        # rollout's action stream identical across devices.
+        index = int(torch.multinomial(probs.cpu(), 1, generator=generator))
     return index, float(log_probs[index]), entropy

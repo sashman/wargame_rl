@@ -28,7 +28,13 @@ Its observation is built env-side (`envs/per_model/observation.py`, numpy — en
 may not import model); `batch.collate` pads to the **batch maximum**, never to a
 config budget. `SetAgent` samples one joint (model, declaration, action) step.
 No play-time decode exists for this family, by design. Old checkpoints and the
-`TransformerNetwork` pipeline are untouched.
+`TransformerNetwork` pipeline are untouched. **`train_per_model.py` is its
+trainer** — a plain PPO loop (not Lightning) with the budget in rounds of
+experience, periodic checkpoints (`pm-NNNNNNNN.pt` / `last.pt`, self-describing
+via `load_per_model_checkpoint`), a local `metrics.jsonl` beside them, and the
+CPU thread count pinned and recorded (issue #306). Rollouts continue the
+in-flight episode across update boundaries — a rollout budget shorter than the
+episode would otherwise never visit the later rounds of the game.
 
 DQN and `MLPNetwork` were removed once neither had been trained in months. Two
 things survived that removal because the transformer needs them: `common/layers.py`

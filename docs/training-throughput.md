@@ -400,3 +400,13 @@ table — while the actor's reward terms cost 0.27 ms and move resolution
 **incremental observation is where the money is** (after army size as a
 training lever, which Principle 2 gives for free); actor-only reward is
 already shipped. A network-driven step adds the forward pass on top.
+
+**Second measurement, after batching the terrain-membership relation** (the
+build called a scalar point-in-polygon 25×16 times per step; one
+`polygons_contain_points` pass over `Terrain`'s prebuilt padded outlines is
+verified bit-identical over 64k checks): **the build is 1.27 ms (5.2×)** and
+the env side is ~2.1 ms per model step, ~84 ms per round. End-to-end
+*training* on the golden config (`train_per_model.py`, default trunk,
+rollout+update): **~395 ms per round on CPU, ~211 ms per round on a 4090** —
+the batch-1 forward in the sequential rollout now dominates, so concurrent
+runs (one per grid cell) are the cheap parallelism, not batched rollout.

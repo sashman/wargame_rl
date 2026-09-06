@@ -20,6 +20,7 @@ must be re-measured in the new unit before any race number is quoted
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -31,7 +32,7 @@ from wargame_rl.wargame.envs.per_model.observation import (
     TokenObservation,
     build_token_observation,
 )
-from wargame_rl.wargame.envs.per_model.types import StepKind
+from wargame_rl.wargame.envs.per_model.types import PerModelObservation, StepKind
 from wargame_rl.wargame.model.per_model.agent import (
     SetAgent,
     StepDecision,
@@ -83,15 +84,28 @@ def collect_rollout(
     agent: SetAgent,
     n_rounds: int,
     *,
+    start_observation: PerModelObservation | None = None,
     generator: torch.Generator | None = None,
-) -> tuple[list[Transition], float]:
+    on_episode_end: Callable[[PerModelEnv], None] | None = None,
+) -> tuple[list[Transition], float, PerModelObservation]:
     """Play until `n_rounds` turn cycles have closed; episodes reset inline.
 
-    Returns the transitions and the bootstrap value of the state after the
-    last one (0.0 when that transition ended an episode).
+    ``start_observation`` continues the episode already in flight on ``env``;
+    ``None`` resets. A training loop MUST pass the observation the previous
+    rollout returned — resetting every rollout means a budget shorter than the
+    episode never visits the later rounds of the game at all.
+
+    Returns the transitions, the bootstrap value of the state after the last
+    one (0.0 when that transition ended an episode), and that state's
+    observation, to hand to the next rollout. ``on_episode_end`` is called with
+    the env at each episode end, before the inline reset — the one moment the
+    finished episode's outcome is still readable.
     """
     transitions: list[Transition] = []
-    observation, _ = env.reset()
+    if start_observation is None:
+        observation, _ = env.reset()
+    else:
+        observation = start_observation
     closes = 0
     while closes < n_rounds:
         decision = agent.act(env, observation, generator=generator)
@@ -110,12 +124,14 @@ def collect_rollout(
         if is_close:
             closes += 1
         if done:
+            if on_episode_end is not None:
+                on_episode_end(env)
             next_observation, _ = env.reset()
         observation = next_observation
     if transitions[-1].done:
-        return transitions, 0.0
+        return transitions, 0.0, observation
     bootstrap = agent.act(env, observation, greedy=True).value
-    return transitions, bootstrap
+    return transitions, bootstrap, observation
 
 
 def compute_gae(
@@ -170,7 +186,8 @@ def evaluate_transitions(
     Closing steps carry no decision: their log-prob and entropies are zero and
     ``has_decision`` is False, so they enter only the value loss.
     """
-    batch = collate([t.observation for t in transitions])
+    device = next(network.parameters()).device
+    batch = collate([t.observation for t in transitions], device=device)
     output = network(batch)
     n = len(transitions)
     device = output.value.device
@@ -287,18 +304,19 @@ def ppo_update(
     generator: torch.Generator | None = None,
 ) -> dict[str, float]:
     """One PPO update over a rollout. Returns mean losses for logging."""
+    device = next(network.parameters()).device
     advantages, returns = compute_gae(transitions, bootstrap_value, config)
-    advantage_tensor = torch.tensor(advantages, dtype=torch.float32)
-    return_tensor = torch.tensor(returns, dtype=torch.float32)
+    advantage_tensor = torch.tensor(advantages, dtype=torch.float32, device=device)
+    return_tensor = torch.tensor(returns, dtype=torch.float32, device=device)
     old_log_probs = torch.tensor(
-        [t.decision.log_prob for t in transitions], dtype=torch.float32
+        [t.decision.log_prob for t in transitions], dtype=torch.float32, device=device
     )
 
     decision_rows = np.array(
         [t.decision.action.model_index is not None for t in transitions]
     )
     if decision_rows.any():
-        live = advantage_tensor[torch.from_numpy(decision_rows)]
+        live = advantage_tensor[torch.from_numpy(decision_rows).to(device)]
         mean, std = live.mean(), live.std().clamp(min=1e-8)
         advantage_tensor = (advantage_tensor - mean) / std
 

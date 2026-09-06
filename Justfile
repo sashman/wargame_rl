@@ -47,6 +47,12 @@ dockerize:
 # Use it like: just train path/to/config.yaml
 # Or with an epoch cap: just train path/to/config.yaml 800
 # Or with a match event log for analysis: just train path/to/config.yaml 800 true
+# Train the per-model architecture (issue #288): budget in ROUNDS of experience,
+# not epochs. Extra flags pass through (--gamma, --gae-lambda, --rollout-rounds,
+# --seed, --run-suffix, --no-wandb, ...).
+train-per-model env_config max_rounds *extra='':
+	@uv run python train_per_model.py {{env_config}} --max-rounds {{max_rounds}} {{extra}}
+
 train env_config_path='configs/dev/4v4_two_phases.yaml' max_epochs='' record_events='' *extra='':
 	@uv run train.py --record-during-training --record-threat-range --record-engagement-range \
 		--env-config-path {{env_config_path}} \

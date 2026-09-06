@@ -107,11 +107,36 @@ def test_the_rollout_budget_is_counted_in_rounds() -> None:
     torch.manual_seed(0)
     env = PerModelEnv(_shooting_config(), build_info=False)
     agent = SetAgent(SetNetwork.from_env(env, SMALL_TRUNK))
-    transitions, _bootstrap = collect_rollout(
+    transitions, _bootstrap, _next = collect_rollout(
         env, agent, n_rounds=4, generator=torch.Generator().manual_seed(1)
     )
     assert sum(1 for t in transitions if t.is_close) == 4
     # 3-round episodes: the budget crossed an episode boundary and kept going.
+    assert any(t.done for t in transitions)
+
+
+def test_rollouts_continue_the_episode_across_update_boundaries() -> None:
+    """A rollout shorter than the episode hands its end state to the next one
+    — without this, a training loop with rollout_rounds < episode length never
+    visits the later rounds of the game at all."""
+    torch.manual_seed(0)
+    env = PerModelEnv(_shooting_config(), build_info=False)  # 3-round episodes
+    agent = SetAgent(SetNetwork.from_env(env, SMALL_TRUNK))
+    generator = torch.Generator().manual_seed(7)
+    transitions, _bootstrap, observation = collect_rollout(
+        env, agent, n_rounds=1, generator=generator
+    )
+    assert not transitions[-1].done
+    assert observation.battle_round == 2  # mid-episode, not reset
+    transitions, _bootstrap, observation = collect_rollout(
+        env,
+        agent,
+        n_rounds=2,
+        start_observation=observation,
+        generator=generator,
+    )
+    # The continued rollout reached the episode's own end, so round 3 was
+    # experienced and the episode terminated rather than being abandoned.
     assert any(t.done for t in transitions)
 
 
@@ -122,7 +147,7 @@ def test_evaluation_reproduces_the_sampled_log_probs() -> None:
     env = PerModelEnv(_shooting_config(), build_info=False)
     network = SetNetwork.from_env(env, SMALL_TRUNK)
     agent = SetAgent(network)
-    transitions, _ = collect_rollout(
+    transitions, _, _next = collect_rollout(
         env, agent, n_rounds=3, generator=torch.Generator().manual_seed(2)
     )
     network.eval()
@@ -143,7 +168,7 @@ def test_one_update_runs_and_moves_the_weights() -> None:
     network = SetNetwork.from_env(env, SMALL_TRUNK)
     agent = SetAgent(network)
     config = PerModelPPOConfig(minibatch_size=16, n_update_epochs=1)
-    transitions, bootstrap = collect_rollout(
+    transitions, bootstrap, _next = collect_rollout(
         env, agent, n_rounds=3, generator=torch.Generator().manual_seed(3)
     )
     before = [p.detach().clone() for p in network.parameters()]

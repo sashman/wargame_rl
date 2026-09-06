@@ -36,6 +36,7 @@ from wargame_rl.wargame.envs.per_model.types import PerModelObservation, StepKin
 from wargame_rl.wargame.envs.types import BattlePhase
 from wargame_rl.wargame.envs.types.config import ModelConfig
 from wargame_rl.wargame.envs.types.game_timing import BATTLE_PHASE_ORDER
+from wargame_rl.wargame.envs.types.geometry import polygons_contain_points
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.per_model.facade import PerModelEnv
@@ -273,7 +274,6 @@ def build_token_observation(
         player_unit_ids,
         opponent_unit_ids,
         diagonal,
-        footprints,
     )
 
     (
@@ -542,7 +542,6 @@ def _cross_relations(
     player_unit_ids: list[int],
     opponent_unit_ids: list[int],
     diagonal: float,
-    footprints: list,  # type: ignore[type-arg]
 ) -> np.ndarray:
     n_p = len(player_positions)
     n_ctx = len(context_kinds)
@@ -619,20 +618,25 @@ def _cross_relations(
         )
         relations[:, opp_start : opp_start + n_o, REL_DMG_PRESENT] = 1.0
 
-    if footprints:
+    terrain = env.terrain
+    if terrain.footprints:
         terrain_start = set_start[CTX_TERRAIN]
-        for column, footprint in enumerate(footprints):
-            inside = np.array(
-                [
-                    footprint.contains(float(p[0]), float(p[1]))
-                    for p in player_positions
-                ],
-                dtype=np.float32,
-            )
-            relations[:, terrain_start + column, REL_INSIDE_TERRAIN] = inside
-        relations[
-            :, terrain_start : terrain_start + len(footprints), REL_TERRAIN_PRESENT
-        ] = 1.0
+        # One (P, N) pass over the collection's prebuilt padded outlines —
+        # identical semantics to Footprint.contains (edge-inclusive, padding
+        # masked by vertex_counts), which was costing 25 x 16 scalar calls.
+        inside = polygons_contain_points(
+            player_positions,
+            terrain.outlines,
+            terrain.vertex_counts,
+            include_boundary=True,
+        )
+        n_terrain = len(terrain.footprints)
+        relations[:, terrain_start : terrain_start + n_terrain, REL_INSIDE_TERRAIN] = (
+            inside.astype(np.float32)
+        )
+        relations[:, terrain_start : terrain_start + n_terrain, REL_TERRAIN_PRESENT] = (
+            1.0
+        )
 
     return relations
 
