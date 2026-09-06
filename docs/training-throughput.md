@@ -384,3 +384,16 @@ either raises with `get_arch_list()` vs `get_device_capability()` spelled out or
 falls back to CPU loudly. The current `_cuda_appears_usable()` probe has it
 inverted — it quietly halves `num_rollout_envs` while the model still moves to
 CUDA and crashes on the first forward.
+
+## The per-model facade's cost model (unmeasured)
+
+Under the per-model step (`envs/per_model/`, issue #283) a round is ~2×(army
+size) model steps plus one closing step, each rebuilding the token/relation
+observation, running the actor's reward terms and a forward pass — naively
+**15–20× more wall-clock per round** while the rollout budget is fixed in
+rounds. The design's mitigations, in build order: army size as a training
+lever (Principle 2 lets a 10v10-trained network load at 25v25), incremental
+observation, actor-only reward (already shipped — per-model terms run for the
+one model that acted), and *measure before optimising further* — extending
+`just measure-throughput` to the new facade is issue #287's job, and nothing
+about the new step's cost has been measured yet.

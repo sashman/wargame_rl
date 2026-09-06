@@ -37,12 +37,25 @@ _SKIP_DECLARATIONS: dict[BattlePhase, frozenset[int]] = {
 
 @dataclass(slots=True)
 class StepDecision:
-    """One sampled step and the quantities the training loop keeps."""
+    """One sampled step and the quantities the training loop keeps.
+
+    The trailing fields are what `evaluate_transitions` needs to recompute the
+    step's joint log-prob under new weights: which head decided the action (or
+    None for declaration-only and closing steps), the choice's index within
+    that head's categorical, whether a declaration factor was sampled, and —
+    for the movement head — whether the advance rungs were offered, which
+    depends on env state at act time and cannot be recovered later.
+    """
 
     action: PerModelAction
     log_prob: float
     value: float
     entropy: float
+    selector_entropy: float = 0.0
+    head: str | None = None
+    head_choice: int | None = None
+    declaration_sampled: bool = False
+    advance_offered: bool = False
 
 
 class SetAgent:
@@ -77,7 +90,7 @@ class SetAgent:
                 log_prob=0.0,
                 value=float(output.value[0]),
                 entropy=0.0,
-            )
+            )  # no decision: the closing step still carries a value to bootstrap
 
         model_index, selector_log_prob, selector_entropy = _pick(
             output.selector_logits[0], greedy, generator
@@ -99,6 +112,9 @@ class SetAgent:
             entropy += declaration_entropy
 
         action = 0
+        head: str | None = None
+        head_choice: int | None = None
+        advance_offered = False
         skip = declaration is not None and declaration in _SKIP_DECLARATIONS.get(
             phase, frozenset()
         )
@@ -112,14 +128,17 @@ class SetAgent:
             log_prob += choice_log_prob
             entropy += choice_entropy
             action = self._shooting_action(env, choice)
+            head, head_choice = "target", choice
         else:
-            combined = self._movement_logits(
-                env, logits.displacement[0], logits.advance[0], model_index, declaration
+            advance_offered = self.advance_rungs_offered(env, model_index, declaration)
+            combined = _combined_movement_logits(
+                logits.displacement[0], logits.advance[0], advance_offered
             )
             choice, choice_log_prob, choice_entropy = _pick(combined, greedy, generator)
             log_prob += choice_log_prob
             entropy += choice_entropy
             action = self._movement_action(env, choice)
+            head, head_choice = "movement", choice
 
         return StepDecision(
             action=PerModelAction(
@@ -128,28 +147,26 @@ class SetAgent:
             log_prob=log_prob,
             value=float(output.value[0]),
             entropy=entropy,
+            selector_entropy=selector_entropy,
+            head=head,
+            head_choice=head_choice,
+            declaration_sampled=opening,
+            advance_offered=advance_offered,
         )
 
-    def _movement_logits(
-        self,
-        env: PerModelEnv,
-        displacement: torch.Tensor,
-        advance: torch.Tensor,
-        model_index: int,
-        declaration: int | None,
-    ) -> torch.Tensor:
-        """STAY + movement bins, with the advance rungs appended when offered.
+    @staticmethod
+    def advance_rungs_offered(
+        env: PerModelEnv, model_index: int, declaration: int | None
+    ) -> bool:
+        """Whether the advance rungs join the movement categorical this step.
 
-        The rungs are offered exactly when the model's unit has declared an
-        advance — already (the env's own mask then also carries them), or in
-        this very step's declaration factor.
+        Exactly when the model's unit has declared an advance — already (the
+        env's own mask then also carries them), or in this very step's
+        declaration factor.
         """
-        offered = bool(env.wargame_models[model_index].declared_advance) or (
+        return bool(env.wargame_models[model_index].declared_advance) or (
             declaration == int(MoveDeclaration.advance)
         )
-        if advance.shape[0] == 0 or not offered:
-            advance = torch.full_like(advance, NEG_INF)
-        return torch.cat([displacement, advance], dim=0)
 
     def _movement_action(self, env: PerModelEnv, choice: int) -> int:
         handler = env.player_action_handler
@@ -171,6 +188,15 @@ class SetAgent:
             {int(m.group_id) for m in env.opponent_models}
         )  # the pointer's candidate order (ascending unit id)
         return shooting_slice.start + unit_ids[choice - 1]
+
+
+def _combined_movement_logits(
+    displacement: torch.Tensor, advance: torch.Tensor, advance_offered: bool
+) -> torch.Tensor:
+    """STAY + movement bins, with the advance rungs appended when offered."""
+    if advance.shape[-1] == 0 or not advance_offered:
+        advance = torch.full_like(advance, NEG_INF)
+    return torch.cat([displacement, advance], dim=-1)
 
 
 def _pick(

@@ -16,8 +16,10 @@ one re-sequences the calls the engine already exposes so that:
   command phase keeps nothing the agent decides and is stepped through without
   an agent step;
 - **one turn-closing step per turn cycle**, after the opponent's turn, carries
-  no model action. It is where the turn's victory points are paid once the
-  per-model reward timing lands (#286); until then every step returns 0.0;
+  no model action and is where the state terms, the global terms and the
+  turn's net victory points are paid (`reward_timing.py`, #286); a model step
+  pays the action terms for the acting model alone. One scalar reward per
+  step;
 - **no play-time decode of any kind** — the top-K joint decode, the
   reallocation decode and the charge decode solved the product-policy problem
   this facade removes, and carrying one would hide whether a per-model policy
@@ -65,6 +67,10 @@ from wargame_rl.wargame.envs.env_components.actions import (
 from wargame_rl.wargame.envs.env_components.observation_builder import (
     compute_player_action_mask,
     update_distances_to_objectives,
+)
+from wargame_rl.wargame.envs.per_model.reward_timing import (
+    PerModelRewardTimer,
+    kills_by_model_for_step,
 )
 from wargame_rl.wargame.envs.per_model.types import (
     ChargeDeclaration,
@@ -143,6 +149,17 @@ class PerModelEnv(WargameEnv):
         self._episode_over = False
         self._close_vp_base = (0, 0)
         self._enforce_mode = CoherencyEnforcement(config.coherency.enforce_move)
+        # The re-timed reward (#286): action terms pay on the actor's step,
+        # state terms / globals / VP on the turn-closing step. Same calculator
+        # objects as the whole-phase manager — one set of weights and state.
+        self._reward_timer = PerModelRewardTimer(self.phase_manager)
+        self._cycle_player_damage = 0
+        self._cycle_opponent_damage = 0
+        self._cycle_player_kills = 0
+        self._cycle_opponent_kills = 0
+        self._cycle_kills_by_model = np.zeros(n_models, dtype=np.int64)
+        self._step_kills = 0
+        self._step_damage = 0
         self._coherency_nearest = self._rules_quantities.scale.to_units(
             config.coherency.nearest_distance
         )
@@ -162,6 +179,7 @@ class PerModelEnv(WargameEnv):
         self._terminal_close = False
         self._episode_over = False
         self._close_vp_base = (self.player_vp, self.opponent_vp)
+        self._reset_cycle_tallies()
         self._advance_to_decision_point()
         return self._observe(), info
 
@@ -170,9 +188,9 @@ class PerModelEnv(WargameEnv):
     ) -> tuple[PerModelObservation, float, bool, bool, dict[str, Any]]:
         """One model's action — or, on a closing step, no action at all.
 
-        Reward is 0.0 on every step until the per-model reward timing lands
-        (#286); the closing step and the per-step hooks it pays on exist so
-        that the step *protocol* is already the one that build wires into.
+        A model step pays the action terms for the acting model alone; the
+        closing step pays the state terms, the globals and the turn's net VP
+        (`PerModelRewardTimer`). One scalar reward per step.
         """
         if self._episode_over:
             raise RuntimeError("Episode is over; call reset().")
@@ -201,6 +219,8 @@ class PerModelEnv(WargameEnv):
             )
             self._apply_unit_declaration(unit, declaration)
 
+        self._step_kills = 0
+        self._step_damage = 0
         if not self._acted[index]:
             # A skip declaration (remain stationary / hold fire / decline /
             # fight priority) may have consumed the whole unit, opener
@@ -210,6 +230,11 @@ class PerModelEnv(WargameEnv):
             self._phase_action_vector[index] = int(action.action)
         self.model_steps += 1
         self.phase_model_steps += 1
+
+        reward, breakdown = self._reward_timer.model_step_reward(
+            self, self._model_step_context(index), index
+        )
+        self._record_step_reward(reward, breakdown, actor=index)
 
         members = self._members_of(unit)
         if any(self.wargame_models[i].is_alive and not self._acted[i] for i in members):
@@ -221,24 +246,32 @@ class PerModelEnv(WargameEnv):
         if bool(self._acted.all()):
             self._complete_player_phase()
             self._advance_to_decision_point()
-        return self._observe(), 0.0, False, False, {}
+        return self._observe(), reward, False, False, {}
 
     def _close_turn(
         self,
     ) -> tuple[PerModelObservation, float, bool, bool, dict[str, Any]]:
         """The turn-closing step: no model action; the turn's VP pays here.
 
-        Placed after the opponent's turn, so the global signal prices the *net*
-        VP delta of the whole turn cycle. The payment itself lands with #286;
-        the accounting (`turn_cycle_vp_delta`, reset here) already does.
+        Placed after the opponent's turn, so `vp_gain` prices the *net* VP
+        delta of the whole turn cycle — the view's deltas accumulate between
+        closes and are reset only here. The cycle's kill and damage tallies
+        feed the global event terms, and the terminal bonuses fire on the last
+        round's close.
         """
         self._pending_close = False
+        reward, breakdown = self._reward_timer.closing_reward(
+            self, self._closing_context()
+        )
+        self._record_step_reward(reward, breakdown, actor=None)
         self._close_vp_base = (self.player_vp, self.opponent_vp)
+        self._battle.reset_vp_deltas()
+        self._reset_cycle_tallies()
         if self._terminal_close:
             self._episode_over = True
-            return self._observe(), 0.0, True, False, {}
+            return self._observe(), reward, True, False, {}
         self._advance_to_decision_point()
-        return self._observe(), 0.0, False, False, {}
+        return self._observe(), reward, False, False, {}
 
     def _advance_to_decision_point(self) -> None:
         """Advance until the policy is owed a decision, or the closing step."""
@@ -317,7 +350,9 @@ class PerModelEnv(WargameEnv):
         if self._phase_cleared:
             return
         self._phase_cleared = True
-        self._battle.reset_vp_deltas()
+        # VP deltas deliberately NOT reset here: they accumulate across the
+        # turn cycle so the closing step's `vp_gain` prices the whole turn,
+        # and `_close_turn` resets them after paying.
         self._last_player_shooting_results = []
         self._last_opponent_shooting_results = []
         self._last_player_fight_results = []
@@ -409,6 +444,12 @@ class PerModelEnv(WargameEnv):
         for blow in self._last_player_fight_results:
             if blow.killed and blow.attacker_idx < len(p_kills_by_model):
                 p_kills_by_model[blow.attacker_idx] += 1
+
+        self._cycle_player_damage += p_dmg
+        self._cycle_opponent_damage += o_dmg
+        self._cycle_player_kills += p_kills
+        self._cycle_opponent_kills += o_kills
+        self._cycle_kills_by_model += p_kills_by_model
 
         ctx = StepContext(
             distance_cache=cache,
@@ -623,6 +664,8 @@ class PerModelEnv(WargameEnv):
             cover=self._cover_for_shot(index, target_group),
         )
         self._last_player_shooting_results.extend(results)
+        self._step_kills += sum(1 for r in results if r.killed)
+        self._step_damage += sum(r.result.damage_dealt for r in results)
 
     def _cover_for_shot(
         self, attacker_idx: int, target_group: int
@@ -697,6 +740,84 @@ class PerModelEnv(WargameEnv):
             self._coherency_furthest,
             self._enforce_mode,
         )
+
+    def _model_step_context(self, actor: int) -> StepContext:
+        """A per-model-step context: this step's own kills, fresh distances."""
+        cache = compute_distances(
+            self.wargame_models,
+            self.objectives,
+            compute_model_model=self.phase_manager.needs_model_model_distances,
+            alive_mask=alive_mask_for(self.wargame_models),
+        )
+        state = self._game_clock.state
+        return StepContext(
+            distance_cache=cache,
+            current_turn=self.current_turn,
+            max_turns=self.max_turns,
+            board_width=self.board_width,
+            board_height=self.board_height,
+            is_terminated=False,
+            current_round=state.battle_round or 0,
+            battle_phase=self._phase,
+            action_phase=self._phase,
+            player_damage_dealt=self._step_damage,
+            opponent_damage_dealt=0,
+            player_models_killed=self._step_kills,
+            opponent_models_killed=0,
+            player_kills_by_model=kills_by_model_for_step(
+                len(self.wargame_models), actor, self._step_kills
+            ),
+        )
+
+    def _closing_context(self) -> StepContext:
+        """The turn-closing step's context: the whole cycle's tallies."""
+        cache = compute_distances(
+            self.wargame_models,
+            self.objectives,
+            compute_model_model=self.phase_manager.needs_model_model_distances,
+            alive_mask=alive_mask_for(self.wargame_models),
+        )
+        state = self._game_clock.state
+        return StepContext(
+            distance_cache=cache,
+            current_turn=self.current_turn,
+            max_turns=self.max_turns,
+            board_width=self.board_width,
+            board_height=self.board_height,
+            is_terminated=self._terminal_close,
+            current_round=state.battle_round or self.n_rounds,
+            battle_phase=state.phase or BattlePhase.command,
+            action_phase=self._last_action_phase,
+            player_damage_dealt=self._cycle_player_damage,
+            opponent_damage_dealt=self._cycle_opponent_damage,
+            player_models_killed=self._cycle_player_kills,
+            opponent_models_killed=self._cycle_opponent_kills,
+            player_kills_by_model=self._cycle_kills_by_model.copy(),
+        )
+
+    def _record_step_reward(
+        self, reward: float, breakdown: dict[str, float], actor: int | None
+    ) -> None:
+        """Keep the step's payment where tooling already looks for it."""
+        self.last_reward = reward
+        self.last_reward_breakdown = dict(breakdown)
+        per_model = np.zeros(len(self.wargame_models), dtype=np.float64)
+        if actor is not None:
+            per_model[actor] = reward
+        self.last_per_model_reward = per_model
+        for key, value in breakdown.items():
+            self.episode_reward_breakdown[key] = (
+                self.episode_reward_breakdown.get(key, 0.0) + value
+            )
+        self.episode_reward_steps += 1
+        self.episode_reward += reward
+
+    def _reset_cycle_tallies(self) -> None:
+        self._cycle_player_damage = 0
+        self._cycle_opponent_damage = 0
+        self._cycle_player_kills = 0
+        self._cycle_opponent_kills = 0
+        self._cycle_kills_by_model = np.zeros(len(self.wargame_models), dtype=np.int64)
 
     def _apply_fall_back_marks(self) -> None:
         """Mark every unit that began engaged and moved as having fallen back."""

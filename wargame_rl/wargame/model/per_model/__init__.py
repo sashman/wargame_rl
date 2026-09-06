@@ -8,9 +8,23 @@ from wargame_rl.wargame.model.per_model.net import (
     SetNetwork,
     SetNetworkOutput,
 )
+from wargame_rl.wargame.model.per_model.ppo import (
+    PerModelPPOConfig,
+    Transition,
+    collect_rollout,
+    compute_gae,
+    evaluate_transitions,
+    ppo_update,
+)
 
 __all__ = [
     "ActionLogits",
+    "PerModelPPOConfig",
+    "Transition",
+    "collect_rollout",
+    "compute_gae",
+    "evaluate_transitions",
+    "ppo_update",
     "SetAgent",
     "SetNetwork",
     "SetNetworkConfig",
