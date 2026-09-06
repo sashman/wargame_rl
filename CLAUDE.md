@@ -101,6 +101,7 @@ wargame_rl/
 | Train an arm (config × training flags) | `just train-arm <max_epochs> <n_seeds> <group> <tag> <flags> <configs...>` |
 | Train one seed with flags (parallelisable) | `just train-seed-flags <max_epochs> <seed> <group> <tag> <flags> <configs...>` |
 | Train a self-play arm and its control for one seed | `just train-self-play-screen [max_epochs] [seed] [group] [env_config] [anchor]` |
+| Strip checkpoints for a release (verifies bit-identity, writes SHA256SUMS) | `just prepare-release <out_dir> <label> <ckpt>...` |
 | Ship (branch → commit → push → PR) | `just ship <branch> "<message>" [<issue>]` — an issue number appends `Closes #N` |
 | Simulate latest | `just simulate-latest` |
 | Simulate / record a checkpoint | `just simulate <ckpt> <config.yaml> [overlays]` · `just record-sim <ckpt> <config.yaml>` |
