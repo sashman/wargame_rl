@@ -2975,7 +2975,7 @@ never-evicted anchors; arm 3 is arm 1 with
 start.** It is the MIRROR: the bar's −5.3 is that script playing itself from the
 disadvantaged seat, so a policy that merely imitates it scores −5.3 and no
 better. Both arms sit within a few vp of exactly that.
-## 50. The ladder was measurement noise — and n=45 cannot resolve this game
+## 53. The ladder was measurement noise — and n=45 cannot resolve this game
 
 Measured 2026-09-06.
 [Retraction](../reports/2026-09-06-the-ladder-was-measurement-noise.md) ·
