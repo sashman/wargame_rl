@@ -1666,6 +1666,11 @@ attributed.
   pre-registration path resolves on `main` — the commit timestamp is what proves
   the criterion predates the numbers. `gh issue list --label needs:prereg` is the
   list of arms that are unsafe to launch.
+- **Every issue opens with a TL;DR: two or three sentences, no jargon**, for
+  someone with no context on this repo — what it is about and why it matters.
+  It is a required field on every template. The body below it can be as
+  technical as it needs to be; the TL;DR cannot. An issue nobody can grasp in
+  fifteen seconds is a note to yourself, not a tracker entry.
 - **An issue is for work intended and not done.** Shipped behaviour goes in
   `docs/`; what was measured goes in `reports/`; the roadmap is
   `docs/goals-and-roadmap.md`. When work lands, close the issue and write the doc.
