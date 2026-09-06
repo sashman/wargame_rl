@@ -44,6 +44,7 @@ from wargame_rl.wargame.envs.domain.shooting import (
     resolve_shooting_phase,
 )
 from wargame_rl.wargame.envs.domain.sight import (
+    CLEAR,
     COVER,
     has_line_of_sight_between_points,
     visibility_matrix,
@@ -1589,7 +1590,8 @@ class WargameEnv(gym.Env):
         it against an attack only when **every** model in it is in a terrain area
         or not fully visible, so *"one model of a unit standing in the open
         denies cover to the whole unit"*. Reducing with `all` rather than `any`
-        is that sentence.
+        is that sentence — and "not fully visible" spans COVER *and* HIDDEN,
+        so only a `CLEAR` member denies it (#289).
 
         Only the declared (attacker, unit) pairs are traced, expanded to the
         unit's living models -- a handful out of the full product. Returns None
@@ -1617,7 +1619,11 @@ class WargameEnv(gym.Env):
             origin_models=attackers,
             target_models=targets,
         )
-        model_in_cover = visibility == COVER
+        # "Not fully visible" (13-terrain.md § Cover) is any blockage at all,
+        # so a fully hidden member (`HIDDEN`) counts toward cover too. Until
+        # 2026-09-06 this tested `== COVER`, and the best-protected model in
+        # the unit stripped the whole unit's cover (#289).
+        model_in_cover = visibility != CLEAR
         unit_in_cover = np.zeros((len(attackers), n_groups), dtype=bool)
         for group in range(n_groups):
             members = (groups == group) & alive

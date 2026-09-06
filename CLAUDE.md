@@ -1573,6 +1573,18 @@ Re-measure rather than carry a figure across one.
   targeted rather than global.
 - **2026-08-20 — the eval tables were regenerated**, and 2026-08-21 they were
   re-measured against their own deployment zones. See § The board.
+- **2026-09-06 — a fully hidden model no longer denies its whole unit cover** (#289).
+  `_cover_mask` tested `visibility == COVER`, so a member terrain blocked
+  *completely* — the best-protected model in the unit — stripped the unit's
+  cover, against `docs/rules/13-terrain.md`'s "not fully visible". Now any
+  blockage counts (`!= CLEAR`). Spurious denial measured at **2.4 / 5.2 /
+  9.6pp** of declared (attacker, unit) pairs on `25v25_maps_two_mode` /
+  `25v25_shooting_opponent` / `25v25_cover_control`; the scripted bar moved
+  **+1.9 / +2.1 / +3.0 vp** at n=100 identical seeds (`squad_march_take`, seeds
+  700000+, same direction 3/3 — small against per-episode sd, so treat pre-fix
+  figures on terrain configs as suspect within ~3 vp rather than wrong).
+  Goldens: the `25v25_single_phase` reward+observation pair regenerated
+  deliberately; the other four byte-identical, the targeted-change check.
 - **2026-08-31 — `group_span` rounds UP, so `max_groups` is a real cap.** It
   floored, and an army splitting into more units than the cap has one-hot columns
   had two units share a code (`_group_ids_to_one_hot` clips rather than raising)
