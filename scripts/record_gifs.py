@@ -98,7 +98,14 @@ def record_episode(
     frame_source.epoch = 0
 
     unwrapped = cast(WargameEnv, env.unwrapped)
-    select = build_action_selector(policy_or_checkpoint, unwrapped, decode_topk).select
+    # `charge_decode` is passed unconditionally because `apply_charge_decode`
+    # returns its input untouched outside the charge phase, which a non-melee
+    # config never enters. Leaving it to a flag is what made the README's GIFs
+    # show a policy that could not execute the joint charge while every score
+    # in the record was taken with it on.
+    select = build_action_selector(
+        policy_or_checkpoint, unwrapped, decode_topk, charge_decode=True
+    ).select
 
     observation, _ = env.reset(seed=seed)
     frames: list[np.ndarray] = []

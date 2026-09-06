@@ -150,3 +150,45 @@ def test_the_seating_advantage_changes_who_is_drawn() -> None:
         return drawn.count("epoch_25") / len(drawn)
 
     assert share(300.0) > share(0.0) + 0.1
+
+
+def test_several_anchors_all_survive_eviction() -> None:
+    """The floor is a LIST because the ladder has several opponents.
+
+    A pool anchored only on `squad_march_take_charge` won `vs_take` and
+    `vs_deny` at six seeds and could only tie `vs_shoot` -- the one matchup it
+    never held (docs/melee-teaching-goal.md §51).
+    """
+    anchors = [
+        Snapshot(name="squad_march_take_charge", checkpoint="", epoch=0),
+        Snapshot(name="squad_march_shoot", checkpoint="", epoch=0),
+    ]
+    pool = SnapshotPool(anchors, capacity=4)
+    for epoch in (25, 50, 75, 100, 125, 150):
+        pool.add(Snapshot(name=f"epoch_{epoch}", checkpoint="c", epoch=epoch))
+    names = [entry.name for entry in pool.entries]
+    assert names[:2] == ["squad_march_take_charge", "squad_march_shoot"]
+    assert all(entry.is_anchor for entry in pool.entries[:2])
+    assert not any(entry.is_anchor for entry in pool.entries[2:])
+    assert len(pool.entries) == 4
+    assert [entry.name for entry in pool.anchors] == [
+        "squad_march_take_charge",
+        "squad_march_shoot",
+    ]
+
+
+def test_a_capacity_that_cannot_hold_the_anchors_is_refused() -> None:
+    """Otherwise the pool would silently never accept a snapshot at all."""
+    anchors = [
+        Snapshot(name="a", checkpoint="", epoch=0),
+        Snapshot(name="b", checkpoint="", epoch=0),
+    ]
+    with pytest.raises(ValueError, match="cannot hold"):
+        SnapshotPool(anchors, capacity=1)
+
+
+def test_one_anchor_still_works_unwrapped() -> None:
+    """The single-anchor call is what every existing caller passes."""
+    pool = SnapshotPool(ANCHOR, capacity=3)
+    assert pool.anchors == (pool.anchor,)
+    assert pool.anchor.is_anchor

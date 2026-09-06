@@ -62,9 +62,18 @@ class SelfPlayConfig(BaseModel):
     # only copy of any weights here -- capacity is a disk budget before it is a
     # statistical choice.
     pool_capacity: int = Field(default=8, ge=1)
-    # Entry zero, never evicted. A scripted baseline by default, so the pool has
-    # a floor that cannot drift with the learner.
-    anchor: str = "squad_march_take"
+    # The pool's floor: never evicted, so it cannot drift with the learner.
+    # Scripted baselines by default.
+    #
+    # A LIST because the ladder a run is judged on has several opponents and one
+    # policy cannot stand in for them. Measured 2026-09-04: an arm anchored only
+    # on `squad_march_take_charge` won `vs_take` and `vs_deny` at six seeds and
+    # could only TIE `vs_shoot` -- the single matchup its pool never contained.
+    #
+    # ⚠ Every anchor must be able to use the features the config enables. On a
+    # melee config a baseline whose `select_charge` returns STAY pins part of
+    # the floor to a policy that never charges, so pair it with one that does.
+    anchors: list[str] = Field(default_factory=lambda: ["squad_march_take"])
     sampling: Literal["hard", "even", "uniform"] = "hard"
     uniform_floor: float = Field(default=0.1, ge=0.0, le=1.0)
     # The opponent's decode. Left at 1 because joint constrained decoding costs
@@ -104,7 +113,7 @@ class OpponentScheduler:
         # boards it plays on.
         self._rng = np.random.default_rng(SELF_PLAY_SEED_BASE + seed)
         self._pool = SnapshotPool(
-            Snapshot(name=config.anchor, checkpoint="", epoch=0),
+            [Snapshot(name=name, checkpoint="", epoch=0) for name in config.anchors],
             capacity=config.pool_capacity,
         )
         self._learner_rating = 0.0
@@ -214,12 +223,19 @@ class OpponentScheduler:
         # that beats an earlier one gains points against a fixed reference.
         self._pool.rate({entry.name: self._learner_rating})
         earliest, latest = spans(self._pool.entries)
+        # The anchors are named, not just counted. A pool floor is set from the
+        # command line and nothing downstream reveals it, so a run carrying the
+        # wrong floor used to look identical in the log to one carrying the
+        # right one -- confirming a 2:1 floor took a separate process reading
+        # the trainer's own argv.
         logger.info(
-            "self-play pool: {} entries spanning epochs {}-{}, newest {}",
+            "self-play pool: {} entries spanning epochs {}-{}, newest {}, "
+            "anchored on [{}]",
             len(self._pool.entries),
             earliest,
             latest,
             entry.name,
+            ", ".join(anchor.name for anchor in self._pool.anchors),
         )
         return entry
 
