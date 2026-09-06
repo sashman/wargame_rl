@@ -1951,8 +1951,8 @@ read −1.2 / +14.0 / +18.5, pooled **+10.4**.
   user-observed "agent ignores home" is, on the corrected game, no longer
   measurably leaving VP on the table for a script — the v12 REJECT is
   overdetermined, and the successor brief
-  (`.planning/successor-fold-design-brief.md`) should pursue the hunt fold on
-  its own merits, not as a home-guarding vehicle. If a future mission makes
+  ([issue #272](https://github.com/sashman/wargame_rl/issues/272)) should pursue
+  the hunt fold on its own merits, not as a home-guarding vehicle. If a future mission makes
   home pay differently, re-price then — the pricer is one committed command.
 
 ## 38b. Correction — §38a was a SIGN FLIP; the garrison value replicates post-referee
@@ -2975,3 +2975,37 @@ never-evicted anchors; arm 3 is arm 1 with
 start.** It is the MIRROR: the bar's −5.3 is that script playing itself from the
 disadvantaged seat, so a policy that merely imitates it scores −5.3 and no
 better. Both arms sit within a few vp of exactly that.
+## 50. The ladder was measurement noise — and n=45 cannot resolve this game
+
+Measured 2026-09-06.
+[Retraction](../reports/2026-09-06-the-ladder-was-measurement-noise.md) ·
+[decode knobs](../reports/2026-09-06-three-decode-knobs-and-none-of-them-pays.md).
+
+⚠ **The six-seed ladder read "all four cells WON" at n=45 and does not survive
+n=180.** With the agent and the bar measured on the same 180 scenarios, paired:
+`refereed` **+4.21** (t=0.65), `vs_take` +6.73 (t=1.08), `vs_deny` +7.45
+(t=1.12), `vs_shoot` **−0.19** (t=−0.03). **No cell is resolved and `vs_shoot` is
+level.** Every ladder row in §§40–48 is quoted against a comparator with an
+unpropagated ±12.7 and should be read as unresolved until remeasured.
+
+- ⚠ **The bar is not a constant.** Its `vs_deny` value moved **+11.8 → +36.8**
+  between n=45 and n=180. A deterministic script is a fixed policy *sampled over
+  scenarios*; it carries the agent's per-scenario noise.
+- ⚠ **The across-seed SE was the wrong denominator.** All seeds share the
+  scenarios, so scenario noise is common-mode. Six seeds was never the binding
+  constraint — episodes were.
+- **Per-scenario sd is 81–89**, so SE ≈ 89/√n: ±12.7 at n=45, ±6.3 at n=180,
+  ±3.2 at n=720. Every arm difference ever measured on this ladder is inside
+  the n=45 error bar.
+- **What survives**: the **reallocation decode**, +9.57 ± 2.55, 6/6 seeds paired
+  at n=180 — the only claim of the day to survive its own remeasurement.
+- **The decode stack is at its ceiling.** `decode_stay` null (+0.52 ± 0.31);
+  **iterating the reallocation is negative** (−1.28, and −4.33 / t=−3.17 on
+  `vs_deny`); and **`min_stack` 4 → 2 is NOT CONFIRMED** — a held-out sweep put
+  it at +5.2 on `vs_shoot` (3/3, t≈2.9) and the evaluation band gives **+0.51
+  (t=0.45)**, with the real effect on two *other* cells (`refereed` +1.51,
+  `vs_deny` +2.52). ⚠ **The tuning transferred in neither magnitude nor
+  location**, so a sweep needs the same n discipline as the arm it feeds
+  ([report](../reports/2026-09-06-the-tuning-band-picked-the-wrong-cells.md)).
+  No decode configuration reaches the bar significantly on any cell; closing the
+  gap requires a better policy, measured at n ≥ 180 on both sides.

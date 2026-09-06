@@ -189,6 +189,63 @@ def step_toward_objective(
     )
 
 
+def steps_toward_objective(
+    models: list[WargameModel],
+    member_indices: list[int],
+    objective: WargameObjective,
+    env: WargameEnv,
+) -> list[int]:
+    """Batched `step_toward_objective` for members marching on ONE objective.
+
+    Returns one action per entry of `member_indices`, in order. This is caching
+    and batching, never a rule change: each row is **bit-identical** to the
+    scalar call on that model (`tests/test_baseline_geometry.py` pins it, and
+    the reward golden guards the episode). What it saves is the polygon work —
+    the scalar form pays two containment passes per model (`contains`, then
+    `distance_to_point` re-checking containment) plus an edge sweep, all
+    against the *same* outline for every member of a squad; here each pass
+    runs once over the squad. `step_toward_objective` was 70.8% of the scripted
+    opponent's `select_movement` before this existed
+    (`reports/2026-09-05-where-the-opponent-turn-goes.md`).
+    """
+    if not member_indices:
+        return []
+    locations = np.asarray([models[i].location for i in member_indices], dtype=float)
+    objective_location = np.asarray(objective.location, dtype=float)
+
+    if objective.area is not None:
+        arrived = objective.area.contains_points(locations, include_boundary=True)
+        gaps = np.zeros(len(member_indices), dtype=float)
+        outside = ~arrived
+        if outside.any():
+            gaps[outside] = objective.area.distances_to_boundary(locations[outside])
+    else:
+        gaps = np.linalg.norm(objective_location - locations, axis=1) - float(
+            objective.radius_size
+        )
+        arrived = gaps <= 0.0
+
+    actions: list[int] = []
+    for row, model_idx in enumerate(member_indices):
+        if arrived[row]:
+            actions.append(STAY_ACTION)
+            continue
+        delta = objective_location - locations[row]
+        distance = float(np.linalg.norm(delta))
+        if distance <= 0.0:
+            actions.append(STAY_ACTION)
+            continue
+        actions.append(
+            env.player_action_handler.best_action_toward(
+                float(delta[0]),
+                float(delta[1]),
+                max_step_length=float(gaps[row]),
+                model_idx=model_idx,
+            )
+        )
+    return actions
+
+
 class ScriptedObjectiveAssignmentPolicy(BaselinePolicy):
     """Walks every model to an assigned objective and holds it.
 
@@ -205,13 +262,26 @@ class ScriptedObjectiveAssignmentPolicy(BaselinePolicy):
     def select_movement(
         self, models: list[WargameModel], env: WargameEnv
     ) -> WargameEnvAction:
-        """Send each alive model toward its assigned objective."""
+        """Send each alive model toward its assigned objective.
+
+        Assignments are collected in model order — `assign_objective` may be
+        stateful in a subclass, so its call order is part of the contract —
+        and then the geometry runs once per *objective* over everyone assigned
+        to it, which is the batching `steps_toward_objective` provides.
+        """
         objectives = env.objectives
-        actions: list[int] = []
+        actions: list[int] = [STAY_ACTION] * len(models)
+        assigned: dict[int, list[int]] = {}
         for index, model in enumerate(models):
             if not model.is_alive or not objectives:
-                actions.append(STAY_ACTION)
                 continue
-            objective = objectives[self.assign_objective(index, model, env)]
-            actions.append(step_toward_objective(model, objective, env, index))
+            assigned.setdefault(self.assign_objective(index, model, env), []).append(
+                index
+            )
+        for objective_index, member_indices in assigned.items():
+            steps = steps_toward_objective(
+                models, member_indices, objectives[objective_index], env
+            )
+            for index, action in zip(member_indices, steps):
+                actions[index] = action
         return WargameEnvAction(actions=actions)

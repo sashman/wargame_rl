@@ -1,0 +1,253 @@
+name: Experiment arm
+description: One change, one comparator, one provenance tuple.
+title: "arm: "
+labels: ["kind:arm", "needs:prereg"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠ **One change per arm.** A bundled change cannot be attributed. If you
+        are about to write "and", open a second arm.
+
+        This issue opens carrying **`needs:prereg`**. Remove it only when the
+        pre-registration file below resolves on `main` — the commit timestamp is
+        the proof the criterion predates the numbers.
+
+  - type: textarea
+    id: tldr
+    attributes:
+      label: TL;DR
+      description: >-
+        Two or three sentences, **no jargon**, for someone with no context on
+        this repo. What is this about, and why does it matter? Everything below
+        can be as technical as it needs to be — this part cannot.
+      placeholder: |
+        Train the agent with one setting changed and compare it against an
+        otherwise identical run. If the changed version scores better, we keep
+        the setting; if not, we drop it. Takes about a day on the training machine.
+    validations:
+      required: true
+
+  - type: input
+    id: parent
+    attributes:
+      label: Parent question
+      description: Exactly one. An arm with no parent produces a number nobody asked for.
+      placeholder: "#312"
+    validations:
+      required: true
+
+  - type: textarea
+    id: change
+    attributes:
+      label: The one change, named
+      placeholder: |
+        `objective_hold.require_coherent: true`. One scalar. Everything else is
+        byte-identical to the control, so the arms pair.
+    validations:
+      required: true
+
+  - type: input
+    id: comparator
+    attributes:
+      label: Comparator, by name, fixed before measuring
+      description: >-
+        Never "the best script". A comparator chosen by argmax on the same data
+        changes identity between cells and turns a magnitude into an artefact —
+        winner-selection bias measured +1.4 to +2.9, and it inflates the script.
+      placeholder: "configs/experiments/25v25_maps_melee_dark.yaml — differs in exactly one scalar."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: paired
+    attributes:
+      label: Paired?
+      description: >-
+        train.py:303 seeds, :374 constructs — two arms differing only in a scalar
+        start from identical weights. Worth roughly an order of magnitude: two
+        seed pairs measured +7.5 and +7.2 (0.3 apart) where the unpaired spread
+        on the same arm is 26.
+      options:
+        - "Paired — differs in one scalar, same seeds, identical init at step 0"
+        - "Paired — a zero-initialised conditioning path keeps logits bit-identical at step 0"
+        - "Unpaired — the change moves a parameter shape; pairing is unavailable"
+        - "Unpaired — the per-seed correlation was measured and is negative"
+    validations:
+      required: true
+
+  - type: input
+    id: prereg
+    attributes:
+      label: Pre-registration file, committed before any number exists
+      description: The load-bearing field. A path a human can check resolves on main in five seconds.
+      placeholder: "reports/2026-08-25-melee-preregistration.md"
+    validations:
+      required: true
+
+  - type: textarea
+    id: criterion
+    attributes:
+      label: Accept / reject / null criteria, and the power against this estimator's own noise
+      description: >-
+        A bound tighter than the estimator's own noise is not a bound. State the
+        MDE at 80% power, not the half-width at 50%.
+      placeholder: |
+        ACCEPT: paired difference >= +12 vp at 6 seeds, >= 5 of 6 seeds positive.
+        REJECT: <= -12 vp, or <= 4 of 6 positive with a negative mean.
+        NULL: anything between — the predicted outcome, not a failed experiment.
+        UNDERPOWERED: |diff| < 12 with signs flipping.
+
+        Power: per-seed paired sd is 11.3, so SE at 6 seeds is 4.61 and the MDE
+        is 11.9 vp. Three seeds cannot resolve anything under 28.1 vp — a bound
+        of -8 on 3/3 fails a costless lever 56% of the time.
+    validations:
+      required: true
+
+  - type: input
+    id: seeds
+    attributes:
+      label: Seeds / seed base
+      description: >-
+        Three minimum. Spread is 11.2 vp on 25v25_maps_two_mode but 26 vp on
+        25v25_maps_coherency — do not carry one config's spread to another. Two
+        seeds off one warm start are not two independent samples.
+      placeholder: "training seeds 1/2/3, distinct warm starts; scoring seed_base 700000"
+    validations:
+      required: true
+
+  - type: input
+    id: n
+    attributes:
+      label: n (episodes)
+      description: >-
+        100, not 30. Per-episode vp_margin sd is ~45–50 — and that is LOW BY ~1.7x
+        on the map-pool configs (80.9–83.1 for the scripts on
+        take_opponent_refereed). Every n sized off the doctrine number is
+        under-powered there.
+      placeholder: "100"
+    validations:
+      required: true
+
+  - type: input
+    id: config
+    attributes:
+      label: Scoring config — must be refereed
+      description: >-
+        Scoring on the training config read the agent +6.8 clear of the best
+        script where refereed it is +23.7; the referee taxes each policy by how
+        often it breaks coherency, so turning it off flatters the scripts ~16 vp.
+      placeholder: "configs/evaluation/25v25_maps_take_opponent_refereed.yaml"
+    validations:
+      required: true
+
+  - type: input
+    id: decode
+    attributes:
+      label: Decode — K and verify_moves
+      description: Never quote a score without saying how it was decoded.
+      placeholder: "K=3, verify_moves on (default)"
+    validations:
+      required: true
+
+  - type: input
+    id: opponent
+    attributes:
+      label: Opponent
+      description: Switching a config's opponent voids every baseline AND every agent score on it.
+      placeholder: "squad_march_take"
+    validations:
+      required: true
+
+  - type: input
+    id: epochs
+    attributes:
+      label: Epoch budget
+      description: >-
+        Screen at ~300, quote effect sizes at 1000+. A marginal 300-epoch result
+        means "run it longer", not "rejected" — the advance lever read +2.2 ± 6.5
+        at 300 and −16.3 ± 8.9 at 1000, with two of three seeds flipping sign.
+      placeholder: "300 to screen, resume to 1000 before any effect size is quoted"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: compute
+    attributes:
+      label: Compute
+      options:
+        - "No GPU"
+        - "GPU — 4090"
+    validations:
+      required: true
+
+  - type: textarea
+    id: readouts
+    attributes:
+      label: Primary readouts, and the statistic reported
+      placeholder: |
+        Paired per-seed vp_margin difference: mean, sd, per-seed correlation.
+        On the map pool quote a t AND a sign count — per-table differences are
+        heavy-tailed and the two disagree often enough that either alone misleads.
+        Every row carries its coherency column.
+    validations:
+      required: true
+
+  - type: textarea
+    id: provenance
+    attributes:
+      label: "Provenance — fill at close. A number missing any row is not quotable."
+      description: >-
+        What actually happened, against the plan above. Call out any row that
+        differs from the plan: plan/actual drift is where retractions come from.
+      value: |
+        | field | value |
+        |---|---|
+        | date measured | |
+        | GPU / no-GPU | |
+        | seeds / seed_base | |
+        | n | |
+        | config path + refereed? | |
+        | decode K + verify_moves | |
+        | paired or not | |
+        | comparator (named before measuring) | |
+        | opponent | |
+        | epoch | |
+        | code revision (git SHA) | |
+        | checkpoint file | |
+        | coherency | |
+        | t | |
+        | sign count | |
+        | Wandb run id | |
+
+  - type: checkboxes
+    id: gates
+    attributes:
+      label: Before launching
+      options:
+        - label: This arm changes exactly one thing. It is not bundled.
+          required: true
+        - label: The comparator above was fixed by name before any number was measured.
+          required: true
+        - label: No control already exists at this epoch budget (training is deterministic given seed + config + code).
+          required: true
+
+  - type: checkboxes
+    id: ranchecks
+    attributes:
+      label: The run actually happened
+      options:
+        - label: "Checked `ps`, GPU memory, and that checkpoints advanced. A launcher's exit code is not evidence — `--resume-ckpt-path` failed silently on every checkpoint this repo writes and every launcher still exited 0."
+        - label: "If SIGKILLed, scored from the highest `ppo-NNN-*.ckpt`, not `last.ckpt` (SIGKILL triggers no checkpoint hook; `last.ckpt` is up to 25 epochs stale)."
+        - label: "Did not query the Wandb API while runs were training."
+
+  - type: checkboxes
+    id: closeout
+    attributes:
+      label: "Close-out — all four, or the finding is not landed (CLAUDE.md § Where a finding lands)"
+      options:
+        - label: "1. `reports/<YYYY-MM-DD>-<slug>.md` written, provenance table filled."
+        - label: "2. One-row index entry in `reports/README.md`, verdict bold and first."
+        - label: "3. Distilled standing rule in `CLAUDE.md` — or stated explicitly that no rule changed."
+        - label: "4. The live doc: `docs/play-doctrine-findings.md` / `configs/README.md` / `docs/rules/implementation-status.md` — or n/a."
+        - label: "PR body says `Closes #<this>`; `outcome:` set; `needs:writeup` removed."

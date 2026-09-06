@@ -101,7 +101,7 @@ wargame_rl/
 | Train an arm (config × training flags) | `just train-arm <max_epochs> <n_seeds> <group> <tag> <flags> <configs...>` |
 | Train one seed with flags (parallelisable) | `just train-seed-flags <max_epochs> <seed> <group> <tag> <flags> <configs...>` |
 | Train a self-play arm and its control for one seed | `just train-self-play-screen [max_epochs] [seed] [group] [env_config] [anchor]` |
-| Ship (branch → commit → push → PR) | `just ship <branch> "<message>"` |
+| Ship (branch → commit → push → PR) | `just ship <branch> "<message>" [<issue>]` — an issue number appends `Closes #N` |
 | Simulate latest | `just simulate-latest` |
 | Simulate / record a checkpoint | `just simulate <ckpt> <config.yaml> [overlays]` · `just record-sim <ckpt> <config.yaml>` |
 | Regenerate the eval tables from the layout API | `just fetch-maps [owner] [maps_dir]` |
@@ -1105,6 +1105,43 @@ config that trains, agent at K=3.
 The single most expensive class of error in this project. Every rule below was
 paid for.
 
+- ⚠ **MEASURE THE COMPARATOR AT THE SAME n AS THE ARM, AND PROPAGATE ITS SE.** A
+  deterministic script is **not a constant**: it is a fixed policy sampled over
+  scenarios, and it carries the same per-scenario noise the agent does. The
+  melee ladder's bar was a single n=45 estimate quoted to one decimal as if
+  exact; remeasured at n=180 its `vs_deny` value moved **+11.8 → +36.8**. Every
+  ladder row ever published in that goal carried an unpropagated **±12.7**. See
+  [the retraction](reports/2026-09-06-the-ladder-was-measurement-noise.md).
+- ⚠ **NEVER quote an across-seed SE for a claim about the game when every seed
+  shares the evaluation scenarios.** Scenario noise is then **common-mode** and
+  does not shrink with seeds, so an n=6 SE omits it entirely — it read
+  2.8–8.1 SE on four cells that a paired across-scenario estimator put at
+  t = −0.03 to 1.12. Report the **paired per-scenario** estimator, or both.
+  Seed variance was never the binding constraint on that ladder; **episodes
+  were** (per-seed means spanned just +50 to +66 where scenarios spanned ±85).
+- ⚠ **Raising n moves the MEAN as well as the interval.** A pre-registered
+  prediction that `vs_shoot` would clear at t≈2.6 failed because n=45 → n=180
+  moved its point estimate **−15.9**. Predicting only the interval assumes the
+  small-n estimate was unbiased, which is the same error as trusting the
+  comparator, one level up.
+- ⚠ **A sign count does not always discriminate — check what it would be under
+  the effect you are claiming.** At a per-scenario sd of ~85 a *true* +9.5
+  effect predicts 24.4/45 and a true +15.6 predicts 25.9/45; observed 22 and 25.
+  The standing "quote a t AND a sign count" rule assumes the count is
+  informative, and at this noise level it is not.
+- ⚠ **A TUNING SWEEP NEEDS THE SAME n DISCIPLINE AS THE ARM IT FEEDS.** A
+  held-out sweep at n=90 x 3 seeds put `min_stack` 4 → 2 at **+5.2, 3/3,
+  t≈2.9** on `vs_shoot` and slightly *negative* on `refereed`; confirmed at
+  n=180 x 6 it is **+0.51 (t=0.45)** and **+1.51 (t=2.40)** — the tuning
+  transferred in **neither magnitude nor location**. Tune-then-confirm on a
+  disjoint seed band is what caught it (bands: evaluation 700000+, in-run
+  eval 500000+, baselines 10000+, clone 800000+, tuning 900000+), and
+  adopting a threshold from a sweep alone would have put a false positive on
+  the record. See [the report](reports/2026-09-06-the-tuning-band-picked-the-wrong-cells.md).
+- **n=45 cannot resolve this game.** Per-scenario sd is 81–89, so SE ≈ 89/√n:
+  ±12.7 at n=45, ±6.3 at n=180, ±3.2 at n=720. Margins of 5–15 vp — which is
+  every arm difference ever measured here — need **n ≥ 180 on both sides**.
+
 - **Measure the configuration that SHIPS, not an intermediate one.** Twice in two
   days a partial change pointed the opposite way from the whole: new terrain under
   the *old* rectangular deployment read "the tables are harder to hold" when the
@@ -1442,6 +1479,34 @@ project's effort has gone, and the shape of the problem is now settled.
   point value. `just measure-phase-gates <ckpt> <config> 40` for per-phase
   criteria rates. See [docs/metrics.md](docs/metrics.md) for what each key means.
 
+### Where a finding lands — all four, or it is not landed
+
+This is the step that slips. PR #259 rescued a report stranded on a branch for
+nine days, absent from `reports/` and unlisted in the index the whole time.
+
+1. **`reports/<YYYY-MM-DD>-<slug>.md`**, carrying its provenance: date · GPU or
+   no-GPU · seeds and seed base · n · config path and whether refereed · decode
+   `K` and `verify_moves` · paired or not · the comparator **named by name** ·
+   opponent · epoch · code revision · which checkpoint · coherency · t AND a sign
+   count · Wandb run id.
+2. **A one-row index entry in `reports/README.md`**, verdict **bold and first**.
+   ⚠ **The index row is the edited surface**: on a retraction the report body
+   gains an appended `## ⚠ RETRACTION` and keeps its original text, while the row
+   is rewritten so the top-level view is never stale.
+3. **A distilled standing rule in `CLAUDE.md`** — § How to measure here, § What
+   voids a number, § Settled — do not re-run, or a new section. If no rule
+   changed, write that explicitly rather than skipping the step.
+4. **The live doc** — `docs/play-doctrine-findings.md` if a `D-NN` was priced (one
+   additive entry, never rewriting the claim), `configs/README.md` if a config was
+   added or retired, `docs/rules/implementation-status.md` if a gap-map row moved.
+
+Then set the `outcome:` label and remove `needs:writeup` (see § Tracking work).
+
+⚠ `kind:bug` and `kind:build` do **not** use this list. Theirs is shorter: a test
+pinning the behaviour, a § What voids a number bullet if it voids, a gap-map row,
+and goldens byte-identical or deliberately regenerated. Ticking boxes that do not
+apply is how the real list stops being read.
+
 ### Performance and numerics
 
 - ⚠ **TF32 is off by default because it costs ~8.5 vp.** At epoch 1000, n=100
@@ -1578,6 +1643,18 @@ Re-measure rather than carry a figure across one.
   targeted rather than global.
 - **2026-08-20 — the eval tables were regenerated**, and 2026-08-21 they were
   re-measured against their own deployment zones. See § The board.
+- **2026-09-06 — a fully hidden model no longer denies its whole unit cover** (#289).
+  `_cover_mask` tested `visibility == COVER`, so a member terrain blocked
+  *completely* — the best-protected model in the unit — stripped the unit's
+  cover, against `docs/rules/13-terrain.md`'s "not fully visible". Now any
+  blockage counts (`!= CLEAR`). Spurious denial measured at **2.4 / 5.2 /
+  9.6pp** of declared (attacker, unit) pairs on `25v25_maps_two_mode` /
+  `25v25_shooting_opponent` / `25v25_cover_control`; the scripted bar moved
+  **+1.9 / +2.1 / +3.0 vp** at n=100 identical seeds (`squad_march_take`, seeds
+  700000+, same direction 3/3 — small against per-episode sd, so treat pre-fix
+  figures on terrain configs as suspect within ~3 vp rather than wrong).
+  Goldens: the `25v25_single_phase` reward+observation pair regenerated
+  deliberately; the other four byte-identical, the targeted-change check.
 - **2026-08-31 — `group_span` rounds UP, so `max_groups` is a real cap.** It
   floored, and an army splitting into more units than the cap has one-hot columns
   had two units share a code (`_group_ids_to_one_hot` clips rather than raising)
@@ -1654,6 +1731,15 @@ measurements skipped (`25v25_maps_advance_refereed`, held-out nine, n=10,
 
 ### Settled — do not re-run
 
+- **The decode stack is at its ceiling for the melee ladder.** Three knobs
+  measured at n=180, six seeds, paired, pre-registered: `decode_stay` is a null
+  (**+0.52 ± 0.31**), **iterating the reallocation is NEGATIVE** (−1.28 ± 0.76,
+  and −4.33 / t=−3.17 on `vs_deny`), and `min_stack` 4 → 2 buys **+5.2 on
+  `vs_shoot` and ~0 on `refereed`**. ⚠ Do not re-run iteration — the author
+  predicted +3 to +8, wrote the code, and it lost, with a held-out tuning band
+  agreeing independently. See
+  [the report](reports/2026-09-06-three-decode-knobs-and-none-of-them-pays.md).
+
 - **The agent does not use terrain for cover; it manages range.** Established by
   deleting all terrain (exposure 0.116 → 0.120) and by doubling weapon range (win
   collapsed to 6.8%). A second round with 19.8% of the board hidden, a per-model
@@ -1685,6 +1771,68 @@ retracts most pre-2026-08-04 conclusions, including the claims that `gamma` 0.99
 and `ent_coef` 0.01 were refuted (they were measured under a training loop that
 never applied the reward being tuned).
 
+## Tracking work
+
+**GitHub Issues is the tracker.** ⚠ From 2026-09-06 there is no planning
+directory: `.planning/` was a GSD artifact for `/gsd-*` slash commands that no
+longer exist, and it was removed. `git show <sha>^:.planning/` recovers any of it.
+
+Four kinds, one per issue, and the label name is the enforcement:
+
+| `kind:` | is | closes when |
+|---|---|---|
+| `question` | a question the record will answer; owns arms | its falsifier is answered — **including with a null** |
+| `arm` | ONE change, ONE comparator, ONE provenance tuple | its finding lands in all four places |
+| `bug` | behaviour diverges from `docs/rules/` or its own spec | the fix ships with a test pinning it |
+| `build` | feature or refactor; ships behaviour, no verdict | it ships |
+
+⚠ **There is deliberately no `experiment` label.** An experiment is a question
+with N arms. You cannot file a bundle, because a bundled change cannot be
+attributed.
+
+- **`kind:arm` opens carrying `needs:prereg`.** Remove it only once the
+  pre-registration path resolves on `main` — the commit timestamp is what proves
+  the criterion predates the numbers. `gh issue list --label needs:prereg` is the
+  list of arms that are unsafe to launch.
+- **Every issue opens with a TL;DR: two or three sentences, no jargon**, for
+  someone with no context on this repo — what it is about and why it matters.
+  The body below it can be as technical as it needs to be; the TL;DR cannot. An
+  issue nobody can grasp in fifteen seconds is a note to yourself, not a tracker
+  entry. The test: if it contains `vp`, `K=3`, `paired`, `refereed`, `decode` or
+  a config filename, it does not pass.
+- ⚠ **`gh issue create` BYPASSES the issue forms** — `.github/ISSUE_TEMPLATE/`
+  only runs in the web UI, so a CLI-created issue gets no TL;DR, none of the
+  required fields and no board placement. That is how #277, #278 and #281 were
+  opened without any of them. **Use the `issue` skill**
+  (`.claude/skills/issue/SKILL.md`), which is the CLI's version of the contract.
+  `.github/workflows/issue-tldr.yaml` is the backstop: it labels `needs:tldr` and
+  comments once, and the label clears itself when the body is fixed.
+- **An issue is for work intended and not done.** Shipped behaviour goes in
+  `docs/`; what was measured goes in `reports/`; the roadmap is
+  `docs/goals-and-roadmap.md`. When work lands, close the issue and write the doc.
+- **Unimplemented design proposals go in issues, not `docs/`** — `docs/**/*.md` is
+  the drift check's live set and describes behaviour the env actually has, so a
+  proposal parked there gets "corrected" to match code that does not implement it.
+  If a live doc must point at one, link the full issue URL.
+- **Link the PR:** `just ship <branch> "<msg>" <issue>` appends a `Closes #N`
+  trailer to the commit body. It goes in the commit, not only the PR — most merges
+  here are merge commits, so the trailer is what reaches `main`.
+- **Retraction mirrors the report rule.** Never edit an issue body; comment. Edit
+  the **labels**, which are the issue's index row. ⚠ **Never reopen** — open a new
+  issue saying `Retracts #N`. Reopening destroys the close date, the timestamp
+  that orders the finding before its retraction. The tripwire is the index row: if
+  a claim reached `reports/README.md` it gets the full ceremony; if not, it is a
+  draft, so correct it in place.
+- **The board is [Wargame RL](https://github.com/users/sashman/projects/2)**
+  (`gh project item-list 2 --owner sashman`), linked to the repo. Columns:
+  Backlog · Blocked · In progress · **Measured, not landed** · Done.
+  ⚠ **That fourth column is the one this repo actually needs** — a generic board
+  files a finished-but-unwritten experiment under Done and the debt disappears.
+  It is the board view of `needs:writeup`, as `Blocked` is of `hold`.
+  ⚠ Projects needs the `project` token scope: `gh auth refresh -h github.com -s project`.
+- Labels and required fields live in `.github/ISSUE_TEMPLATE/` and `gh label list`,
+  and are **not restated here**, so they cannot drift.
+
 ## Git Workflow
 
 - Always verify the current branch before committing (especially after a PR merge)
@@ -1695,7 +1843,7 @@ never applied the reward being tuned).
 - After pushing a new feature branch, always create a PR using `gh pr create`
 - Run `just validate` (format + lint + test) before pushing; `just format && just lint` for quick iteration
 - **Shipping:** always create a new branch from up-to-date `main` — never reuse an existing feature branch for a new PR. Checkout `main`, pull latest, then branch. Never push directly on an in-progress branch from another workflow. The `/ship` skill (`.claude/skills/ship/`) automates this via `just ship`
-- **Docs-drift check:** a `PostToolUse` hook (`.claude/settings.json` → `.claude/hooks/docs_check.py`) fires after `gh pr create` and `just ship`. It diffs the branch against `main` and names the live docs that cite the changed paths, symbols, recipes or config fields. Fix mechanical drift (renamed symbol, changed default, missing table row) directly; only *suggest* anything asserting behaviour. It is silent when nothing is implicated, and never fails a ship. `reports/`, `.planning/` and `ratings/` are exempt — they record what was measured or believed at the time, under a named code revision; `configs/` is exempt too. Run it by hand with `python3 .claude/hooks/docs_check.py --dry-run [<base>..<head>]`
+- **Docs-drift check:** a `PostToolUse` hook (`.claude/settings.json` → `.claude/hooks/docs_check.py`) fires after `gh pr create` and `just ship`. It diffs the branch against `main` and names the live docs that cite the changed paths, symbols, recipes or config fields. Fix mechanical drift (renamed symbol, changed default, missing table row) directly; only *suggest* anything asserting behaviour. It is silent when nothing is implicated, and never fails a ship. `reports/`, `ratings/` and `configs/` are exempt — they record what was measured or believed at the time, under a named code revision. Run it by hand with `python3 .claude/hooks/docs_check.py --dry-run [<base>..<head>]`
 
 ## CUDA Environment
 

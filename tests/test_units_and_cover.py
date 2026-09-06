@@ -160,6 +160,37 @@ class TestModelsDoNotOcclude:
 
 
 class TestCover:
+    def test_a_fully_hidden_member_does_not_deny_its_unit_cover(self) -> None:
+        """Regression for #289, verified to fail on the pre-fix reduction.
+
+        `docs/rules/13-terrain.md` § Cover grants cover when every model is
+        "not fully visible"; a member terrain blocks *completely* satisfies
+        that a fortiori. The old reduction tested `== COVER`, so the HIDDEN
+        member — the best-protected model in the unit — stripped the whole
+        unit's cover.
+        """
+        # One attacker, one two-model target unit, one piece doing both jobs:
+        # it clips only the upper ray of the corridor to (40, 20) -> COVER,
+        # and swallows the whole corridor to (40, 36) -> HIDDEN.
+        wall = TerrainPieceConfig(outline=[(18, 20.5), (23, 20.5), (23, 40), (18, 40)])
+        env = _sight_env([(5, 20, 0)], [(40, 20, 0), (40, 36, 0)], terrain=[wall])
+        env.reset(seed=0)
+
+        visibility = _visibility(env)
+        assert visibility[0, 0] == COVER, "precondition: first member in cover"
+        assert visibility[0, 1] == HIDDEN, "precondition: second member hidden"
+
+        mask = env._cover_mask(
+            shots=[(0, 0)],
+            attackers=env.wargame_models,
+            targets=env.opponent_models,
+        )
+        assert mask is not None
+        assert bool(mask[0, 0]), (
+            "a unit whose every member is at least partly obscured has cover; "
+            "a fully hidden member must count toward it, not against it"
+        )
+
     def test_a_target_at_a_ruins_edge_is_in_cover(self) -> None:
         """Cover is now a fact about terrain: one edge of the corridor clipped
         by a ruin, the centre line and the other edge clear."""

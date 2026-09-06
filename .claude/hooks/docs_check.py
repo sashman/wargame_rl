@@ -44,12 +44,17 @@ LIVE_DOC_PATHS = (
 # never written.
 LIVE_DOC_GLOBS = ("docs/**/*.md",)
 
-# `reports/` and `.planning/` are dated records of what was believed at the
-# time. Editing them to match new code destroys their only value, so they are
-# never reported as drift. `ratings/` is the same class: a rating ledger records
-# what was measured under one code revision, and is superseded rather than
-# edited.
-FROZEN_PREFIXES = ("reports/", ".planning/", "configs/", "ratings/")
+# `reports/` is a dated record of what was believed at the time. Editing it to
+# match new code destroys its only value, so it is never reported as drift.
+# `ratings/` is the same class: a rating ledger records what was measured under
+# one code revision, and is superseded rather than edited.
+#
+# `.planning/` was here until 2026-09-06, when it was retired for GitHub Issues.
+# ⚠ Dropping it changed no behaviour: this tuple is consulted only against files
+# already filtered to `.py` / `Justfile` / `pyproject.toml` (see below), and no
+# such file has ever lived under any of these prefixes -- so it filters nothing
+# today. It is kept as a statement of intent for the day one does.
+FROZEN_PREFIXES = ("reports/", "configs/", "ratings/")
 
 # Names too generic to implicate a doc on their own -- they appear in prose,
 # or are language literals that survive the CamelCase test in
@@ -392,7 +397,9 @@ def format_report(findings: dict[str, list[str]], already: set[str]) -> str:
         "be fine, say so and move on — this check is a prompt to look, not "
         "evidence that something is wrong.",
         "",
-        "`reports/` and `.planning/` are historical records and are exempt.",
+        "`reports/` is a historical record and is exempt. Unimplemented "
+        "proposals live in GitHub Issues, not in `docs/` -- if a doc points at "
+        "an issue URL, that is not drift.",
     ]
     return "\n".join(lines)
 

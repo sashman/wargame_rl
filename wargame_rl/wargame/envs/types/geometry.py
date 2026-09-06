@@ -134,18 +134,27 @@ class Polygon:
             )[0, 0]
         )
 
-    def contains_points(self, points: npt.NDArray[np.float64]) -> npt.NDArray[np.bool_]:
+    def contains_points(
+        self, points: npt.NDArray[np.float64], *, include_boundary: bool = False
+    ) -> npt.NDArray[np.bool_]:
         """``(P,)`` membership for ``(P, 2)`` points, by crossing number.
 
-        Interior only — boundary membership is deliberately unspecified here and
-        is the caller's business via `contains`. Works on concave outlines, which
-        a convex half-plane test would not.
+        Interior only by default — boundary membership is deliberately
+        unspecified there and is the caller's business via `contains`.
+        `include_boundary=True` is the batched form of `contains`, one call
+        per squad instead of one per model; `polygons_contain_points` decides
+        each point independently, so the batch answers are the scalar ones
+        (pinned by `tests/test_baseline_geometry.py`). Works on concave
+        outlines, which a convex half-plane test would not.
         """
         points = np.asarray(points, dtype=VERTEX_DTYPE)
         if len(points) == 0:
             return np.zeros(0, dtype=bool)
         return polygons_contain_points(
-            points, self.vertices[np.newaxis, :, :], np.array([self.n_vertices])
+            points,
+            self.vertices[np.newaxis, :, :],
+            np.array([self.n_vertices]),
+            include_boundary=include_boundary,
         )[:, 0]
 
     def distance_to_point(self, x: float, y: float) -> float:
@@ -171,6 +180,35 @@ class Polygon:
         along = np.clip(((point - starts) * edge).sum(axis=1) / safe_length, 0.0, 1.0)
         closest = starts + along[:, np.newaxis] * edge
         return float(np.linalg.norm(closest - point, axis=1).min())
+
+    def distances_to_boundary(
+        self, points: npt.NDArray[np.float64]
+    ) -> npt.NDArray[np.float64]:
+        """``(P,)`` distance from each point to the nearest edge, inside or out.
+
+        The batched sibling of `distance_to_boundary`, one edge sweep per squad
+        instead of one per model. The arithmetic is the scalar form's exactly —
+        the same projection, clip, norm and min run elementwise over an extra
+        leading axis — so each row is **bit-identical** to the scalar call on
+        that point, which `tests/test_baseline_geometry.py` pins; the reward
+        golden is verified sensitive to one ULP, so "close enough" here would
+        surface as a fixture failure far from this file.
+        """
+        points = np.asarray(points, dtype=VERTEX_DTYPE)
+        if len(points) == 0:
+            return np.zeros(0, dtype=VERTEX_DTYPE)
+        starts = self.vertices
+        ends = np.roll(self.vertices, -1, axis=0)
+        edge = ends - starts
+        edge_length_sq = (edge**2).sum(axis=1)
+        safe_length = np.where(edge_length_sq > 0, edge_length_sq, 1.0)
+        offsets = points[:, np.newaxis, :] - starts[np.newaxis, :, :]
+        along = np.clip((offsets * edge).sum(axis=2) / safe_length, 0.0, 1.0)
+        closest = starts[np.newaxis, :, :] + along[:, :, np.newaxis] * edge
+        result: npt.NDArray[np.float64] = np.linalg.norm(
+            closest - points[:, np.newaxis, :], axis=2
+        ).min(axis=1)
+        return result
 
     def overlaps(self, other: "Polygon") -> bool:
         """True if the two outlines share interior area. Touching does not count.

@@ -7,6 +7,8 @@ when it was finally closed. These go through the env.
 
 from __future__ import annotations
 
+import inspect
+
 import numpy as np
 
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
@@ -117,3 +119,23 @@ def test_the_redirect_actually_moves_the_squad_through_env_step() -> None:
         assert after < before, f"redirect closed no distance: {before} -> {after}"
     finally:
         env.close()
+
+
+def test_iterating_the_redirect_defaults_to_the_single_redirect_rule() -> None:
+    """`max_redirects=1` and `exclude_*` empty must be the rule as it stood.
+
+    The iterated form is only worth measuring if the default is provably the
+    old behaviour, because every reallocation figure on file was taken under
+    it. Verified end-to-end as well: seed 1 on `vs_shoot` scores +79.4 with
+    coherency 0.952 either side of this change, every printed digit.
+    """
+    from wargame_rl.wargame.envs.baseline.reallocation import (
+        choose_surplus_reallocation,
+    )
+
+    signature = inspect.signature(choose_surplus_reallocation)
+    assert signature.parameters["exclude_groups"].default == frozenset()
+    assert signature.parameters["exclude_targets"].default == frozenset()
+
+    decode_signature = inspect.signature(apply_reallocation)
+    assert decode_signature.parameters["max_redirects"].default == 1

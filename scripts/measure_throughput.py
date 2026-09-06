@@ -82,6 +82,77 @@ def _instrument_line_of_sight(timings: _Timings, env: WargameEnv) -> None:
     timings.wrap(env, "line_of_sight_matrix", "line of sight")
 
 
+def _instrument_opponent_turn(timings: _Timings, env: WargameEnv) -> None:
+    """Split the opponent turn — 42.9% of `env.step` on the config that trains —
+    into the sections `reports/2026-09-05-where-the-opponent-turn-goes.md`
+    attributed by hand, so a before/after comes from a committed tool.
+
+    ⚠ `_resolve_shooting_action` is **shared with the player's turn**. Wrapping
+    it naively double-counts the opponent's share (it is timed both under its
+    own label and inside "opponent turn"), which made a first pass sum to a
+    tidy and wrong 100%. A re-entrancy flag set inside `_apply_opponent_action`
+    attributes each call to the side that made it; the two labels also expose
+    the 3.1x player/opponent asymmetry the report leaves unexplained.
+    """
+    state = {"inside_opponent_turn": False}
+
+    original_turn = env._apply_opponent_action
+
+    def flagged_turn(*args: Any, **kwargs: Any) -> Any:
+        state["inside_opponent_turn"] = True
+        try:
+            return original_turn(*args, **kwargs)
+        finally:
+            state["inside_opponent_turn"] = False
+
+    env._apply_opponent_action = flagged_turn  # type: ignore[method-assign]
+    timings.wrap(env, "_apply_opponent_action", "opponent turn")
+
+    original_resolve = env._resolve_shooting_action
+
+    def attributed_resolve(*args: Any, **kwargs: Any) -> Any:
+        label = (
+            "  opponent/resolve shooting"
+            if state["inside_opponent_turn"]
+            else "  player/resolve shooting"
+        )
+        start = time.perf_counter()
+        try:
+            return original_resolve(*args, **kwargs)
+        finally:
+            timings.total[label] += time.perf_counter() - start
+            timings.calls[label] += 1
+
+    env._resolve_shooting_action = attributed_resolve  # type: ignore[method-assign]
+
+    if env.opponent_policy is not None:
+        timings.wrap(env.opponent_policy, "select_action", "  opponent/select_action")
+    timings.wrap(env._opponent_action_handler, "apply", "  opponent/apply (movement)")
+    timings.wrap(env, "_opponent_action_mask", "  opponent/action mask")
+
+    # The arrival geometry the scripted policies run per model. Module-level
+    # functions, so each module that `from`-imported the name is patched — the
+    # binding in the importing module is what the call site resolves.
+    import wargame_rl.wargame.envs.baseline.policy as baseline_policy
+    import wargame_rl.wargame.envs.baseline.scripted_contest_and_spread as contest
+    import wargame_rl.wargame.envs.baseline.scripted_squad_march as squad_march
+
+    for module in (baseline_policy, squad_march, contest):
+        for function in ("step_toward_objective", "steps_toward_objective"):
+            if hasattr(module, function):
+                timings.wrap(module, function, f"  opponent/{function}")
+
+
+# The opponent-turn sections above; anything else inside the turn (the mirror,
+# loops, numpy glue) is printed as the unaccounted remainder.
+OPPONENT_SECTIONS = (
+    "  opponent/select_action",
+    "  opponent/apply (movement)",
+    "  opponent/resolve shooting",
+    "  opponent/action mask",
+)
+
+
 def _instrument(env: WargameEnv, timings: _Timings) -> None:
     """Wrap the sections of `step()` worth attributing time to.
 
@@ -90,7 +161,7 @@ def _instrument(env: WargameEnv, timings: _Timings) -> None:
     """
     timings.wrap(env.phase_manager, "calculate_reward", "reward")
     timings.wrap(env, "_get_obs", "observation build")
-    timings.wrap(env, "_apply_opponent_action", "opponent turn")
+    _instrument_opponent_turn(timings, env)
     _instrument_line_of_sight(timings, env)
 
     for phase in env.phase_manager.phases:
@@ -206,6 +277,17 @@ def _print_report(
         per_step = seconds / n_steps * 1000
         calls = timings.calls[label] / n_steps
         print(f"  {label:<34} {per_step:8.3f} ms  {share(seconds)}  {calls:6.1f} calls")
+
+    # What the opponent-turn sections do not cover: the mirror, loops, glue.
+    # Printed so a growing remainder is visible rather than silently absorbed.
+    turn = timings.total.get("opponent turn", 0.0)
+    if turn > 0.0:
+        accounted = sum(timings.total.get(label, 0.0) for label in OPPONENT_SECTIONS)
+        remainder = turn - accounted
+        print(
+            f"  {'  opponent/[unaccounted]':<34} {remainder / n_steps * 1000:8.3f} ms"
+            f"  {remainder / turn * 100:5.1f}% of the turn"
+        )
 
     print()
     print(
