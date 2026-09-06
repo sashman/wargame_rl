@@ -12,6 +12,24 @@ env** and reads `env._action_handler`: an opponent policy is constructed inside
 `WargameEnv.__init__`, so it can do neither, and it must size from the *opponent's*
 handler rather than the player's.
 
+**`model/per_model/` is a SECOND network family** (issue #283/#285), used only by
+the per-model facade (`envs/per_model/`) and constructed by nothing else:
+`SetNetwork` — a size-independent set encoder whose weights depend on **no**
+scenario count (Principle 2), so one instance serves any army/objective/terrain
+count with no retraining (`tests/test_per_model_network.py` pins it end to end).
+Player-model tokens self-attend and cross-attend to a typed context union (game,
+both sides' unit tokens, opponent models, objectives, terrain); relations
+(offset, sight/cover, same-unit, expected damage) enter as additive per-head
+attention biases from one relation embedder, never as token columns. One forward
+pass yields the selector (who acts), the value, and latents the phase-conditioned
+heads read: a displacement head over the polar bins, one pointer mechanism for
+every "name an entity" choice (shooting target first), and a declaration head.
+Its observation is built env-side (`envs/per_model/observation.py`, numpy — envs
+may not import model); `batch.collate` pads to the **batch maximum**, never to a
+config budget. `SetAgent` samples one joint (model, declaration, action) step.
+No play-time decode exists for this family, by design. Old checkpoints and the
+`TransformerNetwork` pipeline are untouched.
+
 DQN and `MLPNetwork` were removed once neither had been trained in months. Two
 things survived that removal because the transformer needs them: `common/layers.py`
 (`Block`, `LayerNorm`, `SelfAttention`, and `MLP` — the *feed-forward half of a

@@ -745,6 +745,18 @@ class PerModelEnv(WargameEnv):
             mask &= in_unit
         return mask
 
+    def unit_needs_declaration(self, model_index: int) -> bool:
+        """True when selecting this model would open its unit's declaration.
+
+        What an agent needs to know to include the declaration factor in a
+        step's log-prob: the declaration rides on the unit's opening step, and
+        this is the public form of "has this unit declared this phase".
+        """
+        if self._pending_close or self._episode_over:
+            return False
+        unit = int(self.wargame_models[model_index].group_id)
+        return unit not in self._declared
+
     def current_action_mask(self) -> np.ndarray:
         """``(n_models, n_actions)`` legality for the current phase.
 

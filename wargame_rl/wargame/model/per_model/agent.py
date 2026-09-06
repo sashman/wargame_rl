@@ -1,0 +1,188 @@
+"""Drives the per-model facade with a `SetNetwork`: one step, one joint sample.
+
+The step's action is the pair (model, action) — and on a unit's opening step
+the triple (model, declaration, action) — whose log-prob is the sum of the
+factors' log-probs, exactly the quantity PPO's ratio needs (#286). The agent
+owns the one piece of masking the network cannot: whether the advance rungs
+are offered depends on the unit's declaration, which on an opening step is
+sampled in the same breath.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import torch
+
+from wargame_rl.wargame.envs.per_model.facade import PerModelEnv
+from wargame_rl.wargame.envs.per_model.observation import build_token_observation
+from wargame_rl.wargame.envs.per_model.types import (
+    MoveDeclaration,
+    PerModelAction,
+    PerModelObservation,
+    StepKind,
+)
+from wargame_rl.wargame.envs.types import BattlePhase
+from wargame_rl.wargame.model.per_model.batch import collate
+from wargame_rl.wargame.model.per_model.net import NEG_INF, SetNetwork
+
+# Declarations that consume the unit on its opening step: the action factor is
+# then trivially STAY and is not sampled.
+_SKIP_DECLARATIONS: dict[BattlePhase, frozenset[int]] = {
+    BattlePhase.movement: frozenset({int(MoveDeclaration.remain_stationary)}),
+    BattlePhase.shooting: frozenset({1}),
+    BattlePhase.charge: frozenset({0}),
+}
+
+
+@dataclass(slots=True)
+class StepDecision:
+    """One sampled step and the quantities the training loop keeps."""
+
+    action: PerModelAction
+    log_prob: float
+    value: float
+    entropy: float
+
+
+class SetAgent:
+    """Samples (or argmaxes) one facade step from a `SetNetwork`."""
+
+    def __init__(self, network: SetNetwork, device: torch.device | None = None):
+        self.network = network
+        self.device = device or torch.device("cpu")
+
+    @torch.no_grad()
+    def act(
+        self,
+        env: PerModelEnv,
+        observation: PerModelObservation,
+        *,
+        greedy: bool = False,
+        generator: torch.Generator | None = None,
+    ) -> StepDecision:
+        """Decide the next step for `observation`.
+
+        A turn-closing step carries no decision: the action is the empty
+        close, the log-prob is zero, and the value is still computed — the
+        closing step is a real state PPO bootstraps through.
+        """
+        token_observation = build_token_observation(env, observation)
+        batch = collate([token_observation], device=self.device)
+        output = self.network(batch)
+
+        if observation.kind is StepKind.turn_close:
+            return StepDecision(
+                action=PerModelAction(model_index=None),
+                log_prob=0.0,
+                value=float(output.value[0]),
+                entropy=0.0,
+            )
+
+        model_index, selector_log_prob, selector_entropy = _pick(
+            output.selector_logits[0], greedy, generator
+        )
+        logits = self.network.action_logits(
+            output, batch, torch.tensor([model_index], device=self.device)
+        )
+
+        log_prob = selector_log_prob
+        entropy = selector_entropy
+        declaration: int | None = None
+        phase = observation.phase or BattlePhase.movement
+        opening = env.unit_needs_declaration(model_index)
+        if opening:
+            declaration, declaration_log_prob, declaration_entropy = _pick(
+                logits.declaration[0], greedy, generator
+            )
+            log_prob += declaration_log_prob
+            entropy += declaration_entropy
+
+        action = 0
+        skip = declaration is not None and declaration in _SKIP_DECLARATIONS.get(
+            phase, frozenset()
+        )
+        if phase is BattlePhase.fight or skip:
+            # Declaration-only steps: the action factor is trivially STAY.
+            pass
+        elif phase is BattlePhase.shooting:
+            choice, choice_log_prob, choice_entropy = _pick(
+                logits.target[0], greedy, generator
+            )
+            log_prob += choice_log_prob
+            entropy += choice_entropy
+            action = self._shooting_action(env, choice)
+        else:
+            combined = self._movement_logits(
+                env, logits.displacement[0], logits.advance[0], model_index, declaration
+            )
+            choice, choice_log_prob, choice_entropy = _pick(combined, greedy, generator)
+            log_prob += choice_log_prob
+            entropy += choice_entropy
+            action = self._movement_action(env, choice)
+
+        return StepDecision(
+            action=PerModelAction(
+                model_index=model_index, action=action, declaration=declaration
+            ),
+            log_prob=log_prob,
+            value=float(output.value[0]),
+            entropy=entropy,
+        )
+
+    def _movement_logits(
+        self,
+        env: PerModelEnv,
+        displacement: torch.Tensor,
+        advance: torch.Tensor,
+        model_index: int,
+        declaration: int | None,
+    ) -> torch.Tensor:
+        """STAY + movement bins, with the advance rungs appended when offered.
+
+        The rungs are offered exactly when the model's unit has declared an
+        advance — already (the env's own mask then also carries them), or in
+        this very step's declaration factor.
+        """
+        offered = bool(env.wargame_models[model_index].declared_advance) or (
+            declaration == int(MoveDeclaration.advance)
+        )
+        if advance.shape[0] == 0 or not offered:
+            advance = torch.full_like(advance, NEG_INF)
+        return torch.cat([displacement, advance], dim=0)
+
+    def _movement_action(self, env: PerModelEnv, choice: int) -> int:
+        handler = env.player_action_handler
+        n_displacement = 1 + handler.n_move_actions
+        if choice == 0:
+            return 0  # STAY
+        if choice < n_displacement:
+            return handler.movement_slice.start + (choice - 1)
+        advance_slice = handler.advance_slice
+        assert advance_slice is not None
+        return advance_slice.start + (choice - n_displacement)
+
+    def _shooting_action(self, env: PerModelEnv, choice: int) -> int:
+        if choice == 0:
+            return 0  # hold fire = STAY
+        shooting_slice = env.player_action_handler.shooting_slice
+        assert shooting_slice is not None
+        unit_ids = sorted(
+            {int(m.group_id) for m in env.opponent_models}
+        )  # the pointer's candidate order (ascending unit id)
+        return shooting_slice.start + unit_ids[choice - 1]
+
+
+def _pick(
+    logits: torch.Tensor, greedy: bool, generator: torch.Generator | None
+) -> tuple[int, float, float]:
+    """Sample (or argmax) one masked categorical; return index, log-prob, entropy."""
+    log_probs = torch.log_softmax(logits, dim=-1)
+    probs = log_probs.exp()
+    finite = torch.isfinite(log_probs)
+    entropy = float(-(probs[finite] * log_probs[finite]).sum())
+    if greedy:
+        index = int(torch.argmax(log_probs))
+    else:
+        index = int(torch.multinomial(probs, 1, generator=generator))
+    return index, float(log_probs[index]), entropy
