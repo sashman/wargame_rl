@@ -1687,6 +1687,13 @@ attributed.
   that orders the finding before its retraction. The tripwire is the index row: if
   a claim reached `reports/README.md` it gets the full ceremony; if not, it is a
   draft, so correct it in place.
+- **The board is [Wargame RL](https://github.com/users/sashman/projects/2)**
+  (`gh project item-list 2 --owner sashman`), linked to the repo. Columns:
+  Backlog · Blocked · In progress · **Measured, not landed** · Done.
+  ⚠ **That fourth column is the one this repo actually needs** — a generic board
+  files a finished-but-unwritten experiment under Done and the debt disappears.
+  It is the board view of `needs:writeup`, as `Blocked` is of `hold`.
+  ⚠ Projects needs the `project` token scope: `gh auth refresh -h github.com -s project`.
 - Labels and required fields live in `.github/ISSUE_TEMPLATE/` and `gh label list`,
   and are **not restated here**, so they cannot drift.
 
