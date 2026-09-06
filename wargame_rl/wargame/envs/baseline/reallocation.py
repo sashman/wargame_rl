@@ -38,8 +38,16 @@ def choose_surplus_reallocation(
     models: list[WargameModel],
     env: WargameEnv,
     min_stack: int = 4,
+    exclude_groups: frozenset[int] = frozenset(),
+    exclude_targets: frozenset[int] = frozenset(),
 ) -> tuple[int, int] | None:
     """`(donor group_id, target objective index)`, or None on boards without one.
+
+    `exclude_groups` are treated as having ALREADY LEFT: their models are
+    dropped from the player's counts, so the surplus test for the next donor
+    sees the board as it will be once they march. `exclude_targets` are not
+    offered again. Both default empty, which is the single-redirect rule
+    exactly as it stood -- they exist so a caller can iterate it.
 
     Contest first — the opponent's weakest-held objective — falling back to the
     nearest empty one; nothing at all when no squad is surplus. The donor must
@@ -52,8 +60,17 @@ def choose_surplus_reallocation(
         return None
     alive = alive_mask_for(models)
     cache = compute_distances(models, objectives, alive_mask=alive)
+    # Counted WITHOUT the groups already redirected: they are committed to
+    # marching off, so leaving them in would make the next surplus test read a
+    # stack that is about to shrink.
+    counting = alive
+    if exclude_groups:
+        counting = alive & np.array(
+            [int(m.group_id) not in exclude_groups for m in models], dtype=bool
+        )
+    counted = compute_distances(models, objectives, alive_mask=counting)
     player_counts = objective_counts_from_norms_offset(
-        cache.model_obj_norms_offset, cache.obj_radii
+        counted.model_obj_norms_offset, counted.obj_radii
     )
     opponent_cache = compute_distances(
         env.opponent_models,
@@ -77,6 +94,8 @@ def choose_surplus_reallocation(
     on_source = cache.model_obj_norms_offset[:, source] <= cache.obj_radii[source]
     by_group: dict[int, int] = {}
     for index, model in enumerate(models):
+        if int(model.group_id) in exclude_groups:
+            continue
         if alive[index] and on_source[index]:
             by_group[int(model.group_id)] = by_group.get(int(model.group_id), 0) + 1
     if not by_group:
@@ -90,6 +109,7 @@ def choose_surplus_reallocation(
         index
         for index in range(len(objectives))
         if opponent_counts[index] > player_counts[index]
+        and index not in exclude_targets
     ]
     if theirs:
         return donor, min(theirs, key=lambda index: int(opponent_counts[index]))
@@ -97,7 +117,9 @@ def choose_surplus_reallocation(
     empty = [
         index
         for index in range(len(objectives))
-        if player_counts[index] == 0 and opponent_counts[index] == 0
+        if player_counts[index] == 0
+        and opponent_counts[index] == 0
+        and index not in exclude_targets
     ]
     if not empty:
         return None

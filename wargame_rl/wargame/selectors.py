@@ -80,6 +80,7 @@ def build_action_selector(
     decode_stay: bool = False,
     reallocate: bool = False,
     charge_decode: bool = False,
+    reallocate_max: int = 1,
 ) -> ResolvedSelector:
     """Resolve `spec` against the filesystem first, then the baseline registry.
 
@@ -104,7 +105,13 @@ def build_action_selector(
     """
     if is_checkpoint(spec) or Path(spec).exists():
         return _resolve_checkpoint(
-            spec, env, decode_topk, decode_stay, reallocate, charge_decode
+            spec,
+            env,
+            decode_topk,
+            decode_stay,
+            reallocate,
+            charge_decode,
+            reallocate_max,
         )
     return _resolve_baseline(spec)
 
@@ -132,6 +139,7 @@ def _resolve_checkpoint(
     decode_stay: bool,
     reallocate: bool = False,
     charge_decode: bool = False,
+    reallocate_max: int = 1,
 ) -> ResolvedSelector:
     """Load a policy network and wrap it as an `ActionSelector`.
 
@@ -179,7 +187,9 @@ def _resolve_checkpoint(
                 # AFTER the joint decode: the redirect is rigid, so a squad the
                 # joint decode certified coherent stays coherent, and the env's
                 # referee judges the result either way.
-                actions = apply_reallocation(actions, env_)
+                actions = apply_reallocation(
+                    actions, env_, max_redirects=reallocate_max
+                )
         return WargameEnvAction(actions=actions)
 
     return ResolvedSelector(

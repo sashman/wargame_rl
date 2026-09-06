@@ -38,6 +38,7 @@ def apply_reallocation(
     actions: list[int],
     env: Any,
     min_stack: int = 4,
+    max_redirects: int = 1,
 ) -> list[int]:
     """Redirect one surplus squad's movement actions, or return `actions` as-is.
 
@@ -57,29 +58,47 @@ def apply_reallocation(
     movement = getattr(handler, "movement_slice", None)
     if movement is None:
         return actions
-    branch = choose_surplus_reallocation(env.player_models, env, min_stack)
-    if branch is None:
-        return actions
-    donor, target = branch
-    members = [
-        index
-        for index, model in enumerate(env.player_models)
-        if int(model.group_id) == donor and model.is_alive
-    ]
-    if not members:
-        return actions
-    centre = np.asarray(env.objectives[target].location, dtype=float)
-    positions = np.array([env.player_models[i].location for i in members], dtype=float)
-    centroid = positions.mean(axis=0)
+    redirected = list(actions)
     grid = handler.movement_displacements()
-    best = int(
-        np.argmin(
-            np.linalg.norm(
-                (centroid[np.newaxis, :] + grid) - centre[np.newaxis, :], axis=1
+    moved_groups: set[int] = set()
+    used_targets: set[int] = set()
+    changed = False
+    # Iterated: each pass re-asks the rule with the groups already committed
+    # treated as gone, so a board with several over-stacked points can empty
+    # more than one of them in a turn. `max_redirects=1` is the original rule.
+    for _ in range(max(1, max_redirects)):
+        branch = choose_surplus_reallocation(
+            env.player_models,
+            env,
+            min_stack,
+            frozenset(moved_groups),
+            frozenset(used_targets),
+        )
+        if branch is None:
+            break
+        donor, target = branch
+        members = [
+            index
+            for index, model in enumerate(env.player_models)
+            if int(model.group_id) == donor and model.is_alive
+        ]
+        if not members:
+            break
+        centre = np.asarray(env.objectives[target].location, dtype=float)
+        positions = np.array(
+            [env.player_models[i].location for i in members], dtype=float
+        )
+        centroid = positions.mean(axis=0)
+        best = int(
+            np.argmin(
+                np.linalg.norm(
+                    (centroid[np.newaxis, :] + grid) - centre[np.newaxis, :], axis=1
+                )
             )
         )
-    )
-    redirected = list(actions)
-    for index in members:
-        redirected[index] = movement.start + best
-    return redirected
+        for index in members:
+            redirected[index] = movement.start + best
+        moved_groups.add(donor)
+        used_targets.add(target)
+        changed = True
+    return redirected if changed else actions
