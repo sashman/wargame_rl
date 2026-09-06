@@ -429,6 +429,11 @@ def main() -> None:
     # is the supported route into the weights, since folding a decode into
     # PPO itself measured -51.8 vp.
     reallocate = bool(int(sys.argv[8])) if len(sys.argv) > 8 else False
+    # ⚠ Without this the teacher DECLARES charges it cannot execute: a factored
+    # policy almost never puts the one legal joint rung in every squadmate's
+    # top-K, which is the whole reason `apply_charge_decode` exists. Distilling
+    # such a teacher on a melee config clones the declaration and not the move.
+    charge_decode = bool(int(sys.argv[9])) if len(sys.argv) > 9 else False
     # Seeds the weight init and the batch shuffling -- the ONLY things that
     # differ between two clones of the same demonstrations, and worth 4.7 vp of
     # held-out score. Unseeded, a clone is not reproducible and a single one is
@@ -456,6 +461,7 @@ def main() -> None:
         create_environment(env_config=config),
         decode_topk,
         reallocate=reallocate,
+        charge_decode=charge_decode,
     )
     select, teacher_label = resolved.select, resolved.label
     # ⚠ **The key carries a FINGERPRINT OF THE CONFIG, not just its filename.**
@@ -471,6 +477,7 @@ def main() -> None:
     fingerprint = hashlib.sha256(config.model_dump_json().encode()).hexdigest()[:12]
     cache = Path("checkpoints/clone_data") / (
         f"{teacher_label}-k{decode_topk}{'-realloc' if reallocate else ''}"
+        f"{'-charge' if charge_decode else ''}"
         f"-{Path(config_path).stem}"
         f"-{n_episodes}-g{gamma}-{fingerprint}-v2.pt"
     )
@@ -487,7 +494,8 @@ def main() -> None:
     else:
         print(
             f"collecting {n_episodes} episodes of '{teacher_label}' "
-            f"(decode_topk={decode_topk}, reallocate={reallocate}) on {config_path}"
+            f"(decode_topk={decode_topk}, reallocate={reallocate}, "
+            f"charge_decode={charge_decode}) on {config_path}"
         )
         states, masks, actions, returns, phases = collect(
             select, config, n_episodes, gamma

@@ -1105,6 +1105,43 @@ config that trains, agent at K=3.
 The single most expensive class of error in this project. Every rule below was
 paid for.
 
+- ⚠ **MEASURE THE COMPARATOR AT THE SAME n AS THE ARM, AND PROPAGATE ITS SE.** A
+  deterministic script is **not a constant**: it is a fixed policy sampled over
+  scenarios, and it carries the same per-scenario noise the agent does. The
+  melee ladder's bar was a single n=45 estimate quoted to one decimal as if
+  exact; remeasured at n=180 its `vs_deny` value moved **+11.8 → +36.8**. Every
+  ladder row ever published in that goal carried an unpropagated **±12.7**. See
+  [the retraction](reports/2026-09-06-the-ladder-was-measurement-noise.md).
+- ⚠ **NEVER quote an across-seed SE for a claim about the game when every seed
+  shares the evaluation scenarios.** Scenario noise is then **common-mode** and
+  does not shrink with seeds, so an n=6 SE omits it entirely — it read
+  2.8–8.1 SE on four cells that a paired across-scenario estimator put at
+  t = −0.03 to 1.12. Report the **paired per-scenario** estimator, or both.
+  Seed variance was never the binding constraint on that ladder; **episodes
+  were** (per-seed means spanned just +50 to +66 where scenarios spanned ±85).
+- ⚠ **Raising n moves the MEAN as well as the interval.** A pre-registered
+  prediction that `vs_shoot` would clear at t≈2.6 failed because n=45 → n=180
+  moved its point estimate **−15.9**. Predicting only the interval assumes the
+  small-n estimate was unbiased, which is the same error as trusting the
+  comparator, one level up.
+- ⚠ **A sign count does not always discriminate — check what it would be under
+  the effect you are claiming.** At a per-scenario sd of ~85 a *true* +9.5
+  effect predicts 24.4/45 and a true +15.6 predicts 25.9/45; observed 22 and 25.
+  The standing "quote a t AND a sign count" rule assumes the count is
+  informative, and at this noise level it is not.
+- ⚠ **A TUNING SWEEP NEEDS THE SAME n DISCIPLINE AS THE ARM IT FEEDS.** A
+  held-out sweep at n=90 x 3 seeds put `min_stack` 4 → 2 at **+5.2, 3/3,
+  t≈2.9** on `vs_shoot` and slightly *negative* on `refereed`; confirmed at
+  n=180 x 6 it is **+0.51 (t=0.45)** and **+1.51 (t=2.40)** — the tuning
+  transferred in **neither magnitude nor location**. Tune-then-confirm on a
+  disjoint seed band is what caught it (bands: evaluation 700000+, in-run
+  eval 500000+, baselines 10000+, clone 800000+, tuning 900000+), and
+  adopting a threshold from a sweep alone would have put a false positive on
+  the record. See [the report](reports/2026-09-06-the-tuning-band-picked-the-wrong-cells.md).
+- **n=45 cannot resolve this game.** Per-scenario sd is 81–89, so SE ≈ 89/√n:
+  ±12.7 at n=45, ±6.3 at n=180, ±3.2 at n=720. Margins of 5–15 vp — which is
+  every arm difference ever measured here — need **n ≥ 180 on both sides**.
+
 - **Measure the configuration that SHIPS, not an intermediate one.** Twice in two
   days a partial change pointed the opposite way from the whole: new terrain under
   the *old* rectangular deployment read "the tables are harder to hold" when the
@@ -1611,6 +1648,15 @@ measurements skipped (`25v25_maps_advance_refereed`, held-out nine, n=10,
   side alone fails at the tensor.
 
 ### Settled — do not re-run
+
+- **The decode stack is at its ceiling for the melee ladder.** Three knobs
+  measured at n=180, six seeds, paired, pre-registered: `decode_stay` is a null
+  (**+0.52 ± 0.31**), **iterating the reallocation is NEGATIVE** (−1.28 ± 0.76,
+  and −4.33 / t=−3.17 on `vs_deny`), and `min_stack` 4 → 2 buys **+5.2 on
+  `vs_shoot` and ~0 on `refereed`**. ⚠ Do not re-run iteration — the author
+  predicted +3 to +8, wrote the code, and it lost, with a held-out tuning band
+  agreeing independently. See
+  [the report](reports/2026-09-06-three-decode-knobs-and-none-of-them-pays.md).
 
 - **The agent does not use terrain for cover; it manages range.** Established by
   deleting all terrain (exposure 0.116 → 0.120) and by doubling weapon range (win
