@@ -651,16 +651,26 @@ elo-table env_config:
 # One-shot: create branch from main, commit, push, open PR. Use after staging changes.
 # Always branches from main; if not on main, checks out main and pulls first.
 # Example: just ship feature/my-feature "Add reward shaping for distance"
+# Example, closing an issue: just ship fix/stale-cols "Drop stale columns" 237
 # PR title and body are filled from the commit message (gh pr create --fill).
 # Commit uses title + body so --fill gets a PR description (body = same as title).
-ship branch commit_message:
+#
+# An issue number appends a `Closes #N` trailer as a THIRD -m, so it lands in the
+# commit body and therefore in the --fill PR body too. It has to be in the commit,
+# not only the PR: most merges here are merge commits rather than squashes, so the
+# trailer reaching `main` is what closes the issue.
+#
+# ⚠ The single quotes inside the conditional are load-bearing. `just` substitutes
+# text and hands the line to sh; unquoted, `#237` starts a shell comment and eats
+# the rest of the line silently. Verify with `just -n ship feature/x "msg" 237`.
+ship branch commit_message issue='':
 	git stash -u
 	git checkout main
 	git pull
 	@git checkout -b {{branch}} 2>/dev/null || git checkout {{branch}}
 	git stash pop
 	git add -A
-	git commit -m "{{commit_message}}" -m "{{commit_message}}"
+	git commit -m "{{commit_message}}" -m "{{commit_message}}" {{ if issue != "" { "-m 'Closes #" + issue + "'" } else { "" } }}
 	git push -u origin {{branch}}
 	gh pr create --fill
 

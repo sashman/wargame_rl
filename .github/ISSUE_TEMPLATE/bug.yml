@@ -1,0 +1,103 @@
+name: Bug
+description: Behaviour diverges from docs/rules/ or from its own spec.
+title: "fix: "
+labels: ["kind:bug"]
+body:
+  - type: textarea
+    id: symptom
+    attributes:
+      label: What is wrong
+      placeholder: "A move may end inside an enemy's engagement range. It should not."
+    validations:
+      required: true
+
+  - type: textarea
+    id: rule
+    attributes:
+      label: The rule or spec it violates, cited by file
+      description: docs/rules/ is the authority on what is legal. Quote it.
+      placeholder: |
+        `docs/rules/09-movement-phase.md` — both Normal and Advance moves say
+        *"After moving: the unit must be unengaged."*
+
+        `docs/rules/03-moving.md` is explicit that this is about the END, not the path:
+        > Passing through an enemy unit's engagement range during a move does not
+        > make the moving unit engaged. Only where it *ends* matters.
+    validations:
+      required: true
+
+  - type: textarea
+    id: cost
+    attributes:
+      label: What it currently costs, measured
+      description: >-
+        With config, opponent and n. Without this you cannot say afterwards what
+        the fix bought — and "cheap" bugs are how a +7.0 vp fix goes
+        unprioritised.
+      placeholder: |
+        configs/experiments/25v25_maps_advance.yaml, held-out nine, squad_march_take, n=2 per map:
+        player models engaged (cannot shoot): 4.61% of model-steps
+        opponent models engaged: 5.27%
+
+        Calibration: the 2026-08-19 corpse bug caused 7.94pp of spurious
+        suppression and fixing it was worth +7.0 vp.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: voids
+    attributes:
+      label: Does the fix void numbers already on file?
+      description: >-
+        "Yes" means add the voids-numbers label, and add a bullet to
+        CLAUDE.md § What voids a number at close. Scope it honestly — the
+        2026-08-23 endpoint-rule entry under-scoped itself and bisecting found a
+        second cause nobody had named.
+      options:
+        - "Yes — figures on the affected configs are void; name them at close"
+        - "No — measured null on score, voids nothing (cf. the LOS-symmetry fix, #211)"
+        - "Unknown — must be measured before landing"
+    validations:
+      required: true
+
+  - type: textarea
+    id: prior_attempts
+    attributes:
+      label: Failed attempts, and why they failed
+      description: Stops the next person re-attempting reverted work.
+      placeholder: |
+        ⚠ commit 4729073, reverted. Inflating enemy blocker radii by
+        engagement_range turns an END-STATE constraint into a 2"-thick
+        impassable wall: 87% of opponent-held objectives had no legal spot at
+        all, and the decoder's forward model was left un-inflated, so it
+        diverged from the env by exactly 2.0" against a 2" coherency band.
+
+  - type: textarea
+    id: shape
+    attributes:
+      label: The correct shape
+      placeholder: |
+        1. Resolve the move normally — enemies block at their true radius.
+        2. If the endpoint lies inside an enemy's engagement range, back along
+           the same heading to just outside it.
+        3. If no such point exists short of the start, stand still.
+    validations:
+      required: true
+
+  - type: input
+    id: when
+    attributes:
+      label: When it may land
+      description: If this must wait, say why and add the `hold` label.
+      placeholder: "After the advance arm scores. Do not land while a run is training."
+
+  - type: checkboxes
+    id: closeout
+    attributes:
+      label: "Close-out (bugs do NOT use the four-destination list — this is the whole list)"
+      options:
+        - label: A behavioural test pins the fixed behaviour.
+        - label: "If voids-numbers: a bullet in CLAUDE.md § What voids a number, naming the configs and the measured size."
+        - label: "`docs/rules/implementation-status.md` row updated if the gap-map moved."
+        - label: "Goldens byte-identical, or regenerated deliberately and named in the PR."
+        - label: "PR body says `Closes #<this>`."

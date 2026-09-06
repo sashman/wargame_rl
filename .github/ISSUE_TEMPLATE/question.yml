@@ -1,0 +1,107 @@
+name: Research question
+description: A question the record will answer with evidence. Owns arms.
+title: "Q: "
+labels: ["kind:question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A question **owns** arms; it does not run them. It closes when its
+        falsifier is answered — **including with a null** — and the finding has
+        landed in all four places at the bottom.
+
+        Doctrine entries become questions only when picked up. Cite them by ID in
+        the title (`Q: D-08 — ...`), never by title: titles get edited.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: The question, in one sentence
+      placeholder: "Does the agent pay for merely *having* the advance lever?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: prior
+    attributes:
+      label: What the record already says
+      description: >-
+        Quote the rows. CLAUDE.md § Settled — do not re-run exists because
+        questions get re-asked. If nothing on file bears on this, write
+        "nothing on file" — that is a legitimate answer and must be written out.
+      placeholder: |
+        CLAUDE.md § Offence is not reward-shapeable here — three arms, one
+        conclusion (−50.5, −42, −71.5).
+        reports/2026-08-23-the-critic-already-knows.md — the critic prices
+        spreading correctly (dV +2.63 ± 0.32, t=+8.3, 6 of 6 cells) while the
+        policy does not. So this is a SEARCH failure, and a reward term is not
+        the lever.
+    validations:
+      required: true
+
+  - type: textarea
+    id: falsifier
+    attributes:
+      label: What answer would change what we do
+      description: >-
+        If no answer changes an action, this is not a question, it is curiosity.
+        A question with no falsifier never closes.
+      placeholder: |
+        If contest beats spread and clears its kill, a play-time reflex ships on
+        frozen weights and no training run is needed. If neither clears it, the
+        neutral-ground form is forbidden on scripts and on an agent, permanently.
+    validations:
+      required: true
+
+  - type: input
+    id: doctrine
+    attributes:
+      label: Doctrine entry (D-NN), if this came from one
+      placeholder: "D-08"
+
+  - type: textarea
+    id: arms
+    attributes:
+      label: Arms
+      description: >-
+        One arm per line, ONE change per arm — a bundled change cannot be
+        attributed. Open each as a kind:arm issue and paste its number here. This
+        task list is the only parent/child mechanism the repo uses.
+      value: |
+        - [ ] #NNN —
+        - [ ] #NNN —
+    validations:
+      required: true
+
+  - type: dropdown
+    id: compute
+    attributes:
+      label: Compute
+      description: Drives the no-gpu label, which is the CPU box's work queue.
+      options:
+        - "No GPU — scripted policies, frozen weights, analysis"
+        - "GPU — training runs on the 4090"
+        - "Mixed — some arms need the GPU, some do not"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: gates
+    attributes:
+      label: Before opening
+      options:
+        - label: I checked CLAUDE.md § Settled — do not re-run, and this is not already answered.
+          required: true
+        - label: I checked reports/README.md's index for a row that already covers it.
+          required: true
+
+  - type: checkboxes
+    id: closeout
+    attributes:
+      label: "Close-out — all four, or the finding is not landed (CLAUDE.md § Where a finding lands)"
+      options:
+        - label: "1. `reports/<YYYY-MM-DD>-<slug>.md` written, with its provenance."
+        - label: "2. One-row index entry in `reports/README.md`, verdict bold and first."
+        - label: "3. Distilled standing rule in `CLAUDE.md` — or stated explicitly that no rule changed."
+        - label: "4. The live doc: `docs/play-doctrine-findings.md` / `configs/README.md` / `docs/rules/implementation-status.md` — or n/a."
+        - label: "`outcome:` label set; `needs:writeup` removed."

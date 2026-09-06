@@ -1951,8 +1951,8 @@ read −1.2 / +14.0 / +18.5, pooled **+10.4**.
   user-observed "agent ignores home" is, on the corrected game, no longer
   measurably leaving VP on the table for a script — the v12 REJECT is
   overdetermined, and the successor brief
-  (`.planning/successor-fold-design-brief.md`) should pursue the hunt fold on
-  its own merits, not as a home-guarding vehicle. If a future mission makes
+  ([issue #272](https://github.com/sashman/wargame_rl/issues/272)) should pursue
+  the hunt fold on its own merits, not as a home-guarding vehicle. If a future mission makes
   home pay differently, re-price then — the pricer is one committed command.
 
 ## 38b. Correction — §38a was a SIGN FLIP; the garrison value replicates post-referee
