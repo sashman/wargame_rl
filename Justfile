@@ -365,6 +365,11 @@ measure-throughput env_config n_steps='400' engaged='':
 record env_config_path='configs/dev/tiny.yaml':
 	uv run train.py --record-events --max-epochs 1 --no-wandb --env-config-path {{env_config_path}}
 
+# Record a per-model driver checkpoint's greedy episode to an event log
+# (replay/analyze with the ordinary recipes below)
+record-per-model checkpoint env_config seed='500000':
+	@uv run python -m scripts.record_per_model {{checkpoint}} {{env_config}} {{seed}}
+
 # Replay a recorded match event log (narrate all steps)
 replay file:
 	uv run replay_events.py narrate {{file}}
