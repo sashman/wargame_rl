@@ -170,3 +170,46 @@ and the constructors live in `domain/value_objects.py`, not in `types/`, because
 nothing in `config` builds one. Config carries plain `x`/`y` integers and
 placement turns them into positions. Keep it that way — the whole point of the
 single dtype declaration is that it has one home.
+
+## Two application contexts over one domain
+
+Since 2026-09-08 there are **two facades** over `domain/`, and they share the
+rules and nothing about the step:
+
+| | `envs/wargame.py` (phase facade) | `envs/per_model/` (per-model facade) |
+|---|---|---|
+| one `step()` is | one side's whole phase: every model's action at once | one **decision**: open a unit with a declaration, act with one model, name a charge target, or close the turn |
+| observation | `WargameEnvObservation` (fixed-width, per-model blocks) | `PerModelObservation`: a `DecisionPoint` stating the next legal decision, plus what the turn revealed |
+| dice | three private generators | a `DiceSource` port (`domain/dice.py`); `SeededDice` reproduces the phase facade's streams |
+| scripts | `BaselinePolicy.select_action` per phase | the same policy through `ScriptedSeat`, planned once per phase and replayed in the engine's resolution order |
+| reward (stage 1) | per step | the same `StepContext`, settled per **window** — one of our stepped phases — at the point the phase facade's step would have ended |
+
+What is **shared**: `Battle`, `GameClock`, placement, the `ActionHandler`'s
+decode and legality helpers (never `apply`), `resolve_move` /
+`back_off_to_unengaged`, `resolve_shooting_phase`, the fight scheduler's
+rules, every reward calculator, `BattleView`, the mission calculators and the
+scripted policies. **Nothing existing was edited** to add the second facade:
+the rules it needed that the domain did not yet state landed as new domain
+modules — `domain/activation.py` (the unit lock and the declaration value
+objects), `domain/fight_sequence.py` (the alternating-activation scheduler as
+a resumable sequence, with `fight_one_model`), `domain/unit_referees.py` (the
+unit-close judgements and the compulsory consolidation mode) and
+`domain/dice.py` (the port). `tests/test_per_model_layering.py` pins that
+those import only `domain/` and `types/`, that `per_model/` never imports
+`wargame.py`, and that nothing outside `per_model/` imports it.
+
+The bridge is the contract between them: `tests/test_per_model_bridge.py`
+plays a scripted policy through both facades on the same layout and dice and
+asserts positions, wounds, VP, reward and the combat dice position agree
+**bit for bit** at every point the phase facade's step would have returned.
+It holds on the golden map-pool scenario, the random-terrain shooting
+scenario, the advance scenario, and on a melee scenario until the first charge
+that stands — after which the per-model facade deliberately plays the rules
+chapter rather than the phase facade (both seats pile in and consolidate; a
+striker chooses its target).
+
+Every artefact the per-model facade emits carries `facade: "per_model"`
+(`PerModelProvenance`); an untagged artefact is the phase facade's, and
+`require_per_model` refuses it. The observation the network will train on,
+the PPO loop, and the evaluation tooling are stages 2–4 of GitHub issue #283
+and do not exist yet.
