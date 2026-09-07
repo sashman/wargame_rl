@@ -443,6 +443,7 @@ def train(
             network.eval()
             eval_rewards: list[float] = []
             eval_steps: list[int] = []
+            eval_successes: list[bool] = []
             result = evaluate_per_model(
                 eval_env,
                 agent,
@@ -450,6 +451,7 @@ def train(
                 name="eval",
                 episode_rewards=eval_rewards,
                 episode_steps=eval_steps,
+                episode_successes=eval_successes,
             )
             network.train()
             margins = np.array(result.vp_margin_per_episode, dtype=np.float64)
@@ -469,6 +471,12 @@ def train(
                 "reward/max_episode_reward": float(np.max(eval_rewards)),
                 "reward/min_episode_reward": float(np.min(eval_rewards)),
                 "mean_episode_steps": float(np.mean(eval_steps)),
+                # The whole-phase trainer's own definition (phase criteria met,
+                # in percent) — carried over via check_success, never
+                # approximated from another metric.
+                "success_rate": (
+                    100.0 * float(np.mean(eval_successes)) if eval_successes else 0.0
+                ),
                 # The passive-attractor instrument: the skip declarations
                 # gate five models through one greedy logit, and an eval
                 # sitting at the do-nothing fingerprint shows up here first.

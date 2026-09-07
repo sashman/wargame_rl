@@ -38,6 +38,7 @@ def evaluate_per_model(
     combat_seeds: list[int] | None = None,
     episode_rewards: list[float] | None = None,
     episode_steps: list[int] | None = None,
+    episode_successes: list[bool] | None = None,
 ) -> BaselineResult:
     """Greedily play one episode per seed and aggregate the outcome.
 
@@ -46,6 +47,9 @@ def evaluate_per_model(
     ``episode_rewards`` / ``episode_steps``, when given, are appended with
     each episode's summed scalar reward and model-step count — the inputs the
     whole-phase trainer's ``reward/*episode_reward`` metrics are built from.
+    ``episode_successes`` records the phase criteria's own verdict per
+    episode (`phase_manager.check_success`, the whole-phase trainer's
+    `success_rate` definition, not an approximation of it).
     """
     if combat_seeds is not None and len(combat_seeds) != len(seeds):
         raise ValueError(
@@ -69,6 +73,10 @@ def evaluate_per_model(
             episode_rewards.append(reward_total)
         if episode_steps is not None:
             episode_steps.append(steps)
+        if episode_successes is not None and env.last_step_context is not None:
+            episode_successes.append(
+                bool(env.phase_manager.check_success(env, env.last_step_context))
+            )
     return aggregate_result(name, metrics)
 
 
