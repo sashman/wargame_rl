@@ -327,7 +327,16 @@ def ppo_update(
         advantage_tensor = (advantage_tensor - mean) / std
 
     n = len(transitions)
-    totals = {"policy_loss": 0.0, "value_loss": 0.0, "entropy": 0.0}
+    totals = {
+        "policy_loss": 0.0,
+        "value_loss": 0.0,
+        "entropy": 0.0,
+        "train_loss": 0.0,
+        "clip_fraction": 0.0,
+        "approx_kl": 0.0,
+        "grad_norm": 0.0,
+        "grad_clipped_fraction": 0.0,
+    }
     batches = 0
     for _ in range(config.n_update_epochs):
         order = torch.randperm(n, generator=generator).tolist()
@@ -335,6 +344,7 @@ def ppo_update(
             index = order[start : start + config.minibatch_size]
             evaluated = evaluate_transitions(network, [transitions[i] for i in index])
             mask = evaluated.has_decision.float()
+            decisions = mask.sum().clamp(min=1.0)
             ratio = torch.exp(evaluated.log_probs - old_log_probs[index])
             advantage = advantage_tensor[index]
             surrogate = ratio * advantage
@@ -342,25 +352,52 @@ def ppo_update(
                 torch.clamp(ratio, 1.0 - config.clip_epsilon, 1.0 + config.clip_epsilon)
                 * advantage
             )
-            policy_loss = -(
-                torch.min(surrogate, clipped) * mask
-            ).sum() / mask.sum().clamp(min=1.0)
+            policy_loss = -(torch.min(surrogate, clipped) * mask).sum() / decisions
             value_loss = torch.nn.functional.mse_loss(
                 evaluated.values, return_tensor[index]
             )
             entropy_bonus = (
                 config.entropy_coef_selector * (evaluated.selector_entropy * mask).sum()
                 + config.entropy_coef_action * (evaluated.action_entropy * mask).sum()
-            ) / mask.sum().clamp(min=1.0)
+            ) / decisions
             loss = policy_loss + config.value_coef * value_loss - entropy_bonus
 
             optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(network.parameters(), config.max_grad_norm)
+            grad_norm = torch.nn.utils.clip_grad_norm_(
+                network.parameters(), config.max_grad_norm
+            )
             optimizer.step()
 
+            # The whole-phase trainer's update-health diagnostics, same
+            # definitions: clip_fraction over decision rows, approx_kl as the
+            # mean old-minus-new log-prob, and the PRE-clip gradient norm.
+            clip_hits = (
+                ((ratio - 1.0).abs() > config.clip_epsilon).float() * mask
+            ).sum() / decisions
+            approx_kl = ((old_log_probs[index] - evaluated.log_probs) * mask).sum() / (
+                decisions
+            )
             totals["policy_loss"] += float(policy_loss.detach())
             totals["value_loss"] += float(value_loss.detach())
             totals["entropy"] += float(entropy_bonus.detach())
+            totals["train_loss"] += float(loss.detach())
+            totals["clip_fraction"] += float(clip_hits.detach())
+            totals["approx_kl"] += float(approx_kl.detach())
+            totals["grad_norm"] += float(grad_norm)
+            totals["grad_clipped_fraction"] += float(
+                float(grad_norm) > config.max_grad_norm
+            )
             batches += 1
-    return {key: value / max(batches, 1) for key, value in totals.items()}
+    losses = {key: value / max(batches, 1) for key, value in totals.items()}
+    # Explained variance of the rollout's own value predictions against the
+    # realised returns — the whole-phase trainer's definition.
+    values = np.array([t.decision.value for t in transitions], dtype=np.float64)
+    returns_variance = float(np.var(returns))
+    losses["explained_variance"] = (
+        1.0 - float(np.var(returns - values)) / returns_variance
+        if returns_variance > 0
+        else 0.0
+    )
+    losses["n_minibatches"] = float(batches)
+    return losses

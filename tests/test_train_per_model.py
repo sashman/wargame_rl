@@ -73,7 +73,7 @@ def test_the_driver_trains_checkpoints_and_logs(tmp_path: Path) -> None:
         for line in (run_dir / "metrics.jsonl").read_text().splitlines()
     ]
     assert any("eval/vp_margin" in record for record in records)
-    assert any("policy_loss" in record for record in records)
+    assert any("loss/policy_loss" in record for record in records)
     provenance = json.loads((run_dir / "provenance.json").read_text())
     assert provenance["torch_threads"] == 2  # pinned and recorded, issue #306
 

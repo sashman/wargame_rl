@@ -36,11 +36,16 @@ def evaluate_per_model(
     seeds: list[int],
     name: str,
     combat_seeds: list[int] | None = None,
+    episode_rewards: list[float] | None = None,
+    episode_steps: list[int] | None = None,
 ) -> BaselineResult:
     """Greedily play one episode per seed and aggregate the outcome.
 
     The per-model counterpart of `evaluate_selector`: identical seeds give
     identical layouts, and the metrics come from the same extraction.
+    ``episode_rewards`` / ``episode_steps``, when given, are appended with
+    each episode's summed scalar reward and model-step count — the inputs the
+    whole-phase trainer's ``reward/*episode_reward`` metrics are built from.
     """
     if combat_seeds is not None and len(combat_seeds) != len(seeds):
         raise ValueError(
@@ -52,10 +57,18 @@ def evaluate_per_model(
         options = None if combat_seeds is None else {"combat_seed": combat_seeds[index]}
         observation, _ = env.reset(seed=seed, options=options)
         terminated = False
+        reward_total = 0.0
+        steps = 0
         while not terminated:
             decision = agent.act(env, observation, greedy=True)
-            observation, _reward, terminated, _truncated, _ = env.step(decision.action)
+            observation, reward, terminated, _truncated, _ = env.step(decision.action)
+            reward_total += float(reward)
+            steps += 1
         metrics.append(episode_metrics(env))
+        if episode_rewards is not None:
+            episode_rewards.append(reward_total)
+        if episode_steps is not None:
+            episode_steps.append(steps)
     return aggregate_result(name, metrics)
 
 

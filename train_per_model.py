@@ -31,14 +31,18 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import torch
 import typer
 from loguru import logger
 from pydantic_yaml import parse_yaml_raw_as
 
+from wargame_rl.wargame.envs.baseline.evaluate import evaluate_baseline
+from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
 from wargame_rl.wargame.envs.per_model import PerModelEnv
 from wargame_rl.wargame.envs.per_model.types import PerModelObservation
 from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.per_model import SetAgent, SetNetwork, SetNetworkConfig
 from wargame_rl.wargame.model.per_model.evaluate import evaluate_per_model
 from wargame_rl.wargame.model.per_model.ppo import (
@@ -46,12 +50,23 @@ from wargame_rl.wargame.model.per_model.ppo import (
     collect_rollout,
     ppo_update,
 )
+from wargame_rl.wargame.rating.elo import rating_from_score
+from wargame_rl.wargame.rating.score import margin_score
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
 # The whole-phase trainer's rollout band (model/ppo/lightning.py), reused so
 # neither facade trains on the evaluation bands (500000+/700000+/900000+).
 ROLLOUT_SEED_BASE = 0
+# The whole-phase trainer's scripted bar, measured once per run under the same
+# keys (model/common/lightning_base.py) — restated rather than imported so
+# this path stays free of Lightning.
+BASELINE_POLICIES = ("random", "squad_march", "squad_march_shoot")
+BASELINE_EPISODES = 20
+BASELINE_SEED_BASE = 10_000
+# One whole-phase epoch of experience: 2048 steps at 2 steps/round. Wandb
+# rows aggregate to this cadence so charts line up with the old runs'.
+WANDB_LOG_EVERY_ROUNDS = 1024
 
 
 def _git_revision() -> str:
@@ -132,6 +147,35 @@ def load_per_model_checkpoint(
     network.load_state_dict(payload["state_dict"])
     metadata = {key: value for key, value in payload.items() if key != "state_dict"}
     return network, metadata
+
+
+def _mean_breakdown(breakdowns: list[dict[str, float]]) -> dict[str, float]:
+    """Mean per-term episode totals over recent finished episodes."""
+    if not breakdowns:
+        return {}
+    keys = sorted({key for breakdown in breakdowns for key in breakdown})
+    return {
+        key: sum(b.get(key, 0.0) for b in breakdowns) / len(breakdowns) for key in keys
+    }
+
+
+def _mean_records(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Mean of the numeric fields over a logging window; last value otherwise."""
+    if not records:
+        return {}
+    merged: dict[str, Any] = {}
+    keys = {key for record in records for key in record}
+    for key in keys:
+        values = [r[key] for r in records if key in r]
+        if all(isinstance(v, (int, float)) for v in values):
+            merged[key] = sum(values) / len(values)
+        else:
+            merged[key] = values[-1]
+    # Counters and coordinates keep their latest value, not a window mean.
+    for key in ("rounds", "env_steps", "epoch_equivalent", "train_episodes"):
+        if key in records[-1]:
+            merged[key] = records[-1][key]
+    return merged
 
 
 def _declaration_shares(counts: dict[str, int], prefix: str) -> dict[str, float]:
@@ -267,12 +311,43 @@ def train(
     if use_wandb:
         import wandb
 
+        # Same project AND entity as every whole-phase run (the constants in
+        # model/common/wandb.py, not imported to keep Lightning off this
+        # path) — without the entity, runs land under the account default
+        # and vanish from the dashboard everything else reports to.
         wandb_run = wandb.init(  # type: ignore[attr-defined]
             project="wargame_rl",
+            entity="wargame_rl",
             group=wandb_group or None,
             name=name,
             config=provenance,
         )
+
+    # The scripted bar, measured once at start exactly as the whole-phase
+    # trainer's on_train_start does (same policies, same seed band, same
+    # episode count) and logged under the same keys: without a floor and a
+    # reference the eval numbers say nothing.
+    baseline_record: dict[str, Any] = {}
+    if use_wandb:
+        baseline_env = WargameEnv(config, renderer=None, build_info=False)
+        baseline_seeds = [BASELINE_SEED_BASE + i for i in range(BASELINE_EPISODES)]
+        for baseline_name in BASELINE_POLICIES:
+            bar = evaluate_baseline(
+                build_baseline_policy(baseline_name), baseline_env, baseline_seeds
+            )
+            baseline_record[f"eval/baseline_{baseline_name}_win_rate"] = (
+                bar.win_rate * 100
+            )
+            baseline_record[f"eval/baseline_{baseline_name}_vp_margin"] = bar.vp_margin
+            baseline_record[f"eval/baseline_{baseline_name}_at_objectives"] = (
+                bar.final_fraction_at_objectives
+            )
+            baseline_record[f"eval/baseline_{baseline_name}_fraction_alive"] = (
+                bar.final_fraction_alive
+            )
+        log.write({"rounds": 0, **baseline_record})
+        if wandb_run is not None:
+            wandb_run.log(baseline_record, step=0)
 
     # Seed the rollout env's layout stream once; later resets continue it.
     env.reset(seed=ROLLOUT_SEED_BASE + seed)
@@ -280,17 +355,26 @@ def train(
     observation: PerModelObservation | None = None
 
     episode_margins: list[float] = []
+    episode_breakdowns: list[dict[str, float]] = []
 
     def on_episode_end(finished: PerModelEnv) -> None:
         episode_margins.append(float(finished.player_vp - finished.opponent_vp))
+        episode_breakdowns.append(dict(finished.episode_reward_breakdown))
 
     rounds_done = 0
+    env_steps = 0
     next_eval = eval_every_rounds
     next_checkpoint = checkpoint_every_rounds
     started = time.perf_counter()
     overhead = 0.0  # eval + checkpoint wall time, excluded from rounds_per_s
+    # Wandb gets one aggregated row per whole-phase-epoch-equivalent (1024
+    # rounds) rather than one per 8-round rollout — the cadence every old
+    # dashboard was built on; the local JSONL keeps the per-update rows.
+    window: list[dict[str, Any]] = []
+    next_wandb_flush = WANDB_LOG_EVERY_ROUNDS
     while rounds_done < max_rounds:
         budget = min(ppo_config.rollout_rounds, max_rounds - rounds_done)
+        rollout_started = time.perf_counter()
         transitions, bootstrap, observation = collect_rollout(
             env,
             agent,
@@ -299,6 +383,8 @@ def train(
             generator=sample_generator,
             on_episode_end=on_episode_end,
         )
+        rollout_seconds = time.perf_counter() - rollout_started
+        update_started = time.perf_counter()
         losses = ppo_update(
             network,
             optimizer,
@@ -307,46 +393,99 @@ def train(
             ppo_config,
             generator=update_generator,
         )
+        update_seconds = time.perf_counter() - update_started
         rounds_done += budget
+        env_steps += len(transitions)
         elapsed = time.perf_counter() - started - overhead
+        n_minibatches = max(losses.pop("n_minibatches", 1.0), 1.0)
         record: dict[str, Any] = {
             "rounds": rounds_done,
+            "env_steps": env_steps,
+            "epoch_equivalent": rounds_done / WANDB_LOG_EVERY_ROUNDS,
             "steps": len(transitions),
             "rounds_per_s": rounds_done / elapsed,
-            **losses,
+            # The whole-phase trainer's names, same definitions.
+            "loss/train_loss": losses["train_loss"],
+            "loss/policy_loss": losses["policy_loss"],
+            "loss/value_loss": losses["value_loss"],
+            "loss/entropy_loss": losses["entropy"],
+            "train/clip_fraction": losses["clip_fraction"],
+            "train/approx_kl": losses["approx_kl"],
+            "train/explained_variance": losses["explained_variance"],
+            "train/grad_norm": losses["grad_norm"],
+            "train/grad_clipped_fraction": losses["grad_clipped_fraction"],
+            "perf/rollout_s": rollout_seconds,
+            "perf/update_s": update_seconds,
+            "perf/epoch_s": rollout_seconds + update_seconds,
+            "perf/env_steps_per_s": len(transitions) / max(rollout_seconds, 1e-9),
+            "perf/update_ms_per_minibatch": update_seconds * 1000.0 / n_minibatches,
             **_declaration_shares(agent.reset_declaration_counts(), "train/"),
         }
         if episode_margins:
             recent = episode_margins[-20:]
             record["train_vp_margin"] = sum(recent) / len(recent)
             record["train_episodes"] = len(episode_margins)
+        for name, value in _mean_breakdown(episode_breakdowns[-20:]).items():
+            record[f"reward/components/{name}"] = value
         log.write(record)
-        if wandb_run is not None:
-            wandb_run.log(record, step=rounds_done)
+        window.append(record)
+
+        if wandb_run is not None and (
+            rounds_done >= next_wandb_flush or rounds_done >= max_rounds
+        ):
+            next_wandb_flush = rounds_done + WANDB_LOG_EVERY_ROUNDS
+            wandb_run.log(_mean_records(window), step=rounds_done)
+            window = []
 
         if rounds_done >= next_eval or rounds_done >= max_rounds:
             next_eval = rounds_done + eval_every_rounds
             eval_started = time.perf_counter()
             network.eval()
+            eval_rewards: list[float] = []
+            eval_steps: list[int] = []
             result = evaluate_per_model(
                 eval_env,
                 agent,
                 seeds=[eval_seed_base + i for i in range(n_eval_episodes)],
                 name="eval",
+                episode_rewards=eval_rewards,
+                episode_steps=eval_steps,
             )
             network.train()
-            eval_record = {
+            margins = np.array(result.vp_margin_per_episode, dtype=np.float64)
+            eval_record: dict[str, Any] = {
                 "rounds": rounds_done,
+                # The whole-phase trainer's eval keys, same definitions —
+                # win_rate in percent, elo the monotone margin transform
+                # against this config's own opponent (not a fitted rating).
+                "eval/vp_player": result.player_vp,
+                "eval/vp_opponent": result.opponent_vp,
                 "eval/vp_margin": result.vp_margin,
-                "eval/win_rate": result.win_rate,
+                "eval/win_rate": result.win_rate * 100.0,
+                "eval/elo": rating_from_score(float(margin_score(margins).mean())),
+                "eval/fraction_alive": result.final_fraction_alive,
                 "eval/objectives_held": result.objectives_held,
-                "eval/coherency_rate": result.coherency_rate,
-                "eval/alive": result.final_fraction_alive,
+                "reward/mean_episode_reward": float(np.mean(eval_rewards)),
+                "reward/max_episode_reward": float(np.max(eval_rewards)),
+                "reward/min_episode_reward": float(np.min(eval_rewards)),
+                "mean_episode_steps": float(np.mean(eval_steps)),
                 # The passive-attractor instrument: the skip declarations
                 # gate five models through one greedy logit, and an eval
                 # sitting at the do-nothing fingerprint shows up here first.
                 **_declaration_shares(agent.reset_declaration_counts(), "eval/"),
             }
+            if result.coherency_rate is not None:
+                eval_record["eval/coherency_rate"] = result.coherency_rate
+            if result.models_out_of_coherency is not None:
+                eval_record["eval/models_out_of_coherency"] = (
+                    result.models_out_of_coherency
+                )
+            if result.exposure_rate is not None:
+                eval_record["eval/exposure_rate"] = result.exposure_rate
+            if result.terrain_proximity is not None:
+                eval_record["eval/terrain_proximity"] = result.terrain_proximity
+            if result.firepower_ratio is not None:
+                eval_record["eval/firepower_ratio"] = result.firepower_ratio
             log.write(eval_record)
             if wandb_run is not None:
                 wandb_run.log(eval_record, step=rounds_done)
