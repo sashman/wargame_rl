@@ -86,22 +86,36 @@ reward_phases:
 ## Where each term is paid under the per-model step
 
 The per-model facade (`envs/per_model/`, issues #283/#286) re-times every term
-without changing its mathematics — the same calculator objects, weights and
-per-episode state as the whole-phase manager, routed by
-`envs/per_model/reward_timing.py`:
+while **conserving each term's per-episode scalar total against the
+whole-phase facade** — the same calculator objects, weights and per-episode
+state as the whole-phase manager, routed and scaled by
+`envs/per_model/reward_timing.py`. ⚠ The scaling is load-bearing, not
+bookkeeping: the first shipped version paid action terms undivided (an
+audit measured `model_kills` **24×** heavy against every tuned weight) and
+state terms once per round where the whole-phase facade pays once per phase
+step (halved on the golden config).
 
 | timing | terms | paid |
 |---|---|---|
-| action | `closest_objective` / `_v2`, `model_kills`, `group_cohesion`, `charge_progress`, `declared_objective_progress`, `declared_target_progress` | on the acting model's own step, computed for that model alone |
-| state | `objective_hold`, `declared_objective_hold`, `unit_coherency` | once per turn cycle on the **turn-closing step**, mean over alive models (the whole-phase aggregation) |
-| global | every `GlobalRewardCalculator` (`vp_gain`, `killing`, `models_lost`, `objective_coverage`, …) | once per turn cycle on the closing step; `vp_gain` prices the cycle's **net** VP delta, and the event terms read the cycle's kill/damage tallies |
+| action | `closest_objective` / `_v2`, `model_kills`, `charge_progress`, `declared_objective_progress`, `declared_target_progress` | on the acting model's own step, computed for that model alone, **divided by the alive count** (the whole-phase scalar's mean-over-alive); members consumed by a skip declaration are paid on their unit's opening step |
+| state | `objective_hold`, `declared_objective_hold`, `unit_coherency`, `group_cohesion` | once per turn cycle on the **turn-closing step**, mean over alive models, **× stepped phases per round** (the whole-phase facade re-pays state at every phase boundary). `group_cohesion` is state deliberately: as an action term it fined the first mover of a coherent marching unit for a transient mid-phase gap |
+| delta global | `vp_gain`, `killing`, `models_lost`, `objective_flip_bonus` | once per cycle on the closing step, unscaled — deltas telescope, so one evaluation is exact; `vp_gain` prices the cycle's **net** VP delta |
+| state global | `objective_coverage`, `models_at_objectives` | on the closing step, × stepped phases per round, like the per-model state terms |
 | terminal | `terminal_success_bonus`, `terminal_vp_bonus` | on the last round's closing step, under the whole-phase manager's own conditions |
 
-A new per-model calculator must be classified in
-`reward_timing.py` (`_ACTION_TERM_CLASSES` / `_STATE_TERM_CLASSES`) or the
-per-model facade refuses to construct — a term silently paid on the wrong step
-is an arm measuring something its config does not say. None of this touches
-the whole-phase facade's payment path or `tests/test_reward_golden.py`.
+A new calculator — per-model **or global** — must be classified in
+`reward_timing.py` or the per-model facade refuses to construct: a term
+silently paid on the wrong step, or at the wrong scale, is an arm measuring
+something its config does not say. The identity is pinned by
+`tests/test_per_model_reward_conservation.py` (per-term episode totals across
+the two facades on bridge-identical play; `closest_objective_v2` is exempt by
+name — its per-step evaluation reads the board mid-phase, which is the
+per-step credit the design asks for). Two stated approximations: on a melee
+config, boundary states within one round differ, so the scaled close
+approximates the per-boundary sum; and fight-phase kills reach the cycle
+tallies but not `model_kills`, which only sees the actor's own shooting step.
+None of this touches the whole-phase facade's payment path or
+`tests/test_reward_golden.py`.
 
 ## Available Reward Calculators
 

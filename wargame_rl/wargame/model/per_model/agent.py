@@ -15,7 +15,10 @@ from dataclasses import dataclass
 import torch
 
 from wargame_rl.wargame.envs.per_model.facade import PerModelEnv
-from wargame_rl.wargame.envs.per_model.observation import build_token_observation
+from wargame_rl.wargame.envs.per_model.observation import (
+    TokenObservation,
+    build_token_observation,
+)
 from wargame_rl.wargame.envs.per_model.types import (
     MoveDeclaration,
     PerModelAction,
@@ -56,14 +59,32 @@ class StepDecision:
     head_choice: int | None = None
     declaration_sampled: bool = False
     advance_offered: bool = False
+    tokens: TokenObservation | None = None
+    """The token observation the decision was sampled under. Carried so the
+    rollout buffer can store it instead of rebuilding it — the build is the
+    env side's most expensive call and used to run twice per step."""
 
 
 class SetAgent:
-    """Samples (or argmaxes) one facade step from a `SetNetwork`."""
+    """Samples (or argmaxes) one facade step from a `SetNetwork`.
+
+    ``declaration_counts`` tallies every sampled unit declaration as
+    ``"<phase>:<option>" -> count`` — the passive-attractor instrument: the
+    skip declarations gate five models through one logit, so their share is
+    the first thing to read when an eval score sits at the do-nothing
+    fingerprint. Callers read and reset it around whatever window they score.
+    """
 
     def __init__(self, network: SetNetwork, device: torch.device | None = None):
         self.network = network
         self.device = device or torch.device("cpu")
+        self.declaration_counts: dict[str, int] = {}
+
+    def reset_declaration_counts(self) -> dict[str, int]:
+        """Return the tallies so far and start a fresh window."""
+        counts = self.declaration_counts
+        self.declaration_counts = {}
+        return counts
 
     @torch.no_grad()
     def act(
@@ -90,6 +111,7 @@ class SetAgent:
                 log_prob=0.0,
                 value=float(output.value[0]),
                 entropy=0.0,
+                tokens=token_observation,
             )  # no decision: the closing step still carries a value to bootstrap
 
         model_index, selector_log_prob, selector_entropy = _pick(
@@ -110,6 +132,8 @@ class SetAgent:
             )
             log_prob += declaration_log_prob
             entropy += declaration_entropy
+            key = f"{phase.value}:{declaration}"
+            self.declaration_counts[key] = self.declaration_counts.get(key, 0) + 1
 
         action = 0
         head: str | None = None
@@ -152,6 +176,7 @@ class SetAgent:
             head_choice=head_choice,
             declaration_sampled=opening,
             advance_offered=advance_offered,
+            tokens=token_observation,
         )
 
     @staticmethod

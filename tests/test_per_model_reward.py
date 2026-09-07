@@ -133,4 +133,4 @@ def test_an_unclassified_per_model_calculator_is_refused() -> None:
         ("unclassified", UnclassifiedCalculator(weight=1.0))
     )
     with pytest.raises(ValueError, match="timing classification"):
-        PerModelRewardTimer(manager)
+        PerModelRewardTimer(manager, stepped_phases_per_round=2)

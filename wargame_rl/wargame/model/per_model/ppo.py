@@ -109,7 +109,13 @@ def collect_rollout(
     closes = 0
     while closes < n_rounds:
         decision = agent.act(env, observation, generator=generator)
-        token_observation = build_token_observation(env, observation)
+        # The decision carries the tokens it was sampled under; rebuilding
+        # them here doubled the env side's most expensive call.
+        token_observation = (
+            decision.tokens
+            if decision.tokens is not None
+            else build_token_observation(env, observation)
+        )
         is_close = observation.kind is StepKind.turn_close
         next_observation, reward, done, _tr, _ = env.step(decision.action)
         transitions.append(

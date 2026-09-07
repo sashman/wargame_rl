@@ -24,6 +24,7 @@ from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import (
     ModelConfig,
     OpponentPolicyConfig,
+    TurnOrder,
     WeaponProfile,
 )
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
@@ -169,3 +170,56 @@ def test_bridge_melee_config(seed: int) -> None:
     old = _drive_whole_phase(config, "squad_march_take_charge", seed)
     new = _drive_per_model(config, "squad_march_take_charge", seed)
     _assert_bit_identical(old, new)
+
+
+# The three coverage holes the 2026-09-07 audit named: no advance config was
+# bridged (the command→movement declaration re-timing, the riskiest in the
+# design), no opponent-first turn order (the closing step's placement "after
+# the opponent's turn"), and no elimination-terminated episode (the early
+# close in `_complete_player_phase`).
+
+
+@pytest.mark.parametrize("seed", [7, 41, 99])
+def test_bridge_advance_config(seed: int) -> None:
+    config = _small_shooting_config()
+    config.n_advance_speed_bins = 3
+    config.skip_phases = [
+        BattlePhase.charge,
+        BattlePhase.pile_in,
+        BattlePhase.fight,
+        BattlePhase.consolidate,
+    ]
+    old = _drive_whole_phase(config, "squad_march_take_advance", seed)
+    new = _drive_per_model(config, "squad_march_take_advance", seed)
+    _assert_bit_identical(old, new)
+
+
+@pytest.mark.parametrize("turn_order", [TurnOrder.opponent, TurnOrder.random])
+@pytest.mark.parametrize("seed", [7, 41])
+def test_bridge_opponent_first_turn_order(turn_order: TurnOrder, seed: int) -> None:
+    config = _small_shooting_config()
+    config.turn_order = turn_order
+    old = _drive_whole_phase(config, "squad_march_shoot", seed)
+    new = _drive_per_model(config, "squad_march_shoot", seed)
+    _assert_bit_identical(old, new)
+
+
+@pytest.mark.parametrize("seed", [7, 41])
+def test_bridge_elimination_terminated_episode(seed: int) -> None:
+    """A game short one army ends early on both facades, at the same state."""
+    rifle = [WeaponProfile(range=30, attacks=4)]
+    squads = [
+        ModelConfig(group_id=i // 2, weapons=rifle, max_wounds=1) for i in range(4)
+    ]
+    config = _small_shooting_config()
+    config.number_of_wargame_models = 4
+    config.number_of_opponent_models = 4
+    config.models = squads
+    config.opponent_models = list(squads)
+    config.number_of_battle_rounds = 20
+    old = _drive_whole_phase(config, "squad_march_shoot", seed)
+    new = _drive_per_model(config, "squad_march_shoot", seed)
+    _assert_bit_identical(old, new)
+    # The case must actually eliminate: a full-length run proves nothing here.
+    final = old[max(old)]
+    assert 0 in final[3] or 0 in final[4], "nobody died — elimination untested"

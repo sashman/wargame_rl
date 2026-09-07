@@ -24,6 +24,7 @@ runs at one seed see the same layout stream.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import time
 from datetime import datetime
@@ -54,16 +55,33 @@ ROLLOUT_SEED_BASE = 0
 
 
 def _git_revision() -> str:
-    """The current code revision, for the checkpoint's provenance."""
+    """The current code revision, `+dirty` when the tree has local edits."""
     try:
-        return subprocess.run(
+        revision = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
             capture_output=True,
             text=True,
             check=True,
         ).stdout.strip()
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        return f"{revision}+dirty" if status else revision
     except (subprocess.CalledProcessError, FileNotFoundError):
         return "unknown"
+
+
+def _head_sizes(env: PerModelEnv) -> dict[str, int]:
+    """The action-head widths an env implies — a checkpoint's shape contract."""
+    handler = env.player_action_handler
+    advance_slice = handler.advance_slice
+    return {
+        "n_move_actions": int(handler.n_move_actions),
+        "n_advance_actions": int(advance_slice.size) if advance_slice else 0,
+    }
 
 
 def _save_checkpoint(
@@ -71,6 +89,7 @@ def _save_checkpoint(
     network: SetNetwork,
     network_config: SetNetworkConfig,
     ppo_config: PerModelPPOConfig,
+    env: PerModelEnv,
     env_config_path: Path,
     rounds: int,
     seed: int,
@@ -81,7 +100,8 @@ def _save_checkpoint(
         "state_dict": network.state_dict(),
         "network_config": network_config.model_dump(),
         "ppo_config": ppo_config.model_dump(),
-        "env_config": str(env_config_path),
+        "head_sizes": _head_sizes(env),
+        "env_config": str(env_config_path.resolve()),
         "rounds": rounds,
         "seed": seed,
         "revision": revision,
@@ -99,11 +119,32 @@ def load_per_model_checkpoint(
     Returns the network and the checkpoint's own metadata (rounds, configs,
     revision) so a scorer can quote provenance without guessing.
     """
-    payload = torch.load(path, map_location="cpu", weights_only=False)
+    payload = torch.load(path, map_location="cpu", weights_only=True)
+    saved_heads = payload.get("head_sizes")
+    if saved_heads is not None and saved_heads != _head_sizes(env):
+        raise ValueError(
+            f"Checkpoint {path} was trained with action heads {saved_heads}; "
+            f"this env implies {_head_sizes(env)}. Score it on the scenario "
+            "family it trained on — a load_state_dict shape wall would name "
+            "every layer and never this cause."
+        )
     network = SetNetwork.from_env(env, SetNetworkConfig(**payload["network_config"]))
     network.load_state_dict(payload["state_dict"])
     metadata = {key: value for key, value in payload.items() if key != "state_dict"}
     return network, metadata
+
+
+def _declaration_shares(counts: dict[str, int], prefix: str) -> dict[str, float]:
+    """Skip-declaration shares per phase from an agent's tally window."""
+    shares: dict[str, float] = {}
+    for phase, skip_option, label in (
+        ("movement", 1, "stationary_share"),
+        ("shooting", 1, "hold_fire_share"),
+    ):
+        total = sum(v for k, v in counts.items() if k.startswith(f"{phase}:"))
+        if total:
+            shares[f"{prefix}{label}"] = counts.get(f"{phase}:{skip_option}", 0) / total
+    return shares
 
 
 class _JsonlLog:
@@ -149,6 +190,14 @@ def train(
     Plain python so a launcher (or a test) can call it with real defaults;
     the CLI command below is a thin wrapper. Returns the run directory.
     """
+    if eval_every_rounds % rollout_rounds or checkpoint_every_rounds % rollout_rounds:
+        raise ValueError(
+            "eval_every_rounds and checkpoint_every_rounds must be multiples "
+            f"of rollout_rounds ({rollout_rounds}) — otherwise the eval "
+            "cadence drifts with the overshoot and two grid cells with "
+            "different rollout budgets eval at different round counts, "
+            "making their curves comparable only at the final point."
+        )
     torch.set_num_threads(torch_threads)
     torch.manual_seed(seed)
     revision = _git_revision()
@@ -174,18 +223,33 @@ def train(
         clip_epsilon=clip_epsilon,
     )
     network = SetNetwork.from_env(env, network_config).to(torch_device)
+    for module in network.modules():
+        if isinstance(module, torch.nn.Dropout) and module.p > 0:
+            raise ValueError(
+                "Nonzero dropout: rollouts sample with the network in train "
+                "mode, so the sampled log-prob and evaluate_transitions' "
+                "recompute would come from different dropout masks and every "
+                "PPO ratio would be silently wrong. Wire eval/train mode "
+                "handling before enabling dropout."
+            )
     agent = SetAgent(network, device=torch_device)
     optimizer = torch.optim.Adam(network.parameters(), lr=ppo_config.learning_rate)
     sample_generator = torch.Generator().manual_seed(seed)
     update_generator = torch.Generator().manual_seed(seed + 1)
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    name = f"per_model_{env_config.stem}{run_suffix}_s{seed}_{stamp}"
+    # The pid disambiguates two launches of one cell in the same second — a
+    # shared run dir interleaves metrics.jsonl and clobbers last.pt silently.
+    name = f"per_model_{env_config.stem}{run_suffix}_s{seed}_{stamp}_p{os.getpid()}"
     run_dir = out_root / name
     run_dir.mkdir(parents=True, exist_ok=True)
     log = _JsonlLog(run_dir / "metrics.jsonl")
+    # The config as run, verbatim: the path in provenance can outlive the
+    # file it named (a worktree launch), and a re-scored checkpoint must be
+    # rebuilt against the scenario that trained it, not today's edit of it.
+    (run_dir / "env_config.yaml").write_text(env_config.read_text())
     provenance = {
-        "env_config": str(env_config),
+        "env_config": str(env_config.resolve()),
         "seed": seed,
         "revision": revision,
         "torch_threads": torch_threads,
@@ -224,6 +288,7 @@ def train(
     next_eval = eval_every_rounds
     next_checkpoint = checkpoint_every_rounds
     started = time.perf_counter()
+    overhead = 0.0  # eval + checkpoint wall time, excluded from rounds_per_s
     while rounds_done < max_rounds:
         budget = min(ppo_config.rollout_rounds, max_rounds - rounds_done)
         transitions, bootstrap, observation = collect_rollout(
@@ -243,12 +308,13 @@ def train(
             generator=update_generator,
         )
         rounds_done += budget
-        elapsed = time.perf_counter() - started
+        elapsed = time.perf_counter() - started - overhead
         record: dict[str, Any] = {
             "rounds": rounds_done,
             "steps": len(transitions),
             "rounds_per_s": rounds_done / elapsed,
             **losses,
+            **_declaration_shares(agent.reset_declaration_counts(), "train/"),
         }
         if episode_margins:
             recent = episode_margins[-20:]
@@ -260,6 +326,7 @@ def train(
 
         if rounds_done >= next_eval or rounds_done >= max_rounds:
             next_eval = rounds_done + eval_every_rounds
+            eval_started = time.perf_counter()
             network.eval()
             result = evaluate_per_model(
                 eval_env,
@@ -275,6 +342,10 @@ def train(
                 "eval/objectives_held": result.objectives_held,
                 "eval/coherency_rate": result.coherency_rate,
                 "eval/alive": result.final_fraction_alive,
+                # The passive-attractor instrument: the skip declarations
+                # gate five models through one greedy logit, and an eval
+                # sitting at the do-nothing fingerprint shows up here first.
+                **_declaration_shares(agent.reset_declaration_counts(), "eval/"),
             }
             log.write(eval_record)
             if wandb_run is not None:
@@ -287,29 +358,27 @@ def train(
                 result.coherency_rate,
                 rounds_done / elapsed,
             )
+            overhead += time.perf_counter() - eval_started
 
         if rounds_done >= next_checkpoint or rounds_done >= max_rounds:
             next_checkpoint = rounds_done + checkpoint_every_rounds
-            _save_checkpoint(
+            checkpoint_started = time.perf_counter()
+            for checkpoint_path in (
                 run_dir / f"pm-{rounds_done:08d}.pt",
-                network,
-                network_config,
-                ppo_config,
-                env_config,
-                rounds_done,
-                seed,
-                revision,
-            )
-            _save_checkpoint(
                 run_dir / "last.pt",
-                network,
-                network_config,
-                ppo_config,
-                env_config,
-                rounds_done,
-                seed,
-                revision,
-            )
+            ):
+                _save_checkpoint(
+                    checkpoint_path,
+                    network,
+                    network_config,
+                    ppo_config,
+                    env,
+                    env_config,
+                    rounds_done,
+                    seed,
+                    revision,
+                )
+            overhead += time.perf_counter() - checkpoint_started
 
     if wandb_run is not None:
         wandb_run.finish()

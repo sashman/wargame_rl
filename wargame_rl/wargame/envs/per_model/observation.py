@@ -30,9 +30,17 @@ from wargame_rl.wargame.envs.domain.sight import COVER, HIDDEN
 from wargame_rl.wargame.envs.env_components.actions import (
     ADVANCE_DIE_FACES,
     CHARGE_DICE_MAX,
+    MOVE_TYPE_ADVANCE,
+    MOVE_TYPE_CHARGE,
     STAY_ACTION,
 )
-from wargame_rl.wargame.envs.per_model.types import PerModelObservation, StepKind
+from wargame_rl.wargame.envs.per_model.types import (
+    ChargeDeclaration,
+    MoveDeclaration,
+    PerModelObservation,
+    ShootDeclaration,
+    StepKind,
+)
 from wargame_rl.wargame.envs.types import BattlePhase
 from wargame_rl.wargame.envs.types.config import ModelConfig
 from wargame_rl.wargame.envs.types.game_timing import BATTLE_PHASE_ORDER
@@ -155,8 +163,8 @@ def build_token_observation(
     player_alive = alive_mask_for(players)
     opponent_alive = alive_mask_for(opponents) if opponents else np.zeros(0, dtype=bool)
 
-    player_stats = _stat_rows(env.config.models, len(players))
-    opponent_stats = _stat_rows(env.config.opponent_models, len(opponents))
+    player_stats = _stat_rows(players, env.config.models)
+    opponent_stats = _stat_rows(opponents, env.config.opponent_models)
     player_tokens = _model_tokens(
         players,
         player_stats,
@@ -281,7 +289,7 @@ def build_token_observation(
         advance_mask,
         target_mask,
         declaration_mask,
-    ) = _action_masks(env, observation, len(opponent_unit_ids))
+    ) = _action_masks(env, observation, opponent_unit_ids)
 
     opponent_unit_rows = set_start[CTX_OPPONENT_UNIT] + np.arange(
         len(opponent_unit_ids), dtype=np.int64
@@ -313,21 +321,30 @@ def build_token_observation(
 # -- Tokens -------------------------------------------------------------------
 
 
-def _stat_rows(configs: list[ModelConfig] | None, n_models: int) -> np.ndarray:
-    """(n, 7) raw stats per model: attacks, bs, strength, ap, damage, T, Sv."""
-    rows = np.zeros((n_models, 7), dtype=np.float32)
-    for i in range(n_models):
-        if configs is not None and i < len(configs):
-            cfg = configs[i]
-            rows[i, 5] = cfg.toughness
-            rows[i, 6] = cfg.save
-            if cfg.weapons:
-                weapon = cfg.weapons[0]
-                rows[i, 0] = weapon.attacks
-                rows[i, 1] = weapon.ballistic_skill
-                rows[i, 2] = weapon.strength
-                rows[i, 3] = weapon.ap
-                rows[i, 4] = weapon.damage
+def _stat_rows(
+    models: list[WargameModel], configs: list[ModelConfig] | None
+) -> np.ndarray:
+    """(n, 7) raw stats per model: attacks, bs, strength, ap, damage, T, Sv.
+
+    Toughness and save come off the RESOLVED models (`model.stats`), never
+    the raw config — a config that auto-builds its army carries no `models`
+    list, and reading it zeroed both (T=0 trips `expected_damage_matrix`'s
+    zero-toughness guard, so the network was told everyone was unshootable
+    while the dice used the factory's real T3/Sv4). Weapon stats stay
+    config-sourced like the whole-phase builder's: an auto-built army carries
+    no weapons and cannot shoot, so zeros are the true value there.
+    """
+    rows = np.zeros((len(models), 7), dtype=np.float32)
+    for i, model in enumerate(models):
+        rows[i, 5] = float(model.stats["toughness"])
+        rows[i, 6] = float(model.stats["save"])
+        if configs is not None and i < len(configs) and configs[i].weapons:
+            weapon = configs[i].weapons[0]
+            rows[i, 0] = weapon.attacks
+            rows[i, 1] = weapon.ballistic_skill
+            rows[i, 2] = weapon.strength
+            rows[i, 3] = weapon.ap
+            rows[i, 4] = weapon.damage
     return rows
 
 
@@ -647,17 +664,32 @@ def _cross_relations(
 def _action_masks(
     env: PerModelEnv,
     observation: PerModelObservation,
-    n_target_units: int,
+    opponent_unit_ids: list[int],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """The per-model legality the heads decode under, from the env's own mask.
 
     Sliced out of `compute_player_action_mask` — the same function the
     whole-phase facade puts on its observation — so the heads and the env
-    cannot disagree about what is legal.
+    cannot disagree about what is legal. Two departures, both because the
+    per-model step folds the whole-phase facade's command-phase choice into
+    the opening step:
+
+    - **Advance rungs are shown as-if-declared** for a model whose unit has
+      not yet declared this phase: the env's own mask gates every rung on
+      `declared_advance`, which is set inside the very `step()` that samples
+      it, so the declaring model would otherwise see 0 legal rungs at its own
+      step (the leader-capped-at-M formation trap). The agent's
+      `advance_offered` gate keeps the rungs out of every non-advance sample.
+    - **Target columns are indexed by SORTED DISTINCT unit id** — the order
+      `opponent_unit_rows` and `SetAgent._shooting_action` use — never
+      positionally: the shooting slice is indexed by raw group id, and with a
+      gap in the ids a positional copy marks column *j* legal with a
+      different unit's legality.
     """
     handler = env.player_action_handler
     n_p = len(env.wargame_models)
     n_move = handler.n_move_actions
+    n_target_units = len(opponent_unit_ids)
     displacement = np.zeros((n_p, 1 + n_move), dtype=bool)
     advance_slice = handler.advance_slice
     n_advance = advance_slice.size if advance_slice is not None else 0
@@ -672,15 +704,46 @@ def _action_masks(
     movement = handler.movement_slice
     displacement[:, 0] = full[:, STAY_ACTION]
     displacement[:, 1:] = full[:, movement.start : movement.end]
+    if observation.phase is BattlePhase.charge and bool(env.config.melee.enabled):
+        # The charge-phase movement overlay gates on `declared_charge`, set
+        # inside the very step that samples the declaration — same trap as the
+        # advance rungs below, same as-if-declared answer. The registry's own
+        # phase mask is all-True for an alive model here, so the as-if rows
+        # are the charge legality alone.
+        needs_declaration = np.array(
+            [env.unit_needs_declaration(i) for i in range(n_p)], dtype=bool
+        )
+        alive = alive_mask_for(env.wargame_models)
+        rows = needs_declaration & alive
+        if rows.any():
+            as_if_charge = handler.charge_legality(
+                env.wargame_models, env.opponent_models, assume_declared=True
+            )
+            displacement[rows, 1:] = as_if_charge[rows]
     if advance_slice is not None:
         advance[:, :] = full[:, advance_slice.start : advance_slice.end]
+        if (
+            observation.phase is BattlePhase.movement
+            and BattlePhase.movement in advance_slice.valid_phases
+        ):
+            needs_declaration = np.array(
+                [env.unit_needs_declaration(i) for i in range(n_p)], dtype=bool
+            )
+            if needs_declaration.any():
+                as_if_declared = handler.advance_legality(
+                    env.wargame_models,
+                    env.opponent_models,
+                    assume_declared=True,
+                )
+                advance = np.where(
+                    needs_declaration[:, np.newaxis], as_if_declared, advance
+                )
     shooting_slice = handler.shooting_slice
     if shooting_slice is not None and observation.phase is BattlePhase.shooting:
         target[:, 0] = full[:, STAY_ACTION]
-        width = min(n_target_units, shooting_slice.size)
-        target[:, 1 : 1 + width] = full[
-            :, shooting_slice.start : shooting_slice.start + width
-        ]
+        for column, unit_id in enumerate(opponent_unit_ids):
+            if 0 <= unit_id < shooting_slice.size:
+                target[:, 1 + column] = full[:, shooting_slice.start + unit_id]
 
     declaration[:, :] = _declaration_legality(env, observation)
     return displacement, advance, target, declaration
@@ -691,24 +754,43 @@ def _declaration_legality(
 ) -> np.ndarray:
     """Which declaration options a unit's opening step may take, per model.
 
-    Coarse on purpose: the facade applies declarations as permissively as the
-    engine does, and the fine-grained gates (an engaged unit may not advance,
-    a charge needs an eligible unit) already live in the movement masks the
-    displacement head decodes under.
+    The gated options (advance, charge) are derived from
+    `ActionHandler.declaration_legality` — the same gates the whole-phase
+    facade masks the command-phase `move_type` slice with — so an engaged
+    unit cannot declare an advance it may not make, a roll with no legal rung
+    cannot spend the unit's shooting for nothing, and a DARKENED advance
+    slice (registered, valid in no phase) offers no declaration, keeping a
+    `dark_action_slices` control inert here as everywhere else. Options with
+    no whole-phase counterpart (normal, remain stationary, hold fire,
+    decline, fight priority) are always legal.
     """
     n_p = len(env.wargame_models)
     legality = np.zeros((n_p, N_DECLARATION_OPTIONS), dtype=bool)
     phase = observation.phase
+    handler = env.player_action_handler
     if phase is BattlePhase.movement:
-        legality[:, 0] = True
-        legality[:, 1] = True
-        legality[:, 2] = env.player_action_handler.advance_slice is not None
+        legality[:, int(MoveDeclaration.normal)] = True
+        legality[:, int(MoveDeclaration.remain_stationary)] = True
+        advance_slice = handler.advance_slice
+        offset = handler.move_type_offset(MOVE_TYPE_ADVANCE)
+        if (
+            advance_slice is not None
+            and BattlePhase.movement in advance_slice.valid_phases
+            and offset is not None
+        ):
+            legality[:, int(MoveDeclaration.advance)] = env.player_declaration_legality[
+                :, offset
+            ]
     elif phase is BattlePhase.shooting:
-        legality[:, 0] = True
-        legality[:, 1] = True
+        legality[:, int(ShootDeclaration.shoot)] = True
+        legality[:, int(ShootDeclaration.hold_fire)] = True
     elif phase is BattlePhase.charge:
-        legality[:, 0] = True
-        legality[:, 1] = bool(env.config.melee.enabled)
+        legality[:, int(ChargeDeclaration.decline)] = True
+        offset = handler.move_type_offset(MOVE_TYPE_CHARGE)
+        if bool(env.config.melee.enabled) and offset is not None:
+            legality[:, int(ChargeDeclaration.charge)] = (
+                env.player_declaration_legality[:, offset]
+            )
     elif phase is BattlePhase.fight:
         legality[:, :] = True
     else:

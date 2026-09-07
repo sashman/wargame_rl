@@ -81,7 +81,14 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         self._target_obj_idx: dict[int, int] = {}
         self._previous_target_distance: dict[int, float] = {}
         self._best_target_distance: dict[int, float] = {}
-        self._cached_step_key: tuple[int, int] | None = None
+        # A STRONG reference to the ctx the caches were built for, compared by
+        # identity. It used to be `(current_turn, id(ctx.distance_cache))`,
+        # which is unsound the moment a caller frees its ctx between calls:
+        # the per-model facade builds one ctx per MODEL step, CPython recycles
+        # the allocation, and consecutive steps collided on the id — serving
+        # stale counts on a malloc-dependent subset of steps. Holding the ctx
+        # itself makes recycling impossible (the objective_hold pattern).
+        self._cached_ctx: StepContext | None = None
         self._cached_player_in_range: np.ndarray | None = None
         self._cached_player_counts: np.ndarray | None = None
         self._cached_opponent_counts: np.ndarray | None = None
@@ -124,7 +131,7 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         self._target_obj_idx.clear()
         self._previous_target_distance.clear()
         self._best_target_distance.clear()
-        self._cached_step_key = None
+        self._cached_ctx = None
         self._cached_player_in_range = None
         self._cached_player_counts = None
         self._cached_opponent_counts = None
@@ -136,12 +143,11 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         view: BattleView,
         ctx: StepContext,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        step_key = (ctx.current_turn, id(ctx.distance_cache))
-        if self._cached_step_key != step_key:
+        if self._cached_ctx is not ctx:
             self._cached_group_assignment = None
             self._cached_candidate_mask = None
         if (
-            self._cached_step_key == step_key
+            self._cached_ctx is ctx
             and self._cached_player_in_range is not None
             and self._cached_player_counts is not None
             and self._cached_opponent_counts is not None
@@ -166,7 +172,7 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         else:
             opponent_counts = np.zeros(n_obj, dtype=int)
 
-        self._cached_step_key = step_key
+        self._cached_ctx = ctx
         self._cached_player_in_range = player_in_range
         self._cached_player_counts = player_counts
         self._cached_opponent_counts = opponent_counts
@@ -210,12 +216,9 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         view: BattleView,
         cache: DistanceCache,
         candidate_mask: np.ndarray,
-        step_key: tuple[int, int],
+        ctx: StepContext,
     ) -> dict[int, int]:
-        if (
-            self._cached_step_key == step_key
-            and self._cached_group_assignment is not None
-        ):
+        if self._cached_ctx is ctx and self._cached_group_assignment is not None:
             return self._cached_group_assignment
 
         group_ids = np.array([m.group_id for m in view.player_models], dtype=int)
@@ -244,7 +247,7 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         player_in_range: np.ndarray,
         player_counts: np.ndarray,
         opponent_counts: np.ndarray,
-        step_key: tuple[int, int],
+        ctx: StepContext,
     ) -> np.ndarray:
         """``(n_models, n_objectives)``: would this model's arrival improve control?
 
@@ -259,10 +262,7 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         assignment derived from it is already memoised per step, which is only
         correct because the mask is the same for every model.
         """
-        if (
-            self._cached_step_key == step_key
-            and self._cached_candidate_mask is not None
-        ):
+        if self._cached_ctx is ctx and self._cached_candidate_mask is not None:
             return self._cached_candidate_mask
 
         positive_transition = np.array(
@@ -302,7 +302,7 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         self,
         model_idx: int,
         view: BattleView,
-        step_key: tuple[int, int],
+        ctx: StepContext,
         cache: DistanceCache,
         player_in_range: np.ndarray,
         player_counts: np.ndarray,
@@ -313,12 +313,10 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         # Objective-to-group assignment: one objective can reward only one group,
         # so the mask covers every model, not just this one.
         candidate_mask = self._candidate_mask(
-            player_in_range, player_counts, opponent_counts, step_key
+            player_in_range, player_counts, opponent_counts, ctx
         )
 
-        assignment = self._compute_group_assignment(
-            view, cache, candidate_mask, step_key
-        )
+        assignment = self._compute_group_assignment(view, cache, candidate_mask, ctx)
         model_group = int(view.player_models[model_idx].group_id)
         allowed = np.array(
             [assignment.get(obj_idx, None) == model_group for obj_idx in range(n_obj)],
@@ -346,7 +344,6 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         ctx: StepContext,
     ) -> float:
         cache = ctx.distance_cache
-        step_key = (ctx.current_turn, id(ctx.distance_cache))
 
         player_in_range, player_counts, opponent_counts = (
             self._objective_presence_masks(view, ctx)
@@ -354,7 +351,7 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         target_obj_idx = self._choose_target_objective(
             model_idx=model_idx,
             view=view,
-            step_key=step_key,
+            ctx=ctx,
             cache=cache,
             player_in_range=player_in_range,
             player_counts=player_counts,

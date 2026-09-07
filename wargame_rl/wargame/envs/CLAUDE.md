@@ -19,8 +19,21 @@ Applies to everything under `wargame_rl/wargame/envs/`.
   whole-phase facade wherever `coherency.enforce_move` is off. On refereed configs the
   coherency referee deliberately fires per unit at unit close (rules-exact) instead of
   whole-force at phase end, so refereed episodes diverge when a revert fires — the
-  refereed scripted bar must be re-measured in the new facade, never carried. See
-  [docs/ddd-envs.md](../../../docs/ddd-envs.md) § Two facades
+  refereed scripted bar must be re-measured in the new facade, never carried.
+  ⚠ Two per-model-only mask rules (2026-09-07 audit): the opening step shows a
+  declaring unit its advance rungs / charge moves **as-if-declared**
+  (`advance_legality` / `charge_legality` take `assume_declared=True`), because
+  the env's own mask gates them on a flag set inside the very step that samples
+  the declaration — without it the declaring model saw 0 legal rungs, the
+  leader-capped-at-M formation trap; and the token target-pointer columns are
+  indexed by **sorted distinct unit id**, never positionally into the shooting
+  slice (raw group ids may gap). The declaration itself is gated by the
+  handler's own `declaration_legality` (engaged / no-legal-rung / darkened
+  slice) and enforced again in `_apply_unit_declaration`, where the cost is
+  paid. Reward timing conserves per-term episode totals against the
+  whole-phase facade — see [docs/reward-phases.md](../../../docs/reward-phases.md)
+  § Where each term is paid, and `tests/test_per_model_reward_conservation.py`.
+  See [docs/ddd-envs.md](../../../docs/ddd-envs.md) § Two facades
 - Config: `WargameEnvConfig` (pydantic-yaml) from `configs/`
 - Actions: polar (angle, speed) pairs per model via `ActionHandler(config, n_models=..., n_shoot_targets=...)`; a `shooting` slice is registered only when `n_shoot_targets > 0`
   - `ActionHandler.best_action_toward(dx, dy, max_step_length=None)` for scripted policies; never hardcode action counts — use `ActionHandler.n_actions`

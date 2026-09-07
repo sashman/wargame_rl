@@ -61,6 +61,7 @@ from wargame_rl.wargame.envs.domain.turn_execution import run_after_player_actio
 from wargame_rl.wargame.envs.env_components import compute_distances
 from wargame_rl.wargame.envs.env_components.actions import (
     FIGHT_ORDER_LEVELS,
+    MOVE_TYPE_ADVANCE,
     STAY_ACTION,
     MovePhaseContext,
 )
@@ -158,7 +159,12 @@ class PerModelEnv(WargameEnv):
         # The re-timed reward (#286): action terms pay on the actor's step,
         # state terms / globals / VP on the turn-closing step. Same calculator
         # objects as the whole-phase manager — one set of weights and state.
-        self._reward_timer = PerModelRewardTimer(self.phase_manager)
+        # The whole-phase facade steps once per non-skipped player phase, so
+        # this is how many times it would evaluate every state term per round.
+        stepped_phases_per_round = self.max_turns // config.number_of_battle_rounds
+        self._reward_timer = PerModelRewardTimer(
+            self.phase_manager, stepped_phases_per_round
+        )
         self._cycle_player_damage = 0
         self._cycle_opponent_damage = 0
         self._cycle_player_kills = 0
@@ -223,13 +229,14 @@ class PerModelEnv(WargameEnv):
         self._ensure_phase_cleared()
         model = self.wargame_models[index]
         unit = int(model.group_id)
+        consumed_by_declaration: list[int] = []
         if unit not in self._declared:
             declaration = (
                 action.declaration
                 if action.declaration is not None
                 else self._default_declaration()
             )
-            self._apply_unit_declaration(unit, declaration)
+            consumed_by_declaration = self._apply_unit_declaration(unit, declaration)
 
         self._step_kills = 0
         self._step_damage = 0
@@ -243,8 +250,14 @@ class PerModelEnv(WargameEnv):
         self.model_steps += 1
         self.phase_model_steps += 1
 
+        # The opening step pays for every model it resolved: the actor, plus
+        # any squadmates its declaration consumed — otherwise a skipped
+        # member's action terms (a stay is charged, in this reward stack) are
+        # never paid at all, and standing still is systematically cheaper here
+        # than under the whole-phase facade.
+        actors = [index] + [i for i in consumed_by_declaration if i != index]
         reward, breakdown = self._reward_timer.model_step_reward(
-            self, self._model_step_context(index), index
+            self, self._model_step_context(index), actors
         )
         self._record_step_reward(reward, breakdown, actor=index)
         if self._record_model_steps:
@@ -257,10 +270,23 @@ class PerModelEnv(WargameEnv):
             self._close_unit(unit, members)
             self._open_unit = None
 
-        if bool(self._acted.all()):
+        if self._phase_exhausted():
             self._complete_player_phase()
             self._advance_to_decision_point()
         return self._observe(), reward, False, False, {}
+
+    def _phase_exhausted(self) -> bool:
+        """No decision left this phase: every model has acted or is dead.
+
+        Deliberately NOT ``_acted.all()``: a model that dies un-acted
+        mid-phase (no current mechanic does this — melee expansion will) is
+        unselectable forever, and completing only on ``acted`` would deadlock
+        the episode behind a misleading "not selectable" error.
+        """
+        return all(
+            self._acted[i] or not model.is_alive
+            for i, model in enumerate(self.wargame_models)
+        )
 
     def _close_turn(
         self,
@@ -293,7 +319,7 @@ class PerModelEnv(WargameEnv):
         """Advance until the policy is owed a decision, or the closing step."""
         while not self._pending_close:
             self._begin_player_phase()
-            if bool(self._acted.all()):
+            if self._phase_exhausted():
                 # The command phase (no agent decision here), or a phase with
                 # no alive model left to act: completes without an agent step.
                 self._complete_player_phase()
@@ -571,16 +597,41 @@ class PerModelEnv(WargameEnv):
             return int(ChargeDeclaration.decline)
         return 0
 
-    def _apply_unit_declaration(self, unit: int, declaration: int) -> None:
-        """Record and apply one unit's declaration for the current phase."""
+    def _apply_unit_declaration(self, unit: int, declaration: int) -> list[int]:
+        """Record and apply one unit's declaration for the current phase.
+
+        Returns the members the declaration consumed (auto-stayed), so the
+        opening step can pay their action terms.
+        """
         phase = self._phase
         members = self._members_of(unit)
+        consumed: list[int] = []
         if phase is BattlePhase.movement:
             declared = MoveDeclaration(declaration)
             if declared is MoveDeclaration.advance:
-                if self._action_handler.advance_slice is None:
+                advance_slice = self._action_handler.advance_slice
+                if advance_slice is None:
                     raise ValueError(
                         "This scenario registers no advance bins to declare."
+                    )
+                # The whole-phase facade's own gates, enforced where the COST
+                # is paid: a darkened slice, an engaged unit or a roll with no
+                # legal rung may not spend the unit's shooting here — the
+                # declaration masks say the same, but a mask is advice and
+                # this is the till.
+                offset = self._action_handler.move_type_offset(MOVE_TYPE_ADVANCE)
+                legality = (
+                    self.player_declaration_legality[:, offset]
+                    if offset is not None
+                    else np.zeros(len(self.wargame_models), dtype=bool)
+                )
+                if BattlePhase.movement not in advance_slice.valid_phases or not any(
+                    legality[i] for i in members
+                ):
+                    raise ValueError(
+                        f"Unit {unit} may not declare an advance: the slice is "
+                        "darkened, the unit is engaged, or this turn's roll "
+                        "leaves no legal rung."
                     )
                 # Mirrors `declare_move_types`: the whole unit is bound, and
                 # the shooting is spent by the declaration itself.
@@ -588,10 +639,10 @@ class PerModelEnv(WargameEnv):
                     self.wargame_models[i].declared_advance = True
                     self.wargame_models[i].advanced_this_turn = True
             elif declared is MoveDeclaration.remain_stationary:
-                self._auto_stay_members(members, resolve=True)
+                consumed = self._auto_stay_members(members, resolve=True)
         elif phase is BattlePhase.shooting:
             if ShootDeclaration(declaration) is ShootDeclaration.hold_fire:
-                self._auto_stay_members(members, resolve=False)
+                consumed = self._auto_stay_members(members, resolve=False)
         elif phase is BattlePhase.charge:
             if ChargeDeclaration(declaration) is ChargeDeclaration.charge:
                 for i in members:
@@ -600,28 +651,30 @@ class PerModelEnv(WargameEnv):
                 # A non-charging unit's only legal charge-phase action is to
                 # stand still; resolving the STAY keeps `previous_location`
                 # exactly as the whole-phase facade leaves it.
-                self._auto_stay_members(members, resolve=True)
+                consumed = self._auto_stay_members(members, resolve=True)
         elif phase is BattlePhase.fight:
             priority = min(max(int(declaration), 0), FIGHT_ORDER_LEVELS - 1)
             for i in members:
                 self.wargame_models[i].fight_priority = priority
             # The priority is the fight phase's whole decision: one step per
             # unit, the engine resolves the blows on the boundary.
-            self._auto_stay_members(members, resolve=False)
+            consumed = self._auto_stay_members(members, resolve=False)
         else:
             if declaration != 0:
                 raise ValueError(f"No declarations in the {phase.value} phase.")
         self._declared[unit] = int(declaration)
+        return consumed
 
-    def _auto_stay_members(self, members: list[int], *, resolve: bool) -> None:
+    def _auto_stay_members(self, members: list[int], *, resolve: bool) -> list[int]:
         """Consume a unit's remaining members without agent steps.
 
         ``resolve=True`` puts each alive member through the same STAY
         resolution the whole-phase facade runs (which writes
         ``previous_location`` — the fall-back inference and the referees read
         it), so a skipped unit's state is bit-identical to one whose members
-        each chose STAY.
+        each chose STAY. Returns the members consumed.
         """
+        consumed: list[int] = []
         for i in members:
             if self._acted[i]:
                 continue
@@ -635,6 +688,8 @@ class PerModelEnv(WargameEnv):
                 )
             self._acted[i] = True
             self._phase_action_vector[i] = STAY_ACTION
+            consumed.append(i)
+        return consumed
 
     # -- Per-model resolution -------------------------------------------------
 

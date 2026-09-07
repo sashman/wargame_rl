@@ -1110,13 +1110,24 @@ class ActionHandler:
         return displacement
 
     def advance_legality(
-        self, models: list[Any], enemy_models: list[Any] | None
+        self,
+        models: list[Any],
+        enemy_models: list[Any] | None,
+        *,
+        assume_declared: bool = False,
     ) -> np.ndarray:
         """`(n_models, n_advance_actions)` -- which rungs this turn's rolls allow.
 
         Two gates, and both are the point. A rung is legal only for a model
         whose unit **declared an advance** in the command phase, and only when
         its absolute distance is within that model's `M + roll`.
+
+        ``assume_declared=True`` waives the declaration gate alone (roll and
+        engagement gates stay): the per-model facade's opening step samples
+        the declaration and the rungs in ONE step, so its mask must show what
+        the rungs WOULD be — with the default gate the declaring model itself
+        could never take a rung, which is the leader-capped-at-M formation
+        trap the command-phase declaration exists to avoid.
 
         The declaration gate is what makes the move type a unit decision: no
         model can reach a long rung on its own, and every model of a unit that
@@ -1149,7 +1160,7 @@ class ActionHandler:
         # a real state) but it has to be a decision the caller writes down.
         engaged = self._engaged_units(models, enemy_models)
         for index, model in enumerate(models):
-            if not getattr(model, "declared_advance", False):
+            if not assume_declared and not getattr(model, "declared_advance", False):
                 continue
             # Guarded on `engaged` being non-empty so the common case -- no
             # enemies passed, which is every non-melee path -- reads nothing off
@@ -1408,11 +1419,18 @@ class ActionHandler:
         return reachable
 
     def charge_legality(
-        self, models: list[Any], enemy_models: list[Any] | None
+        self,
+        models: list[Any],
+        enemy_models: list[Any] | None,
+        *,
+        assume_declared: bool = False,
     ) -> np.ndarray:
         """`(n_models, n_move_actions)` -- which charge moves the rules allow.
 
-        Two gates, mirroring `advance_legality`.
+        Two gates, mirroring `advance_legality` — including its
+        ``assume_declared``, which waives the declaration gate alone so the
+        per-model facade's opening step (declaration and move sampled in one
+        step) can show a declaring unit the charge moves it would have.
 
         **Eligibility**, per `docs/rules/11-charge-phase.md`: a unit may declare
         a charge only when it is within 12" of an enemy unit, is NOT already
@@ -1456,8 +1474,10 @@ class ActionHandler:
             # Scenarios with no move-type slice keep the old behaviour, so every
             # melee measurement taken before the declaration existed is still
             # reproducible on its own config.
-            if self._move_type_slice is not None and not getattr(
-                model, "declared_charge", False
+            if (
+                not assume_declared
+                and self._move_type_slice is not None
+                and not getattr(model, "declared_charge", False)
             ):
                 continue
             reach = self._charge_reach(model)
