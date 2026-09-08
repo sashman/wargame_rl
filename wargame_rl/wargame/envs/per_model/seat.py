@@ -183,10 +183,12 @@ def unit_cover_for_shot(
     models' base radii. One pair traced alone samples the same segment the
     batched trace does, so the answer is the batch's cell.
 
-    `target_members` is the unit's membership as the PHASE saw it -- the phase
-    facade declares every shot before any resolves, so a member killed by an
-    earlier shot in the same phase still counts toward "every model". The
-    caller passes that list; this does not re-read `is_alive`.
+    `target_members` is the unit's membership as the ATTACKING UNIT's close saw
+    it: `05-attack-sequence.md` removes a destroyed model only after the
+    attacking unit has resolved all of its attacks, so a member a squadmate
+    has just killed still counts toward "every model", and one an earlier
+    unit killed does not. The caller passes that list; this does not re-read
+    `is_alive`.
     """
     members = list(target_members)
     if not members:

@@ -144,3 +144,40 @@ def test_a_striker_may_choose_which_unit_in_contact_it_swings_at() -> None:
     )
     assert chosen is not None and chosen.target_group == 1 and chosen.target_idx == 1
     assert default is not None and default.target_group == 0 and default.target_idx == 0
+
+
+def _selection_order(
+    sequence: FightSequence, rng: np.random.Generator
+) -> list[tuple[int, int]]:
+    order: list[tuple[int, int]] = []
+    while True:
+        event = sequence.next()
+        if isinstance(event, End):
+            return order
+        if isinstance(event, Overrun):
+            sequence.resolve_overrun(rng)
+            continue
+        assert isinstance(event, Select)
+        group = default_choice(sequence.sides[event.seat].models, event.pool)
+        order.append((event.seat, group))
+        sequence.resolve_selected(group, rng)
+
+
+def test_strikes_first_units_all_fight_before_the_opposing_player_selects() -> None:
+    """`12-fight-phase.md` § Fight step, step 1: a player with no Strikes First
+    unit hands the sequence over while the other still has one. Arrange two
+    charging units against two that did not charge; assert both chargers are
+    selected before either defender, and the defender then selects first."""
+    ours, theirs = _two_units_a_side()
+    for model in ours:
+        model.charged_this_turn = True
+    weapons = [[MeleeWeaponProfile()] for _ in range(4)]
+    sequence = FightSequence(
+        (FightSide(ours, weapons), FightSide(theirs, weapons)),
+        engagement_range=ENGAGEMENT,
+        base_diameter=0.0,
+        pass_range=5.0,
+    )
+    order = _selection_order(sequence, np.random.default_rng(3))
+    assert [seat for seat, _group in order[:2]] == [0, 0], order
+    assert order[2][0] == 1, order

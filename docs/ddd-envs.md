@@ -201,12 +201,22 @@ those import only `domain/` and `types/`, that `per_model/` never imports
 The bridge is the contract between them: `tests/test_per_model_bridge.py`
 plays a scripted policy through both facades on the same layout and dice and
 asserts positions, wounds, VP, reward and the combat dice position agree
-**bit for bit** at every point the phase facade's step would have returned.
-It holds on the golden map-pool scenario, the random-terrain shooting
-scenario, the advance scenario, and on a melee scenario until the first charge
-that stands — after which the per-model facade deliberately plays the rules
+**bit for bit** at every point the phase facade's step would have returned —
+up to the first **rules departure**. The per-model step honours orderings the
+whole-army step has no room for: a unit selects its targets after an earlier
+unit's casualties are removed, and has its cover judged against the members
+it faces; attrition culls every unit on the board, not the active side's; a
+battle continues after a wipe; the fight step hands the sequence over while
+the other player still has a Strikes First unit; each consolidation mode is
+refereed by its own rule and the Engaging drag-in fires at the unit's close.
+The facade records the first time each makes a difference
+(`PerModelEnv.departures`, a list of `RulesDeparture`), and the bridge
+requires identity up to the first boundary settled after one — on 4 of 15
+cases the two games never part. On a melee scenario it also stops at the
+first charge that stands, after which the per-model facade plays the rules
 chapter rather than the phase facade (both seats pile in and consolidate; a
-striker chooses its target).
+striker chooses its target). The phase facade's side of each departure is
+tracked as an issue (#314 to #319) and stays as it is until it lands there.
 
 Every artefact the per-model facade emits carries `facade: "per_model"`
 (`PerModelProvenance`); an untagged artefact is the phase facade's, and

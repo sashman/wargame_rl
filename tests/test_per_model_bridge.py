@@ -34,6 +34,7 @@ from wargame_rl.wargame.envs.domain.engagement import engagement_matrix
 from wargame_rl.wargame.envs.per_model import (
     PerModelAction,
     PerModelEnv,
+    RulesDeparture,
     ScriptedSeat,
     StepKind,
 )
@@ -135,7 +136,17 @@ def trace_old(config: WargameEnvConfig, name: str, seed: int) -> list[Boundary]:
     return boundaries
 
 
-def trace_new(config: WargameEnvConfig, name: str, seed: int) -> list[Boundary]:
+@dataclass
+class NewTrace:
+    """The per-model facade's boundaries, and how many rules departures the
+    facade had recorded by the time each was settled."""
+
+    boundaries: list[Boundary]
+    departures_seen: list[int]
+    departures: list[RulesDeparture]
+
+
+def trace_new(config: WargameEnvConfig, name: str, seed: int) -> NewTrace:
     """Every settled reward window of the per-model facade, as a `Boundary`."""
     env = PerModelEnv(config)
     policy, shoots = _policy(name)
@@ -143,10 +154,13 @@ def trace_new(config: WargameEnvConfig, name: str, seed: int) -> list[Boundary]:
     env.set_player_planner(planner)
     observation, info = env.reset(seed=seed, options={"combat_seed": COMBAT_SEED})
     boundaries: list[Boundary] = []
+    seen: list[int] = []
     # A stepped command phase settles its window before the first decision,
     # so the reset's info carries it, exactly as the phase facade's first step
     # would have returned it.
-    boundaries.extend(_settled_boundaries(info))
+    settled = _settled_boundaries(info)
+    boundaries.extend(settled)
+    seen.extend(len(env.departures) for _ in settled)
     done = False
     while not done:
         point = observation.decision
@@ -155,8 +169,35 @@ def trace_new(config: WargameEnvConfig, name: str, seed: int) -> list[Boundary]:
         else:
             action = planner.choose(point, env.player_seat)
         observation, _reward, done, _truncated, info = env.step(action)
-        boundaries.extend(_settled_boundaries(info))
-    return boundaries
+        settled = _settled_boundaries(info)
+        boundaries.extend(settled)
+        seen.extend(len(env.departures) for _ in settled)
+    return NewTrace(boundaries, seen, list(env.departures))
+
+
+def _divergence_index(divergence: str, old: list[Boundary]) -> int:
+    return (
+        int(divergence.split(":")[0].split()[-1])
+        if "boundary" in divergence
+        else len(old)
+    )
+
+
+def _assert_identical_until_the_rules_part(
+    old: list[Boundary], new: NewTrace, divergence: str | None
+) -> None:
+    """Bit-identity is owed up to the first rule the phase facade cannot apply.
+
+    The per-model step honours orderings the whole-army step has no room for
+    (`RulesDeparture` names them); the facade records the first time each
+    makes a difference, and from that boundary on the two games are allowed
+    to part. Before it, every boundary must agree."""
+    if divergence is None:
+        return
+    index = min(_divergence_index(divergence, old), len(new.departures_seen) - 1)
+    assert new.departures_seen[index] > 0, (
+        f"{divergence}, with no rules departure recorded by then"
+    )
 
 
 def _any_engaged(env: WargameEnv) -> bool:
@@ -266,8 +307,8 @@ def test_a_script_plays_the_same_game_through_both_facades(
     config = _config(path)
     old = trace_old(config, policy, seed)
     new = trace_new(config, policy, seed)
-    divergence = _first_divergence(old, new)
-    assert divergence is None, divergence
+    divergence = _first_divergence(old, new.boundaries)
+    _assert_identical_until_the_rules_part(old, new, divergence)
     assert len(old) == WargameEnv(config).max_turns or old[-1] is not None
 
 
@@ -279,15 +320,12 @@ def test_the_melee_bridge_holds_until_the_first_standing_charge(seed: int) -> No
     config = _config(MELEE)
     old = trace_old(config, "squad_march_take_charge", seed)
     new = trace_new(config, "squad_march_take_charge", seed)
-    divergence = _first_divergence(old, new)
+    divergence = _first_divergence(old, new.boundaries)
     if divergence is None:
         return
-    index = (
-        int(divergence.split(":")[0].split()[-1])
-        if "boundary" in divergence
-        else len(old)
-    )
+    index = _divergence_index(divergence, old)
     # A charge that stood is visible either as the flag on our own boundary or,
     # for the opponent's charge inside our window, as the engagement it leaves.
     contact_before = any(b.charged or b.engaged for b in old[: index + 1])
-    assert contact_before, f"diverged before any charge stood: {divergence}"
+    if not contact_before:
+        _assert_identical_until_the_rules_part(old, new, divergence)

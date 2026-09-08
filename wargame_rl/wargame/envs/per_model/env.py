@@ -94,6 +94,7 @@ from wargame_rl.wargame.envs.per_model.types import (
     PerModelAction,
     PerModelObservation,
     PerModelProvenance,
+    RulesDeparture,
     StepKind,
 )
 from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
@@ -291,9 +292,8 @@ class PerModelEnv(gym.Env):
         self._terminated = False
         self._attrition_deaths_player = 0
         self._attrition_deaths_opponent = 0
-        self._fought_units: tuple[set[int], set[int]] | None = None
-        self._consolidate_order: tuple[Seat, Seat] | None = None
-        self._engaged_before_consolidate: tuple[set[int], set[int]] | None = None
+        self._fought_by_seat: dict[bool, set[int]] = {}
+        self.departures: list[RulesDeparture] = []
         self.last_reward: float | None = None
         self.last_reward_breakdown: dict[str, float] = {}
         self.last_per_model_reward = np.zeros(
@@ -404,9 +404,8 @@ class PerModelEnv(gym.Env):
         self._pending = None
         self._window = None
         self._terminated = False
-        self._fought_units = None
-        self._consolidate_order = None
-        self._engaged_before_consolidate = None
+        self._fought_by_seat = {}
+        self.departures = []
         self.current_turn = 0
         self.sub_step = 0
         self.episode_step = 0
@@ -630,7 +629,6 @@ class PerModelEnv(gym.Env):
         if state.phase is BattlePhase.fight and BattlePhase.fight in self._skip_phases:
             self._resolve_fight_engine(state)
         if state.phase is BattlePhase.consolidate:
-            self._resolve_consolidate_drag_in(state)
             self._end_fight_phase()
         if state.phase is BATTLE_PHASE_ORDER[-1]:
             self._regain_coherency(state)
@@ -739,6 +737,10 @@ class PerModelEnv(gym.Env):
         for seat in (self._player_seat, self._opponent_seat):
             for model in seat.models:
                 model.charged_this_turn = False
+                # "Was eligible to fight THIS phase" -- a unit that fought in our
+                # fight phase is not thereby eligible to consolidate in the
+                # opponent's; `begin_turn` would only clear it at our next turn.
+                model.fought_this_phase = False
 
     def carry_fight_to_consolidate(
         self, order: tuple[Seat, Seat], fought: tuple[set[int], set[int]]
@@ -757,30 +759,46 @@ class PerModelEnv(gym.Env):
             for unit in units:
                 for member in seat.unit_members(unit, alive_only=False):
                     seat.models[member].fought_this_phase = True
-        self._fought_units = fought
-        self._consolidate_order = order
-        self._engaged_before_consolidate = (
-            self._engaged_enemy_groups(order[0]),
-            self._engaged_enemy_groups(order[1]),
+            self._fought_by_seat[seat.is_player] = set(units)
+
+    def note_departure(self, rule: str) -> None:
+        """Record that a rule the phase facade cannot apply just made a difference."""
+        state = self._game_clock.state
+        self.departures.append(
+            RulesDeparture(
+                episode_step=self.episode_step,
+                battle_round=state.battle_round,
+                phase=state.phase,
+                rule=rule,
+            )
         )
 
-    def _resolve_consolidate_drag_in(self, state: GameState) -> None:
-        if not self.config.melee.enabled or self._consolidate_order is None:
+    def fought_units_of(self, seat: Seat) -> set[int]:
+        """Units of `seat` selected to fight this fight phase, so far."""
+        return self._fought_by_seat.setdefault(seat.is_player, set())
+
+    def drag_in(self, seat: Seat, groups: set[int]) -> None:
+        """Engaging consolidation, after moving (`12-fight-phase.md`): each enemy
+        unit the move newly engaged that has not been selected to fight this
+        phase is selected now by its player and strikes `seat`'s force.
+
+        Resolved at the consolidating unit's close, for that unit's own new
+        contacts only -- not batched after both seats have finished, and not
+        for a unit an Ongoing move happened to clip, which the rules do not
+        grant a swing. The dragged-in unit's strikes are the engine's default
+        targets (`DEFERRED: fight.drag_in_choice`), not a decision of its seat.
+        """
+        other = self._opponent_seat if seat.is_player else self._player_seat
+        owed = groups - self.fought_units_of(other)
+        if not owed or not self.config.melee.enabled:
             return
-        if state.phase is not BattlePhase.consolidate or state.active_player is None:
-            return
-        order = self._consolidate_order
-        before = self._engaged_before_consolidate or (set(), set())
-        fought = self._fought_units or (set(), set())
+        self.fought_units_of(other).update(owed)
+        for unit in owed:
+            for member in other.unit_members(unit, alive_only=False):
+                other.models[member].fought_this_phase = True
         quantities = self._rules_quantities
-        for index, seat in enumerate(order):
-            other = order[1 - index]
-            dragged = self._engaged_enemy_groups(seat) - before[index]
-            owed = dragged - fought[1 - index]
-            if not owed:
-                continue
-            fought[1 - index].update(owed)
-            results = fight_dragged_in_units(
+        other.fight_results.extend(
+            fight_dragged_in_units(
                 seat.enemies,
                 seat.models,
                 owed,
@@ -789,8 +807,7 @@ class PerModelEnv(gym.Env):
                 base_diameter=2.0 * quantities.base_radius,
                 attacker_weapons=other.melee_weapons,
             )
-            other.fight_results.extend(results)
-        self._consolidate_order = None
+        )
 
     def _engaged_enemy_groups(self, seat: Seat) -> set[int]:
         """Enemy unit ids engaged with any living model of `seat`."""
@@ -808,22 +825,32 @@ class PerModelEnv(gym.Env):
         return {int(theirs[column].group_id) for column in np.flatnonzero(touching)}
 
     def _regain_coherency(self, state: GameState) -> None:
+        """End of Turn: every unit on the board regains coherency, or loses models.
+
+        `03-moving.md` § Regaining coherency: "In the End of Turn step of each
+        player's turn, ANY unit on the board that is out of coherency loses
+        models". Both forces, not only the side whose turn is ending -- the
+        phase facade culls the active side alone, which lets a unit the enemy's
+        shooting split take its own movement phase to close up before it is
+        ever judged.
+        """
         if not self._coherency_attrition or state.active_player is None:
             return
-        seat = self.seat_for_side(state.active_player)
-        destroyed = apply_attrition(
-            seat.models,
-            self._rules_quantities.scale.to_units(
-                self.config.coherency.nearest_distance
-            ),
-            self._rules_quantities.scale.to_units(
-                self.config.coherency.furthest_distance
-            ),
+        nearest = self._rules_quantities.scale.to_units(
+            self.config.coherency.nearest_distance
         )
-        if seat.is_player:
-            self._attrition_deaths_player += len(destroyed)
-        else:
-            self._attrition_deaths_opponent += len(destroyed)
+        furthest = self._rules_quantities.scale.to_units(
+            self.config.coherency.furthest_distance
+        )
+        active, other = self._seat_order(state)
+        for seat in (active, other):
+            destroyed = apply_attrition(seat.models, nearest, furthest)
+            if destroyed and seat is other:
+                self.note_departure("attrition.every_unit_on_the_board")
+            if seat.is_player:
+                self._attrition_deaths_player += len(destroyed)
+            else:
+                self._attrition_deaths_opponent += len(destroyed)
 
     # ------------------------------------------------------------------ reward
 
@@ -859,9 +886,11 @@ class PerModelEnv(gym.Env):
         all_player_eliminated = (
             self.config.terminate_on_player_elimination and not any_player_alive
         )
-        all_opponent_eliminated = bool(self.opponent_models) and all(
-            not m.is_alive for m in self.opponent_models
-        )
+        # `15-missions-and-scoring.md` § Ending the battle: a player with no
+        # models left does not lose immediately; both keep taking turns and the
+        # survivor keeps scoring. So the opponent's wipe ends nothing here; the
+        # player's does only under the config switch, which is a training
+        # device. The phase facade ends the battle on either wipe.
         clock_state = self._game_clock.state
         phase = clock_state.phase or BattlePhase.command
         player_shots = self._player_seat.shooting_results
@@ -930,8 +959,10 @@ class PerModelEnv(gym.Env):
             self.current_turn,
             self.max_turns,
             succeeded,
-            all_eliminated=all_player_eliminated or all_opponent_eliminated,
+            all_eliminated=all_player_eliminated,
         )
+        if not terminated and not any(m.is_alive for m in self.opponent_models):
+            self.note_departure("battle.continues_after_a_wipe")
         ctx.is_terminated = terminated
         self.last_step_context = ctx
         reward = self.phase_manager.calculate_reward(view, ctx)

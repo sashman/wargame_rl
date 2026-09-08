@@ -27,6 +27,10 @@ from wargame_rl.wargame.envs.domain.coherency_enforcement import (
     CoherencyEnforcement,
     enforce_after_move,
 )
+from wargame_rl.wargame.envs.domain.consolidate import (
+    _is_legal as _objective_move_is_legal,
+)
+from wargame_rl.wargame.envs.domain.consolidate import _nearest_objective_in_reach
 from wargame_rl.wargame.envs.domain.engagement import engagement_matrix
 from wargame_rl.wargame.envs.domain.entities import WargameModel
 from wargame_rl.wargame.envs.domain.pile_in import agent_move_is_legal
@@ -270,3 +274,48 @@ def consolidation_mode(
         if bool((rows <= consolidate_distance).any()):
             return ConsolidationMode.objective
     return ConsolidationMode.none
+
+
+def objective_in_reach(
+    offsets: np.ndarray | None, members: Sequence[int], consolidate_distance: float
+) -> int | None:
+    """The objective the Objective mode consolidates onto: the nearest in reach.
+
+    The rules let the player pick one of those in range
+    (`DEFERRED: consolidate.select_objective`); the env takes the nearest, as
+    the engine's constructive path does.
+    """
+    if offsets is None or offsets.shape[1] == 0:
+        return None
+    return _nearest_objective_in_reach(offsets, list(members), consolidate_distance)
+
+
+def objective_consolidation_stands(
+    models: Sequence[WargameModel],
+    members: Sequence[int],
+    start_positions: dict[int, np.ndarray],
+    *,
+    offsets_before: np.ndarray,
+    offsets_after: np.ndarray,
+    objective: int,
+    radius: float,
+    coherency_nearest: float,
+    coherency_furthest: float,
+) -> bool:
+    """`12-fight-phase.md` § Consolidation move, Objective mode, judged.
+
+    Every model that moved ends within range of the selected objective if it
+    can, or closer to it; the unit ends within range; the unit is coherent.
+    Shares the engine's own `_is_legal` so a judged consolidation and a
+    constructed one cannot disagree about the rule.
+    """
+    return _objective_move_is_legal(
+        list(models),
+        list(members),
+        start_positions,
+        before=offsets_before[:, objective],
+        after=offsets_after[:, objective],
+        radius=radius,
+        coherency_nearest=coherency_nearest,
+        coherency_furthest=coherency_furthest,
+    )

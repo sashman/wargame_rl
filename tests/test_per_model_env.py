@@ -8,6 +8,8 @@ needs, so the tests assert on it and never on private state.
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import numpy as np
 import pytest
 
@@ -16,8 +18,10 @@ from wargame_rl.wargame.envs.domain.activation import (
     CHARGE_TARGET_DECLINE,
     MoveDeclaration,
 )
+from wargame_rl.wargame.envs.domain.value_objects import position
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.per_model import (
+    DecisionPoint,
     EpisodeOver,
     PerModelAction,
     PerModelEnv,
@@ -25,6 +29,7 @@ from wargame_rl.wargame.envs.per_model import (
     facade_of,
     require_per_model,
 )
+from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
@@ -257,3 +262,72 @@ def test_deferred_switches_are_refused_at_construction() -> None:
     """A scenario asking for a declaration the facade does not carry fails loudly."""
     with pytest.raises(ValueError, match="declare_objectives"):
         PerModelEnv(small_config().model_copy(update={"declare_objectives": True}))
+
+
+class _WatchingSeat:
+    """Wraps the opponent's adapter to read its army as its movement phase opens."""
+
+    def __init__(self, inner: Any) -> None:
+        self.inner = inner
+        self.alive_at_movement: int | None = None
+
+    def plan(self, phase: BattlePhase, seat: Any, env: Any) -> None:
+        if phase is BattlePhase.movement and self.alive_at_movement is None:
+            self.alive_at_movement = sum(m.is_alive for m in seat.models)
+        self.inner.plan(phase, seat, env)
+
+    def choose(self, point: DecisionPoint, seat: Any) -> PerModelAction:
+        result: PerModelAction = self.inner.choose(point, seat)
+        return result
+
+
+def _quiet(point: DecisionPoint) -> PerModelAction:
+    """Close the turn, or open the first selectable unit with the closing declaration."""
+    if point.kind is StepKind.close_turn:
+        return PerModelAction.close_turn()
+    return PerModelAction.open(int(np.flatnonzero(point.selector_mask)[0]), 0)
+
+
+def test_attrition_culls_every_unit_on_the_board_at_each_end_of_turn() -> None:
+    """`03-moving.md` § Regaining coherency: ANY unit out of coherency loses
+    models at the end of each player's turn -- so the opponent's torn unit is
+    culled at the end of OUR turn, before it gets a movement phase to close up.
+    Arrange a torn opponent unit; act through our turn; assert the opponent
+    plans its movement with the stragglers already gone."""
+    base = small_config(rounds=1)
+    config = WargameEnvConfig.model_validate(
+        base.model_dump()
+        | {"coherency": base.coherency.model_dump() | {"attrition": True}}
+    )
+    env = PerModelEnv(config)
+    observation, _ = env.reset(seed=2)
+    for model, y in zip(env.opponent_models[:3], (2.0, 18.0, 38.0), strict=True):
+        model.location = position(56.0, y)
+    watcher = _WatchingSeat(env.opponent_seat.adapter)
+    cast(Any, env.opponent_seat).adapter = watcher
+    point = observation.decision
+    while point.kind is not StepKind.close_turn:
+        observation, *_ = env.step(_quiet(point))
+        point = observation.decision
+    assert watcher.alive_at_movement == 4, "the opponent moved before it was culled"
+    assert any(d.rule == "attrition.every_unit_on_the_board" for d in env.departures)
+
+
+def test_the_battle_continues_after_the_opponent_is_wiped_out() -> None:
+    """`15-missions-and-scoring.md` § Ending the battle: a player with no models
+    left does not lose immediately, and the survivor keeps scoring. Arrange a
+    wiped opponent at the first decision; assert the clock runs to its budget,
+    every round closes, and VP accrue."""
+    env = PerModelEnv(small_config(rounds=3))
+    observation, _ = env.reset(seed=2)
+    for model in env.opponent_models:
+        model.stats["current_wounds"] = 0
+    closes = 0
+    done = False
+    while not done:
+        point = observation.decision
+        closes += point.kind is StepKind.close_turn
+        observation, _reward, done, _, _ = env.step(_quiet(point))
+    assert closes == 3 and env.current_turn == env.max_turns
+    assert env.player_vp > 0
+    assert any(d.rule == "battle.continues_after_a_wipe" for d in env.departures)

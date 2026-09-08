@@ -234,6 +234,21 @@ class FightSequence:
                 for group, members in available.items()
                 if _strikes_first(sides[turn].models, members)
             }
+            if not priority and not self.passed[1 - turn]:
+                # `12-fight-phase.md` § Fight step, step 1: a player with no
+                # Strikes First unit to select hands the sequence to the other
+                # player while THEY still have one; only when no Strikes First
+                # unit is eligible at all does the sequence move to step 2,
+                # with the player who could not select going first there. A
+                # seat that has just passed is not handed the sequence back.
+                other_priority = {
+                    group: members
+                    for group, members in self.eligible(1 - turn).items()
+                    if _strikes_first(sides[1 - turn].models, members)
+                }
+                if other_priority:
+                    self.turn = 1 - turn
+                    continue
             pool = priority or available
             if (
                 not pool

@@ -208,3 +208,22 @@ def require_per_model(provenance: dict[str, Any] | BaseModel) -> None:
             f"this artefact belongs to the '{tag}' facade and cannot be seated "
             f"in the per-model one"
         )
+
+
+@dataclass(frozen=True)
+class RulesDeparture:
+    """A point at which this facade applied a rule the phase facade cannot.
+
+    The per-model step lets the facade honour orderings the whole-army step
+    has no room for -- a unit selecting targets after an earlier unit's
+    casualties are removed, attrition on the side whose turn it is not, a
+    battle that continues after a wipe. Each is recorded when it first makes a
+    difference, so a bridge against the phase facade can say exactly how far
+    bit-identity was expected to hold, and a reader of an episode can see
+    which rule separated the two games.
+    """
+
+    episode_step: int
+    battle_round: int | None
+    phase: BattlePhase | None
+    rule: str

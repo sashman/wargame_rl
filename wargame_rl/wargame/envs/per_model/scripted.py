@@ -128,10 +128,16 @@ class ScriptedSeat:
             for index in plan.order:
                 if selector[index]:
                     if not point.declaration_mask[index, plan.declaration]:
-                        raise ScriptedSeatError(
-                            f"unit {plan.group} planned declaration "
-                            f"{plan.declaration} which the phase does not allow"
-                        )
+                        # The plan was made at phase open; an earlier unit's
+                        # casualties can since have left this one nothing to
+                        # shoot at. The rules' outcome is that it holds fire
+                        # (or declines), which is declaration 0 and always legal.
+                        if not point.declaration_mask[index, 0]:
+                            raise ScriptedSeatError(
+                                f"unit {plan.group} planned declaration "
+                                f"{plan.declaration} which the phase does not allow"
+                            )
+                        return PerModelAction.open(index, 0)
                     return PerModelAction.open(index, plan.declaration)
         # A unit the program admits that the plan never mentioned: it takes the
         # closing declaration, which every phase makes legal.

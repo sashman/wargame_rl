@@ -55,6 +55,8 @@ from wargame_rl.wargame.envs.domain.unit_referees import (
     coherency_after_unit_move,
     consolidation_mode,
     fall_back_stands,
+    objective_consolidation_stands,
+    objective_in_reach,
     revert_unit,
     short_move_stands,
     touched_enemy_units,
@@ -478,20 +480,61 @@ class MovementPhase(_UnitPhase):
 
 
 class ShootingPhase(_UnitPhase):
-    """`10-shooting-phase.md`: a unit declares it shoots; each model names a unit."""
+    """`10-shooting-phase.md`: a unit declares it shoots; each model names a unit;
+    the unit's attacks resolve together when it closes.
+
+    Three orderings from `04-making-attacks.md` and `05-attack-sequence.md`
+    meet here. Every target is selected before any attack is resolved, so a
+    member names its unit without seeing a squadmate's dice -- the shots are
+    only declared on the `act` steps and resolved at the unit's close. An
+    attack at a unit a squadmate's dice have just wiped is therefore LOST, as
+    `05` § 4 says, not re-aimed. And destroyed models are removed "only after
+    the attacking unit has resolved all of its attacks", so the NEXT unit
+    selects its targets, and has its cover judged, against the board as it
+    then stands: the legality masks and the membership behind "every model in
+    cover" are rebuilt whenever a close has removed a model.
+
+    Within the unit the shots resolve in target-unit order, then model index --
+    the phase facade's order for one action vector -- so a script through both
+    facades draws the same dice for the same shot.
+    """
 
     def __init__(self, env: PerModelEnv, seat: Seat) -> None:
         super().__init__(env, BattlePhase.shooting, seat)
         self.unit_masks = np.zeros((seat.n_models, 0), dtype=bool)
-        self.members_at_open: dict[int, list[int]] = {}
+        self.members: dict[int, list[int]] = {}
+        self.declared: list[tuple[int, int]] = []
+        self._alive_key: tuple[bool, ...] | None = None
+        self._phase_open_masks = self.unit_masks
+        self._phase_open_members: dict[int, list[int]] = {}
 
     def open(self) -> None:
+        self._refresh(force=True)
+        self._phase_open_masks = self.unit_masks
+        self._phase_open_members = self.members
+        super().open()
+
+    def _refresh(self, *, force: bool = False) -> None:
+        """Rebuild what the board's casualties change, only when they did."""
+        key = tuple(m.is_alive for m in self.seat.enemies)
+        if not force and key == self._alive_key:
+            return
+        self._alive_key = key
         self.unit_masks = unit_shooting_masks(self.env, self.seat)
-        self.members_at_open = {}
+        self.members = {}
         for j, enemy in enumerate(self.seat.enemies):
             if enemy.is_alive:
-                self.members_at_open.setdefault(int(enemy.group_id), []).append(j)
-        super().open()
+                self.members.setdefault(int(enemy.group_id), []).append(j)
+        if force:
+            return
+        # The phase facade judged every unit's targets at phase open; where the
+        # casualties just removed change what a unit still to act may target,
+        # the two games part here.
+        pending = np.flatnonzero(~self.activation.acted & self.seat.alive())
+        if pending.size and not np.array_equal(
+            self.unit_masks[pending], self._phase_open_masks[pending]
+        ):
+            self.env.note_departure("shooting.targets_judged_after_casualties")
 
     def _unit_may_shoot(self, unit: int) -> bool:
         rows = self.unit_masks[self.seat.unit_members(unit)]
@@ -504,20 +547,12 @@ class ShootingPhase(_UnitPhase):
         return mask
 
     def on_open(self, unit: int, declaration: int) -> None:
+        self.declared = []
         if declaration == ShootDeclaration.hold_fire:
             self.close_now()
 
     def on_target(self, unit: int, target: int) -> None:
         raise NotImplementedError("the shooting phase has no target step")
-
-    def _alive_groups(self) -> np.ndarray:
-        width = self.unit_masks.shape[1]
-        alive = np.zeros(width, dtype=bool)
-        for enemy in self.seat.enemies:
-            group = int(enemy.group_id)
-            if enemy.is_alive and group < width:
-                alive[group] = True
-        return alive
 
     def action_mask(self, index: int) -> np.ndarray:
         handler = self.seat.handler
@@ -525,9 +560,7 @@ class ShootingPhase(_UnitPhase):
         mask[STAY_ACTION] = True
         shooting = handler.shooting_slice
         if shooting is not None and self.unit_masks.shape[1]:
-            mask[shooting.start : shooting.end] = (
-                self.unit_masks[index] & self._alive_groups()
-            )
+            mask[shooting.start : shooting.end] = self.unit_masks[index]
         return mask
 
     def on_act(self, index: int, action: int) -> None:
@@ -536,28 +569,43 @@ class ShootingPhase(_UnitPhase):
         shooting = self.seat.handler.shooting_slice
         if shooting is None:
             return
-        group = action - shooting.start
-        members = [self.seat.enemies[j] for j in self.members_at_open.get(group, [])]
-        cover = np.zeros((self.seat.n_models, self.unit_masks.shape[1]), dtype=bool)
-        if members:
-            cover[index, group] = unit_cover_for_shot(
-                self.env, self.seat.models[index], members
-            )
-        unit = int(self.seat.models[index].group_id)
-        results = resolve_shooting_phase(
-            shots=[(index, group)],
-            attackers=self.seat.models,
-            targets=self.seat.enemies,
-            attacker_weapons=self.seat.ranged_weapons,
-            rng=self.env.roller(
-                DicePurpose.shooting, self.seat, unit=unit, model=index
-            ),
-            cover=cover,
-        )
-        self.seat.shooting_results.extend(results)
+        self.declared.append((index, action - shooting.start))
 
     def on_unit_close(self, unit: int, members: list[int]) -> None:
-        return None
+        shots = sorted(self.declared, key=lambda shot: (shot[1], shot[0]))
+        self.declared = []
+        width = self.unit_masks.shape[1]
+        for index, group in shots:
+            target_members = [self.seat.enemies[j] for j in self.members.get(group, [])]
+            cover = np.zeros((self.seat.n_models, width), dtype=bool)
+            if target_members:
+                cover[index, group] = unit_cover_for_shot(
+                    self.env, self.seat.models[index], target_members
+                )
+                at_open = [
+                    self.seat.enemies[j]
+                    for j in self._phase_open_members.get(group, [])
+                ]
+                if len(at_open) != len(target_members) and cover[
+                    index, group
+                ] != unit_cover_for_shot(self.env, self.seat.models[index], at_open):
+                    self.env.note_departure("shooting.cover_judged_after_casualties")
+            # One call per shot keeps the dice tagged with the model rolling
+            # them; `resolve_shooting_phase` loses the shot itself when the
+            # target unit is already wiped, which is the rule.
+            self.seat.shooting_results.extend(
+                resolve_shooting_phase(
+                    shots=[(index, group)],
+                    attackers=self.seat.models,
+                    targets=self.seat.enemies,
+                    attacker_weapons=self.seat.ranged_weapons,
+                    rng=self.env.roller(
+                        DicePurpose.shooting, self.seat, unit=unit, model=index
+                    ),
+                    cover=cover,
+                )
+            )
+        self._refresh()
 
 
 class ChargePhase(_UnitPhase):
@@ -706,6 +754,8 @@ class _ShortMoveSeat(_UnitPhase):
     def __init__(self, env: PerModelEnv, phase: BattlePhase, seat: Seat) -> None:
         super().__init__(env, phase, seat)
         self.modes: dict[int, ConsolidationMode] = {}
+        self.touched_before: dict[int, set[int]] = {}
+        self.offsets_before: np.ndarray | None = None
 
     def open(self) -> None:
         if self.seat.adapter is not None:
@@ -727,24 +777,39 @@ class _ShortMoveSeat(_UnitPhase):
                 self.modes[unit] = mode
             self.units.add(unit)
 
-    def _mode(self, unit: int) -> ConsolidationMode:
+    def _offsets(self) -> np.ndarray | None:
         env = self.env
-        quantities = env.rules_quantities
-        offsets = (
-            compute_distances(self.seat.models, env.objectives).model_obj_norms_offset
-            if env.objectives
-            else None
+        if not env.objectives:
+            return None
+        return compute_distances(
+            self.seat.models, env.objectives
+        ).model_obj_norms_offset
+
+    def _consolidate_distance(self) -> float:
+        return self.env.rules_quantities.scale.to_units(
+            self.env.config.melee.consolidate_distance
         )
+
+    def _touched(self, unit: int) -> set[int]:
+        quantities = self.env.rules_quantities
+        return touched_enemy_units(
+            self.seat.models,
+            self.seat.unit_members(unit),
+            self.seat.alive_enemies(),
+            engagement_range=quantities.engagement_range,
+            base_diameter=2.0 * quantities.base_radius,
+        )
+
+    def _mode(self, unit: int) -> ConsolidationMode:
+        quantities = self.env.rules_quantities
         return consolidation_mode(
             self.seat.models,
             self.seat.unit_members(unit),
             self.seat.alive_enemies(),
-            offsets,
+            self._offsets(),
             engagement_range=quantities.engagement_range,
             base_diameter=2.0 * quantities.base_radius,
-            consolidate_distance=quantities.scale.to_units(
-                env.config.melee.consolidate_distance
-            ),
+            consolidate_distance=self._consolidate_distance(),
         )
 
     def declaration_mask(self, unit: int) -> np.ndarray:
@@ -758,6 +823,9 @@ class _ShortMoveSeat(_UnitPhase):
             self.close_now()
             return
         self.capture_start(unit)
+        if self.phase is BattlePhase.consolidate:
+            self.touched_before[unit] = self._touched(unit)
+            self.offsets_before = self._offsets()
 
     def on_target(self, unit: int, target: int) -> None:
         raise NotImplementedError("a short move has no target step")
@@ -787,13 +855,38 @@ class _ShortMoveSeat(_UnitPhase):
         starts = self.activation.start_positions
         if not members or not unit_moved(self.seat.models, members, starts):
             return
+        if self.phase is BattlePhase.pile_in:
+            stands = self._short_move_stands(
+                members,
+                starts,
+                self.env.rules_quantities.scale.to_units(SELECTION_RANGE_INCHES),
+            )
+        else:
+            stands = self._consolidation_stands(unit, members, starts)
+        if not stands:
+            revert_unit(self.seat.models, members, starts)
+            return
+        if (
+            self.phase is BattlePhase.consolidate
+            and self.modes.get(unit) is ConsolidationMode.engaging
+        ):
+            # Engaging, after moving: every enemy unit this move newly engaged
+            # that has not been selected to fight this phase is selected now,
+            # by the opposing player, and strikes -- at this unit's close, not
+            # after both seats have finished, so the order is the chapter's.
+            dragged = self._touched(unit) - self.touched_before.get(unit, set())
+            self.env.drag_in(self.seat, dragged)
+
+    def _short_move_stands(
+        self, members: list[int], starts: dict[int, np.ndarray], selection_range: float
+    ) -> bool:
         quantities = self.env.rules_quantities
-        if short_move_stands(
+        return short_move_stands(
             self.seat.models,
             members,
             self.seat.alive_enemies(),
             starts,
-            selection_range=quantities.scale.to_units(SELECTION_RANGE_INCHES),
+            selection_range=selection_range,
             engagement_range=quantities.engagement_range,
             base_radius=quantities.base_radius,
             coherency_nearest=quantities.scale.to_units(
@@ -802,9 +895,53 @@ class _ShortMoveSeat(_UnitPhase):
             coherency_furthest=quantities.scale.to_units(
                 self.env.config.coherency.furthest_distance
             ),
-        ):
-            return
-        revert_unit(self.seat.models, members, starts)
+        )
+
+    def _consolidation_stands(
+        self, unit: int, members: list[int], starts: dict[int, np.ndarray]
+    ) -> bool:
+        """`12-fight-phase.md` § Consolidation move: each mode has its own test.
+
+        Ongoing is a pile-in onto the units already engaged (selection range
+        zero); Engaging selects among units within 3", not the pile-in's 5";
+        Objective is judged by the engine's own objective rule. One referee for
+        all three was the pile-in's, under which a unit in Objective mode with
+        a living enemy anywhere was reverted every time it moved.
+        """
+        mode = self.modes.get(unit, ConsolidationMode.none)
+        if mode is ConsolidationMode.ongoing:
+            return self._short_move_stands(members, starts, 0.0)
+        if mode is ConsolidationMode.engaging:
+            return self._short_move_stands(
+                members, starts, self._consolidate_distance()
+            )
+        if mode is ConsolidationMode.objective:
+            offsets_after = self._offsets()
+            before = self.offsets_before
+            if offsets_after is None or before is None:
+                return False
+            objective = objective_in_reach(
+                before, members, self._consolidate_distance()
+            )
+            if objective is None:
+                return False
+            quantities = self.env.rules_quantities
+            return objective_consolidation_stands(
+                self.seat.models,
+                members,
+                starts,
+                offsets_before=before,
+                offsets_after=offsets_after,
+                objective=objective,
+                radius=float(self.env.objectives[objective].radius_size),
+                coherency_nearest=quantities.scale.to_units(
+                    self.env.config.coherency.nearest_distance
+                ),
+                coherency_furthest=quantities.scale.to_units(
+                    self.env.config.coherency.furthest_distance
+                ),
+            )
+        return False
 
 
 class ShortMovePhase(PhaseProgram):

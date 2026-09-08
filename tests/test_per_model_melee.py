@@ -16,10 +16,12 @@ from tests.per_model_seats import small_config
 from wargame_rl.wargame.envs.domain.activation import (
     CHARGE_TARGET_DECLINE,
     ChargeDeclaration,
+    ConsolidationMode,
     MoveDeclaration,
     ShootDeclaration,
     ShortMoveDeclaration,
 )
+from wargame_rl.wargame.envs.domain.value_objects import position
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION, MoveLadder
 from wargame_rl.wargame.envs.per_model import (
     DecisionPoint,
@@ -27,6 +29,7 @@ from wargame_rl.wargame.envs.per_model import (
     PerModelEnv,
     StepKind,
 )
+from wargame_rl.wargame.envs.per_model.phases import ShortMovePhase
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 
@@ -172,24 +175,20 @@ def test_a_standing_charge_leads_to_a_strike_the_agent_chooses() -> None:
 
 def _drive_to_our_consolidate(env: PerModelEnv) -> tuple[bool, set[int]]:
     """Play on from the pending point until the player decides in the consolidate
-    step of ITS OWN turn, collecting the opponent units that struck on the way.
+    step of ITS OWN turn; with it, the opponent units the fight step selected.
 
-    The result lists are cleared when a reward window opens, so the fight
-    step's blows are read while the fight step is still the phase."""
+    Read from the env's own record of the fight step rather than the result
+    lists, which the consolidate window clears when it opens -- and since the
+    chargers all strike first, every opposing blow lands after our last one."""
     point = env.pending
     assert point is not None
-    struck: set[int] = set()
     while True:
         observation, _reward, done, _, _ = env.step(_charging_driver(env, point))
         point = observation.decision
-        struck.update(
-            int(env.opponent_models[r.attacker_idx].group_id)
-            for r in env.last_opponent_fight_results
-        )
         if done or point.kind is StepKind.close_turn:
-            return False, struck
+            return False, set()
         if point.phase is BattlePhase.consolidate and observation.active_seat_is_player:
-            return True, struck
+            return True, set(env.fought_units_of(env.opponent_seat))
 
 
 def _drive_to_close_turn(env: PerModelEnv) -> bool:
@@ -234,3 +233,149 @@ def test_a_charge_outlives_the_fight_step_but_not_the_fight_phase() -> None:
         if fought_checked:
             return
     pytest.fail("no seed had the opponent strike before the player consolidated")
+
+
+def test_fought_expires_with_the_fight_phase_on_both_seats() -> None:
+    """ "Was eligible to fight THIS phase": a unit that fought in our fight phase
+    is not thereby eligible to consolidate in the opponent's. After our turn
+    cycle closes, no model on either force carries the flag."""
+    for seed in range(8):
+        env, point, _charged = _play_until_a_strike(seed)
+        if point is None:
+            continue
+        model = int(np.flatnonzero(point.selector_mask)[0])
+        legal = np.flatnonzero(point.action_mask[model])
+        env.step(PerModelAction.act(model, int(legal[0])))
+        assert env.wargame_models[model].fought_this_phase
+        assert _drive_to_close_turn(env)
+        assert not any(
+            m.fought_this_phase for m in (*env.wargame_models, *env.opponent_models)
+        )
+        return
+    pytest.fail("no seed produced a standing charge in eight tries")
+
+
+def _lone_fighter(env: PerModelEnv, at: tuple[float, float]) -> int:
+    """Our unit 0 reduced to model 2, which fought this phase, standing at `at`;
+    every enemy parked far away until the test places one."""
+    for index in (0, 1):
+        env.wargame_models[index].stats["current_wounds"] = 0
+    fighter = env.wargame_models[2]
+    fighter.location = position(*at)
+    fighter.fought_this_phase = True
+    for j, model in enumerate(env.opponent_models):
+        model.location = position(50.0, 2.0 + 4.0 * j)
+    return 2
+
+
+def _consolidate(env: PerModelEnv) -> ShortMovePhase:
+    program = ShortMovePhase(
+        env, BattlePhase.consolidate, (env.player_seat, env.opponent_seat)
+    )
+    program.open()
+    return program
+
+
+def _best_short_move_toward(
+    env: PerModelEnv, point: DecisionPoint, index: int, goal: tuple[float, float]
+) -> int:
+    handler = env.player_action_handler
+    model = env.wargame_models[index]
+    best, best_gap = STAY_ACTION, np.inf
+    for candidate in np.flatnonzero(point.action_mask[index]):
+        action = int(candidate)
+        if action == STAY_ACTION:
+            continue
+        end = np.asarray(model.location, dtype=float) + handler.decode_action(
+            action, model_idx=index, ladder=MoveLadder.short
+        )
+        gap = float(np.linalg.norm(np.array(goal) - end))
+        if gap < best_gap:
+            best, best_gap = action, gap
+    return best
+
+
+def _move_the_lone_fighter(
+    env: PerModelEnv, program: ShortMovePhase, index: int, goal: tuple[float, float]
+) -> None:
+    point = program.next_decision()
+    assert point is not None and point.seat_is_player and point.kind is StepKind.open
+    program.apply(point, PerModelAction.open(index, ShortMoveDeclaration.move))
+    point = program.next_decision()
+    assert point is not None and point.kind is StepKind.act
+    program.apply(
+        point,
+        PerModelAction.act(index, _best_short_move_toward(env, point, index, goal)),
+    )
+    program.next_decision()  # the unit's last member has acted: it closes here
+
+
+def test_an_objective_mode_consolidation_stands_on_its_own_rule() -> None:
+    """`12-fight-phase.md` § Consolidation move, Objective: a moved model ends
+    within range of the objective if it can. Arrange a lone fighter inside an
+    objective with every enemy far away; act with a short move that stays in
+    range; assert the mode shown is Objective and the move stands."""
+    env = PerModelEnv(small_config(melee=True, rounds=2))
+    env.reset(seed=1)
+    index = _lone_fighter(env, at=(16.0, 10.0))
+    program = _consolidate(env)
+    modes = program.player_consolidation_modes()
+    assert modes is not None and modes[index] == ConsolidationMode.objective
+    start = np.array(env.wargame_models[index].location, copy=True)
+    _move_the_lone_fighter(env, program, index, goal=(16.0, 12.0))
+    end = np.asarray(env.wargame_models[index].location, dtype=float)
+    assert not np.array_equal(start, end), "the objective-mode move was reverted"
+    offset = (
+        float(np.linalg.norm(end - np.array([14.0, 10.0])))
+        - env.rules_quantities.base_radius
+    )
+    assert offset <= 3.0
+
+
+def test_an_engaging_consolidation_selects_within_three_inches_only() -> None:
+    """Engaging: "the unit is within 3\" of one or more enemy units. Selection:
+    one or more of those". A unit 3.24\" away is not one of those, so a move
+    that engages it and walks away from the one within 3\" does not stand."""
+    env = PerModelEnv(small_config(melee=True, rounds=2))
+    env.reset(seed=1)
+    index = _lone_fighter(env, at=(20.0, 10.0))
+    near, far = env.opponent_models[0], env.opponent_models[3]
+    near.location = position(20.0, 13.5)
+    far.location = position(24.5, 10.0)
+    diameter = 2.0 * env.rules_quantities.base_radius
+    assert 3.5 - diameter <= 3.0 < 4.5 - diameter, "geometry: near within 3, far beyond"
+    program = _consolidate(env)
+    modes = program.player_consolidation_modes()
+    assert modes is not None and modes[index] == ConsolidationMode.engaging
+    start = np.array(env.wargame_models[index].location, copy=True)
+    _move_the_lone_fighter(env, program, index, goal=(23.0, 10.0))
+    assert np.array_equal(start, env.wargame_models[index].location), (
+        "a move onto a unit beyond 3 inches stood"
+    )
+
+
+def test_an_engaging_consolidation_drags_the_fresh_unit_in_at_the_units_close() -> None:
+    """Engaging, after moving: an enemy unit newly engaged that has not fought
+    is selected by its player and strikes -- when THIS unit's move stands, not
+    after both seats have consolidated."""
+    env = PerModelEnv(small_config(melee=True, rounds=2))
+    env.reset(seed=1)
+    index = _lone_fighter(env, at=(20.0, 10.0))
+    fresh = env.opponent_models[3]
+    fresh.location = position(23.5, 10.0)
+    program = _consolidate(env)
+    modes = program.player_consolidation_modes()
+    assert modes is not None and modes[index] == ConsolidationMode.engaging
+    assert not env.last_opponent_fight_results
+    _move_the_lone_fighter(env, program, index, goal=(23.5, 10.0))
+    fighter = env.wargame_models[index]
+    gap = float(
+        np.linalg.norm(np.asarray(fighter.location) - np.asarray(fresh.location))
+    )
+    assert (
+        gap - 2.0 * env.rules_quantities.base_radius
+        <= env.rules_quantities.engagement_range
+    )
+    blows = env.last_opponent_fight_results
+    assert blows and {r.attacker_idx for r in blows} == {3}
+    assert int(fresh.group_id) in env.fought_units_of(env.opponent_seat)
