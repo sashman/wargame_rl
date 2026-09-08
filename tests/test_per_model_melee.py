@@ -168,3 +168,69 @@ def test_a_standing_charge_leads_to_a_strike_the_agent_chooses() -> None:
         assert len(env.last_player_fight_results) == before + 1
         return
     pytest.fail("no seed produced a standing charge in eight tries")
+
+
+def _drive_to_our_consolidate(env: PerModelEnv) -> tuple[bool, set[int]]:
+    """Play on from the pending point until the player decides in the consolidate
+    step of ITS OWN turn, collecting the opponent units that struck on the way.
+
+    The result lists are cleared when a reward window opens, so the fight
+    step's blows are read while the fight step is still the phase."""
+    point = env.pending
+    assert point is not None
+    struck: set[int] = set()
+    while True:
+        observation, _reward, done, _, _ = env.step(_charging_driver(env, point))
+        point = observation.decision
+        struck.update(
+            int(env.opponent_models[r.attacker_idx].group_id)
+            for r in env.last_opponent_fight_results
+        )
+        if done or point.kind is StepKind.close_turn:
+            return False, struck
+        if point.phase is BattlePhase.consolidate and observation.active_seat_is_player:
+            return True, struck
+
+
+def _drive_to_close_turn(env: PerModelEnv) -> bool:
+    point = env.pending
+    assert point is not None
+    while point.kind is not StepKind.close_turn:
+        observation, _reward, done, _, _ = env.step(_charging_driver(env, point))
+        if done:
+            return False
+        point = observation.decision
+    return True
+
+
+def test_a_charge_outlives_the_fight_step_but_not_the_fight_phase() -> None:
+    """`12-fight-phase.md` makes pile-in, fight and consolidate three STEPS of one
+    phase; the clock carries them as three phases. "Made a charge move this
+    turn" makes a unit eligible to consolidate, so the flag must survive the
+    fight step's close -- and be gone before the opponent's turn, where it would
+    buy a Strikes First it did not earn. Beside it: a unit selected to fight is
+    stamped fought on BOTH seats, not only where the agent struck."""
+    fought_checked = False
+    for seed in range(8):
+        env, point, _charged = _play_until_a_strike(seed)
+        if point is None:
+            continue
+        chargers = [i for i, m in enumerate(env.wargame_models) if m.charged_this_turn]
+        assert chargers
+        reached, struck = _drive_to_our_consolidate(env)
+        if not reached:
+            continue
+        # The fight step has closed; the consolidate step of the same phase
+        # still sees the charge, on every charger dead or alive.
+        assert all(env.wargame_models[i].charged_this_turn for i in chargers)
+        for unit in struck:
+            members = [m for m in env.opponent_models if int(m.group_id) == unit]
+            assert all(m.fought_this_phase for m in members)
+            fought_checked = True
+        assert _drive_to_close_turn(env)
+        assert not any(
+            m.charged_this_turn for m in (*env.wargame_models, *env.opponent_models)
+        )
+        if fought_checked:
+            return
+    pytest.fail("no seed had the opponent strike before the player consolidated")

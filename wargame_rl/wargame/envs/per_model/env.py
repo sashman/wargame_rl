@@ -631,6 +631,7 @@ class PerModelEnv(gym.Env):
             self._resolve_fight_engine(state)
         if state.phase is BattlePhase.consolidate:
             self._resolve_consolidate_drag_in(state)
+            self._end_fight_phase()
         if state.phase is BATTLE_PHASE_ORDER[-1]:
             self._regain_coherency(state)
         if state.phase is not BattlePhase.command or state.battle_round is None:
@@ -703,9 +704,6 @@ class PerModelEnv(gym.Env):
                     )
                 )
         self.carry_fight_to_consolidate(order, (set(fought[0]), set(fought[1])))
-        for seat in order:
-            for model in seat.models:
-                model.charged_this_turn = False
 
     def _overrun_rules(self) -> OverrunRules:
         quantities = self._rules_quantities
@@ -724,10 +722,41 @@ class PerModelEnv(gym.Env):
             ),
         )
 
+    def _end_fight_phase(self) -> None:
+        """End of the rules' fight PHASE: the charge flags of both forces expire.
+
+        ⚠ `BattlePhase.pile_in`, `fight` and `consolidate` are three STEPS of one
+        rules phase (`12-fight-phase.md`) that the clock carries as three phases.
+        The phase facade clears `charged_this_turn` when its `fight` phase
+        closes -- the end of the fight STEP -- and its consolidate step then reads
+        the flag as False, so "made a charge move this turn" never makes a
+        unit eligible to consolidate there. Here the flag lives until the
+        consolidate step is left, which is where the rules' phase ends. It must
+        not survive beyond it: `begin_turn` clears only the side whose turn is
+        starting, so the charging force's flag would otherwise reach the
+        opponent's fight step and buy a Strikes First it did not earn.
+        """
+        for seat in (self._player_seat, self._opponent_seat):
+            for model in seat.models:
+                model.charged_this_turn = False
+
     def carry_fight_to_consolidate(
         self, order: tuple[Seat, Seat], fought: tuple[set[int], set[int]]
     ) -> None:
-        """What the consolidate boundary's drag-in clause needs from the fight."""
+        """What the consolidate step needs from the fight step.
+
+        Beside the drag-in clause's bookkeeping, every member of a unit that was
+        selected to fight is stamped `fought_this_phase` -- the consolidate
+        step's "was eligible to fight this phase" reads that flag through
+        `short_move_legality`. Stamped here, once, for every route through the
+        fight step (an agent's per-model strikes, a script's inline activation,
+        an overrun, the engine when `fight` is skipped), so both seats meet the
+        same eligibility rule.
+        """
+        for seat, units in zip(order, fought, strict=True):
+            for unit in units:
+                for member in seat.unit_members(unit, alive_only=False):
+                    seat.models[member].fought_this_phase = True
         self._fought_units = fought
         self._consolidate_order = order
         self._engaged_before_consolidate = (

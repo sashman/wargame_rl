@@ -1061,9 +1061,6 @@ class FightPhase(PhaseProgram):
             self.seats,
             (set(self.sequence.fought[0]), set(self.sequence.fought[1])),
         )
-        for seat in self.seats:
-            for model in seat.models:
-                model.charged_this_turn = False
 
 
 __all__ = [
