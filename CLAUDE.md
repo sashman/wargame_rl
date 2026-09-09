@@ -110,6 +110,8 @@ wargame_rl/
 | Record the README's GIFs (exact colours, median of N) | `just record-gifs <policy\|ckpt> <config> [tables]` |
 | Test env (random) | `just test-env` |
 | Watch a scripted policy play (no checkpoint) | `just play [config.yaml] [policy] [theme] [overlays]` |
+| Watch the per-model facade play, one frame per decision | `just play-per-model [config.yaml] [policy\|random] [theme] [overlays] [cadence]` |
+| Record the per-model facade to an MP4 | `just record-per-model [config.yaml] [policy\|random] [out.mp4] [cadence]` |
 | Step a match by hand and rewind it | `just debug [config.yaml] [policy\|ckpt] [theme] [overlays]` |
 | Recreate a recorded match exactly and step it | `just debug-recording <file> [policy\|ckpt] [theme] [overlays]` |
 | Record a match event log | `just record <config.yaml>` |

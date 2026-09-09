@@ -1,17 +1,13 @@
-"""Test-side drivers for the per-model facade.
+"""Test-side fixtures for the per-model facade.
 
-`random_legal_action` draws a uniformly random LEGAL decision from a decision
-point -- the fuzz seat. It exists here rather than in the package because it
-is a way of exercising the env, not a way of playing the game; the play and
-record recipes of the follow-up PR reuse it from here.
+`random_legal_action` -- the fuzz seat -- lives in the package
+(`per_model/random_seat.py`) since the play and record recipes use it too;
+it is re-exported here for the tests that share it.
 """
 
 from __future__ import annotations
 
-import numpy as np
-
-from wargame_rl.wargame.envs.domain.sequencing.activation import CHARGE_TARGET_DECLINE
-from wargame_rl.wargame.envs.per_model import DecisionPoint, PerModelAction, StepKind
+from wargame_rl.wargame.envs.per_model.random_seat import random_legal_action
 from wargame_rl.wargame.envs.reward.phase import (
     RewardCalculatorConfig,
     RewardPhaseConfig,
@@ -27,28 +23,6 @@ from wargame_rl.wargame.envs.types import (
 from wargame_rl.wargame.envs.types.config import MeleeWeaponProfile, WeaponProfile
 from wargame_rl.wargame.envs.types.config.melee import MeleeConfig
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
-
-
-def random_legal_action(
-    point: DecisionPoint, rng: np.random.Generator
-) -> PerModelAction:
-    """A uniformly random legal decision at `point`."""
-    if point.kind is StepKind.close_turn:
-        return PerModelAction.close_turn()
-    candidates = np.flatnonzero(point.selector_mask)
-    if candidates.size == 0:
-        raise AssertionError(f"{point.kind.value} point offers no selectable model")
-    model = int(rng.choice(candidates))
-    if point.kind is StepKind.open:
-        values = np.flatnonzero(point.declaration_mask[model])
-        return PerModelAction.open(model, int(rng.choice(values)))
-    if point.kind is StepKind.act:
-        values = np.flatnonzero(point.action_mask[model])
-        return PerModelAction.act(model, int(rng.choice(values)))
-    choices = [int(v) for v in np.flatnonzero(point.target_mask[model])] + [
-        CHARGE_TARGET_DECLINE
-    ]
-    return PerModelAction.target(model, int(rng.choice(choices)))
 
 
 def small_config(
@@ -135,3 +109,6 @@ def small_config(
             )
         ],
     )
+
+
+__all__ = ["random_legal_action", "small_config"]
