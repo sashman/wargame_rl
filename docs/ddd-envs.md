@@ -219,7 +219,11 @@ unit-close judgements and the compulsory consolidation mode) and
 `domain/kernel/dice.py` (the port). `tests/test_per_model_layering.py` pins that
 those import only `domain/` and `types/`, that `per_model/` never imports
 `wargame.py`, and that only its named clients import it — the facade itself
-and the set network in `model/per_model/`.
+and the set network in `model/per_model/`. The facade's reward can also be
+paid per decision by `per_model/reward_timing.py`, a third adapter that reads
+the env's `StepEffect` and public state and never touches its windows, which
+is what keeps the bridge test and the training loop (`train_per_model.py`)
+from coupling the two facades.
 
 The bridge is the contract between them: `tests/test_per_model_bridge.py`
 plays a scripted policy through both facades on the same layout and dice and

@@ -304,6 +304,13 @@ train-mixed-roles config max_epochs='300' n_seeds='3' first_seed='1' tag='-mixed
 # Run multiple env configs in parallel. Each run gets a unique --run-suffix and shared --wandb-group.
 # Uses PPO + transformer. Use: just train-multi config1.yaml config2.yaml
 # Trap INT/TERM so Ctrl+C kills all background train.py processes.
+# Train the set network over the per-model facade (issue #286). Everything is in
+# ROUNDS: `rounds` is the total budget, and the eval / checkpoint cadences must be
+# multiples of `rollout_rounds x envs`. Extra flags pass through.
+train-per-model env_config rounds='' *extra='':
+	@uv run train_per_model.py --env-config-path {{env_config}} \
+		{{ if rounds != "" { "--rounds " + rounds } else { "" } }} {{extra}}
+
 train-multi *configs:
 	@trap 'kill 0' INT TERM && \
 	group="train-multi-$(date +%Y-%m-%d-%H-%M-%S)" && \

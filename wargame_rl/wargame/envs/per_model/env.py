@@ -152,6 +152,29 @@ class SettledWindow:
     state: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class StepEffect:
+    """What one `step` did to the player seat, for a reward paid per decision.
+
+    `acted` is every player model the step newly marked acted: the actor on an
+    `act`, the whole unit on an `open` whose declaration closed it with no
+    member taking a step (and on a charge-target decline, which does the same),
+    nobody on a `target` that names a unit or on a `close_turn`.
+    `kills_by_model` counts the player kills resolved DURING the step, by
+    attacker -- a shooting unit's volley resolves at its close, on its last
+    member's step, so the attackers a step's kills name are not its actor set.
+    Harvested wherever the seat's result lists are about to be cleared, so a
+    kill is never lost to the next reward window opening inside the same step.
+    """
+
+    acted: tuple[int, ...]
+    kills_by_model: dict[int, int]
+
+    @classmethod
+    def none(cls) -> StepEffect:
+        return cls(acted=(), kills_by_model={})
+
+
 class EpisodeOver(RuntimeError):
     """`step` was called after the episode terminated."""
 
@@ -302,6 +325,11 @@ class PerModelEnv(gym.Env):
         self._attrition_deaths_opponent = 0
         self._fought_by_seat: dict[bool, set[int]] = {}
         self.divergences: list[FacadeDivergence] = []
+        # The step effect's kill harvest: how far into each of the player
+        # seat's result lists the harvest has read, and the step's tally.
+        self._results_cursor = (0, 0)
+        self._step_kills: dict[int, int] = {}
+        self.last_effect = StepEffect.none()
         self.last_reward: float | None = None
         self.last_reward_breakdown: dict[str, float] = {}
         self.last_per_model_reward = np.zeros(
@@ -414,6 +442,9 @@ class PerModelEnv(gym.Env):
         self._terminated = False
         self._fought_by_seat = {}
         self.divergences = []
+        self._results_cursor = (0, 0)
+        self._step_kills = {}
+        self.last_effect = StepEffect.none()
         self.current_turn = 0
         self.sub_step = 0
         self.episode_step = 0
@@ -460,27 +491,62 @@ class PerModelEnv(gym.Env):
         if reason is not None:
             raise ValueError(reason)
         self.episode_step += 1
+        self._step_kills = {}
         if point.kind is StepKind.close_turn:
             settled = self._settle_window()
             if settled.terminated or self._game_clock.is_game_over:
                 self._terminated = True
                 closing = self._closing_point()
                 self._pending = closing
+                info = self._info([settled])
+                info["effect"] = self._finish_effect(())
                 return (
                     build_per_model_observation(self, closing),
                     settled.reward,
                     True,
                     False,
-                    self._info([settled]),
+                    info,
                 )
             observation, reward, terminated, truncated, info = self._advance()
             info["settled"] = [settled] + info["settled"]
             info["reward_settled"] = True
+            info["effect"] = self._finish_effect(())
             return observation, reward + settled.reward, terminated, truncated, info
-        assert self._program is not None
-        self._program.apply(point, action)
+        program = self._program
+        assert program is not None
+        before = program.acted_mask()
+        acted_before = None if before is None else before.copy()
+        program.apply(point, action)
+        after = program.acted_mask()
+        if after is None or acted_before is None:
+            acted: tuple[int, ...] = ()
+        else:
+            acted = tuple(int(i) for i in np.flatnonzero(after & ~acted_before))
         self.sub_step += 1
-        return self._advance()
+        observation, reward, terminated, truncated, info = self._advance()
+        info["effect"] = self._finish_effect(acted)
+        return observation, reward, terminated, truncated, info
+
+    def _harvest_kills(self) -> None:
+        """Tally the player kills appended since the last harvest."""
+        shots, blows = self._results_cursor
+        seat = self._player_seat
+        for result in seat.shooting_results[shots:]:
+            if result.killed:
+                index = int(result.attacker_idx)
+                self._step_kills[index] = self._step_kills.get(index, 0) + 1
+        for result in seat.fight_results[blows:]:
+            if result.killed:
+                index = int(result.attacker_idx)
+                self._step_kills[index] = self._step_kills.get(index, 0) + 1
+        self._results_cursor = (len(seat.shooting_results), len(seat.fight_results))
+
+    def _finish_effect(self, acted: tuple[int, ...]) -> StepEffect:
+        self._harvest_kills()
+        self.last_effect = StepEffect(
+            acted=acted, kills_by_model=dict(self._step_kills)
+        )
+        return self.last_effect
 
     # ------------------------------------------------------------------ driver
 
@@ -866,6 +932,10 @@ class PerModelEnv(gym.Env):
     def _open_window(self, state: GameState) -> None:
         assert state.phase is not None
         self._battle.reset_vp_deltas()
+        # The only place the result lists are cleared, so the step effect's
+        # harvest reads them first or a kill resolved in this step is lost.
+        self._harvest_kills()
+        self._results_cursor = (0, 0)
         for seat in (self._player_seat, self._opponent_seat):
             seat.shooting_results = []
             seat.fight_results = []
@@ -1287,6 +1357,7 @@ __all__ = [
     "EpisodeOver",
     "PerModelEnv",
     "SettledWindow",
+    "StepEffect",
     "WargameObjective",
     "default_dice",
 ]

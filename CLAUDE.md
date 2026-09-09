@@ -38,6 +38,9 @@ wargame_rl/
 │       │   ├── board/             # Board-wide reads (leaf): sampling grid, the
 │       │   │                      #   next-turn threat field, unit matchups
 │       │   ├── env_components/    # Adapters: actions, distance cache, observation builder
+│       │   ├── per_model/         # The per-model facade: one DECISION per step over the
+│       │   │                      #   same domain; tokens (the set observation), the
+│       │   │                      #   re-timed reward (#283 stages 1-3)
 │       │   ├── map_pool.py        # Draws a real table per episode from a pool of maps
 │       │   ├── baseline/          # Scripted baseline policies + registry + evaluate
 │       │   ├── debug/             # Hand-stepping a live match: undo stack, session loop
@@ -53,7 +56,9 @@ wargame_rl/
 │       │   │                      #   advancement), factory, observation, layers, callbacks
 │       │   ├── ppo/               # PPO: actor-critic, lightning module, agent, config
 │       │   ├── per_model/         # The set network over the per-model facade: collate,
-│       │   │                      #   encoder + selector + heads + value, SetAgent (#285)
+│       │   │                      #   encoder + selector + heads + value, SetAgent (#285);
+│       │   │                      #   ppo (the loop over decision steps), evaluate,
+│       │   │                      #   checkpoint (#286)
 │       │   └── opponent/          # A checkpoint seated on the opponent side
 │       ├── rating/                # Elo: margin score, Bradley-Terry fit, schedule,
 │       │                          #   arena, ledger, table
@@ -82,6 +87,7 @@ wargame_rl/
 │                                  #   measure_elo, elo_table,
 │                                  #   measure_throughput)
 ├── train.py                       # Training entry point (Typer CLI)
+├── train_per_model.py             # PPO over per-model decision steps (Typer CLI, #286)
 ├── simulate.py                    # Inference/simulation entry point
 ├── debug.py                       # Step a live match by hand, and rewind it
 ├── replay_events.py               # Replay / narrate a match event log
@@ -112,7 +118,8 @@ wargame_rl/
 | Record the README's GIFs (exact colours, median of N) | `just record-gifs <policy\|ckpt> <config> [tables]` |
 | Test env (random) | `just test-env` |
 | Watch a scripted policy play (no checkpoint) | `just play [config.yaml] [policy] [theme] [overlays]` |
-| Watch the per-model facade play, one frame per decision | `just play-per-model [config.yaml] [policy\|random\|set_network] [theme] [overlays] [cadence]` |
+| Train the set network over the per-model facade (budget in ROUNDS) | `just train-per-model <config.yaml> [rounds] [flags]` |
+| Watch the per-model facade play, one frame per decision | `just play-per-model [config.yaml] [policy\|random\|set_network\|run/last.pt] [theme] [overlays] [cadence]` |
 | Record the per-model facade to an MP4 | `just record-per-model [config.yaml] [policy\|random\|set_network] [out.mp4] [cadence]` |
 | Step a match by hand and rewind it | `just debug [config.yaml] [policy\|ckpt] [theme] [overlays]` |
 | Recreate a recorded match exactly and step it | `just debug-recording <file> [policy\|ckpt] [theme] [overlays]` |

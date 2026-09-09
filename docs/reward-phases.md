@@ -83,6 +83,59 @@ reward_phases:
 > each registry entry defines its own keys, and they are validated by the
 > calculator that receives them.
 
+## Where each term is paid under the per-model step
+
+The per-model facade (`envs/per_model/`, issue #283) steps one DECISION at a
+time, and its training loop (`train_per_model.py`, #286) pays the reward per
+decision through `envs/per_model/reward_timing.py`. The env itself keeps the
+phase facade's timing (one window per stepped phase, the bridge quantity); the
+re-timed stream is computed beside it from what each step did. Every
+calculator's arithmetic is untouched — only the step it is paid on changes.
+
+| class | terms | paid |
+|---|---|---|
+| action term (potential) | `closest_objective_v2`, `charge_progress`, `declared_objective_progress`, `declared_target_progress` | on the step, to every model the step newly marked ACTED — the actor on an `act`, the whole unit on a skip declaration or a charge-target decline (the unit closes with no member stepping), nobody on a `target` that names a unit — each `weight × calc(i) / n_alive` |
+| action term (event) | `model_kills` | on the step, to every attacker the step's kills name, `weight × calc(i) / n_alive`. A shooting unit's volley resolves at its close, on its LAST member's step, so the attackers a step's kills name are not its actor set |
+| state term | `objective_hold`, `declared_objective_hold`, `unit_coherency`, `group_cohesion` | once per turn at the closing step: `weight × mean over alive models`, × the number of stepped phases per round |
+| delta global | `vp_gain`, `killing`, `models_lost`, `objective_flip_bonus` | once at the close, unscaled, against the retimer's own baselines (VP and alive masks at the previous close) |
+| state global | `objective_coverage`, `models_at_objectives` | once at the close, × the stepped phases per round |
+| terminal bonuses | `terminal_success_bonus`, `terminal_vp_bonus` | at the terminating close, through `RewardPhaseManager.terminal_bonuses` — the same code the phase facade runs |
+
+Rules the table implies, each pinned by `tests/test_per_model_reward_timing.py`:
+
+- **Every registered calculator belongs to exactly one class**; a calculator in
+  none is refused at construction by name, never a silent zero. The legacy
+  `closest_objective` is refused too: it keeps its potential ON THE MODEL
+  OBJECT, which no second calculator instance can isolate from the env's own
+  windows (use `closest_objective_v2`).
+- **Divide by the alive count.** A turn's action-term sum then equals the phase
+  facade's scalar mean, so a term's per-round total does not scale with the
+  army — the #283 requirement. Per actor the signal is `1/n` of what the
+  whole-army per-model vector paid.
+- **`group_cohesion` is a STATE term here**, a recorded departure from the #283
+  design table, which paid it on the actor's step: paid per action it fines the
+  first mover of a coherent unit for a gap its squadmates have not yet had a
+  step to close, and the selector learns to reorder rather than the policy to
+  hold formation. This is where the design's open question — whether a mover
+  is charged for a squadmate it leaves incoherent — is answered: at the close.
+- ⚠ **The scaled close is an approximation.** The phase facade paid a state
+  term once per stepped phase on that phase's board; the retimer pays it once
+  on the close board × the phase count. They differ by whatever moved between
+  the phases within one round — always, on a melee config. `vp_gain` is exact
+  (it telescopes); `objective_flip_bonus` seeds its baseline on its first call,
+  so its total depends on which board was scored first; `killing` /
+  `models_lost` count attrition deaths as kills, deliberately, because
+  `coherency.attrition` belongs to play configs and to no training config.
+- **A model not offered a step in a phase is not scored for action terms that
+  phase.** Potential terms defer rather than drop — the next scoring pays the
+  whole progress since the last — and an event term cannot fire for a model
+  that did nothing.
+- **A decision step that terminates the episode** (a mid-turn settle under
+  `terminate_on_success` or player elimination) pays its own action terms AND
+  the close bundle, and is a closing step for the discount.
+- **`reward/components/<term>` is per ROUND in `train_per_model.py`**, not per
+  step: under re-timing a per-step mean would depend on the army size.
+
 ## Available Reward Calculators
 
 | Type key | Scope | Parameters | Description |

@@ -75,8 +75,10 @@ sizes; one instance plays 6/2 and 10/5 with no reload).
 - **Value is one scalar per row**, from `[mean of alive real player latents
   ‖ game latent]`, never a model latent. The closing step runs a forward for
   the value and has no policy factor (log-prob 0).
-- **`SetAgent`** (`agent.py`) is the seat: builds the tokens (caching the
-  episode's `TokenScenario` on `env.episode_id`), samples selector then head
+- **`SetAgent`** (`agent.py`) is the seat: builds the tokens (caching each
+  env's `TokenScenario` on `env.episode_id`, in a `WeakKeyDictionary` keyed on
+  the env object — an `id(env)` key would serve a freed env's terrain to a new
+  one at the same address), samples selector then head
   **on the CPU whatever the device**, decodes the two columns, and **raises**
   if `point.why_illegal` refuses the result — a builder/decoder disagreement
   is a bug, not a resample. `declaration_counts` tallies `"<phase>:<option>"`
@@ -87,11 +89,80 @@ sizes; one instance plays 6/2 and 10/5 with no reload).
   `SetNetworkConfig(embedding_size=32, n_layers=2, n_heads=4)`; unlike the
   transformer, **`n_heads` IS recoverable** from this family's state dict (the
   relation bias is `Linear(16, n_heads)`), which is why its fixture may shrink
-  the head count. ⚠ **Stage 3 will pickle `model/per_model` into every
-  checkpoint's `hyper_parameters`** — the path is not to be moved without an
-  alias, as `common/layers.py` is not.
-- No PPO, no Lightning module, no `train.py` seam yet: those are #286 / #287.
-  `just play-per-model <config> set_network` plays it at fresh weights.
+  the head count. Its checkpoints (`checkpoint.py`) are plain tensors plus
+  config dicts, loadable with `weights_only=True`, so **nothing pickles this
+  package's path** and it may move — unlike the Lightning route.
+- `just play-per-model <config> set_network` plays it at fresh weights;
+  `just play-per-model <config> <run>/last.pt` plays a trained one, greedily.
+
+## PPO over decision steps (`model/per_model/ppo.py`, `train_per_model.py`) — stage 3
+
+Issue #286. Ordinary single-action PPO — one scalar reward, one value, one
+ratio per transition — over the per-model facade, in a **standalone Typer
+loop** (`train_per_model.py`), not a Lightning module: `WargameLightningBase`'s
+evaluation, baselines and checkpoint callbacks all assume a whole-army env and
+a `(batch, n_models)` greedy action. It logs the whole-phase trainer's metric
+names, one row per update, with `rounds` and `epoch_equivalent = rounds / 1024`
+as columns so either x-axis lines up with the old dashboards; the same rows go
+to `<run>/metrics.jsonl`.
+
+- **Two kinds of step.** A *decision step* (`open`, `act`, `target`) carries a
+  policy factor (`StepDecision.column >= 0`) and an advantage. A *closing step*
+  (`close_turn`, or any step that terminates the episode) carries no policy
+  factor: value loss only, excluded from the surrogate, the entropies, the
+  ratio statistics and the advantage normalisation. ⚠ "Has a policy" is
+  `column >= 0`, never `is_close` — a decision step that terminates is closing
+  for the discount and still carries its sampled factor.
+- **The clock is in rounds.** `compute_gae` applies `gamma` and `gae_lambda`
+  only ACROSS a closing step; every decision within a turn is the same instant
+  (step gamma 1.0), so the horizon counts rounds and does not drift as models
+  die or shrink with the army. A rollout cut mid-turn bootstraps `r + V(next)`
+  at 1.0. The rollout budget is `--rollout-rounds` closing steps per env; the
+  eval and checkpoint cadences must be multiples of `rollout_rounds × envs`
+  (asserted at construction, or two runs with different budgets evaluate at
+  different round counts). The driver counts rounds NOMINALLY per update —
+  lockstep envs can close in the same iteration, overshooting by up to
+  `n_envs − 1` — and logs the real count as `train/closes`.
+- **Lockstep rollouts, one forward per step.** Every env always has exactly one
+  pending decision (the close included), so `SetAgent.act_batch` collates N
+  observations and draws N rows; `collate` already pads across scenario sizes,
+  so envs of different sizes share a batch. Envs persist across updates and are
+  **never reset between rollouts** (a budget shorter than the episode must still
+  visit its later rounds); a terminating env resets inline with
+  `augment_start`, as the shipped collector does, after its outcome is read.
+- **The reward is the re-timed stream** from `envs/per_model/reward_timing.py`
+  (`PerStepReward`, one per env, own calculator instances): see
+  `docs/reward-phases.md` § Where each term is paid under the per-model step.
+- **`evaluate_transitions` reproduces the sampled joint log-prob exactly**
+  (pinned): selector `log_softmax` over policy rows only (a closing row's
+  selector is all `-inf` and would poison the batch), the head gathered by
+  `(head, column)`, entropies through a clamped `p · log p` (the naive
+  `where` leaks NaN through the unselected branch's gradient). Dropout is
+  refused: rollouts sample in train mode, so sampled and recomputed
+  log-probs would come from different masks.
+- **Two entropy coefficients**, `ent_coef` for the head and
+  `selector_ent_coef` for the order (defaults to `ent_coef`), per the design.
+- ⚠ **`gamma` 0.9, `gae_lambda` 0.95 and the 16-round budget are carried over
+  from the phase facade, where they were measured at two steps per round.**
+  The `gamma` comment in `model/ppo/config.py` says verbatim to retest when the
+  reward's time structure changes. They are #288's to calibrate
+  (`--gamma --gae-lambda --rollout-rounds`) before any race number is quoted.
+- **Refused:** curriculum configs (more than one reward phase — `try_advance`
+  counts epochs and there is no epoch here yet). **Deferred:** warm start,
+  resume, batched eval and recording (#287).
+- **Checkpoints** are periodic, not exit-hooked: `pm-<rounds>.pt` and `last.pt`
+  every `--checkpoint-every-rounds` (SIGKILL is the prescribed stop and triggers
+  no handler, so `last.pt` is at most one interval stale). `load_checkpoint`
+  rebuilds the network from the stored config and head sizes and refuses a
+  head-size mismatch by name. No top-k: the eval rows in `metrics.jsonl` say
+  which periodic checkpoint scored best. The run directory also holds
+  `env_config.yaml` (verbatim) and `provenance.json` (revision `+dirty`,
+  device, threads, seed bands, both configs).
+- **Seeds:** rollout envs reset at `seed × 100 + env_idx` (below the 10000+
+  baseline band, derived from `--seed` so two arms at one seed share their
+  layouts, unlike the shipped loop's fixed base); in-run eval on `500000+`,
+  the scripted bar on `10000+` through the whole-phase facade exactly as
+  `on_train_start` measures it.
 
 ## PPO (`model/ppo/`)
 

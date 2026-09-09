@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from pathlib import Path
 
 import numpy as np
 import typer
@@ -71,6 +72,8 @@ def build_chooser(env: PerModelEnv, policy: str, seed: int) -> Chooser:
         return lambda observation: random_legal_action(observation.decision, rng)
     if policy == SET_NETWORK_POLICY:
         return _set_network_chooser(env, seed)
+    if policy.endswith(".pt"):
+        return _checkpoint_chooser(env, policy, seed)
     scripted = build_baseline_policy(policy)
     shoots = type(scripted).select_shooting is not BaselinePolicy.select_shooting
     planner = ScriptedSeat(scripted, shoots=shoots)
@@ -95,6 +98,21 @@ def _set_network_chooser(env: PerModelEnv, seed: int) -> Chooser:
     agent = SetAgent(SetNetwork.from_env(env))
     generator = torch.Generator().manual_seed(seed)
     return lambda observation: agent.act(env, observation, generator=generator).action
+
+
+def _checkpoint_chooser(env: PerModelEnv, path: str, seed: int) -> Chooser:
+    """A trained set network, greedy: the eyeball rung for a checkpoint."""
+    import torch
+
+    from wargame_rl.wargame.model.per_model import SetAgent, load_checkpoint
+
+    handler = env.player_action_handler
+    advance = handler.advance_slice
+    expected = 1 + handler.movement_slice.size + (advance.size if advance else 0)
+    loaded = load_checkpoint(Path(path), expected_n_displacements=expected)
+    torch.manual_seed(seed)
+    agent = SetAgent(loaded.network, greedy=True)
+    return lambda observation: agent.act(env, observation).action
 
 
 def describe(action: PerModelAction, observation: PerModelObservation) -> str:
@@ -168,7 +186,7 @@ def play(
     ),
     policy: str = typer.Argument(
         "squad_march_take",
-        help="Scripted baseline driving the player, `random` for random legal decisions, or `set_network` for the set network at fresh weights.",
+        help="Scripted baseline driving the player, `random` for random legal decisions, `set_network` for the set network at fresh weights, or a per-model checkpoint (`*.pt`) played greedily.",
     ),
     theme: str = typer.Argument("default", help="Renderer theme: default | tabletop."),
     cadence: str = typer.Option(
@@ -189,7 +207,11 @@ def play(
     backend: str = typer.Option("pillow", help="Drawing backend."),
 ) -> None:
     """Play episodes in a window until Esc, or record them to a file."""
-    if policy not in ("random", SET_NETWORK_POLICY) and policy not in get_registry():
+    if (
+        policy not in ("random", SET_NETWORK_POLICY)
+        and not policy.endswith(".pt")
+        and policy not in get_registry()
+    ):
         raise typer.BadParameter(
             f"unknown policy {policy!r}; try `random`, `{SET_NETWORK_POLICY}` or one "
             f"of {sorted(get_registry())}"

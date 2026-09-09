@@ -240,6 +240,28 @@ class RewardPhaseManager:
         # folding them into the per-step breakdown. This is a metrics-reporting
         # change only; the reward itself is correct.
         # See docs/metrics.md § Reading rules.
+        for key, bonus in self.terminal_bonuses(view, ctx).items():
+            reward += bonus
+            shared_reward += bonus
+            breakdown[key] = bonus
+
+        if shared_reward != 0.0:
+            for i, _model in alive_models:
+                per_model_rewards[i] += shared_reward
+
+        self.last_per_model_reward = per_model_rewards
+        self.last_reward_breakdown = breakdown
+        return reward
+
+    def terminal_bonuses(self, view: BattleView, ctx: StepContext) -> dict[str, float]:
+        """The terminal bonuses this step earns, by breakdown key; empty unless
+        `ctx.is_terminated` and a bonus is configured and earned.
+
+        Shared by `calculate_reward` and the per-model facade's re-timed
+        reward, so the two cannot disagree on when a bonus is paid.
+        """
+        phase = self.current_phase
+        bonuses: dict[str, float] = {}
         if ctx.is_terminated and phase.terminal_success_bonus != 0.0:
             if phase.criteria.is_successful(view, ctx):
                 # The remaining-turns scaling is a *speed* incentive, and it only
@@ -256,26 +278,15 @@ class RewardPhaseManager:
                 else:
                     speed_scale = 1.0
                 bonus = phase.terminal_success_bonus * speed_scale
-                reward += bonus
-                shared_reward += bonus
                 if bonus != 0.0:
-                    breakdown["terminal_success_bonus"] = bonus
+                    bonuses["terminal_success_bonus"] = bonus
         if ctx.is_terminated and phase.terminal_vp_bonus != 0.0:
             vp_threshold = phase.criteria.vp_threshold_for_terminal_bonus(view)
             if vp_threshold is not None and view.player_vp >= vp_threshold:
                 bonus = phase.terminal_vp_bonus
-                reward += bonus
-                shared_reward += bonus
                 if bonus != 0.0:
-                    breakdown["terminal_vp_bonus"] = bonus
-
-        if shared_reward != 0.0:
-            for i, _model in alive_models:
-                per_model_rewards[i] += shared_reward
-
-        self.last_per_model_reward = per_model_rewards
-        self.last_reward_breakdown = breakdown
-        return reward
+                    bonuses["terminal_vp_bonus"] = bonus
+        return bonuses
 
     def check_success(self, view: BattleView, ctx: StepContext) -> bool:
         """Evaluate the current phase's success criteria."""
