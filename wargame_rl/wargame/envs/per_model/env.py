@@ -218,6 +218,9 @@ class PerModelEnv(gym.Env):
         self.current_turn = 0
         self.sub_step = 0
         self.episode_step = 0
+        # Counts `reset` calls, so a per-episode cache (the token observation's
+        # static scenario) can tell a new episode from a long one.
+        self.episode_id = 0
         self._player_side = self._initial_player_side()
         self._game_clock = GameClock(n_rounds=config.number_of_battle_rounds)
         self._battle = from_config(config)
@@ -414,6 +417,7 @@ class PerModelEnv(gym.Env):
         self.current_turn = 0
         self.sub_step = 0
         self.episode_step = 0
+        self.episode_id += 1
         self.last_reward = None
         self.last_step_context = None
         self.last_reward_breakdown = {}

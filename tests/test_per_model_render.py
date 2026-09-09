@@ -79,7 +79,7 @@ def test_phase_cadence_draws_one_frame_per_settled_window() -> None:
     settled = 0
     done = False
     while not done:
-        observation, _r, done, _t, info = twin.step(chooser(observation.decision))
+        observation, _r, done, _t, info = twin.step(chooser(observation))
         settled += bool(info.get("reward_settled") or done)
     assert settled > 0 and len(recorder.frames) == settled
 
@@ -89,6 +89,18 @@ def test_the_random_seat_plays_a_whole_episode_under_the_renderer() -> None:
     recorder = _recorder()
     chooser = build_chooser(env, "random", seed=5)
     play_episode(env, recorder, chooser, seed=5, cadence="decision")
+    assert env.current_turn == env.max_turns
+    assert len(recorder.frames) == env.episode_step
+
+
+def test_the_set_network_plays_a_whole_episode_under_the_renderer() -> None:
+    """The stage-2 pipeline -- tokens, network, decode -- through the same
+    loop the eyeball rung uses, at fresh weights."""
+    pytest.importorskip("torch")
+    env = PerModelEnv(small_config(rounds=1))
+    recorder = _recorder()
+    chooser = build_chooser(env, "set_network", seed=7)
+    play_episode(env, recorder, chooser, seed=7, cadence="decision")
     assert env.current_turn == env.max_turns
     assert len(recorder.frames) == env.episode_step
 

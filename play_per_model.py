@@ -9,6 +9,7 @@ says what is being asked.
 
     just play-per-model                                   # golden map pool, squad_march_take
     just play-per-model configs/dev/tiny.yaml random      # random legal decisions
+    just play-per-model configs/dev/tiny.yaml set_network # the set network, fresh weights
     just play-per-model <config> <policy> tabletop "" phase   # one frame per phase, today's look
     just record-per-model <config> <policy> out.mp4       # headless, to a file
 
@@ -55,25 +56,45 @@ from wargame_rl.wargame.envs.types import WargameEnvConfig
 
 app = typer.Typer(add_completion=False)
 
-Chooser = Callable[[DecisionPoint], PerModelAction]
+Chooser = Callable[[PerModelObservation], PerModelAction]
+
+# The set network plays here too, with fresh weights: not a skill, the whole
+# pipeline (tokens, network, decode) seen playing legally.
+SET_NETWORK_POLICY = "set_network"
 
 
 def build_chooser(env: PerModelEnv, policy: str, seed: int) -> Chooser:
-    """A scripted baseline through the adapter, or the random legal seat."""
+    """A scripted baseline through the adapter, the random legal seat, or the
+    set network at fresh weights."""
     if policy == "random":
         rng = np.random.default_rng(seed)
-        return lambda point: random_legal_action(point, rng)
+        return lambda observation: random_legal_action(observation.decision, rng)
+    if policy == SET_NETWORK_POLICY:
+        return _set_network_chooser(env, seed)
     scripted = build_baseline_policy(policy)
     shoots = type(scripted).select_shooting is not BaselinePolicy.select_shooting
     planner = ScriptedSeat(scripted, shoots=shoots)
     env.set_player_planner(planner)
 
-    def choose(point: DecisionPoint) -> PerModelAction:
+    def choose(observation: PerModelObservation) -> PerModelAction:
+        point: DecisionPoint = observation.decision
         if point.kind is StepKind.close_turn:
             return PerModelAction.close_turn()
         return planner.choose(point, env.player_seat)
 
     return choose
+
+
+def _set_network_chooser(env: PerModelEnv, seed: int) -> Chooser:
+    # Imported here so scripted and random play never load torch.
+    import torch
+
+    from wargame_rl.wargame.model.per_model import SetAgent, SetNetwork
+
+    torch.manual_seed(seed)
+    agent = SetAgent(SetNetwork.from_env(env))
+    generator = torch.Generator().manual_seed(seed)
+    return lambda observation: agent.act(env, observation, generator=generator).action
 
 
 def describe(action: PerModelAction, observation: PerModelObservation) -> str:
@@ -124,7 +145,7 @@ def play_episode(
                 presenter.render(env)
                 if presenter.wants_quit:  # type: ignore[union-attr]
                     raise QuitRequested
-        action = chooser(point)
+        action = chooser(observation)
         observation, _reward, done, _truncated, info = env.step(action)
         detail = describe(action, observation)
         if cadence == "phase" and (info.get("reward_settled") or done):
@@ -147,7 +168,7 @@ def play(
     ),
     policy: str = typer.Argument(
         "squad_march_take",
-        help="Scripted baseline driving the player, or `random` for random legal decisions.",
+        help="Scripted baseline driving the player, `random` for random legal decisions, or `set_network` for the set network at fresh weights.",
     ),
     theme: str = typer.Argument("default", help="Renderer theme: default | tabletop."),
     cadence: str = typer.Option(
@@ -168,9 +189,10 @@ def play(
     backend: str = typer.Option("pillow", help="Drawing backend."),
 ) -> None:
     """Play episodes in a window until Esc, or record them to a file."""
-    if policy != "random" and policy not in get_registry():
+    if policy not in ("random", SET_NETWORK_POLICY) and policy not in get_registry():
         raise typer.BadParameter(
-            f"unknown policy {policy!r}; try `random` or one of {sorted(get_registry())}"
+            f"unknown policy {policy!r}; try `random`, `{SET_NETWORK_POLICY}` or one "
+            f"of {sorted(get_registry())}"
         )
     if cadence not in ("decision", "phase"):
         raise typer.BadParameter("cadence must be `decision` or `phase`")

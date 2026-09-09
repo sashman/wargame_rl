@@ -218,7 +218,8 @@ a resumable sequence, with `fight_one_model`), `domain/movement/unit_moves.py`, 
 unit-close judgements and the compulsory consolidation mode) and
 `domain/kernel/dice.py` (the port). `tests/test_per_model_layering.py` pins that
 those import only `domain/` and `types/`, that `per_model/` never imports
-`wargame.py`, and that nothing outside `per_model/` imports it.
+`wargame.py`, and that only its named clients import it — the facade itself
+and the set network in `model/per_model/`.
 
 The bridge is the contract between them: `tests/test_per_model_bridge.py`
 plays a scripted policy through both facades on the same layout and dice and
@@ -240,10 +241,20 @@ chapter rather than the phase facade (both seats pile in and consolidate; a
 striker chooses its target). The phase facade's side of each divergence is
 tracked as an issue (#314 to #319) and stays as it is until it lands there.
 
-The facade can also be watched: `play_per_model.py` (`just play-per-model`, `just record-per-model`) drives a scripted seat or the random legal seat through it and draws one frame per decision, with the pending decision highlighted by `renders/v2/decision.py` and captioned in the HUD -- the rung the tests cannot replace, since whether one-model-at-a-time play *looks* like the rules is a judgement. The presenter reads the decision structurally, so the renderer imports nothing from `per_model/`.
+The facade can also be watched: `play_per_model.py` (`just play-per-model`, `just record-per-model`) drives a scripted seat, the random legal seat or the set network at fresh weights through it and draws one frame per decision, with the pending decision highlighted by `renders/v2/decision.py` and captioned in the HUD -- the rung the tests cannot replace, since whether one-model-at-a-time play *looks* like the rules is a judgement. The presenter reads the decision structurally, so the renderer imports nothing from `per_model/`.
+
+The facade has a **second presentation adapter**, the token observation
+(`per_model/tokens.py`): every entity as a row whose width depends only on
+its kind, and one relation vector on every (model, model) and (model,
+context) pair, so nothing a size-independent network reads is a count-sized
+column. It is numpy and env-side, like `observation.py` beside it; the tensor
+side -- collation to the batch maximum, the set network and the seat that
+drives the facade with it -- is `model/per_model/` (stage 2 of #283, the
+facade's first client). Its three rules are presentation, not domain: the
+reveal of a unit's dice on its declaration, the reach gate on the sight
+trace, and the enemy-unit column order (sorted distinct group id).
 
 Every artefact the per-model facade emits carries `facade: "per_model"`
 (`PerModelProvenance`); an untagged artefact is the phase facade's, and
-`require_per_model` refuses it. The observation the network will train on,
-the PPO loop, and the evaluation tooling are stages 2–4 of GitHub issue #283
-and do not exist yet.
+`require_per_model` refuses it. The PPO loop over per-model steps and the
+evaluation tooling are stages 3–4 of GitHub issue #283 and do not exist yet.
