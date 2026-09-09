@@ -32,8 +32,9 @@ wargame_rl/
 │   └── wargame/
 │       ├── envs/                  # Gymnasium environment, reward, rendering
 │       │   ├── wargame.py         # WargameEnv — facade, implements BattleView
-│       │   ├── domain/            # Battle aggregate, BattleView, clock, placement,
-│       │   │                      #   termination, LOS, shooting, terrain, turn execution
+│       │   ├── domain/            # The battle as sub-domains: kernel, battlefield,
+│       │   │                      #   sequencing, movement, attacks, shooting, melee;
+│       │   │                      #   the aggregate and BattleView at the root
 │       │   ├── board/             # Board-wide reads (leaf): sampling grid, the
 │       │   │                      #   next-turn threat field, unit matchups
 │       │   ├── env_components/    # Adapters: actions, distance cache, observation builder
@@ -183,7 +184,7 @@ wargame_rl/
   "falling back" while a member stayed engaged, and **every melee figure measured before
   the referee is void on melee configs** (non-melee configs are untouched — the path is
   gated on engagement). [docs/melee.md](docs/melee.md)
-- **DDD layering** — `domain/` owns the rules (Battle aggregate, clock, placement, termination, LOS, shooting); `wargame.py` is a facade; reward/renders depend only on the `BattleView` protocol. See [docs/ddd-envs.md](docs/ddd-envs.md)
+- **DDD layering** — `domain/` owns the rules, as one bounded context shaped into sub-domains (`kernel/`, `battlefield/`, `sequencing/`, `movement/`, `attacks/`, `shooting/`, `melee/`, with the `Battle` aggregate and `BattleView` at the root); `wargame.py` is a facade; reward/renders depend only on the `BattleView` protocol. See [docs/ddd-envs.md](docs/ddd-envs.md)
 - **Rules specification** — [docs/rules/](docs/rules/README.md) is the game's rules authority: a self-contained spec written for this project, with `constants.yaml` (every number, in inches) and [implementation-status.md](docs/rules/implementation-status.md) (per-rule: implemented / partial / divergent / absent). Before implementing a mechanic, read its chapter and its gap-map row. `tests/test_no_ip_references.py` keeps the repo free of references to the commercial product the rules derive from — the spec names no product, publisher, edition or faction, and neither should anything else
 - **Play doctrine** — [docs/play-doctrine.md](docs/play-doctrine.md) is how this game is *won*, as `docs/rules/` is how it is *played*: 43 numbered entries, each stating a claim, whether the environment can express it, which extension point it lands in, and what has already been measured about it. It is a store of **hypotheses, never of evidence** — price an entry as a scripted policy (`just measure-paired`, no GPU) before it becomes a reward term or a training run, and where an entry disagrees with the record below, **the record wins**. ⚠ **DO NOT EDIT IT.** It was collected from external sources and its worth is that it still says what it said before we tested anything — an immutable reference. Results go in [docs/play-doctrine-findings.md](docs/play-doctrine-findings.md), one additive entry per claim priced, never rewriting the claim it answers
 - **Threat field** — `envs/board/` is a **leaf** package of board-wide reads, and its first tool is the next-turn threat field (`just measure-threat-field`, the `[T]` overlay). ⚠ **Threat is a NEXT-TURN quantity: the opponent moves before it shoots**, so the `[R]` overlay — range ∩ sight from where models *stand* — reads **false-safe** for anyone choosing where to end a turn. Measured on the golden config's held-out nine, `[R]` calls **18.7%** of the board clear where the next-turn field does not, and mean expected casualties roughly doubles. Cover is not applied and *cannot* be, which biases the field **against objectives** — read it beside `just measure-hold-hazard`

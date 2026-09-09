@@ -38,7 +38,7 @@ The network keeps opponent tokens per *model* — position, wounds and stats are
 
 ## Allocation: the defender picks who bleeds
 
-An attack is aimed at a unit; which model takes it is the defender's choice, preferring one that has already lost Wounds ([rules/05](rules/05-attack-sequence.md#4-inflict-damage)). `domain/shooting.py:_allocate_target` is that rule.
+An attack is aimed at a unit; which model takes it is the defender's choice, preferring one that has already lost Wounds ([rules/05](rules/05-attack-sequence.md#4-inflict-damage)). `domain/attacks/allocation.py:allocate_target` is that rule.
 
 **An attack is discarded only when the whole target unit is destroyed** — *"excess attacks against a wiped-out unit are lost"*. Measured at **3.6%** of declared shots. It was **36-40%** while a weapon named a model and a shot at an already-dead one silently evaporated, which is what a squad concentrating fire did to most of its own volley.
 
