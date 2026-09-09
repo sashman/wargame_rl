@@ -94,20 +94,22 @@ calculator's arithmetic is untouched — only the step it is paid on changes.
 
 | class | terms | paid |
 |---|---|---|
-| action term (potential) | `closest_objective_v2`, `charge_progress`, `declared_objective_progress`, `declared_target_progress` | on the step, to every model the step newly marked ACTED — the actor on an `act`, the whole unit on a skip declaration or a charge-target decline (the unit closes with no member stepping), nobody on a `target` that names a unit — each `weight × calc(i) / n_alive` |
+| action term (potential) | `closest_objective_v2`, `charge_progress`, `declared_objective_progress`, `declared_target_progress` | on the step, to its **actor set** (`StepEffect.actor_set`: every model the step newly marked acted — the actor on an `act`, the whole unit on a skip declaration or a charge-target decline, since the unit closes with no member stepping, nobody on a `target` that names a unit), each `weight × calc(i) / n_alive` |
 | action term (event) | `model_kills` | on the step, to every attacker the step's kills name, `weight × calc(i) / n_alive`. A shooting unit's volley resolves at its close, on its LAST member's step, so the attackers a step's kills name are not its actor set |
 | state term | `objective_hold`, `declared_objective_hold`, `unit_coherency`, `group_cohesion` | once per turn at the closing step: `weight × mean over alive models`, × the number of stepped phases per round |
-| delta global | `vp_gain`, `killing`, `models_lost`, `objective_flip_bonus` | once at the close, unscaled, against the retimer's own baselines (VP and alive masks at the previous close) |
+| delta global | `vp_gain`, `killing`, `models_lost`, `objective_flip_bonus` | once at the close, unscaled, against the retimer's own baselines (VP, alive masks and the env's cumulative attrition count at the previous close) |
 | state global | `objective_coverage`, `models_at_objectives` | once at the close, × the stepped phases per round |
 | terminal bonuses | `terminal_success_bonus`, `terminal_vp_bonus` | at the terminating close, through `RewardPhaseManager.terminal_bonuses` — the same code the phase facade runs |
 
 Rules the table implies, each pinned by `tests/test_per_model_reward_timing.py`:
 
-- **Every registered calculator belongs to exactly one class**; a calculator in
-  none is refused at construction by name, never a silent zero. The legacy
-  `closest_objective` is refused too: it keeps its potential ON THE MODEL
-  OBJECT, which no second calculator instance can isolate from the env's own
-  windows (use `closest_objective_v2`).
+- **Every registered calculator has exactly one class, keyed by the registry's
+  own string** (`PAYMENT_CLASSES`), and the module refuses to import when the
+  two key sets differ — a calculator registered without a payment class fails
+  at import, never as a silent zero in a run. The legacy `closest_objective`
+  is classified `refused`: it keeps its potential ON THE MODEL OBJECT, which
+  no second calculator instance can isolate from the env's own windows (use
+  `closest_objective_v2`).
 - **Divide by the alive count.** A turn's action-term sum then equals the phase
   facade's scalar mean, so a term's per-round total does not scale with the
   army — the #283 requirement. Per actor the signal is `1/n` of what the
@@ -124,8 +126,9 @@ Rules the table implies, each pinned by `tests/test_per_model_reward_timing.py`:
   the phases within one round — always, on a melee config. `vp_gain` is exact
   (it telescopes); `objective_flip_bonus` seeds its baseline on its first call,
   so its total depends on which board was scored first; `killing` /
-  `models_lost` count attrition deaths as kills, deliberately, because
-  `coherency.attrition` belongs to play configs and to no training config.
+  `models_lost` apply the phase facade's kill rule — casualties since the
+  previous close minus the attrition deaths the rules give no kill credit for,
+  read off `env.attrition_deaths_total`.
 - **A model not offered a step in a phase is not scored for action terms that
   phase.** Potential terms defer rather than drop — the next scoring pays the
   whole progress since the last — and an event term cannot fire for a model

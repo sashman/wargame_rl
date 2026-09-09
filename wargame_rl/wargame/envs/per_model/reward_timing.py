@@ -7,10 +7,10 @@ other timing, kept out of `env.py` so the two facades stay uncoupled: it reads
 what a step DID (`StepEffect`) and the env's public state, and pays every
 configured term on the step the design's table names:
 
-- an ACTION term on the step, to the models the step marked acted (a potential
-  term) or to the attackers the step's kills name (the event term), each
-  divided by the alive count so a turn's sum is the phase facade's scalar mean
-  and no term's per-round total scales with the army;
+- an ACTION term on the step, to the step's actor set (a potential term) or
+  to the attackers the step's kills name (the event term), each divided by
+  the alive count so a turn's sum is the phase facade's scalar mean and no
+  term's per-round total scales with the army;
 - a STATE term once per turn on the closing step, as the mean over alive
   models times the number of stepped phases per round -- the phase facade paid
   it once per phase, so the episode total is conserved up to the movement
@@ -22,130 +22,128 @@ configured term on the step the design's table names:
   own `terminal_bonuses`, so the two facades cannot disagree on when one is
   earned.
 
-Every registered calculator belongs to exactly one class; one that belongs to
-none is a construction error, never a silent zero. `group_cohesion` is a
-STATE term here where the #283 table paid it on the actor's step: paid per
-action it fines the first mover of a coherent unit for a gap its squadmates
-have not yet had a step to close, teaching the selector to reorder instead of
-the policy to hold formation. The legacy `closest_objective` keeps its
-potential on the model object, which no second calculator instance can
-isolate from the env's own windows, so it is refused by name.
+Every calculator the registry names belongs to exactly one payment class,
+keyed by the registry's own string; the module refuses to import if the two
+key sets differ, and a phase carrying the refused legacy `closest_objective`
+(its potential lives on the model object, which no second instance can
+isolate from the env's own windows) is refused at construction by name.
+`group_cohesion` is a STATE term here where the #283 table paid it on the
+actor's step: paid per action it fines the first mover of a coherent unit for
+a gap its squadmates have not yet had a step to close, teaching the selector
+to reorder instead of the policy to hold formation.
 
-The retimer owns its OWN `RewardPhaseManager`: `closest_objective_v2`,
-`charge_progress` and `objective_flip_bonus` carry memory across calls, and
-sharing instances with the env's windows would let each call advance the
-potential the other reads. Numpy only -- `envs/` never imports torch.
+The retimer owns its OWN `RewardPhaseManager` unless one is passed in:
+`closest_objective_v2`, `charge_progress` and `objective_flip_bonus` carry
+memory across calls, and sharing instances with the env's windows would let
+each call advance the potential the other reads. Numpy only -- `envs/` never
+imports torch.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, cast
+from enum import Enum
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
 from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
-from wargame_rl.wargame.envs.per_model.env import PerModelEnv, StepEffect
+from wargame_rl.wargame.envs.per_model.env import PerModelEnv
 from wargame_rl.wargame.envs.per_model.types import (
     PerModelAction,
     PerModelObservation,
+    StepEffect,
     StepKind,
 )
 from wargame_rl.wargame.envs.reward.calculators.base import (
     GlobalRewardCalculator,
     PerModelRewardCalculator,
 )
-from wargame_rl.wargame.envs.reward.calculators.charge_progress import (
-    ChargeProgressCalculator,
-)
-from wargame_rl.wargame.envs.reward.calculators.closest_objective import (
-    ClosestObjectiveCalculator,
-)
-from wargame_rl.wargame.envs.reward.calculators.closest_objective_v2 import (
-    ClosestObjectiveV2Calculator,
-)
-from wargame_rl.wargame.envs.reward.calculators.declared_objective_hold import (
-    DeclaredObjectiveHoldCalculator,
-)
-from wargame_rl.wargame.envs.reward.calculators.declared_objective_progress import (
-    DeclaredObjectiveProgressCalculator,
-)
-from wargame_rl.wargame.envs.reward.calculators.declared_target_progress import (
-    DeclaredTargetProgressCalculator,
-)
-from wargame_rl.wargame.envs.reward.calculators.group_cohesion import (
-    GroupCohesionCalculator,
-)
-from wargame_rl.wargame.envs.reward.calculators.killing import KillingReward
-from wargame_rl.wargame.envs.reward.calculators.model_kills import ModelKillsCalculator
-from wargame_rl.wargame.envs.reward.calculators.models_at_objectives import (
-    ModelsAtObjectivesCalculator,
-)
-from wargame_rl.wargame.envs.reward.calculators.models_lost import ModelsLostPenalty
-from wargame_rl.wargame.envs.reward.calculators.objective_coverage import (
-    ObjectiveCoverageCalculator,
-)
-from wargame_rl.wargame.envs.reward.calculators.objective_flip_bonus import (
-    ObjectiveFlipBonusCalculator,
-)
-from wargame_rl.wargame.envs.reward.calculators.objective_hold import (
-    ObjectiveHoldCalculator,
-)
-from wargame_rl.wargame.envs.reward.calculators.unit_coherency import (
-    UnitCoherencyCalculator,
-)
-from wargame_rl.wargame.envs.reward.calculators.vp_gain import VPGainCalculator
+from wargame_rl.wargame.envs.reward.calculators.registry import CALCULATOR_REGISTRY
 from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.types import BattlePhase
 
-# Paid on the step, to the models the step marked acted.
-POTENTIAL_ACTION_TERMS: tuple[type[PerModelRewardCalculator], ...] = (
-    ClosestObjectiveV2Calculator,
-    ChargeProgressCalculator,
-    DeclaredObjectiveProgressCalculator,
-    DeclaredTargetProgressCalculator,
-)
-# Paid on the step, to the attackers the step's kills name.
-EVENT_ACTION_TERMS: tuple[type[PerModelRewardCalculator], ...] = (ModelKillsCalculator,)
-# Paid at the close, mean over alive models, scaled by the phases per round.
-STATE_TERMS: tuple[type[PerModelRewardCalculator], ...] = (
-    ObjectiveHoldCalculator,
-    DeclaredObjectiveHoldCalculator,
-    UnitCoherencyCalculator,
-    GroupCohesionCalculator,
-)
-# Paid at the close, once, unscaled.
-DELTA_GLOBALS: tuple[type[GlobalRewardCalculator], ...] = (
-    VPGainCalculator,
-    KillingReward,
-    ModelsLostPenalty,
-    ObjectiveFlipBonusCalculator,
-)
-# Paid at the close, once, scaled by the phases per round.
-STATE_GLOBALS: tuple[type[GlobalRewardCalculator], ...] = (
-    ObjectiveCoverageCalculator,
-    ModelsAtObjectivesCalculator,
-)
-# Refused: its potential lives on the model object, shared with the env's own
-# windows, so no second instance can be isolated from them.
-REFUSED_TERMS: tuple[type[PerModelRewardCalculator], ...] = (
-    ClosestObjectiveCalculator,
-)
+if TYPE_CHECKING:
+    from wargame_rl.wargame.envs.domain.battle_view import BattleView
+
+
+class PaymentClass(str, Enum):
+    """When a term is paid under the per-decision step."""
+
+    # On the step, to the step's actor set.
+    potential_action = "potential_action"
+    # On the step, to the attackers the step's kills name.
+    event_action = "event_action"
+    # At the close, mean over alive models, scaled by the phases per round.
+    state = "state"
+    # At the close, once, unscaled.
+    delta_global = "delta_global"
+    # At the close, once, scaled by the phases per round.
+    state_global = "state_global"
+    # Cannot be paid per decision; a config carrying it is refused by name.
+    refused = "refused"
+
+
+# Keyed by the reward registry's own string, and checked against it below so
+# a calculator registered without a payment class fails at import, not in a
+# training run.
+PAYMENT_CLASSES: dict[str, PaymentClass] = {
+    "closest_objective": PaymentClass.refused,
+    "closest_objective_v2": PaymentClass.potential_action,
+    "charge_progress": PaymentClass.potential_action,
+    "declared_objective_progress": PaymentClass.potential_action,
+    "declared_target_progress": PaymentClass.potential_action,
+    "model_kills": PaymentClass.event_action,
+    "objective_hold": PaymentClass.state,
+    "declared_objective_hold": PaymentClass.state,
+    "unit_coherency": PaymentClass.state,
+    "group_cohesion": PaymentClass.state,
+    "vp_gain": PaymentClass.delta_global,
+    "killing": PaymentClass.delta_global,
+    "models_lost": PaymentClass.delta_global,
+    "objective_flip_bonus": PaymentClass.delta_global,
+    "objective_coverage": PaymentClass.state_global,
+    "models_at_objectives": PaymentClass.state_global,
+}
+
+_unclassified = set(CALCULATOR_REGISTRY) - set(PAYMENT_CLASSES)
+_unregistered = set(PAYMENT_CLASSES) - set(CALCULATOR_REGISTRY)
+if _unclassified or _unregistered:
+    raise ImportError(
+        "reward_timing.PAYMENT_CLASSES and CALCULATOR_REGISTRY disagree: "
+        f"unclassified {sorted(_unclassified)}, unregistered {sorted(_unregistered)}"
+    )
+
+# Exact type, never subclass: the registry keys concrete classes, and a
+# subclass registered under its own key carries its own class.
+_KEY_BY_CLASS: dict[type, str] = {cls: key for key, cls in CALCULATOR_REGISTRY.items()}
+
+
+def payment_class_of(calculator: object) -> PaymentClass:
+    """The payment class of a calculator instance, by its registry key."""
+    key = _KEY_BY_CLASS.get(type(calculator))
+    if key is None:
+        raise ValueError(
+            f"{type(calculator).__name__} is not in CALCULATOR_REGISTRY, so it has "
+            "no per-decision payment class"
+        )
+    return PAYMENT_CLASSES[key]
 
 
 @dataclass(frozen=True)
 class StepPayment:
-    """What one step paid: the scalar, its breakdown by term, and whether the
-    step closed a turn (the only kind the discount applies across)."""
+    """What one step paid: the scalar, its breakdown by term, and whether a
+    round boundary lies after it -- a `close_turn`, or any terminating step,
+    the only steps the discount applies across."""
 
     reward: float
     breakdown: dict[str, float]
     is_close: bool
 
 
-@dataclass
+@dataclass(frozen=True)
 class _TurnBaseline:
     """The state at the previous close, for the delta globals."""
 
@@ -153,6 +151,7 @@ class _TurnBaseline:
     opponent_vp: int
     player_alive: np.ndarray
     opponent_alive: np.ndarray
+    attrition: tuple[int, int]
 
 
 @dataclass
@@ -174,6 +173,7 @@ class _CloseView:
     `_open_window` resets the env's deltas per window, so at the close they
     carry only the last window's scoring; `VPGainCalculator` reads
     `view.player_vp_delta`, and this keeps its arithmetic single-sourced.
+    Every other read falls through to the env, as `MirroredEnv` does.
     """
 
     def __init__(self, env: PerModelEnv, player_delta: int, opponent_delta: int):
@@ -190,44 +190,47 @@ class _CloseView:
         return self._opponent_delta
 
     def __getattr__(self, name: str) -> Any:
-        return getattr(self._env, name)
+        # `copy.deepcopy` reconstructs without `__init__`, so `self._env`
+        # would re-enter here and recurse; `MirroredEnv` documents the same
+        # guard as load-bearing.
+        env = self.__dict__.get("_env")
+        if env is None:
+            raise AttributeError(name)
+        return getattr(env, name)
 
 
 def classify(manager: RewardPhaseManager) -> _Classified:
     """Sort the current phase's calculators into their payment classes.
 
-    Raises for a calculator in no class or in the refused set, so a config
-    that carries a term this timing cannot pay is refused at construction.
+    Raises for a calculator outside the registry or in the refused class, so
+    a config that carries a term this timing cannot pay is refused at
+    construction.
     """
     phase = manager.current_phase
     classes = _Classified()
     for name, per_model in phase.per_model_calculators:
-        if isinstance(per_model, REFUSED_TERMS):
+        payment = payment_class_of(per_model)
+        if payment is PaymentClass.refused:
             raise ValueError(
                 f"reward term `{name}` keeps its potential on the model object "
                 "and cannot be paid per decision; use closest_objective_v2"
             )
-        if isinstance(per_model, POTENTIAL_ACTION_TERMS):
+        if payment is PaymentClass.potential_action:
             classes.potential.append((name, per_model))
-        elif isinstance(per_model, EVENT_ACTION_TERMS):
+        elif payment is PaymentClass.event_action:
             classes.event.append((name, per_model))
-        elif isinstance(per_model, STATE_TERMS):
+        elif payment is PaymentClass.state:
             classes.state.append((name, per_model))
         else:
-            raise ValueError(
-                f"reward term `{name}` ({type(per_model).__name__}) has no "
-                "per-decision payment class"
-            )
-    for name, global_ in phase.global_calculators:
-        if isinstance(global_, DELTA_GLOBALS):
-            classes.delta_globals.append((name, global_))
-        elif isinstance(global_, STATE_GLOBALS):
-            classes.state_globals.append((name, global_))
+            raise ValueError(f"per-model term `{name}` is classified {payment.value}")
+    for name, global_calculator in phase.global_calculators:
+        payment = payment_class_of(global_calculator)
+        if payment is PaymentClass.delta_global:
+            classes.delta_globals.append((name, global_calculator))
+        elif payment is PaymentClass.state_global:
+            classes.state_globals.append((name, global_calculator))
         else:
-            raise ValueError(
-                f"reward term `{name}` ({type(global_).__name__}) has no "
-                "per-decision payment class"
-            )
+            raise ValueError(f"global term `{name}` is classified {payment.value}")
     return classes
 
 
@@ -236,23 +239,35 @@ class PerStepReward:
 
     Call `reset()` after every `env.reset()` and `on_step(...)` after every
     `env.step(...)`; read `episode_reward` and `episode_breakdown` between.
+    `manager` defaults to a fresh `RewardPhaseManager` from the env's config;
+    whatever is passed must not be the env's own (see the module docstring).
     """
 
-    def __init__(self, env: PerModelEnv) -> None:
+    def __init__(
+        self, env: PerModelEnv, manager: RewardPhaseManager | None = None
+    ) -> None:
         if len(env.config.reward_phases) != 1:
             raise ValueError(
                 "the per-decision reward supports a single reward phase; "
                 f"this config carries {len(env.config.reward_phases)} "
                 "(curriculum advancement is a follow-up to #286)"
             )
+        if manager is env.phase_manager:
+            raise ValueError(
+                "the per-decision reward must not share the env's own calculators: "
+                "the stateful ones would advance each other's potentials"
+            )
         self.env = env
-        self.manager = RewardPhaseManager.from_configs(env.config.reward_phases)
+        self.manager = manager or RewardPhaseManager.from_configs(
+            env.config.reward_phases
+        )
         self.classes = classify(self.manager)
-        self.phases_per_round = max(1, env.max_turns // env.n_rounds)
+        self.phase_scale = float(env.stepped_phases_per_round)
         self.episode_reward = 0.0
         self.episode_breakdown: dict[str, float] = {}
         self.closes = 0
         self.last_context: StepContext | None = None
+        self.last_view: BattleView | None = None
         self._baseline = self._read_baseline()
 
     # ------------------------------------------------------------- lifecycle
@@ -265,6 +280,7 @@ class PerStepReward:
         self.episode_breakdown = {}
         self.closes = 0
         self.last_context = None
+        self.last_view = None
         self._baseline = self._read_baseline()
 
     def _read_baseline(self) -> _TurnBaseline:
@@ -274,6 +290,7 @@ class PerStepReward:
             opponent_vp=int(env.opponent_vp),
             player_alive=alive_mask_for(env.wargame_models).copy(),
             opponent_alive=alive_mask_for(env.opponent_models).copy(),
+            attrition=env.attrition_deaths_total,
         )
 
     # ------------------------------------------------------------------ pay
@@ -318,7 +335,7 @@ class PerStepReward:
             compute_model_model=self.manager.needs_model_model_distances,
             alive_mask=alive,
         )
-        clock = env.game_clock_state
+        current_round, battle_phase = env.context_clock()
         return StepContext(
             distance_cache=cache,
             current_turn=env.current_turn,
@@ -326,8 +343,8 @@ class PerStepReward:
             board_width=env.board_width,
             board_height=env.board_height,
             is_terminated=terminated,
-            current_round=clock.battle_round or 0,
-            battle_phase=clock.phase or BattlePhase.command,
+            current_round=current_round,
+            battle_phase=battle_phase,
             action_phase=action_phase,
             player_models_killed=player_killed,
             opponent_models_killed=opponent_killed,
@@ -341,26 +358,26 @@ class PerStepReward:
         breakdown: dict[str, float],
     ) -> float:
         classes = self.classes
-        actors = effect.acted
+        actor_set = effect.actor_set
         attackers = tuple(sorted(effect.kills_by_model))
-        if not actors and not attackers:
+        if not actor_set and not attackers:
             return 0.0
         if not classes.potential and not classes.event:
             return 0.0
         env = self.env
+        n_alive = int(alive_mask_for(env.wargame_models).sum())
+        if n_alive == 0:
+            return 0.0
         n_models = len(env.wargame_models)
         kills = np.zeros(n_models, dtype=np.int64)
         for index, count in effect.kills_by_model.items():
             if index < n_models:
                 kills[index] = count
         ctx = self._context(action_phase=phase, kills_by_model=kills)
-        n_alive = int(alive_mask_for(env.wargame_models).sum())
-        if n_alive == 0:
-            return 0.0
-        view = cast(Any, env)
+        view = cast("BattleView", env)
         total = 0.0
         for name, calculator in classes.potential:
-            for index in actors:
+            for index in actor_set:
                 model = env.wargame_models[index]
                 if not model.is_alive:
                     continue
@@ -383,8 +400,19 @@ class PerStepReward:
         before = self._baseline
         player_alive = alive_mask_for(env.wargame_models)
         opponent_alive = alive_mask_for(env.opponent_models)
-        player_lost = int((before.player_alive & ~player_alive).sum())
-        opponent_lost = int((before.opponent_alive & ~opponent_alive).sum())
+        # The phase facade's kill rule: casualties since the baseline, minus
+        # the attrition deaths the rules give no kill credit for.
+        attrition_player, attrition_opponent = env.attrition_deaths_total
+        player_lost = max(
+            0,
+            int((before.player_alive & ~player_alive).sum())
+            - (attrition_player - before.attrition[0]),
+        )
+        opponent_lost = max(
+            0,
+            int((before.opponent_alive & ~opponent_alive).sum())
+            - (attrition_opponent - before.attrition[1]),
+        )
         ctx = self._context(
             action_phase=None,
             kills_by_model=None,
@@ -395,16 +423,16 @@ class PerStepReward:
             opponent_killed=player_lost,
             terminated=terminated,
         )
-        self.last_context = ctx
         view = cast(
-            Any,
+            "BattleView",
             _CloseView(
                 env,
                 int(env.player_vp) - before.player_vp,
                 int(env.opponent_vp) - before.opponent_vp,
             ),
         )
-        scale = float(self.phases_per_round)
+        self.last_context = ctx
+        self.last_view = view
         total = 0.0
         n_alive = int(player_alive.sum())
         for name, calculator in classes.state:
@@ -414,7 +442,7 @@ class PerStepReward:
             for index in np.flatnonzero(player_alive):
                 model = env.wargame_models[int(index)]
                 summed += calculator.calculate(int(index), model, view, ctx)
-            paid = calculator.weight * summed / n_alive * scale
+            paid = calculator.weight * summed / n_alive * self.phase_scale
             total += paid
             breakdown[name] = breakdown.get(name, 0.0) + paid
         for name, delta_global in classes.delta_globals:
@@ -422,7 +450,11 @@ class PerStepReward:
             total += paid
             breakdown[name] = breakdown.get(name, 0.0) + paid
         for name, state_global in classes.state_globals:
-            paid = state_global.weight * state_global.calculate(view, ctx) * scale
+            paid = (
+                state_global.weight
+                * state_global.calculate(view, ctx)
+                * self.phase_scale
+            )
             total += paid
             breakdown[name] = breakdown.get(name, 0.0) + paid
         if terminated:
@@ -435,21 +467,20 @@ class PerStepReward:
     # ------------------------------------------------------------ readouts
 
     def succeeded(self) -> bool:
-        """The phase's success criteria on the terminating context, if any."""
+        """The phase's success criteria on the terminating context, scored
+        against the same view that paid the terminal bonus."""
         ctx = self.last_context
-        if ctx is None:
+        view = self.last_view
+        if ctx is None or view is None:
             return False
-        return self.manager.check_success(cast(Any, self.env), ctx)
+        return self.manager.check_success(view, ctx)
 
 
 __all__ = [
-    "DELTA_GLOBALS",
-    "EVENT_ACTION_TERMS",
-    "POTENTIAL_ACTION_TERMS",
-    "REFUSED_TERMS",
-    "STATE_GLOBALS",
-    "STATE_TERMS",
+    "PAYMENT_CLASSES",
+    "PaymentClass",
     "PerStepReward",
     "StepPayment",
     "classify",
+    "payment_class_of",
 ]

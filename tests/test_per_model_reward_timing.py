@@ -23,6 +23,7 @@ from tests.per_model_seats import (
 )
 from wargame_rl.wargame.envs.baseline.policy import BaselinePolicy
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
+from wargame_rl.wargame.envs.domain.battle_view import BattleView
 from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
 from wargame_rl.wargame.envs.domain.sequencing.activation import (
     CHARGE_TARGET_DECLINE,
@@ -32,18 +33,20 @@ from wargame_rl.wargame.envs.env_components.distance_cache import (
     compute_distances,
     objective_ownership_from_norms_offset,
 )
-from wargame_rl.wargame.envs.per_model import PerModelAction, PerModelEnv, StepKind
-from wargame_rl.wargame.envs.per_model.env import StepEffect
+from wargame_rl.wargame.envs.per_model import (
+    PerModelAction,
+    PerModelEnv,
+    StepEffect,
+    StepKind,
+)
 from wargame_rl.wargame.envs.per_model.random_seat import random_legal_action
 from wargame_rl.wargame.envs.per_model.reward_timing import (
-    DELTA_GLOBALS,
-    EVENT_ACTION_TERMS,
-    POTENTIAL_ACTION_TERMS,
-    REFUSED_TERMS,
-    STATE_GLOBALS,
-    STATE_TERMS,
+    PAYMENT_CLASSES,
+    PaymentClass,
     PerStepReward,
+    _CloseView,
     classify,
+    payment_class_of,
 )
 from wargame_rl.wargame.envs.per_model.scripted import ScriptedSeat
 from wargame_rl.wargame.envs.per_model.types import PerModelObservation
@@ -139,29 +142,32 @@ def _walk_to(
 # ---------------------------------------------------------------- classes
 
 
-def test_every_registered_calculator_has_exactly_one_payment_class() -> None:
-    classes = (
-        POTENTIAL_ACTION_TERMS,
-        EVENT_ACTION_TERMS,
-        STATE_TERMS,
-        DELTA_GLOBALS,
-        STATE_GLOBALS,
-        REFUSED_TERMS,
-    )
-    for name, calculator in CALCULATOR_REGISTRY.items():
-        matches = [c for c in classes if issubclass(calculator, c)]
-        assert len(matches) == 1, f"{name} is in {len(matches)} classes"
+def test_every_registered_calculator_has_a_payment_class_by_its_own_key() -> None:
+    """The classification is keyed by the reward registry's string, and the
+    module refuses to import when the two key sets differ -- so this pins the
+    invariant a fresh registration has to satisfy, in the same words."""
+    assert set(PAYMENT_CLASSES) == set(CALCULATOR_REGISTRY)
+    for key, calculator in CALCULATOR_REGISTRY.items():
+        assert payment_class_of(calculator.__new__(calculator)) is PAYMENT_CLASSES[key]
 
 
-def test_an_unclassified_calculator_is_refused_by_name() -> None:
+def test_a_calculator_outside_the_registry_is_refused_by_name() -> None:
     class Mystery(PerModelRewardCalculator):
         def calculate(self, model_idx: int, model: Any, view: Any, ctx: Any) -> float:
             return 0.0
 
+    with pytest.raises(ValueError, match="Mystery"):
+        payment_class_of(Mystery())
     manager = RewardPhaseManager.from_configs([_terms()])
     manager.current_phase.per_model_calculators.append(("mystery", Mystery()))
-    with pytest.raises(ValueError, match="mystery"):
+    with pytest.raises(ValueError, match="Mystery"):
         classify(manager)
+
+
+def test_a_subclass_registered_under_its_own_key_carries_its_own_class() -> None:
+    """Exact type, never subclass: a payment class does not follow inheritance."""
+    assert PAYMENT_CLASSES["closest_objective"] is PaymentClass.refused
+    assert PAYMENT_CLASSES["closest_objective_v2"] is PaymentClass.potential_action
 
 
 def test_the_legacy_closest_objective_is_refused() -> None:
@@ -172,6 +178,27 @@ def test_the_legacy_closest_objective_is_refused() -> None:
     )
     with pytest.raises(ValueError, match="closest_objective_v2"):
         PerStepReward(PerModelEnv(_config(phase)))
+
+
+def test_the_envs_own_calculators_are_refused_and_the_close_view_is_a_battle_view() -> (
+    None
+):
+    env = PerModelEnv(_config())
+    with pytest.raises(ValueError, match="must not share"):
+        PerStepReward(env, manager=env.phase_manager)
+    env.reset(seed=1)
+    view = _CloseView(env, 3, 1)
+    # Every name `BattleView` declares resolves through the proxy. (A
+    # `runtime_checkable` isinstance ignores `__getattr__` since 3.12, so the
+    # protocol's members are checked by name instead.)
+    for name in BattleView.__protocol_attrs__:  # type: ignore[attr-defined]
+        assert hasattr(view, name), name
+    assert (view.player_vp_delta, view.opponent_vp_delta) == (3, 1)
+    assert view.player_models is env.wargame_models
+    # `deepcopy` reconstructs without `__init__`; the guard keeps `__getattr__`
+    # from recursing on `_env`, as `MirroredEnv` documents.
+    twin = copy.deepcopy(view)
+    assert twin.player_vp_delta == 3
 
 
 def test_a_curriculum_config_is_refused() -> None:
@@ -214,7 +241,7 @@ def test_an_act_step_pays_the_actor_its_term_over_the_alive_count() -> None:
     )
     payment = retimer.on_step(observation, action, effect, terminated)
 
-    assert effect.acted == (actor,)
+    assert effect.actor_set == (actor,)
     assert not payment.is_close
     assert set(payment.breakdown) <= {name}
     assert payment.reward == pytest.approx(expected)
@@ -237,7 +264,7 @@ def test_a_skip_declaration_pays_every_consumed_member() -> None:
     effect: StepEffect = info["effect"]
     payment = retimer.on_step(observation, action, effect, terminated)
 
-    assert sorted(effect.acted) == sorted(members)
+    assert sorted(effect.actor_set) == sorted(members)
     assert len(members) == 3
     # Nobody moved, so the potential pays each member its anchoring step:
     # the term is present for the unit and the close bundle is not.
@@ -265,10 +292,12 @@ def test_a_target_that_names_a_unit_pays_nothing_and_a_decline_pays_the_unit() -
         effect: StepEffect = info["effect"]
         payment = retimer.on_step(observation, action, effect, terminated)
         if decline:
-            assert sorted(effect.acted) == sorted(env.player_seat.unit_members(unit))
+            assert sorted(effect.actor_set) == sorted(
+                env.player_seat.unit_members(unit)
+            )
             assert "closest_objective_v2" in payment.breakdown
         else:
-            assert effect.acted == ()
+            assert effect.actor_set == ()
             assert payment.reward == 0.0
             assert payment.breakdown == {}
 
@@ -344,7 +373,7 @@ def test_state_terms_at_the_close_are_scaled_by_the_phases_per_round() -> None:
     rng = np.random.default_rng(6)
     observation, _ = env.reset(seed=6, options={"combat_seed": COMBAT_SEED})
     retimer.reset()
-    assert retimer.phases_per_round == 2
+    assert retimer.phase_scale == 2.0
     while observation.decision.kind is not StepKind.close_turn:
         action = random_legal_action(observation.decision, rng)
         observation, _, _, _, _ = env.step(action)
@@ -478,11 +507,65 @@ def test_a_close_turn_reports_the_strike_back_kills_of_the_opponents_turn() -> N
         kills = sum(info["effect"].kills_by_model.values())
         if action.kind is StepKind.close_turn:
             on_close += kills
-            assert info["effect"].acted == ()
+            assert info["effect"].actor_set == ()
         else:
             on_decisions += kills
     dead = int((~alive_mask_for(env.opponent_models)).sum())
     assert on_close + on_decisions == dead
+
+
+def test_the_close_gives_attrition_no_kill_credit_like_the_window() -> None:
+    """With `coherency.attrition` on, a model culled at the end of a turn is
+    not a kill: the retimer subtracts the env's cumulative attrition count
+    between closes, the same rule `_settle_window` applies per window."""
+    base = small_config(opponent_x=22, baseline="squad_march", rounds=4)
+    config = WargameEnvConfig(
+        **{
+            **base.model_dump(),
+            "reward_phases": [
+                RewardPhaseConfig(
+                    name="losses",
+                    reward_calculators=[
+                        RewardCalculatorConfig(
+                            type="models_lost", params={"penalty_per_loss": 1.0}
+                        ),
+                        RewardCalculatorConfig(
+                            type="killing", params={"bonus_killing_opponent": 1.0}
+                        ),
+                    ],
+                    success_criteria=SuccessCriteriaConfig(type="player_ahead_on_vp"),
+                    terminate_on_success=False,
+                )
+            ],
+            "coherency": {**base.coherency.model_dump(), "attrition": True},
+        }
+    )
+    env = PerModelEnv(config)
+    retimer = PerStepReward(env)
+    rng = np.random.default_rng(11)
+    observation, _ = env.reset(seed=11, options={"combat_seed": 11})
+    retimer.reset()
+    # Attrition fires at the END of a turn, inside whichever step ends it --
+    # a decision step for our own turn, the close for the opponent's -- so
+    # both diffs run from the previous close, as the retimer's do.
+    alive_at_close = alive_mask_for(env.wargame_models).copy()
+    attrition_at_close = env.attrition_deaths_total[0]
+    done = False
+    while not done:
+        action = random_legal_action(observation.decision, rng)
+        before = observation
+        observation, _, done, _, info = env.step(action)
+        payment = retimer.on_step(before, action, info["effect"], done)
+        if payment.is_close:
+            culled = env.attrition_deaths_total[0] - attrition_at_close
+            lost = int((alive_at_close & ~alive_mask_for(env.wargame_models)).sum())
+            # `models_lost` pays -penalty per player model the OPPONENT killed.
+            assert payment.breakdown.get("models_lost", 0.0) == pytest.approx(
+                -1.0 * max(0, lost - culled)
+            )
+            alive_at_close = alive_mask_for(env.wargame_models).copy()
+            attrition_at_close = env.attrition_deaths_total[0]
+    assert env.attrition_deaths_total[0] > 0, "no attrition fired; vacuous seed"
 
 
 def test_attaching_a_retimer_leaves_the_windows_bit_identical() -> None:

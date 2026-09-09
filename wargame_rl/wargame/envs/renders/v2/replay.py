@@ -289,6 +289,8 @@ def _snapshot_to_view(snapshot: GameStateSnapshot) -> _SnapshotView:
                 los_sample_step=rules.los_sample_step,
                 base_radius=rules.base_radius,
                 coherency_distance=0.0,
+                coherency_nearest=0.0,
+                coherency_furthest=0.0,
             )
             if rules is not None
             else None

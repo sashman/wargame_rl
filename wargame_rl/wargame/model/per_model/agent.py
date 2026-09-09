@@ -9,8 +9,8 @@ network is on, so a seeded rollout is device-independent.
 
 `act_batch` does the same for N envs in one forward: every env always has
 exactly one pending decision (`close_turn` included), so lockstep rollouts
-collate N observations and draw N rows. A closing row draws nothing -- its
-selector is all `-inf` -- and carries only the value.
+collate N observations and draw N rows. A `close_turn` row draws nothing --
+its selector is all `-inf` -- and carries only the value.
 
 A decoded action the point refuses is a builder/decoder disagreement -- a
 bug -- and raises rather than resampling.
@@ -44,7 +44,7 @@ from wargame_rl.wargame.envs.per_model.types import (
 from wargame_rl.wargame.model.per_model.batch import collate
 from wargame_rl.wargame.model.per_model.net import HeadLogits, SetNetwork
 
-# The column a closing step reports: nothing was drawn.
+# The column a `close_turn` point reports: nothing was drawn there.
 NO_DRAW = -1
 
 
@@ -54,8 +54,11 @@ class StepDecision:
 
     `model` and `column` are the two drawn factors (the selector's row and
     the head's column), so a training update can recompute their log-probs
-    without decoding the action back; both are `NO_DRAW` on a closing step,
-    which has no policy factor. `column >= 0` is "this step has a policy".
+    without decoding the action back; both are `NO_DRAW` on a `close_turn`
+    point, where nothing is drawn. `column >= 0` is "this step has a policy"
+    -- and that is not the same as "not a closing step": a decision step that
+    terminates the episode is a closing step for the discount and still
+    carries its drawn factors.
     """
 
     action: PerModelAction
@@ -138,8 +141,8 @@ class SetAgent:
                 models[row], selector_log_probs[row] = _draw(
                     selectors[row], self.greedy, generator
                 )
-            # A closing row's model index is a placeholder: its heads are read
-            # and discarded, since it draws no column.
+            # A `close_turn` row's model index is a placeholder: its heads are
+            # read and discarded, since it draws no column.
             index = torch.tensor(
                 [max(m, 0) for m in models], dtype=torch.int64, device=device
             )

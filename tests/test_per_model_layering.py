@@ -124,10 +124,16 @@ def test_the_per_model_facade_never_imports_the_phase_facade() -> None:
 # set network is the first; a new one is added here on purpose, never by
 # naming a directory `per_model`.
 FACADE_CLIENTS = ("wargame/envs/per_model", "wargame/model/per_model")
+# And the two root drivers, by file name: the play script and the training
+# loop. The repo root is walked too, so a new script cannot import the facade
+# unlisted.
+ROOT_CLIENTS = ("play_per_model.py", "train_per_model.py")
+REPO = PACKAGE.parent
 
 
 def test_only_the_named_clients_import_the_facade() -> None:
-    """The facade is imported by its own package and the set network, nothing else."""
+    """The facade is imported by its own package, the set network and the two
+    root drivers, nothing else."""
     offenders = {
         path.relative_to(PACKAGE).as_posix()
         for path in _python_files(PACKAGE)
@@ -137,7 +143,25 @@ def test_only_the_named_clients_import_the_facade() -> None:
             for module in _imported_modules(path)
         )
     }
+    offenders |= {
+        path.name
+        for path in REPO.glob("*.py")
+        if path.name not in ROOT_CLIENTS
+        and any(
+            module.startswith("wargame_rl.wargame.envs.per_model")
+            for module in _imported_modules(path)
+        )
+    }
     assert not offenders, f"per_model is imported by {offenders}"
+
+
+def test_the_root_drivers_really_are_clients() -> None:
+    """The root allow-list is not vacuous either."""
+    for name in ROOT_CLIENTS:
+        assert any(
+            module.startswith("wargame_rl.wargame.envs.per_model")
+            for module in _imported_modules(REPO / name)
+        ), name
 
 
 def test_the_set_network_package_is_a_client_of_the_facade() -> None:

@@ -3,11 +3,12 @@
 The minimum the training driver needs to select a checkpoint and log the
 ladder's readouts: one episode per seed, in seed order, so two runs of the
 same seeds pair. Issue #287 owns the batched form, recording and the
-`measure-*` audit; this is not that.
+`measure-*` audit; this is not that. Every game fact is read off the env
+(`objectives_held`, `units_coherent`), never derived here.
 
-`coherency_rate` here is the mean over the episode's turn closes of the share
-of living units in coherency -- PROVISIONAL: the whole-phase readout samples
-at the movement boundary, and #287 reconciles the two.
+`coherency_rate` is the mean over the episode's turn closes of the share of
+living units in coherency -- PROVISIONAL: the whole-phase readout samples at
+the movement boundary, and #287 reconciles the two.
 """
 
 from __future__ import annotations
@@ -19,11 +20,6 @@ import numpy as np
 import torch
 
 from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
-from wargame_rl.wargame.envs.domain.movement.coherency import evaluate_coherency
-from wargame_rl.wargame.envs.env_components.distance_cache import (
-    compute_distances,
-    objective_ownership_from_norms_offset,
-)
 from wargame_rl.wargame.envs.per_model.env import PerModelEnv
 from wargame_rl.wargame.envs.per_model.reward_timing import PerStepReward
 from wargame_rl.wargame.model.per_model.agent import SetAgent
@@ -171,7 +167,7 @@ def _play_episode(
             if decision.has_policy:
                 decision_steps += 1
             if payment.is_close:
-                coherency.append(_units_coherent(env))
+                coherency.append(env.units_coherent())
             if terminated:
                 break
     alive = alive_mask_for(env.wargame_models)
@@ -182,47 +178,10 @@ def _play_episode(
         reward=retimer.episode_reward,
         decision_steps=decision_steps,
         fraction_alive=float(alive.mean()) if alive.size else 0.0,
-        objectives_held=_objectives_held(env),
+        objectives_held=env.objectives_held,
         success=retimer.succeeded(),
         coherency_rate=float(np.mean(coherency)) if coherency else 1.0,
     )
-
-
-def _objectives_held(env: PerModelEnv) -> int:
-    """Objectives the player controls now, by the rule VP scores on."""
-    if not env.objectives:
-        return 0
-    player = compute_distances(
-        env.wargame_models,
-        env.objectives,
-        alive_mask=alive_mask_for(env.wargame_models),
-    )
-    opponent = compute_distances(
-        env.opponent_models,
-        env.objectives,
-        alive_mask=alive_mask_for(env.opponent_models),
-    )
-    held, _ = objective_ownership_from_norms_offset(
-        player.model_obj_norms_offset,
-        opponent.model_obj_norms_offset,
-        player.obj_radii,
-    )
-    return int(held.sum())
-
-
-def _units_coherent(env: PerModelEnv) -> float:
-    """Share of living player units in coherency, right now."""
-    models = env.wargame_models
-    scale = env.rules_quantities.scale
-    report = evaluate_coherency(
-        positions=np.array([m.location for m in models], dtype=float),
-        group_ids=np.array([int(m.group_id) for m in models], dtype=int),
-        alive_mask=alive_mask_for(models),
-        base_radii=np.array([m.base_radius for m in models], dtype=float),
-        nearest_distance=scale.to_units(env.config.coherency.nearest_distance),
-        furthest_distance=scale.to_units(env.config.coherency.furthest_distance),
-    )
-    return report.fraction_units_coherent
 
 
 __all__ = ["EpisodeResult", "PerModelEvalResult", "evaluate_per_model"]

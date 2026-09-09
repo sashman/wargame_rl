@@ -30,25 +30,25 @@ import torch
 import typer
 from loguru import logger
 
-from train import (
-    _resolve_default,
-    _resolve_optional_float,
-    _resolve_optional_int,
-    _resolve_optional_str,
-    get_env_config,
-)
 from wargame_rl.wargame.envs.baseline.evaluate import evaluate_baseline
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
 from wargame_rl.wargame.envs.per_model.env import PerModelEnv
 from wargame_rl.wargame.envs.per_model.reward_timing import PerStepReward
 from wargame_rl.wargame.envs.types import WargameEnvConfig
-from wargame_rl.wargame.model.common.factory import create_environment
-from wargame_rl.wargame.model.common.lightning_base import (
+from wargame_rl.wargame.model.common.cli import (
+    get_env_config,
+    resolve_default,
+    resolve_optional_float,
+    resolve_optional_int,
+    resolve_optional_str,
+)
+from wargame_rl.wargame.model.common.eval_constants import (
     BASELINE_EPISODES,
     BASELINE_POLICIES,
     BASELINE_SEED_BASE,
     EVAL_SEED_BASE,
 )
+from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.common.wandb import init_wandb
 from wargame_rl.wargame.model.per_model.agent import SetAgent
 from wargame_rl.wargame.model.per_model.checkpoint import (
@@ -161,28 +161,29 @@ def baseline_rows(env_config: WargameEnvConfig) -> dict[str, float]:
             result.final_fraction_at_objectives
         )
         rows[f"eval/baseline_{name}_fraction_alive"] = result.final_fraction_alive
+        rows[f"eval/baseline_{name}_objectives_held"] = result.objectives_held
     env.close()
     return rows
 
 
 def eval_rows(result: PerModelEvalResult, prefix: str = "") -> dict[str, float]:
-    p = f"{prefix}_" if prefix else ""
+    suffix = f"{prefix}_" if prefix else ""
     margins = np.array([e.vp_margin for e in result.episodes], dtype=np.float64)
     elo = float(rating_from_score(float(margin_score(margins).mean())))
     return {
-        f"eval/{p}vp_player": result.vp_player,
-        f"eval/{p}vp_opponent": result.vp_opponent,
-        f"eval/{p}vp_margin": result.vp_margin,
-        f"eval/{p}win_rate": 100.0 * result.win_rate,
-        f"eval/{p}elo": elo,
-        f"eval/{p}fraction_alive": result.fraction_alive,
-        f"eval/{p}objectives_held": result.objectives_held,
-        f"eval/{p}coherency_rate": result.coherency_rate,
-        f"reward/{p}mean_episode_reward": result.mean_reward,
-        f"reward/{p}max_episode_reward": result.max_reward,
-        f"reward/{p}min_episode_reward": result.min_reward,
-        f"{p}mean_episode_steps": result.mean_steps,
-        f"{p}success_rate": 100.0 * result.success_rate,
+        f"eval/{suffix}vp_player": result.vp_player,
+        f"eval/{suffix}vp_opponent": result.vp_opponent,
+        f"eval/{suffix}vp_margin": result.vp_margin,
+        f"eval/{suffix}win_rate": 100.0 * result.win_rate,
+        f"eval/{suffix}elo": elo,
+        f"eval/{suffix}fraction_alive": result.fraction_alive,
+        f"eval/{suffix}objectives_held": result.objectives_held,
+        f"eval/{suffix}coherency_rate": result.coherency_rate,
+        f"reward/{suffix}mean_episode_reward": result.mean_reward,
+        f"reward/{suffix}max_episode_reward": result.max_reward,
+        f"reward/{suffix}min_episode_reward": result.min_reward,
+        f"{suffix}mean_episode_steps": result.mean_steps,
+        f"{suffix}success_rate": 100.0 * result.success_rate,
     }
 
 
@@ -274,28 +275,28 @@ def train(
     checkpoint_root: str = typer.Option(str(CHECKPOINT_ROOT)),
 ) -> Path:
     """Train; returns the run directory."""
-    resolved_seed = _resolve_optional_int(seed)
+    resolved_seed = resolve_optional_int(seed)
     if resolved_seed is not None:
         torch.manual_seed(resolved_seed)
         np.random.seed(resolved_seed)
-    torch.set_num_threads(int(_resolve_default(torch_threads, 2)))
-    resolved_device = resolve_device(str(_resolve_default(device, "auto")))
+    torch.set_num_threads(int(resolve_default(torch_threads, 2)))
+    resolved_device = resolve_device(str(resolve_default(device, "auto")))
 
-    env_config = get_env_config(str(_resolve_default(env_config_path, None)), None)
+    env_config = get_env_config(str(resolve_default(env_config_path, None)), None)
     refuse_curriculum(env_config)
 
     ppo_config = PerModelPPOConfig()
     overrides: dict[str, Any] = {
-        "rollout_rounds": _resolve_optional_int(rollout_rounds),
-        "num_rollout_envs": _resolve_optional_int(num_rollout_envs),
-        "gamma": _resolve_optional_float(gamma),
-        "gae_lambda": _resolve_optional_float(gae_lambda),
-        "ent_coef": _resolve_optional_float(ent_coef),
-        "selector_ent_coef": _resolve_optional_float(selector_ent_coef),
-        "lr": _resolve_optional_float(lr),
-        "max_grad_norm": _resolve_optional_float(max_grad_norm),
-        "n_epochs": _resolve_optional_int(n_epochs),
-        "batch_size": _resolve_optional_int(batch_size),
+        "rollout_rounds": resolve_optional_int(rollout_rounds),
+        "num_rollout_envs": resolve_optional_int(num_rollout_envs),
+        "gamma": resolve_optional_float(gamma),
+        "gae_lambda": resolve_optional_float(gae_lambda),
+        "ent_coef": resolve_optional_float(ent_coef),
+        "selector_ent_coef": resolve_optional_float(selector_ent_coef),
+        "lr": resolve_optional_float(lr),
+        "max_grad_norm": resolve_optional_float(max_grad_norm),
+        "n_epochs": resolve_optional_int(n_epochs),
+        "batch_size": resolve_optional_int(batch_size),
     }
     ppo_config = ppo_config.model_copy(
         update={k: v for k, v in overrides.items() if v is not None}
@@ -304,20 +305,30 @@ def train(
     n_envs = ppo_config.num_rollout_envs
     if n_envs <= 0:
         n_envs = auto_num_rollout_envs(resolved_device)
+    # Written back so the persisted config and every checkpoint say how many
+    # envs produced the run, not the `0` that asked for auto-detection.
+    ppo_config = PerModelPPOConfig(
+        **ppo_config.model_copy(update={"num_rollout_envs": n_envs}).model_dump()
+    )
     rollout_total = ppo_config.rollout_rounds * n_envs
-    eval_every = int(_resolve_default(eval_every_rounds, 256))
-    checkpoint_every = int(_resolve_default(checkpoint_every_rounds, 256))
-    total_rounds = int(_resolve_default(rounds, 1024))
-    eval_episodes = int(_resolve_default(n_eval_episodes, 20))
+    eval_every = int(resolve_default(eval_every_rounds, 256))
+    checkpoint_every = int(resolve_default(checkpoint_every_rounds, 256))
+    total_rounds = int(resolve_default(rounds, 1024))
+    eval_episodes = int(resolve_default(n_eval_episodes, 20))
+    if total_rounds < rollout_total:
+        raise ValueError(
+            f"rounds ({total_rounds}) is below one rollout ({rollout_total} = "
+            "rollout_rounds x envs); nothing would train"
+        )
     check_cadence(eval_every, rollout_total, "eval_every_rounds")
     check_cadence(checkpoint_every, rollout_total, "checkpoint_every_rounds")
 
     network_config = SetNetworkConfig()
     trunk: dict[str, int] = {}
-    if _resolve_optional_int(n_layers) is not None:
-        trunk["n_layers"] = int(_resolve_optional_int(n_layers) or 0)
-    if _resolve_optional_int(embedding_size) is not None:
-        trunk["embedding_size"] = int(_resolve_optional_int(embedding_size) or 0)
+    if resolve_optional_int(n_layers) is not None:
+        trunk["n_layers"] = int(resolve_optional_int(n_layers) or 0)
+    if resolve_optional_int(embedding_size) is not None:
+        trunk["embedding_size"] = int(resolve_optional_int(embedding_size) or 0)
     if trunk:
         network_config = SetNetworkConfig(**{**network_config.model_dump(), **trunk})
         logger.warning(
@@ -344,28 +355,31 @@ def train(
     generator = torch.Generator().manual_seed(resolved_seed or 0)
 
     base_name = f"per-model-{Path(env_config_path).stem}"
-    resolved_run_name = _resolve_optional_str(run_name) or base_name
+    resolved_run_name = resolve_optional_str(run_name) or base_name
     config = {
         "wargame": env_config.model_dump(mode="json"),
         "ppo": ppo_config.model_dump(),
         "network": network_config.model_dump(),
         "driver": {
             "rounds": total_rounds,
-            "num_rollout_envs": n_envs,
             "eval_every_rounds": eval_every,
             "checkpoint_every_rounds": checkpoint_every,
             "seed": resolved_seed,
         },
     }
-    disabled = bool(_resolve_default(no_wandb, False))
+    # The bar goes through the phase facade -- the first time this config
+    # touches it -- so it is measured before the run directory exists and a
+    # refusal leaves nothing half-written.
+    bar = baseline_rows(env_config)
+    disabled = bool(resolve_default(no_wandb, False))
     with init_wandb(
         config=config,
         name=resolved_run_name,
         disabled=disabled,
-        group=_resolve_optional_str(wandb_group),
-        run_suffix=_resolve_optional_str(run_suffix),
+        group=resolve_optional_str(wandb_group),
+        run_suffix=resolve_optional_str(run_suffix),
     ) as run:
-        run_dir = Path(str(_resolve_default(checkpoint_root, CHECKPOINT_ROOT)))
+        run_dir = Path(str(resolve_default(checkpoint_root, CHECKPOINT_ROOT)))
         run_dir = run_dir / str(run.name)
         run_dir.mkdir(parents=True, exist_ok=True)
         (run_dir / "env_config.yaml").write_text(
@@ -391,7 +405,7 @@ def train(
         metrics = MetricsLog(run_dir / "metrics.jsonl", to_wandb=not disabled)
         logger.info("Run directory {}", run_dir)
 
-        metrics.log({"rounds": 0, "epoch_equivalent": 0.0, **baseline_rows(env_config)})
+        metrics.log({"rounds": 0, "epoch_equivalent": 0.0, **bar})
 
         env_config_dict = env_config.model_dump(mode="json")
         rounds_done = 0

@@ -66,6 +66,12 @@ wargame_rl/wargame/envs/
 ├── board/                     # Board-wide reads: sampling grid, next-turn threat
 │                              #   field, unit matchups. A LEAF -- domain and types only
 ├── env_components/            # Adapters: actions, observation, distances
+├── per_model/                 # The second application context: one decision per step
+│   ├── env.py                 #   PerModelEnv (the facade), StepEffect on every step
+│   ├── phases.py              #   what each decision does, per phase
+│   ├── types.py               #   the decision contract: StepKind, PerModelAction, DecisionPoint
+│   ├── tokens.py              #   the set observation (numpy)
+│   └── reward_timing.py       #   the reward paid per decision, beside the env
 ├── map_pool.py                # Loads map files into MapLayouts, draws one per episode
 ├── opponent/                  # Opponent policies + registry
 ├── mission/                   # VP calculators + registry
@@ -218,8 +224,9 @@ a resumable sequence, with `fight_one_model`), `domain/movement/unit_moves.py`, 
 unit-close judgements and the compulsory consolidation mode) and
 `domain/kernel/dice.py` (the port). `tests/test_per_model_layering.py` pins that
 those import only `domain/` and `types/`, that `per_model/` never imports
-`wargame.py`, and that only its named clients import it — the facade itself
-and the set network in `model/per_model/`. The facade's reward can also be
+`wargame.py`, and that only its named clients import it — the facade itself,
+the set network in `model/per_model/`, and the two root drivers
+`play_per_model.py` and `train_per_model.py`. The facade's reward can also be
 paid per decision by `per_model/reward_timing.py`, a third adapter that reads
 the env's `StepEffect` and public state and never touches its windows, which
 is what keeps the bridge test and the training loop (`train_per_model.py`)
@@ -260,5 +267,6 @@ trace, and the enemy-unit column order (sorted distinct group id).
 
 Every artefact the per-model facade emits carries `facade: "per_model"`
 (`PerModelProvenance`); an untagged artefact is the phase facade's, and
-`require_per_model` refuses it. The PPO loop over per-model steps and the
-evaluation tooling are stages 3–4 of GitHub issue #283 and do not exist yet.
+`require_per_model` refuses it. The PPO loop over per-model steps is stage 3
+(`model/per_model/ppo.py`, `train_per_model.py`); the evaluation tooling is
+stage 4 of GitHub issue #283 (#287) and does not exist yet.

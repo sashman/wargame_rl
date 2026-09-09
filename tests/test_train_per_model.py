@@ -51,6 +51,8 @@ def test_a_short_run_writes_a_run_directory_and_a_playable_checkpoint(
         for line in (run_dir / "metrics.jsonl").read_text().splitlines()
     ]
     assert rows[0]["rounds"] == 0 and "eval/baseline_random_vp_margin" in rows[0]
+    assert "eval/baseline_squad_march_objectives_held" in rows[0]
+    assert provenance["ppo"]["num_rollout_envs"] == 2
     updates = [row for row in rows if "loss/train_loss" in row]
     assert [row["rounds"] for row in updates] == [2, 4]
     assert all("eval/vp_margin" in row for row in updates)
@@ -69,11 +71,30 @@ def test_a_short_run_writes_a_run_directory_and_a_playable_checkpoint(
 
 
 def test_a_curriculum_config_is_refused_by_name() -> None:
-    from train import get_env_config
+    from wargame_rl.wargame.model.common.cli import get_env_config
 
     config = get_env_config("configs/dev/4v4_two_phases.yaml", None)
     with pytest.raises(ValueError, match="single reward phase"):
         refuse_curriculum(config)
+
+
+def test_a_budget_below_one_rollout_is_refused(
+    small_yaml: Path, tmp_path: Path
+) -> None:
+    with pytest.raises(ValueError, match="below one rollout"):
+        train(
+            env_config_path=str(small_yaml),
+            rounds=1,
+            rollout_rounds=1,
+            num_rollout_envs=2,
+            eval_every_rounds=2,
+            checkpoint_every_rounds=2,
+            n_eval_episodes=1,
+            n_layers=1,
+            embedding_size=32,
+            no_wandb=True,
+            checkpoint_root=str(tmp_path / "ckpt"),
+        )
 
 
 def test_a_cadence_off_the_rollout_grid_is_refused() -> None:

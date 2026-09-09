@@ -158,6 +158,12 @@ to `<run>/metrics.jsonl`.
   which periodic checkpoint scored best. The run directory also holds
   `env_config.yaml` (verbatim) and `provenance.json` (revision `+dirty`,
   device, threads, seed bands, both configs).
+- **Shared with `train.py`, imported from neither:** the Typer-default
+  unwrappers and the config loader live in `model/common/cli.py`, and the
+  seed bands and the scripted bar in `model/common/eval_constants.py` (a module
+  that imports nothing), so the per-model driver never loads Lightning or the
+  phase facade at start. `train.py` and `lightning_base.py` re-export the old
+  names.
 - **Seeds:** rollout envs reset at `seed × 100 + env_idx` (below the 10000+
   baseline band, derived from `--seed` so two arms at one seed share their
   layouts, unlike the shipped loop's fixed base); in-run eval on `500000+`,

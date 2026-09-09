@@ -180,6 +180,28 @@ class PerModelObservation:
     opponent_vp_delta: int
 
 
+@dataclass(frozen=True)
+class StepEffect:
+    """What one `step` did to the player seat, for a reward paid per decision.
+
+    `actor_set` is every player model the step newly marked acted -- the
+    actor on an `act`, the whole unit on an `open` whose declaration closed it
+    with no member taking a step (and on a charge-target decline, which does
+    the same), nobody on a `target` that names a unit or on a `close_turn`.
+    It is the DELTA of `DecisionPoint.acted`, which stays the cumulative mask.
+    `kills_by_model` counts the player kills resolved DURING the step, by
+    attacker -- a shooting unit's volley resolves at its close, on its last
+    member's step, so the attackers a step's kills name are not its actor set.
+    """
+
+    actor_set: tuple[int, ...]
+    kills_by_model: dict[int, int]
+
+    @classmethod
+    def none(cls) -> StepEffect:
+        return cls(actor_set=(), kills_by_model={})
+
+
 class PerModelProvenance(BaseModel):
     """How to boot this episode again, stamped with the facade that played it."""
 

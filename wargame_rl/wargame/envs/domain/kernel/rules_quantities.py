@@ -50,6 +50,10 @@ class RulesQuantities:
     los_sample_step: float
     base_radius: float
     coherency_distance: float
+    # The rules' 2" chain and 9" spread, read by the coherency readers and
+    # attrition on the per-model facade so nothing divides at runtime.
+    coherency_nearest: float
+    coherency_furthest: float
 
 
 def resolve_rules_quantities(config: WargameEnvConfig) -> RulesQuantities:
@@ -66,4 +70,6 @@ def resolve_rules_quantities(config: WargameEnvConfig) -> RulesQuantities:
         los_sample_step=scale.to_units(config.los_sample_step),
         base_radius=scale.to_units(config.base_radius),
         coherency_distance=scale.to_units(config.group_max_distance),
+        coherency_nearest=scale.to_units(config.coherency.nearest_distance),
+        coherency_furthest=scale.to_units(config.coherency.furthest_distance),
     )

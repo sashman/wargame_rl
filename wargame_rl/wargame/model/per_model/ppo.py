@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import torch
 import torch.nn.functional as F
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from wargame_rl.wargame.envs.per_model.env import PerModelEnv, StepEffect
 from wargame_rl.wargame.envs.per_model.reward_timing import PerStepReward
@@ -54,29 +54,28 @@ _AUGMENT_START = {"augment_start": True}
 class PerModelPPOConfig(BaseModel):
     """PPO over decision steps, with time constants in rounds."""
 
-    gamma: float = 0.9
-    gae_lambda: float = 0.95
-    eps_clip: float = 0.2
-    vf_coef: float = 0.3
-    ent_coef: float = 0.03
+    gamma: float = Field(default=0.9, ge=0.0, le=1.0)
+    gae_lambda: float = Field(default=0.95, ge=0.0, le=1.0)
+    eps_clip: float = Field(default=0.2, gt=0.0)
+    vf_coef: float = Field(default=0.3, ge=0.0)
+    ent_coef: float = Field(default=0.03, ge=0.0)
     # The selector's own coefficient; None means `ent_coef`. Two knobs so the
     # order can be kept exploring while the action sharpens (#283).
-    selector_ent_coef: float | None = None
-    lr: float = 3e-4
-    max_grad_norm: float = 0.5
-    n_epochs: int = 5
-    batch_size: int = 128
+    selector_ent_coef: float | None = Field(default=None, ge=0.0)
+    lr: float = Field(default=3e-4, gt=0.0)
+    max_grad_norm: float = Field(default=0.5, gt=0.0)
+    n_epochs: int = Field(default=5, ge=1)
+    batch_size: int = Field(default=128, ge=1)
     # Closing steps per env per update.
-    rollout_rounds: int = 16
+    rollout_rounds: int = Field(default=16, ge=1)
     # 0 auto-detects: 8 on a usable GPU, 4 on the CPU, clamped by affinity.
-    num_rollout_envs: int = 0
+    # The driver writes the resolved count back, so a checkpoint carries it.
+    num_rollout_envs: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
-    def _positive(self) -> PerModelPPOConfig:
-        if self.rollout_rounds < 1:
-            raise ValueError("rollout_rounds must be at least 1")
-        if self.batch_size < 1 or self.n_epochs < 1:
-            raise ValueError("batch_size and n_epochs must be at least 1")
+    def _check_budgets(self) -> PerModelPPOConfig:
+        if self.selector_ent_coef is not None and self.selector_ent_coef < 0:
+            raise ValueError("selector_ent_coef must be non-negative")
         return self
 
     @property
@@ -129,7 +128,7 @@ class EpisodeOutcome:
     rounds: int
 
 
-@dataclass
+@dataclass(frozen=True)
 class Rollout:
     """What `collect_rollout` returns: time-major transitions and the rest."""
 
@@ -281,26 +280,33 @@ def compute_gae(
         [t.is_close for t in rollout.transitions], dtype=torch.float32
     )
     advantages = torch.zeros(n, dtype=torch.float32)
-    gamma = torch.where(closes > 0, config.gamma, 1.0)
-    lam = torch.where(closes > 0, config.gae_lambda, 1.0)
-    for env_index in range(n_envs):
-        rows = list(range(env_index, n, n_envs))
+    step_gamma = torch.where(closes > 0, config.gamma, 1.0)
+    step_lambda = torch.where(closes > 0, config.gae_lambda, 1.0)
+    # Group by the transition's own env index: the stored field is the source
+    # of truth, not the lockstep stride it happens to equal.
+    rows_by_env: dict[int, list[int]] = {index: [] for index in range(n_envs)}
+    for row, transition in enumerate(rollout.transitions):
+        rows_by_env[transition.env_index].append(row)
+    for env_index, rows in rows_by_env.items():
         running = 0.0
         next_value = rollout.bootstrap[env_index]
         for row in reversed(rows):
             not_done = 1.0 - float(dones[row])
             delta = (
                 float(rewards[row])
-                + float(gamma[row]) * next_value * not_done
+                + float(step_gamma[row]) * next_value * not_done
                 - float(values[row])
             )
-            running = delta + float(gamma[row]) * float(lam[row]) * not_done * running
+            running = (
+                delta
+                + float(step_gamma[row]) * float(step_lambda[row]) * not_done * running
+            )
             advantages[row] = running
             next_value = float(values[row])
     return advantages + values, advantages
 
 
-@dataclass
+@dataclass(frozen=True)
 class Evaluated:
     """A batch of transitions re-scored under the current weights."""
 
@@ -370,7 +376,7 @@ def _entropy(log_probs: torch.Tensor) -> torch.Tensor:
     return -(clamped.exp() * clamped).sum(dim=-1)
 
 
-@dataclass
+@dataclass(frozen=True)
 class UpdateStats:
     """What one update did, in the whole-phase trainer's vocabulary."""
 
@@ -442,10 +448,11 @@ def ppo_update(
             policy = evaluated.has_policy
             n_policy = max(1, int(policy.sum().item()))
             ratio = torch.exp(evaluated.log_probs - old_log_probs[rows].to(device))
-            adv = normalised[rows].to(device)
+            advantage = normalised[rows].to(device)
             surrogate = torch.min(
-                ratio * adv,
-                torch.clamp(ratio, 1 - config.eps_clip, 1 + config.eps_clip) * adv,
+                ratio * advantage,
+                torch.clamp(ratio, 1 - config.eps_clip, 1 + config.eps_clip)
+                * advantage,
             )
             policy_loss = -(surrogate * policy).sum() / n_policy
             value_loss = F.mse_loss(evaluated.values, returns[rows].to(device))
@@ -505,25 +512,31 @@ def rollout_entropy(
 ) -> tuple[dict[str, float], float]:
     """The sampled policy's entropies over the rollout, by phase, plus the
     selector's -- one no-grad pass at the weights that played it."""
+    was_training = network.training
     network.eval()
     by_phase: dict[str, list[float]] = {}
-    selector: list[float] = []
+    selector_entropies: list[float] = []
     transitions = rollout.transitions
-    with torch.no_grad():
-        for start in range(0, len(transitions), batch_size):
-            chunk = transitions[start : start + batch_size]
-            evaluated = evaluate_transitions(network, chunk)
-            head = evaluated.head_entropy.cpu().tolist()
-            sel = evaluated.selector_entropy.cpu().tolist()
-            for transition, h, s in zip(chunk, head, sel):
-                if not transition.has_policy:
-                    continue
-                key = transition.phase.value if transition.phase else "none"
-                by_phase.setdefault(key, []).append(float(h))
-                selector.append(float(s))
+    try:
+        with torch.no_grad():
+            for start in range(0, len(transitions), batch_size):
+                chunk = transitions[start : start + batch_size]
+                evaluated = evaluate_transitions(network, chunk)
+                head_entropies = evaluated.head_entropy.cpu().tolist()
+                chunk_selector = evaluated.selector_entropy.cpu().tolist()
+                for transition, head_entropy, selector_entropy in zip(
+                    chunk, head_entropies, chunk_selector
+                ):
+                    if not transition.has_policy:
+                        continue
+                    key = transition.phase.value if transition.phase else "none"
+                    by_phase.setdefault(key, []).append(float(head_entropy))
+                    selector_entropies.append(float(selector_entropy))
+    finally:
+        network.train(was_training)
     return (
         {key: float(np.mean(values)) for key, values in by_phase.items()},
-        float(np.mean(selector)) if selector else 0.0,
+        float(np.mean(selector_entropies)) if selector_entropies else 0.0,
     )
 
 
