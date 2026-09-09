@@ -4,9 +4,9 @@ The domain is one bounded context shaped as sub-domains, and the arrows only
 point one way: the kernel imports nothing of the domain; each sub-domain
 imports the kernel, the aggregate at the root, and the sub-domains listed for
 it here; the root modules may name anything. Around it: `envs/per_model/`
-never imports the phase facade, and nothing outside `envs/per_model/` imports
-it -- until stage 2 seats a network on it, the facade is a leaf of the
-application. Each rule is checked by reading imports, as
+never imports the phase facade, and only its named clients import it -- the
+facade itself and the set network in `model/per_model/`, the first thing
+seated on it. Each rule is checked by reading imports, as
 `test_board_layer_is_a_leaf` does, so a violation names its file.
 """
 
@@ -120,15 +120,34 @@ def test_the_per_model_facade_never_imports_the_phase_facade() -> None:
     assert not offenders, f"per_model modules importing wargame.py: {offenders}"
 
 
-def test_nothing_outside_the_facade_imports_it_yet() -> None:
-    """Stage 1 ships the facade as a leaf; stage 2's network is its first client."""
+# The facade's clients, by package prefix relative to `wargame_rl/`. Stage 2's
+# set network is the first; a new one is added here on purpose, never by
+# naming a directory `per_model`.
+FACADE_CLIENTS = ("wargame/envs/per_model", "wargame/model/per_model")
+
+
+def test_only_the_named_clients_import_the_facade() -> None:
+    """The facade is imported by its own package and the set network, nothing else."""
     offenders = {
         path.relative_to(PACKAGE).as_posix()
         for path in _python_files(PACKAGE)
-        if "per_model" not in path.parts
+        if not path.relative_to(PACKAGE).as_posix().startswith(FACADE_CLIENTS)
         and any(
             module.startswith("wargame_rl.wargame.envs.per_model")
             for module in _imported_modules(path)
         )
     }
     assert not offenders, f"per_model is imported by {offenders}"
+
+
+def test_the_set_network_package_is_a_client_of_the_facade() -> None:
+    """The allow-list is not vacuous: the set network really does import it."""
+    importers = {
+        path.name
+        for path in _python_files(PACKAGE / "wargame" / "model" / "per_model")
+        if any(
+            module.startswith("wargame_rl.wargame.envs.per_model")
+            for module in _imported_modules(path)
+        )
+    }
+    assert importers, "model/per_model imports nothing of envs/per_model"

@@ -33,6 +33,66 @@ hazard — `SelfPlayConfig` is the newest one, pickled into `hyper_parameters` o
 every checkpoint written since wave 4, so `model/common/self_play.py` may not
 move without an alias.
 
+## The set network (`model/per_model/`) — the second family
+
+The network for the per-model facade (`envs/per_model/`, issue #283 stage 2,
+#285). **Standalone `nn.Module`, not an `RL_Network`**: that base fixes a
+list-of-tensors forward, a policy/value split and a `(B, n_models)` value,
+all of which are the whole-army step's contract. One module is encoder +
+selector + value + three heads; `SetNetwork.from_env(env, config=None)` and
+`from_handler(handler, config=None)` read only the action encoding
+(`n_move_actions`, `advance_slice.size`) and **no entity count** — one set of
+weights serves any army, unit, objective or terrain count, pinned by
+`tests/test_set_network.py` (state-dict shapes are identical across scenario
+sizes; one instance plays 6/2 and 10/5 with no reload).
+
+- **Input is the token observation** built by `envs/per_model/tokens.py`
+  (numpy, env-side; see `envs/CLAUDE.md`): the acting seat's models as
+  queries, everything else — game, both sides' units, enemy models,
+  objectives, terrain — as one right-padded **context** with a kind per row
+  and the game token at row 0, plus a 16-slot **relation** vector on every
+  (model, model) and (model, context) pair. `batch.collate` pads to the
+  **batch maximum, never a config budget**; padding and death share the key
+  mask. ⚠ The coherency columns of the whole-army token (nearest squadmate,
+  spread, component, unit offset) are **dropped here on purpose** — the
+  same-unit relation and the offsets carry it — a recorded departure from
+  the #283 audit table.
+- **Relations live in the attention.** One `Linear(16, n_heads)` per stream
+  (self, cross), shared by every block, adds a per-head score pre-softmax;
+  the unit pointer re-reads the same vector through a `Linear(16, 1)`, so
+  reach, sight and expected damage inform a target choice directly. Context
+  tokens are embedded and read, never updated.
+- **Which head a step uses is a function of `(kind, phase)`, never learned**
+  (`tokens.head_for`): `open` → `declaration (B, 4)`; `act` in movement /
+  charge / pile-in / consolidate → `displacement (B, 1 + n_move + n_advance)`;
+  `act` in shooting / fight and every `target` → `unit (B, 1 + U)`, a pointer
+  over the enemy-unit tokens in **sorted distinct group-id order**. **Column
+  0 of the pointer is the no-target option**: STAY on an `act` step (legal for
+  a shooter holding fire, **never legal in the fight phase** — a selected
+  striker must strike), `CHARGE_TARGET_DECLINE` on a `target` step. Every head
+  is masked from the batch; a fully masked row is impossible by construction
+  and is asserted, never patched.
+- **Value is one scalar per row**, from `[mean of alive real player latents
+  ‖ game latent]`, never a model latent. The closing step runs a forward for
+  the value and has no policy factor (log-prob 0).
+- **`SetAgent`** (`agent.py`) is the seat: builds the tokens (caching the
+  episode's `TokenScenario` on `env.episode_id`), samples selector then head
+  **on the CPU whatever the device**, decodes the two columns, and **raises**
+  if `point.why_illegal` refuses the result — a builder/decoder disagreement
+  is a bug, not a resample. `declaration_counts` tallies `"<phase>:<option>"`
+  on opening steps: the skip declarations gate a whole unit through one logit,
+  so their share is the first thing to read at the do-nothing fingerprint.
+- **Default trunk 4 layers × 128 × 8 heads (~1.15M params)**, `SetNetworkConfig`,
+  `None` = the default exactly as `TransformerConfig` does. Fixtures use
+  `SetNetworkConfig(embedding_size=32, n_layers=2, n_heads=4)`; unlike the
+  transformer, **`n_heads` IS recoverable** from this family's state dict (the
+  relation bias is `Linear(16, n_heads)`), which is why its fixture may shrink
+  the head count. ⚠ **Stage 3 will pickle `model/per_model` into every
+  checkpoint's `hyper_parameters`** — the path is not to be moved without an
+  alias, as `common/layers.py` is not.
+- No PPO, no Lightning module, no `train.py` seam yet: those are #286 / #287.
+  `just play-per-model <config> set_network` plays it at fresh weights.
+
 ## PPO (`model/ppo/`)
 
 - `PPOLightning` — PyTorch Lightning module: actor-critic training, GAE, clipped surrogate objective

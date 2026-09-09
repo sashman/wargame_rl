@@ -12,7 +12,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from tests.per_model_seats import small_config
+from tests.per_model_seats import charging_driver, small_config
 from wargame_rl.wargame.envs.domain.kernel.value_objects import position
 from wargame_rl.wargame.envs.domain.melee.consolidate import ConsolidationMode
 from wargame_rl.wargame.envs.domain.sequencing.activation import (
@@ -33,65 +33,6 @@ from wargame_rl.wargame.envs.per_model.phases import ShortMovePhase
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 
-def _toward_nearest_enemy(
-    env: PerModelEnv, index: int, legal: np.ndarray, ladder: MoveLadder
-) -> int:
-    """The legal movement action that ends closest to any living enemy."""
-    handler = env.player_action_handler
-    model = env.wargame_models[index]
-    enemies = np.array(
-        [m.location for m in env.opponent_models if m.is_alive], dtype=float
-    )
-    best, best_gap = STAY_ACTION, np.inf
-    for candidate in np.flatnonzero(legal):
-        action = int(candidate)
-        if action == STAY_ACTION:
-            continue
-        end = np.asarray(model.location, dtype=float) + handler.decode_action(
-            action, model_idx=index, ladder=ladder
-        )
-        gap = float(np.linalg.norm(enemies - end, axis=1).min())
-        if gap < best_gap:
-            best, best_gap = action, gap
-    return best
-
-
-def _charging_driver(env: PerModelEnv, point: DecisionPoint) -> PerModelAction:
-    """Close, charge the nearest unit, strike whatever is offered."""
-    if point.kind is StepKind.close_turn:
-        return PerModelAction.close_turn()
-    model = int(np.flatnonzero(point.selector_mask)[0])
-    phase = point.phase
-    if point.kind is StepKind.open:
-        row = point.declaration_mask[model]
-        if phase is BattlePhase.movement:
-            return PerModelAction.open(
-                model, MoveDeclaration.normal if row[1] else MoveDeclaration.stationary
-            )
-        if phase is BattlePhase.shooting:
-            return PerModelAction.open(model, ShootDeclaration.hold_fire)
-        if phase is BattlePhase.charge:
-            return PerModelAction.open(
-                model, ChargeDeclaration.charge if row[1] else ChargeDeclaration.decline
-            )
-        return PerModelAction.open(model, ShortMoveDeclaration.decline)
-    if point.kind is StepKind.target:
-        targets = np.flatnonzero(point.target_mask[model])
-        return PerModelAction.target(
-            model, int(targets[0]) if targets.size else CHARGE_TARGET_DECLINE
-        )
-    legal = point.action_mask[model]
-    if phase is BattlePhase.movement:
-        return PerModelAction.act(
-            model, _toward_nearest_enemy(env, model, legal, MoveLadder.normal)
-        )
-    if phase is BattlePhase.charge:
-        return PerModelAction.act(
-            model, _toward_nearest_enemy(env, model, legal, MoveLadder.charge)
-        )
-    return PerModelAction.act(model, int(np.flatnonzero(legal)[0]))
-
-
 def _play_until_a_strike(seed: int) -> tuple[PerModelEnv, DecisionPoint | None, bool]:
     env = PerModelEnv(small_config(melee=True, opponent_x=22, rounds=2))
     observation, _ = env.reset(seed=seed)
@@ -107,7 +48,7 @@ def _play_until_a_strike(seed: int) -> tuple[PerModelEnv, DecisionPoint | None, 
             return env, point, charged
         if any(m.charged_this_turn for m in env.wargame_models):
             charged = True
-        observation, _reward, done, _, _ = env.step(_charging_driver(env, point))
+        observation, _reward, done, _, _ = env.step(charging_driver(env, point))
     return env, None, charged
 
 
@@ -183,7 +124,7 @@ def _drive_to_our_consolidate(env: PerModelEnv) -> tuple[bool, set[int]]:
     point = env.pending
     assert point is not None
     while True:
-        observation, _reward, done, _, _ = env.step(_charging_driver(env, point))
+        observation, _reward, done, _, _ = env.step(charging_driver(env, point))
         point = observation.decision
         if done or point.kind is StepKind.close_turn:
             return False, set()
@@ -195,7 +136,7 @@ def _drive_to_close_turn(env: PerModelEnv) -> bool:
     point = env.pending
     assert point is not None
     while point.kind is not StepKind.close_turn:
-        observation, _reward, done, _, _ = env.step(_charging_driver(env, point))
+        observation, _reward, done, _, _ = env.step(charging_driver(env, point))
         if done:
             return False
         point = observation.decision

@@ -608,6 +608,8 @@ play env_config_path='configs/golden/25v25_shooting_opponent.yaml' policy='squad
 # Watch the PER-MODEL facade play, one frame per DECISION (or per phase with
 # cadence=phase), the pending decision drawn on the board: a scripted baseline
 # or `random` legal decisions. Opens paused: [.] steps one decision, [Space] plays.
+# `policy` is a scripted baseline, `random` (random legal decisions) or `set_network`
+# (the set network at fresh weights: the whole pipeline seen playing legally).
 play-per-model env_config_path='configs/golden/25v25_maps_two_mode.yaml' policy='squad_march_take' theme='default' overlays='' cadence='decision':
 	uv run play_per_model.py {{env_config_path}} {{policy}} {{theme}} --cadence {{cadence}} {{overlays}}
 
