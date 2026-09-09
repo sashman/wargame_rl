@@ -310,7 +310,7 @@ def test_attrition_culls_every_unit_on_the_board_at_each_end_of_turn() -> None:
         observation, *_ = env.step(_quiet(point))
         point = observation.decision
     assert watcher.alive_at_movement == 4, "the opponent moved before it was culled"
-    assert any(d.rule == "attrition.every_unit_on_the_board" for d in env.departures)
+    assert any(d.rule == "attrition.every_unit_on_the_board" for d in env.divergences)
 
 
 def test_the_battle_continues_after_the_opponent_is_wiped_out() -> None:
@@ -330,4 +330,4 @@ def test_the_battle_continues_after_the_opponent_is_wiped_out() -> None:
         observation, _reward, done, _, _ = env.step(_quiet(point))
     assert closes == 3 and env.current_turn == env.max_turns
     assert env.player_vp > 0
-    assert any(d.rule == "battle.continues_after_a_wipe" for d in env.departures)
+    assert any(d.rule == "battle.continues_after_a_wipe" for d in env.divergences)

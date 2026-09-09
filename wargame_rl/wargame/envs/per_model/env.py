@@ -91,10 +91,10 @@ from wargame_rl.wargame.envs.per_model.seat import Seat
 from wargame_rl.wargame.envs.per_model.types import (
     FACADE_TAG,
     DecisionPoint,
+    FacadeDivergence,
     PerModelAction,
     PerModelObservation,
     PerModelProvenance,
-    RulesDeparture,
     StepKind,
 )
 from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
@@ -293,7 +293,7 @@ class PerModelEnv(gym.Env):
         self._attrition_deaths_player = 0
         self._attrition_deaths_opponent = 0
         self._fought_by_seat: dict[bool, set[int]] = {}
-        self.departures: list[RulesDeparture] = []
+        self.divergences: list[FacadeDivergence] = []
         self.last_reward: float | None = None
         self.last_reward_breakdown: dict[str, float] = {}
         self.last_per_model_reward = np.zeros(
@@ -405,7 +405,7 @@ class PerModelEnv(gym.Env):
         self._window = None
         self._terminated = False
         self._fought_by_seat = {}
-        self.departures = []
+        self.divergences = []
         self.current_turn = 0
         self.sub_step = 0
         self.episode_step = 0
@@ -761,11 +761,11 @@ class PerModelEnv(gym.Env):
                     seat.models[member].fought_this_phase = True
             self._fought_by_seat[seat.is_player] = set(units)
 
-    def note_departure(self, rule: str) -> None:
+    def note_divergence(self, rule: str) -> None:
         """Record that a rule the phase facade cannot apply just made a difference."""
         state = self._game_clock.state
-        self.departures.append(
-            RulesDeparture(
+        self.divergences.append(
+            FacadeDivergence(
                 episode_step=self.episode_step,
                 battle_round=state.battle_round,
                 phase=state.phase,
@@ -846,7 +846,7 @@ class PerModelEnv(gym.Env):
         for seat in (active, other):
             destroyed = apply_attrition(seat.models, nearest, furthest)
             if destroyed and seat is other:
-                self.note_departure("attrition.every_unit_on_the_board")
+                self.note_divergence("attrition.every_unit_on_the_board")
             if seat.is_player:
                 self._attrition_deaths_player += len(destroyed)
             else:
@@ -962,7 +962,7 @@ class PerModelEnv(gym.Env):
             all_eliminated=all_player_eliminated,
         )
         if not terminated and not any(m.is_alive for m in self.opponent_models):
-            self.note_departure("battle.continues_after_a_wipe")
+            self.note_divergence("battle.continues_after_a_wipe")
         ctx.is_terminated = terminated
         self.last_step_context = ctx
         reward = self.phase_manager.calculate_reward(view, ctx)

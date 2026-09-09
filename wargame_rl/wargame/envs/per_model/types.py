@@ -211,16 +211,18 @@ def require_per_model(provenance: dict[str, Any] | BaseModel) -> None:
 
 
 @dataclass(frozen=True)
-class RulesDeparture:
-    """A point at which this facade applied a rule the phase facade cannot.
+class FacadeDivergence:
+    """A point at which this facade's game parted from the phase facade's,
+    because this facade applied a rule the phase facade cannot.
 
-    The per-model step lets the facade honour orderings the whole-army step
-    has no room for -- a unit selecting targets after an earlier unit's
-    casualties are removed, attrition on the side whose turn it is not, a
-    battle that continues after a wipe. Each is recorded when it first makes a
-    difference, so a bridge against the phase facade can say exactly how far
-    bit-identity was expected to hold, and a reader of an episode can see
-    which rule separated the two games.
+    Not a rules violation: every entry is a moment this facade was CORRECT
+    where the whole-army step is not -- a unit selecting targets after an
+    earlier unit's casualties are removed, attrition on the side whose turn
+    it is not, a battle that continues after a wipe. Each is recorded the
+    first time it makes a difference, so the bridge against the phase facade
+    can say how far bit-identity was owed, and a reader of an episode can see
+    which rule separated the two games. Each `rule` names a filed defect in
+    the shared code; when that lands, the category cannot occur any more.
     """
 
     episode_step: int

@@ -534,7 +534,7 @@ class ShootingPhase(_UnitPhase):
         if pending.size and not np.array_equal(
             self.unit_masks[pending], self._phase_open_masks[pending]
         ):
-            self.env.note_departure("shooting.targets_judged_after_casualties")
+            self.env.note_divergence("shooting.targets_judged_after_casualties")
 
     def _unit_may_shoot(self, unit: int) -> bool:
         rows = self.unit_masks[self.seat.unit_members(unit)]
@@ -589,7 +589,7 @@ class ShootingPhase(_UnitPhase):
                 if len(at_open) != len(target_members) and cover[
                     index, group
                 ] != unit_cover_for_shot(self.env, self.seat.models[index], at_open):
-                    self.env.note_departure("shooting.cover_judged_after_casualties")
+                    self.env.note_divergence("shooting.cover_judged_after_casualties")
             # One call per shot keeps the dice tagged with the model rolling
             # them; `resolve_shooting_phase` loses the shot itself when the
             # target unit is already wiped, which is the rule.

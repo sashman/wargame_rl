@@ -142,7 +142,7 @@ def test_a_units_targets_are_selected_blind_and_an_attack_at_a_wiped_unit_is_los
 def test_the_next_unit_selects_targets_against_the_board_its_predecessor_left() -> None:
     """Arrange an enemy unit with one model in range and two out; act by having
     unit A kill the one; assert unit B, which could target the unit at phase
-    open, is offered nothing, and the departure is recorded."""
+    open, is offered nothing, and the divergence is recorded."""
     env = _env()
     _place(env, OURS, [(22.0, 10.0), (40.0, 12.0), (40.0, 14.0), *THEIR_FAR_UNIT])
     observation = _to_shooting(env)
@@ -162,7 +162,7 @@ def test_the_next_unit_selects_targets_against_the_board_its_predecessor_left() 
         and not point.declaration_mask[3, ShootDeclaration.shoot]
     ), "unit B was still offered a target with no member in range"
     assert any(
-        d.rule == "shooting.targets_judged_after_casualties" for d in env.departures
+        d.rule == "shooting.targets_judged_after_casualties" for d in env.divergences
     )
 
 
@@ -201,5 +201,5 @@ def test_cover_is_judged_against_the_members_the_attacking_unit_faces() -> None:
     last = env.last_player_shooting_results[-1]
     assert last.attacker_idx == 3 and last.in_cover
     assert any(
-        d.rule == "shooting.cover_judged_after_casualties" for d in env.departures
+        d.rule == "shooting.cover_judged_after_casualties" for d in env.divergences
     )

@@ -32,9 +32,9 @@ from wargame_rl.wargame.envs.baseline.policy import BaselinePolicy
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
 from wargame_rl.wargame.envs.domain.engagement import engagement_matrix
 from wargame_rl.wargame.envs.per_model import (
+    FacadeDivergence,
     PerModelAction,
     PerModelEnv,
-    RulesDeparture,
     ScriptedSeat,
     StepKind,
 )
@@ -138,12 +138,12 @@ def trace_old(config: WargameEnvConfig, name: str, seed: int) -> list[Boundary]:
 
 @dataclass
 class NewTrace:
-    """The per-model facade's boundaries, and how many rules departures the
+    """The per-model facade's boundaries, and how many divergences from the phase facade the
     facade had recorded by the time each was settled."""
 
     boundaries: list[Boundary]
-    departures_seen: list[int]
-    departures: list[RulesDeparture]
+    divergences_seen: list[int]
+    divergences: list[FacadeDivergence]
 
 
 def trace_new(config: WargameEnvConfig, name: str, seed: int) -> NewTrace:
@@ -160,7 +160,7 @@ def trace_new(config: WargameEnvConfig, name: str, seed: int) -> NewTrace:
     # would have returned it.
     settled = _settled_boundaries(info)
     boundaries.extend(settled)
-    seen.extend(len(env.departures) for _ in settled)
+    seen.extend(len(env.divergences) for _ in settled)
     done = False
     while not done:
         point = observation.decision
@@ -171,8 +171,8 @@ def trace_new(config: WargameEnvConfig, name: str, seed: int) -> NewTrace:
         observation, _reward, done, _truncated, info = env.step(action)
         settled = _settled_boundaries(info)
         boundaries.extend(settled)
-        seen.extend(len(env.departures) for _ in settled)
-    return NewTrace(boundaries, seen, list(env.departures))
+        seen.extend(len(env.divergences) for _ in settled)
+    return NewTrace(boundaries, seen, list(env.divergences))
 
 
 def _divergence_index(divergence: str, old: list[Boundary]) -> int:
@@ -189,14 +189,14 @@ def _assert_identical_until_the_rules_part(
     """Bit-identity is owed up to the first rule the phase facade cannot apply.
 
     The per-model step honours orderings the whole-army step has no room for
-    (`RulesDeparture` names them); the facade records the first time each
+    (`FacadeDivergence` names them); the facade records the first time each
     makes a difference, and from that boundary on the two games are allowed
     to part. Before it, every boundary must agree."""
     if divergence is None:
         return
-    index = min(_divergence_index(divergence, old), len(new.departures_seen) - 1)
-    assert new.departures_seen[index] > 0, (
-        f"{divergence}, with no rules departure recorded by then"
+    index = min(_divergence_index(divergence, old), len(new.divergences_seen) - 1)
+    assert new.divergences_seen[index] > 0, (
+        f"{divergence}, with no divergence from the phase facade recorded by then"
     )
 
 
