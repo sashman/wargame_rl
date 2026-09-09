@@ -605,6 +605,16 @@ test-env:
 play env_config_path='configs/golden/25v25_shooting_opponent.yaml' policy='squad_march_shoot' theme='default' overlays='':
 	uv run play.py {{env_config_path}} {{policy}} {{theme}} {{overlays}}
 
+# Watch the PER-MODEL facade play, one frame per DECISION (or per phase with
+# cadence=phase), the pending decision drawn on the board: a scripted baseline
+# or `random` legal decisions. Opens paused: [.] steps one decision, [Space] plays.
+play-per-model env_config_path='configs/golden/25v25_maps_two_mode.yaml' policy='squad_march_take' theme='default' overlays='' cadence='decision':
+	uv run play_per_model.py {{env_config_path}} {{policy}} {{theme}} --cadence {{cadence}} {{overlays}}
+
+# The same, headless, to an MP4 -- one episode.
+record-per-model env_config_path='configs/golden/25v25_maps_two_mode.yaml' policy='squad_march_take' out='per_model.mp4' cadence='decision':
+	uv run play_per_model.py {{env_config_path}} {{policy}} tabletop --cadence {{cadence}} --out {{out}} --episodes 1
+
 # Step a match by hand and rewind it. Takes a baseline name or a .ckpt path.
 # [R] shooting threat, [E] engagement range; `overlays` starts them on and can tune
 # the sweep, e.g. "--threat-range --threat-grid 2.0 --threat-smoothing 0".

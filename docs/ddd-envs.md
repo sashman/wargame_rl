@@ -240,6 +240,8 @@ chapter rather than the phase facade (both seats pile in and consolidate; a
 striker chooses its target). The phase facade's side of each divergence is
 tracked as an issue (#314 to #319) and stays as it is until it lands there.
 
+The facade can also be watched: `play_per_model.py` (`just play-per-model`, `just record-per-model`) drives a scripted seat or the random legal seat through it and draws one frame per decision, with the pending decision highlighted by `renders/v2/decision.py` and captioned in the HUD -- the rung the tests cannot replace, since whether one-model-at-a-time play *looks* like the rules is a judgement. The presenter reads the decision structurally, so the renderer imports nothing from `per_model/`.
+
 Every artefact the per-model facade emits carries `facade: "per_model"`
 (`PerModelProvenance`); an untagged artefact is the phase facade's, and
 `require_per_model` refuses it. The observation the network will train on,
