@@ -5,7 +5,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from wargame_rl.wargame.envs.domain.activation import ActivationError, PhaseActivation
+from wargame_rl.wargame.envs.domain.sequencing.activation import (
+    ActivationError,
+    PhaseActivation,
+)
 
 GROUPS = np.array([0, 0, 0, 1, 1, 1], dtype=np.intp)
 

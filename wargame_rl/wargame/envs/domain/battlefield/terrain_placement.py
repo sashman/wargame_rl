@@ -17,8 +17,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.terrain import Footprint, Terrain
-from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions
+from wargame_rl.wargame.envs.domain.battlefield.terrain import Footprint, Terrain
+from wargame_rl.wargame.envs.domain.kernel.value_objects import BoardDimensions
 from wargame_rl.wargame.envs.types.config import RandomTerrainConfig
 from wargame_rl.wargame.envs.types.geometry import Polygon
 

@@ -19,7 +19,7 @@ import pytest
 from gymnasium import spaces
 
 from scripts.scenario_overrides import load_env_config
-from wargame_rl.wargame.envs.domain.game_clock import BattlePhase
+from wargame_rl.wargame.envs.domain.sequencing.game_clock import BattlePhase
 from wargame_rl.wargame.envs.env_components.actions import (
     MOVE_TYPE_ADVANCE,
     STAY_ACTION,

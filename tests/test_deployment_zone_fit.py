@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.placement import _fits_in_zone
+from wargame_rl.wargame.envs.domain.battlefield.placement import _fits_in_zone
 from wargame_rl.wargame.envs.types.geometry import Polygon
 
 # A single angled edge -- the minimal failing case, no corner involved. The

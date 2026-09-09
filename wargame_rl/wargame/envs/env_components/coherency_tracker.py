@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
+from wargame_rl.wargame.envs.domain.movement.coherency import evaluate_coherency
 
 
 class CoherencyTracker:

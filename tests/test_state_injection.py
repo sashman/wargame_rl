@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from wargame_rl.wargame.envs.domain.game_clock import GameClock, GameClockError
+from wargame_rl.wargame.envs.domain.sequencing.game_clock import (
+    GameClock,
+    GameClockError,
+)
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.state.snapshot import validate_snapshot
 from wargame_rl.wargame.envs.types import TurnOrder, WargameEnvAction, WargameEnvConfig

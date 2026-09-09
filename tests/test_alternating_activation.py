@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.fight import (
+from wargame_rl.wargame.envs.domain.melee.fight import (
     FightSide,
     OverrunRules,
     resolve_fight_step,

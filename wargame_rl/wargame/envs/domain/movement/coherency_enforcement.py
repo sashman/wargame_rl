@@ -80,19 +80,20 @@ cannot be drawn in, since they do not move during this force's move.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from enum import Enum
 from typing import TYPE_CHECKING
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.coherency import (
+from wargame_rl.wargame.envs.domain.movement.coherency import (
     UnitCoherency,
     base_to_base_distances,
     evaluate_coherency,
 )
 
 if TYPE_CHECKING:
-    from wargame_rl.wargame.envs.domain.entities import WargameModel
+    from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel
 
 
 class CoherencyEnforcement(str, Enum):
@@ -505,3 +506,22 @@ def _choose_casualty(
         return int(members[unit.component == smallest][0])
     gaps = base_to_base_distances(positions[members], base_radii[members])
     return int(members[int(np.argmax(gaps.max(axis=1)))])
+
+
+def coherency_after_unit_move(
+    models: Sequence[WargameModel],
+    members: Sequence[int],
+    nearest_distance: float,
+    furthest_distance: float,
+    mode: CoherencyEnforcement,
+) -> int:
+    """The play-time coherency referee, scoped to the unit that just closed.
+
+    `enforce_after_move` judges a whole force and cascades reverts between
+    units; under a per-model step the other units have not moved yet, so the
+    judgement is over this unit alone. Returns how many models went back.
+    """
+    if mode is CoherencyEnforcement.off or not members:
+        return 0
+    unit = [models[i] for i in members]
+    return enforce_after_move(unit, nearest_distance, furthest_distance, mode)

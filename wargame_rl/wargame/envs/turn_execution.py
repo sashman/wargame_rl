@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from wargame_rl.wargame.envs.domain.game_clock import GameClock
+from wargame_rl.wargame.envs.domain.sequencing.game_clock import GameClock
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase, GameState, PlayerSide
 
 OnBeforeAdvance = Callable[[GameClock], None]

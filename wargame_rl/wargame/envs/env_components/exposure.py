@@ -12,9 +12,9 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.entities import WargameModel, alive_mask_for
-from wargame_rl.wargame.envs.domain.terrain import Footprint
-from wargame_rl.wargame.envs.env_components.shooting_masks import (
+from wargame_rl.wargame.envs.domain.battlefield.terrain import Footprint
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel, alive_mask_for
+from wargame_rl.wargame.envs.domain.shooting.targets import (
     LosMatrixFn,
     compute_threat_counts,
 )

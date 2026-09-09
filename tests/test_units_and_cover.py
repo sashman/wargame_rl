@@ -18,17 +18,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from wargame_rl.wargame.envs.domain import rules_constants
-from wargame_rl.wargame.envs.domain.shooting import (
-    DefenderStats,
-    expected_damage,
-    resolve_shooting,
-)
-from wargame_rl.wargame.envs.domain.sight import CLEAR, COVER, HIDDEN
+from wargame_rl.wargame.envs.domain.attacks.stats import DefenderStats
+from wargame_rl.wargame.envs.domain.battlefield.sight import CLEAR, COVER, HIDDEN
+from wargame_rl.wargame.envs.domain.kernel import rules_constants
+from wargame_rl.wargame.envs.domain.shooting.expectation import expected_damage
+from wargame_rl.wargame.envs.domain.shooting.resolve import resolve_shooting
+from wargame_rl.wargame.envs.domain.shooting.targets import compute_unit_shooting_masks
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
-from wargame_rl.wargame.envs.env_components.shooting_masks import (
-    compute_unit_shooting_masks,
-)
 from wargame_rl.wargame.envs.types import (
     NON_MOVEMENT_PHASES,
     WargameEnvAction,

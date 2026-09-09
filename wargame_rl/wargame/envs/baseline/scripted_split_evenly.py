@@ -8,7 +8,7 @@ from wargame_rl.wargame.envs.baseline.policy import ScriptedObjectiveAssignmentP
 from wargame_rl.wargame.envs.baseline.registry import register_baseline
 
 if TYPE_CHECKING:
-    from wargame_rl.wargame.envs.domain.entities import WargameModel
+    from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel
     from wargame_rl.wargame.envs.wargame import WargameEnv
 
 

@@ -15,15 +15,17 @@ import pytest
 from numpy.random import default_rng
 from pydantic_yaml import parse_yaml_raw_as
 
-from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
-from wargame_rl.wargame.envs.domain.entities import WargameModel, alive_mask_for
-from wargame_rl.wargame.envs.domain.placement import wargame_model_placement
-from wargame_rl.wargame.envs.domain.rules_constants import (
+from wargame_rl.wargame.envs.domain.battlefield.placement import wargame_model_placement
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel, alive_mask_for
+from wargame_rl.wargame.envs.domain.kernel.rules_constants import (
     COHERENCY_FURTHEST_IN,
     COHERENCY_NEAREST_IN,
 )
-from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
-from wargame_rl.wargame.envs.domain.value_objects import position
+from wargame_rl.wargame.envs.domain.kernel.rules_quantities import (
+    resolve_rules_quantities,
+)
+from wargame_rl.wargame.envs.domain.kernel.value_objects import position
+from wargame_rl.wargame.envs.domain.movement.coherency import evaluate_coherency
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import CoherencyConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv

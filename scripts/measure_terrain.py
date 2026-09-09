@@ -24,11 +24,15 @@ import sys
 import numpy as np
 from pydantic_yaml import parse_yaml_raw_as
 
-from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
-from wargame_rl.wargame.envs.domain.sight import line_of_sight_matrix
-from wargame_rl.wargame.envs.domain.terrain import Terrain
-from wargame_rl.wargame.envs.domain.terrain_placement import generate_terrain
-from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions
+from wargame_rl.wargame.envs.domain.battlefield.sight import line_of_sight_matrix
+from wargame_rl.wargame.envs.domain.battlefield.terrain import Terrain
+from wargame_rl.wargame.envs.domain.battlefield.terrain_placement import (
+    generate_terrain,
+)
+from wargame_rl.wargame.envs.domain.kernel.rules_quantities import (
+    resolve_rules_quantities,
+)
+from wargame_rl.wargame.envs.domain.kernel.value_objects import BoardDimensions
 from wargame_rl.wargame.envs.types.config import WargameEnvConfig
 
 SAMPLES_PER_LAYOUT = 400

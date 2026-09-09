@@ -31,10 +31,12 @@ from typing import TypeAlias
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.entities import WargameModel
-from wargame_rl.wargame.envs.domain.fight import (
+from wargame_rl.wargame.envs.domain.attacks.allocation import allocate_target
+from wargame_rl.wargame.envs.domain.attacks.sequence import resolve_attack
+from wargame_rl.wargame.envs.domain.attacks.stats import DefenderStats, MeleeStats
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel
+from wargame_rl.wargame.envs.domain.melee.fight import (
     FightSide,
-    MeleeStats,
     OverrunRules,
     PairedFightResult,
     _contact_matrix,
@@ -44,12 +46,7 @@ from wargame_rl.wargame.envs.domain.fight import (
     fight_eligible_units,
     fight_one_unit,
 )
-from wargame_rl.wargame.envs.domain.pile_in import pile_in
-from wargame_rl.wargame.envs.domain.shooting import (
-    DefenderStats,
-    _allocate_target,
-    resolve_attack,
-)
+from wargame_rl.wargame.envs.domain.melee.pile_in import pile_in
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,7 +125,7 @@ def fight_one_model(
         for idx in contacts
         if int(defenders[idx].group_id) == target_group
     ]
-    target = _allocate_target(members)
+    target = allocate_target(members)
     if target is None:
         return None
     stats = DefenderStats(

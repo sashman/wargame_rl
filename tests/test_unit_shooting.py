@@ -20,8 +20,8 @@ from wargame_rl.wargame.envs.domain.battle_factory import (
     n_groups_for,
     unit_count,
 )
-from wargame_rl.wargame.envs.domain.entities import WargameModel
-from wargame_rl.wargame.envs.domain.shooting import resolve_shooting_phase
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel
+from wargame_rl.wargame.envs.domain.shooting.resolve import resolve_shooting_phase
 from wargame_rl.wargame.envs.types.config import ModelConfig, WeaponProfile
 
 

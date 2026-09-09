@@ -31,8 +31,8 @@ from wargame_rl.wargame.envs.board.threat import (
     reference_model,
     threat_field,
 )
-from wargame_rl.wargame.envs.domain.entities import alive_mask_for
-from wargame_rl.wargame.envs.domain.shooting import DefenderStats
+from wargame_rl.wargame.envs.domain.attacks.stats import DefenderStats
+from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
 from wargame_rl.wargame.envs.env_components.actions import ActionHandler
 from wargame_rl.wargame.envs.renders.v2.control import compute_threat_region
 from wargame_rl.wargame.envs.types.config.battle import OpponentPolicyConfig

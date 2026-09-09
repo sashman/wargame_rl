@@ -21,7 +21,8 @@ from wargame_rl.wargame.envs.board.matchup import (
     matchup_table,
     unit_profiles,
 )
-from wargame_rl.wargame.envs.domain.shooting import DefenderStats, expected_damage
+from wargame_rl.wargame.envs.domain.attacks.stats import DefenderStats
+from wargame_rl.wargame.envs.domain.shooting.expectation import expected_damage
 from wargame_rl.wargame.envs.types.config.entities import ModelConfig, WeaponProfile
 
 

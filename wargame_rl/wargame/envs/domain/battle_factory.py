@@ -8,18 +8,22 @@ from typing import Any
 
 import numpy as np
 
-from wargame_rl.wargame.envs.types import ObjectiveConfig, WargameEnvConfig
-
-from .battle import Battle
-from .entities import WargameModel, WargameObjective
-from .rules_quantities import resolve_rules_quantities
-from .terrain import Footprint, Terrain
-from .value_objects import (
+from wargame_rl.wargame.envs.domain.battle import Battle
+from wargame_rl.wargame.envs.domain.battlefield.terrain import Footprint, Terrain
+from wargame_rl.wargame.envs.domain.kernel.entities import (
+    WargameModel,
+    WargameObjective,
+)
+from wargame_rl.wargame.envs.domain.kernel.rules_quantities import (
+    resolve_rules_quantities,
+)
+from wargame_rl.wargame.envs.domain.kernel.value_objects import (
     POSITION_DTYPE,
     BoardDimensions,
     DeploymentZone,
     zero_position,
 )
+from wargame_rl.wargame.envs.types import ObjectiveConfig, WargameEnvConfig
 
 
 def group_span(n_models: int, max_groups: int) -> int:

@@ -90,7 +90,7 @@ fork.
 
 | # | Missing | Tag | Measured / note |
 |---|---|---|---|
-| 2.1 | ✅ **DONE 2026-08-26** — the 3" close-up | ~~`fight.pile_in`~~ | `domain/pile_in.py`, both seats, active player first, models in base contact pinned, all-or-nothing at the unit. Only the CHOICE of which units pile in remains (`fight.pile_in_choice`). **Unblocks 2.2 and 3.1.** |
+| 2.1 | ✅ **DONE 2026-08-26** — the 3" close-up | ~~`fight.pile_in`~~ | `domain/melee/pile_in.py`, both seats, active player first, models in base contact pinned, all-or-nothing at the unit. Only the CHOICE of which units pile in remains (`fight.pile_in_choice`). **Unblocks 2.2 and 3.1.** |
 | 2.2 | **Passing** | `fight.passing` | Needs 2.1 — with no pile-in there is nothing to wait for. |
 | 2.3 | **Alternating activation** | `fight.alternating_activation` | Order is fixed: active player's units then the opponent's, chargers first within each. The rules alternate and return to the Strikes First sub-step whenever a new such unit becomes eligible. **Blocks 2.4 and 3.2.** |
 | 2.4 | **Overrun fight** | `fight.overrun` | A unit that destroys its target cannot reach a new one this phase. |

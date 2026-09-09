@@ -60,7 +60,7 @@ def choose_contest_branch(env, min_stack: int):  # type: ignore[no-untyped-def]
     sign gate refuses exactly those and approves only the contests that pay.
     Either answer is informative; the kill decides.
     """
-    from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+    from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
     from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 
     player_counts = in_range_counts(env.player_models, env)

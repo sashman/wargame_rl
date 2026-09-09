@@ -13,8 +13,10 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from wargame_rl.wargame.envs.domain.terrain_placement import generate_terrain
-from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions
+from wargame_rl.wargame.envs.domain.battlefield.terrain_placement import (
+    generate_terrain,
+)
+from wargame_rl.wargame.envs.domain.kernel.value_objects import BoardDimensions
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.types.config import (
     ObjectiveConfig,
@@ -476,7 +478,7 @@ def test_objectives_are_large_and_not_clustered() -> None:
 
     from pydantic_yaml import parse_yaml_raw_as
 
-    from wargame_rl.wargame.envs.domain.placement import (
+    from wargame_rl.wargame.envs.domain.battlefield.placement import (
         _DEFAULT_SEPARATION_FRACTION,
         eligible_objective_pieces,
     )

@@ -44,14 +44,22 @@ shipped config), which would let an illegal consolidation simply stand.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from enum import IntEnum
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
-from wargame_rl.wargame.envs.domain.engagement import engagement_matrix
-from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
-from wargame_rl.wargame.envs.domain.movement import back_off_to_unengaged, resolve_move
+from wargame_rl.wargame.envs.domain.kernel.entities import (
+    WargameModel,
+    WargameObjective,
+)
+from wargame_rl.wargame.envs.domain.movement.coherency import evaluate_coherency
+from wargame_rl.wargame.envs.domain.movement.engagement import engagement_matrix
+from wargame_rl.wargame.envs.domain.movement.moves import (
+    back_off_to_unengaged,
+    resolve_move,
+)
+from wargame_rl.wargame.envs.domain.movement.unit_moves import touched_enemy_units
 
 # A model already inside its objective has nothing to gain, and floating point
 # makes "exactly on the boundary" a coin toss. Anything under this counts as
@@ -363,3 +371,100 @@ def _is_legal(
         furthest_distance=coherency_furthest,
     )
     return bool(report.all_coherent)
+
+
+class ConsolidationMode(IntEnum):
+    """The compulsory consolidation mode, assessed in this order."""
+
+    none = 0
+    ongoing = 1
+    engaging = 2
+    objective = 3
+
+
+def consolidation_mode(
+    models: Sequence[WargameModel],
+    members: Sequence[int],
+    alive_enemies: Sequence[WargameModel],
+    objective_offsets: np.ndarray | None,
+    *,
+    engagement_range: float,
+    base_diameter: float,
+    consolidate_distance: float,
+) -> ConsolidationMode:
+    """`12-fight-phase.md` § Consolidate step: the first applicable mode, compulsory.
+
+    `objective_offsets` is the `(n_models, n_objectives)` distance from each
+    model's base edge to each objective, or None when there are no objectives.
+    """
+    if not members:
+        return ConsolidationMode.none
+    if touched_enemy_units(
+        models,
+        members,
+        alive_enemies,
+        engagement_range=engagement_range,
+        base_diameter=base_diameter,
+    ):
+        return ConsolidationMode.ongoing
+    if alive_enemies:
+        positions = np.array([models[i].location for i in members], dtype=float)
+        enemy_positions = np.array([m.location for m in alive_enemies], dtype=float)
+        gaps = (
+            np.linalg.norm(
+                positions[:, np.newaxis, :] - enemy_positions[np.newaxis, :, :], axis=2
+            )
+            - base_diameter
+        )
+        if bool((gaps <= consolidate_distance).any()):
+            return ConsolidationMode.engaging
+    if objective_offsets is not None and objective_offsets.shape[1] > 0:
+        rows = objective_offsets[list(members)]
+        if bool((rows <= consolidate_distance).any()):
+            return ConsolidationMode.objective
+    return ConsolidationMode.none
+
+
+def objective_in_reach(
+    offsets: np.ndarray | None, members: Sequence[int], consolidate_distance: float
+) -> int | None:
+    """The objective the Objective mode consolidates onto: the nearest in reach.
+
+    The rules let the player pick one of those in range
+    (`DEFERRED: consolidate.select_objective`); the env takes the nearest, as
+    the engine's constructive path does.
+    """
+    if offsets is None or offsets.shape[1] == 0:
+        return None
+    return _nearest_objective_in_reach(offsets, list(members), consolidate_distance)
+
+
+def objective_consolidation_stands(
+    models: Sequence[WargameModel],
+    members: Sequence[int],
+    start_positions: dict[int, np.ndarray],
+    *,
+    offsets_before: np.ndarray,
+    offsets_after: np.ndarray,
+    objective: int,
+    radius: float,
+    coherency_nearest: float,
+    coherency_furthest: float,
+) -> bool:
+    """`12-fight-phase.md` § Consolidation move, Objective mode, judged.
+
+    Every model that moved ends within range of the selected objective if it
+    can, or closer to it; the unit ends within range; the unit is coherent.
+    Shares the engine's own `_is_legal` so a judged consolidation and a
+    constructed one cannot disagree about the rule.
+    """
+    return _is_legal(
+        list(models),
+        list(members),
+        start_positions,
+        before=offsets_before[:, objective],
+        after=offsets_after[:, objective],
+        radius=radius,
+        coherency_nearest=coherency_nearest,
+        coherency_furthest=coherency_furthest,
+    )

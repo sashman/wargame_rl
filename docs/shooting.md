@@ -71,7 +71,7 @@ During the shooting phase, a per-model **unit**-target validity mask is overlaid
 
 1. **Model M is alive** — dead models get `STAY_ACTION` only
 2. **M did not advance this turn** — `advanced_this_turn` gate. **Live since 2026-08-22**, when the advance move landed: a unit that takes an action in the `advance` slice forfeits its shooting for the turn, which is correct here because no weapon has the ability that would permit firing after an advance. The flag is set for **every model in the advancing unit** (a move type is per unit, so advancing one model and shooting with its squadmates is not available) and cleared per turn by `WargameModel.begin_turn`. ⚠ It only fires in scenarios with `n_advance_speed_bins > 0`; that defaults to **0**, so on every config shipped before that date this still masks nothing. See [rules/09-movement-phase.md](rules/09-movement-phase.md#advance-move).
-3. **M's UNIT is not locked in engagement** — masked out entirely if any living enemy is within `engagement_range` of **any model of M's unit** (casualties are excluded first; a corpse engages nobody, and a model with no living enemy left is not engaged) (config, authored in inches and resolved into board units by `domain/rules_quantities.py`; defaults to 1, against the rules' 2 — see `docs/rules/implementation-status.md`). ⚠ **This was per-MODEL until 2026-08-25**, so one model of a five-model unit could walk into contact — making the enemy unit unshootable by everybody — while its four squadmates kept firing. `_engaged_shooters` reduces over the unit, as `engaged_units` has always done on the target side of the same function.
+3. **M's UNIT is not locked in engagement** — masked out entirely if any living enemy is within `engagement_range` of **any model of M's unit** (casualties are excluded first; a corpse engages nobody, and a model with no living enemy left is not engaged) (config, authored in inches and resolved into board units by `domain/kernel/rules_quantities.py`; defaults to 1, against the rules' 2 — see `docs/rules/implementation-status.md`). ⚠ **This was per-MODEL until 2026-08-25**, so one model of a five-model unit could walk into contact — making the enemy unit unshootable by everybody — while its four squadmates kept firing. `_engaged_shooters` reduces over the unit, as `engaged_units` has always done on the target side of the same function.
 4. **Unit U has a living model** — a unit is a legal target while any model in it survives, so killing one model closes nothing
 5. **Some model of U is in range** — Euclidean distance from M ≤ max weapon range of M
 6. **Some model of U is visible** to M
@@ -79,7 +79,7 @@ During the shooting phase, a per-model **unit**-target validity mask is overlaid
 
 **Conditions 5 and 6 are checked independently and need not be satisfied by the same model** — *"it is enough that some model in the target unit is visible and some model in it is in range"*. Reducing a per-model "visible AND in range" mask over the unit would quietly keep them coupled and reject legal targets.
 
-The overlay is computed by `compute_unit_shooting_masks()` (a pure function in `env_components/shooting_masks.py`) and applied via bitwise AND on the shooting slice of the base mask. Sight is still gated to keep the batch small, but at *unit* granularity: a pair is traced when the target's unit has some model in range, since the visible model need not be the reachable one.
+The overlay is computed by `compute_unit_shooting_masks()` (a pure function in `domain/shooting/targets.py`) and applied via bitwise AND on the shooting slice of the base mask. Sight is still gated to keep the batch small, but at *unit* granularity: a pair is traced when the target's unit has some model in range, since the visible model need not be the reachable one.
 
 If no targets are valid for a model, only `STAY_ACTION` remains — the model passes its shooting.
 
@@ -105,7 +105,7 @@ Note the asymmetry with resolution: masking uses the *longest*-ranged weapon, wh
 
 ### Line of Sight
 
-LOS uses the sampled-ray service in `domain/los.py`. The shooting mask takes `BattleView.line_of_sight_matrix`, which traces every candidate pair in one vectorised pass; the renderer uses the single-pair `has_line_of_sight_between_points`. See [terrain.md](terrain.md) for LOS semantics (interior-sample-only blocking, no model occlusion).
+LOS uses the sampled-ray service in `domain/battlefield/los.py`. The shooting mask takes `BattleView.line_of_sight_matrix`, which traces every candidate pair in one vectorised pass; the renderer uses the single-pair `has_line_of_sight_between_points`. See [terrain.md](terrain.md) for LOS semantics (interior-sample-only blocking, no model occlusion).
 
 ## Weapon Configuration
 
@@ -161,7 +161,7 @@ Rolls use `self._combat_rng`, seeded from `np_random` at each `reset()`, so a se
 
 ### Expected damage
 
-`domain/shooting.py` provides `expected_damage(weapon, defender, *, in_cover=False)`, a closed-form expectation with no dice, and `hit_probability(ballistic_skill, *, in_cover=False)`, the hit-roll term on its own. Both go through `ranged_skill`, which is what `resolve_shooting` applies to the dice — the two paths cannot state different rules.
+`domain/shooting/expectation.py` provides `expected_damage(weapon, defender, *, in_cover=False)`, a closed-form expectation with no dice, and `hit_probability(ballistic_skill, *, in_cover=False)`, the hit-roll term on its own. Both go through `ranged_skill`, which is what `resolve_shooting` applies to the dice — the two paths cannot state different rules.
 
 It is the no-abilities case of the general result in [expected-damage.md](expected-damage.md) — `attacks × p_hit × p_wound × p_fail_save × damage`, with no critical-hit abilities, rerolls or `Shrug` term. That document gives the cell edits each ability contributes, so extending the closed form as abilities land is a table lookup rather than a rederivation. In its taxonomy cover is a **Modifier**: it shifts which faces pass the hit gate, and leaves the gate's shape alone.
 

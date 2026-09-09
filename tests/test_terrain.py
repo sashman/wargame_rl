@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.terrain import Footprint, Terrain
+from wargame_rl.wargame.envs.domain.battlefield.terrain import Footprint, Terrain
 from wargame_rl.wargame.envs.types.geometry import Polygon
 
 

@@ -23,7 +23,7 @@ from typing import Any
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.dice import DiceCall
+from wargame_rl.wargame.envs.domain.kernel.dice import DiceCall
 from wargame_rl.wargame.envs.types.game_timing import PlayerSide
 
 ADVANCE_STREAM_OFFSET = 1_000_003

@@ -13,7 +13,7 @@ from typing import cast
 import numpy as np
 from gymnasium import spaces
 
-from wargame_rl.wargame.envs.domain.pile_in import (
+from wargame_rl.wargame.envs.domain.melee.pile_in import (
     SELECTION_RANGE_INCHES,
     agent_move_is_legal,
     pile_in,

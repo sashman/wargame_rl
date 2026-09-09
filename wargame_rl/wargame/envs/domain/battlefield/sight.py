@@ -36,8 +36,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.los import segments_are_clear
-from wargame_rl.wargame.envs.domain.terrain import Terrain
+from wargame_rl.wargame.envs.domain.battlefield.los import segments_are_clear
+from wargame_rl.wargame.envs.domain.battlefield.terrain import Terrain
 from wargame_rl.wargame.envs.types.geometry import polygons_contain_points
 
 BlockingMask = list[list[bool]]

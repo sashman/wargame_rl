@@ -19,8 +19,8 @@ from pathlib import Path
 from numpy.random import Generator
 from pydantic_yaml import parse_yaml_raw_as
 
-from wargame_rl.wargame.envs.domain.map_layout import MapLayout
-from wargame_rl.wargame.envs.domain.terrain import Footprint, Terrain
+from wargame_rl.wargame.envs.domain.battlefield.map_layout import MapLayout
+from wargame_rl.wargame.envs.domain.battlefield.terrain import Footprint, Terrain
 from wargame_rl.wargame.envs.types.config import (
     MapPoolConfig,
     TerrainMapConfig,

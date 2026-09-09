@@ -1,6 +1,6 @@
 """Backward-compat re-exports of placement from domain."""
 
-from wargame_rl.wargame.envs.domain.placement import (
+from wargame_rl.wargame.envs.domain.battlefield.placement import (
     fixed_objective_placement,
     fixed_wargame_model_placement,
     objective_placement,

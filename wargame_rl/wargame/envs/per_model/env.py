@@ -25,22 +25,36 @@ import gymnasium as gym
 import numpy as np
 
 from wargame_rl.wargame.envs.domain.battle_factory import from_config, unit_count
-from wargame_rl.wargame.envs.domain.coherency_enforcement import (
-    CoherencyEnforcement,
-    apply_attrition,
+from wargame_rl.wargame.envs.domain.battlefield.placement import (
+    install_layout,
+    place_for_episode,
 )
-from wargame_rl.wargame.envs.domain.dice import (
+from wargame_rl.wargame.envs.domain.battlefield.sight import (
+    COVER,
+    has_line_of_sight_between_points,
+    visibility_matrix,
+)
+from wargame_rl.wargame.envs.domain.battlefield.terrain import Terrain
+from wargame_rl.wargame.envs.domain.battlefield.terrain_placement import (
+    generate_terrain,
+)
+from wargame_rl.wargame.envs.domain.kernel.dice import (
     DiceCall,
     DicePurpose,
     DiceSource,
     RollerAdapter,
 )
-from wargame_rl.wargame.envs.domain.entities import (
+from wargame_rl.wargame.envs.domain.kernel.entities import (
     WargameModel,
     WargameObjective,
     alive_mask_for,
 )
-from wargame_rl.wargame.envs.domain.fight import (
+from wargame_rl.wargame.envs.domain.kernel.rules_quantities import (
+    RulesQuantities,
+    resolve_rules_quantities,
+)
+from wargame_rl.wargame.envs.domain.kernel.value_objects import BoardDimensions
+from wargame_rl.wargame.envs.domain.melee.fight import (
     PASS_RANGE_INCHES,
     FightSide,
     OverrunRules,
@@ -50,26 +64,17 @@ from wargame_rl.wargame.envs.domain.fight import (
     resolve_fight,
     resolve_fight_step,
 )
-from wargame_rl.wargame.envs.domain.game_clock import GameClock
-from wargame_rl.wargame.envs.domain.pile_in import SELECTION_RANGE_INCHES
-from wargame_rl.wargame.envs.domain.placement import install_layout, place_for_episode
-from wargame_rl.wargame.envs.domain.rules_quantities import (
-    RulesQuantities,
-    resolve_rules_quantities,
+from wargame_rl.wargame.envs.domain.melee.pile_in import SELECTION_RANGE_INCHES
+from wargame_rl.wargame.envs.domain.movement.coherency_enforcement import (
+    CoherencyEnforcement,
+    apply_attrition,
 )
-from wargame_rl.wargame.envs.domain.shooting import PairedShootingResult
-from wargame_rl.wargame.envs.domain.sight import (
-    COVER,
-    has_line_of_sight_between_points,
-    visibility_matrix,
-)
-from wargame_rl.wargame.envs.domain.termination import is_battle_over
-from wargame_rl.wargame.envs.domain.terrain import Terrain
-from wargame_rl.wargame.envs.domain.terrain_placement import generate_terrain
-from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions
+from wargame_rl.wargame.envs.domain.sequencing.game_clock import GameClock
+from wargame_rl.wargame.envs.domain.sequencing.termination import is_battle_over
+from wargame_rl.wargame.envs.domain.shooting.resolve import PairedShootingResult
+from wargame_rl.wargame.envs.domain.shooting.targets import max_weapon_ranges
 from wargame_rl.wargame.envs.env_components.actions import ActionHandler
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
-from wargame_rl.wargame.envs.env_components.shooting_masks import max_weapon_ranges
 from wargame_rl.wargame.envs.map_pool import MapPool
 from wargame_rl.wargame.envs.mission import build_vp_calculator
 from wargame_rl.wargame.envs.opponent.registry import (

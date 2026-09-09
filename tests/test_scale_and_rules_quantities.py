@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from wargame_rl.wargame.envs.domain.rules_quantities import (
+from wargame_rl.wargame.envs.domain.kernel.rules_quantities import (
     RulesQuantities,
     resolve_rules_quantities,
 )
-from wargame_rl.wargame.envs.domain.scale import Scale
+from wargame_rl.wargame.envs.domain.kernel.scale import Scale
 from wargame_rl.wargame.envs.env_components.actions import ActionHandler
 from wargame_rl.wargame.envs.types.config import WargameEnvConfig
 

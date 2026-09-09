@@ -20,10 +20,10 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.rules_quantities import RulesQuantities
-from wargame_rl.wargame.envs.domain.scale import Scale
-from wargame_rl.wargame.envs.domain.sight import BlockingMask
-from wargame_rl.wargame.envs.domain.terrain import Footprint, Terrain
+from wargame_rl.wargame.envs.domain.battlefield.sight import BlockingMask
+from wargame_rl.wargame.envs.domain.battlefield.terrain import Footprint, Terrain
+from wargame_rl.wargame.envs.domain.kernel.rules_quantities import RulesQuantities
+from wargame_rl.wargame.envs.domain.kernel.scale import Scale
 from wargame_rl.wargame.envs.renders.v2.backend import Canvas, RenderBackend
 from wargame_rl.wargame.envs.renders.v2.control import (
     ThreatOptions,

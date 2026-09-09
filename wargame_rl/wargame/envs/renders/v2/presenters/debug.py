@@ -38,7 +38,7 @@ import numpy as np
 import pygame
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
-from wargame_rl.wargame.envs.domain.entities import WargameModel
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel
 from wargame_rl.wargame.envs.renders.v2.backend import Canvas, RenderBackend
 from wargame_rl.wargame.envs.renders.v2.control import (
     ShadowRect,

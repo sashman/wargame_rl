@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 
 from wargame_rl.wargame.envs.domain.battle_factory import from_config
-from wargame_rl.wargame.envs.domain.placement import place_for_episode
+from wargame_rl.wargame.envs.domain.battlefield.placement import place_for_episode
 from wargame_rl.wargame.envs.types.config import OpponentPolicyConfig, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 

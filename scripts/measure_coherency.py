@@ -40,13 +40,15 @@ from pydantic_yaml import parse_yaml_raw_as
 
 from scripts.measure_checkpoint import HELDOUT_SEED_BASE
 from wargame_rl.wargame.envs.baseline.evaluate import ActionSelector
-from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
-from wargame_rl.wargame.envs.domain.entities import WargameModel, alive_mask_for
-from wargame_rl.wargame.envs.domain.rules_constants import (
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel, alive_mask_for
+from wargame_rl.wargame.envs.domain.kernel.rules_constants import (
     COHERENCY_FURTHEST_IN,
     COHERENCY_NEAREST_IN,
 )
-from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
+from wargame_rl.wargame.envs.domain.kernel.rules_quantities import (
+    resolve_rules_quantities,
+)
+from wargame_rl.wargame.envs.domain.movement.coherency import evaluate_coherency
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.factory import create_environment

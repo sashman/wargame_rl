@@ -20,24 +20,22 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.activation import (
-    CHARGE_TARGET_DECLINE,
-    ChargeDeclaration,
+from wargame_rl.wargame.envs.domain.kernel.dice import DicePurpose
+from wargame_rl.wargame.envs.domain.kernel.value_objects import position
+from wargame_rl.wargame.envs.domain.melee.charge import charge_stands
+from wargame_rl.wargame.envs.domain.melee.consolidate import (
     ConsolidationMode,
-    MoveDeclaration,
-    PhaseActivation,
-    ShootDeclaration,
-    ShortMoveDeclaration,
+    consolidation_mode,
+    objective_consolidation_stands,
+    objective_in_reach,
 )
-from wargame_rl.wargame.envs.domain.dice import DicePurpose
-from wargame_rl.wargame.envs.domain.engagement import engaged_with_any
-from wargame_rl.wargame.envs.domain.fight import (
+from wargame_rl.wargame.envs.domain.melee.fight import (
     PASS_RANGE_INCHES,
     FightSide,
     OverrunRules,
     fight_eligible_units,
 )
-from wargame_rl.wargame.envs.domain.fight_sequence import (
+from wargame_rl.wargame.envs.domain.melee.fight_sequence import (
     End,
     FightEvent,
     FightSequence,
@@ -47,33 +45,41 @@ from wargame_rl.wargame.envs.domain.fight_sequence import (
     default_choice,
     fight_one_model,
 )
-from wargame_rl.wargame.envs.domain.movement import back_off_to_unengaged, resolve_move
-from wargame_rl.wargame.envs.domain.pile_in import SELECTION_RANGE_INCHES
-from wargame_rl.wargame.envs.domain.shooting import resolve_shooting_phase
-from wargame_rl.wargame.envs.domain.unit_referees import (
-    charge_stands,
-    coherency_after_unit_move,
-    consolidation_mode,
-    fall_back_stands,
-    objective_consolidation_stands,
-    objective_in_reach,
-    revert_unit,
+from wargame_rl.wargame.envs.domain.melee.pile_in import (
+    SELECTION_RANGE_INCHES,
     short_move_stands,
+)
+from wargame_rl.wargame.envs.domain.movement.coherency_enforcement import (
+    coherency_after_unit_move,
+)
+from wargame_rl.wargame.envs.domain.movement.engagement import engaged_with_any
+from wargame_rl.wargame.envs.domain.movement.fall_back import fall_back_stands
+from wargame_rl.wargame.envs.domain.movement.moves import (
+    back_off_to_unengaged,
+    resolve_move,
+)
+from wargame_rl.wargame.envs.domain.movement.unit_moves import (
+    revert_unit,
     touched_enemy_units,
     unit_moved,
 )
-from wargame_rl.wargame.envs.domain.value_objects import position
+from wargame_rl.wargame.envs.domain.sequencing.activation import (
+    CHARGE_TARGET_DECLINE,
+    ChargeDeclaration,
+    MoveDeclaration,
+    PhaseActivation,
+    ShootDeclaration,
+    ShortMoveDeclaration,
+)
+from wargame_rl.wargame.envs.domain.shooting.cover import unit_cover_mask
+from wargame_rl.wargame.envs.domain.shooting.resolve import resolve_shooting_phase
 from wargame_rl.wargame.envs.env_components.actions import (
     STAY_ACTION,
     MoveLadder,
     _base_arrays,
 )
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
-from wargame_rl.wargame.envs.per_model.seat import (
-    Seat,
-    unit_cover_for_shot,
-    unit_shooting_masks,
-)
+from wargame_rl.wargame.envs.per_model.seat import Seat, unit_shooting_masks
 from wargame_rl.wargame.envs.per_model.types import (
     N_DECLARATIONS,
     DecisionPoint,
@@ -504,7 +510,7 @@ class ShootingPhase(_UnitPhase):
         self.unit_masks = np.zeros((seat.n_models, 0), dtype=bool)
         self.members: dict[int, list[int]] = {}
         self.declared: list[tuple[int, int]] = []
-        self._alive_key: tuple[bool, ...] | None = None
+        self._alive_key: np.ndarray = np.zeros(0, dtype=bool)
         self._phase_open_masks = self.unit_masks
         self._phase_open_members: dict[int, list[int]] = {}
 
@@ -516,8 +522,8 @@ class ShootingPhase(_UnitPhase):
 
     def _refresh(self, *, force: bool = False) -> None:
         """Rebuild what the board's casualties change, only when they did."""
-        key = tuple(m.is_alive for m in self.seat.enemies)
-        if not force and key == self._alive_key:
+        key = np.array([m.is_alive for m in self.seat.enemies], dtype=bool)
+        if not force and np.array_equal(key, self._alive_key):
             return
         self._alive_key = key
         self.unit_masks = unit_shooting_masks(self.env, self.seat)
@@ -574,22 +580,34 @@ class ShootingPhase(_UnitPhase):
     def on_unit_close(self, unit: int, members: list[int]) -> None:
         shots = sorted(self.declared, key=lambda shot: (shot[1], shot[0]))
         self.declared = []
+        if not shots:
+            return
         width = self.unit_masks.shape[1]
+        empty = np.zeros((self.seat.n_models, width), dtype=bool)
+        # Cover for every shot of the unit, judged once before any resolves,
+        # against the members this unit faces; a squadmate's kill during the
+        # resolution below changes nothing, as `05` § Suffering damage says.
+        cover = unit_cover_mask(
+            self.env.visibility_between, shots, self.seat.models, self.seat.enemies
+        )
+        if cover is None:
+            cover = empty
+        at_open = np.zeros(len(self.seat.enemies), dtype=bool)
+        for members in self._phase_open_members.values():
+            at_open[members] = True
+        if not np.array_equal(at_open, self._alive_key):
+            cover_at_open = unit_cover_mask(
+                self.env.visibility_between,
+                shots,
+                self.seat.models,
+                self.seat.enemies,
+                alive=at_open,
+            )
+            if cover_at_open is None:
+                cover_at_open = empty
+            if any(cover[i, g] != cover_at_open[i, g] for i, g in shots):
+                self.env.note_divergence("shooting.cover_judged_after_casualties")
         for index, group in shots:
-            target_members = [self.seat.enemies[j] for j in self.members.get(group, [])]
-            cover = np.zeros((self.seat.n_models, width), dtype=bool)
-            if target_members:
-                cover[index, group] = unit_cover_for_shot(
-                    self.env, self.seat.models[index], target_members
-                )
-                at_open = [
-                    self.seat.enemies[j]
-                    for j in self._phase_open_members.get(group, [])
-                ]
-                if len(at_open) != len(target_members) and cover[
-                    index, group
-                ] != unit_cover_for_shot(self.env, self.seat.models[index], at_open):
-                    self.env.note_divergence("shooting.cover_judged_after_casualties")
             # One call per shot keeps the dice tagged with the model rolling
             # them; `resolve_shooting_phase` loses the shot itself when the
             # target unit is already wiped, which is the rule.

@@ -16,10 +16,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.engagement import engaged_units, engaged_with_any
-from wargame_rl.wargame.envs.env_components.shooting_masks import (
-    compute_unit_shooting_masks,
+from wargame_rl.wargame.envs.domain.movement.engagement import (
+    engaged_units,
+    engaged_with_any,
 )
+from wargame_rl.wargame.envs.domain.shooting.targets import compute_unit_shooting_masks
 
 
 def _all_visible(

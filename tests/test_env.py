@@ -2,7 +2,7 @@
 
 import pytest
 
-from wargame_rl.wargame.envs.domain.value_objects import POSITION_DTYPE
+from wargame_rl.wargame.envs.domain.kernel.value_objects import POSITION_DTYPE
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.reward.phase import (
     RewardCalculatorConfig,

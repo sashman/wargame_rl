@@ -27,10 +27,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.shooting import (
-    DefenderStats,
-    expected_damage_matrix,
-)
+from wargame_rl.wargame.envs.domain.attacks.stats import DefenderStats
+from wargame_rl.wargame.envs.domain.shooting.expectation import expected_damage_matrix
 from wargame_rl.wargame.envs.types.config.entities import ModelConfig
 
 

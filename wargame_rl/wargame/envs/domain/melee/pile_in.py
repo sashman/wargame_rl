@@ -40,12 +40,17 @@ referee and the consolidate move.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
-from wargame_rl.wargame.envs.domain.engagement import engagement_matrix
-from wargame_rl.wargame.envs.domain.entities import WargameModel
-from wargame_rl.wargame.envs.domain.movement import back_off_to_unengaged, resolve_move
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel
+from wargame_rl.wargame.envs.domain.movement.coherency import evaluate_coherency
+from wargame_rl.wargame.envs.domain.movement.engagement import engagement_matrix
+from wargame_rl.wargame.envs.domain.movement.moves import (
+    back_off_to_unengaged,
+    resolve_move,
+)
 
 # A model whose base already touches an enemy's is "in base contact" and the
 # rules pin it. Bases touch at exactly `r_a + r_b`, so a tolerance decides the
@@ -461,4 +466,31 @@ def _is_legal(
             nearest_distance=coherency_nearest,
             furthest_distance=coherency_furthest,
         ).all_coherent
+    )
+
+
+def short_move_stands(
+    models: Sequence[WargameModel],
+    members: Sequence[int],
+    alive_enemies: Sequence[WargameModel],
+    start_positions: dict[int, np.ndarray],
+    *,
+    selection_range: float,
+    engagement_range: float,
+    base_radius: float,
+    coherency_nearest: float,
+    coherency_furthest: float,
+) -> bool:
+    """A pile-in or consolidation judged by the engine's own `_is_legal`."""
+    before = np.array([start_positions[i] for i in members], dtype=float)
+    return agent_move_is_legal(
+        list(models),
+        list(members),
+        before,
+        list(alive_enemies),
+        selection_range=selection_range,
+        engagement_range=engagement_range,
+        base_radius=base_radius,
+        coherency_nearest=coherency_nearest,
+        coherency_furthest=coherency_furthest,
     )

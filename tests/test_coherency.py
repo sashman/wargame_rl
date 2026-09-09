@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from wargame_rl.wargame.envs.domain.coherency import (
+from wargame_rl.wargame.envs.domain.movement.coherency import (
     CoherencyReport,
     base_to_base_distances,
     evaluate_coherency,

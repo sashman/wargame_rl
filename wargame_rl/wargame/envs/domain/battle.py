@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
-from wargame_rl.wargame.envs.domain.terrain import Terrain
-from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions, DeploymentZone
+from wargame_rl.wargame.envs.domain.battlefield.terrain import Terrain
+from wargame_rl.wargame.envs.domain.kernel.entities import (
+    WargameModel,
+    WargameObjective,
+)
+from wargame_rl.wargame.envs.domain.kernel.value_objects import (
+    BoardDimensions,
+    DeploymentZone,
+)
 from wargame_rl.wargame.envs.types.geometry import Polygon
 
 

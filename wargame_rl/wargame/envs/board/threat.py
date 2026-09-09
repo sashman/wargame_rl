@@ -90,10 +90,13 @@ from wargame_rl.wargame.envs.board.grid import (
     BoardGrid,
     board_grid_for,
 )
+from wargame_rl.wargame.envs.domain.attacks.stats import DefenderStats
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
-from wargame_rl.wargame.envs.domain.entities import WargameModel, alive_mask_for
-from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
-from wargame_rl.wargame.envs.domain.shooting import DefenderStats, expected_damage
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel, alive_mask_for
+from wargame_rl.wargame.envs.domain.kernel.rules_quantities import (
+    resolve_rules_quantities,
+)
+from wargame_rl.wargame.envs.domain.shooting.expectation import expected_damage
 from wargame_rl.wargame.envs.types.config.entities import ModelConfig
 from wargame_rl.wargame.envs.types.config.env import WargameEnvConfig
 

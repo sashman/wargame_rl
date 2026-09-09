@@ -57,7 +57,7 @@ from wargame_rl.wargame.envs.board.threat import (
     reference_model,
     threat_field,
 )
-from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.types.config import TerrainMapConfig, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv

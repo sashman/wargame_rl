@@ -11,13 +11,13 @@ import numpy as np
 import pytest
 from numpy.random import default_rng
 
-from wargame_rl.wargame.envs.domain.map_layout import MapLayout
-from wargame_rl.wargame.envs.domain.terrain import Footprint, Terrain
-from wargame_rl.wargame.envs.domain.terrain_placement import (
+from wargame_rl.wargame.envs.domain.battlefield.map_layout import MapLayout
+from wargame_rl.wargame.envs.domain.battlefield.terrain import Footprint, Terrain
+from wargame_rl.wargame.envs.domain.battlefield.terrain_placement import (
     _rotated_in_place,
     generate_terrain,
 )
-from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions
+from wargame_rl.wargame.envs.domain.kernel.value_objects import BoardDimensions
 from wargame_rl.wargame.envs.types.config import ObjectiveConfig, RandomTerrainConfig
 from wargame_rl.wargame.envs.types.geometry import Polygon
 

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.movement import back_off_to_unengaged
+from wargame_rl.wargame.envs.domain.movement.moves import back_off_to_unengaged
 
 
 def _ring(x: float, y: float, reach: float) -> tuple[np.ndarray, np.ndarray]:
