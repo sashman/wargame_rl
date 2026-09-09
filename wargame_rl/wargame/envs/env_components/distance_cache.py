@@ -8,7 +8,7 @@ import numpy as np
 from wargame_rl.wargame.envs.types.geometry import polygons_distance_to_points
 
 if TYPE_CHECKING:
-    from wargame_rl.wargame.envs.domain.entities import WargameObjective
+    from wargame_rl.wargame.envs.domain.kernel.entities import WargameObjective
     from wargame_rl.wargame.envs.wargame_model import WargameModel
 
 

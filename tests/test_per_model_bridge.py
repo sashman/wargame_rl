@@ -30,7 +30,7 @@ from pydantic_yaml import parse_yaml_file_as
 
 from wargame_rl.wargame.envs.baseline.policy import BaselinePolicy
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
-from wargame_rl.wargame.envs.domain.engagement import engagement_matrix
+from wargame_rl.wargame.envs.domain.movement.engagement import engagement_matrix
 from wargame_rl.wargame.envs.per_model import (
     FacadeDivergence,
     PerModelAction,

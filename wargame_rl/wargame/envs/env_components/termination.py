@@ -6,7 +6,9 @@ callers that have a DistanceCache.  Battle-over logic is in domain.termination.
 
 from __future__ import annotations
 
-from wargame_rl.wargame.envs.domain.termination import check_max_turns_reached
+from wargame_rl.wargame.envs.domain.sequencing.termination import (
+    check_max_turns_reached,
+)
 from wargame_rl.wargame.envs.env_components.distance_cache import DistanceCache
 
 

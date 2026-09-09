@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.activation import ConsolidationMode
-from wargame_rl.wargame.envs.domain.entities import WargameModel
-from wargame_rl.wargame.envs.domain.unit_referees import (
-    charge_stands,
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel
+from wargame_rl.wargame.envs.domain.kernel.value_objects import position
+from wargame_rl.wargame.envs.domain.melee.charge import charge_stands
+from wargame_rl.wargame.envs.domain.melee.consolidate import (
+    ConsolidationMode,
     consolidation_mode,
-    fall_back_stands,
-    revert_unit,
 )
-from wargame_rl.wargame.envs.domain.value_objects import position
+from wargame_rl.wargame.envs.domain.movement.fall_back import fall_back_stands
+from wargame_rl.wargame.envs.domain.movement.unit_moves import revert_unit
 
 ENGAGEMENT = 1.0
 NEAREST, FURTHEST = 2.0, 9.0

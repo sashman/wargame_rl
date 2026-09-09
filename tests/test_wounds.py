@@ -5,9 +5,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from wargame_rl.wargame.envs.domain.entities import WargameModel, alive_mask_for
-from wargame_rl.wargame.envs.domain.game_clock import GameClock
-from wargame_rl.wargame.envs.domain.termination import is_battle_over
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel, alive_mask_for
+from wargame_rl.wargame.envs.domain.sequencing.game_clock import GameClock
+from wargame_rl.wargame.envs.domain.sequencing.termination import is_battle_over
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig

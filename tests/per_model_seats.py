@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.activation import CHARGE_TARGET_DECLINE
+from wargame_rl.wargame.envs.domain.sequencing.activation import CHARGE_TARGET_DECLINE
 from wargame_rl.wargame.envs.per_model import DecisionPoint, PerModelAction, StepKind
 from wargame_rl.wargame.envs.reward.phase import (
     RewardCalculatorConfig,

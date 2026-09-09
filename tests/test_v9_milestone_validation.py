@@ -350,7 +350,7 @@ class TestRequirementSpotChecks:
 
     def test_sgs07_clock_set_state(self) -> None:
         """SGS-07: GameClock.set_state() positions clock correctly."""
-        from wargame_rl.wargame.envs.domain.game_clock import GameClock
+        from wargame_rl.wargame.envs.domain.sequencing.game_clock import GameClock
         from wargame_rl.wargame.envs.types.game_timing import BattlePhase, GamePhase
 
         clock = GameClock(n_rounds=5)

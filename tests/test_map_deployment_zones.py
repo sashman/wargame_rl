@@ -22,7 +22,7 @@ from pydantic_yaml import parse_yaml_raw_as
 from scripts.measure_maps import config_for_map, load_maps
 from wargame_rl.wargame.envs.domain import battle_factory
 from wargame_rl.wargame.envs.domain.battle import Battle
-from wargame_rl.wargame.envs.domain.placement import place_for_episode
+from wargame_rl.wargame.envs.domain.battlefield.placement import place_for_episode
 from wargame_rl.wargame.envs.map_pool import MapPool
 from wargame_rl.wargame.envs.renders.v2.control import compute_objective_control
 from wargame_rl.wargame.envs.renders.v2.replay import _snapshot_to_view

@@ -18,7 +18,7 @@ import pytest
 
 from scripts.scenario_overrides import load_env_config
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
-from wargame_rl.wargame.envs.domain.engagement import engaged_with_any
+from wargame_rl.wargame.envs.domain.movement.engagement import engaged_with_any
 from wargame_rl.wargame.envs.env_components.observation_builder import build_observation
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import MeleeConfig, MeleeWeaponProfile

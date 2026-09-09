@@ -17,7 +17,7 @@ from wargame_rl.wargame.envs.baseline.evaluate import (
     mean_of_measured,
 )
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
-from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
 from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.agent_base import BaseAgent

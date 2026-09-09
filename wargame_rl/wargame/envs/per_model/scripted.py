@@ -29,14 +29,14 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.activation import (
+from wargame_rl.wargame.envs.domain.movement.engagement import engaged_with_any
+from wargame_rl.wargame.envs.domain.sequencing.activation import (
     CHARGE_TARGET_DECLINE,
     ChargeDeclaration,
     MoveDeclaration,
     ShootDeclaration,
     ShortMoveDeclaration,
 )
-from wargame_rl.wargame.envs.domain.engagement import engaged_with_any
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.per_model.seat import Seat, full_phase_mask
 from wargame_rl.wargame.envs.per_model.types import (
@@ -48,7 +48,7 @@ from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 if TYPE_CHECKING:
-    from wargame_rl.wargame.envs.domain.entities import WargameModel
+    from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel
     from wargame_rl.wargame.envs.per_model.env import PerModelEnv
 
 

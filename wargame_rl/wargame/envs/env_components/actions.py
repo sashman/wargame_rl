@@ -19,25 +19,30 @@ from typing import Any
 import numpy as np
 from gymnasium import spaces
 
-from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
-from wargame_rl.wargame.envs.domain.coherency_enforcement import (
-    CoherencyEnforcement,
-    enforce_after_move,
+from wargame_rl.wargame.envs.domain.kernel.rules_quantities import (
+    resolve_rules_quantities,
 )
-from wargame_rl.wargame.envs.domain.engagement import (
-    engaged_with_any,
-    engagement_matrix,
-)
-from wargame_rl.wargame.envs.domain.movement import back_off_to_unengaged, resolve_move
-from wargame_rl.wargame.envs.domain.pile_in import (
-    SELECTION_RANGE_INCHES,
-    agent_move_is_legal,
-)
-from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
-from wargame_rl.wargame.envs.domain.value_objects import (
+from wargame_rl.wargame.envs.domain.kernel.value_objects import (
     POSITION_DTYPE,
     position,
     zero_position,
+)
+from wargame_rl.wargame.envs.domain.melee.pile_in import (
+    SELECTION_RANGE_INCHES,
+    agent_move_is_legal,
+)
+from wargame_rl.wargame.envs.domain.movement.coherency import evaluate_coherency
+from wargame_rl.wargame.envs.domain.movement.coherency_enforcement import (
+    CoherencyEnforcement,
+    enforce_after_move,
+)
+from wargame_rl.wargame.envs.domain.movement.engagement import (
+    engaged_with_any,
+    engagement_matrix,
+)
+from wargame_rl.wargame.envs.domain.movement.moves import (
+    back_off_to_unengaged,
+    resolve_move,
 )
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase

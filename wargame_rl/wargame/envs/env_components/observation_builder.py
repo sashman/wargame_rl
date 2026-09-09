@@ -11,13 +11,14 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
-from wargame_rl.wargame.envs.domain.coherency import (
+from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.kernel.value_objects import POSITION_DTYPE
+from wargame_rl.wargame.envs.domain.movement.coherency import (
     base_to_base_distances,
     evaluate_coherency,
 )
-from wargame_rl.wargame.envs.domain.engagement import engaged_with_any
-from wargame_rl.wargame.envs.domain.entities import alive_mask_for
-from wargame_rl.wargame.envs.domain.value_objects import POSITION_DTYPE
+from wargame_rl.wargame.envs.domain.movement.engagement import engaged_with_any
+from wargame_rl.wargame.envs.domain.shooting.targets import compute_unit_shooting_masks
 from wargame_rl.wargame.envs.env_components.actions import (
     ADVANCE_DIE_FACES,
     CHARGE_DICE_MAX,
@@ -26,9 +27,6 @@ from wargame_rl.wargame.envs.env_components.actions import (
 from wargame_rl.wargame.envs.env_components.distance_cache import (
     compute_distances,
     objective_counts_from_norms_offset,
-)
-from wargame_rl.wargame.envs.env_components.shooting_masks import (
-    compute_unit_shooting_masks,
 )
 from wargame_rl.wargame.envs.types import (
     WargameEnvInfo,
@@ -41,7 +39,7 @@ from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.envs.types.terrain_observation import TERRAIN_VERTEX_BUDGET
 
 if TYPE_CHECKING:
-    from wargame_rl.wargame.envs.domain.entities import WargameObjective
+    from wargame_rl.wargame.envs.domain.kernel.entities import WargameObjective
     from wargame_rl.wargame.envs.env_components.distance_cache import DistanceCache
     from wargame_rl.wargame.envs.types.config import ModelConfig
     from wargame_rl.wargame.envs.wargame_model import WargameModel

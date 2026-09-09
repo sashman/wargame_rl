@@ -14,7 +14,7 @@ import math
 import numpy as np
 import pytest
 
-from wargame_rl.wargame.envs.domain.terrain import Footprint
+from wargame_rl.wargame.envs.domain.battlefield.terrain import Footprint
 from wargame_rl.wargame.envs.env_components.exposure import (
     ExposureTracker,
     distances_to_nearest_footprint,

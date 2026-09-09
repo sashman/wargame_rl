@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any
 
 import numpy as np
 from gymnasium import spaces
 
-from wargame_rl.wargame.envs.domain.value_objects import (
+from wargame_rl.wargame.envs.domain.kernel.value_objects import (
     POSITION_DTYPE,
     Position,
     position,
     zero_position,
 )
 from wargame_rl.wargame.envs.types.geometry import Polygon
-
-if TYPE_CHECKING:
-    from wargame_rl.wargame.envs.reward.types.model_rewards import ModelRewards
 
 
 class WargameModel:
@@ -56,7 +53,9 @@ class WargameModel:
 
         self.previous_closest_objective_distance = previous_closest_objective_distance
         self.best_closest_objective_distance = best_closest_objective_distance
-        self.model_rewards_history: list["ModelRewards"] = []
+        # Read by two renderers and cleared here; nothing appends to it. Kept
+        # untyped so the kernel does not know the reward layer.
+        self.model_rewards_history: list[Any] = []
         self.advanced_this_turn: bool = False
         # This model's UNIT's advance roll for the current turn, in inches. The
         # rules roll one D6 per unit *before* moving, so the policy must be able

@@ -15,8 +15,8 @@ from typing import Any
 import pytest
 import yaml
 
-from wargame_rl.wargame.envs.domain import rules_constants
-from wargame_rl.wargame.envs.domain.shooting import wound_roll_threshold
+from wargame_rl.wargame.envs.domain.attacks.sequence import wound_roll_threshold
+from wargame_rl.wargame.envs.domain.kernel import rules_constants
 
 CONSTANTS_PATH = (
     Path(__file__).resolve().parents[1] / "docs" / "rules" / "constants.yaml"

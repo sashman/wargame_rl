@@ -1,5 +1,10 @@
 """Modular components for the wargame environment (actions, termination, placement, observation)."""
 
+from wargame_rl.wargame.envs.domain.shooting.targets import (
+    compute_shooting_masks,
+    compute_threat_counts,
+    max_weapon_ranges,
+)
 from wargame_rl.wargame.envs.env_components.actions import ActionHandler
 from wargame_rl.wargame.envs.env_components.coherency_tracker import CoherencyTracker
 from wargame_rl.wargame.envs.env_components.distance_cache import (
@@ -21,11 +26,6 @@ from wargame_rl.wargame.envs.env_components.placement import (
     fixed_wargame_model_placement,
     objective_placement,
     wargame_model_placement,
-)
-from wargame_rl.wargame.envs.env_components.shooting_masks import (
-    compute_shooting_masks,
-    compute_threat_counts,
-    max_weapon_ranges,
 )
 from wargame_rl.wargame.envs.env_components.termination import (
     check_max_turns_reached,

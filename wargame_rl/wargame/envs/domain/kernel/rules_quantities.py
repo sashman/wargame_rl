@@ -29,7 +29,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from wargame_rl.wargame.envs.domain.scale import Scale
+from wargame_rl.wargame.envs.domain.kernel.scale import Scale
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.types.config import WargameEnvConfig

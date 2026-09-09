@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from wargame_rl.wargame.envs.domain.fight import (
+from wargame_rl.wargame.envs.domain.melee.fight import (
     PairedFightResult,
     _fight_order,
     resolve_fight,

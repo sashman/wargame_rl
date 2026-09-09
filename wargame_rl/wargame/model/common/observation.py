@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from wargame_rl.wargame.envs.domain.shooting import expected_damage_matrix
+from wargame_rl.wargame.envs.domain.shooting.expectation import expected_damage_matrix
 from wargame_rl.wargame.envs.types import WargameEnvObservation
 from wargame_rl.wargame.envs.types.terrain_observation import TERRAIN_VERTEX_BUDGET
 from wargame_rl.wargame.model.common import Device, get_device

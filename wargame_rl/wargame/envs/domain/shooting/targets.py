@@ -11,7 +11,10 @@ from typing import NamedTuple
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.engagement import engaged_units, engaged_with_any
+from wargame_rl.wargame.envs.domain.movement.engagement import (
+    engaged_units,
+    engaged_with_any,
+)
 
 # Trace sight for many pairs at once: given ``(P, 2)`` origins, ``(Q, 2)``
 # targets and a ``(P, Q)`` mask of pairs worth tracing, return ``(P, Q)`` of

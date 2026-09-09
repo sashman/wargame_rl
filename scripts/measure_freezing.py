@@ -36,7 +36,7 @@ import numpy as np
 
 from scripts.measure_maps import config_for_map, load_maps
 from scripts.scenario_overrides import describe, load_env_config, parse_overrides
-from wargame_rl.wargame.envs.domain.game_clock import BattlePhase
+from wargame_rl.wargame.envs.domain.sequencing.game_clock import BattlePhase
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.selectors import build_action_selector

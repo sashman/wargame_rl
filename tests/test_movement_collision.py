@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from wargame_rl.wargame.envs.domain.movement import resolve_move
+from wargame_rl.wargame.envs.domain.movement.moves import resolve_move
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import OpponentPolicyConfig

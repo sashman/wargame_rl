@@ -18,33 +18,54 @@ The environment was refactored so that:
 
 ```
 wargame_rl/wargame/envs/
-├── domain/                    # Domain layer (no Gym, no env_components)
+├── domain/                    # The battle: one bounded context, shaped as sub-domains
 │   ├── battle.py              # Aggregate root: models, objectives, zones, dimensions
-│   ├── battle_view.py         # Protocol: read-only battle state
+│   ├── battle_view.py         # Protocol: read-only battle state (names result types below)
 │   ├── battle_factory.py      # Builds Battle from config
-│   ├── entities.py            # WargameModel, WargameObjective
-│   ├── value_objects.py       # Position + POSITION_DTYPE, BoardDimensions,
-│   │                          #   DeploymentZone
-│   ├── game_clock.py          # Turn/phase/round logic
-│   ├── placement.py           # place_for_episode, placement helpers
-│   ├── coherency.py           # The unit coherency predicate: chain, spread, connectivity
-│   ├── coherency_enforcement.py # The end-of-move revert, in three modes
-│   ├── termination.py         # is_battle_over, check_max_turns_reached
-│   ├── los.py                 # Sampled ray vs padded polygon blockers (vectorised)
-│   ├── sight.py               # "Can A see B?": los + terrain + blocking_mask
-│   ├── scale.py               # Scale: rules inches <-> board units
-│   ├── rules_constants.py     # Universal rules values, in inches (mirrors
-│   │                          #   docs/rules/constants.yaml)
-│   ├── rules_quantities.py    # RulesQuantities: rules distances resolved into
-│   │                          #   units once, at construction
-│   ├── terrain.py             # Footprint, Terrain (LOS-blocking geometry)
-│   ├── terrain_placement.py   # generate_terrain: random per-episode layouts
-│   ├── map_layout.py          # MapLayout: one fixed layout, drawn from a pool
-│   ├── shooting.py            # Attack sequence: hit → wound → save → damage
-│   └── turn_execution.py      # run_until_player_phase, run_after_player_action
+│   ├── kernel/                # Shared kernel every sub-domain imports, importing none
+│   │   ├── entities.py        #   WargameModel, WargameObjective
+│   │   ├── value_objects.py   #   Position + POSITION_DTYPE, BoardDimensions, DeploymentZone
+│   │   ├── scale.py           #   Scale: rules inches <-> board units
+│   │   ├── rules_constants.py #   Universal rules values, in inches (mirrors docs/rules/constants.yaml)
+│   │   ├── rules_quantities.py#   RulesQuantities: rules distances resolved into units once
+│   │   └── dice.py            #   DiceSource port, DiceCall, RollerAdapter
+│   ├── battlefield/           # Terrain, sight, layouts, deployment
+│   │   ├── terrain.py         #   Footprint, Terrain (LOS-blocking geometry)
+│   │   ├── los.py             #   Sampled ray vs padded polygon blockers (vectorised)
+│   │   ├── sight.py           #   "Can A see B?": los + terrain + blocking_mask
+│   │   ├── map_layout.py      #   MapLayout: one fixed layout, drawn from a pool
+│   │   ├── terrain_placement.py # generate_terrain: random per-episode layouts
+│   │   └── placement.py       #   place_for_episode, placement helpers
+│   ├── sequencing/            # The order of play
+│   │   ├── game_clock.py      #   Turn/phase/round logic
+│   │   ├── termination.py     #   is_battle_over, check_max_turns_reached
+│   │   └── activation.py      #   PhaseActivation: units act one at a time; the declarations
+│   ├── movement/              # Moves, engagement, coherency, and the referees of a unit's move
+│   │   ├── moves.py           #   resolve_move, back_off_to_unengaged
+│   │   ├── engagement.py      #   engagement_matrix, engaged_with_any
+│   │   ├── coherency.py       #   The unit coherency predicate: chain, spread, connectivity
+│   │   ├── coherency_enforcement.py # The end-of-move revert, attrition, coherency_after_unit_move
+│   │   ├── unit_moves.py      #   unit_moved, revert_unit, unit_is_coherent, touched_enemy_units
+│   │   └── fall_back.py       #   fall_back_stands
+│   ├── attacks/               # What shooting and melee share (05-attack-sequence.md)
+│   │   ├── stats.py           #   AttackStats, WeaponStats, MeleeStats, DefenderStats, ShootingResult
+│   │   ├── sequence.py        #   wound_roll_threshold, ranged_skill, hit_probability, resolve_attack
+│   │   ├── allocation.py      #   allocate_target: the defender's choice
+│   │   └── expectation.py     #   expected_attack_damage
+│   ├── shooting/              # 10-shooting-phase.md
+│   │   ├── targets.py         #   Target legality: visible, in range, unengaged (unit masks)
+│   │   ├── cover.py           #   unit_cover_mask: the one cover implementation
+│   │   ├── resolve.py         #   resolve_shooting, resolve_shooting_phase, PairedShootingResult
+│   │   └── expectation.py     #   expected_damage, expected_damage_matrix
+│   └── melee/                 # 11-charge-phase.md, 12-fight-phase.md
+│       ├── charge.py          #   charge_stands
+│       ├── pile_in.py         #   pile_in, agent_move_is_legal, short_move_stands
+│       ├── fight.py           #   resolve_fight, resolve_fight_step, fight_dragged_in_units
+│       ├── fight_sequence.py  #   FightSequence: the fight step, resumable; fight_one_model
+│       └── consolidate.py     #   consolidate_objective, ConsolidationMode, the mode referees
 ├── board/                     # Board-wide reads: sampling grid, next-turn threat
 │                              #   field, unit matchups. A LEAF -- domain and types only
-├── env_components/            # Adapters: actions, observation, distances, shooting masks
+├── env_components/            # Adapters: actions, observation, distances
 ├── map_pool.py                # Loads map files into MapLayouts, draws one per episode
 ├── opponent/                  # Opponent policies + registry
 ├── mission/                   # VP calculators + registry
@@ -56,10 +77,11 @@ wargame_rl/wargame/envs/
 ├── renders/                   # Pygame etc. (use BattleView)
 ├── types/                     # Shared kernel: config, observation/info types,
 │                              #   game timing, and geometry (see below)
+├── turn_execution.py          # run_until_player_phase, run_after_player_action (phase facade)
 └── wargame.py                 # WargameEnv: facade that implements BattleView
 ```
 
-- **Domain** does not import from `env_components`, `reward`, or `renders`. It may use `types/` (config, game timing).
+- **Domain** does not import from `env_components`, `reward`, or `renders`. It may use `types/` (config, game timing). Inside it the arrows point one way: `kernel/` imports nothing of the domain; `battlefield/`, `sequencing/`, `movement/` and `attacks/` import only the kernel; `shooting/` may import `attacks/`, `battlefield/` (sight, for cover) and `movement/`; `melee/` may import `attacks/`, `movement/` and `shooting/`; the aggregate and `battle_view` sit above all of them. `tests/test_per_model_layering.py` pins every arrow.
 - **Env** and **env_components** create and use the domain (Battle, factory, placement, clock, termination, turn execution).
 - **Reward** and **renders** depend only on `BattleView` (and types); they receive a view in `calculate_reward` / `check_success` / `setup` / `render`.
 - **debug** drives a live env, so like `baseline/` it may import `WargameEnv`. This is what splits the debug mode across two packages: its presenter reads a `BattleView` and therefore lives under `renders/`, while the undo stack and session loop hold the env and live here.
@@ -92,7 +114,7 @@ The env calls these; it does not reimplement their logic.
 
 ### Adding a new entity type
 
-1. **Define the entity** in `domain/entities.py` (or a new file under `domain/` if you prefer). Follow the same pattern as `WargameModel` / `WargameObjective`: attributes, `reset_for_episode` if it has episode state, and optionally a `to_space()` for the Gym observation space if the env needs it.
+1. **Define the entity** in `domain/kernel/entities.py` (or a new file under `domain/` if you prefer). Follow the same pattern as `WargameModel` / `WargameObjective`: attributes, `reset_for_episode` if it has episode state, and optionally a `to_space()` for the Gym observation space if the env needs it.
 2. **Add config** in `types/config/` — `entities.py` for a per-entity model, `terrain.py` for terrain, `battle.py` for turn order / opponent / mission, `coherency.py` for the coherency rule, `env.py` for a scenario-level field. Keep new fields optional or default so existing YAML stays valid. `__init__.py` re-exports everything, so importers use `types.config` either way.
 3. **Wire the factory**: in `domain/battle_factory.py`, create instances from config and attach them to the `Battle` (e.g. new list + property). If the aggregate must expose them for observation or rules, add them to `Battle` and to `BattleView`.
 4. **Observation**: if the new entity appears in the Gym observation, extend the observation types in `types/`, then in `env_components/observation_builder.py` add the mapping from `view` to that part of the observation (using `BattleView` so the builder stays view-based).
@@ -100,17 +122,17 @@ The env calls these; it does not reimplement their logic.
 
 ### Adding a new value object
 
-Add a frozen dataclass (or Pydantic model) in `domain/value_objects.py`. Use it inside the aggregate or in domain services (e.g. placement, factory). If the env or config layer needs to expose it as a tuple/array for compatibility, add a small adapter (e.g. `as_array()`) on the value object or in the facade.
+Add a frozen dataclass (or Pydantic model) in `domain/kernel/value_objects.py`. Use it inside the aggregate or in domain services (e.g. placement, factory). If the env or config layer needs to expose it as a tuple/array for compatibility, add a small adapter (e.g. `as_array()`) on the value object or in the facade.
 
 ### Adding or changing placement rules
 
-Placement is in `domain/placement.py`. To add a new strategy (e.g. by scenario name), extend `place_for_episode` or add a helper that it calls, using `Battle` and config only. The env continues to call `place_for_episode(_battle, config, rng)` after `_battle.reset_for_episode()` and clock reset. Do not put placement logic in `wargame.py`.
+Placement is in `domain/battlefield/placement.py`. To add a new strategy (e.g. by scenario name), extend `place_for_episode` or add a helper that it calls, using `Battle` and config only. The env continues to call `place_for_episode(_battle, config, rng)` after `_battle.reset_for_episode()` and clock reset. Do not put placement logic in `wargame.py`.
 
-Terrain follows the same pattern, and there are three mutually exclusive modes. A fixed `terrain` list is built once by the factory. With `random_terrain`, `place_for_episode` calls `generate_terrain` from `domain/terrain_placement.py` and installs the result via `Battle.set_terrain`. With `map_pool`, the *env* draws a `MapLayout` and passes it in as `place_for_episode(..., layout=...)`, which installs its terrain and — when the map carries them — its objectives via `Battle.set_objectives`. Loading map files is the env layer's job (`envs/map_pool.py`) precisely so `domain/` never touches the filesystem: it only ever sees a `MapLayout`, which is a domain value. LOS resolves terrain through the aggregate on every query, so a replacement takes effect immediately with no cache to invalidate.
+Terrain follows the same pattern, and there are three mutually exclusive modes. A fixed `terrain` list is built once by the factory. With `random_terrain`, `place_for_episode` calls `generate_terrain` from `domain/battlefield/terrain_placement.py` and installs the result via `Battle.set_terrain`. With `map_pool`, the *env* draws a `MapLayout` and passes it in as `place_for_episode(..., layout=...)`, which installs its terrain and — when the map carries them — its objectives via `Battle.set_objectives`. Loading map files is the env layer's job (`envs/map_pool.py`) precisely so `domain/` never touches the filesystem: it only ever sees a `MapLayout`, which is a domain value. LOS resolves terrain through the aggregate on every query, so a replacement takes effect immediately with no cache to invalidate.
 
 ### Adding termination conditions
 
-Termination is in `domain/termination.py`. `is_battle_over` currently combines turn limit, clock completion, side elimination (`all_eliminated`), and a `success_flag` the env computes from the active reward phase's configured success criteria. To add another condition, extend `is_battle_over` (or a helper it calls) with an extra parameter or a small domain service that the env can call. Keep the env to a single call that decides “is the episode over?” so step() stays simple.
+Termination is in `domain/sequencing/termination.py`. `is_battle_over` currently combines turn limit, clock completion, side elimination (`all_eliminated`), and a `success_flag` the env computes from the active reward phase's configured success criteria. To add another condition, extend `is_battle_over` (or a helper it calls) with an extra parameter or a small domain service that the env can call. Keep the env to a single call that decides “is the episode over?” so step() stays simple.
 
 ### Adding or changing reward / success criteria
 
@@ -166,7 +188,7 @@ package would split the same concept in two. Revisit if `types/` grows a
 dependency that geometry should not inherit.
 
 Positions are the counter-example worth knowing: `Position`, `POSITION_DTYPE`
-and the constructors live in `domain/value_objects.py`, not in `types/`, because
+and the constructors live in `domain/kernel/value_objects.py`, not in `types/`, because
 nothing in `config` builds one. Config carries plain `x`/`y` integers and
 placement turns them into positions. Keep it that way — the whole point of the
 single dtype declaration is that it has one home.
@@ -180,7 +202,7 @@ rules and nothing about the step:
 |---|---|---|
 | one `step()` is | one side's whole phase: every model's action at once | one **decision**: open a unit with a declaration, act with one model, name a charge target, or close the turn |
 | observation | `WargameEnvObservation` (fixed-width, per-model blocks) | `PerModelObservation`: a `DecisionPoint` stating the next legal decision, plus what the turn revealed |
-| dice | three private generators | a `DiceSource` port (`domain/dice.py`); `SeededDice` reproduces the phase facade's streams |
+| dice | three private generators | a `DiceSource` port (`domain/kernel/dice.py`); `SeededDice` reproduces the phase facade's streams |
 | scripts | `BaselinePolicy.select_action` per phase | the same policy through `ScriptedSeat`, planned once per phase and replayed in the engine's resolution order |
 | reward (stage 1) | per step | the same `StepContext`, settled per **window** — one of our stepped phases — at the point the phase facade's step would have ended |
 
@@ -190,11 +212,11 @@ decode and legality helpers (never `apply`), `resolve_move` /
 rules, every reward calculator, `BattleView`, the mission calculators and the
 scripted policies. **Nothing existing was edited** to add the second facade:
 the rules it needed that the domain did not yet state landed as new domain
-modules — `domain/activation.py` (the unit lock and the declaration value
-objects), `domain/fight_sequence.py` (the alternating-activation scheduler as
-a resumable sequence, with `fight_one_model`), `domain/unit_referees.py` (the
+modules — `domain/sequencing/activation.py` (the unit lock and the declaration value
+objects), `domain/melee/fight_sequence.py` (the alternating-activation scheduler as
+a resumable sequence, with `fight_one_model`), `domain/movement/unit_moves.py`, `movement/fall_back.py`, `melee/charge.py` (the
 unit-close judgements and the compulsory consolidation mode) and
-`domain/dice.py` (the port). `tests/test_per_model_layering.py` pins that
+`domain/kernel/dice.py` (the port). `tests/test_per_model_layering.py` pins that
 those import only `domain/` and `types/`, that `per_model/` never imports
 `wargame.py`, and that nothing outside `per_model/` imports it.
 

@@ -15,10 +15,14 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
-from wargame_rl.wargame.envs.domain.game_clock import GameClock
-from wargame_rl.wargame.envs.domain.shooting import PairedShootingResult, ShootingResult
-from wargame_rl.wargame.envs.domain.value_objects import position
+from wargame_rl.wargame.envs.domain.attacks.stats import ShootingResult
+from wargame_rl.wargame.envs.domain.kernel.entities import (
+    WargameModel,
+    WargameObjective,
+)
+from wargame_rl.wargame.envs.domain.kernel.value_objects import position
+from wargame_rl.wargame.envs.domain.sequencing.game_clock import GameClock
+from wargame_rl.wargame.envs.domain.shooting.resolve import PairedShootingResult
 from wargame_rl.wargame.envs.state.snapshot import (
     ClockSnapshot,
     CombatResultSnapshot,

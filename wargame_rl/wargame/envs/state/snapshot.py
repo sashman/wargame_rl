@@ -12,17 +12,19 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 import numpy as np
 from pydantic import BaseModel, Field
 
-from wargame_rl.wargame.envs.domain.entities import alive_mask_for
-from wargame_rl.wargame.envs.domain.fight import PairedFightResult
-from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
-from wargame_rl.wargame.envs.domain.shooting import (
-    DefenderStats,
-    PairedShootingResult,
-    expected_attack_damage,
-    expected_damage,
+from wargame_rl.wargame.envs.domain.attacks.expectation import expected_attack_damage
+from wargame_rl.wargame.envs.domain.attacks.sequence import (
     hit_probability,
     wound_roll_threshold,
 )
+from wargame_rl.wargame.envs.domain.attacks.stats import DefenderStats
+from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.kernel.rules_quantities import (
+    resolve_rules_quantities,
+)
+from wargame_rl.wargame.envs.domain.melee.fight import PairedFightResult
+from wargame_rl.wargame.envs.domain.shooting.expectation import expected_damage
+from wargame_rl.wargame.envs.domain.shooting.resolve import PairedShootingResult
 from wargame_rl.wargame.envs.env_components.distance_cache import (
     compute_distances,
     objective_ownership_from_norms_offset,
@@ -31,8 +33,11 @@ from wargame_rl.wargame.envs.types.config import WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase, GameState
 
 if TYPE_CHECKING:
-    from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
-    from wargame_rl.wargame.envs.domain.terrain import Terrain
+    from wargame_rl.wargame.envs.domain.battlefield.terrain import Terrain
+    from wargame_rl.wargame.envs.domain.kernel.entities import (
+        WargameModel,
+        WargameObjective,
+    )
     from wargame_rl.wargame.envs.types.config import ModelConfig
     from wargame_rl.wargame.envs.types.geometry import Polygon
 

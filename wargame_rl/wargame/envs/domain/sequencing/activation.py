@@ -51,15 +51,6 @@ class ShortMoveDeclaration(IntEnum):
     move = 1
 
 
-class ConsolidationMode(IntEnum):
-    """The compulsory consolidation mode, assessed in this order."""
-
-    none = 0
-    ongoing = 1
-    engaging = 2
-    objective = 3
-
-
 # The charge-target step's way of saying "now that the roll is known, do not
 # charge after all" -- `11-charge-phase.md` step 3 grants exactly that.
 CHARGE_TARGET_DECLINE = -1

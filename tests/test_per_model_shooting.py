@@ -17,10 +17,13 @@ from dataclasses import dataclass
 import numpy as np
 
 from tests.per_model_seats import small_config
-from wargame_rl.wargame.envs.domain.activation import MoveDeclaration, ShootDeclaration
-from wargame_rl.wargame.envs.domain.dice import DiceCall
-from wargame_rl.wargame.envs.domain.sight import CLEAR, COVER, HIDDEN
-from wargame_rl.wargame.envs.domain.value_objects import position
+from wargame_rl.wargame.envs.domain.battlefield.sight import CLEAR, COVER, HIDDEN
+from wargame_rl.wargame.envs.domain.kernel.dice import DiceCall
+from wargame_rl.wargame.envs.domain.kernel.value_objects import position
+from wargame_rl.wargame.envs.domain.sequencing.activation import (
+    MoveDeclaration,
+    ShootDeclaration,
+)
 from wargame_rl.wargame.envs.per_model import (
     PerModelAction,
     PerModelEnv,

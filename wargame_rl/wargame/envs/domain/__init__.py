@@ -1,5 +1,19 @@
-"""Domain layer: battle aggregate, entities, view protocol, and services."""
+"""The battle domain: one bounded context, shaped as sub-domains.
 
+`kernel/` is the shared kernel every sub-domain uses; `battle.py`,
+`battle_factory.py` and `battle_view.py` are the aggregate, its factory and its
+read contract; `battlefield/`, `sequencing/`, `movement/`, `attacks/`,
+`shooting/` and `melee/` are the sub-domains, each a chapter or two of
+`docs/rules/`. The names re-exported here are the ones the application layer
+reaches for by habit; everything else is imported from its sub-domain.
+"""
+
+from wargame_rl.wargame.envs.domain.attacks.sequence import wound_roll_threshold
+from wargame_rl.wargame.envs.domain.attacks.stats import (
+    DefenderStats,
+    ShootingResult,
+    WeaponStats,
+)
 from wargame_rl.wargame.envs.domain.battle import Battle
 from wargame_rl.wargame.envs.domain.battle_factory import (
     create_objectives,
@@ -8,32 +22,33 @@ from wargame_rl.wargame.envs.domain.battle_factory import (
     from_config,
 )
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
-from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
-from wargame_rl.wargame.envs.domain.game_clock import GameClock, GameClockError
-from wargame_rl.wargame.envs.domain.los import segments_are_clear
-from wargame_rl.wargame.envs.domain.placement import place_for_episode
-from wargame_rl.wargame.envs.domain.shooting import (
-    DefenderStats,
-    ShootingResult,
-    WeaponStats,
-    expected_damage,
-    resolve_shooting,
-    resolve_shooting_phase,
-    wound_roll_threshold,
-)
-from wargame_rl.wargame.envs.domain.sight import (
+from wargame_rl.wargame.envs.domain.battlefield.los import segments_are_clear
+from wargame_rl.wargame.envs.domain.battlefield.placement import place_for_episode
+from wargame_rl.wargame.envs.domain.battlefield.sight import (
     has_line_of_sight_between_points,
     line_of_sight_matrix,
 )
-from wargame_rl.wargame.envs.domain.termination import (
+from wargame_rl.wargame.envs.domain.kernel.entities import (
+    WargameModel,
+    WargameObjective,
+)
+from wargame_rl.wargame.envs.domain.kernel.value_objects import (
+    BoardDimensions,
+    DeploymentZone,
+)
+from wargame_rl.wargame.envs.domain.sequencing.game_clock import (
+    GameClock,
+    GameClockError,
+)
+from wargame_rl.wargame.envs.domain.sequencing.termination import (
     check_max_turns_reached,
     is_battle_over,
 )
-from wargame_rl.wargame.envs.domain.turn_execution import (
-    run_after_player_action,
-    run_until_player_phase,
+from wargame_rl.wargame.envs.domain.shooting.expectation import expected_damage
+from wargame_rl.wargame.envs.domain.shooting.resolve import (
+    resolve_shooting,
+    resolve_shooting_phase,
 )
-from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions, DeploymentZone
 
 __all__ = [
     "Battle",
@@ -54,8 +69,6 @@ __all__ = [
     "create_opponent_models",
     "create_wargame_models",
     "from_config",
-    "run_after_player_action",
-    "run_until_player_phase",
     "DefenderStats",
     "ShootingResult",
     "WeaponStats",

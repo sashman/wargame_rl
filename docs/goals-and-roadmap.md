@@ -63,7 +63,7 @@ Introduce ranged attacks so models can damage each other.
 
 - [x] **Wounds & elimination** — `max_wounds` / `current_wounds` are functional; models at 0 wounds are dead and masked out of actions, observations and reward.
 - [x] **Shooting action type** — A shooting slice in the union action space; each model picks a target within range, resolved with D6 hit / wound / save rolls (see [shooting.md](shooting.md)).
-- [x] **Line of sight** — Footprint-based LOS blocking in `domain/los.py`, with see-out / see-into exceptions (see [terrain.md](terrain.md)).
+- [x] **Line of sight** — Footprint-based LOS blocking in `domain/battlefield/los.py`, with see-out / see-into exceptions (see [terrain.md](terrain.md)).
 - [x] **Action type selection** — The action space is a phase-gated union of `stay`, `movement`, `shooting`, and — when the scenario has advance rungs — `advance` and `move_type` slices; the valid slice is masked per battle phase rather than chosen freely. A new **move type** costs one value in `move_type`, not a new slice (see [movement.md](movement.md) § Move types).
 - [x] **Reward shaping for combat** — `model_kills` (per-model) and `killing` (global) calculators pay for opponents killed; opponent shooting is available via `scripted_advance_and_shoot`. Penalising own losses is still not modelled.
 

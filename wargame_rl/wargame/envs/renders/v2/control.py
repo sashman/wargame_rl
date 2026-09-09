@@ -28,9 +28,12 @@ from wargame_rl.wargame.envs.board.threat import (
     threat_field,
 )
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
-from wargame_rl.wargame.envs.domain.entities import WargameModel, alive_mask_for
-from wargame_rl.wargame.envs.domain.sight import BlockingMask, line_of_sight_matrix
-from wargame_rl.wargame.envs.domain.terrain import Terrain
+from wargame_rl.wargame.envs.domain.battlefield.sight import (
+    BlockingMask,
+    line_of_sight_matrix,
+)
+from wargame_rl.wargame.envs.domain.battlefield.terrain import Terrain
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel, alive_mask_for
 from wargame_rl.wargame.envs.env_components.distance_cache import (
     compute_distances,
     objective_ownership_from_norms_offset,

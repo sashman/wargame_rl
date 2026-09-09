@@ -42,7 +42,10 @@ from wargame_rl.wargame.envs.baseline.scripted_squad_march_take import (
 )
 
 if TYPE_CHECKING:
-    from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
+    from wargame_rl.wargame.envs.domain.kernel.entities import (
+        WargameModel,
+        WargameObjective,
+    )
     from wargame_rl.wargame.envs.wargame import WargameEnv
 
 # Above this many squads the subset DP stops being free; fall back to greedy.

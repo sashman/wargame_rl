@@ -12,8 +12,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from wargame_rl.wargame.envs.domain.terrain_placement import generate_terrain
-from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions
+from wargame_rl.wargame.envs.domain.battlefield.terrain_placement import (
+    generate_terrain,
+)
+from wargame_rl.wargame.envs.domain.kernel.value_objects import BoardDimensions
 from wargame_rl.wargame.envs.env_components.exposure import (
     distances_to_nearest_footprint,
 )

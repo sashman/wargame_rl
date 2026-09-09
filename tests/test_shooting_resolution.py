@@ -9,22 +9,27 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from wargame_rl.wargame.envs.domain import rules_constants
-from wargame_rl.wargame.envs.domain.battle_factory import _build_models
-from wargame_rl.wargame.envs.domain.entities import WargameModel
-from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
-from wargame_rl.wargame.envs.domain.shooting import (
-    DefenderStats,
-    ShootingResult,
-    expected_damage,
-    expected_damage_matrix,
+from wargame_rl.wargame.envs.domain.attacks.sequence import (
     hit_probability,
-    resolve_shooting,
-    resolve_shooting_phase,
     wound_roll_threshold,
 )
+from wargame_rl.wargame.envs.domain.attacks.stats import DefenderStats, ShootingResult
+from wargame_rl.wargame.envs.domain.battle_factory import _build_models
+from wargame_rl.wargame.envs.domain.kernel import rules_constants
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel
+from wargame_rl.wargame.envs.domain.kernel.rules_quantities import (
+    resolve_rules_quantities,
+)
+from wargame_rl.wargame.envs.domain.shooting.expectation import (
+    expected_damage,
+    expected_damage_matrix,
+)
+from wargame_rl.wargame.envs.domain.shooting.resolve import (
+    resolve_shooting,
+    resolve_shooting_phase,
+)
+from wargame_rl.wargame.envs.domain.shooting.targets import compute_shooting_masks
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
-from wargame_rl.wargame.envs.env_components.shooting_masks import compute_shooting_masks
 from wargame_rl.wargame.envs.types import TerrainPieceConfig, WargameEnvAction
 from wargame_rl.wargame.envs.types.config import (
     ModelConfig,

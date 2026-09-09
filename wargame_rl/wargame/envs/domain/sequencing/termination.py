@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from wargame_rl.wargame.envs.domain.game_clock import GameClock
+from wargame_rl.wargame.envs.domain.sequencing.game_clock import GameClock
 
 
 def check_max_turns_reached(current_turn: int, max_turns: int) -> bool:

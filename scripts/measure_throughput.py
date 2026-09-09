@@ -33,7 +33,7 @@ from typing import Any
 import numpy as np
 from pydantic_yaml import parse_yaml_raw_as
 
-from wargame_rl.wargame.envs.domain.value_objects import position
+from wargame_rl.wargame.envs.domain.kernel.value_objects import position
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 

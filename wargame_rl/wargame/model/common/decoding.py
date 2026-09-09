@@ -41,9 +41,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.engagement import engagement_matrix
-from wargame_rl.wargame.envs.domain.movement import resolve_move
-from wargame_rl.wargame.envs.domain.value_objects import position
+from wargame_rl.wargame.envs.domain.kernel.value_objects import position
+from wargame_rl.wargame.envs.domain.movement.engagement import engagement_matrix
+from wargame_rl.wargame.envs.domain.movement.moves import resolve_move
 from wargame_rl.wargame.envs.env_components.actions import (
     _base_arrays,
     ladder_for_phase,

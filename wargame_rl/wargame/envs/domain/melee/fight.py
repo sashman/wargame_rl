@@ -30,35 +30,19 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.engagement import engagement_matrix
-from wargame_rl.wargame.envs.domain.entities import WargameModel
-from wargame_rl.wargame.envs.domain.pile_in import pile_in
-from wargame_rl.wargame.envs.domain.shooting import (
+from wargame_rl.wargame.envs.domain.attacks.allocation import allocate_target
+from wargame_rl.wargame.envs.domain.attacks.sequence import resolve_attack
+from wargame_rl.wargame.envs.domain.attacks.stats import (
     DefenderStats,
+    MeleeStats,
     ShootingResult,
-    _allocate_target,
-    resolve_attack,
 )
-
-
-@runtime_checkable
-class MeleeStats(Protocol):
-    """A melee weapon's stat line, structurally — the domain imports no config."""
-
-    @property
-    def attacks(self) -> int: ...
-    @property
-    def melee_skill(self) -> int: ...
-    @property
-    def strength(self) -> int: ...
-    @property
-    def ap(self) -> int: ...
-    @property
-    def damage(self) -> int: ...
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel
+from wargame_rl.wargame.envs.domain.melee.pile_in import pile_in
+from wargame_rl.wargame.envs.domain.movement.engagement import engagement_matrix
 
 
 @dataclass(frozen=True, slots=True)
@@ -258,7 +242,7 @@ def fight_one_unit(
             for idx in contacts
             if int(defenders[int(idx)].group_id) == target_group
         ]
-        target = _allocate_target(members)
+        target = allocate_target(members)
         if target is None:
             continue
         stats = DefenderStats(

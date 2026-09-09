@@ -208,7 +208,7 @@ the reason — a dead model has only `STAY`.
 ## Collision
 
 With `base_radius > 0` a model occupies ground, and moves are resolved against
-the other models (`domain/movement.py`):
+the other models (`domain/movement/moves.py`):
 
 | | rule |
 |---|---|
@@ -244,7 +244,7 @@ and `docs/rules/03-moving.md` is explicit that only the endpoint counts:
 > Passing through an enemy unit's engagement range during a move does **not** make
 > the moving unit engaged. Only where it *ends* matters.
 
-`domain/movement.py::back_off_to_unengaged` applies this **after** `resolve_move`,
+`domain/movement/moves.py::back_off_to_unengaged` applies this **after** `resolve_move`,
 so enemies still block at their true base radius and the path is unchanged. If the
 resolved endpoint lies inside any enemy's engagement ring
 (`engagement_range + both base radii`), it is pulled back along its own heading

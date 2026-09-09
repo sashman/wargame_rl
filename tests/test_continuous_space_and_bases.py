@@ -17,7 +17,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from wargame_rl.wargame.envs.domain.rules_quantities import resolve_rules_quantities
+from wargame_rl.wargame.envs.domain.kernel.rules_quantities import (
+    resolve_rules_quantities,
+)
 from wargame_rl.wargame.envs.env_components.actions import ActionHandler
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig

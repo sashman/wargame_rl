@@ -73,8 +73,8 @@ from typing import Any
 import numpy as np
 
 from scripts.scenario_overrides import describe, load_env_config, parse_overrides
-from wargame_rl.wargame.envs.domain.engagement import engagement_matrix
-from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.movement.engagement import engagement_matrix
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 from wargame_rl.wargame.model.common.factory import create_environment

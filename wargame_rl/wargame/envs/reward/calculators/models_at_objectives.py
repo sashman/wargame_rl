@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
 from wargame_rl.wargame.envs.reward.calculators.base import GlobalRewardCalculator
 
 if TYPE_CHECKING:

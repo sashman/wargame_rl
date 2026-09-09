@@ -12,8 +12,8 @@ from typing import cast
 import numpy as np
 from pydantic_yaml import parse_yaml_raw_as
 
-from wargame_rl.wargame.envs.domain.entities import WargameModel
-from wargame_rl.wargame.envs.domain.value_objects import position
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel
+from wargame_rl.wargame.envs.domain.kernel.value_objects import position
 from wargame_rl.wargame.envs.env_components.observation_builder import (
     CoherencyDistances,
     _coherency_features,

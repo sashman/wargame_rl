@@ -18,13 +18,11 @@ import pytest
 
 from scripts.scenario_overrides import load_env_config
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
-from wargame_rl.wargame.envs.domain.consolidate import consolidate_objective
-from wargame_rl.wargame.envs.domain.entities import WargameObjective
-from wargame_rl.wargame.envs.domain.fight import fight_dragged_in_units
-from wargame_rl.wargame.envs.domain.shooting import (
-    DefenderStats,
-    expected_attack_damage,
-)
+from wargame_rl.wargame.envs.domain.attacks.expectation import expected_attack_damage
+from wargame_rl.wargame.envs.domain.attacks.stats import DefenderStats
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameObjective
+from wargame_rl.wargame.envs.domain.melee.consolidate import consolidate_objective
+from wargame_rl.wargame.envs.domain.melee.fight import fight_dragged_in_units
 from wargame_rl.wargame.envs.env_components.actions import (
     STAY_ACTION,
     ActionHandler,

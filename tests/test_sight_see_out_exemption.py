@@ -25,8 +25,10 @@ from __future__ import annotations
 
 import pytest
 
-from wargame_rl.wargame.envs.domain.sight import has_line_of_sight_between_points
-from wargame_rl.wargame.envs.domain.terrain import Footprint, Terrain
+from wargame_rl.wargame.envs.domain.battlefield.sight import (
+    has_line_of_sight_between_points,
+)
+from wargame_rl.wargame.envs.domain.battlefield.terrain import Footprint, Terrain
 
 # 20 wide and 8 deep, in cell coordinates. Comfortably wider than the 12" weapon
 # range the 25v25 configs use, so "sees across it" is not a near-miss.

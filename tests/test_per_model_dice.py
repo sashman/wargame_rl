@@ -15,8 +15,11 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from tests.per_model_seats import small_config
-from wargame_rl.wargame.envs.domain.activation import MoveDeclaration, ShootDeclaration
-from wargame_rl.wargame.envs.domain.dice import DiceCall, DicePurpose, DiceSource
+from wargame_rl.wargame.envs.domain.kernel.dice import DiceCall, DicePurpose, DiceSource
+from wargame_rl.wargame.envs.domain.sequencing.activation import (
+    MoveDeclaration,
+    ShootDeclaration,
+)
 from wargame_rl.wargame.envs.per_model import (
     PerModelAction,
     PerModelEnv,

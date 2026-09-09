@@ -15,18 +15,14 @@ exactly that mask, and the bridge holds only if it is given the same one.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.entities import WargameModel, alive_mask_for
-from wargame_rl.wargame.envs.domain.sight import CLEAR
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel, alive_mask_for
+from wargame_rl.wargame.envs.domain.shooting.targets import compute_unit_shooting_masks
 from wargame_rl.wargame.envs.env_components.actions import ActionHandler
-from wargame_rl.wargame.envs.env_components.shooting_masks import (
-    compute_unit_shooting_masks,
-)
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 if TYPE_CHECKING:
@@ -169,35 +165,3 @@ def full_phase_mask(
     ):
         mask[:, shooting.start : shooting.end] &= unit_shooting_masks(env, seat)
     return mask
-
-
-def unit_cover_for_shot(
-    env: PerModelEnv,
-    attacker: WargameModel,
-    target_members: Sequence[WargameModel],
-) -> bool:
-    """Does the target UNIT have cover against this one attacker.
-
-    `13-terrain.md` § Cover, as `WargameEnv._cover_mask` reads it: every member
-    must be not fully visible (any blockage, `!= CLEAR`), traced with both
-    models' base radii. One pair traced alone samples the same segment the
-    batched trace does, so the answer is the batch's cell.
-
-    `target_members` is the unit's membership as the ATTACKING UNIT's close saw
-    it: `05-attack-sequence.md` removes a destroyed model only after the
-    attacking unit has resolved all of its attacks, so a member a squadmate
-    has just killed still counts toward "every model", and one an earlier
-    unit killed does not. The caller passes that list; this does not re-read
-    `is_alive`.
-    """
-    members = list(target_members)
-    if not members:
-        return False
-    visibility = env.visibility_between(
-        np.array([attacker.location], dtype=float),
-        np.array([m.location for m in members], dtype=float),
-        np.ones((1, len(members)), dtype=bool),
-        origin_models=[attacker],
-        target_models=members,
-    )
-    return bool((visibility[0] != CLEAR).all())

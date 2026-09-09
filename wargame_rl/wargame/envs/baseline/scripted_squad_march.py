@@ -13,8 +13,8 @@ from wargame_rl.wargame.envs.baseline.policy import (
 )
 from wargame_rl.wargame.envs.baseline.reallocation import choose_surplus_reallocation
 from wargame_rl.wargame.envs.baseline.registry import register_baseline
-from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
-from wargame_rl.wargame.envs.domain.pile_in import SELECTION_RANGE_INCHES, pile_in
+from wargame_rl.wargame.envs.domain.melee.pile_in import SELECTION_RANGE_INCHES, pile_in
+from wargame_rl.wargame.envs.domain.movement.coherency import evaluate_coherency
 from wargame_rl.wargame.envs.env_components.actions import (
     MOVE_TYPE_ADVANCE,
     MOVE_TYPE_CHARGE,
@@ -25,7 +25,10 @@ from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 if TYPE_CHECKING:
-    from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
+    from wargame_rl.wargame.envs.domain.kernel.entities import (
+        WargameModel,
+        WargameObjective,
+    )
     from wargame_rl.wargame.envs.wargame import WargameEnv
 
 

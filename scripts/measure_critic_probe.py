@@ -73,8 +73,8 @@ from scripts.measure_checkpoint import HELDOUT_SEED_BASE, build_selector
 from scripts.measure_maps import config_for_map, load_maps
 from scripts.scenario_overrides import describe, load_env_config, parse_overrides
 from wargame_rl.wargame.envs.baseline.evaluate import ActionSelector
-from wargame_rl.wargame.envs.domain.entities import WargameModel, alive_mask_for
-from wargame_rl.wargame.envs.domain.value_objects import position
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel, alive_mask_for
+from wargame_rl.wargame.envs.domain.kernel.value_objects import position
 from wargame_rl.wargame.envs.env_components.distance_cache import (
     compute_distances,
     objective_counts_from_norms_offset,

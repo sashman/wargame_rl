@@ -14,7 +14,7 @@ import sys
 import torch
 from pydantic_yaml import parse_yaml_raw_as
 
-from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
 from wargame_rl.wargame.envs.reward.criteria.registry import build_criteria
 from wargame_rl.wargame.envs.types.config import WargameEnvConfig
 from wargame_rl.wargame.model.common.argmax_agent import ArgmaxAgent

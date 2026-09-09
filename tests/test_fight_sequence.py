@@ -13,9 +13,10 @@ import copy
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.entities import WargameModel
-from wargame_rl.wargame.envs.domain.fight import FightSide, resolve_fight_step
-from wargame_rl.wargame.envs.domain.fight_sequence import (
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel
+from wargame_rl.wargame.envs.domain.kernel.value_objects import position
+from wargame_rl.wargame.envs.domain.melee.fight import FightSide, resolve_fight_step
+from wargame_rl.wargame.envs.domain.melee.fight_sequence import (
     End,
     FightSequence,
     Overrun,
@@ -24,7 +25,6 @@ from wargame_rl.wargame.envs.domain.fight_sequence import (
     default_choice,
     fight_one_model,
 )
-from wargame_rl.wargame.envs.domain.value_objects import position
 from wargame_rl.wargame.envs.types.config import MeleeWeaponProfile
 
 ENGAGEMENT = 1.0

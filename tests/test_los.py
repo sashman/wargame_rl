@@ -7,7 +7,7 @@ import pytest
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
-from wargame_rl.wargame.envs.domain.los import segments_are_clear
+from wargame_rl.wargame.envs.domain.battlefield.los import segments_are_clear
 from wargame_rl.wargame.envs.types import TerrainPieceConfig, WargameEnvConfig
 from wargame_rl.wargame.envs.types.geometry import Polygon
 from wargame_rl.wargame.envs.wargame import WargameEnv

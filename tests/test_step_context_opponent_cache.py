@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 
 from scripts.scenario_overrides import load_env_config
-from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.model.common.factory import create_environment

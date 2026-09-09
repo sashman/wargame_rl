@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from wargame_rl.wargame.envs.domain.shooting import PairedShootingResult
+from wargame_rl.wargame.envs.domain.shooting.resolve import PairedShootingResult
 from wargame_rl.wargame.envs.opponent.registry import (
     build_opponent_policy,
     get_registry,

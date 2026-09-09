@@ -6,11 +6,14 @@ from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
-from wargame_rl.wargame.envs.domain.fight import PairedFightResult
-from wargame_rl.wargame.envs.domain.rules_quantities import RulesQuantities
-from wargame_rl.wargame.envs.domain.shooting import PairedShootingResult
-from wargame_rl.wargame.envs.domain.terrain import Terrain
+from wargame_rl.wargame.envs.domain.battlefield.terrain import Terrain
+from wargame_rl.wargame.envs.domain.kernel.entities import (
+    WargameModel,
+    WargameObjective,
+)
+from wargame_rl.wargame.envs.domain.kernel.rules_quantities import RulesQuantities
+from wargame_rl.wargame.envs.domain.melee.fight import PairedFightResult
+from wargame_rl.wargame.envs.domain.shooting.resolve import PairedShootingResult
 from wargame_rl.wargame.envs.types.config import WargameEnvConfig
 from wargame_rl.wargame.envs.types.game_timing import GameState
 from wargame_rl.wargame.envs.types.geometry import Polygon

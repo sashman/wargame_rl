@@ -18,7 +18,10 @@ from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 if TYPE_CHECKING:
-    from wargame_rl.wargame.envs.domain.entities import WargameModel, WargameObjective
+    from wargame_rl.wargame.envs.domain.kernel.entities import (
+        WargameModel,
+        WargameObjective,
+    )
     from wargame_rl.wargame.envs.wargame import WargameEnv
 
 

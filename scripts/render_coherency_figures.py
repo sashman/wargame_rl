@@ -20,8 +20,8 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from pydantic_yaml import parse_yaml_raw_as
 
-from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
-from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.movement.coherency import evaluate_coherency
 from wargame_rl.wargame.envs.renders.v2 import build_renderer
 from wargame_rl.wargame.envs.renders.v2.fonts import mono_font_path
 from wargame_rl.wargame.envs.types import WargameEnvConfig

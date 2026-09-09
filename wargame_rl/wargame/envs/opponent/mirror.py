@@ -23,9 +23,9 @@ from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 if TYPE_CHECKING:
     import numpy as np
 
-    from wargame_rl.wargame.envs.domain.entities import WargameModel
-    from wargame_rl.wargame.envs.domain.fight import PairedFightResult
-    from wargame_rl.wargame.envs.domain.shooting import PairedShootingResult
+    from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel
+    from wargame_rl.wargame.envs.domain.melee.fight import PairedFightResult
+    from wargame_rl.wargame.envs.domain.shooting.resolve import PairedShootingResult
     from wargame_rl.wargame.envs.wargame import WargameEnv
 
 

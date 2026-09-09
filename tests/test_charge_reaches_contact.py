@@ -21,7 +21,7 @@ import numpy as np
 import pytest
 
 from scripts.scenario_overrides import load_env_config
-from wargame_rl.wargame.envs.domain.engagement import engaged_with_any
+from wargame_rl.wargame.envs.domain.movement.engagement import engaged_with_any
 from wargame_rl.wargame.envs.env_components.actions import (
     MOVE_TYPE_CHARGE,
     STAY_ACTION,

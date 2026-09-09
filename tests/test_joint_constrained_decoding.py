@@ -12,8 +12,8 @@ import numpy as np
 import pytest
 from pydantic_yaml import parse_yaml_raw_as
 
-from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
-from wargame_rl.wargame.envs.domain.engagement import engaged_with_any
+from wargame_rl.wargame.envs.domain.movement.coherency import evaluate_coherency
+from wargame_rl.wargame.envs.domain.movement.engagement import engaged_with_any
 from wargame_rl.wargame.envs.env_components.actions import MOVE_TYPE_CHARGE, STAY_ACTION
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import MeleeConfig, MeleeWeaponProfile

@@ -16,10 +16,27 @@ from wargame_rl.wargame.envs.domain.battle_factory import (
     from_config as _battle_from_config,
 )
 from wargame_rl.wargame.envs.domain.battle_factory import unit_count
-from wargame_rl.wargame.envs.domain.coherency_enforcement import apply_attrition
-from wargame_rl.wargame.envs.domain.consolidate import consolidate_objective
-from wargame_rl.wargame.envs.domain.entities import alive_mask_for
-from wargame_rl.wargame.envs.domain.fight import (
+from wargame_rl.wargame.envs.domain.battlefield.placement import (
+    install_layout,
+    place_for_episode,
+)
+from wargame_rl.wargame.envs.domain.battlefield.sight import (
+    COVER,
+    has_line_of_sight_between_points,
+    visibility_matrix,
+)
+from wargame_rl.wargame.envs.domain.battlefield.terrain import Terrain
+from wargame_rl.wargame.envs.domain.battlefield.terrain_placement import (
+    generate_terrain,
+)
+from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.kernel.rules_quantities import (
+    RulesQuantities,
+    resolve_rules_quantities,
+)
+from wargame_rl.wargame.envs.domain.kernel.value_objects import BoardDimensions
+from wargame_rl.wargame.envs.domain.melee.consolidate import consolidate_objective
+from wargame_rl.wargame.envs.domain.melee.fight import (
     PASS_RANGE_INCHES,
     FightSide,
     OverrunRules,
@@ -29,34 +46,24 @@ from wargame_rl.wargame.envs.domain.fight import (
     resolve_fight,
     resolve_fight_step,
 )
-from wargame_rl.wargame.envs.domain.game_clock import GameClock
-from wargame_rl.wargame.envs.domain.pile_in import (
+from wargame_rl.wargame.envs.domain.melee.pile_in import (
     SELECTION_RANGE_INCHES as PILE_IN_SELECTION_RANGE_INCHES,
 )
-from wargame_rl.wargame.envs.domain.pile_in import pile_in
-from wargame_rl.wargame.envs.domain.placement import install_layout, place_for_episode
-from wargame_rl.wargame.envs.domain.rules_quantities import (
-    RulesQuantities,
-    resolve_rules_quantities,
+from wargame_rl.wargame.envs.domain.melee.pile_in import pile_in
+from wargame_rl.wargame.envs.domain.movement.coherency_enforcement import (
+    apply_attrition,
 )
-from wargame_rl.wargame.envs.domain.shooting import (
+from wargame_rl.wargame.envs.domain.sequencing.game_clock import GameClock
+from wargame_rl.wargame.envs.domain.sequencing.termination import is_battle_over
+from wargame_rl.wargame.envs.domain.shooting.cover import unit_cover_mask
+from wargame_rl.wargame.envs.domain.shooting.resolve import (
     PairedShootingResult,
     resolve_shooting_phase,
 )
-from wargame_rl.wargame.envs.domain.sight import (
-    CLEAR,
-    COVER,
-    has_line_of_sight_between_points,
-    visibility_matrix,
+from wargame_rl.wargame.envs.domain.shooting.targets import (
+    compute_unit_shooting_masks,
+    max_weapon_ranges,
 )
-from wargame_rl.wargame.envs.domain.termination import is_battle_over
-from wargame_rl.wargame.envs.domain.terrain import Terrain
-from wargame_rl.wargame.envs.domain.terrain_placement import generate_terrain
-from wargame_rl.wargame.envs.domain.turn_execution import (
-    run_after_player_action,
-    run_until_player_phase,
-)
-from wargame_rl.wargame.envs.domain.value_objects import BoardDimensions
 from wargame_rl.wargame.envs.env_components import (
     ActionHandler,
     DistanceCache,
@@ -68,10 +75,6 @@ from wargame_rl.wargame.envs.env_components.coherency_tracker import CoherencyTr
 from wargame_rl.wargame.envs.env_components.exposure import (
     ExposureTracker,
     record_shooting_phase,
-)
-from wargame_rl.wargame.envs.env_components.shooting_masks import (
-    compute_unit_shooting_masks,
-    max_weapon_ranges,
 )
 from wargame_rl.wargame.envs.map_pool import MapPool
 from wargame_rl.wargame.envs.mission import build_vp_calculator
@@ -98,6 +101,10 @@ from wargame_rl.wargame.envs.state.snapshot import (
     GameStateSnapshot,
     build_snapshot,
     validate_snapshot,
+)
+from wargame_rl.wargame.envs.turn_execution import (
+    run_after_player_action,
+    run_until_player_phase,
 )
 from wargame_rl.wargame.envs.types import (
     BattlePhase,
@@ -1584,58 +1591,13 @@ class WargameEnv(gym.Env):
         attackers: list[WargameModel],
         targets: list[WargameModel],
     ) -> np.ndarray | None:
-        """``(n_attackers, n_target_units)`` — True where the *unit* has cover.
+        """``(n_attackers, n_target_units)`` -- True where the *unit* has cover.
 
-        Cover is a unit-level, all-or-nothing property in the rules: a unit has
-        it against an attack only when **every** model in it is in a terrain area
-        or not fully visible, so *"one model of a unit standing in the open
-        denies cover to the whole unit"*. Reducing with `all` rather than `any`
-        is that sentence — and "not fully visible" spans COVER *and* HIDDEN,
-        so only a `CLEAR` member denies it (#289).
-
-        Only the declared (attacker, unit) pairs are traced, expanded to the
-        unit's living models -- a handful out of the full product. Returns None
-        when nothing was declared, so an empty phase costs nothing.
+        The rule is `domain/shooting/cover.py`'s; this supplies the env's
+        corridor trace. Judged once per phase against the living models at
+        phase open, which is the whole-army step's only moment.
         """
-        if not shots or not attackers or not targets:
-            return None
-        groups = np.array([m.group_id for m in targets], dtype=int)
-        alive = np.array([m.is_alive for m in targets], dtype=bool)
-        n_groups = int(groups.max()) + 1 if len(groups) else 0
-
-        candidates = np.zeros((len(attackers), len(targets)), dtype=bool)
-        declared = np.zeros((len(attackers), n_groups), dtype=bool)
-        for attacker_idx, target_group in shots:
-            if 0 <= target_group < n_groups and attacker_idx < len(attackers):
-                declared[attacker_idx, target_group] = True
-                candidates[attacker_idx, (groups == target_group) & alive] = True
-        if not candidates.any():
-            return None
-
-        visibility = self.visibility_between(
-            np.array([m.location for m in attackers], dtype=float),
-            np.array([m.location for m in targets], dtype=float),
-            candidates,
-            origin_models=attackers,
-            target_models=targets,
-        )
-        # "Not fully visible" (13-terrain.md § Cover) is any blockage at all,
-        # so a fully hidden member (`HIDDEN`) counts toward cover too. Until
-        # 2026-09-06 this tested `== COVER`, and the best-protected model in
-        # the unit stripped the whole unit's cover (#289).
-        model_in_cover = visibility != CLEAR
-        unit_in_cover = np.zeros((len(attackers), n_groups), dtype=bool)
-        for group in range(n_groups):
-            members = (groups == group) & alive
-            if not members.any():
-                continue
-            # Every living model of the unit must be covered, and only for the
-            # attackers that actually declared against it -- an undeclared pair
-            # was never traced, so its cells are vacuously True under `all`.
-            unit_in_cover[:, group] = (
-                model_in_cover[:, members].all(axis=1) & declared[:, group]
-            )
-        return unit_in_cover
+        return unit_cover_mask(self.visibility_between, shots, attackers, targets)
 
     def _apply_player_action(self, action: WargameEnvAction) -> None:
         phase = self._game_clock.state.phase or BattlePhase.movement

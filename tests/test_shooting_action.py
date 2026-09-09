@@ -7,12 +7,12 @@ import pytest
 from gymnasium import spaces
 from pydantic import ValidationError
 
-from wargame_rl.wargame.envs.domain.entities import WargameModel
-from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION, ActionHandler
-from wargame_rl.wargame.envs.env_components.shooting_masks import (
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel
+from wargame_rl.wargame.envs.domain.shooting.targets import (
     compute_shooting_masks,
     max_weapon_ranges,
 )
+from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION, ActionHandler
 from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import (
     ModelConfig,

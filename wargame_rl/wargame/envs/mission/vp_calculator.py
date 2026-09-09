@@ -79,7 +79,7 @@ class DefaultVPCalculator(VPCalculator):
     ) -> int:
         if current_round < self.min_round:
             return 0
-        from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+        from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
         from wargame_rl.wargame.envs.env_components.distance_cache import (
             compute_distances,
             objective_ownership_from_norms_offset,

@@ -13,15 +13,15 @@ import numpy as np
 import pytest
 
 from tests.per_model_seats import small_config
-from wargame_rl.wargame.envs.domain.activation import (
+from wargame_rl.wargame.envs.domain.kernel.value_objects import position
+from wargame_rl.wargame.envs.domain.melee.consolidate import ConsolidationMode
+from wargame_rl.wargame.envs.domain.sequencing.activation import (
     CHARGE_TARGET_DECLINE,
     ChargeDeclaration,
-    ConsolidationMode,
     MoveDeclaration,
     ShootDeclaration,
     ShortMoveDeclaration,
 )
-from wargame_rl.wargame.envs.domain.value_objects import position
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION, MoveLadder
 from wargame_rl.wargame.envs.per_model import (
     DecisionPoint,

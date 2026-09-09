@@ -23,8 +23,8 @@ from wargame_rl.wargame.envs.baseline.policy import (
     step_toward_objective,
     steps_toward_objective,
 )
-from wargame_rl.wargame.envs.domain.entities import WargameObjective
-from wargame_rl.wargame.envs.domain.value_objects import position
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameObjective
+from wargame_rl.wargame.envs.domain.kernel.value_objects import position
 from wargame_rl.wargame.envs.types.config import (
     ModelConfig,
     OpponentPolicyConfig,

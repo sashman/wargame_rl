@@ -16,7 +16,7 @@ from typing import Any, Literal
 import numpy as np
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from wargame_rl.wargame.envs.domain.activation import CHARGE_TARGET_DECLINE
+from wargame_rl.wargame.envs.domain.sequencing.activation import CHARGE_TARGET_DECLINE
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
 FACADE_TAG = "per_model"

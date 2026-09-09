@@ -12,7 +12,7 @@ from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.types import WargameEnvAction
 
 if TYPE_CHECKING:
-    from wargame_rl.wargame.envs.domain.entities import WargameModel
+    from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel
     from wargame_rl.wargame.envs.wargame import WargameEnv
 
 

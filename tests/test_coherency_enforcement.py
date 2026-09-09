@@ -10,13 +10,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from wargame_rl.wargame.envs.domain.coherency import evaluate_coherency
-from wargame_rl.wargame.envs.domain.coherency_enforcement import (
+from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel
+from wargame_rl.wargame.envs.domain.kernel.value_objects import position
+from wargame_rl.wargame.envs.domain.movement.coherency import evaluate_coherency
+from wargame_rl.wargame.envs.domain.movement.coherency_enforcement import (
     CoherencyEnforcement,
     enforce_after_move,
 )
-from wargame_rl.wargame.envs.domain.entities import WargameModel
-from wargame_rl.wargame.envs.domain.value_objects import position
 
 NEAREST = 2.0
 FURTHEST = 9.0

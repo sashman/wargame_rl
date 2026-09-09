@@ -45,7 +45,7 @@ import numpy as np
 
 from scripts.measure_maps import config_for_map, load_maps
 from scripts.scenario_overrides import describe, load_env_config, parse_overrides
-from wargame_rl.wargame.envs.domain.entities import alive_mask_for
+from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.common.factory import create_environment
