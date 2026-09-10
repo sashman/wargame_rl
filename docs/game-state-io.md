@@ -263,7 +263,11 @@ class RewardSnapshot(BaseModel):
 
 ```python
 class StateExporter(Protocol):
-    def on_reset(self, snapshot: GameStateSnapshot, provenance: EpisodeProvenance | None = None) -> None: ...
+    def on_reset(
+        self,
+        snapshot: GameStateSnapshot,
+        provenance: EpisodeProvenance | None = None,
+    ) -> None: ...
     def on_step(self, snapshot: GameStateSnapshot) -> None: ...
 ```
 
