@@ -22,25 +22,17 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 
-import numpy as np
 import typer
 from loguru import logger
 from pydantic_yaml import parse_yaml_file_as
 
-from wargame_rl.wargame.envs.baseline.policy import BaselinePolicy
-from wargame_rl.wargame.envs.baseline.registry import (
-    build_baseline_policy,
-    get_registry,
-)
+from wargame_rl.wargame.envs.baseline.registry import get_registry
 from wargame_rl.wargame.envs.per_model import (
-    DecisionPoint,
     PerModelAction,
     PerModelEnv,
     PerModelObservation,
     StepKind,
 )
-from wargame_rl.wargame.envs.per_model.random_seat import random_legal_action
-from wargame_rl.wargame.envs.per_model.scripted import ScriptedSeat
 from wargame_rl.wargame.envs.renders.human import QuitRequested
 from wargame_rl.wargame.envs.renders.v2.control import THREAT_SMOOTHING, THREAT_SPACING
 from wargame_rl.wargame.envs.renders.v2.decision import highlight_from
@@ -53,66 +45,25 @@ from wargame_rl.wargame.envs.renders.v2.presenters.per_model import (
     PerModelPresenter,
     PerModelRecorder,
 )
+from wargame_rl.wargame.envs.state import EventLogExporter, JsonMatchCodec
 from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.selectors import (
+    RANDOM_POLICY,
+    SET_NETWORK_POLICY,
+    build_per_model_chooser,
+)
 
 app = typer.Typer(add_completion=False)
 
 Chooser = Callable[[PerModelObservation], PerModelAction]
 
-# The set network plays here too, with fresh weights: not a skill, the whole
-# pipeline (tokens, network, decode) seen playing legally.
-SET_NETWORK_POLICY = "set_network"
-
 
 def build_chooser(env: PerModelEnv, policy: str, seed: int) -> Chooser:
-    """A scripted baseline through the adapter, the random legal seat, or the
-    set network at fresh weights."""
-    if policy == "random":
-        rng = np.random.default_rng(seed)
-        return lambda observation: random_legal_action(observation.decision, rng)
-    if policy == SET_NETWORK_POLICY:
-        return _set_network_chooser(env, seed)
-    if policy.endswith(".pt"):
-        return _checkpoint_chooser(env, policy, seed)
-    scripted = build_baseline_policy(policy)
-    shoots = type(scripted).select_shooting is not BaselinePolicy.select_shooting
-    planner = ScriptedSeat(scripted, shoots=shoots)
-    env.set_player_planner(planner)
-
-    def choose(observation: PerModelObservation) -> PerModelAction:
-        point: DecisionPoint = observation.decision
-        if point.kind is StepKind.close_turn:
-            return PerModelAction.close_turn()
-        return planner.choose(point, env.player_seat)
-
-    return choose
-
-
-def _set_network_chooser(env: PerModelEnv, seed: int) -> Chooser:
-    # Imported here so scripted and random play never load torch.
-    import torch
-
-    from wargame_rl.wargame.model.per_model import SetAgent, SetNetwork
-
-    torch.manual_seed(seed)
-    agent = SetAgent(SetNetwork.from_env(env))
-    generator = torch.Generator().manual_seed(seed)
-    return lambda observation: agent.act(env, observation, generator=generator).action
-
-
-def _checkpoint_chooser(env: PerModelEnv, path: str, seed: int) -> Chooser:
-    """A trained set network, greedy: the eyeball rung for a checkpoint."""
-    import torch
-
-    from wargame_rl.wargame.model.per_model import SetAgent, load_checkpoint
-
-    handler = env.player_action_handler
-    advance = handler.advance_slice
-    expected = 1 + handler.movement_slice.size + (advance.size if advance else 0)
-    loaded = load_checkpoint(Path(path), expected_n_displacements=expected)
-    torch.manual_seed(seed)
-    agent = SetAgent(loaded.network, greedy=True)
-    return lambda observation: agent.act(env, observation).action
+    """A scripted baseline through the adapter, the random legal seat, the set
+    network at fresh weights, or a `.pt` played greedily -- resolved by
+    `wargame_rl.wargame.selectors`, the one resolver for both facades."""
+    choose = build_per_model_chooser(policy, [env], seed=seed).choose
+    return lambda observation: choose([env], [observation])[0]
 
 
 def describe(action: PerModelAction, observation: PerModelObservation) -> str:
@@ -203,12 +154,16 @@ def play(
     threat_smoothing: int = typer.Option(THREAT_SMOOTHING),
     episodes: int = typer.Option(0, help="Episodes to play; 0 plays until you quit."),
     seed: int = typer.Option(700000, help="Seed of the first episode."),
+    events: str = typer.Option(
+        "",
+        help="Also write the LAST episode's event log here, at the `--cadence` given.",
+    ),
     fps: int = typer.Option(4, help="Frames per second."),
     backend: str = typer.Option("pillow", help="Drawing backend."),
 ) -> None:
     """Play episodes in a window until Esc, or record them to a file."""
     if (
-        policy not in ("random", SET_NETWORK_POLICY)
+        policy not in (RANDOM_POLICY, SET_NETWORK_POLICY)
         and not policy.endswith(".pt")
         and policy not in get_registry()
     ):
@@ -237,7 +192,13 @@ def play(
         presenter = PerModelPresenter(
             build_backend(backend), resolve_theme(theme), options
         )
-    env = PerModelEnv(config)
+    exporter = EventLogExporter() if events else None
+    env = PerModelEnv(
+        config,
+        state_exporters=[exporter] if exporter is not None else None,
+        record_cadence="decision" if cadence == "decision" else "phase",
+    )
+    env.driver_label = policy
     env.metadata = {**env.metadata, "render_fps": fps}
     presenter.run_label = f"{policy} · {env_config_path.split('/')[-1]} · per-model"
     chooser = build_chooser(env, policy, seed)
@@ -259,6 +220,10 @@ def play(
         if isinstance(presenter, PerModelRecorder) and presenter.frames:
             presenter.export_mp4(out, fps=fps)
             logger.info(f"Wrote {len(presenter.frames)} frames to {out}.")
+        if exporter is not None and exporter.log.events:
+            Path(events).parent.mkdir(parents=True, exist_ok=True)
+            Path(events).write_bytes(JsonMatchCodec().encode(exporter.log))
+            logger.info(f"Wrote the last episode's event log to {events}.")
         presenter.close()
 
 

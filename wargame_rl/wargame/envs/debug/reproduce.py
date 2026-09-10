@@ -26,6 +26,7 @@ from pathlib import Path
 
 from wargame_rl.wargame.envs.state.codecs import JsonMatchCodec
 from wargame_rl.wargame.envs.state.event_log import EventLog
+from wargame_rl.wargame.envs.state.provenance import PHASE_FACADE_TAG, facade_of
 from wargame_rl.wargame.envs.state.snapshot import EpisodeProvenance
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
@@ -75,6 +76,13 @@ def provenance_of(log: EventLog, path: str | Path) -> EpisodeProvenance:
             f"{path} carries no provenance. It was recorded before the inputs "
             "were written down, so the episode cannot be recreated from it — "
             "re-record it, or supply the config and seed by hand."
+        )
+    facade = facade_of(log.provenance)
+    if facade != PHASE_FACADE_TAG:
+        raise ValueError(
+            f"{path} was recorded by the {facade!r} facade; debug.py can only "
+            "step the phase facade (hand-stepping the per-model one is its own "
+            "build)."
         )
     return log.provenance
 

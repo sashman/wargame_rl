@@ -1,4 +1,11 @@
-"""Turn a policy name or a checkpoint path into an `ActionSelector`.
+"""Turn a policy name or a checkpoint path into something that plays.
+
+Two facades, two contracts, one resolver: `build_action_selector` gives the
+phase facade an `ActionSelector` (one action per model per phase) for a
+baseline name or a `.ckpt`; `build_per_model_chooser` gives the per-model
+facade a batch chooser (one decision per env per call) for a baseline name,
+`random`, `set_network` or a `.pt`. Each refuses the other's checkpoint by
+name -- a `.pt` used to fall into the Lightning loader and die there.
 
 Every tool here names a policy the same way: a baseline registry key, or a path
 to a `.ckpt`. Four near-duplicate resolvers had grown to do that -- in
@@ -23,6 +30,7 @@ undo by accident and nothing else in the suite would notice, so
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -32,12 +40,21 @@ from wargame_rl.wargame.envs.baseline.registry import (
     build_baseline_policy,
     get_registry,
 )
+from wargame_rl.wargame.envs.per_model.evaluate import random_chooser, scripted_chooser
+from wargame_rl.wargame.envs.per_model.types import BatchChooser
 
 if TYPE_CHECKING:
+    from wargame_rl.wargame.envs.per_model.env import PerModelEnv
     from wargame_rl.wargame.envs.wargame import WargameEnv
     from wargame_rl.wargame.model.net import TransformerNetwork
 
 CHECKPOINT_SUFFIX = ".ckpt"
+PER_MODEL_CHECKPOINT_SUFFIX = ".pt"
+# The two policies the per-model facade offers that are not scripts: the
+# random legal seat, and the set network at fresh weights (the whole pipeline
+# seen playing legally, not a skill).
+RANDOM_POLICY = "random"
+SET_NETWORK_POLICY = "set_network"
 
 # `<scenario>-<YYYY-MM-DD-HH-MM-SS>[-<suffix>]`. The scenario part is identical
 # across the arms of a screen, so the run suffix is the only part that says
@@ -64,6 +81,11 @@ def is_checkpoint(spec: str) -> bool:
     need different fixes.
     """
     return Path(spec).suffix == CHECKPOINT_SUFFIX
+
+
+def is_per_model_checkpoint(spec: str) -> bool:
+    """True when `spec` names a per-model checkpoint (`model/per_model/checkpoint.py`)."""
+    return Path(spec).suffix == PER_MODEL_CHECKPOINT_SUFFIX
 
 
 def label_for(checkpoint_path: str) -> str:
@@ -103,6 +125,12 @@ def build_action_selector(
     already allocates globally, and the redirect on it measured **exactly
     zero** (docs/melee-teaching-goal.md §29).
     """
+    if is_per_model_checkpoint(spec):
+        raise ValueError(
+            f"{spec!r} is a per-model checkpoint; it plays the per-model facade, "
+            "and only `measure-checkpoint`, `measure-maps` and `measure-paired` "
+            "score one (through `wargame_rl.wargame.scoring`)"
+        )
     if is_checkpoint(spec) or Path(spec).exists():
         return _resolve_checkpoint(
             spec,
@@ -199,3 +227,136 @@ def _resolve_checkpoint(
         source=spec,
         network=policy_net,
     )
+
+
+# --------------------------------------------------------------- per-model
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedChooser:
+    """A playable per-model policy, plus enough provenance to label a row."""
+
+    choose: BatchChooser
+    label: str
+    kind: Literal["baseline", "random", "set_network", "checkpoint"]
+    source: str | None
+
+
+def build_per_model_chooser(
+    spec: str, envs: Sequence[PerModelEnv], *, seed: int = 0
+) -> ResolvedChooser:
+    """Resolve `spec` into a batch chooser seated on every env in `envs`.
+
+    Takes the envs rather than one env because a scripted seat is installed
+    per env, before any reset (a script plans its command phase inside
+    `reset`), and a checkpoint's head is sized from the env's action encoding.
+    `seed` drives the random seat and the fresh-weight network only.
+    """
+    if not envs:
+        raise ValueError("build_per_model_chooser needs at least one env")
+    if is_checkpoint(spec):
+        raise ValueError(
+            f"{spec!r} is a whole-phase checkpoint; the per-model facade cannot "
+            "play it (use `build_action_selector`)"
+        )
+    if spec == RANDOM_POLICY:
+        return ResolvedChooser(random_chooser(seed), spec, "random", None)
+    if spec == SET_NETWORK_POLICY:
+        return ResolvedChooser(
+            _fresh_network_chooser(envs, seed), spec, "set_network", None
+        )
+    if is_per_model_checkpoint(spec) or Path(spec).exists():
+        if not Path(spec).exists():
+            raise ValueError(f"no per-model checkpoint at {spec!r}")
+        return ResolvedChooser(
+            _per_model_checkpoint_chooser(spec, envs),
+            label_for(spec),
+            "checkpoint",
+            spec,
+        )
+    registry = get_registry()
+    if spec not in registry:
+        raise ValueError(
+            f"'{spec}' is neither a per-model checkpoint path nor a baseline. "
+            f"Known baselines: {', '.join(sorted(registry))}, plus "
+            f"`{RANDOM_POLICY}` and `{SET_NETWORK_POLICY}`"
+        )
+    return ResolvedChooser(
+        scripted_chooser(build_baseline_policy(spec), envs), spec, "baseline", None
+    )
+
+
+def _expected_displacements(env: PerModelEnv) -> int:
+    """The displacement head's width this env's action encoding needs."""
+    handler = env.player_action_handler
+    advance = handler.advance_slice
+    return 1 + handler.movement_slice.size + (advance.size if advance else 0)
+
+
+def _per_model_checkpoint_chooser(
+    spec: str, envs: Sequence[PerModelEnv]
+) -> BatchChooser:
+    """A trained set network, greedy: the policy the checkpoint would play."""
+    # Deferred deliberately -- see the module docstring.
+    import torch
+
+    from wargame_rl.wargame.envs.per_model.types import (
+        PerModelAction,
+        PerModelObservation,
+    )
+    from wargame_rl.wargame.model.per_model import SetAgent, load_checkpoint
+
+    loaded = load_checkpoint(
+        Path(spec), expected_n_displacements=_expected_displacements(envs[0])
+    )
+    loaded.network.eval()
+    agent = SetAgent(loaded.network, greedy=True)
+
+    def choose(
+        envs_: Sequence[PerModelEnv], observations: Sequence[PerModelObservation]
+    ) -> list[PerModelAction]:
+        with torch.no_grad():
+            return [d.action for d in agent.act_batch(envs_, observations)]
+
+    return choose
+
+
+def _fresh_network_chooser(envs: Sequence[PerModelEnv], seed: int) -> BatchChooser:
+    """The set network at fresh weights, sampled: the pipeline, not a skill."""
+    import torch
+
+    from wargame_rl.wargame.envs.per_model.types import (
+        PerModelAction,
+        PerModelObservation,
+    )
+    from wargame_rl.wargame.model.per_model import SetAgent, SetNetwork
+
+    torch.manual_seed(seed)
+    agent = SetAgent(SetNetwork.from_env(envs[0]))
+    generator = torch.Generator().manual_seed(seed)
+
+    def choose(
+        envs_: Sequence[PerModelEnv], observations: Sequence[PerModelObservation]
+    ) -> list[PerModelAction]:
+        with torch.no_grad():
+            return [
+                d.action
+                for d in agent.act_batch(envs_, observations, generator=generator)
+            ]
+
+    return choose
+
+
+__all__ = [
+    "CHECKPOINT_SUFFIX",
+    "PER_MODEL_CHECKPOINT_SUFFIX",
+    "RANDOM_POLICY",
+    "SET_NETWORK_POLICY",
+    "ResolvedChooser",
+    "ResolvedSelector",
+    "build_action_selector",
+    "build_per_model_chooser",
+    "is_checkpoint",
+    "is_per_model_checkpoint",
+    "label_for",
+]

@@ -9,6 +9,10 @@ changes definition with the reward phase, and it is a per-epoch binomial over
 Pass `record` as a fourth argument to also write an event log to `recordings/`,
 which `just analyze-compare <agent> <baseline>` reads.
 
+Takes a `.ckpt` (the phase facade, decoded as asked) or a `.pt` (the per-model
+facade, which runs no decode -- `decode_topk` must stay 1). Either way the row
+comes out of the same `EvalResult`, so the two sit on one table.
+
 Usage: just measure-checkpoint <checkpoint> <env_config> [n_episodes] [record]
        [decode_topk]
 """
@@ -22,14 +26,16 @@ from scripts.scenario_overrides import describe, load_env_config, parse_override
 from wargame_rl.wargame.envs.baseline.evaluate import (
     ActionSelector,
     BaselineResult,
-    evaluate_selector,
     format_optional_metric,
-    record_episode,
 )
 from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.net import TransformerNetwork
-from wargame_rl.wargame.selectors import build_action_selector, label_for
+from wargame_rl.wargame.scoring import evaluate_spec, record_spec
+from wargame_rl.wargame.selectors import (
+    build_action_selector,
+    is_per_model_checkpoint,
+    label_for,
+)
 
 # Disjoint from ROLLOUT_SEED_BASE (0), the training eval base (500_000) and the
 # baseline base (10_000), so a checkpoint is scored on layouts it never trained
@@ -90,12 +96,15 @@ def main() -> None:
     env_config = load_env_config(config_path, **overrides)
     env_config.render_mode = None
 
-    env = create_environment(env_config=env_config)
-    select, _policy_net = build_selector(checkpoint_path, env, decode_topk)
     seeds = [HELDOUT_SEED_BASE + i for i in range(n_episodes)]
 
     name = label_for(checkpoint_path)
-    print(f"\n{checkpoint_path}")
+    facade = (
+        "per-model facade, no decode"
+        if is_per_model_checkpoint(checkpoint_path)
+        else f"phase facade, decode_topk={decode_topk}"
+    )
+    print(f"\n{checkpoint_path}  ({facade})")
     print(
         f"{config_path}{describe(overrides)}  ({n_episodes} episodes, "
         f"seeds {seeds[0]}-{seeds[-1]})\n"
@@ -109,12 +118,16 @@ def main() -> None:
     print(header)
     print("-" * len(header))
 
-    result = evaluate_selector(select, env, seeds, name)
+    result = evaluate_spec(
+        checkpoint_path, env_config, seeds, name, decode_topk=decode_topk
+    )
     print(format_result(result))
 
     if record:
         output = Path("recordings") / f"agent_{name}-k{decode_topk}.jsonl"
-        written = record_episode(select, env_config, seeds[0], output)
+        written = record_spec(
+            checkpoint_path, env_config, seeds[0], output, decode_topk=decode_topk
+        )
         print(f"\nwrote {written}")
 
     print()

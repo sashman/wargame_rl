@@ -34,7 +34,8 @@ def test_a_short_run_writes_a_run_directory_and_a_playable_checkpoint(
         num_rollout_envs=2,
         eval_every_rounds=2,
         checkpoint_every_rounds=2,
-        n_eval_episodes=2,
+        n_eval_episodes=3,
+        eval_wave_size=2,
         n_layers=2,
         embedding_size=32,
         seed=1,
@@ -56,6 +57,11 @@ def test_a_short_run_writes_a_run_directory_and_a_playable_checkpoint(
     updates = [row for row in rows if "loss/train_loss" in row]
     assert [row["rounds"] for row in updates] == [2, 4]
     assert all("eval/vp_margin" in row for row in updates)
+    # The facade's unit is the decision; the phase facade's `mean_episode_steps`
+    # key would read a decision count as a phase count.
+    assert all("mean_episode_decisions" in row for row in updates)
+    assert all("mean_episode_steps" not in row for row in updates)
+    assert all("eval/coherency_rate" in row for row in updates)
     assert all(row["train/closes"] >= 2 for row in updates)
 
     loaded = load_checkpoint(run_dir / "last.pt")

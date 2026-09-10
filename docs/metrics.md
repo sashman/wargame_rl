@@ -25,8 +25,13 @@ path**: one row per update carrying `rounds`, `epoch_equivalent = rounds / 1024`
 `rounds = 0`. Same names, same definitions, one step counter, mirrored to
 `<run>/metrics.jsonl`. ⚠ Two readings differ there: `reward/components/<term>` is per
 **round**, not per step (under the re-timed reward a per-step mean would depend on the
-army size), and `eval/coherency_rate` is sampled at each turn close rather than at the
-movement boundary (provisional; #287 reconciles it). See
+army size), and the episode length is `mean_episode_decisions`, never
+`mean_episode_steps` — the facade's unit is the decision, and logging a decision count
+under the phase facade's key was a same-key-different-unit trap. `eval/coherency_rate`
+and `eval/models_out_of_coherency` are the phase facade's tracker on the phase facade's
+grid (sampled at the movement boundary, intent preferred), so the column is comparable
+across facades; `eval/at_objectives` is logged too. Columns this facade does not
+measure (`exposure_rate`, `firepower_ratio`) are omitted, not zeroed. See
 `wargame_rl/wargame/model/CLAUDE.md` § PPO over decision steps.
 
 ```
@@ -85,6 +90,7 @@ differently-seeded measurement are not.
 |---|---|---|---|
 | `success_rate` | `lightning_base.py:331` | **0–100** | Percent of eval episodes where the current phase's `success_criteria` held on the final step. See trap Ⓐ. |
 | `mean_episode_steps` | `lightning_base.py:281` | steps | Mean eval episode length. Compare against `max_turns`; equality means episodes never terminate early. |
+| `mean_episode_decisions` | `train_per_model.py` | decisions | The per-model driver's episode length: decision steps (`open`, `act`, `target`), closing steps excluded. **Not comparable to `mean_episode_steps`** — a 25v25 round is two phase steps and ~16–23 decisions. |
 | `reward/mean_episode_reward` | `lightning_base.py:276` | reward units | Mean total (undiscounted, summed) reward per eval episode. This is the checkpoint selection metric (`checkpoint_callback.py:28`). |
 | `reward/max_episode_reward` | `lightning_base.py:286` | reward units | Best single eval episode. Gap vs. mean indicates variance across seeds/placements. |
 | `reward/min_episode_reward` | `lightning_base.py:291` | reward units | Worst single eval episode. Persistently negative alongside a healthy mean signals a failure mode not captured by `success_rate`. |
@@ -510,6 +516,30 @@ consequences:
   comparison could only bound the effect as small rather than show it was zero.
 
 Run at least two seeds per arm before reading a difference smaller than ~10pp.
+
+### Scoring a per-model checkpoint (`*.pt`)
+
+A per-model checkpoint plays the per-model facade, so it cannot go through
+`evaluate_selector`. `wargame_rl/wargame/scoring.py::evaluate_spec` is the one facade
+branch: a `.pt` runs through `envs/per_model/evaluate.py` in waves and everything else
+runs through the phase facade exactly as before; both produce the same `EvalResult`
+through the same end-of-episode readouts (`envs/evaluation/`), so a `.pt` row and a
+script row sit on one table and pair per seed. The per-model facade runs **no
+decode**, so `decode_topk` is refused with a `.pt` rather than ignored.
+
+| recipe | `.pt` | why |
+|---|---|---|
+| `measure-checkpoint`, `measure-maps`, `measure-paired` | **accepted** | through `evaluate_spec`; `record` writes a phase-cadence event log |
+| `measure-elo`, `measure-seat-parity` | **refused by name** | a rated entrant plays BOTH seats, and the per-model facade cannot take the opponent seat (a per-model opponent policy is #274) |
+| `measure-baselines`, `measure-noise-floor` | n/a | registry names only; the bar is the phase facade's |
+| every other `measure-*` | **not applicable**, refused by the phase resolver | each runs its own loop over whole-phase internals (the phase read before a step, a whole-army action vector, a monkeypatched private method) |
+| `measure-throughput-per-model` | — | the per-model facade's own instrument, budgeted in rounds |
+
+⚠ `max_turns` audit (#287): 27 readers, none means rounds; the per-model env
+reproduces the phase clock exactly (`current_turn` advances once per player phase
+left). The only consumers that equate `max_turns` with "calls to `step()`" are the
+Lightning batched eval and its `steps < max_turns` fallback, neither of which the
+per-model facade uses.
 
 ### Pairing beats sample size — `just measure-paired`
 

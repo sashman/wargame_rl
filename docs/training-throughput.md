@@ -269,27 +269,35 @@ bandwidth-bound, not launch-bound.
 ## The per-model step (stage 3 of #283)
 
 The per-model facade steps one DECISION at a time, so its unit of work is a
-decision, not a phase, and `train_per_model.py` budgets in rounds. Measured
-2026-09-10 on `configs/golden/25v25_maps_two_mode.yaml`, one episode at fresh
-weights (4 x 128 x 8 trunk, sampled), CPU at two threads, per decision:
+decision, not a phase, and `train_per_model.py` budgets in rounds. The
+instrument is `just measure-throughput-per-model <config> [rounds]`
+(`scripts/measure_throughput_per_model.py`, #287), budgeted in ROUNDS and
+printing two rows: the random legal seat (the env's own floor, no tokens and
+no forward) and the set network at fresh weights, sampled (the training
+regime). Measured 2026-09-10 on `configs/golden/25v25_maps_two_mode.yaml`,
+20 rounds, 4 x 128 x 8 trunk, CPU at two threads, batch 1:
 
-| section | ms / decision |
-|---|---|
-| tokens + forward + decode (`SetAgent.act`) | 3.32 |
-| `PerModelEnv.step` | 0.53 |
-| re-timed reward (`PerStepReward.on_step`) | 0.44 |
-| **total** | **4.29** (78 ms / round, 363 decisions over 20 rounds) |
+| row | ms / decision | decisions / round | ms / round |
+|---|---|---|---|
+| random legal seat | 0.905 | 23.1 | 20.9 |
+| set network, sampled | **4.653** | 15.6 | **72.4** |
 
-Stage 2 measured 3.56 ms / decision with no reward (85 ms / round over 478
-decisions -- a sampled policy that skips more takes fewer decisions per
-round, which is why the per-round figure fell while the per-decision one
-rose). The reward is 10% of a decision; the observation build and the
-batch-1 forward are the rest, and the lockstep rollout amortises the forward
-over `num_rollout_envs` envs. The whole-phase step is ~10 ms / round, so a
-round of per-model experience costs ~8x more wall-clock at batch 1 --
-against the design's 15-20x naive prediction -- for ~18x more training
+The network row per decision: tokens 1.84 (39.5%), forward 1.38 (29.6%),
+heads 0.11, the draw the remainder of `act_batch` 3.50; `PerModelEnv.step`
+0.63; the re-timed reward 0.52, of which `closest_objective_v2` is 0.22. On
+the env-only row `env.step` and the reward are ~0.45 ms each, so the reward
+is half of what the env costs without a network.
+
+The stage-3 hand measurement (4.29 ms / decision, 78 ms / round) agrees with
+the tool's within its noise; a sampled policy that skips more takes fewer
+decisions per round, which is why the random seat's per-decision figure is
+lower and its per-round count higher. The lockstep rollout amortises the
+forward over `num_rollout_envs` envs. The whole-phase step is ~10 ms / round,
+so a round of per-model experience costs ~7x more wall-clock at batch 1 --
+against the design's 15-20x naive prediction -- for ~16x more training
 samples. Whether the samples are worth more per round is #288's question.
-Throughput mitigation 2 (the incremental observation) is #287's.
+Throughput mitigation 2 (the incremental observation) is still open: the
+token build is the largest single section.
 
 ## What is left, ranked
 

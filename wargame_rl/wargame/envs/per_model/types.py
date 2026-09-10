@@ -9,19 +9,29 @@ ask the env anything.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from wargame_rl.wargame.envs.domain.sequencing.activation import CHARGE_TARGET_DECLINE
+from wargame_rl.wargame.envs.state.provenance import (
+    PER_MODEL_FACADE_TAG,
+    PHASE_FACADE_TAG,
+    Cadence,
+    PerModelProvenance,
+    facade_of,
+)
 from wargame_rl.wargame.envs.types.game_timing import BattlePhase
 
-FACADE_TAG = "per_model"
+if TYPE_CHECKING:
+    from wargame_rl.wargame.envs.per_model.env import PerModelEnv
+
+FACADE_TAG = PER_MODEL_FACADE_TAG
 # The phase facade's artefacts carry no tag; that is what they are read as.
-PHASE_FACADE_TAG = "phase"
 
 # Declaration masks are one width for every phase, so the observation's shape
 # does not depend on which phase it is: the movement phase's four values.
@@ -180,6 +190,18 @@ class PerModelObservation:
     opponent_vp_delta: int
 
 
+# The other side of the decision contract: whatever drives a seat. A chooser
+# answers one env's pending decision; a batch chooser answers one decision per
+# env in one call, which is what a network seat does for a whole wave and
+# what a scripted or random seat does env by env. The per-model counterpart
+# of the phase facade's `ActionSelector`.
+Chooser: TypeAlias = "Callable[[PerModelEnv, PerModelObservation], PerModelAction]"
+BatchChooser: TypeAlias = (
+    "Callable[[Sequence[PerModelEnv], Sequence[PerModelObservation]], "
+    "list[PerModelAction]]"
+)
+
+
 @dataclass(frozen=True)
 class StepEffect:
     """What one `step` did to the player seat, for a reward paid per decision.
@@ -200,26 +222,6 @@ class StepEffect:
     @classmethod
     def none(cls) -> StepEffect:
         return cls(actor_set=(), kills_by_model={})
-
-
-class PerModelProvenance(BaseModel):
-    """How to boot this episode again, stamped with the facade that played it."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    facade: Literal["per_model"] = "per_model"
-    config: dict[str, Any]
-    rng_state: dict[str, Any]
-    combat_seed: int
-    seed: int | None = None
-    driver: str | None = None
-
-
-def facade_of(provenance: dict[str, Any] | BaseModel) -> str:
-    """Which facade an artefact belongs to; an untagged one is the phase facade's."""
-    data = provenance.model_dump() if isinstance(provenance, BaseModel) else provenance
-    tag = data.get("facade")
-    return PHASE_FACADE_TAG if tag is None else str(tag)
 
 
 def require_per_model(provenance: dict[str, Any] | BaseModel) -> None:
@@ -251,3 +253,23 @@ class FacadeDivergence:
     battle_round: int | None
     phase: BattlePhase | None
     rule: str
+
+
+__all__ = [
+    "BatchChooser",
+    "CHARGE_TARGET_DECLINE",
+    "Chooser",
+    "Cadence",
+    "DecisionPoint",
+    "FACADE_TAG",
+    "FacadeDivergence",
+    "PER_MODEL_FACADE_TAG",
+    "PHASE_FACADE_TAG",
+    "PerModelAction",
+    "PerModelObservation",
+    "PerModelProvenance",
+    "StepEffect",
+    "StepKind",
+    "facade_of",
+    "require_per_model",
+]

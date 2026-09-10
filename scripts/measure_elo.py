@@ -40,7 +40,7 @@ from wargame_rl.wargame.rating.arena import play_pairing, require_symmetric
 from wargame_rl.wargame.rating.entrant import Entrant
 from wargame_rl.wargame.rating.ledger import append, fingerprint, path_for
 from wargame_rl.wargame.rating.schedule import pairings
-from wargame_rl.wargame.selectors import build_action_selector
+from wargame_rl.wargame.selectors import build_action_selector, is_per_model_checkpoint
 
 DEFAULT_ENTRANTS = ("random", "squad_march", "squad_march_shoot")
 
@@ -52,6 +52,14 @@ def _entrant_for(spec: str, config: WargameEnvConfig, decode_topk: int) -> Entra
     which also fails early and loudly on a bad path or an unknown name rather
     than in the middle of a long schedule.
     """
+    if is_per_model_checkpoint(spec):
+        raise SystemExit(
+            f"{spec} is a per-model checkpoint. A rated entrant plays BOTH seats "
+            "and the per-model facade cannot take the opponent seat -- its "
+            "opponent is a scripted seat, and a per-model opponent policy is "
+            "the self-play question (#274). Score it with measure-checkpoint, "
+            "measure-maps or measure-paired instead."
+        )
     probe = WargameEnv(config=config.model_copy(deep=True), renderer=None)
     try:
         resolved = build_action_selector(spec, probe, decode_topk)

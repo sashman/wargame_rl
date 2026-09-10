@@ -12,9 +12,17 @@ from wargame_rl.wargame.envs.per_model.env import (
     PerModelEnv,
     SettledWindow,
 )
+from wargame_rl.wargame.envs.per_model.evaluate import (
+    evaluate_per_model_chooser,
+    random_chooser,
+    scripted_chooser,
+)
+from wargame_rl.wargame.envs.per_model.recording import ChooserFactory, record_episode
 from wargame_rl.wargame.envs.per_model.scripted import ScriptedSeat
 from wargame_rl.wargame.envs.per_model.types import (
     FACADE_TAG,
+    BatchChooser,
+    Chooser,
     DecisionPoint,
     FacadeDivergence,
     PerModelAction,
@@ -28,6 +36,9 @@ from wargame_rl.wargame.envs.per_model.types import (
 
 __all__ = [
     "FACADE_TAG",
+    "BatchChooser",
+    "Chooser",
+    "ChooserFactory",
     "DecisionPoint",
     "EpisodeOver",
     "PerModelAction",
@@ -40,6 +51,10 @@ __all__ = [
     "SettledWindow",
     "StepEffect",
     "StepKind",
+    "evaluate_per_model_chooser",
     "facade_of",
+    "random_chooser",
+    "record_episode",
     "require_per_model",
+    "scripted_chooser",
 ]

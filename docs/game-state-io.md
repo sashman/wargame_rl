@@ -47,9 +47,14 @@ wargame_rl/wargame/envs/state/
 ### Recording
 
 ```
-WargameEnv.reset() ──→ to_snapshot() ──→ exporter.on_reset(snapshot)
+WargameEnv.reset() ──→ to_snapshot() ──→ exporter.on_reset(snapshot, provenance)
                                                     │
 WargameEnv.step()  ──→ to_snapshot() ──→ exporter.on_step(snapshot)
+                                                    │
+PerModelEnv, record_cadence="phase"    (one per settled reward window,
+   ──→ to_snapshot() ──→ on_step         step = the phase counter: the same log)
+PerModelEnv, record_cadence="decision" (one per step(), step = episode_step,
+   ──→ to_snapshot() ──→ on_step         the decision on the snapshot; 2.8)
                                                     │
                                                     ▼
                                          EventLog (in memory)
@@ -97,6 +102,24 @@ A complete, serialisable Pydantic model of the game at one point in time. This i
 
 #### Schema
 
+**2.8 adds the decision, and both facades.** `decision: DecisionSnapshot | None`
+is set only by the per-model facade at `decision` cadence — the step kind, the
+model named, the flat action index an `act` chose, the phase, and the facade's
+two counters — and is `None` on every other snapshot, so a 2.7 log loads and a
+replayed snapshot still equals a live one on both facades. The header
+provenance says which facade wrote the log (`facade`) and at what `cadence`;
+`state/provenance.py` decodes it, and refuses an unknown tag by name rather
+than dropping it (which the lenient `EpisodeProvenance` silently did). At
+`phase` cadence the per-model facade's log is the phase facade's — every
+reader works unchanged; at `decision` cadence `replay`, `replay-summary`,
+`replay-render` accept it and `analyze` **refuses** it, because its per-step
+rates would be diluted by the decisions per phase. `debug-recording` refuses a
+per-model log until #325. 2.8 also fixes the delta codec, which had no
+`player_melee_results` / `opponent_melee_results` (#326) — a melee replay
+rebuilt from deltas carried the anchor's blows on every step —
+and `tests/test_event_stream.py` now pins, by name, that every dynamic
+snapshot field has a delta field.
+
 **2.7 adds melee.** `player_melee_results` / `opponent_melee_results` are separate
 lists rather than a flag on `CombatResultSnapshot`, because the renderer draws a
 *tracer* for a damaging shot and a *clash marker* for a damaging blow — melee
@@ -109,7 +132,7 @@ clashes rather than inventing them.
 
 ```python
 class GameStateSnapshot(BaseModel):
-    schema_version: str = "2.7"
+    schema_version: str = "2.8"
     step: int
     max_steps: int
     clock: ClockSnapshot
@@ -139,6 +162,7 @@ class GameStateSnapshot(BaseModel):
     opponent_combat_results: list[CombatResultSnapshot]
     player_melee_results: list[CombatResultSnapshot] = []  # 2.7: blows, not shots
     opponent_melee_results: list[CombatResultSnapshot] = []  # 2.7
+    decision: DecisionSnapshot | None = None  # 2.8: per-model facade, decision cadence
     reward: RewardSnapshot
     is_terminated: bool
     is_truncated: bool
@@ -239,11 +263,11 @@ class RewardSnapshot(BaseModel):
 
 ```python
 class StateExporter(Protocol):
-    def on_reset(self, snapshot: GameStateSnapshot) -> None: ...
+    def on_reset(self, snapshot: GameStateSnapshot, provenance: EpisodeProvenance | None = None) -> None: ...
     def on_step(self, snapshot: GameStateSnapshot) -> None: ...
 ```
 
-The env holds an optional list of exporters. When non-empty, `to_snapshot()` is called at the end of `reset()` and `step()`, and each exporter is notified. This is identical to how the renderer is wired — a parallel output sink.
+Both envs hold an optional list of exporters. On the phase facade `to_snapshot()` is called at the end of `reset()` and `step()`; on the per-model facade (`PerModelEnv(config, state_exporters=[...], record_cadence="phase" | "decision")`) the reset snapshot is taken once the clock first rests on the player's phase — after any opponent turn that went first, which is where the phase facade's reset leaves it — and a step snapshot at every settled reward window (`phase`) or every `step()` (`decision`). Zero cost when the list is empty. This is identical to how the renderer is wired — a parallel output sink.
 
 ### EventLog & Delta Encoding
 
@@ -351,6 +375,7 @@ The analysis output is available as:
 | Command | Purpose |
 |---------|---------|
 | `just record <config>` | Train 1 epoch with event recording, no wandb (quick E2E test) |
+| `just record-per-model-events <config> [policy] [cadence] [seed] [out]` | One episode of the **per-model facade** — a `.pt`, `random`, `set_network` or a baseline name through its scripted seat — to an event log at `phase` (the phase facade's schema; every reader works) or `decision` cadence (one snapshot per decision; `analyze` refuses it). `measure-checkpoint <ckpt.pt> ... record` writes the same at phase cadence; `play-per-model ... --events <file>` records what it draws |
 | `just record-sim <ckpt> <config> [n]` | Record N episodes from a trained checkpoint, no rendering |
 | `just replay <file>` | Narrate a recorded match step-by-step |
 | `just replay-summary <file>` | Match metadata overview |
@@ -389,7 +414,7 @@ uv run train.py --env-config-path config.yaml --record-events
 ### Adding a new exporter type
 
 1. Implement the `StateExporter` protocol (on_reset/on_step)
-2. Pass instances to `WargameEnv(state_exporters=[...])` or via `create_environment()`
+2. Pass instances to `WargameEnv(state_exporters=[...])` or via `create_environment()`, or to `PerModelEnv(state_exporters=[...], record_cadence=...)`
 
 Examples: streaming exporter (WebSocket), database writer, Wandb artifact logger.
 

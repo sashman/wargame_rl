@@ -31,7 +31,10 @@ from wargame_rl.wargame.envs.domain.melee.pile_in import (
     SELECTION_RANGE_INCHES,
     agent_move_is_legal,
 )
-from wargame_rl.wargame.envs.domain.movement.coherency import evaluate_coherency
+from wargame_rl.wargame.envs.domain.movement.coherency import (
+    coherency_counts,
+    evaluate_coherency,
+)
 from wargame_rl.wargame.envs.domain.movement.coherency_enforcement import (
     CoherencyEnforcement,
     enforce_after_move,
@@ -2428,7 +2431,7 @@ class ActionHandler:
             # 0.630 -- the metric was measuring the wrapper. Costs one extra
             # `evaluate_coherency` per movement phase, which is the same call
             # the tracker already makes once.
-            self.intended_coherency_last_move = _intent_counts(
+            self.intended_coherency_last_move = coherency_counts(
                 wargame_models, self._coherency_nearest, self._coherency_furthest
             )
             self.models_reverted_last_move = enforce_after_move(
@@ -2437,28 +2440,3 @@ class ActionHandler:
                 self._coherency_furthest,
                 self._coherency_mode,
             )
-
-
-def _intent_counts(
-    models: list[Any], nearest: float, furthest: float
-) -> tuple[int, int, int]:
-    """(units, units coherent, models out) for the move as the policy made it.
-
-    Evaluated on the moved-but-not-yet-corrected positions, so it reports what
-    the policy *chose* rather than what the referee left behind. Under
-    enforcement the two diverge completely -- a policy intending 0.630
-    coherency reads 1.000 once the revert has run.
-    """
-    alive = np.array([m.is_alive for m in models], dtype=bool)
-    if not alive.any():
-        return (0, 0, 0)
-    report = evaluate_coherency(
-        positions=np.array([m.location for m in models], dtype=float),
-        group_ids=np.array([m.group_id for m in models], dtype=np.intp),
-        alive_mask=alive,
-        base_radii=np.array([m.base_radius for m in models], dtype=float),
-        nearest_distance=nearest,
-        furthest_distance=furthest,
-    )
-    coherent = sum(1 for unit in report.units if unit.coherent)
-    return (len(report.units), coherent, report.n_models_out_of_coherency)

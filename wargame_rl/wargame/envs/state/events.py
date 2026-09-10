@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from wargame_rl.wargame.envs.state.snapshot import (
     ClockSnapshot,
     CombatResultSnapshot,
+    DecisionSnapshot,
     GameStateSnapshot,
     ModelSnapshot,
     ObjectiveSnapshot,
@@ -63,6 +64,13 @@ class StateDelta(BaseModel):
     player_action_descriptions: list[str] | None = None
     player_combat_results: list[CombatResultSnapshot] | None = None
     opponent_combat_results: list[CombatResultSnapshot] | None = None
+    # Added in 2.7 to the snapshot and NOT here until 2.8, so every delta
+    # dropped them and a replay rebuilt from deltas carried the anchor's melee
+    # lists on every step. `tests/test_event_stream.py` now pins that every
+    # dynamic snapshot field has a delta field, by name.
+    player_melee_results: list[CombatResultSnapshot] | None = None
+    opponent_melee_results: list[CombatResultSnapshot] | None = None
+    decision: DecisionSnapshot | None = None
     reward: RewardSnapshot | None = None
     is_terminated: bool | None = None
     is_truncated: bool | None = None
@@ -133,6 +141,12 @@ def compute_delta(
         delta.player_combat_results = current.player_combat_results
     if current.opponent_combat_results != previous.opponent_combat_results:
         delta.opponent_combat_results = current.opponent_combat_results
+    if current.player_melee_results != previous.player_melee_results:
+        delta.player_melee_results = current.player_melee_results
+    if current.opponent_melee_results != previous.opponent_melee_results:
+        delta.opponent_melee_results = current.opponent_melee_results
+    if current.decision != previous.decision:
+        delta.decision = current.decision
 
     if current.reward != previous.reward:
         delta.reward = current.reward
@@ -201,6 +215,12 @@ def apply_delta(
         updates["player_combat_results"] = delta.player_combat_results
     if delta.opponent_combat_results is not None:
         updates["opponent_combat_results"] = delta.opponent_combat_results
+    if delta.player_melee_results is not None:
+        updates["player_melee_results"] = delta.player_melee_results
+    if delta.opponent_melee_results is not None:
+        updates["opponent_melee_results"] = delta.opponent_melee_results
+    if delta.decision is not None:
+        updates["decision"] = delta.decision
     if delta.reward is not None:
         updates["reward"] = delta.reward
     if delta.is_terminated is not None:
@@ -276,10 +296,9 @@ def _compute_model_delta(
         changes["current_wounds"] = cur.current_wounds
     if cur.advanced_this_turn != prev.advanced_this_turn:
         changes["advanced_this_turn"] = cur.advanced_this_turn
-    # ⚠ Both added to `ModelSnapshot` in schema 2.7 and NOT to this codec, so
-    # every delta silently dropped them and a replay reconstructed from deltas
-    # carried the anchor's value forever -- a charge could never read True.
-    # The test that should have caught it asserted `flag in (True, False)`.
+    # Both were added to `ModelSnapshot` in schema 2.7 and not to this codec,
+    # so every delta silently dropped them. `tests/test_event_stream.py` now
+    # pins the codec's field coverage structurally, by name.
     if cur.charged_this_turn != prev.charged_this_turn:
         changes["charged_this_turn"] = cur.charged_this_turn
     if cur.fell_back_this_turn != prev.fell_back_this_turn:

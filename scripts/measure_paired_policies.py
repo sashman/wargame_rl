@@ -34,25 +34,10 @@ import sys
 import numpy as np
 
 from scripts.scenario_overrides import describe, load_env_config, parse_overrides
-from wargame_rl.wargame.envs.baseline.evaluate import ActionSelector, evaluate_selector
 from wargame_rl.wargame.envs.types import WargameEnvConfig
-from wargame_rl.wargame.envs.wargame import WargameEnv
-from wargame_rl.wargame.model.common.factory import create_environment
-from wargame_rl.wargame.selectors import build_action_selector
+from wargame_rl.wargame.scoring import evaluate_spec
 
 HELDOUT_SEED_BASE = 700000
-
-
-def _selector_for(name: str, env: WargameEnv) -> ActionSelector:
-    """A scripted baseline by registry name, or a policy from a checkpoint path.
-
-    Taking both is what lets the comparison that actually matters be paired --
-    a trained checkpoint against the bar on identical layouts. Scoring each
-    separately and differencing the aggregates cannot resolve it: at n=100 the
-    standard error on each row is ~5-9 vp, so their difference carries ~7-13,
-    which is the size of most effects worth measuring here.
-    """
-    return build_action_selector(name, env).select
 
 
 def episode_margins(
@@ -60,16 +45,16 @@ def episode_margins(
 ) -> np.ndarray:
     """Per-episode ``player_vp - opponent_vp``, one entry per seed, in order.
 
-    Runs through `evaluate_selector` rather than its own loop so this script and
-    the baseline table cannot answer the same question differently -- two
-    implementations of "score a policy over seeds" drifting apart is exactly the
-    class of defect the pairing here exists to guard against. The array it
-    returns is built one entry per seed unconditionally, so it stays
-    index-aligned with `seeds` and with the other arm's.
+    Runs through `scoring.evaluate_spec` rather than its own loop so this
+    script and the baseline table cannot answer the same question differently
+    -- two implementations of "score a policy over seeds" drifting apart is
+    exactly the class of defect the pairing here exists to guard against.
+    Takes a baseline name, a `.ckpt` or a per-model `.pt`, so a trained
+    checkpoint on either facade pairs against the bar on identical layouts.
+    The array it returns is built one entry per seed unconditionally, so it
+    stays index-aligned with `seeds` and with the other arm's.
     """
-    env = create_environment(env_config=env_config)
-    select = _selector_for(policy_name, env)
-    result = evaluate_selector(select, env, seeds, policy_name)
+    result = evaluate_spec(policy_name, env_config, seeds, policy_name)
     return np.array(result.vp_margin_per_episode)
 
 

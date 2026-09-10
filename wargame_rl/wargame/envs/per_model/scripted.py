@@ -85,6 +85,16 @@ class ScriptedSeat:
         self._plans: list[_UnitPlan] = []
         self._phase: BattlePhase | None = None
 
+    @classmethod
+    def for_policy(cls, policy: PhasePolicy) -> ScriptedSeat:
+        """A seat over `policy`, firing exactly when the policy says it does.
+
+        Both policy hierarchies carry `shoots` (a baseline derives it from
+        overriding `select_shooting`; an opponent policy declares it), so the
+        seat reads it rather than re-deriving it.
+        """
+        return cls(policy, shoots=bool(getattr(policy, "shoots", False)))
+
     def plan(self, phase: BattlePhase, seat: Seat, env: PerModelEnv) -> None:
         """Ask the script exactly once for this phase, against its usual mask."""
         mask = full_phase_mask(env, seat, phase, shooting_overlay=self.shoots)

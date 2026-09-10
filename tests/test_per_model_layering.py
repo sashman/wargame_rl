@@ -123,11 +123,21 @@ def test_the_per_model_facade_never_imports_the_phase_facade() -> None:
 # The facade's clients, by package prefix relative to `wargame_rl/`. Stage 2's
 # set network is the first; a new one is added here on purpose, never by
 # naming a directory `per_model`.
-FACADE_CLIENTS = ("wargame/envs/per_model", "wargame/model/per_model")
+FACADE_CLIENTS = (
+    "wargame/envs/per_model",
+    "wargame/model/per_model",
+    # The one resolver for both facades, and the scoring service that picks
+    # the facade a spec plays -- the way every `measure-*` script reaches it.
+    "wargame/selectors.py",
+    "wargame/scoring.py",
+)
 # And the two root drivers, by file name: the play script and the training
 # loop. The repo root is walked too, so a new script cannot import the facade
 # unlisted.
 ROOT_CLIENTS = ("play_per_model.py", "train_per_model.py")
+# `scripts/` is walked as well. The scoring scripts go through `scoring.py`;
+# only the throughput instrument wraps the facade's own methods.
+SCRIPT_CLIENTS = ("measure_throughput_per_model.py",)
 REPO = PACKAGE.parent
 
 
@@ -152,7 +162,60 @@ def test_only_the_named_clients_import_the_facade() -> None:
             for module in _imported_modules(path)
         )
     }
+    offenders |= {
+        f"scripts/{path.name}"
+        for path in _python_files(REPO / "scripts")
+        if path.name not in SCRIPT_CLIENTS
+        and any(
+            module.startswith("wargame_rl.wargame.envs.per_model")
+            for module in _imported_modules(path)
+        )
+    }
     assert not offenders, f"per_model is imported by {offenders}"
+
+
+def test_the_named_script_clients_really_are_clients() -> None:
+    for name in SCRIPT_CLIENTS:
+        assert any(
+            module.startswith("wargame_rl.wargame.envs.per_model")
+            for module in _imported_modules(REPO / "scripts" / name)
+        ), name
+
+
+def test_the_per_model_facade_never_imports_the_baselines() -> None:
+    """`baseline/evaluate.py` imports the phase facade at module level, so an
+    edge into `baseline/` is an edge into `wargame.py` one hop removed. The
+    shared evaluation kernel (`envs/evaluation/`) exists so neither facade's
+    runner needs the other's package."""
+    offenders = {
+        path.name
+        for path in _python_files(ENVS / "per_model")
+        if any(
+            module.startswith("wargame_rl.wargame.envs.baseline")
+            for module in _imported_modules(path)
+        )
+    }
+    assert not offenders, f"per_model modules importing baseline/: {offenders}"
+
+
+def test_the_evaluation_kernel_is_facade_free() -> None:
+    """Both facades' runners import it, so it may import neither."""
+    offenders = {
+        path.name
+        for path in _python_files(ENVS / "evaluation")
+        if any(
+            module.startswith(prefix)
+            for module in _imported_modules(path)
+            for prefix in (
+                "wargame_rl.wargame.envs.wargame",
+                "wargame_rl.wargame.envs.per_model",
+                "wargame_rl.wargame.envs.baseline",
+                "wargame_rl.wargame.model",
+                "torch",
+            )
+        )
+    }
+    assert not offenders, f"evaluation kernel imports a facade: {offenders}"
 
 
 def test_the_root_drivers_really_are_clients() -> None:

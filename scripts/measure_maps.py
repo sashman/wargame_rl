@@ -15,8 +15,9 @@ Reports per map rather than a single mean, because the mean is the one number
 that cannot answer the question you have: *which* layouts does the policy
 handle badly. The spread across maps is printed for the same reason.
 
-Accepts either a scripted baseline name or a checkpoint path, so the agent and
-the bar are measured by one code path on identical layouts.
+Accepts a scripted baseline name, a `.ckpt` or a per-model `.pt`, so the agent
+and the bar are measured by one code path on identical layouts. A `.pt` plays
+the per-model facade and runs no decode.
 
 Usage: just measure-maps <policy|ckpt> <env_config> [n_episodes] [maps_dir] [decode_topk]
 """
@@ -34,14 +35,13 @@ from scripts.measure_checkpoint import HELDOUT_SEED_BASE
 from scripts.scenario_overrides import describe, load_env_config, parse_overrides
 from wargame_rl.wargame.envs.baseline.evaluate import (
     BaselineResult,
-    evaluate_selector,
     format_optional_metric,
     mean_of_measured,
     standard_error,
 )
 from wargame_rl.wargame.envs.types import TerrainMapConfig, WargameEnvConfig
-from wargame_rl.wargame.model.common.factory import create_environment
-from wargame_rl.wargame.selectors import build_action_selector
+from wargame_rl.wargame.scoring import evaluate_spec
+from wargame_rl.wargame.selectors import is_per_model_checkpoint
 
 DEFAULT_MAPS_DIR = Path("configs/evaluation/maps")
 
@@ -150,7 +150,12 @@ def main() -> None:
     # and not the draw. Disjoint from training and model selection.
     seeds = [HELDOUT_SEED_BASE + i for i in range(n_episodes)]
 
-    print(f"\n{policy_or_checkpoint}")
+    facade = (
+        "per-model facade, no decode"
+        if is_per_model_checkpoint(policy_or_checkpoint)
+        else f"phase facade, decode_topk={decode_topk}"
+    )
+    print(f"\n{policy_or_checkpoint}  ({facade})")
     print(
         f"{config_path}{describe(overrides)}  ({len(maps)} maps x "
         f"{n_episodes} episodes, seeds {seeds[0]}-{seeds[-1]})\n"
@@ -172,17 +177,19 @@ def main() -> None:
     results: list[BaselineResult] = []
     for terrain_map in maps:
         config = config_for_map(base_config, terrain_map)
-        env = create_environment(env_config=config)
-        # Resolved per map, because a checkpoint's network is sized from the env
+        # Scored per map, because a checkpoint's network is sized from the env
         # and each map carries its own objective and terrain counts; a scripted
         # policy holds env state. Neither is safe to carry across configs.
-        resolved = build_action_selector(
-            policy_or_checkpoint, env, decode_topk, decode_stay
+        result = evaluate_spec(
+            policy_or_checkpoint,
+            config,
+            seeds,
+            terrain_map.name,
+            decode_topk=decode_topk,
+            decode_stay=decode_stay,
         )
-        result = evaluate_selector(resolved.select, env, seeds, terrain_map.name)
         results.append(result)
         print(format_row(terrain_map.name, result))
-        env.close()
 
     print("-" * len(header))
     margins = [result.vp_margin for result in results]

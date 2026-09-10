@@ -21,8 +21,19 @@ from wargame_rl.wargame.envs.state.events import (
 )
 from wargame_rl.wargame.envs.state.exporter import EventLogExporter, StateExporter
 from wargame_rl.wargame.envs.state.narrator import StepNarrator
+from wargame_rl.wargame.envs.state.provenance import (
+    PER_MODEL_FACADE_TAG,
+    PHASE_FACADE_TAG,
+    Cadence,
+    PerModelProvenance,
+    cadence_of,
+    decode_provenance,
+    facade_of,
+)
 from wargame_rl.wargame.envs.state.replay import ReplayController
 from wargame_rl.wargame.envs.state.snapshot import (
+    DecisionSnapshot,
+    EpisodeProvenance,
     GameStateSnapshot,
     JsonEncoder,
     SnapshotEncoder,
@@ -33,6 +44,15 @@ from wargame_rl.wargame.envs.state.snapshot import (
 
 __all__ = [
     "CODEC_REGISTRY",
+    "Cadence",
+    "DecisionSnapshot",
+    "EpisodeProvenance",
+    "PER_MODEL_FACADE_TAG",
+    "PHASE_FACADE_TAG",
+    "PerModelProvenance",
+    "cadence_of",
+    "decode_provenance",
+    "facade_of",
     "MatchAnalysis",
     "analyze_match",
     "EventLog",

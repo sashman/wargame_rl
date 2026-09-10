@@ -32,6 +32,7 @@ from loguru import logger
 
 from wargame_rl.wargame.envs.baseline.evaluate import evaluate_baseline
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
+from wargame_rl.wargame.envs.evaluation import format_optional_metric
 from wargame_rl.wargame.envs.per_model.env import PerModelEnv
 from wargame_rl.wargame.envs.per_model.reward_timing import PerStepReward
 from wargame_rl.wargame.envs.types import WargameEnvConfig
@@ -47,6 +48,7 @@ from wargame_rl.wargame.model.common.eval_constants import (
     BASELINE_POLICIES,
     BASELINE_SEED_BASE,
     EVAL_SEED_BASE,
+    EVAL_WAVE_SIZE,
 )
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.model.common.wandb import init_wandb
@@ -57,10 +59,7 @@ from wargame_rl.wargame.model.per_model.checkpoint import (
     save_checkpoint,
 )
 from wargame_rl.wargame.model.per_model.config import SetNetworkConfig
-from wargame_rl.wargame.model.per_model.evaluate import (
-    PerModelEvalResult,
-    evaluate_per_model,
-)
+from wargame_rl.wargame.model.per_model.evaluate import EvalResult, evaluate_per_model
 from wargame_rl.wargame.model.per_model.net import SetNetwork
 from wargame_rl.wargame.model.per_model.ppo import (
     PerModelPPOConfig,
@@ -166,25 +165,40 @@ def baseline_rows(env_config: WargameEnvConfig) -> dict[str, float]:
     return rows
 
 
-def eval_rows(result: PerModelEvalResult, prefix: str = "") -> dict[str, float]:
+def eval_rows(result: EvalResult, prefix: str = "") -> dict[str, float]:
+    """The whole-phase trainer's eval keys, read off the shared result.
+
+    `mean_episode_decisions`, not `mean_episode_steps`: this facade's unit is
+    the decision, and logging it under the phase facade's key was a same-key
+    different-unit trap. Coherency is the tracker's, on the phase facade's
+    grid; a column this facade does not measure is omitted, not zeroed.
+    """
     suffix = f"{prefix}_" if prefix else ""
-    margins = np.array([e.vp_margin for e in result.episodes], dtype=np.float64)
+    margins = np.array(result.vp_margin_per_episode, dtype=np.float64)
     elo = float(rating_from_score(float(margin_score(margins).mean())))
-    return {
-        f"eval/{suffix}vp_player": result.vp_player,
-        f"eval/{suffix}vp_opponent": result.vp_opponent,
+    rows: dict[str, float] = {
+        f"eval/{suffix}vp_player": result.player_vp,
+        f"eval/{suffix}vp_opponent": result.opponent_vp,
         f"eval/{suffix}vp_margin": result.vp_margin,
         f"eval/{suffix}win_rate": 100.0 * result.win_rate,
         f"eval/{suffix}elo": elo,
-        f"eval/{suffix}fraction_alive": result.fraction_alive,
+        f"eval/{suffix}fraction_alive": result.final_fraction_alive,
+        f"eval/{suffix}at_objectives": result.final_fraction_at_objectives,
         f"eval/{suffix}objectives_held": result.objectives_held,
+    }
+    optional: dict[str, float | None] = {
         f"eval/{suffix}coherency_rate": result.coherency_rate,
+        f"eval/{suffix}models_out_of_coherency": result.models_out_of_coherency,
         f"reward/{suffix}mean_episode_reward": result.mean_reward,
         f"reward/{suffix}max_episode_reward": result.max_reward,
         f"reward/{suffix}min_episode_reward": result.min_reward,
-        f"{suffix}mean_episode_steps": result.mean_steps,
-        f"{suffix}success_rate": 100.0 * result.success_rate,
+        f"{suffix}mean_episode_decisions": result.mean_decisions,
+        f"{suffix}success_rate": (
+            None if result.success_rate is None else 100.0 * result.success_rate
+        ),
     }
+    rows.update({key: value for key, value in optional.items() if value is not None})
+    return rows
 
 
 def update_rows(
@@ -258,6 +272,9 @@ def train(
         256, help="Evaluate every N rounds (a multiple of the rollout)."
     ),
     n_eval_episodes: int = typer.Option(20),
+    eval_wave_size: int = typer.Option(
+        EVAL_WAVE_SIZE, help="Eval episodes stepped in lockstep per wave."
+    ),
     checkpoint_every_rounds: int = typer.Option(
         256, help="Write pm-NNNNNNNN.pt and last.pt every N rounds."
     ),
@@ -345,8 +362,11 @@ def train(
     retimers = [PerStepReward(env) for env in envs]
     for retimer in retimers:
         retimer.reset()
-    eval_env = PerModelEnv(env_config)
-    eval_retimer = PerStepReward(eval_env)
+    wave = max(
+        1, min(int(resolve_default(eval_wave_size, EVAL_WAVE_SIZE)), eval_episodes)
+    )
+    eval_envs = [PerModelEnv(env_config) for _ in range(wave)]
+    eval_retimers = [PerStepReward(env) for env in eval_envs]
 
     network = SetNetwork.from_env(envs[0], network_config).to(resolved_device)
     check_trainable(network)
@@ -460,20 +480,20 @@ def train(
             if rounds_done % eval_every == 0 or rounds_done >= total_rounds:
                 started = time.perf_counter()
                 result = evaluate_per_model(
-                    eval_env,
+                    eval_envs,
                     agent,
-                    eval_retimer,
+                    eval_retimers,
                     [EVAL_SEED_BASE + i for i in range(eval_episodes)],
                 )
                 row.update(eval_rows(result))
                 row["perf/eval_s"] = time.perf_counter() - started
                 logger.info(
-                    "rounds {} vp_margin {:.1f} win {:.0f}% held {:.2f} coherent {:.3f}",
+                    "rounds {} vp_margin {:.1f} win {:.0f}% held {:.2f} coherent {}",
                     rounds_done,
                     result.vp_margin,
                     100.0 * result.win_rate,
                     result.objectives_held,
-                    result.coherency_rate,
+                    format_optional_metric(result.coherency_rate),
                 )
             if rounds_done % checkpoint_every == 0 or rounds_done >= total_rounds:
                 for name in (periodic_checkpoint_name(rounds_done), LAST_CHECKPOINT):

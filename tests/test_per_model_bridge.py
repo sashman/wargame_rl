@@ -82,8 +82,7 @@ def _config(path: str, *, rounds: int | None = None) -> WargameEnvConfig:
 
 def _policy(name: str) -> tuple[BaselinePolicy, bool]:
     policy = build_baseline_policy(name)
-    shoots = type(policy).select_shooting is not BaselinePolicy.select_shooting
-    return policy, shoots
+    return policy, policy.shoots
 
 
 def trace_old(config: WargameEnvConfig, name: str, seed: int) -> list[Boundary]:
@@ -329,3 +328,125 @@ def test_the_melee_bridge_holds_until_the_first_standing_charge(seed: int) -> No
     contact_before = any(b.charged or b.engaged for b in old[: index + 1])
     if not contact_before:
         _assert_identical_until_the_rules_part(old, new, divergence)
+
+
+# ------------------------------------------------ the evaluation and the recording
+
+
+def test_a_scripted_policy_scores_identically_through_both_facades() -> None:
+    """The reconciliation pin: `evaluate_per_model_chooser` on the per-model
+    facade and `evaluate_selector` on the phase facade agree in every field of
+    the shared `EvalResult` -- VP, on_obj, held, alive, the cohesion gap and
+    both coherency columns with their intent -- for a script that diverges
+    nowhere on this scenario."""
+    from tests.per_model_seats import small_config
+    from wargame_rl.wargame.envs.baseline.evaluate import (
+        evaluate_selector,
+        selector_for,
+    )
+    from wargame_rl.wargame.envs.per_model import (
+        evaluate_per_model_chooser,
+        scripted_chooser,
+    )
+
+    config = small_config(opponent_x=22, baseline="squad_march_shoot")
+    config = config.model_copy(update={"track_opponent_coherency": True})
+    seeds = [500030, 500031]
+    combat = [11, 12]
+    policy, _shoots = _policy("squad_march_shoot")
+
+    old_env = WargameEnv(config)
+    old = evaluate_selector(
+        selector_for(policy), old_env, seeds, "shoot", combat_seeds=combat
+    )
+    new_envs = [PerModelEnv(config) for _ in range(2)]
+    new = evaluate_per_model_chooser(
+        scripted_chooser(policy, new_envs),
+        new_envs,
+        seeds,
+        "shoot",
+        combat_seeds=combat,
+    )
+    assert not any(env.divergences for env in new_envs)
+    assert new.decisions_per_episode is not None
+    assert new.vp_margin_per_episode == old.vp_margin_per_episode
+    assert new.objectives_held_per_episode == old.objectives_held_per_episode
+    assert new.win_per_episode == old.win_per_episode
+    for field in (
+        "final_fraction_at_objectives",
+        "final_fraction_alive",
+        "worst_cohesion_gap",
+        "coherency_rate",
+        "models_out_of_coherency",
+        "opponent_coherency_rate",
+        "opponent_models_out_of_coherency",
+    ):
+        assert getattr(new, field) == pytest.approx(getattr(old, field)), field
+
+
+def test_a_scripted_episode_records_identically_through_both_facades() -> None:
+    """At phase cadence the per-model facade's log IS the phase facade's, up to
+    the action vectors: the per-model side reads STAY where the script planned
+    a shot at a unit an earlier volley wiped (the phase facade records the raw
+    index and loses the shot), and records no declaration on the command
+    window. Everything else must match, snapshot for snapshot."""
+    from tests.per_model_seats import small_config
+    from tests.test_event_stream import assert_snapshots_agree
+    from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
+    from wargame_rl.wargame.envs.per_model import scripted_chooser
+    from wargame_rl.wargame.envs.state import (
+        EventLogExporter,
+        JsonMatchCodec,
+        ReplayController,
+    )
+
+    config = small_config(opponent_x=22, baseline="squad_march_shoot")
+    policy, _shoots = _policy("squad_march_shoot")
+    seed, combat = 500032, 13
+
+    old_exporter = EventLogExporter()
+    old_env = WargameEnv(config, state_exporters=[old_exporter])
+    observation, _ = old_env.reset(seed=seed, options={"combat_seed": combat})
+    done = False
+    while not done:
+        observation, _, done, _, _ = old_env.step(
+            policy.select_action(
+                old_env.wargame_models, old_env, action_mask=observation.action_mask
+            )
+        )
+
+    new_exporter = EventLogExporter()
+    new_env = PerModelEnv(config, state_exporters=[new_exporter])
+    choose = scripted_chooser(policy, [new_env])
+    new_observation, _ = new_env.reset(seed=seed, options={"combat_seed": combat})
+    done = False
+    while not done:
+        new_observation, _, done, _, _ = new_env.step(
+            choose([new_env], [new_observation])[0]
+        )
+    assert not new_env.divergences
+
+    codec = JsonMatchCodec()
+    old_snapshots = ReplayController(
+        codec.decode(codec.encode(old_exporter.log))
+    ).iter_snapshots()
+    new_snapshots = ReplayController(
+        codec.decode(codec.encode(new_exporter.log))
+    ).iter_snapshots()
+    assert len(old_snapshots) == len(new_snapshots)
+    action_fields = {"player_actions", "player_action_descriptions", "opponent_actions"}
+    for old_snapshot, new_snapshot in zip(old_snapshots, new_snapshots):
+        assert_snapshots_agree(
+            new_snapshot.model_copy(update={f: None for f in action_fields}),
+            old_snapshot.model_copy(update={f: None for f in action_fields}),
+        )
+        for field in ("player_actions", "opponent_actions"):
+            theirs = getattr(old_snapshot, field)
+            ours = getattr(new_snapshot, field)
+            if theirs is None or ours is None:
+                continue
+            assert all(o == t or o == STAY_ACTION for o, t in zip(ours, theirs)), (
+                f"step {old_snapshot.step} {field}: {ours} vs {theirs}"
+            )
+            if new_snapshot.action_phase == "movement":
+                assert ours == theirs, f"step {old_snapshot.step} {field}"

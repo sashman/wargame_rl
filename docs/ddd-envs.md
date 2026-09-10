@@ -67,18 +67,26 @@ wargame_rl/wargame/envs/
 │                              #   field, unit matchups. A LEAF -- domain and types only
 ├── env_components/            # Adapters: actions, observation, distances
 ├── per_model/                 # The second application context: one decision per step
-│   ├── env.py                 #   PerModelEnv (the facade), StepEffect on every step
+│   ├── env.py                 #   PerModelEnv (the facade), StepEffect on every step,
+│   │                          #   coherency trackers, the exporters at two cadences
 │   ├── phases.py              #   what each decision does, per phase
-│   ├── types.py               #   the decision contract: StepKind, PerModelAction, DecisionPoint
+│   ├── types.py               #   the decision contract: StepKind, PerModelAction, DecisionPoint,
+│   │                          #   Chooser / BatchChooser (what drives a seat)
 │   ├── tokens.py              #   the set observation (numpy)
-│   └── reward_timing.py       #   the reward paid per decision, beside the env
+│   ├── reward_timing.py       #   the reward paid per decision, beside the env
+│   ├── evaluate.py            #   seeded evaluation in waves; the scripted and random choosers
+│   └── recording.py           #   one episode to a match event log
+├── evaluation/                # The evaluation kernel BOTH facades' runners share: EvalResult
+│                              #   (was BaselineResult) and the end-of-episode readouts.
+│                              #   domain, env_components, types only -- never a facade
 ├── map_pool.py                # Loads map files into MapLayouts, draws one per episode
 ├── opponent/                  # Opponent policies + registry
 ├── mission/                   # VP calculators + registry
 ├── baseline/                  # Scripted reference policies + evaluation
 ├── debug/                     # Hand-stepping a live match: undo stack, session loop,
 │                           #   opponent overrides, reproducing a recorded episode
-├── state/                     # Snapshots, event log, replay, narration, analysis
+├── state/                     # Snapshots, event log, replay, narration, analysis;
+│                              #   provenance.py names the facade and cadence of a log
 ├── reward/                    # Reward phases, calculators, criteria (use BattleView)
 ├── renders/                   # Pygame etc. (use BattleView)
 ├── types/                     # Shared kernel: config, observation/info types,
@@ -252,6 +260,26 @@ chapter rather than the phase facade (both seats pile in and consolidate; a
 striker chooses its target). The phase facade's side of each divergence is
 tracked as an issue (#314 to #319) and stays as it is until it lands there.
 
+**The two facades are scored by one runner shape and one result.** A phase
+facade selector (`ActionSelector`, one action per model per phase) is scored by
+`baseline/evaluate.py::evaluate_selector`; a per-model *chooser* (`Chooser` /
+`BatchChooser` in `per_model/types.py`, one decision per env per call) by
+`per_model/evaluate.py::evaluate_per_model_chooser`, in waves that drop an env
+when its episode ends. Both produce `envs/evaluation/EvalResult` through the
+same `read_end_of_episode`, so `held`, `on_obj` and `alive` have one
+definition — and `per_model/` imports `evaluation/`, never `baseline/`, whose
+`evaluate.py` imports the phase facade at module level. The per-model env
+carries the phase facade's `CoherencyTracker` on the phase facade's grid (fed
+at the movement boundary from `_on_leaving`, with the intent judged unit by
+unit before each unit's own referee), so `coherent` / `adrift` are one column
+across facades; `tests/test_per_model_bridge.py` pins that a script scores
+identically through both. Above `envs/`, `wargame_rl/wargame/selectors.py`
+resolves a spec for either facade (`build_action_selector` for a name or a
+`.ckpt`, `build_per_model_chooser` for a name, `random`, `set_network` or a
+`.pt`, each refusing the other's checkpoint by name) and
+`wargame_rl/wargame/scoring.py` is the one facade branch the scoring scripts
+call (`evaluate_spec`, `record_spec`, `record_per_model`).
+
 The facade can also be watched: `play_per_model.py` (`just play-per-model`, `just record-per-model`) drives a scripted seat, the random legal seat or the set network at fresh weights through it and draws one frame per decision, with the pending decision highlighted by `renders/v2/decision.py` and captioned in the HUD -- the rung the tests cannot replace, since whether one-model-at-a-time play *looks* like the rules is a judgement. The presenter reads the decision structurally, so the renderer imports nothing from `per_model/`.
 
 The facade has a **second presentation adapter**, the token observation
@@ -266,7 +294,15 @@ reveal of a unit's dice on its declaration, the reach gate on the sight
 trace, and the enemy-unit column order (sorted distinct group id).
 
 Every artefact the per-model facade emits carries `facade: "per_model"`
-(`PerModelProvenance`); an untagged artefact is the phase facade's, and
-`require_per_model` refuses it. The PPO loop over per-model steps is stage 3
-(`model/per_model/ppo.py`, `train_per_model.py`); the evaluation tooling is
-stage 4 of GitHub issue #283 (#287) and does not exist yet.
+(`PerModelProvenance`, in `state/provenance.py` so the codec can decode a
+tagged header without `state/` importing a facade); an untagged artefact is
+the phase facade's, and `require_per_model` refuses it. The facade records
+too, at two cadences (`state_exporters=` + `record_cadence=`): `phase` emits
+one snapshot per settled reward window, schema-identical to the phase
+facade's, and `decision` one per `step()` with the decision on the snapshot
+(schema 2.8). The PPO loop over per-model steps is stage 3
+(`model/per_model/ppo.py`, `train_per_model.py`); the evaluation, recording
+and throughput tooling is stage 4 (#287). The named clients of the facade are
+now its own package, `model/per_model/`, `selectors.py`, `scoring.py`, the two
+root drivers and `scripts/measure_throughput_per_model.py`
+(`tests/test_per_model_layering.py`). Hand-stepping it in `debug.py` is #325.

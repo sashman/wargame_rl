@@ -65,7 +65,6 @@ from wargame_rl.wargame.envs.domain.melee.fight import (
     resolve_fight_step,
 )
 from wargame_rl.wargame.envs.domain.melee.pile_in import SELECTION_RANGE_INCHES
-from wargame_rl.wargame.envs.domain.movement.coherency import evaluate_coherency
 from wargame_rl.wargame.envs.domain.movement.coherency_enforcement import (
     CoherencyEnforcement,
     apply_attrition,
@@ -74,7 +73,8 @@ from wargame_rl.wargame.envs.domain.sequencing.game_clock import GameClock
 from wargame_rl.wargame.envs.domain.sequencing.termination import is_battle_over
 from wargame_rl.wargame.envs.domain.shooting.resolve import PairedShootingResult
 from wargame_rl.wargame.envs.domain.shooting.targets import max_weapon_ranges
-from wargame_rl.wargame.envs.env_components.actions import ActionHandler
+from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION, ActionHandler
+from wargame_rl.wargame.envs.env_components.coherency_tracker import CoherencyTracker
 from wargame_rl.wargame.envs.env_components.distance_cache import (
     compute_distances,
     objective_ownership_from_norms_offset,
@@ -109,10 +109,18 @@ from wargame_rl.wargame.envs.per_model.types import (
 )
 from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
 from wargame_rl.wargame.envs.reward.step_context import StepContext
+from wargame_rl.wargame.envs.state.exporter import StateExporter
+from wargame_rl.wargame.envs.state.provenance import CADENCES, Cadence
+from wargame_rl.wargame.envs.state.snapshot import (
+    DecisionSnapshot,
+    GameStateSnapshot,
+    build_snapshot,
+)
 from wargame_rl.wargame.envs.types import (
     BattlePhase,
     PlayerSide,
     TurnOrder,
+    WargameEnvAction,
     WargameEnvConfig,
 )
 from wargame_rl.wargame.envs.types.game_timing import BATTLE_PHASE_ORDER, GameState
@@ -195,7 +203,13 @@ class PerModelEnv(gym.Env):
         config: WargameEnvConfig,
         *,
         dice_factory: DiceFactory | None = None,
+        state_exporters: list[StateExporter] | None = None,
+        record_cadence: Cadence = "phase",
     ) -> None:
+        if record_cadence not in CADENCES:
+            raise ValueError(
+                f"record_cadence must be one of {CADENCES}, not {record_cadence!r}"
+            )
         for switch in _DEFERRED_SWITCHES:
             if bool(getattr(config, switch, False)):
                 raise ValueError(
@@ -210,6 +224,32 @@ class PerModelEnv(gym.Env):
         self.coherency_mode = CoherencyEnforcement(config.coherency.enforce_move)
         self._coherency_attrition = config.coherency.attrition
         self._dice_factory: DiceFactory = dice_factory or default_dice
+        # The phase facade's readout of whether a force held formation, on
+        # the same grid: the player unconditionally, the opponent on the same
+        # opt-in (the rating arena alone reads it).
+        self._coherency_tracker = CoherencyTracker()
+        self._opponent_coherency_tracker: CoherencyTracker | None = (
+            CoherencyTracker() if config.track_opponent_coherency else None
+        )
+        # What a movement program judged BEFORE its own referee, by seat,
+        # handed over at the program's close for `_on_leaving` to record.
+        self._movement_intent: dict[bool, tuple[int, int, int]] = {}
+        # Recording. `phase` cadence emits one snapshot per settled window,
+        # schema-identical to the phase facade's; `decision` one per `step()`.
+        self._state_exporters: list[StateExporter] = list(state_exporters or [])
+        self._record_cadence: Cadence = record_cadence
+        self._reset_exported = False
+        self._last_decision: PerModelAction | None = None
+        self._last_decision_phase: BattlePhase | None = None
+        # The results `_open_window` cleared during the current `step()`, so a
+        # decision-cadence snapshot still carries the volley the step resolved
+        # when `_advance` settled and reopened a window in the same call.
+        self._cleared_results: tuple[list[Any], list[Any], list[Any], list[Any]] = (
+            [],
+            [],
+            [],
+            [],
+        )
 
         self._action_handler = ActionHandler(
             config,
@@ -275,6 +315,17 @@ class PerModelEnv(gym.Env):
             config.mission.type, config.mission.params
         )
         self.phase_manager = RewardPhaseManager.from_configs(config.reward_phases)
+
+        # The whole-army action vectors the phase facade would have recorded:
+        # the player's, per window, from its `act` steps; the opponent's from
+        # its last stepped phase, persisting until the next.
+        self._window_player_actions = np.full(
+            config.number_of_wargame_models, STAY_ACTION, dtype=np.int64
+        )
+        self._last_opponent_actions: np.ndarray | None = None
+        self._n_player_units = len(
+            {int(model.group_id) for model in self.wargame_models}
+        )
 
         self._player_seat = Seat(
             is_player=True,
@@ -457,6 +508,15 @@ class PerModelEnv(gym.Env):
         self.episode_reward_breakdown = {}
         self.episode_reward_steps = 0
         self.episode_reward = 0.0
+        self._coherency_tracker.reset()
+        if self._opponent_coherency_tracker is not None:
+            self._opponent_coherency_tracker.reset()
+        self._movement_intent = {}
+        self._reset_exported = False
+        self._last_decision = None
+        self._last_decision_phase = None
+        self._window_player_actions.fill(STAY_ACTION)
+        self._last_opponent_actions = None
 
         self._battle.reset_for_episode()
         self.phase_manager.reset_episode()
@@ -494,6 +554,13 @@ class PerModelEnv(gym.Env):
             raise ValueError(reason)
         self.episode_step += 1
         self._step_kills = {}
+        self._cleared_results = ([], [], [], [])
+        self._last_decision = action
+        # A closing point names no phase; the snapshot keeps the phase of the
+        # last decision, because a delta cannot express a field returning to
+        # None and the phase facade's `action_phase` never does either.
+        if point.phase is not None:
+            self._last_decision_phase = point.phase
         if point.kind is StepKind.close_turn:
             settled = self._settle_window()
             if settled.terminated or self._game_clock.is_game_over:
@@ -502,6 +569,7 @@ class PerModelEnv(gym.Env):
                 self._pending = closing
                 info = self._info([settled])
                 info["effect"] = self._finish_effect(())
+                self._export_decision()
                 return (
                     build_per_model_observation(self, closing),
                     settled.reward,
@@ -513,9 +581,12 @@ class PerModelEnv(gym.Env):
             info["settled"] = [settled] + info["settled"]
             info["reward_settled"] = True
             info["effect"] = self._finish_effect(())
+            self._export_decision()
             return observation, reward + settled.reward, terminated, truncated, info
         program = self._program
         assert program is not None
+        if action.kind is StepKind.act:
+            self._window_player_actions[action.model] = action.value
         before = program.acted_mask()
         acted_before = None if before is None else before.copy()
         program.apply(point, action)
@@ -527,6 +598,7 @@ class PerModelEnv(gym.Env):
         self.sub_step += 1
         observation, reward, terminated, truncated, info = self._advance()
         info["effect"] = self._finish_effect(actor_set)
+        self._export_decision()
         return observation, reward, terminated, truncated, info
 
     def _harvest_kills(self) -> None:
@@ -566,7 +638,15 @@ class PerModelEnv(gym.Env):
                         adapter = seat.adapter
                         if adapter is None:
                             raise RuntimeError("the opponent seat has no policy")
-                        self._program.apply(point, adapter.choose(point, seat))
+                        chosen = adapter.choose(point, seat)
+                        if (
+                            chosen.kind is StepKind.act
+                            and self._last_opponent_actions is not None
+                            and self._game_clock.state.active_player
+                            != self._player_side
+                        ):
+                            self._last_opponent_actions[chosen.model] = chosen.value
+                        self._program.apply(point, chosen)
                         continue
                     self._pending = point
                     break
@@ -594,12 +674,22 @@ class PerModelEnv(gym.Env):
                     self._terminated = True
                     self._pending = self._closing_point()
                     break
+            if ours and not self._reset_exported:
+                # The phase facade's reset snapshot is taken once the clock
+                # first rests on the player's phase, after any opponent turn
+                # that went first and before any window has opened.
+                self._reset_exported = True
+                self._export_reset()
             if ours:
                 self._open_window(state)
             if state.phase is BattlePhase.command:
                 self._enter_command(state)
                 self._leave_phase()
                 continue
+            if not ours:
+                self._last_opponent_actions = np.full(
+                    self._opponent_seat.n_models, STAY_ACTION, dtype=np.int64
+                )
             self._program = self._build_program(state)
             self._program.open()
         assert self._pending is not None
@@ -698,6 +788,7 @@ class PerModelEnv(gym.Env):
 
     def _on_leaving(self, state: GameState) -> None:
         """The phase facade's boundary hook, in its order."""
+        self._record_coherency(state)
         if state.phase is BattlePhase.fight and BattlePhase.fight in self._skip_phases:
             self._resolve_fight_engine(state)
         if state.phase is BattlePhase.consolidate:
@@ -927,9 +1018,16 @@ class PerModelEnv(gym.Env):
         # harvest reads them first or a kill resolved in this step is lost.
         self._harvest_kills()
         self._results_cursor = (0, 0)
+        if self._state_exporters and self._record_cadence == "decision":
+            stash = self._cleared_results
+            stash[0].extend(self._player_seat.shooting_results)
+            stash[1].extend(self._opponent_seat.shooting_results)
+            stash[2].extend(self._player_seat.fight_results)
+            stash[3].extend(self._opponent_seat.fight_results)
         for seat in (self._player_seat, self._opponent_seat):
             seat.shooting_results = []
             seat.fight_results = []
+        self._window_player_actions.fill(STAY_ACTION)
         self._attrition_deaths_player = 0
         self._attrition_deaths_opponent = 0
         self._window = _Window(
@@ -1041,6 +1139,8 @@ class PerModelEnv(gym.Env):
             )
         self.episode_reward_steps += 1
         self.episode_reward += reward
+        if self._state_exporters and self._record_cadence == "phase":
+            self._export_window(window.phase, terminated)
         return SettledWindow(
             phase=window.phase.value,
             reward=reward,
@@ -1139,6 +1239,7 @@ class PerModelEnv(gym.Env):
             combat_seed=self._episode_combat_seed,
             seed=self._episode_seed,
             driver=self.driver_label,
+            cadence=self._record_cadence,
         )
 
     @property
@@ -1196,23 +1297,259 @@ class PerModelEnv(gym.Env):
         )
         return int(held.sum())
 
-    def units_coherent(self) -> float:
-        """Share of living player units in coherency, right now.
+    # --------------------------------------------------------- coherency
 
-        ⚠ A point sample, not the phase facade's `CoherencyTracker`, which
-        samples at the movement boundary; #287 reconciles the two.
+    def _record_coherency(self, state: GameState) -> None:
+        """Fold the phase just left into the active seat's tracker.
+
+        The phase facade's grid: the player on every phase a model can move
+        in, the opponent on its movement phase only; the movement phase also
+        records what the policy proposed before the referee edited it.
         """
-        models = self.wargame_models
+        if state.active_player is None or state.phase is None:
+            return
+        seat = self.seat_for_side(state.active_player)
+        if seat.is_player:
+            tracker: CoherencyTracker | None = self._coherency_tracker
+            displaces = seat.handler.displaces_in(state.phase)
+        else:
+            tracker = self._opponent_coherency_tracker
+            displaces = state.phase is BattlePhase.movement
+        intent = self._movement_intent.pop(seat.is_player, None)
+        if tracker is None or not displaces:
+            return
+        if state.phase is BattlePhase.movement:
+            tracker.record_intent(intent)
+        models = seat.models
         quantities = self._rules_quantities
-        report = evaluate_coherency(
+        tracker.record(
             positions=np.array([m.location for m in models], dtype=float),
-            group_ids=np.array([int(m.group_id) for m in models], dtype=int),
+            group_ids=np.array([m.group_id for m in models], dtype=np.intp),
             alive_mask=alive_mask_for(models),
             base_radii=np.array([m.base_radius for m in models], dtype=float),
             nearest_distance=quantities.coherency_nearest,
             furthest_distance=quantities.coherency_furthest,
         )
-        return report.fraction_units_coherent
+
+    def note_movement_intent(self, seat: Seat, counts: tuple[int, int, int]) -> None:
+        """A movement program hands over the formation it judged before its
+        referee, so the boundary hook can record it as the policy's intent."""
+        self._movement_intent[seat.is_player] = counts
+
+    @property
+    def coherency_rate(self) -> float | None:
+        return self._coherency_tracker.coherency_rate
+
+    @property
+    def models_out_of_coherency(self) -> float | None:
+        return self._coherency_tracker.models_out_of_coherency
+
+    @property
+    def intended_coherency_rate(self) -> float | None:
+        return self._coherency_tracker.intended_coherency_rate
+
+    @property
+    def intended_models_out_of_coherency(self) -> float | None:
+        return self._coherency_tracker.intended_models_out_of_coherency
+
+    @property
+    def opponent_coherency_rate(self) -> float | None:
+        if self._opponent_coherency_tracker is None:
+            return None
+        return self._opponent_coherency_tracker.coherency_rate
+
+    @property
+    def opponent_models_out_of_coherency(self) -> float | None:
+        if self._opponent_coherency_tracker is None:
+            return None
+        return self._opponent_coherency_tracker.models_out_of_coherency
+
+    @property
+    def opponent_intended_coherency_rate(self) -> float | None:
+        if self._opponent_coherency_tracker is None:
+            return None
+        return self._opponent_coherency_tracker.intended_coherency_rate
+
+    @property
+    def opponent_intended_models_out_of_coherency(self) -> float | None:
+        if self._opponent_coherency_tracker is None:
+            return None
+        return self._opponent_coherency_tracker.intended_models_out_of_coherency
+
+    # --------------------------------------------------------- recording
+
+    @property
+    def state_exporters(self) -> list[StateExporter]:
+        return list(self._state_exporters)
+
+    @property
+    def record_cadence(self) -> Cadence:
+        return self._record_cadence
+
+    @property
+    def decision_budget(self) -> int:
+        """The most `step()` calls an episode can take; `max_steps` at decision
+        cadence. Per stepped phase every unit can open, name a target and every
+        member can act, plus one closing step per player turn."""
+        return (
+            self.max_turns * (self._player_seat.n_models + 2 * self._n_player_units)
+            + self.n_rounds
+        )
+
+    def to_snapshot(self) -> GameStateSnapshot:
+        """The board as it stands, at this env's recording cadence."""
+        if self._record_cadence == "decision":
+            return self._decision_snapshot()
+        phase = self._window.phase if self._window is not None else None
+        return self._snapshot(
+            step=self.current_turn,
+            max_steps=self.max_turns,
+            action_phase=phase.value if phase is not None else None,
+            is_terminated=self._terminated,
+            decision=None,
+            results=self._live_results(),
+        )
+
+    def _live_results(self) -> tuple[list[Any], list[Any], list[Any], list[Any]]:
+        return (
+            list(self._player_seat.shooting_results),
+            list(self._opponent_seat.shooting_results),
+            list(self._player_seat.fight_results),
+            list(self._opponent_seat.fight_results),
+        )
+
+    def _decision_snapshot(self) -> GameStateSnapshot:
+        decision = self._last_decision
+        recorded = (
+            None
+            if decision is None
+            else DecisionSnapshot(
+                kind=decision.kind.value,
+                model=None if decision.kind is StepKind.close_turn else decision.model,
+                value=None if decision.kind is StepKind.close_turn else decision.value,
+                phase=(
+                    self._last_decision_phase.value
+                    if self._last_decision_phase is not None
+                    else None
+                ),
+                sub_step=self.sub_step,
+                episode_step=self.episode_step,
+            )
+        )
+        stash = self._cleared_results
+        live = self._live_results()
+        return self._snapshot(
+            step=self.episode_step,
+            max_steps=self.decision_budget,
+            action_phase=(
+                self._last_decision_phase.value
+                if self._last_decision_phase is not None
+                else None
+            ),
+            is_terminated=self._terminated,
+            decision=recorded,
+            results=tuple(stash[i] + live[i] for i in range(4)),  # type: ignore[arg-type]
+        )
+
+    def _snapshot(
+        self,
+        *,
+        step: int,
+        max_steps: int,
+        action_phase: str | None,
+        is_terminated: bool,
+        decision: DecisionSnapshot | None,
+        results: tuple[list[Any], list[Any], list[Any], list[Any]],
+    ) -> GameStateSnapshot:
+        shooting = self._action_handler.shooting_slice
+        opponent_actions = (
+            None
+            if self._last_opponent_actions is None
+            else WargameEnvAction(actions=[int(a) for a in self._last_opponent_actions])
+        )
+        return build_snapshot(
+            config=self.config,
+            step=step,
+            max_steps=max_steps,
+            clock_state=self._game_clock.state,
+            n_rounds=self._game_clock.n_rounds,
+            player_models=self.wargame_models,
+            opponent_models=self.opponent_models,
+            objectives=self.objectives,
+            deployment_zone=self.deployment_zone,
+            opponent_deployment_zone=self.opponent_deployment_zone,
+            deployment_outline=self.deployment_outline,
+            opponent_deployment_outline=self.opponent_deployment_outline,
+            player_vp=self.player_vp,
+            opponent_vp=self.opponent_vp,
+            player_vp_delta=self.player_vp_delta,
+            opponent_vp_delta=self.opponent_vp_delta,
+            player_shooting_results=results[0],
+            opponent_shooting_results=results[1],
+            player_fight_results=results[2],
+            opponent_fight_results=results[3],
+            player_action=(
+                None
+                if action_phase is None
+                else WargameEnvAction(
+                    actions=[int(a) for a in self._window_player_actions]
+                )
+            ),
+            opponent_action=opponent_actions,
+            last_reward=self.last_reward,
+            reward_breakdown=self.last_reward_breakdown,
+            episode_reward=self.episode_reward,
+            phase_name=self.phase_manager.current_phase_name,
+            phase_index=self.phase_manager.current_phase_index,
+            is_terminated=is_terminated,
+            is_truncated=False,
+            n_angles=self.config.n_movement_angles,
+            n_speed_bins=self.config.n_speed_bins,
+            shooting_slice_start=shooting.start if shooting else None,
+            shooting_slice_end=shooting.end if shooting else None,
+            action_phase=action_phase,
+            terrain=self.terrain,
+            decision=decision,
+        )
+
+    def _export_reset(self) -> None:
+        if not self._state_exporters:
+            return
+        snapshot = self._snapshot(
+            step=0,
+            max_steps=(
+                self.max_turns
+                if self._record_cadence == "phase"
+                else self.decision_budget
+            ),
+            action_phase=None,
+            is_terminated=False,
+            decision=None,
+            results=self._live_results(),
+        )
+        for exporter in self._state_exporters:
+            exporter.on_reset(snapshot, self.provenance)
+
+    def _export_window(self, phase: BattlePhase, terminated: bool) -> None:
+        """One phase-cadence snapshot per settled window: the phase facade's
+        step, with its `step` counter and its action vectors."""
+        snapshot = self._snapshot(
+            step=self.current_turn,
+            max_steps=self.max_turns,
+            action_phase=phase.value,
+            is_terminated=terminated,
+            decision=None,
+            results=self._live_results(),
+        )
+        for exporter in self._state_exporters:
+            exporter.on_step(snapshot)
+
+    def _export_decision(self) -> None:
+        if not self._state_exporters or self._record_cadence != "decision":
+            return
+        snapshot = self._decision_snapshot()
+        for exporter in self._state_exporters:
+            exporter.on_step(snapshot)
 
     @property
     def n_actions(self) -> int:

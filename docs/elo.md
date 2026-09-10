@@ -247,6 +247,16 @@ Two things that bit, and are now pinned by tests:
   handler has a shooting slice. Same "cannot forget" discipline as
   `ScriptedBaselineOpponentPolicy`'s `select_shooting` identity check.
 
+### A per-model checkpoint cannot be rated yet
+
+`measure-elo` and `measure-seat-parity` refuse a `.pt` by name. A rated entrant
+plays **both** seats, and the per-model facade's opponent is a `ScriptedSeat`
+over a whole-phase policy — a per-model opponent policy is the self-play
+question (#274), not a scoring change. Half of a `.pt` entrant's legs would be
+refused and a self-pairing all of them, so rather than a half-working rating
+the recipes point at `measure-checkpoint`, `measure-maps` and `measure-paired`,
+which score a `.pt` through `wargame_rl/wargame/scoring.py`.
+
 ## 6. Recipes
 
 ```

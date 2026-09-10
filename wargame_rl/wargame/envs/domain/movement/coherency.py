@@ -34,7 +34,9 @@ enforcement rule without three of them drifting apart.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -219,6 +221,35 @@ def _evaluate_unit(
         largest_component_size=int(counts.max()),
         max_pairwise_distance=float(gaps[off_diagonal].max()),
     )
+
+
+def coherency_counts(
+    models: Sequence[Any], nearest_distance: float, furthest_distance: float
+) -> tuple[int, int, int]:
+    """`(units, units coherent, models out)` for a force as it stands.
+
+    The force-level reduction of `evaluate_coherency`, read off the entities
+    rather than arrays because both facades hold models, not matrices. The
+    phase facade reads it on the moved-but-not-yet-corrected positions to
+    record what the policy *chose* rather than what the referee left behind --
+    under enforcement the two diverge completely, and a policy intending 0.630
+    coherency reads 1.000 once the revert has run. The per-model facade reads
+    it unit by unit at each unit's close, before that unit's own referee;
+    coherency is intra-unit, so the sum over units is this same triple.
+    """
+    alive = np.array([m.is_alive for m in models], dtype=bool)
+    if not alive.any():
+        return (0, 0, 0)
+    report = evaluate_coherency(
+        positions=np.array([m.location for m in models], dtype=float),
+        group_ids=np.array([m.group_id for m in models], dtype=np.intp),
+        alive_mask=alive,
+        base_radii=np.array([m.base_radius for m in models], dtype=float),
+        nearest_distance=nearest_distance,
+        furthest_distance=furthest_distance,
+    )
+    coherent = sum(1 for unit in report.units if unit.coherent)
+    return (len(report.units), coherent, report.n_models_out_of_coherency)
 
 
 def base_to_base_distances(positions: np.ndarray, base_radii: np.ndarray) -> np.ndarray:

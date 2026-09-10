@@ -6,15 +6,20 @@ next to a learned policy is produced by exactly the same code path.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeAlias
 
 import numpy as np
 
-from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
-from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
+from wargame_rl.wargame.envs.evaluation import (
+    EvalResult,
+    format_optional_metric,
+    mean_of_measured,
+    paired_difference,
+    read_end_of_episode,
+    standard_error,
+)
 from wargame_rl.wargame.envs.state import EventLogExporter, JsonMatchCodec
 from wargame_rl.wargame.envs.types import (
     WargameEnvAction,
@@ -34,158 +39,11 @@ ActionSelector: TypeAlias = Callable[
 ]
 
 
-@dataclass(frozen=True)
-class BaselineResult:
-    """Aggregate outcome of running a baseline over a set of episodes."""
-
-    name: str
-    n_episodes: int
-    final_fraction_at_objectives: float
-    win_rate: float
-    player_vp: float
-    opponent_vp: float
-    worst_cohesion_gap: float
-    final_fraction_alive: float
-    # None unless the config sets `track_exposure`. Read together: a policy that
-    # is merely out of range keeps proximity high, one using ruins pulls it down.
-    exposure_rate: float | None
-    terrain_proximity: float | None
-    # (enemies we can shoot) - (our models they can shoot), per shooting phase.
-    # The exchange-ratio measure: exposure alone cannot tell manoeuvre from
-    # hiding, because both lower it.
-    firepower_ratio: float | None
-    # Mean count of objectives the player *controls* at episode end -- strictly
-    # more player models than opponent models inside the disc, the same rule VP
-    # scores on.
-    #
-    # This is not derivable from `final_fraction_at_objectives`, which is the
-    # fraction of *alive* models standing on *any* objective and therefore
-    # cannot tell 15 models on one point from 5 each on three. Both read ~0.95
-    # while one scores 5 VP a round and the other 15. Measuring occupancy
-    # without this is how three experimental rounds were aimed at a deficit that
-    # was mostly measurement noise.
-    objectives_held: float
-    # **The rules-legality column, reported unconditionally.** Share of the
-    # player's unit-movement-phases in coherency (`docs/rules/03-moving.md`
-    # § Coherency), and the mean models outside their unit's coherent body.
-    #
-    # Always present, never opt-in, because a score quoted without it is a score
-    # that may have been earned by illegal moves. Coherency is *measured* on
-    # every config and *enforced* on almost none, so silence here reads as
-    # compliance and is not.
-    #
-    # This is the **policy's own** figure: it prefers `intended_coherency_rate`,
-    # falling back to the realised rate only when nothing is enforcing, where the
-    # two are identical by construction. Under `coherency.enforce_move` the
-    # realised rate is 1.000 whatever the policy does -- a metric sampled after a
-    # corrective wrapper measures the wrapper -- and reading it that way is what
-    # published a policy intending 0.630 as 1.000.
-    #
-    # Read the pair together: a unit shot down to one model is coherent by
-    # definition, so a rising rate can mean the units died. `models_out` has no
-    # such failure mode, since a dead model contributes nothing to it.
-    coherency_rate: float | None = None
-    models_out_of_coherency: float | None = None
-    # The same two columns for the OPPONENT force. A rated leg seats entrant B
-    # there and nothing else measured it, so an entrant that never took the
-    # player seat came back with the coherency column blank -- a score without
-    # the claim that the moves earning it were legal, which is the one thing
-    # this column exists to carry. Every other consumer ignores them, exactly as
-    # it ignores `exposure_rate` on a config that does not track it.
-    opponent_coherency_rate: float | None = None
-    opponent_models_out_of_coherency: float | None = None
-    # Per-episode values, in seed order, kept so a result can carry an error bar
-    # and so two results measured on the same seeds can be paired. The loop
-    # already builds these lists; discarding them is why no figure in this
-    # repo's reports has ever had one. Default empty, so a hand-built
-    # `BaselineResult` in a test stays valid.
-    vp_margin_per_episode: tuple[float, ...] = ()
-    objectives_held_per_episode: tuple[float, ...] = ()
-    win_per_episode: tuple[float, ...] = ()
-
-    @property
-    def vp_margin(self) -> float:
-        """Mean VP lead over the opponent — the phase-invariant scoreboard."""
-        return self.player_vp - self.opponent_vp
-
-    @property
-    def vp_margin_se(self) -> float | None:
-        """Standard error of the mean `vp_margin`, or None below two episodes.
-
-        Per-episode `vp_margin` has a standard deviation of 45–50 on the 25v25
-        scenarios, so n=30 carries an SE of ~8–9 — larger than most arm
-        differences ever measured here. Reporting the mean without this is what
-        made a string of noise-level gaps read as effects.
-        """
-        return standard_error(self.vp_margin_per_episode)
-
-
-def format_optional_metric(value: float | None, decimals: int = 3) -> str:
-    """Render a metric that may not have been measured.
-
-    `exposure_rate` and `terrain_proximity` are None unless the config sets
-    `track_exposure`. Printing them as `0.000` would read as "never exposed",
-    so an unmeasured value is shown as a dash instead.
-    """
-    if value is None:
-        return "-"
-    return f"{value:.{decimals}f}"
-
-
-def standard_error(values: Sequence[float]) -> float | None:
-    """Standard error of the mean, or None when fewer than two samples."""
-    if len(values) < 2:
-        return None
-    return float(np.std(values, ddof=1) / np.sqrt(len(values)))
-
-
-def paired_difference(
-    treatment: BaselineResult, control: BaselineResult
-) -> tuple[float, float | None]:
-    """Mean and SE of the per-episode `vp_margin` difference, treatment first.
-
-    Pairing is the whole point: layout variance dwarfs most effects here, and
-    it cancels exactly when both policies played the same seeds. An unpaired
-    read of one such comparison said +8.0 where the paired read said
-    +1.7 ± 5.7.
-
-    Raises:
-        ValueError: If the two results did not cover the same episode count —
-            differencing across different layout sets is meaningless.
-    """
-    left = treatment.vp_margin_per_episode
-    right = control.vp_margin_per_episode
-    if len(left) != len(right) or not left:
-        raise ValueError(
-            f"paired difference needs equal, non-empty episode counts: "
-            f"{len(left)} != {len(right)}"
-        )
-    differences = [a - b for a, b in zip(left, right)]
-    return float(np.mean(differences)), standard_error(differences)
-
-
-def mean_of_measured(values: list[float | None]) -> float | None:
-    """Mean over the episodes that measured the metric, or None if none did."""
-    measured = [value for value in values if value is not None]
-    if not measured:
-        return None
-    return float(np.mean(measured))
-
-
-def _worst_cohesion_gap(env: WargameEnv) -> float:
-    """Largest distance from any alive model to its nearest living squadmate.
-
-    Uses the same helper the `group_cohesion` calculator does, so the number is
-    directly comparable to a phase's `group_max_distance`.
-    """
-    models = env.wargame_models
-    alive = alive_mask_for(models)
-    if not alive.any():
-        return 0.0
-    cache = compute_distances(models, env.objectives, compute_model_model=True)
-    group_ids = np.array([m.group_id for m in models], dtype=np.intp)
-    distances = cache.min_distances_to_same_group(group_ids, alive_mask=alive)
-    return float(distances[alive].max())
+# The result value object and its helpers live in the evaluation kernel
+# (`envs/evaluation/`) so the per-model facade's runner can produce the same
+# value without importing this module, which imports the phase facade. The
+# old names stay importable from here.
+BaselineResult = EvalResult
 
 
 def selector_for(policy: BaselinePolicy) -> ActionSelector:
@@ -306,19 +164,15 @@ def evaluate_selector(
             action = select(observation, env)
             observation, _reward, terminated, truncated, _info = env.step(action)
 
-        alive = alive_mask_for(env.wargame_models)
-        cache = compute_distances(env.wargame_models, env.objectives, alive_mask=alive)
-        at_objective = np.atleast_1d(
-            (cache.model_obj_norms_offset <= cache.obj_radii).any(axis=1)
+        end = read_end_of_episode(
+            env.wargame_models, env.opponent_models, env.objectives
         )
-        fractions.append(
-            float(at_objective[alive].mean()) if alive.any() else 0.0,
-        )
+        fractions.append(end.at_objectives)
         wins.append(1.0 if env.player_vp > env.opponent_vp else 0.0)
         player_vps.append(float(env.player_vp))
         opponent_vps.append(float(env.opponent_vp))
-        cohesion_gaps.append(_worst_cohesion_gap(env))
-        survivals.append(float(alive.mean()))
+        cohesion_gaps.append(end.worst_cohesion_gap)
+        survivals.append(end.fraction_alive)
         exposures.append(env.exposure_rate)
         proximities.append(env.terrain_proximity)
         firepower.append(env.firepower_ratio)
@@ -345,21 +199,7 @@ def evaluate_selector(
             if env.opponent_intended_models_out_of_coherency is not None
             else env.opponent_models_out_of_coherency
         )
-
-        # Control is a strict count comparison, so an objective with equal
-        # numbers on it scores for nobody.
-        opponent_alive = alive_mask_for(env.opponent_models)
-        if env.opponent_models:
-            opponent_norms = compute_distances(
-                env.opponent_models, env.objectives, alive_mask=opponent_alive
-            ).model_obj_norms_offset
-            opponent_counts = (opponent_norms <= cache.obj_radii).sum(axis=0)
-        else:
-            opponent_counts = np.zeros(len(env.objectives), dtype=int)
-        player_counts = (cache.model_obj_norms_offset[alive] <= cache.obj_radii).sum(
-            axis=0
-        )
-        held.append(float((player_counts > opponent_counts).sum()))
+        held.append(end.objectives_held)
 
     return BaselineResult(
         name=name,
@@ -386,3 +226,19 @@ def evaluate_selector(
         objectives_held_per_episode=tuple(held),
         win_per_episode=tuple(wins),
     )
+
+
+__all__ = [
+    "ActionSelector",
+    "BaselineResult",
+    "EvalResult",
+    "evaluate_baseline",
+    "evaluate_selector",
+    "format_optional_metric",
+    "mean_of_measured",
+    "paired_difference",
+    "record_baseline_episode",
+    "record_episode",
+    "selector_for",
+    "standard_error",
+]
