@@ -55,6 +55,7 @@ from wargame_rl.wargame.envs.env_components.distance_cache import DistanceCache
 from wargame_rl.wargame.envs.reward.calculators.closest_objective_v2 import (
     ClosestObjectiveV2Calculator,
 )
+from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.common.factory import create_environment
 from wargame_rl.wargame.selectors import build_action_selector
@@ -155,11 +156,11 @@ def instrument(calculator: ClosestObjectiveV2Calculator, counts: GateCounts) -> 
         player_in_range: np.ndarray,
         player_counts: np.ndarray,
         opponent_counts: np.ndarray,
-        step_key: tuple[int, int],
+        ctx: StepContext,
     ) -> np.ndarray:
-        mask = real_mask(player_in_range, player_counts, opponent_counts, step_key)
-        if state.get("mask_step") != step_key:
-            state["mask_step"] = step_key
+        mask = real_mask(player_in_range, player_counts, opponent_counts, ctx)
+        if state.get("mask_step") is not ctx:
+            state["mask_step"] = ctx
             # An objective is a candidate for *somebody* when any row is set.
             per_objective = np.asarray(mask.any(axis=0)).reshape(-1)
             counts.steps += 1
@@ -186,7 +187,7 @@ def instrument(calculator: ClosestObjectiveV2Calculator, counts: GateCounts) -> 
     def counted_choose(
         model_idx: int,
         view: BattleView,
-        step_key: tuple[int, int],
+        ctx: StepContext,
         cache: DistanceCache,
         player_in_range: np.ndarray,
         player_counts: np.ndarray,
@@ -195,7 +196,7 @@ def instrument(calculator: ClosestObjectiveV2Calculator, counts: GateCounts) -> 
         chosen = real_choose(
             model_idx=model_idx,
             view=view,
-            step_key=step_key,
+            ctx=ctx,
             cache=cache,
             player_in_range=player_in_range,
             player_counts=player_counts,
@@ -229,9 +230,9 @@ def instrument(calculator: ClosestObjectiveV2Calculator, counts: GateCounts) -> 
         if float(cache.model_obj_norms_offset[model_idx, chosen]) <= 0.0:
             counts.paid_model_steps_inside += 1
 
-        if state.get("target_step") != step_key:
+        if state.get("target_step") is not ctx:
             _flush_squad_targets(state, counts)
-            state["target_step"] = step_key
+            state["target_step"] = ctx
             state["targets"] = {}
         targets = cast(dict[int, set[int]], state.setdefault("targets", {}))
         targets.setdefault(group, set()).add(int(chosen))

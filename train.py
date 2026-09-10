@@ -7,10 +7,8 @@ from typing import Any, cast
 import torch
 import typer
 from loguru import logger as log
-from pydantic_yaml import parse_yaml_raw_as
 from pytorch_lightning import LightningModule, Trainer, seed_everything
 from pytorch_lightning.callbacks import Callback
-from typer.models import OptionInfo
 
 from wargame_rl.wargame.envs.renders.v2.control import ThreatOptions
 from wargame_rl.wargame.envs.state import EventLogExporter
@@ -21,6 +19,13 @@ from wargame_rl.wargame.model.common import (
     get_logger,
     init_wandb,
     make_run_name,
+)
+from wargame_rl.wargame.model.common.cli import (
+    get_env_config,
+    resolve_default,
+    resolve_optional_float,
+    resolve_optional_int,
+    resolve_optional_str,
 )
 from wargame_rl.wargame.model.common.config import TransformerConfig
 from wargame_rl.wargame.model.common.event_log_callback import EventLogCallback
@@ -38,6 +43,13 @@ from wargame_rl.wargame.model.ppo.ppo import PPO_Transformer
 
 
 app = typer.Typer(pretty_exceptions_enable=False)
+
+# The unwrappers moved to `model/common/cli.py` so the per-model driver shares
+# them; the private names stay for the callers that import them from here.
+_resolve_default = resolve_default
+_resolve_optional_float = resolve_optional_float
+_resolve_optional_int = resolve_optional_int
+_resolve_optional_str = resolve_optional_str
 
 # PPO on a transformer is the only combination this trains, but the pair stays in
 # the run name: it is the prefix every wandb run and checkpoint directory has
@@ -69,24 +81,6 @@ def _build_default_run_base_name(env_config: WargameEnvConfig) -> str:
     if env_config.opponent_policy is not None:
         parts.append(f"vs-{env_config.opponent_policy.type}")
     return "-".join(parts)
-
-
-def get_env_config(
-    env_config_path: str | None, render_mode: str | None
-) -> WargameEnvConfig:
-    if env_config_path is None:
-        return WargameEnvConfig(render_mode=render_mode)
-
-    if not os.path.exists(env_config_path):
-        raise FileNotFoundError(f"Environment config file not found: {env_config_path}")
-
-    with open(env_config_path) as f:
-        env_config = parse_yaml_raw_as(WargameEnvConfig, f.read())  # pyright: ignore[reportUndefinedVariable]
-
-    # Override render_mode with CLI argument (including None)
-    env_config.render_mode = render_mode
-
-    return WargameEnvConfig(**env_config.model_dump())
 
 
 def _resolve_transformer_config(
@@ -263,41 +257,6 @@ def _fit_with_optional_resume(
         return
     with _trusted_checkpoint_load():
         trainer.fit(model, ckpt_path=resume_ckpt_path)
-
-
-def _resolve_optional_str(value: str | OptionInfo | None) -> str | None:
-    if isinstance(value, OptionInfo):
-        return None
-    return value
-
-
-def _resolve_optional_float(value: float | OptionInfo | None) -> float | None:
-    """Unwrap a Typer default, as `_resolve_optional_int` does for ints."""
-    if isinstance(value, OptionInfo):
-        return None
-    return value
-
-
-def _resolve_default(value: Any, default: Any) -> Any:
-    """Unwrap a Typer default to a concrete fallback, for direct callers.
-
-    `_resolve_optional_int` returns `None`, which is right for options whose
-    absence means "unset". These have real defaults, and a `SelfPlayConfig`
-    handed an `OptionInfo` fails validation rather than falling back.
-    """
-    return default if isinstance(value, OptionInfo) else value
-
-
-def _resolve_optional_int(value: int | OptionInfo | None) -> int | None:
-    """Unwrap a Typer default for callers that invoke `train()` directly.
-
-    Typer only substitutes real values when it parses argv. Called as a plain
-    function -- from tests, or any other Python caller -- the parameter still
-    holds the `OptionInfo` sentinel, which is truthy and is not `None`.
-    """
-    if isinstance(value, OptionInfo):
-        return None
-    return value
 
 
 @app.command()

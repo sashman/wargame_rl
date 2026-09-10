@@ -183,7 +183,7 @@ class SetNetwork(nn.Module):
         self.player_embed = nn.Linear(MODEL_DIM, size, bias=cfg.bias)
         self.context_embed = nn.Linear(CONTEXT_DIM, size, bias=cfg.bias)
         self.type_embedding = nn.Embedding(N_CONTEXT_KINDS, size)
-        # Index phase + 1 so the closing step (phase -1) has its own row.
+        # Index phase + 1 so the `close_turn` point (phase -1) has its own row.
         self.phase_embedding = nn.Embedding(N_PHASES + 1, size)
         self.kind_embedding = nn.Embedding(N_STEP_KINDS, size)
 

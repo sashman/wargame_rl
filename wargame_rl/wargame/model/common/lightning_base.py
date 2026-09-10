@@ -21,22 +21,24 @@ from wargame_rl.wargame.envs.domain.kernel.entities import alive_mask_for
 from wargame_rl.wargame.envs.types import WargameEnvAction
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.model.common.agent_base import BaseAgent
-from wargame_rl.wargame.rating.elo import rating_from_score
-from wargame_rl.wargame.rating.score import margin_score
 
 # The floor (`random`), the movement-only bar (`squad_march`) and the real bar
 # (`squad_march_shoot`, the only baseline that fires). Against an opponent that
 # shoots back the movement-only bar is not just weak but misleading, so the
 # shooting one is logged even though it costs a third baseline sweep. The
 # middle rungs live in scripts/measure_baselines.py.
-BASELINE_POLICIES = ("random", "squad_march", "squad_march_shoot")
-BASELINE_EPISODES = 20
-# Held out from ROLLOUT_SEED_BASE so baselines never share training layouts.
-BASELINE_SEED_BASE = 10_000
-# Evaluation layouts, disjoint from both training and baseline seeds. Fixed
-# across epochs on purpose: objective placement dominates episode variance, so
-# resampling every epoch makes a curve mostly report which maps were drawn.
-EVAL_SEED_BASE = 500_000
+# The bands and the bar live in `eval_constants.py`, which imports nothing, so
+# a driver that never builds a Lightning module can read them; re-exported
+# here for every existing reader.
+from wargame_rl.wargame.model.common.eval_constants import (  # noqa: E402
+    BASELINE_EPISODES,
+    BASELINE_POLICIES,
+    BASELINE_SEED_BASE,
+    EVAL_SEED_BASE,
+)
+from wargame_rl.wargame.rating.elo import rating_from_score
+from wargame_rl.wargame.rating.score import margin_score
+
 # Eval episodes run lockstep in waves of this size. Every episode is exactly
 # `max_turns` steps, so a wave costs `max_turns` batched forward passes instead
 # of `wave_size * max_turns` sequential ones.

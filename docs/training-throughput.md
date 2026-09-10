@@ -266,6 +266,31 @@ bf16, because eager dispatch only starts to bind once the minibatch is down to
 `"reduce-overhead"` — CUDA graphs target launch overhead, and this loop is
 bandwidth-bound, not launch-bound.
 
+## The per-model step (stage 3 of #283)
+
+The per-model facade steps one DECISION at a time, so its unit of work is a
+decision, not a phase, and `train_per_model.py` budgets in rounds. Measured
+2026-09-10 on `configs/golden/25v25_maps_two_mode.yaml`, one episode at fresh
+weights (4 x 128 x 8 trunk, sampled), CPU at two threads, per decision:
+
+| section | ms / decision |
+|---|---|
+| tokens + forward + decode (`SetAgent.act`) | 3.32 |
+| `PerModelEnv.step` | 0.53 |
+| re-timed reward (`PerStepReward.on_step`) | 0.44 |
+| **total** | **4.29** (78 ms / round, 363 decisions over 20 rounds) |
+
+Stage 2 measured 3.56 ms / decision with no reward (85 ms / round over 478
+decisions -- a sampled policy that skips more takes fewer decisions per
+round, which is why the per-round figure fell while the per-decision one
+rose). The reward is 10% of a decision; the observation build and the
+batch-1 forward are the rest, and the lockstep rollout amortises the forward
+over `num_rollout_envs` envs. The whole-phase step is ~10 ms / round, so a
+round of per-model experience costs ~8x more wall-clock at batch 1 --
+against the design's 15-20x naive prediction -- for ~18x more training
+samples. Whether the samples are worth more per round is #288's question.
+Throughput mitigation 2 (the incremental observation) is #287's.
+
 ## What is left, ranked
 
 ### 1. Parallel rollout — the largest remaining win

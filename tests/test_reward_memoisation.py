@@ -18,6 +18,8 @@ control state).
 
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 import pytest
 from hypothesis import given, settings
@@ -27,6 +29,7 @@ from wargame_rl.wargame.envs.env_components.distance_cache import DistanceCache
 from wargame_rl.wargame.envs.reward.calculators.closest_objective_v2 import (
     ClosestObjectiveV2Calculator,
 )
+from wargame_rl.wargame.envs.reward.step_context import StepContext
 
 
 def _reference_min_distances(
@@ -105,6 +108,11 @@ def test_min_distances_alone_in_group_is_zero_not_infinite() -> None:
     np.testing.assert_array_equal(actual, np.array([0.0, 0.0]))
 
 
+def _dummy_context() -> StepContext:
+    """A context object to key the memo on; the mask reads nothing from it."""
+    return cast(StepContext, object())
+
+
 def _reference_candidate_mask(
     calculator: ClosestObjectiveV2Calculator,
     player_in_range: np.ndarray,
@@ -155,7 +163,7 @@ def test_candidate_mask_is_identical_for_every_scored_model(seed: int) -> None:
 
     calculator = ClosestObjectiveV2Calculator()
     hoisted = calculator._candidate_mask(
-        player_in_range, player_counts, opponent_counts, step_key=(0, 0)
+        player_in_range, player_counts, opponent_counts, ctx=_dummy_context()
     )
 
     for model_idx in range(n_models):
@@ -183,7 +191,7 @@ def test_candidate_mask_covers_every_control_state() -> None:
     player_in_range = np.zeros((3, n_obj), dtype=bool)
 
     hoisted = calculator._candidate_mask(
-        player_in_range, player_counts, opponent_counts, step_key=(0, 0)
+        player_in_range, player_counts, opponent_counts, ctx=_dummy_context()
     )
     expected = _reference_candidate_mask(
         calculator, player_in_range, player_counts, opponent_counts, model_idx=0

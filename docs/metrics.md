@@ -18,6 +18,17 @@ wrong conclusions. Those traps are called out inline and collected in
 Two recurring emission paths, on two different step counters. **No single W&B step carries
 both**, which is why history rows look ragged. A third path runs once, at `on_train_start`.
 
+**The per-model driver (`train_per_model.py`, issue #286) emits the same keys from ONE
+path**: one row per update carrying `rounds`, `epoch_equivalent = rounds / 1024`, the
+`loss/*`, `train/*` and `perf/*` set, and — on eval updates — the `eval/*`,
+`reward/*_episode_reward` and `success_rate` set, with the scripted bar row first at
+`rounds = 0`. Same names, same definitions, one step counter, mirrored to
+`<run>/metrics.jsonl`. ⚠ Two readings differ there: `reward/components/<term>` is per
+**round**, not per step (under the re-timed reward a per-step mean would depend on the
+army size), and `eval/coherency_rate` is sampled at each turn close rather than at the
+movement boundary (provisional; #287 reconciles it). See
+`wargame_rl/wargame/model/CLAUDE.md` § PPO over decision steps.
+
 ```
                    on_train_epoch_end (lightning_base.py:372)
                               │

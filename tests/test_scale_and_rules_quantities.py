@@ -91,6 +91,10 @@ class TestRulesQuantities:
             "los_sample_step",
             "base_radius",
             "coherency_distance",
+            # The chain and spread pair: read by the per-model facade's
+            # attrition, its overrun rules and its `units_coherent` reader.
+            "coherency_nearest",
+            "coherency_furthest",
         }
 
 

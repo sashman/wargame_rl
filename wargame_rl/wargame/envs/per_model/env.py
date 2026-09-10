@@ -17,7 +17,7 @@ step after the opponent's turn. Model steps return 0.0. Stage 3 re-times it.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -65,6 +65,7 @@ from wargame_rl.wargame.envs.domain.melee.fight import (
     resolve_fight_step,
 )
 from wargame_rl.wargame.envs.domain.melee.pile_in import SELECTION_RANGE_INCHES
+from wargame_rl.wargame.envs.domain.movement.coherency import evaluate_coherency
 from wargame_rl.wargame.envs.domain.movement.coherency_enforcement import (
     CoherencyEnforcement,
     apply_attrition,
@@ -74,7 +75,10 @@ from wargame_rl.wargame.envs.domain.sequencing.termination import is_battle_over
 from wargame_rl.wargame.envs.domain.shooting.resolve import PairedShootingResult
 from wargame_rl.wargame.envs.domain.shooting.targets import max_weapon_ranges
 from wargame_rl.wargame.envs.env_components.actions import ActionHandler
-from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
+from wargame_rl.wargame.envs.env_components.distance_cache import (
+    compute_distances,
+    objective_ownership_from_norms_offset,
+)
 from wargame_rl.wargame.envs.map_pool import MapPool
 from wargame_rl.wargame.envs.mission import build_vp_calculator
 from wargame_rl.wargame.envs.opponent.registry import (
@@ -100,6 +104,7 @@ from wargame_rl.wargame.envs.per_model.types import (
     PerModelAction,
     PerModelObservation,
     PerModelProvenance,
+    StepEffect,
     StepKind,
 )
 from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
@@ -154,6 +159,20 @@ class SettledWindow:
 
 class EpisodeOver(RuntimeError):
     """`step` was called after the episode terminated."""
+
+
+def kills_by_attacker(results: Iterable[Any]) -> dict[int, int]:
+    """Kills by attacker index, read off the domain's paired result records.
+
+    The one tally behind both the phase-timed window and the per-decision
+    step effect, so "who killed whom" cannot drift between them.
+    """
+    kills: dict[int, int] = {}
+    for result in results:
+        if result.killed:
+            index = int(result.attacker_idx)
+            kills[index] = kills.get(index, 0) + 1
+    return kills
 
 
 def default_dice(combat_seed: int, env: PerModelEnv) -> DiceSource:
@@ -300,8 +319,17 @@ class PerModelEnv(gym.Env):
         self._terminated = False
         self._attrition_deaths_player = 0
         self._attrition_deaths_opponent = 0
+        # Episode totals, never cleared per window: a reader spanning several
+        # windows (the per-decision reward's close) subtracts them by diff.
+        self._attrition_total_player = 0
+        self._attrition_total_opponent = 0
         self._fought_by_seat: dict[bool, set[int]] = {}
         self.divergences: list[FacadeDivergence] = []
+        # The step effect's kill harvest: how far into each of the player
+        # seat's result lists the harvest has read, and the step's tally.
+        self._results_cursor = (0, 0)
+        self._step_kills: dict[int, int] = {}
+        self.last_effect = StepEffect.none()
         self.last_reward: float | None = None
         self.last_reward_breakdown: dict[str, float] = {}
         self.last_per_model_reward = np.zeros(
@@ -413,7 +441,12 @@ class PerModelEnv(gym.Env):
         self._window = None
         self._terminated = False
         self._fought_by_seat = {}
+        self._attrition_total_player = 0
+        self._attrition_total_opponent = 0
         self.divergences = []
+        self._results_cursor = (0, 0)
+        self._step_kills = {}
+        self.last_effect = StepEffect.none()
         self.current_turn = 0
         self.sub_step = 0
         self.episode_step = 0
@@ -460,27 +493,57 @@ class PerModelEnv(gym.Env):
         if reason is not None:
             raise ValueError(reason)
         self.episode_step += 1
+        self._step_kills = {}
         if point.kind is StepKind.close_turn:
             settled = self._settle_window()
             if settled.terminated or self._game_clock.is_game_over:
                 self._terminated = True
                 closing = self._closing_point()
                 self._pending = closing
+                info = self._info([settled])
+                info["effect"] = self._finish_effect(())
                 return (
                     build_per_model_observation(self, closing),
                     settled.reward,
                     True,
                     False,
-                    self._info([settled]),
+                    info,
                 )
             observation, reward, terminated, truncated, info = self._advance()
             info["settled"] = [settled] + info["settled"]
             info["reward_settled"] = True
+            info["effect"] = self._finish_effect(())
             return observation, reward + settled.reward, terminated, truncated, info
-        assert self._program is not None
-        self._program.apply(point, action)
+        program = self._program
+        assert program is not None
+        before = program.acted_mask()
+        acted_before = None if before is None else before.copy()
+        program.apply(point, action)
+        after = program.acted_mask()
+        if after is None or acted_before is None:
+            actor_set: tuple[int, ...] = ()
+        else:
+            actor_set = tuple(int(i) for i in np.flatnonzero(after & ~acted_before))
         self.sub_step += 1
-        return self._advance()
+        observation, reward, terminated, truncated, info = self._advance()
+        info["effect"] = self._finish_effect(actor_set)
+        return observation, reward, terminated, truncated, info
+
+    def _harvest_kills(self) -> None:
+        """Tally the player kills appended since the last harvest."""
+        shots, blows = self._results_cursor
+        seat = self._player_seat
+        fresh = [*seat.shooting_results[shots:], *seat.fight_results[blows:]]
+        for index, count in kills_by_attacker(fresh).items():
+            self._step_kills[index] = self._step_kills.get(index, 0) + count
+        self._results_cursor = (len(seat.shooting_results), len(seat.fight_results))
+
+    def _finish_effect(self, actor_set: tuple[int, ...]) -> StepEffect:
+        self._harvest_kills()
+        self.last_effect = StepEffect(
+            actor_set=actor_set, kills_by_model=dict(self._step_kills)
+        )
+        return self.last_effect
 
     # ------------------------------------------------------------------ driver
 
@@ -721,12 +784,8 @@ class PerModelEnv(gym.Env):
             selection_range=quantities.scale.to_units(SELECTION_RANGE_INCHES),
             base_radius=quantities.base_radius,
             board=(float(self.board_width), float(self.board_height)),
-            coherency_nearest=quantities.scale.to_units(
-                self.config.coherency.nearest_distance
-            ),
-            coherency_furthest=quantities.scale.to_units(
-                self.config.coherency.furthest_distance
-            ),
+            coherency_nearest=quantities.coherency_nearest,
+            coherency_furthest=quantities.coherency_furthest,
         )
 
     def _end_fight_phase(self) -> None:
@@ -845,12 +904,8 @@ class PerModelEnv(gym.Env):
         """
         if not self._coherency_attrition or state.active_player is None:
             return
-        nearest = self._rules_quantities.scale.to_units(
-            self.config.coherency.nearest_distance
-        )
-        furthest = self._rules_quantities.scale.to_units(
-            self.config.coherency.furthest_distance
-        )
+        nearest = self._rules_quantities.coherency_nearest
+        furthest = self._rules_quantities.coherency_furthest
         active, other = self._seat_order(state)
         for seat in (active, other):
             destroyed = apply_attrition(seat.models, nearest, furthest)
@@ -858,14 +913,20 @@ class PerModelEnv(gym.Env):
                 self.note_divergence("attrition.every_unit_on_the_board")
             if seat.is_player:
                 self._attrition_deaths_player += len(destroyed)
+                self._attrition_total_player += len(destroyed)
             else:
                 self._attrition_deaths_opponent += len(destroyed)
+                self._attrition_total_opponent += len(destroyed)
 
     # ------------------------------------------------------------------ reward
 
     def _open_window(self, state: GameState) -> None:
         assert state.phase is not None
         self._battle.reset_vp_deltas()
+        # The only place the result lists are cleared, so the step effect's
+        # harvest reads them first or a kill resolved in this step is lost.
+        self._harvest_kills()
+        self._results_cursor = (0, 0)
         for seat in (self._player_seat, self._opponent_seat):
             seat.shooting_results = []
             seat.fight_results = []
@@ -900,8 +961,7 @@ class PerModelEnv(gym.Env):
         # survivor keeps scoring. So the opponent's wipe ends nothing here; the
         # player's does only under the config switch, which is a training
         # device. The phase facade ends the battle on either wipe.
-        clock_state = self._game_clock.state
-        phase = clock_state.phase or BattlePhase.command
+        current_round, phase = self.context_clock()
         player_shots = self._player_seat.shooting_results
         opponent_shots = self._opponent_seat.shooting_results
         player_blows = self._player_seat.fight_results
@@ -935,12 +995,9 @@ class PerModelEnv(gym.Env):
             - self._attrition_deaths_player,
         )
         p_kills_by_model = np.zeros(len(self.wargame_models), dtype=np.int64)
-        for shot in player_shots:
-            if shot.killed and shot.attacker_idx < len(p_kills_by_model):
-                p_kills_by_model[shot.attacker_idx] += 1
-        for blow in player_blows:
-            if blow.killed and blow.attacker_idx < len(p_kills_by_model):
-                p_kills_by_model[blow.attacker_idx] += 1
+        for index, count in kills_by_attacker([*player_shots, *player_blows]).items():
+            if index < len(p_kills_by_model):
+                p_kills_by_model[index] += count
         ctx = StepContext(
             distance_cache=cache,
             current_turn=self.current_turn,
@@ -948,7 +1005,7 @@ class PerModelEnv(gym.Env):
             board_width=self.board_width,
             board_height=self.board_height,
             is_terminated=False,
-            current_round=clock_state.battle_round or 0,
+            current_round=current_round,
             battle_phase=phase,
             action_phase=window.phase,
             player_damage_dealt=p_dmg,
@@ -1090,10 +1147,72 @@ class PerModelEnv(gym.Env):
         return self._pending
 
     @property
+    def stepped_phases_per_round(self) -> int:
+        """How many of a round's phases we step: the sequencing rule behind
+        `max_turns`, and the scale a once-per-turn reward multiplies by."""
+        return len(BATTLE_PHASE_ORDER) - len(self._skip_phases)
+
+    @property
     def max_turns(self) -> int:
         """The phase clock's budget: rounds x our stepped phases, as the phase facade."""
-        n_phases = len(BATTLE_PHASE_ORDER) - len(self._skip_phases)
-        return self._game_clock.n_rounds * n_phases
+        return self._game_clock.n_rounds * self.stepped_phases_per_round
+
+    def context_clock(self) -> tuple[int, BattlePhase]:
+        """`(current_round, battle_phase)` as a `StepContext` states them: the
+        clock's round, or 0 before the first, and the phase that executes NEXT,
+        or `command` when the clock has no phase."""
+        state = self._game_clock.state
+        return state.battle_round or 0, state.phase or BattlePhase.command
+
+    @property
+    def attrition_deaths_total(self) -> tuple[int, int]:
+        """`(player, opponent)` models lost to coherency attrition this episode.
+
+        The rules give attrition no kill credit; the phase-timed window
+        subtracts its own per-window count, and a reader spanning windows
+        subtracts the difference of these.
+        """
+        return self._attrition_total_player, self._attrition_total_opponent
+
+    @property
+    def objectives_held(self) -> int:
+        """Objectives the player controls now, by the rule VP scores on."""
+        if not self.objectives:
+            return 0
+        player = compute_distances(
+            self.wargame_models,
+            self.objectives,
+            alive_mask=alive_mask_for(self.wargame_models),
+        )
+        opponent = compute_distances(
+            self.opponent_models,
+            self.objectives,
+            alive_mask=alive_mask_for(self.opponent_models),
+        )
+        held, _ = objective_ownership_from_norms_offset(
+            player.model_obj_norms_offset,
+            opponent.model_obj_norms_offset,
+            player.obj_radii,
+        )
+        return int(held.sum())
+
+    def units_coherent(self) -> float:
+        """Share of living player units in coherency, right now.
+
+        ⚠ A point sample, not the phase facade's `CoherencyTracker`, which
+        samples at the movement boundary; #287 reconciles the two.
+        """
+        models = self.wargame_models
+        quantities = self._rules_quantities
+        report = evaluate_coherency(
+            positions=np.array([m.location for m in models], dtype=float),
+            group_ids=np.array([int(m.group_id) for m in models], dtype=int),
+            alive_mask=alive_mask_for(models),
+            base_radii=np.array([m.base_radius for m in models], dtype=float),
+            nearest_distance=quantities.coherency_nearest,
+            furthest_distance=quantities.coherency_furthest,
+        )
+        return report.fraction_units_coherent
 
     @property
     def n_actions(self) -> int:
@@ -1287,6 +1406,8 @@ __all__ = [
     "EpisodeOver",
     "PerModelEnv",
     "SettledWindow",
+    "StepEffect",
     "WargameObjective",
     "default_dice",
+    "kills_by_attacker",
 ]

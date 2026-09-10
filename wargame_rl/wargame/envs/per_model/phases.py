@@ -219,6 +219,15 @@ class PhaseProgram:
         """Per-model compulsory consolidation mode, when this is that phase."""
         return None
 
+    def acted_mask(self) -> np.ndarray | None:
+        """Who has acted in the activation a pending decision belongs to.
+
+        Read by the env around `apply`, so a step's effect can name the models
+        it marked acted -- a skip declaration marks a whole unit with no member
+        taking a step. None when no activation is open.
+        """
+        return None
+
 
 class _UnitPhase(PhaseProgram):
     """A single-seat phase with a declaration on every unit's opening step."""
@@ -229,6 +238,9 @@ class _UnitPhase(PhaseProgram):
         self.activation = PhaseActivation(seat.n_models)
         self.units: set[int] = set()
         self.awaiting_target = False
+
+    def acted_mask(self) -> np.ndarray | None:
+        return self.activation.acted
 
     # --- what a subclass states -------------------------------------------
 
@@ -993,6 +1005,11 @@ class ShortMovePhase(PhaseProgram):
     def apply(self, point: DecisionPoint, action: PerModelAction) -> None:
         self.programs[self.current].apply(point, action)
 
+    def acted_mask(self) -> np.ndarray | None:
+        if self.current >= len(self.programs):
+            return None
+        return self.programs[self.current].acted_mask()
+
     def player_consolidation_modes(self) -> np.ndarray | None:
         if self.phase is not BattlePhase.consolidate:
             return None
@@ -1018,6 +1035,9 @@ class FightPhase(PhaseProgram):
         self.activation: PhaseActivation | None = None
         self.matrix: np.ndarray | None = None
         self.pool: dict[int, list[int]] = {}
+
+    def acted_mask(self) -> np.ndarray | None:
+        return None if self.activation is None else self.activation.acted
 
     def open(self) -> None:
         env = self.env
