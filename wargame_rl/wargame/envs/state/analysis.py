@@ -161,6 +161,14 @@ def analyze_match(
     """
     if not snapshots:
         return MatchAnalysis(file=file_name)
+    if any(snapshot.decision is not None for snapshot in snapshots):
+        raise ValueError(
+            f"{file_name or 'this recording'} was recorded at decision cadence "
+            "(one snapshot per per-model decision). Every per-step rate here "
+            "assumes one snapshot per phase step and would be diluted by the "
+            "decisions per phase, so it is refused rather than misreported. "
+            "Re-record at phase cadence (`record_cadence='phase'`, the default)."
+        )
 
     first = snapshots[0]
     last = snapshots[-1]

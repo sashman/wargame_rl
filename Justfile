@@ -362,6 +362,14 @@ profile env_config_path max_epochs='5':
 measure-throughput env_config n_steps='400' engaged='':
 	@uv run python -m scripts.measure_throughput {{env_config}} {{n_steps}} {{engaged}}
 
+# The same question for the PER-MODEL facade, budgeted in ROUNDS (its unit of
+# work is a decision, not a phase, and decisions per round vary with the army).
+# Two rows: the random legal seat (the env-only floor) and the set network at
+# fresh weights, sampled; per-decision split into tokens / forward / decode /
+# env.step / re-timed reward per calculator / the opponent's plan.
+measure-throughput-per-model env_config rounds='20':
+	@uv run python -m scripts.measure_throughput_per_model {{env_config}} {{rounds}}
+
 # Record a short training run with event logging (E2E demo: 1 epoch, no wandb)
 record env_config_path='configs/dev/tiny.yaml':
 	uv run train.py --record-events --max-epochs 1 --no-wandb --env-config-path {{env_config_path}}
@@ -623,6 +631,14 @@ play-per-model env_config_path='configs/golden/25v25_maps_two_mode.yaml' policy=
 # The same, headless, to an MP4 -- one episode.
 record-per-model env_config_path='configs/golden/25v25_maps_two_mode.yaml' policy='squad_march_take' out='per_model.mp4' cadence='decision':
 	uv run play_per_model.py {{env_config_path}} {{policy}} tabletop --cadence {{cadence}} --out {{out}} --episodes 1
+
+# An EVENT LOG of one per-model episode -- not the MP4 above. `phase` cadence
+# (one snapshot per settled reward window) feeds `just replay` / `analyze` /
+# `replay-render` unchanged; `decision` cadence (one per decision) replays and
+# renders, and `analyze` refuses it by name. `policy` is a `.pt`, `random`,
+# `set_network`, or a baseline name -- every one played on the per-model facade.
+record-per-model-events env_config policy='squad_march_take' cadence='phase' seed='' out='' *overrides:
+	@uv run python -m scripts.record_per_model_events {{env_config}} {{policy}} {{cadence}} "{{seed}}" "{{out}}" {{overrides}}
 
 # Step a match by hand and rewind it. Takes a baseline name or a .ckpt path.
 # [R] shooting threat, [E] engagement range; `overlays` starts them on and can tune

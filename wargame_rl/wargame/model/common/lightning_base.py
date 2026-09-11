@@ -35,14 +35,15 @@ from wargame_rl.wargame.model.common.eval_constants import (  # noqa: E402
     BASELINE_POLICIES,
     BASELINE_SEED_BASE,
     EVAL_SEED_BASE,
+    EVAL_WAVE_SIZE,
 )
 from wargame_rl.wargame.rating.elo import rating_from_score
 from wargame_rl.wargame.rating.score import margin_score
 
-# Eval episodes run lockstep in waves of this size. Every episode is exactly
-# `max_turns` steps, so a wave costs `max_turns` batched forward passes instead
-# of `wave_size * max_turns` sequential ones.
-EVAL_WAVE_SIZE = 16
+# Eval episodes run lockstep in waves of `EVAL_WAVE_SIZE` (re-exported from
+# `eval_constants`). On this facade every episode is exactly `max_turns`
+# steps, so a wave costs `max_turns` batched forward passes instead of
+# `wave_size * max_turns` sequential ones.
 
 
 @dataclass

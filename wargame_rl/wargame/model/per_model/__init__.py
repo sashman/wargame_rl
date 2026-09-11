@@ -16,10 +16,7 @@ from wargame_rl.wargame.model.per_model.checkpoint import (
     save_checkpoint,
 )
 from wargame_rl.wargame.model.per_model.config import SetNetworkConfig
-from wargame_rl.wargame.model.per_model.evaluate import (
-    PerModelEvalResult,
-    evaluate_per_model,
-)
+from wargame_rl.wargame.model.per_model.evaluate import EvalResult, evaluate_per_model
 from wargame_rl.wargame.model.per_model.net import (
     HeadLogits,
     SetNetwork,
@@ -39,7 +36,7 @@ __all__ = [
     "NO_DRAW",
     "HeadLogits",
     "LoadedCheckpoint",
-    "PerModelEvalResult",
+    "EvalResult",
     "PerModelPPOConfig",
     "Rollout",
     "SetAgent",

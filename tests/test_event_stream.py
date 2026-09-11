@@ -467,3 +467,187 @@ class TestEventLogCallback:
         assert len(exporter.log) == 1
         assert callback.write() is False
         assert not callback.output_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# The delta codec covers every dynamic field, by name
+# ---------------------------------------------------------------------------
+
+# Static per episode: recorded on the reset and anchor snapshots, never in a
+# delta, and preserved by `apply_delta` through `model_copy`.
+STATIC_SNAPSHOT_FIELDS = frozenset(
+    {
+        "schema_version",
+        "max_steps",
+        "n_rounds",
+        "board_width",
+        "board_height",
+        "deployment_zone",
+        "opponent_deployment_zone",
+        "terrain_footprints",
+        "skip_phases",
+        "deployment_outline",
+        "opponent_deployment_outline",
+        "rules",
+        "mission_type",
+        "mission_params",
+    }
+)
+STATIC_MODEL_FIELDS = frozenset(
+    {"base_radius", "group_id", "max_wounds", "toughness", "save", "weapons"}
+)
+
+
+def test_every_dynamic_snapshot_field_has_a_delta_field() -> None:
+    """Schema 2.7 added the melee lists to the snapshot and not to the codec,
+    so a replay rebuilt from deltas carried the anchor's melee lists on every
+    step. This pins the coverage structurally so the next field cannot."""
+    from wargame_rl.wargame.envs.state.events import ModelDelta, StateDelta
+    from wargame_rl.wargame.envs.state.snapshot import ModelSnapshot
+
+    dynamic = set(GameStateSnapshot.model_fields) - STATIC_SNAPSHOT_FIELDS
+    covered = set(StateDelta.model_fields) - {
+        "player_model_deltas",
+        "opponent_model_deltas",
+    } | {"player_models", "opponent_models"}
+    assert dynamic == covered, (
+        f"snapshot fields without a delta field: {sorted(dynamic - covered)}; "
+        f"delta fields without a snapshot field: {sorted(covered - dynamic)}"
+    )
+
+    dynamic_model = set(ModelSnapshot.model_fields) - STATIC_MODEL_FIELDS
+    covered_model = set(ModelDelta.model_fields) - {"idx"}
+    assert dynamic_model == covered_model, (
+        f"model fields without a delta field: {sorted(dynamic_model - covered_model)}"
+    )
+
+
+def test_every_dynamic_field_round_trips_through_the_delta(
+    recorded_log: EventLog,
+) -> None:
+    """One mutation per dynamic field, applied and recovered. The table's keys
+    are asserted equal to the dynamic set, so a new field fails here by name
+    until it gets a mutation."""
+    from wargame_rl.wargame.envs.state.snapshot import (
+        ClockSnapshot,
+        CombatResultSnapshot,
+        DecisionSnapshot,
+        ModelSnapshot,
+        RewardSnapshot,
+    )
+
+    base = ReplayController(recorded_log).iter_snapshots()[0]
+    result = CombatResultSnapshot(
+        attacker_idx=0,
+        target_idx=1,
+        hits=1,
+        wounds=1,
+        unsaved=1,
+        damage_dealt=1,
+        expected_damage=0.5,
+        hit_probability=0.5,
+        wound_probability=0.5,
+        killed=True,
+    )
+    model = base.player_models[0]
+    moved = model.model_copy(update={"location": [model.location[0] + 1.0, 0.0]})
+    mutations: dict[str, object] = {
+        "step": base.step + 1,
+        "clock": ClockSnapshot(
+            game_phase="battle",
+            battle_round=3,
+            active_player="p2",
+            battle_phase="fight",
+        ),
+        "action_phase": "fight",
+        "player_models": [moved, *base.player_models[1:]],
+        "opponent_models": [
+            base.opponent_models[0].model_copy(update={"alive": False}),
+            *base.opponent_models[1:],
+        ]
+        if base.opponent_models
+        else [],
+        "objectives": [
+            o.model_copy(update={"player_models_in_range": [0]})
+            for o in base.objectives
+        ],
+        "player_vp": base.player_vp + 5,
+        "opponent_vp": base.opponent_vp + 10,
+        "player_vp_delta": 5,
+        "opponent_vp_delta": 10,
+        "objective_control": ["player" for _ in base.objective_control],
+        "player_actions": [1 for _ in base.player_models],
+        "opponent_actions": [2 for _ in base.opponent_models],
+        "player_action_descriptions": ["x" for _ in base.player_models],
+        "player_combat_results": [result],
+        "opponent_combat_results": [result],
+        "player_melee_results": [result],
+        "opponent_melee_results": [result],
+        "decision": DecisionSnapshot(
+            kind="act", model=0, value=3, phase="movement", sub_step=1, episode_step=2
+        ),
+        "reward": RewardSnapshot(
+            total=1.5, breakdown={"x": 1.5}, phase_name="p", phase_index=0
+        ),
+        "is_terminated": True,
+        "is_truncated": True,
+        "player_alive_count": 0,
+        "opponent_alive_count": 0,
+        "player_total_wounds": 0,
+        "opponent_total_wounds": 0,
+    }
+    dynamic = set(GameStateSnapshot.model_fields) - STATIC_SNAPSHOT_FIELDS
+    assert set(mutations) == dynamic, sorted(set(mutations) ^ dynamic)
+    for field, value in mutations.items():
+        if field == "opponent_models" and not base.opponent_models:
+            continue
+        mutated = base.model_copy(update={field: value})
+        rebuilt = apply_delta(base, compute_delta(base, mutated))
+        assert rebuilt == mutated, field
+
+    model_mutations: dict[str, object] = {
+        "location": [1.0, 2.0],
+        "previous_location": [3.0, 4.0],
+        "alive": not model.alive,
+        "current_wounds": model.current_wounds + 1,
+        "advanced_this_turn": not model.advanced_this_turn,
+        "charged_this_turn": not model.charged_this_turn,
+        "fell_back_this_turn": not model.fell_back_this_turn,
+        "distances_to_objectives": [9.0 for _ in model.distances_to_objectives],
+        "at_objective": [True for _ in model.at_objective],
+        "closest_objective_idx": 7,
+        "closest_objective_distance": 7.5,
+    }
+    assert set(model_mutations) == set(ModelSnapshot.model_fields) - STATIC_MODEL_FIELDS
+    for field, value in model_mutations.items():
+        changed = model.model_copy(update={field: value})
+        mutated = base.model_copy(
+            update={"player_models": [changed, *base.player_models[1:]]}
+        )
+        rebuilt = apply_delta(base, compute_delta(base, mutated))
+        assert rebuilt.player_models[0] == changed, field
+
+
+def test_a_2_7_recording_loads_with_no_decision(recorded_log: EventLog) -> None:
+    """The 2.8 field is optional: a log written without it decodes with
+    `decision is None` on every snapshot."""
+    import json
+
+    lines = JsonMatchCodec().encode(recorded_log).decode().splitlines()
+    rewritten = [lines[0]]
+    for line in lines[1:]:
+        obj = json.loads(line)
+        for key in ("snapshot", "anchor", "delta"):
+            if isinstance(obj.get(key), dict):
+                obj[key].pop("decision", None)
+                obj[key].pop("player_melee_results", None)
+                obj[key].pop("opponent_melee_results", None)
+                if "schema_version" in obj[key]:
+                    obj[key]["schema_version"] = "2.7"
+        rewritten.append(json.dumps(obj))
+    snapshots = ReplayController(
+        JsonMatchCodec().decode("\n".join(rewritten).encode())
+    ).iter_snapshots()
+    assert snapshots
+    assert all(s.decision is None for s in snapshots)
+    assert all(s.schema_version == "2.7" for s in snapshots)

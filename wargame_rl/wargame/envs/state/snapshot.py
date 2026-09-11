@@ -184,6 +184,25 @@ class RewardSnapshot(BaseModel):
     """
 
 
+class DecisionSnapshot(BaseModel):
+    """One per-model decision (schema 2.8; recorded at decision cadence only).
+
+    A snapshot of the per-model facade at decision cadence spans one `step()`
+    call, and this says what that call resolved: the step kind, the model it
+    named, the flat action index an `act` chose, the phase it was made in,
+    and the facade's two counters. None on every phase-cadence snapshot and
+    every phase-facade snapshot, so a 2.7 log loads unchanged and a replayed
+    snapshot still equals a live one on both facades.
+    """
+
+    kind: str
+    model: int | None = None
+    value: int | None = None
+    phase: str | None = None
+    sub_step: int
+    episode_step: int
+
+
 class EpisodeProvenance(BaseModel):
     """Everything needed to boot this episode again, byte for byte.
 
@@ -238,7 +257,7 @@ class GameStateSnapshot(BaseModel):
     attributing ``player_actions`` to a phase.
     """
 
-    schema_version: str = "2.7"
+    schema_version: str = "2.8"
     step: int
     max_steps: int
     clock: ClockSnapshot
@@ -303,6 +322,9 @@ class GameStateSnapshot(BaseModel):
     volleys. Empty on pre-2.7 recordings and on every melee-off config, which is
     every config shipped today.
     """
+    decision: DecisionSnapshot | None = None
+    """The decision this snapshot spans, at the per-model facade's decision
+    cadence (schema 2.8). None everywhere else."""
     reward: RewardSnapshot
     is_terminated: bool
     is_truncated: bool
@@ -721,6 +743,7 @@ def build_snapshot(
     opponent_deployment_outline: "Polygon | None" = None,
     player_fight_results: list[PairedFightResult] | None = None,
     opponent_fight_results: list[PairedFightResult] | None = None,
+    decision: DecisionSnapshot | None = None,
 ) -> GameStateSnapshot:
     """Build a complete game-state snapshot from env internals."""
     player_configs = config.models
@@ -867,6 +890,7 @@ def build_snapshot(
         ),
         is_terminated=is_terminated,
         is_truncated=is_truncated,
+        decision=decision,
         player_alive_count=p_alive,
         opponent_alive_count=o_alive,
         player_total_wounds=p_wounds,

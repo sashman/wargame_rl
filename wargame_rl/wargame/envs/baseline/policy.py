@@ -62,6 +62,16 @@ class BaselinePolicy(ABC):
             return self.select_short_move(models, env, phase)
         return WargameEnvAction(actions=[STAY_ACTION] * len(models))
 
+    @property
+    def shoots(self) -> bool:
+        """Whether this baseline fires: it overrides `select_shooting`.
+
+        The one definition of the fact the env needs before it pays for a
+        shooting mask -- the opponent wrapper, the per-model seat and the
+        bridge test all read it here rather than comparing methods themselves.
+        """
+        return type(self).select_shooting is not BaselinePolicy.select_shooting
+
     @abstractmethod
     def select_movement(
         self, models: list[WargameModel], env: WargameEnv

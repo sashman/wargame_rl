@@ -148,8 +148,20 @@ to `<run>/metrics.jsonl`.
   reward's time structure changes. They are #288's to calibrate
   (`--gamma --gae-lambda --rollout-rounds`) before any race number is quoted.
 - **Refused:** curriculum configs (more than one reward phase — `try_advance`
-  counts epochs and there is no epoch here yet). **Deferred:** warm start,
-  resume, batched eval and recording (#287).
+  counts epochs and there is no epoch here yet). **Deferred:** warm start and
+  resume.
+- **Evaluation is batched in waves** (`--eval-wave-size`, default
+  `EVAL_WAVE_SIZE` from `envs/evaluation/`): `model/per_model/evaluate.py` is a
+  thin client of `envs/per_model/evaluate.py::evaluate_per_model_chooser` —
+  the agent's `act_batch` is a batch chooser — returning the shared
+  `EvalResult`. The eval rows are the whole-phase trainer's keys, with
+  `mean_episode_decisions` (never `mean_episode_steps`: the unit differs),
+  `eval/at_objectives`, `eval/models_out_of_coherency`, and coherency read off
+  the env's tracker on the phase facade's grid; unmeasured columns are omitted.
+  A checkpoint is scored offline with `just measure-checkpoint <run>/last.pt
+  ...`, `measure-maps` and `measure-paired` (#287, through
+  `wargame_rl/wargame/scoring.py`); the rating arena refuses a `.pt` until a
+  per-model opponent policy exists (#274).
 - **Checkpoints** are periodic, not exit-hooked: `pm-<rounds>.pt` and `last.pt`
   every `--checkpoint-every-rounds` (SIGKILL is the prescribed stop and triggers
   no handler, so `last.pt` is at most one interval stale). `load_checkpoint`

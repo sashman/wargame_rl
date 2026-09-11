@@ -129,3 +129,142 @@ def test_resolving_a_baseline_does_not_import_torch() -> None:
     )
 
     assert completed.stdout.strip() == "False"
+
+
+# ------------------------------------------------------------ the per-model side
+
+
+def _small_per_model_checkpoint(tmp_path: Path) -> Path:
+    from tests.per_model_seats import small_config
+    from wargame_rl.wargame.envs.per_model import PerModelEnv
+    from wargame_rl.wargame.model.per_model import (
+        PerModelPPOConfig,
+        SetNetwork,
+        SetNetworkConfig,
+        save_checkpoint,
+    )
+
+    env = PerModelEnv(small_config(opponent_x=22))
+    torch.manual_seed(0)
+    network = SetNetwork.from_env(
+        env, SetNetworkConfig(embedding_size=32, n_layers=2, n_heads=4)
+    )
+    path = tmp_path / "per-model-2026-09-10-12-00-00-armP" / "last.pt"
+    save_checkpoint(
+        path,
+        network,
+        ppo_config=PerModelPPOConfig(),
+        env_config=env.config.model_dump(mode="json"),
+        rounds=4,
+        seed=0,
+        revision="test",
+    )
+    return path
+
+
+def test_a_per_model_checkpoint_is_refused_by_the_phase_resolver(
+    env: WargameEnv, tmp_path: Path
+) -> None:
+    path = _small_per_model_checkpoint(tmp_path)
+    with pytest.raises(ValueError, match="per-model checkpoint"):
+        build_action_selector(str(path), env)
+
+
+def test_a_whole_phase_checkpoint_is_refused_by_the_per_model_resolver(
+    env: WargameEnv, tmp_path: Path
+) -> None:
+    from tests.per_model_seats import small_config
+    from wargame_rl.wargame.envs.per_model import PerModelEnv
+    from wargame_rl.wargame.selectors import build_per_model_chooser
+
+    checkpoint = tmp_path / "run" / "last.ckpt"
+    checkpoint.parent.mkdir()
+    _write_checkpoint(env, checkpoint)
+    with pytest.raises(ValueError, match="whole-phase checkpoint"):
+        build_per_model_chooser(str(checkpoint), [PerModelEnv(small_config())])
+
+
+def test_the_per_model_resolver_seats_every_kind_of_policy(tmp_path: Path) -> None:
+    from tests.per_model_seats import small_config
+    from wargame_rl.wargame.envs.per_model import PerModelEnv
+    from wargame_rl.wargame.selectors import build_per_model_chooser
+
+    path = _small_per_model_checkpoint(tmp_path)
+    for spec, kind in (
+        ("squad_march_take", "baseline"),
+        ("random", "random"),
+        ("set_network", "set_network"),
+        (str(path), "checkpoint"),
+    ):
+        envs = [PerModelEnv(small_config(opponent_x=22))]
+        resolved = build_per_model_chooser(spec, envs, seed=1)
+        assert resolved.kind == kind, spec
+        observation, _ = envs[0].reset(seed=0)
+        action = resolved.choose(envs, [observation])[0]
+        assert observation.decision.why_illegal(action) is None
+    assert (
+        build_per_model_chooser(str(path), [PerModelEnv(small_config())]).label
+        == "armP"
+    )
+    with pytest.raises(ValueError, match="neither a per-model checkpoint"):
+        build_per_model_chooser("not_a_policy", [PerModelEnv(small_config())])
+
+
+def test_evaluate_spec_scores_both_facades_on_one_table(tmp_path: Path) -> None:
+    from tests.per_model_seats import small_config
+    from wargame_rl.wargame.envs.baseline.evaluate import evaluate_selector
+    from wargame_rl.wargame.scoring import evaluate_spec, record_per_model, record_spec
+
+    config = small_config(opponent_x=22)
+    seeds = [700000, 700001]
+    scripted = evaluate_spec("squad_march_take", config, seeds, "take")
+    direct_env = WargameEnv(config)
+    direct = evaluate_selector(
+        build_action_selector("squad_march_take", direct_env).select,
+        direct_env,
+        seeds,
+        "take",
+    )
+    assert scripted == direct
+
+    path = _small_per_model_checkpoint(tmp_path)
+    learned = evaluate_spec(str(path), config, seeds, "armP", wave_size=2)
+    assert learned.n_episodes == 2 and learned.exposure_rate is None
+    with pytest.raises(ValueError, match="no joint decode"):
+        evaluate_spec(str(path), config, seeds, "armP", decode_topk=3)
+
+    written = record_spec(str(path), config, seeds[0], tmp_path / "pm.jsonl")
+    assert written.exists()
+    # A baseline name records the phase facade through `record_spec`, and the
+    # per-model facade through `record_per_model` -- two different games.
+    per_model = record_per_model(
+        "squad_march_take",
+        config,
+        seeds[0],
+        tmp_path / "pm_take.jsonl",
+        cadence="decision",
+    )
+    assert per_model.exists()
+    with pytest.raises(ValueError, match="phase cadence only"):
+        record_spec(
+            "squad_march_take",
+            config,
+            seeds[0],
+            tmp_path / "x.jsonl",
+            cadence="decision",
+        )
+
+
+def test_resolving_or_scoring_a_baseline_does_not_import_torch() -> None:
+    """The scoring service sits beside the resolver and must keep its
+    torch-deferral: a scripted score should never pay for the tensor stack."""
+    source = (
+        "import sys\n"
+        "from wargame_rl.wargame.scoring import evaluate_spec\n"
+        "from wargame_rl.wargame.selectors import build_per_model_chooser\n"
+        "print('torch' in sys.modules)\n"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", source], capture_output=True, text=True, check=True
+    )
+    assert completed.stdout.strip() == "False"

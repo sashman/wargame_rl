@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from wargame_rl.wargame.envs.state.snapshot import (
     CombatResultSnapshot,
+    DecisionSnapshot,
     GameStateSnapshot,
     ModelSnapshot,
     ObjectiveSnapshot,
@@ -40,6 +41,8 @@ class StepNarrator:
             parts.append(clock.battle_phase.replace("_", " ").title())
         if clock.active_player is not None:
             parts.append(clock.active_player.replace("_", " ").title())
+        if s.decision is not None:
+            parts.append(_describe_decision(s.decision))
         return f"=== {' | '.join(parts)} ==="
 
     def _board(self, s: GameStateSnapshot) -> str:
@@ -162,3 +165,14 @@ class StepNarrator:
         if s.is_truncated:
             return "STATUS: Truncated"
         return "STATUS: In progress"
+
+
+def _describe_decision(decision: DecisionSnapshot) -> str:
+    """One clause for a decision-cadence snapshot's decision."""
+    if decision.kind == "close_turn":
+        return "Decision: close turn"
+    where = f" ({decision.phase})" if decision.phase else ""
+    return (
+        f"Decision {decision.episode_step}: {decision.kind} model "
+        f"{decision.model} value {decision.value}{where}"
+    )

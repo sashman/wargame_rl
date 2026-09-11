@@ -49,6 +49,7 @@ from wargame_rl.wargame.envs.domain.melee.pile_in import (
     SELECTION_RANGE_INCHES,
     short_move_stands,
 )
+from wargame_rl.wargame.envs.domain.movement.coherency import coherency_counts
 from wargame_rl.wargame.envs.domain.movement.coherency_enforcement import (
     coherency_after_unit_move,
 )
@@ -412,6 +413,7 @@ class MovementPhase(_UnitPhase):
     def __init__(self, env: PerModelEnv, seat: Seat) -> None:
         super().__init__(env, BattlePhase.movement, seat)
         self.engaged_units: set[int] = set()
+        self._intent_by_unit: dict[int, tuple[int, int, int]] = {}
 
     def open(self) -> None:
         if self.env.config.melee.enabled:
@@ -477,6 +479,13 @@ class MovementPhase(_UnitPhase):
         starts = self.activation.start_positions
         nearest = quantities.scale.to_units(env.config.coherency.nearest_distance)
         furthest = quantities.scale.to_units(env.config.coherency.furthest_distance)
+        # Judge the move the policy ACTUALLY MADE, before this unit's referee
+        # edits it -- the phase facade's `intended_coherency_last_move`, taken
+        # a unit at a time. Coherency is intra-unit, so the sum over units at
+        # the close is the force-wide count the phase facade takes at once.
+        self._intent_by_unit[unit] = coherency_counts(
+            [self.seat.models[i] for i in members], nearest, furthest
+        )
         if self.activation.declaration == MoveDeclaration.fall_back and members:
             if unit_moved(self.seat.models, members, starts):
                 if fall_back_stands(
@@ -495,6 +504,29 @@ class MovementPhase(_UnitPhase):
         coherency_after_unit_move(
             self.seat.models, members, nearest, furthest, env.coherency_mode
         )
+
+    def close(self) -> None:
+        """Hand the phase's intent to the env: the units judged at their own
+        close, plus every living unit that took no step (a stationary
+        declaration), whose formation the referee never touched."""
+        quantities = self.env.rules_quantities
+        nearest = quantities.scale.to_units(self.env.config.coherency.nearest_distance)
+        furthest = quantities.scale.to_units(
+            self.env.config.coherency.furthest_distance
+        )
+        units = coherent = models_out = 0
+        for unit in self.seat.living_units():
+            counts = self._intent_by_unit.get(unit)
+            if counts is None:
+                counts = coherency_counts(
+                    [self.seat.models[i] for i in self.seat.unit_members(unit)],
+                    nearest,
+                    furthest,
+                )
+            units += counts[0]
+            coherent += counts[1]
+            models_out += counts[2]
+        self.env.note_movement_intent(self.seat, (units, coherent, models_out))
 
 
 class ShootingPhase(_UnitPhase):

@@ -11,6 +11,8 @@ held-out 700k, cloning 800k, ratings 900k, self-play opponents 1.1M.
 
 from __future__ import annotations
 
+from wargame_rl.wargame.envs.evaluation.constants import EVAL_WAVE_SIZE
+
 # The three baselines every run logs. The shooting one is the bar that matters
 # against an opponent that shoots back; the middle rungs live in
 # scripts/measure_baselines.py.
@@ -28,4 +30,5 @@ __all__ = [
     "BASELINE_POLICIES",
     "BASELINE_SEED_BASE",
     "EVAL_SEED_BASE",
+    "EVAL_WAVE_SIZE",
 ]

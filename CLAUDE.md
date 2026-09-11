@@ -40,7 +40,10 @@ wargame_rl/
 │       │   ├── env_components/    # Adapters: actions, distance cache, observation builder
 │       │   ├── per_model/         # The per-model facade: one DECISION per step over the
 │       │   │                      #   same domain; tokens (the set observation), the
-│       │   │                      #   re-timed reward (#283 stages 1-3)
+│       │   │                      #   re-timed reward, the batched evaluation in waves
+│       │   │                      #   and the recording at two cadences (#283 stages 1-4)
+│       │   ├── evaluation/        # The evaluation kernel both facades share: EvalResult,
+│       │   │                      #   the end-of-episode readouts (held / on_obj / alive)
 │       │   ├── map_pool.py        # Draws a real table per episode from a pool of maps
 │       │   ├── baseline/          # Scripted baseline policies + registry + evaluate
 │       │   ├── debug/             # Hand-stepping a live match: undo stack, session loop
@@ -62,7 +65,9 @@ wargame_rl/
 │       │   └── opponent/          # A checkpoint seated on the opponent side
 │       ├── rating/                # Elo: margin score, Bradley-Terry fit, schedule,
 │       │                          #   arena, ledger, table
-│       ├── selectors.py           # One policy-name-or-checkpoint-path resolver
+│       ├── selectors.py           # One resolver for both facades: a name or .ckpt -> selector,
+│       │                          #   a name / random / set_network / .pt -> chooser
+│       ├── scoring.py             # Score or record a spec on the facade that owns it
 │       └── types.py               # Experience
 ├── configs/                       # Env configs, tiered by what breaks if edited
 │   ├── golden/                    #   backs a published number
@@ -121,6 +126,8 @@ wargame_rl/
 | Train the set network over the per-model facade (budget in ROUNDS) | `just train-per-model <config.yaml> [rounds] [flags]` |
 | Watch the per-model facade play, one frame per decision | `just play-per-model [config.yaml] [policy\|random\|set_network\|run/last.pt] [theme] [overlays] [cadence]` |
 | Record the per-model facade to an MP4 | `just record-per-model [config.yaml] [policy\|random\|set_network] [out.mp4] [cadence]` |
+| Record the per-model facade to an EVENT LOG (phase or decision cadence) | `just record-per-model-events <config.yaml> [policy\|random\|set_network\|run/last.pt] [cadence] [seed] [out]` |
+| Where a per-model DECISION's time goes, in rounds | `just measure-throughput-per-model <config.yaml> [rounds]` |
 | Step a match by hand and rewind it | `just debug [config.yaml] [policy\|ckpt] [theme] [overlays]` |
 | Recreate a recorded match exactly and step it | `just debug-recording <file> [policy\|ckpt] [theme] [overlays]` |
 | Record a match event log | `just record <config.yaml>` |
@@ -130,8 +137,8 @@ wargame_rl/
 | Inspect a Wandb run | `just run-summary <run_id> [bucket]` |
 | Measure reward-phase gates | `just measure-phase-gates <ckpt> <config.yaml> [n_episodes]` |
 | Scripted baselines (floor + bar) | `just measure-baselines <config.yaml> [n_episodes] [record] [seed_base] [key=value...]` |
-| Score a checkpoint (baseline-comparable) | `just measure-checkpoint <ckpt> <config.yaml> [n_episodes] [record] [decode_topk] [key=value...]` |
-| Score on the real table layouts | `just measure-maps <policy\|ckpt> <config.yaml> [n_episodes] [maps_dir] [decode_topk] [key=value...]` |
+| Score a checkpoint (baseline-comparable; a `.ckpt` or a per-model `.pt`) | `just measure-checkpoint <ckpt> <config.yaml> [n_episodes] [record] [decode_topk] [key=value...]` |
+| Score on the real table layouts (a name, `.ckpt` or `.pt`) | `just measure-maps <policy\|ckpt> <config.yaml> [n_episodes] [maps_dir] [decode_topk] [key=value...]` |
 | Why an objective was not held | `just measure-objective-split <policy\|ckpt> <config.yaml> [n_episodes]` |
 | What a policy buys with the advance move, and what it pays | `just measure-advance-use <policy\|ckpt> <config.yaml> [n_episodes] [decode_topk]` |
 | How often the VP cap binds, and what it discards | `just measure-vp-cap <policy\|ckpt> <config.yaml> [n_episodes] [decode_topk]` |
@@ -141,7 +148,7 @@ wargame_rl/
 | Which of our units beats which of theirs, pre-game | `just measure-matchups <config.yaml>` |
 | Where it is dangerous to stand NEXT turn, and a policy's exposure | `just measure-threat-field <policy\|ckpt> <config.yaml> [n] [maps_dir] [decode_topk]` |
 | Clone a scripted policy into the network (warm-start checkpoint) | `just behaviour-clone <policy> <config.yaml> [n_episodes] [epochs] [out]` |
-| Two policies on identical layouts, paired per episode | `just measure-paired <policy\|ckpt> <policy\|ckpt> <config.yaml> [n_episodes] [seed_base] [key=value...]` |
+| Two policies on identical layouts, paired per episode (names, `.ckpt` or `.pt`) | `just measure-paired <policy\|ckpt> <policy\|ckpt> <config.yaml> [n_episodes] [seed_base] [key=value...]` |
 | Dice-vs-scenario noise floor | `just measure-noise-floor <config.yaml> [n_layouts] [n_combat_seeds] [policy] [key=value...]` |
 | Are the two seats the same game (the rating precondition) | `just measure-seat-parity <config.yaml> [policy] [n_layouts]` |
 | Rate policies against each other on one scale | `just measure-elo <config.yaml> [n_layouts] <entrant...>` |
