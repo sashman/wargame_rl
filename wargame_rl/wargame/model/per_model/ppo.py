@@ -85,14 +85,27 @@ class PerModelPPOConfig(BaseModel):
         )
 
 
-def auto_num_rollout_envs(device: torch.device) -> int:
-    """The shipped loop's heuristic: 8 on CUDA, 4 on CPU, clamped by affinity."""
+def affinity_cpu_count() -> int:
+    """The CPUs this process may run on -- the count that clamps the env count.
+
+    ⚠ A launcher that pins a run (`taskset`, a cgroup) pins this too, and
+    with it the rounds per update. The calibration sweep of 2026-09-07 was
+    launched that way and every cell trained on ONE env.
+    """
     try:
-        cpu_count = len(os.sched_getaffinity(0))
+        return len(os.sched_getaffinity(0))
     except (AttributeError, OSError):
-        cpu_count = os.cpu_count() or 1
-    max_envs = 8 if device.type == "cuda" else 4
-    return max(1, min(max_envs, cpu_count))
+        return os.cpu_count() or 1
+
+
+def device_max_rollout_envs(device: torch.device) -> int:
+    """The shipped loop's ceiling: 8 on CUDA, 4 on the CPU."""
+    return 8 if device.type == "cuda" else 4
+
+
+def auto_num_rollout_envs(device: torch.device) -> int:
+    """The shipped loop's heuristic: the device ceiling, clamped by affinity."""
+    return max(1, min(device_max_rollout_envs(device), affinity_cpu_count()))
 
 
 @dataclass(frozen=True)
@@ -378,7 +391,10 @@ def _entropy(log_probs: torch.Tensor) -> torch.Tensor:
 
 @dataclass(frozen=True)
 class UpdateStats:
-    """What one update did, in the whole-phase trainer's vocabulary."""
+    """What one update did, in the whole-phase trainer's vocabulary, plus
+    the pipeline-health panel (`docs/metrics.md` § The per-model health
+    panel): the advantage moments BEFORE normalisation, the return and value
+    moments the critic is fitting, and the tails of the importance ratio."""
 
     train_loss: float
     policy_loss: float
@@ -390,6 +406,22 @@ class UpdateStats:
     grad_norm: float
     grad_clipped_fraction: float
     n_minibatches: int
+    # Over policy rows, before normalisation: the scale PPO is about to
+    # divide away. An abs-max far above the std is one transition steering
+    # the update; a std near zero is a reward that never varied.
+    advantage_mean: float = 0.0
+    advantage_std: float = 0.0
+    advantage_abs_max: float = 0.0
+    # Over every row (closing rows carry a value target too).
+    return_mean: float = 0.0
+    return_std: float = 0.0
+    value_mean: float = 0.0
+    value_std: float = 0.0
+    # The importance ratio's tails over the update's policy rows. Both inside
+    # `1 ± eps_clip` on the first minibatch by construction; a 99th percentile
+    # far outside it by the last is a trust region that no longer binds.
+    ratio_p01: float = 1.0
+    ratio_p99: float = 1.0
 
 
 def check_trainable(network: SetNetwork) -> None:
@@ -427,6 +459,8 @@ def ppo_update(
         policy_adv = advantages[policy_rows]
         normalised = (advantages - policy_adv.mean()) / (policy_adv.std() + 1e-8)
     explained = _explained_variance(returns, old_values)
+    panel = _panel_moments(advantages[policy_rows], returns, old_values)
+    ratios: list[torch.Tensor] = []
 
     totals = {
         "loss": 0.0,
@@ -477,6 +511,7 @@ def ppo_update(
                 totals["kl"] += (
                     float((((ratio - 1) - log_ratio) * policy).sum().item()) / n_policy
                 )
+                ratios.append(ratio[policy].detach().float().cpu())
             totals["loss"] += float(loss.item())
             totals["policy"] += float(policy_loss.item())
             totals["value"] += float(value_loss.item())
@@ -485,6 +520,7 @@ def ppo_update(
             totals["clipped"] += float(grad_norm > config.max_grad_norm)
             n_minibatches += 1
     count = max(1, n_minibatches)
+    ratio_p01, ratio_p99 = _ratio_tails(ratios)
     return UpdateStats(
         train_loss=totals["loss"] / count,
         policy_loss=totals["policy"] / count,
@@ -496,7 +532,47 @@ def ppo_update(
         grad_norm=totals["grad"] / count,
         grad_clipped_fraction=totals["clipped"] / count,
         n_minibatches=n_minibatches,
+        ratio_p01=ratio_p01,
+        ratio_p99=ratio_p99,
+        **panel,
     )
+
+
+def _panel_moments(
+    policy_advantages: torch.Tensor, returns: torch.Tensor, values: torch.Tensor
+) -> dict[str, float]:
+    """The advantage, return and value moments, read before the update."""
+
+    def std(tensor: torch.Tensor) -> float:
+        return float(tensor.std().item()) if tensor.numel() > 1 else 0.0
+
+    def mean(tensor: torch.Tensor) -> float:
+        return float(tensor.mean().item()) if tensor.numel() > 0 else 0.0
+
+    return {
+        "advantage_mean": mean(policy_advantages),
+        "advantage_std": std(policy_advantages),
+        "advantage_abs_max": (
+            float(policy_advantages.abs().max().item())
+            if policy_advantages.numel() > 0
+            else 0.0
+        ),
+        "return_mean": mean(returns),
+        "return_std": std(returns),
+        "value_mean": mean(values),
+        "value_std": std(values),
+    }
+
+
+def _ratio_tails(ratios: list[torch.Tensor]) -> tuple[float, float]:
+    """The 1st and 99th percentile of the importance ratio over the update."""
+    if not ratios:
+        return 1.0, 1.0
+    pooled = torch.cat(ratios)
+    if pooled.numel() == 0:
+        return 1.0, 1.0
+    quantiles = torch.quantile(pooled, torch.tensor([0.01, 0.99]))
+    return float(quantiles[0].item()), float(quantiles[1].item())
 
 
 def _explained_variance(returns: torch.Tensor, values: torch.Tensor) -> float:
@@ -507,14 +583,31 @@ def _explained_variance(returns: torch.Tensor, values: torch.Tensor) -> float:
     return 1.0 - residual / variance
 
 
+@dataclass(frozen=True)
+class RolloutEntropy:
+    """The sampled policy's entropies over a rollout, in raw nats.
+
+    `by_phase` is the whole-phase trainer's split; `by_head` is this
+    facade's -- the declaration, displacement and unit-pointer heads have
+    different widths (4, ~97, a handful), so one phase's mean mixes a
+    four-way choice with a ninety-seven-way one, and a policy that has
+    collapsed one head hides behind the other.
+    """
+
+    by_phase: dict[str, float]
+    by_head: dict[str, float]
+    selector: float
+
+
 def rollout_entropy(
     network: SetNetwork, rollout: Rollout, batch_size: int
-) -> tuple[dict[str, float], float]:
-    """The sampled policy's entropies over the rollout, by phase, plus the
-    selector's -- one no-grad pass at the weights that played it."""
+) -> RolloutEntropy:
+    """The sampled policy's entropies over the rollout, by phase and by head,
+    plus the selector's -- one no-grad pass at the weights that played it."""
     was_training = network.training
     network.eval()
     by_phase: dict[str, list[float]] = {}
+    by_head: dict[str, list[float]] = {}
     selector_entropies: list[float] = []
     transitions = rollout.transitions
     try:
@@ -531,12 +624,16 @@ def rollout_entropy(
                         continue
                     key = transition.phase.value if transition.phase else "none"
                     by_phase.setdefault(key, []).append(float(head_entropy))
+                    by_head.setdefault(transition.head.name, []).append(
+                        float(head_entropy)
+                    )
                     selector_entropies.append(float(selector_entropy))
     finally:
         network.train(was_training)
-    return (
-        {key: float(np.mean(values)) for key, values in by_phase.items()},
-        float(np.mean(selector_entropies)) if selector_entropies else 0.0,
+    return RolloutEntropy(
+        by_phase={key: float(np.mean(values)) for key, values in by_phase.items()},
+        by_head={key: float(np.mean(values)) for key, values in by_head.items()},
+        selector=float(np.mean(selector_entropies)) if selector_entropies else 0.0,
     )
 
 
@@ -546,11 +643,14 @@ __all__ = [
     "Evaluated",
     "PerModelPPOConfig",
     "Rollout",
+    "RolloutEntropy",
     "StepKind",
     "Transition",
     "UpdateStats",
+    "affinity_cpu_count",
     "auto_num_rollout_envs",
     "check_trainable",
+    "device_max_rollout_envs",
     "collect_rollout",
     "compute_gae",
     "evaluate_transitions",

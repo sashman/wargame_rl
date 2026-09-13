@@ -53,12 +53,16 @@ def evaluate_spec(
     decode_stay: bool = False,
     combat_seeds: Sequence[int] | None = None,
     wave_size: int = EVAL_WAVE_SIZE,
+    greedy: bool = True,
 ) -> EvalResult:
     """Score `spec` on `env_config` over `seeds`, on the facade that owns it.
 
     `decode_topk` and `decode_stay` are the phase facade's play-time decodes;
     the per-model facade runs no decode, so they are refused with a `.pt`
     rather than silently ignored -- a row that says "K=3" must have run one.
+    `greedy=False` is the per-model facade's: it samples the checkpoint's
+    policy on a generator seeded from the first seed, the regime training
+    rolls out in, and is refused on the phase side by name.
     """
     if is_per_model_checkpoint(spec):
         if decode_topk != 1 or decode_stay:
@@ -75,9 +79,16 @@ def evaluate_spec(
         envs = [
             PerModelEnv(env_config) for _ in range(max(1, min(wave_size, len(seeds))))
         ]
-        chooser = build_per_model_chooser(spec, envs)
+        chooser = build_per_model_chooser(
+            spec, envs, seed=int(seeds[0]) if seeds else 0, greedy=greedy
+        )
         return evaluate_per_model_chooser(
             chooser.choose, envs, seeds, name, combat_seeds=combat_seeds
+        )
+    if not greedy:
+        raise ValueError(
+            f"{spec!r} plays the phase facade, whose selector is the decoded "
+            "argmax; sampled play is a per-model checkpoint diagnostic"
         )
     env = _phase_env(env_config)
     try:

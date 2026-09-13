@@ -91,6 +91,8 @@ differently-seeded measurement are not.
 | `success_rate` | `lightning_base.py:331` | **0–100** | Percent of eval episodes where the current phase's `success_criteria` held on the final step. See trap Ⓐ. |
 | `mean_episode_steps` | `lightning_base.py:281` | steps | Mean eval episode length. Compare against `max_turns`; equality means episodes never terminate early. |
 | `mean_episode_decisions` | `train_per_model.py` | decisions | The per-model driver's episode length: decision steps (`open`, `act`, `target`), closing steps excluded. **Not comparable to `mean_episode_steps`** — a 25v25 round is two phase steps and ~16–23 decisions. |
+| `eval/stationary_share` · `eval/hold_fire_share` | `train_per_model.py`, `EvalResult` | 0–1 | **The passive fingerprint, per-model facade only.** Share of the player's movement-phase unit openings declared `stationary`, and of its shooting-phase openings declared `hold_fire`, pooled over the eval episodes, under the GREEDY policy a score reports. A `vp_margin` at the random floor with both near 1.0 is a do-nothing policy, not a bad one. `train/declaration/<phase>:<column>` is the same count for the SAMPLED rollout policy; the two disagree whenever the argmax is a corner nobody sampled. Printed as `stat` / `hold` by `measure-checkpoint`, `measure-maps` and `measure-paired`; `-` on the phase facade, which never steps a declaration. |
+| `eval/vp_margin_se` | `train_per_model.py` | vp | Standard error of the eval `vp_margin` over its episodes, so an in-run curve carries its own error bar (at `n_eval_episodes` 20 on 25v25 it is ~18 vp — most of the curve's wobble). |
 | `reward/mean_episode_reward` | `lightning_base.py:276` | reward units | Mean total (undiscounted, summed) reward per eval episode. This is the checkpoint selection metric (`checkpoint_callback.py:28`). |
 | `reward/max_episode_reward` | `lightning_base.py:286` | reward units | Best single eval episode. Gap vs. mean indicates variance across seeds/placements. |
 | `reward/min_episode_reward` | `lightning_base.py:291` | reward units | Worst single eval episode. Persistently negative alongside a healthy mean signals a failure mode not captured by `success_rate`. |
@@ -146,6 +148,32 @@ the two are equal; prefer `_epoch`.
 | `train/rollout_phase_index` | The **rollout** env's reward phase | Must track `reward_phase`. If they diverge, training and evaluation are on different reward functions |
 | `train/distinct_layouts_seen` | Distinct objective layouts seen **cumulatively across the run**, not within one rollout | Must keep climbing. Flat means training is replaying the same maps — the within-rollout count it replaced read a constant env count and hid exactly that |
 | `train/num_rollout_envs_resolved` | Rollout envs actually used | `num_rollout_envs` defaults to 0 = auto-detect, so the config never showed which path ran |
+
+### The per-model health panel (per update, `train_per_model.py`)
+
+The per-model driver logs the rows above under the same keys, plus the panel
+below — every value read off what `ppo_update` already touches, so it costs
+nothing. It exists because the first per-model runs learned nothing and the
+log could not say why: **the pipeline is a checklist, not a feeling.** The
+"healthy" column is what the whole-phase trainer reads at 1024 rounds per
+update and what `tests/test_per_model_pipeline_health.py` pins on a fixed
+rollout (thirty-six gradient steps on one batch drive the policy loss down
+monotonically and the clip fraction off zero — the optimizer path works).
+A rung of the curriculum that "passes" with a red panel is recorded as a pass
+with a defect.
+
+| Key | Meaning | Healthy |
+|---|---|---|
+| `train/rounds_per_update` | `rollout_rounds × num_rollout_envs`: the regime, stated on every row | **The number every per-model row must be read beside.** The phase facade updates every 1024 rounds; the 2026-09-07 calibration cells updated every 8–32 on ONE env and learned nothing ([report](../reports/2026-09-14-one-episode-per-update.md)). ⚠ Left to auto-detect, the env count is clamped by CPU affinity — the driver warns, and `just train-per-model-arm` refuses a flag string without `--num-rollout-envs` |
+| `train/gradient_steps_per_round` | Minibatches per update ÷ rounds per update | Constant across a run. Rising means the army shrank (fewer decisions per round), which is fine; two arms differing here are not the same regime |
+| `train/advantage_mean` · `_std` · `_abs_max` | The advantage over policy rows **before** normalisation — the scale PPO is about to divide away | `std` well above 0 (a std near 0 is a reward that never varied, and normalisation then amplifies noise); `abs_max` within ~5× `std` (one transition steering the update is a reward spike, usually a terminal bonus scaled by the remaining rounds) |
+| `train/return_mean` · `_std` | The value targets | `std` > 0; `mean` drifting with `train/vp_margin` |
+| `train/value_mean` · `_std` | What the critic predicts | Tracking the return moments once `explained_variance` is up; a `value_std` near 0 with a `return_std` well above it is a critic predicting the mean |
+| `train/ratio_p01` · `train/ratio_p99` | The importance ratio's tails over the update | Inside `1 ± eps_clip` (0.8–1.2) on the first minibatch by construction; a `p99` beyond ~1.5 by the last minibatch is a trust region that no longer binds — pair with `clip_fraction` |
+| `train/entropy/head/<declaration\|displacement\|unit_pointer>` | Per-head entropy, raw nats, of the sampled policy | Below each head's ceiling (`ln 4 = 1.39`, `ln 97 = 4.57`, `ln n_units`) and **above zero on every head**: a declaration head at 0 with the displacement head still diffuse is a unit that has stopped opening, whatever the per-phase mean says |
+| `train/approx_kl_cumulative` · `train/approx_kl_per_1k_rounds` | The policy's total drift since the run began (carried across a resume), and its rate | The rate is what to compare between arms: a per-update `approx_kl` of 0.01 at 32 rounds per update is **thirty times** the drift per round of the same value at 1024 |
+| `eval/vp_margin_se` | The eval curve's own error bar | Read before calling a move in `eval/vp_margin` a trend |
+| `eval/stationary_share` · `eval/hold_fire_share` | The passive fingerprint of the greedy policy | Away from 1.0. Swinging 0 ↔ 1 between consecutive evals is a policy whose argmax flips on a diffuse declaration head — score it sampled as well (`just measure-per-model-eval-mode`) before reading the curve |
 
 ### Baselines and the scoreboard
 
@@ -529,7 +557,8 @@ decode**, so `decode_topk` is refused with a `.pt` rather than ignored.
 
 | recipe | `.pt` | why |
 |---|---|---|
-| `measure-checkpoint`, `measure-maps`, `measure-paired` | **accepted** | through `evaluate_spec`; `record` writes a phase-cadence event log |
+| `measure-checkpoint`, `measure-maps`, `measure-paired` | **accepted** | through `evaluate_spec`; `record` writes a phase-cadence event log; every row prints the passive pair `stat` / `hold` (`-` for a script or a `.ckpt`) |
+| `measure-per-model-eval-mode` | **`.pt` only** | scores a checkpoint **greedy** (the policy a score reports) and **sampled** (the policy training rolled out, on a generator seeded from the first seed) on identical seeds, paired. A greedy do-nothing fingerprint over a sampled policy that scores is the argmax of a diffuse policy, not a policy that learned nothing. Defaults to the tuning band (900000+): a diagnostic, never a score |
 | `measure-elo`, `measure-seat-parity` | **refused by name** | a rated entrant plays BOTH seats, and the per-model facade cannot take the opponent seat (a per-model opponent policy is #274) |
 | `measure-baselines`, `measure-noise-floor` | n/a | registry names only; the bar is the phase facade's |
 | every other `measure-*` | **not applicable**, refused by the phase resolver | each runs its own loop over whole-phase internals (the phase read before a step, a whole-army action vector, a monkeypatched private method) |

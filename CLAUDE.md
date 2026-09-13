@@ -1161,6 +1161,28 @@ paid for.
 - **n=45 cannot resolve this game.** Per-scenario sd is 81–89, so SE ≈ 89/√n:
   ±12.7 at n=45, ±6.3 at n=180, ±3.2 at n=720. Margins of 5–15 vp — which is
   every arm difference ever measured here — need **n ≥ 180 on both sides**.
+- ⚠ **STATE THE ROUNDS PER UPDATE ON EVERY PER-MODEL ROW, AND NEVER LET THE
+  ENV COUNT COME FROM CPU AFFINITY.** `train_per_model.py` updates every
+  `rollout_rounds × num_rollout_envs` rounds, and auto-detection clamps the
+  env count to `os.sched_getaffinity` — so a pinned launch trains on ONE
+  env. Every per-model run before 2026-09-14 did, updating every 8–32 rounds
+  against the phase facade's 1024: under one episode per update, re-read four
+  times. Their flat curves are **void for regime, not a verdict on the
+  architecture** ([report](reports/2026-09-14-one-episode-per-update.md)).
+  A per-update statistic at 32 rounds per update is not the same quantity as
+  at 1024; `train/rounds_per_update` is on every row, the driver warns when
+  the clamp bites, and `just train-per-model-arm` refuses a flag string
+  without `--num-rollout-envs`.
+- ⚠ **SCORE A PER-MODEL CHECKPOINT GREEDY WITH THE PASSIVE FINGERPRINT, AND
+  READ THE SAMPLED SCORE BESIDE IT BEFORE CALLING A FLAT CURVE "NOTHING
+  LEARNED".** The per-model facade decides "do nothing" as explicit steps
+  (`stationary`, `hold_fire`), so every `EvalResult` from it carries
+  `stationary_share` / `hold_fire_share` (`stat` / `hold` on every scoring
+  table, `eval/stationary_share` in a run). On the void runs the greedy
+  share swung **0.00 ↔ 0.94 between consecutive evaluations**: a diffuse
+  declaration head whose argmax flips, not a policy that learned to stand
+  still. `just measure-per-model-eval-mode` scores greedy and sampled on
+  identical seeds, paired.
 
 - **Measure the configuration that SHIPS, not an intermediate one.** Twice in two
   days a partial change pointed the opposite way from the whole: new terrain under
@@ -1675,6 +1697,13 @@ Re-measure rather than carry a figure across one.
   figures on terrain configs as suspect within ~3 vp rather than wrong).
   Goldens: the `25v25_single_phase` reward+observation pair regenerated
   deliberately; the other four byte-identical, the targeted-change check.
+- **2026-09-14 — every per-model training run before this date is void.**
+  The stage-1 calibration sweep (`checkpoints/per_model/calibration_stage1/`,
+  `VOID.md` there) and the three observe runs trained on one rollout env at
+  8–32 rounds per update, and their checkpoints predate the audited set
+  network so cannot load on `main`. Void for **regime and code**, not as
+  evidence about the architecture. See
+  [the report](reports/2026-09-14-one-episode-per-update.md).
 - **2026-08-31 — `group_span` rounds UP, so `max_groups` is a real cap.** It
   floored, and an army splitting into more units than the cap has one-hot columns
   had two units share a code (`_group_ids_to_one_hot` clips rather than raising)

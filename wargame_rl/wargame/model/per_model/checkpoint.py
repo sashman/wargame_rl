@@ -9,6 +9,15 @@ and rebuildable without the env that trained it.
 Periodic, not exit-hooked: SIGKILL is the prescribed way to stop a trainer
 and it triggers no handler, so `last.pt` is written every interval and is at
 most one interval stale.
+
+Two ways back in. A **resume** needs the optimizer moments, the sampling
+generator and the driver's running counters, which travel as additive keys
+(`optimizer_state`, `generator_state`, `declarations_seen`,
+`approx_kl_cumulative`) so every checkpoint written before they existed still
+loads for play; `load_training_state` refuses one of those by name. A **warm
+start** needs the weights alone -- the size-independent path the curriculum
+climbs on -- and goes through `load_checkpoint`, which refuses a displacement
+head of the wrong width.
 """
 
 from __future__ import annotations
@@ -32,6 +41,17 @@ def periodic_checkpoint_name(rounds: int) -> str:
     return f"pm-{rounds:08d}.pt"
 
 
+@dataclass(frozen=True)
+class TrainingState:
+    """What a resume needs beyond the weights: the optimizer's moments, the
+    sampling generator mid-stream, and the driver's running counters."""
+
+    optimizer_state: dict[str, Any]
+    generator_state: torch.Tensor
+    declarations_seen: int
+    approx_kl_cumulative: float
+
+
 def save_checkpoint(
     path: Path,
     network: SetNetwork,
@@ -41,9 +61,14 @@ def save_checkpoint(
     rounds: int,
     seed: int | None,
     revision: str,
+    training_state: TrainingState | None = None,
 ) -> None:
-    """Write the checkpoint atomically (`.tmp` then replace)."""
-    payload = {
+    """Write the checkpoint atomically (`.tmp` then replace).
+
+    `training_state` adds the resume keys; without it the checkpoint plays
+    and warm-starts but cannot be resumed, which `load_training_state` says.
+    """
+    payload: dict[str, Any] = {
         "facade": FACADE_TAG,
         "state_dict": {k: v.detach().cpu() for k, v in network.state_dict().items()},
         "network_config": network.config.model_dump(),
@@ -54,10 +79,28 @@ def save_checkpoint(
         "seed": seed,
         "revision": revision,
     }
+    if training_state is not None:
+        payload["optimizer_state"] = _to_cpu(training_state.optimizer_state)
+        payload["generator_state"] = training_state.generator_state.clone()
+        payload["declarations_seen"] = int(training_state.declarations_seen)
+        payload["approx_kl_cumulative"] = float(training_state.approx_kl_cumulative)
     path.parent.mkdir(parents=True, exist_ok=True)
     partial = path.with_name(path.name + ".tmp")
     torch.save(payload, partial)
     os.replace(partial, path)
+
+
+def _to_cpu(value: Any) -> Any:
+    """Optimizer state, tensors moved to the CPU, containers rebuilt."""
+    if isinstance(value, torch.Tensor):
+        return value.detach().cpu()
+    if isinstance(value, dict):
+        return {key: _to_cpu(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_to_cpu(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_to_cpu(item) for item in value)
+    return value
 
 
 @dataclass(frozen=True)
@@ -107,10 +150,34 @@ def load_checkpoint(
     )
 
 
+def load_training_state(path: Path) -> TrainingState:
+    """The resume keys of `path`; refuses a checkpoint written without them."""
+    payload = torch.load(path, map_location="cpu", weights_only=True)
+    missing = [
+        key
+        for key in ("optimizer_state", "generator_state", "declarations_seen")
+        if key not in payload
+    ]
+    if missing:
+        raise ValueError(
+            f"{path} carries no training state ({', '.join(missing)} missing): "
+            "it was written before resume existed, or by a tool that saves "
+            "weights only. Warm-start from it instead (`--warm-start-from`)."
+        )
+    return TrainingState(
+        optimizer_state=dict(payload["optimizer_state"]),
+        generator_state=payload["generator_state"],
+        declarations_seen=int(payload["declarations_seen"]),
+        approx_kl_cumulative=float(payload.get("approx_kl_cumulative", 0.0)),
+    )
+
+
 __all__ = [
     "LAST_CHECKPOINT",
     "LoadedCheckpoint",
+    "TrainingState",
     "load_checkpoint",
+    "load_training_state",
     "periodic_checkpoint_name",
     "save_checkpoint",
 ]

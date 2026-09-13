@@ -311,6 +311,37 @@ train-per-model env_config rounds='' *extra='':
 	@uv run train_per_model.py --env-config-path {{env_config}} \
 		{{ if rounds != "" { "--rounds " + rounds } else { "" } }} {{extra}}
 
+# One ARM of a per-model screen: N seeds of one config, detached with `setsid`
+# so a Bash-tool timeout cannot kill them (nohup dies with its session), each
+# seed's stdout/stderr under checkpoints/per_model/logs/<group>/. The recipe
+# REFUSES a `flags` string that does not name `--num-rollout-envs`: rounds per
+# update is `rollout_rounds x envs`, and left to auto-detect the env count is
+# clamped by CPU affinity, which is how the 2026-09-07 calibration sweep
+# trained every cell on ONE env (reports/2026-09-14-one-episode-per-update.md).
+# Mirrors `train-arm`: the tag lands in the run suffix, the group is shared.
+#
+# Use: just train-per-model-arm 20000 3 curriculum-e1 e1 "--num-rollout-envs 4 --rollout-rounds 16" configs/experiments/curriculum/e1.yaml
+train-per-model-arm rounds n_seeds group tag flags env_config:
+	@case " {{flags}} " in *" --num-rollout-envs "*) ;; *) \
+		echo "refused: flags must name --num-rollout-envs (the env count is never left to CPU affinity)" >&2; exit 2;; esac; \
+	mkdir -p checkpoints/per_model/logs/{{group}} && \
+	for s in $(seq 1 {{n_seeds}}); do \
+		log="checkpoints/per_model/logs/{{group}}/{{tag}}-s$s.log"; \
+		setsid nohup uv run train_per_model.py --env-config-path {{env_config}} --rounds {{rounds}} \
+			--seed "$s" --run-suffix "s$s{{tag}}" --wandb-group "{{group}}" {{flags}} > "$log" 2>&1 < /dev/null & \
+		echo "seed $s -> pid $! log $log"; \
+	done
+
+# A per-model checkpoint scored GREEDY (the policy a score reports) and SAMPLED
+# (the policy training rolled out) on identical seeds, with the paired
+# difference. Which of the two is "the policy" decides whether a flat eval curve
+# means nothing learned or means the argmax of a diffuse policy is a corner
+# nobody sampled. The passive pair (`stat` / `hold`) is the do-nothing
+# fingerprint. Defaults to the tuning band (900000+): a diagnostic, not a score.
+# Use: just measure-per-model-eval-mode configs/golden/25v25_maps_two_mode.yaml 30 900000 checkpoints/per_model/<run>/last.pt
+measure-per-model-eval-mode env_config n_episodes='30' seed_base='900000' *checkpoints:
+	@uv run python -m scripts.measure_per_model_eval_mode {{env_config}} {{n_episodes}} "{{seed_base}}" {{checkpoints}}
+
 train-multi *configs:
 	@trap 'kill 0' INT TERM && \
 	group="train-multi-$(date +%Y-%m-%d-%H-%M-%S)" && \
