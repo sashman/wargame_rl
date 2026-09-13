@@ -111,6 +111,7 @@ class _Episode:
     opponent_coherency_rate: float | None
     opponent_models_out_of_coherency: float | None
     decisions: int
+    turns: int
     reward: float | None
     success: bool | None
     declarations: DeclarationTally
@@ -225,6 +226,7 @@ def _read_episode(
             env.opponent_models_out_of_coherency,
         ),
         decisions=decisions,
+        turns=int(env.current_turn),
         reward=None if retimer is None else retimer.episode_reward,
         success=None if retimer is None else retimer.succeeded(),
         declarations=declarations,
@@ -285,6 +287,7 @@ def _aggregate(name: str, episodes: list[_Episode]) -> EvalResult:
             else None
         ),
         stationary_share=pooled.stationary_share,
+        turns_per_episode=tuple(e.turns for e in episodes),
         hold_fire_share=pooled.hold_fire_share,
     )
 

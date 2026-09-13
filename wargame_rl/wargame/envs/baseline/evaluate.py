@@ -148,6 +148,8 @@ def evaluate_selector(
     proximities: list[float | None] = []
     firepower: list[float | None] = []
     held: list[float] = []
+    turns: list[int] = []
+    successes: list[bool] = []
     coherency: list[float | None] = []
     models_out: list[float | None] = []
     opponent_coherency: list[float | None] = []
@@ -200,6 +202,13 @@ def evaluate_selector(
             else env.opponent_models_out_of_coherency
         )
         held.append(end.objectives_held)
+        turns.append(int(env.current_turn))
+        # The phase's own criterion on the final step, as the trainer's eval
+        # reads it -- so a curriculum rung's success rate pairs across facades.
+        context = env.last_step_context
+        successes.append(
+            context is not None and bool(env.phase_manager.check_success(env, context))
+        )
 
     return BaselineResult(
         name=name,
@@ -224,6 +233,8 @@ def evaluate_selector(
             player - opponent for player, opponent in zip(player_vps, opponent_vps)
         ),
         objectives_held_per_episode=tuple(held),
+        turns_per_episode=tuple(turns),
+        success_per_episode=tuple(successes),
         win_per_episode=tuple(wins),
     )
 

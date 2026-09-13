@@ -332,6 +332,22 @@ train-per-model-arm rounds n_seeds group tag flags env_config:
 		echo "seed $s -> pid $! log $log"; \
 	done
 
+# The WHOLE-ARMY control of a curriculum rung: N seeds of `train.py` on the same
+# config the per-model arm trains, detached with `setsid`, `--no-wandb` so every
+# readout is a local file (`logs/lightning_logs/<version>/metrics.csv` and
+# `checkpoints/<run>/`), per-seed logs under checkpoints/curriculum_control/logs/.
+# The budget is in EPOCHS of 2048 steps; on a movement-only rung a step is a
+# round. Extra `train.py` flags pass through `flags`.
+# Use: just train-curriculum-control 10 3 curriculum-e1 e1-ctl "" configs/experiments/curriculum/e1.yaml
+train-curriculum-control epochs n_seeds group tag flags env_config:
+	@mkdir -p checkpoints/curriculum_control/logs/{{group}} && \
+	for s in $(seq 1 {{n_seeds}}); do \
+		log="checkpoints/curriculum_control/logs/{{group}}/{{tag}}-s$s.log"; \
+		setsid nohup uv run train.py --env-config-path {{env_config}} --max-epochs {{epochs}} --n-eval-episodes 30 \
+			--seed "$s" --run-suffix "s$s{{tag}}" --wandb-group "{{group}}" --no-wandb {{flags}} > "$log" 2>&1 < /dev/null & \
+		echo "seed $s -> pid $! log $log"; \
+	done
+
 # A per-model checkpoint scored GREEDY (the policy a score reports) and SAMPLED
 # (the policy training rolled out) on identical seeds, with the paired
 # difference. Which of the two is "the policy" decides whether a flat eval curve
@@ -341,6 +357,14 @@ train-per-model-arm rounds n_seeds group tag flags env_config:
 # Use: just measure-per-model-eval-mode configs/golden/25v25_maps_two_mode.yaml 30 900000 checkpoints/per_model/<run>/last.pt
 measure-per-model-eval-mode env_config n_episodes='30' seed_base='900000' *checkpoints:
 	@uv run python -m scripts.measure_per_model_eval_mode {{env_config}} {{n_episodes}} "{{seed_base}}" {{checkpoints}}
+
+# The BRIDGE CHECK for a curriculum rung: one scripted policy scored through both
+# facades on identical seeds -- every shared field must agree, or the scenario is
+# not the same game under the two steps and the rung is redesigned, not trained.
+# The per-model row is the rung's bar (success rate, rounds-to-success, held).
+# Use: just measure-bridge configs/experiments/curriculum/e1.yaml 100 squad_march_take
+measure-bridge env_config n_episodes='100' policy='squad_march_take' seed_base='700000' *overrides:
+	@uv run python -m scripts.measure_bridge {{env_config}} {{n_episodes}} {{policy}} {{seed_base}} {{overrides}}
 
 train-multi *configs:
 	@trap 'kill 0' INT TERM && \
