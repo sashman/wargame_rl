@@ -1,0 +1,52 @@
+# Curriculum rung E2 (issue #334, parent #328): THREE units of three, THREE
+# objectives, nobody shooting. One unit per objective is the whole problem --
+# does the trainer learn to send each unit to a different marker rather than
+# all to the nearest one. Movement only, no terrain, fixed objectives.
+#
+# The bar is `squad_march_take`. Success is 90% of alive models inside an
+# objective (`fraction_at_objectives`); `held` against the script is the
+# allocation readout. Same board and deployment as E1; ten rounds, since the third
+# unit walks the long diagonal, and 0.85 so eight of nine models count (0.9
+# of nine rounds up to all nine, which is a different criterion).
+config_name: curriculum_e2
+number_of_wargame_models: 9
+number_of_opponent_models: 0
+number_of_objectives: 3
+objective_radius_size: 3
+board_width: 60
+board_height: 44
+max_groups: 3
+number_of_battle_rounds: 10
+deployment_zone: [4, 6, 10, 38]
+opponent_deployment_zone: [50, 6, 56, 38]
+models:
+  - { group_id: 0 }
+  - { group_id: 0 }
+  - { group_id: 0 }
+  - { group_id: 1 }
+  - { group_id: 1 }
+  - { group_id: 1 }
+  - { group_id: 2 }
+  - { group_id: 2 }
+  - { group_id: 2 }
+objectives:
+  - { x: 35, y: 8 }
+  - { x: 35, y: 22 }
+  - { x: 35, y: 36 }
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.0
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: fraction_at_objectives
+      params: { min_fraction: 0.85 }
+observe_objective_control: true

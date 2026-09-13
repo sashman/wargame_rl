@@ -61,7 +61,12 @@ def build_selector(
 
 
 def format_result(result: BaselineResult) -> str:
-    """One aligned row: the fields that rank policies, in one line."""
+    """One aligned row: the fields that rank policies, in one line.
+
+    `stat` / `hold` are the per-model facade's passive fingerprint -- the
+    share of unit openings declared stationary and holding fire -- and print
+    as `-` on the phase facade, which never steps a declaration.
+    """
     return (
         f"{result.name:<28}{result.final_fraction_at_objectives:>10.3f}"
         f"{result.win_rate:>9.2f}{result.player_vp:>12.1f}"
@@ -70,6 +75,8 @@ def format_result(result: BaselineResult) -> str:
         f"{result.objectives_held:>7.2f}{result.final_fraction_alive:>8.3f}"
         f"{format_optional_metric(result.coherency_rate):>10}"
         f"{format_optional_metric(result.models_out_of_coherency, 2):>8}"
+        f"{format_optional_metric(result.stationary_share, 2):>6}"
+        f"{format_optional_metric(result.hold_fire_share, 2):>6}"
         f"{format_optional_metric(result.exposure_rate):>10}"
         f"{format_optional_metric(result.terrain_proximity, 1):>11}"
         f"{format_optional_metric(result.firepower_ratio, 2):>12}"
@@ -112,7 +119,7 @@ def main() -> None:
     header = (
         f"{'policy':<28}{'on obj':>10}{'win':>9}{'player VP':>12}"
         f"{'opp VP':>10}{'VP margin':>11}{'±SE':>8}{'held':>7}{'alive':>8}"
-        f"{'coherent':>10}{'adrift':>8}"
+        f"{'coherent':>10}{'adrift':>8}{'stat':>6}{'hold':>6}"
         f"{'exposure':>10}{'terrain_d':>11}{'firepower':>12}"
     )
     print(header)

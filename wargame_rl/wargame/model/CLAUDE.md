@@ -145,11 +145,42 @@ to `<run>/metrics.jsonl`.
 - ⚠ **`gamma` 0.9, `gae_lambda` 0.95 and the 16-round budget are carried over
   from the phase facade, where they were measured at two steps per round.**
   The `gamma` comment in `model/ppo/config.py` says verbatim to retest when the
-  reward's time structure changes. They are #288's to calibrate
-  (`--gamma --gae-lambda --rollout-rounds`) before any race number is quoted.
+  reward's time structure changes. They are the curriculum's to calibrate
+  (`--gamma --gae-lambda --rollout-rounds`) before any number is quoted.
+- ⚠ **The regime is `rollout_rounds × num_rollout_envs` rounds per update,
+  logged on every row as `train/rounds_per_update`, and the env count is
+  never left to CPU affinity.** Auto-detection clamps to
+  `os.sched_getaffinity`, so a pinned launch trains on one env; the first
+  per-model runs all did, updating every 8–32 rounds against the phase
+  facade's 1024, and are void for it
+  ([report](../../../reports/2026-09-14-one-episode-per-update.md)). The
+  driver warns when the clamp bites and `just train-per-model-arm` refuses a
+  flag string without `--num-rollout-envs`.
+- **The health panel** (`UpdateStats`, `docs/metrics.md` § The per-model
+  health panel): advantage mean / std / abs-max BEFORE normalisation, return
+  and value moments, the ratio's 1st / 99th percentile, per-head entropy
+  (`RolloutEntropy.by_head` beside `by_phase`), cumulative `approx_kl` and
+  its rate per 1k rounds, the eval SE and the passive fingerprint
+  (`eval/stationary_share` / `eval/hold_fire_share`, the GREEDY policy's).
+  `tests/test_per_model_pipeline_health.py` gives the keys their meaning:
+  thirty-six gradient steps on one fixed rollout drive the policy loss down
+  monotonically and the clip fraction off zero.
 - **Refused:** curriculum configs (more than one reward phase — `try_advance`
-  counts epochs and there is no epoch here yet). **Deferred:** warm start and
-  resume.
+  counts epochs and there is no epoch here yet).
+- **Resume and warm start.** `--resume-from <run_dir | *.pt>` continues a run
+  IN PLACE: the checkpoint's additive keys (`optimizer_state`,
+  `generator_state`, `declarations_seen`, `approx_kl_cumulative`;
+  `load_training_state` refuses a checkpoint without them) restore the
+  optimizer and the sampling generator, `metrics.jsonl` is appended, the
+  bar row is not re-logged, `provenance.json` gains a `resumed_from` entry,
+  and every PPO knob, the trunk, the seed and the scenario are refused by
+  name if they differ — a resumed run is one run. The rollout envs restart
+  at fresh episodes (their mid-episode state is not checkpointed), seeded
+  past the rounds already trained. `--warm-start-from <*.pt>` takes the
+  weights alone into a NEW run with a fresh optimizer on any scenario whose
+  displacement head matches (`SetNetwork.n_displacements_for`; a mismatch is
+  refused by name) — the size-independent path the curriculum climbs on;
+  provenance records `warm_started_from`.
 - **Evaluation is batched in waves** (`--eval-wave-size`, default
   `EVAL_WAVE_SIZE` from `envs/evaluation/`): `model/per_model/evaluate.py` is a
   thin client of `envs/per_model/evaluate.py::evaluate_per_model_chooser` —
@@ -160,8 +191,12 @@ to `<run>/metrics.jsonl`.
   the env's tracker on the phase facade's grid; unmeasured columns are omitted.
   A checkpoint is scored offline with `just measure-checkpoint <run>/last.pt
   ...`, `measure-maps` and `measure-paired` (#287, through
-  `wargame_rl/wargame/scoring.py`); the rating arena refuses a `.pt` until a
-  per-model opponent policy exists (#274).
+  `wargame_rl/wargame/scoring.py`), each printing the passive pair `stat` /
+  `hold`; `just measure-per-model-eval-mode` scores a `.pt` **greedy and
+  sampled** on identical seeds (`build_per_model_chooser(..., greedy=False)`
+  on a seeded generator — the regime training rolls out in — refused for
+  anything but a `.pt` and on the phase side of `evaluate_spec`); the rating
+  arena refuses a `.pt` until a per-model opponent policy exists (#274).
 - **Checkpoints** are periodic, not exit-hooked: `pm-<rounds>.pt` and `last.pt`
   every `--checkpoint-every-rounds` (SIGKILL is the prescribed stop and triggers
   no handler, so `last.pt` is at most one interval stale). `load_checkpoint`

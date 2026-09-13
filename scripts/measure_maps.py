@@ -118,6 +118,8 @@ def format_row(label: str, result: BaselineResult) -> str:
         f"{result.objectives_held:>7.2f}{result.final_fraction_alive:>8.3f}"
         f"{format_optional_metric(result.coherency_rate):>10}"
         f"{format_optional_metric(result.models_out_of_coherency, 2):>8}"
+        f"{format_optional_metric(result.stationary_share, 2):>6}"
+        f"{format_optional_metric(result.hold_fire_share, 2):>6}"
         f"{format_optional_metric(result.exposure_rate):>10}"
         f"{format_optional_metric(result.firepower_ratio, 2):>11}"
     )
@@ -168,7 +170,7 @@ def main() -> None:
     header = (
         f"{'map':<20}{'on obj':>9}{'win':>8}{'VP margin':>12}{'+/-':>8}"
         f"{'plr VP':>8}{'opp VP':>8}"
-        f"{'held':>7}{'alive':>8}{'coherent':>10}{'adrift':>8}"
+        f"{'held':>7}{'alive':>8}{'coherent':>10}{'adrift':>8}{'stat':>6}{'hold':>6}"
         f"{'exposure':>10}{'firepower':>11}"
     )
     print(header)
@@ -211,6 +213,8 @@ def main() -> None:
         f"{statistics.fmean(r.final_fraction_alive for r in results):>8.3f}"
         f"{format_optional_metric(mean_of_measured([r.coherency_rate for r in results])):>10}"
         f"{format_optional_metric(mean_of_measured([r.models_out_of_coherency for r in results]), 2):>8}"
+        f"{format_optional_metric(mean_of_measured([r.stationary_share for r in results]), 2):>6}"
+        f"{format_optional_metric(mean_of_measured([r.hold_fire_share for r in results]), 2):>6}"
         "   (+/- is across maps)"
     )
     if len(results) > 1:

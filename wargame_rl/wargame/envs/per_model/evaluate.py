@@ -24,6 +24,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from wargame_rl.wargame.envs.domain.sequencing.activation import (
+    MoveDeclaration,
+    ShootDeclaration,
+)
 from wargame_rl.wargame.envs.evaluation import (
     EvalResult,
     mean_of_measured,
@@ -35,10 +39,61 @@ from wargame_rl.wargame.envs.per_model.reward_timing import PerStepReward
 from wargame_rl.wargame.envs.per_model.scripted import PhasePolicy, ScriptedSeat
 from wargame_rl.wargame.envs.per_model.types import (
     BatchChooser,
+    DecisionPoint,
     PerModelAction,
     PerModelObservation,
     StepKind,
 )
+from wargame_rl.wargame.envs.types import BattlePhase
+
+
+@dataclass
+class DeclarationTally:
+    """The passive declarations a seat made, counted off its `open` steps.
+
+    The per-model facade decides a unit's move type and whether it shoots as
+    explicit steps, so "did nothing" is countable here in a way the phase
+    facade cannot: `stationary` in movement and `hold_fire` in shooting each
+    gate a whole unit through one column. A policy at the random floor with
+    both shares near 1.0 is the do-nothing fingerprint, and the eval-side
+    figure is the one that matters -- the training-side share is sampled.
+    """
+
+    movement_opens: int = 0
+    stationary: int = 0
+    shooting_opens: int = 0
+    hold_fire: int = 0
+
+    def note(self, point: DecisionPoint, action: PerModelAction) -> None:
+        """Count `action` if it opened a unit in the movement or shooting phase."""
+        if point.kind is not StepKind.open:
+            return
+        if point.phase is BattlePhase.movement:
+            self.movement_opens += 1
+            self.stationary += int(action.value == MoveDeclaration.stationary)
+        elif point.phase is BattlePhase.shooting:
+            self.shooting_opens += 1
+            self.hold_fire += int(action.value == ShootDeclaration.hold_fire)
+
+    def add(self, other: DeclarationTally) -> None:
+        self.movement_opens += other.movement_opens
+        self.stationary += other.stationary
+        self.shooting_opens += other.shooting_opens
+        self.hold_fire += other.hold_fire
+
+    @property
+    def stationary_share(self) -> float | None:
+        """Share of movement openings declared stationary; None if none opened."""
+        if self.movement_opens == 0:
+            return None
+        return self.stationary / self.movement_opens
+
+    @property
+    def hold_fire_share(self) -> float | None:
+        """Share of shooting openings that held fire; None if none opened."""
+        if self.shooting_opens == 0:
+            return None
+        return self.hold_fire / self.shooting_opens
 
 
 @dataclass(frozen=True)
@@ -56,8 +111,10 @@ class _Episode:
     opponent_coherency_rate: float | None
     opponent_models_out_of_coherency: float | None
     decisions: int
+    turns: int
     reward: float | None
     success: bool | None
+    declarations: DeclarationTally
 
     @property
     def won(self) -> float:
@@ -96,6 +153,7 @@ def evaluate_per_model_chooser(
         wave = list(range(start, min(start + wave_size, len(seeds))))
         observations: dict[int, PerModelObservation] = {}
         decisions: dict[int, int] = {}
+        tallies: dict[int, DeclarationTally] = {}
         for slot, seed_index in enumerate(wave):
             options = (
                 None
@@ -107,6 +165,7 @@ def evaluate_per_model_chooser(
                 retimers[slot].reset()
             observations[slot] = observation
             decisions[slot] = 0
+            tallies[slot] = DeclarationTally()
         active = list(range(len(wave)))
         while active:
             actions = choose(
@@ -122,12 +181,14 @@ def evaluate_per_model_chooser(
                     retimers[slot].on_step(before, action, info["effect"], terminated)
                 if before.decision.kind is not StepKind.close_turn:
                     decisions[slot] += 1
+                tallies[slot].note(before.decision, action)
                 observations[slot] = observation
                 if terminated:
                     episodes[wave[slot]] = _read_episode(
                         env,
                         None if retimers is None else retimers[slot],
                         decisions[slot],
+                        tallies[slot],
                     )
                 else:
                     still_playing.append(slot)
@@ -138,7 +199,10 @@ def evaluate_per_model_chooser(
 
 
 def _read_episode(
-    env: PerModelEnv, retimer: PerStepReward | None, decisions: int
+    env: PerModelEnv,
+    retimer: PerStepReward | None,
+    decisions: int,
+    declarations: DeclarationTally,
 ) -> _Episode:
     end = read_end_of_episode(env.wargame_models, env.opponent_models, env.objectives)
     # Intent first, as `evaluate_selector` reads it: under `enforce_move` the
@@ -162,8 +226,10 @@ def _read_episode(
             env.opponent_models_out_of_coherency,
         ),
         decisions=decisions,
+        turns=int(env.current_turn),
         reward=None if retimer is None else retimer.episode_reward,
         success=None if retimer is None else retimer.succeeded(),
+        declarations=declarations,
     )
 
 
@@ -175,6 +241,11 @@ def _aggregate(name: str, episodes: list[_Episode]) -> EvalResult:
     rewards = [e.reward for e in episodes]
     successes = [e.success for e in episodes]
     measured_reward = all(r is not None for r in rewards)
+    # Pooled over openings, not averaged over episodes: an episode that opened
+    # three units should not weigh as much as one that opened thirty.
+    pooled = DeclarationTally()
+    for episode in episodes:
+        pooled.add(episode.declarations)
     return EvalResult(
         name=name,
         n_episodes=len(episodes),
@@ -215,6 +286,9 @@ def _aggregate(name: str, episodes: list[_Episode]) -> EvalResult:
             if measured_reward
             else None
         ),
+        stationary_share=pooled.stationary_share,
+        turns_per_episode=tuple(e.turns for e in episodes),
+        hold_fire_share=pooled.hold_fire_share,
     )
 
 
@@ -259,4 +333,9 @@ def random_chooser(seed: int) -> BatchChooser:
     return choose
 
 
-__all__ = ["evaluate_per_model_chooser", "random_chooser", "scripted_chooser"]
+__all__ = [
+    "DeclarationTally",
+    "evaluate_per_model_chooser",
+    "random_chooser",
+    "scripted_chooser",
+]

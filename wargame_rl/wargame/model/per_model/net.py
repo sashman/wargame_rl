@@ -209,16 +209,22 @@ class SetNetwork(nn.Module):
 
     # ------------------------------------------------------------ factories
 
+    @staticmethod
+    def n_displacements_for(handler: ActionHandler) -> int:
+        """The displacement head's width for an action handler's slices: STAY,
+        the movement slice, and the advance slice when the scenario has one."""
+        advance = handler.advance_slice
+        n_displacements = 1 + handler.movement_slice.size
+        if advance is not None:
+            n_displacements += advance.size
+        return n_displacements
+
     @classmethod
     def from_handler(
         cls, handler: ActionHandler, config: SetNetworkConfig | None = None
     ) -> SetNetwork:
         """Size the displacement head from an action handler's slices."""
-        advance = handler.advance_slice
-        n_displacements = 1 + handler.movement_slice.size
-        if advance is not None:
-            n_displacements += advance.size
-        return cls(config, n_displacements=n_displacements)
+        return cls(config, n_displacements=cls.n_displacements_for(handler))
 
     @classmethod
     def from_env(
