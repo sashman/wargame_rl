@@ -90,7 +90,8 @@ wargame_rl/
 │                                  #   behaviour_clone, measure_seat_parity,
 │                                  #   measure_matchups, measure_threat_field,
 │                                  #   measure_elo, elo_table,
-│                                  #   measure_throughput)
+│                                  #   measure_throughput,
+│                                  #   measure_per_model_eval_mode)
 ├── train.py                       # Training entry point (Typer CLI)
 ├── train_per_model.py             # PPO over per-model decision steps (Typer CLI, #286)
 ├── simulate.py                    # Inference/simulation entry point
@@ -124,6 +125,8 @@ wargame_rl/
 | Test env (random) | `just test-env` |
 | Watch a scripted policy play (no checkpoint) | `just play [config.yaml] [policy] [theme] [overlays]` |
 | Train the set network over the per-model facade (budget in ROUNDS) | `just train-per-model <config.yaml> [rounds] [flags]` |
+| Train one ARM of a per-model screen: N seeds, detached, `--num-rollout-envs` required | `just train-per-model-arm <rounds> <n_seeds> <group> <tag> <flags> <config.yaml>` |
+| Score a per-model checkpoint GREEDY and SAMPLED on identical seeds, paired | `just measure-per-model-eval-mode <config.yaml> [n] [seed_base] <run/last.pt...>` |
 | Watch the per-model facade play, one frame per decision | `just play-per-model [config.yaml] [policy\|random\|set_network\|run/last.pt] [theme] [overlays] [cadence]` |
 | Record the per-model facade to an MP4 | `just record-per-model [config.yaml] [policy\|random\|set_network] [out.mp4] [cadence]` |
 | Record the per-model facade to an EVENT LOG (phase or decision cadence) | `just record-per-model-events <config.yaml> [policy\|random\|set_network\|run/last.pt] [cadence] [seed] [out]` |
