@@ -144,3 +144,17 @@ What follows, written before any of it runs:
    per-model result is reported but not read as a verdict.
 
 Nothing about the per-model arm was known when this was written.
+
+## Amendment 2 — the control's read at 120 epochs (2026-09-15, before any per-model number exists)
+
+Resumed from its epoch-60 checkpoints to 120 epochs (Wandb `curriculum-a3`,
+runs `p9znz3i5` s1 · `sbh0lltv` s2 · `mror78kv` s3, suffix `-x2`), scored
+at n=100 on seeds 700000+ from `last.ckpt`: success **0.950 / 0.950 /
+0.960**, `held` 3.95 ×3, turns 6.26 / 6.33 / 6.24 against the script's
+5.28 (paired +0.98 / +1.05 / +0.96), coherent 0.735 / 0.785 / 0.688
+against the bar's 0.927. **The control passes the success bound on 3 of
+3 seeds at its extended budget**, so amendment 1's clause 3 makes a
+per-model miss read FAIL, not NULL. Its in-run rounds-to-pass is read from
+Wandb once no run is training (the A2 per-model arm is live) and goes in
+the report; the per-model budget is the cap regardless. Nothing about the
+per-model arm was known when this was written.
