@@ -1138,7 +1138,8 @@ rung stacked on #339.
 | rung | axis | verdict | per-model | whole-army control | report |
 |---|---|---|---|---|---|
 | **A0** three lone models, one objective | — (plumbing) | **PASS with a defect**, 3/3 | success 1.000 / 1.000 / 0.950, turns 4.93 / 4.96 / 5.11 (script 4.93), rounds-to-pass 29k / 52k / 41k | success 1.000 ×3, turns 6.21 / 6.67 / 6.07, rounds-to-pass 16k / 12k / 18k | [2026-09-15](reports/2026-09-15-curriculum-a0-passes.md) |
-| **A1** the same three as one squad | squads | **FAIL as pre-registered, 2/3** — A1x (resumed to 2× budget) decides | success 1.000 / **0.790** / 1.000, turns 5.01 / 6.10 / 4.90 (script 4.96), rounds-to-pass 53k / never / 32k; coherency greedy 0.76–0.90, **sampled 0.23–0.62** | success 1.000 ×3, turns 6.20 / 7.43 / 6.10, rounds-to-pass 14k / 20k / 18k | [2026-09-15](reports/2026-09-15-curriculum-a1-fails-on-one-seed.md) |
+| **A1** the same three as one squad | squads | **FAIL as pre-registered, 2/3** at 3× the control's rounds | success 1.000 / **0.790** / 1.000, turns 5.01 / 6.10 / 4.90 (script 4.96), rounds-to-pass 53k / never / 32k; coherency greedy 0.76–0.90, **sampled 0.23–0.62** | success 1.000 ×3, turns 6.20 / 7.43 / 6.10, rounds-to-pass 14k / 20k / 18k | [2026-09-15](reports/2026-09-15-curriculum-a1-fails-on-one-seed.md) |
+| **A1x** the same runs resumed to 122,880 rounds | budget | **PASS 3/3** — the budget rule was the defect | success 1.000 ×3, turns 4.93 / 4.88 / 4.93; s2 passed on the first evaluation after the resume; coherency greedy 0.97–0.98, sampled 0.70–0.81 | (not re-run) | [2026-09-15](reports/2026-09-15-curriculum-a1x-passes.md) |
 
 - **The per-model pipeline learns**, at 128 rounds per update, on the same
   code that sat at the floor at 8–32. It reaches the script's speed where
@@ -1160,11 +1161,17 @@ rung stacked on #339.
   A1 ran it. Read the tail beside `clip_fraction` (0.16–0.24 here) and call
   it a fault only when it moves *with* a failure.
 - ⚠ **The per-model arm needs 2–4× the whole-army control's rounds on the
-  A rungs, and a budget of 3× the control's slowest seed left A1's third
-  seed on a rising plateau at 0.79.** A0: 29k / 52k / 41k against the
-  control's 12k–18k. A1: 53k / never / 32k against 14k–20k. Whether that is
-  a budget defect or a unit-handling defect is A1x's question (the same runs
-  resumed to 122,880). Until it answers, no rung above A1 is opened.
+  A rungs, so its budget is 6× the control's slowest rounds-to-pass, not
+  3×.** A0: 29k / 52k / 41k against the control's 12k–18k. A1: 53k / ~62k /
+  32k against 14k–20k. At 3× A1's third seed read 0.790 on a rising
+  plateau and the rung was called FAIL as pre-registered; the same runs
+  resumed to 6× pass 3/3 at the script's speed (A1x). The floor is 6× from
+  A2 on, cap 122,880, and a rung that fails at the cap is a real fail.
+- **Six per-model seeds on two rungs all arrive within 0.2 turns of the
+  script; six whole-army control seeds are all a round or more behind**
+  (per-model 4.88–5.11 v script 4.93–4.96 v control 6.07–7.43). Movement
+  only, three bodies, one point — a pattern about the two trainers on this
+  reward, not yet a result about the game.
 - **The sampled policy walks the squad apart; the greedy one does not.** On
   A1 the policy training rolls out has coherency 0.23–0.62 where the policy
   a score reports has 0.84–0.94 — nothing on the A rungs pays for

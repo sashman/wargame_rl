@@ -51,7 +51,7 @@ of them. Every batch so far was disposed of this way (batch 1/2's arms, batch
 
 | Config | The open question |
 |---|---|
-| `curriculum/a1.yaml` | #340 rung **A1**: A0's three models as one squad, deployed together; coherency a readout. Bar `squad_march_take` 0.960 / 4.96 turns / coherent 0.993. **FAIL as pre-registered, 2 of 3 seeds pass**, 2026-09-15; A1x resumes the runs to twice the budget. |
+| `curriculum/a1.yaml` | #340 rung **A1**: A0's three models as one squad, deployed together; coherency a readout. Bar `squad_march_take` 0.960 / 4.96 turns / coherent 0.993. **FAIL as pre-registered at 3× the control's rounds (2 of 3), PASS 3 of 3 resumed to 6× (A1x)**, 2026-09-15 — the budget rule was the defect. |
 | `curriculum/a0.yaml` | #340 rung **A0**: three lone models, one objective, no opponent — the plumbing rung of the per-model curriculum. Bar `squad_march_take` 1.000 / 4.93 turns at radius 4 (radius 3 froze one model in 5% of episodes). **Passed with a defect** on both facades, 2026-09-15. |
 | `25v25_real_maps.yaml` | Does training **on the real tables** produce a policy the generated scenario cannot? Same opponent, forces and reward as `golden/25v25_shooting_opponent.yaml`; only the board changes. Draws from 36 tables and holds out the 9 whose number is divisible by 5 |
 
