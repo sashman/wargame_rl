@@ -258,6 +258,9 @@ def eval_rows(result: EvalResult, prefix: str = "") -> dict[str, float]:
         f"{suffix}success_rate": (
             None if result.success_rate is None else 100.0 * result.success_rate
         ),
+        # Turns-to-success on the phase clock, so a curriculum rung's speed
+        # readout has an in-run curve and not only its final n=100 read.
+        f"eval/{suffix}mean_turns": result.mean_turns,
     }
     rows.update({key: value for key, value in optional.items() if value is not None})
     return rows
