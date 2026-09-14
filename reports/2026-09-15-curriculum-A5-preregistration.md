@@ -98,3 +98,19 @@ budget is the cap and it is the slowest run of the A rungs by wall-clock,
 eight units of three being eight decisions a round per unit-open plus
 twenty-four moves. Coherency on both learned arms ends well below the
 bar's 0.822.
+
+## Amendment 1 — the control's read at the cap (2026-09-15, before any per-model number exists)
+
+The whole-army control ran to its 60-epoch cap (Wandb group `curriculum-a5`,
+runs `koti5sv5` s1 · `jemeom83` s2 · `49n4y1l5` s3). Scored at n=100 on
+seeds 700000+ from `last.ckpt` (epoch 60): success **0.890 / 0.820 /
+0.600**, `held` 5.88 / 5.81 / 5.58 of 6, `on_obj` 0.93 / 0.92 / 0.95,
+turns 8.31 / 8.50 / 8.79 against the script's 6.77, coherent 0.58 / 0.64 /
+0.58 against the bar's 0.822. The control fails the bound on 3 of 3 at
+the cap with nearly every body on a point and five to six points held —
+the shape of a control still climbing, as A3's was. Under the criteria
+above it is **resumed once to 120 epochs** (`--resume-ckpt-path`, suffix
+`-x2`, the same three checkpoints) and read there; its in-run curve is
+read from Wandb once nothing is training. If it fails ≥ 2 of 3 at 120,
+the rung is NULL (scenario). The per-model budget, if the arm launches, is
+the cap. Nothing about the per-model arm was known when this was written.
