@@ -104,3 +104,22 @@ order, which is what leaves the script's last bodies at the rim. The
 per-model arm again needs 2–4× the control's rounds. Coherency on both
 learned arms ends below the bar's 0.889, because nothing pays for it and
 twelve bodies on one disc have every reason to spread.
+
+## Amendment 1 — the control's read, and the budget it sets (2026-09-15 00:52, before any per-model number exists)
+
+The whole-army control ran to its 60-epoch cap (Wandb group `curriculum-a2`,
+runs `oz1qq4lq` s1 · `0jrgewh3` s2 · `ewun7j0y` s3). In-run success (n=30,
+seeds 500000+) first reaches 0.95 and stays there at epoch **9 / 0 / 0**
+(0-based; s2 and s3 read 100 on their first evaluation, s1 sat at 0 for
+four epochs and dipped to 83 at epoch 8), i.e. rounds-to-pass **20,480 /
+2,048 / 2,048**. Under the 6× rule the per-model budget is 6 × 20,480 =
+**122,880 rounds**, the cap, launched at that figure.
+
+Scored at n=100 on seeds 700000+ from `last.ckpt` (epoch 60): success
+**1.000 / 1.000 / 1.000**, turns **6.01 / 5.95 / 6.00** against the
+script's 4.55 (paired +1.46 / +1.40 / +1.45), `on_obj` 0.948 / 0.972 /
+0.972 against the script's 0.843 — the learned policy leaves fewer bodies
+at the rim — coherent 0.703 / 0.778 / 0.740 against the bar's 0.889. The
+control passes the success bound 3 of 3, so a per-model miss reads FAIL
+and not NULL. Nothing about the per-model arm was known when this was
+written.
