@@ -1127,6 +1127,42 @@ config that trains, agent at K=3.
   `closest_objective_v2`.** There is no working travel gradient and four attempts to build one
   have failed.
 
+### The per-model curriculum (#340) — the ladder so far
+
+One rung at a time, one axis of difficulty per rung, the scripted bar
+measured first, the pass mark pre-registered, the whole-army trainer as the
+pipeline control on the A and C rungs, every run on Wandb under
+`curriculum-<id>`. Configs in `configs/experiments/curriculum/`, one PR per
+rung stacked on #339.
+
+| rung | axis | verdict | per-model | whole-army control | report |
+|---|---|---|---|---|---|
+| **A0** three lone models, one objective | — (plumbing) | **PASS with a defect**, 3/3 | success 1.000 / 1.000 / 0.950, turns 4.93 / 4.96 / 5.11 (script 4.93), rounds-to-pass 29k / 52k / 41k | success 1.000 ×3, turns 6.21 / 6.67 / 6.07, rounds-to-pass 16k / 12k / 18k | [2026-09-15](reports/2026-09-15-curriculum-a0-passes.md) |
+
+- **The per-model pipeline learns**, at 128 rounds per update, on the same
+  code that sat at the floor at 8–32. It reaches the script's speed where
+  the whole-army control is a round slower, and needs **2–4× the control's
+  rounds** to get there. One rung, three models, no formation: a note, not
+  a result.
+- ⚠ **Pre-register a speed bound against the whole-army control, not
+  against the script.** "The script's slowest episode + 1 round" was
+  missed 3/3 by a control that learned A0 in under ten epochs, and by E1's
+  control before it (6.9–7.0 against 5.55). Twice is a pattern: a converged
+  PPO policy on this reward is about a round slower than a straight-line
+  walk. Either calibrate the bound on the control's own final read or make
+  turns a readout beside the success criterion that decides.
+- ⚠ **The health panel's ratio line is uncalibrated at 128 rounds per
+  update.** `train/ratio_p99` sat at 1.65–1.79 (clip fraction 0.16–0.21) on
+  all three A0 seeds over the last quarter, past the ~1.5 written from the
+  whole-army trainer at 1024 — on a run that passed. Recorded as a defect,
+  not waived; A1 reads the same panel and decides whether the threshold
+  moves or the update does.
+- **Measure the bar before fixing the disc.** At objective radius 3 the
+  script itself failed 5% of A0 episodes with one model frozen behind a
+  friend; at radius 4 it is 1.000. A rung whose bar fails its own criterion
+  goes back to design, and the change is recorded in the pre-registration
+  before any training number exists.
+
 ### How to measure here
 
 The single most expensive class of error in this project. Every rule below was
