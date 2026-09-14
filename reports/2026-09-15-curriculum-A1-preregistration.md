@@ -104,3 +104,22 @@ again about a round slower. The ratio tail persists at 1.6–1.8 on the
 per-model side, which would move the panel's line rather than indict the
 update. Coherency on the per-model side ends below the bar's 0.993 —
 nothing pays for it — and by how much is the number worth having.
+
+## Amendment 1 — the control's read, and the budget it sets (2026-09-15 00:12, before any per-model number exists)
+
+The whole-army control ran to its 60-epoch cap (Wandb group `curriculum-a1`,
+runs `h8hq4yj2` s1 · `553ljuz4` s2 · `r0bceg97` s3). In-run success (n=30,
+seeds 500000+) first reaches 0.95 and stays there at epoch **6 / 9 / 8**
+(0-based), i.e. rounds-to-pass **14,336 / 20,480 / 18,432**. Under the
+budget rule the per-model budget is 3× the slowest seed: **61,440 rounds**
+(120 evaluations at the 512-round cadence), launched at that figure.
+
+Scored at n=100 on seeds 700000+ from `last.ckpt` (epoch 60): success
+**1.000 / 1.000 / 1.000**, turns **6.20 / 7.43 / 6.10** against the
+script's 4.96 (paired +1.24 / +2.47 / +1.14), `held` 1.00, coherent
+**0.976 / 0.882 / 0.994** against the bar's 0.993. The control passes the
+success bound 3 of 3, so a per-model miss reads FAIL and not NULL. Turns and
+coherency are readouts on this rung and are quoted beside the per-model
+row when it exists; the control is again 1.1–2.5 rounds slower than the
+script, and one seed walks its squad apart (0.882) with nothing paying for
+formation. Nothing about the per-model arm was known when this was written.
