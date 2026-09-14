@@ -100,3 +100,35 @@ round count, or its declaration head collapses to `stationary` early (the
 do-nothing fingerprint) and the greedy eval never leaves the floor while the
 sampled score climbs, which `measure-per-model-eval-mode` will show. I do
 not know which.
+
+## Amendment 1 — the control's read, and the budget it sets (2026-09-14 23:50, before any per-model number exists)
+
+The whole-army control ran to its 60-epoch cap (Wandb group `curriculum-a0`,
+runs `v9uwm61r` s1 · `9w0rzj22` s2 · `1enz2ero` s3; the launch comment on
+#341 had s2 and s3's ids swapped). In-run success (n=30, seeds 500000+)
+first reaches 0.95 and stays there at epoch **7 / 5 / 8** (0-based), i.e.
+rounds-to-pass **16,384 / 12,288 / 18,432**. Under the budget rule above the
+per-model budget is 3× the slowest seed: **55,296 rounds** (108 updates of
+512-round eval cadence), launched at that figure.
+
+Scored at n=100 on seeds 700000+ from `last.ckpt` (epoch 60): success
+**1.000 / 1.000 / 1.000**, turns **6.21 / 6.67 / 6.07** against the
+script's 4.93 (paired +1.28 / +1.74 / +1.14, SE ≤ 0.05), `held` 1.00.
+
+**So the control passes the success bound on 3 of 3 seeds and misses the
+turn bound (≤ 6.0) on 3 of 3.** Read literally, the criteria above call
+that NULL (scenario), and that reading is recorded as a **defect in the
+rule, not in the scenario**: the whole-army trainer learned the task in
+under ten epochs and is a round slower than a script that walks a straight
+line — the same shape the E1 control showed (6.9–7.0 turns against 5.55).
+A speed bound of "the script's slowest episode plus one" was written
+without checking what a converged PPO policy on this reward reaches, which
+`CLAUDE.md` § How to measure here already warns against ("power-check a
+per-seed bound against the expected spread before writing it down").
+
+The per-model arm's criteria are **unchanged** and will be read on both
+bounds exactly as written. What this amendment changes is the attribution
+clause: the control's success bound is what decides FAIL versus NULL
+(scenario), and the turn bound is reported beside it for both facades
+rather than deciding either. The rung's verdict will say so in as many
+words. Nothing about the per-model arm was known when this was written.
