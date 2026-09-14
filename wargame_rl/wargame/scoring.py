@@ -26,6 +26,7 @@ from wargame_rl.wargame.envs.per_model.evaluate import evaluate_per_model_choose
 from wargame_rl.wargame.envs.per_model.recording import (
     record_episode as record_per_model_episode,
 )
+from wargame_rl.wargame.envs.per_model.reward_timing import PerStepReward
 from wargame_rl.wargame.envs.state.provenance import Cadence
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.selectors import (
@@ -82,8 +83,16 @@ def evaluate_spec(
         chooser = build_per_model_chooser(
             spec, envs, seed=int(seeds[0]) if seeds else 0, greedy=greedy
         )
+        # One retimer per env, so the row carries the phase's success criterion
+        # and the re-timed episode reward -- a curriculum rung is decided on
+        # the success rate, and without these it reads `-`.
         return evaluate_per_model_chooser(
-            chooser.choose, envs, seeds, name, combat_seeds=combat_seeds
+            chooser.choose,
+            envs,
+            seeds,
+            name,
+            combat_seeds=combat_seeds,
+            retimers=[PerStepReward(env) for env in envs],
         )
     if not greedy:
         raise ValueError(
