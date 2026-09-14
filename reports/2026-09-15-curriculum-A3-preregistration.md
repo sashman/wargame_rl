@@ -106,3 +106,41 @@ both — the deployment band makes the nearest point unambiguous and the
 progress reward pays each squad to close on its own nearest point — so
 this rung will not separate the facades on allocation; A4's spare squad
 is where that question lives.
+
+## Amendment 1 — the control's read at the cap, and what follows (2026-09-15 01:10, before any per-model number exists)
+
+The whole-army control ran to its 60-epoch cap (Wandb group `curriculum-a3`,
+runs `78l7l9u6` s1 · `7rbs29pq` s2 · `z2arg0vf` s3). In-run success (n=30,
+seeds 500000+) reaches 0.95 and stays there on **s2 only, at epoch 59**;
+s1 sits at 80–93 from epoch 28 and s3 at 83–97 from epoch 28, both still
+rising at the cap. Scored at n=100 on seeds 700000+ from `last.ckpt`
+(epoch 60): success **0.850 / 0.980 / 0.930**, `held` 3.83 / 3.98 / 3.92,
+turns 6.72 / 6.47 / 6.52 against the script's 5.28, coherent 0.770 /
+0.733 / 0.668 against the bar's 0.927.
+
+**On the letter, that is NULL (scenario): the control has not passed by
+the cap on 2 of 3 seeds.** The clause was written to catch a
+misconfigured rung — one the script cannot solve either — and this rung
+is not that: the script reads 1.000, and the control is at 85–98% and
+climbing when its budget runs out. The clause conflates "cannot learn it"
+with "slower than the cap", which the A1x finding (the per-model arm is
+2–4× slower than the control) should have warned would bite the control
+too on a harder rung. Recorded as a defect of the clause, not of the
+scenario.
+
+What follows, written before any of it runs:
+
+1. **The control is resumed to 120 epochs** (`--resume-ckpt-path`, same
+   seeds, the same three checkpoints), the cap doubled once for the
+   control only, to read its rounds-to-pass. If it has not passed 2 of 3
+   by 120, the rung is NULL (scenario) for real.
+2. **The per-model budget is the cap, 122,880 rounds**, whatever the
+   control's rounds-to-pass turns out to be (6× anything ≥ 20,480 exceeds
+   it). The per-model arm launches once A2 (#347) has been read, as this
+   file already says, and is read at the end of its budget exactly as
+   written above.
+3. **Attribution at the read**: FAIL needs the control to pass on ≥ 2 of 3
+   seeds at its extended budget; otherwise the rung is NULL and the
+   per-model result is reported but not read as a verdict.
+
+Nothing about the per-model arm was known when this was written.
