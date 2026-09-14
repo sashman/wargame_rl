@@ -134,6 +134,20 @@ def test_the_phase_facade_measures_no_passive_share() -> None:
     assert result.stationary_share is None and result.hold_fire_share is None
 
 
+def test_a_per_model_checkpoint_row_carries_the_success_criterion(
+    tmp_path: Path,
+) -> None:
+    """A curriculum rung is decided on the success rate, which only a retimer
+    can read off the per-model facade -- without one every `.pt` row printed
+    `-` for success and turns, and the rung could not be read at all."""
+    result = evaluate_spec(
+        str(_checkpoint(tmp_path)), small_config(opponent_x=22), SEEDS, "pt"
+    )
+    assert result.success_rate is not None
+    assert result.mean_turns is not None
+    assert len(result.turns_per_episode) == len(SEEDS)
+
+
 # ---------------------------------------------------- sampled play, seeded
 
 
