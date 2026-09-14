@@ -92,3 +92,18 @@ Both facades pass, the control slower than on A3 (a spare squad crowding
 a point it is not needed at costs the others their approach). The
 per-model arm's spare squad ends on a point, not off it — nothing pays it
 to stand aside — and `on_obj` reads above the script's 0.724.
+
+## Amendment 1 — the control's read (2026-09-15, before any per-model number exists)
+
+The whole-army control ran to its 60-epoch cap (Wandb group `curriculum-a4`,
+runs `3bgdwu1e` s1 · `w1su1gqg` s2 · `64koq60w` s3). Scored at n=100 on
+seeds 700000+ from `last.ckpt` (epoch 60): success **0.980 / 0.980 /
+0.990**, `held` 2.98 / 2.98 / 2.99, turns 6.12 / 6.23 / 6.16 against the
+script's 4.70 (paired +1.42 / +1.53 / +1.46), `on_obj` 0.78 / 0.73 / 0.73,
+coherent 0.739 / 0.864 / 0.776 against the bar's 0.923. **The control
+passes the success bound on 3 of 3 seeds**, so a per-model miss reads
+FAIL. Its in-run rounds-to-pass is read from Wandb once no run is
+training (the A2 per-model arm is live) and sets the per-model budget at
+6×, in [20,480, 122,880]; the per-model arm launches once A3 (#349) has
+been read. Nothing about the per-model arm was known when this was
+written.
