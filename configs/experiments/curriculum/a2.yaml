@@ -1,0 +1,58 @@
+# Curriculum rung A2 (parent question #340): FOUR units of three, ONE
+# objective, nobody shooting -- the "bodies" axis. Twelve models where A1
+# had three, all bound for the same point, deployed as squads. The disc and
+# the success criterion scale with the body count and are part of the axis:
+# twelve bases cannot all stand on A1's radius-4 disc without the
+# friendly-gridlock freeze the scripts are known to suffer (CLAUDE.md
+# "Freezing is friendly gridlock"), so the disc is radius 6 and success is
+# 75% of alive models on it (9 of 12). At all-at-objectives the script
+# itself scored 0.11 / 0.33 / 0.66 at radius 4 / 6 / 8; the pre-registration
+# records every setting rejected. Everything else is A1's: 8 rounds, 60x44,
+# Move 6, coherency a readout.
+#
+# The bar is `squad_march_take`, measured first on seeds 700000+.
+config_name: curriculum_a2
+number_of_wargame_models: 12
+number_of_opponent_models: 0
+number_of_objectives: 1
+objective_radius_size: 6
+board_width: 60
+board_height: 44
+max_groups: 4
+number_of_battle_rounds: 8
+deployment_zone: [4, 16, 10, 28]
+opponent_deployment_zone: [50, 16, 56, 28]
+models:
+  - &sq_0 { group_id: 0 }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+objectives:
+  - { x: 35, y: 22 }
+coherency:
+  enforce_at_deployment: true
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.0
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: fraction_at_objectives
+      params: { min_fraction: 0.75 }
+observe_objective_control: true
