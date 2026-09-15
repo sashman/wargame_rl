@@ -1144,6 +1144,7 @@ rung stacked on #339.
 | **A2b** the same at `ent_coef` 0.003 | entropy | **PASS with drift, 3/3** — the entropy bonus was the cause; 0.003 on every per-model arm from here | success 1.000 / 1.000 / 0.990, turns 4.48 / 4.19 / 4.11; displacement entropy 0.3 nats, clip fraction 0.12–0.15; 7–10 transient in-run dips per seed, all recovered, none after 63k; coherency greedy 0.74–0.79 | (not re-run) | [2026-09-15](reports/2026-09-15-curriculum-a2b-passes-with-drift.md) |
 | **A3** four squads, four objectives (spread) | points | **FAIL at the cap, PASS 3/3 resumed to the control's 245k (A3x)** | at 122,880: 0.700 / 0.800 / 0.770, held 3.5–3.7; **at 245,760: 0.960 / 0.960 / 0.970, held 3.94–3.96, turns 5.19–5.33 (script 5.28)**; coherency greedy 0.38–0.52 | 0.850 / 0.980 / 0.930 at 60 epochs, **0.950 / 0.950 / 0.960 at 120** (245k rounds), turns 6.2–6.3 | [A3](reports/2026-09-15-curriculum-a3-behind-the-control-at-the-cap.md) · [A3x](reports/2026-09-15-curriculum-a3x-passes.md) |
 | **A4** four squads, three objectives (a spare) | points | **FAIL at the cap, PASS 3/3 resumed to 2× the cap (A4x)** | at 122,880: 0.930 / 0.930 / 0.970, held 2.91–2.97 of 3; **at 245,760: 0.980 / 1.000 / 1.000, held 2.96 / 3.00 / 3.00, turns 4.72–4.75 (script 4.70)**, `on_obj` 0.65–0.73; explained variance 0.42–0.54 → 0.56–0.59; coherency greedy 0.43–0.53 → 0.52–0.70 | 0.980 / 0.980 / 0.990 at 60 epochs, passed in-run at epochs 44–58 (92k–121k rounds), turns 6.1–6.2 (script 4.70) | [A4](reports/2026-09-15-curriculum-a4-one-se-short-at-the-cap.md) · [A4x](reports/2026-09-15-curriculum-a4x-passes.md) |
+| **A3 speed screen** three one-change arms on A3, read at the cap against A3's own runs (0.70 / 0.80 / 0.77) | why ~200k rounds | **S1 hold NULL** (0.94 / 0.81 / 0.90) · **S2 matching HARMFUL** (0.83 / 0.69 / 0.61) · **S3 warm-start from A2b AHEAD 3/3** (0.91 / 0.94 / 0.96, in-run 80% at 11k–22k rounds v scratch's 91k–never) | — | (A3's) | [S1](reports/2026-09-15-curriculum-a3-speed-s1-hold.md) · [S2](reports/2026-09-15-curriculum-a3-speed-s2-match.md) · [S3](reports/2026-09-15-curriculum-a3-speed-s3-warm.md) |
 | **A5** eight squads, six objectives | bodies + points | **control NULL (scenario) on the letter, and the clause is wrong; per-model arm FAIL 0/3 (A5b), a different failure** | 0.260 / 0.180 / 0.160 at 245,760, never a rolling 50% in-run; `held` 4.1–4.6 of 6 with **8–10 of 24 bodies on points**, empty point different each episode, max stack 3.0–3.5 (script 5.8), turns 9.5–9.7 of 10 (script 6.77), coherency 0.10 — under-arrival, not stacking; clip fraction 0.37–0.42 | 0.890 / 0.820 / 0.600 at 60, **0.800 / 0.940 / 0.980 at 120**: one point left empty with 22 of 24 bodies on points — the whole-army trainer's allocation failure, on a rung the script solves at 1.000 | [A5](reports/2026-09-15-curriculum-a5-control-cannot-allocate.md) · [A5b](reports/2026-09-16-curriculum-a5b-fails-differently.md) |
 
 - **The per-model pipeline learns**, at 128 rounds per update, on the same
@@ -1221,6 +1222,38 @@ rung stacked on #339.
   to 120 epochs; NULL (scenario) needs the script to fail its own
   criterion; a control that fails while the per-model arm passes is
   reported as exactly that.
+- ⚠ **ON THE PER-MODEL FACADE, A PER-MODEL STATE TERM IS A GLOBAL TERM.**
+  `PerStepReward._pay_close` pays every per-model state calculator
+  (`objective_hold`, `group_cohesion`, …) at the turn close as the MEAN
+  over alive models — one scalar on the close step — so the model that
+  moved onto the empty point and the one that stayed on the crowded one
+  are paid the same. The only per-decision credit this facade pays is an
+  action-class term on the step, to the model that acted. Measured on the
+  A3 speed screen: `objective_hold` at `crowding_exponent` 1.0, the
+  phase facade's measured-good lever, read NULL (0.94 / 0.81 / 0.90
+  against scratch's 0.70 / 0.80 / 0.77, one seed flat) and the walk-off
+  it was aimed at was still there at 20k rounds on two seeds. Do not
+  nominate a per-model state term as a per-model lever here until the
+  retimer pays state terms to the model that produced them (a build, not
+  an arm; the retimer is `envs/per_model/reward_timing.py`).
+- ⚠ **The spread rung is an ASSIGNMENT problem from a random start, and
+  the travel term's per-objective assignment half-contradicts it — but
+  fixing the assignment made it WORSE.** Only 12% of A3 deployments give
+  the four squads four distinct nearest points; under `closest_objective_v2`
+  one squad owns two or more points on 49% of steps and the leftover squad
+  is paid by `fallback_to_nearest` toward a point already claimed. A
+  matching (`one_objective_per_group`, ships default off) took that to 0%
+  and read **HARMFUL** (0.83 / 0.69 / 0.61): a matching re-solves every
+  step, a target switch is unpaid, and the critic got worse (explained
+  variance 0.26–0.38). Fifth empty-or-worse result on this term.
+- **Warm-starting a rung from the rung below is the one lever that moved
+  the spread rung: AHEAD 3/3** (0.91 / 0.94 / 0.96 against scratch's 0.70 /
+  0.80 / 0.77 at the same rounds; in-run 80% at 11k–22k rounds against
+  91k–never). The A2b one-point policy carried over and did not have to
+  unlearn stacking, against the written prediction. Unpaired on init; one
+  seed passes at n=100 and two sit within one SE. T1 (A5 from A4) keeps
+  its own pre-registration; this is its prior, and the C rungs' rule
+  ("warm-start from the rung below") now has a measurement behind it.
 - ⚠ **THE ALLOCATION RUNG BEATS BOTH TRAINERS, AND THEY FAIL IN
   OPPOSITE WAYS.** A5 (eight squads of three over six points, the
   spare-squads shape): the whole-army control puts 22 of 24 bodies on
