@@ -76,3 +76,31 @@ it. Its `held` at the end is higher than the control's on every seed —
 per-step credit against a shared coverage term is the mechanism #283
 argued for, and this is the first rung that tests it. Coherency, unpaid,
 ends below the control's.
+
+## Amendment 1 — written 2026-09-15 before the launch: the budget and the entropy coefficient
+
+Two rows in the table above contradict rules the ladder had already
+adopted when this was written, and both are corrected here before any
+number exists.
+
+- **Budget: 245,760 rounds, read once at the end**, not 122,880. The
+  cap rule is symmetric (A3x): the control on this rung ran its once-only
+  extension to 120 epochs, 245,760 rounds, so the arm under test gets the
+  same rounds before the rung is called — and A4x (read this morning:
+  0.980 / 1.000 / 1.000 at 245,760 where 122,880 read 0.93 / 0.93 / 0.97)
+  confirmed that when 6× the control exceeds the cap the per-model budget
+  is 2× the cap. Reading A5b at 122,880 would repeat the asymmetry A3's
+  FAIL measured.
+- **`--ent-coef 0.003`**, not the default 0.03. Every per-model arm runs
+  at 0.003 from A3 on (A2b: at 0.03 the arm solves a rung and then
+  unlearns it). The "other flags" row above was carried from A5's
+  control-side table.
+
+Launch, as amended: `just train-per-model-arm 245760 3 curriculum-a5 a5b
+"--num-rollout-envs 4 --rollout-rounds 32 --eval-every-rounds 512
+--checkpoint-every-rounds 512 --n-eval-episodes 30 --ent-coef 0.003"
+configs/experiments/curriculum/a5.yaml`, on the code of PR #362's tip
+(`bd15db9`: the A5 branch plus the travel term's matching flag, which
+`a5.yaml` does not set), beside the nine A3 speed-screen runs already on
+the GPU. The criteria are unchanged; the in-run curve is read for drift
+after any first pass, as the A2b clause requires.
