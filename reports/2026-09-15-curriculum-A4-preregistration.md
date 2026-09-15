@@ -107,3 +107,19 @@ training (the A2 per-model arm is live) and sets the per-model budget at
 6×, in [20,480, 122,880]; the per-model arm launches once A3 (#349) has
 been read. Nothing about the per-model arm was known when this was
 written.
+
+## Amendment 2 — the entropy coefficient, the symmetric cap, and the launch (2026-09-15, before any per-model number exists)
+
+Two contract amendments since this file was written apply here: every
+per-model arm runs `--ent-coef 0.003` (A2b, #356), and the cap is
+symmetric — if the control needed its once-only extension the per-model
+arm gets the same rounds before the rung is called (A3x, #357). A4's
+control passed 3 of 3 at 60 epochs without an extension: in-run success
+first reaches 0.95 and stays at epoch **46 / 58 / 44** (0-based), i.e.
+rounds-to-pass **96,256 / 120,832 / 92,160**; 6× the slowest exceeds the
+cap, so the per-model budget is **122,880 rounds**. The "other flags" row
+reads `gamma` 0.9, `lr` 3e-4, **`ent_coef` 0.003**. A3 has been read
+(FAIL at the cap, PASS at the control's rounds under A3x), so the ladder's
+order holds and the arm launches now. A2b's strict clause is a readout
+here: the in-run curve after the first pass, any dip below 0.80 reported.
+Nothing about the per-model arm was known when this was written.
