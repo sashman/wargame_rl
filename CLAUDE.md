@@ -1143,7 +1143,7 @@ rung stacked on #339.
 | **A2** four squads, one objective | bodies | **FAIL as pre-registered — solved by 10k rounds, then unlearned** at `ent_coef` 0.03 | at budget 0.370 / 0.880 / 0.980; **at 10,240 rounds 1.000 ×3, 4.02 turns (script 4.55), coherency 1.000**; drifted from ~25k; displacement entropy stuck at ~3.3 nats, clip fraction 0.26–0.37 | success 1.000 ×3, turns 5.95–6.01, rounds-to-pass 2k / 2k / 20k, held 100% for 60 epochs | [2026-09-15](reports/2026-09-15-curriculum-a2-solved-then-unlearned.md) |
 | **A2b** the same at `ent_coef` 0.003 | entropy | **PASS with drift, 3/3** — the entropy bonus was the cause; 0.003 on every per-model arm from here | success 1.000 / 1.000 / 0.990, turns 4.48 / 4.19 / 4.11; displacement entropy 0.3 nats, clip fraction 0.12–0.15; 7–10 transient in-run dips per seed, all recovered, none after 63k; coherency greedy 0.74–0.79 | (not re-run) | [2026-09-15](reports/2026-09-15-curriculum-a2b-passes-with-drift.md) |
 | **A3** four squads, four objectives (spread) | points | **FAIL at the cap, PASS 3/3 resumed to the control's 245k (A3x)** | at 122,880: 0.700 / 0.800 / 0.770, held 3.5–3.7; **at 245,760: 0.960 / 0.960 / 0.970, held 3.94–3.96, turns 5.19–5.33 (script 5.28)**; coherency greedy 0.38–0.52 | 0.850 / 0.980 / 0.930 at 60 epochs, **0.950 / 0.950 / 0.960 at 120** (245k rounds), turns 6.2–6.3 | [A3](reports/2026-09-15-curriculum-a3-behind-the-control-at-the-cap.md) · [A3x](reports/2026-09-15-curriculum-a3x-passes.md) |
-| **A4** four squads, three objectives (a spare) | points | **FAIL at the cap, one SE short on two seeds and rising** — A4x resumes to 245k | success 0.930 / 0.930 / 0.970 at 122,880, held 2.91 / 2.93 / 2.97 of 3, `on_obj` 0.60–0.72; explained variance 0.42–0.54; coherency greedy 0.43–0.53 | 0.980 / 0.980 / 0.990 at 60 epochs, passed in-run at epochs 44–58 (92k–121k rounds), turns 6.1–6.2 (script 4.70) | [2026-09-15](reports/2026-09-15-curriculum-a4-one-se-short-at-the-cap.md) |
+| **A4** four squads, three objectives (a spare) | points | **FAIL at the cap, PASS 3/3 resumed to 2× the cap (A4x)** | at 122,880: 0.930 / 0.930 / 0.970, held 2.91–2.97 of 3; **at 245,760: 0.980 / 1.000 / 1.000, held 2.96 / 3.00 / 3.00, turns 4.72–4.75 (script 4.70)**, `on_obj` 0.65–0.73; explained variance 0.42–0.54 → 0.56–0.59; coherency greedy 0.43–0.53 → 0.52–0.70 | 0.980 / 0.980 / 0.990 at 60 epochs, passed in-run at epochs 44–58 (92k–121k rounds), turns 6.1–6.2 (script 4.70) | [A4](reports/2026-09-15-curriculum-a4-one-se-short-at-the-cap.md) · [A4x](reports/2026-09-15-curriculum-a4x-passes.md) |
 
 - **The per-model pipeline learns**, at 128 rounds per update, on the same
   code that sat at the floor at 8–32. It reaches the script's speed where
@@ -1203,8 +1203,10 @@ rung stacked on #339.
   when the control needs its once-only extension, the arm under test gets
   the same rounds before the rung is called — **and when 6× the
   control's slowest pass exceeds the cap, the per-model budget is 2× the
-  cap** (A4x: the control passed at 92k–121k of 123k, the per-model arm
-  read 0.93 / 0.93 / 0.97 at 123k and rising).
+  cap**, read once (A4x: the control passed at 92k–121k of 123k, the
+  per-model arm read 0.93 / 0.93 / 0.97 at 123k and **0.98 / 1.00 / 1.00
+  at 245k**, at the script's speed where the control is a round and a
+  half behind).
 - **Six per-model seeds on two rungs all arrive within 0.2 turns of the
   script; six whole-army control seeds are all a round or more behind**
   (per-model 4.88–5.11 v script 4.93–4.96 v control 6.07–7.43). Movement
