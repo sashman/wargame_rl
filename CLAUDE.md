@@ -1140,7 +1140,8 @@ rung stacked on #339.
 | **A0** three lone models, one objective | — (plumbing) | **PASS with a defect**, 3/3 | success 1.000 / 1.000 / 0.950, turns 4.93 / 4.96 / 5.11 (script 4.93), rounds-to-pass 29k / 52k / 41k | success 1.000 ×3, turns 6.21 / 6.67 / 6.07, rounds-to-pass 16k / 12k / 18k | [2026-09-15](reports/2026-09-15-curriculum-a0-passes.md) |
 | **A1** the same three as one squad | squads | **FAIL as pre-registered, 2/3** at 3× the control's rounds | success 1.000 / **0.790** / 1.000, turns 5.01 / 6.10 / 4.90 (script 4.96), rounds-to-pass 53k / never / 32k; coherency greedy 0.76–0.90, **sampled 0.23–0.62** | success 1.000 ×3, turns 6.20 / 7.43 / 6.10, rounds-to-pass 14k / 20k / 18k | [2026-09-15](reports/2026-09-15-curriculum-a1-fails-on-one-seed.md) |
 | **A1x** the same runs resumed to 122,880 rounds | budget | **PASS 3/3** — the budget rule was the defect | success 1.000 ×3, turns 4.93 / 4.88 / 4.93; s2 passed on the first evaluation after the resume; coherency greedy 0.97–0.98, sampled 0.70–0.81 | (not re-run) | [2026-09-15](reports/2026-09-15-curriculum-a1x-passes.md) |
-| **A2** four squads, one objective | bodies | **FAIL as pre-registered — solved by 10k rounds, then unlearned**; A2b (`ent_coef` 0.003) running | at budget 0.370 / 0.880 / 0.980; **at 10,240 rounds 1.000 ×3, 4.02 turns (script 4.55), coherency 1.000**; drifted from ~25k; displacement entropy stuck at ~3.3 nats, clip fraction 0.26–0.37 | success 1.000 ×3, turns 5.95–6.01, rounds-to-pass 2k / 2k / 20k, held 100% for 60 epochs | [2026-09-15](reports/2026-09-15-curriculum-a2-solved-then-unlearned.md) |
+| **A2** four squads, one objective | bodies | **FAIL as pre-registered — solved by 10k rounds, then unlearned** at `ent_coef` 0.03 | at budget 0.370 / 0.880 / 0.980; **at 10,240 rounds 1.000 ×3, 4.02 turns (script 4.55), coherency 1.000**; drifted from ~25k; displacement entropy stuck at ~3.3 nats, clip fraction 0.26–0.37 | success 1.000 ×3, turns 5.95–6.01, rounds-to-pass 2k / 2k / 20k, held 100% for 60 epochs | [2026-09-15](reports/2026-09-15-curriculum-a2-solved-then-unlearned.md) |
+| **A2b** the same at `ent_coef` 0.003 | entropy | **PASS with drift, 3/3** — the entropy bonus was the cause; 0.003 on every per-model arm from here | success 1.000 / 1.000 / 0.990, turns 4.48 / 4.19 / 4.11; displacement entropy 0.3 nats, clip fraction 0.12–0.15; 7–10 transient in-run dips per seed, all recovered, none after 63k; coherency greedy 0.74–0.79 | (not re-run) | [2026-09-15](reports/2026-09-15-curriculum-a2b-passes-with-drift.md) |
 
 - **The per-model pipeline learns**, at 128 rounds per update, on the same
   code that sat at the floor at 8–32. It reaches the script's speed where
@@ -1181,7 +1182,11 @@ rung stacked on #339.
   `ratio_p99` (the tail did not move with this failure, the fraction
   did); and score the periodic checkpoints when a final read fails, so a
   drift and a never-learned read as the two different things they are.
-  A2b (`ent_coef` 0.003) is the pre-registered test of the cause.
+  **A2b confirmed the cause: at `ent_coef` 0.003 the same seeds read
+  1.000 / 1.000 / 0.990 at the end, the head at 0.3 nats, the clip
+  fraction halved** — with transient in-run dips that recover, none past
+  63k rounds. Every per-model arm runs at `--ent-coef 0.003` from A3 on;
+  the whole-army control's passes at 0.03 stand.
 - **Six per-model seeds on two rungs all arrive within 0.2 turns of the
   script; six whole-army control seeds are all a round or more behind**
   (per-model 4.88–5.11 v script 4.93–4.96 v control 6.07–7.43). Movement
