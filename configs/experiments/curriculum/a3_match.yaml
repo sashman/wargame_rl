@@ -1,0 +1,59 @@
+# Curriculum rung A3, speed arm S2 (parent question #340): `a3.yaml` with ONE
+# change -- `closest_objective_v2` assigns objectives to squads as a MATCHING
+# (`one_objective_per_group`). Under the per-objective rule, on this board one
+# squad owns two or more points on 49% of steps and the squad left without one
+# is paid, by `fallback_to_nearest`, to walk to the point another squad is
+# already taking: half of all travel pay points at the nearest point rather
+# than an assigned one, and the learned squads are paid toward different
+# targets on 20-32% of squad-steps against the script's 11%. With the matching
+# every squad has its own candidate point while one is free. Everything else
+# is `a3.yaml` to the byte; the bar is unchanged.
+config_name: curriculum_a3_match
+number_of_wargame_models: 12
+number_of_opponent_models: 0
+number_of_objectives: 4
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 4
+number_of_battle_rounds: 8
+deployment_zone: [4, 4, 10, 40]
+opponent_deployment_zone: [50, 16, 56, 28]
+models:
+  - &sq_0 { group_id: 0 }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+objectives:
+  - { x: 35, y: 8 }
+  - { x: 35, y: 17 }
+  - { x: 35, y: 27 }
+  - { x: 35, y: 36 }
+coherency:
+  enforce_at_deployment: true
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.0
+          one_objective_per_group: true  # S2: the one change
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: all_objectives_occupied
+      params: {}
+observe_objective_control: true

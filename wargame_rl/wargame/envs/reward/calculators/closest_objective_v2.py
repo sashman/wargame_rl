@@ -44,6 +44,7 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         progress_scale: float = 0.0,
         fallback_to_nearest: bool = False,
         contest_deficit: int = 1,
+        one_objective_per_group: bool = False,
     ) -> None:
         super().__init__(weight=weight)
         if contest_deficit < 1:
@@ -77,6 +78,17 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         # i.e. the agent was never paid to attack. Raising this to a unit's
         # worth of models lets a whole unit's arrival count.
         self.contest_deficit = contest_deficit
+        # The assignment is per OBJECTIVE: each candidate point goes to the group
+        # with the closest model, so one group can own several points while
+        # another owns none and drops through `fallback_to_nearest` onto a point
+        # somebody else is already walking to. On the curriculum's spread rung
+        # (four squads, four points, random deployment) that is 49% of steps,
+        # with half of all travel pay pointing at the nearest point rather than
+        # an assigned one. With this on, the assignment is a MATCHING -- each
+        # group at most one candidate point, greedy by distance -- so the pull
+        # agrees with a success that needs every point occupied. Off by default:
+        # every recorded number was measured under the per-objective rule.
+        self.one_objective_per_group = one_objective_per_group
         self._last_breakdown: dict[int, dict[str, float]] = {}
         self._target_obj_idx: dict[int, int] = {}
         self._previous_target_distance: dict[int, float] = {}
@@ -224,6 +236,10 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         group_ids = np.array([m.group_id for m in view.player_models], dtype=int)
         n_obj = candidate_mask.shape[1]
         assignment: dict[int, int] = {}
+        if self.one_objective_per_group:
+            assignment = self._matching_assignment(group_ids, cache, candidate_mask)
+            self._cached_group_assignment = assignment
+            return assignment
         for obj_idx in range(n_obj):
             model_idxs = np.flatnonzero(candidate_mask[:, obj_idx])
             if model_idxs.size == 0:
@@ -240,6 +256,36 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
                 assignment[obj_idx] = best_group
 
         self._cached_group_assignment = assignment
+        return assignment
+
+    @staticmethod
+    def _matching_assignment(
+        group_ids: np.ndarray,
+        cache: DistanceCache,
+        candidate_mask: np.ndarray,
+    ) -> dict[int, int]:
+        """Each candidate objective to at most one group, each group to at most one.
+
+        Greedy on the (group, objective) pairs in ascending distance of the
+        group's closest candidate model: the nearest pair is fixed first, then
+        the nearest pair among the groups and objectives still free. Exact on
+        four squads for the cost model that matters here (the closest pair is
+        always in the optimum when distances are this separated), and it never
+        leaves a group without a point while a candidate point is free.
+        """
+        pairs: list[tuple[float, int, int]] = []
+        for obj_idx in range(candidate_mask.shape[1]):
+            for model_idx in np.flatnonzero(candidate_mask[:, obj_idx]):
+                dist = float(cache.model_obj_norms_offset[model_idx, obj_idx])
+                pairs.append((dist, obj_idx, int(group_ids[model_idx])))
+        pairs.sort()
+        assignment: dict[int, int] = {}
+        taken_groups: set[int] = set()
+        for _dist, obj_idx, group_id in pairs:
+            if obj_idx in assignment or group_id in taken_groups:
+                continue
+            assignment[obj_idx] = group_id
+            taken_groups.add(group_id)
         return assignment
 
     def _candidate_mask(
