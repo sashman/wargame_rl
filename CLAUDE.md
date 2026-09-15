@@ -1142,6 +1142,7 @@ rung stacked on #339.
 | **A1x** the same runs resumed to 122,880 rounds | budget | **PASS 3/3** — the budget rule was the defect | success 1.000 ×3, turns 4.93 / 4.88 / 4.93; s2 passed on the first evaluation after the resume; coherency greedy 0.97–0.98, sampled 0.70–0.81 | (not re-run) | [2026-09-15](reports/2026-09-15-curriculum-a1x-passes.md) |
 | **A2** four squads, one objective | bodies | **FAIL as pre-registered — solved by 10k rounds, then unlearned** at `ent_coef` 0.03 | at budget 0.370 / 0.880 / 0.980; **at 10,240 rounds 1.000 ×3, 4.02 turns (script 4.55), coherency 1.000**; drifted from ~25k; displacement entropy stuck at ~3.3 nats, clip fraction 0.26–0.37 | success 1.000 ×3, turns 5.95–6.01, rounds-to-pass 2k / 2k / 20k, held 100% for 60 epochs | [2026-09-15](reports/2026-09-15-curriculum-a2-solved-then-unlearned.md) |
 | **A2b** the same at `ent_coef` 0.003 | entropy | **PASS with drift, 3/3** — the entropy bonus was the cause; 0.003 on every per-model arm from here | success 1.000 / 1.000 / 0.990, turns 4.48 / 4.19 / 4.11; displacement entropy 0.3 nats, clip fraction 0.12–0.15; 7–10 transient in-run dips per seed, all recovered, none after 63k; coherency greedy 0.74–0.79 | (not re-run) | [2026-09-15](reports/2026-09-15-curriculum-a2b-passes-with-drift.md) |
+| **A3** four squads, four objectives (spread) | points | **FAIL as pre-registered at the cap, still rising** — A3x resumes to the control's 245k | success 0.700 / 0.800 / 0.770 at 122,880, held 3.49 / 3.60 / 3.65 of 4, `on_obj` 0.65–0.74; explained variance 0.34–0.45; coherency greedy 0.44–0.57 | 0.850 / 0.980 / 0.930 at 60 epochs, **0.950 / 0.950 / 0.960 at 120** (script 5.28 turns, control 6.2–6.3) | [2026-09-15](reports/2026-09-15-curriculum-a3-behind-the-control-at-the-cap.md) |
 
 - **The per-model pipeline learns**, at 128 rounds per update, on the same
   code that sat at the floor at 8–32. It reaches the script's speed where
@@ -1187,6 +1188,15 @@ rung stacked on #339.
   fraction halved** — with transient in-run dips that recover, none past
   63k rounds. Every per-model arm runs at `--ent-coef 0.003` from A3 on;
   the whole-army control's passes at 0.03 stand.
+- ⚠ **On the spread rung the per-model arm trails the whole-army control
+  at equal rounds — the first time on the ladder.** A3 at 123k rounds:
+  per-model 0.70 / 0.80 / 0.77 with 3.5–3.7 of four points held, control
+  0.85 / 0.98 / 0.93 (and 0.95–0.96 at 245k). The bodies arrive; one
+  point stays short. Explained variance fell to 0.34–0.45 from 0.70–0.90
+  on the rungs below: a success that is a conjunction over points is the
+  first thing per-step credit has struggled to value. When the control
+  needs its once-only extension, the per-model arm gets the same rounds
+  (A3x) before the rung is called.
 - **Six per-model seeds on two rungs all arrive within 0.2 turns of the
   script; six whole-army control seeds are all a round or more behind**
   (per-model 4.88–5.11 v script 4.93–4.96 v control 6.07–7.43). Movement
