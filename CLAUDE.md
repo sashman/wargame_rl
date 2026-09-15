@@ -1208,12 +1208,6 @@ rung stacked on #339.
   per-model arm read 0.93 / 0.93 / 0.97 at 123k and **0.98 / 1.00 / 1.00
   at 245k**, at the script's speed where the control is a round and a
   half behind).
-  cap** (A4x: the control passed at 92k–121k of 123k, the per-model arm
-  read 0.93 / 0.93 / 0.97 at 123k and rising).
-  the same rounds before the rung is called.
-  first thing per-step credit has struggled to value. When the control
-  needs its once-only extension, the per-model arm gets the same rounds
-  (A3x) before the rung is called.
   A2b (`ent_coef` 0.003) is the pre-registered test of the cause.
 - ⚠ **The whole-army control gates the BUDGET, the script gates the
   SCENARIO, and a control that fails is a finding, not a null.** A3's
