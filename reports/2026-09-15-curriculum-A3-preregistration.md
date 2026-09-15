@@ -158,3 +158,21 @@ per-model miss read FAIL, not NULL. Its in-run rounds-to-pass is read from
 Wandb once no run is training (the A2 per-model arm is live) and goes in
 the report; the per-model budget is the cap regardless. Nothing about the
 per-model arm was known when this was written.
+
+## Amendment 3 — the entropy coefficient, and the launch (2026-09-15, before any per-model number exists)
+
+A2 (#347) read FAIL at the default `ent_coef` 0.03 — every seed solved its
+rung by 10k rounds and unlearned it by 123k — and A2b (#356) at 0.003
+read PASS with drift on the same seeds ([report](2026-09-15-curriculum-a2b-passes-with-drift.md)).
+#340 contract 3 is amended: every per-model arm from A3 on runs
+`--ent-coef 0.003`. The "other flags" row above therefore reads `gamma`
+0.9, `lr` 3e-4, **`ent_coef` 0.003**; nothing else changes. A2b's strict
+clause is adopted as a readout here: the in-run curve after the first
+pass, with any dip below 0.80 reported.
+
+The per-model arm launches now at the cap, **122,880 rounds** (amendment
+1, clause 2), the control having passed 3 of 3 at 120 epochs (amendment
+2; rounds-to-pass 118k / 237k / 209k — s2 and s3 never held 0.95 in-run
+at n=30 until epochs 115 and 103, s1 never did, while all three read
+≥ 0.95 at n=100). A2 (#347 / #356) has been read, so the ladder's order
+holds. Nothing about the per-model arm was known when this was written.
