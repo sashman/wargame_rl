@@ -84,3 +84,9 @@ entropy 0.75 / 0.89 / 0.68, declaration entropy ≤ 0.02, advantage std
 - Nothing about the rungs above: the ladder is paused (the user's
   instruction, 2026-09-15) for the A3 speed screen (PR #362, arms
   #359–#361), so A5b does not launch on this pass.
+
+**Amendment, 10:14 the same morning.** The pause was lifted while this
+was being written ("continue with the plan, get through the ladder"):
+A5b (#355) launched at 10:07 at 245,760 rounds and `ent_coef` 0.003
+(its pre-registration's amendment 1), beside the speed-screen runs. The
+last bullet above records what was true when the read was taken.
