@@ -1208,7 +1208,6 @@ rung stacked on #339.
   per-model arm read 0.93 / 0.93 / 0.97 at 123k and **0.98 / 1.00 / 1.00
   at 245k**, at the script's speed where the control is a round and a
   half behind).
-  A2b (`ent_coef` 0.003) is the pre-registered test of the cause.
 - ⚠ **The whole-army control gates the BUDGET, the script gates the
   SCENARIO, and a control that fails is a finding, not a null.** A3's
   control was still climbing at the 60-epoch cap (0.85 / 0.98 / 0.93,
