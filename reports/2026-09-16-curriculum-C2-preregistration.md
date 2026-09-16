@@ -111,3 +111,24 @@ criterion does not punish. The control passes at 60 epochs on two
 seeds and needs its extension for the third, as on C1. If instead the
 arm reads under 0.90 on a seed, the census says the bound squad is dead
 or short on the enemy's point, not the neighbours — the opposite of C1.
+
+## Amendment 1 — written 2026-09-16 22:50, after the control's 60-epoch read and before any per-model number
+
+**The control at 60 epochs**, n=100 on 700000+, `last.ckpt`: success
+**0.710 / 0.690 / 0.760**, `held` 2.73–2.76, turns 13.8–14.5 phase-clock
+(about seven rounds of eight — it arrives with the game nearly over)
+against the script's 9.60, `on_obj` 0.93–0.97, coherent 0.79–0.81, vp
+−8.1 to −11.0 against the script's −2.7. In-run (n=30, rolling five):
+80% at epoch never / never / 33; 90% never; the last ten evaluations
+0.57–0.83 on all three. Wandb `curriculum-c2`: `pqkc7sp3` / `conri3cb`
+/ `ews7lbi8`.
+
+**The extension.** Under the mark on every seed with the curves still
+moving, the control gets its once-only extension to **120 epochs**
+(`--resume-ckpt-path` from `last.ckpt`, launched 22:46, suffix
+`-ctl-x2`). By the symmetric-cap rule the per-model arm's budget is
+**245,760 rounds**, read once at the end: the arm running to 122,880
+will be resumed in place when it gets there (#346: cadences explicit),
+and its 122,880 checkpoint is a readout. If the control fails its own
+criterion at 120, that is a finding about the control (A5's clause) and
+the arm is read at 245,760 beside it. The criteria are unchanged.
