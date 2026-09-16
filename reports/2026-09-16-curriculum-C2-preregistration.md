@@ -132,3 +132,27 @@ will be resumed in place when it gets there (#346: cadences explicit),
 and its 122,880 checkpoint is a readout. If the control fails its own
 criterion at 120, that is a finding about the control (A5's clause) and
 the arm is read at 245,760 beside it. The criteria are unchanged.
+
+## Amendment 2 — written 2026-09-16 23:10, after the control's 120-epoch read and before any per-model number
+
+**The control at 120 epochs**, n=100 on 700000+, `last.ckpt` of the
+`-ctl-x2` runs: success **0.790 / 0.690 / 0.780**, `held` 2.80–2.84,
+turns **14.39 / 14.81 / 14.18** phase-clock (the script's 9.60; the game
+is 16), `on_obj` 0.96–0.97, coherent 0.74–0.80, vp −6.4 to −9.2 paired
++4.6 to +5.2 turns behind the script. In-run (n=30, rolling five): 80%
+at epoch 68 / 96 / 64, **90% never**; the last ten evaluations 0.73–0.90
+on every seed. Seed 2 read 0.690 at 60 and 0.690 at 120. Wandb
+`curriculum-c2`: `o640jkhb` / `ivu8b09r` / `az2s5lpc`.
+
+**What this is.** The whole-army control fails C2's own criterion on
+all three seeds at its extended budget, on a rung the script passes at
+0.900 — A5's clause: a finding about the control, not a NULL. Its
+bodies reach the points (`on_obj` 0.96) but late: it arrives in round
+seven of eight, two and a half rounds behind the script, and one point
+is still short in a quarter of episodes when the clock runs out. Whether
+the enemy's fire is what slows it (C1's control arrived at 6.8–7.1
+against the same script's 4.98, so about two rounds of the gap were
+already there without guns) is a readout for the report, not a
+criterion. **The per-model arm is read at 245,760 rounds beside the
+control's 120-epoch row, criteria unchanged**: PASS is ≥ 0.90 on all
+three seeds; the control's row is reported as what it is.
