@@ -1144,6 +1144,7 @@ rung stacked on #339.
 | **A2b** the same at `ent_coef` 0.003 | entropy | **PASS with drift, 3/3** — the entropy bonus was the cause; 0.003 on every per-model arm from here | success 1.000 / 1.000 / 0.990, turns 4.48 / 4.19 / 4.11; displacement entropy 0.3 nats, clip fraction 0.12–0.15; 7–10 transient in-run dips per seed, all recovered, none after 63k; coherency greedy 0.74–0.79 | (not re-run) | [2026-09-15](reports/2026-09-15-curriculum-a2b-passes-with-drift.md) |
 | **A3** four squads, four objectives (spread) | points | **FAIL at the cap, PASS 3/3 resumed to the control's 245k (A3x)** | at 122,880: 0.700 / 0.800 / 0.770, held 3.5–3.7; **at 245,760: 0.960 / 0.960 / 0.970, held 3.94–3.96, turns 5.19–5.33 (script 5.28)**; coherency greedy 0.38–0.52 | 0.850 / 0.980 / 0.930 at 60 epochs, **0.950 / 0.950 / 0.960 at 120** (245k rounds), turns 6.2–6.3 | [A3](reports/2026-09-15-curriculum-a3-behind-the-control-at-the-cap.md) · [A3x](reports/2026-09-15-curriculum-a3x-passes.md) |
 | **A4** four squads, three objectives (a spare) | points | **FAIL at the cap, PASS 3/3 resumed to 2× the cap (A4x)** | at 122,880: 0.930 / 0.930 / 0.970, held 2.91–2.97 of 3; **at 245,760: 0.980 / 1.000 / 1.000, held 2.96 / 3.00 / 3.00, turns 4.72–4.75 (script 4.70)**, `on_obj` 0.65–0.73; explained variance 0.42–0.54 → 0.56–0.59; coherency greedy 0.43–0.53 → 0.52–0.70 | 0.980 / 0.980 / 0.990 at 60 epochs, passed in-run at epochs 44–58 (92k–121k rounds), turns 6.1–6.2 (script 4.70) | [A4](reports/2026-09-15-curriculum-a4-one-se-short-at-the-cap.md) · [A4x](reports/2026-09-15-curriculum-a4x-passes.md) |
+| **A5** eight squads, six objectives | bodies + points | **control NULL (scenario) on the letter, and the clause is wrong; per-model arm FAIL 0/3 (A5b), a different failure** | 0.260 / 0.180 / 0.160 at 245,760, never a rolling 50% in-run; `held` 4.1–4.6 of 6 with **8–10 of 24 bodies on points**, empty point different each episode, max stack 3.0–3.5 (script 5.8), turns 9.5–9.7 of 10 (script 6.77), coherency 0.10 — under-arrival, not stacking; clip fraction 0.37–0.42 | 0.890 / 0.820 / 0.600 at 60, **0.800 / 0.940 / 0.980 at 120**: one point left empty with 22 of 24 bodies on points — the whole-army trainer's allocation failure, on a rung the script solves at 1.000 | [A5](reports/2026-09-15-curriculum-a5-control-cannot-allocate.md) · [A5b](reports/2026-09-16-curriculum-a5b-fails-differently.md) |
 
 - **The per-model pipeline learns**, at 128 rounds per update, on the same
   code that sat at the floor at 8–32. It reaches the script's speed where
@@ -1207,6 +1208,36 @@ rung stacked on #339.
   per-model arm read 0.93 / 0.93 / 0.97 at 123k and **0.98 / 1.00 / 1.00
   at 245k**, at the script's speed where the control is a round and a
   half behind).
+- ⚠ **The whole-army control gates the BUDGET, the script gates the
+  SCENARIO, and a control that fails is a finding, not a null.** A3's
+  control was still climbing at the 60-epoch cap (0.85 / 0.98 / 0.93,
+  passing 3/3 at 120); A5's control fails 2 of 3 even at 120 epochs, by
+  leaving one of six points empty with 22 of 24 bodies on points — the
+  allocation failure the record attributes to the whole-army trainer,
+  on a rung the script solves every time. Both pre-registrations called
+  that NULL (scenario) on the letter, and both letters were wrong: a
+  NULL clause that fires when the control cannot do what the script can
+  measures the control. From A5b on: a rising control is extended once
+  to 120 epochs; NULL (scenario) needs the script to fail its own
+  criterion; a control that fails while the per-model arm passes is
+  reported as exactly that.
+- ⚠ **THE ALLOCATION RUNG BEATS BOTH TRAINERS, AND THEY FAIL IN
+  OPPOSITE WAYS.** A5 (eight squads of three over six points, the
+  spare-squads shape): the whole-army control puts 22 of 24 bodies on
+  points and leaves one empty (0.80 / 0.94 / 0.98 at 245k); the
+  per-model arm from scratch puts **8–10 of 24 on points**, holds
+  4.1–4.6 of 6, and reads **0.26 / 0.18 / 0.16** at the same rounds
+  having never reached a rolling 50% in-run — under-arrival with the
+  squads dissolved (coherency 0.10), not stacking. It is the first rung
+  where the per-model arm is worse than the control at equal rounds,
+  and by a wide margin; more rounds is not the reading (peaks at
+  133k–211k, no climb after). Read a per-model FAIL's census before
+  naming it "allocation": `on_obj` separates "arrived and mis-spread"
+  from "never arrived". Hypothesis on file, untested: the state terms
+  paid as the mean over alive models dilute a body's own credit with the
+  army (1/24 here against 1/12 on A3–A4) — the retimer build the speed
+  screen named is the test. T1 (the same rung warm-started from A4x)
+  reads whether a warm start buys arrival.
 - **Six per-model seeds on two rungs all arrive within 0.2 turns of the
   script; six whole-army control seeds are all a round or more behind**
   (per-model 4.88–5.11 v script 4.93–4.96 v control 6.07–7.43). Movement
