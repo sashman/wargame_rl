@@ -100,3 +100,34 @@ per-model arm reads under 0.95 on a seed, the short point is the
 enemy's on most of the failing episodes and the bound squad ends within
 a base of the disc — the engagement-range endpoint rule, not
 allocation.
+
+## Amendment 1 — written 2026-09-16 13:02, after the control's 60-epoch read and before any per-model number
+
+**The crash.** The box hard-crashed at 16:38:51 on 2026-09-15, seconds
+after this rung's six runs launched (journal stops mid-line, no
+out-of-memory record; rebooted 09:54 the next morning). Both arms
+relaunched fresh at 12:43 on 2026-09-16 with the same flags; the crashed
+stubs are deleted and their Wandb runs are junk (named on #365).
+
+**The control at 60 epochs**, n=100 on 700000+, `last.ckpt`: success
+**0.920 / 0.960 / 0.970**, `held` 3.12 / 3.04 / 3.02 (it sometimes
+out-numbers the enemy on its point), turns 6.92 on every seed against
+the script's 4.98, `on_obj` 0.90–0.94, coherent 0.71–0.78, vp −1.4 to
+−2.8 against the script's +8.2. In-run (n=30, rolling five): 80% at
+epochs 28 / 29 / 27; 95% at epoch **55 / never / 51**, the last ten
+evaluations wobbling 0.87–1.00 on all three. Wandb `curriculum-c1`:
+`dt6uu1f4` / `fj4sybie` / `s30qxkjv`.
+
+**The extension.** One seed under 0.95 at n=100 and one that never
+crossed 95% in-run is the shape A3's and A5's controls were extended
+for, so the control gets its once-only extension to **120 epochs**
+(`--resume-ckpt-path` from `last.ckpt`, launched 13:01, run suffix
+`-ctl-x2`). By the symmetric-cap rule (A3x) the per-model arm's budget
+is therefore **245,760 rounds**, read once at the end: the arm running
+to 122,880 will be resumed in place (`--resume-from`, cadences passed
+explicitly per #346) when it gets there, and its 122,880 checkpoint is
+a readout, not the read. The criteria are unchanged.
+
+The control's curves were read from the runs' local `.wandb` files
+(`scratchpad/read_wandb_local.py`), not the API, which stays untouched
+while runs train.
