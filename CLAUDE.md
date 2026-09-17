@@ -1311,7 +1311,13 @@ rung stacked on #339.
   and the E rungs' control is compared against itself on the phase
   facade's own evaluation family. Run `just measure-bridge` on every
   rung before its control launches; a divergence there is a design
-  fault, not a finding.
+  fault, not a finding. **Fixed 2026-09-17 with C3:** the phase facade ends
+  on an opponent wipe only under `terminate_on_opponent_elimination`
+  (default `False`, the mirror of the player-side switch), so the two
+  facades agree by default and a wipe rung can carry a whole-army
+  control. Any phase-facade episode before that date that ended by an
+  opponent wipe was scored short; at the goldens' lethality that is
+  rare and unmeasured.
 - **With the blocker firing, the whole-army control fails and the
   per-model arm does not — the first rung where the arm is ahead.**
   C2: the control reads 0.79 / 0.69 / 0.78 at 120 epochs, arriving in

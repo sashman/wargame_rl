@@ -554,6 +554,13 @@ class WargameEnvConfig(BaseModel):
         "If False (default, matching tabletop rules), the opponent continues "
         "playing and scoring VP after wiping the player.",
     )
+    terminate_on_opponent_elimination: bool = Field(
+        default=False,
+        description="If True, episode ends when all opponent models are eliminated. "
+        "If False (default, matching tabletop rules), the player continues "
+        "playing and scoring VP after wiping the opponent. Read by the phase "
+        "facade only; the per-model facade always plays the clock out (#317).",
+    )
 
     number_of_battle_rounds: int = Field(
         default=100,

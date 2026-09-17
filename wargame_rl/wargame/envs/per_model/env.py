@@ -1058,7 +1058,8 @@ class PerModelEnv(gym.Env):
         # models left does not lose immediately; both keep taking turns and the
         # survivor keeps scoring. So the opponent's wipe ends nothing here; the
         # player's does only under the config switch, which is a training
-        # device. The phase facade ends the battle on either wipe.
+        # device. The phase facade ends the battle on a wipe only under its
+        # own two switches (#317), so the facades agree by default.
         current_round, phase = self.context_clock()
         player_shots = self._player_seat.shooting_results
         opponent_shots = self._opponent_seat.shooting_results

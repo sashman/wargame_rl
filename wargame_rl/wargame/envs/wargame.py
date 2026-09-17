@@ -1863,8 +1863,13 @@ class WargameEnv(gym.Env):
         all_player_eliminated = (
             self.config.terminate_on_player_elimination and not any_player_alive
         )
-        all_opponent_eliminated = bool(self.opponent_models) and all(
-            not m.is_alive for m in self.opponent_models
+        # `15-missions-and-scoring.md` § Ending the battle: a wiped army keeps
+        # ceding objectives until the battle ends, so an opponent wipe ends
+        # nothing unless the config asks for the shortcut (#317).
+        all_opponent_eliminated = (
+            self.config.terminate_on_opponent_elimination
+            and bool(self.opponent_models)
+            and all(not m.is_alive for m in self.opponent_models)
         )
         all_eliminated = all_player_eliminated or all_opponent_eliminated
 
