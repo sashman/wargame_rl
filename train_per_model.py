@@ -50,7 +50,7 @@ from wargame_rl.wargame.envs.baseline.evaluate import evaluate_baseline
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
 from wargame_rl.wargame.envs.evaluation import format_optional_metric
 from wargame_rl.wargame.envs.per_model.env import PerModelEnv
-from wargame_rl.wargame.envs.per_model.reward_timing import PerStepReward
+from wargame_rl.wargame.envs.per_model.reward_timing import Credit, PerStepReward
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.common.cli import (
     get_env_config,
@@ -123,6 +123,7 @@ _PPO_KNOBS = (
     "batch_size",
     "kl_ref_coef",
     "kl_ref_target",
+    "credit",
 )
 
 
@@ -444,6 +445,13 @@ def train(
         help="Drift to hold, in nats per decision; makes the coefficient "
         "adaptive. 0 keeps it fixed.",
     ),
+    credit: str | None = typer.Option(
+        None,
+        "--credit",
+        help="Who a payment reaches: `mean` (the bridge accounting, default) or "
+        "`actor` (each model its own action term undivided and its own state "
+        "credit on its own step).",
+    ),
     lr: float | None = typer.Option(None),
     max_grad_norm: float | None = typer.Option(None),
     n_epochs: int | None = typer.Option(None),
@@ -532,6 +540,7 @@ def train(
         "batch_size": resolve_optional_int(batch_size),
         "kl_ref_coef": resolve_optional_float(kl_ref_coef),
         "kl_ref_target": resolve_optional_float(kl_ref_target),
+        "credit": Credit(credit) if resolve_optional_str(credit) else None,
     }
     if resume is not None:
         refuse_changed_knobs(overrides, resume.loaded.ppo_config, resume.checkpoint)
@@ -591,14 +600,14 @@ def train(
         env.reset(seed=seed_base + index, options={"augment_start": True})[0]
         for index, env in enumerate(envs)
     ]
-    retimers = [PerStepReward(env) for env in envs]
+    retimers = [PerStepReward(env, credit=ppo_config.credit) for env in envs]
     for retimer in retimers:
         retimer.reset()
     wave = max(
         1, min(int(resolve_default(eval_wave_size, EVAL_WAVE_SIZE)), eval_episodes)
     )
     eval_envs = [PerModelEnv(env_config) for _ in range(wave)]
-    eval_retimers = [PerStepReward(env) for env in eval_envs]
+    eval_retimers = [PerStepReward(env, credit=ppo_config.credit) for env in eval_envs]
 
     expected_head = SetNetwork.n_displacements_for(envs[0].player_action_handler)
     warm: LoadedCheckpoint | None = None
@@ -658,7 +667,7 @@ def train(
     resolved_run_name = resolve_optional_str(run_name) or base_name
     config = {
         "wargame": env_config.model_dump(mode="json"),
-        "ppo": ppo_config.model_dump(),
+        "ppo": ppo_config.model_dump(mode="json"),
         "network": network_config.model_dump(),
         "driver": {
             "rounds": total_rounds,

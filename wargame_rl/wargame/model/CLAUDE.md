@@ -237,6 +237,22 @@ with every resume is the phase facade's silent-anchor defect), and the
 adapted coefficient is carried in the training state. Logged as
 `train/kl_ref` and `train/kl_ref_coef`.
 
+
+### Who a payment reaches (`--credit`, #340)
+
+`PerModelPPOConfig.credit` (`reward_timing.Credit`, default `mean`) is a knob
+of the run, refused on a resume that disagrees. `mean` is the bridge
+accounting: action terms over the alive count, state terms as the army mean at
+the close, so a turn's sum is the phase facade's scalar. `actor` pays the actor
+its action term undivided and hands the close's state terms back per model as
+`StepPayment.credits`; `collect_rollout` keeps, per env, the transition each
+model last acted on this turn (`acted_at`, from `StepEffect.actor_set`) and
+adds the credit there (`_land_credits`), or on the close when the model took
+no step. Nothing else in the loop changes: GAE sees a reward stream whose
+per-turn total is the sum of what the models earned instead of their mean.
+Built after the A3 speed screen's hold-term null and A5b's under-arrival; A5c
+is its first arm. `tests/test_per_model_actor_credit.py`.
+
 ### Behaviour cloning into the set network (`model/per_model/clone.py`, #331)
 
 `record_demonstrations(env, chooser, n)` plays a per-model chooser (a

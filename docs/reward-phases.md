@@ -114,6 +114,18 @@ Rules the table implies, each pinned by `tests/test_per_model_reward_timing.py`:
   facade's scalar mean, so a term's per-round total does not scale with the
   army — the #283 requirement. Per actor the signal is `1/n` of what the
   whole-army per-model vector paid.
+- **`Credit.actor` (`--credit actor` on `train_per_model.py`) is the other
+  accounting**, built 2026-09-17 for #340 after the A3 speed screen's hold-term
+  null and A5b's under-arrival: action terms are paid to the actor
+  **undivided**, and each state term's per-model value at the close is a
+  **credit** (`StepPayment.credits`) that the rollout collector lands on the
+  transition where that model last acted this turn — on the close itself when
+  it took no step, so nothing paid is lost. Within a turn the discount is 1.0,
+  so an earlier landing leaves every earlier step's return unchanged and
+  removes the credit from the returns of the steps after it. Globals, delta
+  globals and the terminal bonuses are unchanged. The default stays `mean`, so
+  every bridge total and every run before it are untouched; the mode is a PPO
+  knob a resume keeps. Pinned by `tests/test_per_model_actor_credit.py`.
 - **`group_cohesion` is a STATE term here**, a recorded departure from the #283
   design table, which paid it on the actor's step: paid per action it fines the
   first mover of a coherent unit for a gap its squadmates have not yet had a

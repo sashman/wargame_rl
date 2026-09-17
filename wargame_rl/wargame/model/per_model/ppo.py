@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import torch
@@ -34,7 +34,7 @@ import torch.nn.functional as F
 from pydantic import BaseModel, Field, model_validator
 
 from wargame_rl.wargame.envs.per_model.env import PerModelEnv, StepEffect
-from wargame_rl.wargame.envs.per_model.reward_timing import PerStepReward
+from wargame_rl.wargame.envs.per_model.reward_timing import Credit, PerStepReward
 from wargame_rl.wargame.envs.per_model.tokens import Head, TokenObservation
 from wargame_rl.wargame.envs.per_model.types import PerModelObservation, StepKind
 from wargame_rl.wargame.envs.types import BattlePhase
@@ -68,6 +68,10 @@ class PerModelPPOConfig(BaseModel):
     # reference network and adds no term, so a run without it is unchanged.
     kl_ref_coef: float = Field(default=0.0, ge=0.0)
     kl_ref_target: float = Field(default=0.0, ge=0.0)
+    # Who a payment reaches (`reward_timing.Credit`): `mean` is the bridge
+    # accounting, `actor` pays each model its own term and its own state
+    # credit on its own step. A knob of the run, so a resume keeps it.
+    credit: Credit = Credit.mean
     lr: float = Field(default=3e-4, gt=0.0)
     max_grad_norm: float = Field(default=0.5, gt=0.0)
     n_epochs: int = Field(default=5, ge=1)
@@ -220,6 +224,9 @@ def collect_rollout(
     decision_counts = [0] * n_envs
     round_counts = [0] * n_envs
     last_done = [False] * n_envs
+    # Per env, the transition on which each model last acted THIS turn: where
+    # a close's per-model credit (`Credit.actor`) lands. Cleared at the close.
+    acted_at: list[dict[int, int]] = [{} for _ in range(n_envs)]
     while closes < budget:
         decisions = agent.act_batch(envs, current, generator=generator)
         for index, (env, retimer, decision) in enumerate(
@@ -251,6 +258,12 @@ def collect_rollout(
                     env_index=index,
                 )
             )
+            for model in effect.actor_set:
+                acted_at[index][model] = len(transitions) - 1
+            if payment.credits:
+                _land_credits(transitions, acted_at[index], payment.credits)
+            if payment.is_close:
+                acted_at[index] = {}
             last_done[index] = terminated
             if terminated:
                 episodes.append(
@@ -285,6 +298,24 @@ def collect_rollout(
         episodes=episodes,
         breakdown=breakdown,
     )
+
+
+def _land_credits(
+    transitions: list[Transition],
+    acted_at: dict[int, int],
+    credits: dict[int, float],
+) -> None:
+    """Add each model's close credit to the transition it acted on this turn;
+    a model that took no step this turn is credited on the close itself (the
+    last transition), so nothing paid is lost. Within a turn the discount is
+    1.0, so moving a payment earlier leaves every earlier step's return as it
+    was and takes it out of the returns of the steps after it."""
+    last = len(transitions) - 1
+    for model, value in credits.items():
+        at = acted_at.get(model, last)
+        transitions[at] = replace(
+            transitions[at], reward=transitions[at].reward + value
+        )
 
 
 def _values(
