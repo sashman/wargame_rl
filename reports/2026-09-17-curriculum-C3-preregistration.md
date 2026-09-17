@@ -135,3 +135,22 @@ the from-scratch companion's — is **245,760 rounds**, read once at the
 end: both are resumed in place at 122,880 (#346: cadences and
 `--n-eval-episodes` explicit) and the 122,880 checkpoint is a readout.
 The criteria are unchanged.
+
+## Amendment 2 — written 2026-09-17 04:36, after the control's 120-epoch read and before any per-model number
+
+**The control at 120 epochs**, n=100 on 700000+, `last.ckpt` of the
+`-ctl-x2` runs: success **0.870 / 0.830 / 0.840**, turns 18.27 / 17.31 /
+17.66 of 24 (the bar's 15.25), `held` 3.61 / 3.29 / 3.48, `on_obj`
+0.94–0.95, coherent 0.74–0.79, vp +6.2 / +7.0 / +6.9 against the bar's
++5.3. In-run (n=30, rolling five): 80% at epoch 64 / 96 / 64, 90% at
+88 / never / never; the last ten evaluations 0.67–0.93. Wandb
+`curriculum-c3`: `bpa07dn5` / `do7u35wa` / `ib9ymhgv`.
+
+**What this is.** The whole-army control fails C3's own criterion on
+all three seeds at its extended budget, on a rung the script passes at
+0.990 — A5's clause, as on C2: a finding about the control, not a NULL.
+It gets closer than it did on C2 (0.79 / 0.69 / 0.78 there) and it is
+a round or more behind the escort; whether its bodies walk in early and
+die, or the armed squad never clears the point, is the control's census,
+a readout for the report. **The per-model arm and its companion are
+read at 245,760 rounds beside this row, criteria unchanged.**
