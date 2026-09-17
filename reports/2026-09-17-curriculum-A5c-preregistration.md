@@ -66,7 +66,7 @@ allocation failure, which a bigger travel credit does not address. If
 success does not move at all, the dilution hypothesis is wrong on the
 scale half and the state-credit half is the only one left.
 
-## Amendment 1 — written 2026-09-18 00:50, at 40,000 of 245,760 rounds, before any final read
+## Amendment 1 — written 2026-09-18 00:50, at forty thousand of 245,760 rounds, before any final read
 
 **A confound in the build, found on the panel.** Over rounds 30,000–41,500 the
 three A5c seeds read success 1.2 / 0.3 / 0.1% in-run against A5b's 6.2 /

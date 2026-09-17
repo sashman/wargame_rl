@@ -1266,7 +1266,7 @@ rung stacked on #339.
   `StepPayment.credits`, `_land_credits`; the default `mean` is untouched).
   ⚠ The first cut paid the actor undivided and the unnormalised value loss
   swamped the clipped gradient (returns 13×, pre-clip norm 5×, behind A5b
-  at 40,000 rounds) — a reward-scale change is a PPO change here. A5d — A5b
+  at forty thousand rounds) — a reward-scale change is a PPO change here. A5d — A5b
   re-run with the scaled credit, A5c the unscaled control beside it — is
   its first arm; every per-model number before it was paid under the mean.
 - ⚠ **The spread rung is an ASSIGNMENT problem from a random start, and
