@@ -1150,6 +1150,7 @@ rung stacked on #339.
 | **C1** A3 plus one enemy unit standing on a point, nobody shooting | enemy | **FAIL as pre-registered, by one seed on a plateau** — warm-started from A3x | 0.990 / **0.930** / 0.990 at 245,760, turns 5.01–5.37 (script 4.98), held 2.96–3.15 of 3; at 80% in-run by 2.6k rounds on every seed; the short point is never the enemy's; coherency greedy 0.50–0.63 | 0.920 / 0.960 / 0.970 at 60 epochs, **0.980 / 0.990 / 0.990 at 120**, turns 6.8–7.1, 95% in-run at epochs 64 / 75 / 65 | [2026-09-16](reports/2026-09-16-curriculum-c1-two-of-three.md) |
 | **C2** C1 with the enemy squad firing (`hold_and_shoot`, range 12), ours unarmed | guns (theirs) | **FAIL as pre-registered by one seed at one hundredth under — the first rung where the per-model arm is AHEAD of the control** — warm-started from C1 | **0.890** / 0.920 / 0.950 at 245,760, turns 9.8–10.2 phase-clock (script 9.60), `alive` 0.83–0.86 (bar 0.842), held 2.87–3.00; 80% in-run by 2.6k on every seed, 95% by 8k on two; one drift dip (s1, 121k, recovered); coherency greedy 0.56–0.66, sampled 0.38–0.42 | 0.710 / 0.690 / 0.760 at 60 epochs, **0.790 / 0.690 / 0.780 at 120 — fails its own criterion 3/3**, turns 14.2–14.8 of 16 (arrives in round seven of eight), 90% in-run never | [2026-09-17](reports/2026-09-17-curriculum-c2-one-seed-one-hundredth-short.md) |
 | **C3** C2 with ONE of our squads armed and outranging three tough, lethal blockers; the escort's plan is shoot first, then walk | guns (ours) | **FAIL as pre-registered on both clauses — the arm found the DASH, the run with no head start found the plan** — warm-started from C2, a from-scratch companion beside it | **0.660 / 0.920 / 0.830** at 245,760, kill-before-arrival **0.67 / 0.71 / 0.62** (mark 0.90): a last body dashed onto the blockers' point the instant the other three are held, `terminate_on_success` ending the game before the blockers fire, the blockers alive in 70–84%, alive 0.62–0.74 (bar 0.963), drifting after the first pass on every seed; companion **0.740 / 0.740 / 0.090** with ordering **1.00 / 0.97 / 0.95**; bar `scripted_escort` 0.990, plain `take` 0.590 | 0.790 / 0.560 / 0.870 at 60, **0.870 / 0.830 / 0.840 at 120 — fails 3/3**, a round or more behind the escort | [2026-09-17](reports/2026-09-17-curriculum-c3-the-dash-not-the-plan.md) · C3b #372 in flight |
+| **C3b** C3 with success read on the FINAL board (`terminate_on_success: false`) | the same, no instant win | **FAIL as pre-registered, every seed of every trainer — the arm learned to shoot first and then stopped** | from C2 **0.200 / 0.130 / 0.230**, ordering 0.86 / 0.77 / 0.85; blockers wiped 75–79% (C3: 16–30%), fires first 77–86%; holds 2.4–2.7 points from round five to the end, stationary 47%, the cleared point and the far point empty in half the episodes; explained variance 0.20–0.25; from scratch 0.02 / 0.02 / 0.06 with a decaying board; bar escort 0.990, plain `take` 0.280 | **0.280 / 0.000 / 0.450 at 120 epochs** — fails harder than on any rung | [2026-09-17](reports/2026-09-17-curriculum-c3b-nobody-holds-the-point.md) |
 
 - **The per-model pipeline learns**, at 128 rounds per update, on the same
   code that sat at the floor at 8–32. It reaches the script's speed where
@@ -1350,6 +1351,23 @@ rung stacked on #339.
   being slow at the walk (0.74 / 0.74 / 0.09). Run a from-scratch
   companion beside every warm-started arm from here; a warm start
   carries the habit as well as the skill.
+- ⚠ **NEITHER TRAINER LEARNS AN ORDERED PLAN FROM REWARD ALONE, AND
+  THE PER-MODEL ARM STOPS HALFWAY.** C3b (C3 judged on the final
+  board): the arm from C2 reads 0.20 / 0.13 / 0.23, the from-scratch
+  companion 0.02–0.06, the whole-army control 0.28 / 0.00 / 0.45,
+  against the escort's 0.990. Removing the instant win taught the arm
+  the first half of the plan — it wipes the blockers in 75–79% of
+  episodes where on C3 it did in 16–30%, and fires first in 77–86% —
+  and it then holds the two near points it reached by round four and
+  parks (47% of openings stationary, explained variance 0.20–0.25, the
+  ladder's lowest), the cleared point and the far point empty in half
+  the episodes. Nothing in the reward pays for going on after the half
+  it was paid for. **Read a multi-phase rung's census by phase** —
+  killed, arrived, held — before naming what a trainer learned; success
+  reads 0.20 for half the plan and 0.02 for none. The continuation is
+  the D rungs' question: clone the escort into the set network (D1,
+  #331) and ask whether PPO can improve a policy that already carries
+  the whole plan (D2).
 - **Six per-model seeds on two rungs all arrive within 0.2 turns of the
   script; six whole-army control seeds are all a round or more behind**
   (per-model 4.88–5.11 v script 4.93–4.96 v control 6.07–7.43). Movement
