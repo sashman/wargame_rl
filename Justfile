@@ -360,6 +360,16 @@ train-curriculum-control epochs n_seeds group tag flags env_config:
 measure-per-model-eval-mode env_config n_episodes='30' seed_base='900000' *checkpoints:
 	@uv run python -m scripts.measure_per_model_eval_mode {{env_config}} {{n_episodes}} "{{seed_base}}" {{checkpoints}}
 
+# Clone a scripted policy into the SET NETWORK (the per-model facade's
+# behaviour clone, #331): record the script's decisions as transitions, fit
+# the selector and the three heads by maximum likelihood, report the per-head
+# action match on held-out episodes, and save a `.pt` the resolver plays and
+# `train_per_model.py --warm-start-from` accepts. Demonstrations at house
+# fidelity (the 1200 x 60 lesson): default 300 episodes x 40 epochs.
+# Use: just behaviour-clone-per-model scripted_escort configs/experiments/curriculum/c3b.yaml
+behaviour-clone-per-model policy env_config n_episodes='300' epochs='40' out='checkpoints/per_model/clone.pt' seed='0':
+	@uv run python -m scripts.behaviour_clone_per_model {{policy}} {{env_config}} {{n_episodes}} {{epochs}} {{out}} {{seed}}
+
 # Read a curriculum rung: the scripted bar first, then one row per checkpoint
 # (a `.pt` plays the per-model facade, a `.ckpt` the whole-army one), on the
 # same held-out seeds so the turn difference against the bar pairs per

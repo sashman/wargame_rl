@@ -306,4 +306,5 @@ and throughput tooling is stage 4 (#287). The named clients of the facade are
 now its own package, `model/per_model/`, `selectors.py`, `scoring.py`, the two
 root drivers, `scripts/measure_throughput_per_model.py` and
 `scripts/measure_bridge.py` — the check that both facades agree, which
-must drive both directly (`tests/test_per_model_layering.py`). Hand-stepping it in `debug.py` is #325.
+must drive both directly — and `scripts/behaviour_clone_per_model.py`, which
+records a chooser's decisions on the facade (`tests/test_per_model_layering.py`). Hand-stepping it in `debug.py` is #325.
