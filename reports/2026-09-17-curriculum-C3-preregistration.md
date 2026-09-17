@@ -114,3 +114,24 @@ learn: nothing in the reward pays for standing outside a circle. The
 from-scratch companion reads under 0.5 at 122,880. The control passes at
 60 epochs on no seed and at 120 on one or two: it walks everyone in, as
 `take` does, and its bodies die.
+
+## Amendment 1 — written 2026-09-17 04:25, after the control's 60-epoch read and before any per-model number
+
+**The control at 60 epochs** (eleven minutes: the scenario is small),
+n=100 on 700000+, `last.ckpt`: success **0.790 / 0.560 / 0.870**, turns
+19.15 / 19.34 / 18.15 phase-clock of 24 (the bar's 15.25: it arrives in
+round nine or ten), `held` 3.56 / 2.66 / 3.61, `on_obj` 0.96 / 0.77 /
+0.92, coherent 0.73–0.80, vp +12.9 / +9.6 / +9.4 against the bar's +5.3
+(it kills more and holds less). In-run (n=30, rolling five): 80% at
+epoch 35 / never / 56, 90% at 37 / never / never; the last ten
+evaluations 0.57–0.90. Wandb `curriculum-c3`: `xt95et6x` / `b00ym3pi` /
+`a9ubzqa7`.
+
+**The extension.** Under the mark on every seed with the curves still
+moving, the control gets its once-only extension to **120 epochs**
+(`--resume-ckpt-path` from `last.ckpt`, launched 04:22, suffix
+`-ctl-x2`). By the symmetric-cap rule the per-model arm's budget — and
+the from-scratch companion's — is **245,760 rounds**, read once at the
+end: both are resumed in place at 122,880 (#346: cadences and
+`--n-eval-episodes` explicit) and the 122,880 checkpoint is a readout.
+The criteria are unchanged.
