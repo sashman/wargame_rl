@@ -156,6 +156,7 @@ wargame_rl/
 | Where it is dangerous to stand NEXT turn, and a policy's exposure | `just measure-threat-field <policy\|ckpt> <config.yaml> [n] [maps_dir] [decode_topk]` |
 | Clone a scripted policy into the network (warm-start checkpoint) | `just behaviour-clone <policy> <config.yaml> [n_episodes] [epochs] [out]` |
 | Clone a scripted policy into the SET NETWORK (per-model `.pt`, per-head match on held-out episodes) | `just behaviour-clone-per-model <policy> <config.yaml> [n_episodes] [epochs] [out] [seed]` |
+| Fit only a per-model clone's value head to the teacher's returns (policy bit-identical) | `just fit-per-model-critic <clone.pt> <teacher> <config.yaml> [n_episodes] [epochs] [out] [seed]` |
 | Two policies on identical layouts, paired per episode (names, `.ckpt` or `.pt`) | `just measure-paired <policy\|ckpt> <policy\|ckpt> <config.yaml> [n_episodes] [seed_base] [key=value...]` |
 | Dice-vs-scenario noise floor | `just measure-noise-floor <config.yaml> [n_layouts] [n_combat_seeds] [policy] [key=value...]` |
 | Are the two seats the same game (the rating precondition) | `just measure-seat-parity <config.yaml> [policy] [n_layouts]` |

@@ -409,6 +409,62 @@ def evaluate_transitions(
     )
 
 
+def _masked_kl(log_p: torch.Tensor, log_q: torch.Tensor) -> torch.Tensor:
+    """Row-wise `KL(p || q)` over masked categoricals: `-inf` columns (masked
+    on both sides, since both score the same tokens) contribute nothing."""
+    finite = torch.isfinite(log_p)
+    p = torch.where(finite, log_p.exp(), torch.zeros_like(log_p))
+    diff = torch.where(finite, log_p - log_q, torch.zeros_like(log_p))
+    return (p * diff).sum(dim=-1)
+
+
+def drift_to_reference(
+    network: SetNetwork, reference: SetNetwork, transitions: Sequence[Transition]
+) -> torch.Tensor:
+    """Per-transition `KL(policy || reference)` -- the selector's plus the
+    step's head's, over the full masked distributions -- with the gradient
+    through `network`; 0 on rows without a policy. The estimator the
+    whole-phase anchor uses, so a target is nats per decision as there it
+    is nats per model."""
+    device = network.device
+    batch = collate([t.tokens for t in transitions], device=device)
+    has_policy = torch.tensor([t.has_policy for t in transitions], device=device)
+    models = torch.tensor(
+        [max(t.model, 0) for t in transitions], dtype=torch.int64, device=device
+    )
+    output = network(batch)
+    with torch.no_grad():
+        ref_output = reference(batch)
+    n = len(transitions)
+    kl = torch.zeros(n, device=device)
+    if not bool(has_policy.any()):
+        return kl
+    rows = torch.nonzero(has_policy).squeeze(-1)
+    kl[rows] = _masked_kl(
+        F.log_softmax(output.selector_logits[rows].float(), dim=-1),
+        F.log_softmax(ref_output.selector_logits[rows].float(), dim=-1),
+    )
+    heads = network.heads(output, batch, models)
+    with torch.no_grad():
+        ref_heads = reference.heads(ref_output, batch, models)
+    for head, logits, ref_logits in (
+        (Head.declaration, heads.declaration, ref_heads.declaration),
+        (Head.displacement, heads.displacement, ref_heads.displacement),
+        (Head.unit_pointer, heads.unit, ref_heads.unit),
+    ):
+        mask = torch.tensor(
+            [t.has_policy and t.head is head for t in transitions], device=device
+        )
+        if not bool(mask.any()):
+            continue
+        head_rows = torch.nonzero(mask).squeeze(-1)
+        kl[head_rows] = kl[head_rows] + _masked_kl(
+            F.log_softmax(logits[head_rows].float(), dim=-1),
+            F.log_softmax(ref_logits[head_rows].float(), dim=-1),
+        )
+    return kl
+
+
 def _entropy(log_probs: torch.Tensor) -> torch.Tensor:
     clamped = log_probs.clamp(min=_LOG_PROB_FLOOR)
     return -(clamped.exp() * clamped).sum(dim=-1)
@@ -479,11 +535,12 @@ def ppo_update(
     """`n_epochs` passes of clipped-surrogate minibatches over the rollout.
 
     With `reference` and `kl_ref_coef > 0` the loss carries `kl_ref_coef`
-    times a per-decision drift estimator against the frozen reference --
-    `(rho - 1) - log rho` with `rho = pi_ref(a) / pi(a)` on the taken action,
-    the same estimator `approx_kl` uses against the old policy, so it needs
-    only the log-probs `evaluate_transitions` already computes. The gradient
-    flows through `pi`; the reference is read under `no_grad`.
+    times the mean per-decision `KL(policy || reference)` over the policy
+    rows -- the selector's and the step's head's full masked distributions
+    (`drift_to_reference`), the whole-phase anchor's estimator. A
+    taken-action estimator was tried first and rejected: heavy-tailed on
+    the actions the policy stops liking (11.7 nats on an update that
+    started AT the reference), it escalated the coefficient without binding.
     """
     check_trainable(network)
     anchored = reference is not None and kl_ref_coef > 0.0
@@ -540,13 +597,10 @@ def ppo_update(
             loss = policy_loss + config.vf_coef * value_loss + entropy_loss
             if anchored:
                 assert reference is not None
-                with torch.no_grad():
-                    anchor = evaluate_transitions(
-                        reference, [transitions[i] for i in rows]
-                    )
-                log_rho = anchor.log_probs - evaluated.log_probs
-                drift = ((torch.exp(log_rho) - 1.0) - log_rho) * policy
-                kl_ref_term = drift.sum() / n_policy
+                drift = drift_to_reference(
+                    network, reference, [transitions[i] for i in rows]
+                )
+                kl_ref_term = (drift * policy).sum() / n_policy
                 loss = loss + kl_ref_coef * kl_ref_term
                 totals["kl_ref"] += float(kl_ref_term.item())
             optimizer.zero_grad()

@@ -31,6 +31,7 @@ import torch
 from wargame_rl.wargame.envs.domain.sequencing.activation import CHARGE_TARGET_DECLINE
 from wargame_rl.wargame.envs.env_components.actions import STAY_ACTION
 from wargame_rl.wargame.envs.per_model.env import PerModelEnv
+from wargame_rl.wargame.envs.per_model.reward_timing import PerStepReward
 from wargame_rl.wargame.envs.per_model.seat import Seat
 from wargame_rl.wargame.envs.per_model.tokens import (
     Head,
@@ -45,7 +46,9 @@ from wargame_rl.wargame.model.per_model.checkpoint import save_checkpoint
 from wargame_rl.wargame.model.per_model.net import SetNetwork
 from wargame_rl.wargame.model.per_model.ppo import (
     PerModelPPOConfig,
+    Rollout,
     Transition,
+    compute_gae,
     evaluate_transitions,
 )
 
@@ -105,48 +108,144 @@ def record_demonstrations(
     """Play `choose` on the player seat for `n_episodes` and record every
     decision step as a `Transition` with the teacher's model and column.
 
-    Closing steps carry no policy and are not recorded. `env_index` holds the
-    episode index, so a held-out split can be made by episode. Every recorded
-    pair is decoded back through `SetAgent._decode` and compared with the
-    teacher's action, so the inverse map cannot silently drift.
+    Closing steps are recorded too, without a policy (`column == NO_DRAW`),
+    because the re-timed reward pays the round's state terms at the close:
+    the reward, `done` and `is_close` on every row are what `value_targets`
+    turns into discounted returns for a critic fit. `env_index` holds the
+    episode index, so a held-out split can be made by episode. Every
+    recorded policy pair is decoded back through `SetAgent._decode` and
+    compared with the teacher's action, so the inverse map cannot silently
+    drift.
     """
     seat = env.player_seat
+    retimer = PerStepReward(env)
     transitions: list[Transition] = []
     for episode in range(n_episodes):
         observation, _ = env.reset(seed=seed_base + episode)
+        retimer.reset()
         scenario = TokenScenario.for_episode(env, seat)
         done = False
         while not done:
             point = observation.decision
-            if point.kind is StepKind.close_turn:
-                observation, _r, done, _t, _i = env.step(PerModelAction.close_turn())
-                continue
             tokens = build_tokens(env, seat, observation, scenario)
-            action = choose([env], [observation])[0]
-            column = action_to_column(action, tokens, seat)
-            decoded = SetAgent._decode(point.kind, tokens, seat, action.model, column)
-            if decoded != action:
-                raise RuntimeError(
-                    f"the inverse map does not round-trip: {action} -> column "
-                    f"{column} -> {decoded}"
-                )
+            if point.kind is StepKind.close_turn:
+                action = PerModelAction.close_turn()
+                model = column = NO_DRAW
+            else:
+                action = choose([env], [observation])[0]
+                column = action_to_column(action, tokens, seat)
+                model = int(action.model)
+                decoded = SetAgent._decode(point.kind, tokens, seat, model, column)
+                if decoded != action:
+                    raise RuntimeError(
+                        f"the inverse map does not round-trip: {action} -> column "
+                        f"{column} -> {decoded}"
+                    )
+            before = observation
+            observation, _r, done, _t, info = env.step(action)
+            payment = retimer.on_step(before, action, info["effect"], done)
             transitions.append(
                 Transition(
                     tokens=tokens,
-                    model=int(action.model),
+                    model=model,
                     column=column,
                     head=tokens.head,
                     phase=point.phase,
                     value=0.0,
                     log_prob=0.0,
-                    reward=0.0,
-                    done=False,
-                    is_close=False,
+                    reward=payment.reward,
+                    done=done,
+                    is_close=payment.is_close,
                     env_index=episode,
                 )
             )
-            observation, _r, done, _t, _i = env.step(action)
     return transitions
+
+
+def value_targets(
+    transitions: Sequence[Transition], gamma: float = 0.9
+) -> torch.Tensor:
+    """The discounted return from every recorded row to the end of its
+    episode, in the transitions' order: `compute_gae` at `gae_lambda` 1.0 on
+    a rollout whose envs are the episodes and whose bootstrap is zero."""
+    n_episodes = max(t.env_index for t in transitions) + 1
+    rollout = Rollout(
+        transitions=list(transitions),
+        n_envs=n_episodes,
+        bootstrap=[0.0] * n_episodes,
+        observations=[],
+        closes=sum(t.is_close for t in transitions),
+        episodes=[],
+        breakdown={},
+    )
+    returns, _ = compute_gae(rollout, PerModelPPOConfig(gamma=gamma, gae_lambda=1.0))
+    return returns
+
+
+def fit_critic(
+    network: SetNetwork,
+    transitions: Sequence[Transition],
+    targets: torch.Tensor,
+    *,
+    epochs: int,
+    seed: int,
+    batch_size: int = 128,
+    lr: float = 1e-3,
+) -> list[float]:
+    """Fit ONLY the value head to `targets` by MSE, the trunk and the policy
+    heads frozen, so the policy the clone plays is bit-identical before and
+    after. Returns the mean loss per epoch. The whole-phase record: PPO from
+    a clone with a cold critic destroys it; this is the direct test's
+    instrument on the per-model facade."""
+    for parameter in network.parameters():
+        parameter.requires_grad_(False)
+    for parameter in network.value_head.parameters():
+        parameter.requires_grad_(True)
+    generator = torch.Generator().manual_seed(seed)
+    optimizer = torch.optim.Adam(network.value_head.parameters(), lr=lr)
+    device = network.device
+    losses: list[float] = []
+    try:
+        for _ in range(epochs):
+            network.train()
+            order = torch.randperm(len(transitions), generator=generator).tolist()
+            total = 0.0
+            for start in range(0, len(order), batch_size):
+                rows = order[start : start + batch_size]
+                evaluated = evaluate_transitions(
+                    network, [transitions[i] for i in rows]
+                )
+                loss = torch.nn.functional.mse_loss(
+                    evaluated.values, targets[rows].to(device)
+                )
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                total += float(loss.item()) * len(rows)
+            losses.append(total / max(1, len(order)))
+    finally:
+        for parameter in network.parameters():
+            parameter.requires_grad_(True)
+        network.eval()
+    return losses
+
+
+@torch.no_grad()
+def explained_variance(
+    network: SetNetwork, transitions: Sequence[Transition], targets: torch.Tensor
+) -> float:
+    """1 - Var(target - value) / Var(target) over `transitions`."""
+    network.eval()
+    values = torch.cat(
+        [
+            evaluate_transitions(network, list(transitions[i : i + 256])).values.cpu()
+            for i in range(0, len(transitions), 256)
+        ]
+    )
+    variance = float(targets.var().item())
+    if variance == 0.0:
+        return 0.0
+    return 1.0 - float((targets - values).var().item()) / variance
 
 
 def fit_clone(
@@ -267,8 +366,11 @@ def save_clone(
 __all__ = [
     "CLONE_SEED_BASE",
     "action_to_column",
+    "explained_variance",
     "fit_clone",
+    "fit_critic",
     "match_report",
     "record_demonstrations",
     "save_clone",
+    "value_targets",
 ]
