@@ -571,6 +571,19 @@ left). The only consumers that equate `max_turns` with "calls to `step()`" are t
 Lightning batched eval and its `steps < max_turns` fallback, neither of which the
 per-model facade uses.
 
+### The per-head match of a per-model clone
+
+`just behaviour-clone-per-model <policy> <config>` prints, and writes to
+`<out>.clone.json`, the clone's greedy agreement with its teacher on the
+held-out fifth of the demonstration episodes: `selector` (did it name the
+same model), `declaration` / `displacement` / `unit_pointer` (did the head
+pick the teacher's column, given the teacher's model), and `joint` (both).
+Read `joint` as the fidelity; a high head match over a low selector match
+is a clone that knows what to do and not who does it. ⚠ Match is per
+decision and says nothing about joint properties — the whole-army lesson
+(98% action match, coherency 0.40 against the teacher's 0.95) applies —
+so a clone is scored on the rung's own criterion beside its teacher.
+
 ### Pairing beats sample size — `just measure-paired`
 
 The noise floor above is what makes two aggregate rows nearly useless for small

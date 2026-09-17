@@ -139,7 +139,11 @@ ROOT_CLIENTS = ("play_per_model.py", "train_per_model.py")
 # the throughput instrument wraps the facade's own methods, and the bridge
 # check drives BOTH facades on identical seeds by construction -- it is the
 # instrument that says the two agree, so it cannot reach one through the other.
-SCRIPT_CLIENTS = ("measure_throughput_per_model.py", "measure_bridge.py")
+SCRIPT_CLIENTS = (
+    "measure_throughput_per_model.py",
+    "measure_bridge.py",
+    "behaviour_clone_per_model.py",
+)
 REPO = PACKAGE.parent
 
 

@@ -217,6 +217,33 @@ to `<run>/metrics.jsonl`.
   the scripted bar on `10000+` through the whole-phase facade exactly as
   `on_train_start` measures it.
 
+### Behaviour cloning into the set network (`model/per_model/clone.py`, #331)
+
+`record_demonstrations(env, chooser, n)` plays a per-model chooser (a
+scripted baseline, `random`, or a `.pt`) on the player seat for `n` episodes
+at seeds `CLONE_SEED_BASE + episode` (800000+) and records every decision
+step as the `Transition` the PPO update reads, with the teacher's model and
+the head column that names its action. `action_to_column` is the **inverse
+of `SetAgent._decode`** — declaration index for `open`, unit-pointer column
+(0 = decline / hold fire, else 1 + the column of the enemy group in
+`opponent_unit_groups`) for `target` and shooting `act`, displacement column
+(0 = STAY, `1..n_move` the movement slice, then the advance slice) otherwise —
+and the recorder decodes every pair back and compares, so a map that drifts
+from the decoder fails on the first step rather than teaching the wrong
+column. Closing steps are not recorded.
+
+`fit_clone` minimises the mean joint negative log-prob from
+`evaluate_transitions` over shuffled minibatches (Adam, grad-norm 1.0);
+`match_report` gives the greedy agreement on held-out transitions —
+`selector` (the model), each head's column given the teacher's model, and
+`joint`. `save_clone` writes a per-model checkpoint at zero rounds (the
+resolver plays it, `--warm-start-from` accepts it) and a `.clone.json`
+beside it with the teacher, the fidelity and the held-out match. ⚠ **The
+critic is not fitted** — a clone's value head is at initialisation, and the
+whole-army record says PPO with a cold critic destroys a clone; that is D2's
+question, not this module's. `scripts/behaviour_clone_per_model.py` /
+`just behaviour-clone-per-model` drive it.
+
 ## PPO (`model/ppo/`)
 
 - `PPOLightning` — PyTorch Lightning module: actor-critic training, GAE, clipped surrogate objective
