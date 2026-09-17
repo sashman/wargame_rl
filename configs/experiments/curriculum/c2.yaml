@@ -1,0 +1,82 @@
+# Curriculum rung C2 (parent question #340): C1 with the ENEMY unit armed and
+# firing -- the "guns" axis, their side first. The three enemy models on the
+# point at (35, 27) hold it and fire at the nearest valid unit each shooting
+# phase (`hold_and_shoot`, range 12, one attack); our four squads carry no
+# weapons. Nothing else changes: the same four points, the same success
+# (`all_objectives_occupied`, our bodies), the same reward. Warm-started from
+# C1 per the ladder's rule for the C rungs; the whole-army control runs beside
+# it.
+#
+# Why only their guns: #340 wrote C2 as "every unit armed, the enemy shoots
+# back", but with our twelve rifles the scripted bar wipes the three blockers
+# in two shooting phases, and the PHASE facade ends the battle on an opponent
+# wipe (#317 -- against the rules, which the per-model facade follows), so the
+# two facades diverge (bar 0.38 phase / 1.000 per-model on the same seeds) and
+# no whole-army control could be read beside the arm. Our guns are the next
+# rung's axis (C3), where they are one squad's and the blocker must die first.
+#
+# The bar is `squad_march_take`, measured first on seeds 700000+, both facades;
+# `alive` is a readout beside success.
+config_name: curriculum_c2
+number_of_wargame_models: 12
+number_of_opponent_models: 3
+number_of_objectives: 4
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 4
+number_of_battle_rounds: 8
+deployment_zone: [4, 4, 10, 40]
+opponent_deployment_zone: [32, 24, 38, 30]
+models:
+  - &sq_0 { group_id: 0 }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+objectives:
+  - { x: 35, y: 8 }
+  - { x: 35, y: 17 }
+  - { x: 35, y: 27 }
+  - { x: 35, y: 36 }
+# The default `skip_phases` skips shooting whatever the weapons say (the A and
+# C1 rungs never stepped it); this rung steps movement and shooting, as the
+# shooting golden config does.
+skip_phases:
+  - command
+  - charge
+  - fight
+coherency:
+  enforce_at_deployment: true
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.0
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: all_objectives_occupied
+      params: {}
+observe_objective_control: true
+opponent_policy:
+  type: scripted_baseline
+  params:
+    baseline: hold_and_shoot
+opponent_models:
+  - &opp_0 { group_id: 0, weapons: [{ range: 12, attacks: 1 }] }
+  - *opp_0
+  - *opp_0

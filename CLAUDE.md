@@ -1148,6 +1148,7 @@ rung stacked on #339.
 | **A5** eight squads, six objectives | bodies + points | **control NULL (scenario) on the letter, and the clause is wrong; per-model arm FAIL 0/3 (A5b), a different failure** | 0.260 / 0.180 / 0.160 at 245,760, never a rolling 50% in-run; `held` 4.1–4.6 of 6 with **8–10 of 24 bodies on points**, empty point different each episode, max stack 3.0–3.5 (script 5.8), turns 9.5–9.7 of 10 (script 6.77), coherency 0.10 — under-arrival, not stacking; clip fraction 0.37–0.42 | 0.890 / 0.820 / 0.600 at 60, **0.800 / 0.940 / 0.980 at 120**: one point left empty with 22 of 24 bodies on points — the whole-army trainer's allocation failure, on a rung the script solves at 1.000 | [A5](reports/2026-09-15-curriculum-a5-control-cannot-allocate.md) · [A5b](reports/2026-09-16-curriculum-a5b-fails-differently.md) |
 | **T1** A5 warm-started from A4x, against A5b from scratch | start (transfer) | **FAIL as pre-registered, 0/3 — and the transfer is real** | 0.450 / 0.290 / 0.200 at 245,760 (A5b 0.260 / 0.180 / 0.160), `held` 4.9 / 4.3 / 4.5; no seed reaches a rolling 95% in-run (peaks 64 / 51 / 64 v 48 / 43 / 30), so the halving bound is missed on every seed; at 20,480 rounds already where A5b ends at 245,760, then flat; panel normal where A5b's is red | (A5's: 0.800 / 0.940 / 0.980 at 120) | [2026-09-17](reports/2026-09-17-curriculum-t1-transfer-does-not-rescue-a5.md) |
 | **C1** A3 plus one enemy unit standing on a point, nobody shooting | enemy | **FAIL as pre-registered, by one seed on a plateau** — warm-started from A3x | 0.990 / **0.930** / 0.990 at 245,760, turns 5.01–5.37 (script 4.98), held 2.96–3.15 of 3; at 80% in-run by 2.6k rounds on every seed; the short point is never the enemy's; coherency greedy 0.50–0.63 | 0.920 / 0.960 / 0.970 at 60 epochs, **0.980 / 0.990 / 0.990 at 120**, turns 6.8–7.1, 95% in-run at epochs 64 / 75 / 65 | [2026-09-16](reports/2026-09-16-curriculum-c1-two-of-three.md) |
+| **C2** C1 with the enemy squad firing (`hold_and_shoot`, range 12), ours unarmed | guns (theirs) | **FAIL as pre-registered by one seed at one hundredth under — the first rung where the per-model arm is AHEAD of the control** — warm-started from C1 | **0.890** / 0.920 / 0.950 at 245,760, turns 9.8–10.2 phase-clock (script 9.60), `alive` 0.83–0.86 (bar 0.842), held 2.87–3.00; 80% in-run by 2.6k on every seed, 95% by 8k on two; one drift dip (s1, 121k, recovered); coherency greedy 0.56–0.66, sampled 0.38–0.42 | 0.710 / 0.690 / 0.760 at 60 epochs, **0.790 / 0.690 / 0.780 at 120 — fails its own criterion 3/3**, turns 14.2–14.8 of 16 (arrives in round seven of eight), 90% in-run never | [2026-09-17](reports/2026-09-17-curriculum-c2-one-seed-one-hundredth-short.md) |
 
 - **The per-model pipeline learns**, at 128 rounds per update, on the same
   code that sat at the floor at 8–32. It reaches the script's speed where
@@ -1297,6 +1298,33 @@ rung stacked on #339.
   is A3's residual allocation error (0.96–0.97 at its best). Read a C
   rung's FAIL against the A rung it warm-started from before blaming the
   enemy.
+- ⚠ **NO WHOLE-ARMY CONTROL CAN BE READ ON A RUNG WHERE THE OPPONENT
+  CAN BE WIPED (#317).** The phase facade ends the battle when the
+  opponent army is wiped, against the rules; the per-model facade plays
+  on. C2 as #340 wrote it (both sides armed) had our twelve rifles wipe
+  the three blockers in two shooting phases, and the same scripted bar
+  read **0.380 on the phase facade against 1.000 on the per-model one**
+  on the same seeds (`just measure-bridge`: BRIDGE DIVERGES) with
+  `alive` 0.95 on both — the wipe rule ended the game before the last
+  squad arrived. So C2 arms their side only, C3 carries our guns where
+  the blocker is meant to die, the C and D rungs avoid wipes by design,
+  and the E rungs' control is compared against itself on the phase
+  facade's own evaluation family. Run `just measure-bridge` on every
+  rung before its control launches; a divergence there is a design
+  fault, not a finding.
+- **With the blocker firing, the whole-army control fails and the
+  per-model arm does not — the first rung where the arm is ahead.**
+  C2: the control reads 0.79 / 0.69 / 0.78 at 120 epochs, arriving in
+  round seven of eight (turns 14.2–14.8 of 16 against the script's
+  9.60), where C1's control passed two rounds behind the script; three
+  rifles turned it from slow into too slow. The per-model arm from C1
+  reads 0.89 / 0.92 / 0.95 at the script's speed and the script's
+  `alive` (0.83–0.86 against 0.842), 80% in-run by 2,560 rounds — a
+  FAIL on the letter by one hundredth on one seed, whose misses are
+  C1's spread allocation residual, not the enemy's disc. Read a
+  whole-army control's turns beside its success on every guns rung: a
+  control that arrives with the game nearly over is measuring its
+  speed, and the per-model arm's lead here is speed.
 - **Six per-model seeds on two rungs all arrive within 0.2 turns of the
   script; six whole-army control seeds are all a round or more behind**
   (per-model 4.88–5.11 v script 4.93–4.96 v control 6.07–7.43). Movement
