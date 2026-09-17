@@ -79,3 +79,24 @@ on the point, and finds the order slowly: under 0.90 on two seeds at
 122,880, one or two seeds at the mark at 245,760, ordering above 0.90
 where success is. The companion reads about where C3's did on success
 (0.7) with the order intact. The control passes on no seed.
+
+## Amendment 1 — written 2026-09-17 10:05, after the control's 60-epoch read and before any per-model number
+
+**The control at 60 epochs**, n=100 on 700000+, `last.ckpt`: success
+**0.280 / 0.120 / 0.200**, `held` 3.09 / 2.35 / 2.18, `on_obj` 0.94 /
+0.81 / 0.77, coherent 0.72–0.79, vp +38.2 / +31.8 / +25.7 against the
+bar's +63.5 (every game runs the full 24 turns now). In-run (n=30,
+rolling five): never 80%; the last ten evaluations 0.00–0.47 on seed 1
+(rising), 0.03–0.17 on seed 2, 0.13–0.50 on seed 3. Wandb
+`curriculum-c3b`: `wnle147m` / `qn1edzf8` / `uzsdlznj`.
+
+**The extension.** Under the mark on every seed with the curves still
+moving, the control gets its once-only extension to **120 epochs**
+(`--resume-ckpt-path` from `last.ckpt`, launched 10:03, suffix
+`-ctl-x2`). By the symmetric-cap rule the per-model arm's budget — and
+the companion's — is **245,760 rounds**, read once at the end: both are
+resumed in place at 122,880 with the cadences and `--n-eval-episodes`
+explicit, and the 122,880 checkpoint is a readout. The criteria are
+unchanged. Compared with C3's control at 60 (0.79 / 0.56 / 0.87), the
+whole-army trainer is where the final-board rule bites hardest: its
+bodies reach the points and do not hold them.
