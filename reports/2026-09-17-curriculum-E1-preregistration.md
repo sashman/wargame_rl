@@ -129,3 +129,25 @@ on its own reward, reaches the bar's neighbourhood on two of three seeds
 by 120 epochs and fails the letter on the third. If the per-model arm
 instead passes, the E rungs have inverted the C rungs and the ladder's
 next question is why the toy rungs were harder than the real one.
+
+## Amendment 1 — written 2026-09-17 23:20, minutes after launch, before any evaluation row
+
+**A name collision on the record.** `configs/experiments/curriculum/e1.yaml`
+replaced, in the same path, the Stage 0 rung E1 of PR #339 (issue #333,
+parent #328: one unit walking onto one objective — the rung that became
+A1 when #340 superseded #328). That older rung's pre-registration is
+`reports/2026-09-14-curriculum-E1-preregistration.md`, and the older
+`e2.yaml` / `e3.yaml` beside this file are #334 / #335's, likewise
+superseded; they are left untouched until E2 and E3 replace them in
+their own PRs. Two consequences for reading this rung: the Wandb group
+`curriculum-e1` and the run suffixes `s{1,2,3}e1` are shared with the
+2026-09-14 runs of that older rung, which are void
+(`reports/2026-09-14-one-episode-per-update.md`); this rung's runs are
+the ones dated 2026-09-17 23:13 (checkpoint directories
+`per-model-e1-2026-09-17-23-13-*-s{1,2,3}e1{,w}`, run ids on #381), and
+every read of E1 names them by directory.
+
+**Wall-clock, corrected.** The per-model runs update every 25–30 s at
+128 rounds (rollout 20–26 s, update 4–10 s), so the 122,880-round budget
+is about half a day, not the two to three days written above; A5b's 37
+hours were measured with twelve trainers on the box.
