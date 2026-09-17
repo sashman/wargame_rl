@@ -17,10 +17,13 @@ from wargame_rl.wargame.envs.per_model.env import PerModelEnv
 from wargame_rl.wargame.envs.per_model.tokens import Head
 from wargame_rl.wargame.model.per_model.checkpoint import load_checkpoint
 from wargame_rl.wargame.model.per_model.clone import (
+    explained_variance,
     fit_clone,
+    fit_critic,
     match_report,
     record_demonstrations,
     save_clone,
+    value_targets,
 )
 from wargame_rl.wargame.model.per_model.net import SetNetwork, SetNetworkConfig
 from wargame_rl.wargame.selectors import build_per_model_chooser
@@ -40,7 +43,33 @@ def test_recorded_decisions_round_trip_and_cover_every_head() -> None:
     # movement-and-shooting game uses, and no closing step slipped in.
     assert demos and {t.env_index for t in demos} == {0, 1}
     assert {t.head for t in demos} >= {Head.declaration, Head.displacement}
-    assert all(t.column >= 0 and t.model >= 0 for t in demos)
+    policy = [t for t in demos if t.has_policy]
+    closing = [t for t in demos if not t.has_policy]
+    assert policy and all(t.model >= 0 for t in policy)
+    assert closing and all(t.is_close for t in closing)
+    assert sum(t.done for t in demos) == 2
+
+
+def test_the_critic_fit_moves_the_value_head_and_nothing_else() -> None:
+    # Arrange: recorded games with their returns, a small network.
+    torch.manual_seed(1)
+    env = PerModelEnv(small_config(rounds=2))
+    chooser = build_per_model_chooser("squad_march_take", [env], seed=0)
+    demos = record_demonstrations(env, chooser.choose, 3)
+    targets = value_targets(demos, gamma=0.9)
+    network = _small_network(env)
+    before = {k: v.clone() for k, v in network.state_dict().items()}
+    ev_before = explained_variance(network, demos, targets)
+    # Act
+    losses = fit_critic(network, demos, targets, epochs=8, seed=0, lr=3e-3)
+    ev_after = explained_variance(network, demos, targets)
+    # Assert: the loss fell, the fit explains more, and only the value head moved.
+    assert losses[-1] < losses[0]
+    assert ev_after > ev_before
+    for key, value in network.state_dict().items():
+        if key.startswith("value_head"):
+            continue
+        assert torch.equal(value, before[key]), key
 
 
 def test_the_fit_raises_the_held_out_match_and_the_clone_plays(

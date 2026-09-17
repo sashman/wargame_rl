@@ -370,6 +370,14 @@ measure-per-model-eval-mode env_config n_episodes='30' seed_base='900000' *check
 behaviour-clone-per-model policy env_config n_episodes='300' epochs='40' out='checkpoints/per_model/clone.pt' seed='0':
 	@uv run python -m scripts.behaviour_clone_per_model {{policy}} {{env_config}} {{n_episodes}} {{epochs}} {{out}} {{seed}}
 
+# Fit ONLY the value head of a per-model clone to the teacher's discounted
+# returns (the trunk and the policy heads frozen, so the policy is
+# bit-identical): the instrument for the cold-critic question a PPO run
+# from a clone asks. Writes <out> (default <clone>-critic.pt).
+# Use: just fit-per-model-critic checkpoints/per_model/clones/escort-c3b-1200-s0.pt scripted_escort configs/experiments/curriculum/c3b.yaml
+fit-per-model-critic clone teacher env_config n_episodes='300' epochs='20' out='' seed='0':
+	@uv run python -m scripts.fit_per_model_critic {{clone}} {{teacher}} {{env_config}} {{n_episodes}} {{epochs}} {{out}} {{seed}}
+
 # Read a curriculum rung: the scripted bar first, then one row per checkpoint
 # (a `.pt` plays the per-model facade, a `.ckpt` the whole-army one), on the
 # same held-out seeds so the turn difference against the bar pairs per

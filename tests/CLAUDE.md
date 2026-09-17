@@ -76,7 +76,9 @@ Applies to everything under `tests/`. General testing philosophy lives in the ro
 
 **Opponent wipe (#317)** — `test_opponent_wipe_termination` (the phase facade plays the clock out after an opponent wipe by default, the survivor keeps scoring, and `terminate_on_opponent_elimination` ends it on the first step; the mirror of the per-model facade's `test_the_battle_continues_after_the_opponent_is_wiped_out`).
 
-**Per-model clone (#331)** — `test_per_model_clone` (the inverse column map round-trips through `SetAgent._decode` on every recorded decision of `squad_march_take` on the small scenario; a short fit lowers the loss and raises the held-out joint match; the saved `.pt` loads at zero rounds and resolves as a checkpoint chooser).
+**Per-model KL anchor (#332)** — `test_per_model_kl_anchor` (the controller follows the phase facade's rule; a reference at coefficient 0 leaves the update bit-identical; a heavy anchor leaves the policy nearer its start than the same update without it).
+
+**Per-model clone (#331)** — `test_per_model_clone` (the inverse column map round-trips through `SetAgent._decode` on every recorded decision of `squad_march_take` on the small scenario, closing rows recorded with their reward; a short fit lowers the loss and raises the held-out joint match; the saved `.pt` loads at zero rounds and resolves as a checkpoint chooser; a critic fit lowers the value loss, raises explained variance and moves nothing but `value_head`).
 
 **Scripted escort (#330)** — `test_scripted_escort` (the seat declares that it shoots; through a real env on the C3 config no unarmed body ever comes inside the blockers' reach while a blocker lives and the armed squad kills every blocker; with no armed squad at all, on C2, it is `squad_march_take` to the action).
 

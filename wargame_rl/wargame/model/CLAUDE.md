@@ -217,6 +217,26 @@ to `<run>/metrics.jsonl`.
   the scripted bar on `10000+` through the whole-phase facade exactly as
   `on_train_start` measures it.
 
+### The KL anchor (`--kl-ref-coef` / `--kl-ref-target`, #332)
+
+`PerModelPPOConfig.kl_ref_coef` weights the mean per-decision
+`KL(policy || reference)` — the selector's and the step's head's full masked
+distributions (`drift_to_reference`) — against a frozen copy of the run's
+**starting** weights, the warm-start checkpoint or the fresh init, added to
+the loss in `ppo_update`. ⚠ A taken-action estimator was tried first and
+rejected: heavy-tailed on the actions the policy stops liking, it read 11.7
+nats on an update that started at the reference and escalated the
+coefficient without binding.
+`kl_ref_target` (nats per decision) makes the coefficient adaptive by the
+phase facade's rule (`adapt_kl_coef`: halve under target / 1.5, double over
+1.5 × target, clamped to `[1e-4, 1e4]`). 0.0 builds no reference and adds no
+term — bit-identical off, pinned by `tests/test_per_model_kl_anchor.py`. On
+a resume the reference is reloaded from the run's `warm_started_from`
+checkpoint, never from the resumed weights (a drift that ratchets forward
+with every resume is the phase facade's silent-anchor defect), and the
+adapted coefficient is carried in the training state. Logged as
+`train/kl_ref` and `train/kl_ref_coef`.
+
 ### Behaviour cloning into the set network (`model/per_model/clone.py`, #331)
 
 `record_demonstrations(env, chooser, n)` plays a per-model chooser (a
@@ -238,10 +258,16 @@ column. Closing steps are not recorded.
 `selector` (the model), each head's column given the teacher's model, and
 `joint`. `save_clone` writes a per-model checkpoint at zero rounds (the
 resolver plays it, `--warm-start-from` accepts it) and a `.clone.json`
-beside it with the teacher, the fidelity and the held-out match. ⚠ **The
-critic is not fitted** — a clone's value head is at initialisation, and the
-whole-army record says PPO with a cold critic destroys a clone; that is D2's
-question, not this module's. `scripts/behaviour_clone_per_model.py` /
+beside it with the teacher, the fidelity and the held-out match. ⚠ **`fit_clone`
+fits no critic** — a clone's value head is at initialisation, and the
+whole-army record says PPO with a cold critic destroys a clone (D2 reproduced
+it in two thousand rounds). `fit_critic` is the separate instrument: the
+recorder keeps every closing step with its re-timed reward, `value_targets`
+turns them into discounted returns (`compute_gae` at `gae_lambda` 1.0 over
+the episodes), and `fit_critic` trains **only** `value_head` by MSE so the
+policy is bit-identical before and after; `scripts/fit_per_model_critic.py`
+/ `just fit-per-model-critic` drive it and refuse to save if anything but
+the value head moved. `scripts/behaviour_clone_per_model.py` /
 `just behaviour-clone-per-model` drive it.
 
 ## PPO (`model/ppo/`)

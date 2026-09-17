@@ -156,6 +156,7 @@ wargame_rl/
 | Where it is dangerous to stand NEXT turn, and a policy's exposure | `just measure-threat-field <policy\|ckpt> <config.yaml> [n] [maps_dir] [decode_topk]` |
 | Clone a scripted policy into the network (warm-start checkpoint) | `just behaviour-clone <policy> <config.yaml> [n_episodes] [epochs] [out]` |
 | Clone a scripted policy into the SET NETWORK (per-model `.pt`, per-head match on held-out episodes) | `just behaviour-clone-per-model <policy> <config.yaml> [n_episodes] [epochs] [out] [seed]` |
+| Fit only a per-model clone's value head to the teacher's returns (policy bit-identical) | `just fit-per-model-critic <clone.pt> <teacher> <config.yaml> [n_episodes] [epochs] [out] [seed]` |
 | Two policies on identical layouts, paired per episode (names, `.ckpt` or `.pt`) | `just measure-paired <policy\|ckpt> <policy\|ckpt> <config.yaml> [n_episodes] [seed_base] [key=value...]` |
 | Dice-vs-scenario noise floor | `just measure-noise-floor <config.yaml> [n_layouts] [n_combat_seeds] [policy] [key=value...]` |
 | Are the two seats the same game (the rating precondition) | `just measure-seat-parity <config.yaml> [policy] [n_layouts]` |
@@ -1154,6 +1155,7 @@ rung stacked on #339.
 | **C3b** C3 with success read on the FINAL board (`terminate_on_success: false`) | the same, no instant win | **FAIL as pre-registered, every seed of every trainer — the arm learned to shoot first and then stopped** | from C2 **0.200 / 0.130 / 0.230**, ordering 0.86 / 0.77 / 0.85; blockers wiped 75–79% (C3: 16–30%), fires first 77–86%; holds 2.4–2.7 points from round five to the end, stationary 47%, the cleared point and the far point empty in half the episodes; explained variance 0.20–0.25; from scratch 0.02 / 0.02 / 0.06 with a decaying board; bar escort 0.990, plain `take` 0.280 | **0.280 / 0.000 / 0.450 at 120 epochs** — fails harder than on any rung | [2026-09-17](reports/2026-09-17-curriculum-c3b-nobody-holds-the-point.md) |
 | **D1** the escort cloned into the set network (300 games × 40 epochs, two fit seeds), scored on C3b | start (supervised) | **FAIL on the letter — and the clone holds the plan** | success **0.830 / 0.850** (bound 0.96), kill before arrival **0.99 / 1.00**, blockers wiped 98%, alive 0.90, held 3.79; joint match 0.44 — the escort's unit-opening order is not in the observation (chance held-out); per head declaration 0.93, unit 1.00, displacement 0.61 held-out against 0.95 on the training episodes (over-fit; D1b runs 4× the games) | (reward on the same scenario: arm 0.20, scratch 0.02–0.06, control 0.28) | [2026-09-17](reports/2026-09-17-curriculum-d1-the-clone-holds-the-plan.md) |
 | **D1b** the same from 1,200 games | start (supervised), 4× the data | **PASS on the rung's criterion, FAIL on the fidelity bound (retired)** | success **0.960 / 0.960** (bound 0.96), kill before arrival **1.00 / 1.00**, alive 0.95, held 3.93, blockers wiped 98%; displacement match 0.61 → 0.72 held-out (0.94 on the training games), the opening order at chance held-out; the two clones within a thousandth | (reward on the same scenario: 0.20 / 0.02–0.06 / 0.28) | [2026-09-17](reports/2026-09-17-curriculum-d1b-four-times-the-games.md) |
+| **D2** PPO from the escort clone on C3b, four arms: plain · critic fitted · KL anchor · both | start (reward from the plan) | **plain DESTROYS, critic DESTROYS, anchor HOLDS, both holds a hair worse — nothing IMPROVES** | plain **0.028 / 0.183 / 0.028** (gone by 2.6k rounds); critic fitted (EV 0.74) **0.056 / 0.006 / 0.028**; anchor (coef 10, target 0.03) **0.944 / 0.956 / 0.956**, paired vp −1.4 to +0.7 v the clone's 0.950, half the episodes identical, EV 0.66 from cold, drift 0.87 on the displacement head (clone 0.94); both 0.939 / 0.906 / 0.911. The destroyed arms keep the order (fire first 87–97%) and lose the walk | — | [2026-09-17](reports/2026-09-17-curriculum-d2-the-anchor-not-the-critic.md) |
 
 - **The per-model pipeline learns**, at 128 rounds per update, on the same
   code that sat at the floor at 8–32. It reaches the script's speed where
@@ -1393,6 +1395,24 @@ rung stacked on #339.
   readout and never bound it where the teacher's quantisation forbids.
   The 1,200-game clone is the best policy on the per-model facade on
   any rung with guns, and D2 starts from it.
+- ⚠ **WARM-START THE PER-MODEL PPO FROM A CLONE ONLY UNDER A KL ANCHOR
+  TO IT; THE CRITIC IS NOT THE LEVER.** D2, the 2×2 on C3b from D1b's
+  clone (0.95): plain PPO reads **0.03 / 0.18 / 0.03**, gone by 2,560
+  rounds; with the clone's value head fitted first (explained variance
+  0.74, policy bit-identical) **0.06 / 0.01 / 0.03**, the same collapse
+  at the same speed — the whole-army record's cold-critic diagnosis is
+  not the mechanism on this trainer, and was the obvious wrong guess;
+  with the KL anchor (`--kl-ref-coef 10 --kl-ref-target 0.03`, #332)
+  **0.94 / 0.96 / 0.96**, paired vp within 1.5 SE of the clone, half the
+  episodes identical, the critic learning to 0.66 from cold; both
+  together 0.94 / 0.91 / 0.91. The destroyed policies keep the order
+  (fire first in 87–97% of episodes) and lose the walk after it. Under
+  the anchor reward changes nothing measurable: the coefficient climbs
+  to its cap (Adam normalises the penalty's gradient, so the measured
+  drift sits at ~0.09 nats per decision whatever the coefficient) and
+  the policy sits where it started. **The IMPROVES question is the
+  anchor's coefficient**, not more rounds and not the critic. Read a
+  2×2 before naming a mechanism the record already offers.
 - **Six per-model seeds on two rungs all arrive within 0.2 turns of the
   script; six whole-army control seeds are all a round or more behind**
   (per-model 4.88–5.11 v script 4.93–4.96 v control 6.07–7.43). Movement

@@ -62,6 +62,12 @@ class PerModelPPOConfig(BaseModel):
     # The selector's own coefficient; None means `ent_coef`. Two knobs so the
     # order can be kept exploring while the action sharpens (#283).
     selector_ent_coef: float | None = Field(default=None, ge=0.0)
+    # A KL anchor to the run's starting weights (#332): `kl_ref_coef` weights
+    # the per-decision drift estimator; `kl_ref_target` (nats per decision)
+    # makes the coefficient adaptive by the phase facade's rule. 0.0 builds no
+    # reference network and adds no term, so a run without it is unchanged.
+    kl_ref_coef: float = Field(default=0.0, ge=0.0)
+    kl_ref_target: float = Field(default=0.0, ge=0.0)
     lr: float = Field(default=3e-4, gt=0.0)
     max_grad_norm: float = Field(default=0.5, gt=0.0)
     n_epochs: int = Field(default=5, ge=1)
@@ -83,6 +89,25 @@ class PerModelPPOConfig(BaseModel):
         return (
             self.ent_coef if self.selector_ent_coef is None else self.selector_ent_coef
         )
+
+
+# The adaptive anchor's coefficient band, the phase facade's constants.
+KL_COEF_MIN = 1e-4
+KL_COEF_MAX = 1e4
+
+
+def adapt_kl_coef(coef: float, measured_drift: float, target: float) -> float:
+    """Schulman's KL-penalty rule: halve the coefficient when the policy stays
+    closer than `target` by 1.5x, double it when it drifts further by 1.5x;
+    a no-op at `target == 0.0`. The wide band keeps the coefficient from
+    oscillating faster than the policy can answer it."""
+    if target <= 0.0:
+        return coef
+    if measured_drift < target / 1.5:
+        return max(coef / 2.0, KL_COEF_MIN)
+    if measured_drift > target * 1.5:
+        return min(coef * 2.0, KL_COEF_MAX)
+    return coef
 
 
 def affinity_cpu_count() -> int:
@@ -384,6 +409,62 @@ def evaluate_transitions(
     )
 
 
+def _masked_kl(log_p: torch.Tensor, log_q: torch.Tensor) -> torch.Tensor:
+    """Row-wise `KL(p || q)` over masked categoricals: `-inf` columns (masked
+    on both sides, since both score the same tokens) contribute nothing."""
+    finite = torch.isfinite(log_p)
+    p = torch.where(finite, log_p.exp(), torch.zeros_like(log_p))
+    diff = torch.where(finite, log_p - log_q, torch.zeros_like(log_p))
+    return (p * diff).sum(dim=-1)
+
+
+def drift_to_reference(
+    network: SetNetwork, reference: SetNetwork, transitions: Sequence[Transition]
+) -> torch.Tensor:
+    """Per-transition `KL(policy || reference)` -- the selector's plus the
+    step's head's, over the full masked distributions -- with the gradient
+    through `network`; 0 on rows without a policy. The estimator the
+    whole-phase anchor uses, so a target is nats per decision as there it
+    is nats per model."""
+    device = network.device
+    batch = collate([t.tokens for t in transitions], device=device)
+    has_policy = torch.tensor([t.has_policy for t in transitions], device=device)
+    models = torch.tensor(
+        [max(t.model, 0) for t in transitions], dtype=torch.int64, device=device
+    )
+    output = network(batch)
+    with torch.no_grad():
+        ref_output = reference(batch)
+    n = len(transitions)
+    kl = torch.zeros(n, device=device)
+    if not bool(has_policy.any()):
+        return kl
+    rows = torch.nonzero(has_policy).squeeze(-1)
+    kl[rows] = _masked_kl(
+        F.log_softmax(output.selector_logits[rows].float(), dim=-1),
+        F.log_softmax(ref_output.selector_logits[rows].float(), dim=-1),
+    )
+    heads = network.heads(output, batch, models)
+    with torch.no_grad():
+        ref_heads = reference.heads(ref_output, batch, models)
+    for head, logits, ref_logits in (
+        (Head.declaration, heads.declaration, ref_heads.declaration),
+        (Head.displacement, heads.displacement, ref_heads.displacement),
+        (Head.unit_pointer, heads.unit, ref_heads.unit),
+    ):
+        mask = torch.tensor(
+            [t.has_policy and t.head is head for t in transitions], device=device
+        )
+        if not bool(mask.any()):
+            continue
+        head_rows = torch.nonzero(mask).squeeze(-1)
+        kl[head_rows] = kl[head_rows] + _masked_kl(
+            F.log_softmax(logits[head_rows].float(), dim=-1),
+            F.log_softmax(ref_logits[head_rows].float(), dim=-1),
+        )
+    return kl
+
+
 def _entropy(log_probs: torch.Tensor) -> torch.Tensor:
     clamped = log_probs.clamp(min=_LOG_PROB_FLOOR)
     return -(clamped.exp() * clamped).sum(dim=-1)
@@ -422,6 +503,11 @@ class UpdateStats:
     # far outside it by the last is a trust region that no longer binds.
     ratio_p01: float = 1.0
     ratio_p99: float = 1.0
+    # The KL anchor (#332): the mean per-decision drift estimator against the
+    # reference over the update's policy rows, and the coefficient it was
+    # weighted by. Both 0.0 when no reference is attached.
+    kl_ref: float = 0.0
+    kl_ref_coef: float = 0.0
 
 
 def check_trainable(network: SetNetwork) -> None:
@@ -443,9 +529,21 @@ def ppo_update(
     config: PerModelPPOConfig,
     *,
     generator: torch.Generator | None = None,
+    reference: SetNetwork | None = None,
+    kl_ref_coef: float = 0.0,
 ) -> UpdateStats:
-    """`n_epochs` passes of clipped-surrogate minibatches over the rollout."""
+    """`n_epochs` passes of clipped-surrogate minibatches over the rollout.
+
+    With `reference` and `kl_ref_coef > 0` the loss carries `kl_ref_coef`
+    times the mean per-decision `KL(policy || reference)` over the policy
+    rows -- the selector's and the step's head's full masked distributions
+    (`drift_to_reference`), the whole-phase anchor's estimator. A
+    taken-action estimator was tried first and rejected: heavy-tailed on
+    the actions the policy stops liking (11.7 nats on an update that
+    started AT the reference), it escalated the coefficient without binding.
+    """
     check_trainable(network)
+    anchored = reference is not None and kl_ref_coef > 0.0
     network.train()
     device = network.device
     transitions = rollout.transitions
@@ -471,6 +569,7 @@ def ppo_update(
         "kl": 0.0,
         "grad": 0.0,
         "clipped": 0.0,
+        "kl_ref": 0.0,
     }
     n_minibatches = 0
     selector_coef = config.resolved_selector_ent_coef
@@ -496,6 +595,14 @@ def ppo_update(
                 config.ent_coef * head_entropy + selector_coef * selector_entropy
             )
             loss = policy_loss + config.vf_coef * value_loss + entropy_loss
+            if anchored:
+                assert reference is not None
+                drift = drift_to_reference(
+                    network, reference, [transitions[i] for i in rows]
+                )
+                kl_ref_term = (drift * policy).sum() / n_policy
+                loss = loss + kl_ref_coef * kl_ref_term
+                totals["kl_ref"] += float(kl_ref_term.item())
             optimizer.zero_grad()
             loss.backward()
             grad_norm = float(
@@ -534,6 +641,8 @@ def ppo_update(
         n_minibatches=n_minibatches,
         ratio_p01=ratio_p01,
         ratio_p99=ratio_p99,
+        kl_ref=totals["kl_ref"] / count,
+        kl_ref_coef=kl_ref_coef if anchored else 0.0,
         **panel,
     )
 

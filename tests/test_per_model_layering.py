@@ -143,6 +143,7 @@ SCRIPT_CLIENTS = (
     "measure_throughput_per_model.py",
     "measure_bridge.py",
     "behaviour_clone_per_model.py",
+    "fit_per_model_critic.py",
 )
 REPO = PACKAGE.parent
 
