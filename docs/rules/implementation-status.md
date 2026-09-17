@@ -24,7 +24,7 @@ table is the roadmap for the next implementation phase.
 | [Phase order](07-battle-round.md#player-turns) | implemented | `BATTLE_PHASE_ORDER`. |
 | [Setup step order](15-missions-and-scoring.md#setting-up-a-battle) | partial | `SetupPhase` enumerates the steps; `game_clock.skip_setup` runs straight past them. |
 | [Start/end triggers, rules sequencing](01-core-concepts.md#resolving-simultaneous-rules) | absent | Only one hook exists — `on_before_advance`, fired on every phase boundary by `envs/envs/turn_execution.py`. |
-| [Battle continues after a wipe](15-missions-and-scoring.md#ending-the-battle) | **partial** | `terminate_on_player_elimination` defaults to `False`. ⚠ **Half of it.** The phase facade ends the battle on an OPPONENT wipe (`wargame.py`, `all_opponent_eliminated` OR'd into termination) — #317. ✅ **In the PER-MODEL facade neither wipe ends the battle** (2026-09-08); the player's does only under `terminate_on_player_elimination`, and the survivor keeps scoring. |
+| [Battle continues after a wipe](15-missions-and-scoring.md#ending-the-battle) | implemented | Neither wipe ends the battle by default on either facade; the survivor keeps scoring. `terminate_on_player_elimination` and `terminate_on_opponent_elimination` (both default `False`) are training shortcuts the phase facade honours and the per-model facade does not. ⚠ Until 2026-09-17 the phase facade ended the battle on an OPPONENT wipe unconditionally (#317): the scripted bar on a both-sides-armed C2 read 0.38 there against 1.00 on the per-model facade, same seeds. Any phase-facade episode before that date that ended by an opponent wipe was scored short. |
 
 ## Units and models
 

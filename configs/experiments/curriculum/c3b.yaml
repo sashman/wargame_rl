@@ -1,0 +1,76 @@
+# Curriculum rung C3b (parent question #340): C3 with ONE change -- success is
+# read at the END of the game, not the instant every point has a body on it.
+# C3's per-model arm, warm-started from C2, found the dash: put a last body
+# onto the blockers' point the moment the other three are held and let
+# `terminate_on_success` end the game before the blockers fire again -- a
+# third of its bodies dead, the blockers alive in four episodes of five, the
+# kill before the arrival in under two thirds. The rules' own game punishes
+# that: a body that dashes in has to HOLD the point to the last round under
+# eight attacks a blocker. With `terminate_on_success: false` the episode runs
+# its twelve rounds and `all_objectives_occupied` is judged on the final
+# board, so the plan (shoot the blockers off first, from outside their reach)
+# is the way to be standing there at the end. Everything else is c3.yaml.
+#
+# The bar is measured first on seeds 700000+, both facades; a plain
+# `squad_march_take` must fail (#340).
+config_name: curriculum_c3b
+number_of_wargame_models: 12
+number_of_opponent_models: 3
+number_of_objectives: 4
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 4
+number_of_battle_rounds: 12
+deployment_zone: [4, 4, 10, 40]
+opponent_deployment_zone: [32, 24, 38, 30]
+models:
+  - &sq_0 { group_id: 0, weapons: [{ range: 18, attacks: 4 }] }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+objectives:
+  - { x: 35, y: 8 }
+  - { x: 35, y: 17 }
+  - { x: 35, y: 27 }
+  - { x: 35, y: 36 }
+# Movement and shooting are stepped, as on C2.
+skip_phases:
+  - command
+  - charge
+  - fight
+coherency:
+  enforce_at_deployment: true
+reward_phases:
+  - name: arrive
+    terminate_on_success: false
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.0
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: all_objectives_occupied
+      params: {}
+observe_objective_control: true
+opponent_policy:
+  type: scripted_baseline
+  params:
+    baseline: hold_and_shoot
+opponent_models:
+  - &opp_0 { group_id: 0, max_wounds: 4, weapons: [{ range: 12, attacks: 8 }] }
+  - *opp_0
+  - *opp_0

@@ -30,6 +30,7 @@ def _auto_register() -> None:
         "wargame_rl.wargame.envs.baseline.random_baseline",
         "wargame_rl.wargame.envs.baseline.hold_deployment",
         "wargame_rl.wargame.envs.baseline.hold_and_shoot",
+        "wargame_rl.wargame.envs.baseline.scripted_escort",
         "wargame_rl.wargame.envs.baseline.scripted_greedy_nearest",
         "wargame_rl.wargame.envs.baseline.scripted_split_evenly",
         "wargame_rl.wargame.envs.baseline.scripted_squad_march",
