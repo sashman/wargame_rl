@@ -217,6 +217,24 @@ to `<run>/metrics.jsonl`.
   the scripted bar on `10000+` through the whole-phase facade exactly as
   `on_train_start` measures it.
 
+### The KL anchor (`--kl-ref-coef` / `--kl-ref-target`, #332)
+
+`PerModelPPOConfig.kl_ref_coef` weights a per-decision drift estimator
+against a frozen copy of the run's **starting** weights — the warm-start
+checkpoint, or the fresh init — added to the loss in `ppo_update`:
+`(rho - 1) - log rho` with `rho = pi_ref(a) / pi(a)` on the taken action,
+the same estimator `approx_kl` uses against the old policy, so it costs one
+extra `evaluate_transitions` under `no_grad` and no full-distribution KL.
+`kl_ref_target` (nats per decision) makes the coefficient adaptive by the
+phase facade's rule (`adapt_kl_coef`: halve under target / 1.5, double over
+1.5 × target, clamped to `[1e-4, 1e4]`). 0.0 builds no reference and adds no
+term — bit-identical off, pinned by `tests/test_per_model_kl_anchor.py`. On
+a resume the reference is reloaded from the run's `warm_started_from`
+checkpoint, never from the resumed weights (a drift that ratchets forward
+with every resume is the phase facade's silent-anchor defect), and the
+adapted coefficient is carried in the training state. Logged as
+`train/kl_ref` and `train/kl_ref_coef`.
+
 ### Behaviour cloning into the set network (`model/per_model/clone.py`, #331)
 
 `record_demonstrations(env, chooser, n)` plays a per-model chooser (a

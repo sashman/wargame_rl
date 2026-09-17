@@ -32,6 +32,7 @@ one) with a fresh optimizer and a new run directory.
 
 from __future__ import annotations
 
+import copy
 import json
 import subprocess
 import time
@@ -85,6 +86,7 @@ from wargame_rl.wargame.model.per_model.ppo import (
     Rollout,
     RolloutEntropy,
     UpdateStats,
+    adapt_kl_coef,
     affinity_cpu_count,
     auto_num_rollout_envs,
     check_trainable,
@@ -119,6 +121,8 @@ _PPO_KNOBS = (
     "max_grad_norm",
     "n_epochs",
     "batch_size",
+    "kl_ref_coef",
+    "kl_ref_target",
 )
 
 
@@ -294,6 +298,8 @@ def update_rows(
         "train/approx_kl_per_1k_rounds": (
             1000.0 * approx_kl_cumulative / max(1, rounds_done)
         ),
+        "train/kl_ref": stats.kl_ref,
+        "train/kl_ref_coef": stats.kl_ref_coef,
         "train/explained_variance": stats.explained_variance,
         "train/grad_norm": stats.grad_norm,
         "train/grad_clipped_fraction": stats.grad_clipped_fraction,
@@ -426,6 +432,18 @@ def train(
     selector_ent_coef: float | None = typer.Option(
         None, help="Selector entropy coefficient (default: ent_coef)."
     ),
+    kl_ref_coef: float | None = typer.Option(
+        None,
+        "--kl-ref-coef",
+        help="Weight on the KL anchor to the run's starting weights (#332); "
+        "0 builds no reference.",
+    ),
+    kl_ref_target: float | None = typer.Option(
+        None,
+        "--kl-ref-target",
+        help="Drift to hold, in nats per decision; makes the coefficient "
+        "adaptive. 0 keeps it fixed.",
+    ),
     lr: float | None = typer.Option(None),
     max_grad_norm: float | None = typer.Option(None),
     n_epochs: int | None = typer.Option(None),
@@ -512,6 +530,8 @@ def train(
         "max_grad_norm": resolve_optional_float(max_grad_norm),
         "n_epochs": resolve_optional_int(n_epochs),
         "batch_size": resolve_optional_int(batch_size),
+        "kl_ref_coef": resolve_optional_float(kl_ref_coef),
+        "kl_ref_target": resolve_optional_float(kl_ref_target),
     }
     if resume is not None:
         refuse_changed_knobs(overrides, resume.loaded.ppo_config, resume.checkpoint)
@@ -622,6 +642,17 @@ def train(
         generator.set_state(resume.state.generator_state)
         declarations_seen = resume.state.declarations_seen
         approx_kl_cumulative = resume.state.approx_kl_cumulative
+    reference: SetNetwork | None = None
+    kl_ref_coef_now = ppo_config.kl_ref_coef
+    if ppo_config.kl_ref_coef > 0.0:
+        reference = _kl_reference(network, resume, expected_head, resolved_device)
+        if resume is not None and resume.state.kl_ref_coef > 0.0:
+            kl_ref_coef_now = resume.state.kl_ref_coef
+        logger.info(
+            "KL anchor attached: coef {} target {} nats per decision",
+            kl_ref_coef_now,
+            ppo_config.kl_ref_target,
+        )
 
     base_name = f"per-model-{Path(config_path).stem}"
     resolved_run_name = resolve_optional_str(run_name) or base_name
@@ -705,6 +736,11 @@ def train(
                 advantages,
                 ppo_config,
                 generator=generator,
+                reference=reference,
+                kl_ref_coef=kl_ref_coef_now,
+            )
+            kl_ref_coef_now = adapt_kl_coef(
+                kl_ref_coef_now, stats.kl_ref, ppo_config.kl_ref_target
             )
             update_s = time.perf_counter() - started
             # Nominal: lockstep envs can close in the same iteration, so the
@@ -761,6 +797,7 @@ def train(
                     generator_state=generator.get_state(),
                     declarations_seen=declarations_seen,
                     approx_kl_cumulative=approx_kl_cumulative,
+                    kl_ref_coef=kl_ref_coef_now if reference is not None else 0.0,
                 )
                 for name in (periodic_checkpoint_name(rounds_done), LAST_CHECKPOINT):
                     save_checkpoint(
@@ -802,6 +839,38 @@ def _resumed_env_config(
                 f"{config_path}: it differs from the run's scenario"
             )
     return stored, path
+
+
+def _kl_reference(
+    network: SetNetwork,
+    resume: ResumePoint | None,
+    expected_head: int,
+    device: torch.device,
+) -> SetNetwork:
+    """The frozen network the KL anchor measures drift against: the run's
+    STARTING weights. On a fresh run that is a copy of `network` as built
+    (the warm-start weights, or the fresh init); on a resume it is reloaded
+    from the run's `warm_started_from` checkpoint, because the resumed
+    weights have already moved and anchoring to them would let the drift
+    ratchet forward with every resume."""
+    if resume is None:
+        reference = copy.deepcopy(network)
+    else:
+        provenance_path = resume.checkpoint.parent / "provenance.json"
+        warm = json.loads(provenance_path.read_text()).get("warm_started_from")
+        if not warm or not warm.get("checkpoint"):
+            raise ValueError(
+                f"{resume.checkpoint} resumes an anchored run whose provenance "
+                "names no warm-start checkpoint to anchor to"
+            )
+        reference = load_checkpoint(
+            Path(warm["checkpoint"]), expected_n_displacements=expected_head
+        ).network
+    reference = reference.to(device)
+    reference.eval()
+    for parameter in reference.parameters():
+        parameter.requires_grad_(False)
+    return reference
 
 
 def _write_provenance(

@@ -50,6 +50,8 @@ class TrainingState:
     generator_state: torch.Tensor
     declarations_seen: int
     approx_kl_cumulative: float
+    # The KL anchor's adapted coefficient (#332); 0.0 when the run has none.
+    kl_ref_coef: float = 0.0
 
 
 def save_checkpoint(
@@ -84,6 +86,7 @@ def save_checkpoint(
         payload["generator_state"] = training_state.generator_state.clone()
         payload["declarations_seen"] = int(training_state.declarations_seen)
         payload["approx_kl_cumulative"] = float(training_state.approx_kl_cumulative)
+        payload["kl_ref_coef"] = float(training_state.kl_ref_coef)
     path.parent.mkdir(parents=True, exist_ok=True)
     partial = path.with_name(path.name + ".tmp")
     torch.save(payload, partial)
@@ -169,6 +172,7 @@ def load_training_state(path: Path) -> TrainingState:
         generator_state=payload["generator_state"],
         declarations_seen=int(payload["declarations_seen"]),
         approx_kl_cumulative=float(payload.get("approx_kl_cumulative", 0.0)),
+        kl_ref_coef=float(payload.get("kl_ref_coef", 0.0)),
     )
 
 

@@ -176,6 +176,14 @@ with a defect.
 | `eval/vp_margin_se` | The eval curve's own error bar | Read before calling a move in `eval/vp_margin` a trend |
 | `eval/stationary_share` · `eval/hold_fire_share` | The passive fingerprint of the greedy policy | Away from 1.0. Swinging 0 ↔ 1 between consecutive evals is a policy whose argmax flips on a diffuse declaration head — score it sampled as well (`just measure-per-model-eval-mode`) before reading the curve |
 
+`train/kl_ref` and `train/kl_ref_coef` appear when a per-model run carries
+the KL anchor (`--kl-ref-coef`, #332): the mean per-decision drift
+estimator against the run's starting weights over the update's policy
+rows, and the coefficient the term was weighted by (adaptive under
+`--kl-ref-target`). Both read 0.0 on a run without the anchor. Read
+`kl_ref` beside `train/approx_kl_cumulative`: the first is drift from the
+start, the second the sum of per-update steps.
+
 ### Baselines and the scoreboard
 
 | Key | Meaning |

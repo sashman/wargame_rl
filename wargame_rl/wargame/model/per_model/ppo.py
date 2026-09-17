@@ -62,6 +62,12 @@ class PerModelPPOConfig(BaseModel):
     # The selector's own coefficient; None means `ent_coef`. Two knobs so the
     # order can be kept exploring while the action sharpens (#283).
     selector_ent_coef: float | None = Field(default=None, ge=0.0)
+    # A KL anchor to the run's starting weights (#332): `kl_ref_coef` weights
+    # the per-decision drift estimator; `kl_ref_target` (nats per decision)
+    # makes the coefficient adaptive by the phase facade's rule. 0.0 builds no
+    # reference network and adds no term, so a run without it is unchanged.
+    kl_ref_coef: float = Field(default=0.0, ge=0.0)
+    kl_ref_target: float = Field(default=0.0, ge=0.0)
     lr: float = Field(default=3e-4, gt=0.0)
     max_grad_norm: float = Field(default=0.5, gt=0.0)
     n_epochs: int = Field(default=5, ge=1)
@@ -83,6 +89,25 @@ class PerModelPPOConfig(BaseModel):
         return (
             self.ent_coef if self.selector_ent_coef is None else self.selector_ent_coef
         )
+
+
+# The adaptive anchor's coefficient band, the phase facade's constants.
+KL_COEF_MIN = 1e-4
+KL_COEF_MAX = 1e4
+
+
+def adapt_kl_coef(coef: float, measured_drift: float, target: float) -> float:
+    """Schulman's KL-penalty rule: halve the coefficient when the policy stays
+    closer than `target` by 1.5x, double it when it drifts further by 1.5x;
+    a no-op at `target == 0.0`. The wide band keeps the coefficient from
+    oscillating faster than the policy can answer it."""
+    if target <= 0.0:
+        return coef
+    if measured_drift < target / 1.5:
+        return max(coef / 2.0, KL_COEF_MIN)
+    if measured_drift > target * 1.5:
+        return min(coef * 2.0, KL_COEF_MAX)
+    return coef
 
 
 def affinity_cpu_count() -> int:
@@ -422,6 +447,11 @@ class UpdateStats:
     # far outside it by the last is a trust region that no longer binds.
     ratio_p01: float = 1.0
     ratio_p99: float = 1.0
+    # The KL anchor (#332): the mean per-decision drift estimator against the
+    # reference over the update's policy rows, and the coefficient it was
+    # weighted by. Both 0.0 when no reference is attached.
+    kl_ref: float = 0.0
+    kl_ref_coef: float = 0.0
 
 
 def check_trainable(network: SetNetwork) -> None:
@@ -443,9 +473,20 @@ def ppo_update(
     config: PerModelPPOConfig,
     *,
     generator: torch.Generator | None = None,
+    reference: SetNetwork | None = None,
+    kl_ref_coef: float = 0.0,
 ) -> UpdateStats:
-    """`n_epochs` passes of clipped-surrogate minibatches over the rollout."""
+    """`n_epochs` passes of clipped-surrogate minibatches over the rollout.
+
+    With `reference` and `kl_ref_coef > 0` the loss carries `kl_ref_coef`
+    times a per-decision drift estimator against the frozen reference --
+    `(rho - 1) - log rho` with `rho = pi_ref(a) / pi(a)` on the taken action,
+    the same estimator `approx_kl` uses against the old policy, so it needs
+    only the log-probs `evaluate_transitions` already computes. The gradient
+    flows through `pi`; the reference is read under `no_grad`.
+    """
     check_trainable(network)
+    anchored = reference is not None and kl_ref_coef > 0.0
     network.train()
     device = network.device
     transitions = rollout.transitions
@@ -471,6 +512,7 @@ def ppo_update(
         "kl": 0.0,
         "grad": 0.0,
         "clipped": 0.0,
+        "kl_ref": 0.0,
     }
     n_minibatches = 0
     selector_coef = config.resolved_selector_ent_coef
@@ -496,6 +538,17 @@ def ppo_update(
                 config.ent_coef * head_entropy + selector_coef * selector_entropy
             )
             loss = policy_loss + config.vf_coef * value_loss + entropy_loss
+            if anchored:
+                assert reference is not None
+                with torch.no_grad():
+                    anchor = evaluate_transitions(
+                        reference, [transitions[i] for i in rows]
+                    )
+                log_rho = anchor.log_probs - evaluated.log_probs
+                drift = ((torch.exp(log_rho) - 1.0) - log_rho) * policy
+                kl_ref_term = drift.sum() / n_policy
+                loss = loss + kl_ref_coef * kl_ref_term
+                totals["kl_ref"] += float(kl_ref_term.item())
             optimizer.zero_grad()
             loss.backward()
             grad_norm = float(
@@ -534,6 +587,8 @@ def ppo_update(
         n_minibatches=n_minibatches,
         ratio_p01=ratio_p01,
         ratio_p99=ratio_p99,
+        kl_ref=totals["kl_ref"] / count,
+        kl_ref_coef=kl_ref_coef if anchored else 0.0,
         **panel,
     )
 
