@@ -243,13 +243,18 @@ adapted coefficient is carried in the training state. Logged as
 `PerModelPPOConfig.credit` (`reward_timing.Credit`, default `mean`) is a knob
 of the run, refused on a resume that disagrees. `mean` is the bridge
 accounting: action terms over the alive count, state terms as the army mean at
-the close, so a turn's sum is the phase facade's scalar. `actor` pays the actor
-its action term undivided and hands the close's state terms back per model as
-`StepPayment.credits`; `collect_rollout` keeps, per env, the transition each
-model last acted on this turn (`acted_at`, from `StepEffect.actor_set`) and
-adds the credit there (`_land_credits`), or on the close when the model took
-no step. Nothing else in the loop changes: GAE sees a reward stream whose
-per-turn total is the sum of what the models earned instead of their mean.
+the close, so a turn's sum is the phase facade's scalar. `actor` pays every
+payment over the model count, a constant: the actor's action term stays where
+the mean put it, the close's state terms come back per model as
+`StepPayment.credits`, and the common payments shrink by the army size;
+`collect_rollout` keeps, per env, the transition each model last acted on
+this turn (`acted_at`, from `StepEffect.actor_set`) and adds the credit there
+(`_land_credits`), or on the close when the model took no step. Nothing else
+in the loop changes. ⚠ **The update normalises advantages but not value
+targets**, which is why the actor stream is over a constant and not undivided:
+the unscaled first cut had returns 13× the mean's and a pre-clip gradient
+norm 5× larger, clipped on every step, so the value loss took most of each
+update (A5c's first launch, kept as that confound's control).
 Built after the A3 speed screen's hold-term null and A5b's under-arrival; A5c
 is its first arm. `tests/test_per_model_actor_credit.py`.
 

@@ -1259,11 +1259,16 @@ rung stacked on #339.
   nominate a per-model state term as a per-model lever here until the
   retimer pays state terms to the model that produced them (a build, not
   an arm; the retimer is `envs/per_model/reward_timing.py`). **Built
-  2026-09-17: `--credit actor`** pays the actor its action term undivided
-  and lands each state term's per-model value on that model's own step of
-  the turn (`Credit`, `StepPayment.credits`, `_land_credits`; the default
-  `mean` is untouched). A5c — A5b re-run with that one change — is its
-  first arm; every per-model number before it was paid under the mean.
+  2026-09-17: `--credit actor`** pays every payment over the model count
+  (a constant), so the actor's action term stays where the mean put it,
+  each state term's per-model value lands on that model's own step of the
+  turn, and the common payments shrink by the army size (`Credit`,
+  `StepPayment.credits`, `_land_credits`; the default `mean` is untouched).
+  ⚠ The first cut paid the actor undivided and the unnormalised value loss
+  swamped the clipped gradient (returns 13×, pre-clip norm 5×, behind A5b
+  at 40,000 rounds) — a reward-scale change is a PPO change here. A5d — A5b
+  re-run with the scaled credit, A5c the unscaled control beside it — is
+  its first arm; every per-model number before it was paid under the mean.
 - ⚠ **The spread rung is an ASSIGNMENT problem from a random start, and
   the travel term's per-objective assignment half-contradicts it — but
   fixing the assignment made it WORSE.** Only 12% of A3 deployments give

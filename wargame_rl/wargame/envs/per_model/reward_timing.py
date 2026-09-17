@@ -35,14 +35,21 @@ to reorder instead of the policy to hold formation.
 Two CREDIT modes decide who a payment reaches. `Credit.mean`, the default,
 is the accounting above: action terms divided by the alive count, state terms
 as the army mean at the close, so a turn's sum is the phase facade's scalar
-and the bridge totals hold. `Credit.actor` pays each model its own: action
-terms undivided to the actor, and a state term's per-model value at the close
-as a CREDIT to the model whose position produced it (`StepPayment.credits`,
-which the rollout collector lands on that model's own step of the turn). It
-exists because under the mean a model's own move is worth `1/n` of the travel
-pay and nothing else it sees varies with what it did -- on a 24-body army the
-signal that distinguishes one decision from another is a twenty-fourth of one
-term (the A3 speed screen's null and A5b's under-arrival, #340).
+and the bridge totals hold. `Credit.actor` pays each model its own: the
+actor's action term, and a state term's per-model value at the close as a
+CREDIT to the model whose position produced it (`StepPayment.credits`, which
+the rollout collector lands on that model's own step of the turn) -- every
+payment, globals and terminal bonuses included, over the MODEL COUNT, a
+constant. Relative to `mean` that leaves the actor's own term where it was
+and shrinks every common payment by the army size, which is the treatment:
+PPO normalises advantages, so the policy gradient sees only that ratio, and
+the constant keeps the return scale of the mean's order so the value loss
+does not swamp the clipped gradient (the unscaled first cut had returns 13x
+larger and the pre-clip gradient norm 5x, clipped on every step). It exists
+because under the mean a model's own move is worth `1/n` of the travel pay
+and nothing else it sees varies with what it did -- on a 24-body army the
+signal that distinguishes one decision from another is a twenty-fourth of
+one term (the A3 speed screen's null and A5b's under-arrival, #340).
 
 The retimer owns its OWN `RewardPhaseManager` unless one is passed in:
 `closest_objective_v2`, `charge_progress` and `objective_flip_bonus` carry
@@ -104,8 +111,9 @@ class Credit(str, Enum):
     # Action terms over the alive count, state terms as the army mean: a
     # turn's sum is the phase facade's scalar (the bridge accounting).
     mean = "mean"
-    # Action terms undivided to the actor; state terms per model, credited to
-    # the model whose position produced them on its own step of the turn.
+    # Every payment over the model count: the actor keeps its action term,
+    # state terms are credited per model on the model's own step of the turn,
+    # and the common payments shrink by the army size relative to `mean`.
     actor = "actor"
 
 
@@ -404,14 +412,17 @@ class PerStepReward:
         if n_alive == 0:
             return 0.0
         n_models = len(env.wargame_models)
+        per_model = self.credit is Credit.actor
         kills = np.zeros(n_models, dtype=np.int64)
         for index, count in effect.kills_by_model.items():
             if index < n_models:
                 kills[index] = count
         ctx = self._context(action_phase=phase, kills_by_model=kills)
         view = cast("BattleView", env)
-        # The mean accounting shares a term over the army; the actor keeps it.
-        share = 1.0 if self.credit is Credit.actor else 1.0 / n_alive
+        # The mean accounting shares a term over the ALIVE count; the actor
+        # mode over the model count, a constant, so the actor's term does not
+        # grow as its army dies while every common payment shrinks by it.
+        share = 1.0 / len(env.wargame_models) if per_model else 1.0 / n_alive
         total = 0.0
         for name, calculator in classes.potential:
             for index in actor_set:
@@ -478,6 +489,9 @@ class PerStepReward:
         credits: dict[int, float] = {}
         n_alive = int(player_alive.sum())
         per_model = self.credit is Credit.actor
+        # Under `actor` every close payment is over the model count, a
+        # constant; under `mean` a state term is the mean over the alive.
+        common = 1.0 / len(env.wargame_models) if per_model else 1.0
         for name, calculator in classes.state:
             if n_alive == 0:
                 continue
@@ -487,16 +501,16 @@ class PerStepReward:
                 value = calculator.calculate(int(index), model, view, ctx)
                 summed += value
                 if per_model:
-                    owed = calculator.weight * value * self.phase_scale
+                    owed = calculator.weight * value * self.phase_scale * common
                     credits[int(index)] = credits.get(int(index), 0.0) + owed
             if per_model:
-                paid = calculator.weight * summed * self.phase_scale
+                paid = calculator.weight * summed * self.phase_scale * common
             else:
                 paid = calculator.weight * summed / n_alive * self.phase_scale
                 total += paid
             breakdown[name] = breakdown.get(name, 0.0) + paid
         for name, delta_global in classes.delta_globals:
-            paid = delta_global.weight * delta_global.calculate(view, ctx)
+            paid = delta_global.weight * delta_global.calculate(view, ctx) * common
             total += paid
             breakdown[name] = breakdown.get(name, 0.0) + paid
         for name, state_global in classes.state_globals:
@@ -504,13 +518,14 @@ class PerStepReward:
                 state_global.weight
                 * state_global.calculate(view, ctx)
                 * self.phase_scale
+                * common
             )
             total += paid
             breakdown[name] = breakdown.get(name, 0.0) + paid
         if terminated:
             for key, bonus in self.manager.terminal_bonuses(view, ctx).items():
-                total += bonus
-                breakdown[key] = breakdown.get(key, 0.0) + bonus
+                total += bonus * common
+                breakdown[key] = breakdown.get(key, 0.0) + bonus * common
         self._baseline = self._read_baseline()
         return total, credits
 

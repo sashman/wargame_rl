@@ -116,14 +116,21 @@ Rules the table implies, each pinned by `tests/test_per_model_reward_timing.py`:
   whole-army per-model vector paid.
 - **`Credit.actor` (`--credit actor` on `train_per_model.py`) is the other
   accounting**, built 2026-09-17 for #340 after the A3 speed screen's hold-term
-  null and A5b's under-arrival: action terms are paid to the actor
-  **undivided**, and each state term's per-model value at the close is a
-  **credit** (`StepPayment.credits`) that the rollout collector lands on the
-  transition where that model last acted this turn — on the close itself when
-  it took no step, so nothing paid is lost. Within a turn the discount is 1.0,
-  so an earlier landing leaves every earlier step's return unchanged and
-  removes the credit from the returns of the steps after it. Globals, delta
-  globals and the terminal bonuses are unchanged. The default stays `mean`, so
+  null and A5b's under-arrival: **every payment is over the model count, a
+  constant** — the actor's action term stays where the mean put it (the
+  alive count against the model count), each state term's per-model value at
+  the close is a **credit** (`StepPayment.credits`) that the rollout collector
+  lands on the transition where that model last acted this turn — on the
+  close itself when it took no step, so nothing paid is lost — and the common
+  payments (globals, delta globals, the terminal bonuses) shrink by the army
+  size. PPO normalises advantages, so what the policy gradient sees is the
+  ratio of a model's own term to the common shock, `n` times the mean's; the
+  constant keeps the return scale of the mean's order, because the value loss
+  is not normalised and an unscaled first cut (returns 13× larger, pre-clip
+  gradient norm 5×, clipped on every step) let it swamp the policy gradient.
+  Within a turn the discount is 1.0, so an earlier landing leaves every
+  earlier step's return unchanged and removes the credit from the returns of
+  the steps after it. The default stays `mean`, so
   every bridge total and every run before it are untouched; the mode is a PPO
   knob a resume keeps. Pinned by `tests/test_per_model_actor_credit.py`.
 - **`group_cohesion` is a STATE term here**, a recorded departure from the #283

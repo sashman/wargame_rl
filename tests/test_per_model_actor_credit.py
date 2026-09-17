@@ -5,12 +5,14 @@ Under the default `Credit.mean` (the bridge accounting) a model's own move is
 worth `1/n_alive` of the travel pay and every state term reaches it as the
 army mean at the close -- on a 24-body army the only thing that distinguishes
 one decision from another is a twenty-fourth of one term (#340: the A3 speed
-screen's null, A5b's under-arrival). Pinned here: the default is unchanged
-step for step; under `actor` an action term is the mean's times the alive
-count and a close's state terms come back as per-model credits that sum to
-the alive count times the mean's payment; and the rollout collector lands
-each credit on the transition its model acted on this turn, or on the close
-when it took none, conserving the total.
+screen's null, A5b's under-arrival). Under `actor` every payment is over the
+MODEL COUNT, a constant: the actor's action term stays where the mean put it
+(alive count against model count), while the common payments -- globals,
+terminal bonuses, and the state terms now returned as per-model credits --
+shrink by the army size. Pinned here: the default is unchanged step for step;
+the actor's arithmetic against the mean's, term by term; and the rollout
+collector lands each credit on the transition its model acted on this turn,
+or on the close when it took none, conserving the total.
 """
 
 from __future__ import annotations
@@ -107,24 +109,31 @@ def test_the_default_is_the_mean_and_is_unchanged_step_for_step() -> None:
 
 def test_the_actor_keeps_its_action_term_and_owns_its_state_credit() -> None:
     env = PerModelEnv(_config())
+    n_models = len(env.wargame_models)
     mean, actor = PerStepReward(env), PerStepReward(env, credit=Credit.actor)
     saw_credit = saw_action = False
     for kind, n_alive, (m, a) in _play(env, [mean, actor], seed=5):
         if kind is StepKind.close_turn:
-            # The close's scalar drops the state terms; they come back as
-            # per-model credits summing to n_alive x the mean's payment.
+            # The close's scalar keeps the common payments over the model
+            # count and drops the state terms, which come back as per-model
+            # credits summing to n_alive / n_models x the mean's payment.
             state_mean = sum(m.breakdown.get(t, 0.0) for t in STATE_TERMS)
-            assert a.reward == pytest.approx(m.reward - state_mean)
-            assert sum(a.credits.values()) == pytest.approx(state_mean * n_alive)
+            assert a.reward == pytest.approx((m.reward - state_mean) / n_models)
+            assert sum(a.credits.values()) == pytest.approx(
+                state_mean * n_alive / n_models
+            )
             assert set(a.credits) == set(
                 int(i) for i in np.flatnonzero(alive_mask_for(env.wargame_models))
             )
             for term in STATE_TERMS:
-                assert a.breakdown[term] == pytest.approx(m.breakdown[term] * n_alive)
+                assert a.breakdown[term] == pytest.approx(
+                    m.breakdown[term] * n_alive / n_models
+                )
             saw_credit = saw_credit or bool(a.credits)
         else:
+            # The actor's term: over the model count instead of the alive count.
             assert a.credits == {}
-            assert a.reward == pytest.approx(m.reward * n_alive)
+            assert a.reward == pytest.approx(m.reward * n_alive / n_models)
             saw_action = saw_action or a.reward != 0.0
     assert saw_credit and saw_action
     # Both accountings report the whole of what they paid.

@@ -65,3 +65,29 @@ Arrival improves substantially: 16–22 bodies on points and success
 allocation failure, which a bigger travel credit does not address. If
 success does not move at all, the dilution hypothesis is wrong on the
 scale half and the state-credit half is the only one left.
+
+## Amendment 1 — written 2026-09-18 00:50, at 40,000 of 245,760 rounds, before any final read
+
+**A confound in the build, found on the panel.** Over rounds 30,000–41,500 the
+three A5c seeds read success 1.2 / 0.3 / 0.1% in-run against A5b's 6.2 /
+4.6 / 4.3% at the same rounds, `held` 2.3 / 2.2 / 2.7 against 3.3 / 2.1 /
+3.3. The panel says why: the actor stream's returns are 13× the mean's
+(return mean 12–14 against 0.9–1.1, return sd 6.6–8.5 against 0.41–0.49),
+and while `ppo_update` normalises advantages it does not normalise value
+targets, so the value loss grew by the square of that and the pre-clip
+gradient norm rose from 1.1–1.3 to 4.7–5.9 with `max_grad_norm` 0.5
+clipping every step — most of each update is now the value head's, and
+the policy gradient's share fell about five-fold. Explained variance is
+high (0.93–0.96) and the entropy heads unchanged, so this is scale, not a
+broken signal. A reward-scale change is a PPO change on this trainer.
+
+**The fix, and the arm.** `Credit.actor` now pays every payment over the
+model count, a constant: the actor's action term is where the mean put it
+(alive count against model count, identical on A5 where nobody dies) and
+the common payments — coverage, the terminal bonus — shrink by 24. The
+policy gradient sees exactly the ratio the unscaled cut gave it, since
+advantages are normalised; the return scale is the mean's order. **A5d**
+is A5b with that credit (tag `a5d`, everything else as above), launched
+now; **A5c continues to its budget as the unscaled control**, so the pair
+reads the scale confound directly. The criteria above apply to A5d;
+A5c is a readout.
