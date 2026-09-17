@@ -1,45 +1,136 @@
-# Curriculum rung E1 (issue #333, parent #328): ONE unit of three walks onto ONE
-# objective 25" away with nobody shooting. Movement only, no terrain, no map
-# pool, fixed objective. The first pipeline rung: if the per-model trainer
-# cannot learn this in minutes the fault is in the plumbing, and the whole-army
-# trainer runs the same scenario as the control.
+# Curriculum rung E1 (parent question #340): the A5 army with guns and a mirror
+# opponent -- twenty-four models in eight squads of three a side, every model
+# carrying the rifle the golden family carries (range 12, one attack), on a
+# FLAT board with a FIXED layout: six objectives placed symmetrically, two in
+# each home band and two in the middle, no terrain, no map pool. Everything
+# else is `24v24_maps_spare_squads.yaml` -- the twenty-round game, the random
+# turn order, the win reward phase, `player_ahead_on_vp`, `squad_march_take`
+# on the opponent seat -- so that E2 (generated terrain) and E3 (the real
+# tables) change one thing each on the way to the refereed eval family.
+# `objective_budget` / `terrain_budget` are kept at the golden family's values
+# so a checkpoint trained here loads on E2 and E3 (padding, no terrain).
 #
-# The bar is `squad_march_take`, measured first on seeds 700000+. Success is
-# every alive model inside the objective; `terminate_on_success` ends the
-# episode there and the terminal bonus is scaled by the rounds left, which is
-# the "as fast as possible" term. Deployment is a band on the left edge so
-# the squad starts 22-28" from the marker.
+# The bar is `squad_march_take` against itself, measured first on seeds
+# 700000+, both facades; the criterion is vp paired at n=180.
 config_name: curriculum_e1
-number_of_wargame_models: 3
-number_of_opponent_models: 0
-number_of_objectives: 1
+
+number_of_wargame_models: 24
+number_of_opponent_models: 24
+number_of_objectives: 6
 objective_radius_size: 3
 board_width: 60
 board_height: 44
-max_groups: 1
-number_of_battle_rounds: 8
-deployment_zone: [4, 16, 10, 28]
-opponent_deployment_zone: [50, 16, 56, 28]
-models:
-  - { group_id: 0 }
-  - { group_id: 0 }
-  - { group_id: 0 }
+max_groups: 8
+turn_order: random
+number_of_battle_rounds: 20
+skip_phases:
+  - command
+  - charge
+  - fight
+
+deployment_zone: [0, 0, 20, 44]
+opponent_deployment_zone: [40, 0, 60, 44]
+
+opponent_policy:
+  type: scripted_baseline
+  params:
+    baseline: squad_march_take
+
+objective_budget: 6
+terrain_budget: 16
+
+track_exposure: true
+
+objective_min_separation: null
 objectives:
-  - { x: 35, y: 22 }
+  - { x: 18, y: 12 }
+  - { x: 18, y: 32 }
+  - { x: 30, y: 8 }
+  - { x: 30, y: 36 }
+  - { x: 42, y: 12 }
+  - { x: 42, y: 32 }
+
+models:
+  - &sq_0 { group_id: 0, weapons: &rifle [{ range: 12, attacks: 1 }] }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1, weapons: *rifle }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2, weapons: *rifle }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3, weapons: *rifle }
+  - *sq_3
+  - *sq_3
+  - &sq_4 { group_id: 4, weapons: *rifle }
+  - *sq_4
+  - *sq_4
+  - &sq_5 { group_id: 5, weapons: *rifle }
+  - *sq_5
+  - *sq_5
+  - &sq_6 { group_id: 6, weapons: *rifle }
+  - *sq_6
+  - *sq_6
+  - &sq_7 { group_id: 7, weapons: *rifle }
+  - *sq_7
+  - *sq_7
+
+opponent_models:
+  - &opp_sq_0 { group_id: 0, weapons: *rifle }
+  - *opp_sq_0
+  - *opp_sq_0
+  - &opp_sq_1 { group_id: 1, weapons: *rifle }
+  - *opp_sq_1
+  - *opp_sq_1
+  - &opp_sq_2 { group_id: 2, weapons: *rifle }
+  - *opp_sq_2
+  - *opp_sq_2
+  - &opp_sq_3 { group_id: 3, weapons: *rifle }
+  - *opp_sq_3
+  - *opp_sq_3
+  - &opp_sq_4 { group_id: 4, weapons: *rifle }
+  - *opp_sq_4
+  - *opp_sq_4
+  - &opp_sq_5 { group_id: 5, weapons: *rifle }
+  - *opp_sq_5
+  - *opp_sq_5
+  - &opp_sq_6 { group_id: 6, weapons: *rifle }
+  - *opp_sq_6
+  - *opp_sq_6
+  - &opp_sq_7 { group_id: 7, weapons: *rifle }
+  - *opp_sq_7
+  - *opp_sq_7
+
 reward_phases:
-  - name: arrive
-    terminate_on_success: true
-    terminal_success_bonus: 5.0
+  - name: win
+    terminate_on_success: false
+    terminal_success_bonus: 2.0
     reward_calculators:
       - type: closest_objective_v2
         weight: 1.0
         params:
           progress_scale: 6.0
           fallback_to_nearest: true
-          overstack_penalty_per_extra: 0.0
+          overstack_penalty_per_extra: 0.01
+      - type: objective_hold  # LEGALITY-GATED ARM: see header
+        weight: 1.25
+        params: { crowding_exponent: 1.0, require_coherent: true }
+      - type: model_kills
+        weight: 1.0
+        params: { bonus_per_kill: 2.0 }
+      - type: group_cohesion
+        weight: 0.3
+        params: { group_max_distance: 6.0, violation_penalty: -0.05 }
+      - type: vp_gain
+        weight: 2.0
       - type: objective_coverage
         weight: 0.3
     success_criteria:
-      type: all_at_objectives
+      type: player_ahead_on_vp
       params: {}
+
 observe_objective_control: true
+
+coherency:
+  enforce_at_deployment: true

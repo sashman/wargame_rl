@@ -1318,7 +1318,14 @@ rung stacked on #339.
   and the E rungs' control is compared against itself on the phase
   facade's own evaluation family. Run `just measure-bridge` on every
   rung before its control launches; a divergence there is a design
-  fault, not a finding. **Fixed 2026-09-17 with C3:** the phase facade ends
+  fault, not a finding — **bounded 2026-09-17 with E1: a divergence
+  under a rule the per-model facade RECORDS (`FacadeDivergence`, e.g.
+  `shooting.targets_judged_after_casualties`, which fires in every
+  episode once a side fields several shooting units) is the per-model
+  facade playing the more rules-faithful game; the rung stands and
+  each trainer is read against the bar on its OWN facade.
+  `measure-bridge` names the recorded rules and exits 2 only when
+  nothing was recorded.** **Fixed 2026-09-17 with C3:** the phase facade ends
   on an opponent wipe only under `terminate_on_opponent_elimination`
   (default `False`, the mirror of the player-side switch), so the two
   facades agree by default and a wipe rung can carry a whole-army

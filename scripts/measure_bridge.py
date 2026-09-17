@@ -7,9 +7,14 @@ same game under both steps. This scores one scripted policy through
 `evaluate_selector` (the phase facade) and `evaluate_per_model_chooser` (the
 per-model facade) on identical seeds and prints both rows, the success rate
 and rounds-to-success the per-model side measures, and whether every shared
-field agreed. A disagreement is a facade divergence on this scenario
-(`tests/test_per_model_bridge.py` names the orderings that legitimately
-diverge) and the rung is redesigned, not trained.
+field agreed. A disagreement is a facade divergence on this scenario. The
+per-model facade records the rules it applies that the phase facade cannot
+(`FacadeDivergence`: targets and cover judged after an earlier unit's
+casualties, attrition on both sides, a battle that continues after a wipe),
+so a divergence is read two ways: under a recorded rule it is the per-model
+facade playing the more rules-faithful game, the rung stands, and each
+trainer is read against the bar on its OWN facade; with no rule recorded it
+is a design fault and the rung is redesigned, not trained (exit 2).
 
 Usage: just measure-bridge <env_config> [n_episodes] [policy] [seed_base]
 """
@@ -17,6 +22,7 @@ Usage: just measure-bridge <env_config> [n_episodes] [policy] [seed_base]
 from __future__ import annotations
 
 import sys
+from collections import Counter
 
 from scripts.scenario_overrides import describe, load_env_config, parse_overrides
 from wargame_rl.wargame.envs.baseline.evaluate import evaluate_selector, selector_for
@@ -68,6 +74,49 @@ def format_row(label: str, result: EvalResult) -> str:
     )
 
 
+class _CensusEnv(PerModelEnv):
+    """The per-model facade with a census of the rules it records.
+
+    `env.divergences` is cleared on every reset and the runner plays its
+    episodes in waves, so the env alone remembers its last episode; this
+    counts the FIRST rule each episode records, across every episode."""
+
+    first_rule_by_episode: Counter[str] = Counter()
+
+    def note_divergence(self, rule: str) -> None:
+        if not self.divergences:
+            _CensusEnv.first_rule_by_episode[rule] += 1
+        super().note_divergence(rule)
+
+
+def bridge_verdict(differing: list[str], first_rules: Counter[str]) -> tuple[str, int]:
+    """The line the check prints and the exit code it leaves.
+
+    Identical fields: the rung's bar transfers as one number. Differing
+    fields under a recorded rule: the per-model facade applied a rule the
+    phase facade cannot, and the two rows are the bar on each facade.
+    Differing fields with nothing recorded: a design fault."""
+    if not differing:
+        return "bridge identical on every shared field", 0
+    fields = ", ".join(differing)
+    if first_rules:
+        rules = ", ".join(
+            f"{rule} (first in {count} episodes)"
+            for rule, count in first_rules.most_common()
+        )
+        return (
+            f"BRIDGE DIVERGES on: {fields}\n"
+            f"under recorded rules: {rules}\n"
+            "read each trainer against the bar on its own facade",
+            0,
+        )
+    return (
+        f"BRIDGE DIVERGES on: {fields}\n"
+        "with NO rule recorded by the per-model facade: a design fault",
+        2,
+    )
+
+
 def main() -> None:
     """Score the policy through both facades and print the comparison."""
     argv, overrides = parse_overrides(sys.argv)
@@ -88,7 +137,7 @@ def main() -> None:
         selector_for(build_baseline_policy(policy_name)), phase_env, seeds, policy_name
     )
     phase_env.close()
-    envs = [PerModelEnv(env_config) for _ in range(min(EVAL_WAVE_SIZE, n_episodes))]
+    envs = [_CensusEnv(env_config) for _ in range(min(EVAL_WAVE_SIZE, n_episodes))]
     per_model = evaluate_per_model_chooser(
         scripted_chooser(build_baseline_policy(policy_name), envs),
         envs,
@@ -114,10 +163,10 @@ def main() -> None:
     print("-" * len(header))
     print(format_row("phase", phase))
     print(format_row("per-model", per_model))
-    if differing:
-        print(f"\nBRIDGE DIVERGES on: {', '.join(differing)}")
-        raise SystemExit(2)
-    print("\nbridge identical on every shared field")
+    verdict, exit_code = bridge_verdict(differing, _CensusEnv.first_rule_by_episode)
+    print(f"\n{verdict}")
+    if exit_code:
+        raise SystemExit(exit_code)
 
 
 if __name__ == "__main__":
