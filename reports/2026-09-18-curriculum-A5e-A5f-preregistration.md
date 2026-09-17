@@ -1,0 +1,50 @@
+# Pre-registration: A5e (the hold term under the actor credit) and A5f (the bar cloned, then anchored PPO)
+
+Written 2026-09-18 01:15, **before any number for either exists**, on
+branch `feature/per-model-actor-credit` (PR #383). Parent question #340,
+rung **A5**. Goal set by Sash: make A5 pass. A5d (the scaled actor
+credit on A5's own reward) is at ~20k of 245,760 rounds beside these.
+
+## A5e — the state-credit half of the build, on A5
+
+**The one change relative to A5d:** `objective_hold` at
+`crowding_exponent` 1.0, weight 1.0 (`configs/experiments/curriculum/
+a5_hold.yaml`), the term the A3 speed screen's S1 read NULL under the
+mean credit. Under `--credit actor` the close pays each model its own
+value of it on the step it acted, so a body standing on a point it
+reached is paid for standing there and a point pays a pot. Everything
+else is A5d: from scratch, seeds 1 / 2 / 3, 245,760 rounds, 128 rounds
+per update, `--ent-coef 0.003`, Wandb `curriculum-a5`, tag `a5e`.
+
+Comparators: A5d (same credit, no hold term) seed for seed at the same
+rounds — the paired reading of the term; A5b (0.260 / 0.180 / 0.160) as
+the rung's record. Criteria: **PASS** success ≥ 0.95 on all three seeds
+at 245,760 (greedy, n=100 on 700000+) with no in-run dip below 0.80
+after the first rolling pass; **MOVES** ahead of A5d on 3/3 at 245,760;
+**FAIL** neither. Prediction: the hold term stops the walk-off (`held`
+rises past A5d's) and arrival improves; a pass is unlikely, since the
+last empty point is the allocation failure the control also has.
+
+## A5f — the bar cloned into the set network, then anchored PPO
+
+The D-route applied to A5: `squad_march_take` solves the rung at 1.000
+in 6.77 turns, and the record says the set network holds a scripted plan
+from imitation that reward could not teach it (D1b: 0.96 on C3b from
+1,200 games) and that anchored PPO holds it (D2: 0.94–0.96).
+
+1. **The clone:** `just behaviour-clone-per-model squad_march_take
+   configs/experiments/curriculum/a5.yaml 1200 40
+   checkpoints/per_model/clones/take-a5-1200-s0.pt 0`, seeds 800000+,
+   the last 240 games held out. Scored greedy at n=100 on 700000+.
+   **PASS (by imitation)** if success ≥ 0.95, `held` ≥ 5.8, turns within
+   a round of the script's 6.77; reported as what it is — the "start"
+   axis, not a reward result.
+2. **Anchored PPO from it** (only if the clone passes): A5's reward,
+   `--warm-start-from` the clone, `--kl-ref-coef 10 --kl-ref-target
+   0.03`, `--credit actor`, 3 seeds, 122,880 rounds, tag `a5f`.
+   **HOLDS** if success ≥ 0.95 on 3/3 at the end; **IMPROVES** if turns
+   are ahead of the clone's paired on 3/3.
+
+What a pass here would mean: the architecture can play A5; the per-model
+trainer cannot yet learn it from reward. Both halves go in the ladder
+row.
