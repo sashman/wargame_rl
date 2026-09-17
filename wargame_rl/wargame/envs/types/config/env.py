@@ -1026,11 +1026,35 @@ class WargameEnvConfig(BaseModel):
             )
         if not (coherency.enforce_at_deployment or coherency.attrition):
             return self
-        for label, count in (
-            ("number_of_wargame_models", self.number_of_wargame_models),
-            ("number_of_opponent_models", self.number_of_opponent_models),
+        for label, count, declared in (
+            ("number_of_wargame_models", self.number_of_wargame_models, self.models),
+            (
+                "number_of_opponent_models",
+                self.number_of_opponent_models,
+                self.opponent_models,
+            ),
         ):
-            if count > 1 and max(1, count // self.max_groups) < 2:
+            if count <= 1:
+                continue
+            if declared and len(declared) == count:
+                # The side names its units, so the smallest declared unit is
+                # the one that could hold vacuously -- not `count // max_groups`,
+                # which reads a three-model enemy unit under the player's
+                # `max_groups` as three units of one and refuses a config the
+                # env would run correctly.
+                sizes: dict[int, int] = {}
+                for model in declared:
+                    sizes[model.group_id] = sizes.get(model.group_id, 0) + 1
+                if min(sizes.values()) < 2:
+                    raise ValueError(
+                        f"coherency is enforced but {label} declares a unit of "
+                        "one model (group_id "
+                        f"{min(sizes, key=lambda g: sizes[g])}), where coherency "
+                        "holds vacuously. Give every declared unit at least two "
+                        "models."
+                    )
+                continue
+            if max(1, count // self.max_groups) < 2:
                 raise ValueError(
                     f"coherency is enforced but {label}={count} with "
                     f"max_groups={self.max_groups} puts every model in its own "

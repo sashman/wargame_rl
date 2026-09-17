@@ -1147,6 +1147,7 @@ rung stacked on #339.
 | **A3 speed screen** three one-change arms on A3, read at the cap against A3's own runs (0.70 / 0.80 / 0.77) | why ~200k rounds | **S1 hold NULL** (0.94 / 0.81 / 0.90) · **S2 matching HARMFUL** (0.83 / 0.69 / 0.61) · **S3 warm-start from A2b AHEAD 3/3** (0.91 / 0.94 / 0.96, in-run 80% at 11k–22k rounds v scratch's 91k–never) | — | (A3's) | [S1](reports/2026-09-15-curriculum-a3-speed-s1-hold.md) · [S2](reports/2026-09-15-curriculum-a3-speed-s2-match.md) · [S3](reports/2026-09-15-curriculum-a3-speed-s3-warm.md) |
 | **A5** eight squads, six objectives | bodies + points | **control NULL (scenario) on the letter, and the clause is wrong; per-model arm FAIL 0/3 (A5b), a different failure** | 0.260 / 0.180 / 0.160 at 245,760, never a rolling 50% in-run; `held` 4.1–4.6 of 6 with **8–10 of 24 bodies on points**, empty point different each episode, max stack 3.0–3.5 (script 5.8), turns 9.5–9.7 of 10 (script 6.77), coherency 0.10 — under-arrival, not stacking; clip fraction 0.37–0.42 | 0.890 / 0.820 / 0.600 at 60, **0.800 / 0.940 / 0.980 at 120**: one point left empty with 22 of 24 bodies on points — the whole-army trainer's allocation failure, on a rung the script solves at 1.000 | [A5](reports/2026-09-15-curriculum-a5-control-cannot-allocate.md) · [A5b](reports/2026-09-16-curriculum-a5b-fails-differently.md) |
 | **T1** A5 warm-started from A4x, against A5b from scratch | start (transfer) | **FAIL as pre-registered, 0/3 — and the transfer is real** | 0.450 / 0.290 / 0.200 at 245,760 (A5b 0.260 / 0.180 / 0.160), `held` 4.9 / 4.3 / 4.5; no seed reaches a rolling 95% in-run (peaks 64 / 51 / 64 v 48 / 43 / 30), so the halving bound is missed on every seed; at 20,480 rounds already where A5b ends at 245,760, then flat; panel normal where A5b's is red | (A5's: 0.800 / 0.940 / 0.980 at 120) | [2026-09-17](reports/2026-09-17-curriculum-t1-transfer-does-not-rescue-a5.md) |
+| **C1** A3 plus one enemy unit standing on a point, nobody shooting | enemy | **FAIL as pre-registered, by one seed on a plateau** — warm-started from A3x | 0.990 / **0.930** / 0.990 at 245,760, turns 5.01–5.37 (script 4.98), held 2.96–3.15 of 3; at 80% in-run by 2.6k rounds on every seed; the short point is never the enemy's; coherency greedy 0.50–0.63 | 0.920 / 0.960 / 0.970 at 60 epochs, **0.980 / 0.990 / 0.990 at 120**, turns 6.8–7.1, 95% in-run at epochs 64 / 75 / 65 | [2026-09-16](reports/2026-09-16-curriculum-c1-two-of-three.md) |
 
 - **The per-model pipeline learns**, at 128 rounds per update, on the same
   code that sat at the floor at 8–32. It reaches the script's speed where
@@ -1285,6 +1286,17 @@ rung stacked on #339.
   army (1/24 here against 1/12 on A3–A4) — the retimer build the speed
   screen named is the test. T1 (the same rung warm-started from A4x)
   reads whether a warm start buys arrival.
+- **On the first rung with an enemy, the warm start carries the skill
+  and the enemy's disc is not the failure.** C1's per-model arm, started
+  from A3x, was at 80% in-run by 2,560 rounds on every seed where the
+  whole-army control needed 131k–154k, and reads 0.990 / 0.930 / 0.990
+  at 245,760 — a FAIL by one seed on a plateau, the control passing 3/3
+  two rounds slower. The census puts every miss at the points *beside*
+  the enemy's, never on its disc: the engagement-range endpoint rule is
+  learned in a few thousand rounds, and what a C rung inherits from A3
+  is A3's residual allocation error (0.96–0.97 at its best). Read a C
+  rung's FAIL against the A rung it warm-started from before blaming the
+  enemy.
 - **Six per-model seeds on two rungs all arrive within 0.2 turns of the
   script; six whole-army control seeds are all a round or more behind**
   (per-model 4.88–5.11 v script 4.93–4.96 v control 6.07–7.43). Movement
