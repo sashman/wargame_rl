@@ -100,3 +100,20 @@ explicit, and the 122,880 checkpoint is a readout. The criteria are
 unchanged. Compared with C3's control at 60 (0.79 / 0.56 / 0.87), the
 whole-army trainer is where the final-board rule bites hardest: its
 bodies reach the points and do not hold them.
+
+## Amendment 2 — written 2026-09-17 10:18, after the control's 120-epoch read and before any per-model number
+
+**The control at 120 epochs**, n=100 on 700000+, `last.ckpt` of the
+`-ctl-x2` runs: success **0.280 / 0.000 / 0.450**, `held` 2.77 / 2.15 /
+3.14, `on_obj` 0.83–0.85, coherent 0.62–0.67, vp +34.9 / +28.7 / +39.8
+against the bar's +63.5. In-run (n=30, rolling five): never 80%; the
+last ten evaluations 0.10–0.50 / 0.00–0.40 / 0.37–0.63. Wandb
+`curriculum-c3b`: `bfibh5va` / `ugs0hohp` / `i8sh0mm1`.
+
+**What this is.** The whole-army control fails C3b's criterion on all
+three seeds at its extended budget, by more than on any rung before it,
+on a scenario the escort solves at 0.990: A5's clause, a finding about
+the control. Its bodies are on points (`on_obj` 0.83–0.85) and the
+points are not all held at the end — the walk-in that C3's instant win
+paid is now paid for by the blockers. **The per-model arm and the
+companion are read at 245,760 beside this row, criteria unchanged.**
