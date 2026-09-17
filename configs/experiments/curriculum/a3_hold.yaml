@@ -1,0 +1,61 @@
+# Curriculum rung A3, speed arm S1 (parent question #340): `a3.yaml` with ONE
+# change -- an `objective_hold` term at `crowding_exponent` 1.0, the pot-split
+# lever from the shooting config. Measured on A3's own board, the per-model
+# policy at 20k rounds reaches points and then walks off them (five bodies on
+# objectives at turn 5, two by turn 8): the travel term saturates at the
+# boundary, coverage is 0.3 over four points broadcast to twelve bodies alike,
+# and the terminal bonus never fires until all four are held -- nothing pays a
+# body for standing on a point it reached. This term does, per model, and a
+# point pays a POT so the fourth squad is paid more on an empty point than on a
+# held one. Everything else is `a3.yaml` to the byte; the bar is unchanged.
+config_name: curriculum_a3_hold
+number_of_wargame_models: 12
+number_of_opponent_models: 0
+number_of_objectives: 4
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 4
+number_of_battle_rounds: 8
+deployment_zone: [4, 4, 10, 40]
+opponent_deployment_zone: [50, 16, 56, 28]
+models:
+  - &sq_0 { group_id: 0 }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+objectives:
+  - { x: 35, y: 8 }
+  - { x: 35, y: 17 }
+  - { x: 35, y: 27 }
+  - { x: 35, y: 36 }
+coherency:
+  enforce_at_deployment: true
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.0
+      - type: objective_coverage
+        weight: 0.3
+      - type: objective_hold  # S1: the one change
+        weight: 1.0
+        params: { crowding_exponent: 1.0 }
+    success_criteria:
+      type: all_objectives_occupied
+      params: {}
+observe_objective_control: true
