@@ -1145,6 +1145,7 @@ rung stacked on #339.
 | **A3** four squads, four objectives (spread) | points | **FAIL at the cap, PASS 3/3 resumed to the control's 245k (A3x)** | at 122,880: 0.700 / 0.800 / 0.770, held 3.5–3.7; **at 245,760: 0.960 / 0.960 / 0.970, held 3.94–3.96, turns 5.19–5.33 (script 5.28)**; coherency greedy 0.38–0.52 | 0.850 / 0.980 / 0.930 at 60 epochs, **0.950 / 0.950 / 0.960 at 120** (245k rounds), turns 6.2–6.3 | [A3](reports/2026-09-15-curriculum-a3-behind-the-control-at-the-cap.md) · [A3x](reports/2026-09-15-curriculum-a3x-passes.md) |
 | **A4** four squads, three objectives (a spare) | points | **FAIL at the cap, PASS 3/3 resumed to 2× the cap (A4x)** | at 122,880: 0.930 / 0.930 / 0.970, held 2.91–2.97 of 3; **at 245,760: 0.980 / 1.000 / 1.000, held 2.96 / 3.00 / 3.00, turns 4.72–4.75 (script 4.70)**, `on_obj` 0.65–0.73; explained variance 0.42–0.54 → 0.56–0.59; coherency greedy 0.43–0.53 → 0.52–0.70 | 0.980 / 0.980 / 0.990 at 60 epochs, passed in-run at epochs 44–58 (92k–121k rounds), turns 6.1–6.2 (script 4.70) | [A4](reports/2026-09-15-curriculum-a4-one-se-short-at-the-cap.md) · [A4x](reports/2026-09-15-curriculum-a4x-passes.md) |
 | **A3 speed screen** three one-change arms on A3, read at the cap against A3's own runs (0.70 / 0.80 / 0.77) | why ~200k rounds | **S1 hold NULL** (0.94 / 0.81 / 0.90) · **S2 matching HARMFUL** (0.83 / 0.69 / 0.61) · **S3 warm-start from A2b AHEAD 3/3** (0.91 / 0.94 / 0.96, in-run 80% at 11k–22k rounds v scratch's 91k–never) | — | (A3's) | [S1](reports/2026-09-15-curriculum-a3-speed-s1-hold.md) · [S2](reports/2026-09-15-curriculum-a3-speed-s2-match.md) · [S3](reports/2026-09-15-curriculum-a3-speed-s3-warm.md) |
+| **T1** A5 warm-started from A4x, against A5b from scratch | start (transfer) | **FAIL as pre-registered, 0/3 — and the transfer is real** | 0.450 / 0.290 / 0.200 at 245,760 (A5b 0.260 / 0.180 / 0.160), `held` 4.9 / 4.3 / 4.5; no seed reaches a rolling 95% in-run (peaks 64 / 51 / 64 v 48 / 43 / 30), so the halving bound is missed on every seed; at 20,480 rounds already where A5b ends at 245,760, then flat; panel normal where A5b's is red | (A5's: 0.800 / 0.940 / 0.980 at 120) | [2026-09-17](reports/2026-09-17-curriculum-t1-transfer-does-not-rescue-a5.md) |
 | **A5** eight squads, six objectives | bodies + points | **control NULL (scenario) on the letter, and the clause is wrong; per-model arm FAIL 0/3 (A5b), a different failure** | 0.260 / 0.180 / 0.160 at 245,760, never a rolling 50% in-run; `held` 4.1–4.6 of 6 with **8–10 of 24 bodies on points**, empty point different each episode, max stack 3.0–3.5 (script 5.8), turns 9.5–9.7 of 10 (script 6.77), coherency 0.10 — under-arrival, not stacking; clip fraction 0.37–0.42 | 0.890 / 0.820 / 0.600 at 60, **0.800 / 0.940 / 0.980 at 120**: one point left empty with 22 of 24 bodies on points — the whole-army trainer's allocation failure, on a rung the script solves at 1.000 | [A5](reports/2026-09-15-curriculum-a5-control-cannot-allocate.md) · [A5b](reports/2026-09-16-curriculum-a5b-fails-differently.md) |
 
 - **The per-model pipeline learns**, at 128 rounds per update, on the same
@@ -1222,6 +1223,19 @@ rung stacked on #339.
   to 120 epochs; NULL (scenario) needs the script to fail its own
   criterion; a control that fails while the per-model arm passes is
   reported as exactly that.
+- ⚠ **A TRANSFER BOUND WRITTEN AS "HALF OF SCRATCH" IS UNSATISFIABLE
+  WHEN SCRATCH NEVER PASSES.** T1 (A5 from A4x against A5b from scratch)
+  reads 0.45 / 0.29 / 0.20 against 0.26 / 0.18 / 0.16 — ahead on every
+  seed, at 20k rounds already where scratch ends at 245k — and FAILS on
+  the letter because no run of either kind reaches a rolling 95%, so
+  there is no rounds-to-pass to halve. The rung measured transfer onto
+  a failure. Pre-register a transfer rung with a readout that exists
+  when the comparator fails (success at matched rounds, the in-run peak,
+  the census at 20k) beside the rounds-to-pass bound, and read the S3
+  screen (A3 from A2b, 4× faster where scratch eventually passes) as the
+  clean measurement of the lever. #340's consequence is applied: later
+  rungs train from scratch unless the start is the rung's own axis; the
+  C rungs' warm-start rule stands on S3 and C1, not on T1.
 - ⚠ **ON THE PER-MODEL FACADE, A PER-MODEL STATE TERM IS A GLOBAL TERM.**
   `PerStepReward._pay_close` pays every per-model state calculator
   (`objective_hold`, `group_cohesion`, …) at the turn close as the MEAN
