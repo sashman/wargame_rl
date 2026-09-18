@@ -91,3 +91,15 @@ is A5b with that credit (tag `a5d`, everything else as above), launched
 now; **A5c continues to its budget as the unscaled control**, so the pair
 reads the scale confound directly. The criteria above apply to A5d;
 A5c is a readout.
+
+## Amendment 2 — written 2026-09-18 02:55, A5c stopped at ~75k rounds
+
+The unscaled control was stopped at about 75,000 rounds (146 periodic
+checkpoints kept under `per-model-a5-2026-09-17-23-4*-s{1,2,3}a5c`): the
+box was out of memory with nine trainers and the 1,200-game clone fit
+(16 GB) beside them, 9.6 GB into swap, and of the four runs A5c is the
+one that cannot contribute to the goal of a pass. Its reading stands as
+a readout, not a comparison to 245,760: at 60k rounds it read success
+1.3% rolling with 2.6–3.3 held on seed 2 and 0% on the others — the
+scale confound's control to that point, flat where A5b at the same
+rounds was at 4–6%.
