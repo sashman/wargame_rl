@@ -81,3 +81,31 @@ update, `--ent-coef 0.003`, `--credit actor`, Wandb `curriculum-a5`:
 Prediction: A5f holds at 0.92–0.94 and does not improve (D2's result
 again); A5g moves — the hold term fixes the walk-off that is the
 clone's residual — and lands 0.93–0.97, a coin flip on the letter.
+
+## Amendment 2 — written 2026-09-18 08:40, at 40k of 122,880 rounds on A5f/A5g, before any number for A5h
+
+**Reads so far**, greedy at n=100 on 700000+ (the measure that decides),
+the clone at 0.930:
+
+| rounds | A5f s1 / s2 / s3 | A5g s1 / s2 / s3 |
+|---|---|---|
+| 20,480 | 0.950 / 0.920 / 0.930 | 0.920 / 0.910 / 0.960 |
+| 40,960 | **0.850** / 0.930 / 0.940 | 0.910 / **0.950** / 0.940 |
+
+Both arms sit in the clone's noise band (binomial SE 0.026); no seed set
+clears 0.95 on all three. In-run reads on 500000+ run higher (A5f s1 at
+96% rolling where its 40k checkpoint reads 0.850 held-out), so the
+in-run curve is not the read. A5d at 80k: 1–5%; A5e at 80k: 8–9% on all
+three seeds with 3.4–3.8 held — the hold term is a real but small edge.
+
+**A5h, a third arm from the clone, launched now**: A5g's recipe with the
+anchor loosened an order of magnitude (`--kl-ref-coef 0.1
+--kl-ref-target 0.3`), the D2 finding's own next step ("the IMPROVES
+question is the anchor's coefficient"). Under A5g's coefficient of 1 the
+drift sits at its 0.10 target and reward moves the policy inside the
+clone's band; under 0.1 it has room to move the residual — the point
+left empty in six episodes of a hundred — and room to fall apart, which
+plain PPO did by 2,560 rounds on D2. Seeds 1 / 2 / 3, 122,880 rounds,
+`--credit actor`, `a5_hold.yaml`, tag `a5h`. Criterion as A5g's.
+Prediction: it moves further than A5g in both directions across seeds —
+one seed above 0.95 and one below 0.90 by 40k.
