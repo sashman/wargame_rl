@@ -87,3 +87,54 @@ success over the last eight evaluations at ~106k is 94 / 96 / 98%
 (held 2.90–3.00), climbing from the 80k plateau; A5-points at ~29k
 reads 0% in-run with 0.7–1.5 of five points held. Neither number is a
 result.
+
+## Amendment 2 — written 2026-09-18 19:50, A5-bodies read at 122,880; A5-points at ~85k, unread
+
+**A5-bodies: FAIL as pre-registered, one seed over the mark.** Greedy
+at n=100 on 700000+ at 122,880 rounds (`last.pt`; the resumed runs
+`j1e0mpam` / `0ioij69h` / `nazcv56j`):
+
+| row | success | turns | vs bar, paired | held of 3 | on points | coherent | stat |
+|---|---|---|---|---|---|---|---|
+| `squad_march_take` | 1.000 | 4.43 | — | 3.00 | 0.405 | 0.759 | — |
+| s1 | **0.960** | 5.46 | +1.03 ± 0.12 | 2.94 | 0.353 | 0.357 | 0.01 |
+| s2 | **0.930** | 5.80 | +1.37 ± 0.13 | 2.90 | 0.293 | 0.187 | 0.04 |
+| s3 | **0.860** | 6.23 | +1.80 ± 0.18 | 2.70 | 0.291 | 0.255 | 0.07 |
+
+The by-turn census (n=20 on 700000+; bodies on points of 24 and points
+held of 3 after turns 3 → 5 → 7 → end; share of episodes with each point
+empty at the end, all episodes and failures only; max stack):
+
+| policy | success | turns | on points | held | empty by point | max stack | empty by point, failures |
+|---|---|---|---|---|---|---|---|
+| `squad_march_take` | 1.00 | 4.20 | 5.2 → 7.8 → 7.8 → 7.8 | 2.7 → 3.0 → 3.0 → 3.0 | 0 / 0 / 0 | 3.4 | — |
+| s1 | 0.95 | 5.45 | 0.8 → 9.2 → 9.1 → 9.0 | 0.6 → 2.9 → 3.0 → 3.0 | 0.05 / 0 / 0 | 4.6 | 1.00 / 0 / 0 |
+| s2 | 0.95 | 5.80 | 0.5 → 6.7 → 7.2 → 7.3 | 0.5 → 2.8 → 2.9 → 3.0 | 0 / 0.05 / 0 | 3.5 | 0 / 1.00 / 0 |
+| s3 | 0.75 | 6.60 | 0.9 → 5.3 → 5.5 → 5.5 | 0.7 → 2.2 → 2.4 → 2.4 | 0.20 / 0.20 / 0.25 | 2.9 | 0.80 / 0.80 / 1.00 |
+
+Three points of radius 4 hold about eight bodies between them, so "on
+points" saturates near eight for every policy and the script parks the
+rest beside them. What separates the rows is the clock: the script has
+five bodies on points after turn 3 and every point held after turn 5;
+the arm has under one body on a point after turn 3 on every seed, and
+then arrives — s1 and s2 hold all three by turn 7 and finish a turn to
+a turn and a half behind the bar, s3 holds 2.4 and never gets further.
+s3's failures are not one short point: in its five failed episodes 2.6
+of three points are empty on average and 5.5 bodies are on points at
+the end — the army does not arrive, A5b's signature on a fifth of
+the episodes. The in-run curve (n=30 on 500000+) over the last eight
+evaluations read 96 / 93 / 90%, a point or two above the held-out row
+on each seed; no seed reached a rolling 95% before ~100k rounds, so the
+dip clause never engaged.
+
+**Read against the prediction:** bodies was predicted to pass at 0.95–1.00
+by 60k rounds ("A2's one-point problem three times over"). It did not:
+one seed at 0.96 at the cap, the others 0.93 and 0.86, all a turn or
+more slow. The bodies axis alone, with A4's point count, is not learned
+to the mark within the cap. The pair's quadrant waits on A5-points; the
+"bodies PASS" half that would have put the wall on the point count is
+not available. What is available: twenty-four bodies over three points
+reaches the high nineties in-run on every seed and 0.93–0.96 held-out on
+two, where the same trainer on A5 never reached a rolling 50% — so most
+of A5's difficulty is not the army size, and the points read decides how
+much of it is the point count.
