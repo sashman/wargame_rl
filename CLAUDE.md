@@ -1148,6 +1148,7 @@ rung stacked on #339.
 | **A4** four squads, three objectives (a spare) | points | **FAIL at the cap, PASS 3/3 resumed to 2× the cap (A4x)** | at 122,880: 0.930 / 0.930 / 0.970, held 2.91–2.97 of 3; **at 245,760: 0.980 / 1.000 / 1.000, held 2.96 / 3.00 / 3.00, turns 4.72–4.75 (script 4.70)**, `on_obj` 0.65–0.73; explained variance 0.42–0.54 → 0.56–0.59; coherency greedy 0.43–0.53 → 0.52–0.70 | 0.980 / 0.980 / 0.990 at 60 epochs, passed in-run at epochs 44–58 (92k–121k rounds), turns 6.1–6.2 (script 4.70) | [A4](reports/2026-09-15-curriculum-a4-one-se-short-at-the-cap.md) · [A4x](reports/2026-09-15-curriculum-a4x-passes.md) |
 | **A3 speed screen** three one-change arms on A3, read at the cap against A3's own runs (0.70 / 0.80 / 0.77) | why ~200k rounds | **S1 hold NULL** (0.94 / 0.81 / 0.90) · **S2 matching HARMFUL** (0.83 / 0.69 / 0.61) · **S3 warm-start from A2b AHEAD 3/3** (0.91 / 0.94 / 0.96, in-run 80% at 11k–22k rounds v scratch's 91k–never) | — | (A3's) | [S1](reports/2026-09-15-curriculum-a3-speed-s1-hold.md) · [S2](reports/2026-09-15-curriculum-a3-speed-s2-match.md) · [S3](reports/2026-09-15-curriculum-a3-speed-s3-warm.md) |
 | **A5** eight squads, six objectives | bodies + points | **control NULL (scenario) on the letter, and the clause is wrong; per-model arm FAIL 0/3 (A5b), a different failure** | 0.260 / 0.180 / 0.160 at 245,760, never a rolling 50% in-run; `held` 4.1–4.6 of 6 with **8–10 of 24 bodies on points**, empty point different each episode, max stack 3.0–3.5 (script 5.8), turns 9.5–9.7 of 10 (script 6.77), coherency 0.10 — under-arrival, not stacking; clip fraction 0.37–0.42 | 0.890 / 0.820 / 0.600 at 60, **0.800 / 0.940 / 0.980 at 120**: one point left empty with 22 of 24 bodies on points — the whole-army trainer's allocation failure, on a rung the script solves at 1.000 | [A5](reports/2026-09-15-curriculum-a5-control-cannot-allocate.md) · [A5b](reports/2026-09-16-curriculum-a5b-fails-differently.md) |
+| **A5, second pass** ten arms and two half-steps | credit · start · bodies · points, one at a time | **PASS on the letter, on the START axis — A5i 0.960 / 0.980 / 0.960; nothing learned from reward** | actor credit: A5c a PPO change (returns 13×), A5d **0.050 / 0.070 / 0.010**, A5e + hold term 0.170 / 0.060 / 0.060; the bar cloned from 1,200 games **0.930**, from 2,000 **0.960** (one failure event: two squads on one point); anchored PPO from the clones HOLDS in the clone's band on twenty-four reads (coef 10 and 1) and 0.1 loses it; **A5i** (from the 2,000-game clone, coef 10 / 0.03) 0.970 ×3 at 40,960, **0.960 / 0.980 / 0.960 at 122,880**, held 5.96–5.98, turns 6.81–7.04 (clone 6.97, bar 6.77), no in-run dip, sampled = greedy, IMPROVES not shown; half-steps at the cap: bodies ×2 **0.960 / 0.930 / 0.860** a turn slow, points +2 **0.030 / 0.060 / 0.330** with A5's census | (A5's) | [2026-09-19](reports/2026-09-19-curriculum-a5-passes-on-the-start-axis.md) · preregs [A5c](reports/2026-09-17-curriculum-A5c-preregistration.md) · [A5e/A5f](reports/2026-09-18-curriculum-A5e-A5f-preregistration.md) · [half-steps](reports/2026-09-18-curriculum-A5-half-steps-preregistration.md) |
 | **T1** A5 warm-started from A4x, against A5b from scratch | start (transfer) | **FAIL as pre-registered, 0/3 — and the transfer is real** | 0.450 / 0.290 / 0.200 at 245,760 (A5b 0.260 / 0.180 / 0.160), `held` 4.9 / 4.3 / 4.5; no seed reaches a rolling 95% in-run (peaks 64 / 51 / 64 v 48 / 43 / 30), so the halving bound is missed on every seed; at 20,480 rounds already where A5b ends at 245,760, then flat; panel normal where A5b's is red | (A5's: 0.800 / 0.940 / 0.980 at 120) | [2026-09-17](reports/2026-09-17-curriculum-t1-transfer-does-not-rescue-a5.md) |
 | **C1** A3 plus one enemy unit standing on a point, nobody shooting | enemy | **FAIL as pre-registered, by one seed on a plateau** — warm-started from A3x | 0.990 / **0.930** / 0.990 at 245,760, turns 5.01–5.37 (script 4.98), held 2.96–3.15 of 3; at 80% in-run by 2.6k rounds on every seed; the short point is never the enemy's; coherency greedy 0.50–0.63 | 0.920 / 0.960 / 0.970 at 60 epochs, **0.980 / 0.990 / 0.990 at 120**, turns 6.8–7.1, 95% in-run at epochs 64 / 75 / 65 | [2026-09-16](reports/2026-09-16-curriculum-c1-two-of-three.md) |
 | **C2** C1 with the enemy squad firing (`hold_and_shoot`, range 12), ours unarmed | guns (theirs) | **FAIL as pre-registered by one seed at one hundredth under — the first rung where the per-model arm is AHEAD of the control** — warm-started from C1 | **0.890** / 0.920 / 0.950 at 245,760, turns 9.8–10.2 phase-clock (script 9.60), `alive` 0.83–0.86 (bar 0.842), held 2.87–3.00; 80% in-run by 2.6k on every seed, 95% by 8k on two; one drift dip (s1, 121k, recovered); coherency greedy 0.56–0.66, sampled 0.38–0.42 | 0.710 / 0.690 / 0.760 at 60 epochs, **0.790 / 0.690 / 0.780 at 120 — fails its own criterion 3/3**, turns 14.2–14.8 of 16 (arrives in round seven of eight), 90% in-run never | [2026-09-17](reports/2026-09-17-curriculum-c2-one-seed-one-hundredth-short.md) |
@@ -1269,6 +1270,30 @@ rung stacked on #339.
   at forty thousand rounds) — a reward-scale change is a PPO change here. A5d — A5b
   re-run with the scaled credit, A5c the unscaled control beside it — is
   its first arm; every per-model number before it was paid under the mean.
+- ⚠ **A5'S WALL IS THE NUMBER OF POINTS TO COVER AT ONCE, AND THE RUNG
+  WAS PASSED BY IMITATION, NOT REWARD.** The second pass on A5 closed
+  the credit hypothesis (built as `--credit actor`, run three ways:
+  moves nothing; its undivided first cut was a PPO change — returns
+  13×, the value loss owning the gradient — so read a reward-scale
+  change as a PPO change before reading its arm) and stepped A4's two
+  axes one at a time: doubling the army at three points costs a turn
+  and one seed (0.96 / 0.93 / 0.86), adding two points to A4's army
+  costs everything (**0.03 / 0.06 / 0.33**, A5's census). At the cap
+  the spread rungs read 0.70–0.80 at four points, 0.03–0.33 at five,
+  ~0 at six. What passed the rung: the bar cloned from 2,000 games
+  (0.960; from 1,200, 0.930 — every failure is two squads taking one
+  point, a tie the teacher breaks by its own squad order, not in the
+  observation) and held by anchored PPO on A5's reward at **0.960 /
+  0.980 / 0.960** (A5i). Anchored PPO holds a clone at every
+  coefficient that holds (10 and 1; 0.1 loses it slowly) and lifts
+  none — twenty-four reads from the 1,200-game clone in its band,
+  A5i ahead of its clone by a tenth of a turn on two seeds. The
+  ladder row carries both halves. Census a clone's FAILURES by event,
+  not its match; three seeds off one clone are that clone's band, not
+  seed variance; and never call a pass from the in-run curve — it runs
+  5–10 points above the held-out read on every arm here. The lever
+  that lifts a clone, and the lever that makes a conjunction over five
+  points learnable from reward, are both unnamed.
 - ⚠ **The spread rung is an ASSIGNMENT problem from a random start, and
   the travel term's per-objective assignment half-contradicts it — but
   fixing the assignment made it WORSE.** Only 12% of A3 deployments give
