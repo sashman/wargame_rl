@@ -109,3 +109,31 @@ plain PPO did by 2,560 rounds on D2. Seeds 1 / 2 / 3, 122,880 rounds,
 `--credit actor`, `a5_hold.yaml`, tag `a5h`. Criterion as A5g's.
 Prediction: it moves further than A5g in both directions across seeds —
 one seed above 0.95 and one below 0.90 by 40k.
+
+## Amendment 3 — written 2026-09-18 11:05, before any number for the second clone
+
+**The 60k reads**, greedy at n=100 on 700000+: A5f **0.880 / 0.910 /
+0.950**, A5g **0.900 / 0.970 / 0.900** (20k: 0.950 / 0.920 / 0.930 and
+0.920 / 0.910 / 0.960; 40k: 0.850 / 0.930 / 0.940 and 0.910 / 0.950 /
+0.940). Half the budget in, both arms still sit in the clone's band, one
+seed touching 0.95–0.97 at a time and never the set. The anchored PPO
+neither fixes nor breaks the clone's residual.
+
+**A5d stopped at ~103k rounds** (216 periodic checkpoints kept under
+`per-model-a5-2026-09-18-00-57-2*-s{1,2,3}a5d`): 1–6% rolling in-run
+with 3–4 held at 100k, flat like A5b, and the box needs its memory for
+the next clone. Its reading against the pre-registered MOVES criterion
+is a FAIL at 100k: the scaled actor credit alone does not move A5's
+arrival. The build's state-credit half is read from A5e, still running.
+
+**A5f step 1 again, bigger: `take-a5-2000-s0`.** D1 → D1b moved the
+escort clone 0.83 → 0.96 by quadrupling the games; this clone's residual
+is a coordination error at the start (two squads choosing the same
+point, the opening order being unlearnable) that more demonstrations of
+the script's assignment should narrow. 2,000 games × 60 epochs, seeds
+800000+, the last 400 held out, fit seed 0. Demonstrations are now
+recorded at half precision (`compact_tokens`, pinned by a test) so the
+fit holds ~14 GB instead of the ~27 GB the float32 recording would.
+Scored greedy at n=100 on 700000+: PASS (by imitation) at ≥ 0.95,
+`held` ≥ 5.8; if it passes, anchored PPO from it replaces A5f's start.
+Prediction: 0.95–0.97.

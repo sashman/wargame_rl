@@ -10,11 +10,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import torch
 
 from tests.per_model_seats import small_config
 from wargame_rl.wargame.envs.per_model.env import PerModelEnv
-from wargame_rl.wargame.envs.per_model.tokens import Head
+from wargame_rl.wargame.envs.per_model.tokens import Head, TokenScenario, build_tokens
 from wargame_rl.wargame.model.per_model.checkpoint import load_checkpoint
 from wargame_rl.wargame.model.per_model.clone import (
     explained_variance,
@@ -108,3 +109,27 @@ def test_the_fit_raises_the_held_out_match_and_the_clone_plays(
     assert (out.with_suffix(".clone.json")).exists()
     player = build_per_model_chooser(str(out), [PerModelEnv(env.config)], seed=0)
     assert player.kind == "checkpoint"
+
+
+def test_compact_tokens_halve_the_float_arrays_and_collate_back_to_float32() -> None:
+    """The recorded demonstration is stored at half precision (a 24-body army's
+    relation block is ~37 KB per decision in float32) and read back widened."""
+    from wargame_rl.wargame.model.per_model.batch import collate
+    from wargame_rl.wargame.model.per_model.clone import compact_tokens
+
+    env = PerModelEnv(small_config())
+    observation, _ = env.reset(seed=3)
+    scenario = TokenScenario.for_episode(env, env.player_seat)
+    tokens = build_tokens(env, env.player_seat, observation, scenario)
+    compact = compact_tokens(tokens)
+
+    assert compact.self_relations.dtype == np.float16
+    assert compact.self_relations.nbytes * 2 == tokens.self_relations.nbytes
+    assert compact.selector_mask is tokens.selector_mask
+    wide = collate([tokens], device=torch.device("cpu"))
+    narrow = collate([compact], device=torch.device("cpu"))
+    assert narrow.self_relations.dtype == torch.float32
+    torch.testing.assert_close(
+        narrow.self_relations, wide.self_relations, rtol=2e-3, atol=2e-3
+    )
+    torch.testing.assert_close(narrow.players, wide.players, rtol=2e-3, atol=2e-3)
