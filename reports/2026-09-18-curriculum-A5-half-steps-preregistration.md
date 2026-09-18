@@ -138,3 +138,59 @@ reaches the high nineties in-run on every seed and 0.93–0.96 held-out on
 two, where the same trainer on A5 never reached a rolling 50% — so most
 of A5's difficulty is not the army size, and the points read decides how
 much of it is the point count.
+
+## Amendment 3 — written 2026-09-18 20:45, A5-points read at 122,880; the pair's quadrant
+
+**A5-points: FAIL as pre-registered, on every seed, by a wide margin.**
+Greedy at n=100 on 700000+ at 122,880 rounds (`last.pt`; runs
+`uagmul66` / `ici5py46` / `wedjjozy`):
+
+| row | success | turns | vs bar, paired | held of 5 | on points | coherent | stat |
+|---|---|---|---|---|---|---|---|
+| `squad_march_take` | 1.000 | 6.71 | — | 5.00 | 0.889 | 0.832 | — |
+| s1 | **0.030** | 9.94 | +3.23 ± 0.07 | 2.47 | 0.263 | 0.194 | 0.04 |
+| s2 | **0.060** | 9.96 | +3.25 ± 0.06 | 2.92 | 0.321 | 0.195 | 0.04 |
+| s3 | **0.330** | 9.56 | +2.85 ± 0.09 | 3.83 | 0.377 | 0.211 | 0.06 |
+
+The by-turn census (n=20 on 700000+; bodies on points of 18 and points
+held of 5 after turns 3 → 5 → 7 → end; share of episodes with each point
+empty at the end, by index 0–4; max stack):
+
+| policy | success | turns | on points | held | empty by point | max stack |
+|---|---|---|---|---|---|---|
+| `squad_march_take` | 1.00 | 6.70 | 11.7 → 12.8 → 15.8 → 15.8 | 3.0 → 4.2 → 5.0 → 5.0 | 0 / 0 / 0 / 0 / 0 | 5.0 |
+| s1 | 0.05 | 9.95 | 7.1 → **3.6** → 6.1 → 5.1 | 2.6 → 2.1 → 2.7 → 2.6 | 0.60 / 0.85 / 0.65 / 0.10 / 0.15 | 2.7 |
+| s2 | 0.05 | 10.00 | 4.7 → 4.2 → 4.3 → 5.9 | 1.7 → 2.1 → 2.4 → 3.1 | 0.25 / 0.50 / 0.90 / 0.10 / 0.15 | 2.9 |
+| s3 | 0.30 | 9.85 | 2.0 → 6.3 → 6.8 → 7.3 | 1.6 → 2.5 → 3.6 → 3.9 | 0.05 / 0.15 / 0.20 / 0.55 / 0.20 | 3.1 |
+
+This is A5's failure at six squads: a third of the bodies on points at
+the end against the script's seven eighths, whole points abandoned by
+seed (s1 leaves points 0–2 empty in 60–85% of episodes, s2 point 2 in
+90%, s3 point 3 in 55%), max stack under three, the clock run out on
+every seed (turns 9.6–10.0 of ten; the script 6.71), coherency 0.19–0.21.
+s1's bodies on points *fall* from 7.1 after turn 3 to 3.6 after turn 5 —
+squads walk off points they reached. The in-run curve never reached a
+rolling 10% on s1 or s2 and peaked in the thirties on s3.
+
+**The pair's quadrant is "both FAIL" on the letter**, and the letter's
+reading — "the jump was not the problem; A5's wall is already present
+one half-step up from A4 on either axis" — under-describes what the
+two rows say together, so the magnitudes go on the record beside it:
+
+| axis | rung | success at the cap | held / points | turns v bar |
+|---|---|---|---|---|
+| — | A4 (four squads, three points) | 0.930 / 0.930 / 0.970 | 2.91–2.97 / 3 | — |
+| bodies ×2 | A5-bodies (eight squads, three points) | 0.960 / 0.930 / 0.860 | 2.70–2.94 / 3 | +1.0 to +1.8 |
+| points +2 | A5-points (six squads, five points) | **0.030 / 0.060 / 0.330** | 2.47–3.83 / 5 | +2.9 to +3.3 |
+| both | A5 (eight squads, six points; A5b at 2× the cap) | 0.260 / 0.180 / 0.160 | 4.1–4.6 / 6 | +2.7 to +2.9 |
+
+Doubling the army at A4's point count costs a turn and one seed's pass;
+adding two points to A4's army takes the same trainer from the low
+nineties to near zero at the same rounds, with A5's census. **The wall
+is the number of points to cover at once**, and it is steep: at the cap
+the spread rungs read 0.70–0.80 at four points (A3), 0.03–0.33 at five,
+and A5b never reached a rolling 50% at six. The army size is a real but
+second-order cost. Neither half-step is a rung and neither is repeated;
+the pre-registered consequence for this quadrant (no next arm named)
+stands, and what to do about a conjunction the trainer cannot value at
+five points is the report's question, not this amendment's.
