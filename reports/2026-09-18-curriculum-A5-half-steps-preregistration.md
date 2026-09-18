@@ -56,3 +56,34 @@ Read greedy at n=100 on 700000+ at 122,880.
 Bodies passes (0.95–1.00 by 60k rounds: three points with eight squads
 is A2's one-point problem three times over); points fails on at least
 one seed (0.85–0.95), the far column's points the ones left short.
+
+## Amendment 1 — written 2026-09-18 18:10, A5-bodies at ~106k rounds after a reboot, A5-points at ~29k
+
+**The machine rebooted at about 15:20** (a crash, cause not recorded)
+and killed every process: the three A5-bodies runs at about 84k rounds
+and the 2,000-game clone fit four and a half hours in. At 17:01–17:05
+A5-bodies was **resumed seed-for-seed from each run's `last.pt`**
+(`--resume-from`; the first evaluation after the resume at 84,480 /
+81,920 / 84,992 rounds, so under three thousand rounds of each run are
+replayed), the clone fit was relaunched from the start, and
+**A5-points launched from scratch beside them** rather than waiting for
+the fit to release its memory as the plan above said — the box carries
+the six trainers and the fit together at 128 rounds per update with
+about four gigabytes to spare, and the points half-step is the one this
+pair cannot be read without. Same recipe as written: 122,880 rounds,
+`--ent-coef 0.003`, the `mean` credit, in-run eval every 512 rounds on
+500000+, Wandb `curriculum-a5` (A5-bodies resumed `j1e0mpam` /
+`0ioij69h` / `nazcv56j`, the pre-reboot runs `5qbyx99r` / `w15c7xih` /
+`3vb272ip`; A5-points `uagmul66` / `ici5py46` / `wedjjozy`).
+
+A resume replays a few thousand rounds under a fresh rollout seed and
+a fresh Adam state, so the resumed curve is not the same trajectory the
+run would have followed; on the criteria it changes nothing — the read
+is at 122,880 greedy on 700000+, and the dip rule counts in-run
+evaluations from the first rolling pass, which no seed had reached
+before the reboot (in-run at 80k: 91 / 62 / 71%, held 2.6–2.9 of 3).
+Written before either half-step's end read: A5-bodies' rolling in-run
+success over the last eight evaluations at ~106k is 94 / 96 / 98%
+(held 2.90–3.00), climbing from the 80k plateau; A5-points at ~29k
+reads 0% in-run with 0.7–1.5 of five points held. Neither number is a
+result.

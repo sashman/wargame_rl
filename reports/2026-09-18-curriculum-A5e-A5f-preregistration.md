@@ -166,3 +166,28 @@ the actor credit is a small, consistent edge in arrival and nowhere
 near a pass. A5d (stopped at ~103k) FAILS its MOVES criterion. Together:
 **the actor credit build does not move A5's arrival; the per-model
 trainer's failure on this rung is not a credit-scale problem.**
+
+## Amendment 5 — written 2026-09-18 18:10, the reboot, and the stopped arms' final reads
+
+**The machine rebooted at about 15:20** (a crash) and killed the
+2,000-game clone fit of amendment 3 four and a half hours in, before
+its first epoch had been written. It was relaunched at 17:01 with the
+same recipe (2,000 games of `squad_march_take` on a5.yaml, seeds
+800000+, 60 epochs, fit seed 0, `compact_tokens`; 312,672 decision
+steps to fit, 78,108 held out) and is expected to finish around 23:00.
+Its read and the criteria of amendment 3 are unchanged.
+
+**Final reads of the arms stopped under amendment 4**, greedy at n=100
+on 700000+ at each run's last checkpoint, written before the second
+clone exists: A5d (~103k) **0.050 / 0.070 / 0.010**, A5e (~108k)
+**0.170 / 0.060 / 0.060**, A5h (at 40,960) **0.950 / 0.840 / 0.820**.
+A5f and A5g stand at their 80k rows. **The 1,200-game clone's seven
+failures in a hundred are one event**: in every one the script's
+assigned squad went to a point another squad was already taking, so
+two squads shared a point and one stayed empty — never a late
+arrival. The teacher breaks that tie by a rule the observation does not
+carry (its own assignment order), which is the clone residual that a
+bigger fit can shrink only if the tie-break is a function of the board;
+the second clone's read decides whether it is. Every number in this
+amendment is at the stops named in amendment 4 and at the memory's
+prices — none is a read at budget.
