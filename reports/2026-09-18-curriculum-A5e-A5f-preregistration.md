@@ -249,3 +249,49 @@ points above the held-out row as on every arm before. Nothing here is
 a verdict: HOLDS is read at 122,880, and A5f's seeds crossed 0.95 and
 came back down between reads from a 0.930 start. Written before the
 60k read.
+
+## Amendment 8 — written 2026-09-19 00:55, A5i read at 122,880: HOLDS 3/3, the rung's mark on every seed
+
+**A5i HOLDS on every seed: 0.960 / 0.980 / 0.960**, greedy at n=100 on
+700000+ at 122,880 rounds (`last.pt`; runs `cb7pmoks` / `7hvtp7ju` /
+`m2ujugw1`):
+
+| row | success | turns | vs bar, paired | vs clone, paired | held of 6 | on obj | coherent | stat |
+|---|---|---|---|---|---|---|---|---|
+| `squad_march_take` | 1.000 | 6.77 | — | — | 6.00 | 0.856 | 0.822 | — |
+| the 2,000-game clone | 0.960 | 6.97 | +0.20 ± 0.10 | — | 5.96 | 0.838 | 0.771 | 0.17 |
+| s1 | **0.960** | 6.88 | +0.11 ± 0.10 | −0.09 ± 0.10 | 5.96 | 0.835 | 0.78 | 0.16 |
+| s2 | **0.980** | 6.81 | +0.04 ± 0.08 | **−0.16 ± 0.10** | 5.98 | 0.851 | 0.79 | 0.16 |
+| s3 | **0.960** | 7.04 | +0.27 ± 0.10 | +0.07 ± 0.13 | 5.96 | 0.845 | 0.79 | 0.16 |
+
+Every read from 40k on had all three seeds at or above the mark (40k
+0.970 ×3; 60k 1.000 / 0.970 / 0.970; 80k 1.000 / 0.980 / 0.960; end
+0.960 / 0.980 / 0.960). **The in-run dip clause holds**: the rolling
+in-run success (n=30 on 500000+, eight-evaluation window) first reached
+95% within the first two evaluations on every seed and never fell below
+94.0 / 95.8 / 95.0 after; the lowest single evaluation was 87 / 87 / 90.
+**IMPROVES is not shown**: turns are ahead of the clone's paired on two
+seeds (−0.09, −0.16) and behind on one (+0.07), against a 3/3 clause.
+Sampled play (n=100 on 900000+, paired against greedy) is the same
+policy: −0.1 / −1.2 / +0.1 ± 1.2 vp, held 5.96–5.98, coherent
+0.775–0.791 against greedy's 0.807–0.818 — no do-nothing fingerprint
+(stationary 0.16 either way, the clone's 0.17).
+
+The census (n=100 on 700000+): 20.1–20.4 of 24 bodies on points and all
+six held by turn 7 on every seed (the clone 20.1 / 6.0, the script
+20.1 / 6.0), max stack 5.7–5.8 (the script 5.8). Failures: 4 / 2 / 4 in
+a hundred, each a single short point, different points on different
+seeds — the clone's event, at the clone's rate.
+
+**Verdict on the arm as pre-registered: HOLDS 3/3, IMPROVES not shown.
+Verdict on the rung: A5 PASSES on the letter** — success ≥ 0.95 on all
+three seeds at the end, greedy at n=100 on 700000+, no in-run dip below
+0.80 after the first rolling pass — **on the start axis**: the bar
+cloned from 2,000 games (0.960) and held by PPO under a KL anchor
+(coef 10, target 0.03) with the actor credit, on A5's own reward. The
+reward added at most a tenth of a turn on two seeds and nothing to the
+success rate beyond the clone's band. What it is not: the per-model
+trainer learning A5 from reward, which read 0.26 / 0.18 / 0.16 at twice
+this budget from scratch (A5b), 0.05 / 0.07 / 0.01 with the actor credit
+(A5d), and 0.03–0.33 one point down (A5-points). The report carries
+both halves in the ladder row.
