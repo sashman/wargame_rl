@@ -1,0 +1,65 @@
+# Curriculum half-step A5-bodies (parent question #340): A5's army -- twenty-
+# four bodies in eight squads of three, the A5 deployment band, ten rounds --
+# over A4's THREE points in a column at x=35. Bodies doubled from A4, points
+# held: if the per-model trainer passes this and fails A5, the wall is the
+# number of points to cover at once; if it fails this too, it is the army.
+# Everything else is `a5.yaml` to the byte.
+config_name: curriculum_a5_bodies
+number_of_wargame_models: 24
+number_of_opponent_models: 0
+number_of_objectives: 3
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 8
+number_of_battle_rounds: 10
+deployment_zone: [2, 2, 10, 42]
+opponent_deployment_zone: [50, 2, 58, 42]
+models:
+  - &sq_0 { group_id: 0 }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+  - &sq_4 { group_id: 4 }
+  - *sq_4
+  - *sq_4
+  - &sq_5 { group_id: 5 }
+  - *sq_5
+  - *sq_5
+  - &sq_6 { group_id: 6 }
+  - *sq_6
+  - *sq_6
+  - &sq_7 { group_id: 7 }
+  - *sq_7
+  - *sq_7
+objectives:
+  - { x: 35, y: 12 }
+  - { x: 35, y: 22 }
+  - { x: 35, y: 32 }
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.0
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: all_objectives_occupied
+      params: {}
+observe_objective_control: true
+coherency:
+  enforce_at_deployment: true
