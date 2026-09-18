@@ -48,3 +48,36 @@ from imitation that reward could not teach it (D1b: 0.96 on C3b from
 What a pass here would mean: the architecture can play A5; the per-model
 trainer cannot yet learn it from reward. Both halves go in the ladder
 row.
+
+## Amendment 1 — written 2026-09-18 04:05, after the clone's read and before any PPO round from it
+
+**The clone (A5f step 1).** `take-a5-1200-s0.pt`, 1,200 games × 40
+epochs, held-out match displacement 0.791 / declaration 0.971 / selector
+0.639 / joint 0.513 (the opening order at chance, as with the escort).
+Greedy at n=100 on 700000+: success **0.930**, `held` 5.93, `on_obj`
+0.831, turns 6.96 (+0.19 ± 0.12 paired against the script's 6.77), vp
++68.0, coherent 0.744, stationary 0.18. Two hundredths under the
+imitation pass mark, within one binomial SE (0.026) of it: **FAIL on the
+letter, and the best policy on the per-model facade on this rung by a
+wide margin** (A5b's best seed 0.260; A5e's best in-run 12% at 40k).
+
+**Step 2 launched regardless, under the goal, as two arms**, both
+`--warm-start-from` the clone, three seeds, 122,880 rounds, 128 per
+update, `--ent-coef 0.003`, `--credit actor`, Wandb `curriculum-a5`:
+
+- **A5f** as pre-registered: A5's reward, the anchor at `--kl-ref-coef
+  10 --kl-ref-target 0.03` (D2's setting, which held the escort clone
+  and improved nothing). Criteria as above: HOLDS ≥ 0.95 on 3/3 at the
+  end; IMPROVES if turns are ahead of the clone's paired on 3/3.
+- **A5g**, one change on top of A5f's recipe in each of two places, so
+  it is not one change and is read as a screen: A5e's reward (the hold
+  term under the actor credit, which is paying — A5e reads 8–12% rolling
+  at 40k on two seeds where A5b never left 6%) and a looser anchor
+  (`--kl-ref-coef 1 --kl-ref-target 0.10`), so reward can move the
+  policy where D2's anchor pinned it. Tag `a5g`. Criterion: **PASS** ≥
+  0.95 on 3/3 at the end with no dip below 0.80 after the first pass;
+  a pass here is a pass by imitation plus reward, reported as such.
+
+Prediction: A5f holds at 0.92–0.94 and does not improve (D2's result
+again); A5g moves — the hold term fixes the walk-off that is the
+clone's residual — and lands 0.93–0.97, a coin flip on the letter.
