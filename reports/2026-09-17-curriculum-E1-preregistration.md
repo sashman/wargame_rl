@@ -151,3 +151,33 @@ every read of E1 names them by directory.
 128 rounds (rollout 20–26 s, update 4–10 s), so the 122,880-round budget
 is about half a day, not the two to three days written above; A5b's 37
 hours were measured with twelve trainers on the box.
+
+## Amendment 2 — written 2026-09-19 01:20, before the relaunch, no number from any E1 run on the record
+
+**The 2026-09-17 23:13 runs were stopped by decision** within the hour
+of launch (Sash, 2026-09-17: not to run E1 while A5's per-model arm was
+failing, since E1 is A5's army with guns) and none was read; their
+directories are stale and every read of this rung names the runs by the
+2026-09-19 timestamps below. #381 held since.
+
+**A5 has since passed on the start axis** (A5i 0.960 / 0.980 / 0.960 at
+122,880 — the bar cloned from 2,000 games and held by anchored PPO;
+`reports/2026-09-19-curriculum-a5-passes-on-the-start-axis.md`), so the
+rung below on the bodies branch now has a policy at the bar's level, and
+**the companion's warm start changes from A5b's `last.pt` to A5i's**,
+seed for seed (`per-model-a5-2026-09-18-20-46-09-s{1,2,3}a5i/last.pt`).
+Loading check, three episodes on e1.yaml, not a read: the checkpoint
+loads and plays (held 1.33, −101.7 vp) — a policy that has never seen an
+enemy or a gun, as expected. The companion runs **without the anchor**
+(the question is whether reward can teach shooting on top of a held
+walk; anchoring to a policy that cannot shoot would forbid the answer);
+the scratch arm and the whole-army control are unchanged. Criteria,
+n, seeds and budget are unchanged. Set as a goal by Sash 2026-09-19
+01:05: "carry the A5i policy up to E1 and read whether the allocation
+survives guns" — pass on the pre-registered clauses, and on a fail the
+census says whether the walk broke (`held`, bodies on points by turn)
+or the shooting was never learned (`alive`, kills).
+
+Tags: control `e1-ctl`, scratch `e1`, companion `e1w`; Wandb
+`curriculum-e1`; run ids on #381 when they exist. Nine trainers and the
+C3b clone fit (D3) on the box.
