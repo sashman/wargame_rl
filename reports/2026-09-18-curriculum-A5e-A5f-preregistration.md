@@ -191,3 +191,41 @@ bigger fit can shrink only if the tie-break is a function of the board;
 the second clone's read decides whether it is. Every number in this
 amendment is at the stops named in amendment 4 and at the memory's
 prices — none is a read at budget.
+
+## Amendment 6 — written 2026-09-18 20:55, the 2,000-game clone read; A5i launched from it
+
+**The 2,000-game clone PASSES by imitation: 0.960**, held 5.96 of six,
+turns 6.97 (+0.20 ± 0.10 against the bar's 6.77, paired), `on_obj`
+0.838, coherent 0.771 (bar 0.822), greedy at n=100 on 700000+, beside
+the 1,200-game clone re-read on the same seeds at 0.930 / 5.93 / 6.96.
+Both criteria of amendment 3 are met (≥ 0.95, held ≥ 5.8) and the
+prediction (0.95–0.97) was right. Held-out per-head match: declaration
+0.977, displacement **0.821** (the 1,200-game clone 0.72), selector
+0.639, joint 0.532 (the opening order, at chance as D1 recorded). The
+fit finished at 20:42, earlier than the ~23:00 estimate, at 15 GB.
+
+The census (n=100): 20.1 of 24 bodies on points and all six held by
+turn 7, max stack 5.8 (the script 5.8). Four failures in a hundred:
+point 4 empty in two, points 1 and 5 in one each — the 1,200-game
+clone's seven were six at point 4 and one at point 0. Fewer failures,
+less concentrated on one point; the event (two squads on one point)
+is unchanged and the read does not separate "the tie is on the board"
+from "the fit averages the tie better". More games moved the read by
+three hundredths, which is the whole of the residual the goal needs.
+
+**A5i launched 20:46**: A5f's pre-registered step 2 with the start
+replaced — anchored PPO from `clones/take-a5-2000-s0.pt` on a5.yaml,
+`--kl-ref-coef 10 --kl-ref-target 0.03`, `--credit actor`, `--ent-coef
+0.003`, seeds 1 / 2 / 3, 122,880 rounds at 128 per update, in-run eval
+every 512 rounds at n=30 on 500000+, Wandb `curriculum-a5` runs
+`cb7pmoks` / `7hvtp7ju` / `m2ujugw1`, run dirs
+`per-model-a5-2026-09-18-20-46-09-s{1,2,3}a5i`. Criteria as A5f's:
+**HOLDS** if success ≥ 0.95 on 3/3 at the end (greedy, n=100 on
+700000+); **IMPROVES** if turns are ahead of the clone's paired on 3/3;
+read at 20k / 40k / 60k as A5f was. A HOLDS here is three seeds at or
+above the rung's mark from a start that is itself at 0.960 — the
+rung's PASS on the letter, reported as what it is: the "start" axis,
+the bar imitated and held, not learned from reward. Prediction, from
+A5f/A5g's twenty-four reads in the clone's band: every seed in
+0.93–0.99, HOLDS on 3/3 with probability near one half (binomial at
+0.96, n=100, three draws), IMPROVES not shown.
