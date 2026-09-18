@@ -137,3 +137,32 @@ fit holds ~14 GB instead of the ~27 GB the float32 recording would.
 Scored greedy at n=100 on 700000+: PASS (by imitation) at ≥ 0.95,
 `held` ≥ 5.8; if it passes, anchored PPO from it replaces A5f's start.
 Prediction: 0.95–0.97.
+
+## Amendment 4 — written 2026-09-18 12:50, all nine PPO-from-clone runs stopped
+
+**The 80k reads**, greedy at n=100 on 700000+: A5f **0.930 / 0.910 /
+0.960**, A5g **0.960 / 0.900 / 0.920**. Five reads over 20k–80k rounds put
+every seed of both arms in the clone's band (0.85–0.97, the clone
+0.930, binomial SE 0.026), one seed at 0.95–0.96 on each read and the
+set never above the mark. A5h under the tenfold-looser anchor drifted
+down instead: 84 / 89 / 88% rolling in-run at 40k against A5g's 90–96%
+at the same rounds with the same reward.
+
+**Stopped by decision** at ~89k (A5f, A5g) and ~44k (A5h) rounds: the
+chance of a 0.95 × 3 read at the end from a true rate near 0.93 is
+about one in fifty and would not survive the next read, so the end
+reads would have served the record's completeness and not the goal;
+the box's memory goes to the 2,000-game clone fit and to what follows
+it. **A5f and A5g are read at 80k as their final row: HOLDS (the clone's
+level on every seed), IMPROVES not shown. A5h: the anchor an order of
+magnitude looser loses the clone slowly — the coefficient question's
+answer is that 1 holds and 0.1 does not, and neither improves.**
+Checkpoints every 512 rounds kept under the run directories.
+
+**A5e** (stopped at ~110k, 11:30, for the same memory) reads 1–14%
+rolling in-run over 60k–110k with 3.4–4.2 of six held on every seed,
+against A5d's 1–6% and 2.5–4.0 at the same rounds: the hold term under
+the actor credit is a small, consistent edge in arrival and nowhere
+near a pass. A5d (stopped at ~103k) FAILS its MOVES criterion. Together:
+**the actor credit build does not move A5's arrival; the per-model
+trainer's failure on this rung is not a credit-scale problem.**
