@@ -229,3 +229,23 @@ the bar imitated and held, not learned from reward. Prediction, from
 A5f/A5g's twenty-four reads in the clone's band: every seed in
 0.93–0.99, HOLDS on 3/3 with probability near one half (binomial at
 0.96, n=100, three draws), IMPROVES not shown.
+
+## Amendment 7 — written 2026-09-18 22:10, A5i at 40k of 122,880
+
+The 20k and 40k reads of A5i, greedy at n=100 on 700000+:
+
+| rounds | s1 | s2 | s3 | turns | held of 6 | coherent |
+|---|---|---|---|---|---|---|
+| the clone | 0.960 | — | — | 6.97 | 5.96 | 0.771 |
+| 20,480 | **0.980** | 0.940 | **0.970** | 6.87 / 7.09 / 6.90 | 5.98 / 5.94 / 5.97 | 0.795 ×3 |
+| 40,960 | **0.970** | **0.970** | **0.970** | 6.94 / 6.94 / 6.89 | 5.97 / 5.97 / 5.97 | 0.78–0.79 |
+
+At 40k every seed is at 0.970 — one to two hundredths above the start,
+inside its binomial band (0.960 ± 0.020), the first read on this rung
+with all three seeds at or above the mark. Turns are within a tenth of
+the clone's on every seed and a tenth or two behind the bar; the
+in-run curve (n=30 on 500000+) sits at 96–99% rolling, three to four
+points above the held-out row as on every arm before. Nothing here is
+a verdict: HOLDS is read at 122,880, and A5f's seeds crossed 0.95 and
+came back down between reads from a 0.930 start. Written before the
+60k read.
