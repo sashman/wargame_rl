@@ -37,6 +37,7 @@ import json
 import subprocess
 import time
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -50,7 +51,13 @@ from wargame_rl.wargame.envs.baseline.evaluate import evaluate_baseline
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
 from wargame_rl.wargame.envs.evaluation import format_optional_metric
 from wargame_rl.wargame.envs.per_model.env import PerModelEnv
+from wargame_rl.wargame.envs.per_model.recording import record_episode
 from wargame_rl.wargame.envs.per_model.reward_timing import Credit, PerStepReward
+from wargame_rl.wargame.envs.per_model.types import (
+    BatchChooser,
+    PerModelAction,
+    PerModelObservation,
+)
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.model.common.cli import (
     get_env_config,
@@ -469,6 +476,16 @@ def train(
     checkpoint_every_rounds: int = typer.Option(
         256, help="Write pm-NNNNNNNN.pt and last.pt every N rounds."
     ),
+    record_every_rounds: int | None = typer.Option(
+        None,
+        help="Record one GREEDY episode (an event log at decision cadence, "
+        "under <run_dir>/recordings/) every N rounds. Default: the checkpoint "
+        "cadence, so every checkpoint has a recording beside it; 0 disables.",
+    ),
+    record_seed: int = typer.Option(
+        EVAL_SEED_BASE,
+        help="The seed every recording plays (the in-run eval band's first).",
+    ),
     n_layers: int | None = typer.Option(None, help="Trunk depth (default 4)."),
     embedding_size: int | None = typer.Option(None, help="Trunk width (default 128)."),
     seed: int | None = typer.Option(None),
@@ -565,6 +582,12 @@ def train(
     rollout_total = ppo_config.rollout_rounds * n_envs
     eval_every = int(resolve_default(eval_every_rounds, 256))
     checkpoint_every = int(resolve_default(checkpoint_every_rounds, 256))
+    record_every = (
+        checkpoint_every
+        if resolve_optional_int(record_every_rounds) is None
+        else int(resolve_optional_int(record_every_rounds) or 0)
+    )
+    record_seed_value = int(resolve_default(record_seed, EVAL_SEED_BASE))
     total_rounds = int(resolve_default(rounds, 1024))
     eval_episodes = int(resolve_default(n_eval_episodes, 20))
     eval_seeds_from = int(resolve_default(eval_seed_base, EVAL_SEED_BASE))
@@ -580,6 +603,8 @@ def train(
         )
     check_cadence(eval_every, rollout_total, "eval_every_rounds")
     check_cadence(checkpoint_every, rollout_total, "checkpoint_every_rounds")
+    if record_every > 0:
+        check_cadence(record_every, rollout_total, "record_every_rounds")
 
     trunk: dict[str, int] = {}
     if resolve_optional_int(n_layers) is not None:
@@ -673,6 +698,8 @@ def train(
             "rounds": total_rounds,
             "eval_every_rounds": eval_every,
             "checkpoint_every_rounds": checkpoint_every,
+            "record_every_rounds": record_every,
+            "record_seed": record_seed_value,
             "seed": resolved_seed,
         },
     }
@@ -819,6 +846,15 @@ def train(
                         revision=revision,
                         training_state=training_state,
                     )
+            if record_every > 0 and (
+                rounds_done % record_every == 0 or rounds_done >= total_rounds
+            ):
+                started = time.perf_counter()
+                recorded = record_greedy_episode(
+                    network, env_config, run_dir, rounds_done, record_seed_value
+                )
+                row["perf/record_s"] = time.perf_counter() - started
+                logger.info("rounds {} recorded {}", rounds_done, recorded)
             metrics.log(row)
             logger.info(
                 "rounds {} steps {} loss {:.3f} kl {:.4f} rollout {:.1f}s update {:.1f}s",
@@ -830,6 +866,51 @@ def train(
                 update_s,
             )
         return run_dir
+
+
+RECORDINGS_DIR = "recordings"
+
+
+def record_greedy_episode(
+    network: SetNetwork,
+    env_config: WargameEnvConfig,
+    run_dir: Path,
+    rounds: int,
+    seed: int,
+) -> Path:
+    """Record one greedy episode of the network as it stands, to an event log.
+
+    Written under `<run_dir>/recordings/pm-<rounds>-seed<seed>.json` at
+    DECISION cadence (one snapshot per decision; `just replay-render` draws
+    it). Greedy, because that is the policy a score reports; the sampled
+    policy training rolls out is read beside it by
+    `just measure-per-model-eval-mode`. The network is put back in whatever
+    mode it was in, so recording never changes the update that follows it.
+    """
+    was_training = network.training
+    network.eval()
+    agent = SetAgent(network, greedy=True)
+
+    def chooser_for(_envs: Sequence[PerModelEnv]) -> BatchChooser:
+        def choose(
+            envs: Sequence[PerModelEnv], observations: Sequence[PerModelObservation]
+        ) -> list[PerModelAction]:
+            with torch.no_grad():
+                return [d.action for d in agent.act_batch(envs, observations)]
+
+        return choose
+
+    try:
+        return record_episode(
+            chooser_for,
+            env_config,
+            seed,
+            run_dir / RECORDINGS_DIR / f"pm-{rounds:08d}-seed{seed}.json",
+            cadence="decision",
+            driver="train_per_model",
+        )
+    finally:
+        network.train(was_training)
 
 
 def _resumed_env_config(

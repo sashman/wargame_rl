@@ -205,6 +205,16 @@ to `<run>/metrics.jsonl`.
   which periodic checkpoint scored best. The run directory also holds
   `env_config.yaml` (verbatim) and `provenance.json` (revision `+dirty`,
   device, threads, seed bands, both configs).
+- **Recordings are part of training** (Sash, 2026-09-19): every
+  `--record-every-rounds` (default: the checkpoint cadence; 0 disables) the
+  driver plays ONE greedy episode on `--record-seed` (default: the in-run eval
+  band's first, 500000) with event recording on and writes it to
+  `<run_dir>/recordings/pm-<rounds>-seed<seed>.json` at decision cadence —
+  `just replay-render <file>` draws it, `just replay-summary` narrates it. The
+  network is put back in training mode afterwards, so the update that follows
+  is unchanged; provenance carries both values. Recorded greedy because that
+  is the policy a score reports; the sampled policy is read beside it by
+  `just measure-per-model-eval-mode`.
 - **Shared with `train.py`, imported from neither:** the Typer-default
   unwrappers and the config loader live in `model/common/cli.py`, and the
   seed bands and the scripted bar in `model/common/eval_constants.py` (a module
