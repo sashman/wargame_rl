@@ -136,3 +136,42 @@ wiped 0.62–0.66, alive 0.52–0.54, held 2.44–2.57 — the clone's row on
 every column, at both anchor strengths. Half the budget in, neither
 arm has taken a step toward the escort's order. Written before the
 end read; the verdict is at 122,880 (~08:30).
+
+## Amendment 3 — written 2026-09-19 07:50, both arms read at 122,880: HOLDS on both, IMPROVES on neither
+
+Greedy at n=180 on 700000+ at `last.pt` (the clone 0.361, the escort
+0.978), with the ordering census on the same seeds and sampled play at
+n=100 on 900000+ paired against greedy:
+
+| row | success | held of 4 | alive | coherent | first kill (turn) | kill before arrival | blockers wiped | sampled − greedy, vp |
+|---|---|---|---|---|---|---|---|---|
+| the clone | 0.361 | 2.51 | 0.531 | 0.870 | 7.0 (94%) | 0.82 | 0.64 | — |
+| D3a s1 | 0.339 | 2.44 | 0.519 | 0.895 | 7.0 (93%) | 0.79 | 0.64 | +2.0 ± 2.4 |
+| D3a s2 | 0.356 | 2.56 | 0.534 | 0.877 | 7.0 (94%) | 0.81 | 0.65 | +0.5 ± 2.8 |
+| D3a s3 | 0.333 | 2.49 | 0.524 | 0.884 | 6.8 (94%) | 0.83 | 0.67 | +0.8 ± 2.1 |
+| D3b s1 | 0.328 | 2.47 | 0.522 | 0.859 | 7.1 (96%) | 0.84 | 0.64 | +3.4 ± 2.3 |
+| D3b s2 | 0.344 | 2.54 | 0.535 | 0.880 | 6.9 (93%) | 0.78 | 0.64 | −1.1 ± 2.5 |
+| D3b s3 | 0.356 | 2.51 | 0.519 | 0.879 | 7.1 (94%) | 0.84 | 0.63 | +1.9 ± 1.9 |
+
+Every seed of both arms reads the clone: success 0.328–0.356 against
+0.361 (all within one binomial SE, none above), held 2.44–2.56, alive
+0.52–0.54, the census the clone's on every column, sampled play the
+same policy as greedy. Twenty-four reads over 20k–122,880 rounds and
+not one moved. **Verdict per arm: HOLDS, IMPROVES not shown, DESTROYS
+not triggered — on both anchors.** (The paired per-episode success
+difference against the clone, the letter of the HOLDS / IMPROVES
+clauses, is appended to the report when computed; no seed is above the
+clone, so IMPROVES cannot be met by it.)
+
+**The goal's decision, as pre-registered: HOLDS on both — the D-route
+is recorded as imitation only.** From a start with 0.62 of success to
+gain, on a reward whose signal (the escort's plan) is the same one the
+arm from C2 half-learned from scratch (C3b: wipes the blockers in
+75–79% of episodes), anchored PPO at two coefficients took no step in
+122,880 rounds. The anchor is a brake with no engine on this trainer:
+what it holds is what the clone was, and what the clone was is what
+the rung reads. Consequence for the goal set on 2026-09-19: goal 1 is
+answered in the negative; goal 3 (decompose the conjunction on
+A5-points) was conditioned on goal 1 climbing and is not run — with
+the caveat, recorded so it can be re-opened, that goal 3 asks about
+reward from scratch and goal 1 answered about reward from a clone.
