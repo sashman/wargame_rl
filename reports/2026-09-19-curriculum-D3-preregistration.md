@@ -85,3 +85,34 @@ C3b's arm-from-C2 reached at 0.20 by wiping the blockers and stopping)
 or slides toward D2 plain's collapse. Honest guess: **D3b ends between
 0.10 and 0.50, IMPROVES not shown on 3/3, D3a within the clone's band.**
 If D3b improves on 3/3 I am wrong in the useful direction.
+
+## Amendment 1 — written 2026-09-19 02:50, the clone read; D3a and D3b launched, no PPO number yet
+
+**The clone is its teacher.** Greedy at n=180 on 700000+ (`just
+measure-rung`, `scripted_escort` as the bar), with the ordering census
+on the same seeds:
+
+| policy | success | held of 4 | alive | vp | coherent | first kill (turn) | first unarmed arrival | kill before arrival | blockers wiped |
+|---|---|---|---|---|---|---|---|---|---|
+| `scripted_escort` (bar) | 0.978 | 3.97 | 0.965 | 62.6 ± 1.6 | 0.839 | 6.0 (100%) | 12.9 (91%) | 1.00 | 0.99 |
+| `squad_march_take` (teacher) | 0.339 | 2.46 | 0.525 | 59.5 ± 3.4 | 0.934 | 7.0 (93%) | 8.7 (56%) | 0.79 | 0.62 |
+| **the clone** `take-c3b-1200-s0` | **0.361** | 2.51 | 0.531 | 60.8 ± 3.3 | 0.870 | 7.0 (94%) | 8.9 (62%) | 0.82 | 0.64 |
+
+The clone matches its teacher on every column (success +0.02, held
++0.05, alive +0.006, the census within a few points); held-out per-head
+match: declaration 0.956, displacement 0.807, unit-pointer 1.000, joint
+0.569. The teacher's 0.280 on the C3b report was n=100; at n=180 it
+reads 0.339, and the clone starts there. The gap to the escort is
+**0.62 in success, 0.43 in alive, 0.35 in blockers wiped** — the
+headroom D3 asks reward to close. Note what the census says the gap
+is: the teacher's armed squad does fire first in most episodes (kill
+before arrival 0.79) and does not finish the job (wiped 0.62), and its
+unarmed squads walk in while the blockers live (alive 0.53). The
+escort's order is "wipe, then walk"; the teacher's is "walk, shooting
+on the way".
+
+**Launched 02:42, from the clone**, as pre-registered: D3a (anchor 10 /
+0.03) `vjgk8f5w` / `i6pri90x` / `kjppfvfs`, directories
+`per-model-c3b-2026-09-19-02-42-*-s{1,2,3}d3a`; D3b (anchor 1 / 0.10)
+`vv1w0k0f` / `sfk1u00s` / `k3u5dz2m`, `…-s{1,2,3}d3b`. Wandb
+`curriculum-d3`. Beside E1's six per-model runs on the box.
