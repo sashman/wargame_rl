@@ -112,7 +112,10 @@ def test_a_cadence_off_the_rollout_grid_is_refused() -> None:
 
 
 def _short_run(
-    small_yaml: Path, tmp_path: Path, record_every_rounds: int | None = None
+    small_yaml: Path,
+    tmp_path: Path,
+    record_every_rounds: int | None = None,
+    video_every_rounds: int | None = 0,
 ) -> Path:
     run_dir: Path = train(
         env_config_path=str(small_yaml),
@@ -122,6 +125,7 @@ def _short_run(
         eval_every_rounds=2,
         checkpoint_every_rounds=2,
         record_every_rounds=record_every_rounds,
+        video_every_rounds=video_every_rounds,
         n_eval_episodes=2,
         eval_wave_size=2,
         n_layers=2,
@@ -157,3 +161,36 @@ def test_recording_can_be_switched_off(small_yaml: Path, tmp_path: Path) -> None
     assert not (run_dir / RECORDINGS_DIR).exists()
     provenance = json.loads((run_dir / "provenance.json").read_text())
     assert provenance["driver"]["record_every_rounds"] == 0
+
+
+def test_a_run_renders_a_recording_to_an_mp4_at_the_video_cadence(
+    small_yaml: Path, tmp_path: Path
+) -> None:
+    pytest.importorskip("PIL")
+    pytest.importorskip("imageio")
+    # Arrange / Act: a video every second recording, and one at the end.
+    run_dir = _short_run(small_yaml, tmp_path, video_every_rounds=4)
+
+    # Assert: the MP4 lands beside its event log; the trainer waited for the
+    # render before returning; the cadence is in provenance.
+    videos = sorted((run_dir / RECORDINGS_DIR).glob("*.mp4"))
+    assert [path.name for path in videos] == ["pm-00000004-seed500000.mp4"]
+    assert videos[0].stat().st_size > 0
+    provenance = json.loads((run_dir / "provenance.json").read_text())
+    assert provenance["driver"]["video_every_rounds"] == 4
+    assert provenance["driver"]["video_theme"] == "tabletop"
+
+
+def test_the_video_cadence_defaults_to_twenty_recordings_and_must_divide(
+    small_yaml: Path, tmp_path: Path
+) -> None:
+    run_dir = _short_run(small_yaml, tmp_path, video_every_rounds=None)
+    provenance = json.loads((run_dir / "provenance.json").read_text())
+    assert provenance["driver"]["video_every_rounds"] == 40  # 20 x the 2-round cadence
+    # 40 > the 4-round run, so only the end-of-training video is rendered.
+    assert [p.name for p in sorted((run_dir / RECORDINGS_DIR).glob("*.mp4"))] == [
+        "pm-00000004-seed500000.mp4"
+    ]
+
+    with pytest.raises(ValueError, match="video_every_rounds"):
+        _short_run(small_yaml, tmp_path / "odd", video_every_rounds=3)

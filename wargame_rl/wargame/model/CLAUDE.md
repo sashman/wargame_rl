@@ -215,6 +215,7 @@ to `<run>/metrics.jsonl`.
   is unchanged; provenance carries both values. Recorded greedy because that
   is the policy a score reports; the sampled policy is read beside it by
   `just measure-per-model-eval-mode`.
+- **Every training run logs videos to Wandb again** (`--video-every-rounds`, default every twentieth recording — 10,240 rounds at the 512 cadence, the whole-army trainer's one-in-twenty-epochs; 0 disables; `--video-fps`, `--video-theme`): the recording is rendered to an MP4 beside its event log by `replay_events.py render` in a background subprocess (pygame's SDL stays out of the trainer, as the whole-army `RecordEpisodeCallback` did) and logged under the whole-army key `episode_recording` on the next checkpoint's row; the last render is waited for at the end of training. The subprocess imports the repo from disk, so the standing rule against editing code under a live run covers it.
 - **Shared with `train.py`, imported from neither:** the Typer-default
   unwrappers and the config loader live in `model/common/cli.py`, and the
   seed bands and the scripted bar in `model/common/eval_constants.py` (a module

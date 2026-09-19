@@ -34,7 +34,9 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import subprocess
+import sys
 import time
 from collections import Counter
 from collections.abc import Sequence
@@ -486,6 +488,17 @@ def train(
         EVAL_SEED_BASE,
         help="The seed every recording plays (the in-run eval band's first).",
     ),
+    video_every_rounds: int | None = typer.Option(
+        None,
+        help="Render one of the recordings to an MP4 and log it to Wandb as "
+        "`episode_recording` every N rounds (a multiple of the recording "
+        "cadence). Default: every twentieth recording, the whole-army trainer's "
+        "cadence; 0 disables. The MP4 lands beside its event log.",
+    ),
+    video_fps: int = typer.Option(5, help="Frames per second of the rendered MP4."),
+    video_theme: str = typer.Option(
+        "tabletop", help="v2 theme the MP4 is drawn in: 'default' or 'tabletop'."
+    ),
     n_layers: int | None = typer.Option(None, help="Trunk depth (default 4)."),
     embedding_size: int | None = typer.Option(None, help="Trunk width (default 128)."),
     seed: int | None = typer.Option(None),
@@ -588,6 +601,13 @@ def train(
         else int(resolve_optional_int(record_every_rounds) or 0)
     )
     record_seed_value = int(resolve_default(record_seed, EVAL_SEED_BASE))
+    video_every = (
+        VIDEO_EVERY_RECORDINGS * record_every
+        if resolve_optional_int(video_every_rounds) is None
+        else int(resolve_optional_int(video_every_rounds) or 0)
+    )
+    video_fps_value = int(resolve_default(video_fps, 5))
+    video_theme_value = str(resolve_default(video_theme, "tabletop"))
     total_rounds = int(resolve_default(rounds, 1024))
     eval_episodes = int(resolve_default(n_eval_episodes, 20))
     eval_seeds_from = int(resolve_default(eval_seed_base, EVAL_SEED_BASE))
@@ -605,6 +625,11 @@ def train(
     check_cadence(checkpoint_every, rollout_total, "checkpoint_every_rounds")
     if record_every > 0:
         check_cadence(record_every, rollout_total, "record_every_rounds")
+    if video_every > 0 and (record_every <= 0 or video_every % record_every != 0):
+        raise ValueError(
+            f"video_every_rounds ({video_every}) must be a positive multiple of "
+            f"record_every_rounds ({record_every}): a video is a rendered recording"
+        )
 
     trunk: dict[str, int] = {}
     if resolve_optional_int(n_layers) is not None:
@@ -700,6 +725,9 @@ def train(
             "checkpoint_every_rounds": checkpoint_every,
             "record_every_rounds": record_every,
             "record_seed": record_seed_value,
+            "video_every_rounds": video_every,
+            "video_fps": video_fps_value,
+            "video_theme": video_theme_value,
             "seed": resolved_seed,
         },
     }
@@ -741,6 +769,9 @@ def train(
             warm_spec=warm_spec,
         )
         metrics = MetricsLog(run_dir / "metrics.jsonl", to_wandb=not disabled)
+        videos = TrainingVideos(
+            fps=video_fps_value, theme=video_theme_value, to_wandb=not disabled
+        )
         logger.info("Run directory {}", run_dir)
         logger.info(
             "Regime: {} rounds per update ({} rollout rounds x {} envs)",
@@ -855,6 +886,11 @@ def train(
                 )
                 row["perf/record_s"] = time.perf_counter() - started
                 logger.info("rounds {} recorded {}", rounds_done, recorded)
+                if video_every > 0 and (
+                    rounds_done % video_every == 0 or rounds_done >= total_rounds
+                ):
+                    videos.start(recorded, rounds_done)
+            videos.log_finished()
             metrics.log(row)
             logger.info(
                 "rounds {} steps {} loss {:.3f} kl {:.4f} rollout {:.1f}s update {:.1f}s",
@@ -865,10 +901,102 @@ def train(
                 rollout_s,
                 update_s,
             )
+        videos.finish()
         return run_dir
 
 
 RECORDINGS_DIR = "recordings"
+# One MP4 per twenty recordings by default: at 512 rounds a recording that is
+# twelve videos on a 122,880-round run, the whole-army trainer's cadence of one
+# every twenty epochs.
+VIDEO_EVERY_RECORDINGS = 20
+VIDEO_KEY = "episode_recording"
+
+
+class TrainingVideos:
+    """Renders training recordings to MP4 in the background and logs them.
+
+    The render runs in a subprocess (`replay_events.py render`) as the
+    whole-army trainer's recording callback did: pygame's SDL must use the
+    dummy driver and stay out of the trainer's process, and a render must not
+    stall the next update. A finished MP4 is logged to Wandb under
+    `episode_recording` (the whole-army key) on the next checkpoint, uncommitted,
+    so it lands on that checkpoint's row; `finish` waits for the rest at the end
+    of training.
+    """
+
+    def __init__(self, *, fps: int, theme: str, to_wandb: bool) -> None:
+        self.fps = fps
+        self.theme = theme
+        self.to_wandb = to_wandb
+        self._pending: list[tuple[subprocess.Popen[bytes], Path, int]] = []
+        self.rendered: list[Path] = []
+
+    def start(self, recording: Path, rounds: int) -> Path:
+        """Begin rendering `recording` to an MP4 beside it; returns the MP4 path."""
+        mp4 = recording.with_suffix(".mp4")
+        log = recording.with_suffix(".render.log")
+        env = dict(os.environ, SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
+        command = [
+            sys.executable,
+            str(Path(__file__).resolve().parent / "replay_events.py"),
+            "render",
+            str(recording),
+            "--out",
+            str(mp4),
+            "--theme",
+            self.theme,
+            "--fps",
+            str(self.fps),
+        ]
+        with log.open("wb") as handle:
+            process = subprocess.Popen(
+                command, stdout=handle, stderr=subprocess.STDOUT, env=env
+            )
+        self._pending.append((process, mp4, rounds))
+        return mp4
+
+    def log_finished(self) -> list[Path]:
+        """Log every render that has finished since the last call; returns them."""
+        done: list[Path] = []
+        still: list[tuple[subprocess.Popen[bytes], Path, int]] = []
+        for process, mp4, rounds in self._pending:
+            if process.poll() is None:
+                still.append((process, mp4, rounds))
+                continue
+            collected = self._collect(process, mp4, rounds)
+            if collected is not None:
+                done.append(collected)
+        self._pending = still
+        return done
+
+    def finish(self) -> list[Path]:
+        """Wait for every pending render and log it."""
+        for process, _mp4, _rounds in self._pending:
+            process.wait()
+        return self.log_finished()
+
+    def _collect(
+        self, process: subprocess.Popen[bytes], mp4: Path, rounds: int
+    ) -> Path | None:
+        if process.returncode != 0 or not mp4.exists():
+            logger.warning(
+                "render of {} failed (exit {}); see {}",
+                mp4.with_suffix(".json").name,
+                process.returncode,
+                mp4.with_suffix(".render.log"),
+            )
+            return None
+        self.rendered.append(mp4)
+        logger.info("rounds {} rendered {}", rounds, mp4)
+        if self.to_wandb:
+            import wandb
+
+            wandb.log(  # type: ignore[attr-defined]
+                {VIDEO_KEY: wandb.Video(str(mp4), format="mp4")},  # type: ignore[attr-defined]
+                commit=False,
+            )
+        return mp4
 
 
 def record_greedy_episode(
