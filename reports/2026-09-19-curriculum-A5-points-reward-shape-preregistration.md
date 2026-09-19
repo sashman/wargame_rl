@@ -144,3 +144,107 @@ clock the original pays nothing terminal, R1 pays nothing, and R2 pays
 700000+): **identical on every shared field** (vp 63.5 ± 2.3, held 5.00,
 success 1.000, 6.70 turns) — the new terminal term is paid the same on
 both facades.
+
+## Amendment 1 — written 2026-09-19 19:35, both arms read at 40,960 / 81,920 / 122,880
+
+**FAIL as pre-registered on both arms, and both are BEHIND the original at
+every read.** Runs R1 `008ftjrj` / `pvafw3km` / `ih78ta51`, R2 `krhhq1v5` /
+`d12n5luj` / `8jnrjqu5`, launched 15:15 (a first launch at 15:12 was stopped
+at ~1,500 rounds and its directories removed because its eval and
+checkpoint cadence was 256, not the recipe's 512; those six Wandb ids are
+dead), exited 19:05–19:13 (six trainers at ~500–850 rounds a minute). Greedy
+at n=100 on 700000+ at 122,880 (`last.pt`):
+
+| row | success | turns | vs bar, paired | held of 5 | on points | coherent | stat |
+|---|---|---|---|---|---|---|---|
+| `squad_march_take` | 1.000 | 6.71 | — | 5.00 | 0.889 | 0.832 | — |
+| R1 s1 | **0.000** | 10.00 | +3.29 ± 0.05 | **0.90** | 0.107 | 0.449 | 0.00 |
+| R1 s2 | **0.030** | 9.91 | +3.20 ± 0.07 | 2.89 | 0.253 | 0.119 | 0.18 |
+| R1 s3 | **0.010** | 9.98 | +3.27 ± 0.06 | 2.52 | 0.276 | 0.407 | 0.06 |
+| R2 s1 | **0.020** | 9.99 | +3.28 ± 0.05 | 2.41 | 0.241 | 0.299 | 0.09 |
+| R2 s2 | **0.030** | 9.95 | +3.24 ± 0.06 | 2.93 | 0.304 | 0.151 | 0.13 |
+| R2 s3 | **0.000** | 10.00 | +3.29 ± 0.05 | 2.38 | 0.263 | 0.328 | 0.28 |
+| original s1 / s2 / s3 (2026-09-18) | 0.030 / 0.060 / 0.330 | 9.56–9.96 | | 2.47 / 2.92 / 3.83 | 0.26–0.38 | 0.19–0.21 | 0.04–0.06 |
+
+- **PASS:** no seed above 0.03.
+- **MOVES:** ahead of 0.030 / 0.060 / 0.330 by two SE on 3/3 — **0 of 3 on
+  either arm** (R1 −0.03 / −0.03 / −0.32; R2 −0.01 / −0.03 / −0.33). R2
+  against R1: +0.02 / 0.00 / −0.01, nothing.
+- **FAIL, both arms.** The written expectation (R1 moves a little, R2 moves
+  on 3/3 toward held 4) was wrong in the other direction: both arms are
+  behind the original at 40,960, 81,920 and 122,880.
+
+**At every read** (success; held of 5):
+
+| rounds | R1 | R2 | original | discount arm |
+|---|---|---|---|---|
+| 40,960 | 0.00 / 0.02 / 0.00; 1.9 / 1.7 / 1.3 | 0.00 ×3; 2.2 / 2.0 / 2.0 | 0.04 / 0.14 / 0.09; 1.9 / 2.9 / 2.8 | 0.00 / 0.03 / 0.06; 1.7 / 1.2 / 2.5 |
+| 81,920 | 0.00 / 0.00 / 0.02; 2.1 / 2.6 / 2.1 | 0.00 ×3; 1.9 / 2.6 / 2.5 | **0.22 / 0.22 / 0.11**; 3.4 / 3.4 / 2.8 | 0.10 / 0.08 / 0.04; 2.7 / 3.1 / 2.9 |
+| ~85–90k (`last.pt` read early by a chain fault; a readout, not a pre-registered read) | 0.01 / 0.03 / 0.00 | 0.01 / 0.05 / 0.00 | — | — |
+| 122,880 | 0.00 / 0.03 / 0.01; 0.9 / 2.9 / 2.5 | 0.02 / 0.03 / 0.00; 2.4 / 2.9 / 2.4 | 0.03 / 0.06 / 0.33; 2.5 / 2.9 / 3.8 | 0.07 / 0.18 / 0.10; 3.0 / 3.4 / 3.1 |
+
+**The census** (n=100 on 700000+; bodies on points of 18 and points held of
+5 after turns 3 → 5 → 7 → end; share of episodes with each point empty at
+the end by index, 0–2 the near column, 3–4 the far column; max stack):
+
+| policy | success | on points | held | empty by point | max stack |
+|---|---|---|---|---|---|
+| `squad_march_take` | 1.00 | 11.7 → 12.8 → 15.8 → 15.8 | 3.0 → 4.2 → 5.0 → 5.0 | 0 / 0 / 0 / 0 / 0 | 5.0 |
+| R1 s1 | 0.00 | **10.2 → 2.1** → 6.8 → **1.9** | 2.7 → 1.5 → 2.0 → 0.9 | 1.00 / 0.89 / 1.00 / 0.41 / 0.80 | 1.7 |
+| R1 s2 | 0.03 | 3.3 → 5.0 → 4.6 → 4.5 | 1.6 → 2.2 → 2.8 → 2.9 | 0.20 / 0.43 / 0.25 / 0.54 / 0.69 | 2.2 |
+| R1 s3 | 0.01 | 6.1 → 5.6 → 5.0 → 5.0 | 1.9 → 2.4 → 2.5 → 2.5 | 0.45 / 0.43 / 0.69 / 0.29 / 0.62 | 2.9 |
+| R2 s1 | 0.02 | 6.6 → 4.7 → 4.3 → 4.3 | 2.0 → 2.2 → 2.1 → 2.4 | 0.92 / 0.30 / 0.51 / 0.32 / 0.54 | 2.4 |
+| R2 s2 | 0.03 | 2.2 → 4.5 → 5.4 → 5.5 | 1.2 → 2.1 → 2.9 → 2.9 | 0.38 / 0.18 / 0.24 / 0.65 / 0.62 | 2.8 |
+| R2 s3 | 0.00 | 6.2 → 4.2 → 4.6 → 4.7 | 1.9 → 2.1 → 2.3 → 2.4 | 0.68 / 0.36 / 0.40 / 0.33 / 0.85 | 3.0 |
+
+Two things are new against the original's census. **R1 s1 is the sharpest
+walk-off on the ladder**: ten bodies on points after turn 3, two after
+turn 5, seven after turn 7, two at the end — held 0.90 of 5, every near
+point empty in 89–100% of episodes; its sampled play holds **3.20** where
+its greedy play holds 0.90 (−6.6 ± 1.1 vp greedy − sampled), so the greedy
+argmax is what walks off a diffuse policy. **R2 at 81,920 had the far
+column empty in 90–100% of episodes on every seed** (near column mostly
+held: the per-point payment bought the three points reached by turn 5 and
+not the walk to the far two); by 122,880 that has diffused to 0.33–0.85
+across all five. Neither arm's max stack exceeds three; the failure is
+under-arrival and abandonment, as on every read of this half-step.
+Sampled against greedy: −6.6 / +3.6 / −0.6 (R1), +1.1 / +8.4 / +5.8 (R2)
+vp — diffuse on four of six.
+
+**The panel, and the mechanism.** The pre-registration asked for the
+critic before the arm, and the critic is where the arms broke.
+`train/explained_variance` by quarter: R1 −0.02 / 0.09 / −0.14 / −0.01,
+0.11 / 0.41 / **0.73** / 0.53, 0.21 / 0.22 / 0.03 / −0.17; R2 **−0.32 /
+−0.19 / −0.19 / −0.37**, 0.12 / −0.31 / −0.32 / −0.47, −0.24 / −0.23 /
+−0.14 / −0.14 — against the original's 0.63–0.73 and the discount arm's
+0.78–0.85 on the same rung. Return std 0.44–0.88 (the original 0.6–0.7).
+In-run success in the last quarter (n=30 on 500000+) 1.9 / 2.3 / 2.2 (R1)
+and 0.8 / 2.5 / 0.2 (R2) against the original's 15.0 / 19.6 / 8.6. Clip
+fraction 0.18–0.31, displacement entropy 2.0–2.6 nats (the original
+1.6–1.9), gradient clipped throughout. A red panel with a policy that did
+not move is a FAIL with a named defect: **paying the criterion as a large
+lump at the end — 5.0 on success (R1), or 1.0 per point at the clock on
+every episode (R2) — made the value target a rare or turn-keyed jump the
+critic could not fit, and the advantages PPO trains on became noise.** The
+original's remaining-rounds scale, which this arm called a defect, was
+also keeping the terminal lump small (0.5–2.0) beside the dense terms.
+
+**What the answer says, as written.** FAIL on both: the terminal payment
+was never the signal the policy was missing; and the search account
+stands — the policy never holds four points long enough for a fifth to
+be paid, and paying the fourth taught it to keep the near column. Next
+on this half-step is not a reward-shape arm and not an optimiser
+setting: the record now has the discount (critic better, policy the
+same), the terminal shape (critic worse, policy the same) and the credit
+(A5d/A5e, nothing). What is left is exploration or representation —
+directed exploration toward the empty point, or an observation that
+names it — and the ladder's rule that a rung failing at the cap gets
+one optimiser arm has now been spent on this half-step twice.
+
+**Recordings.** Every checkpoint of all six runs carries a recorded
+greedy episode (`recordings/pm-<rounds>-seed500000.json`), the first
+arms recorded in-run; thirteen of each run's recordings are rendered to
+MP4 beside their logs and logged to the run's own Wandb record under
+`episode_recording` (post hoc, `362518a`'s pipeline; sibling runs
+`850oup4q` / `3yauw38m` / `ptja7rxk` / `078e0p6p` / `1p5qwba8` /
+`clqr3exm` carry the same videos, logged while the trainers ran).
