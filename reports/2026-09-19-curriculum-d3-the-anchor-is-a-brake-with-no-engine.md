@@ -156,3 +156,66 @@ reward both keeps the plan and adds to it.
   anchor, which has no whole-army counterpart.
 - Goal 3 (per-point terminal bonus or unique-coverage pay on A5-points)
   was not built or run.
+
+## Addendum — written 2026-09-19 11:30: why training does not improve the clone, measured
+
+Three causes, each read off the runs' own logs (`wandb/run-*/run-*.wandb`,
+by quarter of the run) and one measurement of the reward.
+
+**1. The anchor owns the gradient.** The adaptive coefficient
+(Schulman's rule, doubling above 1.5× the target, capped at 10,000)
+saturated at the cap inside the first quarter on D3a because the
+measured drift sat at 0.075–0.083 nats per decision and never reached
+the 0.03 target. The pre-clip gradient norm read 14,000–17,000 with
+`max_grad_norm` 0.5 and the clip binding on 100% of steps, so the
+update direction is the anchor's; the policy loss (0.05) is six
+millionths of the loss. D3b's coefficient hovered at 5–9 with the
+drift at its 0.10 target, gradient norm 8–17, still clipped every step;
+its loss is 96% anchor. The same saturation is in every anchored run
+on file — D2c (coef 10,000, gradient 24,000–29,000) and A5i (10,000,
+20,000–23,000): **"the anchor holds" has meant "the anchor is the
+whole update", at every coefficient that holds.**
+
+**2. There is nothing to explore from.** The clone's heads are
+near-deterministic: entropy 0.03 nats on the declaration head, 0.24 on
+displacement, 3×10⁻⁵ on the shooting head, ~0 on the unit pointer; a
+from-scratch policy at the same stage (A5-points) reads 0.11 and
+1.6–2.3. Sampled rollouts are the greedy policy (the paired
+sampled − greedy difference was −3 to +1 vp), so the alternative the
+rung asks for — the unarmed squads wait while the rifles work — is
+never rolled out and its advantage is never measured. The anchor
+forbids the cure: entropy added to a near-deterministic reference is
+KL to it, so `ent_coef` 0.003 pushes against a coefficient of 10,000.
+
+**3. The reward pays the wrong order first.** The re-timed C3b reward
+stream, n=40 on 700000+, gamma 0.9 per round as PPO discounts it:
+
+| policy | success | episode reward | discounted from the start | rounds 1–6 | rounds 7–12 |
+|---|---|---|---|---|---|
+| `scripted_escort` | 1.00 | 9.79 | 3.96 | 1.25 | 8.54 |
+| `squad_march_take` | 0.30 | 6.23 | 3.24 | **2.55** | 3.69 |
+| the clone | 0.30 | 6.26 | 3.22 | 2.47 | 3.79 |
+
+Walking in at once earns twice the escort's reward in the first six
+rounds (the travel term pays per inch closed, now); the escort's
+payoff — coverage of the cleared point and the terminal bonus — lands
+in rounds 7–12 and at the end. Undiscounted the plan is worth +3.6 per
+episode; discounted to the rounds where the decision is made it is
+worth **+0.7**, spread over ~120 decisions, against a per-decision
+return sd of 1.7 and a critic at explained variance 0.45–0.58. The
+advantage of waiting is a fraction of the noise on any one decision,
+and negative on the decisions that matter most (the first moves).
+
+Any one of the three would slow improvement; together they forbid it.
+The escort clone (D2c) and the bar's clones (A5f, A5i) sat under the
+same three, which is why HOLDS was the ceiling there too. **What the
+record now says about the D-route:** the anchor as built (an adaptive
+coefficient capped at 10,000 on a clipped gradient) is a freeze, not a
+tether; a clone of a deterministic teacher has no entropy to explore
+with; and a plan whose payoff is late loses to a travel term that pays
+now under gamma 0.9. A tether that could lift a clone would need a
+bounded coefficient (or a trust region on the policy step rather than
+a penalty), an entropy floor the anchor does not tax, and a reward or
+horizon under which the plan's payoff reaches the decisions that
+choose it — three builds, and the third is the same wall the
+conjunction rungs hit.

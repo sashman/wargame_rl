@@ -175,3 +175,15 @@ answered in the negative; goal 3 (decompose the conjunction on
 A5-points) was conditioned on goal 1 climbing and is not run — with
 the caveat, recorded so it can be re-opened, that goal 3 asks about
 reward from scratch and goal 1 answered about reward from a clone.
+
+## Amendment 4 — written 2026-09-19 11:30, the mechanism (post hoc)
+
+Read off the runs' logs after the verdict, not pre-registered: the
+anchor's coefficient sat at its 10,000 cap on D3a from the first quarter
+(drift 0.08 against a 0.03 target) with the gradient norm 14,000–17,000
+clipped to 0.5 on every step — the update is the anchor; the clone's
+heads are near-deterministic (declaration 0.03 nats, shooting 3×10⁻⁵),
+so the rung's alternative is never rolled out; and C3b's reward,
+discounted at gamma 0.9 per round, pays walking-now 2.55 against the
+escort's 1.25 in rounds 1–6 and leaves the plan worth +0.7 per episode
+at the decision point. The report's addendum carries the tables.
