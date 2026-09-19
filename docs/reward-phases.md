@@ -58,6 +58,8 @@ reward_phases:
 | `min_epochs` | int | `0` | Minimum epochs spent in this phase before advancement is eligible |
 | `min_epochs_above_threshold` | int | `5` | Success rate must be ≥ success_threshold for this many consecutive epochs before advancing. **This is why `--eval-every-n-epochs` is rejected on a multi-phase config**: "consecutive" counts epochs that were *evaluated*, so a coarser cadence moves the epoch a phase advances on and changes what the run trains |
 | `terminal_success_bonus` | float | `0.0` | Bonus added at episode end **when the phase's `success_criteria` is met** (previously hardcoded to all-models-at-objectives). Scaled by remaining-turn fraction **only when `terminate_on_success` is true** — see below. |
+| `terminal_bonus_speed_scaling` | bool | `true` | Whether `terminal_success_bonus` is scaled by the remaining-turn fraction. `false` pays a late success in full — the ladder's A5-points reward-shape arm (2026-09-19): a policy that first succeeds in round nine of ten was being paid a tenth of the configured bonus for the criterion it is judged on. |
+| `terminal_objective_bonus` | float | `0.0` | Bonus added at episode end scaled by the **fraction of objectives the player controls on the final board** (VP's control rule, the same read as `objective_coverage`), paid whether or not `success_criteria` hold and never scaled by the turns left. Decomposes a conjunction-over-points criterion into a per-point terminal payment. 0 disables. |
 | `terminal_vp_bonus` | float | `0.0` | Bonus added at episode end when player VP meets the phase's VP threshold (for VP-based success criteria). |
 | `terminate_on_success` | bool | `true` | Whether to end the episode as soon as **this phase's `success_criteria`** is met. Set `false` in VP phases when you want to keep scoring — and read the warning below, because this flag changes what `success_rate` measures. |
 
@@ -99,7 +101,7 @@ calculator's arithmetic is untouched — only the step it is paid on changes.
 | state term | `objective_hold`, `declared_objective_hold`, `unit_coherency`, `group_cohesion` | once per turn at the closing step: `weight × mean over alive models`, × the number of stepped phases per round |
 | delta global | `vp_gain`, `killing`, `models_lost`, `objective_flip_bonus` | once at the close, unscaled, against the retimer's own baselines (VP, alive masks and the env's cumulative attrition count at the previous close) |
 | state global | `objective_coverage`, `models_at_objectives` | once at the close, × the stepped phases per round |
-| terminal bonuses | `terminal_success_bonus`, `terminal_vp_bonus` | at the terminating close, through `RewardPhaseManager.terminal_bonuses` — the same code the phase facade runs |
+| terminal bonuses | `terminal_success_bonus`, `terminal_objective_bonus`, `terminal_vp_bonus` | at the terminating close, through `RewardPhaseManager.terminal_bonuses` — the same code the phase facade runs |
 
 Rules the table implies, each pinned by `tests/test_per_model_reward_timing.py`:
 
@@ -289,6 +291,8 @@ For VP phases it is also semantically wrong: `win_at_the_end` must mean ahead *a
 The bonus is multiplied by the fraction of turns left when the episode ends — a speed incentive that presumes success *ends* the episode. It is therefore applied **only when `terminate_on_success` is true**.
 
 With `terminate_on_success: false` every episode runs to `max_turns`, which would leave a scale of `1/max_turns`. Note `max_turns = number_of_battle_rounds × (5 - len(skip_phases))`, so a 20-round config with three skipped phases has `max_turns = 40` and would shrink the bonus 40-fold. The bonus is delivered at full value in that case instead.
+
+`terminal_bonus_speed_scaling: false` switches the scale off altogether, and `terminal_objective_bonus` is a second terminal term that is never scaled: it pays the fraction of objectives controlled on the final board, whether the episode ended by success or by the clock.
 
 Two consequences worth checking when a phase will not advance:
 

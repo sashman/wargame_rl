@@ -70,6 +70,20 @@ class RewardPhaseConfig(BaseModel):
         description="Bonus added at episode end when the phase's success_criteria is "
         "met. Scaled by remaining turns fraction (faster success = higher). 0 disables.",
     )
+    terminal_bonus_speed_scaling: bool = Field(
+        default=True,
+        description="Scale `terminal_success_bonus` by the fraction of turns left "
+        "when success ends the episode (a speed incentive). False pays the bonus "
+        "in full whenever the criteria hold, so a late success is worth as much "
+        "as an early one; the speed is then read from `turns`, not paid.",
+    )
+    terminal_objective_bonus: float = Field(
+        default=0.0,
+        description="Bonus added at episode end scaled by the fraction of "
+        "objectives the player controls on the final board, under VP's control "
+        "rule, whether or not the phase's success_criteria are met. Never scaled "
+        "by the turns left. 0 disables.",
+    )
     terminal_vp_bonus: float = Field(
         default=0.0,
         description="Bonus added at episode end when player VP meets the phase's "

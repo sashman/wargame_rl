@@ -1552,6 +1552,102 @@ class TestEnvIntegration:
         assert terminated is True
         assert reward == pytest.approx(25.0)
 
+    @staticmethod
+    def _late_success_env(speed_scaling: bool) -> WargameEnv:
+        """Two rounds, two models, one objective; success is arranged on the
+        second turn so the remaining-turn scale is strictly below one."""
+        config = WargameEnvConfig(
+            render_mode=None,
+            board_width=20,
+            board_height=20,
+            number_of_wargame_models=2,
+            number_of_objectives=1,
+            objective_radius_size=2,
+            number_of_battle_rounds=2,
+            reward_phases=[
+                RewardPhaseConfig(
+                    name="reach_objectives",
+                    reward_calculators=[
+                        RewardCalculatorConfig(type="objective_coverage", weight=0.0),
+                    ],
+                    success_criteria=SuccessCriteriaConfig(type="all_at_objectives"),
+                    terminal_success_bonus=25.0,
+                    terminal_bonus_speed_scaling=speed_scaling,
+                )
+            ],
+        )
+        env = WargameEnv(config=config)
+        env.reset()
+        env.objectives[0].location = np.array([10, 10])
+        for model in env.wargame_models:
+            model.location = np.array([2, 2])
+            model.group_id = 0
+        return env
+
+    @pytest.mark.parametrize("speed_scaling", [True, False])
+    def test_terminal_bonus_speed_scaling_switch(self, speed_scaling: bool) -> None:
+        env = self._late_success_env(speed_scaling)
+        stay = WargameEnvAction(actions=[0 for _ in env.wargame_models])
+        _, _, terminated, _, _ = env.step(stay)
+        assert terminated is False
+        for model in env.wargame_models:
+            model.location = env.objectives[0].location.copy()
+        while True:
+            _, reward, terminated, _, _ = env.step(stay)
+            if terminated:
+                break
+        paid = env.phase_manager.last_reward_breakdown["terminal_success_bonus"]
+        assert reward == pytest.approx(paid)
+        if speed_scaling:
+            assert 0.0 < paid < 25.0
+        else:
+            assert paid == pytest.approx(25.0)
+
+    @pytest.mark.parametrize("succeeds", [True, False])
+    def test_terminal_objective_bonus_pays_the_controlled_fraction(
+        self, succeeds: bool
+    ) -> None:
+        # Two objectives, every model on the first: half the objectives are
+        # controlled, so half the bonus is paid -- with the success criterion
+        # met (all models on a point) or not (every point occupied).
+        criteria = "all_at_objectives" if succeeds else "all_objectives_occupied"
+        config = WargameEnvConfig(
+            render_mode=None,
+            board_width=20,
+            board_height=20,
+            number_of_wargame_models=2,
+            number_of_objectives=2,
+            objective_radius_size=2,
+            number_of_battle_rounds=1,
+            reward_phases=[
+                RewardPhaseConfig(
+                    name="spread",
+                    reward_calculators=[
+                        RewardCalculatorConfig(type="objective_coverage", weight=0.0),
+                    ],
+                    success_criteria=SuccessCriteriaConfig(type=criteria),
+                    terminal_success_bonus=25.0,
+                    terminal_objective_bonus=10.0,
+                )
+            ],
+        )
+        env = WargameEnv(config=config)
+        env.reset()
+        env.objectives[0].location = np.array([5, 5])
+        env.objectives[1].location = np.array([15, 15])
+        for model in env.wargame_models:
+            model.location = np.array([5, 5])
+            model.group_id = 0
+        stay = WargameEnvAction(actions=[0 for _ in env.wargame_models])
+        while True:
+            _, reward, terminated, _, _ = env.step(stay)
+            if terminated:
+                break
+        breakdown = env.phase_manager.last_reward_breakdown
+        assert breakdown["terminal_objective_bonus"] == pytest.approx(5.0)
+        assert ("terminal_success_bonus" in breakdown) is succeeds
+        assert reward == pytest.approx(sum(breakdown.values()))
+
     def test_phased_terminal_success_bonus_uses_phase_criteria(self) -> None:
         config = WargameEnvConfig(
             render_mode=None,

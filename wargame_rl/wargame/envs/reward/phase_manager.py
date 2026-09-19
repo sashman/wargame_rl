@@ -7,6 +7,9 @@ import numpy as np
 from loguru import logger
 
 from wargame_rl.wargame.envs.domain.battle_view import BattleView
+from wargame_rl.wargame.envs.env_components.distance_cache import (
+    objective_ownership_from_norms_offset,
+)
 from wargame_rl.wargame.envs.reward.calculators.base import (
     GlobalRewardCalculator,
     PerModelRewardCalculator,
@@ -18,6 +21,23 @@ from wargame_rl.wargame.envs.reward.phase import RewardPhaseConfig
 
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.reward.step_context import StepContext
+
+
+def _controlled_fraction(view: BattleView, ctx: StepContext) -> float:
+    """The fraction of objectives the player controls under VP's control rule --
+    the same read `objective_coverage` pays every step, taken once at the end."""
+    n_obj = len(view.objectives)
+    if n_obj == 0:
+        return 0.0
+    cache = ctx.distance_cache
+    if view.opponent_models:
+        opponent_norms = ctx.opponent_distances(view).model_obj_norms_offset
+    else:
+        opponent_norms = np.zeros((0, n_obj), dtype=np.float64)
+    player_controls, _ = objective_ownership_from_norms_offset(
+        cache.model_obj_norms_offset, opponent_norms, cache.obj_radii
+    )
+    return float(np.sum(player_controls)) / float(n_obj)
 
 
 @dataclass
@@ -32,6 +52,8 @@ class RewardPhase:
     min_epochs: int
     min_epochs_above_threshold: int
     terminal_success_bonus: float
+    terminal_bonus_speed_scaling: bool
+    terminal_objective_bonus: float
     terminal_vp_bonus: float
     terminate_on_success: bool
 
@@ -118,6 +140,8 @@ class RewardPhaseManager:
                     min_epochs=cfg.min_epochs,
                     min_epochs_above_threshold=cfg.min_epochs_above_threshold,
                     terminal_success_bonus=cfg.terminal_success_bonus,
+                    terminal_bonus_speed_scaling=cfg.terminal_bonus_speed_scaling,
+                    terminal_objective_bonus=cfg.terminal_objective_bonus,
                     terminal_vp_bonus=cfg.terminal_vp_bonus,
                     terminate_on_success=cfg.terminate_on_success,
                 )
@@ -271,7 +295,11 @@ class RewardPhaseManager:
                 # the bonus down by that factor (0.05 at 20 rounds) — which made
                 # the configured bonus worth ~1% of episode reward and left the
                 # success criterion with almost no gradient behind it.
-                if phase.terminate_on_success:
+                # `terminal_bonus_speed_scaling: false` pays a late success in
+                # full: on a rung where the policy first succeeds near the last
+                # round, the scaled bonus is a tenth of the configured one and
+                # the criterion the rung is judged on is nearly unpaid.
+                if phase.terminate_on_success and phase.terminal_bonus_speed_scaling:
                     remaining = max(0.0, float(ctx.max_turns - ctx.current_turn + 1))
                     denom = float(ctx.max_turns) if ctx.max_turns > 0 else 1.0
                     speed_scale = remaining / denom
@@ -280,6 +308,13 @@ class RewardPhaseManager:
                 bonus = phase.terminal_success_bonus * speed_scale
                 if bonus != 0.0:
                     bonuses["terminal_success_bonus"] = bonus
+        if ctx.is_terminated and phase.terminal_objective_bonus != 0.0:
+            # Paid on the final board whether or not the phase succeeded, so a
+            # conjunction over several objectives is worth something per
+            # objective rather than nothing until the last one is taken.
+            bonus = phase.terminal_objective_bonus * _controlled_fraction(view, ctx)
+            if bonus != 0.0:
+                bonuses["terminal_objective_bonus"] = bonus
         if ctx.is_terminated and phase.terminal_vp_bonus != 0.0:
             vp_threshold = phase.criteria.vp_threshold_for_terminal_bonus(view)
             if vp_threshold is not None and view.player_vp >= vp_threshold:
