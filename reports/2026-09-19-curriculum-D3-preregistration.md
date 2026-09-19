@@ -116,3 +116,23 @@ on the way".
 `per-model-c3b-2026-09-19-02-42-*-s{1,2,3}d3a`; D3b (anchor 1 / 0.10)
 `vv1w0k0f` / `sfk1u00s` / `k3u5dz2m`, `…-s{1,2,3}d3b`. Wandb
 `curriculum-d3`. Beside E1's six per-model runs on the box.
+
+## Amendment 2 — written 2026-09-19 05:30, at 60k of 122,880 on both arms
+
+The 20k / 40k / 60k reads, greedy at n=180 on 700000+ (the clone
+0.361, the escort 0.978):
+
+| rounds | D3a s1 / s2 / s3 (anchor 10 / 0.03) | D3b s1 / s2 / s3 (anchor 1 / 0.10) |
+|---|---|---|
+| 20,480 | 0.372 / 0.339 / 0.350 | 0.322 / 0.383 / 0.406 |
+| 40,960 | 0.367 / 0.361 / 0.367 | 0.361 / 0.367 / 0.372 |
+| 61,440 | 0.378 / 0.367 / 0.389 | 0.328 / 0.350 / 0.344 |
+
+Eighteen reads, all within 0.04 of the clone (binomial SE 0.036 at
+n=180), no trend on either arm. The ordering census does not move
+either: first kill at turn 6.8–7.1 in 90–94% of episodes, first unarmed
+arrival at 8.4–9.0 in 56–62%, kill before arrival 0.79–0.85, blockers
+wiped 0.62–0.66, alive 0.52–0.54, held 2.44–2.57 — the clone's row on
+every column, at both anchor strengths. Half the budget in, neither
+arm has taken a step toward the escort's order. Written before the
+end read; the verdict is at 122,880 (~08:30).
