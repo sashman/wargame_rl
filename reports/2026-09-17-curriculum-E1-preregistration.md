@@ -214,3 +214,56 @@ loses the formation fails it, and that is what the clause was for.
 Reported as: the control beats the bar on vp on two seeds and fails
 the rung. The per-model arm and the companion are read against the
 same three clauses on their own facade at 122,880.
+
+## Amendment 4 — written 2026-09-19 10:30, the per-model arm and the companion read at 122,880
+
+Greedy, no decode, on the per-model facade, n=180 on 700000+, paired
+per episode against `squad_march_take` on the same facade (the script:
+vp +20.2 ± 7.6, win 0.567, held 2.93, on_obj 0.946, coherent 0.873):
+
+| row | vp | win | held (bar 2.93; clause ≥ 2.68) | on obj | coherent (clause ≥ 0.84) | stat / hold |
+|---|---|---|---|---|---|---|
+| scratch s1 | **−158.1 ± 3.3** | 0.000 | 0.76 | 0.096 | 0.584 | 0.00 / 0.21 |
+| scratch s2 | **−151.9 ± 4.8** | 0.028 | 0.71 | 0.169 | 0.383 | 0.49 / 0.09 |
+| scratch s3 | **−159.8 ± 3.3** | 0.000 | 1.24 | 0.201 | 0.328 | 0.14 / 0.13 |
+| from A5i s1 | **−67.9 ± 5.3** | 0.128 | 1.26 | 0.261 | 0.374 | 0.42 / 0.11 |
+| from A5i s2 | **−179.7 ± 5.1** | 0.006 | 0.43 | 0.128 | 0.735 | 0.78 / 0.05 |
+| from A5i s3 | **−159.1 ± 5.8** | 0.061 | 0.58 | 0.178 | 0.467 | 0.66 / 0.06 |
+
+**FAIL as pre-registered on every seed of both arms, on every clause,
+by a margin no clause was written for**: 170–200 vp behind the script
+on five seeds (the sixth 88 behind), a fifth of the bar's points held,
+a tenth to a quarter of the bodies on any point, coherency 0.33–0.73
+against 0.87. The in-run curve never reached the script's vp on any
+seed at any evaluation; the companion's best row (s1, −68) was its best
+from 60k on.
+
+The by-turn census (n=60 on 700000+; bodies on points of 24 and points
+held of 6 after turns 3 → 5 → 7 → end of 20):
+
+| policy | bodies on points | held | max stack |
+|---|---|---|---|
+| `squad_march_take` | 8.8 → 10.7 → 10.1 → 6.8 | 2.6 → 3.1 → 3.2 → 2.9 | 2.8 |
+| scratch s1 / s2 / s3 | 1.5 → 1.6 → 0.8 → 1.3 / 2.0 → 2.4 → 2.1 → 1.0 / 2.3 → 2.0 → 1.2 → 2.4 | 0.9 → 0.8 / 1.2 → 0.7 / 1.2 → 1.2 | 0.9–1.9 |
+| from A5i s1 / s2 / s3 | 2.7 → 3.6 → 3.7 → 2.5 / 2.9 → 3.8 → 3.3 → 0.9 / 2.7 → 2.5 → 2.1 → 0.9 | 1.3 → 1.2 / 1.3 → 0.4 / 1.5 → 0.6 | 0.8–1.9 |
+
+**The walk broke and the shooting was not learned.** The script has
+nine bodies on points by turn 3 and holds three through the game while
+losing three quarters of both armies. The scratch arm never puts more
+than two and a half bodies on a point at any turn. The companion
+started from a policy that puts twenty of twenty-four bodies on six
+points by turn 7 on A5; on E1 it has three to four on points by turn
+5 — a fifth of A5i's walk — and by the end one to two and a half, the
+points it reached lost (held 1.3–1.6 at turn 5, 0.4–1.2 at the end).
+The A5i walk was overwritten within 10k rounds (stationary share
+0.5–0.9 in-run from the first evaluations, 0.42–0.78 at the end), and
+what replaced it neither walks nor shoots: vp 88–180 behind a script
+that walks and shoots on the way. Sampled play and `alive` are read
+with the report.
+
+**Read against the whole-army control** (amendment 3): the control
+learned the guns (+45 / +73 vp on two seeds by killing) and lost the
+formation; the per-model arm learned neither. This is the first rung
+where the per-model arm is not merely behind the control but plays a
+different game from every comparator — the ladder's E branch stops
+here, and the report says what the E1 census says about why.
