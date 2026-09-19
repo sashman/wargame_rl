@@ -1157,6 +1157,7 @@ rung stacked on #339.
 | **D1** the escort cloned into the set network (300 games × 40 epochs, two fit seeds), scored on C3b | start (supervised) | **FAIL on the letter — and the clone holds the plan** | success **0.830 / 0.850** (bound 0.96), kill before arrival **0.99 / 1.00**, blockers wiped 98%, alive 0.90, held 3.79; joint match 0.44 — the escort's unit-opening order is not in the observation (chance held-out); per head declaration 0.93, unit 1.00, displacement 0.61 held-out against 0.95 on the training episodes (over-fit; D1b runs 4× the games) | (reward on the same scenario: arm 0.20, scratch 0.02–0.06, control 0.28) | [2026-09-17](reports/2026-09-17-curriculum-d1-the-clone-holds-the-plan.md) |
 | **D1b** the same from 1,200 games | start (supervised), 4× the data | **PASS on the rung's criterion, FAIL on the fidelity bound (retired)** | success **0.960 / 0.960** (bound 0.96), kill before arrival **1.00 / 1.00**, alive 0.95, held 3.93, blockers wiped 98%; displacement match 0.61 → 0.72 held-out (0.94 on the training games), the opening order at chance held-out; the two clones within a thousandth | (reward on the same scenario: 0.20 / 0.02–0.06 / 0.28) | [2026-09-17](reports/2026-09-17-curriculum-d1b-four-times-the-games.md) |
 | **D2** PPO from the escort clone on C3b, four arms: plain · critic fitted · KL anchor · both | start (reward from the plan) | **plain DESTROYS, critic DESTROYS, anchor HOLDS, both holds a hair worse — nothing IMPROVES** | plain **0.028 / 0.183 / 0.028** (gone by 2.6k rounds); critic fitted (EV 0.74) **0.056 / 0.006 / 0.028**; anchor (coef 10, target 0.03) **0.944 / 0.956 / 0.956**, paired vp −1.4 to +0.7 v the clone's 0.950, half the episodes identical, EV 0.66 from cold, drift 0.87 on the displacement head (clone 0.94); both 0.939 / 0.906 / 0.911. The destroyed arms keep the order (fire first 87–97%) and lose the walk | — | [2026-09-17](reports/2026-09-17-curriculum-d2-the-anchor-not-the-critic.md) |
+| **D3** anchored PPO from a clone of a WEAKER teacher (plain `take` on C3b, 0.361; the escort 0.978) | start (does the anchor let reward improve?) | **HOLDS on both anchors, IMPROVES on neither — the D-route is imitation only** | D3a (10 / 0.03) 0.339 / 0.356 / 0.333, D3b (1 / 0.10) 0.328 / 0.344 / 0.356, paired against the clone −0.006 to −0.033 (t −0.2 to −1.4), 17–22 of 180 episodes differing; kill before arrival 0.78–0.84, blockers wiped 0.63–0.67, alive 0.52–0.54 — the clone's row on every column at every read from 20k to the end; sampled = greedy | — | [2026-09-19](reports/2026-09-19-curriculum-d3-the-anchor-is-a-brake-with-no-engine.md) |
 
 - **The per-model pipeline learns**, at 128 rounds per update, on the same
   code that sat at the floor at 8–32. It reaches the script's speed where
@@ -1270,6 +1271,25 @@ rung stacked on #339.
   at forty thousand rounds) — a reward-scale change is a PPO change here. A5d — A5b
   re-run with the scaled credit, A5c the unscaled control beside it — is
   its first arm; every per-model number before it was paid under the mean.
+- ⚠ **THE D-ROUTE ON THE PER-MODEL FACADE IS IMITATION ONLY: ANCHORED
+  PPO HOLDS A CLONE AND NEVER LIFTS IT, EVEN WITH TWO THIRDS OF THE
+  RUNG TO GAIN.** D2c, A5f and A5i held clones that were already at
+  their teacher's level, which left "nothing to gain" as a reading. D3
+  closed it: plain `take` cloned on C3b (0.361; the escort 0.978, the
+  gap one ordered plan the same reward has half-taught from scratch)
+  and anchored at D2c's setting and at A5g's reads 0.33–0.36 on every
+  seed at 122,880, the by-phase census the clone's on every column,
+  17–22 episodes in 180 differing from the clone at all. Four
+  coefficients across three rungs: 10 and 1 hold, 0.1 loses the clone
+  slowly, 0 destroys it in 2,560 rounds — there is no setting at which
+  reward both keeps a plan and adds to it. **A rung passed from a
+  clone is passed by the clone**; read every start-axis row that way,
+  do not run more anchor coefficients, and do not test "can reward
+  improve a start" with another clone — three seeds off one clone read
+  as one policy. What reward learns on this trainer it learns from
+  scratch, and the record says what that is (a walk at the bar's speed,
+  an engagement rule, half of an ordered plan) and is not (a
+  conjunction over five or six points, the second half of the plan).
 - ⚠ **A5'S WALL IS THE NUMBER OF POINTS TO COVER AT ONCE, AND THE RUNG
   WAS PASSED BY IMITATION, NOT REWARD.** The second pass on A5 closed
   the credit hypothesis (built as `--credit actor`, run three ways:
