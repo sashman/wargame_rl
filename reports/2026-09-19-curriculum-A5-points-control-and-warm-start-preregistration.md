@@ -1,0 +1,85 @@
+# Pre-registration: the whole-army control and the A4x warm start on A5-points — whose wall is it, and does a start help?
+
+Written 2026-09-19 20:05, **before any training round on either arm**, on
+branch `feature/per-model-actor-credit` (PR #383). Parent question #340.
+Set as a goal by Sash 2026-09-19 20:00: "run the A5-points whole-army
+control and the A4x warm-start beside it; then build and run the backward
+start curriculum on A5-points".
+
+## The question
+
+A5-points (six squads of three over five objectives; the bar
+`squad_march_take` 1.000 in 6.71 turns) has now been read from scratch
+under four settings of the per-model trainer — the original recipe
+(0.030 / 0.060 / 0.330), the discount at 0.99 (0.070 / 0.180 / 0.100),
+the flat terminal bonus (0.000 / 0.030 / 0.010) and the per-objective
+terminal bonus (0.020 / 0.030 / 0.000) — and the census is the same on
+every one: a third of the bodies on objectives, one objective empty, the
+clock run out. Two things the ladder's own contract asks for have not
+been run on this half-step:
+
+1. **The whole-army control.** Every A rung ran `train.py` on the same
+   config as the pipeline control. On A5 (six objectives) the control
+   read 0.80 / 0.94 / 0.98 at 120 epochs where the per-model arm read
+   0.26 / 0.18 / 0.16. Five objectives has no control. If the whole-army
+   trainer passes here, the wall is the per-model trainer's; if it fails,
+   five objectives is hard for both trainers at this budget.
+2. **The warm start from the objective rung below.** S3 (A3 from A2b)
+   read AHEAD 3/3 and is the one lever that ever moved a spread rung;
+   T1 (A5 from A4x) read ahead on every seed and passed on none. A4x —
+   the same army's four-squad ancestor at three objectives, passed 3/3 at
+   245,760 rounds — has not been tried as the start for five objectives.
+
+## The arms
+
+| arm | trainer | config | start | budget | tag |
+|---|---|---|---|---|---|
+| **CTL** | whole-army `train.py` | `a5_points.yaml` | scratch | 60 epochs (`--n-eval-episodes 30`, `--record-during-training`; defaults otherwise, `ent_coef` 0.03 as on every control), extended once to 120 if any seed is still rising at 60 | `a5pts-ctl` |
+| **W** | per-model `train_per_model.py` | `a5_points.yaml` | `--warm-start-from` A4x seed-for-seed: `per-model-a4-2026-09-15-07-08-53-s{1,2,3}a4/pm-00245760.pt` (weights only; cold critic and optimiser as T1 ran) | 122,880 rounds, the original recipe (128 per update, `--ent-coef 0.003`, `gamma` 0.9, `mean` credit, eval and checkpoint every 512, recording and video on) | `a5pw` |
+
+Three seeds each, on Wandb under `curriculum-a5`. The bridge on this
+config was identical on 2026-09-18 (`squad_march_take` 1.000 on both
+facades). The per-model comparator is the original A5-points from
+scratch (`uagmul66` / `wedjjozy` / `ici5py46`) read at 40,960 / 81,920 /
+122,880; the control is read against the script on its own facade.
+
+## Criteria
+
+**CTL** (the rung's letter, as on every A rung):
+- **PASS:** success ≥ 0.95 on 3/3 at n=100 on 700000+ at 60 epochs (or at
+  120 after the one extension), turns a readout.
+- **FAIL:** any seed under 0.95 at the last read.
+- **Readouts:** rounds-to-pass in-run (rolling 95% at n=30), turns, held,
+  the by-turn census, which objective is left empty.
+
+**W** (the transfer readouts T1 taught, beside the rounds bound):
+- **PASS:** success ≥ 0.95 on 3/3 at 122,880, no in-run dip below 0.80
+  after the first rolling pass.
+- **MOVES:** ahead of the original 0.030 / 0.060 / 0.330 seed for seed by
+  more than two binomial SE on 3/3 at 122,880, **and** ahead at 40,960
+  (0.040 / 0.140 / 0.090) and 81,920 (0.220 / 0.220 / 0.110) on 3/3 — a
+  start that is ahead at every read.
+- **FAIL:** neither.
+- **Readouts:** success at 20,480 (T1's read: where scratch ends, the warm
+  start already was), the in-run peak, held, the census, the panel,
+  sampled beside greedy.
+
+**What the pair says.** CTL PASS and W FAIL: the wall is the per-model
+trainer at five objectives, and #283's question has its first negative
+row on the A rungs. CTL FAIL and W FAIL: five objectives is beyond both
+trainers at this budget; the backward start curriculum (goal item 3) is
+built on that. W MOVES or PASS: the three-objective policy carries to
+five, and the C rungs' warm-start rule extends to the half-step. A W
+seed that is ahead at 20k and behind at the end is T1's shape: transfer
+onto a failure, reported as such.
+
+## What I expect (a guess, written so it can be wrong)
+
+CTL passes 2 of 3 at 60 epochs and 3 of 3 at 120, a round behind the
+script, leaving the far column's second objective empty when it fails —
+the A5 control's shape one objective smaller. W reads 0.3–0.5 at 20,480
+(ahead of everything from scratch), plateaus at 0.4–0.6 with held
+3.5–4.0, ahead of the original at every read on 3/3 (MOVES) and PASS on
+none — T1's shape, the fifth objective still the residual. If CTL fails
+too, the half-step is harder than the A5 control's numbers implied and
+the backward start is the next thing on both trainers.
