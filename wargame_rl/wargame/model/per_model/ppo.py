@@ -27,6 +27,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
+from typing import Any
 
 import numpy as np
 import torch
@@ -168,6 +169,15 @@ class EpisodeOutcome:
     reward: float
     decision_steps: int
     rounds: int
+    # The phase's success criteria on the terminating board, and how many
+    # squads the episode began with on objectives (0: from deployment).
+    success: bool = False
+    start_groups: int = 0
+
+
+# How many squads the next inline reset starts on objectives; 0 is the plain
+# augmented start. Called once per reset, so a schedule can draw.
+StartGroups = Callable[[], int]
 
 
 @dataclass(frozen=True)
@@ -182,6 +192,8 @@ class Rollout:
     episodes: list[EpisodeOutcome] = field(default_factory=list)
     # Per-term reward paid over the rollout, summed across envs.
     breakdown: dict[str, float] = field(default_factory=dict)
+    # Per env, how many squads the episode in progress started on objectives.
+    start_groups: tuple[int, ...] = ()
 
     @property
     def n_steps(self) -> int:
@@ -204,6 +216,8 @@ def collect_rollout(
     *,
     generator: torch.Generator | None = None,
     on_episode_end: OnEpisodeEnd | None = None,
+    start_groups: StartGroups | None = None,
+    initial_start_groups: Sequence[int] | None = None,
 ) -> Rollout:
     """Play every env in lockstep until `rollout_rounds x n_envs` turns close.
 
@@ -224,6 +238,10 @@ def collect_rollout(
     decision_counts = [0] * n_envs
     round_counts = [0] * n_envs
     last_done = [False] * n_envs
+    # Per env, how many squads its CURRENT episode started on objectives.
+    started_on = (
+        list(initial_start_groups) if initial_start_groups is not None else [0] * n_envs
+    )
     # Per env, the transition on which each model last acted THIS turn: where
     # a close's per-model credit (`Credit.actor`) lands. Cleared at the close.
     acted_at: list[dict[int, int]] = [{} for _ in range(n_envs)]
@@ -274,11 +292,17 @@ def collect_rollout(
                         reward=retimer.episode_reward,
                         decision_steps=decision_counts[index],
                         rounds=round_counts[index],
+                        success=retimer.succeeded(),
+                        start_groups=started_on[index],
                     )
                 )
                 if on_episode_end is not None:
                     on_episode_end(index, env, retimer)
-                observation, _ = env.reset(options=dict(_AUGMENT_START))
+                started_on[index] = int(start_groups()) if start_groups else 0
+                options: dict[str, Any] = dict(_AUGMENT_START)
+                if started_on[index] > 0:
+                    options["start_groups"] = started_on[index]
+                observation, _ = env.reset(options=options)
                 retimer.reset()
                 decision_counts[index] = 0
                 round_counts[index] = 0
@@ -297,6 +321,7 @@ def collect_rollout(
         closes=closes,
         episodes=episodes,
         breakdown=breakdown,
+        start_groups=tuple(started_on),
     )
 
 

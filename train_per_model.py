@@ -91,6 +91,7 @@ from wargame_rl.wargame.model.per_model.config import SetNetworkConfig
 from wargame_rl.wargame.model.per_model.evaluate import EvalResult, evaluate_per_model
 from wargame_rl.wargame.model.per_model.net import SetNetwork
 from wargame_rl.wargame.model.per_model.ppo import (
+    EpisodeOutcome,
     PerModelPPOConfig,
     Rollout,
     RolloutEntropy,
@@ -499,6 +500,26 @@ def train(
     video_theme: str = typer.Option(
         "tabletop", help="v2 theme the MP4 is drawn in: 'default' or 'tabletop'."
     ),
+    backward_start: int = typer.Option(
+        0,
+        help="The backward start curriculum: begin at this many squads already "
+        "standing on distinct objectives and walk the count down to 0 as the "
+        "rollouts succeed (#340). 0 is off. Evaluation always starts from "
+        "deployment.",
+    ),
+    backward_start_share: float = typer.Option(
+        0.75,
+        help="The share of rollout episodes that start at the current level; "
+        "the rest start from deployment so the walk in is never forgotten.",
+    ),
+    backward_start_advance: float = typer.Option(
+        0.8,
+        help="Step the level down once the level's own episodes succeed at this "
+        "rate over the window.",
+    ),
+    backward_start_window: int = typer.Option(
+        8, help="Rollouts over which the level's success rate is read."
+    ),
     n_layers: int | None = typer.Option(None, help="Trunk depth (default 4)."),
     embedding_size: int | None = typer.Option(None, help="Trunk width (default 128)."),
     seed: int | None = typer.Option(None),
@@ -608,6 +629,20 @@ def train(
     )
     video_fps_value = int(resolve_default(video_fps, 5))
     video_theme_value = str(resolve_default(video_theme, "tabletop"))
+    backward = BackwardStart(
+        level=int(resolve_default(backward_start, 0)),
+        share=float(resolve_default(backward_start_share, 0.75)),
+        advance_at=float(resolve_default(backward_start_advance, 0.8)),
+        window=int(resolve_default(backward_start_window, 8)),
+        rng=np.random.default_rng(resolve_optional_int(seed) or 0),
+    )
+    if backward.level > 0:
+        n_groups = len({m.group_id for m in PerModelEnv(env_config).wargame_models})
+        if backward.level > min(n_groups, env_config.number_of_objectives):
+            raise ValueError(
+                f"backward_start ({backward.level}) exceeds the squads ({n_groups}) "
+                f"or objectives ({env_config.number_of_objectives}) on this config"
+            )
     total_rounds = int(resolve_default(rounds, 1024))
     eval_episodes = int(resolve_default(n_eval_episodes, 20))
     eval_seeds_from = int(resolve_default(eval_seed_base, EVAL_SEED_BASE))
@@ -646,8 +681,12 @@ def train(
     # is not checkpointed), offset by the rounds already trained so the run
     # does not replay its own first layouts.
     seed_base = (resolved_seed or 0) * ROLLOUT_SEED_STRIDE + rounds_done
+    initial_levels = [backward.draw() for _ in envs]
     observations = [
-        env.reset(seed=seed_base + index, options={"augment_start": True})[0]
+        env.reset(
+            seed=seed_base + index,
+            options={"augment_start": True, "start_groups": initial_levels[index]},
+        )[0]
         for index, env in enumerate(envs)
     ]
     retimers = [PerStepReward(env, credit=ppo_config.credit) for env in envs]
@@ -728,6 +767,10 @@ def train(
             "video_every_rounds": video_every,
             "video_fps": video_fps_value,
             "video_theme": video_theme_value,
+            "backward_start": backward.level,
+            "backward_start_share": backward.share,
+            "backward_start_advance": backward.advance_at,
+            "backward_start_window": backward.window,
             "seed": resolved_seed,
         },
     }
@@ -788,9 +831,18 @@ def train(
             agent.network.train()
             started = time.perf_counter()
             rollout = collect_rollout(
-                envs, agent, retimers, observations, ppo_config, generator=generator
+                envs,
+                agent,
+                retimers,
+                observations,
+                ppo_config,
+                generator=generator,
+                start_groups=backward.draw if backward.level > 0 else None,
+                initial_start_groups=initial_levels,
             )
+            initial_levels = list(rollout.start_groups)
             observations = rollout.observations
+            backward.observe(rollout.episodes)
             rollout_s = time.perf_counter() - started
             entropy = rollout_entropy(network, rollout, ppo_config.batch_size)
             started = time.perf_counter()
@@ -836,6 +888,7 @@ def train(
             }
             row["train/declarations"] = float(new_declarations)
             row["train/closes"] = float(rollout.closes)
+            row.update(backward.rows())
             agent.declaration_counts.clear()
             if rounds_done % eval_every == 0 or rounds_done >= total_rounds:
                 started = time.perf_counter()
@@ -903,6 +956,87 @@ def train(
             )
         videos.finish()
         return run_dir
+
+
+class BackwardStart:
+    """The backward start curriculum's schedule (#340).
+
+    At `level` k, a `share` of rollout episodes begin with k squads already
+    standing on k distinct objectives (`start_groups_on_objectives`) and the
+    rest from deployment. The level steps down by one once the level's OWN
+    episodes -- not the deployment ones, and not the evaluation, which always
+    starts from deployment -- succeed at `advance_at` over the last `window`
+    rollouts with at least `window` such episodes. At level 0 it is the plain
+    augmented start and draws nothing.
+    """
+
+    def __init__(
+        self,
+        *,
+        level: int,
+        share: float,
+        advance_at: float,
+        window: int,
+        rng: np.random.Generator,
+    ) -> None:
+        if not 0.0 < share <= 1.0:
+            raise ValueError(f"backward_start_share must be in (0, 1], got {share}")
+        if not 0.0 < advance_at <= 1.0:
+            raise ValueError(
+                f"backward_start_advance must be in (0, 1], got {advance_at}"
+            )
+        if window < 1:
+            raise ValueError(f"backward_start_window must be >= 1, got {window}")
+        self.level = max(0, level)
+        self.share = share
+        self.advance_at = advance_at
+        self.window = window
+        self._rng = rng
+        self._recent: list[list[bool]] = []
+        self.advanced_at_rollout: list[int] = []
+        self._rollouts = 0
+        self.last_level_success: float | None = None
+
+    def draw(self) -> int:
+        """The level the next episode starts at: the current one or 0."""
+        if self.level <= 0:
+            return 0
+        return self.level if float(self._rng.random()) < self.share else 0
+
+    def observe(self, episodes: Sequence[EpisodeOutcome]) -> bool:
+        """Read one rollout's finished episodes; True when the level stepped down."""
+        self._rollouts += 1
+        if self.level <= 0:
+            return False
+        self._recent.append(
+            [e.success for e in episodes if e.start_groups == self.level]
+        )
+        self._recent = self._recent[-self.window :]
+        outcomes = [o for rollout in self._recent for o in rollout]
+        if len(self._recent) < self.window or len(outcomes) < self.window:
+            self.last_level_success = float(np.mean(outcomes)) if outcomes else None
+            return False
+        self.last_level_success = float(np.mean(outcomes))
+        if self.last_level_success < self.advance_at:
+            return False
+        self.level -= 1
+        self.advanced_at_rollout.append(self._rollouts)
+        self._recent = []
+        logger.info(
+            "backward start: level {} -> {} at rollout {} (level success {:.2f})",
+            self.level + 1,
+            self.level,
+            self._rollouts,
+            self.last_level_success,
+        )
+        return True
+
+    def rows(self) -> dict[str, float]:
+        """The metrics rows: the level, and the level's rolling success."""
+        rows = {"curriculum/start_groups": float(self.level)}
+        if self.last_level_success is not None:
+            rows["curriculum/level_success"] = self.last_level_success
+        return rows
 
 
 RECORDINGS_DIR = "recordings"
