@@ -181,3 +181,36 @@ or the shooting was never learned (`alive`, kills).
 Tags: control `e1-ctl`, scratch `e1`, companion `e1w`; Wandb
 `curriculum-e1`; run ids on #381 when they exist. Nine trainers and the
 C3b clone fit (D3) on the box.
+
+## Amendment 3 — written 2026-09-19 02:25, the whole-army control read at 120 epochs; no per-model number yet
+
+The control finished its 60 epochs in about twenty minutes (the phase
+facade steps a 24-v-24 shooting round in ~10 ms; the "two to three
+days" of § The arms was the per-model estimate) with the in-run vp
+still rising on every seed (by quarter −194 → −19, −196 → −21, −208 →
+−69), so the pre-registered once-only extension to 120 ran, resumed
+from each seed's 60-epoch `last.ckpt` (Wandb `pp3ep94b` / `rkdln3xc` /
+`njr0mg5a`; directories `…-2026-09-19-01-41-2*-s{1,2,3}e1-ctl-x`).
+Read greedy, K=1, on the phase facade, n=180 on 700000+, paired per
+episode against `squad_march_take` on the same facade:
+
+| seed | vp | script | arm − script, paired | t | held (bar 2.66) | coherent (bar 0.85) | alive | on obj | win |
+|---|---|---|---|---|---|---|---|---|---|
+| s1 | 4.7 | 20.2 | **−15.6 ± 9.2** | −1.68 | 2.47 | 0.860 | 0.577 | 0.877 | 0.43 |
+| s2 | **93.6** | 20.2 | **+73.4 ± 10.3** | +7.10 | 3.05 | **0.780** | 0.502 | 0.781 | 0.79 |
+| s3 | **65.4** | 20.2 | **+45.2 ± 10.5** | +4.31 | **1.98** | **0.773** | 0.466 | 0.808 | 0.76 |
+
+**The control FAILS on the letter, on every seed by a different
+clause**: s1 on vp (−15.6 against a −9.2 bound), s2 on coherency (0.780
+against 0.82), s3 on held (1.98 against 2.46) and coherency. And two of
+three seeds beat the script by 45–73 vp, t 4.3–7.1 — the largest
+margins over a script on any rung of this ladder — by killing: opponent
+VP 121–136 against the script's own ~200 (s1, which does not, concedes
+227). What the control learned on E1 is the guns, at the cost of
+formation (coherency 0.77–0.78 against the script's 0.85) and, on s3,
+of the points. The E clause was written as a conjunction of three
+readouts at the script's levels; a policy that wins the fight and
+loses the formation fails it, and that is what the clause was for.
+Reported as: the control beats the bar on vp on two seeds and fails
+the rung. The per-model arm and the companion are read against the
+same three clauses on their own facade at 122,880.
