@@ -1158,6 +1158,7 @@ rung stacked on #339.
 | **D1b** the same from 1,200 games | start (supervised), 4× the data | **PASS on the rung's criterion, FAIL on the fidelity bound (retired)** | success **0.960 / 0.960** (bound 0.96), kill before arrival **1.00 / 1.00**, alive 0.95, held 3.93, blockers wiped 98%; displacement match 0.61 → 0.72 held-out (0.94 on the training games), the opening order at chance held-out; the two clones within a thousandth | (reward on the same scenario: 0.20 / 0.02–0.06 / 0.28) | [2026-09-17](reports/2026-09-17-curriculum-d1b-four-times-the-games.md) |
 | **D2** PPO from the escort clone on C3b, four arms: plain · critic fitted · KL anchor · both | start (reward from the plan) | **plain DESTROYS, critic DESTROYS, anchor HOLDS, both holds a hair worse — nothing IMPROVES** | plain **0.028 / 0.183 / 0.028** (gone by 2.6k rounds); critic fitted (EV 0.74) **0.056 / 0.006 / 0.028**; anchor (coef 10, target 0.03) **0.944 / 0.956 / 0.956**, paired vp −1.4 to +0.7 v the clone's 0.950, half the episodes identical, EV 0.66 from cold, drift 0.87 on the displacement head (clone 0.94); both 0.939 / 0.906 / 0.911. The destroyed arms keep the order (fire first 87–97%) and lose the walk | — | [2026-09-17](reports/2026-09-17-curriculum-d2-the-anchor-not-the-critic.md) |
 | **D3** anchored PPO from a clone of a WEAKER teacher (plain `take` on C3b, 0.361; the escort 0.978) | start (does the anchor let reward improve?) | **HOLDS on both anchors, IMPROVES on neither — the D-route is imitation only** | D3a (10 / 0.03) 0.339 / 0.356 / 0.333, D3b (1 / 0.10) 0.328 / 0.344 / 0.356, paired against the clone −0.006 to −0.033 (t −0.2 to −1.4), 17–22 of 180 episodes differing; kill before arrival 0.78–0.84, blockers wiped 0.63–0.67, alive 0.52–0.54 — the clone's row on every column at every read from 20k to the end; sampled = greedy | — | [2026-09-19](reports/2026-09-19-curriculum-d3-the-anchor-is-a-brake-with-no-engine.md) |
+| **E1** A5's army with guns on both sides, a mirror `take` opponent, flat board | bodies + guns (the join) | **FAIL as pre-registered, all nine runs — the control learns the guns and loses the formation; the per-model arm learns neither; A5i's walk does not survive contact** | from scratch vp **−158 / −152 / −160** v the script's +20.2 (paired n=180), held 0.76 / 0.71 / 1.24 of the bar's 2.93, on_obj 0.10–0.20, coherent 0.33–0.58, alive 0.23–0.52 (bar 0.27); from A5i **−68 / −180 / −159**, held 1.26 / 0.43 / 0.58, the walk overwritten within 10k rounds (stationary 0.42–0.78), 3–4 bodies on points at turn 5 against A5i's seventeen; sampled 13–32 vp worse than greedy on five of six | 120 epochs: **+73.4 ± 10.3 / +45.2 ± 10.5** over the script on s2 / s3 by killing, −15.6 ± 9.2 on s1; held 2.47 / 3.05 / 1.98, coherent 0.86 / 0.78 / 0.77 — fails the three-clause letter on every seed | [2026-09-19](reports/2026-09-19-curriculum-e1-the-walk-does-not-survive-contact.md) · [prereg](reports/2026-09-17-curriculum-E1-preregistration.md) |
 
 - **The per-model pipeline learns**, at 128 rounds per update, on the same
   code that sat at the floor at 8–32. It reaches the script's speed where
@@ -1271,6 +1272,27 @@ rung stacked on #339.
   at forty thousand rounds) — a reward-scale change is a PPO change here. A5d — A5b
   re-run with the scaled credit, A5c the unscaled control beside it — is
   its first arm; every per-model number before it was paid under the mean.
+- ⚠ **A WARM START DOES NOT SURVIVE A CHANGE OF GAME, AND THE PER-MODEL
+  TRAINER HAS NOT LEARNED TO SHOOT FROM REWARD ON ANY RUNG.** E1 (A5's
+  army with rifles on both sides against a mirror script): the
+  per-model arm from scratch reads 150–160 vp behind the script with a
+  fifth of its points; the companion warm-started from A5i — the
+  ladder's best walk, twenty of twenty-four bodies on six points by
+  turn 7 — had that walk overwritten within 10,240 rounds (stationary
+  share 0.5–0.9 from the first in-run evaluations) and ended 88–180 vp
+  behind with nothing learned in its place. The whole-army control on
+  the same rung learned to kill (+45 / +73 vp over the script on two
+  seeds, the ladder's largest margins) and lost formation and, on one
+  seed, points — failing the three-clause letter on every seed while
+  beating the bar on two. **The C rungs' warm-start rule was measured
+  on rungs that added an enemy who does not shoot back and does not
+  extend to guns on both sides**: on this trainer the walk is unlearned
+  before the shooting is learned. Before another E rung, the per-model
+  trainer needs a guns-only rung (the walk given and held, the shooting
+  to learn), and D3 says the anchor that would hold the walk may add
+  nothing. Read sampled beside greedy on a failing per-model row —
+  13–32 vp apart here says diffuse, not converged; A5i's agreed within
+  1.2.
 - ⚠ **THE D-ROUTE ON THE PER-MODEL FACADE IS IMITATION ONLY: ANCHORED
   PPO HOLDS A CLONE AND NEVER LIFTS IT, EVEN WITH TWO THIRDS OF THE
   RUNG TO GAIN.** D2c, A5f and A5i held clones that were already at
