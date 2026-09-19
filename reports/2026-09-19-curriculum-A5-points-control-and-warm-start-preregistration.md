@@ -83,3 +83,43 @@ the A5 control's shape one objective smaller. W reads 0.3–0.5 at 20,480
 none — T1's shape, the fifth objective still the residual. If CTL fails
 too, the half-step is harder than the A5 control's numbers implied and
 the backward start is the next thing on both trainers.
+
+## Amendment 1 — written 2026-09-19 22:40, the control read at 60 and 120 epochs
+
+(The header's "20:05" is wrong; the pre-registration was committed at
+22:02, `c9f23d4`, and the arms launched at 22:03.)
+
+**CTL: FAIL on the letter by two seeds at 120 epochs — and it is the best
+read this half-step has had from any trainer.** Runs `pic9zjka` /
+`ccheoveo` / `oct4luxd` (60 epochs, 22:03–22:14), extended once to 120
+per the pre-registration as `ryk2bfuc` / `0wlaqa3l` / `xwsqlrtn`
+(`--resume-ckpt-path`, 22:17–22:30). Greedy at n=100 on 700000+:
+
+| row | success | turns | vs bar, paired | held of 5 | on objectives | coherent |
+|---|---|---|---|---|---|---|
+| `squad_march_take` | 1.000 | 6.71 | — | 5.00 | 0.889 | 0.832 |
+| s1 at 60 | **0.980** | 7.22 | +0.51 ± 0.09 | 4.98 | 0.936 | 0.609 |
+| s2 at 60 | 0.620 | 8.80 | +2.09 ± 0.11 | 4.61 | 0.948 | 0.664 |
+| s3 at 60 | 0.870 | 8.27 | +1.56 ± 0.08 | 4.86 | 0.940 | 0.655 |
+| s1 at 120 | 0.910 | 7.33 | +0.62 ± 0.10 | 4.91 | 0.965 | 0.645 |
+| s2 at 120 | 0.810 | 7.73 | +1.02 ± 0.14 | 4.80 | 0.930 | 0.575 |
+| s3 at 120 | **0.950** | 7.35 | +0.64 ± 0.10 | 4.95 | 0.955 | 0.570 |
+
+- **PASS** needs ≥ 0.95 on 3/3: one seed at 120 (s3), one at 60 (s1).
+  s1 fell 0.98 → 0.91 over the extension (a drift, as A2 and the
+  whole-army A5 control showed); s2 rose 0.62 → 0.81, s3 0.87 → 0.95.
+  **FAIL on the letter.**
+- Against the per-model trainer on the same config and budget the
+  control holds **4.8–4.95 of five objectives with 93–97% of its bodies on
+  them**, half a round to a round behind the bar, where five per-model
+  settings from scratch read 0.00–0.33 with a third of the bodies on
+  objectives. The whole-army trainer solves the five-objective spread
+  from scratch to within a seed of the letter; the per-model trainer
+  does not approach it. **The wall on this half-step is the per-model
+  trainer's**, on the reading the pre-registration wrote for this
+  quadrant — pending W (a warm start that carries) and BS (a start
+  curriculum that walks back), both in flight.
+- Readouts still to take: the control's in-run curve (its Wandb file has
+  no history rows readable by the local scanner; read after the runs
+  exit through `just run-summary`), rounds-to-pass, and which objective
+  the failing episodes leave empty (a whole-army census).
