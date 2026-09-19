@@ -75,7 +75,9 @@ def save_checkpoint(
         "state_dict": {k: v.detach().cpu() for k, v in network.state_dict().items()},
         "network_config": network.config.model_dump(),
         "head_sizes": {"n_displacements": network.n_displacements},
-        "ppo_config": ppo_config.model_dump(),
+        # JSON mode: a `Credit` enum member is not a global the weights-only
+        # loader admits; the string round-trips through the model.
+        "ppo_config": ppo_config.model_dump(mode="json"),
         "env_config": env_config,
         "rounds": int(rounds),
         "seed": seed,

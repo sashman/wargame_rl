@@ -1,0 +1,74 @@
+# Curriculum rung A5, arm A5e (parent question #340): `a5.yaml` with ONE
+# change -- an `objective_hold` term at `crowding_exponent` 1.0, the pot-split
+# lever, the same term the A3 speed screen's S1 read NULL under the mean
+# credit (paid at the close as the army mean, one scalar to twelve bodies).
+# Trained under `--credit actor`, where the close pays each model its own
+# value of it on its own step: a body standing on a point it reached is paid
+# for standing there, and a point pays a POT so the eighth squad earns more on
+# an empty point than on a held one. Everything else is `a5.yaml` to the
+# byte; the bar is unchanged (`squad_march_take` 1.000 / 6.77 turns).
+config_name: curriculum_a5_hold
+number_of_wargame_models: 24
+number_of_opponent_models: 0
+number_of_objectives: 6
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 8
+number_of_battle_rounds: 10
+deployment_zone: [2, 2, 10, 42]
+opponent_deployment_zone: [50, 2, 58, 42]
+models:
+  - &sq_0 { group_id: 0 }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+  - &sq_4 { group_id: 4 }
+  - *sq_4
+  - *sq_4
+  - &sq_5 { group_id: 5 }
+  - *sq_5
+  - *sq_5
+  - &sq_6 { group_id: 6 }
+  - *sq_6
+  - *sq_6
+  - &sq_7 { group_id: 7 }
+  - *sq_7
+  - *sq_7
+objectives:
+  - { x: 30, y: 8 }
+  - { x: 30, y: 22 }
+  - { x: 30, y: 36 }
+  - { x: 45, y: 8 }
+  - { x: 45, y: 22 }
+  - { x: 45, y: 36 }
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.0
+      - type: objective_hold  # A5e: the one change
+        weight: 1.0
+        params: { crowding_exponent: 1.0 }
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: all_objectives_occupied
+      params: {}
+observe_objective_control: true
+coherency:
+  enforce_at_deployment: true

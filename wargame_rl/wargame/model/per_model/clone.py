@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -98,6 +99,24 @@ def action_to_column(
     return int(action.value) - advance.start + 1 + movement.size
 
 
+def compact_tokens(tokens: TokenObservation) -> TokenObservation:
+    """The token observation with its float arrays at half precision.
+
+    A recorded decision is dominated by the (P, P, 16) relation block -- on a
+    24-body army about 37 KB of the ~50 KB a step costs -- and 1,200 games of
+    A5 held 16 GB of float32 demonstrations. `collate` copies every array into
+    float32 buffers, so the fit reads them back widened; three decimal digits
+    is more than a quantised move column needs.
+    """
+    return replace(
+        tokens,
+        players=tokens.players.astype(np.float16),
+        context=tokens.context.astype(np.float16),
+        self_relations=tokens.self_relations.astype(np.float16),
+        cross_relations=tokens.cross_relations.astype(np.float16),
+    )
+
+
 def record_demonstrations(
     env: PerModelEnv,
     choose: BatchChooser,
@@ -146,7 +165,7 @@ def record_demonstrations(
             payment = retimer.on_step(before, action, info["effect"], done)
             transitions.append(
                 Transition(
-                    tokens=tokens,
+                    tokens=compact_tokens(tokens),
                     model=model,
                     column=column,
                     head=tokens.head,
