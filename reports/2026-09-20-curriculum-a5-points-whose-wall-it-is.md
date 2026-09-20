@@ -180,3 +180,27 @@ handed four objectives, the policy keeps two or three. The next arm pays
 a body for standing on an objective on its own decision step, through
 the `actor` credit path, with a mechanism that is not the mean-credited
 hold term S1 and A5e read as null.
+
+## Addendum 2 — 2026-09-20 21:50: the staying arm
+
+The arm the first addendum named ran the same evening: `objective_stay`,
+a per-decision pot for a body that ends its step inside an objective,
+paid to the mover on its own step, at weight 0.5 (S) and 0.15 (S-low),
+three seeds each, the original recipe otherwise
+(`reports/2026-09-20-curriculum-A5-points-staying-preregistration.md`
+and its amendment carry the tables). **FAIL as pre-registered, both
+arms**: S 0.210 / 0.190 / 0.120 and S-low 0.230 / 0.110 / 0.110 at
+122,880 against the original's 0.030 / 0.060 / 0.330 — ahead on two
+seeds and behind on the third for S, ahead on one for S-low, and behind
+the original on two seeds at both interim reads. The mechanism readout
+did not move: a body on an objective is now paid +0.013 to +0.018 for
+ending inside against −0.003 for leaving (S), and it stands still on
+0.00 of its decisions there and leaves on 0.48–0.67 (the original
+0.60–0.81, the bar leaves on 0.33). The stack stays under 3.5 on every
+run and the count on objectives rises to the end, so the pot split works
+and the aggregate walk-off is gone — by churn, not by keeping. A 3.3×
+change of weight changed nothing, so the magnitude is not the lever.
+Six reward-side levers are now closed on this half-step. What is left,
+and what the record's evidence points at, is that no body can commit to
+anything across steps and no squad can tell another what it intends —
+#384 designs that layer.
