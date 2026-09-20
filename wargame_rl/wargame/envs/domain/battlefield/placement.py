@@ -496,10 +496,36 @@ def start_group_on_objective(
     min_separation = 2.0 * base_radius
     hostile_separation = min_separation + engagement_range
 
+    moved = _move_group_onto_objective(
+        moving,
+        objectives[objective_index],
+        occupied,
+        rng,
+        hostile=hostile,
+        min_separation=min_separation,
+        hostile_separation=hostile_separation,
+    )
+    return objective_index if moved else None
+
+
+def _move_group_onto_objective(
+    moving: list[WargameModel],
+    objective: WargameObjective,
+    occupied: list[tuple[float, float]],
+    rng: Generator,
+    *,
+    hostile: list[tuple[float, float]],
+    min_separation: float,
+    hostile_separation: float,
+) -> int:
+    """Teleport `moving` onto `objective`, one model at a time; returns how
+    many landed. `occupied` gains every spot taken, and a model that could not
+    be fitted keeps its deployment position and is put back into `occupied`
+    (it was left out on the assumption it would move)."""
     moved = 0
     for model in moving:
         spot = _sample_in_objective(
-            objectives[objective_index],
+            objective,
             occupied,
             min_separation,
             rng,
@@ -507,17 +533,69 @@ def start_group_on_objective(
             hostile_separation=hostile_separation,
         )
         if spot is None:
-            # A model that could not be fitted keeps its deployment position --
-            # which was left out of `occupied` on the assumption it would move,
-            # so put it back or a later mover can be placed on top of it.
             occupied.append((float(model.location[0]), float(model.location[1])))
             continue
         model.location = position(*spot)
         model.reset_for_episode()
         occupied.append(spot)
         moved += 1
+    return moved
 
-    return objective_index if moved else None
+
+def start_groups_on_objectives(
+    player_models: list[WargameModel],
+    opponent_models: list[WargameModel],
+    objectives: list[WargameObjective],
+    rng: Generator,
+    n_groups: int,
+    base_radius: float = 0.0,
+    engagement_range: float = 0.0,
+) -> list[int]:
+    """Move `n_groups` distinct player groups onto `n_groups` distinct objectives.
+
+    The backward start curriculum's placement (#340): on a rung whose success
+    is a conjunction over objectives, an episode that begins with k of them
+    already held leaves the policy the last steps of the plan to find; a
+    trainer walks k down as those are learned. As with
+    `start_group_on_objective` this is a training-time augmentation and not a
+    rule -- it teleports squads -- and it draws nothing when `n_groups` is 0,
+    so an evaluation that does not ask for it is bit-identical to the base
+    scenario. Groups and objectives are drawn without replacement, capped at
+    what the board has; returns the objective indices occupied, one per group
+    that landed at least one model.
+    """
+    if n_groups <= 0 or not objectives or not player_models:
+        return []
+    groups: dict[int, list[WargameModel]] = {}
+    for model in player_models:
+        groups.setdefault(model.group_id, []).append(model)
+    group_ids = sorted(groups)
+    count = min(n_groups, len(group_ids), len(objectives))
+    chosen_groups = [
+        int(group_ids[i]) for i in rng.choice(len(group_ids), size=count, replace=False)
+    ]
+    chosen_objectives = [
+        int(i) for i in rng.choice(len(objectives), size=count, replace=False)
+    ]
+    staying = [m for m in player_models if m.group_id not in chosen_groups]
+    occupied = [(float(m.location[0]), float(m.location[1])) for m in staying]
+    hostile = [(float(m.location[0]), float(m.location[1])) for m in opponent_models]
+    min_separation = 2.0 * base_radius
+    hostile_separation = min_separation + engagement_range
+    landed: list[int] = []
+    for group_id, objective_index in zip(chosen_groups, chosen_objectives):
+        moved = _move_group_onto_objective(
+            groups[group_id],
+            objectives[objective_index],
+            occupied,
+            rng,
+            hostile=hostile,
+            min_separation=min_separation,
+            hostile_separation=hostile_separation,
+        )
+        if moved:
+            landed.append(objective_index)
+    return landed
 
 
 def objective_placement(
@@ -947,6 +1025,7 @@ def place_for_episode(
     rng: Generator,
     augment_start: bool = False,
     layout: MapLayout | None = None,
+    start_groups: int = 0,
 ) -> None:
     """Place terrain, player models, objectives, and opponent models for an episode.
 
@@ -1099,6 +1178,20 @@ def place_for_episode(
     # of a partial-probability run is not a matched control.
     # A fixed-placement config exists to pin an exact layout, so the
     # augmentation must not silently discard it.
+    # The backward start curriculum: `start_groups` squads begin on distinct
+    # objectives. It takes precedence over the probability augmentation, draws
+    # nothing at 0, and like it never overrides a fixed placement.
+    if start_groups > 0 and not config.has_fixed_model_positions:
+        start_groups_on_objectives(
+            battle.player_models,
+            battle.opponent_models,
+            battle.objectives,
+            rng,
+            start_groups,
+            base_radius=base_radius,
+            engagement_range=resolve_rules_quantities(config).engagement_range,
+        )
+        return
     if (
         augment_start
         and config.start_on_objective_probability > 0.0
