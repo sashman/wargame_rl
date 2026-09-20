@@ -1,0 +1,66 @@
+# Curriculum staying arm S on the half-step A5-points (parent question #340,
+# pre-registered 2026-09-20): `a5_points.yaml` with ONE change -- `objective_stay`
+# at weight 0.5, a per-model term paid to the MOVER on its own step for ending
+# inside an objective, the objective's pot split among its occupants. Every
+# trained per-model policy on this half-step was measured to stand still on
+# 0-2% of its decisions on an objective and walk out on 60-81%, paid the same
+# either way; this pays staying. Everything else is the original.
+config_name: curriculum_a5_points_stay
+number_of_wargame_models: 18
+number_of_opponent_models: 0
+number_of_objectives: 5
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 6
+number_of_battle_rounds: 10
+deployment_zone: [2, 2, 10, 42]
+opponent_deployment_zone: [50, 2, 58, 42]
+models:
+  - &sq_0 { group_id: 0 }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+  - &sq_4 { group_id: 4 }
+  - *sq_4
+  - *sq_4
+  - &sq_5 { group_id: 5 }
+  - *sq_5
+  - *sq_5
+objectives:
+  - { x: 30, y: 8 }
+  - { x: 30, y: 22 }
+  - { x: 30, y: 36 }
+  - { x: 45, y: 15 }
+  - { x: 45, y: 29 }
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.0
+      - type: objective_coverage
+        weight: 0.3
+      - type: objective_stay
+        weight: 0.5
+        params:
+          crowding_exponent: 1.0
+    success_criteria:
+      type: all_objectives_occupied
+      params: {}
+observe_objective_control: true
+coherency:
+  enforce_at_deployment: true

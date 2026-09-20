@@ -534,6 +534,7 @@ class PerModelEnv(gym.Env):
             self.np_random,
             augment_start=bool((options or {}).get("augment_start", False)),
             layout=layout,
+            start_groups=int((options or {}).get("start_groups", 0)),
         )
         observation, _reward, _terminated, _truncated, info = self._advance()
         return observation, info

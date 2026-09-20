@@ -205,6 +205,18 @@ to `<run>/metrics.jsonl`.
   which periodic checkpoint scored best. The run directory also holds
   `env_config.yaml` (verbatim) and `provenance.json` (revision `+dirty`,
   device, threads, seed bands, both configs).
+- **Recordings are part of training** (Sash, 2026-09-19): every
+  `--record-every-rounds` (default: the checkpoint cadence; 0 disables) the
+  driver plays ONE greedy episode on `--record-seed` (default: the in-run eval
+  band's first, 500000) with event recording on and writes it to
+  `<run_dir>/recordings/pm-<rounds>-seed<seed>.json` at decision cadence —
+  `just replay-render <file>` draws it, `just replay-summary` narrates it. The
+  network is put back in training mode afterwards, so the update that follows
+  is unchanged; provenance carries both values. Recorded greedy because that
+  is the policy a score reports; the sampled policy is read beside it by
+  `just measure-per-model-eval-mode`.
+- **Every training run logs videos to Wandb again** (`--video-every-rounds`, default every twentieth recording — 10,240 rounds at the 512 cadence, the whole-army trainer's one-in-twenty-epochs; 0 disables; `--video-fps`, `--video-theme`): the recording is rendered to an MP4 beside its event log by `replay_events.py render` in a background subprocess (pygame's SDL stays out of the trainer, as the whole-army `RecordEpisodeCallback` did) and logged under the whole-army key `episode_recording` on the next checkpoint's row; the last render is waited for at the end of training. The subprocess imports the repo from disk, so the standing rule against editing code under a live run covers it.
+- **`--backward-start k`** (#340, the backward start curriculum): rollout episodes begin with k squads already standing on k distinct objectives (`--backward-start-share` of them; the rest from deployment) and the level steps down by one once the level's own episodes succeed at `--backward-start-advance` over `--backward-start-window` rollouts (`BackwardStart`; rows `curriculum/start_groups`, `curriculum/level_success`; provenance `backward_start*`). `EpisodeOutcome` carries `success` and `start_groups` for it. Evaluation is untouched: it always starts from deployment, so a pass is a pass on the rung.
 - **Shared with `train.py`, imported from neither:** the Typer-default
   unwrappers and the config loader live in `model/common/cli.py`, and the
   seed bands and the scripted bar in `model/common/eval_constants.py` (a module
@@ -236,6 +248,27 @@ checkpoint, never from the resumed weights (a drift that ratchets forward
 with every resume is the phase facade's silent-anchor defect), and the
 adapted coefficient is carried in the training state. Logged as
 `train/kl_ref` and `train/kl_ref_coef`.
+
+
+### Who a payment reaches (`--credit`, #340)
+
+`PerModelPPOConfig.credit` (`reward_timing.Credit`, default `mean`) is a knob
+of the run, refused on a resume that disagrees. `mean` is the bridge
+accounting: action terms over the alive count, state terms as the army mean at
+the close, so a turn's sum is the phase facade's scalar. `actor` pays every
+payment over the model count, a constant: the actor's action term stays where
+the mean put it, the close's state terms come back per model as
+`StepPayment.credits`, and the common payments shrink by the army size;
+`collect_rollout` keeps, per env, the transition each model last acted on
+this turn (`acted_at`, from `StepEffect.actor_set`) and adds the credit there
+(`_land_credits`), or on the close when the model took no step. Nothing else
+in the loop changes. ⚠ **The update normalises advantages but not value
+targets**, which is why the actor stream is over a constant and not undivided:
+the unscaled first cut had returns 13× the mean's and a pre-clip gradient
+norm 5× larger, clipped on every step, so the value loss took most of each
+update (A5c's first launch, kept as that confound's control).
+Built after the A3 speed screen's hold-term null and A5b's under-arrival; A5c
+is its first arm. `tests/test_per_model_actor_credit.py`.
 
 ### Behaviour cloning into the set network (`model/per_model/clone.py`, #331)
 

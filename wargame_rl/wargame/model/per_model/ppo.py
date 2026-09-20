@@ -26,7 +26,8 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from typing import Any
 
 import numpy as np
 import torch
@@ -34,7 +35,7 @@ import torch.nn.functional as F
 from pydantic import BaseModel, Field, model_validator
 
 from wargame_rl.wargame.envs.per_model.env import PerModelEnv, StepEffect
-from wargame_rl.wargame.envs.per_model.reward_timing import PerStepReward
+from wargame_rl.wargame.envs.per_model.reward_timing import Credit, PerStepReward
 from wargame_rl.wargame.envs.per_model.tokens import Head, TokenObservation
 from wargame_rl.wargame.envs.per_model.types import PerModelObservation, StepKind
 from wargame_rl.wargame.envs.types import BattlePhase
@@ -68,6 +69,10 @@ class PerModelPPOConfig(BaseModel):
     # reference network and adds no term, so a run without it is unchanged.
     kl_ref_coef: float = Field(default=0.0, ge=0.0)
     kl_ref_target: float = Field(default=0.0, ge=0.0)
+    # Who a payment reaches (`reward_timing.Credit`): `mean` is the bridge
+    # accounting, `actor` pays each model its own term and its own state
+    # credit on its own step. A knob of the run, so a resume keeps it.
+    credit: Credit = Credit.mean
     lr: float = Field(default=3e-4, gt=0.0)
     max_grad_norm: float = Field(default=0.5, gt=0.0)
     n_epochs: int = Field(default=5, ge=1)
@@ -164,6 +169,15 @@ class EpisodeOutcome:
     reward: float
     decision_steps: int
     rounds: int
+    # The phase's success criteria on the terminating board, and how many
+    # squads the episode began with on objectives (0: from deployment).
+    success: bool = False
+    start_groups: int = 0
+
+
+# How many squads the next inline reset starts on objectives; 0 is the plain
+# augmented start. Called once per reset, so a schedule can draw.
+StartGroups = Callable[[], int]
 
 
 @dataclass(frozen=True)
@@ -178,6 +192,8 @@ class Rollout:
     episodes: list[EpisodeOutcome] = field(default_factory=list)
     # Per-term reward paid over the rollout, summed across envs.
     breakdown: dict[str, float] = field(default_factory=dict)
+    # Per env, how many squads the episode in progress started on objectives.
+    start_groups: tuple[int, ...] = ()
 
     @property
     def n_steps(self) -> int:
@@ -200,6 +216,8 @@ def collect_rollout(
     *,
     generator: torch.Generator | None = None,
     on_episode_end: OnEpisodeEnd | None = None,
+    start_groups: StartGroups | None = None,
+    initial_start_groups: Sequence[int] | None = None,
 ) -> Rollout:
     """Play every env in lockstep until `rollout_rounds x n_envs` turns close.
 
@@ -220,6 +238,13 @@ def collect_rollout(
     decision_counts = [0] * n_envs
     round_counts = [0] * n_envs
     last_done = [False] * n_envs
+    # Per env, how many squads its CURRENT episode started on objectives.
+    started_on = (
+        list(initial_start_groups) if initial_start_groups is not None else [0] * n_envs
+    )
+    # Per env, the transition on which each model last acted THIS turn: where
+    # a close's per-model credit (`Credit.actor`) lands. Cleared at the close.
+    acted_at: list[dict[int, int]] = [{} for _ in range(n_envs)]
     while closes < budget:
         decisions = agent.act_batch(envs, current, generator=generator)
         for index, (env, retimer, decision) in enumerate(
@@ -251,6 +276,12 @@ def collect_rollout(
                     env_index=index,
                 )
             )
+            for model in effect.actor_set:
+                acted_at[index][model] = len(transitions) - 1
+            if payment.credits:
+                _land_credits(transitions, acted_at[index], payment.credits)
+            if payment.is_close:
+                acted_at[index] = {}
             last_done[index] = terminated
             if terminated:
                 episodes.append(
@@ -261,11 +292,17 @@ def collect_rollout(
                         reward=retimer.episode_reward,
                         decision_steps=decision_counts[index],
                         rounds=round_counts[index],
+                        success=retimer.succeeded(),
+                        start_groups=started_on[index],
                     )
                 )
                 if on_episode_end is not None:
                     on_episode_end(index, env, retimer)
-                observation, _ = env.reset(options=dict(_AUGMENT_START))
+                started_on[index] = int(start_groups()) if start_groups else 0
+                options: dict[str, Any] = dict(_AUGMENT_START)
+                if started_on[index] > 0:
+                    options["start_groups"] = started_on[index]
+                observation, _ = env.reset(options=options)
                 retimer.reset()
                 decision_counts[index] = 0
                 round_counts[index] = 0
@@ -284,7 +321,26 @@ def collect_rollout(
         closes=closes,
         episodes=episodes,
         breakdown=breakdown,
+        start_groups=tuple(started_on),
     )
+
+
+def _land_credits(
+    transitions: list[Transition],
+    acted_at: dict[int, int],
+    credits: dict[int, float],
+) -> None:
+    """Add each model's close credit to the transition it acted on this turn;
+    a model that took no step this turn is credited on the close itself (the
+    last transition), so nothing paid is lost. Within a turn the discount is
+    1.0, so moving a payment earlier leaves every earlier step's return as it
+    was and takes it out of the returns of the steps after it."""
+    last = len(transitions) - 1
+    for model, value in credits.items():
+        at = acted_at.get(model, last)
+        transitions[at] = replace(
+            transitions[at], reward=transitions[at].reward + value
+        )
 
 
 def _values(
