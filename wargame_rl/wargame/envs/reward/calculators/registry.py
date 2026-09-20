@@ -42,6 +42,9 @@ from wargame_rl.wargame.envs.reward.calculators.objective_flip_bonus import (
 from wargame_rl.wargame.envs.reward.calculators.objective_hold import (
     ObjectiveHoldCalculator,
 )
+from wargame_rl.wargame.envs.reward.calculators.objective_stay import (
+    ObjectiveStayCalculator,
+)
 from wargame_rl.wargame.envs.reward.calculators.unit_coherency import (
     UnitCoherencyCalculator,
 )
@@ -59,6 +62,7 @@ CALCULATOR_REGISTRY: dict[str, type[RewardCalculatorType]] = {
     "objective_coverage": ObjectiveCoverageCalculator,
     "objective_flip_bonus": ObjectiveFlipBonusCalculator,
     "objective_hold": ObjectiveHoldCalculator,
+    "objective_stay": ObjectiveStayCalculator,
     "charge_progress": ChargeProgressCalculator,
     "declared_objective_hold": DeclaredObjectiveHoldCalculator,
     "declared_objective_progress": DeclaredObjectiveProgressCalculator,

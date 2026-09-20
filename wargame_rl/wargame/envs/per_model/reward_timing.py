@@ -127,6 +127,10 @@ PAYMENT_CLASSES: dict[str, PaymentClass] = {
     "declared_objective_progress": PaymentClass.potential_action,
     "declared_target_progress": PaymentClass.potential_action,
     "model_kills": PaymentClass.event_action,
+    # Not a potential: an occupancy term computed for the mover on its own
+    # step from the board after its move, so that a body which ends inside
+    # an objective is paid and one which walks out is not (#340, staying).
+    "objective_stay": PaymentClass.potential_action,
     "objective_hold": PaymentClass.state,
     "declared_objective_hold": PaymentClass.state,
     "unit_coherency": PaymentClass.state,
