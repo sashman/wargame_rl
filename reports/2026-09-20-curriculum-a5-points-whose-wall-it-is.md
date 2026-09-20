@@ -137,3 +137,46 @@ is untested.
 4. Live docs: the backward start's flags are documented in
    `wargame_rl/wargame/model/CLAUDE.md` and its placement in
    `wargame_rl/wargame/envs/CLAUDE.md` (`2cebc65`); no config added.
+
+## Addendum — 2026-09-20 13:00: what exactly makes it hard, three checks and one more arm
+
+Asked after the control's read: what in the per-model trainer's design
+makes five objectives hard? Three candidates were checked
+(`reports/2026-09-20-curriculum-A5-points-rounds-per-update-preregistration.md`
+and its amendment carry the tables):
+
+1. **Perception — ruled out by inspection.** The objective token carries
+   our count on it (`row[2]`) and the enemy's; every body reads its
+   offset to every objective as a relation. An empty objective is
+   observable to the body that should walk to it.
+2. **Outcomes per update — ruled out by an arm.** The whole-army trainer
+   updates every 2,048 rounds (~200 episodes on this one-phase config),
+   the per-model trainer every 128 (~13). At 2,048 rounds per update the
+   per-model trainer from scratch reads **0.000 / 0.010 / 0.000** at
+   122,880, behind the original at every read, with the displacement head
+   diffuse and the walk-off at its largest (11.3 of 18 bodies on
+   objectives after turn 3 and 0.1 at the end on one seed).
+3. **The reward's silence on staying — measured, and shared by every
+   arm.** A probe over the displacement decisions of a body standing
+   inside an objective, on six trained per-model policies (the warm
+   start's, the original's, the regime arm's): it stands still on
+   **0.00–0.02** of them and walks out of the objective on **0.60–0.81**;
+   the scripted bar stands still on 0.47. The step reward for leaving is
+   −0.002 to −0.005 and for staying 0.000, against +0.003 to +0.014 for a
+   step toward an objective from outside. Standing on an objective is the
+   one state in which every action is paid alike, and the policy never
+   learns the stand-still action at all. The whole-army trainer trains on
+   the same terms but pays each model its own travel term in full every
+   step and broadcasts coverage in full; the per-model retimer divides
+   the action term by the army and pays coverage once at the close, so
+   the per-step magnitudes a body sees are an order of magnitude smaller
+   and, on an objective, indistinguishable.
+
+The wall on the five-objective half-step is therefore neither the
+horizon, the terminal payment, the credit's attribution, the update
+regime nor perception. It is that nothing pays a body for keeping an
+objective on its own step, and the backward start showed what follows:
+handed four objectives, the policy keeps two or three. The next arm pays
+a body for standing on an objective on its own decision step, through
+the `actor` credit path, with a mechanism that is not the mean-credited
+hold term S1 and A5e read as null.
