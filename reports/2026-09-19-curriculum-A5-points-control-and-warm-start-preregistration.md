@@ -162,3 +162,40 @@ produced on this half-step, still climbing at the cap.** Runs
   three runs are resumed in place to **245,760** for one read; this
   amendment records the 122,880 read as the pre-registered one, and the
   next records the extension.
+
+## Amendment 3 — written 2026-09-20 04:40, the warm start read at 245,760 (the once-only extension under the cap rule)
+
+Runs resumed in place (`xw154bst` / `8dcfq1xa` / `kwdxlh12`, 02:13–04:15).
+Greedy at n=100 on 700000+:
+
+| rounds | W success | W held of 5 | on objectives | turns | vs the original's end (0.030 / 0.060 / 0.330) |
+|---|---|---|---|---|---|
+| 122,880 | 0.460 / 0.260 / 0.350 | 3.96 / 3.53 / 3.62 | 0.40 / 0.36 / 0.38 | 9.04 / 9.44 / 9.05 | ahead on s1, s2 |
+| **245,760** | **0.340 / 0.170 / 0.600** | 3.59 / 3.52 / 4.29 | 0.35 / 0.33 / 0.45 | 9.37 / 9.70 / **8.12** | ahead on 3/3 (+0.31 / +0.11 / +0.27, each past two SE) |
+
+- **PASS:** no. **MOVES on the letter (at 122,880, at every read):** no —
+  s3 level at 122,880, s1 behind at 81,920. At the extended read the arm
+  is ahead of the original's final row on every seed, and s3's 0.600
+  with 4.29 held and 8.0 of 18 bodies on objectives by turn 7 (the bar's
+  15.8) is the highest read reward has produced on this half-step by a
+  wide margin. s1 and s2 fell back (0.46 → 0.34, 0.26 → 0.17) over the
+  second 122k rounds: the in-run curve on s2 was flat at 25–30% for the
+  whole extension and s1 oscillated 33–52% by quarter, while s3 climbed
+  40 → 58% and ended at a rolling 63%. **FAIL on the letter, ahead 3/3
+  at 2× the cap, one seed still climbing.**
+- The census at 245,760 has no walk-off on any seed (bodies on objectives
+  4.2 → 6.3, 3.5 → 5.9, 7.0 → 8.0 across the turns) and the misses spread
+  over all five objectives; max stack 2.5–3.1. Sampled play holds 3.5–4.1
+  against greedy's 3.5–4.3, within ±6 vp: converged, not diffuse. Panel
+  over the extension: explained variance 0.41–0.57, displacement entropy
+  1.0–1.3 nats, clip fraction 0.25–0.32.
+- **What the pair says, as written.** CTL FAIL by two seeds at 0.81–0.95
+  while W reaches 0.17–0.60: the whole-army trainer is a factor of
+  two to five ahead of the per-model trainer's best on this half-step
+  at equal rounds, and the per-model trainer's best is a warm start
+  from the objective rung below, not anything learned from scratch. The
+  warm-start rule ("from the rung below") holds on the half-step where
+  "from A4x onto six objectives" (T1) did not; the difference is one
+  objective, and the reading is that the three-objective policy carries
+  four of five here and the fifth is what reward adds, slowly and on one
+  seed of three.
