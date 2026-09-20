@@ -96,3 +96,60 @@ free squads grows; level 0 reached on one or two seeds by 100k. Success
 from deployment at 122,880 **0.5–0.8**, held 4.2–4.6, MOVES on 3/3, PASS on
 one seed at most. If the level never leaves 4 on any seed I was wrong
 about the mechanism in the useful direction.
+
+## Amendment 1 — written 2026-09-20 02:15, the arm read at 40,960 / 81,920 / 122,880
+
+**FAIL as pre-registered, and the level never left four on any seed.**
+Runs `inhpvik7` / `fhbs37ln` / `feg4n4uf`, launched 22:17 from the
+worktree, exited 01:55–02:05. Greedy at n=100 on 700000+ from deployment:
+
+| rounds | success | held of 5 | the original A5-points at the same rounds |
+|---|---|---|---|
+| 40,960 | 0.000 / 0.000 / 0.010 | 2.19 / 1.55 / 2.19 | 0.040 / 0.140 / 0.090 |
+| 81,920 | 0.000 / 0.070 / 0.000 | 2.77 / 3.14 / 1.29 | 0.220 / 0.220 / 0.110 |
+| **122,880** | **0.000 / 0.030 / 0.030** | 2.08 / 3.02 / 2.07 | 0.030 / 0.060 / 0.330 |
+
+- **PASS:** no. **MOVES:** no seed ahead of the original by two SE at the
+  end; behind it at 40,960 and 81,920 on every seed. **FAIL.**
+- **The schedule's readouts.** `curriculum/start_groups` stayed at **4**
+  for the whole run on all three seeds. The level's own success
+  (`curriculum/level_success`, rolling over eight rollouts) by quarter:
+  0.12 / 0.32 / 0.30 / 0.35 (s1), 0.18 / 0.30 / 0.34 / 0.25 (s2), 0.25 /
+  0.26 / 0.22 / 0.27 (s3) — a plateau at a third, never near the 0.8 that
+  steps the level down. The pre-registration's own reading for this
+  outcome: **the policy cannot learn the LAST step even with four
+  objectives given.**
+- **What the last step fails on, measured** (a census of level-4 episodes
+  under the final checkpoints, n=30 on 700000+, greedy; the bar on the
+  same starts succeeds 1.00 in 6.1 turns with 3.9 of the 4 placed squads
+  still on their objectives): success **0.53 / 0.33 / 0.50**; the placed
+  squads still on objectives at turn 3 **2.93 / 3.38 / 3.93** and at the
+  end **2.70 / 1.97 / 3.13** of 4; the free squads reaching the empty
+  objective **0.83 / 1.00 / 0.63**; held at the end 3.53 / 2.97 / 3.77;
+  7.6–9.2 turns. Both halves of the step are half-learned, and the
+  larger loss is the first: **given an objective, the policy walks off
+  it** — 1–2 of the 4 placed squads have left by the end. Nothing on this
+  config pays a body per model for standing on an objective (the travel
+  term is zero inside, coverage is a broadcast mean at the close, the
+  bonus terminal), and a target switch is unpaid, so leaving is free.
+- **From deployment** the census is the half-step's: s1 puts 9.6 of 18
+  bodies on objectives by turn 5 (the highest arrival on this half-step)
+  and then walks off to 4.0; s2 climbs to 6.8 and holds 3.0; s3 walks off
+  from 6.4 to 2.7. Sampled play holds 3.1–3.2 where greedy holds 2.1–3.0
+  (−2.5 / −3.2 / +0.6 vp greedy − sampled): diffuse.
+- **The panel is healthy** — explained variance 0.55–0.68 by quarter,
+  displacement entropy 3.1 → 2.2–2.4 nats, clip fraction 0.25–0.35 — so
+  this is not the reward-shape arms' broken critic; the value function
+  fits and the policy still does not keep what it is given.
+
+**What the answer says, as written.** The wall is not only search: put
+the policy in the state where the last objective pays and it does not
+reliably take the step, and half of what it loses is the four it was
+handed. The lever the pre-registration named for this outcome — an
+observation that names the empty objective — addresses the arriving half;
+the walk-off half wants a per-model term that pays a body for standing on
+an objective, which the A3 speed screen measured as null under the mean
+credit and A5e as null under actor credit on the six-objective rung. The
+schedule itself is a first cut (share 0.75, advance 0.8 over eight
+rollouts) and never got to be exercised; a lower advance bar would have
+walked the level down onto a policy that holds a third of its starts.
