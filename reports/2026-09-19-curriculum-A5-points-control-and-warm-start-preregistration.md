@@ -123,3 +123,42 @@ per the pre-registration as `ryk2bfuc` / `0wlaqa3l` / `xwsqlrtn`
   no history rows readable by the local scanner; read after the runs
   exit through `just run-summary`), rounds-to-pass, and which objective
   the failing episodes leave empty (a whole-army census).
+
+## Amendment 2 — written 2026-09-20 02:20, the warm start read at 20,480 / 40,960 / 81,920 / 122,880
+
+**W: FAIL on the letter — and the best per-model result reward has
+produced on this half-step, still climbing at the cap.** Runs
+`8clgcy59` / `klv24tu2` / `8h4eq4lj`, from A4x seed-for-seed, exited
+01:58–02:10. Greedy at n=100 on 700000+:
+
+| rounds | W success | W held of 5 | the original at the same rounds |
+|---|---|---|---|
+| 20,480 | 0.030 / 0.120 / 0.180 | 2.94 / 3.37 / 3.31 | (0.03 / 0.06 / 0.33 is the original's END) |
+| 40,960 | 0.150 / 0.110 / 0.250 | 3.23 / 3.40 / 3.75 | 0.040 / 0.140 / 0.090 |
+| 81,920 | 0.100 / 0.250 / **0.520** | 2.98 / 3.53 / 4.22 | 0.220 / 0.220 / 0.110 |
+| **122,880** | **0.460 / 0.260 / 0.350** | 3.96 / 3.53 / 3.62 | 0.030 / 0.060 / 0.330 |
+
+- **PASS:** no seed near 0.95.
+- **MOVES:** ahead of the original at the end by two SE on s1 (+0.43)
+  and s2 (+0.20), not s3 (+0.02 against 0.330); at 81,920 s1 was behind
+  (0.10 against 0.22). Two of three at the end, not three at every read.
+  **FAIL on the letter.**
+- Against every per-model read on this half-step it is the top row:
+  0.46 with 3.96 held on s1, 0.52 with 4.22 held on s3 at 81,920, where
+  five settings from scratch never passed 0.33 or 3.8 held. The in-run
+  curve on s1 is still rising at the cap — success by quarter 4 / 13 /
+  18 / **42%**, a rolling 50% with 4.45 held over the last eight
+  evaluations — and s3 sits at 34–38%. The displacement head is
+  concentrated (1.2–1.5 nats against 2.0–2.6 from scratch), explained
+  variance 0.48–0.78, clip fraction 0.25–0.32.
+- **T1's shape did not repeat.** T1 (A5 from A4x, six objectives) was
+  ahead at 20k and flat after. Here the start carried the walk (six or
+  seven bodies on objectives from turn 3, no walk-off at 20k) and reward
+  then kept climbing on two seeds through the whole budget.
+- **The ladder's symmetric cap rule applies.** The control on this
+  half-step needed its once-only extension to 120 epochs (about 245k
+  rounds) and still read 0.91 / 0.81 / 0.95, so the per-model arm under
+  test gets the same rounds before the rung is called (A3x, A4x). The
+  three runs are resumed in place to **245,760** for one read; this
+  amendment records the 122,880 read as the pre-registered one, and the
+  next records the extension.
