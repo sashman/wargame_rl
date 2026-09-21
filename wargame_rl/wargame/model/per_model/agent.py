@@ -37,6 +37,8 @@ from wargame_rl.wargame.envs.per_model.tokens import (
     unit_column_to_value,
 )
 from wargame_rl.wargame.envs.per_model.types import (
+    COMMIT_KEEP,
+    NO_COMMIT_DECISION,
     PerModelAction,
     PerModelObservation,
     StepKind,
@@ -67,10 +69,21 @@ class StepDecision:
     tokens: TokenObservation
     model: int = NO_DRAW
     column: int = NO_DRAW
+    # The commitment decision drawn on an `open` step (#384 Stage 1): its
+    # column (0 KEEP, 1 + k objective k), its own log-prob -- never added to
+    # the member's, the two streams are trained apart -- and the planning
+    # value at the step. `NO_DRAW` when the step offered no decision.
+    commit_column: int = NO_DRAW
+    commit_log_prob: float = 0.0
+    planning_value: float = 0.0
 
     @property
     def has_policy(self) -> bool:
         return self.column >= 0
+
+    @property
+    def has_commitment(self) -> bool:
+        return self.commit_column >= 0
 
 
 class SetAgent:
@@ -147,6 +160,15 @@ class SetAgent:
                 [max(m, 0) for m in models], dtype=torch.int64, device=device
             )
             heads = self.network.heads(output, batch, index)
+            offers = [
+                not closing[row]
+                and models[row] >= 0
+                and bool(tokens[row].commit_mask[models[row]].any())
+                for row in range(len(envs))
+            ]
+            commitments = (
+                self.network.commitment(output, batch, index) if any(offers) else None
+            )
         decisions: list[StepDecision] = []
         for row, (env, observation) in enumerate(zip(envs, observations)):
             value = float(values[row].item())
@@ -159,8 +181,20 @@ class SetAgent:
             column, column_log_prob = _draw(logits, self.greedy, generator)
             point = observation.decision
             model = models[row]
+            commit_column, commit_log_prob, planning_value = NO_DRAW, 0.0, 0.0
+            if commitments is not None and offers[row]:
+                commit_logits = commitments.logits[row].float().cpu()
+                commit_column, commit_log_prob = _draw(
+                    commit_logits, self.greedy, generator
+                )
+                planning_value = float(commitments.planning_value[row].item())
             action = self._decode(
-                point.kind, tokens[row], env.player_seat, model, column
+                point.kind,
+                tokens[row],
+                env.player_seat,
+                model,
+                column,
+                commit_column=commit_column,
             )
             reason = point.why_illegal(action)
             if reason is not None:
@@ -179,16 +213,28 @@ class SetAgent:
                     tokens[row],
                     model=model,
                     column=column,
+                    commit_column=commit_column,
+                    commit_log_prob=commit_log_prob,
+                    planning_value=planning_value,
                 )
             )
         return decisions
 
     @staticmethod
     def _decode(
-        kind: StepKind, tokens: TokenObservation, seat: Seat, model: int, column: int
+        kind: StepKind,
+        tokens: TokenObservation,
+        seat: Seat,
+        model: int,
+        column: int,
+        *,
+        commit_column: int = NO_DRAW,
     ) -> PerModelAction:
         if kind is StepKind.open:
-            return PerModelAction.open(model, column)
+            commitment = NO_COMMIT_DECISION
+            if commit_column >= 0:
+                commitment = COMMIT_KEEP if commit_column == 0 else commit_column - 1
+            return PerModelAction.open(model, column, commitment)
         if kind is StepKind.target:
             value = unit_column_to_value(
                 column, kind, seat, tokens.opponent_unit_groups

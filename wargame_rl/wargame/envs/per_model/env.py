@@ -18,7 +18,7 @@ step after the opponent's turn. Model steps return 0.0. Stage 3 re-times it.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, cast
 
 import gymnasium as gym
@@ -104,7 +104,9 @@ from wargame_rl.wargame.envs.per_model.phases import (
 from wargame_rl.wargame.envs.per_model.scripted import ScriptedSeat
 from wargame_rl.wargame.envs.per_model.seat import Seat
 from wargame_rl.wargame.envs.per_model.types import (
+    COMMIT_KEEP,
     FACADE_TAG,
+    NO_COMMIT_DECISION,
     DecisionPoint,
     FacadeDivergence,
     PerModelAction,
@@ -367,6 +369,10 @@ class PerModelEnv(gym.Env):
                 combat_set_size=config.commitments.combat_set_size,
             ),
         }
+        # Under `assignment: head`: the units that have taken their commitment
+        # decision this turn, and the turn (window key) the set belongs to.
+        self._committed_this_turn: set[int] = set()
+        self._commit_turn_key: tuple[int, PlayerSide] | None = None
         self._opponent_policy = None
         if config.number_of_opponent_models > 0:
             self._opponent_policy = build_opponent_policy(
@@ -441,6 +447,40 @@ class PerModelEnv(gym.Env):
     @property
     def player_commitments(self) -> CommitmentState:
         return self._commitments[True]
+
+    def _with_commit_mask(self, point: DecisionPoint) -> DecisionPoint:
+        """The open point with the commitment decision the head takes (#384
+        Stage 1): under `assignment: head`, every selectable model whose unit
+        has not committed this turn gets a row of KEEP + one column per
+        objective. The turn is the reward window's turn key."""
+        if (
+            not self.config.commitments.policy_writes
+            or point.kind is not StepKind.open
+            or not point.seat_is_player
+            or self._window is None
+        ):
+            return point
+        if self._commit_turn_key != self._window.turn_key:
+            self._commit_turn_key = self._window.turn_key
+            self._committed_this_turn = set()
+        n_objectives = len(self.objectives)
+        seat = self._player_seat
+        mask = np.zeros((seat.n_models, 1 + n_objectives), dtype=bool)
+        for index in np.flatnonzero(point.selector_mask):
+            group = int(seat.models[int(index)].group_id)
+            if group not in self._committed_this_turn:
+                mask[int(index), :] = True
+        if not mask.any():
+            return point
+        return replace(point, commit_mask=mask)
+
+    def _write_commitment(self, model: int, commitment: int) -> None:
+        """Apply the head's decision on the open step: KEEP leaves the slot,
+        an objective index is written; the unit is marked for the turn."""
+        group = int(self._player_seat.models[model].group_id)
+        if commitment != COMMIT_KEEP:
+            self._commitments[True].set_ground(group, int(commitment))
+        self._committed_this_turn.add(group)
 
     def set_player_planner(self, planner: ScriptedSeat | None) -> None:
         """Let a whole-phase script plan the player's phases (the bridge test).
@@ -566,7 +606,12 @@ class PerModelEnv(gym.Env):
         )
         for state in self._commitments.values():
             state.clear()
-        if self.config.commitments.enabled:
+        self._committed_this_turn = set()
+        self._commit_turn_key = None
+        if (
+            self.config.commitments.enabled
+            and not self.config.commitments.policy_writes
+        ):
             writer = {"greedy": assign_greedy, "rotated": assign_rotated}[
                 self.config.commitments.assignment
             ]
@@ -626,6 +671,8 @@ class PerModelEnv(gym.Env):
             return observation, reward + settled.reward, terminated, truncated, info
         program = self._program
         assert program is not None
+        if action.kind is StepKind.open and action.commitment != NO_COMMIT_DECISION:
+            self._write_commitment(action.model, action.commitment)
         if action.kind is StepKind.act:
             self._window_player_actions[action.model] = action.value
         before = program.acted_mask()
@@ -689,7 +736,7 @@ class PerModelEnv(gym.Env):
                             self._last_opponent_actions[chosen.model] = chosen.value
                         self._program.apply(point, chosen)
                         continue
-                    self._pending = point
+                    self._pending = self._with_commit_mask(point)
                     break
                 self._program.close()
                 self._program = None
@@ -1090,6 +1137,7 @@ class PerModelEnv(gym.Env):
                 self.wargame_models,
                 self.opponent_models,
                 self.objectives,
+                reassign=not self.config.commitments.policy_writes,
             )
         for state in self._commitments.values():
             state.record_turn()

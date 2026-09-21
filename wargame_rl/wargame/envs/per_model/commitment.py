@@ -270,6 +270,8 @@ def retire_and_reassign(
     own: list[WargameModel],
     enemies: list[WargameModel],
     objectives: list[WargameObjective],
+    *,
+    reassign: bool = True,
 ) -> list[int]:
     """The ground slot's retirement under the greedy writer, at a turn close.
 
@@ -280,7 +282,9 @@ def retire_and_reassign(
     keeps the commitment through any walk-off (#392): Stage 0 re-assigned
     the walker for free and the leaving step paid nothing on the six-squad,
     five-objective shape, where two squads share an objective from
-    deployment. A retired living unit is
+    deployment. With `reassign=False` (the policy is the writer, #384 Stage
+    1) a retired living unit's slot is cleared and the head decides at its
+    next open; otherwise a retired living unit is
     re-assigned to the nearest objective that is neither ours nor claimed by
     another unit; failing that the nearest not ours; failing that it keeps
     what it had (every objective is ours). Returns the groups re-assigned.
@@ -307,6 +311,10 @@ def retire_and_reassign(
         if inside:
             slot.arrived = True
         if not (bool(ours[current]) and not inside and not slot.arrived):
+            continue
+        if not reassign:
+            state.clear_ground(g)
+            reassigned.append(g)
             continue
         claimed = {
             c.ground

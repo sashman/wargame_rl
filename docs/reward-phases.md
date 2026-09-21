@@ -183,7 +183,11 @@ phase facade ignores the block.
   objective through any walk-off, #392) or `rotated` (the greedy
   assignment shifted one unit along in group order, so no unit's assignment
   is its greedy pick — the legibility rung's writer, #393, read with
-  `all_units_on_commitment`). A **scripted seat** always writes its own
+  `all_units_on_commitment`), or `head` (the POLICY, #384 Stage 1: at each
+  unit's first open of the turn the open step carries one decision, KEEP or
+  an objective, drawn by the set network's commitment head and written by
+  the env on that step; a unit's slot clears on death or as a latecomer and
+  is never re-assigned by the env). A **scripted seat** always writes its own
   squad-to-objective assignment into the state so the bar has a row on
   every readout; `squad_march_committed` is `take` following the
   environment's assignment instead, the bar wherever the environment
@@ -205,6 +209,20 @@ phase facade ignores the block.
   `objective_stay` pays only for ending inside THAT objective. Every other
   calculator is untouched. Under `mean` credit the payment classes are as in
   the table above; the planning / execution streams of #384 are Stage 1.
+- **The two streams under `head`** (`PerStepReward(streams=True)`, which
+  `train_per_model.py` sets whenever the policy is the writer; D2, D6):
+  the close's outcome terms — every delta global (`vp_gain`, …), every
+  state global (`objective_coverage`, …) and the terminal bonuses — are
+  returned as `StepPayment.planning` instead of in `reward`, and the
+  collector credits that scalar to every unit's OPEN commitment span (its
+  latest commitment step, until the unit decides again). The planning
+  stream's return is semi-Markov over each unit's commitment steps with
+  its own discount (`--planning-gamma`, default 0.99 per step, one step per
+  turn) and its own value head; the members' advantage is computed from
+  the execution stream alone (the potentials against the commitment, the
+  per-model state terms). The commitment decision's log-prob is never added
+  to the member's: two surrogates, two value losses, one optimiser. With
+  no commitment rows the update is the shipped one, bit for bit.
 - **Readouts**: `just measure-commitments <config> <n> <seed_base> <spec...>`
   — persistence turn to turn, claimants per claimed objective, completion,
   empty-slot share, member follow-through, and the leave share on the

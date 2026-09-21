@@ -88,7 +88,7 @@ sizes; one instance plays 6/2 and 10/5 with no reload).
   `None` = the default exactly as `TransformerConfig` does. Fixtures use
   `SetNetworkConfig(embedding_size=32, n_layers=2, n_heads=4)`; unlike the
   transformer, **`n_heads` IS recoverable** from this family's state dict (the
-  relation bias is `Linear(18, n_heads)` — 16 before the commitment layer (#384) added `REL_COMMITTED` / `REL_COMMIT_PRESENT`; `load_checkpoint` zero-pads the older width), which is why its fixture may shrink
+  relation bias is `Linear(18, n_heads); the commitment head and planning value (#384 Stage 1: `SetNetwork.commitment` — `commit_keep_head`, `commit_query`/`commit_key` over the objective tokens, `commit_relation_bias`, `planning_value_head`; scored at the opening model's latent, masked by `TokenBatch.commit_mask`; absent from older checkpoints and initialised fresh by `load_checkpoint`)` — 16 before the commitment layer (#384) added `REL_COMMITTED` / `REL_COMMIT_PRESENT`; `load_checkpoint` zero-pads the older width), which is why its fixture may shrink
   the head count. Its checkpoints (`checkpoint.py`) are plain tensors plus
   config dicts, loadable with `weights_only=True`, so **nothing pickles this
   package's path** and it may move — unlike the Lightning route.

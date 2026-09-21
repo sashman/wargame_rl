@@ -68,6 +68,16 @@ class SetNetworkOutput:
 
 
 @dataclass(slots=True)
+class CommitmentLogits:
+    """The commitment head for one opening model per row (#384 Stage 1):
+    KEEP then one column per objective, masked; and the planning value of
+    the state as that unit's commitment step sees it."""
+
+    logits: torch.Tensor  # (B, 1 + K)
+    planning_value: torch.Tensor  # (B,)
+
+
+@dataclass(slots=True)
 class HeadLogits:
     """The three value-factor heads for one selected model per row, masked."""
 
@@ -206,6 +216,19 @@ class SetNetwork(nn.Module):
         self.no_target_head = nn.Linear(2 * size, 1)
         self.target_query = nn.Linear(size, size, bias=cfg.bias)
         self.target_key = nn.Linear(size, size, bias=cfg.bias)
+        # The commitment head and the planning value (#384 Stage 1): a pointer
+        # over the objective tokens plus KEEP, read at the opening model's
+        # latent, with its own read of the relation vector (which carries the
+        # unit's current commitment); and a second value head for the planning
+        # stream's semi-Markov return. Untouched by every step that offers no
+        # commitment decision, so a run without the head is bit-identical.
+        self.commit_keep_head = nn.Linear(2 * size, 1)
+        self.commit_query = nn.Linear(size, size, bias=cfg.bias)
+        self.commit_key = nn.Linear(size, size, bias=cfg.bias)
+        self.commit_relation_bias = nn.Linear(RELATION_DIM, 1)
+        self.planning_value_head = nn.Sequential(
+            nn.Linear(2 * size, size), nn.GELU(), nn.Linear(size, 1)
+        )
 
     # ------------------------------------------------------------ factories
 
@@ -310,3 +333,31 @@ class SetNetwork(nn.Module):
         unit = torch.cat([self.no_target_head(head_input), scores], dim=1)
         unit = unit.masked_fill(~batch.unit_mask[rows, model_index], NEG_INF)
         return HeadLogits(declaration=declaration, displacement=displacement, unit=unit)
+
+    def commitment(
+        self, output: SetNetworkOutput, batch: TokenBatch, model_index: torch.Tensor
+    ) -> CommitmentLogits:
+        """Score the opening model's unit's commitment: KEEP, then each
+        objective token, `-inf` where the point offers no decision; and the
+        planning value at this step."""
+        rows = torch.arange(batch.batch_size, device=model_index.device)
+        latent = output.player_latents[rows, model_index]
+        head_input = torch.cat([latent, output.game_latent], dim=-1)
+        size = self.config.embedding_size
+        objective_rows = batch.objective_rows  # (B, K)
+        gather_rows = objective_rows[:, :, None].expand(-1, -1, size)
+        objective_tokens = torch.gather(output.context_embedded, 1, gather_rows)
+        query = self.commit_query(latent)[:, None, :]
+        keys = self.commit_key(objective_tokens)
+        scores = (query * keys).sum(dim=-1) / math.sqrt(size)  # (B, K)
+        relations = batch.cross_relations[
+            rows[:, None], model_index[:, None], objective_rows
+        ]
+        scores = scores + self.commit_relation_bias(relations).squeeze(-1)
+        logits = torch.cat([self.commit_keep_head(head_input), scores], dim=1)
+        legal = batch.commit_mask[rows, model_index] & torch.cat(
+            [torch.ones_like(batch.objective_pad[:, :1]), batch.objective_pad], dim=1
+        )
+        logits = logits.masked_fill(~legal, NEG_INF)
+        planning_value = self.planning_value_head(head_input).squeeze(-1)
+        return CommitmentLogits(logits=logits, planning_value=planning_value)

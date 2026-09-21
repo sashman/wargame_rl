@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CommitmentAssignment = Literal["none", "greedy", "rotated"]
+CommitmentAssignment = Literal["none", "greedy", "rotated", "head"]
 
 
 class CommitmentConfig(BaseModel):
@@ -43,6 +43,14 @@ class CommitmentConfig(BaseModel):
     legibility rung's writer (#393): a policy can only satisfy
     `all_units_on_commitment` by reading the marked-target relation.
 
+    `head`: the POLICY writes the ground commitment (#384 Stage 1): at a
+    unit's first open of each turn the open step carries one decision -- KEEP
+    or an objective -- drawn by the set network's commitment head; the slot
+    clears on death or as a latecomer (never re-assigned by the environment).
+    The trainer routes the close's outcome terms to the planning stream paid
+    to that decision and trains the members on the execution potentials
+    alone (D2, D6). A scripted seat under `head` writes its own plan, the bar.
+
     The phase facade ignores this block; the whole-army trainer has its own
     declaration line (`declare_objectives`), a different mechanism.
     """
@@ -53,7 +61,8 @@ class CommitmentConfig(BaseModel):
         default="none",
         description="Who writes the ground commitment: 'none', 'greedy' (the "
         "environment, at deployment, by the scripted bar's rule; sticky) or "
-        "'rotated' (greedy shifted one unit along: the legibility rung).",
+        "'rotated' (greedy shifted one unit along: the legibility rung) or "
+        "'head' (the policy, at each unit's first open of the turn).",
     )
     combat_set_size: int = Field(
         default=2,
@@ -61,6 +70,11 @@ class CommitmentConfig(BaseModel):
         description="The cap K on a unit's combat set (ANY mode). Stage 0 has no "
         "writer for the combat slot; the cap sizes the state and the masks.",
     )
+
+    @property
+    def policy_writes(self) -> bool:
+        """True when the commitment head is the writer (`head`)."""
+        return self.assignment == "head"
 
     @property
     def enabled(self) -> bool:

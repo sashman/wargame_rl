@@ -605,6 +605,20 @@ seeds 700000+); `random` has no commitments (empty 1.00). A commitment head
 (Stage 1) is read on `persist` and `claim` before its success; a policy
 executing a given assignment (CM1) on `follow` and `leave`.
 
+### The planning stream's panel (#384 Stage 1)
+
+On a run whose commitment writer is the policy (`commitments.assignment:
+head`), the update row carries the planning stream beside the health panel:
+`train/planning/commit_rows` (commitment decisions in the update),
+`train/planning/explained_variance` (the planning value head against the
+semi-Markov returns over commitment steps), `train/planning/return_mean`,
+`train/planning/advantage_std` (before normalisation),
+`train/planning/clip_fraction` (the commitment surrogate's clipped share)
+and `train/entropy/head/commitment` (nats over KEEP + the objectives). All
+0.0 on a run without the head. Read the planning explained variance the
+way the member panel's is read: a planning critic that never fits is a
+commitment head trained on noise.
+
 ### The flag ablation — `just measure-commitment-ablation`
 
 Whether a per-model policy READS its commitment, as opposed to being paid
