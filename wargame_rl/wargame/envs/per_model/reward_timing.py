@@ -396,6 +396,11 @@ class PerStepReward:
             player_models_killed=player_killed,
             opponent_models_killed=opponent_killed,
             player_kills_by_model=kills_by_model,
+            committed_objective=(
+                env.player_commitments.committed_objective_per_model(env.wargame_models)
+                if env.config.commitments.enabled
+                else None
+            ),
         )
 
     def _pay_action_terms(

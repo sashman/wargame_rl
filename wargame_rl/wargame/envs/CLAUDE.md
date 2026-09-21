@@ -113,3 +113,5 @@ Applies to everything under `wargame_rl/wargame/envs/`.
 - Track rendering state (e.g. `previous_location`) in same change
 - New entities mirror existing patterns; always backward compatible
 - Follow [docs/ddd-envs.md](../../../docs/ddd-envs.md): keep domain logic in `domain/`, use `BattleView` for read-only state, and preserve dependency direction (domain → types only; reward/renders → BattleView)
+
+- **The commitment layer (#384, `per_model/commitment.py`)**: per seat, a ground slot (one objective) and a combat slot (an ANY set of enemy units) per unit, written by the env under `commitments.assignment: greedy` (sticky, by the scripted bar's rule), by a scripted seat's own plan always, and by a policy head in Stage 1; read by the tokens (`REL_COMMITTED`, claimant columns), the retimer (`StepContext.committed_objective` → `closest_objective_v2`, `objective_stay`) and `just measure-commitments`. Off by default and bit-identical off. See `docs/reward-phases.md` § The commitment layer.

@@ -1,0 +1,67 @@
+# #384 Stage 0 (CM1 lever): `a3.yaml` with the commitment layer's GREEDY writer --
+# the environment assigns every squad an objective at deployment by the scripted
+# bar's own rule and holds it (sticky; re-solved only when the objective is held
+# by us WITHOUT this unit, or the unit dies); the travel and staying terms are
+# keyed to the committed objective; each member's token flags it. The ONE change
+# from `a3.yaml`. Read against `a3.yaml`'s own runs at matched rounds.
+# Curriculum rung A3 (parent question #340): FOUR units of three, FOUR
+# objectives, nobody shooting -- the "points" axis, and the SPREAD rung. The
+# objectives are a column at x=35 and the deployment band runs the height of
+# the board, so each squad deploys nearest a distinct point: go to the
+# closest point, one squad per point, nobody crosses. Success is the new
+# `all_objectives_occupied` criterion -- every point has a body on it -- which
+# is the question the two model-counting criteria cannot ask (twelve on one
+# point and three on each of four read the same to them). Radius 4 per point
+# (A1's disc: three bodies fit), 8 rounds, 60x44, Move 6, coherency a readout.
+#
+# The bar is `squad_march_take`, measured first on seeds 700000+.
+config_name: curriculum_a3_cm
+number_of_wargame_models: 12
+number_of_opponent_models: 0
+number_of_objectives: 4
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 4
+number_of_battle_rounds: 8
+deployment_zone: [4, 4, 10, 40]
+opponent_deployment_zone: [50, 16, 56, 28]
+models:
+  - &sq_0 { group_id: 0 }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+objectives:
+  - { x: 35, y: 8 }
+  - { x: 35, y: 17 }
+  - { x: 35, y: 27 }
+  - { x: 35, y: 36 }
+coherency:
+  enforce_at_deployment: true
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.0
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: all_objectives_occupied
+      params: {}
+observe_objective_control: true
+commitments:
+  assignment: greedy

@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
+from loguru import logger
 
 from wargame_rl.wargame.envs.per_model.types import FACADE_TAG
 from wargame_rl.wargame.model.per_model.config import SetNetworkConfig
@@ -120,6 +121,51 @@ class LoadedCheckpoint:
     revision: str
 
 
+_RELATION_INPUT_LAYERS = (
+    "self_relation_bias.weight",
+    "cross_relation_bias.weight",
+    "pointer_relation_bias.weight",
+)
+
+
+def _widen_relation_inputs(
+    state_dict: dict[str, torch.Tensor], network: SetNetwork
+) -> dict[str, torch.Tensor]:
+    """Zero-pad a checkpoint whose relation vector was NARROWER than today's.
+
+    The commitment layer (#384) appended two relation features. A network
+    trained before it reads them as zero weights, so its outputs on the old
+    features are bit-identical -- and those features ARE zero for any run
+    that does not configure the layer. A checkpoint that is wider than the
+    network is refused by `load_state_dict` as before.
+    """
+    current = network.state_dict()
+    widened = dict(state_dict)
+    for key in _RELATION_INPUT_LAYERS:
+        saved = state_dict.get(key)
+        target = current.get(key)
+        if saved is None or target is None or saved.shape == target.shape:
+            continue
+        if (
+            saved.dim() != 2
+            or saved.shape[0] != target.shape[0]
+            or saved.shape[1] > target.shape[1]
+        ):
+            continue
+        padded = torch.zeros_like(target)
+        padded[:, : saved.shape[1]] = saved
+        widened[key] = padded
+        logger.warning(
+            "{}: relation input {} widened {} -> {} (zero-padded; the checkpoint "
+            "predates the commitment layer)",
+            key,
+            key,
+            saved.shape[1],
+            target.shape[1],
+        )
+    return widened
+
+
 def load_checkpoint(
     path: Path, *, expected_n_displacements: int | None = None
 ) -> LoadedCheckpoint:
@@ -144,7 +190,7 @@ def load_checkpoint(
         SetNetworkConfig(**payload["network_config"]),
         n_displacements=n_displacements,
     )
-    network.load_state_dict(payload["state_dict"])
+    network.load_state_dict(_widen_relation_inputs(payload["state_dict"], network))
     return LoadedCheckpoint(
         network=network,
         ppo_config=PerModelPPOConfig(**payload["ppo_config"]),

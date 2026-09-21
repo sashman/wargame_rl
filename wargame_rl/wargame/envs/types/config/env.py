@@ -19,6 +19,7 @@ from wargame_rl.wargame.envs.types.config.battle import (
     TurnOrder,
 )
 from wargame_rl.wargame.envs.types.config.coherency import CoherencyConfig
+from wargame_rl.wargame.envs.types.config.commitment import CommitmentConfig
 from wargame_rl.wargame.envs.types.config.entities import ModelConfig, ObjectiveConfig
 from wargame_rl.wargame.envs.types.config.melee import MeleeConfig
 from wargame_rl.wargame.envs.types.config.terrain import (
@@ -596,6 +597,12 @@ class WargameEnvConfig(BaseModel):
     mission: MissionConfig = Field(
         default_factory=MissionConfig,
         description="Mission config: selects VP calculator and params (vp_per_objective, cap_per_turn, min_round).",
+    )
+    commitments: CommitmentConfig = Field(
+        default_factory=CommitmentConfig,
+        description="The commitment layer (#384): who writes a unit's commitment "
+        "to a board token on the per-model facade. Default 'none' is exactly "
+        "the behaviour that predates it; the phase facade ignores the block.",
     )
     coherency: CoherencyConfig = Field(
         default_factory=CoherencyConfig,

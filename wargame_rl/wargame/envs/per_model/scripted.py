@@ -109,6 +109,7 @@ class ScriptedSeat:
             return
         if phase is BattlePhase.movement:
             self._plans = _movement_plans(plan, seat, env)
+            _emit_ground_commitments(self.policy, seat, env)
         elif phase is BattlePhase.shooting:
             self._plans = _shooting_plans(plan, seat)
         elif phase is BattlePhase.charge:
@@ -175,6 +176,26 @@ class ScriptedSeat:
             # phase facade would have resolved nothing for it either.
             action = STAY_ACTION
         return PerModelAction.act(index, action)
+
+
+def _emit_ground_commitments(policy: PhasePolicy, seat: Seat, env: PerModelEnv) -> None:
+    """Write the script's own squad-to-objective assignment into the seat's
+    commitment state (#384, D8): the bar has a row on every commitment
+    readout, and nothing else changes -- a script does not read reward, and
+    with the layer off the tokens and the retimer ignore the state."""
+    squad_objectives = getattr(policy, "squad_objectives", None)
+    if squad_objectives is None or not seat.is_player:
+        # The opponent's commitments are hidden information; its script reads
+        # the env from the player's side, so its assignment is not written.
+        return
+    groups = seat.living_units()
+    if not groups:
+        return
+    targets = squad_objectives(seat.models, env, groups)
+    state = env.commitments_for(seat)
+    objectives = env.objectives
+    for group, objective in zip(groups, targets):
+        state.set_ground(group, objectives.index(objective))
 
 
 def _members(seat: Seat, group: int) -> list[int]:

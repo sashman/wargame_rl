@@ -61,7 +61,11 @@ def test_a_network_driven_episode_terminates_legally(melee: bool, greedy: bool) 
 
 
 def test_seeded_sampling_is_reproducible() -> None:
-    config = small_config(rounds=1)
+    # Two rounds, not one: a random init can declare every unit stationary
+    # for a turn (measured 2026-09-21 after the relation vector widened,
+    # #384), and one such round is three decisions -- the reproducibility
+    # claim needs an episode with something in it.
+    config = small_config(rounds=2)
     first = _play(PerModelEnv(config), _agent(PerModelEnv(config)), seed=4)
     second = _play(PerModelEnv(config), _agent(PerModelEnv(config)), seed=4)
     assert first == second

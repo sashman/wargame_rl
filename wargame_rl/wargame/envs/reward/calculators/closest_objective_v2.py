@@ -356,6 +356,12 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
     ) -> int | None:
         model_distances = cache.model_obj_norms_offset[model_idx]
         n_obj = model_distances.shape[0]
+        # The commitment layer (#384): a committed objective overrides the
+        # per-step choice below, so the potential pulls toward the plan the
+        # unit holds rather than re-deriving a target every step.
+        committed = ctx.committed_objective
+        if committed is not None and 0 <= int(committed[model_idx]) < n_obj:
+            return int(committed[model_idx])
         # Objective-to-group assignment: one objective can reward only one group,
         # so the mask covers every model, not just this one.
         candidate_mask = self._candidate_mask(

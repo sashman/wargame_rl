@@ -69,6 +69,11 @@ class ObjectiveStayCalculator(PerModelRewardCalculator):
         if norms.size == 0:
             return 0.0
         inside = np.flatnonzero(norms[model_idx] <= cache.obj_radii)
+        # The commitment layer (#384): with a committed objective, only ending
+        # inside THAT objective pays; a body on someone else's earns nothing.
+        committed = ctx.committed_objective
+        if committed is not None and int(committed[model_idx]) >= 0:
+            inside = inside[inside == int(committed[model_idx])]
         if inside.size == 0:
             return 0.0
         objective = int(inside[0])
