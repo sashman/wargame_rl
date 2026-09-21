@@ -22,6 +22,7 @@ from wargame_rl.wargame.envs.types.config.battle import (
     TurnOrder,
 )
 from wargame_rl.wargame.envs.types.config.coherency import CoherencyConfig
+from wargame_rl.wargame.envs.types.config.commitment import CommitmentConfig
 from wargame_rl.wargame.envs.types.config.entities import (
     MeleeWeaponProfile,
     ModelConfig,
@@ -40,6 +41,7 @@ from wargame_rl.wargame.envs.types.config.terrain import (
 
 __all__ = [
     "CoherencyConfig",
+    "CommitmentConfig",
     "MeleeConfig",
     "MeleeWeaponProfile",
     "MissionConfig",

@@ -580,6 +580,28 @@ left). The only consumers that equate `max_turns` with "calls to `step()`" are t
 Lightning batched eval and its `steps < max_turns` fallback, neither of which the
 per-model facade uses.
 
+### The commitment readouts — `just measure-commitments`
+
+The commitment layer (#384) is read by six numbers before success moves, per
+policy, live off the per-model env over seeded episodes (`scripts/measure_commitments.py`).
+A scripted name has a row because the scripted seat writes its own assignment
+into the state, so every column has the bar as its reference.
+
+| column | is |
+|---|---|
+| `persist` | share of unit-turns whose ground commitment is unchanged from the previous turn, over units committed on both |
+| `claim` | mean claimants on a claimed objective, and the max |
+| `complete` | share of (unit, objective) ground commitments whose objective our side held at the episode's end |
+| `empty` | share of living unit-turns with no ground commitment while some objective was not ours |
+| `follow` | member follow-through: share of movement `act` steps by a member with a ground commitment that closed distance to it or ended inside it |
+| `leave` | the walk-off probe's number on the COMMITTED objective: share of movement decisions by a member inside it that ended outside it |
+
+On `a5_points.yaml` the bar `squad_march_take` reads persist 0.96, claim
+1.20 / max 2, complete 1.00, empty 0.00, follow 1.00, leave 0.00 (n=3,
+seeds 700000+); `random` has no commitments (empty 1.00). A commitment head
+(Stage 1) is read on `persist` and `claim` before its success; a policy
+executing a given assignment (CM1) on `follow` and `leave`.
+
 ### The per-head match of a per-model clone
 
 `just behaviour-clone-per-model <policy> <config>` prints, and writes to

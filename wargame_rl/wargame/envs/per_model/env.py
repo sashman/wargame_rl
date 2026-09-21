@@ -85,6 +85,11 @@ from wargame_rl.wargame.envs.opponent.registry import (
     _auto_register,
     build_opponent_policy,
 )
+from wargame_rl.wargame.envs.per_model.commitment import (
+    CommitmentState,
+    assign_greedy,
+    retire_and_reassign,
+)
 from wargame_rl.wargame.envs.per_model.dice_seeded import SeededDice
 from wargame_rl.wargame.envs.per_model.observation import build_per_model_observation
 from wargame_rl.wargame.envs.per_model.phases import (
@@ -347,6 +352,20 @@ class PerModelEnv(gym.Env):
             max_ranges=self._opponent_max_ranges,
             enemy_max_ranges=self._player_max_ranges,
         )
+        # The commitment layer (#384): one state per seat, written by the env
+        # (`config.commitments.assignment`), by a scripted seat's own plan, or
+        # later by a policy head; read by the tokens, the retimer and the
+        # readouts. Empty unless something writes.
+        self._commitments: dict[bool, CommitmentState] = {
+            True: CommitmentState(
+                groups=self._player_seat.units_first_appearance(),
+                combat_set_size=config.commitments.combat_set_size,
+            ),
+            False: CommitmentState(
+                groups=self._opponent_seat.units_first_appearance(),
+                combat_set_size=config.commitments.combat_set_size,
+            ),
+        }
         self._opponent_policy = None
         if config.number_of_opponent_models > 0:
             self._opponent_policy = build_opponent_policy(
@@ -413,6 +432,14 @@ class PerModelEnv(gym.Env):
             if self._player_side == PlayerSide.player_1
             else PlayerSide.player_1
         )
+
+    def commitments_for(self, seat: Seat) -> CommitmentState:
+        """The commitment state of `seat` (#384): what each of its units points at."""
+        return self._commitments[bool(seat.is_player)]
+
+    @property
+    def player_commitments(self) -> CommitmentState:
+        return self._commitments[True]
 
     def set_player_planner(self, planner: ScriptedSeat | None) -> None:
         """Let a whole-phase script plan the player's phases (the bridge test).
@@ -536,6 +563,15 @@ class PerModelEnv(gym.Env):
             layout=layout,
             start_groups=int((options or {}).get("start_groups", 0)),
         )
+        for state in self._commitments.values():
+            state.clear()
+        if self.config.commitments.enabled:
+            assign_greedy(
+                self._commitments[True],
+                self.wargame_models,
+                self.opponent_models,
+                self.objectives,
+            )
         observation, _reward, _terminated, _truncated, info = self._advance()
         return observation, info
 
@@ -1044,6 +1080,15 @@ class PerModelEnv(gym.Env):
         if window is None:
             raise RuntimeError("no reward window is open")
         self._window = None
+        if self.config.commitments.enabled:
+            retire_and_reassign(
+                self._commitments[True],
+                self.wargame_models,
+                self.opponent_models,
+                self.objectives,
+            )
+        for state in self._commitments.values():
+            state.record_turn()
         player_alive = alive_mask_for(self.wargame_models)
         cache = compute_distances(
             self.wargame_models,

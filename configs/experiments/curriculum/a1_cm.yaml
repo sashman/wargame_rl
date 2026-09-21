@@ -1,0 +1,60 @@
+# #384 Stage 0 (CM1 lever): `a1.yaml` with the commitment layer's GREEDY writer --
+# the environment assigns every squad an objective at deployment by the scripted
+# bar's own rule and holds it (sticky; re-solved only when the objective is held
+# by us WITHOUT this unit, or the unit dies); the travel and staying terms are
+# keyed to the committed objective; each member's token flags it. The ONE change
+# from `a1.yaml`. Read against `a1.yaml`'s own runs at matched rounds.
+# Curriculum rung A1 (parent question #340): the SAME three bodies as A0,
+# bound into ONE unit of three. One objective ~25" away, nobody shooting,
+# movement only, no terrain, no map pool. The axis that changes from A0 is
+# "squads": the three models now share a unit -- they deploy as a squad
+# (`enforce_at_deployment`), the per-model step opens the unit once and
+# walks its members in sequence, and the observation carries their unit
+# membership. Nothing pays for or referees coherency on this rung; it is a
+# readout, so the rung asks only whether binding bodies into a unit changes
+# what the pipeline learns. Everything else is A0's: radius 4 (the disc at
+# which the script's freeze went away), 8 rounds, 60x44, Move 6.
+#
+# The bar is `squad_march_take`, measured first on seeds 700000+. Success is
+# every alive model inside the objective; `terminate_on_success` ends the
+# episode there and the terminal bonus is scaled by the rounds left, which is
+# the "as fast as possible" term. Deployment is a band on the left edge so
+# the squad starts 22-28" from the marker.
+config_name: curriculum_a1_cm
+number_of_wargame_models: 3
+number_of_opponent_models: 0
+number_of_objectives: 1
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 1
+number_of_battle_rounds: 8
+deployment_zone: [4, 16, 10, 28]
+opponent_deployment_zone: [50, 16, 56, 28]
+models:
+  - { group_id: 0 }
+  - { group_id: 0 }
+  - { group_id: 0 }
+objectives:
+  - { x: 35, y: 22 }
+coherency:
+  enforce_at_deployment: true
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.0
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: all_at_objectives
+      params: {}
+observe_objective_control: true
+commitments:
+  assignment: greedy

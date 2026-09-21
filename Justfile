@@ -383,6 +383,14 @@ fit-per-model-critic clone teacher env_config n_episodes='300' epochs='20' out='
 # same held-out seeds so the turn difference against the bar pairs per
 # episode. The passive pair prints on every per-model row.
 # Use: just measure-rung configs/experiments/curriculum/a0.yaml 100 700000 squad_march_take checkpoints/per_model/<run>/last.pt checkpoints/<run>/last.ckpt
+# The commitment layer's readouts (#384 B7): persistence, claimants, completion,
+# empty slots, member follow-through and the leave share on the COMMITTED
+# objective, read live off the per-model env; a scripted name has a row because
+# the scripted seat writes its own assignment into the state.
+# Use: just measure-commitments configs/experiments/curriculum/a5_points_cm.yaml 100 700000 squad_march_take checkpoints/per_model/<run>/last.pt
+measure-commitments env_config n_episodes seed_base *specs:
+	@uv run python -m scripts.measure_commitments {{env_config}} {{n_episodes}} "{{seed_base}}" {{specs}}
+
 measure-rung env_config n_episodes seed_base policy *checkpoints:
 	@uv run python -m scripts.measure_rung {{env_config}} {{n_episodes}} "{{seed_base}}" {{policy}} {{checkpoints}}
 

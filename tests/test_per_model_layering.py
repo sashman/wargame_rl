@@ -141,6 +141,7 @@ ROOT_CLIENTS = ("play_per_model.py", "train_per_model.py")
 # instrument that says the two agree, so it cannot reach one through the other.
 SCRIPT_CLIENTS = (
     "measure_throughput_per_model.py",
+    "measure_commitments.py",
     "measure_bridge.py",
     "behaviour_clone_per_model.py",
     "fit_per_model_critic.py",
