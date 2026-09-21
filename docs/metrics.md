@@ -560,7 +560,10 @@ Run at least two seeds per arm before reading a difference smaller than ~10pp.
 A per-model checkpoint plays the per-model facade, so it cannot go through
 `evaluate_selector`. `wargame_rl/wargame/scoring.py::evaluate_spec` is the one facade
 branch: a `.pt` runs through `envs/per_model/evaluate.py` in waves and everything else
-runs through the phase facade exactly as before; both produce the same `EvalResult`
+runs through the phase facade exactly as before — except on a config with a commitment
+writer (`commitments.assignment` other than `none`), where every spec, a scripted name
+included, plays the per-model facade, since the phase facade has no commitment state and a
+bar scored there would play a different game from the checkpoints beside it; both produce the same `EvalResult`
 through the same end-of-episode readouts (`envs/evaluation/`), so a `.pt` row and a
 script row sit on one table and pair per seed. The per-model facade runs **no
 decode**, so `decode_topk` is refused with a `.pt` rather than ignored.
