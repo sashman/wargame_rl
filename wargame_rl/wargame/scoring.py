@@ -64,8 +64,15 @@ def evaluate_spec(
     `greedy=False` is the per-model facade's: it samples the checkpoint's
     policy on a generator seeded from the first seed, the regime training
     rolls out in, and is refused on the phase side by name.
+
+    A config with a commitment WRITER (`commitments.assignment` other than
+    `none`) is owned by the per-model facade whatever the spec: the phase
+    facade has no commitment state, so a scripted name scored there would
+    play a different game from the checkpoints read beside it (on the
+    legibility rung its success is undefined). Every spec on such a config
+    plays the per-model facade; a name becomes a scripted seat there.
     """
-    if is_per_model_checkpoint(spec):
+    if is_per_model_checkpoint(spec) or env_config.commitments.enabled:
         if decode_topk != 1 or decode_stay:
             raise ValueError(
                 f"{spec!r} plays the per-model facade, which runs no joint "

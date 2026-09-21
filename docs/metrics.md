@@ -602,6 +602,26 @@ seeds 700000+); `random` has no commitments (empty 1.00). A commitment head
 (Stage 1) is read on `persist` and `claim` before its success; a policy
 executing a given assignment (CM1) on `follow` and `leave`.
 
+### The flag ablation — `just measure-commitment-ablation`
+
+Whether a per-model policy READS its commitment, as opposed to being paid
+against it (`scripts/measure_commitment_ablation.py`, #384 R3). Each
+checkpoint is scored four times on identical seeds with the reward untouched
+(it is not computed at play) and only the observation changed: `trained`
+(the marked-target relation as the environment writes it), `blank` (the
+relation present, nothing flagged), `misdirect` (every unit's flag moved to
+the next objective, never the one the environment pays against) and
+`nearest` (every model's flag moved to its nearest objective, read off the
+relation's own offset columns). Success unchanged under `blank` means the
+members never read the flag; a drop under `misdirect` or `nearest` means
+they follow it. `nearest` is the legibility rung's confound: on a rung
+whose assignment is deliberately not the nearest, a policy that walks to
+the nearest objective scores the same under `nearest` as under `trained`.
+Stage 0 read on both A3 and the half-step: trained, blank and misdirect
+within a few hundredths of each other on every seed — the policy never
+read the pointer. Run it on every arm that adds an observation the reward
+keys on, before calling the arm a plan.
+
 ### The per-head match of a per-model clone
 
 `just behaviour-clone-per-model <policy> <config>` prints, and writes to

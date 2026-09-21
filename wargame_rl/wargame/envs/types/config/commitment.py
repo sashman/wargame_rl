@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CommitmentAssignment = Literal["none", "greedy"]
+CommitmentAssignment = Literal["none", "greedy", "rotated"]
 
 
 class CommitmentConfig(BaseModel):
@@ -29,13 +29,19 @@ class CommitmentConfig(BaseModel):
     `greedy`: the ENVIRONMENT writes the ground commitment at deployment --
     the scripted bar's own rule, cheapest objective first, each taking the
     nearest unassigned squad, spares to their nearest -- and holds it until
-    the unit dies or its objective is held by us WITHOUT it (another unit
-    holds it, so this one is redundant and is re-assigned to the nearest
-    objective that is neither ours nor claimed). With a writer on, the
+    the unit dies or, before it has ever arrived, its objective is held by
+    another unit (a latecomer is re-assigned to the nearest objective that
+    is neither ours nor claimed; a unit that has arrived keeps its objective
+    through any walk-off, #392). With a writer on, the
     travel term pays distance closed toward the COMMITTED objective instead
     of its own per-step choice and the staying term pays for ending inside
     it. This is the lever of arm CM1 (#387): the plan given as an
     observation, to read whether the trainer executes a plan it is handed.
+
+    `rotated`: the greedy assignment shifted one unit along in group order,
+    so every unit is assigned an objective that is not its greedy pick. The
+    legibility rung's writer (#393): a policy can only satisfy
+    `all_units_on_commitment` by reading the marked-target relation.
 
     The phase facade ignores this block; the whole-army trainer has its own
     declaration line (`declare_objectives`), a different mechanism.
@@ -45,8 +51,9 @@ class CommitmentConfig(BaseModel):
 
     assignment: CommitmentAssignment = Field(
         default="none",
-        description="Who writes the ground commitment: 'none' or 'greedy' (the "
-        "environment, at deployment, by the scripted bar's rule; sticky).",
+        description="Who writes the ground commitment: 'none', 'greedy' (the "
+        "environment, at deployment, by the scripted bar's rule; sticky) or "
+        "'rotated' (greedy shifted one unit along: the legibility rung).",
     )
     combat_set_size: int = Field(
         default=2,

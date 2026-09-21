@@ -176,11 +176,18 @@ phase facade ignores the block.
   before the layer existed) or `greedy` (the environment, at deployment,
   by the scripted bar's own rule: objectives in ascending opponent-count
   order, each taking the nearest unassigned squad, spares to the cheapest;
-  sticky — a unit's ground commitment is re-solved only when its objective
-  is held by us WITHOUT any of its own members inside it, i.e. another unit
-  holds it and this one is redundant, or when the unit dies). A **scripted
-  seat** always writes its own squad-to-objective assignment into the state
-  so the bar has a row on every readout; with the layer off nothing reads it.
+  sticky — a unit's ground commitment is re-solved only when the unit dies,
+  or when its objective is held by another unit BEFORE this unit has ever
+  had a member inside it: a latecomer is re-assigned to the nearest
+  objective neither ours nor claimed, a unit that has arrived keeps its
+  objective through any walk-off, #392) or `rotated` (the greedy
+  assignment shifted one unit along in group order, so no unit's assignment
+  is its greedy pick — the legibility rung's writer, #393, read with
+  `all_units_on_commitment`). A **scripted seat** always writes its own
+  squad-to-objective assignment into the state so the bar has a row on
+  every readout; `squad_march_committed` is `take` following the
+  environment's assignment instead, the bar wherever the environment
+  writes one. With the layer off nothing reads the state.
 - **What the tokens carry** (`envs/per_model/tokens.py`): on every objective
   token the claimant count (`OBJECTIVE_CLAIMANTS`), on every enemy-unit token
   the expected claimants on it (an ANY member counts `1/|set|`), on every own
@@ -201,7 +208,10 @@ phase facade ignores the block.
 - **Readouts**: `just measure-commitments <config> <n> <seed_base> <spec...>`
   — persistence turn to turn, claimants per claimed objective, completion,
   empty-slot share, member follow-through, and the leave share on the
-  committed objective (`docs/metrics.md`).
+  committed objective; `just measure-commitment-ablation <config> <n>
+  <seed_base> <ckpt...>` — success with the marked-target relation as
+  trained, blank, misdirected and pointed at the nearest objective, the
+  test of whether a policy READS its commitment (`docs/metrics.md`).
 
 ## Available Reward Calculators
 
@@ -261,6 +271,7 @@ every phase, and `vp_gain` in every phase — over the two shipped training conf
 | `all_at_objectives` | *(none)* | Succeeds when every model is within the radius of at least one objective. Dead models count as satisfied. **Scales badly with army size** — see the note below; prefer `fraction_at_objectives` beyond a handful of models. |
 | `fraction_at_objectives` | `min_fraction` (float in (0, 1], default 0.5) | Succeeds when at least `min_fraction` of **alive** models are within the radius of an objective. Dead models are excluded from numerator and denominator alike, unlike `all_at_objectives`. |
 | `all_objectives_occupied` | `min_models` (int ≥ 1, default 1) | Succeeds when **every objective** has at least `min_models` alive models inside it — the criterion that counts *points*, where the two above count *models* and cannot tell twelve on one point from three on each of four. Built for the curriculum's spread rung (#340 A3). Dead models occupy nothing; a scenario with no objectives is trivially satisfied. |
+| `all_units_on_commitment` | — | Succeeds when **every living unit with a ground commitment has a member inside ITS committed objective**, and at least one unit is committed. The legibility rung's criterion (#393): `all_objectives_occupied` is satisfied by any allocation that covers the points, so a policy that ignores the marked-target relation and walks to the nearest objective passes it; this one asks each unit for the objective it was assigned, which under `commitments.assignment: rotated` is never its greedy pick. With the layer off nothing is committed and it never succeeds — a config naming it without a writer is a mistake, not a pass. |
 | `all_models_grouped` | `max_distance` (float, default 10.0) | Succeeds when every model is within `max_distance` of at least one same-group member. Models alone in their group are considered grouped. |
 | `player_vp_min` | `fraction_of_max` (float, e.g. 0.33), `min_vp` (int, default 0) | Succeeds when player VP at episode end ≥ threshold. Threshold = max(min_vp, round(fraction_of_max × theoretical_max)). Theoretical max depends on `number_of_battle_rounds`, objectives, and mission params, so the same fraction gives a higher VP bar when episodes have more rounds. |
 | `player_ahead_on_vp` | *(none)* | Succeeds when `player_vp > opponent_vp` at evaluation time (a win-rate signal; use with `terminate_on_success: false`). |

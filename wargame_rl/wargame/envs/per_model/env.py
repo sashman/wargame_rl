@@ -88,6 +88,7 @@ from wargame_rl.wargame.envs.opponent.registry import (
 from wargame_rl.wargame.envs.per_model.commitment import (
     CommitmentState,
     assign_greedy,
+    assign_rotated,
     retire_and_reassign,
 )
 from wargame_rl.wargame.envs.per_model.dice_seeded import SeededDice
@@ -566,7 +567,10 @@ class PerModelEnv(gym.Env):
         for state in self._commitments.values():
             state.clear()
         if self.config.commitments.enabled:
-            assign_greedy(
+            writer = {"greedy": assign_greedy, "rotated": assign_rotated}[
+                self.config.commitments.assignment
+            ]
+            writer(
                 self._commitments[True],
                 self.wargame_models,
                 self.opponent_models,
@@ -1158,6 +1162,13 @@ class PerModelEnv(gym.Env):
             player_models_killed=p_kills,
             opponent_models_killed=o_kills,
             player_kills_by_model=p_kills_by_model,
+            committed_objective=(
+                self._commitments[True].committed_objective_per_model(
+                    self.wargame_models
+                )
+                if self.config.commitments.enabled
+                else None
+            ),
         )
         view = cast(Any, self)
         succeeded = (

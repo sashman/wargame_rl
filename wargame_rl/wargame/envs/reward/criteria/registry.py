@@ -11,6 +11,9 @@ from wargame_rl.wargame.envs.reward.criteria.all_models_grouped import (
 from wargame_rl.wargame.envs.reward.criteria.all_objectives_occupied import (
     AllObjectivesOccupiedCriteria,
 )
+from wargame_rl.wargame.envs.reward.criteria.all_units_on_commitment import (
+    AllUnitsOnCommitmentCriteria,
+)
 from wargame_rl.wargame.envs.reward.criteria.base import SuccessCriteria
 from wargame_rl.wargame.envs.reward.criteria.fraction_at_objectives import (
     FractionAtObjectivesCriteria,
@@ -24,6 +27,7 @@ CRITERIA_REGISTRY: dict[str, type[SuccessCriteria]] = {
     "all_at_objectives": AllAtObjectivesCriteria,
     "fraction_at_objectives": FractionAtObjectivesCriteria,
     "all_objectives_occupied": AllObjectivesOccupiedCriteria,
+    "all_units_on_commitment": AllUnitsOnCommitmentCriteria,
     "all_models_grouped": AllModelsGroupedCriteria,
     "player_vp_min": PlayerVPMinCriteria,
     "player_ahead_on_vp": PlayerAheadOnVPCriteria,
