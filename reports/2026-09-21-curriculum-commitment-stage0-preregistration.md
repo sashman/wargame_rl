@@ -142,3 +142,173 @@ carrying the round line and the final on zero trainers; A3 against its own
 checkpoints at matched rounds, CM1 against the original's rows. A first
 launch of the same six misfired on a shell word-splitting error and died
 before any round; nothing from it is read.
+
+## Amendment 2 — written 2026-09-21 14:20: A3 and CM1 read at the cap; A3 NULL (ahead on two seeds), CM1 EXECUTION
+
+Everything below was read after every seed's log carried its `rounds
+122880` line and no trainer remained (chain `cm_stage_reads_v2.sh`, which
+resolves each seed's run directory from the config stem and checks the
+checkpoint file exists; the chain armed at launch resolved CM1's directory
+from the tag and would have read nothing, and was replaced before its first
+read). n=100, seeds 700000+, greedy, `last.pt` after exit; the same
+checkpoints, seeds and mode for every row. Wandb `curriculum-cm`:
+a3cm 6rayjo62 / fjkf3iir / v4po4k4x, a5pcm p3isqjsr / q1tshoax / jiqjvfqf.
+Every run recorded a greedy episode at every checkpoint.
+
+**The A3 comparator is A3's own checkpoints scored on the plain
+`a3.yaml`**, through the worktree's code with the layer off (bit-identical
+to `main`'s per-model facade off, as the build verified). ⚠ A pre-layer
+checkpoint scored on the layer-ON config is a perturbed policy: the context
+embedding is one `Linear(CONTEXT_DIM)` shared by every token type, so the
+new unit and objective columns land on weights trained for model-token
+semantics. Scored plain, the cap row reproduces the A3 report's
+0.700 / 0.800 / 0.770 to the thousandth, which is the check that the
+comparator is the original policy.
+
+### A3 with the layer (`a3_cm.yaml`)
+
+| rounds | A3 with the layer | A3's own, plain config |
+|---|---|---|
+| 40,960 | 0.520 / 0.350 / 0.240 | 0.400 / 0.350 / 0.340 |
+| 81,920 | 0.890 / 0.650 / 0.750 | 0.590 / 0.670 / 0.610 |
+| 122,880 | **0.820 / 0.850 / 0.930** | 0.700 / 0.800 / 0.770 |
+
+**A3: NULL on the letter.** AHEAD needs more than two binomial SE on 3/3
+at the cap: s1 +2.0 SE, s2 +0.9 SE, s3 +3.3 SE. PASS needs 0.95 on 3/3:
+no seed. Ahead on two seeds and behind on none at the cap, ahead on two at
+81,920 as well; held **3.81 / 3.72 / 3.92** against A3's 3.49 / 3.60 /
+3.65; turns 6.02 / 5.65 / 5.59 against 6.05 / 5.95 / 5.81 (bar 5.28);
+coherency 0.24 / 0.45 / 0.50 (A3 0.44–0.57). The empty column A3 left is
+nearly gone: on the n=20 census every objective is empty in at most 10%
+of episodes on every seed (A3: one objective short in a quarter), with
+7.5 / 8.8 / 9.3 of twelve bodies on objectives from turn 5 to the end.
+Readouts (`measure-commitments`, the bar's row beside): persist 0.96 /
+0.94 / 0.97 (bar 0.99), claimants per claimed objective 1.07 / 1.11 /
+1.06 with max 4 (bar 1.00 / 1), complete 0.91 / 0.89 / 0.96, empty 0.00,
+follow-through 0.90 / 0.92 / 0.94 (bar 1.00), **leave on the assigned
+objective 0.41 / 0.49 / 0.40** (bar 0.00). The walk-off probe (n=10): a
+body on its objective stands still on 0.00 of its decisions, leaves on
+0.38 / 0.48 / 0.40 of its moves from inside, and is paid −0.011 / −0.004 /
+−0.004 on the step it leaves. Sampled beside greedy (n=100 paired):
+sampled 1.4–3.2 vp above greedy, held greedy 3.72–3.92 against sampled
+3.60–3.76 — a converged policy, not a diffuse one. Panel over the last
+quarter, the original A3's beside it:
+
+| run | clip fraction | ratio p99 | explained variance | displacement entropy |
+|---|---|---|---|---|
+| A3 with the layer s1 / s2 / s3 | 0.34 / 0.34 / 0.30 | 1.99 / 2.02 / 1.98 | 0.36 / 0.37 / 0.36 | 1.94 / 1.77 / 1.55 |
+| A3's own s1 / s2 / s3 | 0.22 / 0.32 / 0.32 | 1.72 / 2.02 / 1.97 | 0.34 / 0.45 / 0.43 | 1.75 / 1.73 / 1.81 |
+
+**The members do not read the marked-target relation.** A play-time
+ablation (`drafts/commit_ablation_probe.py`, run by the parallel
+instance of this session: the relation writer swapped so the flag is
+BLANK, or MISDIRECTED to a different objective than the one the
+environment pays against; reward is not computed at play, so only the
+observation changes; n=100, the same seeds): as trained 0.82 / 0.85 /
+0.93 · held 3.81 / 3.72 / 3.92; BLANK **0.83 / 0.87 / 0.95** · 3.81 /
+3.76 / 3.94; MISDIRECT **0.87 / 0.83 / 0.90** · 3.85 / 3.67 / 3.88.
+Whatever moved A3 moved through the reward keying alone: a travel target
+that is assigned once at deployment and not re-derived every step.
+
+### CM1: the five-objective half-step with the layer (`a5_points_cm.yaml`)
+
+| rounds | CM1 | the original (its own pre-registrations' rows) |
+|---|---|---|
+| 40,960 | 0.050 / 0.030 / 0.010 | 0.040 / 0.140 / 0.090 |
+| 81,920 | 0.110 / 0.080 / 0.110 | 0.220 / 0.220 / 0.110 |
+| 122,880 | **0.150 / 0.280 / 0.190** | 0.030 / 0.060 / 0.330 |
+
+**CM1: EXECUTION, as pre-registered.** The leave share on the assigned
+objective at the cap is **0.58 / 0.56 / 0.50** (`measure-commitments`,
+918 / 1,095 / 988 moves from inside; the bar 0.01 on 429): above 0.50 on
+two seeds and at it on the third. PLANNING is missed on both clauses:
+success is ahead of the original by 3.0 and 4.3 SE on s1 and s2 and
+**behind by 2.3 SE on s3** — the staying arms' exact shape (S was ahead on
+two, behind on the third) — and no seed's leave share is under 0.33.
+⚠ The PLANNING clause quoted "the bar's 0.33" from the walk-off probe,
+which counts a body's decisions on any objective; `measure-commitments`
+counts member moves from inside the ASSIGNED objective and puts the bar
+at 0.01. The two readouts agree on the arm (0.50–0.58 against 0.53–0.62)
+and the verdict is the same under either, but a future clause names one.
+
+Held 3.16 / 3.35 / 3.31 of five (the staying arms 3.05–3.43), turns
+9.79 / 9.48 / 9.61 of ten (bar 6.71), coherency 0.14–0.17. Census (n=20):
+3–5 of eighteen bodies on objectives at turn 3, 5–6 from turn 5 to the
+end, an objective empty in 40–70% of episodes on every seed, max stack
+2.3–3.4 (bar 5.8). Readouts: persist **0.87 / 0.88 / 0.88** (bar 0.94),
+claimants per claimed objective 1.45 / 1.44 / 1.45 with **max 6 on one
+objective** (bar 1.20 / 3), complete 0.55 / 0.61 / 0.60, empty 0.00,
+follow-through 0.77 / 0.76 / 0.79 (bar 1.00). The walk-off probe: a body
+on its objective stands still on 0.00–0.01 of its decisions (every arm
+on the half-step: 0.00–0.02; the bar 0.47), leaves on 0.62 / 0.55 / 0.53
+(the original 0.60–0.81, the staying arms 0.48–0.67), and is paid
+**−0.002 / −0.004 / +0.000** on the step it leaves. Panel over the last
+quarter: clip fraction 0.30 / 0.38 / 0.36, ratio p99 1.99 / 2.17 / 2.06,
+explained variance 0.69 / 0.73 / 0.73, displacement entropy 1.87 / 1.94 /
+2.02 — the original's over the same window is 0.30 / 0.31 / 0.38, 2.02 /
+1.97 / 2.23, 0.66 / 0.70 / 0.63, 1.60 / 1.88 / 1.82; normal for the
+half-step. The flag ablation on the CM1 finals (the same probe, n=100):
+as trained 0.15 / 0.28 / 0.19 · held 3.16 / 3.35 / 3.31; BLANK 0.13 /
+0.26 / 0.19 · 3.05 / 3.36 / 3.40; MISDIRECT 0.17 / 0.23 / 0.20 · 3.00 /
+3.30 / 3.46. **The members do not read the relation on the half-step
+either.**
+
+
+Sampled beside greedy on the CM1 finals (n=100 paired): greedy **+4.8 /
++1.6 / +5.0 vp** over sampled, and sampled holds MORE objectives at the
+end (3.53 / 3.62 / 3.65 against greedy's 3.16 / 3.35 / 3.31) with lower
+coherency (0.05–0.08 against 0.14–0.17): the greedy argmax concentrates
+the walk, the sampled policy spreads it. Read as the argmax of a diffuse
+displacement head (1.9–2.0 nats), not as a second policy.
+
+### The D9 diagnosis
+
+Written before the next build, on the five questions the clause asks.
+
+1. **Which members leave, and when.** The count on objectives is flat from
+   turn 5 (5–6 of eighteen bodies) while the leave share is 0.50–0.58: the
+   aggregate holds by turnover, as it did under the staying term. A body on
+   its assigned objective never stands still (0.00–0.01 of its decisions)
+   and leaves on about six moves in ten. There is no phase of the episode in
+   which the members stay; it is the same walk-off the half-step has shown
+   under every per-model setting.
+2. **What the execution potential paid on the step they left.** On the
+   half-step −0.002 to +0.000; on A3, where the plan lifts the rung,
+   −0.004 to −0.011. The half-step's leaving step is nearly free, and the
+   mechanism is in the retirement rule, verified in `retire_and_reassign`:
+   a unit's ground commitment retires when the objective is OURS (any body
+   of ours inside, one or more) and none of THIS unit's members is inside.
+   Six squads over five objectives share one objective from deployment, so
+   the squad that walks off a shared objective while its neighbour stays
+   is retired and re-assigned to the nearest free objective, and the travel
+   potential re-anchors on the new target — a switch pays 0.0, the record's
+   "abandoning a target is free". The readouts show it: persist 0.87–0.88
+   against the bar's 0.94, claimants up to 6 on one objective. On A3 no
+   objective is shared and the rule never fires; on CM1 the layer gives the
+   walk-off a free re-assignment.
+3. **Whether the assignment was reachable.** Not measured beyond the stack:
+   max 2.3–3.4 against the scripts' 5.8, so friendly bases are not what
+   blocks a body from its assigned objective. Freezing was not probed.
+4. **Whether the marked-target relation was what the members conditioned
+   on.** No, on both rungs: blanking or misdirecting the flag moves success
+   by at most a few hundredths. After 122,880 rounds from scratch the
+   policy has not learned to read a relation column that only the reward
+   keying makes meaningful.
+5. **So what did Stage 0 measure.** The keying alone: a per-unit travel
+   target fixed at deployment instead of re-derived every step. On A3 that
+   is worth two seeds of about +0.1 and the empty column; on the half-step
+   it is a seventh reward-side setting with the staying arms' signature
+   (two seeds ahead, one behind, census unchanged). A commitment the policy
+   cannot see is a reward term, and reward terms on this half-step are a
+   closed class.
+
+**The plan revision this asks of #384** (proposed, for Sash to decide, on
+the issue): close the retirement hole (retire on death, or when another
+unit held the objective before this one first arrived — never on a
+walk-off by the earlier claimant); and before Stage 1's sampled pointer
+head, which presupposes that the members condition on the commitment, run
+a legibility rung — the assignment deliberately NOT the nearest objective,
+with travel and success keyed to it, so a policy that reads the flag
+passes and one that does not cannot. That is the cheapest test of whether
+the network can learn to read the relation at all, and it is a rung, not a
+seventh reward arm on the half-step.
