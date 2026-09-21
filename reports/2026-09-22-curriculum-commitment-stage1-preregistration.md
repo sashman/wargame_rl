@@ -1,6 +1,6 @@
 # Pre-registration: the commitment head on A3's shape (CM3, #398) — Stage 1 of the commitment layer
 
-**Written 2026-09-22 01:33, before any training number exists.** Parent
+**Written 2026-09-22 01:35, before any training number exists.** Parent
 #384 (D1–D9 decided 2026-09-20; Stage 1 opened on Sash's "proceed as
 recommended" 2026-09-22 after the legibility rung read); build #397; arm
 #398. Branch `feature/commitment-revision` (PR #396, stacked on #388);
@@ -91,3 +91,8 @@ allocation comes from where each squad's first open lands it, and a squad
 that commits to a neighbour's objective is the failure mode on the NULL
 seed. Planning explained variance 0.3–0.6: four commitment steps per turn
 against a coverage signal that mostly moves at the end.
+
+⚠ A first launch of the three seeds at 01:33 ran on code the hooks had
+refused to commit (two type errors in a test file); it was stopped within a
+minute, its run directories deleted, and nothing from it is read. The runs
+below start after this file and the build (`be3fbed`) are on the branch.
