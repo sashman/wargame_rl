@@ -125,3 +125,94 @@ leaving has never moved it. LR1 reads **PARTIAL** or **BLIND**: I expect the
 policy to reach 0.3–0.6 by covering the points and to be moved by the
 ablation on at most one seed — the relation bias is a weak channel, and
 Stage 0 saw nothing read through it in 122,880 rounds.
+
+## Amendment 1 — written 2026-09-22 01:13: both arms read at the cap; CM1-R1 NULL, LR1 NULL on the letter with two seeds reading the flag
+
+Read after every seed's log carried its `rounds 122880` line and no trainer
+remained (chain `rev_reads.sh`, directories resolved from the config stem);
+n=100, seeds 700000+, greedy, `last.pt` after exit; every row the same
+checkpoints, seeds and mode. Wandb `curriculum-cm-rev`: a5r1 gy78n4mo /
+8z8aaxa0 / abiiu9v6, lr1 bc49wjgx / gqbpjrqs / 9gi4xf19. Launched 21:20,
+the last trainer exited 00:55; every run recorded a greedy episode at every
+checkpoint.
+
+### LR1, the legibility rung (#395): NULL on the letter — two seeds READ, one is blind
+
+| rounds | success s1 / s2 / s3 | trained → blank → misdirect → nearest |
+|---|---|---|
+| 40,960 | 0.050 / 0.290 / 0.030 | s2: 0.29 → 0.01 → 0.09 → 0.01; s1, s3 flat |
+| 81,920 | 0.380 / 0.840 / 0.030 | s1: 0.38 → 0.00 → 0.02 → 0.03; s2: 0.84 → 0.00 → 0.00 → 0.01; s3 flat |
+| 122,880 | **0.710 / 0.950 / 0.080** | s1: **0.71 → 0.00 → 0.01 → 0.00**; s2: **0.95 → 0.00 → 0.00 → 0.00**; s3: 0.08 → 0.10 → 0.06 → 0.04 |
+
+The bar `squad_march_committed` 1.000 in 5.78 turns; plain `take` 0.000.
+**On the letter: NULL.** READS needed success ≥ 0.80 on 3/3 with BLANK and
+NEAREST each dropping it by more than 0.20 on 3/3; PARTIAL and BLIND each
+needed 3/3 too, and the seeds split. **On the substance: s1 and s2 read the
+marked-target relation and s3 never found it.** Blanking the flag takes s2
+from 0.95 to 0.00 and s1 from 0.71 to 0.00; pointing it at each model's
+nearest objective does the same; pointing it one objective along leaves
+0.00–0.01. The members go where the flag points and nowhere else: held
+falls from 3.94 to 1.94 (s2) and 3.48 to 2.35 (s1) under BLANK, so without
+the flag these policies do not even cover the column. s2 holds all four in
+6.11 turns (bar 5.78; every objective empty in 0% of census episodes),
+persistence 1.00, follow-through 0.97, sampled within 0.5 vp of greedy and
+the same held. s1 holds 3.48 in 7.12 turns with follow-through 0.92. s3
+covers 3.3 of four with the wrong squads (claimants 1.30 per objective, the
+far objective empty in 45% of episodes), success 0.08, every ablation
+column within 0.04 of trained — a policy that solved A3's old criterion on
+a rung that asks a different question. Panels normal on all three (clip
+0.36–0.37, ratio p99 2.22–2.26, explained variance 0.63 / 0.67 / 0.89,
+displacement entropy 1.2–1.5 nats).
+
+**What this settles.** The set network CAN learn to condition on a
+relation column whose only meaning is what the reward pays against: two
+seeds of three did, from scratch, in 122,880 rounds, on a rung where
+nothing else passes. Stage 0's "the members never read the pointer" was
+true of the greedy assignment on A3 and the half-step, where the nearest
+objective and the assigned objective coincide often enough that reading
+the flag buys nothing over reading the geometry; make the flag the only
+route to success and it is read. What it does not settle is the third
+seed: one of three finds the geometry solution first and stays there
+(explained variance 0.89 — the critic fits the wrong policy well). The
+Stage 1 head has something to steer on two seeds and nothing on the third.
+
+### CM1-R1, the half-step under the arrived-keeps rule (#394): NULL, as expected
+
+| rounds | success s1 / s2 / s3 | Stage 0 CM1 | leave on the assigned objective | Stage 0 leave |
+|---|---|---|---|---|
+| 40,960 | 0.040 / 0.140 / 0.030 | 0.050 / 0.030 / 0.010 | 0.60 / 0.46 / 0.70 | 0.72 / 0.68 / 0.60 |
+| 81,920 | 0.300 / 0.110 / 0.090 | 0.110 / 0.080 / 0.110 | 0.50 / 0.58 / 0.63 | 0.60 / 0.57 / 0.66 |
+| 122,880 | **0.340 / 0.100 / 0.060** | 0.150 / 0.280 / 0.190 | **0.56 / 0.60 / 0.60** | 0.58 / 0.56 / 0.50 |
+
+**NULL on the letter**: STAYS needed the leave share below 0.33 on 3/3,
+MOVES below 0.50 on 3/3; it is 0.56–0.60. Success is ahead of Stage 0 by
+3.4 SE on s1 and behind by 3.4 and 2.9 SE on s2 and s3 — the third arm on
+the half-step with one seed up and two down. Persistence 0.91–0.92 (Stage
+0 0.87–0.88; the free re-assignment is gone), follow-through 0.73–0.74,
+complete 0.52–0.72, claimants 1.39 with max 4–6 on one objective, held
+3.90 / 2.91 / 2.95, turns 9.4–9.9 of ten. The walk-off probe: a body on its
+objective stands still on 0.01–0.02 of its decisions and leaves on
+0.54–0.65, paid −0.004 to +0.001 on the step it leaves — the same as
+Stage 0. Under the new rule the leaving step is STILL nearly free: the
+retirement hole was one way a switch went unpriced, and closing it left the
+travel potential's own rule (progress re-anchors on the new target, a
+switch pays 0.0) as the other. The flag ablation is flat on s2 and s3; s1
+drifts 0.34 → 0.29 → 0.22 → 0.18 under blank / misdirect / nearest, a hint
+of conditioning at 2–2.5 SE and not a read. Panels normal (clip 0.34–0.37,
+explained variance 0.69 / 0.80 / 0.81). ⚠ The bar's commitment readouts
+changed with the emit guard: `take` is now read against the environment's
+greedy assignment rather than its own per-phase re-plan, and reads persist
+0.97 / follow 0.97 / leave 0.14 where Stage 0's bar row read 0.94 / 1.00 /
+0.01; Stage 0's arm rows were read against the environment's assignment
+already, so the arm-to-arm comparison stands and only the bar's row moved.
+
+**Reading, per the pre-registration's D9 clause.** The price of leaving is
+not what drives the walk-off, and the half-step is closed to further
+reward-side work (the seventh setting, counting Stage 0). Stage 1 is read
+on LR1's shape first.
+
+### Sampled beside greedy (n=100 paired)
+
+LR1: greedy − sampled +2.5 / −0.5 / +1.1 vp, held equal within 0.2 on
+every seed. CM1-R1: +3.2 / −1.6 / +4.2 vp, sampled holding 3.70 / 3.27 /
+3.00 against greedy's 3.90 / 2.91 / 2.95. Converged policies on both arms.
