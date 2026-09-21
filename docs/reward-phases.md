@@ -382,6 +382,7 @@ Both calculators and criteria receive a `StepContext` object containing the dist
 | `board_width` | `int` | Board width in cells |
 | `board_height` | `int` | Board height in cells |
 | `is_terminated` | `bool` | Whether this step terminates the episode (used to gate terminal bonuses). Default `False` |
+| `committed_objective` | `np.ndarray \| None` | The commitment layer (#384): each player model's unit's committed objective index (`-1` none), set by the per-model retimer when `commitments.assignment` is not `none`; `None` otherwise. `closest_objective_v2` and `objective_stay` key on it |
 | `current_round` | `int` | Current battle round (1-based) |
 | `battle_phase` | `BattlePhase` | Current battle phase (`command`, `movement`, `shooting`, `charge`, or `fight`) |
 | `player_damage_dealt` | `int` | Damage the player dealt this step. Default `0` |
