@@ -101,3 +101,44 @@ control, because the assignment fixes where to go and the staying term at
 0.5 was already measured not to fix keeping. If CM1 reads PLANNING the
 commitment head is the build; if EXECUTION, the credit fix on the execution
 stream is, and the record's walk-off is an execution wall.
+
+## Amendment 1 — written 2026-09-21 10:35: the plumbing rungs read; A3 and CM1 launched
+
+**A0, A1, A2 at 40,960 rounds, three seeds each (Wandb `curriculum-cm`),
+greedy n=100 on 700000+ at `last.pt`, `measure-commitments` at n=100:**
+
+| rung | success | turns (bar) | comparator at 40,960 | persist · claim · complete · empty | follow | leave (moves from inside) | bar's leave |
+|---|---|---|---|---|---|---|---|
+| A0 | **1.000 / 1.000 / 1.000** | 4.96 / 4.94 / 5.01 (4.93) | 1.000 / 0.350 / 1.000 | 1.00 · 3.00/3 · 1.00 · 0.00 | 1.00 / 1.00 / 0.99 | 0.00 (74) / 0.00 (73) / **0.17 (66)** | n/a (0) |
+| A1 | **1.000 / 1.000 / 1.000** | 4.88 / 4.87 / 4.84 (4.96) | 1.000 / 0.790 / 1.000 | 1.00 · 1.00/1 · 1.00 · 0.00 | 1.00 ×3 | 0.00 (52) / 0.00 (67) / **0.07 (67)** | 0.00 (99) |
+| A2 | **1.000 / 1.000 / 1.000** | 4.02 / 4.02 / 4.97 (4.55) | 1.000 / 1.000 / 1.000 | 1.00 · 4.00/4 · 1.00 · 0.00 | 1.00 / 1.00 / 0.99 | 0.00 (15) / 0.00 (2) / 0.00 (472) | 0.00 (170) |
+
+Panels normal on all nine (explained variance 0.59–0.86, clip fraction
+0.005–0.27, in-run success 98–100% in the last quarter). No seed is below
+its comparator; two comparator seeds (A0 s2 at 0.350, A1 s2 at 0.790) are
+below the arm. Follow-through 0.99–1.00 on 9/9. **Plumbing PASS on all
+three rungs.** ⚠ The leave clause ("≤ the bar's on 3/3") is missed on one
+seed each of A0 (0.17 on 66 moves — eleven moves) and A1 (0.07 on 67 —
+five moves), against a bar whose leave share is 0.00 or undefined (zero
+moves from inside): a clause written as "≤ 0" cannot be cleared by a
+stochastic count, and with success 1.000 at the bar's speed and the walk
+uninterrupted it is recorded as a defect in the clause, not in the layer.
+On A3 and CM1 the bar leaves on 0.33, and the clause is live there.
+
+⚠ Two defects in this morning's reading, both procedural: the first read
+chain fired before the trainers had spawned (gate on the process count at
+launch; the premature files are kept as `*-PREMATURE-gate.txt`), and the
+second chain's run-directory pattern (`per-model-curriculum_a1_cm-*`)
+did not match the real names (`per-model-a1_cm-*`), so it scored only the
+bar. The table above is the third chain (`read-*cm-final-v3.txt`,
+`commit-*cm-final-v3.txt` in the session drafts), read after every log
+carried its `rounds 40960` line and no trainer remained.
+
+**A3 (`a3_cm.yaml`) and CM1 (`a5_points_cm.yaml`) launched 10:30, three
+seeds each, 122,880 rounds, the same recipe** (128 rounds per update,
+`--ent-coef 0.003`, eval and checkpoint every 512). Wandb: a3cm-s1=6rayjo62 a3cm-s2=fjkf3iir a3cm-s3=v4po4k4x a5pcm-s1=p3isqjsr a5pcm-s2=q1tshoax a5pcm-s3=jiqjvfqf. Reads at
+40,960 / 81,920 / the end as pre-registered, each gated on every seed's log
+carrying the round line and the final on zero trainers; A3 against its own
+checkpoints at matched rounds, CM1 against the original's rows. A first
+launch of the same six misfired on a shell word-splitting error and died
+before any round; nothing from it is read.
