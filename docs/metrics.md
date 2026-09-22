@@ -598,6 +598,7 @@ into the state, so every column has the bar as its reference.
 | `empty` | share of living unit-turns with no ground commitment while some objective was not ours |
 | `follow` | member follow-through: share of movement `act` steps by a member with a ground commitment that closed distance to it or ended inside it |
 | `leave` | the walk-off probe's number on the COMMITTED objective: share of movement decisions by a member inside it that ended outside it |
+| `hold` | share of committed unit-turns in HOLD mode (the unit has arrived; its plan weights are (0, 1)), and after `decl` the share of movement openings by a unit in hold mode that declared the closing declaration — the whole unit stands (#384 execution phase) |
 
 On `a5_points.yaml` the bar `squad_march_take` reads persist 0.96, claim
 1.20 / max 2, complete 1.00, empty 0.00, follow 1.00, leave 0.00 (n=3,

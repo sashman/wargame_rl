@@ -143,6 +143,20 @@ PAYMENT_CLASSES: dict[str, PaymentClass] = {
     "models_at_objectives": PaymentClass.state_global,
 }
 
+# The TASK each per-decision term serves under `commitments.execution: plan`
+# (#384 execution phase): its payment is multiplied by the actor's unit's
+# weight for that task. Tasks with no slot yet (charge, attack) weigh 1.0.
+TASK_APPROACH = 0
+TASK_HOLD = 1
+TASK_OF: dict[str, int | None] = {
+    "closest_objective_v2": TASK_APPROACH,
+    "declared_objective_progress": TASK_APPROACH,
+    "objective_stay": TASK_HOLD,
+    "charge_progress": None,
+    "declared_target_progress": None,
+    "model_kills": None,
+}
+
 _unclassified = set(CALCULATOR_REGISTRY) - set(PAYMENT_CLASSES)
 _unregistered = set(PAYMENT_CLASSES) - set(CALCULATOR_REGISTRY)
 if _unclassified or _unregistered:
@@ -417,7 +431,24 @@ class PerStepReward:
                 if env.config.commitments.enabled
                 else None
             ),
+            task_weights=(
+                env.player_commitments.task_weights_per_model(env.wargame_models)
+                if env.config.commitments.plan_weighted
+                else None
+            ),
         )
+
+    @staticmethod
+    def _task_weight(ctx: StepContext, name: str, index: int) -> float:
+        """The actor's plan weight for the task `name` serves: 1.0 unless the
+        plan-weighted execution is on and the term has a task with a slot."""
+        weights = ctx.task_weights
+        if weights is None:
+            return 1.0
+        task = TASK_OF.get(name)
+        if task is None:
+            return 1.0
+        return float(weights[index, task])
 
     def _pay_action_terms(
         self,
@@ -455,14 +486,14 @@ class PerStepReward:
                 if not model.is_alive:
                     continue
                 paid = calculator.weight * calculator.calculate(index, model, view, ctx)
-                paid *= share
+                paid *= share * self._task_weight(ctx, name, index)
                 total += paid
                 breakdown[name] = breakdown.get(name, 0.0) + paid
         for name, calculator in classes.event:
             for index in attackers:
                 model = env.wargame_models[index]
                 paid = calculator.weight * calculator.calculate(index, model, view, ctx)
-                paid *= share
+                paid *= share * self._task_weight(ctx, name, index)
                 total += paid
                 breakdown[name] = breakdown.get(name, 0.0) + paid
         return total
@@ -573,6 +604,7 @@ class PerStepReward:
 
 __all__ = [
     "PAYMENT_CLASSES",
+    "TASK_OF",
     "PaymentClass",
     "PerStepReward",
     "StepPayment",

@@ -174,6 +174,24 @@ class CommitmentState:
                     out[index[t]] += share
         return out
 
+    def task_weights(self, group: int) -> tuple[float, float]:
+        """The unit's plan weights `(approach, hold)` (#384, execution phase):
+        a committed unit approaches until it has first arrived at its
+        objective, then holds; a unit with no ground commitment has no plan
+        and both weights are 0. The environment's rule for now; a planner
+        writes the same two numbers later."""
+        slot = self.by_group.get(int(group))
+        if slot is None or slot.ground == NO_TARGET:
+            return (0.0, 0.0)
+        return (0.0, 1.0) if slot.arrived else (1.0, 0.0)
+
+    def task_weights_per_model(self, models: list[WargameModel]) -> np.ndarray:
+        """`(M, 2)` of each model's unit's `(approach, hold)` weights."""
+        weights = np.zeros((len(models), 2), dtype=float)
+        for i, model in enumerate(models):
+            weights[i] = self.task_weights(int(model.group_id))
+        return weights
+
     def committed_objective_per_model(self, models: list[WargameModel]) -> np.ndarray:
         """`(n_models,)` int: each model's unit's ground objective, or -1."""
         return np.array(

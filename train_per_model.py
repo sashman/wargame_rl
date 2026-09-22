@@ -706,7 +706,7 @@ def train(
     # Two reward streams whenever the policy writes the commitment (#384 D2):
     # the close's outcome terms go to the commitment decision, the members
     # keep the execution potentials. Otherwise the single stream, unchanged.
-    streams = bool(env_config.commitments.policy_writes)
+    streams = bool(env_config.commitments.streams)
     retimers = [
         PerStepReward(env, credit=ppo_config.credit, streams=streams) for env in envs
     ]

@@ -223,10 +223,26 @@ phase facade ignores the block.
   per-model state terms). The commitment decision's log-prob is never added
   to the member's: two surrogates, two value losses, one optimiser. With
   no commitment rows the update is the shipped one, bit for bit.
+- **The plan-weighted execution (`commitments.execution: plan`, #384's
+  execution phase).** Each unit's plan is its committed objective plus a
+  weight per task, `(approach, hold)`: the environment's rule sets `(1, 0)`
+  until the unit first has a member inside its objective (read at a turn
+  close), then `(0, 1)`, and a new target resets to `(1, 0)`; a unit with no
+  commitment has `(0, 0)`. A member's per-decision payment is each term's
+  value times its unit's weight for the task the term serves (`TASK_OF` in
+  `reward_timing.py`: `closest_objective_v2` and `declared_objective_progress`
+  → approach; `objective_stay` → hold; the charge and kill terms have no
+  slot yet and weigh 1.0), so in hold mode the travel term is silent and
+  leaving pays exactly zero, and in approach mode standing inside pays
+  nothing until the plan flips. The default `keyed` weights nothing and is
+  bit-identical to Stage 0. Under `plan` the two streams are on: the close's
+  outcome terms go to the planning stream and never reach a member. The
+  same two numbers are what a planner writes later, hard or soft.
 - **Readouts**: `just measure-commitments <config> <n> <seed_base> <spec...>`
   — persistence turn to turn, claimants per claimed objective, completion,
-  empty-slot share, member follow-through, and the leave share on the
-  committed objective; `just measure-commitment-ablation <config> <n>
+  empty-slot share, member follow-through, the leave share on the
+  committed objective, and the hold-mode share with the hold-declaration
+  share; `just measure-commitment-ablation <config> <n>
   <seed_base> <ckpt...>` — success with the marked-target relation as
   trained, blank, misdirected and pointed at the nearest objective, the
   test of whether a policy READS its commitment (`docs/metrics.md`).

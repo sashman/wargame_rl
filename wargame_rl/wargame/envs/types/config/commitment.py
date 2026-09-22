@@ -14,6 +14,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 CommitmentAssignment = Literal["none", "greedy", "rotated", "head"]
+CommitmentExecution = Literal["keyed", "plan"]
 
 
 class CommitmentConfig(BaseModel):
@@ -51,6 +52,15 @@ class CommitmentConfig(BaseModel):
     to that decision and trains the members on the execution potentials
     alone (D2, D6). A scripted seat under `head` writes its own plan, the bar.
 
+    `execution: plan` (the execution phase of #384): a member's reward is the
+    plan-weighted sum of its task terms keyed to its unit's committed
+    objective -- approach x distance closed, hold x ending inside -- and
+    nothing else. The weights are the environment's rule for now (approach
+    until the unit first arrives, then hold; reset on a new target); a
+    planner writes the same two numbers later, hard (0 / 1) or soft. Leaving
+    in hold mode pays exactly zero. The close's outcome terms (coverage, the
+    success bonus) go to the planning stream and never reach a member.
+
     The phase facade ignores this block; the whole-army trainer has its own
     declaration line (`declare_objectives`), a different mechanism.
     """
@@ -70,6 +80,30 @@ class CommitmentConfig(BaseModel):
         description="The cap K on a unit's combat set (ANY mode). Stage 0 has no "
         "writer for the combat slot; the cap sizes the state and the masks.",
     )
+    execution: CommitmentExecution = Field(
+        default="keyed",
+        description="How a member's execution reward reads its unit's plan: "
+        "'keyed' (Stage 0: the travel and staying terms target the committed "
+        "objective, every other term as before) or 'plan' (#384 execution "
+        "phase: a member is paid the plan-WEIGHTED sum of its task terms -- "
+        "approach x the travel term, hold x the staying term, each keyed to "
+        "the committed objective -- and nothing else; the weights are "
+        "(1, 0) until the unit first arrives at its objective, then (0, 1), "
+        "reset on a new target; a unit with no commitment has no plan and "
+        "earns nothing; the close's outcome terms go to the planning stream).",
+    )
+
+    @property
+    def plan_weighted(self) -> bool:
+        """True when members are paid the plan-weighted task terms."""
+        return self.execution == "plan"
+
+    @property
+    def streams(self) -> bool:
+        """True when the two reward streams are on: the policy writes the
+        commitment, or the members are paid by the plan -- either way the
+        close's outcome terms never reach a member."""
+        return self.policy_writes or self.plan_weighted
 
     @property
     def policy_writes(self) -> bool:
