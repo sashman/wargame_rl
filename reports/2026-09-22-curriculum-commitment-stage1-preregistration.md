@@ -96,3 +96,91 @@ against a coverage signal that mostly moves at the end.
 refused to commit (two type errors in a test file); it was stopped within a
 minute, its run directories deleted, and nothing from it is read. The runs
 below start after this file and the build (`be3fbed`) are on the branch.
+
+## Amendment 1 — written 2026-09-22 03:24: CM3 read at the cap — NULL / NULL / NULL, STEERS 0; the head commits, keeps and stacks
+
+Read after every seed's log carried its `rounds 122880` line and no trainer
+remained (chain `cm3_reads.sh`; directories resolved from the config stem);
+n=100, seeds 700000+, greedy, `last.pt` after exit. Launched 01:36, the
+last trainer exited ~03:05. Wandb `curriculum-cm-s1`: g8azma3g / tbz5jz2i /
+1l1qkjng. Every run recorded a greedy episode at every checkpoint.
+
+| rounds | CM3 s1 / s2 / s3 | A3's own | `a3_cm` |
+|---|---|---|---|
+| 40,960 | 0.000 / 0.000 / 0.000 | 0.400 / 0.350 / 0.340 | 0.520 / 0.350 / 0.240 |
+| 81,920 | 0.110 / 0.070 / 0.000 | 0.590 / 0.670 / 0.610 | 0.890 / 0.650 / 0.750 |
+| 122,880 | **0.030 / 0.000 / 0.000** | 0.700 / 0.800 / 0.770 | 0.820 / 0.850 / 0.930 |
+
+**Per seed: NULL, NULL, NULL; STEERS on none** (the flag ablation moves
+success and held by hundredths on every seed). The arm is far BEHIND A3
+from scratch at every read: a head that chooses badly costs more than no
+head, because the travel keying carries its choice to the members.
+
+Readouts at the cap, the bar's row beside (persist 0.99, claim 1.00 / max
+1, complete 1.00, follow 1.00, leave 0.00):
+
+| seed | held | persist | claimants per claimed objective | complete | empty | follow | leave | max stack |
+|---|---|---|---|---|---|---|---|---|
+| s1 | 2.17 | 0.53 | 1.64 / max 4 | 0.43 | 0.06 | 0.74 | 0.73 | 3.5 |
+| s2 | 2.64 | 0.85 | **2.56** / max 4 | **0.95** | 0.09 | 0.87 | 0.19 | **5.3** |
+| s3 | 1.72 | 0.91 | 2.05 / max 4 | 0.18 | 0.03 | 0.80 | 0.80 | 3.5 |
+
+s2 is the clearest reading: the head keeps its choices (0.85), commits
+every squad (empty 0.09), the members follow (0.87) and the plan is
+COMPLETED (0.95) — 10.2 of twelve bodies on objectives by turn 7 — and it
+holds 2.64 of four because two and a half squads claim each claimed
+objective and one objective is empty in every census episode. The head
+learned to commit, to keep and to be followed; it did not learn to
+allocate. s1 switches (persist 0.53) and holds 2.17; s3 keeps (0.91) a
+plan the members complete in 18% of unit-cases and holds 1.72. Uncommitted
+unit-turns fell from 13–23% at 40,960 to 3–9%. Sampled play is 2–5 vp below
+greedy, the same held.
+
+**Panels over the last quarter.** Members: clip fraction 0.24–0.32,
+explained variance 0.75–0.85, displacement entropy 1.75–1.95 nats. Planning:
+explained variance **0.23 / 0.25 / 0.33** (above the 0.2 defect line, and
+low), return mean 0.26–0.34, commitment entropy 0.90–0.99 nats of 1.61
+(from 1.1–1.2 at 40,960), commitment clip fraction 0.27–0.32 — the head
+moved throughout and settled on the wrong distribution.
+
+### The D9 diagnosis
+
+1. **The planning panel.** The critic fit weakly and the head moved: this
+   is not a return that never reached the head. It is a return the head
+   cannot use to tell its choices apart.
+2. **The claimants.** 1.6–2.6 squads per claimed objective at the cap, from
+   2.3–3.0 at 40,960: the head has not learned to allocate. Every squad's
+   commitment step is paid the SAME close — the army's coverage and the
+   rung's success bonus, broadcast — so a squad that piles onto an objective
+   a neighbour already claims and a squad that takes the empty one receive
+   identical credit, and the only route to telling them apart is the
+   planning critic's reading of the claimant counts on the objective tokens,
+   which at explained variance 0.25 it barely does. The whole-army record's
+   critic-probe finding is the same fact from the other side: the value can
+   know the stack is wrong while the policy gradient cannot find the
+   redistribution.
+3. **The members.** The flag ablation is flat on every seed, as on Stage
+   0's A3: on this shape the members walk the geometry, and the head's
+   choice reaches them through the travel keying (follow-through 0.74–0.87),
+   not through the relation. Stacked commitments therefore stack the walk.
+4. **The keying without allocation is the harm.** A3 from scratch derives a
+   per-squad target every step and reads 0.70–0.80; the environment's greedy
+   assignment reads 0.82–0.93; the head's assignment reads 0.00–0.03. The
+   order is: a good fixed plan > a re-derived plan > a learned plan that
+   stacks. The head is not a null on this rung; it is a cost, until it
+   allocates.
+
+### The revision this asks of #384 (proposed; Sash decides)
+
+- **B6, the per-unit counterfactual on the planning stream** — the build the
+  design held behind follow-through, and the reading calls for it now: pay
+  each squad's commitment step the DIFFERENCE its bodies make to the
+  outcome (coverage with the squad's models masked out, subtracted from
+  coverage with them in; the success bonus likewise), so a squad stacking
+  on a covered objective earns 0 and the squad taking the empty one earns
+  the whole objective. A difference reward, not a switch price (D4 stands),
+  computed at the close in the retimer from the same distance cache. One
+  arm, three seeds, same shape, read against this one.
+- Not proposed: a longer budget (flat from 81,920), an entropy change (the
+  head is at 0.9 nats and moving), or the half-step (the head must allocate
+  four before it allocates five).
