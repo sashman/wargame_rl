@@ -269,6 +269,15 @@ Those steps carry no policy (`column` NO_DRAW), so the update sees commitment
 rows only; the in-run evaluation and `just measure-plan` read the run the same
 way (`plan_only_chooser`). It needs `commitments.assignment: head`.
 
+**KEEP is illegal on an empty slot** (`PerModelEnv._with_commit_mask`): at a
+unit's first open of the episode, and whenever the env has retired its
+commitment, the head must name an objective; KEEP is offered only on a slot
+that holds one. Without this a head could leave a unit unplanned and a member
+policy that follows the plan (`squad_march_committed`, with its per-squad
+greedy fallback) would walk a plan of its own -- the plan-only rung's first
+launch read success 1.000 with 39-50% of the objectives claimed for exactly
+that reason.
+
 ## Available Reward Calculators
 
 | Type key | Scope | Parameters | Description |

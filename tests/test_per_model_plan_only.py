@@ -6,11 +6,13 @@ planning credit, and the plan-only trainer's rollout and update.
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import numpy as np
 import pytest
 import torch
 
-from tests.per_model_seats import small_config
+from tests.per_model_seats import random_legal_action, small_config
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
 from wargame_rl.wargame.envs.baseline.scripted_squad_march_committed import (
     ScriptedSquadMarchCommittedPolicy,
@@ -25,7 +27,7 @@ from wargame_rl.wargame.envs.per_model.reward_timing import (
     PlanningCredit,
 )
 from wargame_rl.wargame.envs.per_model.scripted import ScriptedSeat
-from wargame_rl.wargame.envs.per_model.types import NO_COMMIT_DECISION
+from wargame_rl.wargame.envs.per_model.types import NO_COMMIT_DECISION, PerModelAction
 from wargame_rl.wargame.envs.reward.phase import (
     RewardCalculatorConfig,
     RewardPhaseConfig,
@@ -64,18 +66,47 @@ def test_the_committed_script_keeps_a_written_squad_and_falls_back_per_squad() -
     groups = env.player_seat.living_units()
     assert len(groups) >= 2 and len(env.objectives) >= 2
     greedy = ScriptedSquadMarchTakePolicy.squad_objectives(
-        policy, env.wargame_models, env, groups
+        policy, env.wargame_models, cast(Any, env), groups
     )
     # Nothing written: the parent's plan for everyone.
-    assert policy.squad_objectives(env.wargame_models, env, groups) == greedy
+    assert policy.squad_objectives(env.wargame_models, cast(Any, env), groups) == greedy
     # One squad written to an objective the greedy plan did not give it: that
     # squad keeps its commitment, the others keep a plan of their own.
     first = groups[0]
     other = next(k for k, o in enumerate(env.objectives) if o is not greedy[0])
     env.player_commitments.set_ground(first, other)
-    mixed = policy.squad_objectives(env.wargame_models, env, groups)
+    mixed = policy.squad_objectives(env.wargame_models, cast(Any, env), groups)
     assert mixed[0] is env.objectives[other]
     assert all(o in env.objectives for o in mixed[1:])
+
+
+def test_a_unit_with_an_empty_slot_is_not_offered_keep() -> None:
+    """KEEP on nothing is no plan (#384): at a unit's first open of the
+    episode the head must name an objective; once the slot holds one, KEEP
+    is offered again at that unit's next turn."""
+    env = PerModelEnv(_head_config(rounds=3))
+    observation, _ = env.reset(seed=8)
+    point = observation.decision
+    assert point.kind is StepKind.open and point.commit_mask is not None
+    model = int(np.flatnonzero(point.selector_mask)[0])
+    assert not point.commit_mask[model, 0], "KEEP is not offered on an empty slot"
+    assert point.commit_mask[model, 1:].all()
+    group = int(env.wargame_models[model].group_id)
+    env.step(PerModelAction.open(model, 0, 0))
+    assert env.player_commitments.ground_of(group) == 0
+    rng = np.random.default_rng(8)
+    offered_keep = False
+    for _ in range(300):
+        pending = env.pending
+        assert pending is not None
+        if pending.kind is StepKind.open and pending.commit_mask is not None:
+            for index in np.flatnonzero(pending.selector_mask):
+                if int(env.wargame_models[int(index)].group_id) == group:
+                    offered_keep |= bool(pending.commit_mask[int(index), 0])
+        _, _, terminated, _, _ = env.step(random_legal_action(pending, rng))
+        if terminated or offered_keep:
+            break
+    assert offered_keep
 
 
 def test_a_non_emitting_seat_leaves_the_commitment_state_alone() -> None:
