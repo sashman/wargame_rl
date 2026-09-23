@@ -193,3 +193,12 @@ flags, seeds, budget and reads; tags `pl1` / `pl2`, group
 `curriculum-cm-plan`. Criteria unchanged. One expectation revised: with the
 free plan gone, PL1's head must find a covering assignment through the
 broadcast credit alone, and I expect it not to (distinct 0.5–0.7, as before).
+
+*Addition to amendment 1 (the parallel session's reading of CM3):* CM3 as
+read carried 13–23% uncommitted unit-turns at 40,960, falling to 3–9% at the
+cap, so its stacking result stands (the stacked plans were real commitments)
+and its `empty` column is partly the KEEP-on-nothing rule this amendment
+retires. Any head arm launched from #396's chain after this inherits the
+mask change (`3128963`, pinned by `test_a_unit_with_an_empty_slot_is_not_offered_keep`
+and the head-writer test) once #406 merges down; until then it is on
+`feature/commitment-plan` only.
