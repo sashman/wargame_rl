@@ -336,3 +336,46 @@ arrived-keeps / leaving-step findings on the half-step apply here too.
 **Expectation (a guess, written so it can be wrong).** CM4: as-trained
 0.3–0.7 with the plan-only row at 0.9–1.0 on two seeds — the head plans,
 the members lag it; FH1: 0.85–1.0 on 3/3 by the cap, a turn behind the bar.
+
+## Amendment 4 — written 2026-09-23 23:12: a width arm on the join (CW1) — is the set network's size the wall?
+
+Sash (2026-09-23, on the 1.23-million-parameter set network: 4 blocks, width
+128, 8 heads; the whole-army transformer is ~12.7 million): "it does feel
+that we don't have enough parameters". The record has both sides: this
+network holds the escort's plan and the six-objective clone at 0.96 and plans
+the four-objective assignment at 1.000 when its members are scripted (so
+plan and execution are representable at this size), and the ten-times
+larger whole-army transformer never learned allocation on the real tables
+either; against that, the join is a noisy-return problem (CM4's planning
+return is a tenth of PL1's, its commitment head at 0.85–1.13 nats has not
+converged by 46k) and a wider trunk learns faster and steadier under noise.
+**Representable is not learnable at this size; the test is one flag.**
+
+| arm | the one change | tag |
+|---|---|---|
+| **CW1** | CM4's recipe with `--n-layers 8 --embedding-size 256` (the whole-army trunk's depth and width; ~5 million parameters) | `cw1` |
+
+Three seeds, 122,880 rounds, `a3_head.yaml`, everything else CM4's (head
+and members from scratch, the broadcast credit, KEEP illegal on an empty
+slot). Unpairable at initialisation (a shape change); layouts and seeds
+shared. Comparators by name: **CM4 at matched rounds** (the same recipe at
+the shipped size), A3 from scratch (0.700 / 0.800 / 0.770), the
+environment-assigned `a3_cm` (0.820 / 0.850 / 0.930). Reads as CM4's: the
+as-trained row beside the same head's plan-only row, the commitment
+readouts, census, walk-off, ablation, the planning panel.
+
+**Criteria, per seed at 122,880 (as trained):** PASS success ≥ 0.95; AHEAD
+ahead of A3 from scratch by more than two binomial SE; NULL otherwise. And
+the question this arm exists for, **WIDER**: as-trained success ahead of
+CM4's same-seed row by more than two binomial SE on 2/3 or more — size moves
+the join. **Readouts that separate the mechanisms**: the plan-only row (does
+a wider head plan under learning members where the narrow one stacked?),
+commitment entropy and the planning return against CM4's (does the wider
+head converge?), follow-through and leave (do wider members walk the plan?).
+
+**Expectation (a guess).** Not WIDER: the wider network learns the walk a
+little faster and plans no better under learning members, because the
+planning return is small and noisy at either size; as-trained 0.1–0.4 with
+the plan-only row 0.1–0.5, commitment entropy still above 0.8 nats at the
+cap. If it reads WIDER with the plan-only row near 1.000, size was the wall
+on the join and the ladder's per-model rows below need re-reading at width.
