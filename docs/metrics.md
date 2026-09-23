@@ -619,6 +619,10 @@ turn over the objectives on the board; a covering plan reads 1.0) and
 `complete` columns say what the plan looks like. Built for #384's plan-quality
 question: on Stage 1's checkpoints the same heads read 0.03 / 0.00 / 0.00 as
 trained and 0.55 / 0.00 / 0.17 with scripted members.
+With `planner=<ckpt>` each checkpoint is an EXECUTOR: its as-trained row, then
+a SPLIT row where the planner's head commits and the checkpoint walks, with the
+planner's own plan-only row printed first as the ceiling (the frozen-planner
+rung). `distinct` prints the mean per turn and the last turn's share.
 
 ### The planning stream's panel (#384 Stage 1)
 

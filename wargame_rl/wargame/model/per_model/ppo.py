@@ -91,6 +91,10 @@ class PerModelPPOConfig(BaseModel):
     # every decision but the commitment ones during rollouts, so only the
     # head and the planning value learn. None trains every head.
     members: str | None = None
+    # The frozen-planner rung (#384 FH1): the path of a finished head whose
+    # network draws every commitment (greedy, never in the optimiser) while
+    # this network learns the member heads under that plan. None: no planner.
+    frozen_planner: str | None = None
     # Who a payment reaches (`reward_timing.Credit`): `mean` is the bridge
     # accounting, `actor` pays each model its own term and its own state
     # credit on its own step. A knob of the run, so a resume keeps it.
@@ -257,6 +261,7 @@ def collect_rollout(
     on_episode_end: OnEpisodeEnd | None = None,
     start_groups: StartGroups | None = None,
     initial_start_groups: Sequence[int] | None = None,
+    planner: SetAgent | None = None,
 ) -> Rollout:
     """Play every env in lockstep until `rollout_rounds x n_envs` turns close.
 
@@ -295,6 +300,8 @@ def collect_rollout(
                 _members_decision(env, observation, decision)
                 for env, observation, decision in zip(envs, current, decisions)
             ]
+        if planner is not None:
+            decisions = _planner_decisions(planner, agent, envs, current, decisions)
         for index, (env, retimer, decision) in enumerate(
             zip(envs, retimers, decisions)
         ):
@@ -426,6 +433,27 @@ def _land_planning_credits(
                 transitions[at],
                 planning_reward=transitions[at].planning_reward + credit,
             )
+
+
+def _planner_decisions(
+    planner: SetAgent,
+    agent: SetAgent,
+    envs: Sequence[PerModelEnv],
+    observations: Sequence[PerModelObservation],
+    decisions: list[StepDecision],
+) -> list[StepDecision]:
+    """The frozen planner's commitment on every open step that offers one,
+    in place of the learning network's draw (#384 FH1): the executor keeps
+    the unit and the declaration it chose; its commitment row is dropped,
+    so the update trains no planning."""
+    columns = planner.plan_batch(envs, observations, [d.model for d in decisions])
+    out: list[StepDecision] = []
+    for env, decision, column in zip(envs, decisions, columns):
+        if column == NO_DRAW:
+            out.append(decision)
+            continue
+        out.append(agent.replace_commitment(decision, env.player_seat, column))
+    return out
 
 
 def _members_decision(

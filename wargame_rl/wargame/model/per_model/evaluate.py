@@ -25,7 +25,7 @@ from wargame_rl.wargame.envs.per_model.types import (
     PerModelObservation,
     StepKind,
 )
-from wargame_rl.wargame.model.per_model.agent import SetAgent
+from wargame_rl.wargame.model.per_model.agent import NO_DRAW, SetAgent
 
 
 def plan_only_chooser(
@@ -86,6 +86,39 @@ def plan_only_chooser(
     return choose
 
 
+def split_chooser(
+    planner: SetAgent,
+    executor: SetAgent,
+    *,
+    generator: torch.Generator | None = None,
+) -> BatchChooser:
+    """`planner`'s head commits, `executor` decides everything else (#384
+    FH1): on every open step that offers a commitment the executor's unit and
+    declaration are kept and its commitment replaced by the planner's draw."""
+
+    def choose(
+        envs_: Sequence[PerModelEnv], observations: Sequence[PerModelObservation]
+    ) -> list[PerModelAction]:
+        with torch.no_grad():
+            decisions = executor.act_batch(envs_, observations, generator=generator)
+            columns = planner.plan_batch(
+                envs_, observations, [d.model for d in decisions], generator=generator
+            )
+        actions: list[PerModelAction] = []
+        for env, decision, column in zip(envs_, decisions, columns):
+            if column == NO_DRAW:
+                actions.append(decision.action)
+            else:
+                actions.append(
+                    executor.replace_commitment(
+                        decision, env.player_seat, column
+                    ).action
+                )
+        return actions
+
+    return choose
+
+
 def evaluate_per_model(
     envs: Sequence[PerModelEnv],
     agent: SetAgent,
@@ -125,4 +158,5 @@ __all__ = [
     "EvalResult",
     "evaluate_per_model",
     "plan_only_chooser",
+    "split_chooser",
 ]

@@ -98,6 +98,7 @@ from wargame_rl.wargame.model.per_model.evaluate import (
     EvalResult,
     evaluate_per_model,
     plan_only_chooser,
+    split_chooser,
 )
 from wargame_rl.wargame.model.per_model.net import SetNetwork
 from wargame_rl.wargame.model.per_model.ppo import (
@@ -147,6 +148,7 @@ _PPO_KNOBS = (
     "credit",
     "planning_credit",
     "members",
+    "frozen_planner",
 )
 
 
@@ -503,6 +505,14 @@ def train(
         "in rollouts and in the in-run evaluation, so only the head and the "
         "planning value learn. Needs `commitments.assignment: head`.",
     ),
+    frozen_planner: str | None = typer.Option(
+        None,
+        "--frozen-planner",
+        help="The frozen-planner rung (#384 FH1): a finished head's checkpoint "
+        "whose network draws every commitment (greedy, never in the "
+        "optimiser) while this network learns the member heads under it. "
+        "Needs `commitments.assignment: head`.",
+    ),
     lr: float | None = typer.Option(None),
     max_grad_norm: float | None = typer.Option(None),
     n_epochs: int | None = typer.Option(None),
@@ -640,6 +650,7 @@ def train(
             else None
         ),
         "members": resolve_optional_str(members),
+        "frozen_planner": resolve_optional_str(frozen_planner),
     }
     if resume is not None:
         refuse_changed_knobs(overrides, resume.loaded.ppo_config, resume.checkpoint)
@@ -805,6 +816,22 @@ def train(
         )
     network = network.to(resolved_device)
     check_trainable(network)
+    planner: SetAgent | None = None
+    if ppo_config.frozen_planner is not None:
+        if not env_config.commitments.policy_writes:
+            raise typer.BadParameter(
+                "--frozen-planner needs a config whose commitment writer is the "
+                "policy (`commitments.assignment: head`)"
+            )
+        if ppo_config.members is not None:
+            raise typer.BadParameter("--frozen-planner and --members are exclusive")
+        planner_network = load_checkpoint(
+            Path(ppo_config.frozen_planner), expected_n_displacements=expected_head
+        ).network.to(network.device)
+        planner_network.eval()
+        for parameter in planner_network.parameters():
+            parameter.requires_grad_(False)
+        planner = SetAgent(planner_network, greedy=True)
     agent = SetAgent(network)
     optimizer = torch.optim.Adam(network.parameters(), lr=ppo_config.lr, eps=1e-5)
     generator = torch.Generator().manual_seed(resolved_seed or 0)
@@ -898,6 +925,11 @@ def train(
                 if ppo_config.members
                 else ""
             )
+            + (
+                f"; frozen planner {ppo_config.frozen_planner}"
+                if ppo_config.frozen_planner
+                else ""
+            )
             + f"; planning credit {ppo_config.planning_credit.value}",
             rollout_total,
             ppo_config.rollout_rounds,
@@ -920,6 +952,7 @@ def train(
                 generator=generator,
                 start_groups=backward.draw if backward.level > 0 else None,
                 initial_start_groups=initial_levels,
+                planner=planner,
             )
             initial_levels = list(rollout.start_groups)
             observations = rollout.observations
@@ -981,7 +1014,24 @@ def train(
             if rounds_done % eval_every == 0 or rounds_done >= total_rounds:
                 started = time.perf_counter()
                 eval_seeds = [eval_seeds_from + i for i in range(eval_episodes)]
-                if ppo_config.members is not None:
+                if planner is not None:
+                    # The frozen-planner rung is read the way it trains: the
+                    # planner commits, this network walks (greedy).
+                    was_greedy, agent.greedy = agent.greedy, True
+                    was_training = network.training
+                    network.eval()
+                    try:
+                        result = evaluate_per_model_chooser(
+                            split_chooser(planner, agent),
+                            eval_envs,
+                            eval_seeds,
+                            "planner>executor",
+                            retimers=eval_retimers,
+                        )
+                    finally:
+                        agent.greedy = was_greedy
+                        network.train(was_training)
+                elif ppo_config.members is not None:
                     # The plan-only trainer is read the way it trains: the
                     # head plans, the scripted members walk (greedy head).
                     was_greedy, agent.greedy = agent.greedy, True

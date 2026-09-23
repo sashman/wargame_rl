@@ -347,6 +347,52 @@ def build_plan_only_chooser(
     return ResolvedChooser(choose, f"{label_for(spec)}+{members}", "checkpoint", spec)
 
 
+def build_split_chooser(
+    planner_spec: str,
+    executor_spec: str,
+    envs: Sequence[PerModelEnv],
+    *,
+    seed: int = 0,
+    greedy: bool = True,
+) -> ResolvedChooser:
+    """The head at `planner_spec` commits, the network at `executor_spec`
+    decides everything else (#384 FH1). The planner is always greedy; `greedy`
+    is the executor's."""
+    # Deferred deliberately -- see the module docstring.
+    import torch
+
+    from wargame_rl.wargame.model.per_model import SetAgent, load_checkpoint
+    from wargame_rl.wargame.model.per_model.evaluate import split_chooser
+
+    if not envs:
+        raise ValueError("build_split_chooser needs at least one env")
+    if not envs[0].config.commitments.policy_writes:
+        raise ValueError(
+            "the split chooser needs a config whose commitment writer is the "
+            "policy (`commitments.assignment: head`)"
+        )
+    for spec in (planner_spec, executor_spec):
+        if not (is_per_model_checkpoint(spec) and Path(spec).exists()):
+            raise ValueError(f"no per-model checkpoint at {spec!r}")
+    expected = _expected_displacements(envs[0])
+    planner = load_checkpoint(Path(planner_spec), expected_n_displacements=expected)
+    executor = load_checkpoint(Path(executor_spec), expected_n_displacements=expected)
+    planner.network.eval()
+    executor.network.eval()
+    generator = None if greedy else torch.Generator().manual_seed(seed)
+    choose = split_chooser(
+        SetAgent(planner.network, greedy=True),
+        SetAgent(executor.network, greedy=greedy),
+        generator=generator,
+    )
+    return ResolvedChooser(
+        choose,
+        f"{label_for(planner_spec)}>{label_for(executor_spec)}",
+        "checkpoint",
+        executor_spec,
+    )
+
+
 def _expected_displacements(env: PerModelEnv) -> int:
     """The displacement head's width this env's action encoding needs."""
     handler = env.player_action_handler
@@ -417,6 +463,7 @@ __all__ = [
     "CHECKPOINT_SUFFIX",
     "PER_MODEL_CHECKPOINT_SUFFIX",
     "build_plan_only_chooser",
+    "build_split_chooser",
     "RANDOM_POLICY",
     "SET_NETWORK_POLICY",
     "ResolvedChooser",

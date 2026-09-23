@@ -37,7 +37,7 @@ from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import CommitmentConfig
 from wargame_rl.wargame.model.per_model.agent import SetAgent
 from wargame_rl.wargame.model.per_model.config import SetNetworkConfig
-from wargame_rl.wargame.model.per_model.evaluate import plan_only_chooser
+from wargame_rl.wargame.model.per_model.evaluate import plan_only_chooser, split_chooser
 from wargame_rl.wargame.model.per_model.net import SetNetwork
 from wargame_rl.wargame.model.per_model.ppo import (
     PerModelPPOConfig,
@@ -261,3 +261,66 @@ def test_the_plan_only_rollout_trains_only_the_head() -> None:
     )
     assert stats.commit_rows > 0
     assert np.isfinite(stats.planning_explained_variance)
+
+
+def test_a_frozen_planner_commits_and_the_executor_learns_the_rest() -> None:
+    torch.manual_seed(9)
+    envs = [PerModelEnv(_head_config(rounds=4)) for _ in range(2)]
+    observations = [env.reset(seed=40 + i)[0] for i, env in enumerate(envs)]
+    retimers = [PerStepReward(env, streams=True) for env in envs]
+    for retimer in retimers:
+        retimer.reset()
+    planner = SetAgent(SetNetwork.from_env(envs[0], SMALL_TRUNK), greedy=True)
+    for parameter in planner.network.parameters():
+        parameter.requires_grad_(False)
+    agent = SetAgent(SetNetwork.from_env(envs[0], SMALL_TRUNK))
+    config = PerModelPPOConfig(rollout_rounds=2, batch_size=16, n_epochs=2)
+    rollout = collect_rollout(
+        envs, agent, retimers, observations, config, planner=planner
+    )
+    assert any(t.has_policy for t in rollout.transitions)
+    assert not any(t.has_commitment for t in rollout.transitions), (
+        "the planner's commitments carry no planning row"
+    )
+    # Every open step that offered a commitment carried one.
+    opens = [
+        t
+        for t in rollout.transitions
+        if t.head is not None and t.tokens.commit_mask[max(t.model, 0)].any()
+    ]
+    assert opens
+    before = [w.detach().clone() for w in planner.network.parameters()]
+    returns, advantages = compute_gae(rollout, config)
+    optimizer = torch.optim.Adam(agent.network.parameters(), lr=config.lr)
+    stats = ppo_update(
+        agent.network,
+        optimizer,
+        rollout,
+        returns,
+        advantages,
+        config,
+        generator=torch.Generator().manual_seed(0),
+    )
+    assert stats.commit_rows == 0
+    assert all(torch.equal(a, b) for a, b in zip(before, planner.network.parameters()))
+
+
+def test_the_split_chooser_plays_legal_episodes() -> None:
+    torch.manual_seed(10)
+    envs = [PerModelEnv(_head_config(rounds=3))]
+    planner = SetAgent(SetNetwork.from_env(envs[0], SMALL_TRUNK), greedy=True)
+    executor = SetAgent(SetNetwork.from_env(envs[0], SMALL_TRUNK), greedy=True)
+    choose = split_chooser(planner, executor)
+    env = envs[0]
+    observation, _ = env.reset(seed=11)
+    committed = 0
+    for _ in range(400):
+        point = observation.decision
+        action = choose(envs, [observation])[0]
+        assert point.why_illegal(action) is None
+        if point.kind is StepKind.open and action.commitment != NO_COMMIT_DECISION:
+            committed += 1
+        observation, _, terminated, _, _ = env.step(action)
+        if terminated:
+            break
+    assert committed > 0

@@ -269,6 +269,16 @@ Those steps carry no policy (`column` NO_DRAW), so the update sees commitment
 rows only; the in-run evaluation and `just measure-plan` read the run the same
 way (`plan_only_chooser`). It needs `commitments.assignment: head`.
 
+**The frozen-planner rung** (`--frozen-planner <ckpt>`,
+`PerModelPPOConfig.frozen_planner`) is the mirror of the plan-only trainer: a
+finished head's network, loaded beside the learning one (greedy, never in the
+optimiser), draws every commitment; the learning network keeps its unit choice
+and declaration and learns the member heads and the execution value under
+that plan (`SetAgent.plan_batch` / `replace_commitment`, `_planner_decisions`;
+`split_chooser`, `build_split_chooser`). Its commitment rows are dropped, so
+no planning trains; the in-run evaluation and `just measure-plan ...
+planner=<ckpt>` read the pair the same way.
+
 **KEEP is illegal on an empty slot** (`PerModelEnv._with_commit_mask`): at a
 unit's first open of the episode, and whenever the env has retired its
 commitment, the head must name an objective; KEEP is offered only on a slot
