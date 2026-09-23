@@ -85,6 +85,7 @@ sizes; one instance plays 6/2 and 10/5 with no reload).
   on opening steps: the skip declarations gate a whole unit through one logit,
   so their share is the first thing to read at the do-nothing fingerprint.
 - **Default trunk 4 layers × 128 × 8 heads (~1.15M params)**, `SetNetworkConfig`,
+- `SetNetworkConfig.head_layers` (`--head-layers`, default 1): the policy heads' depth. 1 is the shipped linear readout of the trunk's embedding (state-dict keys unchanged, every checkpoint on file loads); `k` stacks `k` maps of the trunk's width with GELUs on every policy head, the pointer query/key projections included. The value heads keep two layers; the trunk is untouched. Built for #384's CH1 arm (are the readouts too shallow?).
   `None` = the default exactly as `TransformerConfig` does. Fixtures use
   `SetNetworkConfig(embedding_size=32, n_layers=2, n_heads=4)`; unlike the
   transformer, **`n_heads` IS recoverable** from this family's state dict (the

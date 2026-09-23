@@ -6,6 +6,7 @@ planning credit, and the plan-only trainer's rollout and update.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
@@ -324,3 +325,44 @@ def test_the_split_chooser_plays_legal_episodes() -> None:
         if terminated:
             break
     assert committed > 0
+
+
+def test_deeper_policy_heads_build_run_and_round_trip(tmp_path: Path) -> None:
+    """`head_layers` 1 is the shipped linear readout with its state-dict keys;
+    2 stacks two maps per policy head and adds parameters only there."""
+    env = PerModelEnv(_head_config())
+    shallow = SetNetwork.from_env(env, SMALL_TRUNK)
+    deep = SetNetwork.from_env(env, SMALL_TRUNK.model_copy(update={"head_layers": 2}))
+    assert "declaration_head.weight" in shallow.state_dict()
+    assert "declaration_head.2.weight" in deep.state_dict()
+    n_shallow = sum(p.numel() for p in shallow.parameters())
+    n_deep = sum(p.numel() for p in deep.parameters())
+    assert n_deep > n_shallow
+    trunk_shallow = sum(p.numel() for p in shallow.blocks.parameters())
+    trunk_deep = sum(p.numel() for p in deep.blocks.parameters())
+    assert trunk_shallow == trunk_deep, "the trunk is untouched"
+    agent = SetAgent(deep, greedy=True)
+    observation, _ = env.reset(seed=12)
+    decision = agent.act(env, observation)
+    assert observation.decision.why_illegal(decision.action) is None
+    from wargame_rl.wargame.model.per_model.checkpoint import (
+        load_checkpoint,
+        save_checkpoint,
+    )
+
+    path = tmp_path / "deep.pt"
+    save_checkpoint(
+        path,
+        deep,
+        ppo_config=PerModelPPOConfig(),
+        env_config=env.config.model_dump(mode="json"),
+        rounds=0,
+        seed=0,
+        revision="test",
+    )
+    loaded = load_checkpoint(path).network
+    assert loaded.config.head_layers == 2
+    assert torch.equal(
+        loaded.state_dict()["declaration_head.2.weight"],
+        deep.state_dict()["declaration_head.2.weight"],
+    )

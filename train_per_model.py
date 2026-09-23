@@ -572,6 +572,12 @@ def train(
         8, help="Rollouts over which the level's success rate is read."
     ),
     n_layers: int | None = typer.Option(None, help="Trunk depth (default 4)."),
+    head_layers: int | None = typer.Option(
+        None,
+        "--head-layers",
+        help="The policy heads' depth (default 1, the linear readout; 3 is the "
+        "#384 CH1 arm: a three-layer network per head at the trunk's width).",
+    ),
     embedding_size: int | None = typer.Option(None, help="Trunk width (default 128)."),
     seed: int | None = typer.Option(None),
     torch_threads: int = typer.Option(
@@ -728,6 +734,8 @@ def train(
     trunk: dict[str, int] = {}
     if resolve_optional_int(n_layers) is not None:
         trunk["n_layers"] = int(resolve_optional_int(n_layers) or 0)
+    if resolve_optional_int(head_layers) is not None:
+        trunk["head_layers"] = int(resolve_optional_int(head_layers) or 0)
     if resolve_optional_int(embedding_size) is not None:
         trunk["embedding_size"] = int(resolve_optional_int(embedding_size) or 0)
     network_config = SetNetworkConfig()

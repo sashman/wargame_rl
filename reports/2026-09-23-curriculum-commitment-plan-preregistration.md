@@ -379,3 +379,43 @@ planning return is small and noisy at either size; as-trained 0.1–0.4 with
 the plan-only row 0.1–0.5, commitment entropy still above 0.8 nats at the
 cap. If it reads WIDER with the plan-only row near 1.000, size was the wall
 on the join and the ladder's per-model rows below need re-reading at width.
+
+## Amendment 5 — written 2026-09-23 23:21: a head-depth arm on the join (CH1) — are the decision readouts too shallow?
+
+Sash (2026-09-23): the heads' depth should be a parameter; start at 2. Every
+policy head of the set network is a single linear map on the trunk's
+embedding (declaration, displacement, no-target and keep on the 2 × width
+input; the target and commitment pointers a bilinear match through one
+query and one key map), so any nonlinearity a decision needs is computed in
+the shared trunk. `SetNetworkConfig.head_layers` (`--head-layers`) now sets
+the policy heads' depth: 1 is the shipped readout (the state-dict keys
+unchanged, so every checkpoint on file loads), `k` stacks `k` maps of the
+trunk's width with GELUs between, on every policy head including the pointer
+projections. The value heads keep their shipped two layers; the trunk is
+untouched. CW1 (amendment 4) asks whether the trunk is too small; **CH1 asks
+whether the readouts are**, and the two bracket "size".
+
+| arm | the one change | tag |
+|---|---|---|
+| **CH1** | CM4's recipe with `--head-layers 2` (the trunk at the shipped 4 × 128) | `ch1` |
+
+Three seeds, 122,880 rounds, `a3_head.yaml`, everything else CM4's.
+Unpairable at initialisation (a shape change); layouts and seeds shared.
+Comparators by name: **CM4 at matched rounds**, CW1 at matched rounds, A3
+from scratch (0.700 / 0.800 / 0.770), the environment-assigned `a3_cm`
+(0.820 / 0.850 / 0.930). Reads as CM4's. **Scheduled** to launch when CM4's
+three trainers exit (the box carries nine), so it reads on a later clock
+than CM4 and CW1.
+
+**Criteria, per seed at 122,880 (as trained):** PASS success ≥ 0.95; AHEAD
+ahead of A3 from scratch by more than two binomial SE; NULL otherwise.
+**DEEPER**: ahead of CM4's same-seed row by more than two binomial SE on 2/3
+or more. Readouts that separate the mechanisms as CW1's: the plan-only row
+(does the deeper commitment head plan under learning members?), commitment
+entropy and the planning return, follow-through and leave.
+
+**Expectation (a guess).** Not DEEPER on success; the one place a nonlinear
+readout could matter is the commitment pointer, whose per-token bilinear
+score cannot compare "claimed by someone else" across tokens directly, so if
+anything moves it is the plan-only row and the claimant ablation, not the
+as-trained success.

@@ -21,9 +21,17 @@ class SetNetworkConfig(BaseModel):
     n_heads: int = 8
     dropout: float = 0.0
     bias: bool = True
+    # The policy heads' depth (#384 CH1): 1 is the shipped linear readout of
+    # the trunk's embedding; 3 replaces every policy head (declaration,
+    # displacement, no-target, keep, and the pointer query/key projections)
+    # with a three-layer network of the trunk's width. The value heads keep
+    # their shipped two layers.
+    head_layers: int = 1
 
     @model_validator(mode="after")
     def _heads_divide_width(self) -> SetNetworkConfig:
+        if self.head_layers < 1:
+            raise ValueError(f"head_layers must be >= 1, got {self.head_layers}")
         if self.embedding_size % self.n_heads != 0:
             raise ValueError(
                 f"embedding_size {self.embedding_size} is not divisible by "
