@@ -149,3 +149,47 @@ members finish it. If PL2 also reads NULL with distinct under 0.7, the head's
 draws never explore the covering assignment (persist near 1 from early on,
 commitment entropy falling under 0.5 nats), and the next lever is exploration
 on the head, not credit.
+
+## Amendment 1 — written 2026-09-23 12:33: the first launch was void (the fallback walked the unplanned units); KEEP is illegal on an empty slot; Step 1 re-read; relaunch
+
+**What happened.** PL1 and PL2 launched 11:53 (`d145e6e`). At ~21,500 rounds
+every seed's in-run plan-only read held 4.0 of 4, and a readout at n=10 on
+the latest checkpoints read PLAN-ONLY success **1.000 with distinct 0.39 /
+0.50 and claim 1.37 / 1.47**: the head was leaving slots EMPTY (KEEP on
+nothing, which the mask offered) and `squad_march_committed`'s per-squad
+fallback — built so a unit acting before a later unit's commit would not be
+overridden — walked every unplanned squad to the greedy plan. The read scored
+the fallback, and a head trained plan-only learns exactly that: leave the
+slot empty and let the members plan. Both arms were stopped at 12:30, their
+run dirs carry `VOID.md`, their logs are under
+`logs/curriculum-cm-plan/void-first-launch/`, their Wandb runs are void.
+
+**The fix (`3128963`).** `PerModelEnv._with_commit_mask` offers KEEP only
+where the slot holds an objective: at a unit's first open of the episode,
+and whenever the env has retired its commitment, the head must name one. A
+member policy that follows a plan therefore never has an unplanned unit to
+rescue. Pinned by the head-writer test and
+`test_a_unit_with_an_empty_slot_is_not_offered_keep`; documented in
+`docs/reward-phases.md`. **Rule: a member policy that follows a plan must
+never be able to rescue an unplanned unit, or the plan-only read scores the
+rescue.**
+
+**Step 1 re-read under the rule** (CM3's finals, n=100; the CM3 heads were
+trained with KEEP-on-empty legal, so this forces an objective where they
+would have kept nothing):
+
+| CM3 seed | as trained | PLAN-ONLY success · turns · held | persist · claim · distinct · complete |
+|---|---|---|---|
+| s1 | 0.030 · 8.00 · 2.14 | **0.530 · 7.17 · 3.47** | 0.36 · 1.22 · 0.78 · 0.86 |
+| s2 | 0.000 · 8.00 · 2.65 | **0.000 · 8.00 · 1.05** | 0.90 · 2.73 · 0.33 · 0.67 |
+| s3 | 0.000 · 8.00 · 1.68 | **0.130 · 7.88 · 2.51** | 0.94 · 1.90 · 0.48 · 0.84 |
+
+Within 0.04 of the first read (0.550 / 0.000 / 0.170): the jointly-trained
+heads rarely kept an empty slot, so the confound barely touched Step 1. The
+comparator rows for AHEAD are these: **0.530 / 0.000 / 0.130**.
+
+**Relaunch.** PL1 and PL2 relaunched at 12:33 from `3128963` with the same
+flags, seeds, budget and reads; tags `pl1` / `pl2`, group
+`curriculum-cm-plan`. Criteria unchanged. One expectation revised: with the
+free plan gone, PL1's head must find a covering assignment through the
+broadcast credit alone, and I expect it not to (distinct 0.5–0.7, as before).
