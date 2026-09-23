@@ -202,3 +202,99 @@ retires. Any head arm launched from #396's chain after this inherits the
 mask change (`3128963`, pinned by `test_a_unit_with_an_empty_slot_is_not_offered_keep`
 and the head-writer test) once #406 merges down; until then it is on
 `feature/commitment-plan` only.
+
+## Amendment 2 — written 2026-09-23 15:47: PL1 and PL2 read at the cap — the head plans on every seed under either credit; AHEAD ×6 on the letter, PLANS on none, and the PLANS clause measured the wrong thing
+
+Six trainers launched 12:33 from `3128963`, exited 15:33–15:36 at 122,880
+rounds, no errors (Wandb `curriculum-cm-plan`: PL1 `beh6ox4q` /
+`e8ynk0xb` / `3p4vyiq9`, PL2 `b4650ev8` / `vajs0nj2` / `q6yut6y3`). Every
+read greedy at n=100 on 700000+ through the plan-only chooser
+(`squad_march_committed` walking, its emit off, KEEP illegal on an empty
+slot); the ablation through the same chooser (`ablation-pl*-*-planonly.txt`).
+
+### The plan-only row, seed for seed
+
+| arm · read | success | turns (bar 5.28) | distinct per turn · at the end | claimants per claimed objective | persist |
+|---|---|---|---|---|---|
+| PL1 40,960 | 1.000 / 1.000 / 1.000 | 5.24 / 5.14 / 5.12 | 0.74 / 0.63 / 0.84 | 1.33 / 1.51 / 1.17 | 0.77 / 0.86 / 0.77 |
+| PL1 81,920 | 1.000 / 1.000 / 1.000 | 5.07 / 5.33 / 5.10 | 0.85 / 0.71 / 0.83 · 0.97 / 0.94 / 0.97 | 1.17 / 1.38 / 1.20 | 0.79 / 0.82 / 0.72 |
+| **PL1 122,880** | **1.000 / 1.000 / 1.000** | **5.09 / 5.14 / 5.10** | 0.85 / 0.84 / 0.90 · **0.97 / 0.94 / 0.93** | 1.16 / 1.19 / 1.09 | 0.77 / 0.79 / 0.88 |
+| PL2 40,960 | 1.000 / 1.000 / 1.000 | 5.11 / 4.89 / 5.08 | 0.68 / **0.97** / 0.70 | 1.43 / **1.02** / 1.42 | 0.84 / **0.98** / 0.84 |
+| PL2 81,920 | 1.000 / 0.990 / 0.990 | 5.20 / 5.13 / 5.16 | 0.81 / 0.86 / 0.81 · 0.92 / 0.97 / 0.90 | 1.21 / 1.15 / 1.21 | 0.79 / 0.71 / 0.77 |
+| **PL2 122,880** | **1.000 / 1.000 / 1.000** | **5.00 / 5.22 / 5.01** | 0.87 / 0.77 / 0.88 · **0.97 / 0.93 / 0.94** | 1.14 / 1.27 / 1.12 | 0.78 / 0.87 / 0.88 |
+| the bar `squad_march_take` | 1.000 | 5.28 | 1.00 · 1.00 | 1.00 | 0.99 |
+| CM3's heads (Step 1, re-read) | 0.530 / 0.000 / 0.130 | 7.17 / 8.00 / 7.88 | 0.78 / 0.33 / 0.48 | 1.22 / 2.73 / 1.90 | 0.36 / 0.90 / 0.94 |
+
+**Verdicts on the letter.** PLANS needs success ≥ 0.95 AND distinct ≥ 0.95 AND
+claim ≤ 1.10 per seed: **no seed of either arm** (distinct per turn 0.77–0.90;
+s3 of PL1 clears the claim clause alone). AHEAD needs success ahead of CM3's
+same-seed plan-only row by more than two binomial SE: **every seed of both
+arms** (+0.47 / +1.00 / +0.87, the smallest 7 SE). Paired PL2 − PL1 at the cap:
+success 0 / 0 / 0, turns −0.09 / +0.08 / −0.09, distinct at the end +0.00 /
+−0.01 / +0.01 — **the two arms are the same read.** So the arm-level reading
+the pre-registration wrote for this case is "neither PLANS, PL2 not ahead of
+PL1 → the head cannot learn an assignment from reward on this shape under
+either credit; report, no Step 4."
+
+**That reading is wrong, and the clause that produces it is the defect.**
+Both heads, from scratch, with execution held at the bar's, make plans that
+the bar's own members complete at **1.000 on six of six seeds, faster than
+the bar walks its own plan** (5.00–5.22 turns against 5.28), and they do it
+by a third of the budget. What they do not do is name a covering assignment
+at the first open: they commit, watch the board, and re-commit — persist
+0.77–0.88, distinct climbing from ~0.6–0.7 per turn to ≥ 0.93 by the last
+turn. The PLANS clause asked for the scripted bar's *mechanism* (a fixed
+assignment from turn one, distinct 1.00 every turn) and measured the plan
+by its resemblance to that, not by what the rung decides on. On the rung's
+own criterion — success at n=100 with the members held fixed — these are the
+best plans on the ladder, and the counterfactual credit added nothing to
+them: PL1 is PL2's control, and the control passed. **The head can make a
+good plan; what it could not do in CM3 was make one while its own members
+were learning to walk.**
+
+### What the reads say beyond the verdict
+
+- **The head reads the board.** The plan-only ablation at the cap keeps
+  success at 1.00 in every column, and hiding the claimant counts costs
+  +0.4–0.8 turns on PL1 and +0.3–0.6 on PL2, misdirecting the committed
+  relation +0.3–0.5 on PL1 — the head uses both to re-plan, unlike CM3's
+  head (no-claimants flat, Step 2), and can plan without them.
+- **The planning panel.** PL1: commitment entropy 0.50–0.63 nats at the end,
+  planning explained variance 0.28–0.36, clip 0.18–0.26, planning return
+  ~2.6. PL2: entropy 0.53–0.66, planning explained variance **0.05–0.07**,
+  clip 0.19–0.28, return ~2.1. The per-unit counterfactual return is barely
+  fit by the planning value head (it is read at the unit's first living
+  member from a board-level embedding), and the head planned anyway: on
+  this shape the advantage's direction was enough and its scale did not
+  matter. A B6 with a value head that conditions on the unit is the version
+  to build if the counterfactual is ever needed.
+- **The in-run curve** (the plan-only evaluation, 20 episodes): success
+  87.6% in the first quarter of PL1 s1 and ≥ 98.9% after; the same shape on
+  every run. The head learns the plan in the first ~20k rounds.
+- **The confound, closed.** With KEEP illegal on an empty slot, 612 of 612
+  member moves on a PL1 checkpoint were under a live commitment and KEEP was
+  chosen 0 of 204 times; the reads above are the heads' plans.
+
+### The revision this asks of #384 (D9; proposed, Sash decides)
+
+1. **Retire the distinct/claim clauses as a pass criterion**; keep them as
+   readouts (with distinct at the end beside the mean). A plan is judged by
+   the rung's criterion with execution held fixed.
+2. **Step 4 (CM4) is justified on the head's evidence, not on the letter**:
+   run it with **PL1's recipe** (the credit as shipped, no `--members`) —
+   the counterfactual adds nothing here and its critic does not fit. The
+   question CM4 asks is now sharp: the head plans when the members walk the
+   plan; does it still plan when the members are learning, and if not, is it
+   the members' noise on the planning return, the members' failure to
+   follow, or both? Pre-registered readouts: the plan-only row of the joint
+   run's head beside its as-trained row at every read (if the plan-only row
+   holds 1.000 while as-trained sits low, the head is fine and the members
+   are the wall; if the plan-only row itself degrades, the members'
+   learning degrades the head's plan), plus persist, follow-through, and
+   the ablations.
+3. A middle rung if CM4 reads low: **freeze the plan-only head and train the
+   members under it** (the head's weights fixed, only the member heads and
+   the execution value learn) — execution alone, with a known-good plan.
+
+Files: `plan-pl{1,2}-{40960,81920,final}.txt`, `ablation-pl*-*-planonly.txt`,
+`planning-panel-final.txt`, `plan-cm3-final-v2.txt` in the session drafts.
