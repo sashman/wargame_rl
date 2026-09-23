@@ -28,10 +28,38 @@ from collections.abc import Callable
 import numpy as np
 
 from scripts.scenario_overrides import load_env_config
+from wargame_rl.wargame.envs.evaluation import EvalResult
 from wargame_rl.wargame.envs.per_model import tokens
 from wargame_rl.wargame.envs.per_model.commitment import CommitmentState
+from wargame_rl.wargame.envs.per_model.env import PerModelEnv
+from wargame_rl.wargame.envs.per_model.evaluate import evaluate_per_model_chooser
+from wargame_rl.wargame.envs.per_model.reward_timing import PerStepReward
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.scoring import evaluate_spec
+from wargame_rl.wargame.selectors import (
+    build_plan_only_chooser,
+    is_per_model_checkpoint,
+)
+
+
+def _score(
+    spec: str,
+    config: WargameEnvConfig,
+    seeds: list[int],
+    name: str,
+    members: str | None,
+) -> EvalResult:
+    """`evaluate_spec`, or with `members` the plan-only chooser (the head plans,
+    the scripted members walk) -- the only read that means anything for a
+    head trained plan-only, whose own members are untrained."""
+    if members is None:
+        return evaluate_spec(spec, config, seeds, name)
+    envs = [PerModelEnv(config) for _ in range(min(8, len(seeds)))]
+    chooser = build_plan_only_chooser(spec, members, envs, seed=int(seeds[0]))
+    return evaluate_per_model_chooser(
+        chooser.choose, envs, seeds, name, retimers=[PerStepReward(env) for env in envs]
+    )
+
 
 Writer = Callable[[np.ndarray, CommitmentState, np.ndarray, np.ndarray, int, int], None]
 
@@ -126,6 +154,11 @@ def main(argv: list[str]) -> None:
         int(argv[3]),
         argv[4:],
     )
+    members: str | None = None
+    if checkpoints and not is_per_model_checkpoint(checkpoints[-1]):
+        # A trailing baseline name: ablate through the plan-only chooser.
+        members = checkpoints[-1]
+        checkpoints = checkpoints[:-1]
     config = load_env_config(config_path)
     config.render_mode = None
     if not config.commitments.enabled:
@@ -135,6 +168,7 @@ def main(argv: list[str]) -> None:
     seeds = [seed_base + i for i in range(n)]
     print(
         f"commitment ablation on {config_path} n={n} seeds {seed_base}+ (success · held · turns)"
+        + (f"; PLAN-ONLY with members {members}" if members else "")
     )
     print("| checkpoint | trained | blank | misdirect | nearest | no claimants |")
     print("|---|---|---|---|---|---|")
@@ -143,7 +177,7 @@ def main(argv: list[str]) -> None:
         for name, writer in modes(config):
             tokens._write_commitment_relations = writer  # type: ignore[assignment]
             try:
-                result = evaluate_spec(spec, config, seeds, name)
+                result = _score(spec, config, seeds, name, members)
             finally:
                 tokens._write_commitment_relations = _TRAINED  # type: ignore[assignment]
             cells.append(
@@ -153,7 +187,7 @@ def main(argv: list[str]) -> None:
         label = spec.split("/")[-2] if "/" in spec else spec
         CommitmentState.claimants_by_objective = _no_claimants  # type: ignore[method-assign]
         try:
-            result = evaluate_spec(spec, config, seeds, "no claimants")
+            result = _score(spec, config, seeds, "no claimants", members)
         finally:
             CommitmentState.claimants_by_objective = _TRAINED_CLAIMANTS  # type: ignore[method-assign]
         cells.append(

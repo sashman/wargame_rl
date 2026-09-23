@@ -61,6 +61,9 @@ class Tally:
     # (#384: a plan that covers the board reads 1.0; a plan that stacks reads
     # less however many claimants it has).
     distinct_shares: list[float] = field(default_factory=list)
+    # The same share on the episode's LAST turn only: an adaptive plan that
+    # stacks early and covers by the end reads low on the mean and high here.
+    distinct_end: list[float] = field(default_factory=list)
     complete_hits: int = 0
     complete_seen: int = 0
     empty_hits: int = 0
@@ -81,8 +84,9 @@ class Tally:
         distinct = (
             f"{np.mean(self.distinct_shares):.2f}" if self.distinct_shares else "n/a"
         )
+        end = f"{np.mean(self.distinct_end):.2f}" if self.distinct_end else "n/a"
         return (
-            f"{share(self.persist_kept, self.persist_seen)} | {claim} | {distinct} | "
+            f"{share(self.persist_kept, self.persist_seen)} | {claim} | {distinct} / {end} | "
             f"{share(self.complete_hits, self.complete_seen)} | "
             f"{share(self.follow_hits, self.follow_seen)} | "
             f"{share(self.leave_hits, self.leave_seen)}"
@@ -198,6 +202,13 @@ def run_chooser(
             tally.claim_counts.extend(claims.tolist())
             if len(claims):
                 tally.distinct_shares.append(float(np.mean(claims > 0)))
+        if history:
+            last = np.zeros(len(env.objectives))
+            for c in history[-1].values():
+                if c.ground != NO_TARGET:
+                    last[c.ground] += 1
+            if len(last):
+                tally.distinct_end.append(float(np.mean(last > 0)))
             unheld = bool(np.any(~ours_end))
             for g, c in turn.items():
                 alive = any(
