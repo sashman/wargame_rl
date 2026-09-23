@@ -53,8 +53,14 @@ from wargame_rl.wargame.envs.baseline.evaluate import evaluate_baseline
 from wargame_rl.wargame.envs.baseline.registry import build_baseline_policy
 from wargame_rl.wargame.envs.evaluation import format_optional_metric
 from wargame_rl.wargame.envs.per_model.env import PerModelEnv
+from wargame_rl.wargame.envs.per_model.evaluate import evaluate_per_model_chooser
 from wargame_rl.wargame.envs.per_model.recording import record_episode
-from wargame_rl.wargame.envs.per_model.reward_timing import Credit, PerStepReward
+from wargame_rl.wargame.envs.per_model.reward_timing import (
+    Credit,
+    PerStepReward,
+    PlanningCredit,
+)
+from wargame_rl.wargame.envs.per_model.scripted import ScriptedSeat
 from wargame_rl.wargame.envs.per_model.types import (
     BatchChooser,
     PerModelAction,
@@ -88,7 +94,11 @@ from wargame_rl.wargame.model.per_model.checkpoint import (
     save_checkpoint,
 )
 from wargame_rl.wargame.model.per_model.config import SetNetworkConfig
-from wargame_rl.wargame.model.per_model.evaluate import EvalResult, evaluate_per_model
+from wargame_rl.wargame.model.per_model.evaluate import (
+    EvalResult,
+    evaluate_per_model,
+    plan_only_chooser,
+)
 from wargame_rl.wargame.model.per_model.net import SetNetwork
 from wargame_rl.wargame.model.per_model.ppo import (
     EpisodeOutcome,
@@ -135,6 +145,8 @@ _PPO_KNOBS = (
     "kl_ref_coef",
     "kl_ref_target",
     "credit",
+    "planning_credit",
+    "members",
 )
 
 
@@ -475,6 +487,22 @@ def train(
         "`actor` (each model its own action term undivided and its own state "
         "credit on its own step).",
     ),
+    planning_credit: str | None = typer.Option(
+        None,
+        "--planning-credit",
+        help="How the close's planning scalar reaches each unit's commitment "
+        "step (#384 B6): `broadcast` (the army's outcome, default) or "
+        "`counterfactual` (each unit the difference its bodies make to the "
+        "state globals and terminal bonuses).",
+    ),
+    members: str | None = typer.Option(
+        None,
+        "--members",
+        help="The plan-only trainer (#384): a scripted policy by name (normally "
+        "`squad_march_committed`) takes every decision but the commitment ones "
+        "in rollouts and in the in-run evaluation, so only the head and the "
+        "planning value learn. Needs `commitments.assignment: head`.",
+    ),
     lr: float | None = typer.Option(None),
     max_grad_norm: float | None = typer.Option(None),
     n_epochs: int | None = typer.Option(None),
@@ -606,6 +634,12 @@ def train(
         "kl_ref_coef": resolve_optional_float(kl_ref_coef),
         "kl_ref_target": resolve_optional_float(kl_ref_target),
         "credit": Credit(credit) if resolve_optional_str(credit) else None,
+        "planning_credit": (
+            PlanningCredit(planning_credit)
+            if resolve_optional_str(planning_credit)
+            else None
+        ),
+        "members": resolve_optional_str(members),
     }
     if resume is not None:
         refuse_changed_knobs(overrides, resume.loaded.ppo_config, resume.checkpoint)
@@ -690,6 +724,21 @@ def train(
         network_config = SetNetworkConfig(**{**network_config.model_dump(), **trunk})
 
     envs = [PerModelEnv(env_config) for _ in range(n_envs)]
+    if ppo_config.members is not None:
+        # The plan-only trainer (#384): a non-emitting scripted seat walks the
+        # head's plan; installed before the first reset, as a script plans its
+        # command phase inside `reset`.
+        if not env_config.commitments.policy_writes:
+            raise typer.BadParameter(
+                "--members needs a config whose commitment writer is the policy "
+                "(`commitments.assignment: head`)"
+            )
+        for env in envs:
+            env.set_player_planner(
+                ScriptedSeat.for_policy(
+                    build_baseline_policy(ppo_config.members), emits=False
+                )
+            )
     rounds_done = 0 if resume is None else resume.loaded.rounds
     # On a resume the envs restart at fresh episodes (their mid-episode state
     # is not checkpointed), offset by the rounds already trained so the run
@@ -708,7 +757,13 @@ def train(
     # keep the execution potentials. Otherwise the single stream, unchanged.
     streams = bool(env_config.commitments.streams)
     retimers = [
-        PerStepReward(env, credit=ppo_config.credit, streams=streams) for env in envs
+        PerStepReward(
+            env,
+            credit=ppo_config.credit,
+            streams=streams,
+            planning_credit=ppo_config.planning_credit,
+        )
+        for env in envs
     ]
     for retimer in retimers:
         retimer.reset()
@@ -837,7 +892,13 @@ def train(
         )
         logger.info("Run directory {}", run_dir)
         logger.info(
-            "Regime: {} rounds per update ({} rollout rounds x {} envs)",
+            "Regime: {} rounds per update ({} rollout rounds x {} envs)"
+            + (
+                f"; plan-only: members {ppo_config.members}"
+                if ppo_config.members
+                else ""
+            )
+            + f"; planning credit {ppo_config.planning_credit.value}",
             rollout_total,
             ppo_config.rollout_rounds,
             n_envs,
@@ -919,12 +980,28 @@ def train(
             agent.declaration_counts.clear()
             if rounds_done % eval_every == 0 or rounds_done >= total_rounds:
                 started = time.perf_counter()
-                result = evaluate_per_model(
-                    eval_envs,
-                    agent,
-                    eval_retimers,
-                    [eval_seeds_from + i for i in range(eval_episodes)],
-                )
+                eval_seeds = [eval_seeds_from + i for i in range(eval_episodes)]
+                if ppo_config.members is not None:
+                    # The plan-only trainer is read the way it trains: the
+                    # head plans, the scripted members walk (greedy head).
+                    was_greedy, agent.greedy = agent.greedy, True
+                    was_training = network.training
+                    network.eval()
+                    try:
+                        result = evaluate_per_model_chooser(
+                            plan_only_chooser(agent, eval_envs, ppo_config.members),
+                            eval_envs,
+                            eval_seeds,
+                            f"head+{ppo_config.members}",
+                            retimers=eval_retimers,
+                        )
+                    finally:
+                        agent.greedy = was_greedy
+                        network.train(was_training)
+                else:
+                    result = evaluate_per_model(
+                        eval_envs, agent, eval_retimers, eval_seeds
+                    )
                 row.update(eval_rows(result))
                 row["perf/eval_s"] = time.perf_counter() - started
                 logger.info(

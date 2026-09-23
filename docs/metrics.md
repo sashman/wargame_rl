@@ -606,6 +606,20 @@ seeds 700000+); `random` has no commitments (empty 1.00). A commitment head
 (Stage 1) is read on `persist` and `claim` before its success; a policy
 executing a given assignment (CM1) on `follow` and `leave`.
 
+### The plan-only readout — `just measure-plan`
+
+`just measure-plan <head_config> <n> <seed_base> <ckpt...> [members]` scores a
+checkpoint on a `head` config twice on identical seeds -- as trained, and
+PLAN-ONLY, where the network draws only the commitment decisions and the
+scripted `members` policy (default `squad_march_committed`) takes every other
+decision, re-planning before each act -- beside the scripted bar. The plan-only
+row holds execution at the bar's, so its success, turns and held read the
+plan alone; its `persist`, `claim`, `distinct` (distinct objectives claimed per
+turn over the objectives on the board; a covering plan reads 1.0) and
+`complete` columns say what the plan looks like. Built for #384's plan-quality
+question: on Stage 1's checkpoints the same heads read 0.03 / 0.00 / 0.00 as
+trained and 0.55 / 0.00 / 0.17 with scripted members.
+
 ### The planning stream's panel (#384 Stage 1)
 
 On a run whose commitment writer is the policy (`commitments.assignment:

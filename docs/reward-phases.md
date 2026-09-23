@@ -247,6 +247,28 @@ phase facade ignores the block.
   trained, blank, misdirected and pointed at the nearest objective, the
   test of whether a policy READS its commitment (`docs/metrics.md`).
 
+### The planning credit and the plan-only trainer (#384, after Stage 1)
+
+Under the two streams, the close's planning scalar (the delta and state
+globals and the terminal bonuses) reaches each unit's open commitment span.
+`PerStepReward(planning_credit=...)` says how (`train_per_model.py
+--planning-credit`):
+
+| `PlanningCredit` | each unit's commitment step is credited with |
+|---|---|
+| `broadcast` (default) | the army's outcome, the same scalar to every unit -- a squad stacking on a covered objective and the squad taking the empty one are paid alike (CM3's diagnosis) |
+| `counterfactual` (B6) | the state globals and the terminal bonuses with the unit IN minus the same terms with the unit's living models masked out of the distance cache (`_counterfactual_credits`), so a redundant squad earns 0 and the squad covering an empty objective earns what it covers. The delta globals (VP, kills) have no per-unit counterfactual and are carried by nobody under this form; `StepPayment.planning` is 0.0 and `StepPayment.planning_credits` holds the per-unit values, landed on each unit's span by `_land_planning_credits` |
+
+**The plan-only trainer** (`--members <baseline>`, `PerModelPPOConfig.members`)
+lets only the commitment head and the planning value learn: a non-emitting
+scripted seat over the named policy (normally `squad_march_committed`, which
+reads the state) takes every decision but the commitment draw -- the unit's
+declaration on the same open step, every act, every target -- re-planning
+before each decision so a commitment written this turn is the plan it walks.
+Those steps carry no policy (`column` NO_DRAW), so the update sees commitment
+rows only; the in-run evaluation and `just measure-plan` read the run the same
+way (`plan_only_chooser`). It needs `commitments.assignment: head`.
+
 ## Available Reward Calculators
 
 | Type key | Scope | Parameters | Description |

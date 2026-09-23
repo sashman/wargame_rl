@@ -35,11 +35,20 @@ import torch.nn.functional as F
 from pydantic import BaseModel, Field, model_validator
 
 from wargame_rl.wargame.envs.per_model.env import PerModelEnv, StepEffect
-from wargame_rl.wargame.envs.per_model.reward_timing import Credit, PerStepReward
+from wargame_rl.wargame.envs.per_model.reward_timing import (
+    Credit,
+    PerStepReward,
+    PlanningCredit,
+)
 from wargame_rl.wargame.envs.per_model.tokens import Head, TokenObservation
-from wargame_rl.wargame.envs.per_model.types import PerModelObservation, StepKind
+from wargame_rl.wargame.envs.per_model.types import (
+    NO_COMMIT_DECISION,
+    PerModelAction,
+    PerModelObservation,
+    StepKind,
+)
 from wargame_rl.wargame.envs.types import BattlePhase
-from wargame_rl.wargame.model.per_model.agent import NO_DRAW, SetAgent
+from wargame_rl.wargame.model.per_model.agent import NO_DRAW, SetAgent, StepDecision
 from wargame_rl.wargame.model.per_model.batch import collate
 from wargame_rl.wargame.model.per_model.net import SetNetwork
 
@@ -74,6 +83,14 @@ class PerModelPPOConfig(BaseModel):
     # Read only when a rollout carries commitment decisions.
     planning_gamma: float = Field(default=0.99, ge=0.0, le=1.0)
     planning_vf_coef: float = Field(default=0.3, ge=0.0)
+    # How the close's planning scalar is credited to the units' commitment
+    # steps (#384 B6): the army's outcome broadcast, or each unit's
+    # counterfactual difference to it.
+    planning_credit: PlanningCredit = PlanningCredit.broadcast
+    # The plan-only trainer (#384): the name of a scripted policy that takes
+    # every decision but the commitment ones during rollouts, so only the
+    # head and the planning value learn. None trains every head.
+    members: str | None = None
     # Who a payment reaches (`reward_timing.Credit`): `mean` is the bridge
     # accounting, `actor` pays each model its own term and its own state
     # credit on its own step. A knob of the run, so a resume keeps it.
@@ -273,6 +290,11 @@ def collect_rollout(
     spans: list[dict[int, int]] = [{} for _ in range(n_envs)]
     while closes < budget:
         decisions = agent.act_batch(envs, current, generator=generator)
+        if config.members is not None:
+            decisions = [
+                _members_decision(env, observation, decision)
+                for env, observation, decision in zip(envs, current, decisions)
+            ]
         for index, (env, retimer, decision) in enumerate(
             zip(envs, retimers, decisions)
         ):
@@ -315,6 +337,10 @@ def collect_rollout(
                 _land_credits(transitions, acted_at[index], payment.credits)
             if payment.planning != 0.0:
                 _land_planning(transitions, spans[index], payment.planning)
+            if payment.planning_credits:
+                _land_planning_credits(
+                    transitions, spans[index], payment.planning_credits
+                )
             if decision.has_commitment:
                 spans[index][unit] = len(transitions) - 1
             if payment.is_close:
@@ -385,6 +411,53 @@ def _land_planning(
             transitions[at],
             planning_reward=transitions[at].planning_reward + planning,
         )
+
+
+def _land_planning_credits(
+    transitions: list[Transition], spans: dict[int, int], credits: dict[int, float]
+) -> None:
+    """Add a close's per-unit planning credit (#384 B6) to that unit's open
+    commitment span; a unit with no open span this rollout (it committed
+    before the cut) carries nothing, as the broadcast form does."""
+    for unit, at in spans.items():
+        credit = credits.get(unit)
+        if credit:
+            transitions[at] = replace(
+                transitions[at],
+                planning_reward=transitions[at].planning_reward + credit,
+            )
+
+
+def _members_decision(
+    env: PerModelEnv, observation: PerModelObservation, decision: StepDecision
+) -> StepDecision:
+    """The plan-only trainer's decision (#384): the network keeps only its
+    commitment draw; the scripted seat installed on `env` answers the rest --
+    the unit's declaration on the same open step, every act, every target --
+    re-planning first so a commitment written this turn is the plan it walks.
+    A step the script answers carries no policy (`column` NO_DRAW), so only
+    the commitment rows reach the update."""
+    point = observation.decision
+    if point.kind is StepKind.close_turn:
+        return decision
+    seat = env.player_seat
+    planner = seat.adapter
+    if planner is None:
+        raise RuntimeError("the plan-only trainer needs a scripted seat on the env")
+    if point.phase is not None:
+        planner.plan(point.phase, seat, env)
+    if point.kind is StepKind.open and decision.action.commitment != NO_COMMIT_DECISION:
+        model = decision.action.model
+        action = PerModelAction.open(
+            model,
+            planner.declaration_for(point, model, seat),
+            decision.action.commitment,
+        )
+        return replace(decision, action=action, column=NO_DRAW, log_prob=0.0)
+    action = planner.choose(point, seat)
+    return replace(
+        decision, action=action, model=action.model, column=NO_DRAW, log_prob=0.0
+    )
 
 
 def _planning_values(

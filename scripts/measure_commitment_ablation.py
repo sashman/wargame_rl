@@ -94,7 +94,7 @@ def _nearest_writer(n_objectives: int) -> Writer:
 
 
 def modes(config: WargameEnvConfig) -> list[tuple[str, Writer]]:
-    """The four writers, in the order the table prints them."""
+    """The four relation writers, in the order the table prints them."""
     n_objectives = (
         len(config.objectives)
         if config.objectives
@@ -106,6 +106,16 @@ def modes(config: WargameEnvConfig) -> list[tuple[str, Writer]]:
         ("misdirect", _misdirect_writer(n_objectives)),
         ("nearest", _nearest_writer(n_objectives)),
     ]
+
+
+_TRAINED_CLAIMANTS = CommitmentState.claimants_by_objective
+
+
+def _no_claimants(self: CommitmentState, n_objectives: int) -> np.ndarray:
+    """The claimant column zeroed on every objective token: what the HEAD (and
+    the members) see with no record of who has already claimed what (#384,
+    the plan-quality desk check). The relations are left as trained."""
+    return np.zeros(n_objectives, dtype=float)
 
 
 def main(argv: list[str]) -> None:
@@ -126,8 +136,8 @@ def main(argv: list[str]) -> None:
     print(
         f"commitment ablation on {config_path} n={n} seeds {seed_base}+ (success · held · turns)"
     )
-    print("| checkpoint | trained | blank | misdirect | nearest |")
-    print("|---|---|---|---|---|")
+    print("| checkpoint | trained | blank | misdirect | nearest | no claimants |")
+    print("|---|---|---|---|---|---|")
     for spec in checkpoints:
         cells = []
         for name, writer in modes(config):
@@ -141,6 +151,15 @@ def main(argv: list[str]) -> None:
                 f"{result.mean_turns:.2f}"
             )
         label = spec.split("/")[-2] if "/" in spec else spec
+        CommitmentState.claimants_by_objective = _no_claimants  # type: ignore[method-assign]
+        try:
+            result = evaluate_spec(spec, config, seeds, "no claimants")
+        finally:
+            CommitmentState.claimants_by_objective = _TRAINED_CLAIMANTS  # type: ignore[method-assign]
+        cells.append(
+            f"{result.success_rate:.2f} · {result.objectives_held:.2f} · "
+            f"{result.mean_turns:.2f}"
+        )
         print(f"| {label} | " + " | ".join(cells) + " |", flush=True)
 
 

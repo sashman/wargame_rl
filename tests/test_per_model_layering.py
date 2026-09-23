@@ -142,6 +142,7 @@ ROOT_CLIENTS = ("play_per_model.py", "train_per_model.py")
 SCRIPT_CLIENTS = (
     "measure_throughput_per_model.py",
     "measure_commitments.py",
+    "measure_plan.py",
     "measure_commitment_ablation.py",
     "measure_bridge.py",
     "behaviour_clone_per_model.py",

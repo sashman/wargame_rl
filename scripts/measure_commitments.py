@@ -38,9 +38,18 @@ import numpy as np
 from scripts.scenario_overrides import load_env_config
 from wargame_rl.wargame.envs.per_model.commitment import NO_TARGET
 from wargame_rl.wargame.envs.per_model.env import PerModelEnv
-from wargame_rl.wargame.envs.per_model.types import StepKind
+from wargame_rl.wargame.envs.per_model.types import BatchChooser, StepKind
 from wargame_rl.wargame.envs.types import BattlePhase, WargameEnvConfig
 from wargame_rl.wargame.selectors import build_per_model_chooser
+
+
+def share(a: int, b: int) -> str:
+    return f"{a / b:.2f}" if b else "n/a"
+
+
+@dataclass(frozen=True)
+class _Chooser:
+    choose: BatchChooser
 
 
 @dataclass
@@ -48,6 +57,10 @@ class Tally:
     persist_kept: int = 0
     persist_seen: int = 0
     claim_counts: list[float] = field(default_factory=list)
+    # Distinct objectives claimed per turn over the objectives on the board
+    # (#384: a plan that covers the board reads 1.0; a plan that stacks reads
+    # less however many claimants it has).
+    distinct_shares: list[float] = field(default_factory=list)
     complete_hits: int = 0
     complete_seen: int = 0
     empty_hits: int = 0
@@ -61,15 +74,29 @@ class Tally:
     hold_decl_hits: int = 0
     hold_decl_seen: int = 0
 
-    def row(self, name: str) -> str:
-        def share(a: int, b: int) -> str:
-            return f"{a / b:.2f}" if b else "n/a"
+    def row_fields(self) -> str:
+        """The readouts as table cells, in the plan-only readout's order."""
+        claims = [c for c in self.claim_counts if c > 0]
+        claim = f"{np.mean(claims):.2f}" if claims else "n/a"
+        distinct = (
+            f"{np.mean(self.distinct_shares):.2f}" if self.distinct_shares else "n/a"
+        )
+        return (
+            f"{share(self.persist_kept, self.persist_seen)} | {claim} | {distinct} | "
+            f"{share(self.complete_hits, self.complete_seen)} | "
+            f"{share(self.follow_hits, self.follow_seen)} | "
+            f"{share(self.leave_hits, self.leave_seen)}"
+        )
 
+    def row(self, name: str) -> str:
         claims = [c for c in self.claim_counts if c > 0]
         claim = f"{np.mean(claims):.2f} / max {np.max(claims):.0f}" if claims else "n/a"
+        distinct = (
+            f"{np.mean(self.distinct_shares):.2f}" if self.distinct_shares else "n/a"
+        )
         return (
             f"| {name} | persist {share(self.persist_kept, self.persist_seen)} "
-            f"({self.persist_seen}) | claim {claim} | complete "
+            f"({self.persist_seen}) | claim {claim} | distinct {distinct} | complete "
             f"{share(self.complete_hits, self.complete_seen)} | empty "
             f"{share(self.empty_hits, self.empty_seen)} | follow "
             f"{share(self.follow_hits, self.follow_seen)} ({self.follow_seen}) | leave "
@@ -96,6 +123,15 @@ def _ours(env: PerModelEnv) -> np.ndarray:
 def run(spec: str, config: WargameEnvConfig, seeds: list[int]) -> Tally:
     env = PerModelEnv(config)
     chooser = build_per_model_chooser(spec, [env], seed=int(seeds[0]))
+    return run_chooser(chooser.choose, env, config, seeds)
+
+
+def run_chooser(
+    choose: BatchChooser, env: PerModelEnv, config: WargameEnvConfig, seeds: list[int]
+) -> Tally:
+    """The tally of `choose` playing `env` over `seeds` (the plan-only readout
+    passes a chooser whose head plans and whose members are scripted)."""
+    chooser = _Chooser(choose)
     tally = Tally()
     radius = float(config.objective_radius_size)
     for seed in seeds:
@@ -160,6 +196,8 @@ def run(spec: str, config: WargameEnvConfig, seeds: list[int]) -> Tally:
                     tally.committed_turns += 1
                     tally.hold_turns += int(c.arrived)
             tally.claim_counts.extend(claims.tolist())
+            if len(claims):
+                tally.distinct_shares.append(float(np.mean(claims > 0)))
             unheld = bool(np.any(~ours_end))
             for g, c in turn.items():
                 alive = any(
@@ -186,7 +224,7 @@ def main(argv: list[str]) -> None:
         f"{config.commitments.assignment}"
     )
     print(
-        "| policy | persist (unit-turns) | claimants per claimed objective | complete | empty | follow (member move steps) | leave (moves from inside) |"
+        "| policy | persist (unit-turns) | claimants per claimed objective | distinct | complete | empty | follow (member move steps) | leave (moves from inside) |"
     )
     for spec in argv[4:]:
         name = spec.split("/")[-2] if "/" in spec else spec

@@ -79,21 +79,27 @@ class _UnitPlan:
 class ScriptedSeat:
     """Plan once per phase, replay in engine order."""
 
-    def __init__(self, policy: PhasePolicy, *, shoots: bool) -> None:
+    def __init__(
+        self, policy: PhasePolicy, *, shoots: bool, emits: bool = True
+    ) -> None:
         self.policy = policy
         self.shoots = shoots
+        # Whether the script writes its own plan into the commitment state
+        # (#384 D8). False for a seat that only EXECUTES a plan another writer
+        # (the head) owns: the plan-only readout and the plan-only trainer.
+        self.emits = emits
         self._plans: list[_UnitPlan] = []
         self._phase: BattlePhase | None = None
 
     @classmethod
-    def for_policy(cls, policy: PhasePolicy) -> ScriptedSeat:
+    def for_policy(cls, policy: PhasePolicy, *, emits: bool = True) -> ScriptedSeat:
         """A seat over `policy`, firing exactly when the policy says it does.
 
         Both policy hierarchies carry `shoots` (a baseline derives it from
         overriding `select_shooting`; an opponent policy declares it), so the
         seat reads it rather than re-deriving it.
         """
-        return cls(policy, shoots=bool(getattr(policy, "shoots", False)))
+        return cls(policy, shoots=bool(getattr(policy, "shoots", False)), emits=emits)
 
     def plan(self, phase: BattlePhase, seat: Seat, env: PerModelEnv) -> None:
         """Ask the script exactly once for this phase, against its usual mask."""
@@ -109,7 +115,8 @@ class ScriptedSeat:
             return
         if phase is BattlePhase.movement:
             self._plans = _movement_plans(plan, seat, env)
-            _emit_ground_commitments(self.policy, seat, env)
+            if self.emits:
+                _emit_ground_commitments(self.policy, seat, env)
         elif phase is BattlePhase.shooting:
             self._plans = _shooting_plans(plan, seat)
         elif phase is BattlePhase.charge:
@@ -126,6 +133,16 @@ class ScriptedSeat:
         if point.kind is StepKind.act:
             return self._choose_act(point, seat)
         raise ScriptedSeatError("a scripted seat never closes the turn")
+
+    def declaration_for(self, point: DecisionPoint, model: int, seat: Seat) -> int:
+        """The declaration this seat's plan gives `model`'s unit on `point`,
+        or the closing declaration (0, always legal) where the plan names none
+        or the phase no longer allows it -- the open decision with the unit
+        chosen by someone else (the plan-only chooser, #384)."""
+        plan = self._plan_for(int(seat.models[model].group_id))
+        if plan is not None and point.declaration_mask[model, plan.declaration]:
+            return int(plan.declaration)
+        return 0
 
     def _plan_for(self, group: int) -> _UnitPlan | None:
         for plan in self._plans:
