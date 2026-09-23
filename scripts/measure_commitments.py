@@ -16,6 +16,11 @@ Per policy (a scripted name, `random`, `set_network` or a `.pt`), one row:
 - `leave`     the walk-off probe's number on the COMMITTED objective: share of
               movement decisions by a member inside its committed objective
               that ended outside it
+- `hold`      share of committed unit-turns in HOLD mode (the unit has arrived
+              at its objective and its plan weights are (0, 1)), and the share
+              of movement openings by a unit in hold mode that declared the
+              closing declaration (the whole unit stands): `hold <mode share>
+              / decl <declaration share> (<openings>)`
 
     just measure-commitments <config.yaml> <n> <seed_base> <spec...>
 
@@ -51,6 +56,10 @@ class Tally:
     follow_seen: int = 0
     leave_hits: int = 0
     leave_seen: int = 0
+    hold_turns: int = 0
+    committed_turns: int = 0
+    hold_decl_hits: int = 0
+    hold_decl_seen: int = 0
 
     def row(self, name: str) -> str:
         def share(a: int, b: int) -> str:
@@ -64,7 +73,9 @@ class Tally:
             f"{share(self.complete_hits, self.complete_seen)} | empty "
             f"{share(self.empty_hits, self.empty_seen)} | follow "
             f"{share(self.follow_hits, self.follow_seen)} ({self.follow_seen}) | leave "
-            f"{share(self.leave_hits, self.leave_seen)} ({self.leave_seen}) |"
+            f"{share(self.leave_hits, self.leave_seen)} ({self.leave_seen}) | hold "
+            f"{share(self.hold_turns, self.committed_turns)} / decl "
+            f"{share(self.hold_decl_hits, self.hold_decl_seen)} ({self.hold_decl_seen}) |"
         )
 
 
@@ -94,6 +105,18 @@ def run(spec: str, config: WargameEnvConfig, seeds: list[int]) -> Tally:
         while True:
             point = observation.decision
             action = chooser.choose([env], [observation])[0]
+            if point.kind is StepKind.open and point.phase is BattlePhase.movement:
+                opening = state.by_group.get(
+                    int(env.wargame_models[action.model].group_id)
+                )
+                if (
+                    opening is not None
+                    and opening.ground != NO_TARGET
+                    and opening.arrived
+                ):
+                    tally.hold_decl_seen += 1
+                    if int(action.value) == 0:
+                        tally.hold_decl_hits += 1
             is_move = point.kind is StepKind.act and point.phase is BattlePhase.movement
             before_ground = (
                 state.ground_of(int(env.wargame_models[action.model].group_id))
@@ -134,6 +157,8 @@ def run(spec: str, config: WargameEnvConfig, seeds: list[int]) -> Tally:
             for c in turn.values():
                 if c.ground != NO_TARGET:
                     claims[c.ground] += 1
+                    tally.committed_turns += 1
+                    tally.hold_turns += int(c.arrived)
             tally.claim_counts.extend(claims.tolist())
             unheld = bool(np.any(~ours_end))
             for g, c in turn.items():

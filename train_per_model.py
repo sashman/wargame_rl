@@ -102,6 +102,7 @@ from wargame_rl.wargame.model.per_model.ppo import (
     check_trainable,
     collect_rollout,
     compute_gae,
+    compute_planning_gae,
     device_max_rollout_envs,
     ppo_update,
     rollout_entropy,
@@ -323,6 +324,12 @@ def update_rows(
         "train/value_std": stats.value_std,
         "train/ratio_p01": stats.ratio_p01,
         "train/ratio_p99": stats.ratio_p99,
+        "train/planning/commit_rows": float(stats.commit_rows),
+        "train/planning/explained_variance": stats.planning_explained_variance,
+        "train/planning/return_mean": stats.planning_return_mean,
+        "train/planning/advantage_std": stats.planning_advantage_std,
+        "train/planning/clip_fraction": stats.commit_clip_fraction,
+        "train/entropy/head/commitment": stats.commit_entropy,
         "train/rounds_per_update": float(rounds_per_update),
         "train/gradient_steps_per_round": stats.n_minibatches
         / max(1, rounds_per_update),
@@ -439,6 +446,12 @@ def train(
     ),
     gamma: float | None = typer.Option(None, help="Per-ROUND discount."),
     gae_lambda: float | None = typer.Option(None, help="Per-ROUND GAE decay."),
+    planning_gamma: float | None = typer.Option(
+        None,
+        "--planning-gamma",
+        help="The planning stream's discount per commitment step (#384 D6), "
+        "read only when the env's commitment writer is the policy.",
+    ),
     ent_coef: float | None = typer.Option(None, help="Head entropy coefficient."),
     selector_ent_coef: float | None = typer.Option(
         None, help="Selector entropy coefficient (default: ent_coef)."
@@ -583,6 +596,7 @@ def train(
         "num_rollout_envs": resolve_optional_int(num_rollout_envs),
         "gamma": resolve_optional_float(gamma),
         "gae_lambda": resolve_optional_float(gae_lambda),
+        "planning_gamma": resolve_optional_float(planning_gamma),
         "ent_coef": resolve_optional_float(ent_coef),
         "selector_ent_coef": resolve_optional_float(selector_ent_coef),
         "lr": resolve_optional_float(lr),
@@ -689,7 +703,13 @@ def train(
         )[0]
         for index, env in enumerate(envs)
     ]
-    retimers = [PerStepReward(env, credit=ppo_config.credit) for env in envs]
+    # Two reward streams whenever the policy writes the commitment (#384 D2):
+    # the close's outcome terms go to the commitment decision, the members
+    # keep the execution potentials. Otherwise the single stream, unchanged.
+    streams = bool(env_config.commitments.streams)
+    retimers = [
+        PerStepReward(env, credit=ppo_config.credit, streams=streams) for env in envs
+    ]
     for retimer in retimers:
         retimer.reset()
     wave = max(
@@ -847,6 +867,11 @@ def train(
             entropy = rollout_entropy(network, rollout, ppo_config.batch_size)
             started = time.perf_counter()
             returns, advantages = compute_gae(rollout, ppo_config)
+            planning_returns = planning_advantages = None
+            if streams:
+                planning_returns, planning_advantages = compute_planning_gae(
+                    rollout, ppo_config
+                )
             stats = ppo_update(
                 network,
                 optimizer,
@@ -857,6 +882,8 @@ def train(
                 generator=generator,
                 reference=reference,
                 kl_ref_coef=kl_ref_coef_now,
+                planning_returns=planning_returns,
+                planning_advantages=planning_advantages,
             )
             kl_ref_coef_now = adapt_kl_coef(
                 kl_ref_coef_now, stats.kl_ref, ppo_config.kl_ref_target

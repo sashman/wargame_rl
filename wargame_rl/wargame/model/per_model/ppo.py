@@ -69,6 +69,11 @@ class PerModelPPOConfig(BaseModel):
     # reference network and adds no term, so a run without it is unchanged.
     kl_ref_coef: float = Field(default=0.0, ge=0.0)
     kl_ref_target: float = Field(default=0.0, ge=0.0)
+    # The planning stream (#384 D6): the discount per commitment step (one
+    # per turn per unit, so near one) and the planning value head's weight.
+    # Read only when a rollout carries commitment decisions.
+    planning_gamma: float = Field(default=0.99, ge=0.0, le=1.0)
+    planning_vf_coef: float = Field(default=0.3, ge=0.0)
     # Who a payment reaches (`reward_timing.Credit`): `mean` is the bridge
     # accounting, `actor` pays each model its own term and its own state
     # credit on its own step. A knob of the run, so a resume keeps it.
@@ -153,10 +158,24 @@ class Transition:
     done: bool
     is_close: bool
     env_index: int
+    # The commitment decision on an `open` step (#384 Stage 1): the unit it
+    # belongs to, the drawn column and its log-prob, the planning value at
+    # the step, the planning reward accumulated from this step to the unit's
+    # next commitment step, and whether the episode ended inside that span.
+    unit: int = -1
+    commit_column: int = NO_DRAW
+    commit_log_prob: float = 0.0
+    planning_value: float = 0.0
+    planning_reward: float = 0.0
+    planning_done: bool = False
 
     @property
     def has_policy(self) -> bool:
         return self.column >= 0
+
+    @property
+    def has_commitment(self) -> bool:
+        return self.commit_column >= 0
 
 
 @dataclass(frozen=True)
@@ -194,6 +213,9 @@ class Rollout:
     breakdown: dict[str, float] = field(default_factory=dict)
     # Per env, how many squads the episode in progress started on objectives.
     start_groups: tuple[int, ...] = ()
+    # Per env, the planning value per unit at the rollout's cut, for the
+    # commitment spans still open there (#384 D6).
+    planning_bootstrap: tuple[dict[int, float], ...] = ()
 
     @property
     def n_steps(self) -> int:
@@ -245,6 +267,10 @@ def collect_rollout(
     # Per env, the transition on which each model last acted THIS turn: where
     # a close's per-model credit (`Credit.actor`) lands. Cleared at the close.
     acted_at: list[dict[int, int]] = [{} for _ in range(n_envs)]
+    # Per env, each unit's OPEN commitment span: the transition of its latest
+    # commitment step, which collects the planning rewards paid until the
+    # unit's next commitment step (#384 D6).
+    spans: list[dict[int, int]] = [{} for _ in range(n_envs)]
     while closes < budget:
         decisions = agent.act_batch(envs, current, generator=generator)
         for index, (env, retimer, decision) in enumerate(
@@ -261,6 +287,9 @@ def collect_rollout(
             if payment.is_close:
                 closes += 1
                 round_counts[index] += 1
+            unit = -1
+            if decision.has_commitment:
+                unit = int(env.player_seat.models[decision.model].group_id)
             transitions.append(
                 Transition(
                     tokens=decision.tokens,
@@ -274,16 +303,27 @@ def collect_rollout(
                     done=terminated,
                     is_close=payment.is_close,
                     env_index=index,
+                    unit=unit,
+                    commit_column=decision.commit_column,
+                    commit_log_prob=decision.commit_log_prob,
+                    planning_value=decision.planning_value,
                 )
             )
             for model in effect.actor_set:
                 acted_at[index][model] = len(transitions) - 1
             if payment.credits:
                 _land_credits(transitions, acted_at[index], payment.credits)
+            if payment.planning != 0.0:
+                _land_planning(transitions, spans[index], payment.planning)
+            if decision.has_commitment:
+                spans[index][unit] = len(transitions) - 1
             if payment.is_close:
                 acted_at[index] = {}
             last_done[index] = terminated
             if terminated:
+                for at in spans[index].values():
+                    transitions[at] = replace(transitions[at], planning_done=True)
+                spans[index] = {}
                 episodes.append(
                     EpisodeOutcome(
                         env_index=index,
@@ -308,11 +348,19 @@ def collect_rollout(
                 round_counts[index] = 0
             current[index] = observation
     bootstrap = [0.0] * n_envs
+    planning_bootstrap: list[dict[int, float]] = [{} for _ in range(n_envs)]
     live = [i for i in range(n_envs) if not last_done[i]]
     if live:
         values = _values(agent, [envs[i] for i in live], [current[i] for i in live])
         for slot, index in enumerate(live):
             bootstrap[index] = values[slot]
+        open_spans = [i for i in live if spans[i]]
+        if open_spans:
+            planning = _planning_values(
+                agent, [envs[i] for i in open_spans], [current[i] for i in open_spans]
+            )
+            for slot, index in enumerate(open_spans):
+                planning_bootstrap[index] = planning[slot]
     return Rollout(
         transitions=transitions,
         n_envs=n_envs,
@@ -322,7 +370,58 @@ def collect_rollout(
         episodes=episodes,
         breakdown=breakdown,
         start_groups=tuple(started_on),
+        planning_bootstrap=tuple(planning_bootstrap),
     )
+
+
+def _land_planning(
+    transitions: list[Transition], spans: dict[int, int], planning: float
+) -> None:
+    """Add a close's planning scalar to every unit's open commitment span: the
+    outcome is the army's, and each unit's decision is credited with it until
+    that unit decides again (#384 D2, D6)."""
+    for at in spans.values():
+        transitions[at] = replace(
+            transitions[at],
+            planning_reward=transitions[at].planning_reward + planning,
+        )
+
+
+def _planning_values(
+    agent: SetAgent,
+    envs: Sequence[PerModelEnv],
+    observations: Sequence[PerModelObservation],
+) -> list[dict[int, float]]:
+    """Per env, the planning value at `observations` for each living unit,
+    read at the unit's first living member: the bootstrap of a commitment
+    span cut by the rollout."""
+    tokens = [agent.observe(env, obs) for env, obs in zip(envs, observations)]
+    batch = collate(tokens, device=agent.network.device)
+    results: list[dict[int, float]] = [{} for _ in envs]
+    leaders: list[list[tuple[int, int]]] = []
+    for env in envs:
+        seat = env.player_seat
+        alive = seat.alive()
+        rows: list[tuple[int, int]] = []
+        for group in seat.living_units():
+            members = [i for i in seat.unit_members(group) if alive[i]]
+            if members:
+                rows.append((int(group), int(members[0])))
+        leaders.append(rows)
+    width = max((len(rows) for rows in leaders), default=0)
+    with torch.no_grad():
+        output = agent.network(batch)
+        for slot in range(width):
+            index = torch.tensor(
+                [rows[slot][1] if slot < len(rows) else 0 for rows in leaders],
+                dtype=torch.int64,
+                device=agent.network.device,
+            )
+            values = agent.network.commitment(output, batch, index).planning_value
+            for row, rows in enumerate(leaders):
+                if slot < len(rows):
+                    results[row][rows[slot][0]] = float(values[row].item())
+    return results
 
 
 def _land_credits(
@@ -400,6 +499,49 @@ def compute_gae(
     return advantages + values, advantages
 
 
+def compute_planning_gae(
+    rollout: Rollout, config: PerModelPPOConfig
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Planning returns and advantages, flat in the rollout's order, non-zero
+    only on commitment rows (#384 D6).
+
+    A unit's commitment steps form their own trajectory: each step's reward
+    is the planning scalar collected until the unit's next commitment step,
+    the discount `planning_gamma` applies once per step of that chain, and
+    the last step bootstraps from the planning value at the rollout's cut
+    (0 when the episode ended inside the span).
+    """
+    n = rollout.n_steps
+    returns = torch.zeros(n, dtype=torch.float32)
+    advantages = torch.zeros(n, dtype=torch.float32)
+    chains: dict[tuple[int, int], list[int]] = {}
+    for row, transition in enumerate(rollout.transitions):
+        if transition.has_commitment:
+            chains.setdefault((transition.env_index, transition.unit), []).append(row)
+    for (env_index, unit), rows in chains.items():
+        last = rollout.transitions[rows[-1]]
+        bootstrap = (
+            rollout.planning_bootstrap[env_index] if rollout.planning_bootstrap else {}
+        )
+        next_value = 0.0 if last.planning_done else float(bootstrap.get(unit, 0.0))
+        running = 0.0
+        for row in reversed(rows):
+            transition = rollout.transitions[row]
+            not_done = 0.0 if transition.planning_done else 1.0
+            delta = (
+                transition.planning_reward
+                + config.planning_gamma * next_value * not_done
+                - transition.planning_value
+            )
+            running = (
+                delta + config.planning_gamma * config.gae_lambda * not_done * running
+            )
+            advantages[row] = running
+            returns[row] = running + transition.planning_value
+            next_value = transition.planning_value
+    return returns, advantages
+
+
 @dataclass(frozen=True)
 class Evaluated:
     """A batch of transitions re-scored under the current weights."""
@@ -409,6 +551,11 @@ class Evaluated:
     head_entropy: torch.Tensor  # (B,)
     values: torch.Tensor  # (B,)
     has_policy: torch.Tensor  # (B,) bool
+    # The commitment head's re-scored rows (#384 Stage 1), 0 elsewhere.
+    commit_log_probs: torch.Tensor  # (B,)
+    commit_entropy: torch.Tensor  # (B,)
+    planning_values: torch.Tensor  # (B,)
+    has_commitment: torch.Tensor  # (B,) bool
 
 
 def evaluate_transitions(
@@ -456,12 +603,36 @@ def evaluate_transitions(
             1, columns[rows, None]
         ).squeeze(-1)
         head_entropy[rows] = _entropy(head_log_probs)
+    has_commitment = torch.tensor(
+        [t.has_commitment for t in transitions], device=device
+    )
+    commit_log_probs = torch.zeros(n, device=device)
+    commit_entropy = torch.zeros(n, device=device)
+    planning_values = torch.zeros(n, device=device)
+    if bool(has_commitment.any()):
+        rows = torch.nonzero(has_commitment).squeeze(-1)
+        commit_columns = torch.tensor(
+            [max(t.commit_column, 0) for t in transitions],
+            dtype=torch.int64,
+            device=device,
+        )
+        commitment = network.commitment(output, batch, models)
+        commit_lp = F.log_softmax(commitment.logits[rows].float(), dim=-1)
+        commit_log_probs[rows] = commit_lp.gather(
+            1, commit_columns[rows, None]
+        ).squeeze(-1)
+        commit_entropy[rows] = _entropy(commit_lp)
+        planning_values[rows] = commitment.planning_value[rows].float()
     return Evaluated(
         log_probs=log_probs,
         selector_entropy=selector_entropy,
         head_entropy=head_entropy,
         values=output.value.float(),
         has_policy=has_policy,
+        commit_log_probs=commit_log_probs,
+        commit_entropy=commit_entropy,
+        planning_values=planning_values,
+        has_commitment=has_commitment,
     )
 
 
@@ -564,6 +735,14 @@ class UpdateStats:
     # weighted by. Both 0.0 when no reference is attached.
     kl_ref: float = 0.0
     kl_ref_coef: float = 0.0
+    # The planning stream (#384 Stage 1), over the update's commitment rows;
+    # all 0.0 when the rollout carried none.
+    commit_rows: int = 0
+    planning_explained_variance: float = 0.0
+    planning_return_mean: float = 0.0
+    planning_advantage_std: float = 0.0
+    commit_clip_fraction: float = 0.0
+    commit_entropy: float = 0.0
 
 
 def check_trainable(network: SetNetwork) -> None:
@@ -587,6 +766,8 @@ def ppo_update(
     generator: torch.Generator | None = None,
     reference: SetNetwork | None = None,
     kl_ref_coef: float = 0.0,
+    planning_returns: torch.Tensor | None = None,
+    planning_advantages: torch.Tensor | None = None,
 ) -> UpdateStats:
     """`n_epochs` passes of clipped-surrogate minibatches over the rollout.
 
@@ -615,6 +796,41 @@ def ppo_update(
     explained = _explained_variance(returns, old_values)
     panel = _panel_moments(advantages[policy_rows], returns, old_values)
     ratios: list[torch.Tensor] = []
+    # The planning stream (#384): its own surrogate over the commitment rows,
+    # its own normalisation, its own value loss and entropy bonus.
+    has_commitment = torch.tensor([t.has_commitment for t in transitions])
+    commit_rows = has_commitment.nonzero().squeeze(-1)
+    planning_on = (
+        planning_returns is not None
+        and planning_advantages is not None
+        and commit_rows.numel() > 0
+    )
+    planning_stats: dict[str, float] = {}
+    commit_ratios: list[torch.Tensor] = []
+    if planning_on:
+        assert planning_returns is not None and planning_advantages is not None
+        old_commit_log_probs = torch.tensor(
+            [t.commit_log_prob for t in transitions], dtype=torch.float32
+        )
+        old_planning_values = torch.tensor(
+            [t.planning_value for t in transitions], dtype=torch.float32
+        )
+        plan_adv = planning_advantages[commit_rows]
+        normalised_planning = planning_advantages.clone()
+        if commit_rows.numel() > 1:
+            normalised_planning = (planning_advantages - plan_adv.mean()) / (
+                plan_adv.std() + 1e-8
+            )
+        planning_stats = {
+            "commit_rows": float(commit_rows.numel()),
+            "planning_explained_variance": _explained_variance(
+                planning_returns[commit_rows], old_planning_values[commit_rows]
+            ),
+            "planning_return_mean": float(planning_returns[commit_rows].mean().item()),
+            "planning_advantage_std": float(plan_adv.std().item())
+            if commit_rows.numel() > 1
+            else 0.0,
+        }
 
     totals = {
         "loss": 0.0,
@@ -626,6 +842,8 @@ def ppo_update(
         "grad": 0.0,
         "clipped": 0.0,
         "kl_ref": 0.0,
+        "commit_clip": 0.0,
+        "commit_entropy": 0.0,
     }
     n_minibatches = 0
     selector_coef = config.resolved_selector_ent_coef
@@ -651,6 +869,48 @@ def ppo_update(
                 config.ent_coef * head_entropy + selector_coef * selector_entropy
             )
             loss = policy_loss + config.vf_coef * value_loss + entropy_loss
+            if planning_on:
+                assert planning_returns is not None
+                commit = evaluated.has_commitment
+                n_commit = max(1, int(commit.sum().item()))
+                commit_ratio = torch.exp(
+                    evaluated.commit_log_probs - old_commit_log_probs[rows].to(device)
+                )
+                plan_advantage = normalised_planning[rows].to(device)
+                plan_surrogate = torch.min(
+                    commit_ratio * plan_advantage,
+                    torch.clamp(commit_ratio, 1 - config.eps_clip, 1 + config.eps_clip)
+                    * plan_advantage,
+                )
+                plan_policy_loss = -(plan_surrogate * commit).sum() / n_commit
+                plan_value_loss = (
+                    (evaluated.planning_values - planning_returns[rows].to(device)) ** 2
+                    * commit
+                ).sum() / n_commit
+                plan_entropy = (evaluated.commit_entropy * commit).sum() / n_commit
+                loss = (
+                    loss
+                    + plan_policy_loss
+                    + config.planning_vf_coef * plan_value_loss
+                    - config.ent_coef * plan_entropy
+                )
+                with torch.no_grad():
+                    if bool(commit.any()):
+                        commit_ratios.append(
+                            commit_ratio[commit].detach().float().cpu()
+                        )
+                        totals["commit_clip"] += (
+                            float(
+                                (
+                                    ((commit_ratio - 1).abs() > config.eps_clip).float()
+                                    * commit
+                                )
+                                .sum()
+                                .item()
+                            )
+                            / n_commit
+                        )
+                        totals["commit_entropy"] += float(plan_entropy.item())
             if anchored:
                 assert reference is not None
                 drift = drift_to_reference(
@@ -699,6 +959,14 @@ def ppo_update(
         ratio_p99=ratio_p99,
         kl_ref=totals["kl_ref"] / count,
         kl_ref_coef=kl_ref_coef if anchored else 0.0,
+        commit_rows=int(planning_stats.get("commit_rows", 0.0)),
+        planning_explained_variance=planning_stats.get(
+            "planning_explained_variance", 0.0
+        ),
+        planning_return_mean=planning_stats.get("planning_return_mean", 0.0),
+        planning_advantage_std=planning_stats.get("planning_advantage_std", 0.0),
+        commit_clip_fraction=totals["commit_clip"] / count,
+        commit_entropy=totals["commit_entropy"] / count,
         **panel,
     )
 

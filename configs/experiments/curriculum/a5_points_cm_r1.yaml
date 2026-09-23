@@ -1,0 +1,64 @@
+# #384 R1 (#392, arm #394): `a5_points_cm.yaml` under the ARRIVED-KEEPS retirement
+# rule -- a squad keeps its ground commitment once it has ever had a member
+# inside it; only a latecomer to an objective another squad holds is
+# re-assigned. Stage 0 re-assigned a walker from a SHARED objective for free,
+# so the leaving step paid nothing on this shape. The yaml is identical to
+# `a5_points_cm.yaml` but for its name; the ONE change is the rule in code,
+# read against the Stage 0 CM1 rows on #387 at matched rounds.
+config_name: curriculum_a5_points_cm_r1
+number_of_wargame_models: 18
+number_of_opponent_models: 0
+number_of_objectives: 5
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 6
+number_of_battle_rounds: 10
+deployment_zone: [2, 2, 10, 42]
+opponent_deployment_zone: [50, 2, 58, 42]
+models:
+  - &sq_0 { group_id: 0 }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+  - &sq_4 { group_id: 4 }
+  - *sq_4
+  - *sq_4
+  - &sq_5 { group_id: 5 }
+  - *sq_5
+  - *sq_5
+objectives:
+  - { x: 30, y: 8 }
+  - { x: 30, y: 22 }
+  - { x: 30, y: 36 }
+  - { x: 45, y: 15 }
+  - { x: 45, y: 29 }
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.0
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: all_objectives_occupied
+      params: {}
+observe_objective_control: true
+coherency:
+  enforce_at_deployment: true
+commitments:
+  assignment: greedy

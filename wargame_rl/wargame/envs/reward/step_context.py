@@ -48,6 +48,9 @@ class StepContext:
     # calculator that keys on it pays progress toward / presence on THAT
     # objective instead of its own per-step choice.
     committed_objective: np.ndarray | None = None
+    # The commitment layer's plan weights per player model, `(M, 2)` of
+    # (approach, hold) (#384 execution phase); None unless `execution: plan`.
+    task_weights: np.ndarray | None = None
     # Lazily built by `opponent_distances`; never set by the env.
     _opponent_distance_cache: DistanceCache | None = None
 

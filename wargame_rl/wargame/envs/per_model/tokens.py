@@ -325,10 +325,19 @@ class TokenObservation:
     declaration_mask: np.ndarray  # (P, N_DECLARATIONS) bool
     displacement_mask: np.ndarray  # (P, 1 + n_move + n_advance) bool
     unit_mask: np.ndarray  # (P, 1 + U) bool
+    # The commitment head's tokens and mask (#384 Stage 1): the objective rows
+    # of the context, and per model KEEP + one column per objective, True only
+    # on an `open` point that offers the decision.
+    objective_rows: np.ndarray  # (K,) intp, rows into `context`
+    commit_mask: np.ndarray  # (P, 1 + K) bool
 
     @property
     def n_players(self) -> int:
         return int(self.players.shape[0])
+
+    @property
+    def n_objectives(self) -> int:
+        return int(self.objective_rows.shape[0])
 
     @property
     def n_context(self) -> int:
@@ -576,7 +585,25 @@ def build_tokens(
         declaration_mask=np.asarray(point.declaration_mask, dtype=bool).copy(),
         displacement_mask=displacement_mask_from(point, seat),
         unit_mask=unit_mask_from(point, seat, scenario.enemy_groups),
+        objective_rows=np.arange(
+            objective_start, objective_start + len(env.objectives), dtype=np.intp
+        ),
+        commit_mask=commit_mask_from(point, len(own), len(env.objectives)),
     )
+
+
+def commit_mask_from(
+    point: DecisionPoint, n_models: int, n_objectives: int
+) -> np.ndarray:
+    """`(P, 1 + K)`: the point's commitment decision, all False when it offers none."""
+    mask = np.zeros((n_models, 1 + n_objectives), dtype=bool)
+    if point.commit_mask is None:
+        return mask
+    source = np.asarray(point.commit_mask, dtype=bool)
+    rows = min(n_models, source.shape[0])
+    cols = min(1 + n_objectives, source.shape[1])
+    mask[:rows, :cols] = source[:rows, :cols]
+    return mask
 
 
 # ------------------------------------------------------------ mask derivation
@@ -1001,4 +1028,5 @@ __all__ = [
     "head_for",
     "unit_column_to_value",
     "unit_mask_from",
+    "commit_mask_from",
 ]

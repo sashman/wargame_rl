@@ -13,7 +13,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CommitmentAssignment = Literal["none", "greedy"]
+CommitmentAssignment = Literal["none", "greedy", "rotated", "head"]
+CommitmentExecution = Literal["keyed", "plan"]
 
 
 class CommitmentConfig(BaseModel):
@@ -29,13 +30,36 @@ class CommitmentConfig(BaseModel):
     `greedy`: the ENVIRONMENT writes the ground commitment at deployment --
     the scripted bar's own rule, cheapest objective first, each taking the
     nearest unassigned squad, spares to their nearest -- and holds it until
-    the unit dies or its objective is held by us WITHOUT it (another unit
-    holds it, so this one is redundant and is re-assigned to the nearest
-    objective that is neither ours nor claimed). With a writer on, the
+    the unit dies or, before it has ever arrived, its objective is held by
+    another unit (a latecomer is re-assigned to the nearest objective that
+    is neither ours nor claimed; a unit that has arrived keeps its objective
+    through any walk-off, #392). With a writer on, the
     travel term pays distance closed toward the COMMITTED objective instead
     of its own per-step choice and the staying term pays for ending inside
     it. This is the lever of arm CM1 (#387): the plan given as an
     observation, to read whether the trainer executes a plan it is handed.
+
+    `rotated`: the greedy assignment shifted one unit along in group order,
+    so every unit is assigned an objective that is not its greedy pick. The
+    legibility rung's writer (#393): a policy can only satisfy
+    `all_units_on_commitment` by reading the marked-target relation.
+
+    `head`: the POLICY writes the ground commitment (#384 Stage 1): at a
+    unit's first open of each turn the open step carries one decision -- KEEP
+    or an objective -- drawn by the set network's commitment head; the slot
+    clears on death or as a latecomer (never re-assigned by the environment).
+    The trainer routes the close's outcome terms to the planning stream paid
+    to that decision and trains the members on the execution potentials
+    alone (D2, D6). A scripted seat under `head` writes its own plan, the bar.
+
+    `execution: plan` (the execution phase of #384): a member's reward is the
+    plan-weighted sum of its task terms keyed to its unit's committed
+    objective -- approach x distance closed, hold x ending inside -- and
+    nothing else. The weights are the environment's rule for now (approach
+    until the unit first arrives, then hold; reset on a new target); a
+    planner writes the same two numbers later, hard (0 / 1) or soft. Leaving
+    in hold mode pays exactly zero. The close's outcome terms (coverage, the
+    success bonus) go to the planning stream and never reach a member.
 
     The phase facade ignores this block; the whole-army trainer has its own
     declaration line (`declare_objectives`), a different mechanism.
@@ -45,8 +69,10 @@ class CommitmentConfig(BaseModel):
 
     assignment: CommitmentAssignment = Field(
         default="none",
-        description="Who writes the ground commitment: 'none' or 'greedy' (the "
-        "environment, at deployment, by the scripted bar's rule; sticky).",
+        description="Who writes the ground commitment: 'none', 'greedy' (the "
+        "environment, at deployment, by the scripted bar's rule; sticky) or "
+        "'rotated' (greedy shifted one unit along: the legibility rung) or "
+        "'head' (the policy, at each unit's first open of the turn).",
     )
     combat_set_size: int = Field(
         default=2,
@@ -54,6 +80,35 @@ class CommitmentConfig(BaseModel):
         description="The cap K on a unit's combat set (ANY mode). Stage 0 has no "
         "writer for the combat slot; the cap sizes the state and the masks.",
     )
+    execution: CommitmentExecution = Field(
+        default="keyed",
+        description="How a member's execution reward reads its unit's plan: "
+        "'keyed' (Stage 0: the travel and staying terms target the committed "
+        "objective, every other term as before) or 'plan' (#384 execution "
+        "phase: a member is paid the plan-WEIGHTED sum of its task terms -- "
+        "approach x the travel term, hold x the staying term, each keyed to "
+        "the committed objective -- and nothing else; the weights are "
+        "(1, 0) until the unit first arrives at its objective, then (0, 1), "
+        "reset on a new target; a unit with no commitment has no plan and "
+        "earns nothing; the close's outcome terms go to the planning stream).",
+    )
+
+    @property
+    def plan_weighted(self) -> bool:
+        """True when members are paid the plan-weighted task terms."""
+        return self.execution == "plan"
+
+    @property
+    def streams(self) -> bool:
+        """True when the two reward streams are on: the policy writes the
+        commitment, or the members are paid by the plan -- either way the
+        close's outcome terms never reach a member."""
+        return self.policy_writes or self.plan_weighted
+
+    @property
+    def policy_writes(self) -> bool:
+        """True when the commitment head is the writer (`head`)."""
+        return self.assignment == "head"
 
     @property
     def enabled(self) -> bool:

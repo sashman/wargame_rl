@@ -166,6 +166,43 @@ def _widen_relation_inputs(
     return widened
 
 
+# Parameters a checkpoint written before the commitment head (#384 Stage 1)
+# does not carry. They are initialised fresh, with a warning: no step that
+# offers no commitment decision reads them, so the loaded policy is the one
+# that was saved.
+_STAGE1_HEAD_PREFIXES = (
+    "commit_keep_head.",
+    "commit_query.",
+    "commit_key.",
+    "commit_relation_bias.",
+    "planning_value_head.",
+)
+
+
+def _fill_absent_heads(
+    state_dict: dict[str, torch.Tensor], network: SetNetwork
+) -> dict[str, torch.Tensor]:
+    """Add the network's fresh values for Stage 1 head parameters the
+    checkpoint lacks; any other absent key is left for `load_state_dict` to
+    refuse."""
+    current = network.state_dict()
+    filled = dict(state_dict)
+    absent = [
+        key
+        for key in current
+        if key not in state_dict and key.startswith(_STAGE1_HEAD_PREFIXES)
+    ]
+    for key in absent:
+        filled[key] = current[key].clone()
+    if absent:
+        logger.warning(
+            "{} commitment-head parameters initialised fresh (the checkpoint "
+            "predates #384 Stage 1)",
+            len(absent),
+        )
+    return filled
+
+
 def load_checkpoint(
     path: Path, *, expected_n_displacements: int | None = None
 ) -> LoadedCheckpoint:
@@ -190,7 +227,11 @@ def load_checkpoint(
         SetNetworkConfig(**payload["network_config"]),
         n_displacements=n_displacements,
     )
-    network.load_state_dict(_widen_relation_inputs(payload["state_dict"], network))
+    network.load_state_dict(
+        _fill_absent_heads(
+            _widen_relation_inputs(payload["state_dict"], network), network
+        )
+    )
     return LoadedCheckpoint(
         network=network,
         ppo_config=PerModelPPOConfig(**payload["ppo_config"]),

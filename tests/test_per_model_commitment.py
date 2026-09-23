@@ -325,3 +325,141 @@ def test_combat_set_cap_is_enforced() -> None:
         state.set_combat(1, (3, 4, 5))
     claimants = state.claimants_by_enemy_unit(np.array([3, 4, 5]))
     np.testing.assert_allclose(claimants, [0.5, 0.5, 0.0])
+
+
+# ---------------------------------------------- the revision (#392, #393)
+
+
+def _far_from(env: PerModelEnv, objective: int) -> np.ndarray:
+    """A point well outside `objective`'s disc, inside the board."""
+    target = np.asarray(env.objectives[objective].location, dtype=float)
+    away = target + np.array([-20.0, 0.0])
+    limit = [env.config.board_width - 1.0, env.config.board_height - 1.0]
+    return np.asarray(np.clip(away, 1.0, limit), dtype=float)
+
+
+def _place_unit(env: PerModelEnv, group: int, location: np.ndarray) -> None:
+    for model in env.wargame_models:
+        if int(model.group_id) == group:
+            model.location = location.copy()
+
+
+def _legible_config() -> WargameEnvConfig:
+    from scripts.scenario_overrides import load_env_config
+
+    return load_env_config("configs/experiments/curriculum/a3_legible.yaml")
+
+
+def test_a_unit_that_arrived_keeps_its_commitment_through_a_walk_off() -> None:
+    """R1 (#392): unit A reaches objective k and later walks off while unit C
+    holds k; A keeps k. Unit D, committed to k but never there, is a latecomer
+    and is re-assigned."""
+    env = PerModelEnv(_legible_config())
+    env.reset(seed=2)
+    state = env.player_commitments
+    a, c, d = env.player_seat.living_units()[:3]
+    k = 0
+    on_k = np.asarray(env.objectives[k].location, dtype=float)
+    state.set_ground(a, k)
+    state.set_ground(c, k)
+    state.set_ground(d, k)
+    _place_unit(env, a, on_k)
+    _place_unit(env, c, _far_from(env, k))
+    _place_unit(env, d, _far_from(env, k))
+    retire_and_reassign(state, env.wargame_models, env.opponent_models, env.objectives)
+    assert state.by_group[a].arrived and state.ground_of(a) == k
+    # A walks off; C now holds k; D has still never been there.
+    state.set_ground(c, k)
+    state.set_ground(d, k)
+    _place_unit(env, a, _far_from(env, k))
+    _place_unit(env, c, on_k)
+    reassigned = retire_and_reassign(
+        state, env.wargame_models, env.opponent_models, env.objectives
+    )
+    assert state.ground_of(a) == k, "the earlier claimant keeps its objective"
+    assert d in reassigned and state.ground_of(d) != k, "the latecomer is re-assigned"
+    assert c not in reassigned and state.ground_of(c) == k
+    # A new target resets the flag.
+    state.set_ground(a, 1)
+    assert not state.by_group[a].arrived
+
+
+def test_rotated_assignment_is_a_derangement_of_greedy_on_the_a3_shape() -> None:
+    """R2 (#393): on the A3 column every squad's rotated assignment differs
+    from its greedy pick, and the four assignments are distinct."""
+    from wargame_rl.wargame.envs.per_model.commitment import assign_greedy
+
+    env = PerModelEnv(_legible_config())
+    for seed in range(8):
+        env.reset(seed=seed)
+        rotated = env.player_commitments
+        greedy = CommitmentState(groups=list(rotated.groups))
+        assign_greedy(greedy, env.wargame_models, env.opponent_models, env.objectives)
+        groups = env.player_seat.living_units()
+        assert len({rotated.ground_of(g) for g in groups}) == len(groups)
+        assert all(rotated.ground_of(g) != greedy.ground_of(g) for g in groups)
+
+
+def test_committed_script_follows_the_assignment_and_take_does_not() -> None:
+    """The bar for the legibility rung reads the environment's assignment;
+    plain `take` walks its own greedy plan, which is never the rotated one."""
+    env = PerModelEnv(_legible_config())
+    env.reset(seed=3)
+    groups = env.player_seat.living_units()
+    assigned = [env.objectives[env.player_commitments.ground_of(g)] for g in groups]
+    committed = build_baseline_policy("squad_march_committed")
+    take = build_baseline_policy("squad_march_take")
+    assert committed.squad_objectives(env.wargame_models, env, groups) == assigned  # type: ignore[attr-defined]
+    own = take.squad_objectives(env.wargame_models, env, groups)  # type: ignore[attr-defined]
+    assert all(a is not b for a, b in zip(assigned, own))
+
+
+def test_all_units_on_commitment_asks_each_unit_for_its_own_objective() -> None:
+    """R2's criterion: true only when every unit has a member inside ITS
+    assigned objective; covering the points with the wrong units fails."""
+    from wargame_rl.wargame.envs.reward.criteria.registry import build_criteria
+
+    env = PerModelEnv(_legible_config())
+    retimer = PerStepReward(env)
+    env.reset(seed=5)
+    retimer.reset()
+    criterion = build_criteria("all_units_on_commitment", {})
+    groups = env.player_seat.living_units()
+    state = env.player_commitments
+    ctx = retimer._context(action_phase=None, kills_by_model=None)
+    assert not criterion.is_successful(env, ctx)  # type: ignore[arg-type]
+    for g in groups:
+        target = np.asarray(env.objectives[state.ground_of(g)].location, dtype=float)
+        _place_unit(env, g, target)
+    ctx = retimer._context(action_phase=None, kills_by_model=None)
+    assert criterion.is_successful(env, ctx)  # type: ignore[arg-type]
+    # Swap two units: every objective is still covered, the criterion is not.
+    first, second = groups[0], groups[1]
+    _place_unit(
+        env,
+        first,
+        np.asarray(env.objectives[state.ground_of(second)].location, dtype=float),
+    )
+    _place_unit(
+        env,
+        second,
+        np.asarray(env.objectives[state.ground_of(first)].location, dtype=float),
+    )
+    ctx = retimer._context(action_phase=None, kills_by_model=None)
+    assert not criterion.is_successful(env, ctx)  # type: ignore[arg-type]
+
+
+def test_the_router_scores_every_spec_on_the_per_model_facade_when_the_env_writes() -> (
+    None
+):
+    """A scripted name on a config with a writer plays the per-model facade,
+    where the state exists: on the legibility rung `squad_march_committed`
+    succeeds and plain `take`, walking its own greedy plan, does not."""
+    from wargame_rl.wargame.scoring import evaluate_spec
+
+    config = _legible_config()
+    seeds = [700000, 700001]
+    committed = evaluate_spec("squad_march_committed", config, seeds, "committed")
+    take = evaluate_spec("squad_march_take", config, seeds, "take")
+    assert committed.success_rate == 1.0
+    assert take.success_rate == 0.0

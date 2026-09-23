@@ -560,7 +560,10 @@ Run at least two seeds per arm before reading a difference smaller than ~10pp.
 A per-model checkpoint plays the per-model facade, so it cannot go through
 `evaluate_selector`. `wargame_rl/wargame/scoring.py::evaluate_spec` is the one facade
 branch: a `.pt` runs through `envs/per_model/evaluate.py` in waves and everything else
-runs through the phase facade exactly as before; both produce the same `EvalResult`
+runs through the phase facade exactly as before — except on a config with a commitment
+writer (`commitments.assignment` other than `none`), where every spec, a scripted name
+included, plays the per-model facade, since the phase facade has no commitment state and a
+bar scored there would play a different game from the checkpoints beside it; both produce the same `EvalResult`
 through the same end-of-episode readouts (`envs/evaluation/`), so a `.pt` row and a
 script row sit on one table and pair per seed. The per-model facade runs **no
 decode**, so `decode_topk` is refused with a `.pt` rather than ignored.
@@ -595,12 +598,47 @@ into the state, so every column has the bar as its reference.
 | `empty` | share of living unit-turns with no ground commitment while some objective was not ours |
 | `follow` | member follow-through: share of movement `act` steps by a member with a ground commitment that closed distance to it or ended inside it |
 | `leave` | the walk-off probe's number on the COMMITTED objective: share of movement decisions by a member inside it that ended outside it |
+| `hold` | share of committed unit-turns in HOLD mode (the unit has arrived; its plan weights are (0, 1)), and after `decl` the share of movement openings by a unit in hold mode that declared the closing declaration — the whole unit stands (#384 execution phase) |
 
 On `a5_points.yaml` the bar `squad_march_take` reads persist 0.96, claim
 1.20 / max 2, complete 1.00, empty 0.00, follow 1.00, leave 0.00 (n=3,
 seeds 700000+); `random` has no commitments (empty 1.00). A commitment head
 (Stage 1) is read on `persist` and `claim` before its success; a policy
 executing a given assignment (CM1) on `follow` and `leave`.
+
+### The planning stream's panel (#384 Stage 1)
+
+On a run whose commitment writer is the policy (`commitments.assignment:
+head`), the update row carries the planning stream beside the health panel:
+`train/planning/commit_rows` (commitment decisions in the update),
+`train/planning/explained_variance` (the planning value head against the
+semi-Markov returns over commitment steps), `train/planning/return_mean`,
+`train/planning/advantage_std` (before normalisation),
+`train/planning/clip_fraction` (the commitment surrogate's clipped share)
+and `train/entropy/head/commitment` (nats over KEEP + the objectives). All
+0.0 on a run without the head. Read the planning explained variance the
+way the member panel's is read: a planning critic that never fits is a
+commitment head trained on noise.
+
+### The flag ablation — `just measure-commitment-ablation`
+
+Whether a per-model policy READS its commitment, as opposed to being paid
+against it (`scripts/measure_commitment_ablation.py`, #384 R3). Each
+checkpoint is scored four times on identical seeds with the reward untouched
+(it is not computed at play) and only the observation changed: `trained`
+(the marked-target relation as the environment writes it), `blank` (the
+relation present, nothing flagged), `misdirect` (every unit's flag moved to
+the next objective, never the one the environment pays against) and
+`nearest` (every model's flag moved to its nearest objective, read off the
+relation's own offset columns). Success unchanged under `blank` means the
+members never read the flag; a drop under `misdirect` or `nearest` means
+they follow it. `nearest` is the legibility rung's confound: on a rung
+whose assignment is deliberately not the nearest, a policy that walks to
+the nearest objective scores the same under `nearest` as under `trained`.
+Stage 0 read on both A3 and the half-step: trained, blank and misdirect
+within a few hundredths of each other on every seed — the policy never
+read the pointer. Run it on every arm that adds an observation the reward
+keys on, before calling the arm a plan.
 
 ### The per-head match of a per-model clone
 

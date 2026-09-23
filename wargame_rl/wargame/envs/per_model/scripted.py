@@ -183,6 +183,14 @@ def _emit_ground_commitments(policy: PhasePolicy, seat: Seat, env: PerModelEnv) 
     commitment state (#384, D8): the bar has a row on every commitment
     readout, and nothing else changes -- a script does not read reward, and
     with the layer off the tokens and the retimer ignore the state."""
+    if env.config.commitments.enabled and not env.config.commitments.policy_writes:
+        # The environment is the writer: its assignment is the plan of record
+        # and a script's own plan must not overwrite it, or the readouts on a
+        # rung whose assignment is NOT the script's (the legibility rung, #393)
+        # would read the script's plan as followed. `squad_march_committed`
+        # reads the state instead of writing it. Under `head` the policy is
+        # the writer and a script, having no head, writes its own plan: the bar.
+        return
     squad_objectives = getattr(policy, "squad_objectives", None)
     if squad_objectives is None or not seat.is_player:
         # The opponent's commitments are hidden information; its script reads

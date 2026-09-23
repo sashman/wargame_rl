@@ -1,0 +1,61 @@
+# #384 Stage 1 (arm CM3 on A3's shape, #398): the commitment HEAD. The environment
+# writes nothing at deployment; at each squad's first open of the turn the set
+# network's commitment head draws KEEP or an objective, the env writes it, and
+# the trainer pays the close's outcome terms (coverage, the success bonus) to
+# that decision on the planning stream with a semi-Markov return over the
+# squad's commitment steps, while the members are paid the travel potential
+# keyed to the committed objective alone (D1, D2, D4, D6). Success is A3's own
+# `all_objectives_occupied`. Read against A3's own runs (0.700 / 0.800 / 0.770 at
+# the cap) and against `a3_cm` (the environment's greedy assignment given:
+# 0.820 / 0.850 / 0.930). The bar is `squad_march_take`, which writes its own
+# greedy plan into the state under `head`.
+config_name: curriculum_a3_head
+number_of_wargame_models: 12
+number_of_opponent_models: 0
+number_of_objectives: 4
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 4
+number_of_battle_rounds: 8
+deployment_zone: [4, 4, 10, 40]
+opponent_deployment_zone: [50, 16, 56, 28]
+models:
+  - &sq_0 { group_id: 0 }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+objectives:
+  - { x: 35, y: 8 }
+  - { x: 35, y: 17 }
+  - { x: 35, y: 27 }
+  - { x: 35, y: 36 }
+coherency:
+  enforce_at_deployment: true
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.0
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: all_objectives_occupied
+      params: {}
+observe_objective_control: true
+commitments:
+  assignment: head

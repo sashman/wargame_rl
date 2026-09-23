@@ -41,9 +41,16 @@ class UnitCommitment:
 
     ground: int = NO_TARGET
     combat: tuple[int, ...] = ()
+    # Set at the first turn close on which a member stood inside `ground`;
+    # cleared whenever the slot changes. A unit that has arrived keeps its
+    # ground commitment through any walk-off (#392): only a LATECOMER to an
+    # objective another unit holds is re-assigned.
+    arrived: bool = False
 
     def copy(self) -> UnitCommitment:
-        return UnitCommitment(ground=self.ground, combat=tuple(self.combat))
+        return UnitCommitment(
+            ground=self.ground, combat=tuple(self.combat), arrived=self.arrived
+        )
 
 
 def unit_centroids(models: list[WargameModel], groups: list[int]) -> np.ndarray:
@@ -118,10 +125,15 @@ class CommitmentState:
 
     # ------------------------------------------------------------- writers
     def set_ground(self, group: int, objective: int) -> None:
-        self.by_group[int(group)].ground = int(objective)
+        slot = self.by_group[int(group)]
+        if slot.ground != int(objective):
+            slot.arrived = False
+        slot.ground = int(objective)
 
     def clear_ground(self, group: int) -> None:
-        self.by_group[int(group)].ground = NO_TARGET
+        slot = self.by_group[int(group)]
+        slot.ground = NO_TARGET
+        slot.arrived = False
 
     def set_combat(self, group: int, targets: tuple[int, ...]) -> None:
         if len(targets) > self.combat_set_size:
@@ -161,6 +173,24 @@ class CommitmentState:
                 if t in index:
                     out[index[t]] += share
         return out
+
+    def task_weights(self, group: int) -> tuple[float, float]:
+        """The unit's plan weights `(approach, hold)` (#384, execution phase):
+        a committed unit approaches until it has first arrived at its
+        objective, then holds; a unit with no ground commitment has no plan
+        and both weights are 0. The environment's rule for now; a planner
+        writes the same two numbers later."""
+        slot = self.by_group.get(int(group))
+        if slot is None or slot.ground == NO_TARGET:
+            return (0.0, 0.0)
+        return (0.0, 1.0) if slot.arrived else (1.0, 0.0)
+
+    def task_weights_per_model(self, models: list[WargameModel]) -> np.ndarray:
+        """`(M, 2)` of each model's unit's `(approach, hold)` weights."""
+        weights = np.zeros((len(models), 2), dtype=float)
+        for i, model in enumerate(models):
+            weights[i] = self.task_weights(int(model.group_id))
+        return weights
 
     def committed_objective_per_model(self, models: list[WargameModel]) -> np.ndarray:
         """`(n_models,)` int: each model's unit's ground objective, or -1."""
@@ -220,17 +250,59 @@ def assign_greedy(
         state.set_ground(g, target)
 
 
+def assign_rotated(
+    state: CommitmentState,
+    own: list[WargameModel],
+    enemies: list[WargameModel],
+    objectives: list[WargameObjective],
+) -> None:
+    """The greedy assignment shifted one unit along in group order (#393).
+
+    Every unit is assigned the objective the greedy rule gave the NEXT unit,
+    so on a shape where greedy gives every unit a distinct objective (the A3
+    column) no unit is assigned its own greedy pick, and a policy that walks
+    to its nearest objective cannot satisfy `all_units_on_commitment`. This
+    is the legibility rung's writer: the assignment is only knowable from
+    the marked-target relation. With one unit or one objective it is the
+    greedy assignment.
+    """
+    groups = [
+        g for g in state.groups if any(m.is_alive and int(m.group_id) == g for m in own)
+    ]
+    if not groups or not objectives:
+        return
+    _own_counts, enemy_counts, _norms = objective_counts_both_sides(
+        own, enemies, objectives
+    )
+    centroids = unit_centroids(own, groups)
+    locations = np.array([o.location for o in objectives], dtype=float)
+    targets = greedy_assignment(centroids, locations, enemy_counts)
+    if len(targets) > 1:
+        targets = targets[1:] + targets[:1]
+    for g, target in zip(groups, targets):
+        state.set_ground(g, target)
+
+
 def retire_and_reassign(
     state: CommitmentState,
     own: list[WargameModel],
     enemies: list[WargameModel],
     objectives: list[WargameObjective],
+    *,
+    reassign: bool = True,
 ) -> list[int]:
     """The ground slot's retirement under the greedy writer, at a turn close.
 
     A unit's ground commitment retires when the unit is dead, or when its
     objective is held by us WITHOUT any of its own living members inside it
-    (another unit holds it, this one is redundant). A retired living unit is
+    AND the unit has never arrived there (another unit holds it and this one
+    is a latecomer). A unit that has ever had a member inside its objective
+    keeps the commitment through any walk-off (#392): Stage 0 re-assigned
+    the walker for free and the leaving step paid nothing on the six-squad,
+    five-objective shape, where two squads share an objective from
+    deployment. With `reassign=False` (the policy is the writer, #384 Stage
+    1) a retired living unit's slot is cleared and the head decides at its
+    next open; otherwise a retired living unit is
     re-assigned to the nearest objective that is neither ours nor claimed by
     another unit; failing that the nearest not ours; failing that it keeps
     what it had (every objective is ours). Returns the groups re-assigned.
@@ -253,7 +325,14 @@ def retire_and_reassign(
         if current == NO_TARGET:
             continue
         inside = any(norms[i, current] <= radii[current] for i in members)
-        if not (bool(ours[current]) and not inside):
+        slot = state.by_group[g]
+        if inside:
+            slot.arrived = True
+        if not (bool(ours[current]) and not inside and not slot.arrived):
+            continue
+        if not reassign:
+            state.clear_ground(g)
+            reassigned.append(g)
             continue
         claimed = {
             c.ground
@@ -277,6 +356,7 @@ __all__ = [
     "CommitmentState",
     "UnitCommitment",
     "assign_greedy",
+    "assign_rotated",
     "greedy_assignment",
     "objective_counts_both_sides",
     "retire_and_reassign",
