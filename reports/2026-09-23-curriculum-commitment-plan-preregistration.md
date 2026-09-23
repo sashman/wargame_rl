@@ -298,3 +298,41 @@ were learning to walk.**
 
 Files: `plan-pl{1,2}-{40960,81920,final}.txt`, `ablation-pl*-*-planonly.txt`,
 `planning-panel-final.txt`, `plan-cm3-final-v2.txt` in the session drafts.
+
+## Amendment 3 — written 2026-09-23 21:50: Sash's decision on Step 4 — CM4 launched on PL1's recipe, and a frozen-planner members rung (FH1) beside it
+
+Sash (2026-09-23): "launch both". Both arms on `a3_head.yaml`, three seeds,
+122,880 rounds, the recipe as PL1's minus `--members`, Wandb group
+`curriculum-cm-plan`.
+
+| arm | the one change | what it asks |
+|---|---|---|
+| **CM4** (#405) | the head AND the members learn together from scratch (no `--members`; the broadcast credit; KEEP illegal on an empty slot, which CM3 lacked) | does the head still plan when its members are learning? |
+| **FH1** | `--frozen-planner <PL1 seed-s last.pt>`: PL1's finished head, seed for seed, draws every commitment (greedy, its weights fixed, its network never in the optimiser); the executor network learns the member heads and the execution value under that plan | can the members learn to walk a known-good plan? |
+
+**Reads** at 40,960 / 81,920 / 122,880, n=100 on 700000+, gated on the logs
+and the exit: for CM4 `measure-plan`'s **as-trained row beside its own
+head's plan-only row** (the same checkpoint, the head with the bar's
+members), the commitment readouts, the census, the walk-off probe, the
+ablation; for FH1 the split row (PL1's planner + the executor), the
+planner's own plan-only row as the plan's ceiling, the commitment readouts
+through the split chooser.
+
+**Criteria, per seed at 122,880, as-trained (CM4) or split (FH1):** PASS
+success ≥ 0.95; AHEAD ahead of A3 from scratch (0.700 / 0.800 / 0.770) by
+more than two binomial SE; NULL otherwise. Comparators by name: CM3 (0.030 /
+0.000 / 0.000), the environment-assigned `a3_cm` (0.820 / 0.850 / 0.930), A3
+from scratch, and for FH1 the planner's plan-only row (1.000 ×3).
+
+**What the pair separates.** CM4's plan-only row holding ≥ 0.95 while its
+as-trained row sits low → the head is fine and the members are the wall (FH1
+then says whether they can learn at all under a fixed good plan). CM4's
+plan-only row itself degrading → the members' learning degrades the plan
+(the noise on the planning return, or the members walking away from what
+the head commits). FH1 PASS with CM4 low → the join is the problem, not
+either half. FH1 low → execution under a good plan is the wall, and the
+arrived-keeps / leaving-step findings on the half-step apply here too.
+
+**Expectation (a guess, written so it can be wrong).** CM4: as-trained
+0.3–0.7 with the plan-only row at 0.9–1.0 on two seeds — the head plans,
+the members lag it; FH1: 0.85–1.0 on 3/3 by the cap, a turn behind the bar.
