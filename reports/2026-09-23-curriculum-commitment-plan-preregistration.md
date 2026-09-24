@@ -595,3 +595,94 @@ the board is a plan they do not learn to read.
    two thirds of the budget on both rows; CH1 (two-layer heads) reads with
    CM4 at a third. Their finals land in amendment 7 with the WIDER and
    DEEPER clauses; neither gates the route above.
+
+## Amendment 7 — written 2026-09-24 05:36: the two size arms — CW1 NOT WIDER (the wide head unlearned its plan), CH1 NOT DEEPER (the deeper heads' plan went backwards too) — size is not the join's lever at either end
+
+Both arms on CM4's recipe, three seeds, 122,880 rounds, read at 40,960 /
+81,920 / 122,880 on the same n=100 and seeds as CM4, each checkpoint as
+trained beside its own head's plan-only row. Comparator by name: **CM4 at
+matched rounds** (as trained 0.000 / 0.160 / 0.000 → 0.000 / 0.190 /
+0.210 → 0.000 / 0.370 / 0.320; plan-only 0.01 / 0.17 / 0.16 → 0.19 / 0.53 /
+0.55 → 0.72 / 0.68 / 0.72). Wandb group `curriculum-cm-plan`: CW1
+6zuta7ol / 4wdd6u88 / py7vt1jo, CH1 qrpb6pz4 / utgi1ii9 / jo8mfh29.
+Revision `49f3957`.
+
+### CW1 (#409) — the whole-army trunk's size (8 layers × 256, ~5M parameters)
+
+| read | as trained (success · held) | plan-only (success · held · distinct mean / end) |
+|---|---|---|
+| 40,960 | 0.000 / 0.000 / 0.000 · 1.63 / 1.88 / 2.16 | 0.400 / 0.010 / 0.000 · 3.29 / 1.87 / 2.17 · 0.62 / 0.51 / 0.66 (end 0.59 / 0.35 / 0.74) |
+| 81,920 | 0.020 / 0.000 / 0.030 · 1.88 / 1.51 / 1.84 | 0.010 / 0.310 / 0.250 · 1.82 / 2.76 / 2.71 · 0.54 / 0.67 / 0.46 (end 0.31 / 0.56 / 0.50) |
+| **122,880** | **0.000 / 0.000 / 0.210** · 1.60 / 2.22 / 2.82 | **0.000 / 0.000 / 0.000** · 1.25 / 2.03 / 1.40 · 0.53 / 0.53 / 0.37 (end 0.26 / 0.47 / 0.25) |
+
+**Verdict, per seed at the cap as trained: NULL / NULL / NULL. WIDER: no**
+— behind CM4's same-seed row on two seeds (0.00 v 0.37, 0.21 v 0.32) and
+level at zero on the third, and behind CM4 on the plan-only row on every
+seed by 0.68–0.72.
+
+- **The wide head UNLEARNED its plan.** Plan-only 0.40 on s1 at a third
+  of the budget, 0.31 / 0.25 on s2 / s3 at two thirds, 0.000 on all three
+  at the cap, with last-turn coverage falling to 0.25–0.47 and claimants
+  1.64–2.31 per claimed objective (a stack). Commitment entropy 0.40 /
+  0.94 / 0.68 nats in the last quarter, planning return 0.30–0.43 (PL1
+  2.6), planning EV 0.00–0.27 — s3's fell to 0.000 over the last quarter.
+  A larger trunk fitted the noisy planning return faster and to nothing.
+- The members read as CM4's: leave 0.51–0.64, standing still on 0.00 of
+  their decisions on an objective, a point empty in 70–100% of episodes on
+  s1 / s2, max stack 2.9–3.9. The ablation is flat on s1 / s2 (the members
+  read nothing); on s3 the greedy nearest assignment (0.29) beats the
+  head's (0.21). Executor EV 0.76–0.86 (CM4's members ~0.75), displacement
+  entropy 1.6 nats.
+
+### CH1 (#410) — two-layer policy heads on the shipped trunk
+
+| read | as trained (success · held) | plan-only (success · held · distinct mean / end) |
+|---|---|---|
+| 40,960 | 0.000 / 0.020 / 0.000 · 1.29 / 2.50 / 2.34 | 0.270 / 0.200 / 0.020 · 3.02 / 2.70 / 2.34 · 0.44 / 0.50 / 0.56 (end 0.43 / 0.60 / 0.56) |
+| 81,920 | 0.000 / 0.020 / 0.010 · 1.84 / 2.14 / 2.14 | 0.210 / 0.370 / 0.070 · 2.52 / 3.05 / 2.00 · 0.55 / 0.59 / 0.40 (end 0.49 / 0.60 / 0.30) |
+| **122,880** | **0.020 / 0.000 / 0.000** · 1.65 / 2.02 / 1.57** | **0.090 / 0.050 / 0.000** · 2.20 / 2.03 / 1.03 · 0.46 / 0.45 / 0.38 (end 0.49 / 0.28 / 0.25)** |
+
+**Verdict, per seed at the cap as trained: NULL / NULL / NULL. DEEPER:
+no** — behind CM4's same-seed row on two seeds (0.00 v 0.37, 0.00 v 0.32) and level at zero on the third, and behind CM4 on the plan-only row on every seed by 0.63–0.72.**
+
+- **The deeper heads' plan went backwards as the wide trunk's did.** Plan-only 0.27 / 0.20 / 0.02 at a third, 0.21 / 0.37 / 0.07 at two thirds, 0.09 / 0.05 / 0.00 at the cap, last-turn coverage 0.25–0.49, claimants 1.90–2.47 per claimed objective. Commitment entropy 0.91 / 0.99 / 1.02 nats in the last quarter (never converged; CM4's s2 reached 0.39), planning return 0.25–0.33 (PL1 2.6), planning EV 0.16–0.29, planning clip fraction 0.29–0.34.
+- **The members are the worst of the three sizes.** Standing still on 0.00 of their decisions on an objective, leaving on 0.59–0.76 (paid −0.009 for the leaving step and −0.004 to +0.002 for the keeping one); the ablation is flat on every seed (blank, misdirect, nearest and no-claimants all within 0.04 of trained — nothing in the plan reaches them); the census puts 4.2–6.0 of 12 bodies on 1.7–2.0 objectives with max stacks of 3.5–5.0 and the first objective empty in 90–100% of episodes. Displacement entropy 1.9–2.0 nats at the cap (CM4's members 1.7–2.1, CW1's 1.6), executor EV 0.76–0.82.
+
+### What the pair says
+
+Three sizes of the same join on the same recipe, and the shipped one is the best of them on both rows:
+
+| at 122,880 | as trained | plan-only | commitment entropy, last quarter |
+|---|---|---|---|
+| CM4 (4 × 128, linear heads; 1.23M) | 0.00 / 0.37 / 0.32 | **0.72 / 0.68 / 0.72** | 1.00 / 0.39 / 0.65 |
+| CW1 (8 × 256; ~5M) | 0.00 / 0.00 / 0.21 | 0.00 / 0.00 / 0.00 | 0.40 / 0.94 / 0.68 |
+| CH1 (4 × 128, two-layer heads) | 0.02 / 0.00 / 0.00 | 0.09 / 0.05 / 0.00 | 0.91 / 0.99 / 1.02 |
+
+- **Size is not the join's lever, at either end.** A four-times wider and
+  deeper trunk and a nonlinear readout each read NULL ×3 and behind the
+  shipped network on every seed on both rows. Sash's premise ("we don't
+  have enough parameters") is answered on this rung: the 1.23M network
+  plans at 1.000 with scripted members and holds the six-objective clone,
+  and adding parameters made the join worse, not better.
+- **At every size the head's plan under learning members goes BACKWARDS
+  through training on some seeds** — CW1 on all three (0.40 → 0.00 on s1),
+  CH1 on two, CM4 on none (its plan-only row rose monotonically, 0.01 → 0.72).
+  The larger and the more nonlinear the policy, the faster it fits a
+  planning return that is a fifth to a tenth of PL1's and dominated by
+  execution failures, and what it fits is a stack. The noisy return is the
+  mechanism amendment 4 named, and more capacity makes it bite sooner.
+- **The members do not read the plan at any size** (the ablation is flat
+  on CW1 s1 / s2 and on every CH1 seed) and leave the objectives they
+  reach at the same 0.5–0.76 wherever the capacity went. The executor's
+  wall (amendment 6) is not a capacity wall either.
+- Expectations, scored: amendment 4 guessed CW1 not WIDER at as-trained
+  0.1–0.4 with plan-only 0.1–0.5 and commitment entropy above 0.8 —
+  right on the clause, low on the plan (0.00) and wrong on the entropy on
+  two seeds (0.40 / 0.68: the wide head converged, to a stack). Amendment
+  5 guessed CH1 not DEEPER with the one place it could matter the
+  plan-only row and the claimant ablation — right on the clause, and the
+  plan-only row moved the WRONG way.
+- ⚠ **Do not run another size arm on the join**, and read the
+  1.23M-parameter set network as sufficient for every rung the ladder has
+  reached. If capacity is ever the question again, ask it on a rung the
+  network fails with scripted members (none so far), never on a join.
