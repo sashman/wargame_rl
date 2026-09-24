@@ -419,3 +419,179 @@ readout could matter is the commitment pointer, whose per-token bilinear
 score cannot compare "claimed by someone else" across tokens directly, so if
 anything moves it is the plan-only row and the claimant ablation, not the
 as-trained success.
+
+## Amendment 6 — written 2026-09-24 04:32: the join read — CM4 NULL ×3 with its head planning at 0.72, FH1 NULL ×3 under PL1's planner, and a frozen planner is not a fixed plan
+
+Both arms read at 40,960 / 81,920 / 122,880, n=100 on seeds 700000+, gated
+on the round line in every seed's log and on the trainers' exit for the
+final. CM4's rows are its own checkpoint as trained beside the same
+checkpoint's head on the plan-only row (the bar's members walking what it
+commits); FH1's are the split row (PL1's frozen planner committing, the
+executor walking) beside the executor alone (its own never-trained head
+committing) and the planner's plan-only ceiling. Wandb group
+`curriculum-cm-plan`: CM4 7er89mzx / fcbsyjp0 / hgk41vpx, FH1 wgjef4rv /
+mngkjdad / 02uqvzh3. Revision `49f3957` (the FH1 build `29bfedc`).
+
+⚠ Two instances of this conversation ran in parallel between roughly
+22:30 and 01:20 after a restart; both posted the CM4 40,960 / 81,920 and
+FH1 40,960 reads on #405 and #408, so each of those reads appears twice
+there, identical. The later copy of each pair is the one this amendment
+was written from. Nothing else was duplicated: one chain, one set of
+checkpoints, one landing.
+
+### CM4 (#405) — head and members from scratch
+
+| read | as trained (success · held · leave) | the same head plan-only (success · held · distinct mean / end) |
+|---|---|---|
+| 40,960 | 0.000 / 0.160 / 0.000 · 1.91 / 1.89 / 1.35 · 0.75 / 0.65 / n/a | 0.010 / 0.170 / 0.160 · 1.54 / 2.82 / 2.79 · 0.37 / 0.57 / 0.38 (end 0.30 / 0.68 / 0.41) |
+| 81,920 | 0.000 / 0.190 / 0.210 · 1.58 / 2.68 / 2.69 · 0.55 / 0.67 / 0.70 | 0.190 / 0.530 / 0.550 · 2.01 / 3.38 / 3.42 · 0.51 / 0.69 / 0.70 (end 0.47 / 0.67 / 0.62) |
+| **122,880** | **0.000 / 0.370 / 0.320** · 2.01 / 2.94 / 2.96 · 0.77 / 0.73 / 0.68 | **0.720 / 0.680 / 0.720** · 3.67 / 3.57 / 3.71 · 0.68 / 0.77 / 0.69 (end **0.88 / 0.72 / 0.84**) |
+
+**Verdict on the letter, per seed at 122,880 as trained: NULL / NULL /
+NULL.** A3 from scratch is 0.700 / 0.800 / 0.770; no seed is within two
+binomial SE of it, none reaches 0.95. Comparators: CM3 (the same join
+without the KEEP rule) 0.030 / 0.000 / 0.000 — the one mechanic changed
+between them moved two seeds from zero to a third; the environment-assigned
+`a3_cm` 0.820 / 0.850 / 0.930; PL1's head plan-only 1.000 ×3 at every read
+from 40,960.
+
+- **The head plans under learning members, late and not fully.** Its
+  plan-only row climbs 0.01–0.17 → 0.19–0.55 → 0.68–0.72, covering 0.72–0.88
+  of the objectives on the last turn (PL1: 0.93–0.97). At 40,960 it was
+  stacking (claimants 1.64–2.44 per claimed objective); at the cap 1.23–1.43.
+  A bar's members walking CM4's final plan reach 0.72, not 1.000: the plan
+  is roughly a quarter of the shortfall at the cap and most of it at a
+  third of the budget.
+- **The members lag their own head's plan by 0.35–0.72.** Given the plan
+  the same checkpoint produces, the bar's members finish at 0.68–0.72 and
+  CM4's own at 0.00–0.37, with the leave share 0.68–0.77 (the bar's members
+  under the same plan: 0.01). The walk-off probe reads as every per-model
+  row on the half-step: a body on an objective stands still on 0.00 of its
+  decisions and leaves on 0.58–0.74, paid +0.006 to +0.018 for a move that
+  keeps the objective and −0.001 to −0.012 for one that leaves it — the sign
+  is right and the magnitude is a few thousandths.
+- **The members read the mark on two seeds (STEERS on s2 and s3).**
+  Blanking the commitment relation takes s2 0.37 → 0.00 and s3 0.32 → 0.00;
+  misdirecting it 0.00 / 0.17; the greedy nearest assignment in place of the
+  head's 0.15 / 0.59 (s3 is BETTER under the greedy plan than under its own
+  head — the plan's share of that seed's shortfall); removing the claimant
+  counts from the head's view 0.00 / 0.00 / 0.06 (the head reads the counts,
+  as PL1's did). s1 reads nothing (0.00 in every column) and is the seed
+  whose members never left the stack: its census holds 2.0 objectives with a
+  maximum stack of 4.0 and the first objective empty in 80% of episodes,
+  where s2 and s3 hold 3.0 with stacks of 2.5–2.9.
+- **The planning panel at the cap**: planning return 0.24 / 0.47 / 0.53
+  (PL1 2.6), commitment entropy 1.00 / 0.39 / 0.65 nats (PL1 0.50–0.63),
+  planning EV 0.39 / 0.09 / 0.10, planning clip fraction 0.24–0.31. The
+  head's return is a fifth to a tenth of PL1's because its members complete
+  a fifth to a tenth as often; the head learns from what the members
+  deliver, and they deliver late.
+- In-run `held` by quarter: s1 0.98 → 1.73 → 1.61 → 1.70 (flat from the
+  second quarter), s2 0.86 → 2.04 → 2.71 → 2.96, s3 1.24 → 1.64 → 2.48 →
+  3.06 — two seeds still climbing at the cap, one parked.
+
+### FH1 (#408) — the members under PL1's frozen planner, seed for seed
+
+| read | split: PL1's planner + the executor (success · held · leave · distinct end) | the executor alone, its untrained head committing (success · held) |
+|---|---|---|
+| 40,960 | 0.160 / 0.430 / 0.040 · 2.53 / 3.27 / 1.53 · 0.44 / 0.31 / 0.87 · 0.69 / 0.64 / 0.72 | 0.200 / 0.530 / 0.090 · 2.49 / 3.40 / 1.91 |
+| 81,920 | 0.260 / 0.600 / 0.600 · 3.10 / 3.52 / 3.48 · 0.30 / 0.27 / 0.32 · 0.66 / 0.64 / 0.67 | 0.310 / 0.420 / 0.630 · 3.22 / 3.14 / 3.52 |
+| **122,880** | **0.370 / 0.610 / 0.630** · 3.21 / 3.59 / 3.60 · 0.48 / 0.38 / 0.20 · **0.71 / 0.59 / 0.71** | **0.400 / 0.480 / 0.720** · 3.29 / 3.40 / 3.67 |
+
+The planner's own ceiling on every read, with the bar's members: plan-only
+1.000 ×3, distinct 0.84–0.90 per turn and **0.93–0.97 on the last turn**.
+The executor's panel is healthy: explained variance 0.95–0.96 in the last
+quarter, displacement entropy falling 2.4–2.8 → 1.2–1.5 nats, clip fraction
+0.33–0.35.
+
+**Verdict on the letter, per seed at 122,880 on the split row: NULL /
+NULL / NULL** — below A3 from scratch (0.700 / 0.800 / 0.770) on every
+seed, by 3–7 binomial SE, and below the environment-assigned `a3_cm`
+(0.820 / 0.850 / 0.930) by more.
+
+- ⚠ **A FROZEN PLANNER IS NOT A FIXED PLAN.** The head is adaptive
+  (commit, watch, re-commit), so its commitments are a function of what
+  its members do — and under members who arrive late and leave, the SAME
+  weights that cover 0.93–0.97 of the objectives on the last turn with the
+  bar's members cover **0.59–0.71** with the executor's. The plan the
+  members were trained under was never the 1.000 plan; it was the 1.000
+  planner reacting to their own execution, and the reaction is worse. The
+  coupling runs both ways even with one side's weights fixed. Only the
+  WRITER fixes a plan: `a3_cm`'s greedy arrived-keeps writer gave the same
+  reward and the same trainer 0.820 / 0.850 / 0.930.
+- ⚠ **What the members learn is mostly not the plan.** With their own
+  never-trained head committing at random (claimants 1.8–2.4 per claimed
+  objective, a stack), the same members read 0.400 / 0.480 / 0.720 —
+  paired against the split row −0.03 / +0.13 / −0.09, ahead on two seeds.
+  On A3's shape a covering walk is reconstructible from the board (the
+  nearest objective per squad IS the assignment on most layouts), so an
+  executor learns the geometry and follows the mark only where the two
+  differ. This is the A3 finding (the members never read the marked
+  target; the lift was the reward keying) one rung up.
+- The leave share under the frozen planner falls with training (0.87 →
+  0.20 on s3) and sits at 0.20–0.48 at the cap — CM4's own members
+  0.68–0.77 — and `held` climbs through the run (in-run by quarter 1.22 →
+  2.81 → 3.13 → 3.32, 2.15 → 3.19 → 3.53 → 3.76, 1.93 → 2.86 → 3.48 → 3.40:
+  s1 still climbing, s2 and s3 flat over the last third). Two seeds are on
+  a plateau below the bar; an extension would read that plateau.
+
+### Which half fails
+
+Both, and the answer is not the sum of two halves. **The head's half is
+a quarter of CM4's shortfall and improving** (plan-only 0.72 at the cap,
+1.000 when its members are the bar's). **The members' half is the larger
+and the slower**: under their own head's plan they finish 0.35–0.72 behind
+it; under a frozen planner they reach 0.37–0.63, behind A3 with no
+commitments at all; and what they learn is a geometry walk the plan barely
+enters. **And the two halves cannot be separated by freezing weights**,
+because an adaptive planner's plan is a function of its executor: FH1
+measured the members under a worse plan than PL1's, produced by PL1's
+weights. Amendment 3's expectations, scored: CM4 as-trained 0.3–0.7 with
+the plan-only row 0.9–1.0 on two seeds — read 0.00–0.37 and 0.68–0.72, the
+head planning worse under learning members than guessed; FH1 0.85–1.0 on
+3/3 by the cap, a turn behind the bar — read 0.37–0.63, two and a half
+turns behind, and the guess was wrong about the mechanism as well as the
+number (it assumed the plan was fixed).
+
+What is now measured on A3's shape, all on the per-model trainer, the same
+reward: no plan 0.70 / 0.80 / 0.77; a stable greedy plan written by the
+environment **0.82 / 0.85 / 0.93**; an adaptive learned plan, frozen, 0.37 /
+0.61 / 0.63; a learned plan and learned members together 0.00 / 0.37 / 0.32;
+a learned plan with the bar's members 1.000 ×3. **The ordering says the
+members want a plan that holds still**, and that a plan they can read off
+the board is a plan they do not learn to read.
+
+### What this asks of #384 (proposed; Sash decides)
+
+1. **Do not run the half-step under the joint head.** Neither half holds
+   on A3's shape, and the half-step is where the geometry walk fails
+   (0.03–0.33 from every per-model setting), so a joint arm there would
+   read the members' failure and the head's at once and separate neither.
+2. **Do not extend FH1.** Two seeds are flat over the last third and the
+   plan they train under is not the one the extension would be credited
+   to; the number an extension would buy is already bounded by `a3_cm`.
+3. **Make the head's plan hold still — the commitment a body can carry
+   across steps that #384 names.** The one lever the A3 ordering points at
+   is the writer's stability: the greedy arrived-keeps writer beats no
+   plan and the adaptive head. A middle rung, one change: **FH1 with the
+   frozen planner's commitments made sticky** (the head decides only when
+   a unit's slot is EMPTY — at its first open and after the environment's
+   retirement rule clears it — and KEEP is forced otherwise; a small build,
+   one config flag on the head writer), read split beside alone. Prediction: split above `a3_cm`'s band on 2/3
+   (the head's plan is at least the greedy one, held still), and the alone
+   row unchanged. If it reads there, the same rule goes into the joint
+   head's writer (CM5) before anything trains jointly again.
+4. **Climb to the half-step by the staged route: PL3, the plan-only head
+   on A5-points, then FH2, the members under PL3's planner under the
+   sticky rule.** Both are CPU arms. PL3 asks whether the head plans five
+   objectives for six squads when the bar's members execute (the bar
+   solves the half-step at 1.000, so the ceiling exists); FH2 asks whether
+   members can walk a plan they CANNOT reconstruct from the board — the
+   executor-alone row there is the legibility readout A3's shape cannot
+   give (alone reads 0.03–0.33 on the half-step, so any split lift over it
+   is the plan reaching the members). That is the question #384 was built
+   to answer.
+5. **Size is not the lever so far.** CW1 (8 × 256) reads behind CM4 at
+   two thirds of the budget on both rows; CH1 (two-layer heads) reads with
+   CM4 at a third. Their finals land in amendment 7 with the WIDER and
+   DEEPER clauses; neither gates the route above.
