@@ -944,3 +944,115 @@ check failing → nothing launches (it did not fail; see above).
 behind (the legibility rung's 2 of 3). CM5: the members follow and the
 head still searches — first-plan coverage 0.3–0.6, success 0.5–0.9,
 AHEAD of CM4 on 3 of 3, PASS on at most one seed.
+
+## Amendment 10 — written 2026-09-25 01:06: FH2 and CM5 read — FAIL on every criterion; the normalised progress under a churning head is a heavy-tailed reward that broke the members' critic
+
+Both arms read at 40,960 / 81,920 / 122,880, n=100 on seeds 700000+, the
+final gated on the trainers' exit. Wandb group `curriculum-cm-plan`: FH2
+wqkn5pcw / 6m84akim / rmgpi33o, CM5 is01wzx0 / jc1nvkv2 / 5g3ai03j.
+Revision `3800358`. Every comparator value below is at MATCHED rounds,
+from the same probe run on FH1's and CM4's own checkpoints.
+
+### FH2 (#411) — the members under PL1's frozen head, the new stream
+
+| read | split (FH1) | executor alone (FH1) | mark-following (FH1) | arrival at committed, commit ≠ nearest (FH1) | leave-wrong (FH1) | pay differential per step (FH1) |
+|---|---|---|---|---|---|---|
+| 40,960 | 0.14 / 0.55 / 0.44 (0.16 / 0.43 / 0.04) | 0.14 / 0.56 / 0.45 (0.20 / 0.53 / 0.09) | 0.38 / 0.52 / 0.61 (0.68 / 0.63 / 0.49) | 0.23 / 0.59 / 0.64 (0.52 / 0.60 / 0.31) | 0.54 / 0.40 / 0.65 (0.32 / 0.49 / 0.85) | −0.01 / +0.02 / +0.03 (+0.05 / +0.03 / +0.03) |
+| 81,920 | 0.22 / 0.50 / 0.33 (0.26 / 0.60 / 0.60) | 0.17 / 0.47 / 0.37 (0.31 / 0.42 / 0.63) | 0.54 / 0.52 / 0.56 (0.75 / 0.46 / 0.44) | 0.56 / 0.45 / 0.57 (0.59 / 0.57 / 0.56) | 0.50 / 0.27 / 0.41 (0.41 / 0.31 / 0.23) | +0.01 / +0.02 / +0.02 (+0.06 / +0.01 / −0.01) |
+| **122,880** | **0.39 / 0.29 / 0.40** (0.37 / 0.61 / 0.63) | 0.35 / 0.26 / 0.24 (0.40 / 0.48 / 0.72) | 0.61 / 0.57 / 0.58 (0.56 / 0.72 / 0.58) | 0.61 / 0.58 / 0.62 (0.66 / 0.50 / 0.65) | 0.50 / 0.63 / 0.44 (0.54 / 0.43 / 0.35) | +0.03 / +0.02 / +0.03 (+0.06 / +0.03 / +0.03) |
+
+**Verdict on the letter, per seed at 122,880: FAIL / FAIL / FAIL.** Pass marks
+were mark-following ≥ 0.90 on 2/3, leave-wrong ≥ 0.80 on 2/3, arrival at
+the committed objective ≥ 0.85 on 2/3, pay differential ≥ +0.15, success
+≥ 0.85 on 2/3. None was met on any seed: mark-following 0.57–0.61, leaving a wrong objective 0.44–0.63, arrival 0.58–0.62, the realised pay differential +0.02 to +0.03, success 0.29–0.40 — level with FH1 on one seed and behind it on two, with the executor-alone row still level with the split row (the walk is still the geometry's). The executor's explained variance ran
+**0.06–0.55** through the run (FH1's 0.84–0.96), displacement entropy
+2.1–2.2 nats at the cap (FH1 1.2–1.5), clip fraction 0.22–0.31.
+
+### CM5 (#412) — head and members from scratch, the new stream
+
+| read | as trained (CM4) | plan-only (CM4) | first-plan coverage | re-commits before arrival | mark-following (CM4) | leave-wrong (CM4) |
+|---|---|---|---|---|---|---|
+| 40,960 | 0.00 / 0.00 / 0.03 (0.00 / 0.16 / 0.00) | 0.00 / 0.33 / 0.16 (0.01 / 0.17 / 0.16) | 0.00 ×3 | 0.97 / 0.76 / 0.96 | 0.66 / 0.56 / 0.51 (0.52 / 0.76 / 0.48) | 0.45 / 0.72 / 0.21 (0.80 / 0.71 / 0.75) |
+| 81,920 | 0.00 / 0.00 / 0.00 (0.00 / 0.19 / 0.21) | 0.03 / 0.04 / 0.13 (0.19 / 0.53 / 0.55) | 0.00 / 0.00 / 0.09 | 0.86 / 0.73 / 0.32 | 0.37 / 0.62 / 0.65 (0.73 / 0.72 / 0.69) | 0.59 / 0.51 / 0.79 (0.62 / 0.73 / 0.75) |
+| **122,880** | **0.29 / 0.00 / 0.22** (0.00 / 0.37 / 0.32) | **0.16 / 0.00 / 0.27** (0.72 / 0.68 / 0.72) | 0.04 / 0.00 / 0.35 | 0.85 / 0.98 / 0.86 | 0.43 / 0.59 / 0.52 (0.71 / 0.68 / 0.71) | 0.57 / 0.44 / 0.71 (0.80 / 0.69 / 0.71) |
+
+**Verdict on the letter, per seed at 122,880 as trained: NULL / NULL /
+NULL, and not AHEAD** (ahead of CM4's same seed on one of three). The
+head is far worse than CM4's: its plan-only row at the cap is 0.16 / 0.00 /
+0.27 against 0.72 / 0.68 / 0.72, its first assignment covers the board in
+0–35% of episodes, and in 50–79% of failed episodes no squad is committed
+to the empty objective at all. The ablation is flat on every seed (blank
+within 0.01 of trained): the members read no mark. Planning panel in CM4's
+band (return 0.36–0.50, commitment entropy 0.88–0.97 nats, planning EV
+0.22–0.33). **The members' critic collapsed: explained variance 0.07–0.37
+in the last quarter against CM4's ~0.75**, displacement entropy 2.1–2.4
+nats (CM4 1.7–2.1).
+
+### The mechanism: normalised progress under a churning head is a heavy-tailed reward
+
+Measured on the finals with the desk-check probe (n=30). Progress is the
+fraction of the distance the model had when its target was set, and the
+head re-commits units mid-walk (85–98% of squads before their first
+arrival). A re-commit made when the unit is already near its new target
+sets a SMALL anchor, and every step after it pays a large fraction:
+
+| | spans whose anchor is under 8 in | per-step progress pay p99 | max | min |
+|---|---|---|---|---|
+| the bar on the new config | 3 of 387 (0.8%) | +0.07 | +0.17 | 0.00 |
+| CM5 s1 as trained | **395 of 1,224 (32%)** | +0.13 | +0.17 | **−0.33** |
+| CM5 s3 as trained | 126 of 1,233 (10%) | +0.10 | +0.17 | **−0.71** |
+
+One six-inch step can then pay a whole commitment (+0.167, the per-step
+maximum) or, receding, several times a commitment's worth in one move. The
+members' return became a function of the head's future re-commits, which
+their critic cannot predict — explained variance 0.06–0.55 on both arms
+against 0.84–0.96 for the same members under the old stream — so the
+advantages PPO trained on were noise, the displacement head stayed diffuse,
+and the members learned less than under the old stream, not more. The
+reward met constraint 2 on paper (every completed commitment pays the
+same, verified to four decimals on the bar) and violated it dynamically:
+a re-commit changes what a step pays by an order of magnitude, and under
+the head writer re-commits are the norm. The bar's stable plan never
+exposed it, which is why the desk check passed.
+
+**Which decision rule fired.** FH2 fails on mark-following, which
+amendment 9 routes to a weight sweep — and the mechanism above says the
+weights are not the limiting factor: at any `w_follow` the per-step pay
+under a churning head is heavy-tailed in proportion, and the critic breaks
+the same way. The sweep is not run. What the two arms establish:
+
+- **The stay term did what it was built for**, on the small scale it was
+  given: a move that keeps the objective pays +0.01 to +0.05 per step
+  against −0.06 to +0.02 for one that leaves it (the old stream: a few
+  thousandths either way), and the members leave a wrong objective toward
+  the committed one on 0.66–0.85 of their moves on two CM5 seeds where
+  CM4's did on 0.56–0.79. It is not what failed.
+- **The normalisation is what failed**, and it failed through its
+  interaction with churn, which the plan-only rung (a stable, fast-executed
+  plan) never exercised. A normalised potential is safe only under a plan
+  that does not re-anchor, or with the anchor floored (a fraction of the
+  ORIGINAL distance, never of the distance at a re-commit).
+- **Sash's two constraints are the right ones and this build did not
+  deliver the second.** "Following pays the same for every plan" has to
+  hold per STEP under every plan the head can produce, not per completed
+  commitment under the bar's.
+
+### What this asks of #384 (proposed; Sash decides)
+
+1. **Do not sweep the weights.** The rule fired on the letter, and the
+   mechanism says a sweep measures the same defect at another scale.
+2. **Fix the normalisation, one change**: anchor the fraction to the
+   unit's distance at its FIRST commitment of the episode (or floor the
+   anchor at, say, 12 inches), so a re-commit can never make a step pay
+   more than a normal step; verify on CM4's own finals with the desk-check
+   probe that per-step pay p99 and min stay within the bar's band under a
+   churning head BEFORE launching. Then FH2b / CM5b on the same recipe.
+   Predicted: the members' explained variance back above 0.8; whether
+   mark-following then clears 0.90 is the open question — the shared
+   eastward geometry (cos 0.5–0.7 between the two target directions) still
+   pays the nearest objective's walk almost as well as the committed one,
+   and the legibility rung's members followed a plan that disagreed with
+   the geometry 83% of the time, not one that agreed half the time.
+3. **Read a member reward's per-step distribution under a CHURNING plan
+   in every desk check from here**, not only under the bar: the bar's
+   stable plan is the one case a re-anchoring potential cannot expose.
