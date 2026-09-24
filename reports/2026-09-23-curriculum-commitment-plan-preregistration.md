@@ -686,3 +686,139 @@ Three sizes of the same join on the same recipe, and the shipped one is the best
   1.23M-parameter set network as sufficient for every rung the ladder has
   reached. If capacity is ever the question again, ask it on a rung the
   network fails with scripted members (none so far), never on a join.
+
+## Amendment 8 — written 2026-09-24 09:29: why the join failed, investigated — the head never planned, it SEARCHED; the members never followed a mark, they walk to the nearest objective and hover; and amendment 6's "the members want a plan that holds still" is RETRACTED
+
+Sash (2026-09-24): "Could you investigate why this did not work?" No
+training. One probe (`drafts/join_probe.py`, reads in
+`drafts/join-probe-reads/`) run on the checkpoints on disk, n=100 on
+seeds 700000+, the same seeds as every read above. It follows each squad
+from its first commitment to the end (was the committed objective its
+nearest at deployment; did it arrive there; where did it end), decomposes
+each member's travel pay into what the executed move earns toward the
+committed objective against what the same move earns toward the nearest,
+and censuses every failed episode by what the squad committed to the empty
+objective was doing. A play-time wrapper (`-sticky`) forces KEEP on every
+open of a unit whose slot already holds an objective, so a head's plan can
+be read with its re-commits forbidden.
+
+### 1. The plan-only 1.000 was a SEARCH executed by fast scripted members, not a plan
+
+| head, with the bar's members | FIRST plan covers all four objectives | success, re-commits allowed | success, re-commits FORBIDDEN at play | re-committed before first arrival |
+|---|---|---|---|---|
+| the bar's own writer | **1.00** | 1.000 | 1.000 | 0.05 of squads |
+| PL1 s1 / s2 / s3 | **0.42 / 0.09 / 0.32** | 1.000 ×3 | **0.78 / 0.52 / 0.67** | 0.50 / 0.47 / 0.32 |
+| CM4 s2 / s3 | 0.41 / 0.00 | 0.68 / 0.72 | 0.55 / 0.56 | 0.61 / 0.92 |
+
+PL1's head commits four squads to four distinct objectives at the first
+opportunity in 9–42% of episodes (the bar: 100%), re-commits 12–23% of
+unit-turns and half its squads before they first arrive, and reaches
+1.000 by watching the counts and moving the surplus. Forbid the
+re-commits and the same head reads 0.52–0.78. The planning reward
+(coverage and the success bonus at the close, broadcast) priced the
+outcome of the search, never the plan; and a target switch re-anchors the
+members' potential, so a re-commit costs the head nothing. **The head
+learned trial and error, and the bar's members made trial and error
+cheap** — they arrive at a committed objective in 3.6 turns, so two or
+three rounds of re-planning fit inside eight. Every read that called PL1
+"a good plan" (amendments 2, 3, 6) read the search's outcome.
+
+### 2. No learned executor on A3 follows a mark — they walk to the nearest objective and hover
+
+Where a squad's commitment is NOT its nearest objective (half of all
+squads under every writer, the bar's included):
+
+| members | moves closing MORE on the committed than on the nearest | arrived at the committed | pay toward committed v the same move toward nearest, per step |
+|---|---|---|---|
+| the bar's | **0.96** | 0.95 | +0.44 v +0.24 |
+| the bar's under PL1's head | 0.95–0.96 | 0.89–0.93 | +0.43 v +0.27 |
+| FH1's (under PL1's frozen head) | **0.56 / 0.72 / 0.58** | 0.66 / 0.50 / 0.65 | +0.26 v +0.20 · +0.25 v +0.22 · +0.24 v +0.21 |
+| FH1 s3's with a RANDOM untrained head | 0.33 | 0.18 | +0.18 v +0.24 |
+| `a3_cm` s1–s3 (the greedy environment writer) | **0.57 / 0.51 / 0.48** | 0.50 / 0.47 / 0.45 | +0.27 v +0.26 · +0.30 v +0.30 · +0.31 v +0.31 |
+| CM4 s1–s3 | 0.71 / 0.68 / 0.71 | 0.36 / 0.76 / 0.82 | +0.27 v +0.16 · +0.26 v +0.17 · +0.27 v +0.16 |
+
+The reward does price the plan: for the bar's members a move earns
++0.20 per step more toward the committed objective than toward the
+nearest. The learned members realise +0.03 to +0.06 of it. They read the
+mark weakly (0.56–0.72 against 0.33 under random marks) and they are
+slow (arrival at a committed objective in 5.8–6.1 turns against the
+bar's 3.6, pay per step +0.25 against +0.43). **And once on ANY
+objective they hover**: a body standing inside an objective it is not
+committed to sets out for the committed one (closing more than one inch)
+on 0.32–0.61 of its moves and leaves that objective on 0.35–0.54 (the
+bar's members: 1.00 and 0.82–1.00), earning +0.00 to +0.04 per step
+toward the committed objective where +0.48 per six-inch step is on
+offer; frozen on under 5%, so it is not gridlock. The failure census of
+FH1 is one line: in **81–88%** of failed episodes the squad committed to
+the empty objective is standing on another objective.
+
+⚠ **`a3_cm`'s 0.82 / 0.85 / 0.93 was never plan-following either.** Its
+members close more on the committed objective on 0.48–0.57 of moves —
+chance — and the greedy writer re-derives the assignment from where the
+bodies are, so the plan FOLLOWS the members. What passed there is a
+nearest-unheld covering walk the members learn from the objective
+counts, under a writer that never contradicts it. **Amendment 6's ordering
+("the members want a plan that holds still") is RETRACTED**: the FH1
+executor under PL1's head with re-commits forbidden at play reads
+0.44 / 0.61 / 0.67 against 0.37 / 0.61 / 0.63 — a plan that holds still
+is a plan that stays wrong, and its first plan covers the board in
+5–56% of episodes. The proposal to hold the head's commitment still as
+the next arm is withdrawn in that form (see § 4).
+
+### 3. Why, then: the two halves trained each other into a search and a geometry walk
+
+- The head is paid for the outcome, re-commits for free, and its members
+  on the plan-only rung arrive in three and a half turns — so it learns
+  to search, and the search converges inside the episode. Nothing prices
+  the first plan.
+- The members are paid a potential that half the time points at their
+  nearest objective anyway, and the other half points at a mark that
+  changes under them before they arrive about half the time (first
+  commitment kept until arrival 0.48–0.55 in FH1, 0.13–0.62 in CM4) —
+  so the mark predicts pay poorly and the nearest objective predicts it
+  well; they learn geometry and the counts, as `a3_cm`'s members did.
+- Slow members make the head's search fail inside eight turns (targets
+  change under walkers who take twice as long, and a squad on the wrong
+  objective hovers), so the head's return is a fifth to a tenth of the
+  plan-only rung's and noise; a churning head makes the members'
+  mark worthless. Each half's failure is the other half's training
+  signal. This is the coupling of amendments 3 and 6 with its mechanism
+  named.
+- The hover itself — standing on an objective that pays nothing while a
+  committed objective nine to nineteen inches away pays +0.48 per step —
+  is the same walk-off/stay defect every per-model row on the half-step
+  recorded, seen from the other side: the policy learned "reach an
+  objective, then stay near it" on the majority case where that is right
+  (half its squads are on their committed objective) and applies it on
+  the wrong objective too. Whether it persists under a mark that does
+  not move is the one thing this investigation cannot say, because no
+  such mark exists on file.
+
+### 4. What this asks of #384 (proposed; Sash decides; supersedes amendment 6 § 4 items 2–3)
+
+1. **Close the search route on the plan-only rung first: PL1s, the
+   plan-only head with commitments sticky IN TRAINING** (KEEP forced
+   while a unit's slot holds an objective; the head decides at the first
+   open and after the environment's retirement rule clears the slot).
+   The head must then learn a one-shot covering assignment or fail.
+   Readouts: first-plan coverage (the bar 1.00, PL1 0.09–0.42), success
+   with the bar's members, the claimant ablation (the head reads the
+   counts; a one-shot cover needs them). Pass: first-plan coverage
+   ≥ 0.90 and success ≥ 0.95 on 3/3. If it fails, the planning reward
+   needs a term on the plan itself (coverage of the commitment set at
+   commit time), which is a build.
+2. **Then FH1s: the members under PL1s's planner, sticky.** The mark
+   then does not move, so the executor's mark-reading and its hover are
+   measured on their own for the first time: closing-more-on-committed
+   (0.56–0.72 now), arrival at the committed objective when it is not
+   the nearest (0.50–0.66 now), and the hover line (leaving a wrong
+   objective 0.35–0.54 now). If the hover persists under a fixed mark,
+   it is the execution defect the half-step recorded and the next lever
+   is on the members' side, not the head's.
+3. The half-step by the staged route (amendment 6 § 4 item 4) stands,
+   after 1 and 2.
+4. `drafts/join_probe.py` should become a recipe (`measure-plan` gains
+   the first-plan coverage, the re-commits-before-arrival share, the
+   mark-following share where commit ≠ nearest, and the hover line) — a
+   plan-only row without them can read 1.000 on a head that does not
+   plan.
