@@ -1,0 +1,133 @@
+"""The two-stream reward's member terms (#384, 2026-09-24): with
+`normalize_to_commit_distance` completing any commitment pays exactly
+`progress_scale` whatever the distance at commit; with `cap_per_commitment`
+the staying term pays at most the cap per model per commitment; and with the
+fallback off an uncommitted unit is paid nothing by the travel term. All read
+from real episodes of the scripted bar on the arm's own config through the
+per-model retimer, so the numbers are the ones a trainer would see.
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict
+
+import numpy as np
+import pytest
+
+from scripts.scenario_overrides import load_env_config
+from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
+from wargame_rl.wargame.envs.per_model.commitment import NO_TARGET
+from wargame_rl.wargame.envs.per_model.env import PerModelEnv
+from wargame_rl.wargame.envs.per_model.reward_timing import PerStepReward
+from wargame_rl.wargame.envs.per_model.types import StepKind
+from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.selectors import build_per_model_chooser
+
+CONFIG = "configs/experiments/curriculum/a3_head_r.yaml"
+PROGRESS = "closest_objective_v2"
+STAY = "objective_stay"
+
+
+def _episode_pay(
+    config: WargameEnvConfig, seed: int
+) -> tuple[
+    dict[tuple[int, int], dict[str, float]], dict[tuple[int, int], bool], set[int]
+]:
+    """Per (model, committed objective): the summed pay by term over the span
+    the model's unit held that commitment; whether the model ended the span
+    inside it; and the models whose unit re-committed during the episode."""
+    env = PerModelEnv(config)
+    chooser = build_per_model_chooser("squad_march_take", [env], seed=seed)
+    retimer = PerStepReward(env)
+    observation, _ = env.reset(seed=seed)
+    retimer.reset()
+    pay: dict[tuple[int, int], dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
+    seen: dict[int, set[int]] = defaultdict(set)
+    inside: dict[tuple[int, int], bool] = {}
+    while True:
+        before = observation
+        action = chooser.choose([env], [observation])[0]
+        observation, _reward, terminated, _truncated, info = env.step(action)
+        payment = retimer.on_step(before, action, info["effect"], terminated)
+        actors = list(info["effect"].actor_set)
+        if len(actors) == 1:
+            model_idx = int(actors[0])
+            model = env.wargame_models[model_idx]
+            ground = env.player_commitments.ground_of(int(model.group_id))
+            if ground != NO_TARGET:
+                key = (model_idx, int(ground))
+                seen[model_idx].add(int(ground))
+                for term in (PROGRESS, STAY):
+                    pay[key][term] += float(payment.breakdown.get(term, 0.0))
+                # Inside by the term's own definition: the base's offset
+                # distance within the objective's radius (the scoring rule).
+                cache = compute_distances(env.wargame_models, env.objectives)
+                inside[key] = bool(
+                    cache.model_obj_norms_offset[model_idx, int(ground)]
+                    <= cache.obj_radii[int(ground)]
+                )
+        if terminated:
+            break
+    switched = {m for m, grounds in seen.items() if len(grounds) > 1}
+    return pay, inside, switched
+
+
+@pytest.mark.parametrize("seed", [700000, 700001, 700002])
+def test_completing_any_commitment_pays_the_progress_scale(seed: int) -> None:
+    config = load_env_config(CONFIG)
+    pay, inside, switched = _episode_pay(config, seed)
+    completed = [
+        pay[key][PROGRESS]
+        for key, ended_inside in inside.items()
+        if ended_inside and key[0] not in switched
+    ]
+    assert len(completed) >= 4, "the bar completes most of its commitments"
+    # Progress is the FRACTION of the distance at commit times the scale (2.0
+    # here, weight 1.0), so every completed commitment pays the same total,
+    # near or far. The per-model retimer pays every per-decision term over
+    # the model count, so the trainer sees 2.0 / 12 per completed commitment.
+    expected = 2.0 / config.number_of_wargame_models
+    assert np.allclose(completed, expected, atol=0.05 * expected), completed
+
+
+@pytest.mark.parametrize("seed", [700000, 700001])
+def test_the_staying_term_is_capped_per_commitment(seed: int) -> None:
+    config = load_env_config(CONFIG)
+    pay, inside, _switched = _episode_pay(config, seed)
+    stays = [pay[key][STAY] for key in inside]
+    # cap 2.0 in the term's own units at weight 0.5 -> 1.0 per commitment,
+    # over the model count in the retimer's units.
+    cap = 1.0 / config.number_of_wargame_models
+    assert max(stays) <= cap + 1e-9, max(stays)
+    assert max(stays) >= cap - 1e-9, "a body that arrives early reaches the cap"
+    assert sum(1 for s in stays if s > 0.0) >= 6
+
+
+def test_a_unit_with_no_commitment_earns_nothing_from_the_travel_term() -> None:
+    config = load_env_config(CONFIG)
+    env = PerModelEnv(config)
+    chooser = build_per_model_chooser("squad_march_take", [env], seed=700000)
+    retimer = PerStepReward(env)
+    observation, _ = env.reset(seed=700000)
+    retimer.reset()
+    cleared = 0
+    while True:
+        before = observation
+        action = chooser.choose([env], [observation])[0]
+        if action.kind is StepKind.act and cleared < 4:
+            # Empty the mover's slot on its own step: with the fallback off
+            # the travel term must pay it nothing, not the nearest objective.
+            group = int(env.wargame_models[action.model].group_id)
+            env.player_commitments.clear_ground(group)
+            cleared += 1
+            observation, _r, terminated, _t, info = env.step(action)
+            payment = retimer.on_step(before, action, info["effect"], terminated)
+            assert payment.breakdown.get(PROGRESS, 0.0) == 0.0
+        else:
+            observation, _r, terminated, _t, info = env.step(action)
+            retimer.on_step(before, action, info["effect"], terminated)
+        if terminated:
+            break
+    assert cleared == 4

@@ -76,6 +76,22 @@ class Tally:
     committed_turns: int = 0
     hold_decl_hits: int = 0
     hold_decl_seen: int = 0
+    # The join's four lines (#384, amendment 8): a plan-only row without them
+    # read 1.000 on a head that searched rather than planned. FIRST: the head's
+    # first assignment covers every objective. PRE-ARRIVAL: squads re-committed
+    # before they first arrived. MARK: moves of committed bodies whose
+    # commitment is NOT the squad's nearest objective at deployment that close
+    # more on the committed objective than on the nearest (following the plan
+    # where the geometry disagrees with it). LEAVE-WRONG: moves of bodies inside
+    # an objective they are not committed to that set out from it.
+    first_full_hits: int = 0
+    first_full_seen: int = 0
+    pre_arrival_hits: int = 0
+    pre_arrival_seen: int = 0
+    mark_hits: int = 0
+    mark_seen: int = 0
+    wrong_leave_hits: int = 0
+    wrong_leave_seen: int = 0
 
     def row_fields(self) -> str:
         """The readouts as table cells, in the plan-only readout's order."""
@@ -89,7 +105,11 @@ class Tally:
             f"{share(self.persist_kept, self.persist_seen)} | {claim} | {distinct} / {end} | "
             f"{share(self.complete_hits, self.complete_seen)} | "
             f"{share(self.follow_hits, self.follow_seen)} | "
-            f"{share(self.leave_hits, self.leave_seen)}"
+            f"{share(self.leave_hits, self.leave_seen)} | "
+            f"{share(self.first_full_hits, self.first_full_seen)} | "
+            f"{share(self.pre_arrival_hits, self.pre_arrival_seen)} | "
+            f"{share(self.mark_hits, self.mark_seen)} | "
+            f"{share(self.wrong_leave_hits, self.wrong_leave_seen)}"
         )
 
     def row(self, name: str) -> str:
@@ -142,6 +162,25 @@ def run_chooser(
         observation, _ = env.reset(seed=int(seed))
         state = env.player_commitments
         committed_pairs: set[tuple[int, int]] = set()
+        objectives = [np.asarray(o.location, dtype=float) for o in env.objectives]
+        groups = sorted({int(m.group_id) for m in env.wargame_models})
+        nearest: dict[int, int] = {}
+        for g in groups:
+            centroid = np.mean(
+                [
+                    np.asarray(m.location, dtype=float)
+                    for m in env.wargame_models
+                    if int(m.group_id) == g
+                ],
+                axis=0,
+            )
+            nearest[g] = int(
+                np.argmin([np.linalg.norm(centroid - o) for o in objectives])
+            )
+        first_commit: dict[int, int] = {}
+        last_commit: dict[int, int] = {}
+        arrived: set[int] = set()
+        recommitted_early: set[int] = set()
         while True:
             point = observation.decision
             action = chooser.choose([env], [observation])[0]
@@ -178,11 +217,52 @@ def run_chooser(
                     tally.leave_seen += 1
                     if d1 > radius:
                         tally.leave_hits += 1
+                near = nearest[int(model.group_id)]
+                if near != before_ground:
+                    n0 = _distance_to(env, before_location, near)
+                    n1 = _distance_to(env, model.location, near)
+                    tally.mark_seen += 1
+                    if (d0 - d1) > (n0 - n1) + 1e-6:
+                        tally.mark_hits += 1
+                wrong = [
+                    j
+                    for j in range(len(objectives))
+                    if j != before_ground
+                    and _distance_to(env, before_location, j) <= radius
+                ]
+                if wrong:
+                    tally.wrong_leave_seen += 1
+                    if all(
+                        _distance_to(env, model.location, j) > radius for j in wrong
+                    ):
+                        tally.wrong_leave_hits += 1
+            for g in groups:
+                ground = state.ground_of(g)
+                if ground == NO_TARGET:
+                    continue
+                first_commit.setdefault(g, ground)
+                if g in last_commit and last_commit[g] != ground and g not in arrived:
+                    recommitted_early.add(g)
+                last_commit[g] = ground
+                if g not in arrived and any(
+                    m.is_alive
+                    and int(m.group_id) == g
+                    and _distance_to(env, m.location, ground) <= radius
+                    for m in env.wargame_models
+                ):
+                    arrived.add(g)
             for g, c in state.by_group.items():
                 if c.ground != NO_TARGET:
                     committed_pairs.add((g, c.ground))
             if terminated:
                 break
+        if first_commit:
+            tally.first_full_seen += 1
+            if len(set(first_commit.values())) == len(objectives):
+                tally.first_full_hits += 1
+        for g in first_commit:
+            tally.pre_arrival_seen += 1
+            tally.pre_arrival_hits += int(g in recommitted_early)
         history = state.history
         for previous, current in zip(history, history[1:]):
             for g, c in current.items():

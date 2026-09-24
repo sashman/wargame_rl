@@ -616,7 +616,18 @@ decision, re-planning before each act -- beside the scripted bar. The plan-only
 row holds execution at the bar's, so its success, turns and held read the
 plan alone; its `persist`, `claim`, `distinct` (distinct objectives claimed per
 turn over the objectives on the board; a covering plan reads 1.0) and
-`complete` columns say what the plan looks like. Built for #384's plan-quality
+`complete` columns say what the plan looks like. Four more columns since
+2026-09-24 (amendment 8 of the plan pre-registration: a plan-only row without
+them read 1.000 on a head that searched rather than planned): `first-plan`,
+the share of episodes in which the head's FIRST assignment covers every
+objective (the bar 1.00); `pre-arrival re-commit`, the share of squads
+re-committed before they first arrived (the bar 0.05); `mark`, of the moves
+of committed bodies whose commitment is NOT their squad's nearest objective at
+deployment, the share that close more on the committed objective than on the
+nearest (following the plan where the geometry disagrees with it; the bar
+0.96, a random mark 0.33); and `leave-wrong`, of the moves of bodies standing
+inside an objective they are not committed to, the share that set out from it
+(the bar 0.82–1.00). Built for #384's plan-quality
 question: on Stage 1's checkpoints the same heads read 0.03 / 0.00 / 0.00 as
 trained and 0.55 / 0.00 / 0.17 with scripted members.
 With `planner=<ckpt>` each checkpoint is an EXECUTOR: its as-trained row, then

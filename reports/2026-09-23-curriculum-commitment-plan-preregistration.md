@@ -822,3 +822,125 @@ the next arm is withdrawn in that form (see § 4).
    mark-following share where commit ≠ nearest, and the hover line) — a
    plan-only row without them can read 1.000 on a head that does not
    plan.
+
+## Amendment 9 — written 2026-09-24 21:11: the two-stream reward on the join — FH2 and CM5 pre-registered, the build and the desk check
+
+Sash (2026-09-24), after amendment 8: keep the training setup, tune the
+reward under two constraints. **(1) Following must always pay more**: a
+member's only income is progress on, and presence at, the objective its
+unit is committed to; nothing for an uncommitted unit; receding costs.
+**(2) Following must pay the same whatever the plan**: completing any
+commitment pays the same total, so the members are indifferent to the plan
+and the planner — paid the outcome and nothing else — can raise its
+expected reward only by a better decision. The document at
+https://claude.ai/artifact/UZ7Qwumzg9Hj8FJmfwsTtM states both, the
+structure and this plan; this amendment is its pre-registration.
+
+### The structure
+
+Members' stream, per decision, keyed to the unit's committed objective:
+`w_follow × (d_prev − d_now) / d_commit` (progress as the FRACTION of
+the distance to the objective's EDGE the model had when its target was
+set; completing any commitment pays exactly `w_follow`) plus `w_stay`
+for ending the step inside the committed objective, capped at
+`stay_max` per model per commitment. Planner's stream, unchanged:
+coverage 0.3 at every close and the success bonus 5.0 (speed-scaled) on
+the close that succeeds — the outcome and only the outcome. No fallback
+to the nearest objective, no plan-shape term, no switch charge.
+
+**The build** (`4 files`, default off, every golden byte-identical, the
+full suite 5,064 passed): `normalize_to_commit_distance` on
+`closest_objective_v2` (with it, a unit holding no commitment is paid
+nothing when `fallback_to_nearest` is off); `cap_per_commitment` on
+`objective_stay` (a fresh budget when the model's committed objective
+changes); `configs/experiments/curriculum/a3_head_r.yaml` = `a3_head`
+with progress scale 2.0 normalised, stay 0.5 at crowding exponent 0 and
+cap 2.0 (= 1.0 weighted), fallback off. `tests/test_two_stream_reward.py`
+pins the three. And `just measure-plan` gains the four columns amendment
+8 asked for: `first-plan`, `pre-arrival re-commit`, `mark`,
+`leave-wrong` (the bar: 1.00 / 0.05 / 0.96 / n·a).
+
+### The desk check (no training; the bar on the new config, n=100, seeds 700000+)
+
+- **The bridge holds.** `squad_march_take` on `a3_head_r` reads the
+  same lines as on `a3_head` to the digit: success 1.000, arrival at the
+  committed objective 0.96 at turn 3.55, first commit = nearest 0.51,
+  re-committed before arrival 0.05, mark-following 0.96. PL1's heads with
+  the bar's members read plan-only 1.000 ×3 on it, as they must (nothing
+  at play reads the reward).
+- **Constraint 2 holds exactly on progress.** 1,014 completed, unswitched
+  commitments: progress **0.1667 with sd 0.0000** (= 2.0 / 12, the
+  per-model retimer paying every per-decision term over the model count),
+  correlation with the distance at commit **−0.03**; under the old term
+  0.141 ± 0.022 at **+0.95**.
+- ⚠ **And it holds only up to the cap on the stay term.** Progress + stay
+  reads 0.222 ± 0.020, correlation with distance **−0.45**, and only
+  **33%** of the commitments made with two turns to spare reach the
+  maximum 0.250 — not the "every commitment reaches 3.0" the document
+  promised. The cause is the rung, not the term: `terminate_on_success`
+  ends the episode at the close on which the fourth objective is occupied,
+  so the LAST squad to arrive collects zero or one holding step and the
+  early squads collect their budget. The residual plan-dependence is
+  bounded by the cap — at most 1.0 of a commitment's 3.0, a third of the
+  progress pay — and it favours arriving EARLY, which the planner's own
+  stream also favours, so the members and the planner are not set against
+  each other by it. Turning `terminate_on_success` off would make the
+  maximum exact and would change the rung's success reading; it is not
+  done here and is the first thing to try if the reads show the members
+  preferring near targets. **The pre-registered desk-check line is
+  amended to: progress flat (correlation within ±0.05), the stay pay never
+  above its cap, and the total's correlation with distance explained by
+  the episode's end alone** (a squad that arrives with two turns left
+  reaches the maximum). Read the members' pay per commitment on every arm
+  beside the score.
+
+### The arms
+
+| arm | the one change | tag | comparator by name |
+|---|---|---|---|
+| **FH2** | FH1 with the members' stream above: PL1's finished head seed for seed draws every commitment (greedy, frozen), the members learn from scratch on `a3_head_r` | `fh2` | FH1 at matched rounds (0.16 / 0.43 / 0.04 → 0.26 / 0.60 / 0.60 → 0.37 / 0.61 / 0.63); the executor alone; the bar |
+| **CM5** | CM4 with the members' stream above: head and members from scratch on `a3_head_r` | `cm5` | CM4 at matched rounds (as trained 0.000 / 0.160 / 0.000 → 0.000 / 0.190 / 0.210 → 0.000 / 0.370 / 0.320; plan-only 0.01 / 0.17 / 0.16 → 0.19 / 0.53 / 0.55 → 0.72 / 0.68 / 0.72); A3 from scratch 0.700 / 0.800 / 0.770; `a3_cm` 0.820 / 0.850 / 0.930 |
+
+Three seeds each, 122,880 rounds, CM4's recipe unchanged (128 rounds per
+update: 32 rollout rounds × 4 envs, `ent_coef` 0.003, mean credit,
+broadcast planning credit, greedy scoring with the sampled row beside it),
+Wandb group `curriculum-cm-plan`, both launched together and read FH2
+first. Unpairable at initialisation against FH1 / CM4 (a different
+reward, same init: the seeds are shared, so the per-seed difference is a
+paired estimator on the init and nothing else). Reads at 40,960 / 81,920 /
+122,880, n=100 on seeds 700000+, the final gated on the trainer exiting
+and every seed's log carrying the round line: FH2 the split row beside
+the executor-alone row and the planner's plan-only ceiling; CM5 the
+as-trained row beside the same head's plan-only row; the four new columns
+on every row; the walk-off probe; for CM5 the ablation and the planning
+panel (planning return, commitment entropy, planning EV) against CM4's.
+
+### Criteria, per seed at 122,880, written before any number exists
+
+| readout | pass mark | constraint |
+|---|---|---|
+| mark-following (closing more on the committed than on the nearest, where they differ) | ≥ 0.90 on 2 of 3 seeds (FH1 0.56 / 0.72 / 0.58; bar 0.96; a random mark 0.33) | 1 |
+| leave-wrong (setting out from an objective the unit is not committed to) | ≥ 0.80 on 2 of 3 (FH1 0.54 / 0.43 / 0.35; bar 0.82–1.00) | 1 |
+| arrival at the committed objective where it is not the nearest | ≥ 0.85 on 2 of 3 (FH1 0.66 / 0.50 / 0.65; bar 0.95) | 1 |
+| realised pay differential per step, toward the committed minus toward the nearest | ≥ +0.15 (FH1 +0.03 to +0.06; bar +0.20), read with the probe's geometric pay so it compares across rewards | 1 |
+| execution pay per completed commitment against distance at commit | progress correlation within ±0.05; stay never above the cap | 2 |
+| first-plan coverage (CM5) | readout, not a gate: ≥ 0.60 on 2 of 3 would say the head plans first time (PL1 0.09–0.42, CM4 0.00–0.41) | 2 |
+| re-commits before arrival (CM5) | readout, not a gate: ≤ 0.25 (PL1 0.32–0.50, CM4 0.50–0.76) | 2 |
+| **success at the cap** | **FH2 ≥ 0.85 on 2 of 3 (FH1 0.37 / 0.61 / 0.63). CM5: PASS ≥ 0.95; AHEAD of CM4's same seed by more than two binomial SE on 3 of 3; else NULL** | both |
+
+**Decision rules.** FH2 passes and CM5 passes → the structure holds on this
+shape; next the half-step on the same recipe. FH2 passes, CM5 does not →
+the planner's half; the first-plan and re-commit readouts say whether it
+still searches, and the switch leak (a mid-walk re-commit pays a unit up to
+1.5) is the first thing to close. FH2 fails on mark-following → one sweep
+of `w_stay` at 0.25 and 1.0 and `w_follow` at 4.0 before the planner is
+touched. FH2 follows but hovers (mark ≥ 0.90, leave-wrong < 0.80) → the
+stay term is being read on the wrong objective; the walk-off probe's pay
+inside a wrong objective must read zero from it by construction. The desk
+check failing → nothing launches (it did not fail; see above).
+
+**Expectation (a guess, written so it can be wrong).** FH2: mark-following
+0.85–0.95, leave-wrong 0.7–0.9, success 0.80–0.95 on two seeds, one seed
+behind (the legibility rung's 2 of 3). CM5: the members follow and the
+head still searches — first-plan coverage 0.3–0.6, success 0.5–0.9,
+AHEAD of CM4 on 3 of 3, PASS on at most one seed.

@@ -45,6 +45,7 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         fallback_to_nearest: bool = False,
         contest_deficit: int = 1,
         one_objective_per_group: bool = False,
+        normalize_to_commit_distance: bool = False,
     ) -> None:
         super().__init__(weight=weight)
         if contest_deficit < 1:
@@ -89,6 +90,17 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         # agrees with a success that needs every point occupied. Off by default:
         # every recorded number was measured under the per-objective rule.
         self.one_objective_per_group = one_objective_per_group
+        # The two-stream reward's second constraint (#384, 2026-09-24):
+        # following a plan must pay the SAME whatever the plan is. As
+        # distance closed, the potential pays a squad sent across the board
+        # more than one sent next door, so a random or churning plan out-pays
+        # a good one for the members. With this on, progress is the FRACTION
+        # of the distance the model had when its target was set, so completing
+        # any target pays exactly `progress_scale`. A target set from inside
+        # its objective (distance zero) pays nothing: there is nothing to
+        # close. Off by default: every recorded number was paid per inch.
+        self.normalize_to_commit_distance = normalize_to_commit_distance
+        self._anchor_target_distance: dict[int, float] = {}
         self._last_breakdown: dict[int, dict[str, float]] = {}
         self._target_obj_idx: dict[int, int] = {}
         self._previous_target_distance: dict[int, float] = {}
@@ -137,12 +149,14 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         self._target_obj_idx.pop(model_idx, None)
         self._previous_target_distance.pop(model_idx, None)
         self._best_target_distance.pop(model_idx, None)
+        self._anchor_target_distance.pop(model_idx, None)
 
     def reset_episode(self) -> None:
         """Clear per-episode state (called by the env on reset)."""
         self._target_obj_idx.clear()
         self._previous_target_distance.clear()
         self._best_target_distance.clear()
+        self._anchor_target_distance.clear()
         self._cached_ctx = None
         self._cached_player_in_range = None
         self._cached_player_counts = None
@@ -362,6 +376,12 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         committed = ctx.committed_objective
         if committed is not None and 0 <= int(committed[model_idx]) < n_obj:
             return int(committed[model_idx])
+        if committed is not None and not self.fallback_to_nearest:
+            # The layer is on and this unit holds no commitment: with the
+            # fallback off nothing pays it (the two-stream reward's first
+            # constraint -- only the plan pays). Every recorded config with
+            # the layer on keeps the fallback, so nothing before this changes.
+            return None
         # Objective-to-group assignment: one objective can reward only one group,
         # so the mask covers every model, not just this one.
         candidate_mask = self._candidate_mask(
@@ -431,6 +451,13 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         distance_to_target = float(
             cache.model_obj_norms_offset[model_idx, target_obj_idx]
         )
+        if self.normalize_to_commit_distance:
+            # The fraction is of the distance to the objective's EDGE, so a
+            # commitment is complete -- and pays its whole scale -- once the
+            # model is inside, wherever inside it stops.
+            distance_to_target = max(
+                0.0, distance_to_target - float(cache.obj_radii[target_obj_idx])
+            )
         normalized_distance = self._normalized_distance(ctx, distance_to_target)
 
         previous_target = self._target_obj_idx.get(model_idx)
@@ -438,6 +465,7 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
             self._target_obj_idx[model_idx] = target_obj_idx
             self._previous_target_distance[model_idx] = normalized_distance
             self._best_target_distance[model_idx] = normalized_distance
+            self._anchor_target_distance[model_idx] = normalized_distance
             self._last_breakdown[model_idx] = {
                 "target_obj_idx": float(target_obj_idx),
                 "target_switched": 1.0,
@@ -464,6 +492,9 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
             progress = (
                 0.0 if previous is None else self.progress_scale * (-distance_delta)
             )
+            if self.normalize_to_commit_distance:
+                anchor = self._anchor_target_distance.get(model_idx, 0.0)
+                progress = progress / anchor if anchor > 1e-9 else 0.0
             self._last_breakdown[model_idx] = {
                 "target_obj_idx": float(target_obj_idx),
                 "target_switched": 0.0,

@@ -68,7 +68,7 @@ def main() -> None:
         f"{seeds[0]}-{seeds[-1]}; members {members} on the plan-only rows)\n"
     )
     print(
-        "| policy | mode | success | turns | held | on obj | persist | claim | distinct (mean / end) | complete | follow | leave |"
+        "| policy | mode | success | turns | held | on obj | persist | claim | distinct (mean / end) | complete | follow | leave | first-plan | pre-arrival re-commit | mark | leave-wrong |"
     )
     bar = evaluate_spec(BAR, config, seeds, BAR)
     bar_tally = run_chooser_for(BAR, None, config, seeds, members)
