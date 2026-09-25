@@ -1129,3 +1129,97 @@ coverage under 0.5), success 0.2–0.5, AHEAD of CM4 on at most two seeds.
 If FH2b's members still walk the geometry with a healthy critic, the
 lever is the plan distribution the members train under, which is a change
 to the setup and Sash's call.
+
+## Amendment 12 — written 2026-09-25 13:37: FH2b and CM5b read — the floor restored the critic and the members now follow the plan; the planner is the failing half
+
+Both arms read at 40,960 / 81,920 / 122,880, n=100 on seeds 700000+, the
+final gated on the trainers' exit. Wandb group `curriculum-cm-plan`: FH2b
+svyy25yo / wmf72ony / y2dm29nw, CM5b mxvxjcj2 / 2lhpmurj / 44jipi4h.
+Revision `a56fb39`. Comparators at matched rounds from the same probe on
+their own checkpoints.
+
+### FH2b (#413) — the members under PL1's frozen head, the floored stream
+
+| read | split (FH2 · FH1) | executor alone | mark-following (FH2 · FH1) | arrival at committed, commit ≠ nearest (FH2 · FH1) | leave-wrong | pay differential per step |
+|---|---|---|---|---|---|---|
+| 40,960 | 0.49 / 0.43 / 0.66 (0.14 / 0.55 / 0.44 · 0.16 / 0.43 / 0.04) | 0.43 / 0.46 / 0.64 | 0.62 / 0.62 / 0.56 (0.38 / 0.52 / 0.61 · 0.68 / 0.63 / 0.49) | 0.68 / 0.78 / 0.64 (0.23 / 0.59 / 0.64 · 0.52 / 0.60 / 0.31) | 0.45 / 0.59 / 0.24 | +0.04 / +0.05 / +0.03 |
+| 81,920 | 0.62 / 0.81 / 0.50 (0.22 / 0.50 / 0.33 · 0.26 / 0.60 / 0.60) | 0.54 / 0.75 / 0.61 | 0.63 / 0.75 / 0.59 (0.54 / 0.52 / 0.56 · 0.75 / 0.46 / 0.44) | 0.73 / 0.78 / 0.62 (0.56 / 0.45 / 0.57 · 0.59 / 0.57 / 0.56) | 0.42 / 0.36 / 0.36 | +0.05 / +0.08 / +0.02 |
+| **122,880** | **0.84 / 0.79 / 0.46** (0.39 / 0.29 / 0.40 · 0.37 / 0.61 / 0.63) | 0.71 / 0.75 / 0.52 | 0.75 / 0.72 / 0.60 (0.61 / 0.57 / 0.58 · 0.56 / 0.72 / 0.58) | 0.84 / 0.88 / 0.71 (0.61 / 0.58 / 0.62 · 0.66 / 0.50 / 0.65) | 0.41 / 0.42 / 0.65 | +0.09 / +0.08 / +0.03 |
+
+Executor explained variance 0.94 / 0.92 / 0.92 in the last quarter, displacement entropy 1.4–1.8 nats (FH2 0.06–0.55, FH1 0.84–0.96).
+
+**Verdict on the letter, per seed at 122,880: FAIL / FAIL / FAIL on the letter — and the nearest miss on the ladder.**
+No mark was met: success 0.84 / 0.79 / 0.46 against ≥ 0.85 on 2/3 (two seeds within a hundredth and six hundredths of it, and +0.47 / +0.18 / −0.17 against FH1's finals of 0.37 / 0.61 / 0.63); arrival at the committed objective 0.84 / 0.88 / 0.71 against ≥ 0.85 on 2/3 (one seed clears, one misses by a hundredth); mark-following 0.75 / 0.72 / 0.60 against 0.90; leaving a wrong objective 0.41 / 0.42 / 0.65 against 0.80; the pay differential +0.09 / +0.08 / +0.03 against +0.15. The executor-alone row (0.71 / 0.75 / 0.52) is still close to the split row.
+
+### CM5b (#414) — head and members from scratch, the floored stream
+
+| read | as trained (CM5 · CM4) | plan-only (CM5 · CM4) | first-plan | re-commits before arrival | mark-following | arrival at committed | pay differential |
+|---|---|---|---|---|---|---|---|
+| 40,960 | 0.01 / 0.00 / 0.00 (0.00 / 0.00 / 0.03 · 0.00 / 0.16 / 0.00) | 0.16 / 0.00 / 0.00 (0.00 / 0.33 / 0.16 · 0.01 / 0.17 / 0.16) | 0.00 ×3 | 0.95 / 0.47 / 0.59 | 0.53 / 0.66 / 0.79 | 0.65 / 0.98 / 0.77 | +0.07 / +0.18 / +0.16 |
+| 81,920 | 0.02 / 0.00 / 0.26 (0.00 ×3 · 0.00 / 0.19 / 0.21) | 0.39 / 0.04 / 0.36 (0.03 / 0.04 / 0.13 · 0.19 / 0.53 / 0.55) | 0.14 / 0.00 / 0.06 | 0.78 / 0.61 / 0.84 | 0.47 / 0.61 / 0.82 | 0.18 / 0.80 / 0.77 | +0.04 / +0.15 / +0.19 |
+| **122,880** | **0.00 / 0.00 / 0.17** (0.29 / 0.00 / 0.22 · 0.00 / 0.37 / 0.32) | **0.00 / 0.01 / 0.82** (0.16 / 0.00 / 0.27 · 0.72 / 0.68 / 0.72) | 0.00 / 0.00 / 0.09 | 0.45 / 0.84 / 0.70 | **0.86 / 0.61 / 0.75** | **0.86 / 0.94 / 0.64** | **+0.19 / +0.13 / +0.14** |
+
+Members' explained variance 0.67 / 0.71 / 0.85 in the last quarter (CM5
+0.07–0.37, CM4 ~0.75), displacement entropy 1.7–1.8 nats (CM5 2.1–2.4).
+Planning panel: return 0.45 / 0.39 / **0.84** (s3 rising 0.33 → 0.84 by
+quarter), commitment entropy 0.89 / 0.91 / 0.71, planning EV 0.45 / 0.78 /
+0.18. Ablation: s3 reads the mark (blank → 0.00); s1 and s2 are at zero
+in every column. Failure census: on s1 and s2 the empty objective has NO
+squad committed to it in 92–100% of failed episodes.
+
+**Verdict on the letter, per seed at 122,880 as trained: NULL / NULL /
+NULL, and not AHEAD.**
+
+### What the pair says
+
+- **The floor did what it was built for.** The members' critic is back
+  (EV 0.67–0.91 against 0.06–0.55), and with it the members do what the
+  reward pays for: on CM5b they arrive at the objective their unit is
+  committed to on 0.64–0.94 of the squads whose commitment is not the
+  nearest, walk toward it rather than the nearest on 0.61–0.86 of moves,
+  set out from a wrong objective on 0.63–0.68, and realise +0.13 to +0.19
+  per step of the +0.20 the mark pays (CM5: +0.01 to +0.03). **Constraint
+  1 is delivered by this stream.** On FH2b, under PL1's covering plan,
+  success reaches 0.84 / 0.79 / 0.46 — ahead of FH1's finals by +0.47 and +0.18 on two seeds and behind by 0.17 on the third, with the members arriving at their committed objective on 0.84 / 0.88 / 0.71 of the disagreeing squads (FH1 0.66 / 0.50 / 0.65) and walking toward it rather than the nearest on 0.75 / 0.72 / 0.60 of moves (FH1 0.56 / 0.72 / 0.58; the bar 0.96).
+- ⚠ **Faithful members on a stacked plan hold one or two objectives, and
+  two heads of three never left the stack.** CM5b's members follow a plan
+  that commits every squad to the same one or two objectives (maximum
+  stack 4.8 / 8.3, first-plan coverage 0.00). The planner's stream is the
+  outcome, broadcast: every unit's commitment decision is paid the same
+  coverage and the same success bonus whether it spread or stacked, and
+  with members who go where it points, a stacking head has no unit-level
+  reason to send one squad elsewhere. Under the bar's members (PL1) the
+  head's search converged anyway because the bar arrives in three and a
+  half turns; under learned followers who take five or six, a stack made
+  in turn one is never repaired inside eight. s3's head found a covering
+  plan in the last quarter (plan-only 0.82) and its members had not
+  caught up.
+- **The join's two halves have swapped roles.** Amendment 6 read the
+  members as the larger failing half; with the floored stream they are
+  the working half and the planner is the wall — the same reading the
+  plan-only rung gave when it showed the head searches rather than plans.
+
+**Which decision rule fired.** On the letter, FH2b fails on mark-following, which amendment 9 routes to a weight sweep (`w_stay` 0.25 and 1.0, `w_follow` 4.0). The reading argues against running it as the next arm: the members' mark-following sits at 0.60–0.75 under a plan that agrees with the nearest objective for half the squads and whose direction shares most of the walk with the nearest (cos 0.63–0.68), exactly the band amendment 11 predicted, and the one set of members that reached 0.90 (the legibility rung) trained under a plan that disagreed with the geometry 83% of the time. A weight sweep would price the same geometry at another scale. The two arms together say the members' half works well enough to expose the planner's, and the planner's is where the join now fails.
+
+### What this asks of #384 (proposed; Sash decides)
+
+1. **Keep the floored stream** (`a3_head_rf.yaml`) as the members' reward
+   from here: it is the first per-model reward on this ladder under which
+   the members demonstrably follow a plan they cannot reconstruct from the
+   board.
+2. **The planner's half is now the question, and its stream is the
+   place.** The outcome-only broadcast stream pays a stacking head the
+   same at every unit; the per-unit counterfactual credit (B6, built,
+   `--planning-credit counterfactual`) was a paired null under the bar's
+   members, where the search converged regardless, and has never been
+   read under members who follow. One arm: CM5b's recipe with the
+   counterfactual credit (CM5c), read on first-plan coverage, the
+   plan-only row and success against CM5b at matched rounds. Prediction:
+   the heads leave the stack (plan-only ≥ 0.5 on 2/3 by 81,920).
+3. If CM5c does not move the head, a plan-shape term on the planning
+   stream (coverage of the commitment set at commit time) is the next
+   lever — Sash's second constraint permits it, since it pays the planner
+   for a property of its own decision and nothing of the members'.
+4. Read a member reward's per-step pay under a churning writer in every
+   desk check (the amendment-10 rule stands), and read the planner's
+   first-plan coverage beside success on every head arm.
