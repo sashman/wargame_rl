@@ -46,8 +46,13 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         contest_deficit: int = 1,
         one_objective_per_group: bool = False,
         normalize_to_commit_distance: bool = False,
+        normalize_min_distance: float = 0.0,
     ) -> None:
         super().__init__(weight=weight)
+        if normalize_min_distance < 0.0:
+            raise ValueError(
+                f"normalize_min_distance must be >= 0, got {normalize_min_distance}"
+            )
         if contest_deficit < 1:
             raise ValueError(
                 "contest_deficit must be >= 1; 1 reproduces the one-model gate "
@@ -100,6 +105,15 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
         # its objective (distance zero) pays nothing: there is nothing to
         # close. Off by default: every recorded number was paid per inch.
         self.normalize_to_commit_distance = normalize_to_commit_distance
+        # The floor on that anchor, in inches (#384, amendment 10): a writer
+        # that re-commits a unit when it is already near its new target sets
+        # a SMALL anchor, and every step after it pays a large fraction -- one
+        # six-inch step paid a whole commitment, or several receding, and the
+        # members' critic could not fit the return. With the floor, a step can
+        # never pay more than a normal step from `normalize_min_distance` out;
+        # a target nearer than the floor pays less than a full commitment,
+        # which is the safe side. 0.0: no floor (the FH2 / CM5 reading).
+        self.normalize_min_distance = normalize_min_distance
         self._anchor_target_distance: dict[int, float] = {}
         self._last_breakdown: dict[int, dict[str, float]] = {}
         self._target_obj_idx: dict[int, int] = {}
@@ -493,7 +507,10 @@ class ClosestObjectiveV2Calculator(PerModelRewardCalculator):
                 0.0 if previous is None else self.progress_scale * (-distance_delta)
             )
             if self.normalize_to_commit_distance:
-                anchor = self._anchor_target_distance.get(model_idx, 0.0)
+                anchor = max(
+                    self._anchor_target_distance.get(model_idx, 0.0),
+                    self._normalized_distance(ctx, self.normalize_min_distance),
+                )
                 progress = progress / anchor if anchor > 1e-9 else 0.0
             self._last_breakdown[model_idx] = {
                 "target_obj_idx": float(target_obj_idx),

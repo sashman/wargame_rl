@@ -1056,3 +1056,76 @@ the same way. The sweep is not run. What the two arms establish:
 3. **Read a member reward's per-step distribution under a CHURNING plan
    in every desk check from here**, not only under the bar: the bar's
    stable plan is the one case a re-anchoring potential cannot expose.
+
+## Amendment 11 — written 2026-09-25 09:39: the anchor floored — FH2b and CM5b pre-registered, with the desk check that amendment 10 asked for
+
+Sash (2026-09-25): proceed with the recommended steps. One change against
+`a3_head_r.yaml`: **`normalize_min_distance: 12.0`** on the travel term
+(`configs/experiments/curriculum/a3_head_rf.yaml`). The fraction's anchor
+is floored at twelve inches, so a step can never pay more than a normal
+step from twelve inches out; a target set from nearer than the floor pays
+a smaller fraction, the safe side. No weight sweep (the tail scaled with
+the weights). Everything else FH2's / CM5's: CM4's recipe, PL1's head seed
+for seed as FH2b's frozen planner, head and members from scratch on CM5b.
+
+### The desk check, this time under a CHURNING writer
+
+Amendment 10's rule: read a member reward's per-step pay under a plan
+that re-commits, not only under the bar. The desk-check probe (n=30,
+seeds 700000+) on CM4's own final checkpoints playing the new configs —
+the same churning heads, the reward re-computed:
+
+| writer | config | per-step progress pay p99 | max | min | completed commitment pays |
+|---|---|---|---|---|---|
+| the bar | rf (floored) | +0.069 | +0.083 | 0.000 | 0.1667 ± 0.0000 (= 2.0/12) |
+| CM4 s1 | r (un-floored) | +0.125 | +0.167 | **−1.950** | 0.1667 |
+| CM4 s1 | **rf** | +0.073 | **+0.083** | **−0.083** | 0.1667 |
+| CM4 s2 | r | +0.066 | +0.167 | −0.418 | 0.1667 |
+| CM4 s2 | **rf** | +0.061 | +0.083 | −0.062 | 0.1667 |
+| CM4 s3 | r | +0.167 | **+0.856** | **−1.224** | 0.1667 |
+| CM4 s3 | **rf** | +0.078 | +0.083 | −0.083 | 0.1667 |
+| CM5 s1 / s3 | **rf** | +0.068 / +0.075 | +0.083 | −0.061 / −0.081 | 0.1667 |
+
+Under the un-floored fraction CM4's own heads produced steps paying up to
+five times a whole commitment (s3: +0.86, −1.22; s1: −1.95) — worse than
+CM5's finals showed, because CM4's heads re-commit nearer their targets
+(5–12% of spans under eight inches). With the floor every writer's
+per-step pay sits inside the bar's band: max +0.083 (a six-inch step
+from twelve inches, half a commitment), min −0.083, p99 0.06–0.08 against
+the bar's 0.069. Completing a commitment from beyond the floor still pays
+exactly 2.0/12. **The check passes**, on the writer that failed it.
+
+### The arms
+
+| arm | the one change against | tag | comparators by name |
+|---|---|---|---|
+| **FH2b** (#413) | FH2: the floor | `fh2b` | FH2 at matched rounds (split 0.14 / 0.55 / 0.44 → 0.22 / 0.50 / 0.33 → 0.39 / 0.29 / 0.40; executor EV 0.06–0.55), FH1 (0.16 / 0.43 / 0.04 → 0.26 / 0.60 / 0.60 → 0.37 / 0.61 / 0.63; EV 0.84–0.96), the executor alone, the bar |
+| **CM5b** (#414) | CM5: the floor | `cm5b` | CM5 at matched rounds (as trained 0.00 / 0.00 / 0.03 → 0.00 ×3 → 0.29 / 0.00 / 0.22; plan-only 0.00 / 0.33 / 0.16 → 0.03 / 0.04 / 0.13 → 0.16 / 0.00 / 0.27; members' EV 0.07–0.37), CM4 (as trained 0.000 / 0.160 / 0.000 → 0.000 / 0.190 / 0.210 → 0.000 / 0.370 / 0.320; plan-only 0.01 / 0.17 / 0.16 → 0.19 / 0.53 / 0.55 → 0.72 / 0.68 / 0.72), A3 from scratch 0.700 / 0.800 / 0.770 |
+
+Three seeds each, 122,880 rounds, CM4's recipe, Wandb group
+`curriculum-cm-plan`, launched together, FH2b read first; reads at
+40,960 / 81,920 / 122,880 as amendment 9's, the final gated on the exit,
+the probes on the comparators' own checkpoints at matched rounds.
+
+**Criteria: amendment 9's, unchanged** (mark-following ≥ 0.90 on 2/3,
+leave-wrong ≥ 0.80 on 2/3, arrival at the committed objective where it is
+not the nearest ≥ 0.85 on 2/3, pay differential ≥ +0.15, FH2b success
+≥ 0.85 on 2/3; CM5b PASS ≥ 0.95 / AHEAD of CM4 by two binomial SE on 3/3
+/ NULL), the decision rules as amendment 9's. **One new readout, not a
+gate: the members' explained variance over the last quarter ≥ 0.80**
+(FH2 0.06–0.55, CM5 0.07–0.37; FH1 0.84–0.96, CM4 ~0.75). It is the
+number the floor exists to restore, and it is read at 20,480 rounds
+already: a red panel there says the floor was not the whole of the
+mechanism.
+
+**Expectation (a guess, written so it can be wrong).** The critic
+recovers (EV ≥ 0.8 on 3/3 by the second quarter). FH2b lands in FH1's
+band or a little above it (split 0.4–0.7), with mark-following 0.6–0.75
+— short of 0.90, because the committed and the nearest direction share
+most of the walk on this board (cos 0.5–0.7) and the members that did
+learn to follow (LR1) trained under a plan that disagreed with the
+geometry 83% of the time. CM5b: the head still searches (first-plan
+coverage under 0.5), success 0.2–0.5, AHEAD of CM4 on at most two seeds.
+If FH2b's members still walk the geometry with a healthy critic, the
+lever is the plan distribution the members train under, which is a change
+to the setup and Sash's call.

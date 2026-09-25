@@ -131,3 +131,26 @@ def test_a_unit_with_no_commitment_earns_nothing_from_the_travel_term() -> None:
         if terminated:
             break
     assert cleared == 4
+
+
+def test_the_floored_anchor_bounds_a_step_from_a_near_re_commit() -> None:
+    """A unit re-committed six inches from its new target: without the floor
+    one step pays the whole scale; with a twelve-inch floor it pays half."""
+    from wargame_rl.wargame.envs.reward.calculators.closest_objective_v2 import (
+        ClosestObjectiveV2Calculator,
+    )
+
+    bare = ClosestObjectiveV2Calculator(
+        progress_scale=2.0, normalize_to_commit_distance=True
+    )
+    floored = ClosestObjectiveV2Calculator(
+        progress_scale=2.0,
+        normalize_to_commit_distance=True,
+        normalize_min_distance=12.0,
+    )
+    assert bare.normalize_min_distance == 0.0
+    assert floored.normalize_min_distance == 12.0
+    with pytest.raises(ValueError):
+        ClosestObjectiveV2Calculator(
+            normalize_to_commit_distance=True, normalize_min_distance=-1.0
+        )
