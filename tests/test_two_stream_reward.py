@@ -21,6 +21,7 @@ from wargame_rl.wargame.envs.per_model.env import PerModelEnv
 from wargame_rl.wargame.envs.per_model.reward_timing import PerStepReward
 from wargame_rl.wargame.envs.per_model.types import StepKind
 from wargame_rl.wargame.envs.types import WargameEnvConfig
+from wargame_rl.wargame.envs.types.config import CommitmentConfig
 from wargame_rl.wargame.selectors import build_per_model_chooser
 
 CONFIG = "configs/experiments/curriculum/a3_head_r.yaml"
@@ -154,3 +155,60 @@ def test_the_floored_anchor_bounds_a_step_from_a_near_re_commit() -> None:
         ClosestObjectiveV2Calculator(
             normalize_to_commit_distance=True, normalize_min_distance=-1.0
         )
+
+
+def test_commitment_coverage_pays_the_planning_stream_the_share_claimed() -> None:
+    """Under the head writer the plan-shape term lands on the planning stream at
+    every close, worth the share of objectives some living unit is committed to
+    (times its weight); with the layer off it pays nothing."""
+    from wargame_rl.wargame.envs.per_model.commitment import NO_TARGET as _NO
+
+    config = load_env_config("configs/experiments/curriculum/a3_head_rf_pc.yaml")
+    env = PerModelEnv(config)
+    chooser = build_per_model_chooser("squad_march_take", [env], seed=700000)
+    retimer = PerStepReward(env)
+    observation, _ = env.reset(seed=700000)
+    retimer.reset()
+    closes = 0
+    while True:
+        before = observation
+        action = chooser.choose([env], [observation])[0]
+        state = env.player_commitments
+        claimed = {
+            state.ground_of(g) for g in state.by_group if state.ground_of(g) != _NO
+        }
+        observation, _r, terminated, _t, info = env.step(action)
+        payment = retimer.on_step(before, action, info["effect"], terminated)
+        paid = payment.breakdown.get("commitment_coverage", 0.0)
+        if action.kind is StepKind.close_turn:
+            closes += 1
+            assert paid > 0.0
+            assert paid <= 0.3 * retimer.phase_scale + 1e-9
+            assert abs(paid - 0.3 * retimer.phase_scale * len(claimed) / 4) < 1e-6
+        else:
+            assert paid == 0.0
+        if terminated:
+            break
+    assert closes >= 2
+
+    off: WargameEnvConfig = config.model_copy(
+        update={"commitments": CommitmentConfig(assignment="none")}  # type: ignore[arg-type]
+    )
+    env = PerModelEnv(off)
+    chooser = build_per_model_chooser("squad_march_take", [env], seed=700000)
+    retimer = PerStepReward(env)
+    observation, _ = env.reset(seed=700000)
+    retimer.reset()
+    total = 0.0
+    while True:
+        before = observation
+        action = chooser.choose([env], [observation])[0]
+        observation, _r, terminated, _t, info = env.step(action)
+        total += abs(
+            retimer.on_step(before, action, info["effect"], terminated).breakdown.get(
+                "commitment_coverage", 0.0
+            )
+        )
+        if terminated:
+            break
+    assert total == 0.0

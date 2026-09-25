@@ -158,6 +158,7 @@ PAYMENT_CLASSES: dict[str, PaymentClass] = {
     "models_lost": PaymentClass.delta_global,
     "objective_flip_bonus": PaymentClass.delta_global,
     "objective_coverage": PaymentClass.state_global,
+    "commitment_coverage": PaymentClass.state_global,
     "models_at_objectives": PaymentClass.state_global,
 }
 

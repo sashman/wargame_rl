@@ -1223,3 +1223,115 @@ NULL, and not AHEAD.**
 4. Read a member reward's per-step pay under a churning writer in every
    desk check (the amendment-10 rule stands), and read the planner's
    first-plan coverage beside success on every head arm.
+
+## Amendment 13 — written 2026-09-25 23:57: two probes select the next two arms — FH3 (the members under the rotated writer on the floored stream) and CM6 (a plan-shape term on the planner's stream)
+
+Sash (2026-09-25): "what should you investigate next?" — "go". Two
+no-training probes on the finals of amendment 12, then the arms they
+select.
+
+### Probe 1 — the planner's outcome stream cannot see spreading under these members
+
+CM5b's own games (greedy, n=30 per seed, seeds 700000+) forked at the
+first turn's close: the control keeps the head's plan; the counterfactual
+moves ONE stacked squad's commitment onto an objective no squad is
+committed to, that squad held to its commitment in both branches. Read:
+the realised planning return (0.3 × coverage at every close + the success
+bonus), paired.
+
+| CM5b seed | forked squad arrives: control → spread | planning return: control → spread | paired Δ | success: control → spread |
+|---|---|---|---|---|
+| s1 (stacks) | 0.77 → **0.00** | 0.490 → 0.490 | **+0.000 ± 0.015** | 0.00 → 0.00 |
+| s2 (stacks) | 0.17 → 0.77 | 0.510 → 0.520 | +0.010 ± 0.014 (t 0.7) | 0.00 → 0.00 |
+| s3 (learned to spread) | 0.67 → 0.67 | 0.717 → 0.956 | **+0.239 ± 0.140** (t 1.7) | 0.11 → 0.30 |
+
+On s1 the redirected squad never goes (27 inches to an objective its
+members have never been sent to; they walk to the stack); on s2 it goes
+and the return barely moves (it arrives late, held 1.50 → 1.57); only
+where the head already spreads does spreading pay. **The per-unit
+counterfactual credit would attribute the outcome's difference, which is
+nothing on the stacking seeds — CM5c is withdrawn.** A term that pays the
+planner for the shape of its plan, independent of execution, is the one
+that can move a stacked head.
+
+### Probe 2 — the members still read the board first
+
+The same checkpoints played under the ROTATED environment writer
+(`a3_legible.yaml`, no squad's assignment its nearest objective), n=100:
+
+| members | arrived at the committed objective | arrived at the nearest instead |
+|---|---|---|
+| LR1 (trained under the rotated writer, old reward) | **0.89 / 0.96 / 0.46** | 0.13 / 0.00 / 0.81 |
+| FH1 (PL1's head, old reward) | 0.40 / 0.32 / 0.44 | 0.71 / 0.69 / 0.80 |
+| FH2 (PL1's head, un-floored stream) | 0.26 / 0.29 / 0.32 | 0.64 / 0.63 / 0.71 |
+| **FH2b** (PL1's head, floored stream) | **0.49 / 0.53 / 0.28** | 0.76 / 0.88 / 0.78 |
+| the bar `squad_march_committed` | arrived at committed 0.96, at nearest 0.00; END on committed 0.96 / on nearest 0 |
+
+FH2b's 0.75 mark-following under PL1's plan was mostly the walk the
+geometry gives; handed a mark that disagrees with the board, its members
+go to the nearest objective three times in four. The members that follow
+such a mark (LR1) trained under a writer that never agreed with the
+board. **The plan distribution the members train under is the lever on
+their side**, and the floored stream should make that lever bite harder
+than it did on LR1.
+
+### The build (default off; every existing config and golden untouched; the full suite 5,067 passed)
+
+- `commitment_coverage`: a global calculator, the share of objectives
+  some living unit is committed to, classed a state global so under the
+  head writer it lands on the PLANNING stream and never reaches a member
+  (constraint 2 holds: it pays the planner for a property of its own
+  decision). `configs/experiments/curriculum/a3_head_rf_pc.yaml` =
+  `a3_head_rf.yaml` plus that term at 0.3.
+- `configs/experiments/curriculum/a3_legible_rf.yaml` = the legibility
+  rung's config (`assignment: rotated`, success
+  `all_units_on_commitment`) with `a3_head_rf.yaml`'s member terms.
+
+**Desk check.** The bar's member pay on `a3_head_rf_pc` is the floored
+stream's to four decimals (progress 0.1667 ± 0.0000 per completed
+commitment, per-step p99 +0.069, max +0.083, min 0); CM5b's s1 head on it
+reads per-step max +0.083 / min −0.066; PL1's plan-only ceiling still
+1.000 and CM5b s1's plan-only row still 0.00 (nothing at play reads the
+reward). On `a3_legible_rf` the committed bar's member pay is 0.1667 ±
+0.0000 per commitment, per-step p99 +0.062, min 0 (the rotated writer
+never re-anchors).
+
+### The arms
+
+| arm | the one change | tag | comparators by name |
+|---|---|---|---|
+| **FH3** (#415) | the members trained under the ROTATED environment writer on the floored stream (`a3_legible_rf.yaml`); no frozen planner | `fh3` | LR1 at matched rounds (arrival 0.89 / 0.96 / 0.46, success 0.59 / 0.94 / 0.40 at the cap); FH2b's members at play on the rotated config (0.49 / 0.53 / 0.28); the bar |
+| **CM6** (#416) | CM5b plus `commitment_coverage` 0.3 on the planning stream (`a3_head_rf_pc.yaml`); head and members from scratch | `cm6` | CM5b at matched rounds (as trained 0.01 / 0.00 / 0.00 → 0.02 / 0.00 / 0.26 → 0.00 / 0.00 / 0.17; plan-only 0.16 / 0.00 / 0.00 → 0.39 / 0.04 / 0.36 → 0.00 / 0.01 / 0.82; first-plan 0.00 / 0.00 / 0.09); CM4; A3 from scratch |
+
+Three seeds each, 122,880 rounds, CM4's recipe, Wandb group
+`curriculum-cm-plan`, launched together; reads at 40,960 / 81,920 /
+122,880 on seeds 700000+, the final gated on the exit.
+
+**Criteria, per seed at 122,880.** FH3: arrival at the committed objective
+on the rotated config ≥ 0.85 on 2/3 and success (`all_units_on_commitment`)
+≥ 0.85 on 2/3; readouts: the same members under PL1's head on
+`a3_head_rf_pc` (split row against FH2b's 0.84 / 0.79 / 0.46; arrival at a
+non-nearest committed objective against 0.84 / 0.88 / 0.71), executor EV
+≥ 0.80. CM6: PASS success ≥ 0.95; AHEAD of CM4's same seed by two
+binomial SE on 3/3; NULL otherwise; **SPREADS**: first-plan coverage
+≥ 0.60 on 2/3 (CM5b 0.00 / 0.00 / 0.09) and the plan-only row ≥ 0.50 on
+2/3 at 81,920; readouts: re-commits before arrival, the members' arrival
+at the committed objective (not below CM5b's 0.86 / 0.94 / 0.64),
+members' EV, the planning panel.
+
+**Decision rules.** FH3 passes → the members' half is closed and FH3's
+members are the warm start for the next joint arm. FH3 fails on arrival
+while LR1 passed → the floored stream is worse than the old one under a
+disagreeing writer, which the per-step probe on LR1's checkpoints would
+then have to explain. CM6 SPREADS and passes → the planner's half is
+closed on this shape. CM6 SPREADS and the members do not follow the
+spread plan → join the two: CM6's head with FH3's members. CM6 does not
+SPREAD → the term is too small against the outcome (the planning return
+under a stack is ~0.5 per episode; the term adds up to 0.3 × 8 closes) and
+the weight, not the mechanism, is the next arm.
+
+**Expectation (a guess, written so it can be wrong).** FH3: arrival
+0.85–0.95 on two seeds, success 0.7–0.9; under PL1's head at play, split
+0.8–0.9 with arrival at a non-nearest objective ≥ 0.85. CM6: SPREADS on
+2/3 (first-plan 0.6–0.9), success 0.4–0.8, AHEAD of CM4 on two seeds, PASS
+on none — the members lag the plan as they did on CM5b's s3.
