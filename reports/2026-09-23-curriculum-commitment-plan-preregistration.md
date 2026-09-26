@@ -1335,3 +1335,53 @@ the weight, not the mechanism, is the next arm.
 0.8–0.9 with arrival at a non-nearest objective ≥ 0.85. CM6: SPREADS on
 2/3 (first-plan 0.6–0.9), success 0.4–0.8, AHEAD of CM4 on two seeds, PASS
 on none — the members lag the plan as they did on CM5b's s3.
+
+## Amendment 14 — written 2026-09-26 03:20: FH3 and CM6 read — the plan-shape term makes the head plan first time; the rotated writer makes one seed's members read the mark; CM6 NULL / AHEAD / AHEAD with the best joint reads on the ladder, FH3 FAIL on the letter with the best executor on it
+
+Both arms read at 40,960 / 81,920 / 122,880, n=100 on seeds 700000+, the
+final gated on the trainers' exit. Wandb group `curriculum-cm-plan`: FH3
+5hcx6fxq / jf05mxtd / 88agvpkj, CM6 siuw5cne / t8nd9hot / nx139kf1.
+Revision `2e021a2`.
+
+### CM6 (#416) — CM5b plus `commitment_coverage` 0.3 on the planning stream
+
+| read | as trained (CM5b · CM4) | plan-only (CM5b) | first-plan coverage (CM5b) | re-commits before arrival | members' arrival at a non-nearest committed objective (CM5b) | mark-following |
+|---|---|---|---|---|---|---|
+| 40,960 | 0.04 / 0.05 / 0.59 (0.01 / 0.00 / 0.00 · 0.00 / 0.16 / 0.00) | 1.00 / 0.94 / 0.52 (0.16 / 0.00 / 0.00) | **1.00 / 1.00 / 0.27** (0.00 ×3) | 0.41 / 0.85 / 0.73 | 0.31 / 0.66 / 0.76 (0.65 / 0.98 / 0.77) | 0.20 / 0.42 / 0.66 |
+| 81,920 | 0.23 / 0.62 / 0.70 (0.02 / 0.00 / 0.26 · 0.00 / 0.19 / 0.21) | 0.95 / 0.95 / 0.78 (0.39 / 0.04 / 0.36) | **0.99 / 0.90 / 0.49** (0.14 / 0.00 / 0.06) | 0.36 / 0.23 / 0.31 | 0.33 / 0.55 / 0.83 (0.18 / 0.80 / 0.77) | 0.39 / 0.46 / 0.72 |
+| **122,880** | **0.00 / 0.88 / 0.94** (0.00 / 0.00 / 0.17 · 0.00 / 0.37 / 0.32) | 0.86 / 0.58 / 0.94 (0.00 / 0.01 / 0.82) | 0.96 / 0.98 / 0.66 (0.00 / 0.00 / 0.09) | 0.68 / 0.46 / 0.18 | 0.34 / 0.65 / 0.93 (0.86 / 0.94 / 0.64) | 0.49 / 0.54 / 0.76 |
+
+Panels at the cap: planning return 1.5–2.2 (CM5b 0.3–0.5; the plan-shape term dominates the stream), planning EV 0.72–0.75, commitment entropy 0.46–0.59 nats, members' EV 0.81 / 0.82 / 0.92, displacement entropy 1.5–1.7. Ablation: s3 reads the mark (blank → 0.00), s2 does not (blank 0.90 ≈ trained 0.88), s1 is at zero in every column. Failure census: s1's failures are the committed squad standing on another objective (72%) or far away (23%) — the head's plan covers the board in 96% of episodes and the members walk to the nearest objective (arrival 0.34, at the nearest 0.40).
+
+**Verdict on the letter, per seed at 122,880 as trained: NULL / AHEAD / AHEAD** (s2 0.88 and s3 0.94 clear CM4's same seed by 10 and 12 binomial SE; s3 is one hundredth short of PASS; s1's 0.00 is a members' failure under a covering plan)**. SPREADS: MET** (first-plan coverage 0.99 / 0.90 / 0.49 at 81,920 against ≥ 0.60 on 2/3; the plan-only row 0.95 / 0.95 / 0.78 against ≥ 0.50; CM5b 0.14 / 0.00 / 0.06 and 0.39 / 0.04 / 0.36).
+
+### FH3 (#415) — the members under the rotated writer on the floored stream
+
+| read | arrival at the committed objective on the rotated config (never the nearest) | at the nearest instead | under PL1's head on `a3_head_rf_pc`: split (FH2b) | arrival at a non-nearest committed objective under PL1 (FH2b) |
+|---|---|---|---|---|
+| 40,960 | 0.83 / 0.24 / 0.40 | 0.10 / 0.69 / 0.93 | 0.82 / 0.04 / 0.61 (0.49 / 0.43 / 0.66) | 0.88 / 0.35 / 0.46 (0.68 / 0.78 / 0.64) |
+| 81,920 | 0.93 / 0.51 / 0.41 | 0.04 / 0.94 / 0.91 | **0.95 / 0.91 / 0.19** (0.62 / 0.81 / 0.50) | 0.82 / 0.54 / 0.50 (0.73 / 0.78 / 0.62) |
+| **122,880** | **0.94 / 0.38 / 0.50** | 0.01 / 0.95 / 0.90 | **0.98 / 0.70 / 0.50** (0.84 / 0.79 / 0.46) | 0.92 / 0.43 / 0.68 (0.84 / 0.88 / 0.71) |
+
+Comparators: the committed bar on the rotated config 0.96; LR1's members
+(the same writer, the old reward) 0.89 / 0.96 / 0.46 at their cap; FH2b's
+members at play on the rotated config 0.49 / 0.53 / 0.28. Executor EV 0.76 / 0.83 / 0.83 at the cap, displacement entropy 1.3–1.7 nats. s1 under PL1's head: 5.54 turns (the bar 5.28), pay differential +0.16 per step (the bar +0.20), mark-following 0.86; the plan-only ceiling under PL1 is 1.000.
+
+**Verdict on the letter, per seed at 122,880: FAIL / FAIL / FAIL on the letter — one seed of three clears both marks (s1: arrival 0.94, success 0.94 on the rotated config), the other two walk to the nearest objective (0.95 / 0.90)** (arrival on
+the rotated config ≥ 0.85 on 2/3; success ≥ 0.85 on 2/3).
+
+### What the pair says
+
+- **The plan-shape term is the planner's lever.** With `commitment_coverage` on the planning stream the head writes a covering assignment at the first opportunity on every seed (first-plan coverage 0.96 / 0.98 / 0.66 against CM5b's 0.00 / 0.00 / 0.09) and keeps it (persist 0.89–0.96, re-commits before arrival 0.18–0.68). The outcome-only stream never did that on any joint arm (CM3, CM4, CM5, CM5b). The term pays the planner for a property of its own decision, so constraint 2 holds, and the planning critic fits it (EV 0.72–0.75 against 0.09–0.45 before).
+- **With a planner that plans and members that follow, the join works: 0.88 and 0.94 on two seeds of three**, the first joint arm ahead of A3 from scratch (0.70 / 0.80 / 0.77), and ahead of CM4's same seed by 10–12 binomial SE. s3 is a full join: the head covers first time (0.66), its members arrive at a non-nearest committed objective on 0.93 of squads and set out from a wrong one on 0.90 of moves, blank → 0.00. s2 reaches 0.88 by a different route — members who do not read the mark (ablation flat) under a head whose covering plan agrees with the geometry.
+- **The remaining failure is the members', on three of six seeds.** CM6 s1's head plans perfectly (0.96) and its members walk to the nearest objective (arrival 0.34): 0.00. FH3 s2 and s3, trained under a writer that never agrees with the board, still go to the nearest (0.95 / 0.90 at the cap). The members that learn to read the mark do so early and completely (FH3 s1 at 0.83 by a third of the budget, 0.94 at the cap; CM6 s3 similar); the ones that do not learn the geometry first and never switch. Three seeds cannot say what separates the two; LR1 read 2 of 3 on the old reward, FH3 1 of 3 on this one, and both are consistent with a coin flip per seed.
+- **FH3 s1 is the best executor on the ladder.** Under PL1's head it reads 0.98 (the ceiling with the bar's members is 1.000) at 5.54 turns against the bar's 5.28, arriving at a non-nearest committed objective on 0.92 of squads with a realised pay differential of +0.16 per step against the bar's +0.20 — the first learned members whose mark-following is within reach of the script's.
+
+**Which decision rule fired.** CM6: "SPREADS and the members do not follow the spread plan → join the two: CM6's head with FH3's members" fired on s1 (and did not need to on s2 / s3). FH3: "fails on arrival while LR1 passed" fired on the letter, but LR1's 2 of 3 and FH3's 1 of 3 are not distinguishable at three seeds and s1 is ahead of LR1's best on every column; the per-step probe on LR1's checkpoints is not run.
+
+### What this asks of #384 (proposed; Sash decides)
+
+1. **Keep both**: the floored stream for the members and `commitment_coverage` 0.3 on the planner's stream (`a3_head_rf_pc.yaml`) are the reward from here. Neither has a measured downside on this shape.
+2. **CM7, the join of the two working halves** (start axis): CM6's recipe with the members warm-started from FH3 s1's executor (the mark-reader) and the head from scratch, three seeds (the three seeds share the one executor — read them as that executor's band, not as seed variance). Prediction: as trained ≥ 0.90 on 3/3, PASS on at least one. If the warm start is overwritten (as A5i's was under guns), the join must be trained from scratch with the rotated writer as a first stage.
+3. **Then the half-step** (six squads, five objectives) on `rf_pc`'s reward, from scratch and from CM7 — the shape the commitment layer was built for, where the geometry walk reads 0.03–0.33 and no per-model policy has passed.
+4. **On the members' coin flip**: the seeds that read the mark do so by a third of the budget. Read every executor at 40,960 on the rotated config and restart the seed that walks to the nearest — cheaper than three full runs — until the mechanism that separates the two is found (a difference in the first few thousand rounds' plans is the place to look).
