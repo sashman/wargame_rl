@@ -1843,3 +1843,66 @@ action is always available and pays the same, the next test is a
 supervised clone of the plan-following walk into the set network (the D1
 pattern), which decides between the architecture and the optimisation
 with no GPU.
+
+## Amendment 20 — written 2026-09-27 01:15: FH4 read — NULL on 3/3: under the per-step plan-following score, soldiers trained from scratch still walk to the nearest objective
+
+FH4 (#423): the rotated writer on `a3_legible_pf.yaml` — the soldiers'
+whole income one per-step plan-following score at 0.5 (amendment 19) —
+three seeds from scratch, 122,880 rounds, read at 40,960 / 81,920 /
+122,880, n=100 on seeds 700000+, the final gated on the exit. Wandb
+146ukug8 / 27x7b9mk / urxugj6w. Code `6955445`. Comparator FH3 (the same
+writer under the old soldier terms).
+
+| read | arrival at a non-nearest committed objective (FH3 at the same read) | at the nearest | success on the rotated board | split under PL1's head | blank-plan ablation |
+|---|---|---|---|---|---|
+| 40,960 | 0.45 / 0.29 / 0.28 (0.85 / 0.30 / 0.47) | 0.84 / 0.61 / 0.70 | 0.12 / 0.01 / 0.10 | 0.60 / 0.02 / 0.47 | flat |
+| 81,920 | 0.56 / 0.46 / 0.45 (0.93 / 0.51 / 0.41) | 0.92 / 0.90 / 0.84 | 0.26 / 0.13 / 0.75 | 0.76 / 0.80 / 0.79 | flat |
+| **122,880** | **0.57 / 0.35 / 0.54** (0.94 / 0.38 / 0.50) | 0.88 / 0.87 / 0.90 | 0.15 / 0.01 / 0.11 | 0.95 / 0.72 / 0.95 | flat (0.16 / 0.02 / 0.10 = trained) |
+
+In-run success by quarter 1 → 6 %, 0 → 1 %, 0 → 5 % (FH3's reader: 4 →
+87 %). Members' EV 0.80–0.86 throughout.
+
+**Verdict on the letter, per seed at 122,880: NULL on 3/3** — FOLLOWS
+(arrival ≥ 0.80) on none; against FH3's same seed s1 is BEHIND by more
+than five binomial SE (0.57 against 0.94, FH3's reader), s2 and s3 level.
+The new score produced what the old terms produced on FH3's two unlucky
+seeds, and no reader.
+
+### What it says
+
+- **The reward is not what keeps the soldiers on the nearest walk.** Under a
+  score where following pays about twice what the nearest walk pays per
+  step (the desk check: the follower 0.74, the nearest-walker 0.39), with a
+  perfect action always available and the same pay for every plan, PPO from
+  scratch lands in the nearest walk on three seeds of three. On this board
+  the assigned and the nearest objective sit at cos 0.45–0.49 from the
+  deployment zone, so the nearest walk still scores about 0.45 per step,
+  positive, and once found it is paid enough to keep.
+- **It is the optimisation landscape, not the architecture.** "Walk to the
+  closest objective" is a function of position features the network finds
+  first; "attend to the objective token your unit is flagged for and walk
+  there" (`REL_COMMITTED` on the relation) is a harder function to find,
+  and FH3's one reader (and CM7 / CM8w / CM9c built on it, arrival
+  0.85–0.98) shows the network represents it once found. The seed lottery
+  is which attractor PPO reaches first.
+- **The split rows say the soldiers are useful anyway**: under PL1's head on
+  A3's shape they read 0.95 / 0.72 / 0.95, because on that board the
+  nearest walk is right for three squads of four.
+
+### What this asks of #384 (proposed; Sash decides)
+
+1. **Do not spend another from-scratch soldier run on the reward.** Two
+   reward shapes (the floored progress + capped stay, and the per-step
+   score) give the same result on the rotated board: one reader in six
+   seeds. The recipe that works — the rotated writer first, take the seed
+   that reads, then the head — stands.
+2. **The next lever is on the search, not the pay**: make the plan-following
+   walk as easy a function to find as the nearest walk. Two candidates, one
+   arm each: (a) the committed objective's relative vector written onto
+   the soldier's own token (an observation lever; today the commitment is
+   a flag on the relation and the network must attend through it); (b) a
+   curriculum on the rotation — start with the plan equal to the nearest,
+   rotate it a little more every few thousand rounds, so the reader is
+   reached by continuation rather than by luck.
+3. The supervised-clone test (amendment 19's fallback) is no longer needed
+   to decide representability: FH3 s1 already did.
