@@ -28,10 +28,38 @@ from collections.abc import Callable
 import numpy as np
 
 from scripts.scenario_overrides import load_env_config
+from wargame_rl.wargame.envs.evaluation import EvalResult
 from wargame_rl.wargame.envs.per_model import tokens
 from wargame_rl.wargame.envs.per_model.commitment import CommitmentState
+from wargame_rl.wargame.envs.per_model.env import PerModelEnv
+from wargame_rl.wargame.envs.per_model.evaluate import evaluate_per_model_chooser
+from wargame_rl.wargame.envs.per_model.reward_timing import PerStepReward
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.scoring import evaluate_spec
+from wargame_rl.wargame.selectors import (
+    build_plan_only_chooser,
+    is_per_model_checkpoint,
+)
+
+
+def _score(
+    spec: str,
+    config: WargameEnvConfig,
+    seeds: list[int],
+    name: str,
+    members: str | None,
+) -> EvalResult:
+    """`evaluate_spec`, or with `members` the plan-only chooser (the head plans,
+    the scripted members walk) -- the only read that means anything for a
+    head trained plan-only, whose own members are untrained."""
+    if members is None:
+        return evaluate_spec(spec, config, seeds, name)
+    envs = [PerModelEnv(config) for _ in range(min(8, len(seeds)))]
+    chooser = build_plan_only_chooser(spec, members, envs, seed=int(seeds[0]))
+    return evaluate_per_model_chooser(
+        chooser.choose, envs, seeds, name, retimers=[PerStepReward(env) for env in envs]
+    )
+
 
 Writer = Callable[[np.ndarray, CommitmentState, np.ndarray, np.ndarray, int, int], None]
 
@@ -94,7 +122,7 @@ def _nearest_writer(n_objectives: int) -> Writer:
 
 
 def modes(config: WargameEnvConfig) -> list[tuple[str, Writer]]:
-    """The four writers, in the order the table prints them."""
+    """The four relation writers, in the order the table prints them."""
     n_objectives = (
         len(config.objectives)
         if config.objectives
@@ -108,6 +136,16 @@ def modes(config: WargameEnvConfig) -> list[tuple[str, Writer]]:
     ]
 
 
+_TRAINED_CLAIMANTS = CommitmentState.claimants_by_objective
+
+
+def _no_claimants(self: CommitmentState, n_objectives: int) -> np.ndarray:
+    """The claimant column zeroed on every objective token: what the HEAD (and
+    the members) see with no record of who has already claimed what (#384,
+    the plan-quality desk check). The relations are left as trained."""
+    return np.zeros(n_objectives, dtype=float)
+
+
 def main(argv: list[str]) -> None:
     """`<config> <n> <seed_base> <ckpt...>`: one row per checkpoint."""
     config_path, n, seed_base, checkpoints = (
@@ -116,6 +154,11 @@ def main(argv: list[str]) -> None:
         int(argv[3]),
         argv[4:],
     )
+    members: str | None = None
+    if checkpoints and not is_per_model_checkpoint(checkpoints[-1]):
+        # A trailing baseline name: ablate through the plan-only chooser.
+        members = checkpoints[-1]
+        checkpoints = checkpoints[:-1]
     config = load_env_config(config_path)
     config.render_mode = None
     if not config.commitments.enabled:
@@ -125,15 +168,16 @@ def main(argv: list[str]) -> None:
     seeds = [seed_base + i for i in range(n)]
     print(
         f"commitment ablation on {config_path} n={n} seeds {seed_base}+ (success · held · turns)"
+        + (f"; PLAN-ONLY with members {members}" if members else "")
     )
-    print("| checkpoint | trained | blank | misdirect | nearest |")
-    print("|---|---|---|---|---|")
+    print("| checkpoint | trained | blank | misdirect | nearest | no claimants |")
+    print("|---|---|---|---|---|---|")
     for spec in checkpoints:
         cells = []
         for name, writer in modes(config):
             tokens._write_commitment_relations = writer  # type: ignore[assignment]
             try:
-                result = evaluate_spec(spec, config, seeds, name)
+                result = _score(spec, config, seeds, name, members)
             finally:
                 tokens._write_commitment_relations = _TRAINED  # type: ignore[assignment]
             cells.append(
@@ -141,6 +185,15 @@ def main(argv: list[str]) -> None:
                 f"{result.mean_turns:.2f}"
             )
         label = spec.split("/")[-2] if "/" in spec else spec
+        CommitmentState.claimants_by_objective = _no_claimants  # type: ignore[method-assign]
+        try:
+            result = _score(spec, config, seeds, "no claimants", members)
+        finally:
+            CommitmentState.claimants_by_objective = _TRAINED_CLAIMANTS  # type: ignore[method-assign]
+        cells.append(
+            f"{result.success_rate:.2f} · {result.objectives_held:.2f} · "
+            f"{result.mean_turns:.2f}"
+        )
         print(f"| {label} | " + " | ".join(cells) + " |", flush=True)
 
 

@@ -82,15 +82,19 @@ def test_the_head_writer_offers_a_decision_at_a_units_first_open_and_writes_it()
     assert point is not None and point.kind is StepKind.open
     assert point.commit_mask is not None
     for index in np.flatnonzero(point.selector_mask):
-        assert point.commit_mask[index].all()
+        # Every objective is offered; KEEP is not, on an empty slot (a unit
+        # with no plan must name one, #384).
+        assert point.commit_mask[index, 1:].all() and not point.commit_mask[index, 0]
     assert not state.any_set(), "nothing is written at deployment"
 
     model, declaration = _first_open(env)
     group = int(env.wargame_models[model].group_id)
-    # A commitment the point does not offer is illegal; KEEP and an objective are.
+    # A commitment the point does not offer is illegal: an unknown column, and
+    # KEEP while the slot is empty; an objective is legal.
     assert point.why_illegal(PerModelAction.open(model, declaration, 99)) is not None
     assert (
-        point.why_illegal(PerModelAction.open(model, declaration, COMMIT_KEEP)) is None
+        point.why_illegal(PerModelAction.open(model, declaration, COMMIT_KEEP))
+        is not None
     )
     env.step(PerModelAction.open(model, declaration, 2))
     assert state.ground_of(group) == 2
