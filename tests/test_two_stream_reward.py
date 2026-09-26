@@ -297,3 +297,77 @@ def test_commitment_churn_charges_the_planning_stream_per_re_commit_before_arriv
         if terminated:
             break
     assert total == 0.0
+
+
+def test_plan_following_scores_the_share_of_the_best_step_and_is_bounded() -> None:
+    """The plan-following score is in [-1, 1] on every paid step, a soldier that
+    stays inside its committed objective scores exactly 1, a step's pay is bounded
+    by the weight over the alive count, and with the layer off it pays nothing."""
+    from wargame_rl.wargame.envs.reward.calculators.plan_following import (
+        PlanFollowingCalculator,
+    )
+
+    calc = PlanFollowingCalculator(weight=1.0, max_move_distance=6.0)
+    assert calc.score(12.0, 6.0) == 1.0  # a full-speed step straight at it
+    assert calc.score(3.0, 0.0) == 1.0  # the shorter step that lands on the edge
+    assert calc.score(12.0, 9.0) == 0.5  # half speed
+    assert calc.score(12.0, 12.0) == 0.0  # standing still off the objective
+    assert calc.score(12.0, 18.0) == -1.0  # straight away at full speed
+    assert calc.score(0.0, 0.0) == 1.0  # inside and stayed
+    assert calc.score(0.0, 3.0) == -0.5  # walked off by half a move
+    assert calc.score(0.0, 9.0) == -1.0
+
+    config = load_env_config("configs/experiments/curriculum/a3_legible_pf.yaml")
+    env = PerModelEnv(config)
+    chooser = build_per_model_chooser("squad_march_take", [env], seed=700000)
+    retimer = PerStepReward(env)
+    observation, _ = env.reset(seed=700000)
+    retimer.reset()
+    term = next(c for name, c in retimer.classes.potential if name == "plan_following")
+    assert isinstance(term, PlanFollowingCalculator)
+    paid_steps = 0
+    perfect_stays = 0
+    while True:
+        before = observation
+        action = chooser.choose([env], [observation])[0]
+        observation, _r, terminated, _t, info = env.step(action)
+        payment = retimer.on_step(before, action, info["effect"], terminated)
+        paid = payment.breakdown.get("plan_following", 0.0)
+        n_alive = sum(1 for m in env.wargame_models if m.is_alive)
+        # One score per actor: the actor on an act, the whole unit on an
+        # open whose STAY declaration closed it (each member then scores 1
+        # inside its objective and 0 off it, once, with no act to follow).
+        actors = len(info["effect"].actor_set)
+        assert abs(paid) <= 0.5 / n_alive * actors + 1e-9
+        if paid != 0.0:
+            paid_steps += 1
+        for _idx, value in term.last_score.items():
+            assert -1.0 <= value <= 1.0
+            if value == 1.0:
+                perfect_stays += 1
+        if terminated:
+            break
+    assert paid_steps > 20
+    assert perfect_stays > 0
+
+    off: WargameEnvConfig = config.model_copy(
+        update={"commitments": CommitmentConfig(assignment="none")}  # type: ignore[arg-type]
+    )
+    env = PerModelEnv(off)
+    chooser = build_per_model_chooser("squad_march_take", [env], seed=700000)
+    retimer = PerStepReward(env)
+    observation, _ = env.reset(seed=700000)
+    retimer.reset()
+    total = 0.0
+    while True:
+        before = observation
+        action = chooser.choose([env], [observation])[0]
+        observation, _r, terminated, _t, info = env.step(action)
+        total += abs(
+            retimer.on_step(before, action, info["effect"], terminated).breakdown.get(
+                "plan_following", 0.0
+            )
+        )
+        if terminated:
+            break
+    assert total == 0.0

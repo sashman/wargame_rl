@@ -149,6 +149,7 @@ PAYMENT_CLASSES: dict[str, PaymentClass] = {
     # step from the board after its move, so that a body which ends inside
     # an objective is paid and one which walks out is not (#340, staying).
     "objective_stay": PaymentClass.potential_action,
+    "plan_following": PaymentClass.potential_action,
     "objective_hold": PaymentClass.state,
     "declared_objective_hold": PaymentClass.state,
     "unit_coherency": PaymentClass.state,

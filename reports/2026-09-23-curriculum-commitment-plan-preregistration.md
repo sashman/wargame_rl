@@ -1754,3 +1754,92 @@ reward the churn cost can act on — recorded as such whatever CM9 reads.
 **Expectation (a guess).** CM9 holds the peak: 0.80–0.95 at the cap with
 re-commits before arrival ≤ 0.3; CM9c reproduces the fall on at least one
 seed. Six trainers on the CPU box, about 4.5 hours.
+
+## Amendment 19 — written 2026-09-26 20:17: one per-step plan-following score for the soldiers (Sash's proposal) — FH4, CM10, CM10s
+
+**Why.** The two-stream reward's second constraint — following pays the
+same for every plan — held per completed commitment and not per step: the
+progress term paid 2.0 per commitment spread over the walk, so a squad
+sent to a far objective earned less per step than one sent next door,
+and the planner's choice leaked into the soldiers' per-step pay. Sash's
+proposal (2026-09-26): the soldier's whole income is one bounded score of
+how well its move followed the plan, scaled by one weight, with a perfect
+action available at every decision.
+
+**The one change, named.** `plan_following` at weight **0.5** replaces
+`closest_objective_v2` + `objective_stay` on the soldiers' stream; the
+planner's stream is untouched. With `d_t` the distance from the soldier's
+base edge to its committed objective's EDGE before the move, `d_{t+1}`
+after it and `M` = 6" the move distance:
+
+- walking (`d_t > 0`): `clip((d_t − d_{t+1}) / min(M, d_t), −1, 1)` — the
+  share of the best possible step;
+- inside and stayed inside: `+1`;
+- walked off: `−min(1, d_{t+1} / M)`.
+
+A full-speed step straight at the edge (or the shorter one that lands on
+it) scores 1, as does staying inside; standing still off the objective
+0; straight away at full speed −1. Nothing pays for any objective but the
+committed one, an uncommitted squad earns nothing, and a re-commit cannot
+make a step pay more than a normal step. Paid to the actor on its own
+step, and to every member of a unit whose STAY declaration closed its
+open (each scores 1 inside, 0 off). A soldier's first decision of an
+episode is unpaid. Configs: `a3_legible_pf.yaml` (the rotated writer),
+`a5_points_head_pf_pc.yaml` (the half-step, the planner's stream as
+`rf_pc`), `a5_points_head_pf_pc_cc.yaml` (the same plus the churn cost).
+Test: `tests/test_two_stream_reward.py::test_plan_following_scores_the_share_of_the_best_step_and_is_bounded`.
+
+**Desk check (no training; n=20 on seeds 700000+):**
+
+| policy, config | soldiers' income per episode (summed over soldiers) | mean score per paid step | steps at exactly 1 | steps > 0.5 | steps < 0 |
+|---|---|---|---|---|---|
+| the bar, half-step | 2.79 (0.155 per soldier; the old terms paid ≈ 0.11 per commitment + the capped stay) | +0.83 | 0.44 | 0.85 | 0.00 |
+| CM8w s3 at 81,920 (works), half-step | 2.69 | +0.70 | 0.27 | 0.77 | 0.05 |
+| CM8 s1 at the cap (does not), half-step | 1.60 | +0.32 | 0.11 | 0.42 | 0.20 |
+| the bar walking to its OWN assignment under the rotated plan, `a3_legible_pf` | 1.47 | +0.37 | 0.11 | 0.39 | 0.03 |
+| FH3 s1 (the plan-reader), `a3_legible_pf` | 2.21 | +0.74 | 0.25 | 0.79 | 0.01 |
+| FH3 s2 (walks to the nearest), `a3_legible_pf` | 1.51 | +0.39 | 0.10 | 0.48 | 0.15 |
+
+At 0.5 the scale matches the old terms (0.155 against ≈ 0.11–0.16 per
+soldier per episode), so PPO's value scale is held and only the shape
+moves (the A5c lesson). The score separates what the record separates:
+the policy that follows earns twice per step what the one walking to the
+nearest earns, on both boards; the bar never scores below −0.14.
+
+**Arms.** CM4's recipe (4 envs × 32 rounds, `ent_coef` 0.003), three
+seeds, 122,880 rounds, reads at 40,960 / 81,920 / 122,880 (n=100, seeds
+700000+, the finals gated on the exits), Wandb group `curriculum-cm-plan`:
+
+| arm | the one change | tag | comparators by name |
+|---|---|---|---|
+| **FH4** | the rotated writer (`a3_legible_pf.yaml`) from scratch — the plan disagrees with the board by construction | `fh4` | FH3 (the same writer under the old soldier terms: arrival at a non-nearest committed objective **0.94 / 0.38 / 0.50**, under PL1's head split 0.98 / 0.70 / 0.50); the bar walking to its own assignment (arrival at the committed ≈ 0.37 of squads) |
+| **CM10** | the half-step from CM8w's own seed at 81,920 (the peak), fresh optimiser, on `a5_points_head_pf_pc` or its `_cc` variant — decided by CM9's 40,960 read (the rule below) | `cm10` | CM9 (if the cc variant) or CM9c (if not) at matched rounds, same seed, paired; CM8w at 81,920 (0.61 / 0.96 / 1.00) and at its cap (0.73 / 0.63 / 0.87); the bar |
+| **CM10s** | the same config from scratch | `cm10s` | CM8 (0.03 / 0.06 / 0.16 at the cap; blank-plan ablation flat) |
+
+**The planner-stream rule for CM10 / CM10s, written before CM9's first
+read:** the `_cc` variant (with the churn cost) if at 40,960 CM9's
+re-commits before arrival are ≤ 0.35 on 3/3 and CM9c's are not, or CM9's
+success is ahead of CM9c's same seed by two binomial SE on 2/3;
+otherwise the plain variant. FH4 launches now beside CM9 / CM9c (nine
+trainers); CM10 and CM10s when CM9 / CM9c exit.
+
+**Criteria.** FH4, per seed at 122,880: FOLLOWS if arrival at a
+non-nearest committed objective ≥ 0.80 on 3/3 (FH3: 1 of 3); AHEAD of
+FH3's same seed by two binomial SE on 2/3; NULL otherwise. CM10, per
+seed at 122,880 as trained: PASS ≥ 0.95; AHEAD of its comparator's same
+seed by two binomial SE on 2/3; BEHIND by the same on 2/3; NULL
+otherwise. CM10s: PASS ≥ 0.95; AHEAD of CM8's same seed on 3/3; NULL.
+Mechanism readouts on all three: the blank-plan ablation (→ 0.00 if the
+soldiers follow), arrival at a non-nearest committed objective, the
+probe's pay toward the committed objective against the same move toward
+the nearest, the walk-off, the census, the panels.
+
+**Expectation (a guess).** FH4 FOLLOWS on 2 of 3 (the per-step margin on
+the rotated board is 2× for the follower, against ≈ 1.1× under the old
+terms); CM10 holds CM8w's peak and reads 0.8–0.95 at the cap; CM10s
+ahead of CM8 on 3/3 and PASS on none — the lottery narrowed, not closed.
+If FH4 and CM10s both fail to follow under a reward where the perfect
+action is always available and pays the same, the next test is a
+supervised clone of the plan-following walk into the set network (the D1
+pattern), which decides between the architecture and the optimisation
+with no GPU.

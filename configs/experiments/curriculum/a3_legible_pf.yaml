@@ -1,0 +1,54 @@
+# #384, amendment 19 (2026-09-26): the ROTATED writer with the soldiers paid ONE
+# per-step plan-following score -- `a3_legible_rf.yaml` with `closest_objective_v2`
+# + `objective_stay` replaced by `plan_following` 0.5 (the share of the best
+# possible step toward the committed objective, in [-1, 1]; staying inside 1).
+# Arm FH4, read against FH3 (the same writer under the old soldier terms: one
+# plan-reader in three). Below, the base config as written:
+config_name: curriculum_a3_legible_pf
+number_of_wargame_models: 12
+number_of_opponent_models: 0
+number_of_objectives: 4
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 4
+number_of_battle_rounds: 8
+deployment_zone: [4, 4, 10, 40]
+opponent_deployment_zone: [50, 16, 56, 28]
+models:
+  - &sq_0 { group_id: 0 }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+objectives:
+  - { x: 35, y: 8 }
+  - { x: 35, y: 17 }
+  - { x: 35, y: 27 }
+  - { x: 35, y: 36 }
+coherency:
+  enforce_at_deployment: true
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: plan_following
+        weight: 0.5
+        params:
+          max_move_distance: 6.0
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: all_units_on_commitment
+      params: {}
+observe_objective_control: true
+commitments:
+  assignment: rotated
