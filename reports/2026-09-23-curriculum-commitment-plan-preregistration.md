@@ -1479,3 +1479,71 @@ the change of board).
 CM6's did, as trained 0.3–0.7 at the cap, AHEAD on 3/3, PASS on none.
 CM8w: ahead of CM8 at every read, 0.6–0.9 at the cap, PASS on one seed at
 most; the transfer clause met.
+
+## Amendment 16 — written 2026-09-26 13:09: CM7 read — AHEAD / PASS / AHEAD, the first PASS of a joint arm on this ladder: the join works when the soldiers already read the plan
+
+CM7 (#417): CM6's recipe (`a3_head_rf_pc.yaml`, head and members
+trained together), the network warm-started from FH3 s1's plan-reading
+executor, the planner from its initialisation. Read at 40,960 / 81,920 /
+122,880, n=100 on seeds 700000+, the final gated on the exit. Wandb
+dqlxji5x / fnszyqqk / 8a1rqszk. Revision `c06bcfe`. The three seeds share
+one warm start and are that executor's band.
+
+| read | as trained (CM6 at the same read) | plan-only | first-plan coverage | re-commits before arrival | arrival at a non-nearest committed objective | executor read on the rotated config (SURVIVES ≥ 0.80) |
+|---|---|---|---|---|---|---|
+| 40,960 | 0.91 / 0.79 / 0.92 (0.04 / 0.05 / 0.59) | 0.98 / 1.00 / 1.00 | 0.81 / 0.78 / 0.97 | 0.13 / 0.14 / 0.03 | 0.88 / 0.98 / 0.88 | **0.84 / 0.92 / 0.88 — met on 3/3** |
+| 81,920 | 0.65 / 0.88 / 0.91 (0.23 / 0.62 / 0.70) | 1.00 / 1.00 / 0.96 | 0.99 / 0.89 / 0.59 | 0.33 / 0.20 / 0.69 | 0.87 / 0.94 / 0.94 | 0.62 / 0.81 / 0.90 |
+| **122,880** | **0.92 / 0.99 / 0.80** (0.00 / 0.88 / 0.94) | 1.00 / 1.00 / 1.00 | 0.93 / 0.90 / 0.97 | 0.11 / 0.04 / 0.05 | **0.97 / 0.98 / 0.96** | 0.86 / 0.87 / 0.87 |
+
+At the cap: held 3.92 / 3.99 / 3.74 in 7.55 / 6.93 / 7.12 turns (the bar
+5.28); the ablation STEERS on every seed (blank → 0.00 / 0.00 / 0.00,
+misdirect 0.14 / 0.00 / 0.02); s3's failures are squads that arrived and
+left (81%), s1's a squad standing on another objective (88%); the walk-off
+probe pays a move that keeps the objective +0.021 to +0.031 against
++0.009 to +0.020 for one that leaves it. Panels: members' EV **0.91 / 0.97
+/ 0.91**, planning EV 0.59 / 0.82 / 0.54, commitment entropy 0.39 / 0.20 /
+0.47 nats, planning return 2.4–2.9 (CM6 1.5–2.2).
+
+**Verdict on the letter, per seed at 122,880 as trained: AHEAD / PASS /
+AHEAD.** s2 at 0.99 is the first PASS of a joint arm on this ladder and
+the first per-model policy with a learned planner to reach the bar's
+success on A3's shape; s1 and s3 clear CM4's same seed (0.00 / 0.32) by
+more than ten binomial SE. SURVIVES was met on 3/3 at 40,960; the restart
+rule never fired.
+
+### What it says
+
+- **The join works when the soldiers already read the plan.** The same
+  recipe from scratch (CM6) read 0.00 / 0.88 / 0.94 with one seed's
+  members walking to the nearest objective under a perfect plan; started
+  from members who read the mark, it reads 0.92 / 0.99 / 0.80 with the
+  members arriving at a non-nearest committed objective on 0.96–0.98 of
+  squads and reading the mark on every seed. The planner learned on top
+  of them from its initialisation, first-plan coverage 0.78–0.97 by a
+  third of the budget.
+- **The plan-reading walk survives a planner trained on top of it, with
+  one wobble.** s1's rotated read fell 0.84 → 0.62 at 81,920 (its success
+  0.91 → 0.65) while its planner churned (re-commits before arrival 0.13
+  → 0.33), and recovered to 0.86 / 0.92 by the cap as the planner settled
+  (0.11). The co-adapting planner can pull the members off the mark
+  mid-run; it did not keep them there.
+- **The residual is speed and the walk-off, not allocation**: 6.9–7.6
+  turns against the bar's 5.3, and on s3 the squads that fail are ones
+  that arrived and left. The stay term's margin (+0.02 to +0.03 for
+  keeping against +0.01 to +0.02 for leaving) is small; a larger stay
+  weight is the obvious knob and was not run.
+
+### What this asks of #384 (proposed; Sash decides)
+
+1. **A3's join is closed on this recipe**: `a3_head_rf_pc.yaml`'s reward
+   with the members started from a plan-reader. Record it as the ladder's
+   first joint PASS and move the question to the half-step, where CM8
+   (from scratch) and CM8w (from CM7 s2, the PASS seed) are running.
+2. The seed lottery on the members' side stands as the open mechanism;
+   CM7's cost was one extra run (FH3) to obtain a plan-reader. A
+   two-stage recipe — the rotated writer first, the head second — is the
+   procedure until the lottery is understood.
+3. If the half-step's members chase the head's churn (CM8's first read:
+   86–100% re-committed before arrival, the members arriving and leaving),
+   the lever is on the planner's stability, not the members: a KEEP bias
+   or a churn cost on the planning stream, pre-registered as its own arm.
