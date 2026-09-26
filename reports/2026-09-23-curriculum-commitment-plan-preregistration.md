@@ -1547,3 +1547,133 @@ rule never fired.
    86–100% re-committed before arrival, the members arriving and leaving),
    the lever is on the planner's stability, not the members: a KEEP bias
    or a churn cost on the planning stream, pre-registered as its own arm.
+
+## Amendment 17 — written 2026-09-26 18:15: the half-step read — CM8 NULL, CM8w AHEAD on 3/3 and PASS on none: the two-stage recipe transfers across army size, and the planner's churn in the last third is what caps it
+
+The half-step (`a5_points_head_rf_pc.yaml`: six squads of three, five
+objectives, ten rounds, no enemy; the bar `squad_march_take` 1.000 in
+6.71 turns) on CM4's recipe with `a3_head_rf_pc`'s reward, three seeds
+each, 122,880 rounds, read at 40,960 / 81,920 / 122,880, n=100 on seeds
+700000+, the finals gated on the exits. Code `c06bcfe` (every commit since
+is docs). CM8 (#418) from scratch; CM8w (#419) with the whole network
+warm-started from CM7 s2's last checkpoint (the PASS seed on A3), the
+optimiser fresh. Comparators by name: the per-model trainer from scratch
+on the half-step without the layer (0.03 / 0.06 / 0.33 at 122,880), the
+whole-army control (0.91 / 0.81 / 0.95), the per-model warm start from
+A4x on the half-step (0.46 / 0.26 / 0.35 at 122,880; 0.34 / 0.17 / 0.60
+at 245,760), and each arm against the other at matched rounds.
+
+**The disk incident.** The root filesystem filled at about 14:20 and
+every one of the six trainers died on `OSError: [Errno 28]` (CM8 at
+88–93k rounds, CM8w at 32–33k). 171 GB was freed (six void pl1/pl2 run
+directories deleted; 7,722 intermediate `pm-*.pt` files pruned from
+this session's landed runs, keeping every 20,480-multiple and `last.pt`)
+and all six were resumed in place with `--resume-from` at 14:33 (same
+run directories, optimiser and generator state restored, the rollout
+envs restarted at fresh episodes with the seed base offset by the rounds
+done). Each seed is therefore two Wandb runs: CM8 t18pasr6+m6f5c2bu /
+jnc6ylpd+82vzknmg / 2eumxtlh+gv8wljez; CM8w 8ow1fkyl+40q64t5a /
+pl2hl4s6+x4c7of0x / bje03cre+ga571j24. CM8's 81,920 probe files were
+truncated by the full disk and re-run; no read below is affected.
+
+### CM8 — from scratch (#418)
+
+| read | as trained | plan-only (the bar's soldiers under the same head) | first-plan coverage | re-commits before arrival | arrival at a non-nearest committed objective |
+|---|---|---|---|---|---|
+| 40,960 | 0.00 / 0.00 / 0.00 | 1.00 / 0.93 / 0.38 | 0.99 / 1.00 / 1.00 | 0.86–1.00 | 0.45–0.55 |
+| 81,920 | 0.03 / 0.01 / 0.04 | 1.00 / 0.96 / 0.57 | 0.85 / 0.96 / 0.45 | 0.76 / 0.90 / 0.65 | ~0.5 |
+| **122,880** | **0.03 / 0.06 / 0.16** | 0.68 / 0.96 / 0.99 | 0.51 / 0.97 / 0.64 | 0.84 / 0.73 / 0.63 | 0.55 / 0.44 / 0.46 |
+
+At the cap: held 2.53 / 2.94 / 3.39 of 5, 4–6 of 18 bodies on objectives
+at the end; the ablation is **flat** — a blank plan scores 0.00 / 0.06 /
+0.13 against the trained 0.03 / 0.06 / 0.16, a misdirected one 0.02 /
+0.07 / 0.10 — so what the soldiers do as trained does not depend on the
+plan. Panels: planning return 1.7–1.9 in every quarter, commitment
+coverage 0.22–0.25, members' EV 0.75–0.86, planning EV 0.57–0.84.
+
+**Verdict on the letter at 122,880: NULL.** PASS on none; s1 and s2 level
+with the per-model scratch comparator (0.03 / 0.06), s3 **behind** its
+comparator's 0.33 by 2.8 binomial SE. The once-only extension clause
+("still rising at the cap") is arguable — the arm rose from 0.00 ×3 to
+0.03 / 0.06 / 0.16, s3's rise from 81,920 at three SE — and was applied:
+the three seeds were resumed in place at 16:22 to 245,760. That read is a
+readout, recorded on #418 when it lands; the verdict at the cap stands.
+
+### CM8w — the warm start from CM7 s2 (#419)
+
+| read | as trained (CM8 at the same read) | plan-only | first-plan coverage | re-commits before arrival | arrival at a non-nearest committed objective | blank-plan ablation |
+|---|---|---|---|---|---|---|
+| 40,960 | 0.58 / 0.16 / 0.56 (0.00 ×3) | 0.96 / 1.00 / 1.00 | 1.00 / 1.00 / 1.00 | 0.28–0.64 | 0.82 / 0.59 / 0.79 | — |
+| 81,920 | **0.61 / 0.96 / 1.00** (0.03 / 0.01 / 0.04) | 0.99 / 1.00 / 1.00 | 0.81 / 0.84 / 0.92 | 0.50 / 0.28 / 0.32 | 0.71 / 0.86 / 0.85 | 0.00 / 0.00 / 0.00 |
+| **122,880** | **0.73 / 0.63 / 0.87** (0.03 / 0.06 / 0.16) | 0.97 / 0.95 / 0.99 | 0.42 / 0.62 / 0.90 | 0.43 / 0.76 / 0.60 | 0.82 / 0.79 / 0.93 | 0.00 / 0.00 / 0.00 |
+
+At the cap: held 4.62 / 4.45 / 4.83 of 5 in 8.6 / 9.4 / 8.8 turns (the
+bar 6.71), 9–11 of 18 bodies on objectives at the end; a misdirected plan
+0.01 / 0.00 / 0.07, the nearest-objective plan 0.09 / 0.07 / 0.04; the
+failures are a committed squad within 12" and not yet inside (53–70%) or
+one that arrived and left (14–35%). Panels over the resumed half:
+members' EV 0.93–0.95 throughout, planning EV 0.62–0.68 in the last
+quarter, planning return rising 2.2 → 2.8 (CM8 flat at 1.7–1.9), in-run
+success in the last quarter 78 / 63 / 89 (s2 down from 84 in the quarter
+before). The share of unit-turns that re-commit went 0.09 / 0.04 / 0.06
+at 81,920 → 0.06 / 0.22 / 0.17 at the cap; persistence 0.91 / 0.96 /
+0.94 → 0.94 / 0.78 / 0.83.
+
+**Verdict on the letter at 122,880: AHEAD on 3/3, PASS on none.** Every
+seed clears CM8's same seed by more than nine binomial SE (the transfer
+clause asked for 2/3); none reaches 0.95. Not extended: the arm fell from
+its 81,920 read on two seeds, so it was not rising at the cap. The
+81,920 checkpoints (`pm-00081920.pt`, 0.61 / 0.96 / 1.00) are kept and
+are the best per-model policies on the half-step on file; the cap is the
+verdict and the peak is a readout.
+
+### What it says
+
+- **The two-stage recipe transfers across army size.** A3's join
+  (CM7) warm-started onto the six-squad board reads 0.61 / 0.96 / 1.00 at
+  two thirds and 0.73 / 0.63 / 0.87 at the cap, against 0.03 / 0.06 / 0.16
+  from scratch, 0.46 / 0.26 / 0.35 for the per-model warm start from A4x,
+  and the whole-army control's 0.91 / 0.81 / 0.95. The soldiers follow
+  the plan at every read (blank plan 0.00 ×3; arrival at a non-nearest
+  committed objective 0.79–0.93) and hold 4.5–4.8 of 5. This is the
+  ladder's first transfer that carried a *joint* policy up a size step,
+  and it is the third rung on which a warm start from the rung below is
+  the lever (S3, the C rungs, now this).
+- **From scratch the join fails on the soldiers' side, exactly as on A3.**
+  The head plans the half-step first time from a third of the budget on
+  (first-plan 0.99–1.00; the same heads with the bar's soldiers 0.93–1.00),
+  and the learned soldiers do not read it: the ablation is flat and they
+  arrive and leave under a head that re-commits 63–100% of squads before
+  they arrive. The seed lottery that CM6 showed on A3 (one plan-reader in
+  three) shows no winner in three here.
+- **The planner's churn in the last third is what caps the warm start.**
+  Between 81,920 and the cap the soldiers did not change (arrival 0.71 /
+  0.86 / 0.85 → 0.82 / 0.79 / 0.93) and the planner did: re-commits before
+  arrival 0.28 / 0.32 → 0.76 / 0.60 on the two seeds that fell, first-plan
+  coverage 0.81 / 0.84 → 0.42 / 0.62, persistence 0.96 / 0.94 → 0.78 /
+  0.83; the score followed (0.96 / 1.00 → 0.63 / 0.87). CM7's s1 showed the
+  same wobble on A3 and recovered; here it did not by the cap. The lever
+  amendment 16 named — a KEEP bias or a churn cost on the planning stream —
+  is now the one thing between the warm start and the mark, and it is a
+  planner-side change, pre-registerable as one arm.
+- **Speed is the other residual**: 8.6–9.4 turns of 10 against the bar's
+  6.71 (A3: 6.9–7.6 against 5.3). On a ten-round game a squad that arrives
+  at turn nine holds nothing if it then leaves.
+
+### What this asks of #384 (proposed; Sash decides)
+
+1. **Record the half-step as reached with the warm start and not passed**;
+   the ladder's rule for the joint policy is the two-stage recipe (the
+   rotated writer, then the head on A3) and then a warm start up each size
+   step. Nothing on the half-step trains from scratch again.
+2. **The next arm is planner stability, one change, pre-registered**: a
+   churn cost (or KEEP bias) on the planning stream, warm-started from
+   CM8w's 81,920 checkpoints (the best on file) or from CM7 s2, read
+   against CM8w at matched rounds; the readouts are re-commits before
+   arrival and first-plan coverage across the reads, beside success.
+3. **Read every joint arm's planner churn beside its score at every
+   read, and keep the intermediate checkpoints**: a joint arm can peak
+   and decay under a churning planner, and a cap-only read would have
+   called CM8w 0.73 / 0.63 / 0.87 without seeing 0.61 / 0.96 / 1.00.
+4. CM8's 245,760 read lands on #418 as a readout; if it moves the verdict
+   it gets its own amendment.
