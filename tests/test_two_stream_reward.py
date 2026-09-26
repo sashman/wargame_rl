@@ -212,3 +212,88 @@ def test_commitment_coverage_pays_the_planning_stream_the_share_claimed() -> Non
         if terminated:
             break
     assert total == 0.0
+
+
+def test_commitment_churn_charges_the_planning_stream_per_re_commit_before_arrival() -> (
+    None
+):
+    """The churn cost lands on the planning stream at the close, worth minus its
+    weight times the share of living units re-committed this turn before they
+    arrived; a first commitment, a re-commit after arrival and a kept slot cost
+    nothing; with the layer off it pays nothing."""
+    from wargame_rl.wargame.envs.per_model.commitment import NO_TARGET as _NO
+
+    config = load_env_config(
+        "configs/experiments/curriculum/a5_points_head_rf_pc_cc.yaml"
+    )
+    env = PerModelEnv(config)
+    chooser = build_per_model_chooser("squad_march_take", [env], seed=700000)
+    retimer = PerStepReward(env)
+    observation, _ = env.reset(seed=700000)
+    retimer.reset()
+    state = env.player_commitments
+    n_units = len(state.groups)
+    churned_turns = 0
+    closes = 0
+    while True:
+        before = observation
+        action = chooser.choose([env], [observation])[0]
+        if action.kind is StepKind.close_turn and closes in (1, 3):
+            # Move every unit that has a plan and has not arrived to another
+            # objective just before the close: each one is a churn event on
+            # top of whatever the script's own writer churned this turn.
+            already = state.churned_this_turn
+            moved = 0
+            for g in state.groups:
+                slot = state.by_group[int(g)]
+                if slot.ground != _NO and not slot.arrived:
+                    state.set_ground(int(g), (slot.ground + 1) % 5)
+                    moved += 1
+            assert state.churned_this_turn == already + moved
+            churned_turns += 1 if moved else 0
+        # The close pays the turn's churn, counted up to this step.
+        expected = -0.5 * retimer.phase_scale * state.churned_this_turn / n_units
+        observation, _r, terminated, _t, info = env.step(action)
+        payment = retimer.on_step(before, action, info["effect"], terminated)
+        paid = payment.breakdown.get("commitment_churn", 0.0)
+        if action.kind is StepKind.close_turn:
+            closes += 1
+            assert abs(paid - expected) < 1e-9, (closes, paid, expected)
+        else:
+            assert paid == 0.0
+        if terminated:
+            break
+    assert churned_turns >= 1
+    # A re-commit AFTER arrival is not churn, nor is a first commitment.
+    fresh = PerModelEnv(config)
+    fresh.reset(seed=700001)
+    fresh_state = fresh.player_commitments
+    fresh_state.by_group[0].ground = _NO
+    fresh_state.set_ground(0, 1)
+    fresh_state.by_group[0].arrived = True
+    fresh_state.set_ground(0, 2)
+    assert fresh_state.churned_this_turn == 0
+    fresh_state.set_ground(0, 3)
+    assert fresh_state.churned_this_turn == 1
+
+    off: WargameEnvConfig = config.model_copy(
+        update={"commitments": CommitmentConfig(assignment="none")}  # type: ignore[arg-type]
+    )
+    env = PerModelEnv(off)
+    chooser = build_per_model_chooser("squad_march_take", [env], seed=700000)
+    retimer = PerStepReward(env)
+    observation, _ = env.reset(seed=700000)
+    retimer.reset()
+    total = 0.0
+    while True:
+        before = observation
+        action = chooser.choose([env], [observation])[0]
+        observation, _r, terminated, _t, info = env.step(action)
+        total += abs(
+            retimer.on_step(before, action, info["effect"], terminated).breakdown.get(
+                "commitment_churn", 0.0
+            )
+        )
+        if terminated:
+            break
+    assert total == 0.0

@@ -109,6 +109,14 @@ class CommitmentState:
     # One entry per (battle_round, seat turn) the env closes: a copy of
     # `by_group`, for the persistence readout. The env appends at each close.
     history: list[dict[int, UnitCommitment]] = field(default_factory=list)
+    # Re-commits BEFORE ARRIVAL this turn: `set_ground` moved a unit's slot
+    # from one objective to another while `arrived` was False. Moved to
+    # `churn_last_turn` at `record_turn` (the close), where the retimer reads
+    # it for the `commitment_churn` term (#384, amendment 18). A first
+    # commitment, a re-commit after arrival and the env's own retirement
+    # (`clear_ground`) are not churn.
+    churned_this_turn: int = 0
+    churn_last_turn: int = 0
 
     def __post_init__(self) -> None:
         for g in self.groups:
@@ -119,14 +127,20 @@ class CommitmentState:
         for g in self.groups:
             self.by_group[int(g)] = UnitCommitment()
         self.history = []
+        self.churned_this_turn = 0
+        self.churn_last_turn = 0
 
     def record_turn(self) -> None:
         self.history.append({g: c.copy() for g, c in self.by_group.items()})
+        self.churn_last_turn = self.churned_this_turn
+        self.churned_this_turn = 0
 
     # ------------------------------------------------------------- writers
     def set_ground(self, group: int, objective: int) -> None:
         slot = self.by_group[int(group)]
         if slot.ground != int(objective):
+            if slot.ground != NO_TARGET and not slot.arrived:
+                self.churned_this_turn += 1
             slot.arrived = False
         slot.ground = int(objective)
 

@@ -15,6 +15,9 @@ from wargame_rl.wargame.envs.reward.calculators.closest_objective import (
 from wargame_rl.wargame.envs.reward.calculators.closest_objective_v2 import (
     ClosestObjectiveV2Calculator,
 )
+from wargame_rl.wargame.envs.reward.calculators.commitment_churn import (
+    CommitmentChurnCalculator,
+)
 from wargame_rl.wargame.envs.reward.calculators.commitment_coverage import (
     CommitmentCoverageCalculator,
 )
@@ -64,6 +67,7 @@ CALCULATOR_REGISTRY: dict[str, type[RewardCalculatorType]] = {
     "models_lost": ModelsLostPenalty,
     "objective_coverage": ObjectiveCoverageCalculator,
     "commitment_coverage": CommitmentCoverageCalculator,
+    "commitment_churn": CommitmentChurnCalculator,
     "objective_flip_bonus": ObjectiveFlipBonusCalculator,
     "objective_hold": ObjectiveHoldCalculator,
     "objective_stay": ObjectiveStayCalculator,

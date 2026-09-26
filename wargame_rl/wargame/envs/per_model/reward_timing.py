@@ -159,6 +159,7 @@ PAYMENT_CLASSES: dict[str, PaymentClass] = {
     "objective_flip_bonus": PaymentClass.delta_global,
     "objective_coverage": PaymentClass.state_global,
     "commitment_coverage": PaymentClass.state_global,
+    "commitment_churn": PaymentClass.state_global,
     "models_at_objectives": PaymentClass.state_global,
 }
 
@@ -470,6 +471,9 @@ class PerStepReward:
                 if env.config.commitments.plan_weighted
                 else None
             ),
+            commitment_churn=(
+                _churn_share(env) if env.config.commitments.enabled else None
+            ),
         )
 
     @staticmethod
@@ -703,3 +707,11 @@ __all__ = [
     "classify",
     "payment_class_of",
 ]
+
+
+def _churn_share(env: PerModelEnv) -> float:
+    """Re-commits before arrival on the turn just closed, over living units."""
+    living = {int(m.group_id) for m in env.wargame_models if m.is_alive}
+    if not living:
+        return 0.0
+    return float(env.player_commitments.churn_last_turn) / float(len(living))

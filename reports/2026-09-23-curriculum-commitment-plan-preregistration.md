@@ -1687,3 +1687,70 @@ the in-run success was flat on every seed (by quarter: 12 → 8 → 4 → 9 %,
 kew48ael), so no 245,760 read was taken and none was going to move the
 verdict. CM8's verdict stands as NULL at the cap; the last checkpoints
 (`pm-00210432.pt` and neighbours) are kept unread.
+
+## Amendment 18 — written 2026-09-26 19:07: CM9 / CM9c — a churn cost on the planner's stream, from CM8w's peak
+
+**Why.** CM8w (amendment 17) peaked at 0.61 / 0.96 / 1.00 at 81,920 and
+read 0.73 / 0.63 / 0.87 at the cap; between the two the soldiers did not
+change and the planner did (re-commits before arrival 0.28 / 0.32 →
+0.76 / 0.60 on the seeds that fell, first-plan coverage 0.81 / 0.84 →
+0.42 / 0.62). Nothing on the planner's stream prices a re-commit: the
+plan-shape term pays the same for a covering plan however often it is
+rewritten, and the outcome terms arrive too late to tell a re-commit
+from a slow walk. This arm prices it.
+
+**The one change, named.** `commitment_churn`, a state global on the
+planning stream (`configs/experiments/curriculum/a5_points_head_rf_pc_cc.yaml`
+= `a5_points_head_rf_pc.yaml` + the term at weight **0.5**): at each
+close, MINUS the share of living units whose ground commitment the head
+moved from one objective to another this turn while the unit had not
+arrived at the first (counted by the commitment state at `set_ground`,
+read at the close). A first commitment, a re-commit after arrival and
+the env's own retirement of a slot cost nothing; KEEP is always legal on
+a held slot, so the cost is avoidable at every decision; it never reaches
+a member (the two-stream reward's second constraint holds). Test:
+`tests/test_two_stream_reward.py::test_commitment_churn_charges_the_planning_stream_per_re_commit_before_arrival`.
+
+**Desk check (no training; n=20 on seeds 700000+, per-episode sums of
+the planning stream's components under the cc config):**
+
+| policy | churn cost | plan-shape term | objective coverage | success bonus |
+|---|---|---|---|---|
+| the bar `squad_march_take` | −0.08 | +2.01 | +0.92 | +2.15 |
+| CM8w s1 / s2 / s3 at 81,920 (the peak) | −0.34 / −0.17 / −0.17 | +2.86 / +2.47 / +2.29 | +1.29 / +1.05 / +0.97 | +0.43 / +1.35 / +1.65 |
+| CM8w s2 / s3 at the cap (the fall) | **−0.88 / −0.50** | +2.69 / +2.57 | +1.07 / +1.08 | +0.50 / +1.03 |
+
+At weight 0.5 the cost is 1.5% of the bar's planning income, 3–7% at the
+peak and 10–20% at the cap's churn level — the churned planner loses
+about what it forfeits in success bonus, and a steady one loses almost
+nothing. No per-step tail: the term is bounded by the weight per close.
+
+**Arms.** Both warm-started per seed from CM8w's own seed at 81,920
+(`pm-00081920.pt`, the peak; the whole network, optimiser fresh), CM4's
+recipe (4 envs × 32 rounds = 128 rounds per update, `ent_coef` 0.003),
+122,880 rounds, three seeds, Wandb group `curriculum-cm-plan`:
+
+| arm | the one change | tag | comparators by name |
+|---|---|---|---|
+| **CM9** | the churn cost (`a5_points_head_rf_pc_cc.yaml`) | `cm9` | CM9c's same seed at matched rounds (the paired control); CM8w at 81,920 (the start, 0.61 / 0.96 / 1.00) and at its cap (0.73 / 0.63 / 0.87); the bar (1.000, 6.71) |
+| **CM9c** | none — the same warm start on the unchanged reward (`a5_points_head_rf_pc.yaml`), so the optimiser reset and the extra rounds are held out of CM9's difference | `cm9c` | CM8w's own continuation (its cap) |
+
+Reads at 40,960 / 81,920 / 122,880 (n=100, seeds 700000+; the final gated
+on the exit): the as-trained row beside the plan-only row, first-plan
+coverage, re-commits before arrival, the share of unit-turns that
+re-commit, arrival at a non-nearest committed objective, the ablation,
+the census, the planning panel and the members' EV.
+
+**Criteria, per seed at 122,880 as trained.** CM9: PASS success ≥ 0.95;
+AHEAD of CM9c's same seed by two binomial SE on 2/3; BEHIND if below
+CM9c's same seed by two SE on 2/3 (the cost hurts); NULL otherwise. Power:
+at n=100 and p ≈ 0.7 one binomial SE is 0.046, so the AHEAD clause
+resolves a per-seed difference of about 0.13. The mechanism clause,
+written first: CM9's re-commits before arrival ≤ 0.35 on 3/3 at every
+read. If CM9c does NOT churn (re-commits before arrival ≤ 0.35 on 3/3 at
+its cap), CM8w's fall was the optimiser's state or the rounds and not a
+reward the churn cost can act on — recorded as such whatever CM9 reads.
+
+**Expectation (a guess).** CM9 holds the peak: 0.80–0.95 at the cap with
+re-commits before arrival ≤ 0.3; CM9c reproduces the fall on at least one
+seed. Six trainers on the CPU box, about 4.5 hours.
