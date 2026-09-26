@@ -1385,3 +1385,97 @@ the rotated config ≥ 0.85 on 2/3; success ≥ 0.85 on 2/3).
 2. **CM7, the join of the two working halves** (start axis): CM6's recipe with the members warm-started from FH3 s1's executor (the mark-reader) and the head from scratch, three seeds (the three seeds share the one executor — read them as that executor's band, not as seed variance). Prediction: as trained ≥ 0.90 on 3/3, PASS on at least one. If the warm start is overwritten (as A5i's was under guns), the join must be trained from scratch with the rotated writer as a first stage.
 3. **Then the half-step** (six squads, five objectives) on `rf_pc`'s reward, from scratch and from CM7 — the shape the commitment layer was built for, where the geometry walk reads 0.03–0.33 and no per-model policy has passed.
 4. **On the members' coin flip**: the seeds that read the mark do so by a third of the budget. Read every executor at 40,960 on the rotated config and restart the seed that walks to the nearest — cheaper than three full runs — until the mechanism that separates the two is found (a difference in the first few thousand rounds' plans is the place to look).
+
+## Amendment 15 — written 2026-09-26 10:27: CM7, the join of the two working halves; and the half-step pre-registered (CM8 from scratch, CM8w from CM7)
+
+Sash (2026-09-26): "run CM7 and the 40,960 executor reads now, pre-register
+the half-step while they train, and launch the half-step when CM7's first
+read is in."
+
+### CM7 (#417) — CM6's recipe, the members warm-started from the plan-reader
+
+`a3_head_rf_pc.yaml`, head and members trained together, the network
+warm-started from FH3 s1's executor (`--warm-start-from
+per-model-a3_legible_rf-2026-09-25-23-58-19-s1fh3/last.pt`, fresh
+optimiser): the member heads carry the plan-reading walk (arrival at a
+never-nearest committed objective 0.94 on the rotated config, 0.98 under
+PL1's head); the commitment head in that checkpoint was never trained
+(FH3 ran under the environment writer), so the planner starts from its
+initialisation. Three seeds, 122,880 rounds, CM4's recipe; launched
+10:22, Wandb dqlxji5x / fnszyqqk / 8a1rqszk. The three seeds share one
+warm start and are read as that executor's band.
+
+**Comparators by name:** CM6 at matched rounds (as trained 0.04 / 0.05 /
+0.59 → 0.23 / 0.62 / 0.70 → 0.00 / 0.88 / 0.94; first-plan coverage
+1.00 / 1.00 / 0.27 → 0.99 / 0.90 / 0.49 → 0.96 / 0.98 / 0.66; arrival at a
+non-nearest committed objective 0.31 / 0.66 / 0.76 → 0.33 / 0.55 / 0.83 →
+0.34 / 0.65 / 0.93), FH3 s1's executor at play (0.98 under PL1's head;
+0.94 on the rotated config), CM4, A3 from scratch (0.700 / 0.800 / 0.770).
+
+**Criteria, per seed at 122,880 as trained:** PASS success ≥ 0.95; AHEAD
+of CM4's same seed by two binomial SE on 3/3; NULL otherwise.
+**SURVIVES**, the clause this arm exists for, read at 40,960: the
+members' arrival at the committed objective on the rotated config
+(`a3_legible_rf.yaml`, the executor read) ≥ 0.80 on 3/3. A read of ≤ 0.5
+means the new planner overwrote the warm start, as A5i's walk was
+overwritten under guns, and the join must be trained from scratch with
+the rotated writer as a first stage. **The restart rule** (Sash's
+"restart the seed that walks to the nearest"): a seed whose executor
+reads < 0.5 at 40,960 is stopped and restarted once with a new seed
+(the head's initialisation and the rollouts change; the warm start does
+not), recorded as such.
+
+**Expectation (a guess).** SURVIVES on 3/3 (0.85–0.95); as trained
+≥ 0.90 on 3/3 by the cap, PASS on at least one; first-plan coverage
+≥ 0.9 by 40,960.
+
+### The half-step — `a5_points_head_rf_pc.yaml`
+
+`a5_points_cm.yaml`'s scenario (six squads of three over five
+objectives, A5's deployment band, ten rounds) with `a3_head_rf_pc.yaml`'s
+reward block and the policy writing the commitments. The shape the
+commitment layer was built for: every per-model setting from scratch read
+0.00–0.33 there, the geometry walk leaves one objective empty, and the
+whole-army control reads 0.91 / 0.81 / 0.95.
+
+**Desk check (no training, n=100 on seeds 700000+ for the bar, 30 for the
+head).** The bar `squad_march_take` reads success 1.000 in 6.71 turns
+with first-plan coverage 1.00 and re-commits before arrival 0.08; its
+member pay is 0.1097 ± 0.0036 per completed commitment (2.0 / 18 =
+0.1111: the near column's commitments start under the twelve-inch floor
+on some layouts and pay a little less, the safe side; correlation with
+the distance at commit +0.41 for that reason), per-step p99 +0.055, max
++0.056, min −0.004. CM6 s3's head loaded onto the half-step (a churning
+learned writer on the new shape): per-step p99 +0.050, max +0.056, min
+−0.042 — inside the band. ⚠ **And that head, which never saw this board,
+plans it: plan-only 1.000 in 6.50 turns with first-plan coverage 0.98
+and re-commits before arrival 0.17** (the bar 6.71 / 1.00 / 0.08), while
+as trained it reads 0.05 because its A3 members do not transfer (0.15 of
+bodies on objectives). The set network's planner carries across the
+army size; the members are what the half-step will test.
+
+| arm | the one change | tag | comparators by name |
+|---|---|---|---|
+| **CM8** (#418) | the half-step from scratch on `a5_points_head_rf_pc.yaml` | `cm8` | the per-model trainer from scratch on the half-step (0.030 / 0.060 / 0.330 at 122,880); the whole-army control (0.910 / 0.810 / 0.950); the bar (1.000, 6.71); CM8w at matched rounds |
+| **CM8w** (#419) | the same warm-started from CM7's final checkpoint (the seed that reads best on CM7's letter), fresh optimiser | `cm8w` | CM8 at matched rounds; the per-model warm start from A4x on the half-step (0.46 / 0.26 / 0.35 at 122,880, 0.34 / 0.17 / 0.60 at 245,760); the control; the bar |
+
+Three seeds each, 122,880 rounds, CM4's recipe, the ladder's once-only
+extension to 245,760 if an arm is still rising at the cap. CM8 launches
+when CM7's 40,960 read is in; CM8w when CM7's final is.
+
+**Criteria, per seed at 122,880 as trained:** CM8 — PASS success ≥ 0.95;
+AHEAD of the per-model scratch read (0.03 / 0.06 / 0.33) by two binomial
+SE on 3/3; NULL otherwise. CM8w — PASS ≥ 0.95; AHEAD of CM8's same seed
+by two binomial SE on 2/3 (the transfer clause); NULL otherwise. Readouts
+on both: first-plan coverage (a covering plan claims all five), re-commits
+before arrival, the members' arrival at the committed objective and
+mark-following, held, the census, the planning panel and the members'
+EV at 20,480 (a red panel there is the answer, as the reward-shape arms
+taught), and on CM8w the members' arrival at 20,480 (does the walk survive
+the change of board).
+
+**Expectation (a guess).** CM8: the head plans the half-step by 40,960
+(first-plan ≥ 0.8; the A3 head already does at play), the members lag as
+CM6's did, as trained 0.3–0.7 at the cap, AHEAD on 3/3, PASS on none.
+CM8w: ahead of CM8 at every read, 0.6–0.9 at the cap, PASS on one seed at
+most; the transfer clause met.
