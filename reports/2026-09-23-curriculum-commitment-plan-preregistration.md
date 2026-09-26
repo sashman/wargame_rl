@@ -1677,3 +1677,13 @@ verdict and the peak is a readout.
    called CM8w 0.73 / 0.63 / 0.87 without seeing 0.61 / 0.96 / 1.00.
 4. CM8's 245,760 read lands on #418 as a readout; if it moves the verdict
    it gets its own amendment.
+
+### Addendum to amendment 17 — 18:58: CM8's extension stopped at 210k
+
+The once-only extension was stopped at 208,640 / 210,176 / 210,304
+rounds on Sash's call to free the cores. Over the extension's 88k rounds
+the in-run success was flat on every seed (by quarter: 12 → 8 → 4 → 9 %,
+4 → 1 → 0 → 1 %, 8 → 9 → 6 → 5 %; Wandb 0jhzlol4 / e67i3naf /
+kew48ael), so no 245,760 read was taken and none was going to move the
+verdict. CM8's verdict stands as NULL at the cap; the last checkpoints
+(`pm-00210432.pt` and neighbours) are kept unread.
