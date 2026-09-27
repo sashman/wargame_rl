@@ -5,6 +5,7 @@ from typing import Any
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
+from loguru import logger
 
 from wargame_rl.wargame.envs.domain.battle_factory import (
     create_objectives as _create_objectives,
@@ -306,13 +307,15 @@ class WargameEnv(gym.Env):
             config.reward_phases, position=phase_position
         )
         # The forgone-pay success bonuses need the trainer's discounts, which
-        # only the per-model retimer holds; here they would silently pay 0.
+        # only the per-model retimer holds, so this facade's reward leaves them
+        # out. Said, not refused: the per-model trainer builds this facade to
+        # score its scripted bar, which reads outcomes, never this reward.
         for phase in config.reward_phases:
             if phase.terminal_member_success_bonus or phase.terminal_forgone_vp_bonus:
-                raise ValueError(
+                logger.warning(
                     f"reward phase `{phase.name}` sets a forgone-pay success bonus "
-                    "(terminal_member_success_bonus / terminal_forgone_vp_bonus), "
-                    "which only the per-model facade pays"
+                    "(terminal_member_success_bonus / terminal_forgone_vp_bonus); "
+                    "only the per-model facade pays it, this facade's reward does not"
                 )
 
         # Mission VP calculator (scores at end of command phase from round 2)

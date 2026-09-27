@@ -421,18 +421,21 @@ def test_a_success_pays_each_stream_what_it_cuts_off() -> None:
     )
 
 
-def test_the_forgone_pay_bonuses_are_off_by_default_and_refused_by_the_whole_army_facade() -> (
+def test_the_forgone_pay_bonuses_are_off_by_default_and_not_paid_by_the_whole_army_facade() -> (
     None
 ):
-    """Unset, neither bonus is paid; set, the whole-army facade refuses the
-    config rather than paying it nothing."""
+    """Unset, neither bonus is paid; set, the whole-army facade still builds
+    (the per-model trainer scores its scripted bar on it) and its own reward
+    leaves both bonuses out."""
     config = load_env_config("configs/experiments/curriculum/a5_points_head_pf_pc.yaml")
     _env, retimer, payment = _play_to_the_end(config)
     assert retimer.succeeded()
     assert "terminal_member_success_bonus" not in payment.breakdown
     assert "terminal_forgone_vp_bonus" not in payment.breakdown
     phase = config.reward_phases[0].model_copy(
-        update={"terminal_member_success_bonus": 0.5}
+        update={"terminal_member_success_bonus": 0.5, "terminal_forgone_vp_bonus": 0.5}
     )
-    with pytest.raises(ValueError, match="forgone-pay"):
-        WargameEnv(config=config.model_copy(update={"reward_phases": [phase]}))
+    whole = WargameEnv(config=config.model_copy(update={"reward_phases": [phase]}))
+    whole.reset(seed=700000)
+    assert whole.phase_manager.current_phase.terminal_member_success_bonus == 0.5
+    assert whole.episode_reward_breakdown.get("terminal_member_success_bonus") is None
