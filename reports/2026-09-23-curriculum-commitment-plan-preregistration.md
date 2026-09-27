@@ -2154,3 +2154,96 @@ AHEAD of CM9c's s1 continuation at +40,960, 0.40, by two SE / NULL) and on
 the anchor's mechanism clause (planning EV ≥ 0.3 in the last quarter), with
 CM11 s1 and CM10p s1 as its paired neighbours. CM11p is read on seeds 2 and 3
 at 81,920 and the cap; its letter's "2/3" clauses become "2/2".
+
+## Amendment 24 — written 2026-09-27 19:16: round 7 read — the anchor on the planner's head gives the best half-step cap on file (CM11: 0.83 / 0.63 / 0.97, one seed at the pass mark, no planner collapse); the per-step score's soldiers slow down and lose the far objective even under a held planner
+
+CM11 (#426), CM10p (#427), CM11p (#428) and the relaunched cell CM11pf
+(#428, addendum to amendment 23), all warm-started per seed from CM9c's
+own seed at 81,920 (0.80 / 0.97 / 0.96), optimiser fresh, read at 40,960 /
+81,920 / 122,880 past the warm start (n=100, seeds 700000+, the finals
+gated on the exits). Wandb CM11 12b42adf / 8174z0zr / u6lb8g09; CM10p
+60zqool9 / legx6ong / ru7nbh93; CM11p 1ds2md7c (stopped) / j43k5ozo /
+q88ikq08; CM11pf klcafe6a. Code `958f37f`.
+
+| arm | +40,960 (the matched read; CM9c's continuation 0.40 / 0.85 / 0.93) | +81,920 | **cap** | the same heads with the bar's soldiers, cap |
+|---|---|---|---|---|
+| **CM11** anchor on the commitment head, old soldier terms | 0.74 / 0.80 / 0.90 | 0.61 / 0.88 / 0.90 | **0.83 / 0.63 / 0.97** | 0.99 / 1.00 / 1.00 |
+| **CM10p** the per-step score, no anchor | 0.00 / 0.54 / 0.17 | 0.00 / 0.37 / 0.02 | **0.00 / 0.90 / 0.01** | 0.09 / 1.00 / 0.00 |
+| **CM11p** both (adaptive coefficient) | 0.04 (s1, escalated; stopped at 44.5k) / 0.46 / 0.44 | — / 0.35 / 0.42 | **— / 0.06 / 0.21** | — / 0.96 / 0.96 |
+| **CM11pf** both, the coefficient fixed at 10 (seed 1) | 0.70 | 0.68 | **0.22** | 1.00 |
+
+The soldiers follow on every seed of every arm at every read (the
+blank-plan ablation 0.00). Drift on the anchored seeds 0.020–0.033 nats
+per commitment decision throughout. Planning EV in the last quarter: CM11
+0.15 / 0.59 / 0.46; CM10p −0.52 / 0.77 / −0.00; CM11p −0.25 / 0.20;
+CM11pf 0.15. In-run success over the run: CM11 79 → 74 / 95 → 80 / 92 →
+93%; CM11p 87 → 12 / 79 → 19%; CM11pf 56 → 43%.
+
+**Verdicts on the letter, per seed at the cap.**
+- **CM11: PASS on s3** (0.97 — the first cap read at the pass mark on the
+  half-step), **HOLDS on s1** (0.83, above its 81,920 read), s2 fell (0.88
+  → 0.63, 4.3 SE). The arm-level AHEAD clause at the matched read met on
+  1/3. Mechanism: drift at the target on 3/3, planning EV ≥ 0.3 on 2/3.
+- **CM10p: NULL** — PASS none; s2 recovered to 0.90; s1 and s3 are
+  collapsed planners (the heads with the bar's soldiers 0.09 / 0.00), whose
+  0.00 → 0.00 is recorded as a collapse, not a hold; BEHIND at the matched
+  read on 3/3.
+- **CM11p: NULL** on seeds 2 and 3 (both fell, by 5 and 3.3 SE; behind at
+  the matched read on 2/2); seed 1 stopped for the controller defect.
+- **CM11pf: NULL** — AHEAD of CM9c's s1 continuation at the matched read
+  (0.70 against 0.40, five SE), then fell 0.68 → 0.22 by the cap; drift
+  clause met, EV clause not.
+
+**The stopping-rule readout** (amendment 23; posted on #384 at 10:15): the
+surviving checkpoint at each seed's in-run peak beat the cap read on 7 of
+the 8 seeds it could be read on (CM8w 0.82 / 0.96 / 0.91 against 0.73 /
+0.63 / 0.87; CM9c 0.80 / 0.97 / 0.96 against 0.40 / 0.85 / 0.93; CM10 — /
+0.76 / 0.86 against 0.00 / 0.47 / 0.06).
+
+### What it says
+
+- **The anchor on the planner's head is the first lever that held the
+  planner through the last third.** CM11 is the best cap on the half-step
+  (mean 0.81; CM8w 0.74, CM9c 0.73, CM9 0.31, CM10 0.18), the first where
+  no seed's planner collapsed, and the first with a seed at the pass mark
+  at the cap. Its unanchored twin under the per-step score (CM10p) lost the
+  planner on two seeds of three. The planner's drift, pinned at 0.03 nats
+  per decision, was the thing to hold; the members never needed it.
+- **The per-step score costs pace, and pace decides this board.** With the
+  planner held (CM11p s2 / s3, CM11pf), all three per-step-score seeds fell
+  in the last third to 0.06 / 0.21 / 0.22 while their heads with the bar's
+  soldiers scored 0.96–1.00 and their soldiers followed (leave 0.03–0.09):
+  82 / 65 / 92% of the misses are a committed squad within 12" and not
+  inside at round 10, and the in-run success fell steadily across the run.
+  The score removes the walk-off (amendment 22) and the soldiers learn to
+  walk slower under it; on a ten-round board with the far column 40" away,
+  that loses more than the walk-off did. CM10p's s2 (0.90) is the one
+  exception.
+- **The adaptive controller has a defect under a shared encoder.** The
+  members' unanchored updates move the encoder under the commitment head,
+  so the planner's drift cannot always be pushed below the band; the rule
+  then doubles the coefficient without bound (CM11p s1 to about 2,700, s2
+  to 123 in its last quarter, CM11 s1 to 33). A fixed coefficient (CM11pf)
+  never escalated. Fix the coefficient, or cap it two orders below today's
+  1e4, before the next anchored arm.
+- **A cap read is still a coin flip on one seed per arm** (CM11 s2: 0.88
+  → 0.63). The stopping rule would have kept the peak on 7 of 8 seeds.
+
+### What this asks of #384 (proposed; Sash decides)
+
+1. **CM11 is the half-step recipe**: the anchor on the commitment head at
+   0.03 nats, CM9c's reward (the old soldier terms), a warm start from the
+   rung's best planner. Retire the per-step score as the soldiers' term on
+   this board (keep the calculator; it is the right term where pace does
+   not decide).
+2. **Fix the anchor's coefficient** (10, or the healthy seeds' 3) for every
+   anchored arm from here, or cap the adaptive one at 20; a one-line change
+   plus a test, no arm needed to adopt it.
+3. **One arm on the walk-off under the old terms**: CM11's recipe with the
+   stay term's cap lifted (so holding pays to round 10), from the same
+   checkpoints, paired with CM11 — the one change that targets CM11 s1's
+   middle-third walk-off without the per-step score's pace cost.
+4. **Pre-register the stopping rule** (the in-run peak among the kept
+   checkpoints) as every joint arm's secondary readout.
+5. Then the size step: A5 (eight squads, six objectives) warm-started from
+   CM11 s3, the rung's first PASS at the cap.
