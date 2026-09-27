@@ -181,7 +181,7 @@ the KL anchor (`--kl-ref-coef`, #332): the mean per-decision
 `KL(policy || reference)` over the selector's and the step's head's full
 masked distributions, against the run's starting weights, over the update's
 policy rows, and the coefficient the term was weighted by (adaptive under
-`--kl-ref-target`). Both read 0.0 on a run without the anchor. Read
+`--kl-ref-target`). Both read 0.0 on a run without the anchor. Under `--kl-ref-scope commitment` the drift is the commitment head's alone, averaged over the update's commitment rows (nats per commitment decision), and the members are unanchored. Read
 `kl_ref` beside `train/approx_kl_cumulative`: the first is drift from the
 start, the second the sum of per-update steps.
 

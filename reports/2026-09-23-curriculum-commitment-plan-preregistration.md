@@ -2065,3 +2065,62 @@ against 0.16), s1 and s2 level (AHEAD asked for 3/3).
    is a candidate if pace stays the residual after the drift is held.
 4. The search lever for from-scratch soldiers (amendment 20) stands;
    CM10s's reader is a fourth lottery ticket, not a change in the odds.
+
+## Amendment 23 — written 2026-09-27 09:12: CM11 / CM10p / CM11p — the anchor on the planner's head, and the per-step score on the plain planner reward, from CM9c's peak
+
+**Why.** Three warm-started half-step arms in a row (CM8w, CM9 / CM9c,
+CM10) peaked at two thirds and fell on one to two seeds by the cap with
+the planning EV at about zero and the members' EV above 0.9: the plan
+drifts late, the walk does not. The standard remedy on this ladder is the
+KL anchor (D2c held the escort clone where plain PPO destroyed it), but
+the anchor on file holds the selector and the members' heads and leaves
+the commitment head free — the one head that drifts. CM10 also carried
+the churn cost that amendment 21 retired, so the per-step score has not
+been read on the planner reward that works.
+
+**The build.** `--kl-ref-scope commitment` (`PerModelPPOConfig.kl_ref_scope`,
+default `members` = today's estimator, unchanged): the anchor's drift is
+the commitment head's masked distribution against the reference's over the
+update's commitment rows (nats per commitment decision), averaged over
+those rows; the members are unanchored. The reference is the run's
+starting weights as before (the warm start). Test:
+`tests/test_per_model_commitment_head.py::test_the_commitment_scope_anchor_holds_the_planner_and_reports_its_drift`.
+
+**Arms.** All warm-started per seed from CM9c's own seed at 81,920
+(`pm-00081920.pt`, the best planner on file: 0.80 / 0.97 / 0.96), optimiser
+fresh, CM4's recipe, 122,880 rounds, three seeds each, Wandb group
+`curriculum-cm-plan`:
+
+| arm | the one change | tag | config | comparators by name |
+|---|---|---|---|---|
+| **CM11** | the anchor on the planner's head (`--kl-ref-coef 10 --kl-ref-target 0.03 --kl-ref-scope commitment`, D2c's coefficient and target, the unit now nats per commitment decision) | `cm11` | `a5_points_head_rf_pc.yaml` (CM9c's) | CM9c's own continuation at +40,960 (0.40 / 0.85 / 0.93); CM10p at matched rounds (paired) |
+| **CM10p** | the per-step plan-following score on the plain planner reward (no churn cost) | `cm10p` | `a5_points_head_pf_pc.yaml` | CM9c's continuation at +40,960; CM11 at matched rounds (paired) |
+| **CM11p** | both (the anchor and the score) | `cm11p` | `a5_points_head_pf_pc.yaml` + the anchor flags | CM11 and CM10p at matched rounds (the 2×2's fourth cell) |
+
+The three share every seed's warm start, so every pairwise difference is
+paired. Reads at 40,960 / 81,920 / 122,880 past the warm start (n=100,
+seeds 700000+, the finals gated on the exits): the as-trained row beside
+the plan-only row, first-plan coverage and distinct share, re-commits
+before arrival, arrival at a non-nearest committed objective, leave, the
+ablation, the census, the planning panel (planning EV and return by
+quarter, `train/kl_ref` on the anchored arms) and the members' EV.
+
+**Criteria, per seed at 122,880 past the warm start.** Each arm: PASS
+success ≥ 0.95; HOLDS if the seed's success at the cap is within two
+binomial SE of its own 81,920 read or above it (the drift held); AHEAD of
+CM9c's continuation at +40,960 (its same seed) by two SE at the matched
+read on 2/3; NULL otherwise. The mechanism clause on the anchored arms,
+written first: planning EV ≥ 0.3 in the last quarter on 3/3 and
+`train/kl_ref` at or below the target's order (≤ 0.1) throughout. The
+pairs: CM11 v CM10p separates the anchor from the score; CM11p v CM11
+and v CM10p read their interaction.
+
+**Stopping-rule readout, no training (pre-registered here).** For CM8w,
+CM9c and CM10 the checkpoint at the highest in-run rolling success among
+the surviving 20,480-multiples (61,440 and 102,400 have not been read) is
+scored at n=100 beside the cap — a readout of what a stopping rule at the
+in-run peak would have delivered, never a verdict.
+
+**Expectation (a guess).** CM11 HOLDS on 3/3 and reads 0.8–0.97 at the
+cap; CM10p holds the walk-off gain and drifts as CM10 did on one seed;
+CM11p the best of the three. Nine trainers, about five hours.

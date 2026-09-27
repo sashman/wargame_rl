@@ -27,7 +27,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import torch
@@ -78,6 +78,12 @@ class PerModelPPOConfig(BaseModel):
     # reference network and adds no term, so a run without it is unchanged.
     kl_ref_coef: float = Field(default=0.0, ge=0.0)
     kl_ref_target: float = Field(default=0.0, ge=0.0)
+    # What the anchor holds (#384, amendment 23): `members` -- the selector
+    # and the members' heads, the estimator the whole-phase anchor uses --
+    # or `commitment`, the planner's head alone over its commitment rows,
+    # the members left free. Built because every warm-started half-step
+    # run's planner drifted in its last third while its members held.
+    kl_ref_scope: Literal["members", "commitment"] = "members"
     # The planning stream (#384 D6): the discount per commitment step (one
     # per turn per unit, so near one) and the planning value head's weight.
     # Read only when a rollout carries commitment decisions.
@@ -747,16 +753,21 @@ def _masked_kl(log_p: torch.Tensor, log_q: torch.Tensor) -> torch.Tensor:
 
 
 def drift_to_reference(
-    network: SetNetwork, reference: SetNetwork, transitions: Sequence[Transition]
+    network: SetNetwork,
+    reference: SetNetwork,
+    transitions: Sequence[Transition],
+    scope: str = "members",
 ) -> torch.Tensor:
     """Per-transition `KL(policy || reference)` -- the selector's plus the
     step's head's, over the full masked distributions -- with the gradient
     through `network`; 0 on rows without a policy. The estimator the
     whole-phase anchor uses, so a target is nats per decision as there it
-    is nats per model."""
+    is nats per model. With `scope="commitment"` it is instead the
+    planner's drift alone: the commitment head's masked distribution
+    against the reference's on the rows that carry a commitment decision,
+    0 elsewhere, so the anchor holds the plan and leaves the members free."""
     device = network.device
     batch = collate([t.tokens for t in transitions], device=device)
-    has_policy = torch.tensor([t.has_policy for t in transitions], device=device)
     models = torch.tensor(
         [max(t.model, 0) for t in transitions], dtype=torch.int64, device=device
     )
@@ -765,6 +776,22 @@ def drift_to_reference(
         ref_output = reference(batch)
     n = len(transitions)
     kl = torch.zeros(n, device=device)
+    if scope == "commitment":
+        has_commitment = torch.tensor(
+            [t.has_commitment for t in transitions], device=device
+        )
+        if not bool(has_commitment.any()):
+            return kl
+        rows = torch.nonzero(has_commitment).squeeze(-1)
+        commitment = network.commitment(output, batch, models)
+        with torch.no_grad():
+            ref_commitment = reference.commitment(ref_output, batch, models)
+        kl[rows] = _masked_kl(
+            F.log_softmax(commitment.logits[rows].float(), dim=-1),
+            F.log_softmax(ref_commitment.logits[rows].float(), dim=-1),
+        )
+        return kl
+    has_policy = torch.tensor([t.has_policy for t in transitions], device=device)
     if not bool(has_policy.any()):
         return kl
     rows = torch.nonzero(has_policy).squeeze(-1)
@@ -1015,9 +1042,17 @@ def ppo_update(
             if anchored:
                 assert reference is not None
                 drift = drift_to_reference(
-                    network, reference, [transitions[i] for i in rows]
+                    network,
+                    reference,
+                    [transitions[i] for i in rows],
+                    scope=config.kl_ref_scope,
                 )
-                kl_ref_term = (drift * policy).sum() / n_policy
+                if config.kl_ref_scope == "commitment":
+                    anchor_rows = evaluated.has_commitment
+                    n_anchor = max(1, int(anchor_rows.sum().item()))
+                else:
+                    anchor_rows, n_anchor = policy, n_policy
+                kl_ref_term = (drift * anchor_rows).sum() / n_anchor
                 loss = loss + kl_ref_coef * kl_ref_term
                 totals["kl_ref"] += float(kl_ref_term.item())
             optimizer.zero_grad()

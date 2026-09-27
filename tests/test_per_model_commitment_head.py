@@ -381,3 +381,78 @@ def test_the_scripted_bar_writes_its_plan_under_the_head_writer() -> None:
     assert all(state.ground_of(g) >= 0 for g in env.player_seat.living_units())
     result = evaluate_spec("squad_march_take", config, [700000, 700001], "bar")
     assert result.success_rate == 1.0
+
+
+def test_the_commitment_scope_anchor_holds_the_planner_and_reports_its_drift() -> None:
+    """Under `kl_ref_scope="commitment"` a heavy anchor keeps the commitment
+    head's distribution nearer the reference's than the same update unanchored,
+    reports a non-negative drift with the coefficient it used, and with no
+    commitment rows in the rollout adds nothing."""
+    import copy
+
+    from wargame_rl.wargame.model.per_model.ppo import (
+        UpdateStats,
+        drift_to_reference,
+        evaluate_transitions,
+    )
+
+    torch.manual_seed(3)
+    envs, retimers, observations = _head_envs()
+    agent = SetAgent(SetNetwork.from_env(envs[0], SMALL_TRUNK))
+    config = PerModelPPOConfig(
+        rollout_rounds=2,
+        batch_size=16,
+        n_epochs=2,
+        kl_ref_coef=50.0,
+        kl_ref_scope="commitment",
+    )
+    rollout = collect_rollout(envs, agent, retimers, observations, config)
+    returns, advantages = compute_gae(rollout, config)
+    planning_returns, planning_advantages = compute_planning_gae(rollout, config)
+    reference = copy.deepcopy(agent.network)
+    reference.eval()
+    for parameter in reference.parameters():
+        parameter.requires_grad_(False)
+    plain, anchored = copy.deepcopy(agent.network), copy.deepcopy(agent.network)
+
+    def run(
+        network: SetNetwork, reference: SetNetwork | None, kl_ref_coef: float
+    ) -> UpdateStats:
+        optimizer = torch.optim.Adam(network.parameters(), lr=1e-2)
+        return ppo_update(
+            network,
+            optimizer,
+            rollout,
+            returns,
+            advantages,
+            config,
+            generator=torch.Generator().manual_seed(0),
+            planning_returns=planning_returns,
+            planning_advantages=planning_advantages,
+            reference=reference,
+            kl_ref_coef=kl_ref_coef,
+        )
+
+    run(plain, None, 0.0)
+    stats = run(anchored, reference, 50.0)
+
+    def planner_drift(network: SetNetwork) -> float:
+        with torch.no_grad():
+            ours = evaluate_transitions(network, rollout.transitions)
+            theirs = evaluate_transitions(reference, rollout.transitions)
+            rows = ours.has_commitment
+            log_rho = (theirs.commit_log_probs - ours.commit_log_probs)[rows]
+            return float(((log_rho.exp() - 1.0) - log_rho).mean().item())
+
+    assert stats.commit_rows > 0
+    assert stats.kl_ref_coef == 50.0
+    assert stats.kl_ref >= 0.0
+    assert planner_drift(anchored) < planner_drift(plain)
+    # The estimator is zero on rows without a commitment decision.
+    with torch.no_grad():
+        drift = drift_to_reference(
+            anchored, reference, rollout.transitions, scope="commitment"
+        )
+    has_commitment = torch.tensor([t.has_commitment for t in rollout.transitions])
+    assert torch.all(drift[~has_commitment] == 0.0)
+    assert torch.all(drift[has_commitment] >= 0.0)

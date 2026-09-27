@@ -250,6 +250,15 @@ with every resume is the phase facade's silent-anchor defect), and the
 adapted coefficient is carried in the training state. Logged as
 `train/kl_ref` and `train/kl_ref_coef`.
 
+`--kl-ref-scope` (#384, amendment 23) picks what the anchor holds:
+`members` (the default: the selector and the members' heads, the estimator
+above) or `commitment` (the planner's head alone: the commitment head's
+masked distribution against the reference's over the rows that carry a
+commitment decision, averaged over those rows, the members left free).
+Built because every warm-started half-step run's planner drifted in its
+last third (planning EV to about zero) while its members held (EV above
+0.9): the drift to hold was the plan's, not the walk's.
+
 
 ### Who a payment reaches (`--credit`, #340)
 

@@ -145,6 +145,7 @@ _PPO_KNOBS = (
     "batch_size",
     "kl_ref_coef",
     "kl_ref_target",
+    "kl_ref_scope",
     "credit",
     "planning_credit",
     "members",
@@ -482,6 +483,12 @@ def train(
         help="Drift to hold, in nats per decision; makes the coefficient "
         "adaptive. 0 keeps it fixed.",
     ),
+    kl_ref_scope: str | None = typer.Option(
+        None,
+        "--kl-ref-scope",
+        help="What the anchor holds: `members` (the selector and the members' "
+        "heads, the default) or `commitment` (the planner's head alone).",
+    ),
     credit: str | None = typer.Option(
         None,
         "--credit",
@@ -649,6 +656,7 @@ def train(
         "batch_size": resolve_optional_int(batch_size),
         "kl_ref_coef": resolve_optional_float(kl_ref_coef),
         "kl_ref_target": resolve_optional_float(kl_ref_target),
+        "kl_ref_scope": resolve_optional_str(kl_ref_scope),
         "credit": Credit(credit) if resolve_optional_str(credit) else None,
         "planning_credit": (
             PlanningCredit(planning_credit)
