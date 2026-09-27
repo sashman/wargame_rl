@@ -1906,3 +1906,78 @@ seeds, and no reader.
    reached by continuation rather than by luck.
 3. The supervised-clone test (amendment 19's fallback) is no longer needed
    to decide representability: FH3 s1 already did.
+
+## Amendment 21 — written 2026-09-27 02:17: CM9 / CM9c read — the churn cost is BEHIND its control on 2/3; both arms peak at two thirds and the planner degrades in the last third; the control's peak is the best half-step policy on file
+
+CM9 (#421, the churn cost `commitment_churn` 0.5 on the planner's stream,
+`a5_points_head_rf_pc_cc.yaml`) and CM9c (#422, the same warm start on the
+unchanged reward), both warm-started per seed from CM8w's own seed at
+81,920 (the peak, 0.61 / 0.96 / 1.00), optimiser fresh, 122,880 rounds,
+read at 40,960 / 81,920 / 122,880 past the warm start (n=100, seeds
+700000+, the finals gated on the exits). Wandb CM9 om3m0icu / 86qivmn8 /
+8bima4m8, CM9c aodoobc4 / t5a35uo0 / nvf54i5z. Code `e8c7b2a`.
+
+| read (past the warm start) | CM9 as trained | CM9c as trained | CM9 re-commits before arrival | CM9c re-commits before arrival | CM9 first-plan coverage | CM9c first-plan coverage |
+|---|---|---|---|---|---|---|
+| 40,960 | 0.38 / 0.87 / 0.92 | 0.45 / 0.97 / 0.83 | 0.19 / 0.33 / 0.22 | 0.80 / 0.35 / 0.74 | 0.78 / 0.96 / 0.86 | 0.47 / 0.91 / 0.79 |
+| 81,920 | 0.52 / 0.82 / 0.83 | **0.80 / 0.97 / 0.96** | 0.27 / 0.22 / 0.27 | 0.30 / 0.57 / 0.49 | 0.62 / 0.80 / 1.00 | 0.83 / 0.18 / 0.96 |
+| **122,880** | **0.85 / 0.00 / 0.08** | **0.40 / 0.85 / 0.93** | 0.13 / 0.01 / 0.28 | 0.57 / 0.43 / 0.31 | 1.00 / 0.00 / 0.28 | 0.00 / 0.87 / 0.63 |
+
+The soldiers follow at every read on both arms (blank plan 0.00 on every
+seed, arrival at a non-nearest committed objective 0.84–0.88). At the
+cap: CM9 s2's planner commits every squad to ONE objective (distinct share
+0.20, max stack 11.4 bodies, re-commits 0.01; its plan-only row 0.00), s3
+covers the board in 28% of games (misses: an objective no squad is
+committed to, 50%); CM9c s1 lost its first-plan coverage (0.00, distinct
+0.49) and its misses are the walk-off (72%). Panels, last quarter: CM9 s2
+planning return 2.67 → 0.42, coverage 0.26 → 0.16, planning EV −0.12,
+in-run success 80 → 23%; CM9 s3 planning EV 0.02; CM9c s1 planning EV
+0.10, commitment entropy 0.55 → 0.83, in-run 65 → 40%. Members' EV
+0.90–0.97 throughout on every seed.
+
+**Verdict on the letter, per seed at 122,880 as trained: BEHIND on 2/3**
+(PASS on none; s1 ahead of the control by 7 binomial SE, s2 and s3 behind
+by 14 and 17). The mechanism clause held at every read (CM9's re-commits
+before arrival ≤ 0.35 on 3/3; the control's not).
+
+### What it says
+
+- **The churn cost does what it prices and it hurts.** Re-commits fall to
+  0.01–0.28 and with them the planner's correction: the control's s2 covers
+  the board with its first plan in 18% of games at two thirds and scores
+  0.97 by re-committing 57% of squads before they arrive; CM9's s2, priced
+  for every re-commit, ends with every squad on one objective and zero
+  churn. A re-commit before arrival is more often a correction than a
+  wobble here; "plans first time" is not what a good planner needs to do.
+- **The fresh-optimiser restart from CM8w's peak did not fall the way
+  CM8w's own continuation did**, and at two thirds the control read
+  0.80 / 0.97 / 0.96 — the best per-model policy on the half-step on file,
+  two seeds at the PASS mark. CM8w's fall was its optimiser's state, not
+  its reward.
+- **Both arms then degrade in the last third, on different seeds, and the
+  planner is what moves**: planning EV falls to about zero on the seeds
+  that fall (−0.12, 0.02, 0.10) while the members' EV holds above 0.90;
+  the planner's policy drifts late whatever the reward on its stream.
+  Three warm-started runs on this board (CM8w, CM9, CM9c) now show the
+  same shape: a peak at two thirds and a fall on one to two seeds by the
+  cap. The cap read is a coin flip on the planner's drift; the peak is
+  real.
+- **The variant rule misfired.** Amendment 19's rule, decided at 40,960 as
+  pre-registered, sent CM10 / CM10s to the churn-cost config; the 81,920
+  read would have sent them to the plain one. The rule stands and CM10's
+  comparator is CM9 at matched rounds; a plain twin is the follow-up.
+
+### What this asks of #384 (proposed; Sash decides)
+
+1. **Retire the churn cost.** It is priced out by its own control; keep
+   `commitment_churn` as a readout term at weight 0 and drop it from
+   every config from here (CM10's `_cc` variant runs to its read as
+   pre-registered).
+2. **The lever is the planner's late drift, and the standard remedy on
+   this ladder is the anchor**: a KL anchor on the commitment head to the
+   warm start's planner (the D2c pattern: `--kl-ref-coef` / `--kl-ref-target`
+   exist for the whole network; a head-only variant is a small build), or
+   a pre-registered stopping rule at the in-run peak (the 512-round eval
+   is on the panel). Either is one arm from CM8w's or CM9c's peak.
+3. Judge a planner by the board it reaches, not its first plan: first-plan
+   coverage stays a readout, never a criterion.
