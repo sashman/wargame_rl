@@ -1981,3 +1981,87 @@ before arrival ≤ 0.35 on 3/3; the control's not).
    is on the panel). Either is one arm from CM8w's or CM9c's peak.
 3. Judge a planner by the board it reaches, not its first plan: first-plan
    coverage stays a readout, never a criterion.
+
+## Amendment 22 — written 2026-09-27 07:17: CM10 / CM10s read — NULL on both letters: under the per-step plan-following score the walk-off is gone, the arm is decided by the planner's late drift and by pace, and from scratch one seed in three reads the plan
+
+CM10 (#424) and CM10s (#425): the per-step plan-following score
+(`plan_following` 0.5, amendment 19) on the half-step with the churn cost
+carried by amendment 19's variant rule (`a5_points_head_pf_pc_cc.yaml`);
+CM10 warm-started per seed from CM8w's own seed at 81,920 (optimiser
+fresh), CM10s from scratch; three seeds each, 122,880 rounds, read at
+40,960 / 81,920 / 122,880 (n=100, seeds 700000+, the finals gated on the
+exits). Wandb CM10 rhd04jm6 / cn1celw6 / epg87cb3, CM10s 22nj20fc /
+08boi9p0 / qak0i5bt. Code `6955445`. Comparators: CM9 at matched rounds
+(CM10, paired: the same warm start per seed) and CM8 (CM10s).
+
+| read | CM10 as trained (CM9) | CM10 arrival at a non-nearest committed objective | CM10 leave | CM10 re-commits before arrival | CM10s as trained (CM8) | CM10s arrival at a non-nearest committed objective |
+|---|---|---|---|---|---|---|
+| 40,960 | 0.01 / 0.56 / 0.86 (0.38 / 0.87 / 0.92) | 0.54 / 0.63 / 0.81 | 0.03 / 0.06 / 0.07 | 0.11 / 0.43 / 0.47 | 0.00 ×3 (0.00 ×3) | 0.23 / 0.23 / 0.27 |
+| 81,920 | 0.32 / 0.76 / 0.63 (0.52 / 0.82 / 0.83) | 0.66 / 0.75 / 0.77 | 0.06 / 0.06 / 0.09 | 0.27 / 0.27 / 0.14 | 0.00 ×3 (0.03 / 0.01 / 0.04) | 0.48 / 0.19 / 0.39 |
+| **122,880** | **0.00 / 0.47 / 0.06** (0.85 / 0.00 / 0.08) | 0.55 / 0.80 / 0.66 | 0.83 / 0.10 / 0.06 | 0.56 / 0.43 / 0.04 | **0.00 / 0.00 / 0.52** (0.03 / 0.06 / 0.16) | 0.24 / 0.26 / **0.78** |
+
+The blank-plan ablation reads 0.00 on every CM10 seed at every read
+(the soldiers follow), and flat on CM10s's s1 and s2 at every read;
+CM10s's s3 goes from flat at a third to a partial dependence at two
+thirds (blank plan held 1.35 against 2.98) to a reader at the cap (blank
+0.00 against 0.52). Greedy equals sampled on every CM10 final (held 1.81
+/ 4.34 / 4.06 against 2.36 / 4.31 / 4.17).
+
+**Verdicts on the letters, per seed at 122,880 as trained.** CM10: **NULL**
+— PASS on none; s2 ahead of CM9's same seed (0.47 against 0.00), s1
+behind (0.00 against 0.85), s3 level (0.06 against 0.08). CM10s: **NULL**
+— PASS on none; s3 ahead of CM8's same seed by six binomial SE (0.52
+against 0.16), s1 and s2 level (AHEAD asked for 3/3).
+
+### What it says
+
+- **The walk-off is gone under the uncapped inside score.** Where the
+  planner held, leave fell to 0.06–0.10 (CM9 0.31–0.47) and "arrived and
+  left" to ≤ 3% of misses; a soldier inside its objective stays. The
+  mechanism named at CM9's read (the stay term's cap making holding
+  worthless after four turns) is confirmed by its removal.
+- **The arm is decided by the planner, not the soldiers.** CM10's s1
+  collapsed in the last quarter (planning return 2.5 → −0.5, planning EV
+  −0.43, first-plan coverage 0.00, re-commits 0.86 per squad; the soldiers
+  follow the churn around and end on nothing), s2 degraded (first-plan
+  0.08, distinct 0.60), s3's planner stayed perfect (1.00, re-commits
+  0.04). The same late drift as CM9 and CM9c, under the churn cost that
+  amendment 21 retired; the members' EV held above 0.93 on every seed
+  while the planning EV went to zero or below on the seeds that fell.
+- **Pace is the residual where the planner holds**: on s3 one squad never
+  reaches the far objective (98% of misses within 12" and not inside at
+  round 10; the same objective empty in 85% of games). The soldiers do not
+  stand still off the objective (stationary 0.00); their moves score 0.71
+  of the perfect step (0.68 at two thirds), and a covering plan that sends
+  the farthest squad to the farthest objective needs more than ten rounds
+  at that pace. A plan can cover every objective and be a bad ASSIGNMENT,
+  and the plan-shape term cannot tell the two apart.
+- **From scratch, one seed in three became a reader** — the first from-
+  scratch soldiers on the half-step to read the plan (CM10s s3: arrival at
+  a non-nearest committed objective 0.27 → 0.39 → 0.78, blank plan 0.00,
+  success 0.52 with the planner covering the board in 57% of games). The
+  other two walk to the nearest as CM8's did. The lottery stands at one in
+  three under both reward shapes (FH3 / CM10s), and the per-step score
+  does not change its odds.
+- **The variant rule's misfire is on the record**: CM10 / CM10s carried the
+  churn cost that CM9's own read retired; CM10's comparator (CM9) carried
+  it too, so the pairing holds, but the arm did not test the score on the
+  planner reward that works.
+
+### What this asks of #384 (proposed; Sash decides)
+
+1. **Keep the per-step score for the soldiers** (it removes the walk-off,
+   is bounded and churn-proof) and **drop the churn cost** from every
+   config: the next soldier-side arm is the plain `a5_points_head_pf_pc`
+   variant from CM9c's 81,920 checkpoints (the best planner on file),
+   comparator CM9c at matched rounds — CM10p, one change.
+2. **The planner's late drift is the binding problem on three arms in a
+   row** (CM9, CM9c, CM10): one arm on it — a KL anchor on the commitment
+   head to the peak's planner, or a pre-registered stopping rule at the
+   in-run peak — before any other lever.
+3. **Assignment quality, not coverage**: read the planner by the board it
+   reaches and by which squad it sends where; a travel-cost-aware
+   plan-shape term (coverage weighted by the assigned squads' distance)
+   is a candidate if pace stays the residual after the drift is held.
+4. The search lever for from-scratch soldiers (amendment 20) stands;
+   CM10s's reader is a fourth lottery ticket, not a change in the odds.
