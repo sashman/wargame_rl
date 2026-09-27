@@ -2124,3 +2124,33 @@ in-run peak would have delivered, never a verdict.
 **Expectation (a guess).** CM11 HOLDS on 3/3 and reads 0.8–0.97 at the
 cap; CM10p holds the walk-off gain and drifts as CM10 did on one seed;
 CM11p the best of the three. Nine trainers, about five hours.
+
+### Addendum to amendment 23 — written 2026-09-27 12:40: CM11p's seed 1 relaunched with the anchor's coefficient fixed (CM11pf), on Sash's call
+
+**Why.** On CM11p's seed 1 the adaptive rule (double the coefficient when
+the measured drift exceeds 1.5× the target, halve it below target / 1.5)
+ratcheted the coefficient from 10 to about 2,700 within 40,000 rounds
+while the commitment head's drift stayed near the target (quarter means
+0.032–0.039 nats per commitment decision), and the seed's in-run success
+fell 82 → 22%. The drift is not the anchor's to remove: the members'
+unanchored updates move the shared encoder under the commitment head, so a
+coefficient that large swamps the update without closing the gap. The
+other five anchored seeds held coefficients of 1.6–5 with the drift at the
+target. This is the controller's defect, recorded as such on #428.
+
+**What changed.** The escalated seed was stopped at about 44,500 rounds,
+after its 40,960 checkpoint (`pm-00040960.pt`; its 40,960 read stands as the
+record of the defect). A new cell, **CM11pf** (tag `cm11pf`, Wandb klcafe6a),
+starts from the same warm start (CM9c s1 at 81,920) on the same config with
+`--kl-ref-coef 10 --kl-ref-target 0 --kl-ref-scope commitment`: the
+pre-registered coefficient with the controller off. ⚠ The healthy anchored
+seeds' controller settled at 1.6–5, so a fixed 10 is a heavier anchor than
+theirs; stated here before any number exists.
+
+**How it is read.** CM11pf is a separately labelled one-seed cell, never
+averaged into CM11p: read at 40,960 / 81,920 / 122,880 past its warm start
+(n=100, seeds 700000+), on CM11p's letter for seed 1 (PASS ≥ 0.95 / HOLDS /
+AHEAD of CM9c's s1 continuation at +40,960, 0.40, by two SE / NULL) and on
+the anchor's mechanism clause (planning EV ≥ 0.3 in the last quarter), with
+CM11 s1 and CM10p s1 as its paired neighbours. CM11p is read on seeds 2 and 3
+at 81,920 and the cap; its letter's "2/3" clauses become "2/2".
