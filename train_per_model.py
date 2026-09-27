@@ -146,6 +146,7 @@ _PPO_KNOBS = (
     "kl_ref_coef",
     "kl_ref_target",
     "kl_ref_scope",
+    "kl_ref_coef_max",
     "credit",
     "planning_credit",
     "members",
@@ -483,6 +484,12 @@ def train(
         help="Drift to hold, in nats per decision; makes the coefficient "
         "adaptive. 0 keeps it fixed.",
     ),
+    kl_ref_coef_max: float | None = typer.Option(
+        None,
+        "--kl-ref-coef-max",
+        help="Ceiling on the adaptive anchor coefficient (default: the "
+        "controller's own bound, 1e4).",
+    ),
     kl_ref_scope: str | None = typer.Option(
         None,
         "--kl-ref-scope",
@@ -657,6 +664,7 @@ def train(
         "kl_ref_coef": resolve_optional_float(kl_ref_coef),
         "kl_ref_target": resolve_optional_float(kl_ref_target),
         "kl_ref_scope": resolve_optional_str(kl_ref_scope),
+        "kl_ref_coef_max": resolve_optional_float(kl_ref_coef_max),
         "credit": Credit(credit) if resolve_optional_str(credit) else None,
         "planning_credit": (
             PlanningCredit(planning_credit)
@@ -996,7 +1004,10 @@ def train(
                 planning_advantages=planning_advantages,
             )
             kl_ref_coef_now = adapt_kl_coef(
-                kl_ref_coef_now, stats.kl_ref, ppo_config.kl_ref_target
+                kl_ref_coef_now,
+                stats.kl_ref,
+                ppo_config.kl_ref_target,
+                ppo_config.kl_ref_coef_max,
             )
             update_s = time.perf_counter() - started
             # Nominal: lockstep envs can close in the same iteration, so the

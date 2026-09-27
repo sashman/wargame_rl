@@ -36,6 +36,11 @@ def test_the_controller_follows_the_phase_facades_rule() -> None:
     assert adapt_kl_coef(1.0, 1.0, 1.0) == 1.0  # inside the band
     assert adapt_kl_coef(KL_COEF_MIN, 0.0, 1.0) == KL_COEF_MIN
     assert adapt_kl_coef(KL_COEF_MAX, 9.0, 1.0) == KL_COEF_MAX
+    # A ceiling below the controller's bound stops the doubling there, and
+    # never raises a coefficient already above it (#384, amendment 25).
+    assert adapt_kl_coef(16.0, 2.0, 1.0, coef_max=20.0) == 20.0
+    assert adapt_kl_coef(20.0, 2.0, 1.0, coef_max=20.0) == 20.0
+    assert adapt_kl_coef(20.0, 0.1, 1.0, coef_max=20.0) == 10.0
 
 
 def _rollout(seed: int):  # type: ignore[no-untyped-def]

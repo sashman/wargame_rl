@@ -259,6 +259,14 @@ Built because every warm-started half-step run's planner drifted in its
 last third (planning EV to about zero) while its members held (EV above
 0.9): the drift to hold was the plan's, not the walk's.
 
+`--kl-ref-coef-max` (#384, amendment 25) caps the adaptive coefficient
+(default 1e4, the controller's own bound, so nothing changes unless it is
+set). Under `--kl-ref-scope commitment` the members' unanchored updates move
+the shared encoder under the commitment head, so the drift can sit just above
+the band however large the coefficient grows; the rule then doubles it without
+bound (~2,700 on one half-step seed, which wrecked the run). Set a ceiling
+(20) or fix the coefficient (`--kl-ref-target 0`) on every anchored arm.
+
 
 ### Who a payment reaches (`--credit`, #340)
 

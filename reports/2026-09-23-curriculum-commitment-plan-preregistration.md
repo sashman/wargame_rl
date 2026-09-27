@@ -2247,3 +2247,79 @@ the 8 seeds it could be read on (CM8w 0.82 / 0.96 / 0.91 against 0.73 /
    checkpoints) as every joint arm's secondary readout.
 5. Then the size step: A5 (eight squads, six objectives) warm-started from
    CM11 s3, the rung's first PASS at the cap.
+
+## Amendment 25 — written 2026-09-27 19:43: round 8 pre-registered — the coefficient ceiling, the walk-off under the old terms (CM12), the size step to A5 with and without the anchor (CM13 / CM13a), and the in-run-peak readout; on Sash's "proceed" to amendment 24's five proposals
+
+**1. The recipe.** CM11 (amendment 24) is the half-step recipe: the anchor
+on the commitment head at 0.03 nats, CM9c's reward (the old soldier
+terms), a warm start from the rung's best planner. The per-step score is
+retired as the soldiers' term on this board.
+
+**2. The build: a ceiling on the adaptive coefficient.**
+`--kl-ref-coef-max` (`PerModelPPOConfig.kl_ref_coef_max`, default 1e4, the
+controller's own bound, so no earlier run changes): the doubling stops at
+the ceiling. Test: `tests/test_per_model_kl_anchor.py::test_the_controller_follows_the_phase_facades_rule`.
+Every anchored arm from here sets 20, except where pairing needs the old
+setting (CM12, below).
+
+**3. CM12 — the walk-off under the old terms.** CM11's recipe exactly
+(`--kl-ref-coef 10 --kl-ref-target 0.03 --kl-ref-scope commitment`, no
+ceiling, as CM11 ran) with one change: the stay term's cap lifted
+(`configs/experiments/curriculum/a5_points_head_rf_pc_stay.yaml`:
+`objective_stay` pays 0.5 for every turn inside the committed objective,
+to round 10; CM11's paid four turns). Warm-started per seed from CM9c's own
+seed at 81,920, paired with CM11 by seed. Desk check (n=20, seeds 700000+):
+the soldiers' stay income per episode rises 0.77 → 1.29 under the bar and
+0.77 → 1.30 under CM11 s1's policy, progress unchanged (2.0–2.1). ⚠ The cap
+was what made "following pays the same for every plan" hold for the stay
+term; lifted, a squad sent near earns more stay than one sent far. The
+planner's stream is unchanged, so the planner is still paid only for the
+outcome.
+
+**4. CM13 / CM13a — the size step.** A5's scenario (eight squads of three,
+six objectives, ten rounds) under the commitment head with the half-step
+recipe's reward, `configs/experiments/curriculum/a5_head_rf_pc.yaml` (A5's
+scenario + `a5_points_head_rf_pc.yaml`'s reward, deployment coherency and
+head writer; ⚠ the deployment-coherency line is new to A5, so no earlier
+A5 number is a strict comparator). All six seeds warm-started from **CM11
+s3's last checkpoint** (the half-step's first PASS at the cap), optimiser
+fresh. **CM13**: no anchor. **CM13a**: the anchor on the commitment head
+(`--kl-ref-coef 10 --kl-ref-target 0.03 --kl-ref-scope commitment
+--kl-ref-coef-max 20`), the reference being CM11 s3 itself. Paired with each
+other by seed.
+
+**The zero-shot read (no training, n=100, seeds 700000+):** CM11 s3 on the
+A5 config as it stands reads **0.740** in 9.44 turns (held 5.69 of 6; the
+first plan covers all six objectives in 98% of games); the same head with
+the bar's soldiers 0.970; the bar `squad_march_take` 1.000 in 6.77 turns.
+For scale: the best per-model A5 result on file is T1's 0.45 / 0.29 / 0.20
+(245,760 rounds, the old A5 config), the whole-army control 0.80 / 0.94 /
+0.98.
+
+**5. The in-run-peak readout.** For every arm, the kept 20,480-multiple
+checkpoint whose surrounding in-run success (the trainer's own sampled
+eval, rounds ±2,560) is highest is read at n=100 beside the cap
+(`scratchpad/peak_ckpt.py`, tested on CM11: it picks 122,880 / 81,920 /
+122,880, reads 0.83 / 0.88 / 0.97). A secondary readout, never the verdict.
+
+**Budget.** 122,880 rounds each, three seeds each, CM4's rollout (4 × 32),
+`ent_coef` 0.003, Wandb group `curriculum-cm-plan`. Reads at 40,960 /
+81,920 / 122,880 (n=100, seeds 700000+) and the peak.
+
+**Criteria, per seed at the cap.**
+- **CM12**: PASS ≥ 0.95; AHEAD of CM11's same seed at the cap (0.83 / 0.63
+  / 0.97) by two binomial SE on 2/3; BEHIND by the same on 2/3; NULL
+  otherwise. Mechanism: leave (the share of squads that arrive and leave)
+  below CM11's at the cap (0.31 / 0.19 / 0.20) on 3/3, and "arrived and
+  LEFT" under 20% of the misses.
+- **CM13 and CM13a** each: PASS ≥ 0.95; RISES if above the zero-shot 0.740
+  by two binomial SE; HOLDS within two SE of it; FALLS below by two SE.
+  Paired: CM13a AHEAD of CM13's same seed by two SE on 2/3, or BEHIND, or
+  level. The anchor's mechanism clause as before (planning EV ≥ 0.3 in the
+  last quarter, `train/kl_ref` ≤ 0.1).
+
+**Expectation (a guess).** CM12 fixes s1's walk-off and reads about CM11 or
+better, with no pace cost. CM13 rises to 0.85–0.95 on A5 (the transfer
+already reads 0.74); CM13a holds nearer 0.74 if the anchor to a smaller
+board's planner stops it adapting, or rises and holds where CM13 drifts.
+Nine trainers; A5's episodes are longer, so about six hours.

@@ -84,6 +84,12 @@ class PerModelPPOConfig(BaseModel):
     # the members left free. Built because every warm-started half-step
     # run's planner drifted in its last third while its members held.
     kl_ref_scope: Literal["members", "commitment"] = "members"
+    # The adaptive coefficient's ceiling (#384, amendment 25). The default is
+    # the controller's own bound, so nothing changes unless it is set; the
+    # half-step's anchored arms escalated to ~2,700 when the members moved the
+    # shared encoder under the commitment head and the drift could not fall
+    # below the band, and a ceiling two orders lower stops that.
+    kl_ref_coef_max: float = Field(default=1e4, gt=0.0)
     # The planning stream (#384 D6): the discount per commitment step (one
     # per turn per unit, so near one) and the planning value head's weight.
     # Read only when a rollout carries commitment decisions.
@@ -133,17 +139,22 @@ KL_COEF_MIN = 1e-4
 KL_COEF_MAX = 1e4
 
 
-def adapt_kl_coef(coef: float, measured_drift: float, target: float) -> float:
+def adapt_kl_coef(
+    coef: float,
+    measured_drift: float,
+    target: float,
+    coef_max: float = KL_COEF_MAX,
+) -> float:
     """Schulman's KL-penalty rule: halve the coefficient when the policy stays
-    closer than `target` by 1.5x, double it when it drifts further by 1.5x;
-    a no-op at `target == 0.0`. The wide band keeps the coefficient from
-    oscillating faster than the policy can answer it."""
+    closer than `target` by 1.5x, double it when it drifts further by 1.5x,
+    never above `coef_max`; a no-op at `target == 0.0`. The wide band keeps
+    the coefficient from oscillating faster than the policy can answer it."""
     if target <= 0.0:
         return coef
     if measured_drift < target / 1.5:
         return max(coef / 2.0, KL_COEF_MIN)
     if measured_drift > target * 1.5:
-        return min(coef * 2.0, KL_COEF_MAX)
+        return min(coef * 2.0, KL_COEF_MAX, coef_max)
     return coef
 
 
