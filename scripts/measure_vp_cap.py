@@ -59,6 +59,10 @@ def cap_and_rate(config: WargameEnvConfig) -> tuple[int, int]:
     Read rather than hardcoded: a mission tuned to a different cap would make
     every percentage below wrong while still printing.
     """
+    if not config.mission.cap_enabled:
+        raise SystemExit(
+            "this config's mission has the VP cap off: there is no cap to measure"
+        )
     params = dict(config.mission.params)
     reference = DefaultVPCalculator()
     return (

@@ -18,10 +18,11 @@ from scripts.scenario_overrides import load_env_config
 from wargame_rl.wargame.envs.env_components.distance_cache import compute_distances
 from wargame_rl.wargame.envs.per_model.commitment import NO_TARGET
 from wargame_rl.wargame.envs.per_model.env import PerModelEnv
-from wargame_rl.wargame.envs.per_model.reward_timing import PerStepReward
+from wargame_rl.wargame.envs.per_model.reward_timing import PerStepReward, StepPayment
 from wargame_rl.wargame.envs.per_model.types import StepKind
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.envs.types.config import CommitmentConfig
+from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.selectors import build_per_model_chooser
 
 CONFIG = "configs/experiments/curriculum/a3_head_r.yaml"
@@ -371,3 +372,67 @@ def test_plan_following_scores_the_share_of_the_best_step_and_is_bounded() -> No
         if terminated:
             break
     assert total == 0.0
+
+
+def _play_to_the_end(
+    config: WargameEnvConfig, seed: int = 700000
+) -> tuple[PerModelEnv, PerStepReward, StepPayment]:
+    """The scripted bar to the end of one episode under two streams; the
+    environment, the retimer and the last step's payment."""
+    env = PerModelEnv(config)
+    chooser = build_per_model_chooser("squad_march_take", [env], seed=seed)
+    retimer = PerStepReward(env, streams=True, gamma=0.9, planning_gamma=0.99)
+    observation, _ = env.reset(seed=seed)
+    retimer.reset()
+    while True:
+        before = observation
+        action = chooser.choose([env], [observation])[0]
+        observation, _r, terminated, _t, info = env.step(action)
+        payment = retimer.on_step(before, action, info["effect"], terminated)
+        if terminated:
+            return env, retimer, payment
+
+
+def test_a_success_pays_each_stream_what_it_cuts_off() -> None:
+    """On the VP config a success at close k pays the soldiers exactly the
+    discounted most they forgo, 0.5 a round for the 10 - k rounds of play
+    left, and the planner 1.05 times the discounted most VP it forgoes, 0.5
+    for each of the 10 - k - 1 scoring rounds left (the board at the end of
+    the last round is never scored); the first on the members' reward, the
+    second on the planning stream."""
+    config = load_env_config("configs/experiments/curriculum/a5_points_head_pf_vp.yaml")
+    env, retimer, payment = _play_to_the_end(config)
+    assert retimer.succeeded()
+    closed = retimer.closes
+    assert closed < env.config.number_of_battle_rounds
+    play, scoring = 10 - closed, 10 - closed - 1
+    member = 0.5 * sum(0.9**m for m in range(1, play + 1))
+    planner = 1.05 * 0.5 * sum(0.99**m for m in range(1, scoring + 1))
+    assert payment.breakdown["terminal_member_success_bonus"] == pytest.approx(member)
+    assert payment.breakdown["terminal_forgone_vp_bonus"] == pytest.approx(planner)
+    assert "terminal_success_bonus" not in payment.breakdown
+    assert payment.reward == pytest.approx(
+        member
+        + payment.breakdown.get("plan_following", 0.0)
+        + payment.breakdown.get("group_cohesion", 0.0)
+    )
+    assert payment.planning == pytest.approx(
+        planner + payment.breakdown.get("vp_gain", 0.0)
+    )
+
+
+def test_the_forgone_pay_bonuses_are_off_by_default_and_refused_by_the_whole_army_facade() -> (
+    None
+):
+    """Unset, neither bonus is paid; set, the whole-army facade refuses the
+    config rather than paying it nothing."""
+    config = load_env_config("configs/experiments/curriculum/a5_points_head_pf_pc.yaml")
+    _env, retimer, payment = _play_to_the_end(config)
+    assert retimer.succeeded()
+    assert "terminal_member_success_bonus" not in payment.breakdown
+    assert "terminal_forgone_vp_bonus" not in payment.breakdown
+    phase = config.reward_phases[0].model_copy(
+        update={"terminal_member_success_bonus": 0.5}
+    )
+    with pytest.raises(ValueError, match="forgone-pay"):
+        WargameEnv(config=config.model_copy(update={"reward_phases": [phase]}))

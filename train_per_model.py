@@ -797,6 +797,8 @@ def train(
             credit=ppo_config.credit,
             streams=streams,
             planning_credit=ppo_config.planning_credit,
+            gamma=ppo_config.gamma,
+            planning_gamma=ppo_config.planning_gamma,
         )
         for env in envs
     ]
@@ -806,7 +808,15 @@ def train(
         1, min(int(resolve_default(eval_wave_size, EVAL_WAVE_SIZE)), eval_episodes)
     )
     eval_envs = [PerModelEnv(env_config) for _ in range(wave)]
-    eval_retimers = [PerStepReward(env, credit=ppo_config.credit) for env in eval_envs]
+    eval_retimers = [
+        PerStepReward(
+            env,
+            credit=ppo_config.credit,
+            gamma=ppo_config.gamma,
+            planning_gamma=ppo_config.planning_gamma,
+        )
+        for env in eval_envs
+    ]
 
     expected_head = SetNetwork.n_displacements_for(envs[0].player_action_handler)
     warm: LoadedCheckpoint | None = None

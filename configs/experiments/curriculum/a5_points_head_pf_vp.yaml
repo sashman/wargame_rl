@@ -1,0 +1,75 @@
+# #384, amendment 26 (2026-09-27): `a5_points_head_pf_pcm.yaml` (CM14: the soldiers' exact
+# success bonus and the cohesion penalty) with ONE change -- the planner is paid the
+# game's own score. Arms CM15 (from CM9c's planners) and CM15s (from scratch).
+# - `vp_gain` 0.5 replaces objective_coverage 0.3 + commitment_coverage 0.3, with the
+#   mission's per-round VP cap OFF so every held objective pays (5 VP each; under the
+#   rules' cap of 15 the fourth and fifth pay nothing): each scoring round pays
+#   0.5 x the share of objectives held.
+# - The planner's success bonus follows the soldiers' rule with an advantage: the
+#   speed-scaled 5.0 is replaced by `terminal_forgone_vp_bonus` 0.5 x 1.05 x
+#   sum_{m=1..S} 0.99^m for the S VP scoring rounds a success cuts off -- 5% more than
+#   the most VP it forgoes.
+config_name: curriculum_a5_points_head_pf_vp
+number_of_wargame_models: 18
+number_of_opponent_models: 0
+number_of_objectives: 5
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 6
+number_of_battle_rounds: 10
+deployment_zone: [2, 2, 10, 42]
+opponent_deployment_zone: [50, 2, 58, 42]
+models:
+  - &sq_0 { group_id: 0 }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+  - &sq_4 { group_id: 4 }
+  - *sq_4
+  - *sq_4
+  - &sq_5 { group_id: 5 }
+  - *sq_5
+  - *sq_5
+objectives:
+  - { x: 30, y: 8 }
+  - { x: 30, y: 22 }
+  - { x: 30, y: 36 }
+  - { x: 45, y: 15 }
+  - { x: 45, y: 29 }
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_member_success_bonus: 0.5
+    terminal_forgone_vp_bonus: 0.5
+    terminal_forgone_vp_margin: 0.05
+    reward_calculators:
+      - type: plan_following
+        weight: 0.5
+        params:
+          max_move_distance: 6.0
+      - type: group_cohesion
+        weight: 0.3
+        params: { group_max_distance: 6.0, violation_penalty: -0.05 }
+      - type: vp_gain
+        weight: 0.5
+    success_criteria:
+      type: all_objectives_occupied
+      params: {}
+observe_objective_control: true
+mission:
+  type: default
+  params:
+    cap_enabled: false
+coherency:
+  enforce_at_deployment: true
+commitments:
+  assignment: head

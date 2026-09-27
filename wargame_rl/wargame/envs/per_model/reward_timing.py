@@ -20,7 +20,11 @@ configured term on the step the design's table names:
   global (coverage) once at the close, scaled like a state term;
 - the terminal bonuses at the terminating close, through the phase manager's
   own `terminal_bonuses`, so the two facades cannot disagree on when one is
-  earned.
+  earned -- and, when a success ends the game, the two forgone-pay bonuses:
+  the soldiers' (`terminal_member_success_bonus`) to the members, exactly the
+  most pay the success cuts off, and the planner's
+  (`terminal_forgone_vp_bonus`) with the outcome, the most VP it cuts off plus
+  a margin; each discounted by its own stream's discount per round.
 
 Every calculator the registry names belongs to exactly one payment class,
 keyed by the registry's own string; the module refuses to import if the two
@@ -80,7 +84,12 @@ from wargame_rl.wargame.envs.reward.calculators.base import (
     PerModelRewardCalculator,
 )
 from wargame_rl.wargame.envs.reward.calculators.registry import CALCULATOR_REGISTRY
-from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
+from wargame_rl.wargame.envs.reward.phase_manager import (
+    FORGONE_VP_BONUS,
+    MEMBER_SUCCESS_BONUS,
+    RewardPhaseManager,
+    discounted_rounds,
+)
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.types import BattlePhase
 
@@ -334,6 +343,8 @@ class PerStepReward:
         *,
         streams: bool = False,
         planning_credit: PlanningCredit = PlanningCredit.broadcast,
+        gamma: float = 0.9,
+        planning_gamma: float = 0.99,
     ) -> None:
         if len(env.config.reward_phases) != 1:
             raise ValueError(
@@ -353,6 +364,10 @@ class PerStepReward:
         # or the member's own step -> execution (the member). Off, one stream.
         self.streams = bool(streams)
         self.planning_credit = PlanningCredit(planning_credit)
+        # The two streams' discounts, which price what a success cuts off
+        # (the forgone-pay bonuses); the trainer passes its own.
+        self.gamma = float(gamma)
+        self.planning_gamma = float(planning_gamma)
         self.manager = manager or RewardPhaseManager.from_configs(
             env.config.reward_phases
         )
@@ -625,6 +640,15 @@ class PerStepReward:
             for key, bonus in self.manager.terminal_bonuses(view, ctx).items():
                 outcome += bonus * common
                 breakdown[key] = breakdown.get(key, 0.0) + bonus * common
+            member, planner = self._forgone_bonuses(view, ctx)
+            # The soldiers' is in army units, the scale of their per-move pay
+            # under either credit; the planner's scales with its outcome terms.
+            if member != 0.0:
+                total += member
+                breakdown[MEMBER_SUCCESS_BONUS] = member
+            if planner != 0.0:
+                outcome += planner * common
+                breakdown[FORGONE_VP_BONUS] = planner * common
         self._baseline = self._read_baseline()
         if self.streams and self.planning_credit is PlanningCredit.counterfactual:
             planning_credits = self._counterfactual_credits(
@@ -684,7 +708,47 @@ class PerStepReward:
         if terminated:
             for bonus in self.manager.terminal_bonuses(view, ctx).values():
                 outcome += bonus * common
+            outcome += self._forgone_bonuses(view, ctx)[1] * common
         return outcome
+
+    def _rounds_cut_off(self, ctx: StepContext) -> tuple[int, int]:
+        """`(rounds of play, VP scoring rounds)` a game ending at this close
+        cuts off. Play: the rounds after the ones closed so far. Scoring: the
+        command phases still to come (VP is scored leaving a command phase,
+        on the board as it stands) from the mission's first scoring round --
+        on a config that skips command the close already passed the next
+        round's, so the board at the end of the last round is never scored."""
+        n_rounds = int(self.env.config.number_of_battle_rounds)
+        play = max(0, n_rounds - (self.closes + 1))
+        current_round = int(ctx.current_round)
+        if current_round <= 0:
+            return play, 0
+        next_command = (
+            current_round
+            if ctx.battle_phase is BattlePhase.command
+            else current_round + 1
+        )
+        first = max(next_command, self.env.config.mission.first_scoring_round)
+        return play, max(0, n_rounds - first + 1)
+
+    def _forgone_bonuses(
+        self, view: BattleView, ctx: StepContext
+    ) -> tuple[float, float]:
+        """`(soldiers', planner's)` forgone-pay success bonuses at a terminating
+        close: 0 unless configured and the phase's criteria hold."""
+        phase = self.manager.current_phase
+        per_member = phase.terminal_member_success_bonus
+        per_vp = phase.terminal_forgone_vp_bonus
+        if per_member == 0.0 and per_vp == 0.0:
+            return 0.0, 0.0
+        if not phase.criteria.is_successful(view, ctx):
+            return 0.0, 0.0
+        play, scoring = self._rounds_cut_off(ctx)
+        member = discounted_rounds(per_member, self.gamma, play)
+        planner = (1.0 + phase.terminal_forgone_vp_margin) * discounted_rounds(
+            per_vp, self.planning_gamma, scoring
+        )
+        return member, planner
 
     # ------------------------------------------------------------ readouts
 

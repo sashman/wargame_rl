@@ -305,6 +305,15 @@ class WargameEnv(gym.Env):
         self.phase_manager = RewardPhaseManager.from_configs(
             config.reward_phases, position=phase_position
         )
+        # The forgone-pay success bonuses need the trainer's discounts, which
+        # only the per-model retimer holds; here they would silently pay 0.
+        for phase in config.reward_phases:
+            if phase.terminal_member_success_bonus or phase.terminal_forgone_vp_bonus:
+                raise ValueError(
+                    f"reward phase `{phase.name}` sets a forgone-pay success bonus "
+                    "(terminal_member_success_bonus / terminal_forgone_vp_bonus), "
+                    "which only the per-model facade pays"
+                )
 
         # Mission VP calculator (scores at end of command phase from round 2)
         self._vp_calculator = build_vp_calculator(

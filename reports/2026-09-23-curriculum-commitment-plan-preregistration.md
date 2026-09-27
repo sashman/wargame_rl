@@ -2323,3 +2323,139 @@ better, with no pace cost. CM13 rises to 0.85–0.95 on A5 (the transfer
 already reads 0.74); CM13a holds nearer 0.74 if the anchor to a smaller
 board's planner stops it adapting, or rises and holds where CM13 drifts.
 Nine trainers; A5's episodes are longer, so about six hours.
+
+## Amendment 26 — written 2026-09-27 23:10: the reward audit; round 8 cancelled before any read; round 9 pre-registered — the soldiers' exact success bonus, the planner paid VP, cohesion back (CM14, CM15, CM15s)
+
+**1. The reward audit** (Sash: "are you sure it is correct?"; desk only, no
+training, code `6c259bf`; a scripted team on a plan rotated off the nearest
+objective, n=20, seeds 700000+, returns discounted as each critic sees
+them; written up for Sash in `/home/nati/share/rewards-exactly-2026-09-27.md`).
+
+- **Finding 1 — a defect: completing the plan cost the soldiers pay.**
+  Under two streams the soldiers are paid per move while the game runs,
+  the game ends the moment every objective is occupied, and the success
+  bonus goes to the planner only. Never finishing paid a following team
+  **+29%** under the per-step score (2.07 finishing against 2.66), **+28%**
+  under an uncapped stay (CM12's config) and +8% under the capped stay
+  (CM11's recipe). At "three rounds left, 15 of 18 soldiers inside, the
+  last objective one move away" entering paid 0.03 and waiting 1.13. It
+  accounts for amendment 24's "pace cost" of the per-step score (82 / 65 /
+  92% of the misses a committed squad within 12" and not inside at round
+  10) and for the capped stay's walk-off (once the cap is spent completing
+  is worth nothing to the soldiers).
+- **Finding 2 — a correction to amendments 19 and 20.** With the plan
+  written by the env there is no planning stream, so FH1–FH4's soldiers
+  were also paid `objective_coverage` 0.3 and the success bonus. FH4's
+  soldiers were NOT paid the per-step score alone: coverage paid the
+  nearest walker 1.36 a game against the follower's 0.50 (totals 1.87
+  against 3.30). FH4's NULL stands as measured; its reading "the reward is
+  not what keeps the soldiers on the nearest walk" is weakened, not
+  reversed.
+- **Finding 3 — a property.** The members' advantage runs per env over
+  every decision of every soldier, so a soldier learns from the army's
+  pay: following the plan instead of walking to the nearest objective
+  changes its own pay by about 0.015 on one move.
+- Over a whole game following still pays the soldiers 1.7–1.9x the
+  nearest walk on every config (A3 FH4 3.30 / 1.87, FH3 3.59 / 1.87;
+  half-step per-step score 2.07 / 1.17, capped stay 2.00 / 1.14,
+  uncapped 2.23 / 1.19; A5 capped 1.96 / 1.14).
+
+**2. Round 8 cancelled** at 22:06 on Sash's call, before any read, because
+every arm carried Finding 1 (CM12 at the full +28%). Killed at CM12 about
+30.7k rounds, CM13 25.1k, CM13a 22.5k; no n=100 read was taken. For the
+record only, in-run success by quarter at 21:52: CM12 81→63→37→18 /
+84→90→90→78 / 92→93→82→71 (s1's planning EV −0.12 in the last quarter);
+CM13 79→78→83→71 / 71→57→83→70 / 57→72→86→78; CM13a 65→74→60→72 /
+75→73→62→75 / 60→79→68→72. #432–#434 close not planned.
+
+**3. The builds** (default off; every golden unchanged; the suite 5,080
+passed):
+- `mission.params.cap_enabled` (default `true`, the rules' per-round cap of
+  15): `false` pays every controlled objective; `vp_gain` then divides by
+  `vp_per_objective × objectives`, so a round pays the net share of the
+  board held; `player_vp_min` and `squad_march_deny` read the round's
+  maximum. Tests in `tests/test_mission_vp.py`.
+- `terminal_member_success_bonus` — the soldiers' most pay per round,
+  army-summed. At a success that ends the game the members' stream is paid
+  that × Σ_{m=1..R} γ^m, R the rounds of play cut off and γ the members'
+  discount (0.9): exactly what the success forgoes, no margin, so
+  completing never costs a soldier and abandoning a plan to finish never
+  pays (Sash: "the advantage only for the planner").
+- `terminal_forgone_vp_bonus` with `terminal_forgone_vp_margin` — the
+  planner's most VP pay per scoring round; at a success the planning
+  stream is paid that × (1 + margin) × Σ_{m=1..S} γ_p^m, S the VP scoring
+  rounds cut off (the command phases still to come — on these configs
+  10 − k − 1, since the board at the end of round 10 is never scored) and
+  γ_p 0.99. The retimer holds both discounts, passed by the trainer; the
+  whole-army facade refuses both fields. Tests
+  `tests/test_two_stream_reward.py::test_a_success_pays_each_stream_what_it_cuts_off`
+  and `::test_the_forgone_pay_bonuses_are_off_by_default_and_refused_by_the_whole_army_facade`.
+
+**4. The rewards of round 9.** The half-step: 18 soldiers in six squads,
+five objectives, ten rounds; the game ends when every objective has a
+soldier inside (success in round k).
+- **Soldiers, all three arms:** `plan_following` 0.5 per move (÷18, mean
+  credit); `group_cohesion` 0.3 at each close (6", −0.05 an inch past the
+  nearest squadmate — the golden config's and E1's setting, back on the
+  ladder for the first time since A1, on Sash's call); at success
+  0.5 × Σ_{m=1..10−k} 0.9^m.
+- **Planner, CM14:** CM10p's, unchanged — `objective_coverage` 0.3 +
+  `commitment_coverage` 0.3 at each close; at success 5.0 speed-scaled
+  (= 0.5 × (10 − k + 1)).
+- **Planner, CM15 and CM15s:** `vp_gain` 0.5 with the cap off (0.5 × the
+  share of objectives held, every scoring round from round 2); at success
+  0.5 × 1.05 × Σ_{m=1..10−k−1} 0.99^m. The plan-shape term and the
+  speed-scaled bonus are gone.
+
+**Desk check** (as § 1; the plan rotated so it disagrees with the nearest):
+
+| config | soldiers: follow and finish | soldiers: never finish | soldiers: nearest walk | planner: finish | planner: never finish |
+|---|---|---|---|---|---|
+| CM10p's (old) | 2.07 | 2.66 | 1.17 | 4.66 | 4.40 |
+| CM14 | 2.67 | 2.66 | 1.90 | 4.66 | 4.40 |
+| CM15 | 2.67 | 2.66 | 1.90 | 2.31 | 2.25 |
+
+"Never finish" is the upper bound in which all 18 soldiers keep scoring; a
+real stall loses the stalling squad's own pay, so finishing wins for the
+soldiers by that share and for the planner by the margin. Cohesion costs
+the coherent scripts −0.002 a game. Under VP the team that ignores the
+rotated plan pays the planner more (2.58 against 2.31) because it
+finishes sooner — VP prices a plan's walking distance, which the
+plan-shape term could not; the old reward's per-close coverage terms paid
+the longer game more (4.66 against 4.28).
+
+**5. The arms.** Anchor off in all three. Budget 122,880 rounds, three
+seeds, CM4's rollout (4 × 32), `ent_coef` 0.003, Wandb group
+`curriculum-cm-plan`; reads at 40,960 / 81,920 / 122,880 (n=100, seeds
+700000+) and the in-run peak (amendment 25 § 5).
+
+| arm | config | start | comparator by name |
+|---|---|---|---|
+| **CM14** | `a5_points_head_pf_pcm.yaml` | CM9c's own seed at 81,920, optimiser fresh | CM10p (#427) same seed, cap 0.00 / 0.90 / 0.01 — paired by start; ⚠ two changes (the soldiers' bonus and cohesion), not separable here |
+| **CM15** | `a5_points_head_pf_vp.yaml` | the same | CM14 same seed — paired, one change (the planner's reward) |
+| **CM15s** | `a5_points_head_pf_vp.yaml` | from scratch | CM10s (#425) same seed, cap 0.00 / 0.00 / 0.52 — a recipe comparison |
+
+**Criteria, per seed at 122,880 as trained.**
+- **CM14:** PASS ≥ 0.95; AHEAD of CM10p's same seed by two binomial SE on
+  2/3; BEHIND by the same on 2/3; NULL otherwise. Mechanism (the stall
+  gone): on the seeds that miss, "a committed squad within 12" and not
+  inside at round 10" under a third of the misses (CM11p / CM11pf: 65–92%);
+  the blank-plan ablation ≤ 0.05 (the soldiers follow).
+- **CM15:** PASS; AHEAD / BEHIND of CM14's same seed by two SE on 2/3, else
+  LEVEL. The VP planner reward is kept unless BEHIND. Mechanism: the first
+  plan covers all five objectives in ≥ 80% of games.
+- **CM15s:** PASS; AHEAD of CM10s's same seed by two SE on 2/3; NULL
+  otherwise. Readout: the seeds whose soldiers read the plan (arrival at a
+  non-nearest committed objective ≥ 0.80 and the blank-plan ablation ≤
+  0.05).
+- **The collapse hypothesis** (CM14 and CM15): the planning EV ≥ 0.3 in the
+  last quarter on 3/3 says the late planner collapse was downstream of the
+  stall; otherwise it was not, and the anchor comes back.
+
+**If it does not work** (Sash's order): a. check the code; b. ask whether
+the network has the capacity; c. then the reward.
+
+**Expectation (a guess).** CM14 at 0.8–0.95 with the stall gone and the
+planners holding without the anchor; CM15 level with CM14; CM15s one
+reader in three as before — the from-scratch failure is a learning
+problem this round does not touch.

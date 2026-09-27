@@ -102,9 +102,14 @@ class ScriptedSquadMarchDenyPolicy(ScriptedSquadMarchShootPolicy):
         # mission config rather than hardcoded, so a config that changes either
         # number changes this policy with it. The defaults mirror
         # `DefaultVPCalculator`, which is what an omitted `mission:` block gets.
-        params = env.config.mission.params
-        cap = int(params.get("cap_per_turn", 15))
-        per_objective = int(params.get("vp_per_objective", 5)) or 1
+        mission = env.config.mission
+        per_objective = mission.points_per_objective or 1
+        # Uncapped, every objective pays, so every one is needed.
+        cap = (
+            mission.per_round_cap
+            if mission.cap_enabled
+            else len(objectives) * per_objective
+        )
         needed = max(1, min(len(objectives), cap // per_objective))
 
         # Hold the objectives the opponent contests least: cheapest to take and
