@@ -2459,3 +2459,108 @@ the network has the capacity; c. then the reward.
 planners holding without the anchor; CM15 level with CM14; CM15s one
 reader in three as before — the from-scratch failure is a learning
 problem this round does not touch.
+
+## Amendment 27 — written 2026-09-28 08:15: round 9 read — the soldiers' fix works where the planner holds (CM14 AHEAD 2/3), the VP planner reward is kept (CM15 LEVEL, peaks 1.00 / 1.00 / 0.98), the late collapse is not the stall's, and from scratch is still NULL (CM15s)
+
+CM14 (#435), CM15 (#436), CM15s (#437): three seeds each, 122,880 rounds,
+no anchor, launched 23:09 on `aef0db1` (amendment 26 at `190861f`; the
+first launch at 23:06 died at startup — the whole-army facade refused the
+new bonuses while the per-model trainer builds it to score its scripted
+bar; now a warning). Read at 40,960 / 81,920 / 122,880 and the in-run peak,
+n=100, seeds 700000+, the finals gated on the exits. Wandb CM14 o2mc11sv /
+ff9ob3mb / ec3w7w2k, CM15 rw8d257w / 6ahb00ot / 8vswalfh, CM15s e0d1rn2l /
+y3uapqud / 4wwctvv0.
+
+| arm | 40,960 | 81,920 | **cap** | peak (checkpoint) | comparator at the cap |
+|---|---|---|---|---|---|
+| **CM14** the soldiers' exact bonus + cohesion, CM10p's planner reward | 0.49 / 0.81 / 0.99 | 0.00 / 0.99 / 0.98 | **0.00 / 0.98 / 0.97** | 0.95 / 0.98 / 0.98 (20,480 / 122,880 / 61,440) | CM10p 0.00 / 0.90 / 0.01 |
+| **CM15** + the planner paid VP (cap off) and the forgone-VP bonus | 0.43 / 0.98 / 0.91 | **0.99 / 0.98 / 0.99** | **0.15 / 1.00 / 0.98** | **1.00 / 1.00 / 0.98** (61,440 / 122,880 / 122,880) | CM14 0.00 / 0.98 / 0.97 |
+| **CM15s** CM15's config from scratch | 0.00 ×3 | 0.00 ×3 | **0.00 ×3** | 0.00 ×3 | CM10s 0.00 / 0.00 / 0.52 |
+
+Turns at the cap on the live seeds: CM14 7.12 / 7.51, CM15 6.90 / 7.15
+(the bar 6.71). The blank-plan ablation reads 0.00 on every live seed of
+CM14 and CM15 (the soldiers follow; arrival at a non-nearest committed
+objective 0.75–0.95).
+
+**Verdicts on the letters, per seed at the cap.**
+- **CM14: AHEAD on 2/3** (s2 0.98 v 0.90, 2.4 SE of the difference; s3
+  0.97 v 0.01; s1 level at 0.00), PASS on s2 and s3. Mechanism: the stall
+  class under a third of the misses on 2/3 (s1 0.09, s2 none of two, s3 4
+  of 8). **The collapse hypothesis is not supported**: planning EV in the
+  last quarter −0.68 / 0.13 / 0.01 (≥ 0.3 on 3/3 asked); s1's planner
+  collapsed (in-run 87 → 42 → 9 → 0%).
+- **CM15: LEVEL with CM14** (s1 ahead 0.15 v 0.00 at 4.2 SE, s2 and s3
+  level) — under the pre-registered rule **the VP planner reward is kept**.
+  PASS on s2 and s3. Mechanism: the first plan covers all five objectives
+  in 0.00 / 0.18 / 0.12 of games (≥ 0.80 asked — not met: the VP planner
+  covers by re-committing, not by its first plan); planning EV ≥ 0.3 on
+  1/3 (−0.04 / 0.35 / 0.17). s1 read 0.99 at 81,920 and collapsed after it
+  (every squad on one objective at the cap).
+- **CM15s: NULL** (PASS none, AHEAD none; behind CM10s's one reader on s3).
+  No reader (arrival 0.72 / 0.29 / 0.48). The planner never covers the
+  board, even with the bar's soldiers (plan-only 0.00 / 0.09 / 0.00).
+
+**Is the reward highest at the best policy?** (Sash, 2026-09-28; desk, n=50
+on seeds 700000+, CM15's reward, each stream discounted as its critic sees
+it)
+
+| policy | success | turns | soldiers' return | planner's return |
+|---|---|---|---|---|
+| the bar (its own greedy plan, perfect following) | 1.00 | 6.7 | **2.71** | **2.58** |
+| CM15 s2 at the cap | 1.00 | 6.9 | 2.65 | 2.41 |
+| CM15 s3 at the cap | 1.00 | 7.1 | 2.63 | 2.37 |
+| CM15 s1 at its peak | 1.00 | 7.0 | 2.60 | 2.39 |
+| CM15 s1 at the cap (collapsed) | 0.14 | 9.9 | 1.93 | 1.63 |
+| CM15s s1 at the cap | 0.00 | 10.0 | 2.08 | 0.70 |
+
+Yes: both streams rank the policies as their quality ranks them, the bar at
+the top of both. The soldiers' maximum is about 2.71 (every move a full
+step; the first move unpaid) and the trained soldiers reach 96–98% of it.
+**The collapse moves the planner away from its maximum** (2.39 → 1.63), so
+it is not the reward pulling the planner there.
+
+### What it says
+
+- **The soldiers' exact bonus works wherever the planner holds.** CM14's
+  two live seeds pass at the cap where CM10p had one seed at 0.90 and one
+  at 0.01, the stall class nearly gone and the soldiers following. The
+  audit's Finding 1 was the soldiers' side of amendment 24's "pace cost".
+- **The game's own score is enough for a planner that already plans.** VP
+  alone (cap off) is level with the three-part reward at the cap and ahead
+  of it at 81,920 on every seed; its peaks, 1.00 / 1.00 / 0.98 at the
+  bar's pace, are the best half-step policies on file. It plans
+  differently — a partial first plan, completed by re-commits — which the
+  first-plan criterion no longer rewards and the success does.
+- **The late planner collapse is an optimisation failure, not the
+  reward's and not the stall's.** It happened under both planner rewards on
+  the same seed, after the soldiers' fix, and the collapsed policy earns
+  less on both streams. On every collapsing seed the planning EV falls to
+  zero or below first: the planner's critic stops predicting its return,
+  its advantages turn to noise, and the plan drifts. The anchor (amendment
+  24) and the in-run peak are the workarounds on file; neither exists
+  from scratch.
+- **From scratch nothing bootstraps.** The soldiers find the nearest walk,
+  and the planner is paid VP only when soldiers arrive, so its signal is
+  flat until they do; each half waits on the other. The code checks out,
+  the network represents a near-perfect policy (the peaks), and the
+  reward's maximum is at that policy: what fails is the learning path.
+
+### What this asks of #384 (proposed; Sash decides)
+
+Sash (2026-09-28): the goal is a system that learns every rung from
+scratch; the ladder is the evaluation, and a warm-started pass is evidence
+that the policy is representable, not the goal.
+
+1. **Keep round 9's reward as the recipe**: the soldiers' per-step score +
+   cohesion + the exact forgone-pay bonus; the planner paid VP (cap off) +
+   the forgone-VP bonus with a margin.
+2. **Put the next arms on the learning path, from scratch**, one at a time:
+   (a) the plan-only test — the VP planner from scratch with scripted
+   soldiers executing its plan: does VP alone teach a planner to cover?
+   (b) a staged schedule inside one from-scratch run (a scripted planner
+   while the soldiers learn to follow, then the learned planner) — the
+   warm-start recipe, automated; (c) why the planning EV decays before a
+   collapse (the broadcast outcome target, the planner's share of the
+   encoder, its learning rate).
+3. Read every from-scratch arm on the ladder's other rungs as well once it
+   passes the half-step, since the goal is all of A1–A5.
