@@ -137,6 +137,7 @@ _PPO_KNOBS = (
     "num_rollout_envs",
     "gamma",
     "gae_lambda",
+    "planning_gae_lambda",
     "ent_coef",
     "selector_ent_coef",
     "lr",
@@ -462,6 +463,13 @@ def train(
     ),
     gamma: float | None = typer.Option(None, help="Per-ROUND discount."),
     gae_lambda: float | None = typer.Option(None, help="Per-ROUND GAE decay."),
+    planning_gae_lambda: float | None = typer.Option(
+        None,
+        "--planning-gae-lambda",
+        help="The planning stream's GAE decay (#384, amendment 28); unset, the "
+        "members' --gae-lambda. 1.0 builds the planner's return from the "
+        "outcome paid, never from its own value estimates.",
+    ),
     planning_gamma: float | None = typer.Option(
         None,
         "--planning-gamma",
@@ -655,6 +663,7 @@ def train(
         "gamma": resolve_optional_float(gamma),
         "gae_lambda": resolve_optional_float(gae_lambda),
         "planning_gamma": resolve_optional_float(planning_gamma),
+        "planning_gae_lambda": resolve_optional_float(planning_gae_lambda),
         "ent_coef": resolve_optional_float(ent_coef),
         "selector_ent_coef": resolve_optional_float(selector_ent_coef),
         "lr": resolve_optional_float(lr),

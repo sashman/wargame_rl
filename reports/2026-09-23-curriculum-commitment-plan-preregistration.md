@@ -2564,3 +2564,66 @@ that the policy is representable, not the goal.
    encoder, its learning rate).
 3. Read every from-scratch arm on the ladder's other rungs as well once it
    passes the half-step, since the goal is all of A1–A5.
+
+## Amendment 28 — written 2026-09-28 22:00: round 10 pre-registered — does VP alone teach a planner from scratch (PV / PC, plan-only), and does grounding the planner's return target stop its late collapse (CM16); on Sash's "do all of them" to amendment 27's three proposals
+
+**1. The diagnosis behind CM16 (no training; the round-9 panels in eighths
+of the run, from the local Wandb history).**
+
+| run | in-run success | planning EV | mean planning return | raw planning advantage sd |
+|---|---|---|---|---|
+| CM14 s1 (collapsed) | 79 → 95 → 62 → 21 → 17 → 0 → 0 → 1 | 0.17 → … → −0.93 → −0.42 | **2.85 → 2.84 → 2.04 → 0.72 → 0.71 → −1.76 → −2.29 → −4.36** | 1.6 → 2.0 → 3.1 → 5.2 → 4.7 → 8.7 → 10.4 → 18.5 |
+| CM15 s1 (collapsed after 81,920) | … 94 → 64 (last eighth) | 0.36 → … → −0.06 | 1.8 → … → 1.07 | 0.77 → … → 2.59 |
+| CM14 s3 (held, EV falling) | 91–99 | 0.46 → … → 0.02 | 3.0 → … → 2.58 | 0.85 → … → 2.62 |
+| CM15 s2 (held) | 90–99 | 0.35–0.56 throughout | 1.6–1.97 | 0.38–0.71 |
+
+Every planning reward on these configs is ≥ 0 (coverage, commitment
+coverage, the success bonuses, VP with no opponent), yet CM14 s1's mean
+planning RETURN fell to −4.36: the return target is the λ-return, built
+from the planner's own value estimates, and those diverged. On every seed
+that collapses or drifts, the raw planning-advantage sd grows (×3–11) as
+the planning EV falls — the planner's critic loses its fit (the members'
+updates move the shared encoder under it, the mechanism amendment 24 named
+for the anchor's controller) and the advantages the planner follows become
+noise. The hypothesis "the advantage sd shrinks to nothing and the
+normalisation amplifies noise" is REFUTED by the same table.
+
+**2. The build.** `PerModelPPOConfig.planning_gae_lambda` /
+`--planning-gae-lambda` (default None: the members' `gae_lambda`, every
+recorded run). At 1.0 a commitment's return is the discounted outcome
+actually paid to the episode's end, never the planner's own estimate (only
+a span cut by the rollout still bootstraps). Test
+`tests/test_per_model_commitment_head.py::test_a_planning_lambda_of_one_builds_the_return_from_the_outcome_paid`.
+
+**3. The arms.** Three seeds each, 122,880 rounds, CM4's rollout (4 × 32),
+`ent_coef` 0.003, no anchor, Wandb group `curriculum-cm-plan`.
+
+| arm | what | start | comparator by name |
+|---|---|---|---|
+| **PV** | the plan-only trainer (`--members squad_march_committed`: scripted soldiers execute the plan, only the commitment head trains) on `a5_points_head_pf_vp.yaml` — the planner paid VP (cap off) + the forgone-VP bonus | from scratch | PC same seed (paired: same init, one change) |
+| **PC** | the same trainer on `a5_points_head_pf_pcm.yaml` — the planner paid the three-part reward (coverage + commitment coverage + the speed-scaled bonus) | from scratch | — (the control) |
+| **CM16** | CM15 + `--planning-gae-lambda 1.0` | CM9c's own seed at 81,920 (CM15's start) | CM15 same seed at the cap, 0.15 / 1.00 / 0.98 (paired, one change) |
+
+**Readouts.** PV / PC are read on the plan-only row (the head with the
+bar's soldiers) at 40,960 / 81,920 / 122,880 and the in-run peak (the
+trainer's in-run eval is head + scripted members): success, turns, the
+first plan's coverage and distinct share, re-commits. CM16 on the full
+round-9 readouts.
+
+**Criteria, per seed at 122,880.**
+- **PV:** PASS ≥ 0.95 on the plan-only row; AHEAD / BEHIND of PC's same
+  seed by two binomial SE on 2/3, else LEVEL. **Does VP alone teach a
+  planner to cover from scratch?** YES if PV passes on ≥ 2/3; **is a
+  plan-shape scaffold needed?** YES if PC passes on ≥ 2/3 and PV does not.
+- **CM16:** PASS ≥ 0.95; AHEAD / BEHIND of CM15's same seed by two SE on
+  2/3, else LEVEL. Mechanism: the planning EV ≥ 0.3 in the last quarter on
+  3/3; the mean planning return never below 0 in any eighth; no seed with a
+  collapsed first plan (distinct share ≤ 0.3) at the cap.
+
+**Expectation (a guess).** PV passes from scratch with scripted soldiers
+(VP pays spreading directly when the soldiers deliver) and is level with
+PC; CM16 holds all three planners and reads about 0.95+ on 3/3.
+
+**(b), the curriculum** (Sash: "we can just define a good curriculum with
+the rewards right"), is designed separately and pre-registered before it
+launches.

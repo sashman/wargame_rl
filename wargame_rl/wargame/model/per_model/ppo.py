@@ -94,6 +94,13 @@ class PerModelPPOConfig(BaseModel):
     # per turn per unit, so near one) and the planning value head's weight.
     # Read only when a rollout carries commitment decisions.
     planning_gamma: float = Field(default=0.99, ge=0.0, le=1.0)
+    # The planning stream's own GAE decay (#384, amendment 28). None: the
+    # members' `gae_lambda`, every recorded run. At 1.0 a commitment's return
+    # is the discounted outcome actually paid to the episode's end, never the
+    # planner's own estimate: a planner whose critic drifts cannot drag its
+    # target with it (the collapsing seeds' mean planning return fell below
+    # zero while every planning reward was >= 0).
+    planning_gae_lambda: float | None = Field(default=None, ge=0.0, le=1.0)
     planning_vf_coef: float = Field(default=0.3, ge=0.0)
     # How the close's planning scalar is credited to the units' commitment
     # steps (#384 B6): the army's outcome broadcast, or each unit's
@@ -625,11 +632,17 @@ def compute_planning_gae(
 
     A unit's commitment steps form their own trajectory: each step's reward
     is the planning scalar collected until the unit's next commitment step,
-    the discount `planning_gamma` applies once per step of that chain, and
+    the discount `planning_gamma` applies once per step of that chain, the
+    decay is `planning_gae_lambda` (the members' `gae_lambda` when unset), and
     the last step bootstraps from the planning value at the rollout's cut
     (0 when the episode ended inside the span).
     """
     n = rollout.n_steps
+    lam = (
+        config.gae_lambda
+        if config.planning_gae_lambda is None
+        else config.planning_gae_lambda
+    )
     returns = torch.zeros(n, dtype=torch.float32)
     advantages = torch.zeros(n, dtype=torch.float32)
     chains: dict[tuple[int, int], list[int]] = {}
@@ -651,9 +664,7 @@ def compute_planning_gae(
                 + config.planning_gamma * next_value * not_done
                 - transition.planning_value
             )
-            running = (
-                delta + config.planning_gamma * config.gae_lambda * not_done * running
-            )
+            running = delta + config.planning_gamma * lam * not_done * running
             advantages[row] = running
             returns[row] = running + transition.planning_value
             next_value = transition.planning_value

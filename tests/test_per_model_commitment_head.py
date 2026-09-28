@@ -276,6 +276,54 @@ def test_the_planning_gae_runs_along_each_units_chain(
     assert returns[3].item() == pytest.approx(3.0)
 
 
+def test_a_planning_lambda_of_one_builds_the_return_from_the_outcome_paid() -> None:
+    """With the planning stream's own decay at 1.0 a chain that ends inside the
+    rollout returns the discounted rewards actually paid, whatever the
+    planner's value estimates; unset, the members' 0.95 lets those estimates
+    into the target."""
+    env = PerModelEnv(_head_config())
+    observation, _ = env.reset(seed=7)
+    agent = SetAgent(SetNetwork.from_env(env, SMALL_TRUNK))
+    tokens = agent.observe(env, observation)
+
+    def transition(reward: float, done: bool = False) -> Transition:
+        return Transition(
+            tokens=tokens,
+            model=0,
+            column=0,
+            head=tokens.head,
+            phase=None,
+            value=0.0,
+            log_prob=0.0,
+            reward=0.0,
+            done=False,
+            is_close=False,
+            env_index=0,
+            unit=0,
+            commit_column=0,
+            planning_value=-5.0,
+            planning_reward=reward,
+            planning_done=done,
+        )
+
+    rollout = Rollout(
+        transitions=[transition(1.0), transition(2.0), transition(3.0, done=True)],
+        n_envs=1,
+        bootstrap=[0.0],
+        observations=[observation],
+        closes=0,
+        planning_bootstrap=({},),
+    )
+    outcome = PerModelPPOConfig(planning_gamma=0.5, planning_gae_lambda=1.0)
+    returns, _ = compute_planning_gae(rollout, outcome)
+    assert returns[0].item() == pytest.approx(1.0 + 0.5 * 2.0 + 0.25 * 3.0)
+    assert returns[1].item() == pytest.approx(2.0 + 0.5 * 3.0)
+    default = PerModelPPOConfig(planning_gamma=0.5)
+    assert default.planning_gae_lambda is None
+    blended, _ = compute_planning_gae(rollout, default)
+    assert blended[0].item() < returns[0].item()
+
+
 def test_an_update_with_the_planning_stream_moves_the_commitment_head() -> None:
     torch.manual_seed(2)
     envs, retimers, observations = _head_envs()
@@ -351,9 +399,11 @@ def test_a_checkpoint_without_the_stage1_heads_loads_with_fresh_ones(
     payload["state_dict"] = stripped
     torch.save(payload, path)
     loaded = load_checkpoint(path)
-    assert torch.equal(
-        loaded.network.displacement_head.weight, network.displacement_head.weight
-    )
+    loaded_weight = loaded.network.displacement_head.weight
+    built_weight = network.displacement_head.weight
+    assert isinstance(loaded_weight, torch.Tensor)
+    assert isinstance(built_weight, torch.Tensor)
+    assert torch.equal(loaded_weight, built_weight)
     # Any other absent key is still refused.
     del payload["state_dict"]["displacement_head.weight"]
     torch.save(payload, path)
