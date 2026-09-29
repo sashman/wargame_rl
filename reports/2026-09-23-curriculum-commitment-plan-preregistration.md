@@ -2627,3 +2627,100 @@ PC; CM16 holds all three planners and reads about 0.95+ on 3/3.
 **(b), the curriculum** (Sash: "we can just define a good curriculum with
 the rewards right"), is designed separately and pre-registered before it
 launches.
+
+## Amendment 29 — written 2026-09-29 05:53: round 10 read — a planner learns from scratch when the soldiers deliver (PC PASS 3/3 at the bar's pace; PV, VP alone, PASS 2/3, LEVEL with PC), and a λ = 1 planning target does not stop the joint planner's collapse (CM16 BEHIND CM15 2/3, mechanism not supported)
+
+PV (#441), PC (#440), CM16 (#442): three seeds each, 122,880 rounds, no
+anchor, launched 2026-09-28 21:54 on `670f8f7` (amendment 28). Read at
+40,960 / 81,920 / 122,880 and the in-run peak, n=100, seeds 700000+,
+greedy; PV and PC on the plan-only row (the head's plan walked by
+`squad_march_committed`), CM16 on the full round-9 readouts. Wandb PV
+h113g6dr / xoa9yzbz / v3gqtfs5, PC vack5vct / zi5wlefq / c6ho4pe6, CM16
+dwgjhbjc / itwupxch / t0enof2p.
+
+| arm | 40,960 | 81,920 | **cap** | peak (checkpoint) | comparator at the cap |
+|---|---|---|---|---|---|
+| **PV** plan-only, VP (cap off) + forgone-VP bonus, from scratch | 1.00 / 0.64 / 0.98 | 0.99 / 0.93 / 0.94 | **0.92 / 1.00 / 0.99** | 0.98 / 1.00 / 1.00 (102,400 / 122,880 / 102,400) | PC 1.00 / 1.00 / 1.00 |
+| **PC** plan-only, the three-part planner reward, from scratch | 0.90 / 1.00 / 0.99 | **1.00 / 0.99 / 1.00** | **1.00 / 1.00 / 1.00** | **1.00 / 1.00 / 1.00** (**20,480 / 20,480** / 81,920) | — (the control) |
+| **CM16** CM15 + `--planning-gae-lambda 1.0`, from CM9c at 81,920 | 0.01 / 0.98 / 0.97 | 0.96 / 0.95 / 0.99 | **0.01 / 0.90 / 0.96** | 0.96 / 0.98 / 0.97 (81,920 / 40,960 / 40,960) | CM15 0.15 / 1.00 / 0.98 |
+
+Turns at the cap: PV 7.24 / 7.01 / 6.75, PC **6.57 / 6.64 / 6.68**, CM16
+9.98 / 7.43 / 7.37 (the bar 6.71). The first plan covers every objective
+in 0.01 / 0.51 / 0.01 of games for PV against 0.99 / 1.00 / 1.00 for PC;
+PV re-commits 60–67% of squads before they arrive, PC 19–27%.
+
+**Verdicts on the letters, per seed at the cap.**
+- **PV: PASS on 2/3 (s2, s3) → "does VP alone teach a planner to cover
+  from scratch?" YES. LEVEL with PC** (s1 behind by 0.08 at 2.9 SE; s2,
+  s3 level). **"Is a plan-shape scaffold needed?" NO** — PV passes.
+- **PC: PASS 3/3**, faster than the bar's own turns, first plan covering
+  in every game from 81,920 on — and at its in-run peak by **20,480 rounds
+  on two seeds**, a sixth of the budget.
+- **CM16: BEHIND CM15 on 2/3** (s1 0.01 v 0.15 at 3.8 SE, s2 0.90 v 1.00
+  at 3.3 SE; s3 level), PASS on s3 only. **Mechanism not supported on any
+  count**: planning explained variance in the last quarter −0.88 / 0.23 /
+  0.19 (≥ 0.3 on 3/3 asked); the mean planning return negative in eighth 3
+  on s1 (−0.77); s1's first plan collapsed at the cap (distinct share
+  0.22). s1 collapsed at 40,960, recovered to 0.96 at 81,920 and collapsed
+  again; its plan-only row at the cap is 0.04, so the failure is the
+  planner's.
+
+**The critic, checked against the code first (Sash's order: a. the code,
+b. the network's capacity, c. the reward).** No GPU, CM16 s1 at
+`pm-00040960.pt`, four rollouts shaped like training (4 envs × 32 rounds):
+
+| check | result |
+|---|---|
+| planner rewards per commitment span | all in [0, 0.4] — never negative, as the config pays |
+| planning value stored at the rollout v recomputed by the update at unchanged weights | max difference 1.3e-5 (commitment log-probs 2.6e-6) |
+| the value at the rollout's cut v the same unit's value at its next commitment | correlation 0.977 |
+| the critic's predictions | −10 to +1.6, 36% negative, where the returns lie in 0 to 5; explained variance −0.9 (s2, same probe: 0.9 to 2.5, 0.44) |
+
+No defect. At λ = 1 the only route to a negative target is the cut's
+bootstrap, which a 32-round rollout puts in 10–16% of rows (values to −16
+on s1): a loop that feeds the critic its own error, and λ = 1 does not
+break it. **The same planner loss in the plan-only trainer keeps a healthy
+critic all run** — explained variance 0.86–0.92 (PV) and 0.91–0.98 (PC)
+in every eighth, the raw advantage sd falling to 0.10–0.17 — while in the
+joint trainer (CM15, CM16) it stays at or below ~0.55 and drifts down on
+every seed. ⚠ The contrast is not one change: in the joint arms the
+soldiers train too, through the same encoder, and are sampled (so the
+planner's return carries their execution noise, which lowers the
+explained variance even of a perfect critic); and the joint arms start
+from CM9c, whose planning head learned the coverage reward, while PV and
+PC start from scratch. Negative values where every return is ≥ 0 are a
+critic failure whatever the noise; which of the three causes it is not
+separated here.
+
+### What it says
+
+- **A planner can be learned from scratch.** With soldiers that execute
+  its plan, the three-part reward teaches the bar's own plan outright
+  (3/3, first plan covering, at the bar's pace) and VP alone teaches a
+  plan that works (2/3) by a slower route — a partial first plan repaired
+  by re-commits. The shaped reward is the better teacher; VP is enough.
+- **Round 9's from-scratch NULL (CM15s) was therefore a learning-path
+  failure, not a representability or reward one**: each half needs the
+  other to be competent before its own signal appears, and given competent
+  soldiers the planner learns.
+- **The joint planner's collapse is not the return target.** It survives
+  a Monte-Carlo target, recurs on the seed it hit before, and does not
+  occur when only the planner trains. The code is correct as checked; the
+  critic that fails is the one in the joint trainer — sharing its encoder
+  with learning soldiers and warm-started from another reward's critic.
+
+### What this asks of #384 (proposed; Sash decides)
+
+1. **Sash's order b — the planner's critic's capacity:** one arm, CM15 +
+   a planning critic that does not share its gradient with the soldiers
+   (its own small encoder, or a stop-gradient on the shared one under the
+   planning value head), paired against CM15 same seed; and, to separate
+   the warm start, CM15's config with the planning value head
+   re-initialised at the start. Criterion as amendment 28's mechanism.
+2. **(b), the curriculum, reshaped by this round** — one from-scratch
+   pipeline in three phases, each gated on its own pass: (i) the planner,
+   plan-only with the bar's soldiers (PC's recipe: 3/3 by 81,920);
+   (ii) the soldiers, learning to follow the frozen phase-(i) planner with
+   round 9's soldier reward (`--frozen-planner` exists); (iii) both
+   together — the step where the critic fails today, so it waits on 1.
+   Evaluate the result on A1–A5.
