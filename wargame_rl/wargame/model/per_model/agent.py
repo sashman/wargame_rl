@@ -21,7 +21,7 @@ from __future__ import annotations
 import weakref
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import torch
 import torch.nn.functional as F
@@ -219,6 +219,67 @@ class SetAgent:
                 )
             )
         return decisions
+
+    def plan_batch(
+        self,
+        envs: Sequence[PerModelEnv],
+        observations: Sequence[PerModelObservation],
+        models: Sequence[int],
+        *,
+        generator: torch.Generator | None = None,
+    ) -> list[int]:
+        """This network's commitment draw for the unit of `models[row]` on each
+        env's pending open point (#384: the frozen planner), NO_DRAW where the
+        point offers that model no decision. Nothing else is decided here; the
+        executor's own decision supplies the unit and the declaration."""
+        if not (len(envs) == len(observations) == len(models)):
+            raise ValueError("one observation and one model per env")
+        tokens = [self.observe(env, obs) for env, obs in zip(envs, observations)]
+        offers = [
+            models[row] >= 0
+            and observations[row].decision.kind is StepKind.open
+            and bool(tokens[row].commit_mask[models[row]].any())
+            for row in range(len(envs))
+        ]
+        if not any(offers):
+            return [NO_DRAW] * len(envs)
+        device = self.network.device
+        batch = collate(tokens, device=device)
+        index = torch.tensor(
+            [max(m, 0) for m in models], dtype=torch.int64, device=device
+        )
+        with torch.no_grad():
+            output = self.network(batch)
+            commitments = self.network.commitment(output, batch, index)
+        columns = [NO_DRAW] * len(envs)
+        for row in range(len(envs)):
+            if offers[row]:
+                columns[row], _ = _draw(
+                    commitments.logits[row].float().cpu(), self.greedy, generator
+                )
+        return columns
+
+    def replace_commitment(
+        self, decision: StepDecision, seat: Seat, commit_column: int
+    ) -> StepDecision:
+        """`decision` with its open action's commitment redrawn from
+        `commit_column` (another network's draw) and its own commitment row
+        dropped, so the update trains no planning on it."""
+        action = self._decode(
+            decision.action.kind,
+            decision.tokens,
+            seat,
+            decision.model,
+            decision.column,
+            commit_column=commit_column,
+        )
+        return replace(
+            decision,
+            action=action,
+            commit_column=NO_DRAW,
+            commit_log_prob=0.0,
+            planning_value=0.0,
+        )
 
     @staticmethod
     def _decode(

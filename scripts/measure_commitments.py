@@ -38,9 +38,18 @@ import numpy as np
 from scripts.scenario_overrides import load_env_config
 from wargame_rl.wargame.envs.per_model.commitment import NO_TARGET
 from wargame_rl.wargame.envs.per_model.env import PerModelEnv
-from wargame_rl.wargame.envs.per_model.types import StepKind
+from wargame_rl.wargame.envs.per_model.types import BatchChooser, StepKind
 from wargame_rl.wargame.envs.types import BattlePhase, WargameEnvConfig
 from wargame_rl.wargame.selectors import build_per_model_chooser
+
+
+def share(a: int, b: int) -> str:
+    return f"{a / b:.2f}" if b else "n/a"
+
+
+@dataclass(frozen=True)
+class _Chooser:
+    choose: BatchChooser
 
 
 @dataclass
@@ -48,6 +57,13 @@ class Tally:
     persist_kept: int = 0
     persist_seen: int = 0
     claim_counts: list[float] = field(default_factory=list)
+    # Distinct objectives claimed per turn over the objectives on the board
+    # (#384: a plan that covers the board reads 1.0; a plan that stacks reads
+    # less however many claimants it has).
+    distinct_shares: list[float] = field(default_factory=list)
+    # The same share on the episode's LAST turn only: an adaptive plan that
+    # stacks early and covers by the end reads low on the mean and high here.
+    distinct_end: list[float] = field(default_factory=list)
     complete_hits: int = 0
     complete_seen: int = 0
     empty_hits: int = 0
@@ -60,16 +76,51 @@ class Tally:
     committed_turns: int = 0
     hold_decl_hits: int = 0
     hold_decl_seen: int = 0
+    # The join's four lines (#384, amendment 8): a plan-only row without them
+    # read 1.000 on a head that searched rather than planned. FIRST: the head's
+    # first assignment covers every objective. PRE-ARRIVAL: squads re-committed
+    # before they first arrived. MARK: moves of committed bodies whose
+    # commitment is NOT the squad's nearest objective at deployment that close
+    # more on the committed objective than on the nearest (following the plan
+    # where the geometry disagrees with it). LEAVE-WRONG: moves of bodies inside
+    # an objective they are not committed to that set out from it.
+    first_full_hits: int = 0
+    first_full_seen: int = 0
+    pre_arrival_hits: int = 0
+    pre_arrival_seen: int = 0
+    mark_hits: int = 0
+    mark_seen: int = 0
+    wrong_leave_hits: int = 0
+    wrong_leave_seen: int = 0
+
+    def row_fields(self) -> str:
+        """The readouts as table cells, in the plan-only readout's order."""
+        claims = [c for c in self.claim_counts if c > 0]
+        claim = f"{np.mean(claims):.2f}" if claims else "n/a"
+        distinct = (
+            f"{np.mean(self.distinct_shares):.2f}" if self.distinct_shares else "n/a"
+        )
+        end = f"{np.mean(self.distinct_end):.2f}" if self.distinct_end else "n/a"
+        return (
+            f"{share(self.persist_kept, self.persist_seen)} | {claim} | {distinct} / {end} | "
+            f"{share(self.complete_hits, self.complete_seen)} | "
+            f"{share(self.follow_hits, self.follow_seen)} | "
+            f"{share(self.leave_hits, self.leave_seen)} | "
+            f"{share(self.first_full_hits, self.first_full_seen)} | "
+            f"{share(self.pre_arrival_hits, self.pre_arrival_seen)} | "
+            f"{share(self.mark_hits, self.mark_seen)} | "
+            f"{share(self.wrong_leave_hits, self.wrong_leave_seen)}"
+        )
 
     def row(self, name: str) -> str:
-        def share(a: int, b: int) -> str:
-            return f"{a / b:.2f}" if b else "n/a"
-
         claims = [c for c in self.claim_counts if c > 0]
         claim = f"{np.mean(claims):.2f} / max {np.max(claims):.0f}" if claims else "n/a"
+        distinct = (
+            f"{np.mean(self.distinct_shares):.2f}" if self.distinct_shares else "n/a"
+        )
         return (
             f"| {name} | persist {share(self.persist_kept, self.persist_seen)} "
-            f"({self.persist_seen}) | claim {claim} | complete "
+            f"({self.persist_seen}) | claim {claim} | distinct {distinct} | complete "
             f"{share(self.complete_hits, self.complete_seen)} | empty "
             f"{share(self.empty_hits, self.empty_seen)} | follow "
             f"{share(self.follow_hits, self.follow_seen)} ({self.follow_seen}) | leave "
@@ -96,12 +147,40 @@ def _ours(env: PerModelEnv) -> np.ndarray:
 def run(spec: str, config: WargameEnvConfig, seeds: list[int]) -> Tally:
     env = PerModelEnv(config)
     chooser = build_per_model_chooser(spec, [env], seed=int(seeds[0]))
+    return run_chooser(chooser.choose, env, config, seeds)
+
+
+def run_chooser(
+    choose: BatchChooser, env: PerModelEnv, config: WargameEnvConfig, seeds: list[int]
+) -> Tally:
+    """The tally of `choose` playing `env` over `seeds` (the plan-only readout
+    passes a chooser whose head plans and whose members are scripted)."""
+    chooser = _Chooser(choose)
     tally = Tally()
     radius = float(config.objective_radius_size)
     for seed in seeds:
         observation, _ = env.reset(seed=int(seed))
         state = env.player_commitments
         committed_pairs: set[tuple[int, int]] = set()
+        objectives = [np.asarray(o.location, dtype=float) for o in env.objectives]
+        groups = sorted({int(m.group_id) for m in env.wargame_models})
+        nearest: dict[int, int] = {}
+        for g in groups:
+            centroid = np.mean(
+                [
+                    np.asarray(m.location, dtype=float)
+                    for m in env.wargame_models
+                    if int(m.group_id) == g
+                ],
+                axis=0,
+            )
+            nearest[g] = int(
+                np.argmin([np.linalg.norm(centroid - o) for o in objectives])
+            )
+        first_commit: dict[int, int] = {}
+        last_commit: dict[int, int] = {}
+        arrived: set[int] = set()
+        recommitted_early: set[int] = set()
         while True:
             point = observation.decision
             action = chooser.choose([env], [observation])[0]
@@ -138,11 +217,52 @@ def run(spec: str, config: WargameEnvConfig, seeds: list[int]) -> Tally:
                     tally.leave_seen += 1
                     if d1 > radius:
                         tally.leave_hits += 1
+                near = nearest[int(model.group_id)]
+                if near != before_ground:
+                    n0 = _distance_to(env, before_location, near)
+                    n1 = _distance_to(env, model.location, near)
+                    tally.mark_seen += 1
+                    if (d0 - d1) > (n0 - n1) + 1e-6:
+                        tally.mark_hits += 1
+                wrong = [
+                    j
+                    for j in range(len(objectives))
+                    if j != before_ground
+                    and _distance_to(env, before_location, j) <= radius
+                ]
+                if wrong:
+                    tally.wrong_leave_seen += 1
+                    if all(
+                        _distance_to(env, model.location, j) > radius for j in wrong
+                    ):
+                        tally.wrong_leave_hits += 1
+            for g in groups:
+                ground = state.ground_of(g)
+                if ground == NO_TARGET:
+                    continue
+                first_commit.setdefault(g, ground)
+                if g in last_commit and last_commit[g] != ground and g not in arrived:
+                    recommitted_early.add(g)
+                last_commit[g] = ground
+                if g not in arrived and any(
+                    m.is_alive
+                    and int(m.group_id) == g
+                    and _distance_to(env, m.location, ground) <= radius
+                    for m in env.wargame_models
+                ):
+                    arrived.add(g)
             for g, c in state.by_group.items():
                 if c.ground != NO_TARGET:
                     committed_pairs.add((g, c.ground))
             if terminated:
                 break
+        if first_commit:
+            tally.first_full_seen += 1
+            if len(set(first_commit.values())) == len(objectives):
+                tally.first_full_hits += 1
+        for g in first_commit:
+            tally.pre_arrival_seen += 1
+            tally.pre_arrival_hits += int(g in recommitted_early)
         history = state.history
         for previous, current in zip(history, history[1:]):
             for g, c in current.items():
@@ -160,6 +280,15 @@ def run(spec: str, config: WargameEnvConfig, seeds: list[int]) -> Tally:
                     tally.committed_turns += 1
                     tally.hold_turns += int(c.arrived)
             tally.claim_counts.extend(claims.tolist())
+            if len(claims):
+                tally.distinct_shares.append(float(np.mean(claims > 0)))
+        if history:
+            last = np.zeros(len(env.objectives))
+            for c in history[-1].values():
+                if c.ground != NO_TARGET:
+                    last[c.ground] += 1
+            if len(last):
+                tally.distinct_end.append(float(np.mean(last > 0)))
             unheld = bool(np.any(~ours_end))
             for g, c in turn.items():
                 alive = any(
@@ -186,7 +315,7 @@ def main(argv: list[str]) -> None:
         f"{config.commitments.assignment}"
     )
     print(
-        "| policy | persist (unit-turns) | claimants per claimed objective | complete | empty | follow (member move steps) | leave (moves from inside) |"
+        "| policy | persist (unit-turns) | claimants per claimed objective | distinct | complete | empty | follow (member move steps) | leave (moves from inside) |"
     )
     for spec in argv[4:]:
         name = spec.split("/")[-2] if "/" in spec else spec

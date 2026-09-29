@@ -58,17 +58,24 @@ def objective_control_from_caches(
 
 
 class DefaultVPCalculator(VPCalculator):
-    """Default mission: VP per controlled objective, cap per turn, from min_round."""
+    """Default mission: VP per controlled objective, capped per turn unless
+    `cap_enabled` is False, from min_round."""
 
     def __init__(
         self,
         vp_per_objective: int = 5,
         cap_per_turn: int = 15,
         min_round: int = 2,
+        cap_enabled: bool = True,
     ) -> None:
         self.vp_per_objective = vp_per_objective
         self.cap_per_turn = cap_per_turn
         self.min_round = min_round
+        # Off, every controlled objective pays: the curriculum's boards carry
+        # five or six objectives, and under the rules' cap of 15 the fourth
+        # and fifth are worth nothing, so a VP-paid planner would learn to
+        # hold three (#384, 2026-09-27). On by default: the rules' cap.
+        self.cap_enabled = cap_enabled
 
     def compute_vp(
         self,
@@ -108,6 +115,8 @@ class DefaultVPCalculator(VPCalculator):
         n_opponent = int(np.sum(opponent_controls))
         controlled = n_player if scoring_side == player_side else n_opponent
         raw = controlled * self.vp_per_objective
+        if not self.cap_enabled:
+            return raw
         return min(self.cap_per_turn, raw)
 
 

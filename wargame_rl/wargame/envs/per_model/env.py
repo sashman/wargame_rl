@@ -86,6 +86,7 @@ from wargame_rl.wargame.envs.opponent.registry import (
     build_opponent_policy,
 )
 from wargame_rl.wargame.envs.per_model.commitment import (
+    NO_TARGET,
     CommitmentState,
     assign_greedy,
     assign_rotated,
@@ -452,7 +453,8 @@ class PerModelEnv(gym.Env):
         """The open point with the commitment decision the head takes (#384
         Stage 1): under `assignment: head`, every selectable model whose unit
         has not committed this turn gets a row of KEEP + one column per
-        objective. The turn is the reward window's turn key."""
+        objective -- KEEP only where the slot already holds an objective. The
+        turn is the reward window's turn key."""
         if (
             not self.config.commitments.policy_writes
             or point.kind is not StepKind.open
@@ -465,11 +467,18 @@ class PerModelEnv(gym.Env):
             self._committed_this_turn = set()
         n_objectives = len(self.objectives)
         seat = self._player_seat
+        state = self._commitments[True]
         mask = np.zeros((seat.n_models, 1 + n_objectives), dtype=bool)
         for index in np.flatnonzero(point.selector_mask):
             group = int(seat.models[int(index)].group_id)
             if group not in self._committed_this_turn:
                 mask[int(index), :] = True
+                # A unit with an empty slot must name an objective: KEEP on
+                # nothing is no plan, and a member policy that follows the
+                # plan would otherwise walk a plan of its own (the plan-only
+                # rung's confound, #384). KEEP stays legal on a held slot.
+                if state.ground_of(group) == NO_TARGET:
+                    mask[int(index), 0] = False
         if not mask.any():
             return point
         return replace(point, commit_mask=mask)

@@ -48,6 +48,7 @@ class ObjectiveStayCalculator(PerModelRewardCalculator):
         self,
         weight: float = 1.0,
         crowding_exponent: float = DEFAULT_CROWDING_EXPONENT,
+        cap_per_commitment: float | None = None,
     ) -> None:
         super().__init__(weight=weight)
         if crowding_exponent < 0.0:
@@ -55,7 +56,25 @@ class ObjectiveStayCalculator(PerModelRewardCalculator):
                 f"crowding_exponent must be >= 0, got {crowding_exponent}: a "
                 "negative exponent would pay *more* for crowding."
             )
+        if cap_per_commitment is not None and cap_per_commitment <= 0.0:
+            raise ValueError(
+                f"cap_per_commitment must be > 0, got {cap_per_commitment}"
+            )
         self.crowding_exponent = crowding_exponent
+        # The two-stream reward's second constraint (#384, 2026-09-24): paid
+        # per step, a near objective reached early collects more holding
+        # steps than a far one, so a near plan out-pays a far one for the
+        # members. With a cap, the term pays at most this much (in its own
+        # unweighted units) per model per commitment -- a fresh budget when
+        # the model's committed objective changes -- so the maximum a
+        # commitment can pay is the same whatever the plan. None: uncapped,
+        # every recorded number.
+        self.cap_per_commitment = cap_per_commitment
+        self._paid: dict[int, tuple[int, float]] = {}
+
+    def reset_episode(self) -> None:
+        """Clear the per-commitment budgets (called by the env on reset)."""
+        self._paid.clear()
 
     def calculate(
         self,
@@ -79,4 +98,12 @@ class ObjectiveStayCalculator(PerModelRewardCalculator):
         objective = int(inside[0])
         counts = objective_counts_from_norms_offset(norms, cache.obj_radii)
         occupants = max(1, int(counts[objective]))
-        return float(1.0 / float(occupants) ** self.crowding_exponent)
+        value = float(1.0 / float(occupants) ** self.crowding_exponent)
+        if self.cap_per_commitment is None:
+            return value
+        key = int(committed[model_idx]) if committed is not None else objective
+        previous = self._paid.get(model_idx)
+        paid = previous[1] if previous is not None and previous[0] == key else 0.0
+        value = min(value, max(0.0, self.cap_per_commitment - paid))
+        self._paid[model_idx] = (key, paid + value)
+        return value

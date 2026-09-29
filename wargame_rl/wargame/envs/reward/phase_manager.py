@@ -56,6 +56,22 @@ class RewardPhase:
     terminal_objective_bonus: float
     terminal_vp_bonus: float
     terminate_on_success: bool
+    # The forgone-pay success bonuses: paid by the per-model retimer, which
+    # holds the discounts; the whole-army facade refuses them.
+    terminal_member_success_bonus: float = 0.0
+    terminal_forgone_vp_bonus: float = 0.0
+    terminal_forgone_vp_margin: float = 0.0
+
+
+# The breakdown keys of the two forgone-pay success bonuses.
+MEMBER_SUCCESS_BONUS = "terminal_member_success_bonus"
+FORGONE_VP_BONUS = "terminal_forgone_vp_bonus"
+
+
+def discounted_rounds(per_round: float, discount: float, rounds: int) -> float:
+    """`per_round` paid in each of the next `rounds` rounds, discounted to now:
+    per_round * sum_{m=1..rounds} discount^m."""
+    return per_round * sum(discount**m for m in range(1, max(0, rounds) + 1))
 
 
 @dataclass
@@ -144,6 +160,9 @@ class RewardPhaseManager:
                     terminal_objective_bonus=cfg.terminal_objective_bonus,
                     terminal_vp_bonus=cfg.terminal_vp_bonus,
                     terminate_on_success=cfg.terminate_on_success,
+                    terminal_member_success_bonus=cfg.terminal_member_success_bonus,
+                    terminal_forgone_vp_bonus=cfg.terminal_forgone_vp_bonus,
+                    terminal_forgone_vp_margin=cfg.terminal_forgone_vp_margin,
                 )
             )
 

@@ -82,15 +82,19 @@ def test_the_head_writer_offers_a_decision_at_a_units_first_open_and_writes_it()
     assert point is not None and point.kind is StepKind.open
     assert point.commit_mask is not None
     for index in np.flatnonzero(point.selector_mask):
-        assert point.commit_mask[index].all()
+        # Every objective is offered; KEEP is not, on an empty slot (a unit
+        # with no plan must name one, #384).
+        assert point.commit_mask[index, 1:].all() and not point.commit_mask[index, 0]
     assert not state.any_set(), "nothing is written at deployment"
 
     model, declaration = _first_open(env)
     group = int(env.wargame_models[model].group_id)
-    # A commitment the point does not offer is illegal; KEEP and an objective are.
+    # A commitment the point does not offer is illegal: an unknown column, and
+    # KEEP while the slot is empty; an objective is legal.
     assert point.why_illegal(PerModelAction.open(model, declaration, 99)) is not None
     assert (
-        point.why_illegal(PerModelAction.open(model, declaration, COMMIT_KEEP)) is None
+        point.why_illegal(PerModelAction.open(model, declaration, COMMIT_KEEP))
+        is not None
     )
     env.step(PerModelAction.open(model, declaration, 2))
     assert state.ground_of(group) == 2
@@ -272,6 +276,54 @@ def test_the_planning_gae_runs_along_each_units_chain(
     assert returns[3].item() == pytest.approx(3.0)
 
 
+def test_a_planning_lambda_of_one_builds_the_return_from_the_outcome_paid() -> None:
+    """With the planning stream's own decay at 1.0 a chain that ends inside the
+    rollout returns the discounted rewards actually paid, whatever the
+    planner's value estimates; unset, the members' 0.95 lets those estimates
+    into the target."""
+    env = PerModelEnv(_head_config())
+    observation, _ = env.reset(seed=7)
+    agent = SetAgent(SetNetwork.from_env(env, SMALL_TRUNK))
+    tokens = agent.observe(env, observation)
+
+    def transition(reward: float, done: bool = False) -> Transition:
+        return Transition(
+            tokens=tokens,
+            model=0,
+            column=0,
+            head=tokens.head,
+            phase=None,
+            value=0.0,
+            log_prob=0.0,
+            reward=0.0,
+            done=False,
+            is_close=False,
+            env_index=0,
+            unit=0,
+            commit_column=0,
+            planning_value=-5.0,
+            planning_reward=reward,
+            planning_done=done,
+        )
+
+    rollout = Rollout(
+        transitions=[transition(1.0), transition(2.0), transition(3.0, done=True)],
+        n_envs=1,
+        bootstrap=[0.0],
+        observations=[observation],
+        closes=0,
+        planning_bootstrap=({},),
+    )
+    outcome = PerModelPPOConfig(planning_gamma=0.5, planning_gae_lambda=1.0)
+    returns, _ = compute_planning_gae(rollout, outcome)
+    assert returns[0].item() == pytest.approx(1.0 + 0.5 * 2.0 + 0.25 * 3.0)
+    assert returns[1].item() == pytest.approx(2.0 + 0.5 * 3.0)
+    default = PerModelPPOConfig(planning_gamma=0.5)
+    assert default.planning_gae_lambda is None
+    blended, _ = compute_planning_gae(rollout, default)
+    assert blended[0].item() < returns[0].item()
+
+
 def test_an_update_with_the_planning_stream_moves_the_commitment_head() -> None:
     torch.manual_seed(2)
     envs, retimers, observations = _head_envs()
@@ -347,9 +399,11 @@ def test_a_checkpoint_without_the_stage1_heads_loads_with_fresh_ones(
     payload["state_dict"] = stripped
     torch.save(payload, path)
     loaded = load_checkpoint(path)
-    assert torch.equal(
-        loaded.network.displacement_head.weight, network.displacement_head.weight
-    )
+    loaded_weight = loaded.network.displacement_head.weight
+    built_weight = network.displacement_head.weight
+    assert isinstance(loaded_weight, torch.Tensor)
+    assert isinstance(built_weight, torch.Tensor)
+    assert torch.equal(loaded_weight, built_weight)
     # Any other absent key is still refused.
     del payload["state_dict"]["displacement_head.weight"]
     torch.save(payload, path)
@@ -377,3 +431,78 @@ def test_the_scripted_bar_writes_its_plan_under_the_head_writer() -> None:
     assert all(state.ground_of(g) >= 0 for g in env.player_seat.living_units())
     result = evaluate_spec("squad_march_take", config, [700000, 700001], "bar")
     assert result.success_rate == 1.0
+
+
+def test_the_commitment_scope_anchor_holds_the_planner_and_reports_its_drift() -> None:
+    """Under `kl_ref_scope="commitment"` a heavy anchor keeps the commitment
+    head's distribution nearer the reference's than the same update unanchored,
+    reports a non-negative drift with the coefficient it used, and with no
+    commitment rows in the rollout adds nothing."""
+    import copy
+
+    from wargame_rl.wargame.model.per_model.ppo import (
+        UpdateStats,
+        drift_to_reference,
+        evaluate_transitions,
+    )
+
+    torch.manual_seed(3)
+    envs, retimers, observations = _head_envs()
+    agent = SetAgent(SetNetwork.from_env(envs[0], SMALL_TRUNK))
+    config = PerModelPPOConfig(
+        rollout_rounds=2,
+        batch_size=16,
+        n_epochs=2,
+        kl_ref_coef=50.0,
+        kl_ref_scope="commitment",
+    )
+    rollout = collect_rollout(envs, agent, retimers, observations, config)
+    returns, advantages = compute_gae(rollout, config)
+    planning_returns, planning_advantages = compute_planning_gae(rollout, config)
+    reference = copy.deepcopy(agent.network)
+    reference.eval()
+    for parameter in reference.parameters():
+        parameter.requires_grad_(False)
+    plain, anchored = copy.deepcopy(agent.network), copy.deepcopy(agent.network)
+
+    def run(
+        network: SetNetwork, reference: SetNetwork | None, kl_ref_coef: float
+    ) -> UpdateStats:
+        optimizer = torch.optim.Adam(network.parameters(), lr=1e-2)
+        return ppo_update(
+            network,
+            optimizer,
+            rollout,
+            returns,
+            advantages,
+            config,
+            generator=torch.Generator().manual_seed(0),
+            planning_returns=planning_returns,
+            planning_advantages=planning_advantages,
+            reference=reference,
+            kl_ref_coef=kl_ref_coef,
+        )
+
+    run(plain, None, 0.0)
+    stats = run(anchored, reference, 50.0)
+
+    def planner_drift(network: SetNetwork) -> float:
+        with torch.no_grad():
+            ours = evaluate_transitions(network, rollout.transitions)
+            theirs = evaluate_transitions(reference, rollout.transitions)
+            rows = ours.has_commitment
+            log_rho = (theirs.commit_log_probs - ours.commit_log_probs)[rows]
+            return float(((log_rho.exp() - 1.0) - log_rho).mean().item())
+
+    assert stats.commit_rows > 0
+    assert stats.kl_ref_coef == 50.0
+    assert stats.kl_ref >= 0.0
+    assert planner_drift(anchored) < planner_drift(plain)
+    # The estimator is zero on rows without a commitment decision.
+    with torch.no_grad():
+        drift = drift_to_reference(
+            anchored, reference, rollout.transitions, scope="commitment"
+        )
+    has_commitment = torch.tensor([t.has_commitment for t in rollout.transitions])
+    assert torch.all(drift[~has_commitment] == 0.0)
+    assert torch.all(drift[has_commitment] >= 0.0)

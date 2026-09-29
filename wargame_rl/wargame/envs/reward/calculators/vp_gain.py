@@ -16,6 +16,10 @@ class VPGainCalculator(GlobalRewardCalculator):
     manager applies the configured weight).
 
     reward = (player_vp_delta - opponent_vp_delta) / cap_per_turn
+
+    With the mission's cap off (`cap_enabled: false`) it is normalized by
+    every objective's points instead, so a round's reward is the net share of
+    the board's objectives held.
     """
 
     def calculate(self, view: BattleView, ctx: StepContext) -> float:
@@ -23,8 +27,14 @@ class VPGainCalculator(GlobalRewardCalculator):
         # three `getattr`s to `params["cap_per_turn"]` and fall back to 15,
         # so a mission that priced objectives differently would have rescaled
         # every reward in the run without a word.
-        cap_per_turn = view.config.mission.per_round_cap
-
+        mission = view.config.mission
+        # Capped, the cap's value -- even where the board cannot reach it, so
+        # every recorded reward is unchanged; uncapped, the board's maximum.
+        cap_per_turn = (
+            mission.per_round_cap
+            if mission.cap_enabled
+            else mission.per_round_max(len(view.objectives))
+        )
         if cap_per_turn <= 0:
             return 0.0
 

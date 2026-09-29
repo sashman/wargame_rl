@@ -1,0 +1,76 @@
+# #384, the two-stream reward with the anchor FLOORED (2026-09-25, amendment
+# 11): `a3_head_r.yaml` with one change, `normalize_min_distance: 12.0`. Under a
+# head that re-commits mid-walk the un-floored fraction paid a whole
+# commitment in one step (FH2 / CM5, amendment 10); with the floor a step can
+# never pay more than a normal step from twelve inches out. The rest as
+# `a3_head_r.yaml`: `a3_head.yaml` with only the reward changed, under two
+# constraints. (1) A member must always earn more by following its unit's
+# plan than by anything else: its only income is progress on, and presence
+# at, the objective its unit is committed to; nothing for an uncommitted unit
+# (`fallback_to_nearest: false`), receding costs. (2) Following must pay the
+# SAME whatever the plan is: progress is the fraction of the distance at
+# commit (`normalize_to_commit_distance`, completing any commitment pays
+# 2.0) and the staying term is capped per commitment (two steps at 0.5), so
+# the maximum a commitment can pay is 3.0 near or far, reachable for any
+# objective a unit can make with two turns to spare. The planner's stream
+# (coverage, the success bonus) is unchanged: the outcome and only the
+# outcome, so it can raise its expected reward only by a better decision.
+# Arms FH2b (members under PL1's frozen head) and CM5b (head and members from
+# scratch); comparators FH2 / CM5 and FH1 / CM4 at matched rounds.
+config_name: curriculum_a3_head_rf
+number_of_wargame_models: 12
+number_of_opponent_models: 0
+number_of_objectives: 4
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 4
+number_of_battle_rounds: 8
+deployment_zone: [4, 4, 10, 40]
+opponent_deployment_zone: [50, 16, 56, 28]
+models:
+  - &sq_0 { group_id: 0 }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+objectives:
+  - { x: 35, y: 8 }
+  - { x: 35, y: 17 }
+  - { x: 35, y: 27 }
+  - { x: 35, y: 36 }
+coherency:
+  enforce_at_deployment: true
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 2.0
+          normalize_to_commit_distance: true
+          normalize_min_distance: 12.0
+          fallback_to_nearest: false
+          overstack_penalty_per_extra: 0.0
+      - type: objective_stay
+        weight: 0.5
+        params:
+          crowding_exponent: 0.0
+          cap_per_commitment: 2.0
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: all_objectives_occupied
+      params: {}
+observe_objective_control: true
+commitments:
+  assignment: head

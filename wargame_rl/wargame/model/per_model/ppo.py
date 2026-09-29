@@ -27,7 +27,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import torch
@@ -35,11 +35,20 @@ import torch.nn.functional as F
 from pydantic import BaseModel, Field, model_validator
 
 from wargame_rl.wargame.envs.per_model.env import PerModelEnv, StepEffect
-from wargame_rl.wargame.envs.per_model.reward_timing import Credit, PerStepReward
+from wargame_rl.wargame.envs.per_model.reward_timing import (
+    Credit,
+    PerStepReward,
+    PlanningCredit,
+)
 from wargame_rl.wargame.envs.per_model.tokens import Head, TokenObservation
-from wargame_rl.wargame.envs.per_model.types import PerModelObservation, StepKind
+from wargame_rl.wargame.envs.per_model.types import (
+    NO_COMMIT_DECISION,
+    PerModelAction,
+    PerModelObservation,
+    StepKind,
+)
 from wargame_rl.wargame.envs.types import BattlePhase
-from wargame_rl.wargame.model.per_model.agent import NO_DRAW, SetAgent
+from wargame_rl.wargame.model.per_model.agent import NO_DRAW, SetAgent, StepDecision
 from wargame_rl.wargame.model.per_model.batch import collate
 from wargame_rl.wargame.model.per_model.net import SetNetwork
 
@@ -69,11 +78,42 @@ class PerModelPPOConfig(BaseModel):
     # reference network and adds no term, so a run without it is unchanged.
     kl_ref_coef: float = Field(default=0.0, ge=0.0)
     kl_ref_target: float = Field(default=0.0, ge=0.0)
+    # What the anchor holds (#384, amendment 23): `members` -- the selector
+    # and the members' heads, the estimator the whole-phase anchor uses --
+    # or `commitment`, the planner's head alone over its commitment rows,
+    # the members left free. Built because every warm-started half-step
+    # run's planner drifted in its last third while its members held.
+    kl_ref_scope: Literal["members", "commitment"] = "members"
+    # The adaptive coefficient's ceiling (#384, amendment 25). The default is
+    # the controller's own bound, so nothing changes unless it is set; the
+    # half-step's anchored arms escalated to ~2,700 when the members moved the
+    # shared encoder under the commitment head and the drift could not fall
+    # below the band, and a ceiling two orders lower stops that.
+    kl_ref_coef_max: float = Field(default=1e4, gt=0.0)
     # The planning stream (#384 D6): the discount per commitment step (one
     # per turn per unit, so near one) and the planning value head's weight.
     # Read only when a rollout carries commitment decisions.
     planning_gamma: float = Field(default=0.99, ge=0.0, le=1.0)
+    # The planning stream's own GAE decay (#384, amendment 28). None: the
+    # members' `gae_lambda`, every recorded run. At 1.0 a commitment's return
+    # is the discounted outcome actually paid to the episode's end, never the
+    # planner's own estimate: a planner whose critic drifts cannot drag its
+    # target with it (the collapsing seeds' mean planning return fell below
+    # zero while every planning reward was >= 0).
+    planning_gae_lambda: float | None = Field(default=None, ge=0.0, le=1.0)
     planning_vf_coef: float = Field(default=0.3, ge=0.0)
+    # How the close's planning scalar is credited to the units' commitment
+    # steps (#384 B6): the army's outcome broadcast, or each unit's
+    # counterfactual difference to it.
+    planning_credit: PlanningCredit = PlanningCredit.broadcast
+    # The plan-only trainer (#384): the name of a scripted policy that takes
+    # every decision but the commitment ones during rollouts, so only the
+    # head and the planning value learn. None trains every head.
+    members: str | None = None
+    # The frozen-planner rung (#384 FH1): the path of a finished head whose
+    # network draws every commitment (greedy, never in the optimiser) while
+    # this network learns the member heads under that plan. None: no planner.
+    frozen_planner: str | None = None
     # Who a payment reaches (`reward_timing.Credit`): `mean` is the bridge
     # accounting, `actor` pays each model its own term and its own state
     # credit on its own step. A knob of the run, so a resume keeps it.
@@ -106,17 +146,22 @@ KL_COEF_MIN = 1e-4
 KL_COEF_MAX = 1e4
 
 
-def adapt_kl_coef(coef: float, measured_drift: float, target: float) -> float:
+def adapt_kl_coef(
+    coef: float,
+    measured_drift: float,
+    target: float,
+    coef_max: float = KL_COEF_MAX,
+) -> float:
     """Schulman's KL-penalty rule: halve the coefficient when the policy stays
-    closer than `target` by 1.5x, double it when it drifts further by 1.5x;
-    a no-op at `target == 0.0`. The wide band keeps the coefficient from
-    oscillating faster than the policy can answer it."""
+    closer than `target` by 1.5x, double it when it drifts further by 1.5x,
+    never above `coef_max`; a no-op at `target == 0.0`. The wide band keeps
+    the coefficient from oscillating faster than the policy can answer it."""
     if target <= 0.0:
         return coef
     if measured_drift < target / 1.5:
         return max(coef / 2.0, KL_COEF_MIN)
     if measured_drift > target * 1.5:
-        return min(coef * 2.0, KL_COEF_MAX)
+        return min(coef * 2.0, KL_COEF_MAX, coef_max)
     return coef
 
 
@@ -240,6 +285,7 @@ def collect_rollout(
     on_episode_end: OnEpisodeEnd | None = None,
     start_groups: StartGroups | None = None,
     initial_start_groups: Sequence[int] | None = None,
+    planner: SetAgent | None = None,
 ) -> Rollout:
     """Play every env in lockstep until `rollout_rounds x n_envs` turns close.
 
@@ -273,6 +319,13 @@ def collect_rollout(
     spans: list[dict[int, int]] = [{} for _ in range(n_envs)]
     while closes < budget:
         decisions = agent.act_batch(envs, current, generator=generator)
+        if config.members is not None:
+            decisions = [
+                _members_decision(env, observation, decision)
+                for env, observation, decision in zip(envs, current, decisions)
+            ]
+        if planner is not None:
+            decisions = _planner_decisions(planner, agent, envs, current, decisions)
         for index, (env, retimer, decision) in enumerate(
             zip(envs, retimers, decisions)
         ):
@@ -315,6 +368,10 @@ def collect_rollout(
                 _land_credits(transitions, acted_at[index], payment.credits)
             if payment.planning != 0.0:
                 _land_planning(transitions, spans[index], payment.planning)
+            if payment.planning_credits:
+                _land_planning_credits(
+                    transitions, spans[index], payment.planning_credits
+                )
             if decision.has_commitment:
                 spans[index][unit] = len(transitions) - 1
             if payment.is_close:
@@ -385,6 +442,74 @@ def _land_planning(
             transitions[at],
             planning_reward=transitions[at].planning_reward + planning,
         )
+
+
+def _land_planning_credits(
+    transitions: list[Transition], spans: dict[int, int], credits: dict[int, float]
+) -> None:
+    """Add a close's per-unit planning credit (#384 B6) to that unit's open
+    commitment span; a unit with no open span this rollout (it committed
+    before the cut) carries nothing, as the broadcast form does."""
+    for unit, at in spans.items():
+        credit = credits.get(unit)
+        if credit:
+            transitions[at] = replace(
+                transitions[at],
+                planning_reward=transitions[at].planning_reward + credit,
+            )
+
+
+def _planner_decisions(
+    planner: SetAgent,
+    agent: SetAgent,
+    envs: Sequence[PerModelEnv],
+    observations: Sequence[PerModelObservation],
+    decisions: list[StepDecision],
+) -> list[StepDecision]:
+    """The frozen planner's commitment on every open step that offers one,
+    in place of the learning network's draw (#384 FH1): the executor keeps
+    the unit and the declaration it chose; its commitment row is dropped,
+    so the update trains no planning."""
+    columns = planner.plan_batch(envs, observations, [d.model for d in decisions])
+    out: list[StepDecision] = []
+    for env, decision, column in zip(envs, decisions, columns):
+        if column == NO_DRAW:
+            out.append(decision)
+            continue
+        out.append(agent.replace_commitment(decision, env.player_seat, column))
+    return out
+
+
+def _members_decision(
+    env: PerModelEnv, observation: PerModelObservation, decision: StepDecision
+) -> StepDecision:
+    """The plan-only trainer's decision (#384): the network keeps only its
+    commitment draw; the scripted seat installed on `env` answers the rest --
+    the unit's declaration on the same open step, every act, every target --
+    re-planning first so a commitment written this turn is the plan it walks.
+    A step the script answers carries no policy (`column` NO_DRAW), so only
+    the commitment rows reach the update."""
+    point = observation.decision
+    if point.kind is StepKind.close_turn:
+        return decision
+    seat = env.player_seat
+    planner = seat.adapter
+    if planner is None:
+        raise RuntimeError("the plan-only trainer needs a scripted seat on the env")
+    if point.phase is not None:
+        planner.plan(point.phase, seat, env)
+    if point.kind is StepKind.open and decision.action.commitment != NO_COMMIT_DECISION:
+        model = decision.action.model
+        action = PerModelAction.open(
+            model,
+            planner.declaration_for(point, model, seat),
+            decision.action.commitment,
+        )
+        return replace(decision, action=action, column=NO_DRAW, log_prob=0.0)
+    action = planner.choose(point, seat)
+    return replace(
+        decision, action=action, model=action.model, column=NO_DRAW, log_prob=0.0
+    )
 
 
 def _planning_values(
@@ -507,11 +632,17 @@ def compute_planning_gae(
 
     A unit's commitment steps form their own trajectory: each step's reward
     is the planning scalar collected until the unit's next commitment step,
-    the discount `planning_gamma` applies once per step of that chain, and
+    the discount `planning_gamma` applies once per step of that chain, the
+    decay is `planning_gae_lambda` (the members' `gae_lambda` when unset), and
     the last step bootstraps from the planning value at the rollout's cut
     (0 when the episode ended inside the span).
     """
     n = rollout.n_steps
+    lam = (
+        config.gae_lambda
+        if config.planning_gae_lambda is None
+        else config.planning_gae_lambda
+    )
     returns = torch.zeros(n, dtype=torch.float32)
     advantages = torch.zeros(n, dtype=torch.float32)
     chains: dict[tuple[int, int], list[int]] = {}
@@ -533,9 +664,7 @@ def compute_planning_gae(
                 + config.planning_gamma * next_value * not_done
                 - transition.planning_value
             )
-            running = (
-                delta + config.planning_gamma * config.gae_lambda * not_done * running
-            )
+            running = delta + config.planning_gamma * lam * not_done * running
             advantages[row] = running
             returns[row] = running + transition.planning_value
             next_value = transition.planning_value
@@ -646,16 +775,21 @@ def _masked_kl(log_p: torch.Tensor, log_q: torch.Tensor) -> torch.Tensor:
 
 
 def drift_to_reference(
-    network: SetNetwork, reference: SetNetwork, transitions: Sequence[Transition]
+    network: SetNetwork,
+    reference: SetNetwork,
+    transitions: Sequence[Transition],
+    scope: str = "members",
 ) -> torch.Tensor:
     """Per-transition `KL(policy || reference)` -- the selector's plus the
     step's head's, over the full masked distributions -- with the gradient
     through `network`; 0 on rows without a policy. The estimator the
     whole-phase anchor uses, so a target is nats per decision as there it
-    is nats per model."""
+    is nats per model. With `scope="commitment"` it is instead the
+    planner's drift alone: the commitment head's masked distribution
+    against the reference's on the rows that carry a commitment decision,
+    0 elsewhere, so the anchor holds the plan and leaves the members free."""
     device = network.device
     batch = collate([t.tokens for t in transitions], device=device)
-    has_policy = torch.tensor([t.has_policy for t in transitions], device=device)
     models = torch.tensor(
         [max(t.model, 0) for t in transitions], dtype=torch.int64, device=device
     )
@@ -664,6 +798,22 @@ def drift_to_reference(
         ref_output = reference(batch)
     n = len(transitions)
     kl = torch.zeros(n, device=device)
+    if scope == "commitment":
+        has_commitment = torch.tensor(
+            [t.has_commitment for t in transitions], device=device
+        )
+        if not bool(has_commitment.any()):
+            return kl
+        rows = torch.nonzero(has_commitment).squeeze(-1)
+        commitment = network.commitment(output, batch, models)
+        with torch.no_grad():
+            ref_commitment = reference.commitment(ref_output, batch, models)
+        kl[rows] = _masked_kl(
+            F.log_softmax(commitment.logits[rows].float(), dim=-1),
+            F.log_softmax(ref_commitment.logits[rows].float(), dim=-1),
+        )
+        return kl
+    has_policy = torch.tensor([t.has_policy for t in transitions], device=device)
     if not bool(has_policy.any()):
         return kl
     rows = torch.nonzero(has_policy).squeeze(-1)
@@ -914,9 +1064,17 @@ def ppo_update(
             if anchored:
                 assert reference is not None
                 drift = drift_to_reference(
-                    network, reference, [transitions[i] for i in rows]
+                    network,
+                    reference,
+                    [transitions[i] for i in rows],
+                    scope=config.kl_ref_scope,
                 )
-                kl_ref_term = (drift * policy).sum() / n_policy
+                if config.kl_ref_scope == "commitment":
+                    anchor_rows = evaluated.has_commitment
+                    n_anchor = max(1, int(anchor_rows.sum().item()))
+                else:
+                    anchor_rows, n_anchor = policy, n_policy
+                kl_ref_term = (drift * anchor_rows).sum() / n_anchor
                 loss = loss + kl_ref_coef * kl_ref_term
                 totals["kl_ref"] += float(kl_ref_term.item())
             optimizer.zero_grad()

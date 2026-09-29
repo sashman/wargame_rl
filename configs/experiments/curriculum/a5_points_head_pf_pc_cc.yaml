@@ -1,0 +1,66 @@
+# #384, amendment 19 (2026-09-26): the half-step under the commitment head with the
+# soldiers paid ONE per-step plan-following score -- `a5_points_head_rf_pc.yaml`
+# with `closest_objective_v2` + `objective_stay` replaced by `plan_following` 0.5;
+# the planner's stream unchanged (`objective_coverage` 0.3, the success bonus,
+# `commitment_coverage` 0.3). Arms CM10 (warm-started from CM8w's 81,920) and
+# CM10s (from scratch). This is the churn-cost variant (`commitment_churn` 0.5 on the planner's stream).
+# Below, the base config as written:
+config_name: curriculum_a5_points_head_pf_pc_cc
+number_of_wargame_models: 18
+number_of_opponent_models: 0
+number_of_objectives: 5
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 6
+number_of_battle_rounds: 10
+deployment_zone: [2, 2, 10, 42]
+opponent_deployment_zone: [50, 2, 58, 42]
+models:
+  - &sq_0 { group_id: 0 }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+  - &sq_4 { group_id: 4 }
+  - *sq_4
+  - *sq_4
+  - &sq_5 { group_id: 5 }
+  - *sq_5
+  - *sq_5
+objectives:
+  - { x: 30, y: 8 }
+  - { x: 30, y: 22 }
+  - { x: 30, y: 36 }
+  - { x: 45, y: 15 }
+  - { x: 45, y: 29 }
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: plan_following
+        weight: 0.5
+        params:
+          max_move_distance: 6.0
+      - type: objective_coverage
+        weight: 0.3
+      - type: commitment_coverage
+        weight: 0.3
+      - type: commitment_churn
+        weight: 0.5
+    success_criteria:
+      type: all_objectives_occupied
+      params: {}
+observe_objective_control: true
+coherency:
+  enforce_at_deployment: true
+commitments:
+  assignment: head

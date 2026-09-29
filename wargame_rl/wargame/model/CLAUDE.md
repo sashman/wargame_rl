@@ -85,6 +85,7 @@ sizes; one instance plays 6/2 and 10/5 with no reload).
   on opening steps: the skip declarations gate a whole unit through one logit,
   so their share is the first thing to read at the do-nothing fingerprint.
 - **Default trunk 4 layers × 128 × 8 heads (~1.15M params)**, `SetNetworkConfig`,
+- `SetNetworkConfig.head_layers` (`--head-layers`, default 1): the policy heads' depth. 1 is the shipped linear readout of the trunk's embedding (state-dict keys unchanged, every checkpoint on file loads); `k` stacks `k` maps of the trunk's width with GELUs on every policy head, the pointer query/key projections included. The value heads keep two layers; the trunk is untouched. Built for #384's CH1 arm (are the readouts too shallow?).
   `None` = the default exactly as `TransformerConfig` does. Fixtures use
   `SetNetworkConfig(embedding_size=32, n_layers=2, n_heads=4)`; unlike the
   transformer, **`n_heads` IS recoverable** from this family's state dict (the
@@ -248,6 +249,23 @@ checkpoint, never from the resumed weights (a drift that ratchets forward
 with every resume is the phase facade's silent-anchor defect), and the
 adapted coefficient is carried in the training state. Logged as
 `train/kl_ref` and `train/kl_ref_coef`.
+
+`--kl-ref-scope` (#384, amendment 23) picks what the anchor holds:
+`members` (the default: the selector and the members' heads, the estimator
+above) or `commitment` (the planner's head alone: the commitment head's
+masked distribution against the reference's over the rows that carry a
+commitment decision, averaged over those rows, the members left free).
+Built because every warm-started half-step run's planner drifted in its
+last third (planning EV to about zero) while its members held (EV above
+0.9): the drift to hold was the plan's, not the walk's.
+
+`--kl-ref-coef-max` (#384, amendment 25) caps the adaptive coefficient
+(default 1e4, the controller's own bound, so nothing changes unless it is
+set). Under `--kl-ref-scope commitment` the members' unanchored updates move
+the shared encoder under the commitment head, so the drift can sit just above
+the band however large the coefficient grows; the rule then doubles it without
+bound (~2,700 on one half-step seed, which wrecked the run). Set a ceiling
+(20) or fix the coefficient (`--kl-ref-target 0`) on every anchored arm.
 
 
 ### Who a payment reaches (`--credit`, #340)

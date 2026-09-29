@@ -391,6 +391,11 @@ fit-per-model-critic clone teacher env_config n_episodes='300' epochs='20' out='
 measure-commitments env_config n_episodes seed_base *specs:
 	@uv run python -m scripts.measure_commitments {{env_config}} {{n_episodes}} "{{seed_base}}" {{specs}}
 
+# The plan-only readout (#384): a head checkpoint scored as trained and with its
+# HEAD planning while a scripted policy walks (default squad_march_committed)
+measure-plan env_config n_episodes seed_base *checkpoints:
+	@uv run python -m scripts.measure_plan {{env_config}} {{n_episodes}} "{{seed_base}}" {{checkpoints}}
+
 # The flag ablation (#384 R3): score checkpoints on a layer-on config as trained,
 # with the marked-target relation BLANK, MISDIRECTED to another objective, and
 # pointed at the NEAREST objective -- reward untouched, only the observation.

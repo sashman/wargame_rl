@@ -1,0 +1,72 @@
+# #384, amendment 13 (2026-09-26): the legibility rung's ROTATED writer with the
+# floored two-stream reward's member terms (`a3_head_rf.yaml`'s reward block).
+# Arm FH3: the members trained under plans that DISAGREE with the geometry, so
+# the mark is the only predictor of pay; read on arrival at the committed
+# objective and then at play under PL1's head. Below, the legible header:
+# #384 R2, the LEGIBILITY rung LR1 (#393, arm #395): the A3 shape with the
+# environment's assignment ROTATED -- every squad is assigned the objective the
+# greedy rule gave the NEXT squad, so no squad's assignment is its own greedy
+# pick -- and success `all_units_on_commitment`: every squad must end with a
+# member inside ITS assigned objective. A policy that walks to the nearest
+# objective covers the four points and FAILS; only a policy that reads the
+# marked-target relation can pass. The bar is `squad_march_committed` (follows
+# the environment's assignment); plain `squad_march_take` must fail here.
+# Everything else is `a3.yaml`: four squads of three, four objectives in a
+# column at x=35, radius 4, 8 rounds, 60x44, Move 6, nobody shooting.
+config_name: curriculum_a3_legible_rf
+number_of_wargame_models: 12
+number_of_opponent_models: 0
+number_of_objectives: 4
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 4
+number_of_battle_rounds: 8
+deployment_zone: [4, 4, 10, 40]
+opponent_deployment_zone: [50, 16, 56, 28]
+models:
+  - &sq_0 { group_id: 0 }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+objectives:
+  - { x: 35, y: 8 }
+  - { x: 35, y: 17 }
+  - { x: 35, y: 27 }
+  - { x: 35, y: 36 }
+coherency:
+  enforce_at_deployment: true
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 2.0
+          normalize_to_commit_distance: true
+          normalize_min_distance: 12.0
+          fallback_to_nearest: false
+          overstack_penalty_per_extra: 0.0
+      - type: objective_stay
+        weight: 0.5
+        params:
+          crowding_exponent: 0.0
+          cap_per_commitment: 2.0
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: all_units_on_commitment
+      params: {}
+observe_objective_control: true
+commitments:
+  assignment: rotated

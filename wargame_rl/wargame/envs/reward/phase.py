@@ -77,6 +77,36 @@ class RewardPhaseConfig(BaseModel):
         "in full whenever the criteria hold, so a late success is worth as much "
         "as an early one; the speed is then read from `turns`, not paid.",
     )
+    terminal_member_success_bonus: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="The SOLDIERS' success bonus (#384, 2026-09-27; the per-model "
+        "facade only): the soldiers' most pay per round, summed over the army "
+        "(plan_following's weight at a score of 1). Paid to the members' stream "
+        "at a success that ends the game as that times sum_{m=1..R} gamma^m, R "
+        "the rounds of play the success cuts off and gamma the members' "
+        "discount per round -- exactly the most the soldiers forgo, so "
+        "completing the plan never costs them and never pays them for "
+        "abandoning it. 0 disables.",
+    )
+    terminal_forgone_vp_bonus: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="The PLANNER's success bonus in VP (#384, 2026-09-27; the "
+        "per-model facade only): the planner's most pay per VP scoring round "
+        "(vp_gain's weight at the whole board held). Paid to the planning "
+        "stream at a success that ends the game as that times (1 + "
+        "`terminal_forgone_vp_margin`) times sum_{m=1..S} gamma_p^m, S the VP "
+        "scoring rounds the success cuts off and gamma_p the planning "
+        "discount -- slightly more than the most VP the planner forgoes, so "
+        "finishing is strictly its best. 0 disables.",
+    )
+    terminal_forgone_vp_margin: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="The planner's advantage for finishing: the share by which "
+        "`terminal_forgone_vp_bonus` exceeds the VP a success forgoes.",
+    )
     terminal_objective_bonus: float = Field(
         default=0.0,
         description="Bonus added at episode end scaled by the fraction of "

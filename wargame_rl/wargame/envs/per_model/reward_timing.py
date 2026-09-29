@@ -20,7 +20,11 @@ configured term on the step the design's table names:
   global (coverage) once at the close, scaled like a state term;
 - the terminal bonuses at the terminating close, through the phase manager's
   own `terminal_bonuses`, so the two facades cannot disagree on when one is
-  earned.
+  earned -- and, when a success ends the game, the two forgone-pay bonuses:
+  the soldiers' (`terminal_member_success_bonus`) to the members, exactly the
+  most pay the success cuts off, and the planner's
+  (`terminal_forgone_vp_bonus`) with the outcome, the most VP it cuts off plus
+  a margin; each discounted by its own stream's discount per round.
 
 Every calculator the registry names belongs to exactly one payment class,
 keyed by the registry's own string; the module refuses to import if the two
@@ -80,7 +84,12 @@ from wargame_rl.wargame.envs.reward.calculators.base import (
     PerModelRewardCalculator,
 )
 from wargame_rl.wargame.envs.reward.calculators.registry import CALCULATOR_REGISTRY
-from wargame_rl.wargame.envs.reward.phase_manager import RewardPhaseManager
+from wargame_rl.wargame.envs.reward.phase_manager import (
+    FORGONE_VP_BONUS,
+    MEMBER_SUCCESS_BONUS,
+    RewardPhaseManager,
+    discounted_rounds,
+)
 from wargame_rl.wargame.envs.reward.step_context import StepContext
 from wargame_rl.wargame.envs.types import BattlePhase
 
@@ -117,6 +126,24 @@ class Credit(str, Enum):
     actor = "actor"
 
 
+class PlanningCredit(str, Enum):
+    """How a close's planning scalar reaches each unit's commitment step (#384).
+
+    `broadcast` (the default): the army's outcome, the same to every unit's
+    open span -- a squad stacking on a covered objective and the squad taking
+    the empty one are credited alike. `counterfactual` (B6): each unit is
+    credited the DIFFERENCE its bodies make to the outcome terms -- the state
+    globals and the terminal bonuses re-evaluated with the unit's models
+    masked out, subtracted from the same terms with them in -- so a redundant
+    squad earns 0 and the squad that covers an empty objective earns what it
+    covers. The delta globals (VP, kills) stay broadcast: they are realised
+    from the mission's own counts and have no per-unit counterfactual.
+    """
+
+    broadcast = "broadcast"
+    counterfactual = "counterfactual"
+
+
 # Keyed by the reward registry's own string, and checked against it below so
 # a calculator registered without a payment class fails at import, not in a
 # training run.
@@ -131,6 +158,7 @@ PAYMENT_CLASSES: dict[str, PaymentClass] = {
     # step from the board after its move, so that a body which ends inside
     # an objective is paid and one which walks out is not (#340, staying).
     "objective_stay": PaymentClass.potential_action,
+    "plan_following": PaymentClass.potential_action,
     "objective_hold": PaymentClass.state,
     "declared_objective_hold": PaymentClass.state,
     "unit_coherency": PaymentClass.state,
@@ -140,6 +168,8 @@ PAYMENT_CLASSES: dict[str, PaymentClass] = {
     "models_lost": PaymentClass.delta_global,
     "objective_flip_bonus": PaymentClass.delta_global,
     "objective_coverage": PaymentClass.state_global,
+    "commitment_coverage": PaymentClass.state_global,
+    "commitment_churn": PaymentClass.state_global,
     "models_at_objectives": PaymentClass.state_global,
 }
 
@@ -199,6 +229,10 @@ class StepPayment:
     # (each unit's open commitment step) instead of to `reward`. 0.0 without
     # streams. Counted in `breakdown` and in `episode_reward`.
     planning: float = 0.0
+    # Under `PlanningCredit.counterfactual`: the close's planning credit per
+    # UNIT (group id), landed on that unit's open commitment span instead of
+    # the broadcast `planning`, which is then 0.0. Empty otherwise.
+    planning_credits: dict[int, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -308,6 +342,9 @@ class PerStepReward:
         credit: Credit = Credit.mean,
         *,
         streams: bool = False,
+        planning_credit: PlanningCredit = PlanningCredit.broadcast,
+        gamma: float = 0.9,
+        planning_gamma: float = 0.99,
     ) -> None:
         if len(env.config.reward_phases) != 1:
             raise ValueError(
@@ -326,6 +363,11 @@ class PerStepReward:
         # planning (the commitment decision), keyed on the unit's commitment
         # or the member's own step -> execution (the member). Off, one stream.
         self.streams = bool(streams)
+        self.planning_credit = PlanningCredit(planning_credit)
+        # The two streams' discounts, which price what a success cuts off
+        # (the forgone-pay bonuses); the trainer passes its own.
+        self.gamma = float(gamma)
+        self.planning_gamma = float(planning_gamma)
         self.manager = manager or RewardPhaseManager.from_configs(
             env.config.reward_phases
         )
@@ -376,12 +418,15 @@ class PerStepReward:
         credits: dict[int, float] = {}
         reward = 0.0
         planning = 0.0
+        planning_credits: dict[int, float] = {}
         if action.kind is not StepKind.close_turn:
             reward += self._pay_action_terms(
                 observation_before.decision.phase, effect, breakdown
             )
         if is_close:
-            closed, credits, planning = self._pay_close(terminated, breakdown)
+            closed, credits, planning, planning_credits = self._pay_close(
+                terminated, breakdown
+            )
             reward += closed
             self.closes += 1
         self.episode_reward += reward + sum(credits.values()) + planning
@@ -393,6 +438,7 @@ class PerStepReward:
             is_close=is_close,
             credits=credits,
             planning=planning,
+            planning_credits=planning_credits,
         )
 
     def _context(
@@ -403,9 +449,14 @@ class PerStepReward:
         player_killed: int = 0,
         opponent_killed: int = 0,
         terminated: bool = False,
+        alive_override: np.ndarray | None = None,
     ) -> StepContext:
         env = self.env
         alive = alive_mask_for(env.wargame_models)
+        if alive_override is not None:
+            # A counterfactual board (#384 B6): the caller's mask decides which
+            # of our models the distance cache counts as present.
+            alive = alive & alive_override
         cache = compute_distances(
             env.wargame_models,
             env.objectives,
@@ -435,6 +486,9 @@ class PerStepReward:
                 env.player_commitments.task_weights_per_model(env.wargame_models)
                 if env.config.commitments.plan_weighted
                 else None
+            ),
+            commitment_churn=(
+                _churn_share(env) if env.config.commitments.enabled else None
             ),
         )
 
@@ -500,11 +554,12 @@ class PerStepReward:
 
     def _pay_close(
         self, terminated: bool, breakdown: dict[str, float]
-    ) -> tuple[float, dict[int, float], float]:
+    ) -> tuple[float, dict[int, float], float, dict[int, float]]:
         """The close's scalar, under `Credit.actor` the per-model credits the
-        state terms owe each alive model, and under `streams` the planning
-        scalar (the outcome terms), which is otherwise 0.0 and inside the
-        first."""
+        state terms owe each alive model, under `streams` the planning scalar
+        (the outcome terms), which is otherwise 0.0 and inside the first, and
+        under `PlanningCredit.counterfactual` the planning credit per unit
+        (the scalar is then 0.0)."""
         env = self.env
         classes = self.classes
         before = self._baseline
@@ -585,10 +640,115 @@ class PerStepReward:
             for key, bonus in self.manager.terminal_bonuses(view, ctx).items():
                 outcome += bonus * common
                 breakdown[key] = breakdown.get(key, 0.0) + bonus * common
+            member, planner = self._forgone_bonuses(view, ctx)
+            # The soldiers' is in army units, the scale of their per-move pay
+            # under either credit; the planner's scales with its outcome terms.
+            if member != 0.0:
+                total += member
+                breakdown[MEMBER_SUCCESS_BONUS] = member
+            if planner != 0.0:
+                outcome += planner * common
+                breakdown[FORGONE_VP_BONUS] = planner * common
         self._baseline = self._read_baseline()
+        if self.streams and self.planning_credit is PlanningCredit.counterfactual:
+            planning_credits = self._counterfactual_credits(
+                view, ctx, player_alive, terminated, common
+            )
+            return total, credits, 0.0, planning_credits
         if self.streams:
-            return total, credits, outcome
-        return total + outcome, credits, 0.0
+            return total, credits, outcome, {}
+        return total + outcome, credits, 0.0, {}
+
+    def _counterfactual_credits(
+        self,
+        view: BattleView,
+        ctx: StepContext,
+        player_alive: np.ndarray,
+        terminated: bool,
+        common: float,
+    ) -> dict[int, float]:
+        """Per living unit, the outcome terms with the unit in minus the same
+        terms with its models masked out (#384 B6): the state globals and,
+        on the terminating close, the terminal bonuses. The delta globals are
+        broadcast and carried by nobody here (see `PlanningCredit`)."""
+        env = self.env
+        classes = self.classes
+        with_unit = self._outcome_terms(view, ctx, terminated, common)
+        groups = sorted({int(m.group_id) for m in env.wargame_models if m.is_alive})
+        credits: dict[int, float] = {}
+        for group in groups:
+            without = np.array(
+                [int(m.group_id) != group for m in env.wargame_models], dtype=bool
+            )
+            masked_ctx = self._context(
+                action_phase=None,
+                kills_by_model=None,
+                terminated=terminated,
+                alive_override=without & player_alive,
+            )
+            credits[group] = with_unit - self._outcome_terms(
+                view, masked_ctx, terminated, common
+            )
+        del classes
+        return credits
+
+    def _outcome_terms(
+        self, view: BattleView, ctx: StepContext, terminated: bool, common: float
+    ) -> float:
+        """The state globals and the terminal bonuses on `ctx`, as `_pay_close`
+        sums them into the planning scalar (without the delta globals)."""
+        outcome = 0.0
+        for _name, state_global in self.classes.state_globals:
+            outcome += (
+                state_global.weight
+                * state_global.calculate(view, ctx)
+                * self.phase_scale
+                * common
+            )
+        if terminated:
+            for bonus in self.manager.terminal_bonuses(view, ctx).values():
+                outcome += bonus * common
+            outcome += self._forgone_bonuses(view, ctx)[1] * common
+        return outcome
+
+    def _rounds_cut_off(self, ctx: StepContext) -> tuple[int, int]:
+        """`(rounds of play, VP scoring rounds)` a game ending at this close
+        cuts off. Play: the rounds after the ones closed so far. Scoring: the
+        command phases still to come (VP is scored leaving a command phase,
+        on the board as it stands) from the mission's first scoring round --
+        on a config that skips command the close already passed the next
+        round's, so the board at the end of the last round is never scored."""
+        n_rounds = int(self.env.config.number_of_battle_rounds)
+        play = max(0, n_rounds - (self.closes + 1))
+        current_round = int(ctx.current_round)
+        if current_round <= 0:
+            return play, 0
+        next_command = (
+            current_round
+            if ctx.battle_phase is BattlePhase.command
+            else current_round + 1
+        )
+        first = max(next_command, self.env.config.mission.first_scoring_round)
+        return play, max(0, n_rounds - first + 1)
+
+    def _forgone_bonuses(
+        self, view: BattleView, ctx: StepContext
+    ) -> tuple[float, float]:
+        """`(soldiers', planner's)` forgone-pay success bonuses at a terminating
+        close: 0 unless configured and the phase's criteria hold."""
+        phase = self.manager.current_phase
+        per_member = phase.terminal_member_success_bonus
+        per_vp = phase.terminal_forgone_vp_bonus
+        if per_member == 0.0 and per_vp == 0.0:
+            return 0.0, 0.0
+        if not phase.criteria.is_successful(view, ctx):
+            return 0.0, 0.0
+        play, scoring = self._rounds_cut_off(ctx)
+        member = discounted_rounds(per_member, self.gamma, play)
+        planner = (1.0 + phase.terminal_forgone_vp_margin) * discounted_rounds(
+            per_vp, self.planning_gamma, scoring
+        )
+        return member, planner
 
     # ------------------------------------------------------------ readouts
 
@@ -607,7 +767,16 @@ __all__ = [
     "TASK_OF",
     "PaymentClass",
     "PerStepReward",
+    "PlanningCredit",
     "StepPayment",
     "classify",
     "payment_class_of",
 ]
+
+
+def _churn_share(env: PerModelEnv) -> float:
+    """Re-commits before arrival on the turn just closed, over living units."""
+    living = {int(m.group_id) for m in env.wargame_models if m.is_alive}
+    if not living:
+        return 0.0
+    return float(env.player_commitments.churn_last_turn) / float(len(living))

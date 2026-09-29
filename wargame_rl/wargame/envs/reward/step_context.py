@@ -51,6 +51,10 @@ class StepContext:
     # The commitment layer's plan weights per player model, `(M, 2)` of
     # (approach, hold) (#384 execution phase); None unless `execution: plan`.
     task_weights: np.ndarray | None = None
+    # The share of living units the commitment layer re-committed THIS turn
+    # before they arrived at their previous objective (#384, amendment 18);
+    # None with the layer off. Read by `commitment_churn`.
+    commitment_churn: float | None = None
     # Lazily built by `opponent_distances`; never set by the env.
     _opponent_distance_cache: DistanceCache | None = None
 
