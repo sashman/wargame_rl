@@ -2724,3 +2724,86 @@ separated here.
    round 9's soldier reward (`--frozen-planner` exists); (iii) both
    together — the step where the critic fails today, so it waits on 1.
    Evaluate the result on A1–A5.
+
+## Amendment 30 — written 2026-10-12 15:03: the curriculum pre-registered — the soldiers learn under a frozen from-scratch planner (CC2), then both learn together from there (CC3); every weight from scratch, no checkpoint descended from CM9c; on Sash's choice of amendment 29's proposal 2
+
+**0. Phase 1 is done, twice.** The planner, plan-only with the bar's
+soldiers on `a5_points_head_pf_pcm.yaml` (PC's recipe), PASS 3/3 on
+`670f8f7` (amendment 29) and again on a second machine on `aae8ad7`
+(2026-10-11, Wandb group `curriculum-cm-plan-repro`, same flags, n=100,
+seeds 700000+, greedy, plan-only row): **1.00 / 1.00 / 0.99** at 122,880,
+1.00 ×3 at 40,960 and 81,920, turns 6.73 / 6.54 / 6.84 (the bar 6.71, read
+identically on both machines), first plan covering 0.97 / 1.00 / 1.00,
+planning EV 0.97 in the last quarter. PV re-ran too: 1.00 / 1.00 / 0.98 at
+the cap (2/3 on the first machine, s1's 0.92 inside 3 SE). Phase 2 uses
+the second machine's PC checkpoints, seed for seed:
+`checkpoints/per_model/per-model-a5_points_head_pf_pcm-2026-10-11-21-02-21-s{1,2,3}pc/pm-00122880.pt`.
+
+⚠ **Amendment 29 put phase (iii) after proposal 1** (the planner's critic
+isolated from the soldiers' gradient), because the joint trainer is where
+the critic fails today. This amendment runs the curriculum first on Sash's
+choice and registers phase (iii) as it stands, with the critic's readouts
+as the diagnostic; a CC3 collapse is read as evidence for proposal 1, not
+against the curriculum.
+
+**1. No build.** `--frozen-planner <ckpt>` (FH1) draws every commitment
+greedy from the frozen planner and drops the executor's commitment rows
+from the update, so the learning network's commitment head and planning
+value head receive no gradient in phase 2 and phase 3 starts its planner
+from initialisation — CM7's pattern on A3 (a plan-reading executor, the
+planner learned on top: PASS 0.92 / 0.99 / 0.80).
+
+**2. The arms.** Three seeds each, 122,880 rounds, CM4's rollout
+(`--num-rollout-envs 4 --rollout-rounds 32`, 128 rounds per update),
+`--ent-coef 0.003`, eval and checkpoint every 512 rounds, no anchor, one
+config throughout: `a5_points_head_pf_pcm.yaml` (the soldiers' stream is
+CM14's — `plan_following` 0.5, the exact success bonus, `group_cohesion`;
+the planner's is PC's three-part reward). Wandb group
+`curriculum-cm-curriculum`. Launched one seed at a time with
+`just train-per-model` (the frozen planner differs per seed).
+
+| arm | what | start | comparator by name |
+|---|---|---|---|
+| **CC2** | the soldiers learn under the frozen phase-1 planner (`--frozen-planner` = PC sN at 122,880) | from scratch | the bar's soldiers under the same planner (the PC plan-only row, 1.00 / 1.00 / 0.99) as the ceiling; the executor's own as-trained row as the floor |
+| **CC3** | both learn together (`--warm-start-from` CC2 sN's cap checkpoint; the planner from initialisation) | CC2's own seed | CM14 same seed at the cap, 0.00 / 0.98 / 0.97 (same config, jointly trained from CM9c — the warm-started recipe to match); CM15s 0.00 ×3 as the from-scratch floor (⚠ one config change: the planner paid VP) |
+
+**3. Readouts.** CC2 on the SPLIT row of `just measure-plan` (`planner=`
+the phase-1 checkpoint; the planner commits, the checkpoint walks) beside
+the executor's as-trained row; CC3 as trained and plan-only. Both at
+40,960 / 81,920 / 122,880 and the in-run peak (the best five-evaluation
+window of `eval/objectives_held`, ties to fewer turns), n=100, seeds
+700000+, greedy: success, turns, held, `mark` (the share of moves, where
+the committed objective is not the nearest, that close more on the
+committed one), leave, leave-wrong; for CC3 also first-plan coverage,
+re-commits before arrival, the planning EV and mean planning return by
+eighth.
+
+**4. The nearest-walk rule (CC2, at 40,960).** A seed whose split-row
+`mark` is below 0.60 is a nearest-walker (the A3 executors that walk to
+the nearest read 0.5–0.7; the bar 0.96). It runs to the cap and is read
+as registered; it is ALSO relaunched once at seed N+3 under the same
+planner, and both are reported. CC3 starts from the relaunch only if the
+original fails CC2's PASS and the relaunch passes it.
+
+**5. Criteria, per seed at 122,880.**
+- **CC2:** PASS = split-row success ≥ 0.95 AND `mark` ≥ 0.90. **Do
+  soldiers learn from scratch to walk a from-scratch planner's plan?** YES
+  on ≥ 2/3.
+- **CC3:** PASS = as-trained success ≥ 0.95; AHEAD / BEHIND of CM14's
+  same seed by two binomial SE, else LEVEL. **Does the curriculum learn
+  the half-step from scratch?** YES if CC3 passes on ≥ 2/3. Collapse
+  readouts (amendment 28's mechanism, readouts not criteria here): the
+  planning EV ≥ 0.3 in the last quarter; the mean planning return never
+  below 0 in any eighth; no seed with a collapsed first plan (distinct
+  share ≤ 0.3) at the cap. The in-run peak is reported beside the cap and
+  never replaces it.
+- A CC2 seed that fails CC2's PASS still seeds CC3 (the curriculum is
+  read whole); its CC3 row is marked.
+
+**Expectation (a guess).** CC2 passes on 2/3 — PC's plan agrees with the
+nearest objective for most squads, so a nearest walk costs less here than
+on the rotated board, and the frozen planner never churns under the
+soldiers; at least one seed reads `mark` below 0.90. CC3 holds the
+soldiers (they already read the mark, as CM7's did) and reaches 0.9+ at
+two thirds; one planner of three drifts by the cap, as every joint arm
+without an anchor has.
