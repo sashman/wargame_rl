@@ -174,13 +174,15 @@ def test_the_collector_lands_each_credit_on_the_models_own_step() -> None:
     )
 
     # Rebuild each env's expected reward per transition by the rule: a credit
-    # lands where its model last acted this turn, else on the close.
+    # lands where its model last acted this turn, else on the close. The
+    # precondition (some credit moved off its close) is read over both envs:
+    # which env exercises it depends on the random network's draws.
+    credited_off_close = 0
     for env_index, spy in enumerate(retimers):
         got = [t.reward for t in rollout.transitions if t.env_index == env_index]
         assert len(got) == len(spy.log)
         expected = [p.reward for _, p in spy.log]
         acted_at: dict[int, int] = {}
-        credited_off_close = 0
         for at, (actors, payment) in enumerate(spy.log):
             for model in actors:
                 acted_at[model] = at
@@ -191,7 +193,7 @@ def test_the_collector_lands_each_credit_on_the_models_own_step() -> None:
             if payment.is_close:
                 acted_at = {}
         assert got == pytest.approx(expected)
-        assert credited_off_close > 0
         assert sum(got) == pytest.approx(
             sum(p.reward + sum(p.credits.values()) for _, p in spy.log)
         )
+    assert credited_off_close > 0

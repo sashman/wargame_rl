@@ -87,7 +87,13 @@ MODEL_ACTED = 20
 MODEL_ADVANCE_ROLL = 22
 MODEL_CHARGE_ROLL = 24
 MODEL_ENGAGED = 28
-MODEL_DIM = 35
+# The committed objective's offset on the model's own token (#384, amendment
+# 31), normalised as the relation offsets are; zero unless
+# `commitments.observe_target_offset` is on and the unit has a ground target.
+MODEL_COMMIT_DX = 35
+MODEL_COMMIT_DY = 36
+MODEL_COMMIT_PRESENT = 37
+MODEL_DIM = 38
 
 # The commitment layer (#384) adds two unit columns (own: has ground / has
 # combat; enemy: claimants on it) and one objective column (claimants).
@@ -545,6 +551,8 @@ def build_tokens(
         _write_enemy_unit_relations(
             cross, enemy_alive, enemy_groups, scenario, enemy_unit_start
         )
+    if commitment is not None and env.config.commitments.observe_target_offset:
+        _write_target_offsets(players, commitment, own_locs, own_groups, env, scenario)
     if commitment is not None:
         _write_commitment_relations(
             cross,
@@ -973,6 +981,27 @@ def _write_commitment_relations(
                 cross[i, enemy_unit_start + u, REL_COMMITTED] = 1.0
 
 
+def _write_target_offsets(
+    players: np.ndarray,
+    commitment: CommitmentState,
+    own_locs: np.ndarray,
+    own_groups: np.ndarray,
+    env: PerModelEnv,
+    scenario: TokenScenario,
+) -> None:
+    """Write, on every own model's token, the offset to its unit's committed
+    objective and a presence flag; models of an uncommitted unit stay zero."""
+    for i, g in enumerate(own_groups):
+        ground = commitment.ground_of(int(g))
+        if ground < 0:
+            continue
+        target = np.asarray(env.objectives[ground].location, dtype=float)
+        delta = target - own_locs[i]
+        players[i, MODEL_COMMIT_DX] = delta[0] / scenario.half_width
+        players[i, MODEL_COMMIT_DY] = delta[1] / scenario.half_height
+        players[i, MODEL_COMMIT_PRESENT] = 1.0
+
+
 def _write_enemy_unit_relations(
     cross: np.ndarray,
     enemy_alive: np.ndarray,
@@ -1028,5 +1057,8 @@ __all__ = [
     "head_for",
     "unit_column_to_value",
     "unit_mask_from",
+    "MODEL_COMMIT_DX",
+    "MODEL_COMMIT_DY",
+    "MODEL_COMMIT_PRESENT",
     "commit_mask_from",
 ]

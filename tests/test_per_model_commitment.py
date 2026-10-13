@@ -27,9 +27,14 @@ from wargame_rl.wargame.envs.per_model.scripted import ScriptedSeat
 from wargame_rl.wargame.envs.per_model.tokens import (
     CONTEXT_OBJECTIVE,
     CONTEXT_OWN_UNIT,
+    MODEL_COMMIT_DX,
+    MODEL_COMMIT_DY,
+    MODEL_COMMIT_PRESENT,
     OBJECTIVE_CLAIMANTS,
     REL_COMMIT_PRESENT,
     REL_COMMITTED,
+    REL_DX,
+    REL_DY,
     UNIT_HAS_GROUND,
     TokenScenario,
     build_tokens,
@@ -278,7 +283,66 @@ def test_state_records_a_turn_at_every_close() -> None:
     assert len(env.player_commitments.history) >= closes >= 1
 
 
+@pytest.mark.parametrize("observe", [False, True])
+def test_the_target_offset_on_the_model_token_points_at_the_committed_objective(
+    observe: bool,
+) -> None:
+    config = _config(greedy=False)
+    config = config.model_copy(
+        update={
+            "commitments": CommitmentConfig(
+                assignment="greedy", observe_target_offset=observe
+            )
+        }
+    )
+    env = PerModelEnv(config)
+    observation, _ = env.reset(seed=2)
+    tokens = _tokens(env, observation)
+    columns = tokens.players[:, MODEL_COMMIT_DX : MODEL_COMMIT_PRESENT + 1]
+    if not observe:
+        assert np.all(columns == 0.0)
+        return
+    objective_rows = np.flatnonzero(tokens.context_kind == CONTEXT_OBJECTIVE)
+    for i, model in enumerate(env.wargame_models):
+        ground = env.player_commitments.ground_of(int(model.group_id))
+        # The token column is the marked-target relation's offset, moved onto
+        # the model: one definition of "where my objective is".
+        relation = tokens.cross_relations[i, objective_rows[ground]]
+        assert tokens.players[i, MODEL_COMMIT_DX] == pytest.approx(relation[REL_DX])
+        assert tokens.players[i, MODEL_COMMIT_DY] == pytest.approx(relation[REL_DY])
+        assert tokens.players[i, MODEL_COMMIT_PRESENT] == 1.0
+
+
 # ------------------------------------------------------ checkpoint widening
+
+
+def test_a_checkpoint_before_the_target_offset_loads_with_zero_weights_on_it(
+    tmp_path: Path,
+) -> None:
+    env = PerModelEnv(_config(greedy=False))
+    network = SetNetwork.from_env(
+        env, SetNetworkConfig(n_layers=1, embedding_size=32, n_heads=4)
+    )
+    narrow = {k: v.clone() for k, v in network.state_dict().items()}
+    for key in ("player_embed.weight", "context_embed.weight"):
+        narrow[key] = narrow[key][:, :-3].clone()
+    path = tmp_path / "old.pt"
+    save_checkpoint(
+        path,
+        network,
+        ppo_config=PerModelPPOConfig(),
+        env_config=env.config.model_dump(mode="json"),
+        rounds=0,
+        seed=0,
+        revision="test",
+    )
+    payload = torch.load(path, weights_only=True)
+    payload["state_dict"] = narrow
+    torch.save(payload, path)
+    loaded = load_checkpoint(path).network.state_dict()
+    for key in ("player_embed.weight", "context_embed.weight"):
+        assert torch.equal(loaded[key][:, :-3], narrow[key])
+        assert torch.all(loaded[key][:, -3:] == 0)
 
 
 def test_a_pre_layer_checkpoint_loads_with_zero_weights_on_the_new_relations(

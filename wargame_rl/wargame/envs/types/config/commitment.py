@@ -92,6 +92,15 @@ class CommitmentConfig(BaseModel):
         "reset on a new target; a unit with no commitment has no plan and "
         "earns nothing; the close's outcome terms go to the planning stream).",
     )
+    observe_target_offset: bool = Field(
+        default=False,
+        description="Write the offset from each own model to its unit's "
+        "committed objective, with a presence flag, on the model's OWN token "
+        "(#384, amendment 31). Off, the three columns read zero. The marked-"
+        "target relation already carries the same offset, but only as an "
+        "attention bias toward the flagged objective token; on the token the "
+        "direction to walk is an input to every head, no attention needed.",
+    )
 
     @property
     def plan_weighted(self) -> bool:

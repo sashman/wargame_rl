@@ -2807,3 +2807,101 @@ soldiers; at least one seed reads `mark` below 0.90. CC3 holds the
 soldiers (they already read the mark, as CM7's did) and reaches 0.9+ at
 two thirds; one planner of three drifts by the cap, as every joint arm
 without an anchor has.
+
+## Amendment 31 — written 2026-10-13 09:16: round 11 read (the curriculum FAILS: CC2 0/6, CC3 0/3, one planner collapsed), and round 12 pre-registered — the committed objective's offset on the soldier's own token (CC2t), and the soldiers on the rotated half-step first (RB1 → RB2); on Sash's "try both"
+
+**0. Round 11, read** (code `b544efc`, n=100, seeds 700000+, greedy;
+comments on #443 and #444).
+- **CC2 FAIL 6/6.** Split row at 122,880: 0.31 / 0.00 / 0.00, and the
+  three relaunches (the nearest-walk rule fired on every seed at 40,960,
+  `mark` 0.41–0.58) 0.00 / 0.24 / 0.00. `mark` 0.47–0.65 at the cap, held
+  2.85–3.78. Four seeds park on about three objectives whatever the plan
+  (split row = as-trained row); two read it partly. Soldiers trained from
+  scratch do not learn to walk a fixed, good plan.
+- **CC3 FAIL 0/3; BEHIND CM14 on s2 / s3, LEVEL on s1.** As trained 0.00 ×3
+  at the cap (peak 0.27, s1 at 82,432). Plan-only 0.00 / 0.52 / 1.00: the
+  s3 planner is perfect with the bar's soldiers and its own soldiers score
+  0.00 under it. s1's planner COLLAPSED (planning EV −1.73 in the last
+  quarter, mean planning return −5.43 in the last eighth, distinct 0.20,
+  claimants 4.52), the joint collapse again; s2 and s3 held (EV 0.83 /
+  0.75, return 1.7–2.0 in every eighth). Read as evidence for amendment
+  29's proposal 1, as registered.
+- **What it settles:** the from-scratch failure on the half-step is the
+  soldiers' half — not the planner's, and not the order in which the
+  halves are trained.
+
+**1. The build (one flag, default off).**
+`commitments.observe_target_offset: true` writes, on every own model's
+token, the offset to its unit's committed objective (the marked-target
+relation's own `REL_DX` / `REL_DY`, moved onto the token) and a presence
+flag. `MODEL_DIM` 35 → 38, which widens `CONTEXT_DIM` to 38; a checkpoint
+written before it loads with zero weights on the three columns (pinned:
+`test_a_checkpoint_before_the_target_offset_loads_with_zero_weights_on_it`;
+PC's planners load with the padded columns at exactly zero), so every
+earlier checkpoint plays as it did. Off, the columns read zero. Why: today
+the plan reaches a soldier only as an attention bias toward the flagged
+objective token, so following it needs the soldier to attend to the right
+token first; the nearest walk needs only the offsets it already reads. On
+the token the direction to walk is an input to every head.
+
+**2. A new rung config (no build).** `a5_points_legible_pf.yaml`: the
+half-step's six squads and five objectives under the ROTATED writer (each
+squad assigned the objective greedy gave the next squad), success only when
+every squad is on ITS objective (`all_units_on_commitment`), the soldiers
+paid exactly their stream under the head config (`plan_following` 0.5,
+`group_cohesion` 0.3, `terminal_member_success_bonus` 0.5) and nothing else
+(the planner's `objective_coverage`, `commitment_coverage` and 5.0 lump are
+dropped: with no planner they would be paid to the soldiers). **The bar,
+measured first** (n=100, seeds 700000+): `squad_march_committed` **1.000**
+in 7.87 turns, held 4.89; plain `squad_march_take` **0.000** (held 5.00 —
+it covers the board with the wrong squads). The rung is legible.
+
+**3. The arms.** Three seeds each, 122,880 rounds, the CC2 flags
+(`--num-rollout-envs 4 --rollout-rounds 32 --ent-coef 0.003
+--eval-every-rounds 512 --checkpoint-every-rounds 512`), no anchor, Wandb
+group `curriculum-cm-soldiers`, code at this amendment's commit.
+
+| arm | what | config | start | comparator by name |
+|---|---|---|---|---|
+| **CC2t** | CC2 with the offset on the token: soldiers under `--frozen-planner` PC sN `pm-00122880.pt` | `a5_points_head_pf_pcm_to.yaml` (CC2's plus the flag) | from scratch | CC2 same seed (s1–s3 split 0.31 / 0.00 / 0.00, `mark` 0.65 / 0.55 / 0.47) |
+| **RB1** | the soldiers on the rotated half-step | `a5_points_legible_pf.yaml` | from scratch | the bar 1.000; plain `take` 0.000 |
+| **RB2** | RB1's soldiers under the frozen planner: `--warm-start-from` RB1 sN's `pm-00122880.pt`, `--frozen-planner` PC sN | `a5_points_head_pf_pcm.yaml` (CC2's) | RB1 sN | CC2 same seed |
+
+⚠ **Not paired.** The token width is new for every run (CC2's network was
+35 columns wide), so no arm shares CC2's initialisation; CC2t against CC2
+is one config change, unpaired. ⚠ **RB2 has twice CC2's rounds** (122,880
+on the rotated board, then 122,880 under the planner); CC2's split row
+rose only 0.00–0.31 over its last two thirds, and RB1's zero-shot split
+row (below) is the read without the extra rounds.
+
+**4. Readouts.** n=100, seeds 700000+, greedy, at 40,960 / 81,920 /
+122,880 and the in-run peak (amendment 30's rule).
+- CC2t and RB2: the split row of `just measure-plan planner=` PC sN
+  beside the as-trained row — success, turns, held, `mark`, leave,
+  leave-wrong.
+- RB1: success, held and turns on the rotated config; and its ZERO-SHOT
+  split row on `a5_points_head_pf_pcm.yaml` under PC sN at the cap (the
+  soldiers have never seen that planner).
+- No relaunch rule this round: `mark` < 0.60 at 40,960 is reported, not
+  acted on.
+
+**5. Criteria, per seed at 122,880.**
+- **CC2t:** PASS = split-row success ≥ 0.95 AND `mark` ≥ 0.90 (CC2's).
+  AHEAD / BEHIND of CC2's same seed by two binomial SE on split-row
+  success, else LEVEL. **Does the offset on the token make soldiers learn
+  to follow from scratch?** YES if PASS on ≥ 2/3; SUPPORTED if AHEAD on
+  ≥ 2/3 without PASS.
+- **RB1:** READS = rotated success ≥ 0.85 (the half-step's legibility mark,
+  set below the bar's 1.000 as LR1's was). A readout and RB2's input, not
+  a verdict on the recipe; every seed seeds RB2 whatever it reads.
+- **RB2:** PASS = CC2's PASS; AHEAD / BEHIND of CC2's same seed as above.
+  **Does a rotated-board start make soldiers that walk a planner's plan?**
+  YES if PASS on ≥ 2/3; SUPPORTED if AHEAD on ≥ 2/3 without PASS.
+- If either arm says YES, the next step is CC3's (the planner learned on
+  top of those soldiers), pre-registered then.
+
+**Expectation (a guess).** CC2t AHEAD on 2/3, PASS on one: the offset
+removes the attention step, and `plan_following` already pays the step
+along it. RB1 READS on one seed of three (the rotated board's odds on A3:
+FH3 1/3, LR1 2/3, and the half-step is harder); RB2 PASSES on the seed
+that read and stays near CC2 on the others.

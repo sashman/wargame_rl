@@ -121,27 +121,35 @@ class LoadedCheckpoint:
     revision: str
 
 
-_RELATION_INPUT_LAYERS = (
+# Input layers whose width grew after checkpoints were written: the relation
+# vector (the commitment layer, #384) and the model / context tokens (the
+# committed objective's offset, amendment 31). Every added feature is
+# appended, so the old columns keep their positions.
+_WIDENED_INPUT_LAYERS = (
     "self_relation_bias.weight",
     "cross_relation_bias.weight",
     "pointer_relation_bias.weight",
+    "commit_relation_bias.weight",
+    "player_embed.weight",
+    "context_embed.weight",
 )
 
 
 def _widen_relation_inputs(
     state_dict: dict[str, torch.Tensor], network: SetNetwork
 ) -> dict[str, torch.Tensor]:
-    """Zero-pad a checkpoint whose relation vector was NARROWER than today's.
+    """Zero-pad a checkpoint whose input vectors were NARROWER than today's.
 
-    The commitment layer (#384) appended two relation features. A network
-    trained before it reads them as zero weights, so its outputs on the old
-    features are bit-identical -- and those features ARE zero for any run
-    that does not configure the layer. A checkpoint that is wider than the
-    network is refused by `load_state_dict` as before.
+    The commitment layer (#384) appended two relation features and amendment
+    31 three model-token columns. A network trained before them reads them
+    as zero weights, so its outputs on the old features are bit-identical --
+    and those features ARE zero for any run that does not configure them. A
+    checkpoint that is wider than the network is refused by `load_state_dict`
+    as before.
     """
     current = network.state_dict()
     widened = dict(state_dict)
-    for key in _RELATION_INPUT_LAYERS:
+    for key in _WIDENED_INPUT_LAYERS:
         saved = state_dict.get(key)
         target = current.get(key)
         if saved is None or target is None or saved.shape == target.shape:
@@ -156,9 +164,8 @@ def _widen_relation_inputs(
         padded[:, : saved.shape[1]] = saved
         widened[key] = padded
         logger.warning(
-            "{}: relation input {} widened {} -> {} (zero-padded; the checkpoint "
-            "predates the commitment layer)",
-            key,
+            "{}: input widened {} -> {} (zero-padded; the checkpoint predates "
+            "the added features)",
             key,
             saved.shape[1],
             target.shape[1],
