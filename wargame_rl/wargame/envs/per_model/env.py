@@ -89,6 +89,7 @@ from wargame_rl.wargame.envs.per_model.commitment import (
     NO_TARGET,
     CommitmentState,
     assign_greedy,
+    assign_random,
     assign_rotated,
     retire_and_reassign,
 )
@@ -621,15 +622,23 @@ class PerModelEnv(gym.Env):
             self.config.commitments.enabled
             and not self.config.commitments.policy_writes
         ):
-            writer = {"greedy": assign_greedy, "rotated": assign_rotated}[
-                self.config.commitments.assignment
-            ]
-            writer(
-                self._commitments[True],
-                self.wargame_models,
-                self.opponent_models,
-                self.objectives,
-            )
+            if self.config.commitments.assignment == "random":
+                assign_random(
+                    self._commitments[True],
+                    self.wargame_models,
+                    self.objectives,
+                    self.np_random,
+                )
+            else:
+                writer = {"greedy": assign_greedy, "rotated": assign_rotated}[
+                    self.config.commitments.assignment
+                ]
+                writer(
+                    self._commitments[True],
+                    self.wargame_models,
+                    self.opponent_models,
+                    self.objectives,
+                )
         observation, _reward, _terminated, _truncated, info = self._advance()
         return observation, info
 

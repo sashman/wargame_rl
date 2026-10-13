@@ -527,3 +527,26 @@ def test_the_router_scores_every_spec_on_the_per_model_facade_when_the_env_write
     take = evaluate_spec("squad_march_take", config, seeds, "take")
     assert committed.success_rate == 1.0
     assert take.success_rate == 0.0
+
+
+def test_random_assignment_deals_distinct_objectives_and_varies_by_seed() -> None:
+    """Amendment 32: the random writer gives every unit an objective, distinct
+    while the objectives last, and draws a different plan on different seeds
+    and the same plan on the same seed."""
+    from scripts.scenario_overrides import load_env_config
+
+    env = PerModelEnv(
+        load_env_config("configs/experiments/curriculum/a5_points_random_pf_to.yaml")
+    )
+    plans = []
+    for seed in range(6):
+        env.reset(seed=seed)
+        state = env.player_commitments
+        groups = env.player_seat.living_units()
+        plan = tuple(state.ground_of(g) for g in groups)
+        assert all(0 <= k < len(env.objectives) for k in plan)
+        assert len(set(plan[: len(env.objectives)])) == len(env.objectives)
+        plans.append(plan)
+    assert len(set(plans)) > 1
+    env.reset(seed=0)
+    assert tuple(env.player_commitments.ground_of(g) for g in groups) == plans[0]

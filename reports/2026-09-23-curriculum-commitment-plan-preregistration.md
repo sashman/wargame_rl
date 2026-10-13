@@ -2967,3 +2967,119 @@ removes the attention step, and `plan_following` already pays the step
 along it. RB1 READS on one seed of three (the rotated board's odds on A3:
 FH3 1/3, LR1 2/3, and the half-step is harder); RB2 PASSES on the seed
 that read and stays near CC2 on the others.
+
+<a id="amendment-32"></a>
+## Amendment 32 — written 2026-10-13 22:15: round 12 read (CC2t SUPPORTED — the offset on the token makes soldiers from scratch follow a frozen planner on 3/3; RB2 SUPPORTED on 2/3), and round 13 pre-registered — planner and soldiers learned together from scratch with the offset on (JS1 / JS2), and the first step of a plan-following curriculum, soldiers paid to follow a RANDOM plan (RP1); on Sash's "the full from-scratch joint run" and Sash's curriculum proposal
+
+**0. Round 12, read** (code `a82c2d2`, n=100, seeds 700000+, greedy;
+comments on [#445](https://github.com/sashman/wargame_rl/issues/445#issuecomment-6151670842)
+and [#446](https://github.com/sashman/wargame_rl/issues/446#issuecomment-6151671198)).
+- **CC2t: PASS 1/3, AHEAD of CC2 3/3 → SUPPORTED.** Split row at 40,960 /
+  81,920 / **cap** / peak: s1 1.00 / 1.00 / **1.00** / 1.00 (`mark` 0.88),
+  s2 0.99 / 1.00 / **0.92** / 1.00 (0.83), s3 0.94 / 0.99 / **1.00** / 0.99
+  (0.93, PASS); CC2 0.31 / 0.00 / 0.00. Turns 6.97–7.39 (the bar's soldiers
+  under the same planners 6.54–6.84).
+- **RB1: READS 0/3** (rotated success at the cap 0.36 / 0.23 / 0.00, two
+  seeds still climbing; zero-shot split row 0.79 / 0.63 / 0.00). **RB2:
+  PASS 0/3, AHEAD of CC2 2/3 → SUPPORTED** (split 0.99 / 0.87 / 0.00; s3
+  never read the plan on the rotated board and parks as CC2 did).
+- ⚠ **The `mark` ≥ 0.90 clause is mis-calibrated on this board**: the
+  bar's own soldiers under PC's planners read `mark` 0.87 / 0.91 / 0.86 on
+  the plan-only row. Two of CC2t's three misses are on that clause, not on
+  success. From this amendment `mark` is a readout, not a criterion.
+- **What it settles:** soldiers trained from scratch learn to follow a
+  fixed good plan once the direction to their objective is on their own
+  token — the soldiers' half of the from-scratch failure was how the plan
+  reached them. The rotated-board start is dropped (it depends on the same
+  seed lottery).
+
+**1. One build and two configs.** The build: `commitments.assignment:
+random` (default untouched), the environment dealing the objectives to the
+units at random at deployment — shuffled, one each while they last, the
+spare sixth squad drawing uniformly — retired as under `greedy`; pinned by
+`test_random_assignment_deals_distinct_objectives_and_varies_by_seed`.
+Every other writer is byte-identical (the draw is taken only under
+`random`). The configs: `a5_points_head_pf_vp_to.yaml`:
+`a5_points_head_pf_vp.yaml` (CM15s's) plus
+`commitments.observe_target_offset: true`. JS2 uses the existing
+`a5_points_head_pf_pcm_to.yaml` (CC2t's: the planner paid
+`objective_coverage` 0.3 + `commitment_coverage` 0.3 + the 5.0 success
+bonus, the soldiers' stream identical). And
+`a5_points_random_pf_to.yaml`: RB1's rotated half-step
+(`a5_points_legible_pf.yaml` — success only when every squad is on ITS
+objective, the soldiers paid their stream and nothing else) with the
+random writer and the offset on. **The bar, measured first** (n=100, seeds
+700000+): `squad_march_committed` **0.99** in 7.57 turns, held 4.88; plain
+`squad_march_take` **0.00** (held 5.00). A 256-round smoke on the JS1
+config ran clean.
+
+**Why RP1** (Sash's curriculum, 2026-10-13): step 1, the soldiers paid only
+to follow a plan drawn at random; step 2, the planner's reward added on top.
+Under a frozen planner (CC2) or the rotated writer (RB1, FH3) the plan is a
+function of the board, and a soldier could earn by a walk that reads only
+positions — the nearest objective, which most seeds found first. Under a
+random plan no such walk agrees with the plan more than about one time in
+five, and the soldiers it makes are the ones a from-scratch planner needs:
+an untrained planner writes near-random plans. Step 2 — the planner learned
+on top of RP1's soldiers, the soldiers' pay left as it is (CM14 and CM15
+kept following under a training planner on every live seed) — is
+pre-registered once RP1 is read.
+
+**2. The arms.** Three seeds each (nine runs at once), 122,880 rounds, every weight from
+scratch (no `--warm-start-from`, no `--frozen-planner`, no `--members`),
+`--num-rollout-envs 4 --rollout-rounds 32 --ent-coef 0.003
+--eval-every-rounds 512 --checkpoint-every-rounds 512`, no anchor, Wandb
+group `curriculum-cm-joint`, code at this amendment's commit.
+
+| arm | the planner paid | config | comparator by name |
+|---|---|---|---|
+| **JS1** | VP (cap off) + the forgone-VP bonus | `a5_points_head_pf_vp_to.yaml` | CM15s same seed, cap 0.00 ×3 — one change (the offset), ⚠ unpaired (the token is wider) |
+| **RP1** | none (no planner; the plan is random) | `a5_points_random_pf_to.yaml` | the bar 0.99; RB1 same seed (rotated, no offset: 0.36 / 0.23 / 0.00) — ⚠ two changes |
+| **JS2** | coverage + plan coverage + 5.0 (PC's) | `a5_points_head_pf_pcm_to.yaml` | JS1 same seed — **paired** (same width, same seed, same init), one change (the planner's reward); CM15s as the floor |
+
+Why both: from scratch with the bar's soldiers PC's planner reward passed
+3/3 and VP alone 2/3 (amendment 29), and the record has never run PC's
+planner reward jointly from scratch; the pair says whether the planner's
+reward matters once the soldiers can follow.
+
+**3. Readouts.** n=100, seeds 700000+, greedy, at 40,960 / 81,920 /
+122,880 and the in-run peak (amendment 30's rule).
+- `just measure-plan`: the as-trained row (the verdict) and the plan-only
+  row (the run's planner with the bar's soldiers — is the planner's half
+  learned?), with turns, held, `mark`, leave, first-plan coverage and
+  re-commits before arrival.
+- The split row under PC sN's frozen planner (`pm-00122880.pt`) at the
+  cap — are the soldiers' half learned, against CC2t's 1.00 / 0.92 / 1.00?
+- `just measure-commitment-ablation` at the cap (blank plan ≤ 0.05 = the
+  soldiers follow), and arrival at a non-nearest committed objective.
+- RP1: success, held and turns on its own config; at the cap its
+  ZERO-SHOT split row under PC sN's frozen planner on
+  `a5_points_head_pf_pcm_to.yaml` (against CC2t's trained 1.00 / 0.92 /
+  1.00) and the blank-plan ablation on its own config.
+- Planning EV and planning return by quarter (the collapse: EV < 0 in the
+  last quarter). No relaunch rule; a collapse is reported, not acted on.
+
+**4. Criteria, per seed at 122,880 as trained.**
+- **JS1:** PASS = success ≥ 0.95. AHEAD of CM15s's same seed when success
+  exceeds 0.00 by two binomial SE of the arm's own read (≥ 0.05 at n=100).
+  **Does the offset make the whole system learnable from scratch on the
+  half-step?** YES if PASS on ≥ 2/3; SUPPORTED if AHEAD on ≥ 2/3 without
+  PASS; NULL otherwise.
+- **JS2:** the same letters against CM15s; and against JS1's same seed
+  AHEAD / BEHIND by two binomial SE of the difference, else LEVEL. The
+  planner's reward for the next round is JS2's if AHEAD on ≥ 2/3, JS1's
+  otherwise.
+- **RP1:** FOLLOWS = success ≥ 0.85 on its own config (the rotated
+  board's legibility mark; the bar 0.99). **Does a random plan teach
+  soldiers from scratch to follow any plan?** YES if FOLLOWS on ≥ 2/3.
+  Every seed seeds step 2 whatever it reads.
+- If either joint arm says YES, the half-step is closed from scratch and the next
+  rung (A5, eight squads and six objectives) is pre-registered then; if
+  both are NULL, the split and plan-only rows name the half that failed
+  before any further arm is proposed.
+
+**Expectation (a guess).** The soldiers learn to follow on most seeds (as
+CC2t did), and the planner, now paid by soldiers who deliver, learns as PC
+and PV did with the bar's: JS2 PASS on 2/3, JS1 PASS on 1–2/3, RP1 FOLLOWS on 3/3, and one
+planner collapse in six runs (the joint collapse has hit one seed in three
+on every warm-started joint arm).

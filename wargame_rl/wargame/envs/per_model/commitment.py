@@ -297,6 +297,32 @@ def assign_rotated(
         state.set_ground(g, target)
 
 
+def assign_random(
+    state: CommitmentState,
+    own: list[WargameModel],
+    objectives: list[WargameObjective],
+    rng: np.random.Generator,
+) -> None:
+    """A uniformly random assignment, drawn at deployment (#384, amendment 32).
+
+    The objectives are shuffled and dealt to the living units in group order,
+    one each while they last; a unit beyond the objective count draws one
+    uniformly. Unlike `rotated`, the plan is unrelated to the board, so no
+    position-only walk (the nearest objective, the greedy pick) agrees with
+    it more often than chance: soldiers paid to follow it can only earn by
+    reading it.
+    """
+    groups = [
+        g for g in state.groups if any(m.is_alive and int(m.group_id) == g for m in own)
+    ]
+    if not groups or not objectives:
+        return
+    dealt = [int(k) for k in rng.permutation(len(objectives))]
+    extra = [int(k) for k in rng.integers(0, len(objectives), size=len(groups))]
+    for i, g in enumerate(groups):
+        state.set_ground(g, dealt[i] if i < len(dealt) else extra[i])
+
+
 def retire_and_reassign(
     state: CommitmentState,
     own: list[WargameModel],
@@ -370,6 +396,7 @@ __all__ = [
     "CommitmentState",
     "UnitCommitment",
     "assign_greedy",
+    "assign_random",
     "assign_rotated",
     "greedy_assignment",
     "objective_counts_both_sides",

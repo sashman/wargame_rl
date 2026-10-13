@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CommitmentAssignment = Literal["none", "greedy", "rotated", "head"]
+CommitmentAssignment = Literal["none", "greedy", "rotated", "random", "head"]
 CommitmentExecution = Literal["keyed", "plan"]
 
 
@@ -44,6 +44,12 @@ class CommitmentConfig(BaseModel):
     legibility rung's writer (#393): a policy can only satisfy
     `all_units_on_commitment` by reading the marked-target relation.
 
+    `random`: the environment deals the objectives to the units at random
+    at deployment (shuffled, one each while they last, a spare unit drawing
+    uniformly), retired as under `greedy` (#384, amendment 32). The first
+    step of the plan-following curriculum: a plan unrelated to the board, so
+    the soldiers can earn only by following it.
+
     `head`: the POLICY writes the ground commitment (#384 Stage 1): at a
     unit's first open of each turn the open step carries one decision -- KEEP
     or an objective -- drawn by the set network's commitment head; the slot
@@ -72,6 +78,7 @@ class CommitmentConfig(BaseModel):
         description="Who writes the ground commitment: 'none', 'greedy' (the "
         "environment, at deployment, by the scripted bar's rule; sticky) or "
         "'rotated' (greedy shifted one unit along: the legibility rung) or "
+        "'random' (dealt at random at deployment: the curriculum's first step) or "
         "'head' (the policy, at each unit's first open of the turn).",
     )
     combat_set_size: int = Field(
