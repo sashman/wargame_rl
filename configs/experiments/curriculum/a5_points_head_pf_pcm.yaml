@@ -1,0 +1,74 @@
+# #384, amendment 26 (2026-09-27): `a5_points_head_pf_pc.yaml` (CM10p's config) with two
+# changes on the SOLDIERS' side, the planner's reward untouched. Arm CM14.
+# 1. The soldiers' success bonus. Paid per move while the game runs, the soldiers
+#    lost every round a success cut off, so completing the plan paid them less than
+#    stalling beside the last objective (the reward audit of 2026-09-27: +29% for
+#    never finishing). `terminal_member_success_bonus` 0.5 is their most pay per
+#    round (plan_following 0.5 at a score of 1, summed over the army); a success pays
+#    them 0.5 x sum_{m=1..R} 0.9^m for the R rounds of play it cuts off -- exactly
+#    what they forgo, no more, so abandoning a plan to finish never pays.
+# 2. The cohesion penalty, on Sash's call: `group_cohesion` 0.3 at 6" and -0.05 an
+#    inch past it (the golden config's and E1's setting); a state term, so under two
+#    streams it is the soldiers'. No rung since A1 carried it, so CM14 against CM10p
+#    cannot split the two changes.
+config_name: curriculum_a5_points_head_pf_pcm
+number_of_wargame_models: 18
+number_of_opponent_models: 0
+number_of_objectives: 5
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 6
+number_of_battle_rounds: 10
+deployment_zone: [2, 2, 10, 42]
+opponent_deployment_zone: [50, 2, 58, 42]
+models:
+  - &sq_0 { group_id: 0 }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+  - &sq_4 { group_id: 4 }
+  - *sq_4
+  - *sq_4
+  - &sq_5 { group_id: 5 }
+  - *sq_5
+  - *sq_5
+objectives:
+  - { x: 30, y: 8 }
+  - { x: 30, y: 22 }
+  - { x: 30, y: 36 }
+  - { x: 45, y: 15 }
+  - { x: 45, y: 29 }
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    terminal_member_success_bonus: 0.5
+    reward_calculators:
+      - type: plan_following
+        weight: 0.5
+        params:
+          max_move_distance: 6.0
+      - type: group_cohesion
+        weight: 0.3
+        params: { group_max_distance: 6.0, violation_penalty: -0.05 }
+      - type: objective_coverage
+        weight: 0.3
+      - type: commitment_coverage
+        weight: 0.3
+    success_criteria:
+      type: all_objectives_occupied
+      params: {}
+observe_objective_control: true
+coherency:
+  enforce_at_deployment: true
+commitments:
+  assignment: head

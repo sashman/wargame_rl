@@ -91,6 +91,9 @@ differently-seeded measurement are not.
 | `success_rate` | `lightning_base.py:331` | **0–100** | Percent of eval episodes where the current phase's `success_criteria` held on the final step. See trap Ⓐ. |
 | `mean_episode_steps` | `lightning_base.py:281` | steps | Mean eval episode length. Compare against `max_turns`; equality means episodes never terminate early. |
 | `mean_episode_decisions` | `train_per_model.py` | decisions | The per-model driver's episode length: decision steps (`open`, `act`, `target`), closing steps excluded. **Not comparable to `mean_episode_steps`** — a 25v25 round is two phase steps and ~16–23 decisions. |
+| `eval/mean_turns` | `train_per_model.py` | phase-clock turns | Mean turns-to-success over the eval episodes, an episode that never succeeds counted at the clock — the curriculum's speed readout on the in-run curve, the same quantity `just measure-rung` pairs against the script at n=100. Logged only when the eval carries a retimer (always, from the driver). |
+| `eval/stationary_share` · `eval/hold_fire_share` | `train_per_model.py`, `EvalResult` | 0–1 | **The passive fingerprint, per-model facade only.** Share of the player's movement-phase unit openings declared `stationary`, and of its shooting-phase openings declared `hold_fire`, pooled over the eval episodes, under the GREEDY policy a score reports. A `vp_margin` at the random floor with both near 1.0 is a do-nothing policy, not a bad one. `train/declaration/<phase>:<column>` is the same count for the SAMPLED rollout policy; the two disagree whenever the argmax is a corner nobody sampled. Printed as `stat` / `hold` by `measure-checkpoint`, `measure-maps` and `measure-paired`; `-` on the phase facade, which never steps a declaration. |
+| `eval/vp_margin_se` | `train_per_model.py` | vp | Standard error of the eval `vp_margin` over its episodes, so an in-run curve carries its own error bar (at `n_eval_episodes` 20 on 25v25 it is ~18 vp — most of the curve's wobble). |
 | `reward/mean_episode_reward` | `lightning_base.py:276` | reward units | Mean total (undiscounted, summed) reward per eval episode. This is the checkpoint selection metric (`checkpoint_callback.py:28`). |
 | `reward/max_episode_reward` | `lightning_base.py:286` | reward units | Best single eval episode. Gap vs. mean indicates variance across seeds/placements. |
 | `reward/min_episode_reward` | `lightning_base.py:291` | reward units | Worst single eval episode. Persistently negative alongside a healthy mean signals a failure mode not captured by `success_rate`. |
@@ -146,6 +149,41 @@ the two are equal; prefer `_epoch`.
 | `train/rollout_phase_index` | The **rollout** env's reward phase | Must track `reward_phase`. If they diverge, training and evaluation are on different reward functions |
 | `train/distinct_layouts_seen` | Distinct objective layouts seen **cumulatively across the run**, not within one rollout | Must keep climbing. Flat means training is replaying the same maps — the within-rollout count it replaced read a constant env count and hid exactly that |
 | `train/num_rollout_envs_resolved` | Rollout envs actually used | `num_rollout_envs` defaults to 0 = auto-detect, so the config never showed which path ran |
+
+### The per-model health panel (per update, `train_per_model.py`)
+
+The per-model driver logs the rows above under the same keys, plus the panel
+below — every value read off what `ppo_update` already touches, so it costs
+nothing. It exists because the first per-model runs learned nothing and the
+log could not say why: **the pipeline is a checklist, not a feeling.** The
+"healthy" column is what the whole-phase trainer reads at 1024 rounds per
+update and what `tests/test_per_model_pipeline_health.py` pins on a fixed
+rollout (thirty-six gradient steps on one batch drive the policy loss down
+monotonically and the clip fraction off zero — the optimizer path works).
+A rung of the curriculum that "passes" with a red panel is recorded as a pass
+with a defect.
+
+| Key | Meaning | Healthy |
+|---|---|---|
+| `train/rounds_per_update` | `rollout_rounds × num_rollout_envs`: the regime, stated on every row | **The number every per-model row must be read beside.** The phase facade updates every 1024 rounds; the 2026-09-07 calibration cells updated every 8–32 on ONE env and learned nothing ([report](../reports/2026-09-14-one-episode-per-update.md)). ⚠ Left to auto-detect, the env count is clamped by CPU affinity — the driver warns, and `just train-per-model-arm` refuses a flag string without `--num-rollout-envs` |
+| `train/gradient_steps_per_round` | Minibatches per update ÷ rounds per update | Constant across a run. Rising means the army shrank (fewer decisions per round), which is fine; two arms differing here are not the same regime |
+| `train/advantage_mean` · `_std` · `_abs_max` | The advantage over policy rows **before** normalisation — the scale PPO is about to divide away | `std` well above 0 (a std near 0 is a reward that never varied, and normalisation then amplifies noise); `abs_max` within ~5× `std` (one transition steering the update is a reward spike, usually a terminal bonus scaled by the remaining rounds) |
+| `train/return_mean` · `_std` | The value targets | `std` > 0; `mean` drifting with `train/vp_margin` |
+| `train/value_mean` · `_std` | What the critic predicts | Tracking the return moments once `explained_variance` is up; a `value_std` near 0 with a `return_std` well above it is a critic predicting the mean |
+| `train/ratio_p01` · `train/ratio_p99` | The importance ratio's tails over the update | Inside `1 ± eps_clip` (0.8–1.2) on the first minibatch by construction; a `p99` beyond ~1.5 by the last minibatch is a trust region that no longer binds — pair with `clip_fraction`. ⚠ **At 128 rounds per update the normal is 1.6–1.9** (clip fraction 0.16–0.24): measured on six curriculum runs, it read 1.65–1.83 on the five that passed and 1.68 on the one that failed, so it does not track failure there and is called a fault only when it moves *with* one (`CLAUDE.md` § The per-model curriculum) |
+| `train/entropy/head/<declaration\|displacement\|unit_pointer>` | Per-head entropy, raw nats, of the sampled policy | Below each head's ceiling (`ln 4 = 1.39`, `ln 97 = 4.57`, `ln n_units`) and **above zero on every head**: a declaration head at 0 with the displacement head still diffuse is a unit that has stopped opening, whatever the per-phase mean says |
+| `train/approx_kl_cumulative` · `train/approx_kl_per_1k_rounds` | The policy's total drift since the run began (carried across a resume), and its rate | The rate is what to compare between arms: a per-update `approx_kl` of 0.01 at 32 rounds per update is **thirty times** the drift per round of the same value at 1024 |
+| `eval/vp_margin_se` | The eval curve's own error bar | Read before calling a move in `eval/vp_margin` a trend |
+| `eval/stationary_share` · `eval/hold_fire_share` | The passive fingerprint of the greedy policy | Away from 1.0. Swinging 0 ↔ 1 between consecutive evals is a policy whose argmax flips on a diffuse declaration head — score it sampled as well (`just measure-per-model-eval-mode`) before reading the curve |
+
+`train/kl_ref` and `train/kl_ref_coef` appear when a per-model run carries
+the KL anchor (`--kl-ref-coef`, #332): the mean per-decision
+`KL(policy || reference)` over the selector's and the step's head's full
+masked distributions, against the run's starting weights, over the update's
+policy rows, and the coefficient the term was weighted by (adaptive under
+`--kl-ref-target`). Both read 0.0 on a run without the anchor. Under `--kl-ref-scope commitment` the drift is the commitment head's alone, averaged over the update's commitment rows (nats per commitment decision), and the members are unanchored. Read
+`kl_ref` beside `train/approx_kl_cumulative`: the first is drift from the
+start, the second the sum of per-update steps.
 
 ### Baselines and the scoreboard
 
@@ -522,14 +560,18 @@ Run at least two seeds per arm before reading a difference smaller than ~10pp.
 A per-model checkpoint plays the per-model facade, so it cannot go through
 `evaluate_selector`. `wargame_rl/wargame/scoring.py::evaluate_spec` is the one facade
 branch: a `.pt` runs through `envs/per_model/evaluate.py` in waves and everything else
-runs through the phase facade exactly as before; both produce the same `EvalResult`
+runs through the phase facade exactly as before — except on a config with a commitment
+writer (`commitments.assignment` other than `none`), where every spec, a scripted name
+included, plays the per-model facade, since the phase facade has no commitment state and a
+bar scored there would play a different game from the checkpoints beside it; both produce the same `EvalResult`
 through the same end-of-episode readouts (`envs/evaluation/`), so a `.pt` row and a
 script row sit on one table and pair per seed. The per-model facade runs **no
 decode**, so `decode_topk` is refused with a `.pt` rather than ignored.
 
 | recipe | `.pt` | why |
 |---|---|---|
-| `measure-checkpoint`, `measure-maps`, `measure-paired` | **accepted** | through `evaluate_spec`; `record` writes a phase-cadence event log |
+| `measure-checkpoint`, `measure-maps`, `measure-paired` | **accepted** | through `evaluate_spec`; `record` writes a phase-cadence event log; every row prints the passive pair `stat` / `hold` (`-` for a script or a `.ckpt`) |
+| `measure-per-model-eval-mode` | **`.pt` only** | scores a checkpoint **greedy** (the policy a score reports) and **sampled** (the policy training rolled out, on a generator seeded from the first seed) on identical seeds, paired. A greedy do-nothing fingerprint over a sampled policy that scores is the argmax of a diffuse policy, not a policy that learned nothing. Defaults to the tuning band (900000+): a diagnostic, never a score |
 | `measure-elo`, `measure-seat-parity` | **refused by name** | a rated entrant plays BOTH seats, and the per-model facade cannot take the opponent seat (a per-model opponent policy is #274) |
 | `measure-baselines`, `measure-noise-floor` | n/a | registry names only; the bar is the phase facade's |
 | every other `measure-*` | **not applicable**, refused by the phase resolver | each runs its own loop over whole-phase internals (the phase read before a step, a whole-army action vector, a monkeypatched private method) |
@@ -540,6 +582,105 @@ reproduces the phase clock exactly (`current_turn` advances once per player phas
 left). The only consumers that equate `max_turns` with "calls to `step()`" are the
 Lightning batched eval and its `steps < max_turns` fallback, neither of which the
 per-model facade uses.
+
+### The commitment readouts — `just measure-commitments`
+
+The commitment layer (#384) is read by six numbers before success moves, per
+policy, live off the per-model env over seeded episodes (`scripts/measure_commitments.py`).
+A scripted name has a row because the scripted seat writes its own assignment
+into the state, so every column has the bar as its reference.
+
+| column | is |
+|---|---|
+| `persist` | share of unit-turns whose ground commitment is unchanged from the previous turn, over units committed on both |
+| `claim` | mean claimants on a claimed objective, and the max |
+| `complete` | share of (unit, objective) ground commitments whose objective our side held at the episode's end |
+| `empty` | share of living unit-turns with no ground commitment while some objective was not ours |
+| `follow` | member follow-through: share of movement `act` steps by a member with a ground commitment that closed distance to it or ended inside it |
+| `leave` | the walk-off probe's number on the COMMITTED objective: share of movement decisions by a member inside it that ended outside it |
+| `hold` | share of committed unit-turns in HOLD mode (the unit has arrived; its plan weights are (0, 1)), and after `decl` the share of movement openings by a unit in hold mode that declared the closing declaration — the whole unit stands (#384 execution phase) |
+
+On `a5_points.yaml` the bar `squad_march_take` reads persist 0.96, claim
+1.20 / max 2, complete 1.00, empty 0.00, follow 1.00, leave 0.00 (n=3,
+seeds 700000+); `random` has no commitments (empty 1.00). A commitment head
+(Stage 1) is read on `persist` and `claim` before its success; a policy
+executing a given assignment (CM1) on `follow` and `leave`.
+
+### The plan-only readout — `just measure-plan`
+
+`just measure-plan <head_config> <n> <seed_base> <ckpt...> [members]` scores a
+checkpoint on a `head` config twice on identical seeds -- as trained, and
+PLAN-ONLY, where the network draws only the commitment decisions and the
+scripted `members` policy (default `squad_march_committed`) takes every other
+decision, re-planning before each act -- beside the scripted bar. The plan-only
+row holds execution at the bar's, so its success, turns and held read the
+plan alone; its `persist`, `claim`, `distinct` (distinct objectives claimed per
+turn over the objectives on the board; a covering plan reads 1.0) and
+`complete` columns say what the plan looks like. Four more columns since
+2026-09-24 (amendment 8 of the plan pre-registration: a plan-only row without
+them read 1.000 on a head that searched rather than planned): `first-plan`,
+the share of episodes in which the head's FIRST assignment covers every
+objective (the bar 1.00); `pre-arrival re-commit`, the share of squads
+re-committed before they first arrived (the bar 0.05); `mark`, of the moves
+of committed bodies whose commitment is NOT their squad's nearest objective at
+deployment, the share that close more on the committed objective than on the
+nearest (following the plan where the geometry disagrees with it; the bar
+0.96, a random mark 0.33); and `leave-wrong`, of the moves of bodies standing
+inside an objective they are not committed to, the share that set out from it
+(the bar 0.82–1.00). Built for #384's plan-quality
+question: on Stage 1's checkpoints the same heads read 0.03 / 0.00 / 0.00 as
+trained and 0.55 / 0.00 / 0.17 with scripted members.
+With `planner=<ckpt>` each checkpoint is an EXECUTOR: its as-trained row, then
+a SPLIT row where the planner's head commits and the checkpoint walks, with the
+planner's own plan-only row printed first as the ceiling (the frozen-planner
+rung). `distinct` prints the mean per turn and the last turn's share.
+
+### The planning stream's panel (#384 Stage 1)
+
+On a run whose commitment writer is the policy (`commitments.assignment:
+head`), the update row carries the planning stream beside the health panel:
+`train/planning/commit_rows` (commitment decisions in the update),
+`train/planning/explained_variance` (the planning value head against the
+semi-Markov returns over commitment steps), `train/planning/return_mean`,
+`train/planning/advantage_std` (before normalisation),
+`train/planning/clip_fraction` (the commitment surrogate's clipped share)
+and `train/entropy/head/commitment` (nats over KEEP + the objectives). All
+0.0 on a run without the head. Read the planning explained variance the
+way the member panel's is read: a planning critic that never fits is a
+commitment head trained on noise.
+
+### The flag ablation — `just measure-commitment-ablation`
+
+Whether a per-model policy READS its commitment, as opposed to being paid
+against it (`scripts/measure_commitment_ablation.py`, #384 R3). Each
+checkpoint is scored four times on identical seeds with the reward untouched
+(it is not computed at play) and only the observation changed: `trained`
+(the marked-target relation as the environment writes it), `blank` (the
+relation present, nothing flagged), `misdirect` (every unit's flag moved to
+the next objective, never the one the environment pays against) and
+`nearest` (every model's flag moved to its nearest objective, read off the
+relation's own offset columns). Success unchanged under `blank` means the
+members never read the flag; a drop under `misdirect` or `nearest` means
+they follow it. `nearest` is the legibility rung's confound: on a rung
+whose assignment is deliberately not the nearest, a policy that walks to
+the nearest objective scores the same under `nearest` as under `trained`.
+Stage 0 read on both A3 and the half-step: trained, blank and misdirect
+within a few hundredths of each other on every seed — the policy never
+read the pointer. Run it on every arm that adds an observation the reward
+keys on, before calling the arm a plan.
+
+### The per-head match of a per-model clone
+
+`just behaviour-clone-per-model <policy> <config>` prints, and writes to
+`<out>.clone.json`, the clone's greedy agreement with its teacher on the
+held-out fifth of the demonstration episodes: `selector` (did it name the
+same model), `declaration` / `displacement` / `unit_pointer` (did the head
+pick the teacher's column, given the teacher's model), and `joint` (both).
+Read `joint` as the fidelity; a high head match over a low selector match
+is a clone that knows what to do and not who does it. ⚠ Match is per
+decision and says nothing about joint properties — the whole-army lesson
+(98% action match, coherency 0.40 against the teacher's 0.95) applies —
+so a clone is scored on the rung's own criterion beside its teacher.
 
 ### Pairing beats sample size — `just measure-paired`
 

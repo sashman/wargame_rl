@@ -162,12 +162,43 @@ def test_a_config_of_solo_units_is_rejected_when_coherency_is_enforced() -> None
     config = load_config()
 
     # Act / Assert
+    # The count rule applies to a side that does not declare its units; a
+    # declared list is judged by its own smallest unit (the next test).
     with pytest.raises(ValueError, match="every model in its own"):
         WargameEnvConfig.model_validate(
             {
                 **config.model_dump(),
+                "models": [],
                 "max_groups": 1000,
                 "coherency": {"attrition": True},
+            }
+        )
+
+
+def test_declared_units_are_judged_by_their_own_size() -> None:
+    """An enemy unit of three declared by `group_id` under a `max_groups` of
+    eight is one unit of three, not `3 // 8` units; a declared singleton is
+    still refused."""
+    config = load_config()
+    base = {
+        **config.model_dump(),
+        "number_of_opponent_models": 3,
+        "max_groups": 8,
+        "coherency": {"enforce_at_deployment": True},
+    }
+
+    # Act / Assert: three of one group is accepted.
+    accepted = WargameEnvConfig.model_validate(
+        {**base, "opponent_models": [{"group_id": 0}] * 3}
+    )
+    assert accepted.number_of_opponent_models == 3
+
+    # Act / Assert: a declared unit of one is the vacuous case, still refused.
+    with pytest.raises(ValueError, match="declares a unit of one"):
+        WargameEnvConfig.model_validate(
+            {
+                **base,
+                "opponent_models": [{"group_id": 0}, {"group_id": 0}, {"group_id": 1}],
             }
         )
 

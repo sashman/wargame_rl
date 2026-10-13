@@ -43,6 +43,18 @@ class StepContext:
     # credited to the model that actually fired rather than shared flat across
     # the army. None when no shooting has been resolved this step.
     player_kills_by_model: np.ndarray | None = None
+    # The commitment layer (#384): each player model's unit's committed
+    # objective (-1 none), or None when no commitment layer is on. A
+    # calculator that keys on it pays progress toward / presence on THAT
+    # objective instead of its own per-step choice.
+    committed_objective: np.ndarray | None = None
+    # The commitment layer's plan weights per player model, `(M, 2)` of
+    # (approach, hold) (#384 execution phase); None unless `execution: plan`.
+    task_weights: np.ndarray | None = None
+    # The share of living units the commitment layer re-committed THIS turn
+    # before they arrived at their previous objective (#384, amendment 18);
+    # None with the layer off. Read by `commitment_churn`.
+    commitment_churn: float | None = None
     # Lazily built by `opponent_distances`; never set by the env.
     _opponent_distance_cache: DistanceCache | None = None
 

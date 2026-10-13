@@ -311,6 +311,108 @@ train-per-model env_config rounds='' *extra='':
 	@uv run train_per_model.py --env-config-path {{env_config}} \
 		{{ if rounds != "" { "--rounds " + rounds } else { "" } }} {{extra}}
 
+# One ARM of a per-model screen: N seeds of one config, detached with `setsid`
+# so a Bash-tool timeout cannot kill them (nohup dies with its session), each
+# seed's stdout/stderr under checkpoints/per_model/logs/<group>/. The recipe
+# REFUSES a `flags` string that does not name `--num-rollout-envs`: rounds per
+# update is `rollout_rounds x envs`, and left to auto-detect the env count is
+# clamped by CPU affinity, which is how the 2026-09-07 calibration sweep
+# trained every cell on ONE env (reports/2026-09-14-one-episode-per-update.md).
+# Mirrors `train-arm`: the tag lands in the run suffix, the group is shared.
+#
+# Use: just train-per-model-arm 20000 3 curriculum-e1 e1 "--num-rollout-envs 4 --rollout-rounds 16" configs/experiments/curriculum/e1.yaml
+train-per-model-arm rounds n_seeds group tag flags env_config:
+	@case " {{flags}} " in *" --num-rollout-envs "*) ;; *) \
+		echo "refused: flags must name --num-rollout-envs (the env count is never left to CPU affinity)" >&2; exit 2;; esac; \
+	mkdir -p checkpoints/per_model/logs/{{group}} && \
+	for s in $(seq 1 {{n_seeds}}); do \
+		log="checkpoints/per_model/logs/{{group}}/{{tag}}-s$s.log"; \
+		setsid nohup uv run train_per_model.py --env-config-path {{env_config}} --rounds {{rounds}} \
+			--seed "$s" --run-suffix "s${s}{{tag}}" --wandb-group "{{group}}" {{flags}} > "$log" 2>&1 < /dev/null & \
+		echo "seed $s -> pid $! log $log"; \
+	done
+
+# The WHOLE-ARMY control of a curriculum rung: N seeds of `train.py` on the same
+# config the per-model arm trains, detached with `setsid`, logged to Wandb
+# under the rung's group (#340's contract: every run of every rung is on
+# Wandb), per-seed stdout under checkpoints/curriculum_control/logs/ and the
+# checkpoints under `checkpoints/<run>/`. Pass `--no-wandb` through `flags`
+# for a smoke test only. The budget is in EPOCHS of 2048 steps; on a
+# movement-only rung a step is a round. Extra `train.py` flags pass through
+# `flags`.
+# Use: just train-curriculum-control 10 3 curriculum-a0 a0-ctl "" configs/experiments/curriculum/a0.yaml
+train-curriculum-control epochs n_seeds group tag flags env_config:
+	@mkdir -p checkpoints/curriculum_control/logs/{{group}} && \
+	for s in $(seq 1 {{n_seeds}}); do \
+		log="checkpoints/curriculum_control/logs/{{group}}/{{tag}}-s$s.log"; \
+		setsid nohup uv run train.py --env-config-path {{env_config}} --max-epochs {{epochs}} --n-eval-episodes 30 \
+			--seed "$s" --run-suffix "s${s}{{tag}}" --wandb-group "{{group}}" {{flags}} > "$log" 2>&1 < /dev/null & \
+		echo "seed $s -> pid $! log $log"; \
+	done
+
+# A per-model checkpoint scored GREEDY (the policy a score reports) and SAMPLED
+# (the policy training rolled out) on identical seeds, with the paired
+# difference. Which of the two is "the policy" decides whether a flat eval curve
+# means nothing learned or means the argmax of a diffuse policy is a corner
+# nobody sampled. The passive pair (`stat` / `hold`) is the do-nothing
+# fingerprint. Defaults to the tuning band (900000+): a diagnostic, not a score.
+# Use: just measure-per-model-eval-mode configs/golden/25v25_maps_two_mode.yaml 30 900000 checkpoints/per_model/<run>/last.pt
+measure-per-model-eval-mode env_config n_episodes='30' seed_base='900000' *checkpoints:
+	@uv run python -m scripts.measure_per_model_eval_mode {{env_config}} {{n_episodes}} "{{seed_base}}" {{checkpoints}}
+
+# Clone a scripted policy into the SET NETWORK (the per-model facade's
+# behaviour clone, #331): record the script's decisions as transitions, fit
+# the selector and the three heads by maximum likelihood, report the per-head
+# action match on held-out episodes, and save a `.pt` the resolver plays and
+# `train_per_model.py --warm-start-from` accepts. Demonstrations at house
+# fidelity (the 1200 x 60 lesson): default 300 episodes x 40 epochs.
+# Use: just behaviour-clone-per-model scripted_escort configs/experiments/curriculum/c3b.yaml
+behaviour-clone-per-model policy env_config n_episodes='300' epochs='40' out='checkpoints/per_model/clone.pt' seed='0':
+	@uv run python -m scripts.behaviour_clone_per_model {{policy}} {{env_config}} {{n_episodes}} {{epochs}} {{out}} {{seed}}
+
+# Fit ONLY the value head of a per-model clone to the teacher's discounted
+# returns (the trunk and the policy heads frozen, so the policy is
+# bit-identical): the instrument for the cold-critic question a PPO run
+# from a clone asks. Writes <out> (default <clone>-critic.pt).
+# Use: just fit-per-model-critic checkpoints/per_model/clones/escort-c3b-1200-s0.pt scripted_escort configs/experiments/curriculum/c3b.yaml
+fit-per-model-critic clone teacher env_config n_episodes='300' epochs='20' out='' seed='0':
+	@uv run python -m scripts.fit_per_model_critic {{clone}} {{teacher}} {{env_config}} {{n_episodes}} {{epochs}} {{out}} {{seed}}
+
+# Read a curriculum rung: the scripted bar first, then one row per checkpoint
+# (a `.pt` plays the per-model facade, a `.ckpt` the whole-army one), on the
+# same held-out seeds so the turn difference against the bar pairs per
+# episode. The passive pair prints on every per-model row.
+# Use: just measure-rung configs/experiments/curriculum/a0.yaml 100 700000 squad_march_take checkpoints/per_model/<run>/last.pt checkpoints/<run>/last.ckpt
+# The commitment layer's readouts (#384 B7): persistence, claimants, completion,
+# empty slots, member follow-through and the leave share on the COMMITTED
+# objective, read live off the per-model env; a scripted name has a row because
+# the scripted seat writes its own assignment into the state.
+# Use: just measure-commitments configs/experiments/curriculum/a5_points_head_rf_pc.yaml 100 700000 squad_march_take checkpoints/per_model/<run>/last.pt
+measure-commitments env_config n_episodes seed_base *specs:
+	@uv run python -m scripts.measure_commitments {{env_config}} {{n_episodes}} "{{seed_base}}" {{specs}}
+
+# The plan-only readout (#384): a head checkpoint scored as trained and with its
+# HEAD planning while a scripted policy walks (default squad_march_committed)
+measure-plan env_config n_episodes seed_base *checkpoints:
+	@uv run python -m scripts.measure_plan {{env_config}} {{n_episodes}} "{{seed_base}}" {{checkpoints}}
+
+# The flag ablation (#384 R3): score checkpoints on a layer-on config as trained,
+# with the marked-target relation BLANK, MISDIRECTED to another objective, and
+# pointed at the NEAREST objective -- reward untouched, only the observation.
+measure-commitment-ablation env_config n_episodes seed_base *checkpoints:
+	@uv run python -m scripts.measure_commitment_ablation {{env_config}} {{n_episodes}} "{{seed_base}}" {{checkpoints}}
+
+measure-rung env_config n_episodes seed_base policy *checkpoints:
+	@uv run python -m scripts.measure_rung {{env_config}} {{n_episodes}} "{{seed_base}}" {{policy}} {{checkpoints}}
+
+# The BRIDGE CHECK for a curriculum rung: one scripted policy scored through both
+# facades on identical seeds -- every shared field must agree, or the scenario is
+# not the same game under the two steps and the rung is redesigned, not trained.
+# The per-model row is the rung's bar (success rate, rounds-to-success, held).
+# Use: just measure-bridge configs/experiments/curriculum/e1.yaml 100 squad_march_take
+measure-bridge env_config n_episodes='100' policy='squad_march_take' seed_base='700000' *overrides:
+	@uv run python -m scripts.measure_bridge {{env_config}} {{n_episodes}} {{policy}} {{seed_base}} {{overrides}}
+
 train-multi *configs:
 	@trap 'kill 0' INT TERM && \
 	group="train-multi-$(date +%Y-%m-%d-%H-%M-%S)" && \

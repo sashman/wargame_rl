@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class TurnOrder(str, Enum):
@@ -41,8 +41,16 @@ class MissionConfig(BaseModel):
     )
     params: dict[str, Any] = Field(
         default_factory=dict,
-        description="Mission-specific parameters (e.g. vp_per_objective, cap_per_turn, min_round).",
+        description="Mission-specific parameters (e.g. vp_per_objective, cap_per_turn, min_round, cap_enabled).",
     )
+
+    @model_validator(mode="after")
+    def _check_cap_enabled(self) -> MissionConfig:
+        # A YAML string ("false") would read as True through `bool()`.
+        flag = self.params.get("cap_enabled", True)
+        if not isinstance(flag, bool):
+            raise ValueError(f"mission.params.cap_enabled must be a bool, got {flag!r}")
+        return self
 
     # The three numbers other layers need from a mission, as properties rather
     # than dict lookups on `params`.
@@ -67,8 +75,19 @@ class MissionConfig(BaseModel):
 
     @property
     def per_round_cap(self) -> int:
-        """Most VP one side can score in a single scoring event."""
+        """The per-round cap's value, whether or not it applies (`cap_enabled`)."""
         return int(self.params.get("cap_per_turn", 15))
+
+    @property
+    def cap_enabled(self) -> bool:
+        """Whether the per-round cap applies; off, every controlled objective pays."""
+        return bool(self.params.get("cap_enabled", True))
+
+    def per_round_max(self, n_objectives: int) -> int:
+        """Most VP one side can score in a single scoring event on a board of
+        `n_objectives`: every objective's points, capped when the cap applies."""
+        uncapped = n_objectives * self.points_per_objective
+        return min(uncapped, self.per_round_cap) if self.cap_enabled else uncapped
 
     @property
     def first_scoring_round(self) -> int:

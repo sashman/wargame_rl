@@ -84,13 +84,28 @@ class EvalResult:
     vp_margin_per_episode: tuple[float, ...] = ()
     objectives_held_per_episode: tuple[float, ...] = ()
     win_per_episode: tuple[float, ...] = ()
-    # Measured only by the per-model runner, which carries the re-timed reward
-    # and the success criterion beside the game: the episode's reward, its
-    # count of decision steps, and whether the phase's criterion held at the
-    # end. None on the phase facade, which reads those off its own env.
+    # The episode's re-timed reward and its decision count are measured only
+    # by the per-model runner (None on the phase facade, which reads reward
+    # off its own env); whether the phase's success criterion held at the end
+    # is read by BOTH runners, so a curriculum rung's success rate pairs
+    # across facades.
     episode_rewards: tuple[float, ...] | None = None
     decisions_per_episode: tuple[int, ...] | None = None
     success_per_episode: tuple[bool, ...] | None = None
+    # The passive fingerprint, per-model facade only: the share of the
+    # player's movement-phase unit openings declared `stationary`, and of its
+    # shooting-phase openings declared `hold_fire`, pooled over the episodes.
+    # A score at the random floor with both near 1.0 is a do-nothing policy,
+    # not a bad one -- read them beside `vp_margin` before anything else. None
+    # where the facade never stepped a declaration (the phase facade decides
+    # a whole phase at once) or the phase was never opened (shooting skipped).
+    stationary_share: float | None = None
+    hold_fire_share: float | None = None
+    # The phase clock's `current_turn` when each episode ended, both facades.
+    # Under `terminate_on_success` on a movement-only config this is the
+    # rounds-to-success -- the curriculum's speed readout beside the success
+    # rate. Empty for a hand-built result.
+    turns_per_episode: tuple[int, ...] = ()
 
     @property
     def vp_margin(self) -> float:
@@ -125,6 +140,11 @@ class EvalResult:
     def mean_decisions(self) -> float | None:
         """Mean decision steps per episode -- the per-model facade's unit."""
         return _mean_or_none(self.decisions_per_episode)
+
+    @property
+    def mean_turns(self) -> float | None:
+        """Mean phase-clock turns per episode, or None where not recorded."""
+        return _mean_or_none(self.turns_per_episode)
 
     @property
     def success_rate(self) -> float | None:

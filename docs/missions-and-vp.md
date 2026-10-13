@@ -16,7 +16,7 @@ mission:
 ```
 
 - **type**: Selects the VP calculator. `default` scores VP for controlled objectives at end of command phase from a given round. `none` disables VP (always 0).
-- **params**: Passed to the calculator. For `default`, the params are `vp_per_objective` (default 5), `cap_per_turn` (default 15) and `min_round` (default 2). Omit for built-in defaults. Note these are read outside the mission too: `vp_gain` divides by `cap_per_turn`, and `player_vp_min` derives its threshold from all three — so changing them rescales the reward and moves phase gates.
+- **params**: Passed to the calculator. For `default`, the params are `vp_per_objective` (default 5), `cap_per_turn` (default 15), `min_round` (default 2) and `cap_enabled` (default `true`, the rules' per-round cap; `false` pays every controlled objective, so on the curriculum's five- and six-objective boards the fourth and later objectives are worth VP — a bool, validated at load). Omit for built-in defaults. Note these are read outside the mission too: `vp_gain` divides by `cap_per_turn` (by the board's maximum with the cap off), and `player_vp_min` derives its threshold from all three — so changing them rescales the reward and moves phase gates.
 
 If you omit `mission` entirely, the default mission is used (VP per controlled objective, cap per turn, scoring from round 2).
 

@@ -244,17 +244,34 @@ def test_termination_all_player_eliminated() -> None:
     assert terminated is True
 
 
-def test_termination_all_opponent_eliminated(
+def test_termination_all_opponent_eliminated_only_under_the_switch(
     wound_env_with_opponents: WargameEnv,
 ) -> None:
-    """Episode must terminate when all opponent models are eliminated."""
+    """An opponent wipe ends the episode only under
+    `terminate_on_opponent_elimination` (#317).
+
+    Replaces `test_termination_all_opponent_eliminated`, which pinned the
+    unconditional wipe termination the rules forbid
+    (`15-missions-and-scoring.md` § Ending the battle): by default the
+    survivor plays the clock out; the switch is the training shortcut.
+    """
     wound_env_with_opponents.reset(seed=42)
     for m in wound_env_with_opponents.opponent_models:
         m.take_damage(m.stats["max_wounds"])
-
     _, _, terminated, _, _ = wound_env_with_opponents.step(
         WargameEnvAction(actions=[0, 0])
     )
+    assert terminated is False
+
+    shortcut = WargameEnv(
+        wound_env_with_opponents.config.model_copy(
+            update={"terminate_on_opponent_elimination": True}
+        )
+    )
+    shortcut.reset(seed=42)
+    for m in shortcut.opponent_models:
+        m.take_damage(m.stats["max_wounds"])
+    _, _, terminated, _, _ = shortcut.step(WargameEnvAction(actions=[0, 0]))
     assert terminated is True
 
 

@@ -79,21 +79,27 @@ class _UnitPlan:
 class ScriptedSeat:
     """Plan once per phase, replay in engine order."""
 
-    def __init__(self, policy: PhasePolicy, *, shoots: bool) -> None:
+    def __init__(
+        self, policy: PhasePolicy, *, shoots: bool, emits: bool = True
+    ) -> None:
         self.policy = policy
         self.shoots = shoots
+        # Whether the script writes its own plan into the commitment state
+        # (#384 D8). False for a seat that only EXECUTES a plan another writer
+        # (the head) owns: the plan-only readout and the plan-only trainer.
+        self.emits = emits
         self._plans: list[_UnitPlan] = []
         self._phase: BattlePhase | None = None
 
     @classmethod
-    def for_policy(cls, policy: PhasePolicy) -> ScriptedSeat:
+    def for_policy(cls, policy: PhasePolicy, *, emits: bool = True) -> ScriptedSeat:
         """A seat over `policy`, firing exactly when the policy says it does.
 
         Both policy hierarchies carry `shoots` (a baseline derives it from
         overriding `select_shooting`; an opponent policy declares it), so the
         seat reads it rather than re-deriving it.
         """
-        return cls(policy, shoots=bool(getattr(policy, "shoots", False)))
+        return cls(policy, shoots=bool(getattr(policy, "shoots", False)), emits=emits)
 
     def plan(self, phase: BattlePhase, seat: Seat, env: PerModelEnv) -> None:
         """Ask the script exactly once for this phase, against its usual mask."""
@@ -109,6 +115,8 @@ class ScriptedSeat:
             return
         if phase is BattlePhase.movement:
             self._plans = _movement_plans(plan, seat, env)
+            if self.emits:
+                _emit_ground_commitments(self.policy, seat, env)
         elif phase is BattlePhase.shooting:
             self._plans = _shooting_plans(plan, seat)
         elif phase is BattlePhase.charge:
@@ -125,6 +133,16 @@ class ScriptedSeat:
         if point.kind is StepKind.act:
             return self._choose_act(point, seat)
         raise ScriptedSeatError("a scripted seat never closes the turn")
+
+    def declaration_for(self, point: DecisionPoint, model: int, seat: Seat) -> int:
+        """The declaration this seat's plan gives `model`'s unit on `point`,
+        or the closing declaration (0, always legal) where the plan names none
+        or the phase no longer allows it -- the open decision with the unit
+        chosen by someone else (the plan-only chooser, #384)."""
+        plan = self._plan_for(int(seat.models[model].group_id))
+        if plan is not None and point.declaration_mask[model, plan.declaration]:
+            return int(plan.declaration)
+        return 0
 
     def _plan_for(self, group: int) -> _UnitPlan | None:
         for plan in self._plans:
@@ -175,6 +193,34 @@ class ScriptedSeat:
             # phase facade would have resolved nothing for it either.
             action = STAY_ACTION
         return PerModelAction.act(index, action)
+
+
+def _emit_ground_commitments(policy: PhasePolicy, seat: Seat, env: PerModelEnv) -> None:
+    """Write the script's own squad-to-objective assignment into the seat's
+    commitment state (#384, D8): the bar has a row on every commitment
+    readout, and nothing else changes -- a script does not read reward, and
+    with the layer off the tokens and the retimer ignore the state."""
+    if env.config.commitments.enabled and not env.config.commitments.policy_writes:
+        # The environment is the writer: its assignment is the plan of record
+        # and a script's own plan must not overwrite it, or the readouts on a
+        # rung whose assignment is NOT the script's (the legibility rung, #393)
+        # would read the script's plan as followed. `squad_march_committed`
+        # reads the state instead of writing it. Under `head` the policy is
+        # the writer and a script, having no head, writes its own plan: the bar.
+        return
+    squad_objectives = getattr(policy, "squad_objectives", None)
+    if squad_objectives is None or not seat.is_player:
+        # The opponent's commitments are hidden information; its script reads
+        # the env from the player's side, so its assignment is not written.
+        return
+    groups = seat.living_units()
+    if not groups:
+        return
+    targets = squad_objectives(seat.models, env, groups)
+    state = env.commitments_for(seat)
+    objectives = env.objectives
+    for group, objective in zip(groups, targets):
+        state.set_ground(group, objectives.index(objective))
 
 
 def _members(seat: Seat, group: int) -> list[int]:

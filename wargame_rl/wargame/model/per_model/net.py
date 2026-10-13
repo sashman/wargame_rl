@@ -68,6 +68,16 @@ class SetNetworkOutput:
 
 
 @dataclass(slots=True)
+class CommitmentLogits:
+    """The commitment head for one opening model per row (#384 Stage 1):
+    KEEP then one column per objective, masked; and the planning value of
+    the state as that unit's commitment step sees it."""
+
+    logits: torch.Tensor  # (B, 1 + K)
+    planning_value: torch.Tensor  # (B,)
+
+
+@dataclass(slots=True)
 class HeadLogits:
     """The three value-factor heads for one selected model per row, masked."""
 
@@ -163,6 +173,21 @@ class SetBlock(nn.Module):
         return x
 
 
+def _head(
+    in_features: int, out_features: int, hidden: int, layers: int, *, bias: bool = True
+) -> nn.Module:
+    """A policy head of `layers` linear maps (#384 CH1). One layer is the
+    shipped `nn.Linear`, returned as such so a checkpoint's state-dict keys do
+    not change; more stack GELUs between maps of the trunk's width."""
+    if layers == 1:
+        return nn.Linear(in_features, out_features, bias=bias)
+    maps: list[nn.Module] = [nn.Linear(in_features, hidden, bias=bias), nn.GELU()]
+    for _ in range(layers - 2):
+        maps += [nn.Linear(hidden, hidden, bias=bias), nn.GELU()]
+    maps.append(nn.Linear(hidden, out_features, bias=bias))
+    return nn.Sequential(*maps)
+
+
 class SetNetwork(nn.Module):
     """Encoder, selector, value and the three value-factor heads, in one module.
 
@@ -201,24 +226,44 @@ class SetNetwork(nn.Module):
         self.value_head = nn.Sequential(
             nn.Linear(2 * size, size), nn.GELU(), nn.Linear(size, 1)
         )
-        self.declaration_head = nn.Linear(2 * size, N_DECLARATIONS)
-        self.displacement_head = nn.Linear(2 * size, self.n_displacements)
-        self.no_target_head = nn.Linear(2 * size, 1)
-        self.target_query = nn.Linear(size, size, bias=cfg.bias)
-        self.target_key = nn.Linear(size, size, bias=cfg.bias)
+        depth = cfg.head_layers
+        self.declaration_head = _head(2 * size, N_DECLARATIONS, size, depth)
+        self.displacement_head = _head(2 * size, self.n_displacements, size, depth)
+        self.no_target_head = _head(2 * size, 1, size, depth)
+        self.target_query = _head(size, size, size, depth, bias=cfg.bias)
+        self.target_key = _head(size, size, size, depth, bias=cfg.bias)
+        # The commitment head and the planning value (#384 Stage 1): a pointer
+        # over the objective tokens plus KEEP, read at the opening model's
+        # latent, with its own read of the relation vector (which carries the
+        # unit's current commitment); and a second value head for the planning
+        # stream's semi-Markov return. Untouched by every step that offers no
+        # commitment decision, so a run without the head is bit-identical.
+        self.commit_keep_head = _head(2 * size, 1, size, depth)
+        self.commit_query = _head(size, size, size, depth, bias=cfg.bias)
+        self.commit_key = _head(size, size, size, depth, bias=cfg.bias)
+        self.commit_relation_bias = nn.Linear(RELATION_DIM, 1)
+        self.planning_value_head = nn.Sequential(
+            nn.Linear(2 * size, size), nn.GELU(), nn.Linear(size, 1)
+        )
 
     # ------------------------------------------------------------ factories
+
+    @staticmethod
+    def n_displacements_for(handler: ActionHandler) -> int:
+        """The displacement head's width for an action handler's slices: STAY,
+        the movement slice, and the advance slice when the scenario has one."""
+        advance = handler.advance_slice
+        n_displacements = 1 + handler.movement_slice.size
+        if advance is not None:
+            n_displacements += advance.size
+        return n_displacements
 
     @classmethod
     def from_handler(
         cls, handler: ActionHandler, config: SetNetworkConfig | None = None
     ) -> SetNetwork:
         """Size the displacement head from an action handler's slices."""
-        advance = handler.advance_slice
-        n_displacements = 1 + handler.movement_slice.size
-        if advance is not None:
-            n_displacements += advance.size
-        return cls(config, n_displacements=n_displacements)
+        return cls(config, n_displacements=cls.n_displacements_for(handler))
 
     @classmethod
     def from_env(
@@ -304,3 +349,31 @@ class SetNetwork(nn.Module):
         unit = torch.cat([self.no_target_head(head_input), scores], dim=1)
         unit = unit.masked_fill(~batch.unit_mask[rows, model_index], NEG_INF)
         return HeadLogits(declaration=declaration, displacement=displacement, unit=unit)
+
+    def commitment(
+        self, output: SetNetworkOutput, batch: TokenBatch, model_index: torch.Tensor
+    ) -> CommitmentLogits:
+        """Score the opening model's unit's commitment: KEEP, then each
+        objective token, `-inf` where the point offers no decision; and the
+        planning value at this step."""
+        rows = torch.arange(batch.batch_size, device=model_index.device)
+        latent = output.player_latents[rows, model_index]
+        head_input = torch.cat([latent, output.game_latent], dim=-1)
+        size = self.config.embedding_size
+        objective_rows = batch.objective_rows  # (B, K)
+        gather_rows = objective_rows[:, :, None].expand(-1, -1, size)
+        objective_tokens = torch.gather(output.context_embedded, 1, gather_rows)
+        query = self.commit_query(latent)[:, None, :]
+        keys = self.commit_key(objective_tokens)
+        scores = (query * keys).sum(dim=-1) / math.sqrt(size)  # (B, K)
+        relations = batch.cross_relations[
+            rows[:, None], model_index[:, None], objective_rows
+        ]
+        scores = scores + self.commit_relation_bias(relations).squeeze(-1)
+        logits = torch.cat([self.commit_keep_head(head_input), scores], dim=1)
+        legal = batch.commit_mask[rows, model_index] & torch.cat(
+            [torch.ones_like(batch.objective_pad[:, :1]), batch.objective_pad], dim=1
+        )
+        logits = logits.masked_fill(~legal, NEG_INF)
+        planning_value = self.planning_value_head(head_input).squeeze(-1)
+        return CommitmentLogits(logits=logits, planning_value=planning_value)

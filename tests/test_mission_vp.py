@@ -11,7 +11,11 @@ from wargame_rl.wargame.envs.mission.vp_calculator import (
     NoneVPCalculator,
     objective_control_from_caches,
 )
-from wargame_rl.wargame.envs.types import WargameEnvAction, WargameEnvConfig
+from wargame_rl.wargame.envs.types import (
+    MissionConfig,
+    WargameEnvAction,
+    WargameEnvConfig,
+)
 from wargame_rl.wargame.envs.types.game_timing import PlayerSide
 from wargame_rl.wargame.envs.wargame import WargameEnv
 
@@ -123,6 +127,45 @@ def test_default_vp_calculator_cap() -> None:
     # With random placement we may not control 4; use a high cap and check structure
     vp = calc.compute_vp(env, PlayerSide.player_1, 2, PlayerSide.player_1)
     assert 0 <= vp <= 15
+
+
+@pytest.mark.parametrize(("cap_enabled", "expected"), [(True, 15), (False, 20)])
+def test_the_cap_switch_decides_whether_a_fourth_objective_pays(
+    cap_enabled: bool, expected: int
+) -> None:
+    """Four controlled objectives at 5 VP each: 15 under the cap, 20 without it."""
+    env = WargameEnv(
+        config=WargameEnvConfig(
+            render_mode=None,
+            board_width=20,
+            board_height=20,
+            number_of_wargame_models=4,
+            number_of_objectives=4,
+            number_of_battle_rounds=5,
+        )
+    )
+    env.reset(seed=42)
+    for model, objective in zip(env.wargame_models, env.objectives):
+        model.location = np.array(objective.location, dtype=float)
+    calc = DefaultVPCalculator(cap_per_turn=15, cap_enabled=cap_enabled)
+    assert calc.compute_vp(env, PlayerSide.player_1, 2, PlayerSide.player_1) == expected
+
+
+@pytest.mark.parametrize(
+    ("params", "n_objectives", "expected"),
+    [({}, 5, 15), ({}, 2, 10), ({"cap_enabled": False}, 5, 25)],
+)
+def test_the_mission_reports_its_round_maximum(
+    params: dict[str, object], n_objectives: int, expected: int
+) -> None:
+    """The most one side can score in a round: capped by default, every objective's points without the cap."""
+    assert MissionConfig(params=params).per_round_max(n_objectives) == expected
+
+
+def test_a_non_bool_cap_switch_is_refused() -> None:
+    """A YAML string would read as True, so the switch must be a real bool."""
+    with pytest.raises(ValueError, match="cap_enabled"):
+        MissionConfig(params={"cap_enabled": "false"})
 
 
 def test_none_vp_calculator_returns_zero() -> None:

@@ -120,14 +120,35 @@ class TestTheAssignment:
         )
         assert len(assignment) >= 2, "both objectives should be owned by one group"
 
+    def test_one_objective_per_group_makes_the_assignment_a_matching(self) -> None:
+        """The same board with the flag on: group 0 keeps the nearer point and
+        group 1, the far corner, is given the other instead of nothing."""
+        env = _env_with_shaping(
+            player_positions=[(5, 15), (6, 15), (28, 28), (28, 27)],
+            extra_params={"one_objective_per_group": True},
+        )
+        calculator = find_calculator(env)
+        assert calculator is not None
+
+        env.reset(seed=5)
+        env.step(WargameEnvAction(actions=[STAY_ACTION] * 4))
+
+        assignment = calculator._cached_group_assignment
+        assert assignment is not None
+        assert sorted(assignment.values()) == [0, 1], assignment
+        # Group 1 sits at the top-right corner, so it is handed the upper point.
+        assert assignment[1] == 1 and assignment[0] == 0, assignment
+
 
 def _env_with_shaping(
     player_positions: list[tuple[int, int]] | None = None,
+    extra_params: dict[str, object] | None = None,
 ) -> WargameEnv:
     """A small board whose reward phase carries the calculator under test.
 
     `player_positions` pins the four models where a test needs them; without it
-    they are placed randomly in the deployment zone.
+    they are placed randomly in the deployment zone. `extra_params` are merged
+    into the calculator's params.
     """
     models = [
         ModelConfig(group_id=i // 2, weapons=[WeaponProfile(range=12)])
@@ -169,6 +190,7 @@ def _env_with_shaping(
                             params={
                                 "progress_scale": 6.0,
                                 "fallback_to_nearest": True,
+                                **(extra_params or {}),
                             },
                         ),
                         RewardCalculatorConfig(type="vp_gain", weight=1.0),

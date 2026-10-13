@@ -29,6 +29,8 @@ def _auto_register() -> None:
     for module in (
         "wargame_rl.wargame.envs.baseline.random_baseline",
         "wargame_rl.wargame.envs.baseline.hold_deployment",
+        "wargame_rl.wargame.envs.baseline.hold_and_shoot",
+        "wargame_rl.wargame.envs.baseline.scripted_escort",
         "wargame_rl.wargame.envs.baseline.scripted_greedy_nearest",
         "wargame_rl.wargame.envs.baseline.scripted_split_evenly",
         "wargame_rl.wargame.envs.baseline.scripted_squad_march",
@@ -36,6 +38,7 @@ def _auto_register() -> None:
         "wargame_rl.wargame.envs.baseline.scripted_squad_march_deny",
         "wargame_rl.wargame.envs.baseline.scripted_squad_march_take",
         "wargame_rl.wargame.envs.baseline.scripted_squad_march_take_nohome",
+        "wargame_rl.wargame.envs.baseline.scripted_squad_march_committed",
         "wargame_rl.wargame.envs.baseline.scripted_squad_march_realloc",
         "wargame_rl.wargame.envs.baseline.scripted_squad_march_advance",
         "wargame_rl.wargame.envs.baseline.scripted_squad_march_arrive",

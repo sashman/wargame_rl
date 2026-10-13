@@ -1,0 +1,47 @@
+# Curriculum rung A0 (parent question #340): THREE units of ONE model each
+# walk onto ONE objective ~25" away with nobody shooting. Movement only, no
+# terrain, no map pool, fixed objective. The plumbing rung: three independent
+# bodies with no formation to keep, so nothing but the optimiser and the
+# reward is under test. If the per-model trainer cannot learn this in minutes
+# the fault is in the plumbing, and the whole-army trainer runs the same
+# scenario as the control. A1 is these same three bodies bound into one squad.
+#
+# The bar is `squad_march_take`, measured first on seeds 700000+. Success is
+# every alive model inside the objective; `terminate_on_success` ends the
+# episode there and the terminal bonus is scaled by the rounds left, which is
+# the "as fast as possible" term. Deployment is a band on the left edge so
+# the models start 22-28" from the marker.
+config_name: curriculum_a0
+number_of_wargame_models: 3
+number_of_opponent_models: 0
+number_of_objectives: 1
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 3
+number_of_battle_rounds: 8
+deployment_zone: [4, 16, 10, 28]
+opponent_deployment_zone: [50, 16, 56, 28]
+models:
+  - { group_id: 0 }
+  - { group_id: 1 }
+  - { group_id: 2 }
+objectives:
+  - { x: 35, y: 22 }
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.0
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: all_at_objectives
+      params: {}
+observe_objective_control: true

@@ -18,7 +18,7 @@ step after the opponent's turn. Model steps return 0.0. Stage 3 re-times it.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, cast
 
 import gymnasium as gym
@@ -85,6 +85,13 @@ from wargame_rl.wargame.envs.opponent.registry import (
     _auto_register,
     build_opponent_policy,
 )
+from wargame_rl.wargame.envs.per_model.commitment import (
+    NO_TARGET,
+    CommitmentState,
+    assign_greedy,
+    assign_rotated,
+    retire_and_reassign,
+)
 from wargame_rl.wargame.envs.per_model.dice_seeded import SeededDice
 from wargame_rl.wargame.envs.per_model.observation import build_per_model_observation
 from wargame_rl.wargame.envs.per_model.phases import (
@@ -98,7 +105,9 @@ from wargame_rl.wargame.envs.per_model.phases import (
 from wargame_rl.wargame.envs.per_model.scripted import ScriptedSeat
 from wargame_rl.wargame.envs.per_model.seat import Seat
 from wargame_rl.wargame.envs.per_model.types import (
+    COMMIT_KEEP,
     FACADE_TAG,
+    NO_COMMIT_DECISION,
     DecisionPoint,
     FacadeDivergence,
     PerModelAction,
@@ -347,6 +356,24 @@ class PerModelEnv(gym.Env):
             max_ranges=self._opponent_max_ranges,
             enemy_max_ranges=self._player_max_ranges,
         )
+        # The commitment layer (#384): one state per seat, written by the env
+        # (`config.commitments.assignment`), by a scripted seat's own plan, or
+        # later by a policy head; read by the tokens, the retimer and the
+        # readouts. Empty unless something writes.
+        self._commitments: dict[bool, CommitmentState] = {
+            True: CommitmentState(
+                groups=self._player_seat.units_first_appearance(),
+                combat_set_size=config.commitments.combat_set_size,
+            ),
+            False: CommitmentState(
+                groups=self._opponent_seat.units_first_appearance(),
+                combat_set_size=config.commitments.combat_set_size,
+            ),
+        }
+        # Under `assignment: head`: the units that have taken their commitment
+        # decision this turn, and the turn (window key) the set belongs to.
+        self._committed_this_turn: set[int] = set()
+        self._commit_turn_key: tuple[int, PlayerSide] | None = None
         self._opponent_policy = None
         if config.number_of_opponent_models > 0:
             self._opponent_policy = build_opponent_policy(
@@ -413,6 +440,56 @@ class PerModelEnv(gym.Env):
             if self._player_side == PlayerSide.player_1
             else PlayerSide.player_1
         )
+
+    def commitments_for(self, seat: Seat) -> CommitmentState:
+        """The commitment state of `seat` (#384): what each of its units points at."""
+        return self._commitments[bool(seat.is_player)]
+
+    @property
+    def player_commitments(self) -> CommitmentState:
+        return self._commitments[True]
+
+    def _with_commit_mask(self, point: DecisionPoint) -> DecisionPoint:
+        """The open point with the commitment decision the head takes (#384
+        Stage 1): under `assignment: head`, every selectable model whose unit
+        has not committed this turn gets a row of KEEP + one column per
+        objective -- KEEP only where the slot already holds an objective. The
+        turn is the reward window's turn key."""
+        if (
+            not self.config.commitments.policy_writes
+            or point.kind is not StepKind.open
+            or not point.seat_is_player
+            or self._window is None
+        ):
+            return point
+        if self._commit_turn_key != self._window.turn_key:
+            self._commit_turn_key = self._window.turn_key
+            self._committed_this_turn = set()
+        n_objectives = len(self.objectives)
+        seat = self._player_seat
+        state = self._commitments[True]
+        mask = np.zeros((seat.n_models, 1 + n_objectives), dtype=bool)
+        for index in np.flatnonzero(point.selector_mask):
+            group = int(seat.models[int(index)].group_id)
+            if group not in self._committed_this_turn:
+                mask[int(index), :] = True
+                # A unit with an empty slot must name an objective: KEEP on
+                # nothing is no plan, and a member policy that follows the
+                # plan would otherwise walk a plan of its own (the plan-only
+                # rung's confound, #384). KEEP stays legal on a held slot.
+                if state.ground_of(group) == NO_TARGET:
+                    mask[int(index), 0] = False
+        if not mask.any():
+            return point
+        return replace(point, commit_mask=mask)
+
+    def _write_commitment(self, model: int, commitment: int) -> None:
+        """Apply the head's decision on the open step: KEEP leaves the slot,
+        an objective index is written; the unit is marked for the turn."""
+        group = int(self._player_seat.models[model].group_id)
+        if commitment != COMMIT_KEEP:
+            self._commitments[True].set_ground(group, int(commitment))
+        self._committed_this_turn.add(group)
 
     def set_player_planner(self, planner: ScriptedSeat | None) -> None:
         """Let a whole-phase script plan the player's phases (the bridge test).
@@ -534,7 +611,25 @@ class PerModelEnv(gym.Env):
             self.np_random,
             augment_start=bool((options or {}).get("augment_start", False)),
             layout=layout,
+            start_groups=int((options or {}).get("start_groups", 0)),
         )
+        for state in self._commitments.values():
+            state.clear()
+        self._committed_this_turn = set()
+        self._commit_turn_key = None
+        if (
+            self.config.commitments.enabled
+            and not self.config.commitments.policy_writes
+        ):
+            writer = {"greedy": assign_greedy, "rotated": assign_rotated}[
+                self.config.commitments.assignment
+            ]
+            writer(
+                self._commitments[True],
+                self.wargame_models,
+                self.opponent_models,
+                self.objectives,
+            )
         observation, _reward, _terminated, _truncated, info = self._advance()
         return observation, info
 
@@ -585,6 +680,8 @@ class PerModelEnv(gym.Env):
             return observation, reward + settled.reward, terminated, truncated, info
         program = self._program
         assert program is not None
+        if action.kind is StepKind.open and action.commitment != NO_COMMIT_DECISION:
+            self._write_commitment(action.model, action.commitment)
         if action.kind is StepKind.act:
             self._window_player_actions[action.model] = action.value
         before = program.acted_mask()
@@ -648,7 +745,7 @@ class PerModelEnv(gym.Env):
                             self._last_opponent_actions[chosen.model] = chosen.value
                         self._program.apply(point, chosen)
                         continue
-                    self._pending = point
+                    self._pending = self._with_commit_mask(point)
                     break
                 self._program.close()
                 self._program = None
@@ -1043,6 +1140,16 @@ class PerModelEnv(gym.Env):
         if window is None:
             raise RuntimeError("no reward window is open")
         self._window = None
+        if self.config.commitments.enabled:
+            retire_and_reassign(
+                self._commitments[True],
+                self.wargame_models,
+                self.opponent_models,
+                self.objectives,
+                reassign=not self.config.commitments.policy_writes,
+            )
+        for state in self._commitments.values():
+            state.record_turn()
         player_alive = alive_mask_for(self.wargame_models)
         cache = compute_distances(
             self.wargame_models,
@@ -1058,7 +1165,8 @@ class PerModelEnv(gym.Env):
         # models left does not lose immediately; both keep taking turns and the
         # survivor keeps scoring. So the opponent's wipe ends nothing here; the
         # player's does only under the config switch, which is a training
-        # device. The phase facade ends the battle on either wipe.
+        # device. The phase facade ends the battle on a wipe only under its
+        # own two switches (#317), so the facades agree by default.
         current_round, phase = self.context_clock()
         player_shots = self._player_seat.shooting_results
         opponent_shots = self._opponent_seat.shooting_results
@@ -1111,6 +1219,13 @@ class PerModelEnv(gym.Env):
             player_models_killed=p_kills,
             opponent_models_killed=o_kills,
             player_kills_by_model=p_kills_by_model,
+            committed_objective=(
+                self._commitments[True].committed_objective_per_model(
+                    self.wargame_models
+                )
+                if self.config.commitments.enabled
+                else None
+            ),
         )
         view = cast(Any, self)
         succeeded = (

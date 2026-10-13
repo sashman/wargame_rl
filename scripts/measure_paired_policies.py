@@ -34,10 +34,26 @@ import sys
 import numpy as np
 
 from scripts.scenario_overrides import describe, load_env_config, parse_overrides
+from wargame_rl.wargame.envs.evaluation import EvalResult, format_optional_metric
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.scoring import evaluate_spec
 
 HELDOUT_SEED_BASE = 700000
+
+
+def score_arm(
+    policy_name: str, env_config: WargameEnvConfig, seeds: list[int]
+) -> EvalResult:
+    """One arm scored over `seeds`, in order, through `scoring.evaluate_spec`.
+
+    Not its own loop, so this script and the baseline table cannot answer
+    the same question differently -- two implementations of "score a policy
+    over seeds" drifting apart is exactly the class of defect the pairing
+    here exists to guard against. Takes a baseline name, a `.ckpt` or a
+    per-model `.pt`, so a trained checkpoint on either facade pairs against
+    the bar on identical layouts.
+    """
+    return evaluate_spec(policy_name, env_config, seeds, policy_name)
 
 
 def episode_margins(
@@ -45,17 +61,18 @@ def episode_margins(
 ) -> np.ndarray:
     """Per-episode ``player_vp - opponent_vp``, one entry per seed, in order.
 
-    Runs through `scoring.evaluate_spec` rather than its own loop so this
-    script and the baseline table cannot answer the same question differently
-    -- two implementations of "score a policy over seeds" drifting apart is
-    exactly the class of defect the pairing here exists to guard against.
-    Takes a baseline name, a `.ckpt` or a per-model `.pt`, so a trained
-    checkpoint on either facade pairs against the bar on identical layouts.
-    The array it returns is built one entry per seed unconditionally, so it
-    stays index-aligned with `seeds` and with the other arm's.
+    The array is built one entry per seed unconditionally, so it stays
+    index-aligned with `seeds` and with the other arm's.
     """
-    result = evaluate_spec(policy_name, env_config, seeds, policy_name)
-    return np.array(result.vp_margin_per_episode)
+    return np.array(score_arm(policy_name, env_config, seeds).vp_margin_per_episode)
+
+
+def passive_pair(result: EvalResult) -> str:
+    """The per-model facade's passive fingerprint, `-` on the phase facade."""
+    return (
+        f"stat {format_optional_metric(result.stationary_share, 2)} "
+        f"hold {format_optional_metric(result.hold_fire_share, 2)}"
+    )
 
 
 def main() -> None:
@@ -77,8 +94,10 @@ def main() -> None:
 
     env_config = load_env_config(config_path, **overrides)
 
-    margins_a = episode_margins(name_a, env_config, seeds)
-    margins_b = episode_margins(name_b, env_config, seeds)
+    result_a = score_arm(name_a, env_config, seeds)
+    result_b = score_arm(name_b, env_config, seeds)
+    margins_a = np.array(result_a.vp_margin_per_episode)
+    margins_b = np.array(result_b.vp_margin_per_episode)
     delta = margins_b - margins_a
     stderr = float(delta.std(ddof=1) / np.sqrt(len(delta))) or float("inf")
     decided = int((delta != 0).sum())
@@ -87,8 +106,14 @@ def main() -> None:
         f"\n{config_path}{describe(overrides)}   {n_episodes} episodes, "
         f"seeds {seed_base}+\n"
     )
-    print(f"{label_a:<32}{margins_a.mean():>9.1f}   (sd {margins_a.std():.1f})")
-    print(f"{label_b:<32}{margins_b.mean():>9.1f}   (sd {margins_b.std():.1f})")
+    print(
+        f"{label_a:<32}{margins_a.mean():>9.1f}   (sd {margins_a.std():.1f})   "
+        f"{passive_pair(result_a)}"
+    )
+    print(
+        f"{label_b:<32}{margins_b.mean():>9.1f}   (sd {margins_b.std():.1f})   "
+        f"{passive_pair(result_b)}"
+    )
     print(f"\npaired difference       {delta.mean():>9.1f}   +/- {stderr:.1f} (1 se)")
     print(f"t = {delta.mean() / stderr:>.2f}")
     print(

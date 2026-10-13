@@ -15,6 +15,12 @@ from wargame_rl.wargame.envs.reward.calculators.closest_objective import (
 from wargame_rl.wargame.envs.reward.calculators.closest_objective_v2 import (
     ClosestObjectiveV2Calculator,
 )
+from wargame_rl.wargame.envs.reward.calculators.commitment_churn import (
+    CommitmentChurnCalculator,
+)
+from wargame_rl.wargame.envs.reward.calculators.commitment_coverage import (
+    CommitmentCoverageCalculator,
+)
 from wargame_rl.wargame.envs.reward.calculators.declared_objective_hold import (
     DeclaredObjectiveHoldCalculator,
 )
@@ -42,6 +48,12 @@ from wargame_rl.wargame.envs.reward.calculators.objective_flip_bonus import (
 from wargame_rl.wargame.envs.reward.calculators.objective_hold import (
     ObjectiveHoldCalculator,
 )
+from wargame_rl.wargame.envs.reward.calculators.objective_stay import (
+    ObjectiveStayCalculator,
+)
+from wargame_rl.wargame.envs.reward.calculators.plan_following import (
+    PlanFollowingCalculator,
+)
 from wargame_rl.wargame.envs.reward.calculators.unit_coherency import (
     UnitCoherencyCalculator,
 )
@@ -57,8 +69,12 @@ CALCULATOR_REGISTRY: dict[str, type[RewardCalculatorType]] = {
     "models_at_objectives": ModelsAtObjectivesCalculator,
     "models_lost": ModelsLostPenalty,
     "objective_coverage": ObjectiveCoverageCalculator,
+    "commitment_coverage": CommitmentCoverageCalculator,
+    "commitment_churn": CommitmentChurnCalculator,
+    "plan_following": PlanFollowingCalculator,
     "objective_flip_bonus": ObjectiveFlipBonusCalculator,
     "objective_hold": ObjectiveHoldCalculator,
+    "objective_stay": ObjectiveStayCalculator,
     "charge_progress": ChargeProgressCalculator,
     "declared_objective_hold": DeclaredObjectiveHoldCalculator,
     "declared_objective_progress": DeclaredObjectiveProgressCalculator,

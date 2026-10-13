@@ -243,14 +243,22 @@ class ResolvedChooser:
 
 
 def build_per_model_chooser(
-    spec: str, envs: Sequence[PerModelEnv], *, seed: int = 0
+    spec: str, envs: Sequence[PerModelEnv], *, seed: int = 0, greedy: bool = True
 ) -> ResolvedChooser:
     """Resolve `spec` into a batch chooser seated on every env in `envs`.
 
     Takes the envs rather than one env because a scripted seat is installed
     per env, before any reset (a script plans its command phase inside
     `reset`), and a checkpoint's head is sized from the env's action encoding.
-    `seed` drives the random seat and the fresh-weight network only.
+    `seed` drives the random seat, the fresh-weight network, and a sampled
+    checkpoint.
+
+    `greedy=False` plays a checkpoint the way training rolls it out --
+    sampled from its policy, seeded -- rather than the argmax a score
+    reports. It is a diagnostic for the gap between the two (a greedy
+    do-nothing fingerprint over a sampled policy that scores), and it is
+    refused for anything but a `.pt`: a script has one way to play, and the
+    random and fresh-weight seats are already sampled.
     """
     if not envs:
         raise ValueError("build_per_model_chooser needs at least one env")
@@ -258,6 +266,11 @@ def build_per_model_chooser(
         raise ValueError(
             f"{spec!r} is a whole-phase checkpoint; the per-model facade cannot "
             "play it (use `build_action_selector`)"
+        )
+    if not greedy and not is_per_model_checkpoint(spec):
+        raise ValueError(
+            f"greedy=False is a per-model checkpoint diagnostic; {spec!r} has "
+            "no greedy / sampled distinction to measure"
         )
     if spec == RANDOM_POLICY:
         return ResolvedChooser(random_chooser(seed), spec, "random", None)
@@ -269,7 +282,7 @@ def build_per_model_chooser(
         if not Path(spec).exists():
             raise ValueError(f"no per-model checkpoint at {spec!r}")
         return ResolvedChooser(
-            _per_model_checkpoint_chooser(spec, envs),
+            _per_model_checkpoint_chooser(spec, envs, greedy=greedy, seed=seed),
             label_for(spec),
             "checkpoint",
             spec,
@@ -286,6 +299,100 @@ def build_per_model_chooser(
     )
 
 
+def build_plan_only_chooser(
+    spec: str,
+    members: str,
+    envs: Sequence[PerModelEnv],
+    *,
+    seed: int = 0,
+    greedy: bool = True,
+) -> ResolvedChooser:
+    """The checkpoint's HEAD plans, the scripted `members` policy walks (#384).
+
+    On a config whose writer is the policy (`assignment: head`), the set
+    network at `spec` draws every commitment decision it is offered, and the
+    scripted policy named by `members` (normally `squad_march_committed`, which
+    reads the state) answers every other decision: the unit's declaration on
+    that same open step, every act, every target. The script re-plans before
+    each act so a commitment written moments earlier is the plan it executes,
+    and its own emit is off, so the state carries the head's plan and nothing
+    else. Success then reads the plan alone, with execution held at the bar's.
+    """
+    # Deferred deliberately -- see the module docstring.
+    import torch
+
+    from wargame_rl.wargame.model.per_model import SetAgent, load_checkpoint
+    from wargame_rl.wargame.model.per_model.evaluate import plan_only_chooser
+
+    if not envs:
+        raise ValueError("build_plan_only_chooser needs at least one env")
+    if not envs[0].config.commitments.policy_writes:
+        raise ValueError(
+            "the plan-only chooser needs a config whose commitment writer is the "
+            "policy (`commitments.assignment: head`); nothing else offers the "
+            "head a decision to plan with"
+        )
+    if not (is_per_model_checkpoint(spec) and Path(spec).exists()):
+        raise ValueError(f"no per-model checkpoint at {spec!r}")
+    registry = get_registry()
+    if members not in registry:
+        raise ValueError(f"'{members}' is not a baseline; known: {sorted(registry)}")
+    loaded = load_checkpoint(
+        Path(spec), expected_n_displacements=_expected_displacements(envs[0])
+    )
+    loaded.network.eval()
+    agent = SetAgent(loaded.network, greedy=greedy)
+    generator = None if greedy else torch.Generator().manual_seed(seed)
+    choose = plan_only_chooser(agent, envs, members, generator=generator)
+    return ResolvedChooser(choose, f"{label_for(spec)}+{members}", "checkpoint", spec)
+
+
+def build_split_chooser(
+    planner_spec: str,
+    executor_spec: str,
+    envs: Sequence[PerModelEnv],
+    *,
+    seed: int = 0,
+    greedy: bool = True,
+) -> ResolvedChooser:
+    """The head at `planner_spec` commits, the network at `executor_spec`
+    decides everything else (#384 FH1). The planner is always greedy; `greedy`
+    is the executor's."""
+    # Deferred deliberately -- see the module docstring.
+    import torch
+
+    from wargame_rl.wargame.model.per_model import SetAgent, load_checkpoint
+    from wargame_rl.wargame.model.per_model.evaluate import split_chooser
+
+    if not envs:
+        raise ValueError("build_split_chooser needs at least one env")
+    if not envs[0].config.commitments.policy_writes:
+        raise ValueError(
+            "the split chooser needs a config whose commitment writer is the "
+            "policy (`commitments.assignment: head`)"
+        )
+    for spec in (planner_spec, executor_spec):
+        if not (is_per_model_checkpoint(spec) and Path(spec).exists()):
+            raise ValueError(f"no per-model checkpoint at {spec!r}")
+    expected = _expected_displacements(envs[0])
+    planner = load_checkpoint(Path(planner_spec), expected_n_displacements=expected)
+    executor = load_checkpoint(Path(executor_spec), expected_n_displacements=expected)
+    planner.network.eval()
+    executor.network.eval()
+    generator = None if greedy else torch.Generator().manual_seed(seed)
+    choose = split_chooser(
+        SetAgent(planner.network, greedy=True),
+        SetAgent(executor.network, greedy=greedy),
+        generator=generator,
+    )
+    return ResolvedChooser(
+        choose,
+        f"{label_for(planner_spec)}>{label_for(executor_spec)}",
+        "checkpoint",
+        executor_spec,
+    )
+
+
 def _expected_displacements(env: PerModelEnv) -> int:
     """The displacement head's width this env's action encoding needs."""
     handler = env.player_action_handler
@@ -294,9 +401,10 @@ def _expected_displacements(env: PerModelEnv) -> int:
 
 
 def _per_model_checkpoint_chooser(
-    spec: str, envs: Sequence[PerModelEnv]
+    spec: str, envs: Sequence[PerModelEnv], *, greedy: bool, seed: int
 ) -> BatchChooser:
-    """A trained set network, greedy: the policy the checkpoint would play."""
+    """A trained set network: greedy, the policy the checkpoint would play;
+    sampled, the policy training rolled out, on a generator seeded once."""
     # Deferred deliberately -- see the module docstring.
     import torch
 
@@ -310,13 +418,17 @@ def _per_model_checkpoint_chooser(
         Path(spec), expected_n_displacements=_expected_displacements(envs[0])
     )
     loaded.network.eval()
-    agent = SetAgent(loaded.network, greedy=True)
+    agent = SetAgent(loaded.network, greedy=greedy)
+    generator = None if greedy else torch.Generator().manual_seed(seed)
 
     def choose(
         envs_: Sequence[PerModelEnv], observations: Sequence[PerModelObservation]
     ) -> list[PerModelAction]:
         with torch.no_grad():
-            return [d.action for d in agent.act_batch(envs_, observations)]
+            return [
+                d.action
+                for d in agent.act_batch(envs_, observations, generator=generator)
+            ]
 
     return choose
 
@@ -350,6 +462,8 @@ def _fresh_network_chooser(envs: Sequence[PerModelEnv], seed: int) -> BatchChoos
 __all__ = [
     "CHECKPOINT_SUFFIX",
     "PER_MODEL_CHECKPOINT_SUFFIX",
+    "build_plan_only_chooser",
+    "build_split_chooser",
     "RANDOM_POLICY",
     "SET_NETWORK_POLICY",
     "ResolvedChooser",

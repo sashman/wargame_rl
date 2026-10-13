@@ -1,0 +1,94 @@
+# Curriculum rung C3 (parent question #340): C2 with ONE of our squads armed --
+# the "guns" axis, our side, mixed. Squad 0 carries a rifle that OUTRANGES the
+# blockers (range 18, four attacks); squads 1-3 are unarmed. The three blockers
+# on the point at (35, 27) are tough (four wounds each) and lethal inside their
+# twelve inches (eight attacks each), so an unarmed squad that walks in dies
+# and the blockers have to be shot off the point first, from outside their
+# reach, by the one squad that can. The rung asks for a plan with an order to
+# it. The bar is `scripted_escort` (#330): the armed squad closes to just
+# inside its own reach and fires, the unarmed squads walk up to just outside
+# the blockers' reach and wait, and once the last blocker is dead everyone
+# marches as `squad_march_take`. Twelve rounds, because the plan takes about
+# six and the walk after it three.
+#
+# Sized on 2026-09-17 by a sweep at n=20 (seeds 700000+, per-model facade):
+# with the blockers as C2 had them (one wound, one attack) a plain
+# `squad_march_take` PASSES at 0.95-1.00 -- its armed squad shoots on the
+# march and clears the point just before the unarmed squads walk in, so
+# nothing forces a plan. At four wounds and eight attacks `take` reads 0.550
+# with 36% of its bodies dead and the blockers alive in two thirds of
+# episodes; the escort reads 1.000 with 94% alive, the blockers dead by turn
+# 11.5 of 24 and the first unarmed body on their point at 13.3, the kill
+# before the arrival in 100% of episodes. #340's letter -- "a plain
+# `squad_march_take` must FAIL this rung, or it is not testing sequencing" --
+# is what the sizing was for.
+#
+# The phase facade used to end the battle on an opponent wipe (#317); fixed
+# with this rung (`terminate_on_opponent_elimination`, default False), so both
+# facades play the clock out after the blockers die and the whole-army control
+# can be read beside the arm. Success and reward are C2's; nothing pays for a
+# kill or a body.
+#
+# The bar is measured first on seeds 700000+, both facades; `alive` and the
+# order of events (first kill before the first unarmed arrival) are readouts.
+config_name: curriculum_c3
+number_of_wargame_models: 12
+number_of_opponent_models: 3
+number_of_objectives: 4
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 4
+number_of_battle_rounds: 12
+deployment_zone: [4, 4, 10, 40]
+opponent_deployment_zone: [32, 24, 38, 30]
+models:
+  - &sq_0 { group_id: 0, weapons: [{ range: 18, attacks: 4 }] }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+objectives:
+  - { x: 35, y: 8 }
+  - { x: 35, y: 17 }
+  - { x: 35, y: 27 }
+  - { x: 35, y: 36 }
+# Movement and shooting are stepped, as on C2.
+skip_phases:
+  - command
+  - charge
+  - fight
+coherency:
+  enforce_at_deployment: true
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 6.0
+          fallback_to_nearest: true
+          overstack_penalty_per_extra: 0.0
+      - type: objective_coverage
+        weight: 0.3
+    success_criteria:
+      type: all_objectives_occupied
+      params: {}
+observe_objective_control: true
+opponent_policy:
+  type: scripted_baseline
+  params:
+    baseline: hold_and_shoot
+opponent_models:
+  - &opp_0 { group_id: 0, max_wounds: 4, weapons: [{ range: 12, attacks: 8 }] }
+  - *opp_0
+  - *opp_0

@@ -47,6 +47,9 @@ class TokenBatch:
     head: torch.Tensor  # (B,) int64 (`tokens.Head`)
     kind: torch.Tensor  # (B,) int64 (`StepKind` order)
     phase: torch.Tensor  # (B,) int64 (`BATTLE_PHASE_ORDER` index, -1 at close_turn)
+    objective_rows: torch.Tensor  # (B, K) int64
+    objective_pad: torch.Tensor  # (B, K) bool
+    commit_mask: torch.Tensor  # (B, P, 1 + K) bool
 
     @property
     def batch_size(self) -> int:
@@ -72,6 +75,7 @@ def collate(
     n_c = max(o.n_context for o in observations)
     n_u = max(o.n_units for o in observations)
     n_d = max(int(o.displacement_mask.shape[1]) for o in observations)
+    n_k = max(o.n_objectives for o in observations)
     batch = len(observations)
 
     players = np.zeros((batch, n_p, MODEL_DIM), dtype=np.float32)
@@ -92,6 +96,9 @@ def collate(
     head = np.zeros(batch, dtype=np.int64)
     kind = np.zeros(batch, dtype=np.int64)
     phase = np.full(batch, -1, dtype=np.int64)
+    objective_rows = np.zeros((batch, n_k), dtype=np.int64)
+    objective_pad = np.zeros((batch, n_k), dtype=bool)
+    commit_mask = np.zeros((batch, n_p, 1 + n_k), dtype=bool)
 
     kinds = list(type(observations[0].kind))
     for b, o in enumerate(observations):
@@ -115,6 +122,10 @@ def collate(
         head[b] = int(o.head)
         kind[b] = kinds.index(o.kind)
         phase[b] = BATTLE_PHASE_ORDER.index(o.phase) if o.phase is not None else -1
+        k = o.n_objectives
+        objective_rows[b, :k] = o.objective_rows
+        objective_pad[b, :k] = True
+        commit_mask[b, :p, : 1 + k] = o.commit_mask
 
     def tensor(array: np.ndarray) -> torch.Tensor:
         result = torch.from_numpy(array)
@@ -139,4 +150,7 @@ def collate(
         head=tensor(head),
         kind=tensor(kind),
         phase=tensor(phase),
+        objective_rows=tensor(objective_rows),
+        objective_pad=tensor(objective_pad),
+        commit_mask=tensor(commit_mask),
     )

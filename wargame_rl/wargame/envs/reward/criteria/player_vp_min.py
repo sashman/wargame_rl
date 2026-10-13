@@ -30,9 +30,7 @@ def _theoretical_max_vp(view: BattleView) -> int:
     scoring_rounds = max(
         0, config.number_of_battle_rounds - mission.first_scoring_round + 1
     )
-    max_per_round = min(
-        len(view.objectives) * mission.points_per_objective, mission.per_round_cap
-    )
+    max_per_round = mission.per_round_max(len(view.objectives))
     return scoring_rounds * max_per_round
 
 
@@ -64,6 +62,12 @@ class PlayerVPMinCriteria(SuccessCriteria):
         is not the one named `"default"` -- under the old name test any mission
         silently disabled `terminal_vp_bonus`.
         """
-        if view.config.mission.per_round_cap <= 0:
+        mission = view.config.mission
+        payable = (
+            mission.per_round_cap
+            if mission.cap_enabled
+            else mission.points_per_objective
+        )
+        if payable <= 0:
             return None
         return self._threshold(view)

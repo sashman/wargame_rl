@@ -37,6 +37,13 @@ FACADE_TAG = PER_MODEL_FACADE_TAG
 # does not depend on which phase it is: the movement phase's four values.
 N_DECLARATIONS = 4
 
+# The commitment decision an `open` action may carry (#384, Stage 1): no
+# decision on this step (the default; the writer is not the policy, or the
+# unit committed earlier this turn), KEEP (the slot as it stands), or an
+# objective index.
+NO_COMMIT_DECISION = -2
+COMMIT_KEEP = -1
+
 
 class StepKind(str, Enum):
     """What one `step()` resolves."""
@@ -60,9 +67,16 @@ class PerModelAction(BaseModel):
     kind: StepKind
     model: int = -1
     value: int = -1
+    # Only on `open`: the unit's ground commitment for this turn (#384 Stage
+    # 1). `NO_COMMIT_DECISION` when the step carries none.
+    commitment: int = NO_COMMIT_DECISION
 
     @model_validator(mode="after")
     def _shape(self) -> PerModelAction:
+        if self.commitment != NO_COMMIT_DECISION and self.kind is not StepKind.open:
+            raise ValueError("only an open step carries a commitment decision")
+        if self.commitment < NO_COMMIT_DECISION:
+            raise ValueError(f"commitment {self.commitment} names nothing")
         if self.kind is StepKind.close_turn:
             if self.model != -1 or self.value != -1:
                 raise ValueError("close_turn carries no model and no value")
@@ -76,9 +90,17 @@ class PerModelAction(BaseModel):
         return self
 
     @classmethod
-    def open(cls, model: int, declaration: int) -> PerModelAction:
-        """Open `model`'s unit with `declaration`."""
-        return cls(kind=StepKind.open, model=model, value=int(declaration))
+    def open(
+        cls, model: int, declaration: int, commitment: int = NO_COMMIT_DECISION
+    ) -> PerModelAction:
+        """Open `model`'s unit with `declaration`, and with `commitment` when
+        the point offers the decision (`COMMIT_KEEP` or an objective index)."""
+        return cls(
+            kind=StepKind.open,
+            model=model,
+            value=int(declaration),
+            commitment=int(commitment),
+        )
 
     @classmethod
     def act(cls, model: int, action: int) -> PerModelAction:
@@ -116,6 +138,16 @@ class DecisionPoint:
     acted: np.ndarray
     open_unit: int | None
     forced_model: int | None
+    # On an `open` point when the policy is the commitment writer (#384 Stage
+    # 1): `(P, 1 + K)` -- column 0 KEEP, column 1 + k objective k -- True on
+    # the rows of models whose unit has not committed this turn. None (or
+    # all False) when the step offers no commitment decision.
+    commit_mask: np.ndarray | None = None
+
+    def offers_commitment(self, model: int) -> bool:
+        """True when opening with `model` carries a commitment decision."""
+        mask = self.commit_mask
+        return mask is not None and model < mask.shape[0] and bool(mask[model].any())
 
     def why_illegal(self, action: PerModelAction) -> str | None:
         """None when `action` is legal here, else the reason."""
@@ -128,6 +160,16 @@ class DecisionPoint:
             or not self.selector_mask[action.model]
         ):
             return f"model {action.model} is not selectable"
+        if action.commitment != NO_COMMIT_DECISION:
+            if not self.offers_commitment(action.model):
+                return f"model {action.model}'s unit takes no commitment decision here"
+            assert self.commit_mask is not None
+            column = 0 if action.commitment == COMMIT_KEEP else 1 + action.commitment
+            if (
+                column >= self.commit_mask.shape[1]
+                or not self.commit_mask[action.model, column]
+            ):
+                return f"commitment {action.commitment} is not legal for model {action.model}"
         if self.kind is StepKind.open:
             mask = self.declaration_mask[action.model]
             what = "declaration"

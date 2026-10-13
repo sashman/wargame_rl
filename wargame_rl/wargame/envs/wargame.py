@@ -5,6 +5,7 @@ from typing import Any
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
+from loguru import logger
 
 from wargame_rl.wargame.envs.domain.battle_factory import (
     create_objectives as _create_objectives,
@@ -305,6 +306,17 @@ class WargameEnv(gym.Env):
         self.phase_manager = RewardPhaseManager.from_configs(
             config.reward_phases, position=phase_position
         )
+        # The forgone-pay success bonuses need the trainer's discounts, which
+        # only the per-model retimer holds, so this facade's reward leaves them
+        # out. Said, not refused: the per-model trainer builds this facade to
+        # score its scripted bar, which reads outcomes, never this reward.
+        for phase in config.reward_phases:
+            if phase.terminal_member_success_bonus or phase.terminal_forgone_vp_bonus:
+                logger.warning(
+                    f"reward phase `{phase.name}` sets a forgone-pay success bonus "
+                    "(terminal_member_success_bonus / terminal_forgone_vp_bonus); "
+                    "only the per-model facade pays it, this facade's reward does not"
+                )
 
         # Mission VP calculator (scores at end of command phase from round 2)
         self._vp_calculator = build_vp_calculator(
@@ -1863,8 +1875,13 @@ class WargameEnv(gym.Env):
         all_player_eliminated = (
             self.config.terminate_on_player_elimination and not any_player_alive
         )
-        all_opponent_eliminated = bool(self.opponent_models) and all(
-            not m.is_alive for m in self.opponent_models
+        # `15-missions-and-scoring.md` § Ending the battle: a wiped army keeps
+        # ceding objectives until the battle ends, so an opponent wipe ends
+        # nothing unless the config asks for the shortcut (#317).
+        all_opponent_eliminated = (
+            self.config.terminate_on_opponent_elimination
+            and bool(self.opponent_models)
+            and all(not m.is_alive for m in self.opponent_models)
         )
         all_eliminated = all_player_eliminated or all_opponent_eliminated
 

@@ -9,6 +9,15 @@ and rebuildable without the env that trained it.
 Periodic, not exit-hooked: SIGKILL is the prescribed way to stop a trainer
 and it triggers no handler, so `last.pt` is written every interval and is at
 most one interval stale.
+
+Two ways back in. A **resume** needs the optimizer moments, the sampling
+generator and the driver's running counters, which travel as additive keys
+(`optimizer_state`, `generator_state`, `declarations_seen`,
+`approx_kl_cumulative`) so every checkpoint written before they existed still
+loads for play; `load_training_state` refuses one of those by name. A **warm
+start** needs the weights alone -- the size-independent path the curriculum
+climbs on -- and goes through `load_checkpoint`, which refuses a displacement
+head of the wrong width.
 """
 
 from __future__ import annotations
@@ -19,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
+from loguru import logger
 
 from wargame_rl.wargame.envs.per_model.types import FACADE_TAG
 from wargame_rl.wargame.model.per_model.config import SetNetworkConfig
@@ -32,6 +42,19 @@ def periodic_checkpoint_name(rounds: int) -> str:
     return f"pm-{rounds:08d}.pt"
 
 
+@dataclass(frozen=True)
+class TrainingState:
+    """What a resume needs beyond the weights: the optimizer's moments, the
+    sampling generator mid-stream, and the driver's running counters."""
+
+    optimizer_state: dict[str, Any]
+    generator_state: torch.Tensor
+    declarations_seen: int
+    approx_kl_cumulative: float
+    # The KL anchor's adapted coefficient (#332); 0.0 when the run has none.
+    kl_ref_coef: float = 0.0
+
+
 def save_checkpoint(
     path: Path,
     network: SetNetwork,
@@ -41,23 +64,49 @@ def save_checkpoint(
     rounds: int,
     seed: int | None,
     revision: str,
+    training_state: TrainingState | None = None,
 ) -> None:
-    """Write the checkpoint atomically (`.tmp` then replace)."""
-    payload = {
+    """Write the checkpoint atomically (`.tmp` then replace).
+
+    `training_state` adds the resume keys; without it the checkpoint plays
+    and warm-starts but cannot be resumed, which `load_training_state` says.
+    """
+    payload: dict[str, Any] = {
         "facade": FACADE_TAG,
         "state_dict": {k: v.detach().cpu() for k, v in network.state_dict().items()},
         "network_config": network.config.model_dump(),
         "head_sizes": {"n_displacements": network.n_displacements},
-        "ppo_config": ppo_config.model_dump(),
+        # JSON mode: a `Credit` enum member is not a global the weights-only
+        # loader admits; the string round-trips through the model.
+        "ppo_config": ppo_config.model_dump(mode="json"),
         "env_config": env_config,
         "rounds": int(rounds),
         "seed": seed,
         "revision": revision,
     }
+    if training_state is not None:
+        payload["optimizer_state"] = _to_cpu(training_state.optimizer_state)
+        payload["generator_state"] = training_state.generator_state.clone()
+        payload["declarations_seen"] = int(training_state.declarations_seen)
+        payload["approx_kl_cumulative"] = float(training_state.approx_kl_cumulative)
+        payload["kl_ref_coef"] = float(training_state.kl_ref_coef)
     path.parent.mkdir(parents=True, exist_ok=True)
     partial = path.with_name(path.name + ".tmp")
     torch.save(payload, partial)
     os.replace(partial, path)
+
+
+def _to_cpu(value: Any) -> Any:
+    """Optimizer state, tensors moved to the CPU, containers rebuilt."""
+    if isinstance(value, torch.Tensor):
+        return value.detach().cpu()
+    if isinstance(value, dict):
+        return {key: _to_cpu(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_to_cpu(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_to_cpu(item) for item in value)
+    return value
 
 
 @dataclass(frozen=True)
@@ -70,6 +119,95 @@ class LoadedCheckpoint:
     rounds: int
     seed: int | None
     revision: str
+
+
+# Input layers whose width grew after checkpoints were written: the relation
+# vector (the commitment layer, #384) and the model / context tokens (the
+# committed objective's offset, amendment 31). Every added feature is
+# appended, so the old columns keep their positions.
+_WIDENED_INPUT_LAYERS = (
+    "self_relation_bias.weight",
+    "cross_relation_bias.weight",
+    "pointer_relation_bias.weight",
+    "commit_relation_bias.weight",
+    "player_embed.weight",
+    "context_embed.weight",
+)
+
+
+def _widen_relation_inputs(
+    state_dict: dict[str, torch.Tensor], network: SetNetwork
+) -> dict[str, torch.Tensor]:
+    """Zero-pad a checkpoint whose input vectors were NARROWER than today's.
+
+    The commitment layer (#384) appended two relation features and amendment
+    31 three model-token columns. A network trained before them reads them
+    as zero weights, so its outputs on the old features are bit-identical --
+    and those features ARE zero for any run that does not configure them. A
+    checkpoint that is wider than the network is refused by `load_state_dict`
+    as before.
+    """
+    current = network.state_dict()
+    widened = dict(state_dict)
+    for key in _WIDENED_INPUT_LAYERS:
+        saved = state_dict.get(key)
+        target = current.get(key)
+        if saved is None or target is None or saved.shape == target.shape:
+            continue
+        if (
+            saved.dim() != 2
+            or saved.shape[0] != target.shape[0]
+            or saved.shape[1] > target.shape[1]
+        ):
+            continue
+        padded = torch.zeros_like(target)
+        padded[:, : saved.shape[1]] = saved
+        widened[key] = padded
+        logger.warning(
+            "{}: input widened {} -> {} (zero-padded; the checkpoint predates "
+            "the added features)",
+            key,
+            saved.shape[1],
+            target.shape[1],
+        )
+    return widened
+
+
+# Parameters a checkpoint written before the commitment head (#384 Stage 1)
+# does not carry. They are initialised fresh, with a warning: no step that
+# offers no commitment decision reads them, so the loaded policy is the one
+# that was saved.
+_STAGE1_HEAD_PREFIXES = (
+    "commit_keep_head.",
+    "commit_query.",
+    "commit_key.",
+    "commit_relation_bias.",
+    "planning_value_head.",
+)
+
+
+def _fill_absent_heads(
+    state_dict: dict[str, torch.Tensor], network: SetNetwork
+) -> dict[str, torch.Tensor]:
+    """Add the network's fresh values for Stage 1 head parameters the
+    checkpoint lacks; any other absent key is left for `load_state_dict` to
+    refuse."""
+    current = network.state_dict()
+    filled = dict(state_dict)
+    absent = [
+        key
+        for key in current
+        if key not in state_dict and key.startswith(_STAGE1_HEAD_PREFIXES)
+    ]
+    for key in absent:
+        filled[key] = current[key].clone()
+    if absent:
+        logger.warning(
+            "{} commitment-head parameters initialised fresh (the checkpoint "
+            "predates #384 Stage 1)",
+            len(absent),
+        )
+    return filled
 
 
 def load_checkpoint(
@@ -96,7 +234,11 @@ def load_checkpoint(
         SetNetworkConfig(**payload["network_config"]),
         n_displacements=n_displacements,
     )
-    network.load_state_dict(payload["state_dict"])
+    network.load_state_dict(
+        _fill_absent_heads(
+            _widen_relation_inputs(payload["state_dict"], network), network
+        )
+    )
     return LoadedCheckpoint(
         network=network,
         ppo_config=PerModelPPOConfig(**payload["ppo_config"]),
@@ -107,10 +249,35 @@ def load_checkpoint(
     )
 
 
+def load_training_state(path: Path) -> TrainingState:
+    """The resume keys of `path`; refuses a checkpoint written without them."""
+    payload = torch.load(path, map_location="cpu", weights_only=True)
+    missing = [
+        key
+        for key in ("optimizer_state", "generator_state", "declarations_seen")
+        if key not in payload
+    ]
+    if missing:
+        raise ValueError(
+            f"{path} carries no training state ({', '.join(missing)} missing): "
+            "it was written before resume existed, or by a tool that saves "
+            "weights only. Warm-start from it instead (`--warm-start-from`)."
+        )
+    return TrainingState(
+        optimizer_state=dict(payload["optimizer_state"]),
+        generator_state=payload["generator_state"],
+        declarations_seen=int(payload["declarations_seen"]),
+        approx_kl_cumulative=float(payload.get("approx_kl_cumulative", 0.0)),
+        kl_ref_coef=float(payload.get("kl_ref_coef", 0.0)),
+    )
+
+
 __all__ = [
     "LAST_CHECKPOINT",
     "LoadedCheckpoint",
+    "TrainingState",
     "load_checkpoint",
+    "load_training_state",
     "periodic_checkpoint_name",
     "save_checkpoint",
 ]

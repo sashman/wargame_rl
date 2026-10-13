@@ -85,10 +85,11 @@ sizes; one instance plays 6/2 and 10/5 with no reload).
   on opening steps: the skip declarations gate a whole unit through one logit,
   so their share is the first thing to read at the do-nothing fingerprint.
 - **Default trunk 4 layers × 128 × 8 heads (~1.15M params)**, `SetNetworkConfig`,
+- `SetNetworkConfig.head_layers` (`--head-layers`, default 1): the policy heads' depth. 1 is the shipped linear readout of the trunk's embedding (state-dict keys unchanged, every checkpoint on file loads); `k` stacks `k` maps of the trunk's width with GELUs on every policy head, the pointer query/key projections included. The value heads keep two layers; the trunk is untouched. Built for #384's CH1 arm (are the readouts too shallow?).
   `None` = the default exactly as `TransformerConfig` does. Fixtures use
   `SetNetworkConfig(embedding_size=32, n_layers=2, n_heads=4)`; unlike the
   transformer, **`n_heads` IS recoverable** from this family's state dict (the
-  relation bias is `Linear(16, n_heads)`), which is why its fixture may shrink
+  relation bias is `Linear(18, n_heads); the commitment head and planning value (#384 Stage 1: `SetNetwork.commitment` — `commit_keep_head`, `commit_query`/`commit_key` over the objective tokens, `commit_relation_bias`, `planning_value_head`; scored at the opening model's latent, masked by `TokenBatch.commit_mask`; absent from older checkpoints and initialised fresh by `load_checkpoint`)` — 16 before the commitment layer (#384) added `REL_COMMITTED` / `REL_COMMIT_PRESENT`; `load_checkpoint` zero-pads the older width), which is why its fixture may shrink
   the head count. Its checkpoints (`checkpoint.py`) are plain tensors plus
   config dicts, loadable with `weights_only=True`, so **nothing pickles this
   package's path** and it may move — unlike the Lightning route.
@@ -145,11 +146,42 @@ to `<run>/metrics.jsonl`.
 - ⚠ **`gamma` 0.9, `gae_lambda` 0.95 and the 16-round budget are carried over
   from the phase facade, where they were measured at two steps per round.**
   The `gamma` comment in `model/ppo/config.py` says verbatim to retest when the
-  reward's time structure changes. They are #288's to calibrate
-  (`--gamma --gae-lambda --rollout-rounds`) before any race number is quoted.
+  reward's time structure changes. They are the curriculum's to calibrate
+  (`--gamma --gae-lambda --rollout-rounds`) before any number is quoted.
+- ⚠ **The regime is `rollout_rounds × num_rollout_envs` rounds per update,
+  logged on every row as `train/rounds_per_update`, and the env count is
+  never left to CPU affinity.** Auto-detection clamps to
+  `os.sched_getaffinity`, so a pinned launch trains on one env; the first
+  per-model runs all did, updating every 8–32 rounds against the phase
+  facade's 1024, and are void for it
+  ([report](../../../reports/2026-09-14-one-episode-per-update.md)). The
+  driver warns when the clamp bites and `just train-per-model-arm` refuses a
+  flag string without `--num-rollout-envs`.
+- **The health panel** (`UpdateStats`, `docs/metrics.md` § The per-model
+  health panel): advantage mean / std / abs-max BEFORE normalisation, return
+  and value moments, the ratio's 1st / 99th percentile, per-head entropy
+  (`RolloutEntropy.by_head` beside `by_phase`), cumulative `approx_kl` and
+  its rate per 1k rounds, the eval SE and the passive fingerprint
+  (`eval/stationary_share` / `eval/hold_fire_share`, the GREEDY policy's).
+  `tests/test_per_model_pipeline_health.py` gives the keys their meaning:
+  thirty-six gradient steps on one fixed rollout drive the policy loss down
+  monotonically and the clip fraction off zero.
 - **Refused:** curriculum configs (more than one reward phase — `try_advance`
-  counts epochs and there is no epoch here yet). **Deferred:** warm start and
-  resume.
+  counts epochs and there is no epoch here yet).
+- **Resume and warm start.** `--resume-from <run_dir | *.pt>` continues a run
+  IN PLACE: the checkpoint's additive keys (`optimizer_state`,
+  `generator_state`, `declarations_seen`, `approx_kl_cumulative`;
+  `load_training_state` refuses a checkpoint without them) restore the
+  optimizer and the sampling generator, `metrics.jsonl` is appended, the
+  bar row is not re-logged, `provenance.json` gains a `resumed_from` entry,
+  and every PPO knob, the trunk, the seed and the scenario are refused by
+  name if they differ — a resumed run is one run. The rollout envs restart
+  at fresh episodes (their mid-episode state is not checkpointed), seeded
+  past the rounds already trained. `--warm-start-from <*.pt>` takes the
+  weights alone into a NEW run with a fresh optimizer on any scenario whose
+  displacement head matches (`SetNetwork.n_displacements_for`; a mismatch is
+  refused by name) — the size-independent path the curriculum climbs on;
+  provenance records `warm_started_from`.
 - **Evaluation is batched in waves** (`--eval-wave-size`, default
   `EVAL_WAVE_SIZE` from `envs/evaluation/`): `model/per_model/evaluate.py` is a
   thin client of `envs/per_model/evaluate.py::evaluate_per_model_chooser` —
@@ -160,8 +192,12 @@ to `<run>/metrics.jsonl`.
   the env's tracker on the phase facade's grid; unmeasured columns are omitted.
   A checkpoint is scored offline with `just measure-checkpoint <run>/last.pt
   ...`, `measure-maps` and `measure-paired` (#287, through
-  `wargame_rl/wargame/scoring.py`); the rating arena refuses a `.pt` until a
-  per-model opponent policy exists (#274).
+  `wargame_rl/wargame/scoring.py`), each printing the passive pair `stat` /
+  `hold`; `just measure-per-model-eval-mode` scores a `.pt` **greedy and
+  sampled** on identical seeds (`build_per_model_chooser(..., greedy=False)`
+  on a seeded generator — the regime training rolls out in — refused for
+  anything but a `.pt` and on the phase side of `evaluate_spec`); the rating
+  arena refuses a `.pt` until a per-model opponent policy exists (#274).
 - **Checkpoints** are periodic, not exit-hooked: `pm-<rounds>.pt` and `last.pt`
   every `--checkpoint-every-rounds` (SIGKILL is the prescribed stop and triggers
   no handler, so `last.pt` is at most one interval stale). `load_checkpoint`
@@ -170,6 +206,18 @@ to `<run>/metrics.jsonl`.
   which periodic checkpoint scored best. The run directory also holds
   `env_config.yaml` (verbatim) and `provenance.json` (revision `+dirty`,
   device, threads, seed bands, both configs).
+- **Recordings are part of training** (Sash, 2026-09-19): every
+  `--record-every-rounds` (default: the checkpoint cadence; 0 disables) the
+  driver plays ONE greedy episode on `--record-seed` (default: the in-run eval
+  band's first, 500000) with event recording on and writes it to
+  `<run_dir>/recordings/pm-<rounds>-seed<seed>.json` at decision cadence —
+  `just replay-render <file>` draws it, `just replay-summary` narrates it. The
+  network is put back in training mode afterwards, so the update that follows
+  is unchanged; provenance carries both values. Recorded greedy because that
+  is the policy a score reports; the sampled policy is read beside it by
+  `just measure-per-model-eval-mode`.
+- **Every training run logs videos to Wandb again** (`--video-every-rounds`, default every twentieth recording — 10,240 rounds at the 512 cadence, the whole-army trainer's one-in-twenty-epochs; 0 disables; `--video-fps`, `--video-theme`): the recording is rendered to an MP4 beside its event log by `replay_events.py render` in a background subprocess (pygame's SDL stays out of the trainer, as the whole-army `RecordEpisodeCallback` did) and logged under the whole-army key `episode_recording` on the next checkpoint's row; the last render is waited for at the end of training. The subprocess imports the repo from disk, so the standing rule against editing code under a live run covers it.
+- **`--backward-start k`** (#340, the backward start curriculum): rollout episodes begin with k squads already standing on k distinct objectives (`--backward-start-share` of them; the rest from deployment) and the level steps down by one once the level's own episodes succeed at `--backward-start-advance` over `--backward-start-window` rollouts (`BackwardStart`; rows `curriculum/start_groups`, `curriculum/level_success`; provenance `backward_start*`). `EpisodeOutcome` carries `success` and `start_groups` for it. Evaluation is untouched: it always starts from deployment, so a pass is a pass on the rung.
 - **Shared with `train.py`, imported from neither:** the Typer-default
   unwrappers and the config loader live in `model/common/cli.py`, and the
   seed bands and the scripted bar in `model/common/eval_constants.py` (a module
@@ -181,6 +229,97 @@ to `<run>/metrics.jsonl`.
   layouts, unlike the shipped loop's fixed base); in-run eval on `500000+`,
   the scripted bar on `10000+` through the whole-phase facade exactly as
   `on_train_start` measures it.
+
+### The KL anchor (`--kl-ref-coef` / `--kl-ref-target`, #332)
+
+`PerModelPPOConfig.kl_ref_coef` weights the mean per-decision
+`KL(policy || reference)` — the selector's and the step's head's full masked
+distributions (`drift_to_reference`) — against a frozen copy of the run's
+**starting** weights, the warm-start checkpoint or the fresh init, added to
+the loss in `ppo_update`. ⚠ A taken-action estimator was tried first and
+rejected: heavy-tailed on the actions the policy stops liking, it read 11.7
+nats on an update that started at the reference and escalated the
+coefficient without binding.
+`kl_ref_target` (nats per decision) makes the coefficient adaptive by the
+phase facade's rule (`adapt_kl_coef`: halve under target / 1.5, double over
+1.5 × target, clamped to `[1e-4, 1e4]`). 0.0 builds no reference and adds no
+term — bit-identical off, pinned by `tests/test_per_model_kl_anchor.py`. On
+a resume the reference is reloaded from the run's `warm_started_from`
+checkpoint, never from the resumed weights (a drift that ratchets forward
+with every resume is the phase facade's silent-anchor defect), and the
+adapted coefficient is carried in the training state. Logged as
+`train/kl_ref` and `train/kl_ref_coef`.
+
+`--kl-ref-scope` (#384, amendment 23) picks what the anchor holds:
+`members` (the default: the selector and the members' heads, the estimator
+above) or `commitment` (the planner's head alone: the commitment head's
+masked distribution against the reference's over the rows that carry a
+commitment decision, averaged over those rows, the members left free).
+Built because every warm-started half-step run's planner drifted in its
+last third (planning EV to about zero) while its members held (EV above
+0.9): the drift to hold was the plan's, not the walk's.
+
+`--kl-ref-coef-max` (#384, amendment 25) caps the adaptive coefficient
+(default 1e4, the controller's own bound, so nothing changes unless it is
+set). Under `--kl-ref-scope commitment` the members' unanchored updates move
+the shared encoder under the commitment head, so the drift can sit just above
+the band however large the coefficient grows; the rule then doubles it without
+bound (~2,700 on one half-step seed, which wrecked the run). Set a ceiling
+(20) or fix the coefficient (`--kl-ref-target 0`) on every anchored arm.
+
+
+### Who a payment reaches (`--credit`, #340)
+
+`PerModelPPOConfig.credit` (`reward_timing.Credit`, default `mean`) is a knob
+of the run, refused on a resume that disagrees. `mean` is the bridge
+accounting: action terms over the alive count, state terms as the army mean at
+the close, so a turn's sum is the phase facade's scalar. `actor` pays every
+payment over the model count, a constant: the actor's action term stays where
+the mean put it, the close's state terms come back per model as
+`StepPayment.credits`, and the common payments shrink by the army size;
+`collect_rollout` keeps, per env, the transition each model last acted on
+this turn (`acted_at`, from `StepEffect.actor_set`) and adds the credit there
+(`_land_credits`), or on the close when the model took no step. Nothing else
+in the loop changes. ⚠ **The update normalises advantages but not value
+targets**, which is why the actor stream is over a constant and not undivided:
+the unscaled first cut had returns 13× the mean's and a pre-clip gradient
+norm 5× larger, clipped on every step, so the value loss took most of each
+update (A5c's first launch, kept as that confound's control).
+Built after the A3 speed screen's hold-term null and A5b's under-arrival; A5c
+is its first arm. `tests/test_per_model_actor_credit.py`.
+
+### Behaviour cloning into the set network (`model/per_model/clone.py`, #331)
+
+`record_demonstrations(env, chooser, n)` plays a per-model chooser (a
+scripted baseline, `random`, or a `.pt`) on the player seat for `n` episodes
+at seeds `CLONE_SEED_BASE + episode` (800000+) and records every decision
+step as the `Transition` the PPO update reads, with the teacher's model and
+the head column that names its action. `action_to_column` is the **inverse
+of `SetAgent._decode`** — declaration index for `open`, unit-pointer column
+(0 = decline / hold fire, else 1 + the column of the enemy group in
+`opponent_unit_groups`) for `target` and shooting `act`, displacement column
+(0 = STAY, `1..n_move` the movement slice, then the advance slice) otherwise —
+and the recorder decodes every pair back and compares, so a map that drifts
+from the decoder fails on the first step rather than teaching the wrong
+column. Closing steps are not recorded.
+
+`fit_clone` minimises the mean joint negative log-prob from
+`evaluate_transitions` over shuffled minibatches (Adam, grad-norm 1.0);
+`match_report` gives the greedy agreement on held-out transitions —
+`selector` (the model), each head's column given the teacher's model, and
+`joint`. `save_clone` writes a per-model checkpoint at zero rounds (the
+resolver plays it, `--warm-start-from` accepts it) and a `.clone.json`
+beside it with the teacher, the fidelity and the held-out match. ⚠ **`fit_clone`
+fits no critic** — a clone's value head is at initialisation, and the
+whole-army record says PPO with a cold critic destroys a clone (D2 reproduced
+it in two thousand rounds). `fit_critic` is the separate instrument: the
+recorder keeps every closing step with its re-timed reward, `value_targets`
+turns them into discounted returns (`compute_gae` at `gae_lambda` 1.0 over
+the episodes), and `fit_critic` trains **only** `value_head` by MSE so the
+policy is bit-identical before and after; `scripts/fit_per_model_critic.py`
+/ `just fit-per-model-critic` drive it and refuse to save if anything but
+the value head moved. `scripts/behaviour_clone_per_model.py` /
+`just behaviour-clone-per-model` drive it.
 
 ## PPO (`model/ppo/`)
 

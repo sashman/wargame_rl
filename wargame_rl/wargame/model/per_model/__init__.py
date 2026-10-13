@@ -12,7 +12,9 @@ from wargame_rl.wargame.model.per_model.agent import NO_DRAW, SetAgent, StepDeci
 from wargame_rl.wargame.model.per_model.batch import TokenBatch, collate
 from wargame_rl.wargame.model.per_model.checkpoint import (
     LoadedCheckpoint,
+    TrainingState,
     load_checkpoint,
+    load_training_state,
     save_checkpoint,
 )
 from wargame_rl.wargame.model.per_model.config import SetNetworkConfig
@@ -45,6 +47,7 @@ __all__ = [
     "SetNetworkOutput",
     "StepDecision",
     "TokenBatch",
+    "TrainingState",
     "Transition",
     "collate",
     "collect_rollout",
@@ -52,6 +55,7 @@ __all__ = [
     "evaluate_per_model",
     "evaluate_transitions",
     "load_checkpoint",
+    "load_training_state",
     "ppo_update",
     "save_checkpoint",
 ]

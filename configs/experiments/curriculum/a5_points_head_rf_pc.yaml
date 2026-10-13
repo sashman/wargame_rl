@@ -1,0 +1,84 @@
+# #384, amendment 15 (2026-09-26): the HALF-STEP under the commitment head with
+# the reward that closed A3's join -- `a5_points_cm.yaml`'s scenario (six squads
+# of three over five objectives, ten rounds) with `a3_head_rf_pc.yaml`'s reward
+# block (the floored two-stream member terms, `commitment_coverage` 0.3 on the
+# planner's stream) and the policy writing the commitments (`assignment: head`).
+# Arms CM8 (from scratch) and CM8w (warm-started from CM7). Below, the base
+# config's header as written:
+# #384 Stage 0 (CM1 lever): `a5_points.yaml` with the commitment layer's GREEDY writer --
+# the environment assigns every squad an objective at deployment by the scripted
+# bar's own rule and holds it (sticky; re-solved only when the objective is held
+# by us WITHOUT this unit, or the unit dies); the travel and staying terms are
+# keyed to the committed objective; each member's token flags it. The ONE change
+# from `a5_points.yaml`. Read against `a5_points.yaml`'s own runs at matched rounds.
+# Curriculum half-step A5-points (parent question #340): six squads of three
+# -- eighteen bodies, A5's deployment band, ten rounds -- over FIVE points,
+# A5's near column of three and a far column of two. Points raised from A4's
+# three to five with the army raised less than A5's: the points axis with
+# the bodies axis held back. Everything else is `a5.yaml`.
+config_name: curriculum_a5_points_head_rf_pc
+number_of_wargame_models: 18
+number_of_opponent_models: 0
+number_of_objectives: 5
+objective_radius_size: 4
+board_width: 60
+board_height: 44
+max_groups: 6
+number_of_battle_rounds: 10
+deployment_zone: [2, 2, 10, 42]
+opponent_deployment_zone: [50, 2, 58, 42]
+models:
+  - &sq_0 { group_id: 0 }
+  - *sq_0
+  - *sq_0
+  - &sq_1 { group_id: 1 }
+  - *sq_1
+  - *sq_1
+  - &sq_2 { group_id: 2 }
+  - *sq_2
+  - *sq_2
+  - &sq_3 { group_id: 3 }
+  - *sq_3
+  - *sq_3
+  - &sq_4 { group_id: 4 }
+  - *sq_4
+  - *sq_4
+  - &sq_5 { group_id: 5 }
+  - *sq_5
+  - *sq_5
+objectives:
+  - { x: 30, y: 8 }
+  - { x: 30, y: 22 }
+  - { x: 30, y: 36 }
+  - { x: 45, y: 15 }
+  - { x: 45, y: 29 }
+reward_phases:
+  - name: arrive
+    terminate_on_success: true
+    terminal_success_bonus: 5.0
+    reward_calculators:
+      - type: closest_objective_v2
+        weight: 1.0
+        params:
+          progress_scale: 2.0
+          normalize_to_commit_distance: true
+          normalize_min_distance: 12.0
+          fallback_to_nearest: false
+          overstack_penalty_per_extra: 0.0
+      - type: objective_stay
+        weight: 0.5
+        params:
+          crowding_exponent: 0.0
+          cap_per_commitment: 2.0
+      - type: objective_coverage
+        weight: 0.3
+      - type: commitment_coverage
+        weight: 0.3
+    success_criteria:
+      type: all_objectives_occupied
+      params: {}
+observe_objective_control: true
+coherency:
+  enforce_at_deployment: true
+commitments:
+  assignment: head

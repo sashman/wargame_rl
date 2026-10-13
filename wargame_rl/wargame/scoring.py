@@ -26,6 +26,7 @@ from wargame_rl.wargame.envs.per_model.evaluate import evaluate_per_model_choose
 from wargame_rl.wargame.envs.per_model.recording import (
     record_episode as record_per_model_episode,
 )
+from wargame_rl.wargame.envs.per_model.reward_timing import PerStepReward
 from wargame_rl.wargame.envs.state.provenance import Cadence
 from wargame_rl.wargame.envs.types import WargameEnvConfig
 from wargame_rl.wargame.selectors import (
@@ -53,14 +54,25 @@ def evaluate_spec(
     decode_stay: bool = False,
     combat_seeds: Sequence[int] | None = None,
     wave_size: int = EVAL_WAVE_SIZE,
+    greedy: bool = True,
 ) -> EvalResult:
     """Score `spec` on `env_config` over `seeds`, on the facade that owns it.
 
     `decode_topk` and `decode_stay` are the phase facade's play-time decodes;
     the per-model facade runs no decode, so they are refused with a `.pt`
     rather than silently ignored -- a row that says "K=3" must have run one.
+    `greedy=False` is the per-model facade's: it samples the checkpoint's
+    policy on a generator seeded from the first seed, the regime training
+    rolls out in, and is refused on the phase side by name.
+
+    A config with a commitment WRITER (`commitments.assignment` other than
+    `none`) is owned by the per-model facade whatever the spec: the phase
+    facade has no commitment state, so a scripted name scored there would
+    play a different game from the checkpoints read beside it (on the
+    legibility rung its success is undefined). Every spec on such a config
+    plays the per-model facade; a name becomes a scripted seat there.
     """
-    if is_per_model_checkpoint(spec):
+    if is_per_model_checkpoint(spec) or env_config.commitments.enabled:
         if decode_topk != 1 or decode_stay:
             raise ValueError(
                 f"{spec!r} plays the per-model facade, which runs no joint "
@@ -75,9 +87,24 @@ def evaluate_spec(
         envs = [
             PerModelEnv(env_config) for _ in range(max(1, min(wave_size, len(seeds))))
         ]
-        chooser = build_per_model_chooser(spec, envs)
+        chooser = build_per_model_chooser(
+            spec, envs, seed=int(seeds[0]) if seeds else 0, greedy=greedy
+        )
+        # One retimer per env, so the row carries the phase's success criterion
+        # and the re-timed episode reward -- a curriculum rung is decided on
+        # the success rate, and without these it reads `-`.
         return evaluate_per_model_chooser(
-            chooser.choose, envs, seeds, name, combat_seeds=combat_seeds
+            chooser.choose,
+            envs,
+            seeds,
+            name,
+            combat_seeds=combat_seeds,
+            retimers=[PerStepReward(env) for env in envs],
+        )
+    if not greedy:
+        raise ValueError(
+            f"{spec!r} plays the phase facade, whose selector is the decoded "
+            "argmax; sampled play is a per-model checkpoint diagnostic"
         )
     env = _phase_env(env_config)
     try:

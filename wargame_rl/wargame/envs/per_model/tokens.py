@@ -59,6 +59,7 @@ from wargame_rl.wargame.envs.types.terrain_observation import TERRAIN_VERTEX_BUD
 if TYPE_CHECKING:
     from wargame_rl.wargame.envs.domain.kernel.entities import WargameModel
     from wargame_rl.wargame.envs.domain.kernel.rules_quantities import RulesQuantities
+    from wargame_rl.wargame.envs.per_model.commitment import CommitmentState
     from wargame_rl.wargame.envs.per_model.env import PerModelEnv
     from wargame_rl.wargame.envs.per_model.seat import Seat
 
@@ -86,10 +87,22 @@ MODEL_ACTED = 20
 MODEL_ADVANCE_ROLL = 22
 MODEL_CHARGE_ROLL = 24
 MODEL_ENGAGED = 28
-MODEL_DIM = 35
+# The committed objective's offset on the model's own token (#384, amendment
+# 31), normalised as the relation offsets are; zero unless
+# `commitments.observe_target_offset` is on and the unit has a ground target.
+MODEL_COMMIT_DX = 35
+MODEL_COMMIT_DY = 36
+MODEL_COMMIT_PRESENT = 37
+MODEL_DIM = 38
 
-UNIT_DIM = 11
-OBJECTIVE_DIM = 6
+# The commitment layer (#384) adds two unit columns (own: has ground / has
+# combat; enemy: claimants on it) and one objective column (claimants).
+UNIT_DIM = 13
+UNIT_HAS_GROUND = 11
+UNIT_HAS_COMBAT = 12
+UNIT_CLAIMANTS = 12
+OBJECTIVE_DIM = 7
+OBJECTIVE_CLAIMANTS = 6
 TERRAIN_DIM = 2 * TERRAIN_VERTEX_BUDGET + 1
 GAME_DIM = 8 + N_PHASES + N_STEP_KINDS
 CONTEXT_DIM = max(GAME_DIM, UNIT_DIM, MODEL_DIM, OBJECTIVE_DIM, TERRAIN_DIM)
@@ -112,7 +125,13 @@ REL_RANGED_PRESENT = 12
 REL_MELEE_PRESENT = 13
 REL_INSIDE = 14
 REL_TERRAIN_PRESENT = 15
-RELATION_DIM = 16
+# The commitment layer (#384): 1 when the source model's UNIT is committed to
+# this context token (its ground objective or a member of its combat set),
+# under a presence flag that is on only when the layer is configured -- so a
+# policy trained without it reads zeros here.
+REL_COMMITTED = 16
+REL_COMMIT_PRESENT = 17
+RELATION_DIM = 18
 
 _STAT_NORMALISERS = np.array([10.0, 6.0, 10.0, 6.0, 10.0])
 
@@ -312,10 +331,19 @@ class TokenObservation:
     declaration_mask: np.ndarray  # (P, N_DECLARATIONS) bool
     displacement_mask: np.ndarray  # (P, 1 + n_move + n_advance) bool
     unit_mask: np.ndarray  # (P, 1 + U) bool
+    # The commitment head's tokens and mask (#384 Stage 1): the objective rows
+    # of the context, and per model KEEP + one column per objective, True only
+    # on an `open` point that offers the decision.
+    objective_rows: np.ndarray  # (K,) intp, rows into `context`
+    commit_mask: np.ndarray  # (P, 1 + K) bool
 
     @property
     def n_players(self) -> int:
         return int(self.players.shape[0])
+
+    @property
+    def n_objectives(self) -> int:
+        return int(self.objective_rows.shape[0])
 
     @property
     def n_context(self) -> int:
@@ -380,6 +408,21 @@ def build_tokens(
         ]
     ).astype(np.float32)
 
+    # The commitment layer (#384): on only when configured, so an off config
+    # produces zeros in every column and relation it adds.
+    layer_on = bool(env.config.commitments.enabled)
+    commitment = env.commitments_for(seat) if layer_on else None
+    objective_claimants = (
+        commitment.claimants_by_objective(len(env.objectives))
+        if commitment is not None
+        else None
+    )
+    enemy_unit_claimants = (
+        commitment.claimants_by_enemy_unit(scenario.enemy_groups)
+        if commitment is not None
+        else None
+    )
+
     # ---- context ----------------------------------------------------------
     rows: list[np.ndarray] = []
     kinds: list[int] = []
@@ -401,6 +444,7 @@ def build_tokens(
         acted=np.asarray(point.acted, dtype=bool),
         open_unit=point.open_unit,
         side=1.0,
+        commitment=commitment,
     )
     for g, row in zip(scenario.own_groups, own_unit_rows):
         rows.append(row)
@@ -439,6 +483,7 @@ def build_tokens(
         acted=None,
         open_unit=None,
         side=0.0,
+        claimants=enemy_unit_claimants,
     )
     for g, row in zip(scenario.enemy_groups, enemy_unit_rows):
         rows.append(row)
@@ -446,7 +491,10 @@ def build_tokens(
         alive.append(bool(np.any(enemy_alive & (enemy_groups == g))))
         positions.append(_centroid(enemy_locs, enemy_alive & (enemy_groups == g)))
 
-    objective_rows, objective_positions = _objective_rows(env, seat, scenario)
+    objective_start = len(rows)
+    objective_rows, objective_positions = _objective_rows(
+        env, seat, scenario, claimants=objective_claimants
+    )
     for row, position in zip(objective_rows, objective_positions):
         rows.append(row)
         kinds.append(CONTEXT_OBJECTIVE)
@@ -503,6 +551,17 @@ def build_tokens(
         _write_enemy_unit_relations(
             cross, enemy_alive, enemy_groups, scenario, enemy_unit_start
         )
+    if commitment is not None and env.config.commitments.observe_target_offset:
+        _write_target_offsets(players, commitment, own_locs, own_groups, env, scenario)
+    if commitment is not None:
+        _write_commitment_relations(
+            cross,
+            commitment,
+            own_groups,
+            scenario.enemy_groups,
+            objective_start,
+            enemy_unit_start,
+        )
     if scenario.terrain_rows.shape[0]:
         inside = polygons_contain_points(
             own_locs, scenario.terrain_outlines, scenario.terrain_vertex_counts
@@ -534,7 +593,25 @@ def build_tokens(
         declaration_mask=np.asarray(point.declaration_mask, dtype=bool).copy(),
         displacement_mask=displacement_mask_from(point, seat),
         unit_mask=unit_mask_from(point, seat, scenario.enemy_groups),
+        objective_rows=np.arange(
+            objective_start, objective_start + len(env.objectives), dtype=np.intp
+        ),
+        commit_mask=commit_mask_from(point, len(own), len(env.objectives)),
     )
+
+
+def commit_mask_from(
+    point: DecisionPoint, n_models: int, n_objectives: int
+) -> np.ndarray:
+    """`(P, 1 + K)`: the point's commitment decision, all False when it offers none."""
+    mask = np.zeros((n_models, 1 + n_objectives), dtype=bool)
+    if point.commit_mask is None:
+        return mask
+    source = np.asarray(point.commit_mask, dtype=bool)
+    rows = min(n_models, source.shape[0])
+    cols = min(1 + n_objectives, source.shape[1])
+    mask[:rows, :cols] = source[:rows, :cols]
+    return mask
 
 
 # ------------------------------------------------------------ mask derivation
@@ -724,6 +801,8 @@ def _unit_rows(
     acted: np.ndarray | None,
     open_unit: int | None,
     side: float,
+    commitment: CommitmentState | None = None,
+    claimants: np.ndarray | None = None,
 ) -> list[np.ndarray]:
     locations = _locations(models)
     rows = []
@@ -749,12 +828,20 @@ def _unit_rows(
         if acted is not None and np.any(living):
             row[9] = float(np.sum(acted & living)) / float(np.sum(living))
         row[10] = side
+        if commitment is not None:
+            row[UNIT_HAS_GROUND] = float(commitment.ground_of(int(g)) >= 0)
+            row[UNIT_HAS_COMBAT] = float(bool(commitment.combat_of(int(g))))
+        if claimants is not None:
+            row[UNIT_CLAIMANTS] = float(claimants[u]) / 10.0
         rows.append(row)
     return rows
 
 
 def _objective_rows(
-    env: PerModelEnv, seat: Seat, scenario: TokenScenario
+    env: PerModelEnv,
+    seat: Seat,
+    scenario: TokenScenario,
+    claimants: np.ndarray | None = None,
 ) -> tuple[list[np.ndarray], list[np.ndarray]]:
     objectives = env.objectives
     if not objectives:
@@ -783,6 +870,8 @@ def _objective_rows(
         row[3] = float(enemy_counts[k]) / 10.0
         row[4] = float(scenario.objective_extent[k]) / scenario.diagonal
         row[5] = float(scenario.objective_is_area[k])
+        if claimants is not None:
+            row[OBJECTIVE_CLAIMANTS] = float(claimants[k]) / 10.0
         rows.append(row)
         positions.append(position)
     return rows, positions
@@ -871,6 +960,48 @@ def _write_enemy_relations(
     cross[:, span, REL_SIGHT_PRESENT] = candidates
 
 
+def _write_commitment_relations(
+    cross: np.ndarray,
+    commitment: CommitmentState,
+    own_groups: np.ndarray,
+    enemy_groups: np.ndarray,
+    objective_start: int,
+    enemy_unit_start: int,
+) -> None:
+    """Flag, for every own model, the tokens its UNIT is committed to."""
+    cross[:, :, REL_COMMIT_PRESENT] = 1.0
+    enemy_index = {int(g): u for u, g in enumerate(enemy_groups)}
+    for i, g in enumerate(own_groups):
+        ground = commitment.ground_of(int(g))
+        if ground >= 0:
+            cross[i, objective_start + ground, REL_COMMITTED] = 1.0
+        for target in commitment.combat_of(int(g)):
+            u = enemy_index.get(int(target))
+            if u is not None:
+                cross[i, enemy_unit_start + u, REL_COMMITTED] = 1.0
+
+
+def _write_target_offsets(
+    players: np.ndarray,
+    commitment: CommitmentState,
+    own_locs: np.ndarray,
+    own_groups: np.ndarray,
+    env: PerModelEnv,
+    scenario: TokenScenario,
+) -> None:
+    """Write, on every own model's token, the offset to its unit's committed
+    objective and a presence flag; models of an uncommitted unit stay zero."""
+    for i, g in enumerate(own_groups):
+        ground = commitment.ground_of(int(g))
+        if ground < 0:
+            continue
+        target = np.asarray(env.objectives[ground].location, dtype=float)
+        delta = target - own_locs[i]
+        players[i, MODEL_COMMIT_DX] = delta[0] / scenario.half_width
+        players[i, MODEL_COMMIT_DY] = delta[1] / scenario.half_height
+        players[i, MODEL_COMMIT_PRESENT] = 1.0
+
+
 def _write_enemy_unit_relations(
     cross: np.ndarray,
     enemy_alive: np.ndarray,
@@ -907,10 +1038,16 @@ __all__ = [
     "MODEL_DIM",
     "N_CONTEXT_KINDS",
     "N_DECLARATIONS",
+    "OBJECTIVE_CLAIMANTS",
     "OBJECTIVE_DIM",
+    "REL_COMMITTED",
+    "REL_COMMIT_PRESENT",
     "RELATION_DIM",
     "TERRAIN_DIM",
+    "UNIT_CLAIMANTS",
     "UNIT_DIM",
+    "UNIT_HAS_COMBAT",
+    "UNIT_HAS_GROUND",
     "Head",
     "TokenObservation",
     "TokenScenario",
@@ -920,4 +1057,8 @@ __all__ = [
     "head_for",
     "unit_column_to_value",
     "unit_mask_from",
+    "MODEL_COMMIT_DX",
+    "MODEL_COMMIT_DY",
+    "MODEL_COMMIT_PRESENT",
+    "commit_mask_from",
 ]

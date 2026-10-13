@@ -58,6 +58,11 @@ reward_phases:
 | `min_epochs` | int | `0` | Minimum epochs spent in this phase before advancement is eligible |
 | `min_epochs_above_threshold` | int | `5` | Success rate must be ≥ success_threshold for this many consecutive epochs before advancing. **This is why `--eval-every-n-epochs` is rejected on a multi-phase config**: "consecutive" counts epochs that were *evaluated*, so a coarser cadence moves the epoch a phase advances on and changes what the run trains |
 | `terminal_success_bonus` | float | `0.0` | Bonus added at episode end **when the phase's `success_criteria` is met** (previously hardcoded to all-models-at-objectives). Scaled by remaining-turn fraction **only when `terminate_on_success` is true** — see below. |
+| `terminal_bonus_speed_scaling` | bool | `true` | Whether `terminal_success_bonus` is scaled by the remaining-turn fraction. `false` pays a late success in full — the ladder's A5-points reward-shape arm (2026-09-19): a policy that first succeeds in round nine of ten was being paid a tenth of the configured bonus for the criterion it is judged on. |
+| `terminal_member_success_bonus` | float | `0.0` | **Per-model facade only** (the whole-army facade refuses it). The soldiers' most pay per round, summed over the army. At a success that ends the game it pays the MEMBERS' stream that × Σ_{m=1..R} γ^m, R the rounds of play cut off and γ the members' discount (the trainer's `--gamma`): exactly the most the success forgoes, so completing the plan never costs the soldiers and never pays them for abandoning it (#384, amendment 26). |
+| `terminal_forgone_vp_bonus` | float | `0.0` | **Per-model facade only.** The planner's most pay per VP scoring round (`vp_gain`'s weight at the whole board held). At a success that ends the game it pays the planning stream that × (1 + `terminal_forgone_vp_margin`) × Σ_{m=1..S} γ_p^m, S the scoring rounds cut off (the command phases still to come; on a config that skips command the board at the end of the last round is never scored) and γ_p `--planning-gamma`. |
+| `terminal_forgone_vp_margin` | float | `0.0` | The planner's advantage for finishing: the share by which `terminal_forgone_vp_bonus` exceeds the VP it forgoes. |
+| `terminal_objective_bonus` | float | `0.0` | Bonus added at episode end scaled by the **fraction of objectives the player controls on the final board** (VP's control rule, the same read as `objective_coverage`), paid whether or not `success_criteria` hold and never scaled by the turns left. Decomposes a conjunction-over-points criterion into a per-point terminal payment. 0 disables. |
 | `terminal_vp_bonus` | float | `0.0` | Bonus added at episode end when player VP meets the phase's VP threshold (for VP-based success criteria). |
 | `terminate_on_success` | bool | `true` | Whether to end the episode as soon as **this phase's `success_criteria`** is met. Set `false` in VP phases when you want to keep scoring — and read the warning below, because this flag changes what `success_rate` measures. |
 
@@ -99,7 +104,8 @@ calculator's arithmetic is untouched — only the step it is paid on changes.
 | state term | `objective_hold`, `declared_objective_hold`, `unit_coherency`, `group_cohesion` | once per turn at the closing step: `weight × mean over alive models`, × the number of stepped phases per round |
 | delta global | `vp_gain`, `killing`, `models_lost`, `objective_flip_bonus` | once at the close, unscaled, against the retimer's own baselines (VP, alive masks and the env's cumulative attrition count at the previous close) |
 | state global | `objective_coverage`, `models_at_objectives` | once at the close, × the stepped phases per round |
-| terminal bonuses | `terminal_success_bonus`, `terminal_vp_bonus` | at the terminating close, through `RewardPhaseManager.terminal_bonuses` — the same code the phase facade runs |
+| terminal bonuses | `terminal_success_bonus`, `terminal_objective_bonus`, `terminal_vp_bonus` | at the terminating close, through `RewardPhaseManager.terminal_bonuses` — the same code the phase facade runs |
+| forgone-pay success bonuses | `terminal_member_success_bonus` (to the members), `terminal_forgone_vp_bonus` (to the planner) | at a terminating close whose criteria hold, computed by the retimer with the trainer's two discounts (`PerStepReward(gamma=, planning_gamma=)`) |
 
 Rules the table implies, each pinned by `tests/test_per_model_reward_timing.py`:
 
@@ -114,6 +120,25 @@ Rules the table implies, each pinned by `tests/test_per_model_reward_timing.py`:
   facade's scalar mean, so a term's per-round total does not scale with the
   army — the #283 requirement. Per actor the signal is `1/n` of what the
   whole-army per-model vector paid.
+- **`Credit.actor` (`--credit actor` on `train_per_model.py`) is the other
+  accounting**, built 2026-09-17 for #340 after the A3 speed screen's hold-term
+  null and A5b's under-arrival: **every payment is over the model count, a
+  constant** — the actor's action term stays where the mean put it (the
+  alive count against the model count), each state term's per-model value at
+  the close is a **credit** (`StepPayment.credits`) that the rollout collector
+  lands on the transition where that model last acted this turn — on the
+  close itself when it took no step, so nothing paid is lost — and the common
+  payments (globals, delta globals, the terminal bonuses) shrink by the army
+  size. PPO normalises advantages, so what the policy gradient sees is the
+  ratio of a model's own term to the common shock, `n` times the mean's; the
+  constant keeps the return scale of the mean's order, because the value loss
+  is not normalised and an unscaled first cut (returns 13× larger, pre-clip
+  gradient norm 5×, clipped on every step) let it swamp the policy gradient.
+  Within a turn the discount is 1.0, so an earlier landing leaves every
+  earlier step's return unchanged and removes the credit from the returns of
+  the steps after it. The default stays `mean`, so
+  every bridge total and every run before it are untouched; the mode is a PPO
+  knob a resume keeps. Pinned by `tests/test_per_model_actor_credit.py`.
 - **`group_cohesion` is a STATE term here**, a recorded departure from the #283
   design table, which paid it on the actor's step: paid per action it fines the
   first mover of a coherent unit for a gap its squadmates have not yet had a
@@ -139,18 +164,150 @@ Rules the table implies, each pinned by `tests/test_per_model_reward_timing.py`:
 - **`reward/components/<term>` is per ROUND in `train_per_model.py`**, not per
   step: under re-timing a per-step mean would depend on the army size.
 
+## The commitment layer (#384, Stage 0)
+
+A **commitment** is a unit pointing at a board token — a GROUND slot (one
+objective, or none) and a COMBAT slot (a set of up to `commitments.combat_set_size`
+enemy units in ANY mode). It persists across steps and turns until the unit
+dies or the environment retires it, every model of the seat sees it, and two
+calculators are keyed to it. The state lives on the per-model env
+(`envs/per_model/commitment.py`, `PerModelEnv.commitments_for(seat)`); the
+phase facade ignores the block.
+
+- **Who writes it** is `commitments.assignment`: `none` (default — nobody;
+  the state stays empty, every column and relation the layer adds reads
+  zero with its presence flag off, and every calculator pays exactly as
+  before the layer existed) or `greedy` (the environment, at deployment,
+  by the scripted bar's own rule: objectives in ascending opponent-count
+  order, each taking the nearest unassigned squad, spares to the cheapest;
+  sticky — a unit's ground commitment is re-solved only when the unit dies,
+  or when its objective is held by another unit BEFORE this unit has ever
+  had a member inside it: a latecomer is re-assigned to the nearest
+  objective neither ours nor claimed, a unit that has arrived keeps its
+  objective through any walk-off, #392) or `rotated` (the greedy
+  assignment shifted one unit along in group order, so no unit's assignment
+  is its greedy pick — the legibility rung's writer, #393, read with
+  `all_units_on_commitment`), or `head` (the POLICY, #384 Stage 1: at each
+  unit's first open of the turn the open step carries one decision, KEEP or
+  an objective, drawn by the set network's commitment head and written by
+  the env on that step; a unit's slot clears on death or as a latecomer and
+  is never re-assigned by the env). A **scripted seat** always writes its own
+  squad-to-objective assignment into the state so the bar has a row on
+  every readout; `squad_march_committed` is `take` following the
+  environment's assignment instead, the bar wherever the environment
+  writes one. With the layer off nothing reads the state.
+- **What the tokens carry** (`envs/per_model/tokens.py`): on every objective
+  token the claimant count (`OBJECTIVE_CLAIMANTS`), on every enemy-unit token
+  the expected claimants on it (an ANY member counts `1/|set|`), on every own
+  unit token whether it has a ground / combat commitment, and a relation
+  `REL_COMMITTED` from each model to the tokens its unit is committed to,
+  under `REL_COMMIT_PRESENT` (on only when the layer is configured). The
+  relation vector is 18 wide (was 16); a checkpoint trained before it loads
+  with zero weights on the two new features (`checkpoint.py`), so its outputs
+  on the old features are bit-identical.
+- **What the reward keys on.** `StepContext.committed_objective` is each
+  player model's unit's ground objective (`-1` none; `None` when the layer is
+  off). With it set, `closest_objective_v2` pays distance closed toward THAT
+  objective instead of its own per-step choice (its potential re-anchors on
+  a change and pays 0 for the change, so a re-assignment is neutral), and
+  `objective_stay` pays only for ending inside THAT objective. Every other
+  calculator is untouched. Under `mean` credit the payment classes are as in
+  the table above; the planning / execution streams of #384 are Stage 1.
+- **The two streams under `head`** (`PerStepReward(streams=True)`, which
+  `train_per_model.py` sets whenever the policy is the writer; D2, D6):
+  the close's outcome terms — every delta global (`vp_gain`, …), every
+  state global (`objective_coverage`, …) and the terminal bonuses — are
+  returned as `StepPayment.planning` instead of in `reward`, and the
+  collector credits that scalar to every unit's OPEN commitment span (its
+  latest commitment step, until the unit decides again). The planning
+  stream's return is semi-Markov over each unit's commitment steps with
+  its own discount (`--planning-gamma`, default 0.99 per step, one step per
+  turn) and its own value head; the members' advantage is computed from
+  the execution stream alone (the potentials against the commitment, the
+  per-model state terms). The commitment decision's log-prob is never added
+  to the member's: two surrogates, two value losses, one optimiser. With
+  no commitment rows the update is the shipped one, bit for bit.
+- **The plan-weighted execution (`commitments.execution: plan`, #384's
+  execution phase).** Each unit's plan is its committed objective plus a
+  weight per task, `(approach, hold)`: the environment's rule sets `(1, 0)`
+  until the unit first has a member inside its objective (read at a turn
+  close), then `(0, 1)`, and a new target resets to `(1, 0)`; a unit with no
+  commitment has `(0, 0)`. A member's per-decision payment is each term's
+  value times its unit's weight for the task the term serves (`TASK_OF` in
+  `reward_timing.py`: `closest_objective_v2` and `declared_objective_progress`
+  → approach; `objective_stay` → hold; the charge and kill terms have no
+  slot yet and weigh 1.0), so in hold mode the travel term is silent and
+  leaving pays exactly zero, and in approach mode standing inside pays
+  nothing until the plan flips. The default `keyed` weights nothing and is
+  bit-identical to Stage 0. Under `plan` the two streams are on: the close's
+  outcome terms go to the planning stream and never reach a member. The
+  same two numbers are what a planner writes later, hard or soft.
+- **Readouts**: `just measure-commitments <config> <n> <seed_base> <spec...>`
+  — persistence turn to turn, claimants per claimed objective, completion,
+  empty-slot share, member follow-through, the leave share on the
+  committed objective, and the hold-mode share with the hold-declaration
+  share; `just measure-commitment-ablation <config> <n>
+  <seed_base> <ckpt...>` — success with the marked-target relation as
+  trained, blank, misdirected and pointed at the nearest objective, the
+  test of whether a policy READS its commitment (`docs/metrics.md`).
+
+### The planning credit and the plan-only trainer (#384, after Stage 1)
+
+Under the two streams, the close's planning scalar (the delta and state
+globals and the terminal bonuses) reaches each unit's open commitment span.
+`PerStepReward(planning_credit=...)` says how (`train_per_model.py
+--planning-credit`):
+
+| `PlanningCredit` | each unit's commitment step is credited with |
+|---|---|
+| `broadcast` (default) | the army's outcome, the same scalar to every unit -- a squad stacking on a covered objective and the squad taking the empty one are paid alike (CM3's diagnosis) |
+| `counterfactual` (B6) | the state globals and the terminal bonuses with the unit IN minus the same terms with the unit's living models masked out of the distance cache (`_counterfactual_credits`), so a redundant squad earns 0 and the squad covering an empty objective earns what it covers. The delta globals (VP, kills) have no per-unit counterfactual and are carried by nobody under this form; `StepPayment.planning` is 0.0 and `StepPayment.planning_credits` holds the per-unit values, landed on each unit's span by `_land_planning_credits` |
+
+**The plan-only trainer** (`--members <baseline>`, `PerModelPPOConfig.members`)
+lets only the commitment head and the planning value learn: a non-emitting
+scripted seat over the named policy (normally `squad_march_committed`, which
+reads the state) takes every decision but the commitment draw -- the unit's
+declaration on the same open step, every act, every target -- re-planning
+before each decision so a commitment written this turn is the plan it walks.
+Those steps carry no policy (`column` NO_DRAW), so the update sees commitment
+rows only; the in-run evaluation and `just measure-plan` read the run the same
+way (`plan_only_chooser`). It needs `commitments.assignment: head`.
+
+**The frozen-planner rung** (`--frozen-planner <ckpt>`,
+`PerModelPPOConfig.frozen_planner`) is the mirror of the plan-only trainer: a
+finished head's network, loaded beside the learning one (greedy, never in the
+optimiser), draws every commitment; the learning network keeps its unit choice
+and declaration and learns the member heads and the execution value under
+that plan (`SetAgent.plan_batch` / `replace_commitment`, `_planner_decisions`;
+`split_chooser`, `build_split_chooser`). Its commitment rows are dropped, so
+no planning trains; the in-run evaluation and `just measure-plan ...
+planner=<ckpt>` read the pair the same way.
+
+**KEEP is illegal on an empty slot** (`PerModelEnv._with_commit_mask`): at a
+unit's first open of the episode, and whenever the env has retired its
+commitment, the head must name an objective; KEEP is offered only on a slot
+that holds one. Without this a head could leave a unit unplanned and a member
+policy that follows the plan (`squad_march_committed`, with its per-squad
+greedy fallback) would walk a plan of its own -- the plan-only rung's first
+launch read success 1.000 with 39-50% of the objectives claimed for exactly
+that reason.
+
 ## Available Reward Calculators
 
 | Type key | Scope | Parameters | Description |
 |----------|-------|------------|-------------|
 | `closest_objective` | per-model | `progress_scale` (float, default 0.0), `best_distance_bonus_scale` (float, optional) | Shaping toward the nearest objective, normalised by board diagonal. **`progress_scale > 0` (recommended)** switches to a smooth linear potential pull (reward = `progress_scale × distance_closed`, positive when closing, negative when receding); speed-to-objective then comes from discounting + the remaining-fraction terminal bonus, not a convex term. Legacy mode (default): 0 when getting closer, a flat penalty when distance stays the same or increases, plus an optional cubic best-distance bonus. |
-| `closest_objective_v2` | per-model | `progress_scale` (float, default 0.0), `fallback_to_nearest` (bool, default false), `contest_deficit` (int, default 1), `best_distance_bonus_scale` (float, optional), `overstack_penalty_per_extra` (float, default 0.05), `non_improvement_penalty_slope` (float, default 2.0), `non_improvement_penalty_base` (float, default 0.3) | Targets the nearest objective where this model's arrival improves the player's control using the **same OC/count rule as VP scoring** (neutral→player, opponent→contested, contested→player); one objective assignment per group per step (de-stacks across models). **`progress_scale > 0` (recommended)** switches to a smooth linear potential pull toward the assigned objective (reward = `progress_scale × distance_closed`, positive when closing, negative when receding), replacing the legacy flat penalty + cubic bonus. **`fallback_to_nearest`** sends a model with no assigned target to its nearest objective (e.g. extra models when models > objectives). **`contest_deficit`** is how many arriving models the candidate test may imagine: at the default 1 an objective the opponent holds by two or more can never be a candidate, because one body cannot take `opponent` to `contested` — measured on the v3.0 lineage that was **43.4%** of every objective the reward could not point at, leaving 68% of units unassigned and dropping 63.1% of model-steps through `fallback_to_nearest` onto the point they were already standing on. Raising it to a unit's worth of models lets a whole squad's arrival count; at 5 the same exclusion falls to 3.9%. **1 reproduces the historical gate exactly**, so every recorded number stands. With `progress_scale = 0` it uses the legacy penalty/cubic shaping. Over-stacking an already-controlled objective incurs a small negative penalty. |
+| `closest_objective_v2` (keyed to the commitment layer when it is on: the committed objective overrides the target choice below; with the layer on and `fallback_to_nearest` off, a unit holding no commitment is paid nothing) | per-model | `progress_scale` (float, default 0.0), `fallback_to_nearest` (bool, default false), `normalize_to_commit_distance` (bool, default false: progress is the FRACTION of the distance to the objective's edge the model had when its target was set, so completing any target pays exactly `progress_scale`, near or far — the two-stream reward's second constraint, #384), `normalize_min_distance` (float inches, default 0.0: a floor on that anchor, so a target set from nearer than this pays a smaller fraction per step — without it a writer that re-commits a unit near its new target made one step pay a whole commitment, amendment 10 of the plan pre-registration), `contest_deficit` (int, default 1), `one_objective_per_group` (bool, default false), `best_distance_bonus_scale` (float, optional), `overstack_penalty_per_extra` (float, default 0.05), `non_improvement_penalty_slope` (float, default 2.0), `non_improvement_penalty_base` (float, default 0.3) | Targets the nearest objective where this model's arrival improves the player's control using the **same OC/count rule as VP scoring** (neutral→player, opponent→contested, contested→player); one objective assignment per group per step (de-stacks across models). **`progress_scale > 0` (recommended)** switches to a smooth linear potential pull toward the assigned objective (reward = `progress_scale × distance_closed`, positive when closing, negative when receding), replacing the legacy flat penalty + cubic bonus. **`fallback_to_nearest`** sends a model with no assigned target to its nearest objective (e.g. extra models when models > objectives). **`contest_deficit`** is how many arriving models the candidate test may imagine: at the default 1 an objective the opponent holds by two or more can never be a candidate, because one body cannot take `opponent` to `contested` — measured on the v3.0 lineage that was **43.4%** of every objective the reward could not point at, leaving 68% of units unassigned and dropping 63.1% of model-steps through `fallback_to_nearest` onto the point they were already standing on. Raising it to a unit's worth of models lets a whole squad's arrival count; at 5 the same exclusion falls to 3.9%. **1 reproduces the historical gate exactly**, so every recorded number stands. **`one_objective_per_group`** makes the per-step assignment a **matching** — each candidate objective to at most one group and each group to at most one objective, greedy by distance — instead of the per-objective rule under which one group can own several points while another owns none and drops through `fallback_to_nearest` onto a point already claimed (on the curriculum's spread rung that is 49% of steps and half of all travel pay). Off reproduces the historical assignment exactly. With `progress_scale = 0` it uses the legacy penalty/cubic shaping. Over-stacking an already-controlled objective incurs a small negative penalty. |
 | `group_cohesion` | per-model | `group_max_distance` (float, default 10.0), `violation_penalty` (float, default -10.0) | Negative reward proportional to excess distance beyond `group_max_distance` from the closest same-group model. 0 when within range or alone in group. |
-| `vp_gain` | global | *(none)* | Reward = weight × ((player_vp_delta - opponent_vp_delta) / cap_per_turn). `cap_per_turn` is read from mission config (default 15), so net VP swings are normalized to turn cap scale. Use in a "Win the game" phase. |
+| `vp_gain` | global | *(none)* | Reward = weight × ((player_vp_delta - opponent_vp_delta) / cap_per_turn). `cap_per_turn` is read from mission config (default 15), so net VP swings are normalized to turn cap scale. With the mission's cap off (`cap_enabled: false`) it divides by `vp_per_objective × objectives` instead, so a round pays the net share of the board held. Use in a "Win the game" phase. |
 | `objective_flip_bonus` | global | `bonus_capture_first` (float, default 5.0), `bonus_flip_to_contested` (float, default 3.0), `bonus_contested_to_controlled` (float, default 5.0), `loss_penalty_scale` (float, default 1.0) | Symmetric control-state potential under the same OC/count rule as VP scoring. Gaining control adds value (neutral→player = `bonus_capture_first`; opponent→contested = `bonus_flip_to_contested`; contested→player = `bonus_contested_to_controlled`); losing control subtracts the mirror value × `loss_penalty_scale`. At `loss_penalty_scale=1.0` it is a pure (farming-proof) potential. Returns unweighted. |
 | `objective_coverage` | global | *(none)* | Dense reward = (number of player-controlled objectives) / (number of objectives), using the same OC/count rule as VP scoring. Paid every step, so it rewards spreading models to hold *multiple distinct* objectives rather than over-stacking one. Returns unweighted. |
+| `commitment_coverage` | global (a state global: under the head writer it lands on the PLANNING stream and never reaches a member) | *(none)* | The share of objectives that at least one living unit is COMMITTED to, read from the commitment layer (`StepContext.committed_objective`); 0 with the layer off. A plan-shape term (#384, amendment 13): it pays the planner for a property of its own decision and nothing of the members' execution, so the two-stream reward's second constraint holds. Built because the outcome stream, broadcast to every unit, paid a stacking head the same at every unit (CM5b: two heads of three stacked to the end) and a fork probe showed the outcome cannot see a spread squad under members who take five turns to arrive. |
+| `commitment_churn` | global (a state global: under the head writer it lands on the PLANNING stream and never reaches a member) | *(none)* | MINUS the share of living units whose ground commitment the head moved from one objective to another this turn while the unit had not yet arrived at the first (`StepContext.commitment_churn`, counted by the commitment state at `set_ground` and read at the close). A first commitment, a re-commit after arrival and the env's own retirement of a slot cost nothing, and KEEP is always legal on a held slot, so the cost is avoidable at every decision. A churn cost for the planner (#384, amendment 18): built because the warm start on the half-step (CM8w) peaked at 0.61 / 0.96 / 1.00 at two thirds and fell to 0.73 / 0.63 / 0.87 at the cap while its planner's re-commits before arrival rose from a quarter of squads to two thirds and the soldiers did not change. 0 with the layer off. |
+| `plan_following` | per-model (a potential action term: paid to the acting soldier on its own step) | `max_move_distance` (the config's `max_move_speed`, default 6.0) | One per-step plan-following score in [-1, 1] (#384, amendment 19; Sash's proposal): with `d` the distance from the soldier's base edge to its committed objective's edge before and after the move and `M` the move distance, walking scores `clip((d_before - d_after) / min(M, d_before), -1, 1)`, staying inside scores 1, walking off scores `-min(1, d_after / M)`. A full-speed step straight at the edge, or staying inside, scores exactly 1, so a perfect action exists at every decision; standing still off the objective scores 0; nothing pays for any objective but the committed one and an uncommitted squad earns nothing. The same per step for every plan and bounded by the weight per step, so no re-commit can make a step pay more than a normal one. Meant to replace `closest_objective_v2` + `objective_stay` on the soldiers' stream. The first decision of a soldier in an episode is unpaid. |
 | `models_at_objectives` | global | *(none)* | Dense reward = (alive models within some objective radius) / (alive models). The step-wise counterpart of the `fraction_at_objectives` criteria — unlike `objective_coverage` it does **not** saturate once a point is controlled, so it keeps paying as more models arrive. Dead models leave both numerator and denominator. Returns unweighted. **Not recommended:** every competent scripted baseline saturates it at 1.000, so it scores a 0.53-win policy and a 0.78-win policy identically. Prefer `objective_hold`. |
 | `unit_coherency` | **per-model** | `value` (float, default 0.05), `straggler_penalty` (float, default 0.0, must be <= 0) | Pays a model for standing inside its unit's largest chain component, under the same 2"/9"/one-connected-group predicate `domain/movement/coherency.py` evaluates. **The only coherency mechanism that is not a constraint** — deployment, the end-of-move revert and attrition all *make* the game legal, and none gives a policy a reason to stay in formation; measured under coherent deployment alone, the agent drifts to `eval/coherency_rate` 0.53-0.62 with ~3 of 25 models adrift. Keyed on *this* model's membership, so the straggler earns nothing while its squadmates earn — a flat payment to a coherent unit is the flat-`objective_hold` mistake and creates no gradient. A model alone in its unit is paid, matching the rule that a one-model unit is coherent by definition; fining it would price a casualty it did not cause. Small and positive by default (~a fifth of `objective_hold`): magnitude is the risk, not sign, and a negative term could make advancing on an objective a net loss. Move `straggler_penalty` before raising `value`, which inflates total income and changes what the policy trades objectives against. **Requires `observe_coherency`** — the config is rejected at construction otherwise. **MEASURED AND IT SATURATES: do not reach for this as the coherency mechanism.** At matched epoch 175 on the real-maps scenario, control 0.562 -> 0.621 at a 0.05 pay gap -> 0.659 at 0.10, reaching 0.674 by epoch 370, with `vp_margin` unchanged throughout (~+92). Diminishing increments as the gradient doubles are the signature of a bonus fighting a stronger term. It is: **82.4% of adrift models have a different nearest objective from their unit's body**, a median 13.6 board units away against a 9.0 spread cap — they are *defecting*, because `crowding_exponent` pot-splitting sends the marginal model to the emptiest objective and nothing makes that spread respect unit boundaries. Coherency here is a symptom of unit-blind objective income. **Enforcement is a referee, not a teacher — and the 1.000 it reports is the referee's own output.** Warm-starting into `coherency.enforce_move: revert_model` reads a coherency rate of 1.000 with zero adrift inside ten epochs, but that number is sampled *after* the revert and describes the wrapper. Measured with the referee **off**, the same lineage intends **0.569** units coherent against **0.756-0.886** for this gate alone, and loses on unseen ground too — 70.3 vp_margin on nine held-out tables against gate-only's 81.5. So do not train under enforcement: train with `require_coherent` and switch the referee on for play. Enforcement costs ~25 vp, but the *scripted* bar pays the same toll (+92.2 → +67.5), so that is the mission's price for holding formation and not a defect of the learned policy. |
+| `objective_stay` | **per-model** (an ACTION term on the per-model facade: paid to the mover on its own step) | `crowding_exponent` (float, default 1.0), `cap_per_commitment` (float, optional: at most this much, in the term's unweighted units, per model per commitment — a fresh budget when the model's committed objective changes — so a near objective reached early cannot collect more holding steps than a far one; the two-stream reward's second constraint, #384) | **Keyed to the commitment layer when it is on** (`StepContext.committed_objective`: only ending inside the unit's committed objective pays). Pays a model for ENDING its step inside an objective, the objective's pot divided by `occupants ** crowding_exponent` (a body alone earns the whole value, three squadmates a third each), enemies ignored. Built for the per-model curriculum's five-objective half-step (2026-09-20), where every trained per-model policy stood still on 0–2% of its decisions on an objective and walked out on 60–81% because the reward paid the same for staying as for leaving: `objective_hold` prices the same standing but is a STATE term on that facade, paid at the close as the army mean. On the phase facade it behaves as a flat-weight `objective_hold` with the pot split, paid every step. |
 | `objective_hold` | **per-model** | `player_value` (float, default 1.0), `contested_value` (float, default 0.5), `opponent_value` (float, default 0.25), `crowding_exponent` (float, default 0.0) | Value of the objective this model occupies, keyed on control state under the same OC/count rule as VP scoring; 0 when off every objective, and 0 on a neutral one since holding a point nobody contests is worth nothing. The **only calculator that pays a model while it is stationary** — `closest_objective`'s progress is a potential that exhausts on arrival and is exactly 0 on shooting steps, and `group_cohesion` returns 0 inside its limit, so without this all models share an identical reward for most of an episode. Pays for *controlling* rather than standing, and supplies a gradient across `neutral → contested → player`, which `objective_coverage` and `vp_gain` are both flat across because control is a strict count comparison. **`surplus_value` (removed 2026-08-08, superseded by `crowding_exponent`) tried to price over-stacking**: control needs `opponent_count + 1` models and every model past that changes nothing about who scores the point, so at the default 1.0 the calculator is indifferent between 15 models on one objective and 8/7 across two — both pay `15 x player_value` — while VP is worth double for the second. Below 1.0 the models nearest each centre were paid in full up to the quota and the rest scaled down. It measured null-to-negative (occupancy 0.784 → 0.284) and was removed: the discount lowers *total* objective income, and it keys on a distance-to-centre rank no model can observe about itself. **`crowding_exponent` pays the point a pot instead of every occupant a wage** (prototype, 2026-08-07): the value is divided by `occupants ** a`, so `a = 0` is the flat default and `a = 1` conserves the pot — a point pays its value once, split among whoever stands there. This is the *third* attempt at the same over-stacking defect and the first whose gradient points at the behaviour rather than away from objectives: `surplus_value` (since removed) and the overstack penalty both strictly lower total objective income, so the policy reads either as "objectives pay less" and does fewer of them, which is what both rounds measured. Under pot conservation, spreading onto a second point strictly *raises* total income. It is also keyed only on the occupant count, which `observe_objective_control` puts directly in the observation, where the discount's cliff was keyed on a rank no model can observe about itself. Calibrate the weight so the occupancy that actually holds the contested point pays what the flat term paid, or the arm changes the price of correct play as well as the price of crowding. **`contested_value` / `opponent_value` were raised to 1.0 and measured NULL (2026-08-16).** On the real tables the VP cap binds at three objectives, so denial is the only remaining gradient in `vp_margin`, and these two states are what price it -- yet raising both from 0.5/0.25 to 1.0 moved opponent VP by nothing: 188.0 against matched controls' 188.6, two warm-start lineages, two controls each, at the plateau. **The reason is that this calculator pays only LIVING models** (`phase_manager` iterates the alive), and a squad that advances onto contested ground dies -- a properly paired teleport audit measured the moved squad losing **29.4 of its own income** and **1.7 of 5 models** against 4.91 defenders. No setting of a rate pays a corpse, so the deficit is not a mispricing. Do not re-run this arm; see [the report](../reports/2026-08-16-the-cap-makes-it-a-denial-game.md). |
 | `model_kills` | **per-model** | `bonus_per_kill` (float, default 2.0) | Bonus for each opponent **this model** killed this step. The per-model counterpart of `killing`: under that global term every model is paid the same whether it fired, missed, or stood still, leaving the shooting head — half the agent's decisions — with no credit path. Note the scale difference: `killing` broadcasts its bonus to all N models per kill, so its default 5.0 makes a 25-model wipe worth 125 per model. |
 | `killing` | global | `bonus_killing_opponent` (float, default 5.0) | Bonus × opponent models killed this step **by this side's attacks**. Models a force destroys itself under `coherency.attrition` are excluded (`03-moving.md` § Regaining coherency: they trigger nothing that fires on a model being destroyed) — until 2026-08-18 they were not, and this term paid each side for the *other's* self-inflicted losses. **Prefer `model_kills`:** this spreads kill credit flat across the army, and at the default bonus it is easily the largest term in a phase. |
@@ -195,6 +352,8 @@ every phase, and `vp_gain` in every phase — over the two shipped training conf
 |----------|------------|-------------|
 | `all_at_objectives` | *(none)* | Succeeds when every model is within the radius of at least one objective. Dead models count as satisfied. **Scales badly with army size** — see the note below; prefer `fraction_at_objectives` beyond a handful of models. |
 | `fraction_at_objectives` | `min_fraction` (float in (0, 1], default 0.5) | Succeeds when at least `min_fraction` of **alive** models are within the radius of an objective. Dead models are excluded from numerator and denominator alike, unlike `all_at_objectives`. |
+| `all_objectives_occupied` | `min_models` (int ≥ 1, default 1) | Succeeds when **every objective** has at least `min_models` alive models inside it — the criterion that counts *points*, where the two above count *models* and cannot tell twelve on one point from three on each of four. Built for the curriculum's spread rung (#340 A3). Dead models occupy nothing; a scenario with no objectives is trivially satisfied. |
+| `all_units_on_commitment` | — | Succeeds when **every living unit with a ground commitment has a member inside ITS committed objective**, and at least one unit is committed. The legibility rung's criterion (#393): `all_objectives_occupied` is satisfied by any allocation that covers the points, so a policy that ignores the marked-target relation and walks to the nearest objective passes it; this one asks each unit for the objective it was assigned, which under `commitments.assignment: rotated` is never its greedy pick. With the layer off nothing is committed and it never succeeds — a config naming it without a writer is a mistake, not a pass. |
 | `all_models_grouped` | `max_distance` (float, default 10.0) | Succeeds when every model is within `max_distance` of at least one same-group member. Models alone in their group are considered grouped. |
 | `player_vp_min` | `fraction_of_max` (float, e.g. 0.33), `min_vp` (int, default 0) | Succeeds when player VP at episode end ≥ threshold. Threshold = max(min_vp, round(fraction_of_max × theoretical_max)). Theoretical max depends on `number_of_battle_rounds`, objectives, and mission params, so the same fraction gives a higher VP bar when episodes have more rounds. |
 | `player_ahead_on_vp` | *(none)* | Succeeds when `player_vp > opponent_vp` at evaluation time (a win-rate signal; use with `terminate_on_success: false`). |
@@ -270,6 +429,8 @@ The bonus is multiplied by the fraction of turns left when the episode ends — 
 
 With `terminate_on_success: false` every episode runs to `max_turns`, which would leave a scale of `1/max_turns`. Note `max_turns = number_of_battle_rounds × (5 - len(skip_phases))`, so a 20-round config with three skipped phases has `max_turns = 40` and would shrink the bonus 40-fold. The bonus is delivered at full value in that case instead.
 
+`terminal_bonus_speed_scaling: false` switches the scale off altogether, and `terminal_objective_bonus` is a second terminal term that is never scaled: it pays the fraction of objectives controlled on the final board, whether the episode ended by success or by the clock.
+
 Two consequences worth checking when a phase will not advance:
 
 - **Weigh the terminal bonus against the dense calculators, per episode.** A dense calculator emitting 0.08/step over 40 steps contributes 3.2, so a terminal bonus of 5.0 is comparable — but one of 0.5 is noise. `reward/components/*` are per-step means (see [metrics.md](metrics.md)), so multiply by `mean_episode_steps` before comparing.
@@ -314,6 +475,7 @@ Both calculators and criteria receive a `StepContext` object containing the dist
 | `board_width` | `int` | Board width in cells |
 | `board_height` | `int` | Board height in cells |
 | `is_terminated` | `bool` | Whether this step terminates the episode (used to gate terminal bonuses). Default `False` |
+| `committed_objective` | `np.ndarray \| None` | The commitment layer (#384): each player model's unit's committed objective index (`-1` none), set by the per-model retimer when `commitments.assignment` is not `none`; `None` otherwise. `closest_objective_v2` and `objective_stay` key on it |
 | `current_round` | `int` | Current battle round (1-based) |
 | `battle_phase` | `BattlePhase` | Current battle phase (`command`, `movement`, `shooting`, `charge`, or `fight`) |
 | `player_damage_dealt` | `int` | Damage the player dealt this step. Default `0` |

@@ -19,6 +19,7 @@ from wargame_rl.wargame.envs.types.config.battle import (
     TurnOrder,
 )
 from wargame_rl.wargame.envs.types.config.coherency import CoherencyConfig
+from wargame_rl.wargame.envs.types.config.commitment import CommitmentConfig
 from wargame_rl.wargame.envs.types.config.entities import ModelConfig, ObjectiveConfig
 from wargame_rl.wargame.envs.types.config.melee import MeleeConfig
 from wargame_rl.wargame.envs.types.config.terrain import (
@@ -554,6 +555,13 @@ class WargameEnvConfig(BaseModel):
         "If False (default, matching tabletop rules), the opponent continues "
         "playing and scoring VP after wiping the player.",
     )
+    terminate_on_opponent_elimination: bool = Field(
+        default=False,
+        description="If True, episode ends when all opponent models are eliminated. "
+        "If False (default, matching tabletop rules), the player continues "
+        "playing and scoring VP after wiping the opponent. Read by the phase "
+        "facade only; the per-model facade always plays the clock out (#317).",
+    )
 
     number_of_battle_rounds: int = Field(
         default=100,
@@ -589,6 +597,12 @@ class WargameEnvConfig(BaseModel):
     mission: MissionConfig = Field(
         default_factory=MissionConfig,
         description="Mission config: selects VP calculator and params (vp_per_objective, cap_per_turn, min_round).",
+    )
+    commitments: CommitmentConfig = Field(
+        default_factory=CommitmentConfig,
+        description="The commitment layer (#384): who writes a unit's commitment "
+        "to a board token on the per-model facade. Default 'none' is exactly "
+        "the behaviour that predates it; the phase facade ignores the block.",
     )
     coherency: CoherencyConfig = Field(
         default_factory=CoherencyConfig,
@@ -1026,11 +1040,35 @@ class WargameEnvConfig(BaseModel):
             )
         if not (coherency.enforce_at_deployment or coherency.attrition):
             return self
-        for label, count in (
-            ("number_of_wargame_models", self.number_of_wargame_models),
-            ("number_of_opponent_models", self.number_of_opponent_models),
+        for label, count, declared in (
+            ("number_of_wargame_models", self.number_of_wargame_models, self.models),
+            (
+                "number_of_opponent_models",
+                self.number_of_opponent_models,
+                self.opponent_models,
+            ),
         ):
-            if count > 1 and max(1, count // self.max_groups) < 2:
+            if count <= 1:
+                continue
+            if declared and len(declared) == count:
+                # The side names its units, so the smallest declared unit is
+                # the one that could hold vacuously -- not `count // max_groups`,
+                # which reads a three-model enemy unit under the player's
+                # `max_groups` as three units of one and refuses a config the
+                # env would run correctly.
+                sizes: dict[int, int] = {}
+                for model in declared:
+                    sizes[model.group_id] = sizes.get(model.group_id, 0) + 1
+                if min(sizes.values()) < 2:
+                    raise ValueError(
+                        f"coherency is enforced but {label} declares a unit of "
+                        "one model (group_id "
+                        f"{min(sizes, key=lambda g: sizes[g])}), where coherency "
+                        "holds vacuously. Give every declared unit at least two "
+                        "models."
+                    )
+                continue
+            if max(1, count // self.max_groups) < 2:
                 raise ValueError(
                     f"coherency is enforced but {label}={count} with "
                     f"max_groups={self.max_groups} puts every model in its own "

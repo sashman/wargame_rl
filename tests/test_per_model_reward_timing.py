@@ -610,3 +610,61 @@ def test_closest_objective_v2_recomputes_for_distinct_contexts_sharing_a_turn() 
     _, counts_after, _ = calculator._objective_presence_masks(view, second)
     assert counts_after[0] == len(env.wargame_models)
     assert counts_before[0] != counts_after[0]
+
+
+def test_objective_stay_pays_the_mover_that_ends_inside_and_not_the_one_that_leaves() -> (
+    None
+):
+    """The staying term (#340): computed for the actor on its own step from
+    the board after its move, split among the objective's occupants."""
+    from wargame_rl.wargame.envs.reward.calculators.objective_stay import (
+        ObjectiveStayCalculator,
+    )
+
+    assert PAYMENT_CLASSES["objective_stay"] is PaymentClass.potential_action
+    env = PerModelEnv(
+        _config(
+            phase=RewardPhaseConfig(
+                name="stay",
+                reward_calculators=[
+                    RewardCalculatorConfig(type="objective_stay", weight=0.5)
+                ],
+                success_criteria=SuccessCriteriaConfig(type="player_ahead_on_vp"),
+            )
+        )
+    )
+    retimer = PerStepReward(env)
+    observation, _ = env.reset(seed=1, options={"combat_seed": COMBAT_SEED})
+    retimer.reset()
+    observation = _walk_to(env, observation, StepKind.act, BattlePhase.movement)
+    point = observation.decision
+    actor = int(np.flatnonzero(point.selector_mask)[0])
+    # Arrange: the actor and one squadmate stand on objective 0, the actor's
+    # STAY keeps it there, so its own step pays the pot over two occupants.
+    objective = np.asarray(env.objectives[0].location, dtype=float)
+    mate = next(
+        i
+        for i, m in enumerate(env.wargame_models)
+        if i != actor and m.group_id == env.wargame_models[actor].group_id
+    )
+    env.wargame_models[actor].location = objective.copy()
+    env.wargame_models[mate].location = objective + np.array([1.0, 0.0])
+    stay = PerModelAction.act(actor, 0)
+    n_alive = int(alive_mask_for(env.wargame_models).sum())
+    _, _, terminated, _, info = env.step(stay)
+    payment = retimer.on_step(observation, stay, info["effect"], terminated)
+    assert info["effect"].actor_set == (actor,)
+    assert payment.breakdown["objective_stay"] == pytest.approx(0.5 * 0.5 / n_alive)
+
+    # The calculator itself: outside pays nothing, alone pays the whole value.
+    calculator = ObjectiveStayCalculator(weight=1.0)
+    env.wargame_models[mate].location = np.array([1.0, 1.0])
+    ctx = _context(env, BattlePhase.movement)
+    assert calculator.calculate(
+        actor, env.wargame_models[actor], cast(Any, env), ctx
+    ) == pytest.approx(1.0)
+    assert (
+        calculator.calculate(mate, env.wargame_models[mate], cast(Any, env), ctx) == 0.0
+    )
+    with pytest.raises(ValueError, match="crowding_exponent"):
+        ObjectiveStayCalculator(crowding_exponent=-1.0)
