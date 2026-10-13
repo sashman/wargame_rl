@@ -411,7 +411,7 @@ def _place_unit(env: PerModelEnv, group: int, location: np.ndarray) -> None:
 def _legible_config() -> WargameEnvConfig:
     from scripts.scenario_overrides import load_env_config
 
-    return load_env_config("configs/experiments/curriculum/a3_legible.yaml")
+    return load_env_config("configs/experiments/curriculum/a3_legible_rf.yaml")
 
 
 def test_a_unit_that_arrived_keeps_its_commitment_through_a_walk_off() -> None:

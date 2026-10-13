@@ -416,7 +416,7 @@ def test_the_scripted_bar_writes_its_plan_under_the_head_writer() -> None:
     from wargame_rl.wargame.scoring import evaluate_spec
     from wargame_rl.wargame.selectors import build_per_model_chooser
 
-    config = load_env_config("configs/experiments/curriculum/a3_head.yaml")
+    config = load_env_config("configs/experiments/curriculum/a3_head_rf_pc.yaml")
     config.render_mode = None
     env = PerModelEnv(config)
     observation, _ = env.reset(seed=700000)

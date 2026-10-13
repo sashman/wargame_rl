@@ -25,7 +25,7 @@ from wargame_rl.wargame.envs.types.config import CommitmentConfig
 from wargame_rl.wargame.envs.wargame import WargameEnv
 from wargame_rl.wargame.selectors import build_per_model_chooser
 
-CONFIG = "configs/experiments/curriculum/a3_head_r.yaml"
+CONFIG = "configs/dev/a3_head_r.yaml"
 PROGRESS = "closest_objective_v2"
 STAY = "objective_stay"
 
@@ -224,9 +224,7 @@ def test_commitment_churn_charges_the_planning_stream_per_re_commit_before_arriv
     nothing; with the layer off it pays nothing."""
     from wargame_rl.wargame.envs.per_model.commitment import NO_TARGET as _NO
 
-    config = load_env_config(
-        "configs/experiments/curriculum/a5_points_head_rf_pc_cc.yaml"
-    )
+    config = load_env_config("configs/dev/a5_points_head_rf_pc_cc.yaml")
     env = PerModelEnv(config)
     chooser = build_per_model_chooser("squad_march_take", [env], seed=700000)
     retimer = PerStepReward(env)
@@ -318,7 +316,7 @@ def test_plan_following_scores_the_share_of_the_best_step_and_is_bounded() -> No
     assert calc.score(0.0, 3.0) == -0.5  # walked off by half a move
     assert calc.score(0.0, 9.0) == -1.0
 
-    config = load_env_config("configs/experiments/curriculum/a3_legible_pf.yaml")
+    config = load_env_config("configs/dev/a3_legible_pf.yaml")
     env = PerModelEnv(config)
     chooser = build_per_model_chooser("squad_march_take", [env], seed=700000)
     retimer = PerStepReward(env)
@@ -427,7 +425,7 @@ def test_the_forgone_pay_bonuses_are_off_by_default_and_not_paid_by_the_whole_ar
     """Unset, neither bonus is paid; set, the whole-army facade still builds
     (the per-model trainer scores its scripted bar on it) and its own reward
     leaves both bonuses out."""
-    config = load_env_config("configs/experiments/curriculum/a5_points_head_pf_pc.yaml")
+    config = load_env_config("configs/experiments/curriculum/a5_points_head_rf_pc.yaml")
     _env, retimer, payment = _play_to_the_end(config)
     assert retimer.succeeded()
     assert "terminal_member_success_bonus" not in payment.breakdown
