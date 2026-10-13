@@ -9,7 +9,7 @@ plan-only rung with two arms, and the passing head with learned members.
 
 ## The question
 
-Stage 1's CM3 (`reports/2026-09-22-curriculum-commitment-stage1-preregistration.md`,
+Stage 1's CM3 (`reports/2026-09-21-curriculum-commitment-stages.md#2026-09-22-curriculum-commitment-stage1-preregistration`,
 amendment 1) read NULL on every seed: the head commits and keeps, the members
 follow and complete, and the plan stacks 1.6–2.6 squads per claimed objective
 with one always empty — 0.03 / 0.00 / 0.00 against A3's own 0.70 / 0.80 /
@@ -150,6 +150,8 @@ draws never explore the covering assignment (persist near 1 from early on,
 commitment entropy falling under 0.5 nats), and the next lever is exploration
 on the head, not credit.
 
+<a id="amendment-1"></a>
+
 ## Amendment 1 — written 2026-09-23 12:33: the first launch was void (the fallback walked the unplanned units); KEEP is illegal on an empty slot; Step 1 re-read; relaunch
 
 **What happened.** PL1 and PL2 launched 11:53 (`d145e6e`). At ~21,500 rounds
@@ -202,6 +204,8 @@ retires. Any head arm launched from #396's chain after this inherits the
 mask change (`3128963`, pinned by `test_a_unit_with_an_empty_slot_is_not_offered_keep`
 and the head-writer test) once #406 merges down; until then it is on
 `feature/commitment-plan` only.
+
+<a id="amendment-2"></a>
 
 ## Amendment 2 — written 2026-09-23 15:47: PL1 and PL2 read at the cap — the head plans on every seed under either credit; AHEAD ×6 on the letter, PLANS on none, and the PLANS clause measured the wrong thing
 
@@ -299,6 +303,8 @@ were learning to walk.**
 Files: `plan-pl{1,2}-{40960,81920,final}.txt`, `ablation-pl*-*-planonly.txt`,
 `planning-panel-final.txt`, `plan-cm3-final-v2.txt` in the session drafts.
 
+<a id="amendment-3"></a>
+
 ## Amendment 3 — written 2026-09-23 21:50: Sash's decision on Step 4 — CM4 launched on PL1's recipe, and a frozen-planner members rung (FH1) beside it
 
 Sash (2026-09-23): "launch both". Both arms on `a3_head.yaml`, three seeds,
@@ -336,6 +342,8 @@ arrived-keeps / leaving-step findings on the half-step apply here too.
 **Expectation (a guess, written so it can be wrong).** CM4: as-trained
 0.3–0.7 with the plan-only row at 0.9–1.0 on two seeds — the head plans,
 the members lag it; FH1: 0.85–1.0 on 3/3 by the cap, a turn behind the bar.
+
+<a id="amendment-4"></a>
 
 ## Amendment 4 — written 2026-09-23 23:12: a width arm on the join (CW1) — is the set network's size the wall?
 
@@ -380,6 +388,8 @@ the plan-only row 0.1–0.5, commitment entropy still above 0.8 nats at the
 cap. If it reads WIDER with the plan-only row near 1.000, size was the wall
 on the join and the ladder's per-model rows below need re-reading at width.
 
+<a id="amendment-5"></a>
+
 ## Amendment 5 — written 2026-09-23 23:21: a head-depth arm on the join (CH1) — are the decision readouts too shallow?
 
 Sash (2026-09-23): the heads' depth should be a parameter; start at 2. Every
@@ -419,6 +429,8 @@ readout could matter is the commitment pointer, whose per-token bilinear
 score cannot compare "claimed by someone else" across tokens directly, so if
 anything moves it is the plan-only row and the claimant ablation, not the
 as-trained success.
+
+<a id="amendment-6"></a>
 
 ## Amendment 6 — written 2026-09-24 04:32: the join read — CM4 NULL ×3 with its head planning at 0.72, FH1 NULL ×3 under PL1's planner, and a frozen planner is not a fixed plan
 
@@ -596,6 +608,8 @@ the board is a plan they do not learn to read.
    CM4 at a third. Their finals land in amendment 7 with the WIDER and
    DEEPER clauses; neither gates the route above.
 
+<a id="amendment-7"></a>
+
 ## Amendment 7 — written 2026-09-24 05:36: the two size arms — CW1 NOT WIDER (the wide head unlearned its plan), CH1 NOT DEEPER (the deeper heads' plan went backwards too) — size is not the join's lever at either end
 
 Both arms on CM4's recipe, three seeds, 122,880 rounds, read at 40,960 /
@@ -686,6 +700,8 @@ Three sizes of the same join on the same recipe, and the shipped one is the best
   1.23M-parameter set network as sufficient for every rung the ladder has
   reached. If capacity is ever the question again, ask it on a rung the
   network fails with scripted members (none so far), never on a join.
+
+<a id="amendment-8"></a>
 
 ## Amendment 8 — written 2026-09-24 09:29: why the join failed, investigated — the head never planned, it SEARCHED; the members never followed a mark, they walk to the nearest objective and hover; and amendment 6's "the members want a plan that holds still" is RETRACTED
 
@@ -823,6 +839,8 @@ the next arm is withdrawn in that form (see § 4).
    plan-only row without them can read 1.000 on a head that does not
    plan.
 
+<a id="amendment-9"></a>
+
 ## Amendment 9 — written 2026-09-24 21:11: the two-stream reward on the join — FH2 and CM5 pre-registered, the build and the desk check
 
 Sash (2026-09-24), after amendment 8: keep the training setup, tune the
@@ -945,6 +963,8 @@ behind (the legibility rung's 2 of 3). CM5: the members follow and the
 head still searches — first-plan coverage 0.3–0.6, success 0.5–0.9,
 AHEAD of CM4 on 3 of 3, PASS on at most one seed.
 
+<a id="amendment-10"></a>
+
 ## Amendment 10 — written 2026-09-25 01:06: FH2 and CM5 read — FAIL on every criterion; the normalised progress under a churning head is a heavy-tailed reward that broke the members' critic
 
 Both arms read at 40,960 / 81,920 / 122,880, n=100 on seeds 700000+, the
@@ -1057,6 +1077,8 @@ the same way. The sweep is not run. What the two arms establish:
    in every desk check from here**, not only under the bar: the bar's
    stable plan is the one case a re-anchoring potential cannot expose.
 
+<a id="amendment-11"></a>
+
 ## Amendment 11 — written 2026-09-25 09:39: the anchor floored — FH2b and CM5b pre-registered, with the desk check that amendment 10 asked for
 
 Sash (2026-09-25): proceed with the recommended steps. One change against
@@ -1129,6 +1151,8 @@ coverage under 0.5), success 0.2–0.5, AHEAD of CM4 on at most two seeds.
 If FH2b's members still walk the geometry with a healthy critic, the
 lever is the plan distribution the members train under, which is a change
 to the setup and Sash's call.
+
+<a id="amendment-12"></a>
 
 ## Amendment 12 — written 2026-09-25 13:37: FH2b and CM5b read — the floor restored the critic and the members now follow the plan; the planner is the failing half
 
@@ -1223,6 +1247,8 @@ NULL, and not AHEAD.**
 4. Read a member reward's per-step pay under a churning writer in every
    desk check (the amendment-10 rule stands), and read the planner's
    first-plan coverage beside success on every head arm.
+
+<a id="amendment-13"></a>
 
 ## Amendment 13 — written 2026-09-25 23:57: two probes select the next two arms — FH3 (the members under the rotated writer on the floored stream) and CM6 (a plan-shape term on the planner's stream)
 
@@ -1336,6 +1362,8 @@ the weight, not the mechanism, is the next arm.
 2/3 (first-plan 0.6–0.9), success 0.4–0.8, AHEAD of CM4 on two seeds, PASS
 on none — the members lag the plan as they did on CM5b's s3.
 
+<a id="amendment-14"></a>
+
 ## Amendment 14 — written 2026-09-26 03:20: FH3 and CM6 read — the plan-shape term makes the head plan first time; the rotated writer makes one seed's members read the mark; CM6 NULL / AHEAD / AHEAD with the best joint reads on the ladder, FH3 FAIL on the letter with the best executor on it
 
 Both arms read at 40,960 / 81,920 / 122,880, n=100 on seeds 700000+, the
@@ -1385,6 +1413,8 @@ the rotated config ≥ 0.85 on 2/3; success ≥ 0.85 on 2/3).
 2. **CM7, the join of the two working halves** (start axis): CM6's recipe with the members warm-started from FH3 s1's executor (the mark-reader) and the head from scratch, three seeds (the three seeds share the one executor — read them as that executor's band, not as seed variance). Prediction: as trained ≥ 0.90 on 3/3, PASS on at least one. If the warm start is overwritten (as A5i's was under guns), the join must be trained from scratch with the rotated writer as a first stage.
 3. **Then the half-step** (six squads, five objectives) on `rf_pc`'s reward, from scratch and from CM7 — the shape the commitment layer was built for, where the geometry walk reads 0.03–0.33 and no per-model policy has passed.
 4. **On the members' coin flip**: the seeds that read the mark do so by a third of the budget. Read every executor at 40,960 on the rotated config and restart the seed that walks to the nearest — cheaper than three full runs — until the mechanism that separates the two is found (a difference in the first few thousand rounds' plans is the place to look).
+
+<a id="amendment-15"></a>
 
 ## Amendment 15 — written 2026-09-26 10:27: CM7, the join of the two working halves; and the half-step pre-registered (CM8 from scratch, CM8w from CM7)
 
@@ -1480,6 +1510,8 @@ CM6's did, as trained 0.3–0.7 at the cap, AHEAD on 3/3, PASS on none.
 CM8w: ahead of CM8 at every read, 0.6–0.9 at the cap, PASS on one seed at
 most; the transfer clause met.
 
+<a id="amendment-16"></a>
+
 ## Amendment 16 — written 2026-09-26 13:09: CM7 read — AHEAD / PASS / AHEAD, the first PASS of a joint arm on this ladder: the join works when the soldiers already read the plan
 
 CM7 (#417): CM6's recipe (`a3_head_rf_pc.yaml`, head and members
@@ -1547,6 +1579,8 @@ rule never fired.
    86–100% re-committed before arrival, the members arriving and leaving),
    the lever is on the planner's stability, not the members: a KEEP bias
    or a churn cost on the planning stream, pre-registered as its own arm.
+
+<a id="amendment-17"></a>
 
 ## Amendment 17 — written 2026-09-26 18:15: the half-step read — CM8 NULL, CM8w AHEAD on 3/3 and PASS on none: the two-stage recipe transfers across army size, and the planner's churn in the last third is what caps it
 
@@ -1688,6 +1722,8 @@ kew48ael), so no 245,760 read was taken and none was going to move the
 verdict. CM8's verdict stands as NULL at the cap; the last checkpoints
 (`pm-00210432.pt` and neighbours) are kept unread.
 
+<a id="amendment-18"></a>
+
 ## Amendment 18 — written 2026-09-26 19:07: CM9 / CM9c — a churn cost on the planner's stream, from CM8w's peak
 
 **Why.** CM8w (amendment 17) peaked at 0.61 / 0.96 / 1.00 at 81,920 and
@@ -1754,6 +1790,8 @@ reward the churn cost can act on — recorded as such whatever CM9 reads.
 **Expectation (a guess).** CM9 holds the peak: 0.80–0.95 at the cap with
 re-commits before arrival ≤ 0.3; CM9c reproduces the fall on at least one
 seed. Six trainers on the CPU box, about 4.5 hours.
+
+<a id="amendment-19"></a>
 
 ## Amendment 19 — written 2026-09-26 20:17: one per-step plan-following score for the soldiers (Sash's proposal) — FH4, CM10, CM10s
 
@@ -1844,6 +1882,8 @@ supervised clone of the plan-following walk into the set network (the D1
 pattern), which decides between the architecture and the optimisation
 with no GPU.
 
+<a id="amendment-20"></a>
+
 ## Amendment 20 — written 2026-09-27 01:15: FH4 read — NULL on 3/3: under the per-step plan-following score, soldiers trained from scratch still walk to the nearest objective
 
 FH4 (#423): the rotated writer on `a3_legible_pf.yaml` — the soldiers'
@@ -1906,6 +1946,8 @@ seeds, and no reader.
    reached by continuation rather than by luck.
 3. The supervised-clone test (amendment 19's fallback) is no longer needed
    to decide representability: FH3 s1 already did.
+
+<a id="amendment-21"></a>
 
 ## Amendment 21 — written 2026-09-27 02:17: CM9 / CM9c read — the churn cost is BEHIND its control on 2/3; both arms peak at two thirds and the planner degrades in the last third; the control's peak is the best half-step policy on file
 
@@ -1981,6 +2023,8 @@ before arrival ≤ 0.35 on 3/3; the control's not).
    is on the panel). Either is one arm from CM8w's or CM9c's peak.
 3. Judge a planner by the board it reaches, not its first plan: first-plan
    coverage stays a readout, never a criterion.
+
+<a id="amendment-22"></a>
 
 ## Amendment 22 — written 2026-09-27 07:17: CM10 / CM10s read — NULL on both letters: under the per-step plan-following score the walk-off is gone, the arm is decided by the planner's late drift and by pace, and from scratch one seed in three reads the plan
 
@@ -2065,6 +2109,8 @@ against 0.16), s1 and s2 level (AHEAD asked for 3/3).
    is a candidate if pace stays the residual after the drift is held.
 4. The search lever for from-scratch soldiers (amendment 20) stands;
    CM10s's reader is a fourth lottery ticket, not a change in the odds.
+
+<a id="amendment-23"></a>
 
 ## Amendment 23 — written 2026-09-27 09:12: CM11 / CM10p / CM11p — the anchor on the planner's head, and the per-step score on the plain planner reward, from CM9c's peak
 
@@ -2154,6 +2200,8 @@ AHEAD of CM9c's s1 continuation at +40,960, 0.40, by two SE / NULL) and on
 the anchor's mechanism clause (planning EV ≥ 0.3 in the last quarter), with
 CM11 s1 and CM10p s1 as its paired neighbours. CM11p is read on seeds 2 and 3
 at 81,920 and the cap; its letter's "2/3" clauses become "2/2".
+
+<a id="amendment-24"></a>
 
 ## Amendment 24 — written 2026-09-27 19:16: round 7 read — the anchor on the planner's head gives the best half-step cap on file (CM11: 0.83 / 0.63 / 0.97, one seed at the pass mark, no planner collapse); the per-step score's soldiers slow down and lose the far objective even under a held planner
 
@@ -2248,6 +2296,8 @@ the 8 seeds it could be read on (CM8w 0.82 / 0.96 / 0.91 against 0.73 /
 5. Then the size step: A5 (eight squads, six objectives) warm-started from
    CM11 s3, the rung's first PASS at the cap.
 
+<a id="amendment-25"></a>
+
 ## Amendment 25 — written 2026-09-27 19:43: round 8 pre-registered — the coefficient ceiling, the walk-off under the old terms (CM12), the size step to A5 with and without the anchor (CM13 / CM13a), and the in-run-peak readout; on Sash's "proceed" to amendment 24's five proposals
 
 **1. The recipe.** CM11 (amendment 24) is the half-step recipe: the anchor
@@ -2323,6 +2373,8 @@ better, with no pace cost. CM13 rises to 0.85–0.95 on A5 (the transfer
 already reads 0.74); CM13a holds nearer 0.74 if the anchor to a smaller
 board's planner stops it adapting, or rises and holds where CM13 drifts.
 Nine trainers; A5's episodes are longer, so about six hours.
+
+<a id="amendment-26"></a>
 
 ## Amendment 26 — written 2026-09-27 23:10: the reward audit; round 8 cancelled before any read; round 9 pre-registered — the soldiers' exact success bonus, the planner paid VP, cohesion back (CM14, CM15, CM15s)
 
@@ -2460,6 +2512,8 @@ planners holding without the anchor; CM15 level with CM14; CM15s one
 reader in three as before — the from-scratch failure is a learning
 problem this round does not touch.
 
+<a id="amendment-27"></a>
+
 ## Amendment 27 — written 2026-09-28 08:15: round 9 read — the soldiers' fix works where the planner holds (CM14 AHEAD 2/3), the VP planner reward is kept (CM15 LEVEL, peaks 1.00 / 1.00 / 0.98), the late collapse is not the stall's, and from scratch is still NULL (CM15s)
 
 CM14 (#435), CM15 (#436), CM15s (#437): three seeds each, 122,880 rounds,
@@ -2565,6 +2619,8 @@ that the policy is representable, not the goal.
 3. Read every from-scratch arm on the ladder's other rungs as well once it
    passes the half-step, since the goal is all of A1–A5.
 
+<a id="amendment-28"></a>
+
 ## Amendment 28 — written 2026-09-28 22:00: round 10 pre-registered — does VP alone teach a planner from scratch (PV / PC, plan-only), and does grounding the planner's return target stop its late collapse (CM16); on Sash's "do all of them" to amendment 27's three proposals
 
 **1. The diagnosis behind CM16 (no training; the round-9 panels in eighths
@@ -2627,6 +2683,8 @@ PC; CM16 holds all three planners and reads about 0.95+ on 3/3.
 **(b), the curriculum** (Sash: "we can just define a good curriculum with
 the rewards right"), is designed separately and pre-registered before it
 launches.
+
+<a id="amendment-29"></a>
 
 ## Amendment 29 — written 2026-09-29 05:53: round 10 read — a planner learns from scratch when the soldiers deliver (PC PASS 3/3 at the bar's pace; PV, VP alone, PASS 2/3, LEVEL with PC), and a λ = 1 planning target does not stop the joint planner's collapse (CM16 BEHIND CM15 2/3, mechanism not supported)
 
@@ -2725,6 +2783,8 @@ separated here.
    together — the step where the critic fails today, so it waits on 1.
    Evaluate the result on A1–A5.
 
+<a id="amendment-30"></a>
+
 ## Amendment 30 — written 2026-10-12 15:03: the curriculum pre-registered — the soldiers learn under a frozen from-scratch planner (CC2), then both learn together from there (CC3); every weight from scratch, no checkpoint descended from CM9c; on Sash's choice of amendment 29's proposal 2
 
 **0. Phase 1 is done, twice.** The planner, plan-only with the bar's
@@ -2807,6 +2867,8 @@ soldiers; at least one seed reads `mark` below 0.90. CC3 holds the
 soldiers (they already read the mark, as CM7's did) and reaches 0.9+ at
 two thirds; one planner of three drifts by the cap, as every joint arm
 without an anchor has.
+
+<a id="amendment-31"></a>
 
 ## Amendment 31 — written 2026-10-13 09:16: round 11 read (the curriculum FAILS: CC2 0/6, CC3 0/3, one planner collapsed), and round 12 pre-registered — the committed objective's offset on the soldier's own token (CC2t), and the soldiers on the rotated half-step first (RB1 → RB2); on Sash's "try both"
 
